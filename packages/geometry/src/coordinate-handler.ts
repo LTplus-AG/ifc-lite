@@ -13,7 +13,10 @@
  */
 
 import type { MeshData } from './types.js';
+import type { AABB, CoordinateInfo, Vec3 } from './coordinate-types.js';
+import { resolveWasmMetadataFrame, type RtcFrame } from './rtc-frame.js';
 import { inferWasmRtcApplied } from './coordinate-rtc-policy.js';
+export type { AABB, CoordinateInfo, Vec3 } from './coordinate-types.js';
 
 /**
  * The "normal coordinate" ceiling, in metres: 10 km, a generous campus/site.
@@ -36,36 +39,6 @@ import { inferWasmRtcApplied } from './coordinate-rtc-policy.js';
  * the viewer's map-absolute radius held a third copy. Both now read this one.
  */
 export const NORMAL_COORD_THRESHOLD_M = 10000;
-
-export interface Vec3 {
-    x: number;
-    y: number;
-    z: number;
-}
-
-export interface AABB {
-    min: Vec3;
-    max: Vec3;
-}
-
-export interface CoordinateInfo {
-    originShift: Vec3;
-    originalBounds: AABB;
-    shiftedBounds: AABB;
-    /** True if model had large coordinates requiring RTC shift. NOT the same as proper georeferencing via IfcMapConversion. */
-    hasLargeCoordinates: boolean;
-    /** RTC offset applied by WASM in IFC coordinates (Z-up). Used for multi-model alignment. */
-    wasmRtcOffset?: Vec3;
-    /** Building rotation angle in radians (from IfcSite placement). Rotation of building's principal axes relative to world X/Y/Z. */
-    buildingRotation?: number;
-    /**
-     * Length-unit scale (file units → metres) resolved from IfcProject's unit
-     * assignment, e.g. `0.001` for millimetre files. Lets a consumer transform
-     * externally-resolved geometry (grids, survey points) into the render frame
-     * without re-parsing units. See issue #945.
-     */
-    lengthUnitScale?: number;
-}
 
 export class CoordinateHandler {
     private originShift: Vec3 = { x: 0, y: 0, z: 0 };
@@ -96,6 +69,7 @@ export class CoordinateHandler {
     // streaming event, but populated here so it's present without viewer-side
     // patching. `lengthUnitScale` is the file-units→metres factor.
     private appliedWasmRtcOffset: Vec3 | null = null;
+    private wasmRtcFrame: RtcFrame | undefined = undefined;
     private lengthUnitScale: number | undefined = undefined;
 
     /**
@@ -383,9 +357,10 @@ export class CoordinateHandler {
      * `process()` consumer read the re-based bounds as if they were absolute
      * — losing the site offset that georeferencing math needs (#2526).
      */
-    private wasmMetadataProps(): Pick<CoordinateInfo, 'wasmRtcOffset' | 'lengthUnitScale'> {
+    private wasmMetadataProps(): Pick<CoordinateInfo, 'wasmRtcOffset' | 'wasmRtcFrame' | 'lengthUnitScale'> {
         return {
             ...(this.appliedWasmRtcOffset ? { wasmRtcOffset: { ...this.appliedWasmRtcOffset } } : {}),
+            ...(this.wasmRtcFrame ? { wasmRtcFrame: { ...this.wasmRtcFrame } } : {}),
             ...(this.lengthUnitScale !== undefined ? { lengthUnitScale: this.lengthUnitScale } : {}),
         };
     }
@@ -599,11 +574,25 @@ export class CoordinateHandler {
      * path actually subtracted. Pass `rtcOffset: null` when no shift was
      * applied. Surfaced on the returned {@link CoordinateInfo} so external
      * viewers can map externally-resolved geometry into the render frame.
+     * Exact provenance is strict. For compatibility, a legacy two-argument
+     * call with a non-finite offset remains non-throwing but publishes no
+     * `wasmRtcFrame`.
      */
-    setWasmMetadata(lengthUnitScale: number | undefined, rtcOffset: Vec3 | null): void {
+    setWasmMetadata(
+        lengthUnitScale: number | undefined,
+        rtcOffset: Vec3 | null,
+        exactFrame?: RtcFrame,
+    ): void {
+        const frame = resolveWasmMetadataFrame(rtcOffset, exactFrame);
         this.lengthUnitScale = lengthUnitScale;
         this.appliedWasmRtcOffset = rtcOffset ? { ...rtcOffset } : null;
         this.wasmRtcApplied = rtcOffset !== null;
+        // Calling this setter explicitly asserts WASM provenance. Legacy
+        // two-argument callers therefore get the deterministic frame implied
+        // by a finite applied offset. Preserve the old non-throwing contract
+        // for non-finite legacy input, but do not invent provenance for it.
+        // Native/unknown paths never call the setter.
+        this.wasmRtcFrame = frame;
     }
 
     /**
@@ -617,6 +606,7 @@ export class CoordinateHandler {
         this.fastBoundsEligible = false;
         this.activeThreshold = this.MAX_REASONABLE_COORD;
         this.appliedWasmRtcOffset = null;
+        this.wasmRtcFrame = undefined;
         this.lengthUnitScale = undefined;
     }
 }

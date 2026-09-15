@@ -6,6 +6,8 @@
  * Geometry types for IFC-Lite
  */
 
+import type { CoordinateInfo } from './coordinate-types.js';
+
 /**
  * An entity's world-space axis-aligned bounding box, in the renderer frame
  * (WebGL Y-up, metres) and in ABSOLUTE world coordinates — the RTC offset and
@@ -266,17 +268,6 @@ export interface MeshTextureRef {
  */
 export type TessellationQuality = 'lowest' | 'low' | 'medium' | 'high' | 'highest';
 
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
-
-export interface AABB {
-  min: Vec3;
-  max: Vec3;
-}
-
 /**
  * One resolved structural grid axis (`IfcGridAxis`), with its tag and the two
  * endpoints of its curve in the renderer's Y-up world frame (RTC-subtracted,
@@ -294,24 +285,6 @@ export interface GridAxis {
   start: [number, number, number];
   /** End endpoint `[x, y, z]` in renderer Y-up world space (metres). */
   end: [number, number, number];
-}
-
-export interface CoordinateInfo {
-  originShift: Vec3;        // Shift applied to positions
-  originalBounds: AABB;     // Bounds before shift
-  shiftedBounds: AABB;      // Bounds after shift
-  /** True if model had large coordinates requiring RTC shift. NOT the same as proper georeferencing via IfcMapConversion. */
-  hasLargeCoordinates: boolean;
-  /** RTC offset applied by WASM in IFC coordinates (Z-up). Used for multi-model alignment. */
-  wasmRtcOffset?: Vec3;
-  /** Building rotation angle in radians (from IfcSite placement). Rotation of building's principal axes relative to world X/Y/Z. */
-  buildingRotation?: number;
-  /**
-   * Length-unit scale (file units → metres) from IfcProject's unit assignment,
-   * e.g. `0.001` for millimetre files. Lets a consumer map externally-resolved
-   * geometry (grids, survey points) into the render frame. See issue #945.
-   */
-  lengthUnitScale?: number;
 }
 
 /**
@@ -395,3 +368,4 @@ export interface GeometryResult {
 // The symbolic-representation family lives in its own module (#3199); re-exported
 // here so every existing `from './types.js'` import keeps working unchanged.
 export * from './symbolic-types.js';
+export type { AABB, CoordinateInfo, Vec3 } from './coordinate-types.js';

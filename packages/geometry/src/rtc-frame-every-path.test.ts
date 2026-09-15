@@ -97,12 +97,15 @@ async function frameFromSyncPath(
   wasmMocks.processGeometryBatch.mockReturnValue(emptyMeshCollection());
 
   const geometry = new GeometryProcessor();
-  for await (const _event of geometry.processAdaptive(new Uint8Array([65, 66, 67]), { sharedRtcOffset })) {
-    // Drain; the assertion is on the mock's arguments.
+  const events: StreamingGeometryEvent[] = [];
+  for await (const event of geometry.processAdaptive(new Uint8Array([65, 66, 67]), { sharedRtcOffset })) {
+    events.push(event);
   }
 
   expect(wasmMocks.processGeometryBatch).toHaveBeenCalled();
   const [, , , x, y, z, needsShift] = wasmMocks.processGeometryBatch.mock.calls[0];
+  const complete = events.find((event) => event.type === 'complete');
+  expect(complete?.coordinateInfo.wasmRtcFrame).toEqual({ x, y, z, needsShift });
   return { x, y, z, needsShift };
 }
 
@@ -124,6 +127,8 @@ async function frameFromStreamingPath(
   const [, , , x, y, z, needsShift] = wasmMocks.processGeometryBatch.mock.calls[0];
   const announcement = events.find((e) => e.type === 'rtcOffset');
   if (announcement?.type !== 'rtcOffset') throw new Error('streaming path announced no rtcOffset event');
+  const complete = events.find((event) => event.type === 'complete');
+  expect(complete?.coordinateInfo.wasmRtcFrame).toEqual({ x, y, z, needsShift });
   return {
     applied: { x, y, z, needsShift },
     announced: { ...announcement.rtcOffset, needsShift: announcement.hasRtc },
@@ -244,10 +249,19 @@ async function frameFromParallelPath(
   if (announcement?.type !== 'rtcOffset') throw new Error('parallel path announced no rtcOffset event');
   const batch = events.find((e) => e.type === 'batch');
   if (batch?.type !== 'batch') throw new Error('parallel path emitted no mesh batch');
+  expect(events.findIndex((event) => event.type === 'rtcOffset')).toBeLessThan(
+    events.findIndex((event) => event.type === 'batch'),
+  );
   expect(batch.coordinateInfo?.originShift).toEqual({ x: 0, y: 0, z: 0 });
   expect(batch.coordinateInfo?.wasmRtcOffset).toEqual(
     start.needsShift ? { x: start.rtcX, y: start.rtcY, z: start.rtcZ } : undefined,
   );
+  expect(batch.coordinateInfo?.wasmRtcFrame).toEqual({
+    x: start.rtcX,
+    y: start.rtcY,
+    z: start.rtcZ,
+    needsShift: start.needsShift,
+  });
   return {
     applied: { x: start.rtcX, y: start.rtcY, z: start.rtcZ, needsShift: start.needsShift },
     announced: { ...announcement.rtcOffset, needsShift: announcement.hasRtc },
@@ -285,5 +299,13 @@ describe('every WASM mesh path resolves the same RTC frame', () => {
     const parallel = await frameFromParallelPath(true, undefined);
     expect(parallel.applied).toEqual(expected);
     expect(parallel.announced).toEqual(expected);
+  });
+
+  it('publishes an exact known-false frame, including its inactive components, on every path', async () => {
+    const expected: Frame = { x: DETECTED[0], y: DETECTED[1], z: DETECTED[2], needsShift: false };
+
+    expect(await frameFromSyncPath(false)).toEqual(expected);
+    expect(await frameFromStreamingPath(false)).toEqual({ applied: expected, announced: expected });
+    expect(await frameFromParallelPath(false)).toEqual({ applied: expected, announced: expected });
   });
 });

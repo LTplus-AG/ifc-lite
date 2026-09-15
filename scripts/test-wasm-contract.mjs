@@ -30,6 +30,7 @@ import {
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 import { runShardRefusalBoundaryTests } from './lib/shard-refusal-boundary.mjs';
+import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -130,6 +131,8 @@ test('should have a version string', () => {
   assert.equal(typeof api.version, 'string');
   assert.ok(api.version.length > 0);
 });
+
+runOverlayFrameContracts(api, test);
 
 // ===== parseMeshes =====
 console.log('\n📋 parseMeshes');

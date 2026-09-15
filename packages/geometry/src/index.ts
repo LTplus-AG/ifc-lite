@@ -45,6 +45,7 @@ export { geometryAabbAt, geometryVolumeAt } from './geometry-fingerprints.js';
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
+export type { RtcFrame } from './rtc-frame.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
@@ -417,6 +418,7 @@ export class GeometryProcessor {
     this.coordinateHandler.setWasmMetadata(
       prePass.unitScale,
       frame.needsShift ? { x: frame.x, y: frame.y, z: frame.z } : null,
+      frame,
     );
     return frame;
   }
@@ -501,15 +503,12 @@ export class GeometryProcessor {
     try {
       yield { type: 'model-open', modelID: 0 };
 
-      // The event is emitted whenever there is an offset to report at all:
-      // the pre-pass detected one, or a federation override supplied one.
-      if (prePass.rtcOffset || sharedRtcOffset != null) {
-        yield {
-          type: 'rtcOffset',
-          rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
-          hasRtc: rtc.needsShift,
-        };
-      }
+      // Always publish the selected frame, including authoritative false/zero.
+      yield {
+        type: 'rtcOffset',
+        rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
+        hasRtc: rtc.needsShift,
+      };
 
       const buildingRotation = prePass.buildingRotation ?? undefined;
       if (!prePass.jobs || prePass.totalJobs === 0) {
@@ -977,14 +976,17 @@ export class GeometryProcessor {
    * @param buffer IFC file buffer
    * @returns Collection of symbolic polylines and circles
    */
-  parseSymbolicRepresentations(buffer: Uint8Array): import('@ifc-lite/wasm').SymbolicRepresentationCollection | null {
+  parseSymbolicRepresentations(
+    buffer: Uint8Array,
+    frame?: RtcFrame,
+  ): import('@ifc-lite/wasm').SymbolicRepresentationCollection | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
     // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
     // both Firefox and Chromium reject in raw `TextDecoder.decode`.
     const content = safeUtf8Decode(buffer);
-    return this.bridge.parseSymbolicRepresentations(content);
+    return this.bridge.parseSymbolicRepresentations(content, frame);
   }
 
   /**
@@ -995,14 +997,14 @@ export class GeometryProcessor {
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */
-  parseAlignmentLines(buffer: Uint8Array): Float32Array | null {
+  parseAlignmentLines(buffer: Uint8Array, frame?: RtcFrame): Float32Array | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
     // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
     // both Firefox and Chromium reject in raw `TextDecoder.decode`.
     const content = safeUtf8Decode(buffer);
-    return this.bridge.parseAlignmentLines(content);
+    return this.bridge.parseAlignmentLines(content, frame);
   }
 
   /**
@@ -1014,12 +1016,12 @@ export class GeometryProcessor {
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */
-  parseGridLines(buffer: Uint8Array): Float32Array | null {
+  parseGridLines(buffer: Uint8Array, frame?: RtcFrame): Float32Array | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
     const content = safeUtf8Decode(buffer);
-    return this.bridge.parseGridLines(content);
+    return this.bridge.parseGridLines(content, frame);
   }
 
   /**
@@ -1031,14 +1033,14 @@ export class GeometryProcessor {
    * collection is consumed internally), or null if not initialized.
    * @param buffer IFC file buffer
    */
-  parseGridAxes(buffer: Uint8Array): GridAxis[] | null {
+  parseGridAxes(buffer: Uint8Array, frame?: RtcFrame): GridAxis[] | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
     const content = safeUtf8Decode(buffer);
     // GridAxisCollection and each GridAxisJs from getAxis are wasm-bindgen
     // handles owning WASM memory — free them deterministically (AGENTS.md §7).
-    const collection = this.bridge.parseGridAxes(content);
+    const collection = this.bridge.parseGridAxes(content, frame);
     try {
       const axes: GridAxis[] = [];
       for (let i = 0; i < collection.length; i++) {

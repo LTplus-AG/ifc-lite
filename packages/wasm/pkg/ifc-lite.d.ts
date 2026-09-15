@@ -1,6 +1,16 @@
 /* tslint:disable */
 /* eslint-disable */
 
+/** Exact browser mesh RTC frame, in IFC Z-up metres. */
+export interface RtcFrame {
+    x: number;
+    y: number;
+    z: number;
+    needsShift: boolean;
+}
+
+
+
 /**
  * The overlap solid of one clashing pair, or the reason there is none.
  */
@@ -617,11 +627,19 @@ export class IfcAPI {
      */
     parseAlignmentLines(content: string): Float32Array;
     /**
+     * Parse alignments in the exact RTC frame selected by the mesh pre-pass.
+     */
+    parseAlignmentLinesInFrame(content: string, frame: RtcFrame): Float32Array;
+    /**
      * Parse the file and return structured per-axis data (tag + endpoints) in
      * the renderer's Y-up world space (RTC-subtracted, metres). Use this when
      * you also need the axis tags (to render grid bubbles / labels).
      */
     parseGridAxes(content: string): GridAxisCollection;
+    /**
+     * Parse structured grid axes in the exact frame selected by the mesh pre-pass.
+     */
+    parseGridAxesInFrame(content: string, frame: RtcFrame): GridAxisCollection;
     /**
      * Parse the file and return every `IfcGridAxis` as a flat `Float32Array`
      * of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per
@@ -633,9 +651,17 @@ export class IfcAPI {
      */
     parseGridLines(content: string): Float32Array;
     /**
+     * Parse grid line vertices in the exact frame selected by the mesh pre-pass.
+     */
+    parseGridLinesInFrame(content: string, frame: RtcFrame): Float32Array;
+    /**
      * Parse IFC file and extract symbolic representations (Plan,
      * Annotation, FootPrint, Axis). These are 2D curves used for
      * architectural drawings instead of sectioning 3D geometry.
+     *
+     * This standalone entry point detects an RTC frame from the whole source.
+     * Use `parseSymbolicRepresentationsInFrame` when the symbols accompany
+     * meshes produced by a streaming pre-pass or federation override.
      *
      * Example:
      * ```javascript
@@ -649,6 +675,12 @@ export class IfcAPI {
      * ```
      */
     parseSymbolicRepresentations(content: string): SymbolicRepresentationCollection;
+    /**
+     * Parse symbolic representations in the exact RTC frame selected by the
+     * browser mesh pre-pass rather than detecting a second frame from the
+     * whole source.
+     */
+    parseSymbolicRepresentationsInFrame(content: string, frame: RtcFrame): SymbolicRepresentationCollection;
     /**
      * Create a calibrated image annotation through canonical native geometry.
      * Input is AnnotationPlaneRequest; output UTF-8 AnnotationPlanePlan JSON.
@@ -2147,9 +2179,13 @@ export interface InitOutput {
     readonly ifcapi_is_ready: (a: number) => number;
     readonly ifcapi_new: () => number;
     readonly ifcapi_parseAlignmentLines: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseAlignmentLinesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseGridAxes: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseGridAxesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseGridLinesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
+    readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planCapturedMesh: (a: number, b: number, c: number, d: number, e: number, f: number) => void;

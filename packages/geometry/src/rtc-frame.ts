@@ -66,3 +66,34 @@ export function resolveRtcFrame(
     needsShift: Boolean(detected.needsShift),
   };
 }
+
+/** Validate explicit provenance and derive the compatibility frame for metadata. */
+export function resolveWasmMetadataFrame(
+  rtcOffset: { x: number; y: number; z: number } | null,
+  exactFrame?: RtcFrame,
+): RtcFrame | undefined {
+  const rtcOffsetIsFinite = rtcOffset === null
+    || [rtcOffset.x, rtcOffset.y, rtcOffset.z].every(Number.isFinite);
+  if (exactFrame !== undefined) {
+    if (!rtcOffsetIsFinite) {
+      throw new Error('WASM RTC offset must contain finite coordinates when exact provenance is supplied');
+    }
+    if (![exactFrame.x, exactFrame.y, exactFrame.z].every(Number.isFinite)
+      || typeof exactFrame.needsShift !== 'boolean') {
+      throw new Error('Exact WASM RTC frame must contain finite coordinates and a boolean needsShift');
+    }
+    const consistent = exactFrame.needsShift === (rtcOffset !== null)
+      && (!exactFrame.needsShift || (
+        rtcOffset !== null
+        && Object.is(exactFrame.x, rtcOffset.x)
+        && Object.is(exactFrame.y, rtcOffset.y)
+        && Object.is(exactFrame.z, rtcOffset.z)
+      ));
+    if (!consistent) {
+      throw new Error('Exact WASM RTC frame disagrees with the applied RTC offset');
+    }
+    return { ...exactFrame };
+  }
+  if (rtcOffset === null) return { x: 0, y: 0, z: 0, needsShift: false };
+  return rtcOffsetIsFinite ? { ...rtcOffset, needsShift: true } : undefined;
+}

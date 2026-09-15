@@ -76,6 +76,49 @@ api.clearPrePassCache();
 api.free();                           // release the API instance when done
 ```
 
+### Auxiliary geometry in the mesh frame
+
+Grid, alignment, and symbolic parsers accept the mesh pre-pass decision through
+their explicit-frame variants. `RtcFrame` coordinates are IFC Z-up metres:
+
+```typescript
+import type { IfcAPI, RtcFrame } from '@ifc-lite/wasm';
+
+declare const api: IfcAPI;
+declare const pre: ReturnType<IfcAPI['buildPrePassOnce']>;
+declare const content: string;
+
+const frame: RtcFrame = {
+  x: pre.rtcOffset?.[0] ?? 0,
+  y: pre.rtcOffset?.[1] ?? 0,
+  z: pre.rtcOffset?.[2] ?? 0,
+  needsShift: pre.needsShift,
+};
+
+const grids = api.parseGridLinesInFrame(content, frame);
+const axes = api.parseGridAxesInFrame(content, frame);
+try {
+  const alignments = api.parseAlignmentLinesInFrame(content, frame);
+  const symbols = api.parseSymbolicRepresentationsInFrame(content, frame);
+  try {
+    console.log(grids.length, axes.length, alignments.length, symbols.totalCount);
+  } finally {
+    symbols.free();
+  }
+} finally {
+  axes.free();
+}
+```
+
+`needsShift: false` means no RTC subtraction, even when the inactive coordinates
+are non-zero. “Raw IFC” here describes only that RTC step: each parser still
+applies its documented unit scaling and output-axis conversion. It is distinct
+from having no frame.
+The methods without `InFrame` remain available for standalone parsing and
+detect a frame from the whole source. That standalone choice is not guaranteed
+to match an earlier streaming sample or a federation override; reuse the exact
+pre-pass frame whenever these results accompany already-produced meshes.
+
 > Most consumers should use [`@ifc-lite/geometry`](../geometry/README.md)'s
 > `GeometryProcessor` instead — it wraps this pre-pass/job-batch flow with a
 > Web-Worker pool, RTC coordinate handling, and progressive streaming.

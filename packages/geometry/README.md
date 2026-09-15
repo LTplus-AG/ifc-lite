@@ -67,6 +67,36 @@ if (result.coordinateInfo?.hasLargeCoordinates) {
 }
 ```
 
+The mesh pre-pass also publishes its exact IFC Z-up, metre-based `RtcFrame` as
+`coordinateInfo.wasmRtcFrame`. Pass that frame to auxiliary parsers for the
+same loaded model so grids, alignments, and symbolic geometry use the mesh
+origin exactly:
+
+```typescript
+const bytes = new Uint8Array(await file.arrayBuffer());
+const loaded = await processor.process(bytes);
+const frame = loaded.coordinateInfo.wasmRtcFrame;
+const gridLines = processor.parseGridLines(bytes, frame);
+const alignmentLines = processor.parseAlignmentLines(bytes, frame);
+const symbols = processor.parseSymbolicRepresentations(bytes, frame);
+try {
+  console.log(gridLines?.length, alignmentLines?.length, symbols?.totalCount);
+} finally {
+  symbols?.free(); // WASM-owned collection; typed arrays need no cleanup
+}
+```
+
+`needsShift: false` is an authoritative decision to subtract nothing, even if
+the frame's inactive `x`/`y`/`z` values are non-zero. It disables only RTC
+subtraction; the parser's documented unit scaling and IFC Z-up to renderer
+Y-up output conversion are unchanged. An absent
+`wasmRtcFrame` means the producer did not publish frame provenance (for example,
+the native bridge); it does not mean `needsShift: false`. Omitting the parser
+argument retains standalone whole-source detection. That is useful for an
+independent IFC source, but it can differ from a streaming pre-pass's sampled
+frame or a federation-wide shared frame, so loaded-model overlays should use
+the published frame when present.
+
 ## Vite setup
 
 The geometry workers ship as ESM and use the standard

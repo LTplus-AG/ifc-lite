@@ -1643,3 +1643,26 @@ regression and no demonstrated end-to-end speedup. The useful lesson is that a
 tighter inner loop is not itself a user-visible performance claim: retain the
 single outer proof, but judge it through the full parser and browser worker
 pool, where geometry and startup dominate this small fixture.
+
+## Exact emitted RTC frames for auxiliary geometry (#4799)
+
+The additive frame-aware grid, alignment and symbolic parsers reuse the exact
+RTC decision emitted by the mesh pre-pass; standalone callers retain whole-file
+detection. Five balanced native AC20-FZK-Haus base/branch rounds against
+`3b10435ab117b1fcaf3ad7c47f7d9fdf74e0f2a4` kept the ordered mesh fingerprint
+`25ac885b6ff4ad00` and the 285 meshes / 35,940 vertices / 19,456 triangles
+identical. Parse and total medians were 7 ms and 17 ms on both sides; geometry
+was 9 -> 10 ms inside the base's 11% spread. This is ordinary-load isolation,
+not an overlay speedup claim.
+
+Five fresh Chromium pairs on the complete contract plus viewer integration all
+used the default eight-worker pool and produced 317 meshes / 44,249 entities.
+Base -> branch medians were 538 -> 570 ms first-visible, 511 -> 533 ms stream,
+658 -> 712 ms metadata and 782 -> 794 ms observed metadata-plus-render. No
+metric exceeded its measured noise, but the base readiness spread was 24.94%,
+above the reporter's 20% limit, so the browser cohort is explicitly **too
+noisy** and supports neither a regression qualification nor a speedup claim.
+The browser harness records mesh/entity counts rather than vertex-payload
+identity; the native ordered fingerprint supplies that separate identity
+control. Explicit-frame-versus-standalone parser microbenchmarks are only
+supplementary mode timings, not full-load evidence.

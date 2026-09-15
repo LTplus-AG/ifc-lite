@@ -12,11 +12,12 @@
 //! line-list vertex buffer and feed it through the renderer's existing
 //! `setLineOverlay('alignment', …)` line pipeline.
 //!
-//! The output is `[x0,y0,z0, x1,y1,z1, …]` line-list pairs in the renderer's
-//! **Y-up, RTC-subtracted, metres** world space — the exact frame the mesh
-//! pipeline produces after its IFC Z-up → WebGL Y-up swap (see
-//! `MeshDataJs::new` in `zero_copy.rs`), so alignment lines land on the same
-//! ground as the terrain meshes.
+//! The output is `[x0,y0,z0, x1,y1,z1, …]` line-list pairs in renderer
+//! **Y-up, metres** space. The explicit-frame binding uses the exact mesh
+//! pre-pass RTC decision before the IFC Z-up → WebGL Y-up swap, so its lines
+//! share the mesh frame. The legacy standalone binding detects RTC from the
+//! whole source and can differ from an earlier streaming sample or federation
+//! override.
 
 use super::IfcAPI;
 use ifc_lite_core::{
@@ -45,13 +46,28 @@ impl IfcAPI {
     /// resolvable Axis curve), so the caller can clear the overlay cheaply.
     #[wasm_bindgen(js_name = parseAlignmentLines)]
     pub fn parse_alignment_lines(&self, content: String) -> js_sys::Float32Array {
-        let verts = extract_alignment_line_vertices(&content);
+        let verts = extract_alignment_line_vertices(&content, None);
         js_sys::Float32Array::from(&verts[..])
+    }
+
+    /// Parse alignments in the exact RTC frame selected by the mesh pre-pass.
+    #[wasm_bindgen(js_name = parseAlignmentLinesInFrame)]
+    pub fn parse_alignment_lines_in_frame(
+        &self,
+        content: String,
+        #[wasm_bindgen(unchecked_param_type = "RtcFrame")] frame: JsValue,
+    ) -> Result<js_sys::Float32Array, JsValue> {
+        let frame = super::overlay_frame::parse_overlay_frame(&frame)?;
+        let verts = extract_alignment_line_vertices(&content, Some(frame));
+        Ok(js_sys::Float32Array::from(&verts[..]))
     }
 }
 
 /// Pure-Rust core (unit-testable without wasm-bindgen).
-pub(crate) fn extract_alignment_line_vertices(content: &str) -> Vec<f32> {
+pub(crate) fn extract_alignment_line_vertices(
+    content: &str,
+    frame: Option<MeshFrame>,
+) -> Vec<f32> {
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
@@ -68,10 +84,13 @@ pub(crate) fn extract_alignment_line_vertices(content: &str) -> Vec<f32> {
         }
     }
 
-    // RTC offset (metres): the one the browser meshes subtract (#4665).
+    // RTC offset (metres): exact when supplied by the browser mesh pre-pass;
+    // otherwise the standalone whole-source choice (#4665, #4799).
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_scale(unit_scale);
-    let rtc = MeshFrame::for_overlay(&router, content.as_bytes(), &mut decoder).rtc_offset();
+    let rtc = frame
+        .unwrap_or_else(|| MeshFrame::for_overlay(&router, content.as_bytes(), &mut decoder))
+        .rtc_offset();
 
     let mut out: Vec<f32> = Vec::new();
     let mut scanner = EntityScanner::new(content);
@@ -181,7 +200,7 @@ END-ISO-10303-21;
 
     #[test]
     fn emits_line_list_for_polyline_alignment() {
-        let verts = extract_alignment_line_vertices(CONTENT);
+        let verts = extract_alignment_line_vertices(CONTENT, None);
         assert!(!verts.is_empty(), "alignment must emit centerline vertices");
         // Flat [x,y,z] triples, even count of vertices (line-list pairs).
         assert_eq!(verts.len() % 3, 0, "vertices must be xyz triples");
@@ -204,6 +223,17 @@ END-ISO-10303-21;
         }
         assert!((max_x - 10.0).abs() < 0.5, "max renderer-x ≈10, got {max_x}");
         assert!((max_abs_z - 10.0).abs() < 0.5, "max |renderer-z| ≈10, got {max_abs_z}");
+    }
+
+    #[test]
+    fn explicit_model_rtc_overrides_standalone_alignment_detection() {
+        let verts = extract_alignment_line_vertices(
+            CONTENT,
+            Some(MeshFrame::ModelRtc {
+                anchor: (5.0, 0.0, 0.0),
+            }),
+        );
+        assert!((verts[0] + 5.0).abs() < 1e-4);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -243,7 +273,7 @@ END-ISO-10303-21;
 
     #[test]
     fn millimetre_alignment_is_unit_scaled_and_yup_swapped() {
-        let verts = extract_alignment_line_vertices(MILLIMETRE_ALIGNMENT);
+        let verts = extract_alignment_line_vertices(MILLIMETRE_ALIGNMENT, None);
         assert!(!verts.is_empty(), "alignment must emit centerline vertices");
         assert_eq!(verts.len() % 3, 0, "vertices must be xyz triples");
 
@@ -297,7 +327,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-        let verts = extract_alignment_line_vertices(content);
+        let verts = extract_alignment_line_vertices(content, None);
         assert!(!verts.is_empty(), "alignment must emit centerline vertices");
         for v in verts.chunks_exact(3) {
             for c in v {
@@ -307,6 +337,13 @@ END-ISO-10303-21;
                 );
             }
         }
+
+
+        let raw = extract_alignment_line_vertices(content, Some(MeshFrame::RawIfc));
+        assert!(
+            raw[0] > 1_000_000.0,
+            "an explicit known-false frame must not fall back to standalone RTC detection",
+        );
     }
 
     /// `locate_axis_curve` tries attributes 7, 8, then 6 — `Axis` first, with
@@ -334,7 +371,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-        let verts = extract_alignment_line_vertices(content);
+        let verts = extract_alignment_line_vertices(content, None);
         assert!(!verts.is_empty(), "alignment must emit centerline vertices");
         let max_x = verts
             .chunks_exact(3)
@@ -349,6 +386,6 @@ END-ISO-10303-21;
     #[test]
     fn empty_for_no_alignment() {
         let none = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
-        assert!(extract_alignment_line_vertices(none).is_empty());
+        assert!(extract_alignment_line_vertices(none, None).is_empty());
     }
 }

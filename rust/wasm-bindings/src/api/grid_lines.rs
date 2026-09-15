@@ -13,13 +13,13 @@
 //! "render frame". Resolving the grid placement naively therefore lands the
 //! axes kilometres off the model.
 //!
-//! This module resolves each axis through the **same** transform pipeline the
-//! meshes use — full `IfcLocalPlacement` chain (`resolve_scaled_placement`) +
-//! `lengthUnitScale` + the RTC frame the browser meshes select
-//! (`MeshFrame::for_overlay`) — and emits the endpoints in the renderer's
-//! **Y-up, RTC-subtracted, metres** world space (the exact frame
-//! `MeshDataJs::new` produces after its IFC Z-up → WebGL Y-up swap). Grids then line up with the streamed geometry by construction,
-//! mirroring `alignment_lines.rs`.
+//! This module resolves each axis through the mesh transform pipeline — full
+//! `IfcLocalPlacement` chain (`resolve_scaled_placement`) + `lengthUnitScale`
+//! and RTC — and emits renderer **Y-up, metres** endpoints. The explicit-frame
+//! bindings consume the exact browser pre-pass frame and therefore line up by
+//! construction. Legacy standalone bindings choose `MeshFrame::for_overlay`
+//! from the whole source; that best-effort choice can differ from an earlier
+//! streaming sample or a federation override. See `alignment_lines.rs`.
 
 use super::IfcAPI;
 use ifc_lite_core::{build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
@@ -45,7 +45,7 @@ pub(crate) struct GridAxis3D {
 /// Parse the file and resolve every `IfcGridAxis` into render-frame endpoints.
 /// Returns an empty vec when the file has no grids (or none with a resolvable
 /// axis curve), so callers can clear the overlay cheaply.
-pub(crate) fn extract_grid_axes(content: &str) -> Vec<GridAxis3D> {
+pub(crate) fn extract_grid_axes(content: &str, frame: Option<MeshFrame>) -> Vec<GridAxis3D> {
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
@@ -55,8 +55,11 @@ pub(crate) fn extract_grid_axes(content: &str) -> Vec<GridAxis3D> {
     let router = GeometryRouter::with_units(content, &mut decoder);
     let unit_scale = router.unit_scale();
 
-    // RTC offset (metres): the one the browser meshes subtract (#4665).
-    let rtc = MeshFrame::for_overlay(&router, content.as_bytes(), &mut decoder).rtc_offset();
+    // RTC offset (metres): exact when supplied by the browser mesh pre-pass;
+    // otherwise the standalone whole-source choice (#4665, #4799).
+    let rtc = frame
+        .unwrap_or_else(|| MeshFrame::for_overlay(&router, content.as_bytes(), &mut decoder))
+        .rtc_offset();
 
     let mut out: Vec<GridAxis3D> = Vec::new();
     let mut scanner = EntityScanner::new(content);
@@ -300,7 +303,7 @@ impl IfcAPI {
     /// clear the overlay cheaply.
     #[wasm_bindgen(js_name = parseGridLines)]
     pub fn parse_grid_lines(&self, content: String) -> js_sys::Float32Array {
-        let axes = extract_grid_axes(&content);
+        let axes = extract_grid_axes(&content, None);
         let mut verts: Vec<f32> = Vec::with_capacity(axes.len() * 6);
         for a in &axes {
             verts.extend_from_slice(&a.start);
@@ -309,14 +312,48 @@ impl IfcAPI {
         js_sys::Float32Array::from(&verts[..])
     }
 
+    /// Parse grid line vertices in the exact frame selected by the mesh pre-pass.
+    #[wasm_bindgen(js_name = parseGridLinesInFrame)]
+    pub fn parse_grid_lines_in_frame(
+        &self,
+        content: String,
+        #[wasm_bindgen(unchecked_param_type = "RtcFrame")] frame: JsValue,
+    ) -> Result<js_sys::Float32Array, JsValue> {
+        let axes = extract_grid_axes(
+            &content,
+            Some(super::overlay_frame::parse_overlay_frame(&frame)?),
+        );
+        let mut verts: Vec<f32> = Vec::with_capacity(axes.len() * 6);
+        for a in &axes {
+            verts.extend_from_slice(&a.start);
+            verts.extend_from_slice(&a.end);
+        }
+        Ok(js_sys::Float32Array::from(&verts[..]))
+    }
+
     /// Parse the file and return structured per-axis data (tag + endpoints) in
     /// the renderer's Y-up world space (RTC-subtracted, metres). Use this when
     /// you also need the axis tags (to render grid bubbles / labels).
     #[wasm_bindgen(js_name = parseGridAxes)]
     pub fn parse_grid_axes(&self, content: String) -> GridAxisCollection {
         GridAxisCollection {
-            axes: extract_grid_axes(&content),
+            axes: extract_grid_axes(&content, None),
         }
+    }
+
+    /// Parse structured grid axes in the exact frame selected by the mesh pre-pass.
+    #[wasm_bindgen(js_name = parseGridAxesInFrame)]
+    pub fn parse_grid_axes_in_frame(
+        &self,
+        content: String,
+        #[wasm_bindgen(unchecked_param_type = "RtcFrame")] frame: JsValue,
+    ) -> Result<GridAxisCollection, JsValue> {
+        Ok(GridAxisCollection {
+            axes: extract_grid_axes(
+                &content,
+                Some(super::overlay_frame::parse_overlay_frame(&frame)?),
+            ),
+        })
     }
 }
 

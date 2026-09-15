@@ -36,7 +36,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_local_grid_axis() {
-    let axes = extract_grid_axes(LOCAL_GRID);
+    let axes = extract_grid_axes(LOCAL_GRID, None);
     assert_eq!(axes.len(), 1, "expected one grid axis");
     let a = &axes[0];
     assert_eq!(a.tag, "A", "axis tag preserved");
@@ -54,10 +54,23 @@ fn extracts_local_grid_axis() {
 }
 
 #[test]
+fn explicit_model_rtc_overrides_standalone_grid_detection() {
+    let axes = extract_grid_axes(
+        LOCAL_GRID,
+        Some(MeshFrame::ModelRtc {
+            anchor: (5.0, 0.0, 0.0),
+        }),
+    );
+    assert_eq!(axes.len(), 1);
+    assert!((axes[0].start[0] + 5.0).abs() < 1e-4);
+    assert!((axes[0].end[0] - 5.0).abs() < 1e-4);
+}
+
+#[test]
 fn flat_line_list_is_even_xyz_triples() {
     // Mirror the flat line-list `parseGridLines` builds, without invoking
     // the wasm method (js_sys types don't link on the native test target).
-    let axes = extract_grid_axes(LOCAL_GRID);
+    let axes = extract_grid_axes(LOCAL_GRID, None);
     let mut verts: Vec<f32> = Vec::new();
     for a in &axes {
         verts.extend_from_slice(&a.start);
@@ -73,7 +86,7 @@ fn flat_line_list_is_even_xyz_triples() {
 #[test]
 fn empty_for_no_grid() {
     let none = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
-    assert!(extract_grid_axes(none).is_empty());
+    assert!(extract_grid_axes(none, None).is_empty());
 }
 
 #[test]
@@ -114,7 +127,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-    let axes = extract_grid_axes(content);
+    let axes = extract_grid_axes(content, None);
     assert_eq!(axes.len(), 1, "expected one grid axis");
     let a = &axes[0];
     // The grid origin maps to ~origin after RTC (within a few metres of the
@@ -125,6 +138,12 @@ END-ISO-10303-21;
             "render-frame coord must be near origin after RTC, got {c}"
         );
     }
+
+    let raw = extract_grid_axes(content, Some(MeshFrame::RawIfc));
+    assert!(
+        raw[0].start[0] > 1_000_000.0,
+        "an explicit known-false frame must not fall back to standalone RTC detection",
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -183,7 +202,7 @@ END-ISO-10303-21;
 /// permutation, sign flip or dropped scale reproduces this triple.
 #[test]
 fn millimetre_axis_endpoint_is_scaled_and_yup_swapped() {
-    let axes = extract_grid_axes(&millimetre_grid("", "#5"));
+    let axes = extract_grid_axes(&millimetre_grid("", "#5"), None);
     assert_eq!(axes.len(), 1, "expected one grid axis");
     let end = axes[0].end;
     assert!(
@@ -222,7 +241,7 @@ fn millimetre_axis_endpoint_composes_with_a_translated_placement() {
          #52=IFCLOCALPLACEMENT($,#51);",
         "#52",
     );
-    let axes = extract_grid_axes(&content);
+    let axes = extract_grid_axes(&content, None);
     assert_eq!(axes.len(), 1, "expected one grid axis");
     let start = axes[0].start;
     let end = axes[0].end;
@@ -334,11 +353,12 @@ fn overlays_are_rebased_by_the_bounds_fallback_frame_the_meshes_use() {
         assert!((x - expected_x).abs() < 1e-3, "{overlay} x must be {expected_x} in the mesh frame, got {x}");
     };
 
-    let axes = extract_grid_axes(content);
+    let axes = extract_grid_axes(content, None);
     assert_eq!(axes.len(), 1, "expected one grid axis");
     assert_in_mesh_frame("grid axis start", axes[0].start[0]);
 
-    let alignment = crate::api::alignment_lines::extract_alignment_line_vertices(content);
+    let alignment =
+        crate::api::alignment_lines::extract_alignment_line_vertices(content, None);
     assert!(!alignment.is_empty(), "alignment must emit centerline vertices");
     assert_in_mesh_frame("alignment start", alignment[0]);
 

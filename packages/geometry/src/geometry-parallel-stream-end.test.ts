@@ -158,6 +158,16 @@ describe('processParallel when stream-end postMessage fails for a worker', () =>
   it('still completes normally when stream-end reaches every worker', async () => {
     const gen = run(false);
     const events = await drainWithDeadline(gen, 1_000);
-    expect(events.some((e) => e.type === 'complete')).toBe(true);
+    const rtcIndex = events.findIndex((event) => event.type === 'rtcOffset');
+    const completeIndex = events.findIndex((event) => event.type === 'complete');
+    expect(rtcIndex).toBeGreaterThanOrEqual(0);
+    expect(completeIndex).toBeGreaterThan(rtcIndex);
+    const complete = events[completeIndex];
+    expect(complete.type === 'complete' && complete.coordinateInfo.wasmRtcFrame).toEqual({
+      x: 0,
+      y: 0,
+      z: 0,
+      needsShift: false,
+    });
   });
 });

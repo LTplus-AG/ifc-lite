@@ -6,7 +6,7 @@
  * Geometry serialization
  */
 
-import type { MeshData, CoordinateInfo, Vec3, AABB } from '@ifc-lite/geometry';
+import type { MeshData } from '@ifc-lite/geometry';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 import { writeProvenance, readProvenance, provenanceByteLength, type AppearanceSourcePool } from './appearance-provenance.js';
 
@@ -122,45 +122,6 @@ export function meshRecordByteLength(mesh: MeshData, pool?: AppearanceSourcePool
     24 +                   // origin f64x3
     mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength + provenanceByteLength(mesh, pool)
   );
-}
-
-export function writeCoordinateInfo(writer: BufferWriter, info: CoordinateInfo): void {
-  // Origin shift
-  writeVec3(writer, info.originShift);
-
-  // Original bounds
-  writeAABB(writer, info.originalBounds);
-
-  // Shifted bounds
-  writeAABB(writer, info.shiftedBounds);
-
-  // Has large coordinates flag (was misnamed isGeoReferenced)
-  writer.writeUint8(info.hasLargeCoordinates ? 1 : 0);
-
-  // Write wasmRtcOffset (optional)
-  const hasWasmRtc = info.wasmRtcOffset !== undefined;
-  writer.writeUint8(hasWasmRtc ? 1 : 0);
-  if (hasWasmRtc) {
-    writeVec3(writer, info.wasmRtcOffset!);
-  }
-
-  // Write buildingRotation (optional)
-  const hasBuildingRotation = info.buildingRotation !== undefined;
-  writer.writeUint8(hasBuildingRotation ? 1 : 0);
-  if (hasBuildingRotation) {
-    writer.writeFloat64(info.buildingRotation!);
-  }
-}
-
-function writeVec3(writer: BufferWriter, v: Vec3): void {
-  writer.writeFloat64(v.x);
-  writer.writeFloat64(v.y);
-  writer.writeFloat64(v.z);
-}
-
-function writeAABB(writer: BufferWriter, aabb: AABB): void {
-  writeVec3(writer, aabb.min);
-  writeVec3(writer, aabb.max);
 }
 
 /** Absent marker for the v14 source ids. Not 0 — `layers.rs` uses 0 for a
@@ -308,48 +269,4 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
   };
   if (version >= 19) readProvenance(reader, mesh, pool);
   return mesh;
-}
-
-export function readCoordinateInfo(reader: BufferReader, version: number = 2): CoordinateInfo {
-  const originShift = readVec3(reader);
-  const originalBounds = readAABB(reader);
-  const shiftedBounds = readAABB(reader);
-  const hasLargeCoordinates = reader.readUint8() === 1;
-
-  // Version 3+: read optional fields
-  let wasmRtcOffset: Vec3 | undefined;
-  let buildingRotation: number | undefined;
-
-  if (version >= 3) {
-    if (reader.readUint8() === 1) {
-      wasmRtcOffset = readVec3(reader);
-    }
-    if (reader.readUint8() === 1) {
-      buildingRotation = reader.readFloat64();
-    }
-  }
-
-  return {
-    originShift,
-    originalBounds,
-    shiftedBounds,
-    hasLargeCoordinates,
-    wasmRtcOffset,
-    buildingRotation,
-  };
-}
-
-function readVec3(reader: BufferReader): Vec3 {
-  return {
-    x: reader.readFloat64(),
-    y: reader.readFloat64(),
-    z: reader.readFloat64(),
-  };
-}
-
-function readAABB(reader: BufferReader): AABB {
-  return {
-    min: readVec3(reader),
-    max: readVec3(reader),
-  };
 }

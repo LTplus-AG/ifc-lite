@@ -18,6 +18,94 @@ function mesh(expressId: number, positions: number[]): MeshData {
 }
 
 describe('CoordinateHandler authoritative WASM RTC state (#4799)', () => {
+  it('records and defensively copies an exact known-false frame', () => {
+    const handler = new CoordinateHandler();
+    const frame = { x: 123, y: -456, z: 789, needsShift: false };
+
+    handler.setWasmMetadata(1, null, frame);
+    frame.x = 999;
+
+    const first = handler.getFinalCoordinateInfo();
+    expect(first.wasmRtcFrame).toEqual({ x: 123, y: -456, z: 789, needsShift: false });
+    expect(first.wasmRtcOffset).toBeUndefined();
+    if (first.wasmRtcFrame) first.wasmRtcFrame.y = 999;
+    expect(handler.getFinalCoordinateInfo().wasmRtcFrame).toEqual({
+      x: 123,
+      y: -456,
+      z: 789,
+      needsShift: false,
+    });
+  });
+
+  it('maps legacy two-argument metadata to deterministic exact provenance', () => {
+    const handler = new CoordinateHandler();
+    handler.setWasmMetadata(1, { x: 1, y: 2, z: 3 });
+
+    expect(handler.getFinalCoordinateInfo().wasmRtcOffset).toEqual({ x: 1, y: 2, z: 3 });
+    expect(handler.getFinalCoordinateInfo().wasmRtcFrame).toEqual({
+      x: 1,
+      y: 2,
+      z: 3,
+      needsShift: true,
+    });
+
+    handler.setWasmMetadata(1, null);
+    expect(handler.getFinalCoordinateInfo().wasmRtcFrame).toEqual({
+      x: 0,
+      y: 0,
+      z: 0,
+      needsShift: false,
+    });
+  });
+
+  it.each([
+    { x: Number.NaN, y: 2, z: 3 },
+    { x: 1, y: Number.POSITIVE_INFINITY, z: 3 },
+    { x: 1, y: 2, z: Number.NEGATIVE_INFINITY },
+  ])('keeps legacy non-finite offsets non-throwing but clears exact provenance: %o', (offset) => {
+    const handler = new CoordinateHandler();
+    handler.setWasmMetadata(1, { x: 1, y: 2, z: 3 });
+
+    expect(() => handler.setWasmMetadata(2, offset)).not.toThrow();
+
+    const info = handler.getFinalCoordinateInfo();
+    expect(info.wasmRtcOffset).toEqual(offset);
+    expect(info.wasmRtcFrame).toBeUndefined();
+    expect(info.lengthUnitScale).toBe(2);
+  });
+
+  it('rejects malformed exact provenance before mutating existing state', () => {
+    const handler = new CoordinateHandler();
+    handler.setWasmMetadata(
+      1,
+      { x: 1, y: 2, z: 3 },
+      { x: 1, y: 2, z: 3, needsShift: true },
+    );
+    const before = handler.getFinalCoordinateInfo();
+
+    expect(() => handler.setWasmMetadata(
+      2,
+      { x: 1, y: 2, z: 3 },
+      { x: 1, y: 2, z: 4, needsShift: true },
+    )).toThrow('Exact WASM RTC frame disagrees');
+    expect(() => handler.setWasmMetadata(
+      2,
+      null,
+      { x: Number.NaN, y: 0, z: 0, needsShift: false },
+    )).toThrow('finite coordinates');
+    expect(() => handler.setWasmMetadata(
+      2,
+      null,
+      { x: 0, y: 0, z: 0, needsShift: true },
+    )).toThrow('Exact WASM RTC frame disagrees');
+    expect(() => handler.setWasmMetadata(
+      2,
+      { x: 0, y: Number.POSITIVE_INFINITY, z: 0 },
+      { x: 0, y: Number.POSITIVE_INFINITY, z: 0, needsShift: true },
+    )).toThrow('when exact provenance is supplied');
+    expect(handler.getFinalCoordinateInfo()).toEqual(before);
+  });
+
   it('keeps a known applied zero offset authoritative against an opposing vote', () => {
     const handler = new CoordinateHandler();
     const batch = [mesh(1, [500000, 5000000, 0, 500010, 5000010, 5])];
@@ -121,6 +209,7 @@ describe('CoordinateHandler authoritative WASM RTC state (#4799)', () => {
     const info = handler.getFinalCoordinateInfo();
     expect(info.originShift).toEqual({ x: 20005, y: 5, z: 5 });
     expect(info.wasmRtcOffset).toBeUndefined();
+    expect(info.wasmRtcFrame).toBeUndefined();
     expect(info.lengthUnitScale).toBeUndefined();
     expect(nativeBatch.positions[0]).toBe(-5);
   });

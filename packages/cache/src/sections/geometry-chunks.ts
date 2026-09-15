@@ -48,9 +48,8 @@ import {
   writeMeshRecord,
   readMeshRecord,
   meshRecordByteLength,
-  writeCoordinateInfo,
-  readCoordinateInfo,
 } from './geometry.js';
+import { readCoordinateInfo, writeCoordinateInfo } from './coordinate-info.js';
 import { validateGeometryDirectory } from './geometry-directory.js';
 
 // 6×f32 AABB (24) + 5×u32 (offset, length, uncompressed, meshCount, flags).
@@ -250,7 +249,7 @@ export function readGeometryHeadV13(reader: BufferReader, version: number = FORM
   const meshCount = reader.readUint32();
   const totalVertices = reader.readUint32();
   const totalTriangles = reader.readUint32();
-  const coordinateInfo = readCoordinateInfo(reader, 13);
+  const coordinateInfo = readCoordinateInfo(reader, version);
   const appearanceSources = version >= 19 ? readSourcePool(reader, meshCount, start + 4 + headLength) : undefined;
   const chunkCount = reader.readUint32();
   const chunks: GeometryChunkInfo[] = [];

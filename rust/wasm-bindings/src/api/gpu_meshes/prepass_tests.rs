@@ -137,7 +137,18 @@ fn shared_tail_placement_model() -> String {
         let guid = guid("IFCWALL", i);
         s.push_str(&format!("#{elem}=IFCWALL('{guid}',$,'A{i}',$,$,#12,#3,$,$);\n"));
     }
-    s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    let grid_x = FIRST_ANCHOR_X + GRID_OFFSET_M;
+    s.push_str(&format!(
+        "#9000=IFCGRID('0GrIdGrIdGrIdGrIdGrId0',$,'Grid',$,$,#9001,$,(#9010),$,$);\n\
+         #9001=IFCLOCALPLACEMENT($,#9002);\n\
+         #9002=IFCAXIS2PLACEMENT3D(#9003,$,$);\n\
+         #9003=IFCCARTESIANPOINT(({grid_x}.,0.,0.));\n\
+         #9010=IFCGRIDAXIS('A',#9011,.T.);\n\
+         #9011=IFCPOLYLINE((#9012,#9013));\n\
+         #9012=IFCCARTESIANPOINT((0.,0.));\n\
+         #9013=IFCCARTESIANPOINT((0.,10.));\n\
+         ENDSEC;\nEND-ISO-10303-21;\n"
+    ));
     s
 }
 
@@ -252,7 +263,7 @@ fn every_pipeline_picks_the_frame_from_one_sample_window() {
 
     // And the thing a user sees: the grid axis drawn in the mesh frame,
     // GRID_OFFSET_M east of the anchor, not 100 km west of it.
-    let axes = crate::api::grid_lines::extract_grid_axes(&content);
+    let axes = crate::api::grid_lines::extract_grid_axes(&content, None);
     assert_eq!(axes.len(), 1, "expected one grid axis");
     let x = axes[0].start[0];
     assert!(
@@ -311,5 +322,42 @@ fn the_streaming_ladder_samples_only_the_scanned_head() {
             anchor: (FIRST_ANCHOR_X, 0.0, 0.0)
         },
         "the streaming ladder sampled past the scanned head",
+    );
+}
+
+/// The exact frame overload is the behavioral fix for the intentional
+/// partial-head/full-source divergence above: standalone overlay detection
+/// sees the tail walls and chooses the second cluster, while the pre-pass
+/// selects the first-cluster frame for subsequent mesh emission. Passing that
+/// selected head frame must keep the grid in the same coordinate frame without
+/// widening the latency-critical pre-pass scan.
+#[test]
+fn explicit_overlay_frame_wins_when_partial_head_and_full_source_diverge() {
+    let content = shared_tail_placement_model();
+    let bytes = content.as_bytes();
+    let last_window = content.rfind("IFCWINDOW").expect("fixture has windows");
+    let head_end = last_window + content[last_window..].find(';').expect("record end") + 1;
+    let mut partial = EntityDecoder::with_index(bytes, build_entity_index(&content[..head_end]));
+    let head = resolve_stream_meta(
+        MetaMode::StreamingPartial {
+            scanned_through: head_end,
+        },
+        bytes,
+        Some(1),
+        None,
+        &mut partial,
+    );
+
+    let standalone = crate::api::grid_lines::extract_grid_axes(&content, None);
+    let explicit = crate::api::grid_lines::extract_grid_axes(&content, Some(head.frame));
+    assert_eq!(standalone.len(), 1);
+    assert_eq!(explicit.len(), 1);
+    assert!(
+        (standalone[0].start[0] - explicit[0].start[0]).abs() > 90_000.0,
+        "premise: the full-source overlay detector must pick the tail frame"
+    );
+    assert!(
+        (explicit[0].start[0] - GRID_OFFSET_M as f32).abs() < 1e-3,
+        "the selected streaming frame must place the grid in the subsequent mesh frame"
     );
 }

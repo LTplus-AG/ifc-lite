@@ -4,7 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { BufferReader, BufferWriter } from '../utils/buffer-utils.js';
-import { writeMeshRecord, readMeshRecord, meshRecordByteLength, writeCoordinateInfo } from './geometry.js';
+import { writeMeshRecord, readMeshRecord, meshRecordByteLength } from './geometry.js';
+import { writeCoordinateInfo } from './coordinate-info.js';
 import { buildGeometrySectionV13, openGeometryChunksV13 } from './geometry-chunks.js';
 import { FORMAT_VERSION } from '../types.js';
 import { readSourcePool } from './appearance-provenance.js';
@@ -36,7 +37,14 @@ describe('canonical cache provenance #4243', () => {
     const oldRecord = record(input).slice(0, -1);
     const head = new BufferWriter();
     head.writeUint32(1); head.writeUint32(3); head.writeUint32(1);
-    writeCoordinateInfo(head, coordinateInfo);
+    // `writeCoordinateInfo` emits the current v20 trailer. This fixture is a
+    // literal v18 head, so retain only the preceding coordinate-info prefix.
+    const currentCoordinateInfo = new Uint8Array((() => {
+      const writer = new BufferWriter();
+      writeCoordinateInfo(writer, coordinateInfo);
+      return writer.build();
+    })());
+    head.writeBytes(currentCoordinateInfo.subarray(0, currentCoordinateInfo.length - 1));
     head.writeUint32(1); // v18 chunk count, no v19 source pool.
     const headLength = head.position + 44;
     const out = new BufferWriter();

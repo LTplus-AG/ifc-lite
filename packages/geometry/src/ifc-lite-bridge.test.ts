@@ -6,6 +6,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
   const parseSymbolicRepresentations = vi.fn();
+  const parseSymbolicRepresentationsInFrame = vi.fn();
+  const parseAlignmentLines = vi.fn();
+  const parseAlignmentLinesInFrame = vi.fn();
+  const parseGridLines = vi.fn();
+  const parseGridLinesInFrame = vi.fn();
+  const parseGridAxes = vi.fn();
+  const parseGridAxesInFrame = vi.fn();
   const setMergeLayers = vi.fn();
   const free = vi.fn();
   const exportGlb = vi.fn();
@@ -13,6 +20,21 @@ const wasmMocks = vi.hoisted(() => {
   class MockIfcAPI {
     parseSymbolicRepresentations(content: string) {
       return parseSymbolicRepresentations(content);
+    }
+    parseSymbolicRepresentationsInFrame(content: string, frame: unknown) {
+      return parseSymbolicRepresentationsInFrame(content, frame);
+    }
+    parseAlignmentLines(content: string) { return parseAlignmentLines(content); }
+    parseAlignmentLinesInFrame(content: string, frame: unknown) {
+      return parseAlignmentLinesInFrame(content, frame);
+    }
+    parseGridLines(content: string) { return parseGridLines(content); }
+    parseGridLinesInFrame(content: string, frame: unknown) {
+      return parseGridLinesInFrame(content, frame);
+    }
+    parseGridAxes(content: string) { return parseGridAxes(content); }
+    parseGridAxesInFrame(content: string, frame: unknown) {
+      return parseGridAxesInFrame(content, frame);
     }
     setMergeLayers(enabled: boolean) {
       return setMergeLayers(enabled);
@@ -28,6 +50,13 @@ const wasmMocks = vi.hoisted(() => {
   return {
     init: vi.fn(async () => undefined),
     parseSymbolicRepresentations,
+    parseSymbolicRepresentationsInFrame,
+    parseAlignmentLines,
+    parseAlignmentLinesInFrame,
+    parseGridLines,
+    parseGridLinesInFrame,
+    parseGridAxes,
+    parseGridAxesInFrame,
     setMergeLayers,
     exportGlb,
     free,
@@ -51,9 +80,50 @@ describe('IfcLiteBridge', () => {
   beforeEach(() => {
     wasmMocks.init.mockClear();
     wasmMocks.parseSymbolicRepresentations.mockReset();
+    wasmMocks.parseSymbolicRepresentationsInFrame.mockReset();
+    wasmMocks.parseAlignmentLines.mockReset();
+    wasmMocks.parseAlignmentLinesInFrame.mockReset();
+    wasmMocks.parseGridLines.mockReset();
+    wasmMocks.parseGridLinesInFrame.mockReset();
+    wasmMocks.parseGridAxes.mockReset();
+    wasmMocks.parseGridAxesInFrame.mockReset();
     wasmMocks.setMergeLayers.mockReset();
     wasmMocks.exportGlb.mockReset();
     wasmMocks.free.mockReset();
+  });
+
+  it('dispatches all overlay parses to exact-frame bindings without mutating the frame', async () => {
+    const symbolic = { totalCount: 0, polylineCount: 0, circleCount: 0 };
+    const lines = new Float32Array([1, 2, 3]);
+    const axes = { length: 0 };
+    wasmMocks.parseSymbolicRepresentationsInFrame.mockReturnValue(symbolic);
+    wasmMocks.parseAlignmentLinesInFrame.mockReturnValue(lines);
+    wasmMocks.parseGridLinesInFrame.mockReturnValue(lines);
+    wasmMocks.parseGridAxesInFrame.mockReturnValue(axes);
+    const bridge = new IfcLiteBridge();
+    await bridge.init();
+    const frame = { x: -0, y: 2, z: 3, needsShift: false };
+
+    expect(bridge.parseSymbolicRepresentations('IFC', frame)).toBe(symbolic);
+    expect(bridge.parseAlignmentLines('IFC', frame)).toBe(lines);
+    expect(bridge.parseGridLines('IFC', frame)).toBe(lines);
+    expect(bridge.parseGridAxes('IFC', frame)).toBe(axes);
+
+    for (const exact of [
+      wasmMocks.parseSymbolicRepresentationsInFrame,
+      wasmMocks.parseAlignmentLinesInFrame,
+      wasmMocks.parseGridLinesInFrame,
+      wasmMocks.parseGridAxesInFrame,
+    ]) {
+      expect(exact).toHaveBeenCalledWith('IFC', frame);
+      const passed = exact.mock.calls[0][1] as typeof frame;
+      expect(passed).not.toBe(frame);
+      expect(Object.is(passed.x, -0)).toBe(true);
+    }
+    expect(wasmMocks.parseSymbolicRepresentations).not.toHaveBeenCalled();
+    expect(wasmMocks.parseAlignmentLines).not.toHaveBeenCalled();
+    expect(wasmMocks.parseGridLines).not.toHaveBeenCalled();
+    expect(wasmMocks.parseGridAxes).not.toHaveBeenCalled();
   });
 
   it('forwards setMergeLayers to the WASM API after init', async () => {

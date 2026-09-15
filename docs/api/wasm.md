@@ -250,6 +250,63 @@ parseSymbolicRepresentations(content: string): SymbolicRepresentationCollection;
 diagnoseGeometry(content: Uint8Array): any;                           // CSG / opening diagnostics
 ```
 
+Grid, alignment, and symbolic parsing can instead reuse the exact effective
+mesh-producer RTC frame (after any federation override):
+
+```typescript
+interface RtcFrame {
+  x: number;
+  y: number;
+  z: number;
+  needsShift: boolean;
+}
+
+parseGridLinesInFrame(content: string, frame: RtcFrame): Float32Array;
+parseGridAxesInFrame(content: string, frame: RtcFrame): GridAxisCollection;
+parseAlignmentLinesInFrame(content: string, frame: RtcFrame): Float32Array;
+parseSymbolicRepresentationsInFrame(
+  content: string,
+  frame: RtcFrame,
+): SymbolicRepresentationCollection;
+```
+
+The frame coordinates must be finite IFC Z-up metres and `needsShift` must be
+a boolean. `false` subtracts nothing, even when the inactive coordinates are
+nonzero; `true` subtracts the supplied coordinates, including an authoritative
+zero frame. These raw `*InFrame` methods reject a missing or malformed frame.
+Use the legacy methods above for standalone whole-source detection (or omit the
+optional frame on a higher-level TypeScript wrapper). Standalone detection can
+differ from an earlier streaming sample or federation-wide shared frame.
+
+The frame controls RTC subtraction only. Unit scaling and each method's output
+axis convention are unchanged. Reusing it guarantees agreement with the mesh
+RTC frame; it does not apply an arbitrary rebaked affine or CRS transform.
+Typed-array results need no cleanup. Free collection and child handles at the
+first ownership boundary:
+
+```typescript
+const gridLines = api.parseGridLinesInFrame(content, frame);
+const alignmentLines = api.parseAlignmentLinesInFrame(content, frame);
+const axes = api.parseGridAxesInFrame(content, frame);
+try {
+  const firstAxis = axes.getAxis(0);
+  try {
+    console.log(gridLines.length, alignmentLines.length, firstAxis?.tag);
+  } finally {
+    firstAxis?.free();
+  }
+
+  const symbols = api.parseSymbolicRepresentationsInFrame(content, frame);
+  try {
+    console.log(symbols.totalCount);
+  } finally {
+    symbols.free();
+  }
+} finally {
+  axes.free();
+}
+```
+
 #### Diagnostics and Tuning
 
 ```typescript

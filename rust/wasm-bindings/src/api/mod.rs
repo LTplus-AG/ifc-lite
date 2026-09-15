@@ -30,6 +30,7 @@ mod extract_profiles;
 mod gpu_meshes;
 mod grid_lines;
 mod mesh_outline;
+mod overlay_frame;
 mod parsing;
 mod pipeline_diagnostics;
 mod simplify;

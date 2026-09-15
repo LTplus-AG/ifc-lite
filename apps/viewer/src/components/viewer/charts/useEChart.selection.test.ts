@@ -103,6 +103,41 @@ describe('chart click replacement selection (#4832)', () => {
     }
   });
 
+  it('selects a feedback-selected bucket instead of clearing the other chart source (#4832)', () => {
+    const host = document.createElement('div');
+    const chart = echarts.init(host, undefined, { renderer: 'svg', width: 400, height: 300 });
+    const rawEvents: Array<Parameters<typeof selectionFromEChartEvent>[0]> = [];
+    chart.setOption({
+      animation: false,
+      xAxis: { type: 'category', data: ['Level 1', 'Level 2'] },
+      yAxis: { type: 'value' },
+      series: [{
+        type: 'bar',
+        selectedMode: 'multiple',
+        data: [{ value: 1, selected: true }, { value: 1, selected: true }],
+      }],
+    });
+    chart.on('selectchanged', (rawEvent) => { rawEvents.push(rawEvent as Parameters<typeof selectionFromEChartEvent>[0]); });
+
+    try {
+      const internals = chart as unknown as {
+        getModel: () => { getSeriesByIndex: (index: number) => { getData: () => { getItemGraphicEl: (index: number) => object | undefined } } };
+      };
+      const level1 = internals.getModel().getSeriesByIndex(0).getData().getItemGraphicEl(0);
+      assert.ok(level1);
+      chart.getZr().trigger('click', { target: level1, topTarget: level1 });
+
+      const raw = rawEvents[0];
+      assert.equal(raw?.fromAction, 'unselect', 'ECharts toggles the feedback-selected mark off');
+      assert.deepEqual(selectionFromEChartEvent(raw!, undefined, false), {
+        items: [{ seriesIndex: 0, dataIndex: 0 }],
+      }, 'a feedback mark becomes a replacement selection');
+      assert.deepEqual(selectionFromEChartEvent(raw!, undefined, true), { items: [] }, 'the active source can still deselect itself');
+    } finally {
+      chart.dispose();
+    }
+  });
+
   it('clears selection when the current bucket is unselected', () => {
     assert.deepEqual(selectionFromEChartEvent({
       fromAction: 'toggleSelected',

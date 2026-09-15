@@ -188,7 +188,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.isolatedEntities, null);
     assert.deepEqual(s.chartVisibilityOwned && { channel: s.chartVisibilityOwned.channel, ids: [...s.chartVisibilityOwned.ids].sort() }, { channel: 'ghost', ids: [GID(44), GID(45)] });
     assert.deepEqual([...(s.chartSlice ?? [])].sort(), [GID(44), GID(45)]);
-    assert.deepEqual(s.chartSliceBuckets, [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor' }]);
+    assert.deepEqual(s.chartSliceBuckets, [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
 
     // The source chart keeps the whole scope but marks the bucket selected;
     // the storey chart re-aggregates over the slice: one door per level.
@@ -311,6 +311,26 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual(colors?.get(GID(41)), colors?.get(GID(44)));
   });
 
+  it('removes stale chart paint when every dashboard chart is deleted (#4832)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const selected = useViewerStore.getState().selectedEntityIds;
+    const oldPaint = useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides ?? null;
+    assert.ok(oldPaint?.size);
+
+    const active = useViewerStore.getState().dashboards.find((d) => d.id === useViewerStore.getState().activeDashboardId)!;
+    await act(async () => { useViewerStore.getState().upsertDashboard({ ...active, charts: [], layout: [] }); });
+    await settle();
+    assert.equal(useViewerStore.getState().overlayLayers.has('charts'), false);
+    const restored = chartAwareRendererSelectionFromStore(null, selected, oldPaint);
+    assert.equal(restored.selectedIds, selected, 'deleted charts cannot suppress selection through a cached aggregation');
+  });
+
   it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {
     const dashboard = modelOverviewDashboard();
     dashboard.charts = [
@@ -382,7 +402,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     assert.deepEqual(barData(charts[1].options.at(-1)!).map(([name, value]) => [name, value]), [['Rule B', 3], ['Rule A', 2]]);
     const state = useViewerStore.getState();
-    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: 'Rule A' }]);
+    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
     assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42), GID(44)]);
     const expected = [
       Number.parseInt(clickedColor.slice(1, 3), 16) / 255,
@@ -395,6 +415,64 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual(colors?.get(GID(42)), expected, 'second shared id keeps clicked Rule A colour');
     assert.deepEqual(colors?.get(GID(44)), expected);
     assert.equal(colors?.has(GID(43)), false, 'unselected Rule B context keeps authored colour');
+  });
+
+  it('distinguishes synthetic top-N Other from a literal __other__ bucket (#4832)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{
+      ...dashboard.charts[0],
+      title: 'Top clash rules',
+      source: 'clash',
+      dimension: 'Rule',
+      topN: 1,
+    }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    const clash = (id: string, rule: string, a: number, b: number): Clash => ({
+      id,
+      a: { key: `${id}-a`, ref: GID(a), model: 'm1', tag: 'IfcWall' },
+      b: { key: `${id}-b`, ref: GID(b), model: 'm1', tag: 'IfcDoor' },
+      rule,
+      status: 'hard',
+      distance: -0.05,
+      point: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      severity: 'major',
+    });
+    const clashes = [
+      clash('literal-1', '__other__', 41, 42),
+      clash('literal-2', '__other__', 41, 44),
+      clash('literal-3', '__other__', 42, 44),
+      clash('tail-1', 'Tail 1', 41, 43),
+      clash('tail-2', 'Tail 1', 43, 45),
+      clash('tail-3', 'Tail 2', 45, 45),
+    ];
+    const clashResult: ClashResult = {
+      clashes,
+      summary: { total: clashes.length, byRule: { __other__: 3, 'Tail 1': 2, 'Tail 2': 1 }, byTypePair: {}, bySeverity: { critical: 0, major: 6, minor: 0, info: 0 } },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id, clashResult, clashRunSeq: useViewerStore.getState().clashRunSeq + 1 });
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+    const data = (charts[0].options.at(-1)!.series as Array<{ data: Array<{ name: string; itemStyle: { color: string } }> }>)[0].data;
+    assert.deepEqual(data.map((item) => item.name), ['__other__', 'Other']);
+    const gray = data[1].itemStyle.color;
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
+    const expected = [
+      Number.parseInt(gray.slice(1, 3), 16) / 255,
+      Number.parseInt(gray.slice(3, 5), 16) / 255,
+      Number.parseInt(gray.slice(5, 7), 16) / 255,
+      1,
+    ];
+    assert.deepEqual(state.overlayLayers.get('charts')?.colorOverrides?.get(GID(41)), expected, 'shared id keeps synthetic Other gray');
   });
 
   it('a click on a stacked segment selects only that series share of the category (review finding)', async () => {
@@ -462,7 +540,8 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     assert.ok(useViewerStore.getState().chartVisibilityOwned);
     const selected = useViewerStore.getState().selectedEntityIds;
-    assert.equal(chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected).selectedIds.size, 0);
+    const livePaint = useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides ?? null;
+    assert.equal(chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected, livePaint).selectedIds.size, 0);
     click(ui.querySelector('button[aria-label="Close charts"]')!);
     assert.equal(closed, 1);
     cleanup();
@@ -470,7 +549,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(useViewerStore.getState().ghostExceptEntities, null);
     assert.equal(useViewerStore.getState().overlayLayers.get('charts'), undefined);
     assert.equal(
-      chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected).selectedIds,
+      chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected, null).selectedIds,
       selected,
       'after paint teardown the logical selection returns to the ordinary renderer unchanged',
     );
@@ -509,7 +588,7 @@ describe('overlapping chart bucket paint (#4832)', () => {
       measure: { agg: 'count' },
       sort: 'label',
     }, dataset);
-    const clicked = { seriesKey: aggregation.series[0].key, bucketKey: aggregation.series[0].buckets[0].key };
+    const clicked = { seriesKey: aggregation.series[0].key, bucketKey: aggregation.series[0].buckets[0].key, isOther: false };
     const clickedColor = aggregation.series[0].buckets[0].color;
     const otherColor = aggregation.series[0].buckets[1].color;
     assert.notEqual(clickedColor, otherColor, 'the fixture must expose an overwrite');

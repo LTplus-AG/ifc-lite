@@ -22,7 +22,7 @@ describe('chart-aware renderer selection (#4832)', () => {
       ['charts', { id: 'charts', priority: 75, hiddenIds: null, colorOverrides: new Map([[11, chartColor], [12, chartColor]]) }],
       ['animation', { id: 'animation', priority: 100, hiddenIds: null, colorOverrides: new Map([[12, animationColor]]) }],
     ]);
-    const effective = effectiveChartPaint(layers);
+    const effective = effectiveChartPaint(layers, new Map([[11, chartColor], [12, animationColor]]));
     assert.deepEqual([...(effective?.keys() ?? [])], [11]);
     const result = chartAwareRendererSelection(12, new Set([11, 12]), new Set([11, 12]), effective);
     assert.deepEqual([...result.selectedIds], [12]);
@@ -46,5 +46,20 @@ describe('chart-aware renderer selection (#4832)', () => {
     const inactive = chartAwareRendererSelection(12, selected, slice, null);
     assert.equal(inactive.selectedId, 12);
     assert.equal(inactive.selectedIds, selected);
+  });
+
+  it('restores blue selection when another owner clears the actual scene paint', () => {
+    const color: RGBA = [1, 0, 0, 1];
+    const layers = new Map<string, OverlayLayer>([
+      ['charts', { id: 'charts', priority: 75, hiddenIds: null, colorOverrides: new Map([[11, color]]) }],
+    ]);
+    const selected = new Set([11]);
+    const painted = effectiveChartPaint(layers, new Map([[11, color]]));
+    assert.deepEqual([...chartAwareRendererSelection(11, selected, selected, painted).selectedIds], []);
+
+    const cleared = effectiveChartPaint(layers, null);
+    const restored = chartAwareRendererSelection(11, selected, selected, cleared);
+    assert.equal(restored.selectedId, 11);
+    assert.equal(restored.selectedIds, selected);
   });
 });

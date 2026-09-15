@@ -81,13 +81,21 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
 
   const [editing, setEditing] = useState<ChartSpec | null>(null);
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());
+  const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
+  const chartIdSet = useMemo(() => new Set(chartIds), [chartIds]);
   const onAggregation = useCallback((spec: ChartSpec, aggregation: Aggregation | null) => {
     setAggregations((prev) => (prev.get(spec.id) === aggregation ? prev : new Map(prev).set(spec.id, aggregation)));
   }, []);
+  useEffect(() => {
+    setAggregations((prev) => {
+      const next = new Map([...prev].filter(([id]) => chartIdSet.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [chartIdSet]);
   // A clicked bucket keeps the colour of the chart it came from. With no
   // selection, colour by the first populated chart (the dashboard headline).
   const overlayAggregation = useMemo(() => {
-    if (chartSliceSource) {
+    if (chartSliceSource && chartIdSet.has(chartSliceSource)) {
       const selected = aggregations.get(chartSliceSource);
       if (selected && selected.categories.length > 0) return selected;
     }
@@ -96,7 +104,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
       if (agg && agg.categories.length > 0) return agg;
     }
     return null;
-  }, [dashboard, aggregations, chartSliceSource]);
+  }, [dashboard, aggregations, chartSliceSource, chartIdSet]);
   const overlaySelection = overlayAggregation?.spec.id === chartSliceSource ? chartSliceBuckets : null;
   useChartColorOverlay(overlayAggregation, overlaySelection);
 
@@ -120,7 +128,6 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const setLayout = useCallback((layout: DashboardLayoutItem[]) => {
     if (dashboard) update({ ...dashboard, layout });
   }, [dashboard, update]);
-  const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
   const renderCard = useCallback((id: string) => {
     const spec = dashboard?.charts.find((c) => c.id === id);
     if (!spec) return null;

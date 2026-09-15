@@ -110,6 +110,8 @@ export interface ReportSpec extends DashboardSpec {
 export interface Bucket {
   /** Stable key: the dimension value (stringified) or a bin/week key. */
   key: string;
+  /** True only for the synthetic tail produced by `topN`; never inferred from `key`. */
+  isOther?: true;
   label: string;
   /** The measure: count, or sum of the measure column. */
   value: number;

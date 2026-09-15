@@ -59,9 +59,12 @@ function rawIndexResolver(chart: unknown): RawDataIndex {
  * unselect clears it. The cumulative list remains a compatibility fallback
  * for non-click actions that do not carry a payload.
  */
-export function selectionFromEChartEvent(params: EChartSelectChangedEvent, rawDataIndex?: RawDataIndex): ChartSelectEvent {
+export function selectionFromEChartEvent(
+  params: EChartSelectChangedEvent,
+  rawDataIndex?: RawDataIndex,
+  canClearSelection = true,
+): ChartSelectEvent {
   const payload = params.fromActionPayload;
-  if (params.fromAction === 'unselect') return { items: [] };
   // ECharts' click action exposes an index into the currently filtered series.
   // `selected`, and our Aggregation/ChartItem contract, use the raw option index.
   // They differ when legend filtering removes a pie/treemap item (#4832).
@@ -70,20 +73,24 @@ export function selectionFromEChartEvent(params: EChartSelectChangedEvent, rawDa
       ? rawDataIndex?.(payload.seriesIndex, payload.dataIndexInside) ?? payload.dataIndexInside
       : undefined);
   if (
-    (params.fromAction === 'select' || params.fromAction === 'toggleSelected')
+    (params.fromAction === 'select' || params.fromAction === 'unselect' || params.fromAction === 'toggleSelected')
     && typeof payload?.seriesIndex === 'number'
     && typeof clickedDataIndex === 'number'
   ) {
     const seriesIndex = payload.seriesIndex;
     const dataIndex = clickedDataIndex;
+    if (params.fromAction === 'unselect') {
+      return canClearSelection ? { items: [] } : { items: [{ seriesIndex, dataIndex }] };
+    }
     if (params.fromAction === 'toggleSelected') {
       const remainsSelected = (params.selected ?? []).some(
         (selected) => selected.seriesIndex === seriesIndex && selected.dataIndex.includes(dataIndex),
       );
-      if (!remainsSelected) return { items: [] };
+      if (!remainsSelected) return canClearSelection ? { items: [] } : { items: [{ seriesIndex, dataIndex }] };
     }
     return { items: [{ seriesIndex, dataIndex }] };
   }
+  if (params.fromAction === 'unselect') return { items: [] };
   const items: ChartItem[] = [];
   for (const selected of params.selected ?? []) {
     for (const dataIndex of selected.dataIndex) {
@@ -103,6 +110,8 @@ export interface ChartRendererHandle {
 
 export interface ChartRendererEvents {
   onSelect: (event: ChartSelectEvent) => void;
+  /** Only the chart that produced the active slice may clear it by unselecting. */
+  canClearSelection: () => boolean;
 }
 
 /** Creates a chart in `el` synchronously; the real one is ECharts, tests inject a recorder. */
@@ -128,7 +137,11 @@ export const echartsRenderer: ChartRenderer = async () => {
     // `selectchanged` reports every selected item per series after a click.
     chart.on('selectchanged', (params) => {
       if (suppress) return;
-      events.onSelect(selectionFromEChartEvent(params as EChartSelectChangedEvent, rawIndexResolver(chart)));
+      events.onSelect(selectionFromEChartEvent(
+        params as EChartSelectChangedEvent,
+        rawIndexResolver(chart),
+        events.canClearSelection(),
+      ));
     });
     return {
       setOption: (option) => chart.setOption(option, { notMerge: true }),
@@ -173,6 +186,8 @@ export interface UseEChartArgs {
   selected: readonly ChartItem[];
   partial: readonly ChartItem[];
   onSelect: (event: ChartSelectEvent) => void;
+  /** True when this chart produced the active slice, rather than reflecting feedback selection. */
+  canClearSelection: boolean;
   renderer?: ChartRenderer;
 }
 
@@ -181,11 +196,13 @@ export interface UseEChartArgs {
  * `option` / `selected`. `width` is the host's measured width in px (0 until
  * measured), for options that size themselves to it.
  */
-export function useEChart({ option, selected, partial, onSelect, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean; width: number } {
+export function useEChart({ option, selected, partial, onSelect, canClearSelection, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean; width: number } {
   const ref = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<ChartRendererHandle | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const canClearSelectionRef = useRef(canClearSelection);
+  canClearSelectionRef.current = canClearSelection;
   const [ready, setReady] = useState(false);
   const [width, setWidth] = useState(0);
   // Re-render on theme change so the tokens are re-read.
@@ -197,7 +214,10 @@ export function useEChart({ option, selected, partial, onSelect, renderer = echa
     let disposed = false;
     void renderer().then((create) => {
       if (disposed) return;
-      handleRef.current = create(el, { onSelect: (e) => onSelectRef.current(e) });
+      handleRef.current = create(el, {
+        onSelect: (e) => onSelectRef.current(e),
+        canClearSelection: () => canClearSelectionRef.current,
+      });
       setReady(true);
     });
     setWidth(Math.round(el.clientWidth));

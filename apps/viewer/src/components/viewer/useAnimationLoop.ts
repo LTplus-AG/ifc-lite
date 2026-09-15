@@ -232,7 +232,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       const throttled = isContinuousRender &&
         continuousThrottleMs > 0 &&
         (currentTime - lastRenderTime) < continuousThrottleMs;
-
       // Render continuously while the user is interacting (issue #1394), not
       // just when a pointermove happens to set the dirty flag. Pointer events
       // can arrive sparsely (coalesced / slow drag), which left the swap chain
@@ -246,7 +245,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       if (willRender) {
         renderer.consumeRenderRequest();
         const renderStart = performance.now();
-        const selection = chartAwareRendererSelectionFromStore(selectedEntityIdRef.current, selectedEntityIdsRef.current);
+        const selection = chartAwareRendererSelectionFromStore(
+          selectedEntityIdRef.current, selectedEntityIdsRef.current, scene.getColorOverrides());
         // Belt for the renderer's own device-loss latch (#2229). render()
         // contains its failures and degrades to a quiet skip, but this loop
         // must survive even a render-path throw it does not yet contain:

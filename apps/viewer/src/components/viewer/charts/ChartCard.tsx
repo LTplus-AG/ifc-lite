@@ -84,7 +84,14 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
     else link.selectItems(aggregation, event.items);
   }, [aggregation, link]);
 
-  const { ref } = useEChart({ option, selected: selection.full, partial: selection.partial, onSelect, renderer });
+  const { ref } = useEChart({
+    option,
+    selected: selection.full,
+    partial: selection.partial,
+    onSelect,
+    canClearSelection: chartSliceSource === spec.id,
+    renderer,
+  });
 
   const frame = useCallback(() => {
     if (!aggregation) return;
@@ -123,7 +130,7 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
         // A screen-reader / test-visible legend: one row per bucket, clickable like the bars.
         <ul className="sr-only" data-chart-legend>
           {aggregation.categories.map((bucket, index) => (
-            <li key={bucket.key}>
+            <li key={`${bucket.key}:${'isOther' in bucket && bucket.isOther === true ? 'other' : 'value'}`}>
               <button type="button" onClick={() => link.selectItems(aggregation, [{ seriesIndex: 0, dataIndex: index }])}>
                 {bucket.label}: {bucket.value}
               </button>

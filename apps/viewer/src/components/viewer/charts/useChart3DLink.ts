@@ -49,6 +49,10 @@ function sameSet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
   return true;
 }
 
+function isSyntheticOther(bucket: { key: string }): boolean {
+  return 'isOther' in bucket && bucket.isOther === true;
+}
+
 /** Release the panel's claim on the isolate / ghost channel, if it still holds it. */
 export function releaseChartVisibility(): void {
   const state = useViewerStore.getState();
@@ -111,7 +115,7 @@ export function useChart3DLink(): Chart3DLink {
     const buckets = items.flatMap(({ seriesIndex, dataIndex }): ChartBucketIdentity[] => {
       const series = aggregation.series[seriesIndex];
       const bucket = series?.buckets[dataIndex];
-      return series && bucket ? [{ seriesKey: series.key, bucketKey: bucket.key }] : [];
+      return series && bucket ? [{ seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket) }] : [];
     });
     lastWrittenRef.current = new Set(ids);
     selectChartIds(ids);
@@ -188,7 +192,9 @@ export function chartColorOverrides(
   // selected marks last so their colour wins every overlap (#4832).
   for (const selected of selectedBuckets ?? []) {
     const series = aggregation.series.find(({ key }) => key === selected.seriesKey);
-    const bucket = series?.buckets.find(({ key }) => key === selected.bucketKey);
+    const bucket = series?.buckets.find((candidate) => (
+      candidate.key === selected.bucketKey && isSyntheticOther(candidate) === selected.isOther
+    ));
     if (!series || !bucket) continue;
     const rgba = hexToRgba(bucket.color, 1);
     for (let i = 0; i < bucket.ids.length; i++) {

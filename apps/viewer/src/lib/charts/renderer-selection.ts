@@ -16,25 +16,30 @@ let cachedInput: {
 } | null = null;
 let cachedResult: { selectedId: number | null; selectedIds: Set<number> } | null = null;
 let cachedLayers: Map<string, OverlayLayer> | null = null;
+let cachedAppliedColors: ReadonlyMap<number, readonly number[]> | null = null;
 let cachedEffectivePaint: Map<number, unknown> | null = null;
 
 function sameColor(a: readonly number[], b: readonly number[] | undefined): boolean {
   return b !== undefined && a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-/** Chart colours that survive the canonical overlay compositor. */
-export function effectiveChartPaint(layers: Map<string, OverlayLayer>): Map<number, unknown> | null {
-  if (layers === cachedLayers) return cachedEffectivePaint;
+/** Chart colours that survive composition and are actually retained by the scene. */
+export function effectiveChartPaint(
+  layers: Map<string, OverlayLayer>,
+  appliedColors: ReadonlyMap<number, readonly number[]> | null,
+): Map<number, unknown> | null {
+  if (layers === cachedLayers && appliedColors === cachedAppliedColors) return cachedEffectivePaint;
   cachedLayers = layers;
+  cachedAppliedColors = appliedColors;
   const chartPaint = layers.get(CHART_OVERLAY_LAYER_ID)?.colorOverrides;
-  if (!chartPaint || chartPaint.size === 0) {
+  if (!chartPaint || chartPaint.size === 0 || !appliedColors || appliedColors.size === 0) {
     cachedEffectivePaint = null;
     return null;
   }
   const composite = composeLayers(layers).colorOverrides;
   const effective = new Map<number, unknown>();
   for (const [id, color] of chartPaint) {
-    if (sameColor(color, composite.get(id))) effective.set(id, color);
+    if (sameColor(color, composite.get(id)) && sameColor(color, appliedColors.get(id))) effective.set(id, color);
   }
   cachedEffectivePaint = effective;
   return effective;
@@ -83,8 +88,9 @@ export function chartAwareRendererSelection(
 export function chartAwareRendererSelectionFromStore(
   selectedId: number | null,
   selectedIds: Set<number> | undefined,
+  appliedColors: ReadonlyMap<number, readonly number[]> | null,
 ): { selectedId: number | null; selectedIds: Set<number> } {
   const state = useViewerStore.getState();
-  const chartPaint = effectiveChartPaint(state.overlayLayers);
+  const chartPaint = effectiveChartPaint(state.overlayLayers, appliedColors);
   return chartAwareRendererSelection(selectedId, selectedIds, state.chartSlice, chartPaint);
 }

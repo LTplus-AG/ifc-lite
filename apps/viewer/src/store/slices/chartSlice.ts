@@ -25,6 +25,8 @@ export type ChartFocusMode = 'highlight' | 'isolate' | 'ghost';
 export interface ChartBucketIdentity {
   seriesKey: string;
   bucketKey: string;
+  /** Synthetic top-N Other is distinct from a literal category named `__other__`. */
+  isOther: boolean;
 }
 
 export interface ChartSlice {

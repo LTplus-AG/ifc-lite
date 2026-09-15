@@ -13,7 +13,7 @@
  * a second copy would eventually drop on one side.
  */
 
-import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
+import type { MeshData } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { composeWorldPlacement } from './worldPlacement.js';
@@ -56,31 +56,19 @@ export interface Aabb { min: readonly [number, number, number]; max: readonly [n
 export interface WorldAabb extends Aabb { readonly frame: 'world' }
 
 /** The Y-up translation that lifts a model's render-frame coordinates
- *  (`origin + positions`) into the absolute world frame - see
- *  {@link renderToWorldShift}. */
+ *  (`origin + positions`) into the absolute world frame. */
 export interface RenderToWorldShift { readonly x: number; readonly y: number; readonly z: number }
 
 /**
- * A model's render-to-world shift, read off its `CoordinateInfo`:
+ * A model's render-to-world shift is supplied by the canonical
+ * `lib/geo/coordinate-frame.ts` helper:
  *
- *   world_yup = render + originShift + rtcAsYup,  rtcAsYup = (rtc.x, rtc.z, -rtc.y)
+ *   world_yup = render + totalYupOffset(coordinateInfo)
  *
  * (`wasmRtcOffset` is recorded in IFC Z-up axes; `originShift` is already
- * Y-up). The same composition as `federationAlign.ts`'s `totalYupOffset` and
- * `scanSectionMath.ts`'s `pointCloudRenderFrameShift`, both derived from
- * `reproject.ts`. Absent info (or absent offsets) means the render frame IS
- * the world frame - the zero shift keeps un-georeferenced models bit-exact.
+ * Y-up). Absent info (or absent offsets) means the render frame IS the world
+ * frame - the zero shift keeps un-georeferenced models bit-exact.
  */
-export function renderToWorldShift(info: CoordinateInfo | undefined): RenderToWorldShift {
-  const shift = info?.originShift;
-  const rtc = info?.wasmRtcOffset;
-  return {
-    x: (shift?.x ?? 0) + (rtc?.x ?? 0),
-    y: (shift?.y ?? 0) + (rtc?.z ?? 0),
-    z: (shift?.z ?? 0) - (rtc?.y ?? 0),
-  };
-}
-
 /** Mutable AABB accumulator for {@link meshBounds} / {@link meshBoundsIndex}. */
 interface Box { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
 
@@ -150,7 +138,7 @@ function fromEntityAabb(aabb: { min: readonly number[]; max: readonly number[] }
  * `toWorld + origin + positions` per vertex, landing in the SAME absolute
  * frame.
  *
- * `toWorld` is the owning model's {@link renderToWorldShift} and is required,
+ * `toWorld` is the owning model's render-to-world shift and is required,
  * not defaulted: a hashed entity can keep its box in one revision and lose it
  * to the NaN drop in the other, and when the fallback stayed RTC-relative
  * that pair compared a world box against a render box - on a georeferenced

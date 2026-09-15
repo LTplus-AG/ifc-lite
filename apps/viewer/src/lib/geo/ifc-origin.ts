@@ -30,6 +30,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { resolveProjection } from './reproject';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { effectiveMapConversionForGeometry } from './map-absolute';
+import { totalYupOffset } from './coordinate-frame';
 
 export interface IfcOriginPlacement {
   /** Viewer-local position (Y-up) where this model's IFC (0,0,0) currently sits. */
@@ -57,16 +58,9 @@ export interface ModelGeorefInput {
  * `originShift` plus the wasm RTC offset re-expressed in the viewer's Y-up
  * frame. A model's IFC origin sits at `-totalYupOffset` in viewer space, so for
  * a standalone load or the federation anchor this yields the origin
- * synchronously (no proj4 hop). Exported so the measure-tool XYZ readout can
- * derive the anchor origin without awaiting {@link computeIfcOriginViewerPosition}.
+ * synchronously (no proj4 hop). The canonical helper lives in
+ * `coordinate-frame.ts`, so every viewer consumer uses the same composition.
  */
-export function totalYupOffset(info?: CoordinateInfo): { x: number; y: number; z: number } {
-  const shift = info?.originShift ?? { x: 0, y: 0, z: 0 };
-  const rtc = info?.wasmRtcOffset;
-  const rtcYup = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : { x: 0, y: 0, z: 0 };
-  return { x: shift.x + rtcYup.x, y: shift.y + rtcYup.y, z: shift.z + rtcYup.z };
-}
-
 export async function computeIfcOriginViewerPosition(
   model: ModelGeorefInput,
   anchor?: ModelGeorefInput | null,

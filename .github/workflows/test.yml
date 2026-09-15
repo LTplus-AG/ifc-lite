@@ -1275,6 +1275,13 @@ jobs:
       - name: Check STEP escaper gate regressions
         run: node --test scripts/check-step-escaper-copies.test.mjs
 
+      # CoordinateInfo mixes viewer-axis originShift with IFC-axis RTC. Keep
+      # the Z-up/Y-up conversion in one app-local implementation (#4799).
+      - name: Check for hand-rolled RTC frame conversions
+        run: node scripts/check-rtc-frame-copies.mjs
+      - name: Check RTC frame gate regressions
+        run: node --test scripts/check-rtc-frame-copies.test.mjs
+
       # `scripts/lib/vitest-timeout-audit.mjs` (#2948) replaced
       # `audit-test-timeouts.mjs`, which was deleted in the same change rather
       # than left beside it: two hand-written JS/TS lexers for one question is

@@ -10,7 +10,7 @@
  */
 
 import { NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 
 // ============================================================================
 // Types
@@ -22,17 +22,6 @@ import type { MeshData } from '@ifc-lite/geometry';
 export interface Bounds3D {
   min: { x: number; y: number; z: number };
   max: { x: number; y: number; z: number };
-}
-
-/**
- * Coordinate information for geometry
- */
-export interface CoordinateInfo {
-  originShift: { x: number; y: number; z: number };
-  originalBounds: Bounds3D;
-  shiftedBounds: Bounds3D;
-  /** True if model had large coordinates requiring RTC shift. NOT the same as proper georeferencing via IfcMapConversion. */
-  hasLargeCoordinates: boolean;
 }
 
 /**

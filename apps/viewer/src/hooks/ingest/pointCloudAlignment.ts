@@ -21,7 +21,7 @@
  *   - `computePointCloudAlignment` — composes that math with the SAME
  *     scale/offset resolution the viewer already uses for federated-model
  *     georef alignment (`getEffectiveHorizontalScale`, `resolveMapUnitToMetreScale`
- *     in `lib/geo/geo-scale.ts`, and `totalYupOffset` in `lib/geo/ifc-origin.ts`
+ *     in `lib/geo/geo-scale.ts`, and `totalYupOffset` in `lib/geo/coordinate-frame.ts`
  *     — the canonical wasmRtcOffset + originShift combination). This file
  *     does NOT fork new frame math: the map→local→Y-up→viewer-shift chain
  *     below is the same chain `hooks/ingest/federationAlign.ts`
@@ -92,7 +92,7 @@
 import type { ModelGeoref } from './federationAlign.js';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
 import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
-import { totalYupOffset } from '../../lib/geo/ifc-origin.js';
+import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 
 export interface MapConversionParams {
   eastings: number;

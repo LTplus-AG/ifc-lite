@@ -40,6 +40,7 @@ import { egm96Undulation } from './egm96-undulation';
 import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
 import { ecefCameraFrame } from './ecef-camera-frame';
 import { viewBasis } from '@ifc-lite/renderer';
+import { ifcToViewerAxes } from './coordinate-frame';
 
 // Re-exported so existing importers keep resolving it from the bridge; the
 // definitions now live in the dependency-free `viewer-enu-rotation` and
@@ -275,10 +276,7 @@ export async function createCesiumBridge(
   const modelVZ = bounds ? (bounds.min.z + bounds.max.z) / 2 : 0;
 
   const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
-  const rtc = coordinateInfo?.wasmRtcOffset;
-  const rtcYup = rtc
-    ? { x: rtc.x, y: rtc.z, z: -rtc.y }
-    : { x: 0, y: 0, z: 0 };
+  const rtcYup = ifcToViewerAxes(coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
   const origin = await computeCesiumModelOrigin(
     mapConversion,
     projectedCRS,

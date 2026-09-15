@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ReferenceCorners } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
-import { totalYupOffset } from '@/hooks/ingest/federationAlign';
+import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
 import { toRenderTranslation } from '@/lib/model-placement/translation';
 import type { RegisteredAppearanceReference } from '../references/types.js';

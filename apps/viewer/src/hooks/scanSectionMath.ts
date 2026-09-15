@@ -21,11 +21,11 @@
  * live in that shifted "render frame". Point clouds need one more step to
  * land in the same frame.
  *
- * `pointCloudRenderFrameShift` derives that step from the exact relationship
+ * `totalYupOffset` derives that step from the exact relationship
  * `apps/viewer/src/lib/geo/reproject.ts` (`computeModelCenterInIfcMeters`)
  * documents as ground truth:
  *
- *   world_yup = render + originShift + rtc_as_yup,  rtc_as_yup = (rtc.x, rtc.z, -rtc.y)
+ *   world_yup = render + totalYupOffset(coordinateInfo)
  *
  * so `render = world_yup - originShift - rtc_as_yup`. Restricted to the plan
  * (x, z) pair this is IDENTICAL to `dxfWorldShift` in `hooks/dxfUnderlayMath.ts`
@@ -54,6 +54,7 @@ import {
 } from '@ifc-lite/drawing-2d';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { isPointCloudClassVisible } from '@/store/slices/pointCloudSlice';
+import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -159,7 +160,7 @@ export interface SelectScanBandParams {
  * position to land it in the render frame meshes/section planes use.
  *
  * Derived from `reproject.ts`'s `world_yup = render + originShift + rtc_as_yup`
- * (rtc_as_yup = (rtc.x, rtc.z, -rtc.y)): `render = world_yup - originShift - rtc_as_yup`,
+ * (`rtc_as_yup` is resolved by `coordinate-frame.ts`): `render = world_yup - totalYupOffset`,
  * i.e. the vector below is `originShift + rtc_as_yup` component-wise.
  *
  * Known limitation: this assumes the point cloud was authored in the SAME
@@ -170,17 +171,7 @@ export interface SelectScanBandParams {
  * `hooks/ingest/pointCloudIngest.ts`), so the 2D scan layer is consistent
  * with 3D, not a regression.
  */
-export function pointCloudRenderFrameShift(coordinateInfo: CoordinateInfo | undefined): Vec3 {
-  const rtc = coordinateInfo?.wasmRtcOffset;
-  const shift = coordinateInfo?.originShift;
-  return {
-    x: (rtc?.x ?? 0) + (shift?.x ?? 0),
-    y: (rtc?.z ?? 0) + (shift?.y ?? 0),
-    z: -(rtc?.y ?? 0) + (shift?.z ?? 0),
-  };
-}
-
-/** Apply {@link pointCloudRenderFrameShift} to one point. */
+/** Apply a render-frame shift to one point. */
 export function toRenderFrame(p: Vec3, shift: Vec3): Vec3 {
   return { x: p.x - shift.x, y: p.y - shift.y, z: p.z - shift.z };
 }
@@ -287,7 +278,7 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
     modelOutputsRenderFrame = false, maxRendered = DEFAULT_SCAN_RENDER_CAP,
   } = params;
   const { positions, colors, classifications, count } = sample;
-  const shift = pointCloudRenderFrameShift(coordinateInfo);
+  const shift = totalYupOffset(coordinateInfo);
   const halfThickness = Math.max(thickness, 0) / 2;
   // Cached scan points are RAW decoder output; an aligned asset (#1804) is
   // drawn through `model` on the GPU. Fold it in here or the 2D overlay

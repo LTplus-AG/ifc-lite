@@ -51,6 +51,7 @@
 import { applyDxfPlacement, type DxfPlacement, type Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
+import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 
 export interface DxfUnderlayRenderLine {
   points: Point2D[];
@@ -185,9 +186,11 @@ export function dxfElevationRenderY(
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined,
   elevationIfcZ = 0,
 ): number {
-  const rtc = coordinateInfo?.wasmRtcOffset;
   const shift = coordinateInfo?.originShift;
-  return elevationIfcZ - (shift?.y ?? 0) - (rtc?.z ?? 0);
+  const rtcYup = ifcToViewerAxes(
+    coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 },
+  );
+  return elevationIfcZ - (shift?.y ?? 0) - rtcYup.y;
 }
 
 /**
@@ -393,4 +396,3 @@ export function dxfUnderlayToWorldLines3D(
   }
   return new Float32Array(verts);
 }
-

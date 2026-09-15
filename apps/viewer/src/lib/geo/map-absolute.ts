@@ -9,6 +9,7 @@
 
 import type { MapConversion } from '@ifc-lite/parser';
 import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
+import { ifcToViewerAxes, viewerToIfcAxes } from './coordinate-frame';
 
 /**
  * Compute the model's center in IFC Z-up metres from coordinate info.
@@ -29,25 +30,19 @@ export function computeModelCenterInIfcMeters(
   // `world_yup = bounds_center + originShift`, from the VIEWER bounds.
   const bounds = coordinateInfo.shiftedBounds;
   const shift = coordinateInfo.originShift;
-  const rtc = coordinateInfo.wasmRtcOffset;
-
-  const rtcYup = rtc
-    ? { x: rtc.x, y: rtc.z, z: -rtc.y }
-    : { x: 0, y: 0, z: 0 };
+  const rtcYup = ifcToViewerAxes(coordinateInfo.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
 
   const cx = (bounds.min.x + bounds.max.x) / 2;
   const cy = (bounds.min.y + bounds.max.y) / 2;
   const cz = (bounds.min.z + bounds.max.z) / 2;
 
-  const worldYupX = cx + shift.x + rtcYup.x;
-  const worldYupY = cy + shift.y + rtcYup.y;
-  const worldYupZ = cz + shift.z + rtcYup.z;
-
-  return {
-    ifcX: worldYupX,
-    ifcY: -worldYupZ,
-    ifcZ: worldYupY,
+  const worldYup = {
+    x: cx + shift.x + rtcYup.x,
+    y: cy + shift.y + rtcYup.y,
+    z: cz + shift.z + rtcYup.z,
   };
+  const worldIfc = viewerToIfcAxes(worldYup);
+  return { ifcX: worldIfc.x, ifcY: worldIfc.y, ifcZ: worldIfc.z };
 }
 
 /**

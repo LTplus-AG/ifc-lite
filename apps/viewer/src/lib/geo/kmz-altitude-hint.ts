@@ -19,6 +19,7 @@
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { getMapUnitScale } from './cesium-placement';
+import { ifcToViewerAxes } from './coordinate-frame';
 
 /**
  * Minimum geometry Z (metres, IFC world frame) at or above which the model's
@@ -54,7 +55,9 @@ export const NEAR_ZERO_ORTHOGONAL_HEIGHT_METERS = 1;
 export function modelMinZMeters(coordinateInfo: CoordinateInfo | undefined): number | null {
   const minY = coordinateInfo?.originalBounds?.min?.y;
   if (minY === undefined || !Number.isFinite(minY)) return null;
-  const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
+  const rtcYupY = ifcToViewerAxes(
+    coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 },
+  ).y;
   const minZ = minY + rtcYupY;
   return Number.isFinite(minZ) ? minZ : null;
 }

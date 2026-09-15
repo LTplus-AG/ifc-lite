@@ -8,10 +8,10 @@ import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import {
   meshBounds,
   meshBoundsIndex,
-  renderToWorldShift,
   summarizeGeometryChange,
   type Aabb,
 } from './geometrySummary.js';
+import { totalYupOffset } from '../geo/coordinate-frame.js';
 
 /**
  * `MeshData.positions` are per-element LOCAL-frame coordinates on the wasm
@@ -49,7 +49,7 @@ const UNIT_CUBE = [
 ];
 
 /** An un-georeferenced model: its render frame IS the world frame. */
-const NO_SHIFT = renderToWorldShift(undefined);
+const NO_SHIFT = totalYupOffset(undefined);
 
 /** A georeferenced model's `CoordinateInfo`: the wasm pass subtracted `rtc`
  *  (recorded in IFC Z-up axes) from every position. Bounds are irrelevant to
@@ -158,7 +158,7 @@ describe('mixed frames: one-sided geometryAabb on a georeferenced model (#2659)'
   // render-to-world shift that is (x, z, -y) = (4200000, 0, -5100000), so
   // absolute world = origin + positions + shift. Both revisions here chose
   // the same RTC.
-  const TO_WORLD = renderToWorldShift(geoInfo({ x: 4200000, y: 5100000, z: 0 }));
+  const TO_WORLD = totalYupOffset(geoInfo({ x: 4200000, y: 5100000, z: 0 }));
 
   it('reports the element movement, not the RTC offset, when only one side kept its box', () => {
     // Base kept its wasm box (absolute world). Head is the supported NaN-drop
@@ -219,16 +219,16 @@ describe('mixed frames: one-sided geometryAabb on a georeferenced model (#2659)'
   });
 });
 
-describe('renderToWorldShift', () => {
+describe('totalYupOffset', () => {
   it('composes originShift with the Z-up-to-Y-up-swapped RTC offset', () => {
     // reproject.ts contract: world_yup = render + originShift + (rtc.x, rtc.z, -rtc.y).
     const info = geoInfo({ x: 100, y: 200, z: 300 });
     const shifted: CoordinateInfo = { ...info, originShift: { x: 1, y: 2, z: 3 } };
-    assert.deepStrictEqual(renderToWorldShift(shifted), { x: 101, y: 302, z: -197 });
+    assert.deepStrictEqual(totalYupOffset(shifted), { x: 101, y: 302, z: -197 });
   });
 
   it('answers the zero shift for a model with no coordinate info', () => {
-    assert.deepStrictEqual(renderToWorldShift(undefined), { x: 0, y: 0, z: 0 });
+    assert.deepStrictEqual(totalYupOffset(undefined), { x: 0, y: 0, z: 0 });
   });
 });
 
@@ -252,7 +252,7 @@ describe('meshBoundsIndex (the bulk-report twin, #2529)', () => {
   it('folds the render-to-world shift exactly like meshBounds (#2659 binds both paths)', () => {
     // The bulk CSV must not disagree with the detail panel about the frame:
     // same georeferenced shift, same absolute box.
-    const toWorld = renderToWorldShift(geoInfo({ x: 4200000, y: 5100000, z: 0 }));
+    const toWorld = totalYupOffset(geoInfo({ x: 4200000, y: 5100000, z: 0 }));
     const meshes = [mesh(7, UNIT_CUBE, { origin: [12, 2, 3] })];
     const indexed = meshBoundsIndex(meshes, toWorld).get(7);
     assert.deepStrictEqual(indexed, meshBounds(meshes, 7, toWorld));

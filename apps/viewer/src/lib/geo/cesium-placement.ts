@@ -10,6 +10,7 @@ import { computeModelCenterInIfcMeters } from './reproject';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { divideByAxisScale, viewerUpScaleForGeometry } from './viewer-up-scale';
+import { ifcToViewerAxes } from './coordinate-frame';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -169,7 +170,9 @@ export function computeOrthogonalHeightForBaseAltitude({
   const bounds = coordinateInfo?.originalBounds;
   const anchorY = findClampAnchorY(bounds, storeyElevations);
   // RTC offset is stored in IFC Z-up; viewer-Y aligns to its Z component.
-  const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
+  const rtcYupY = ifcToViewerAxes(
+    coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 },
+  ).y;
   // The read path places IFC height z at `OrthogonalHeight*mapScale +
   // scaleZ*z` (cesium-bridge.ts), so the anchor's height is scaled before it
   // is subtracted, through the same map-absolute neutralisation.

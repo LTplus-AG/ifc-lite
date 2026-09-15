@@ -8,7 +8,7 @@ import { placedMesh } from '@/lib/model-placement/placed-geometry';
 import { placementFor } from '@/lib/model-placement/state';
 import { placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
 import { fromRenderTranslation } from '@/lib/model-placement/translation';
-import { totalYupOffset } from '@/hooks/ingest/federationAlign';
+import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import type { ScanSession } from './session';
 import type { ScanLandmark, ScanPoint, ScanRegistrationReport } from './types';
 

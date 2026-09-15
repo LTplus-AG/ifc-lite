@@ -24,6 +24,7 @@ import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutatio
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
 import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { resolveProjection } from '../../lib/geo/reproject.js';
+import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 import {
   alignEntityWorldAabbs,
   applyAffineTransform,
@@ -115,17 +116,6 @@ function crsKey(crs: ProjectedCRS): string {
 
 function canAlignInSameProjectedCrs(a: ModelGeoref, b: ModelGeoref): boolean {
   return crsKey(a.projectedCRS) === crsKey(b.projectedCRS);
-}
-
-export function totalYupOffset(coordinateInfo?: CoordinateInfo): { x: number; y: number; z: number } {
-  const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
-  const rtc = coordinateInfo?.wasmRtcOffset;
-  const rtcYup = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : { x: 0, y: 0, z: 0 };
-  return {
-    x: shift.x + rtcYup.x,
-    y: shift.y + rtcYup.y,
-    z: shift.z + rtcYup.z,
-  };
 }
 
 function emptyBounds() {

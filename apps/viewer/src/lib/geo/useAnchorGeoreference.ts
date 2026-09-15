@@ -24,7 +24,7 @@
 import { useMemo } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { totalYupOffset } from './ifc-origin';
+import { totalYupOffset } from './coordinate-frame';
 import type { Vec3 } from './pick-to-geo';
 import { selectAnchorGeoref, type AnchorGeorefSelection } from './select-anchor-georef';
 export { selectAnchorGeoref, type AnchorGeorefSelection, type SelectAnchorGeorefParams } from './select-anchor-georef';

@@ -40,9 +40,9 @@ import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
-
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
-import { renderToWorldViewer, viewerToIfcAxes } from './tools/measure-modes/coordinates';
+import { renderToWorldViewer } from './tools/measure-modes/coordinates';
+import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
 import { QuantitySetCard } from './properties/QuantitySetCard';

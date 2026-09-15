@@ -5,54 +5,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
-  viewerToIfcAxes,
-  ifcToViewerAxes,
   renderToWorldViewer,
   pointCoordinates,
   relativeOffset,
   formatCoordinateTriple,
 } from './coordinates.js';
-
-describe('axis conversion', () => {
-  it('maps the viewer UP axis to IFC Z, not to IFC Y', () => {
-    // The whole risk: viewer Y is up, IFC Z is up. A point 10m above the
-    // origin must come out as Z=10. Passing the axes straight through would
-    // report it as Y=10 — a building's height filed under its northing.
-    assert.deepStrictEqual(
-      viewerToIfcAxes({ x: 0, y: 10, z: 0 }),
-      { x: 0, y: 0, z: 10 },
-    );
-  });
-
-  it('negates viewer Z when producing IFC Y', () => {
-    // Dropping the negation mirrors the model about its north axis: the
-    // numbers stay plausible and point the wrong way, which is the failure
-    // mode nobody notices.
-    assert.deepStrictEqual(
-      viewerToIfcAxes({ x: 0, y: 0, z: 7 }),
-      { x: 0, y: -7, z: 0 },
-    );
-  });
-
-  it('leaves X alone', () => {
-    assert.deepStrictEqual(viewerToIfcAxes({ x: 4, y: 0, z: 0 }), { x: 4, y: 0, z: 0 });
-  });
-
-  it('never emits negative zero from the negated axis', () => {
-    // Unary minus on 0 yields -0, which is not a coordinate anybody authored
-    // and which survives into equality checks and serialised output. Both
-    // directions negate one axis, so both can produce it.
-    assert.ok(!Object.is(viewerToIfcAxes({ x: 0, y: 0, z: 0 }).y, -0));
-    assert.ok(!Object.is(ifcToViewerAxes({ x: 0, y: 0, z: 0 }).z, -0));
-  });
-
-  it('round-trips through the inverse in both directions', () => {
-    const viewer = { x: 1.5, y: -2.25, z: 3.75 };
-    assert.deepStrictEqual(ifcToViewerAxes(viewerToIfcAxes(viewer)), viewer);
-    const ifc = { x: -9, y: 4.5, z: 0.25 };
-    assert.deepStrictEqual(viewerToIfcAxes(ifcToViewerAxes(ifc)), ifc);
-  });
-});
 
 describe('renderToWorldViewer', () => {
   it('is the identity when neither shift was applied', () => {
@@ -104,6 +61,17 @@ describe('renderToWorldViewer', () => {
     );
     // viewer-space RTC = (100, 300, -200); plus shift (10, 20, 30); plus point.
     assert.deepStrictEqual(world, { x: 111, y: 321, z: -169 });
+  });
+
+  it('keeps point + shift + RTC evaluation order under cancellation (#4799)', () => {
+    const world = renderToWorldViewer(
+      { x: 1e16, y: 1e16, z: 1e16 },
+      {
+        originShift: { x: -1e16, y: -1e16, z: -1e16 },
+        wasmRtcOffsetIfc: { x: 1, y: -1, z: 1 },
+      },
+    );
+    assert.deepStrictEqual(world, { x: 1, y: 1, z: 1 });
   });
 });
 

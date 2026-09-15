@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion } from '@ifc-lite/parser';
 
-import { effectiveMapConversionForGeometry } from './map-absolute.js';
+import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute.js';
 import { getEffectiveAxisScales, getEffectiveHorizontalScale } from './geo-scale.js';
 
 /**
@@ -70,6 +70,32 @@ function makeConversion(overrides: Partial<MapConversion> = {}): MapConversion {
     ...overrides,
   };
 }
+
+describe('computeModelCenterInIfcMeters frame conversion (#4799)', () => {
+  it('normalises a zero viewer Z to positive-zero IFC northing', () => {
+    const info = coordinateInfoAtAnchor(0, 0);
+    const center = computeModelCenterInIfcMeters(info);
+    assert.equal(Object.is(center.ifcY, 0), true);
+  });
+
+  it('keeps bounds-center + originShift + RTC evaluation order under cancellation', () => {
+    const bounds = {
+      min: { x: 1e16, y: 1e16, z: 1e16 },
+      max: { x: 1e16, y: 1e16, z: 1e16 },
+    };
+    const center = computeModelCenterInIfcMeters({
+      originShift: { x: -1e16, y: -1e16, z: -1e16 },
+      originalBounds: {
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 0, y: 0, z: 0 },
+      },
+      shiftedBounds: bounds,
+      hasLargeCoordinates: true,
+      wasmRtcOffset: { x: 1, y: -1, z: 1 },
+    });
+    assert.deepEqual(center, { ifcX: 1, ifcY: -1, ifcZ: 1 });
+  });
+});
 
 describe('effectiveMapConversionForGeometry — scale neutralisation', () => {
   it('neutralises Scale to 1 when the map-absolute signature fires', () => {

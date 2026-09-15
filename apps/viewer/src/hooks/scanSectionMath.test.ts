@@ -10,7 +10,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
-  pointCloudRenderFrameShift,
   toRenderFrame,
   resolveScanSectionPosition,
   signedBandDistance,
@@ -21,18 +20,19 @@ import {
   type ScanSectionPlane,
   type ScanPointSample,
 } from './scanSectionMath.js';
+import { totalYupOffset } from '../lib/geo/coordinate-frame.js';
 import { dxfWorldShift } from './dxfUnderlayMath.js';
 
 const close = (a: number, b: number, eps = 1e-6) =>
   assert.ok(Math.abs(a - b) < eps, `expected ${a} ≈ ${b}`);
 
-describe('pointCloudRenderFrameShift', () => {
+describe('totalYupOffset for scan sections', () => {
   it('matches dxfWorldShift on the plan (x, z) pair — one formula, two call sites', () => {
     const coordinateInfo = {
       wasmRtcOffset: { x: 1000, y: 2000, z: 5 },
       originShift: { x: 3, y: 9, z: -7 },
     } as never;
-    const shift = pointCloudRenderFrameShift(coordinateInfo);
+    const shift = totalYupOffset(coordinateInfo);
     const dxf = dxfWorldShift(coordinateInfo);
     // dxfWorldShift.x is the plan-X shift; dxfWorldShift.y is the plan-Z
     // shift (drawing y = -renderZ, so dxf.y = -(-shift.z) = ... see
@@ -45,7 +45,7 @@ describe('pointCloudRenderFrameShift', () => {
   });
 
   it('adds the elevation (Y) term absent from the plan-only DXF shift', () => {
-    const shift = pointCloudRenderFrameShift({
+    const shift = totalYupOffset({
       wasmRtcOffset: { x: 0, y: 0, z: 40 },
       originShift: { x: 0, y: 5, z: 0 },
     } as never);
@@ -53,7 +53,7 @@ describe('pointCloudRenderFrameShift', () => {
   });
 
   it('degenerates to zero with no coordinate info', () => {
-    const shift = pointCloudRenderFrameShift(undefined);
+    const shift = totalYupOffset(undefined);
     close(shift.x, 0);
     close(shift.y, 0);
     close(shift.z, 0);
@@ -499,7 +499,7 @@ describe('selectScanBand — aligned matrices must not be shifted twice', () => 
     // `unalignedMatrix` restores absolute native coordinates, so the
     // world -> render-frame shift still applies. Point lands at
     // render-frame y = 5 - shift.y, where shift.y = rtc.z + originShift.y.
-    const shift = pointCloudRenderFrameShift(coordinateInfo);
+    const shift = totalYupOffset(coordinateInfo);
     const sample: ScanPointSample = { positions: new Float32Array([0, 0, 0]), count: 1 };
     const out = selectScanBand({
       sample,
@@ -513,7 +513,7 @@ describe('selectScanBand — aligned matrices must not be shifted twice', () => 
   });
 
   it('no matrix at all is unaffected by the flag', () => {
-    const shift = pointCloudRenderFrameShift(coordinateInfo);
+    const shift = totalYupOffset(coordinateInfo);
     const sample: ScanPointSample = { positions: new Float32Array([0, 5, 0]), count: 1 };
     const out = selectScanBand({
       sample,

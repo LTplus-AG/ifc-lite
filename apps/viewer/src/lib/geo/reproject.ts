@@ -21,6 +21,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupEpsgByCode } from '@ifc-lite/data';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
+import { ifcToViewerAxes } from './coordinate-frame';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { resolvePrecisionDef } from './precision-grids';
@@ -657,10 +658,7 @@ export async function computeFootprintGeoJSON(
   const ordinate = conversion.xAxisOrdinate ?? 0.0;
 
   const shift = coordinateInfo.originShift;
-  const rtc = coordinateInfo.wasmRtcOffset;
-  const rtcYup = rtc
-    ? { x: rtc.x, z: -rtc.y }
-    : { x: 0, z: 0 };
+  const rtcYup = ifcToViewerAxes(coordinateInfo.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
 
   const bounds = coordinateInfo.shiftedBounds;
 

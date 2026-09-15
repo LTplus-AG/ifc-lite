@@ -24,7 +24,7 @@ import {
 import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic, type FlatSymbolic } from '../lib/overlay-parse/symbolic-flat.js';
 import { OVERLAY_OWNER_TYPE_NAMES } from '../lib/overlay-parse/overlay-channels.js';
-import { totalYupOffset } from '../lib/geo/ifc-origin.js';
+import { ifcToViewerAxes, totalYupOffset } from '../lib/geo/coordinate-frame.js';
 import {
   placeRoomSymbolic,
   roomSymbolicSource,
@@ -144,8 +144,8 @@ function elevationRebaseFor(store: IfcDataStore): ElevationRebase {
     }
   }
   const total = totalYupOffset(info ?? undefined).y;
-  const rtcZ = info?.wasmRtcOffset?.z ?? 0;
-  return { primitive: total - rtcZ, storeyTable: total };
+  const rtcYupY = ifcToViewerAxes(info?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 }).y;
+  return { primitive: total - rtcYupY, storeyTable: total };
 }
 
 // ─── Shared parse cache ─────────────────────────────────────────────────────

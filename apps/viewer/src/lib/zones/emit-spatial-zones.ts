@@ -46,9 +46,9 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import {
   renderToWorldViewer,
-  viewerToIfcAxes,
   type RenderFrameOffsets,
 } from '@/components/viewer/tools/measure-modes/coordinates';
+import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
 import type { Zone, ZoneSet } from './types.js';
 
 /** One element's membership, as the assignment engine reports it. */

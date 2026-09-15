@@ -100,7 +100,7 @@ export function roomFramePlanOffsets(coord: CoordinateInfo | undefined): { cx: n
  *
  * Exactly the survey anchor {@link roomFramePlanOffsets} leaves out: the
  * canonical reconstruction is worldYup = renderLocal + shift + rtcYup with
- * rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }, so ifcX gains `rtc.x` and
+ * The viewer-axis conversion lives in `coordinate-frame.ts`; in IFC-plan axes, ifcX gains `rtc.x` and
  * ifcY gains `rtc.y` on top of the room frame. Zero for any model within
  * ~10 km of the origin (rtc is null there). Anything that changes which
  * terms `roomFramePlanOffsets` carries changes this one too;

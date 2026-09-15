@@ -47,9 +47,9 @@ import { useAnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import {
   pointCoordinates,
   relativeOffset,
-  viewerToIfcAxes,
   formatCoordinateTriple,
 } from './measure-modes/coordinates';
+import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
 import { formatDistance, formatSignedTriple } from './formatDistance';
 import { projectedEnh, useProjectedLatLon, type Vec3Like } from './measure-modes/geo-readout';
 

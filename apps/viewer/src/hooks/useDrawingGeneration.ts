@@ -44,6 +44,7 @@ import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './us
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { drawingStoreIdentity, roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
+import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -333,8 +334,7 @@ export function useDrawingGeneration({
           // subtracts `originShift`, already in Y-up. It stays main-side because
           // `coordinateInfo` is main-thread state the worker cannot see.
           const ci = geometryResult.coordinateInfo;
-          const rtc = ci.wasmRtcOffset;
-          const shift = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : ci.originShift;
+          const shift = ci.wasmRtcOffset ? ifcToViewerAxes(ci.wasmRtcOffset) : ci.originShift;
           // Single-model (legacy) mode, so model index is always 0. Multi-model
           // profile extraction would require iterating over each model separately.
           profiles = buildProfileEntries(flat, shift, 0);

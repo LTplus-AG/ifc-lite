@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type ViewerState } from '@/store';
-import { totalYupOffset } from '@/hooks/ingest/federationAlign';
+import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { placementFrameCoordinateInfo, placementFrameKey } from '@/lib/model-placement/persistence';
 import { placementFor } from '@/lib/model-placement/state';
 import { fromRenderTranslation, type Translation } from '@/lib/model-placement/translation';

@@ -7,7 +7,7 @@ import type { AppearanceChange, AppearancePartition, AppearancePreview, Appearan
 import type { ViewerState } from '@/store';
 import { occurrenceSourceMesh, validateOccurrenceSourceBudget } from './occurrence-source-mesh';
 import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
-import { totalYupOffset } from '@/hooks/ingest/federationAlign';
+import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { useViewerStore } from '@/store';
 import type { AppearancePlan } from './planner-types.js';
 import { bindCompanionPreview, companionHiddenNow } from './companion-preview';

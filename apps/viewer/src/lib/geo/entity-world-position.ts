@@ -22,7 +22,7 @@
  * The frame reconstruction itself (RTC offset + origin shift, axis
  * conversion) already has one shared implementation —
  * `resolveRenderFrame`/`useRenderFrameOffsets` and `renderToWorldViewer`/
- * `viewerToIfcAxes` in `measure-modes/coordinates.ts`, which the Properties
+ * `viewerToIfcAxes` in `coordinate-frame.ts`, which the Properties
  * panel and the Measure tool's picked-point readout both route through. This
  * module does not re-derive that: it only adds the piece those don't cover —
  * finding an ENTITY's local-frame bounding-box center from its meshes — then
@@ -32,7 +32,8 @@
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { Point3 } from '@/components/viewer/tools/measure-modes/components';
-import { renderToWorldViewer, viewerToIfcAxes, type RenderFrameOffsets } from '@/components/viewer/tools/measure-modes/coordinates';
+import { renderToWorldViewer, type RenderFrameOffsets } from '@/components/viewer/tools/measure-modes/coordinates';
+import { viewerToIfcAxes } from './coordinate-frame';
 import { getIfcLengthUnitScale } from './effective-georef.js';
 
 export type Vec3 = Point3;

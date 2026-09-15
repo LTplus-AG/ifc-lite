@@ -32,10 +32,10 @@ import {
 import {
   meshBoundsIndex,
   placementMoveSummary,
-  renderToWorldShift,
   summarizeGeometryChange,
   type WorldAabb,
 } from './geometrySummary.js';
+import { totalYupOffset } from '../geo/coordinate-frame.js';
 import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
 export type { CompareReportRow } from './reportRows.js';
@@ -85,7 +85,7 @@ function boundsIndex(model: FederatedModel | undefined): Map<number, WorldAabb> 
   if (!model?.geometryResult) return new Map();
   return meshBoundsIndex(
     model.geometryResult.meshes,
-    renderToWorldShift(model.geometryResult.coordinateInfo),
+    totalYupOffset(model.geometryResult.coordinateInfo),
   );
 }
 

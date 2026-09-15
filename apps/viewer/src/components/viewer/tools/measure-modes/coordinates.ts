@@ -33,6 +33,10 @@
  */
 
 import type { Point3 } from './components';
+import {
+  ifcToViewerAxes,
+  viewerToIfcAxes,
+} from '@/lib/geo/coordinate-frame';
 
 /**
  * The offsets the geometry pipeline applied to get from the model's own
@@ -54,33 +58,6 @@ export interface RenderFrameOffsets {
   wasmRtcOffsetIfc?: Point3 | null;
 }
 
-const ZERO: Point3 = { x: 0, y: 0, z: 0 };
-
-/**
- * Convert a renderer-space (Y-up) point to IFC axes (Z-up).
- *
- * `IFC X = viewer X`, `IFC Y = -viewer Z`, `IFC Z = viewer Y`. The negation is
- * not optional bookkeeping: dropping it mirrors the model about its own north
- * axis, which reads as plausible numbers pointing the wrong way.
- */
-export function viewerToIfcAxes(p: Point3): Point3 {
-  // `0 - p.z` rather than `-p.z`: unary minus on 0 yields -0, which is not a
-  // coordinate anybody authored and leaks into equality checks and serialised
-  // output. Subtraction from zero normalises it while leaving every other
-  // value — including NaN, which must stay NaN rather than becoming 0 —
-  // untouched.
-  return { x: p.x, y: 0 - p.z, z: p.y };
-}
-
-/**
- * Convert an IFC-axes (Z-up) point to renderer axes (Y-up). The exact inverse
- * of {@link viewerToIfcAxes}.
- */
-export function ifcToViewerAxes(p: Point3): Point3 {
-  // See the signed-zero note on `viewerToIfcAxes`.
-  return { x: p.x, y: p.z, z: 0 - p.y };
-}
-
 /**
  * Undo the render-frame shift: renderer-space point -> the model's own world
  * position, still in renderer (Y-up) axes.
@@ -91,9 +68,8 @@ export function ifcToViewerAxes(p: Point3): Point3 {
  * in the same axes would fold the model's north offset into its height.
  */
 export function renderToWorldViewer(p: Point3, frame: RenderFrameOffsets): Point3 {
-  const shift = frame.originShift ?? ZERO;
-  const rtcIfc = frame.wasmRtcOffsetIfc ?? ZERO;
-  const rtcViewer = ifcToViewerAxes(rtcIfc);
+  const shift = frame.originShift ?? { x: 0, y: 0, z: 0 };
+  const rtcViewer = ifcToViewerAxes(frame.wasmRtcOffsetIfc ?? { x: 0, y: 0, z: 0 });
   return {
     x: p.x + shift.x + rtcViewer.x,
     y: p.y + shift.y + rtcViewer.y,

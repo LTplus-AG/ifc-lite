@@ -19,6 +19,7 @@ import { effectiveMapConversionForGeometry } from './map-absolute';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode, type KmzProcessor } from './kmz-exporter';
 import { suggestAbsoluteAltitudeForKmz } from './kmz-altitude-hint';
+import { ifcToViewerAxes } from './coordinate-frame';
 
 /** True if the data store carries usable georeferencing (so a KMZ export can run). */
 export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined): boolean {
@@ -62,7 +63,10 @@ export function computeKmzAltitude(
   coordinateInfo: CoordinateInfo | undefined,
 ): number {
   const mapScale = getMapUnitScale(crs, lengthUnitScale);
-  return (orthogonalHeight ?? 0) * mapScale + (coordinateInfo?.wasmRtcOffset?.z ?? 0);
+  const rtcYupY = ifcToViewerAxes(
+    coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 },
+  ).y;
+  return (orthogonalHeight ?? 0) * mapScale + rtcYupY;
 }
 
 /**

@@ -68,6 +68,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const setColorIn3D = useViewerStore((s) => s.setChartColorIn3D);
   const chartSlice = useViewerStore((s) => s.chartSlice);
   const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
+  const chartSliceItems = useViewerStore((s) => s.chartSliceItems);
   const modelCount = useViewerStore((s) => s.models.size);
 
   // Seed the first dashboard so the panel opens with something to click.
@@ -96,7 +97,8 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
     }
     return null;
   }, [dashboard, aggregations, chartSliceSource]);
-  useChartColorOverlay(overlayAggregation);
+  const overlaySelection = overlayAggregation?.spec.id === chartSliceSource ? chartSliceItems : null;
+  useChartColorOverlay(overlayAggregation, overlaySelection);
 
   const update = useCallback((next: DashboardSpec) => upsertDashboard(next), [upsertDashboard]);
   const saveChart = useCallback((spec: ChartSpec) => {

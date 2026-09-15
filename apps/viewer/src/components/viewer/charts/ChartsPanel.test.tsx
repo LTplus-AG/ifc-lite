@@ -14,7 +14,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { renderChartSvg, DEFAULT_THEME, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
+import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf.js';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection.js';
@@ -24,6 +24,7 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import { EMPTY_HINTS } from './ChartCard.js';
+import { chartColorOverrides } from './useChart3DLink.js';
 import type { ChartRenderer, ChartRendererEvents } from './useEChart.js';
 
 const MINI_IFC = `ISO-10303-21;
@@ -109,6 +110,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
       chartColorIn3D: false,
       chartSlice: null,
       chartSliceSource: null,
+      chartSliceItems: null,
       chartVisibilityOwned: null,
       selectedEntityIds: new Set(),
       selectedEntityId: null,
@@ -182,6 +184,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.isolatedEntities, null);
     assert.deepEqual(s.chartVisibilityOwned && { channel: s.chartVisibilityOwned.channel, ids: [...s.chartVisibilityOwned.ids].sort() }, { channel: 'ghost', ids: [GID(44), GID(45)] });
     assert.deepEqual([...(s.chartSlice ?? [])].sort(), [GID(44), GID(45)]);
+    assert.deepEqual(s.chartSliceItems, [{ seriesIndex: 0, dataIndex: 1 }]);
 
     // The source chart keeps the whole scope but marks the bucket selected;
     // the storey chart re-aggregates over the slice: one door per level.
@@ -396,10 +399,48 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
   });
 });
 
+describe('overlapping chart bucket paint (#4832)', () => {
+  it('keeps the clicked bucket colour authoritative for a shared entity', () => {
+    const dataset: ChartDataset = {
+      source: 'clash',
+      columns: [{ id: 'Rule', label: 'Rule', kind: 'category' }],
+      rows: [
+        { ids: [1, 2], values: ['Rule A'] },
+        { ids: [1, 3], values: ['Rule B'] },
+      ],
+      fingerprint: 'overlap',
+    };
+    const aggregation = aggregate({
+      id: 'rules',
+      title: 'Rules',
+      source: 'clash',
+      type: 'bar',
+      dimension: 'Rule',
+      measure: { agg: 'count' },
+      sort: 'label',
+    }, dataset);
+    const clicked = { seriesIndex: 0, dataIndex: 0 };
+    const clickedColor = aggregation.series[0].buckets[0].color;
+    const otherColor = aggregation.series[0].buckets[1].color;
+    assert.notEqual(clickedColor, otherColor, 'the fixture must expose an overwrite');
+
+    const colors = chartColorOverrides(aggregation, new Set([1, 2]), 'ghost', [clicked]);
+    const expected = [
+      Number.parseInt(clickedColor.slice(1, 3), 16) / 255,
+      Number.parseInt(clickedColor.slice(3, 5), 16) / 255,
+      Number.parseInt(clickedColor.slice(5, 7), 16) / 255,
+      1,
+    ];
+    assert.deepEqual(colors.get(1), expected, 'shared id keeps clicked Rule A, not later Rule B');
+    assert.deepEqual(colors.get(2), expected);
+    assert.equal(colors.has(3), false, 'ghost context retains its authored colour');
+  });
+});
+
 describe('report export from the panel (#3944)', () => {
   beforeEach(async () => {
     const model = await parsedModel();
-    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null, chartSlice: null, chartSliceSource: null, chartVisibilityOwned: null, selectedEntityIds: new Set(), overlayLayers: new Map(), cameraCallbacks: {} });
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null, chartSlice: null, chartSliceSource: null, chartSliceItems: null, chartVisibilityOwned: null, selectedEntityIds: new Set(), overlayLayers: new Map(), cameraCallbacks: {} });
   });
   afterEach(() => cleanup());
 

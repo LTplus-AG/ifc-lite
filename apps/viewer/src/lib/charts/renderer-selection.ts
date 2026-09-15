@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
+import { composeLayers, type OverlayLayer } from '@/store/slices/overlaySlice';
 
 export const CHART_OVERLAY_LAYER_ID = 'charts';
 
@@ -14,6 +15,30 @@ let cachedInput: {
   paintedIds: ReadonlyMap<number, unknown>;
 } | null = null;
 let cachedResult: { selectedId: number | null; selectedIds: Set<number> } | null = null;
+let cachedLayers: Map<string, OverlayLayer> | null = null;
+let cachedEffectivePaint: Map<number, unknown> | null = null;
+
+function sameColor(a: readonly number[], b: readonly number[] | undefined): boolean {
+  return b !== undefined && a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+/** Chart colours that survive the canonical overlay compositor. */
+export function effectiveChartPaint(layers: Map<string, OverlayLayer>): Map<number, unknown> | null {
+  if (layers === cachedLayers) return cachedEffectivePaint;
+  cachedLayers = layers;
+  const chartPaint = layers.get(CHART_OVERLAY_LAYER_ID)?.colorOverrides;
+  if (!chartPaint || chartPaint.size === 0) {
+    cachedEffectivePaint = null;
+    return null;
+  }
+  const composite = composeLayers(layers).colorOverrides;
+  const effective = new Map<number, unknown>();
+  for (const [id, color] of chartPaint) {
+    if (sameColor(color, composite.get(id))) effective.set(id, color);
+  }
+  cachedEffectivePaint = effective;
+  return effective;
+}
 
 /**
  * Keep logical chart selection in the store without letting the renderer's
@@ -60,6 +85,6 @@ export function chartAwareRendererSelectionFromStore(
   selectedIds: Set<number> | undefined,
 ): { selectedId: number | null; selectedIds: Set<number> } {
   const state = useViewerStore.getState();
-  const chartPaint = state.overlayLayers.get(CHART_OVERLAY_LAYER_ID)?.colorOverrides ?? null;
+  const chartPaint = effectiveChartPaint(state.overlayLayers);
   return chartAwareRendererSelection(selectedId, selectedIds, state.chartSlice, chartPaint);
 }

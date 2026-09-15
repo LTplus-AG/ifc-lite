@@ -111,7 +111,7 @@ export function useChart3DLink(): Chart3DLink {
     lastWrittenRef.current = new Set(ids);
     selectChartIds(ids);
     presentChartIds(ids, focusMode);
-    useViewerStore.getState().setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id);
+    useViewerStore.getState().setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id, items);
   }, [focusMode]);
 
   const clearSelection = useCallback(() => {
@@ -163,6 +163,7 @@ export function chartColorOverrides(
   aggregation: Aggregation,
   selectedIds: ReadonlySet<number> | null,
   focusMode: ChartFocusMode,
+  selectedItems: readonly ChartItem[] | null,
 ): Map<number, RGBA> {
   const ghostSelection = focusMode === 'ghost' && selectedIds !== null;
   const colorOverrides = new Map<number, RGBA>();
@@ -177,10 +178,22 @@ export function chartColorOverrides(
       if (!ghostSelection || selectedIds.has(id)) colorOverrides.set(id, rgba);
     }
   }
+  // Bucket membership is allowed to overlap (for example, clash rules). IDs
+  // therefore cannot identify which bucket was clicked. Reapply the exact
+  // selected marks last so their colour wins every overlap (#4832).
+  for (const item of selectedItems ?? []) {
+    const bucket = aggregation.series[item.seriesIndex]?.buckets[item.dataIndex];
+    if (!bucket) continue;
+    const rgba = hexToRgba(bucket.color, 1);
+    for (let i = 0; i < bucket.ids.length; i++) {
+      const id = bucket.ids[i];
+      if (!ghostSelection || selectedIds.has(id)) colorOverrides.set(id, rgba);
+    }
+  }
   return colorOverrides;
 }
 
-export function useChartColorOverlay(aggregation: Aggregation | null): void {
+export function useChartColorOverlay(aggregation: Aggregation | null, selectedItems: readonly ChartItem[] | null): void {
   const enabled = useViewerStore((s) => s.chartColorIn3D);
   const selectedIds = useViewerStore((s) => s.chartSlice);
   const focusMode = useViewerStore((s) => s.chartFocusMode);
@@ -190,8 +203,8 @@ export function useChartColorOverlay(aggregation: Aggregation | null): void {
       state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
       return;
     }
-    const colorOverrides = chartColorOverrides(aggregation, selectedIds, focusMode);
+    const colorOverrides = chartColorOverrides(aggregation, selectedIds, focusMode, selectedItems);
     state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null, colorOverrides });
     return () => useViewerStore.getState().removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
-  }, [enabled, aggregation, selectedIds, focusMode]);
+  }, [enabled, aggregation, selectedIds, focusMode, selectedItems]);
 }

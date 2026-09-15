@@ -1134,6 +1134,7 @@ export function Section2DPanel({
           <>
             <Drawing2DCanvas
               drawing={drawing}
+              snapshotSourceDrawing={sourceDrawing ?? drawing}
               transform={viewTransform}
               showHiddenLines={displayOptions.showHiddenLines}
               overrideEngine={overrideEngine}

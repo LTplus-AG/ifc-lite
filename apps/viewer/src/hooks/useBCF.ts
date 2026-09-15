@@ -19,7 +19,6 @@ import {
   extractViewpointState,
   computeMarkerPositions,
   type ViewerCameraState,
-  type ViewerSectionPlane,
   type ViewerBounds,
   type OverlayBBox,
 } from '@ifc-lite/bcf';
@@ -35,6 +34,7 @@ import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationId
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 import { toast } from '@/components/ui/toast';
 import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-capture';
+import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
 
 // ============================================================================
 // Types
@@ -50,6 +50,8 @@ interface UseBCFOptions {
 interface CreateViewpointOptions {
   /** Include a snapshot image */
   includeSnapshot?: boolean;
+  /** Already-rendered PNG; camera/clipping still use the canonical conversion. */ snapshotOverride?: string;
+  /** Exact cut rendered by a 2D section snapshot, independent of 3D clipping. */ capturedSectionPlane?: CapturedSectionPlane;
   /** Include selected entities */
   includeSelection?: boolean;
   /** Include hidden entities */
@@ -80,7 +82,6 @@ interface CreateViewpointOptions {
    */
   additionalColoredRefs?: { color: string; refs: number[] }[];
 }
-
 interface UseBCFResult {
   /** Create a viewpoint from current viewer state */
   createViewpointFromState: (options?: CreateViewpointOptions) => Promise<BCFViewpoint | null>;
@@ -352,7 +353,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
   const createViewpointFromState = useCallback(
     async (opts: CreateViewpointOptions = {}): Promise<BCFViewpoint | null> => {
       const {
-        includeSnapshot = true,
+        includeSnapshot = true, snapshotOverride, capturedSectionPlane,
         includeSelection = true,
         includeHidden = true,
         additionalSelectedRefs,
@@ -366,8 +367,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // `camera.setAspect` inside that wait (`renderer/src/index.ts`, the
       // `dimensionsChanged` branch). Reading the camera after closes the
       // window: an `await` resumes in a microtask, a rAF render is a task.
-      let snapshot: string | undefined;
-      if (includeSnapshot) {
+      let snapshot: string | undefined = snapshotOverride;
+      if (!snapshot && includeSnapshot) {
         const captured = await captureSnapshot();
         if (captured) {
           snapshot = captured;
@@ -380,18 +381,17 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         return null;
       }
 
-      // Convert section plane state
-      const viewerSectionPlane: ViewerSectionPlane | undefined = sectionPlane.enabled
+      const bounds = getBounds() ?? undefined;
+      const capturedSection = capturedSectionPlane ? capturedSectionPlaneInput(capturedSectionPlane, bounds) : null;
+      const viewerSectionPlane = capturedSection?.sectionPlane ?? (sectionPlane.enabled
         ? {
             axis: sectionPlane.axis,
             position: sectionPlane.position,
             enabled: true,
             flipped: sectionPlane.flipped,
           }
-        : undefined;
-
-      // Get bounds for section plane conversion
-      const bounds = getBounds() ?? undefined;
+        : undefined);
+      const viewpointBounds = capturedSection?.bounds ?? bounds;
 
       // Get selected GUIDs - convert expressIds to IFC GlobalId strings.
       // `additionalSelectedRefs` (the clash pair, #4806) is merged in
@@ -455,7 +455,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       return createViewpoint({
         camera: cameraState,
         sectionPlane: viewerSectionPlane,
-        bounds,
+        bounds: viewpointBounds,
         snapshot,
         selectedGuids,
         hiddenGuids,

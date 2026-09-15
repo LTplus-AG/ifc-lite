@@ -22,7 +22,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { BCFViewpointCaptureButtons } from './BCFViewpointCaptureButtons';
 import {
   Tooltip,
   TooltipContent,
@@ -41,7 +41,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
 import { PriorityBadge, formatDate, formatDateTime, TOPIC_STATUSES } from './bcfHelpers';
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -53,6 +52,8 @@ export interface BCFTopicDetailProps {
   onEditTopic: () => void;
   onAddComment: (text: string, viewpointGuid?: string) => void;
   onAddViewpoint: () => void;
+  onAddSectionViewpoint: () => void;
+  canAddSectionViewpoint: boolean;
   onActivateViewpoint: (viewpoint: BCFViewpoint) => void;
   onDeleteViewpoint: (viewpointGuid: string) => void;
   onUpdateStatus: (status: string) => void;
@@ -75,6 +76,8 @@ export function BCFTopicDetail({
   onEditTopic,
   onAddComment,
   onAddViewpoint,
+  onAddSectionViewpoint,
+  canAddSectionViewpoint,
   onActivateViewpoint,
   onDeleteViewpoint,
   onUpdateStatus,
@@ -201,10 +204,7 @@ export function BCFTopicDetail({
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-medium">Viewpoints</h4>
-              <Button variant="outline" size="sm" onClick={onAddViewpoint} {...tourAnchor(TOUR_ANCHORS.bcfCaptureViewpoint)}>
-                <Camera className="h-3 w-3 mr-1" />
-                Capture
-              </Button>
+              <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} canCapture2D={canAddSectionViewpoint} />
             </div>
 
             {/* Capture info - what will be included */}

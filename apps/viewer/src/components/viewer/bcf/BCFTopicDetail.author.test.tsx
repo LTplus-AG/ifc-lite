@@ -32,6 +32,8 @@ describe('BCFTopicDetail author display (#3574)', () => {
         onEditTopic={() => {}}
         onAddComment={() => {}}
         onAddViewpoint={() => {}}
+        onAddSectionViewpoint={() => {}}
+        canAddSectionViewpoint={false}
         onActivateViewpoint={() => {}}
         onDeleteViewpoint={() => {}}
         onUpdateStatus={() => {}}

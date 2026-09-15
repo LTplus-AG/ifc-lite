@@ -20,13 +20,18 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, StrictMode, useCallback, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
-import { Drawing2DGenerator, type Drawing2D } from '@ifc-lite/drawing-2d';
+import { Drawing2DGenerator, GraphicOverrideEngine, type Drawing2D } from '@ifc-lite/drawing-2d';
+import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { BCFPanel } from '../components/viewer/BCFPanel.js';
+import { Drawing2DCanvas } from '../components/viewer/Drawing2DCanvas.js';
+import { TooltipProvider } from '../components/ui/tooltip.js';
+import { useViewerStore } from '../store/index.js';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 
 // ─── Fixture ─────────────────────────────────────────────────────────────
@@ -217,7 +222,7 @@ const OVERLAY_OPTIONS: DrawingInputs['displayOptions'] = {
   scale: 50, showConstructionProjection: false,
 };
 
-async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, strict = false) {
+async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, strict = false, renderCanvas = false) {
   let inputs: DrawingInputs = {
     geometryResult: null,
     ifcDataStore: null,
@@ -233,21 +238,42 @@ async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, stri
   const publications: Set<number>[] = [];
   let starts = 0;
   let run: (() => Promise<void>) | undefined;
-  const status = (value: string) => { if (value === 'generating') starts++; };
+  let regenerate: (() => Promise<void>) | undefined;
+  let repaint: (() => void) | undefined;
+  const status = (value: 'idle' | 'generating' | 'ready' | 'error') => {
+    if (value === 'generating') starts++;
+    if (renderCanvas) useViewerStore.setState({ drawing2DStatus: value });
+  };
   const noop = () => {};
   function Harness({ value }: { value: DrawingInputs }) {
     const [drawing, setLocalDrawing] = useState<Drawing2D | null>(null);
+    const [panX, setPanX] = useState(100);
     const publish = useCallback((next: Drawing2D | null) => {
       published = next;
       if (next) publications.push(entityIds(next));
+      if (renderCanvas) useViewerStore.setState({ drawing2D: next });
       setLocalDrawing(next);
     }, []);
-    const { generateDrawing } = useDrawingGeneration({
+    const { generateDrawing, doRegenerate } = useDrawingGeneration({
       ...value, drawing, setDrawing: publish, setDrawingStatus: status,
       setDrawingProgress: noop, setDrawingError: noop,
     });
     run = generateDrawing;
-    return null;
+    regenerate = doRegenerate;
+    repaint = () => setPanX((value) => value + 1);
+    return renderCanvas ? <TooltipProvider>
+      {drawing ? <Drawing2DCanvas
+        drawing={drawing}
+        transform={{ x: panX, y: 100, scale: 10 }}
+        showHiddenLines={false}
+        overrideEngine={new GraphicOverrideEngine()}
+        overridesEnabled={false}
+        entityColorMap={new Map()}
+        useIfcMaterials={false}
+        sectionAxis="down"
+      /> : null}
+      <BCFPanel onClose={() => {}} />
+    </TooltipProvider> : null;
   }
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -297,7 +323,13 @@ async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, stri
     get publications() { return publications; },
     get drawing() { return published; },
     get starts() { return starts; },
+    get canvas() { return container.querySelector('canvas'); },
+    get captureButton() {
+      return container.querySelector<HTMLButtonElement>('[aria-label="Capture current 2D section as viewpoint"]');
+    },
     async generate() { await act(async () => { assert.ok(run); await run(); }); },
+    regenerate() { assert.ok(regenerate); return regenerate(); },
+    async repaintCanvas() { await act(async () => { assert.ok(repaint); repaint(); }); },
     async dispose() { await act(async () => root.unmount()); container.remove(); },
   };
 }
@@ -479,6 +511,77 @@ it('restarts active drawing demand after StrictMode effect cleanup (#3921)', asy
     assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
     assert.deepEqual(h.publications, [new Set([100, 101])]);
   } finally { await h.dispose(); }
+});
+
+it('keeps a repainted production canvas stale until regeneration publishes its replacement (#4802)', async () => {
+  const project = createBCFProject({ name: 'Regeneration capture' });
+  const topic = createBCFTopic({ title: 'Held generation', author: 'reviewer@example.invalid' });
+  project.topics.set(topic.guid, topic);
+  useViewerStore.setState({
+    bcfProject: project,
+    activeTopicId: topic.guid,
+    drawing2DPanelVisible: true,
+    textAnnotation2DEditing: null,
+  });
+  const original = Drawing2DGenerator.prototype.generate;
+  const originalResizeObserver = globalThis.ResizeObserver;
+  const originalWindowResizeObserver = window.ResizeObserver;
+  class ImmediateResizeObserver implements ResizeObserver {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(target: Element): void {
+      this.callback([{ target, contentRect: { width: 640, height: 480 } } as unknown as ResizeObserverEntry], this);
+    }
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, writable: true, value: ImmediateResizeObserver });
+  Object.defineProperty(window, 'ResizeObserver', { configurable: true, writable: true, value: ImmediateResizeObserver });
+  const context = new Proxy({}, {
+    get(_target, property) {
+      if (property === 'measureText') return () => ({ width: 0 });
+      return () => undefined;
+    },
+    set() { return true; },
+  }) as unknown as CanvasRenderingContext2D;
+  mock.method(HTMLCanvasElement.prototype, 'getContext', () => context);
+  let signal!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>(resolve => { signal = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let h: Awaited<ReturnType<typeof drawingActivityHarness>> | undefined;
+  try {
+    const harness = await drawingActivityHarness({ geometryResult: activityGeometry() }, false, true);
+    h = harness;
+    await harness.generate();
+    await harness.repaintCanvas();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    assert.ok(harness.captureButton, 'the production BCF panel exposes 2D capture');
+    assert.equal(harness.captureButton.disabled, false,
+      `the production canvas painted the initial drawing (${harness.canvas?.width}x${harness.canvas?.height}, client ${harness.canvas?.clientWidth}x${harness.canvas?.clientHeight})`);
+    Drawing2DGenerator.prototype.generate = async function (...args) {
+      signal();
+      await held;
+      return original.call(this, ...args);
+    };
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = harness.regenerate();
+      await started;
+    });
+    assert.equal(harness.captureButton?.disabled, true, 'the old bitmap must be blocked while the new cut is pending');
+    await harness.repaintCanvas();
+    assert.equal(harness.captureButton?.disabled, true, 'panning must not revalidate the old drawing during regeneration');
+    release();
+    await act(async () => pending);
+    assert.equal(harness.captureButton?.disabled, false, 'the completed replacement becomes capturable after its paint');
+  } finally {
+    release();
+    Drawing2DGenerator.prototype.generate = original;
+    Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, writable: true, value: originalResizeObserver });
+    Object.defineProperty(window, 'ResizeObserver', { configurable: true, writable: true, value: originalWindowResizeObserver });
+    mock.restoreAll();
+    if (h) await h.dispose();
+  }
 });
 
 // #3921: a new coplanar face pick changes the projection origin, not its normal.

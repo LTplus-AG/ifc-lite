@@ -44,7 +44,7 @@ import { BCFServerControl } from './bcf/BCFServerControl';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { warnIfNoModelLoaded } from './bcf/bcfImportGuidance';
-
+import { useSectionViewpointCapture } from '@/hooks/bcf/useSectionViewpointCapture';
 // ============================================================================
 // Main BCF Panel Component
 // ============================================================================
@@ -101,9 +101,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   const setBcfError = useViewerStore((s) => s.setBcfError);
   const models = useViewerStore((s) => s.models);
 
-  // BCF hook for camera/snapshot integration
   const { createViewpointFromState, headerFilesForViewpoints, applyViewpoint, zoomToTopic, canZoomToTopic } = useBCF();
-
+  const sectionCapture = useSectionViewpointCapture(createViewpointFromState);
   // Local state
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -304,7 +303,6 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     [activeTopicId, bcfAuthor, addComment]
   );
 
-  // Capture viewpoint from current viewer state
   const handleCaptureViewpoint = useCallback(async () => {
     if (!activeTopicId) return;
 
@@ -491,6 +489,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onEditTopic={() => setShowEditForm(true)}
             onAddComment={handleAddComment}
             onAddViewpoint={handleCaptureViewpoint}
+            onAddSectionViewpoint={() => void sectionCapture.capture()}
+            canAddSectionViewpoint={sectionCapture.canCapture}
             onActivateViewpoint={handleActivateViewpoint}
             onDeleteViewpoint={handleDeleteViewpoint}
             onUpdateStatus={handleUpdateStatus}

@@ -30,10 +30,7 @@ import {
 import { createDrawingRequestQueue } from './drawingRequestQueue.js';
 import { createMeshOutlineProvider, type MeshOutline2dFn } from './meshOutlineProvider.js';
 import { type GeometryResult } from '@ifc-lite/geometry';
-import {
-  getWholeSourceForWorker,
-  parseProfilesFlat,
-} from '@/lib/overlay-parse/index.js';
+import { getWholeSourceForWorker, parseProfilesFlat } from '@/lib/overlay-parse/index.js';
 import { placedConstructionProfiles } from '@/lib/model-placement/construction-profiles';
 import { buildProfileEntries, warnAboutSkippedProfiles } from '@/lib/overlay-parse/profile-entries.js';
 import { type SymbolicDrawingLine } from '@/lib/overlay-parse/symbolic-drawing-lines.js';
@@ -43,8 +40,9 @@ import { customPlaneCenter, useViewerStore } from '@/store';
 import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
-import { drawingStoreIdentity, roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
+import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
+import { useDrawingRtcContext } from './useDrawingRtcContext.js';
 
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -157,6 +155,12 @@ export function useDrawingGeneration({
   setDrawingError,
 }: UseDrawingGenerationParams): UseDrawingGenerationResult {
 
+  // The legacy primary path can publish only `loading: false` when it finishes
+  // without exact RTC metadata. Subscribe to all provenance publication
+  // channels so pending → standalone/explicit retriggers the drawing.
+  const { context: drawingRtcContext, key: drawingRtcContextKey } =
+    useDrawingRtcContext(ifcDataStore);
+
   // Cache for symbolic representations - these don't change with section position
   // Only re-parse when model or display options change
   const symbolicCacheRef = useRef<{
@@ -224,11 +228,9 @@ export function useDrawingGeneration({
     let symbolicLines: SymbolicDrawingLine[] = [];
     let entitiesWithSymbols = new Set<number>();
 
-    // For multi-model: create cache key from model count and visible model IDs
-    // For single-model: use source byteLength as before
-    const modelCacheKey = models.size > 0
-      ? `${models.size}-${[...models.values()].filter(m => m.visible).map(m => m.id).sort().join('|')}:${drawingStoreIdentity(ifcDataStore)}`
-      : (ifcDataStore?.source ? String(ifcDataStore.source.byteLength) : null);
+    // Cache by source identity plus the exact parse frame. Equal byte lengths
+    // and sibling federation models are intentionally not interchangeable.
+    const modelCacheKey = drawingRtcContextKey;
 
     const useSymbolic = displayOptions.useSymbolicRepresentations && !!ifcDataStore?.source;
 
@@ -238,7 +240,10 @@ export function useDrawingGeneration({
       cache.sourceId === modelCacheKey &&
       cache.useSymbolic === useSymbolic;
 
-    if (useSymbolic) {
+    // A null key means the legacy load has not published whether its mesh
+    // frame is explicit or unavailable yet. Generate the cut without symbols
+    // for now; the subscribed context transition schedules a clean retry.
+    if (useSymbolic && modelCacheKey !== null) {
       if (cacheValid) {
         // Use cached data - FAST PATH
         symbolicLines = cache.lines;
@@ -262,7 +267,7 @@ export function useDrawingGeneration({
           // drawing renders the symbolic representation of every product type.
           // Single-model (legacy) mode, so model index is always 0. Multi-model
           // symbolic parsing would require iterating over each model separately.
-          const symbolic = await roomDrawingSymbolic(ifcDataStore!);
+          const symbolic = await roomDrawingSymbolic(ifcDataStore!, drawingRtcContext!);
           symbolicLines = symbolic.lines;
           entitiesWithSymbols = symbolic.entities;
 
@@ -279,7 +284,7 @@ export function useDrawingGeneration({
           entitiesWithSymbols = new Set<number>();
         }
       }
-    } else {
+    } else if (!useSymbolic) {
       // Clear cache if symbolic is disabled
       if (cache && cache.useSymbolic) {
         symbolicCacheRef.current = null;
@@ -306,7 +311,7 @@ export function useDrawingGeneration({
     // mirroring the symbolic path's federation limitation.
     const profilesNeeded = projectionOn && sectionPlane.axis === 'down';
     let profiles: ProfileEntry[] = [];
-    if (profilesNeeded && ifcDataStore?.source) {
+    if (profilesNeeded && ifcDataStore?.source && modelCacheKey !== null) {
       const pcache = profileCacheRef.current;
       if (pcache && pcache.sourceId === modelCacheKey) {
         profiles = pcache.profiles;
@@ -893,6 +898,8 @@ export function useDrawingGeneration({
     combinedIsolatedIds,
     computedIsolatedIds,
     models,
+    drawingRtcContext,
+    drawingRtcContextKey,
     setDrawing,
     setDrawingStatus,
     setDrawingProgress,
@@ -1001,7 +1008,7 @@ export function useDrawingGeneration({
       sectionPlane.custom]);
     const inputs = [geometryResult, geometryResult?.meshes.length, ifcDataStore,
       displayOptions, typeVisibility, combinedHiddenIds, combinedIsolatedIds,
-      computedIsolatedIds, models];
+      computedIsolatedIds, models, drawingRtcContextKey];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;
     const activated = drawingActive && !wasActive.current;

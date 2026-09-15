@@ -20,6 +20,7 @@ interface PostedMessage {
   id: number;
   kind: string;
   source: Uint8Array;
+  frame?: { x: number; y: number; z: number; needsShift: boolean };
 }
 
 const instances: FakeWorker[] = [];
@@ -53,6 +54,7 @@ class FakeWorker {
 }
 
 let parseOverlayLines: typeof import('./index.js').parseOverlayLines;
+let parseSymbolicFlat: typeof import('./index.js').parseSymbolicFlat;
 let parseProfilesFlat: typeof import('./index.js').parseProfilesFlat;
 let JOB_TIMEOUT_MS: number;
 
@@ -66,6 +68,7 @@ beforeEach(async () => {
   // are module-level singletons.
   const mod = await import(`./index.js?t=${Date.now()}${Math.random()}`);
   parseOverlayLines = mod.parseOverlayLines;
+  parseSymbolicFlat = mod.parseSymbolicFlat;
   parseProfilesFlat = mod.parseProfilesFlat;
   JOB_TIMEOUT_MS = mod.JOB_TIMEOUT_MS;
 });
@@ -96,6 +99,18 @@ describe('parseOverlayLines', () => {
     const verts = new Float32Array([0, 0, 0, 1, 2, 3]);
     worker.reply({ id: worker.posted[0].id, ok: true, verts });
     assert.deepEqual(await promise, verts);
+  });
+
+  it('snapshots and forwards the complete exact RTC frame', async () => {
+    const frame = { x: -0, y: 25, z: -75, needsShift: false };
+    const promise = parseOverlayLines('alignment-lines', transferOf(new Uint8Array([1])), frame);
+    frame.y = 999;
+    const worker = instances[0];
+    assert.notEqual(worker.posted[0].frame, frame);
+    assert.equal(Object.is(worker.posted[0].frame?.x, -0), true);
+    assert.deepEqual(worker.posted[0].frame, { x: -0, y: 25, z: -75, needsShift: false });
+    worker.reply({ id: worker.posted[0].id, ok: true, verts: new Float32Array(0) });
+    await promise;
   });
 
   it('terminates the worker once the last job settles', async () => {
@@ -241,6 +256,18 @@ describe('parseOverlayLines', () => {
     const mod = await import(`./index.js?nw=${Date.now()}${Math.random()}`);
     assert.equal((await mod.parseOverlayLines('grid-lines', transferOf(new Uint8Array(1)))).length, 0);
     assert.equal(instances.length, 0);
+  });
+});
+
+describe('parseSymbolicFlat', () => {
+  it('forwards an exact known-true zero frame in the symbolic request', async () => {
+    const frame = { x: 0, y: 0, z: 0, needsShift: true };
+    const promise = parseSymbolicFlat(transferOf(new Uint8Array([1])), false, 'all', frame);
+    const worker = instances[0];
+    assert.deepEqual(worker.posted[0].frame, frame);
+    const flat = { marker: 'symbolic-result' };
+    worker.reply({ id: worker.posted[0].id, ok: true, flat });
+    assert.equal(await promise, flat);
   });
 });
 

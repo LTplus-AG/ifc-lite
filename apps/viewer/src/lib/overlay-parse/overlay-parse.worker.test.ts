@@ -42,12 +42,15 @@ afterEach(() => {
   delete (globalThis as { self?: unknown }).self;
 });
 
-function event(kind: 'grid-lines' | 'alignment-lines' = 'grid-lines'): MessageEvent<never> {
+function event(
+  kind: 'grid-lines' | 'alignment-lines' | 'symbolic' = 'grid-lines',
+  frame?: { x: number; y: number; z: number; needsShift: boolean },
+): MessageEvent<never> {
   // A real envelope, not a hand-rolled one: the worker rebuilds through
   // sourceBytesFromTransferable, so a stale shape here would test a message
   // the client can no longer send.
   const source = contiguousSourceBytes(new Uint8Array([1])).toTransferable();
-  return { data: { id: 7, kind, source } } as unknown as MessageEvent<never>;
+  return { data: { id: 7, kind, source, frame } } as unknown as MessageEvent<never>;
 }
 
 describe('overlay-parse worker handle', () => {
@@ -78,6 +81,49 @@ describe('overlay-parse worker handle', () => {
     await handle(event());
     assert.equal(posted.length, 1);
     assert.equal((posted[0] as { id: number }).id, 7);
+  });
+
+  it('passes the exact frame to every frame-aware GeometryProcessor method', async () => {
+    const calls: Array<{ kind: string; args: unknown[] }> = [];
+    const emptySymbolic = () => ({
+      polylineCount: 0,
+      circleCount: 0,
+      textCount: 0,
+      fillCount: 0,
+      truncatedAt: undefined,
+      truncatedLimit: undefined,
+      truncatedReason: undefined,
+      free: () => undefined,
+    });
+    setFactory(() => ({
+      init: async () => undefined,
+      parseGridLines: (...args: unknown[]) => {
+        calls.push({ kind: 'grid-lines', args });
+        return new Float32Array(0);
+      },
+      parseAlignmentLines: (...args: unknown[]) => {
+        calls.push({ kind: 'alignment-lines', args });
+        return new Float32Array(0);
+      },
+      parseSymbolicRepresentations: (...args: unknown[]) => {
+        calls.push({ kind: 'symbolic', args });
+        return emptySymbolic();
+      },
+      dispose: () => undefined,
+    } as unknown as import('@ifc-lite/geometry').GeometryProcessor));
+    const frame = { x: 123, y: -456, z: 0, needsShift: false };
+
+    await handle(event('grid-lines', frame));
+    await handle(event('alignment-lines', frame));
+    await handle(event('symbolic', frame));
+
+    assert.deepEqual(calls.map(({ kind }) => kind), [
+      'grid-lines',
+      'alignment-lines',
+      'symbolic',
+    ]);
+    for (const call of calls) assert.equal(call.args[1], frame);
+    assert.deepEqual(posted.map((reply) => (reply as { ok: boolean }).ok), [true, true, true]);
   });
 });
 

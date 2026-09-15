@@ -200,6 +200,20 @@ export function useDrawingMarkupRestoreOnLoad(): void {
     if (!s.activeModelId) return undefined;
     return s.models.get(s.activeModelId)?.ifcDataStore ?? (s.activeModelId === 'legacy' ? s.ifcDataStore ?? undefined : undefined);
   });
+  // `ensureParseFor` deliberately does nothing while mesh RTC provenance is
+  // pending. Subscribe to its publication so this effect retries instead of
+  // waiting forever for a parse-cache notification that cannot yet exist.
+  const rtcPublication = useViewerStore((s) => {
+    if (!s.activeModelId) return null;
+    const model = s.models.get(s.activeModelId);
+    if (model) {
+      return model.geometryResult?.coordinateInfo?.wasmRtcFrame ?? model.loadState ?? null;
+    }
+    if (s.activeModelId === 'legacy') {
+      return s.geometryResult?.coordinateInfo?.wasmRtcFrame ?? s.loading;
+    }
+    return null;
+  });
 
   useEffect(() => {
     if (!activeModelId || !dataStore) return;
@@ -216,5 +230,5 @@ export function useDrawingMarkupRestoreOnLoad(): void {
       // again immediately and re-registers a fresh wait if still pending.
       cancelPendingRestoreWaitFor(activeModelId);
     };
-  }, [activeModelId, dataStore]);
+  }, [activeModelId, dataStore, rtcPublication]);
 }

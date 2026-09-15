@@ -25,7 +25,7 @@
  * zero-copy: it is shared, never cloned or transferred.
  */
 
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, type RtcFrame } from '@ifc-lite/geometry';
 import { sourceBytesFromTransferable, type IfcSourceTransfer } from '@ifc-lite/parser';
 import { buildParseReply, buildProfilesReply, buildSymbolicReply } from './reply.js';
 import {
@@ -69,6 +69,8 @@ export interface OverlayParseRequest {
    * `'all'`. See {@link SymbolicFilterMode}.
    */
   mode?: SymbolicFilterMode;
+  /** Exact RTC frame selected by this model's mesh producer. */
+  frame?: RtcFrame;
 }
 
 export type OverlayParseResponse =
@@ -81,10 +83,11 @@ function runLineParse(
   processor: GeometryProcessor,
   kind: OverlayLineKind,
   source: Uint8Array,
+  frame?: RtcFrame,
 ): Float32Array | null {
   return kind === 'grid-lines'
-    ? processor.parseGridLines(source)
-    : processor.parseAlignmentLines(source);
+    ? processor.parseGridLines(source, frame)
+    : processor.parseAlignmentLines(source, frame);
 }
 
 /**
@@ -99,8 +102,9 @@ function runSymbolicParse(
   source: Uint8Array,
   debug: boolean,
   mode: SymbolicFilterMode,
+  frame?: RtcFrame,
 ): FlatSymbolic {
-  const collection = processor.parseSymbolicRepresentations(source);
+  const collection = processor.parseSymbolicRepresentations(source, frame);
   if (!collection) return createEmptyFlatSymbolic();
   // `collectFlatSymbolic` frees each per-primitive handle, but the collection
   // itself is the caller's to free — and it must happen deterministically.
@@ -177,7 +181,7 @@ export function __setProcessorFactoryForTest(factory: (() => GeometryProcessor) 
 }
 
 export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
-  const { id, kind, source: sourceTransfer, debug, mode } = event.data;
+  const { id, kind, source: sourceTransfer, debug, mode, frame } = event.data;
   // Both of these are INSIDE the try. If either threw outside it, the
   // rejection would escape into the queue's catch, no reply would ever be
   // posted, and the client would sit on its 120s deadline before failing --
@@ -196,10 +200,10 @@ export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<
     // Every buffer below is a fresh JS-heap allocation, never a view into
     // linear memory, so transferring is safe and saves a structured clone.
     const { reply, transfer } = kind === 'symbolic'
-      ? buildSymbolicReply(id, runSymbolicParse(processor, source, debug === true, mode ?? 'overlay'))
+      ? buildSymbolicReply(id, runSymbolicParse(processor, source, debug === true, mode ?? 'overlay', frame))
       : kind === 'profiles'
         ? buildProfilesReply(id, runProfilesParse(processor, source))
-        : buildParseReply(id, runLineParse(processor, kind, source));
+        : buildParseReply(id, runLineParse(processor, kind, source, frame));
     (self as unknown as Worker).postMessage(reply, transfer);
   } catch (error) {
     const reply: OverlayParseResponse = {

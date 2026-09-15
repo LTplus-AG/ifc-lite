@@ -6,15 +6,15 @@
  * composed for 3D overlays and 2D drawings without changing parsed source data. */
 
 import { placedSymbols } from '@/lib/model-placement/placed-symbols';
-import { displayedTranslation } from '@/lib/model-placement/state';
-import type { Translation } from '@/lib/model-placement/translation';
 import { useEffect, useMemo, useState } from 'react';
-import type { MeshData } from '@ifc-lite/geometry';
 import { meshedFillItems } from './symbolic-meshed-fills.js';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import {
+  useSymbolicActiveStores,
+  type SymbolicActiveStore,
+} from './useSymbolicActiveStores.js';
 import {
   debugEnabled,
   type AnnotationFill2D,
@@ -84,34 +84,8 @@ const EMPTY_F32 = new Float32Array(0);
 /** One active model's data store plus the identity needed to map a parsed
  *  primitive's LOCAL express id to the federated global id the visibility
  *  sets are keyed by. `idOffset` is 0 for the legacy single-model path. */
-interface ActiveStore {
-  meshes?: readonly MeshData[];
-  translation: Translation;
-  store: IfcDataStore;
-  modelId: string;
-  idOffset: number;
-}
-
-/** Read the active store set from the viewer store. Federation-aware. */
-function useActiveStores(): ActiveStore[] {
-  const { models, ifcDataStore, placement, geometryResult } = useViewerStore(
-    useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore, placement: s.modelPlacement, geometryResult: s.geometryResult })),
-  );
-  return useMemo(() => {
-    const out: ActiveStore[] = [];
-    if (models.size > 0) {
-      for (const [modelId, m] of models) {
-        if (m.ifcDataStore) out.push({ meshes: m.geometryResult?.meshes, store: m.ifcDataStore, modelId, idOffset: m.idOffset ?? 0, translation: displayedTranslation(placement, modelId) });
-      }
-    } else if (ifcDataStore) {
-      out.push({ meshes: geometryResult?.meshes, store: ifcDataStore, modelId: 'legacy', idOffset: 0, translation: [0, 0, 0] });
-    }
-    return out;
-  }, [models, ifcDataStore, placement, geometryResult]);
-}
-
 /** Trigger parse for the active stores when `enabled`, tick on completion. */
-function useAnnotationParseTrigger(enabled: boolean, stores: ActiveStore[]): number {
+function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore[]): number {
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -154,7 +128,7 @@ function useHiddenOwnerSets(): HiddenOwnerSets {
 /** Build a per-store predicate: is this annotation owner (LOCAL express id)
  *  currently hidden? Cheap fast-path when nothing is hidden. */
 function makeHiddenOwnerPredicate(
-  entry: ActiveStore,
+  entry: SymbolicActiveStore,
   sets: HiddenOwnerSets,
 ): ((ownerId: number) => boolean) | undefined {
   const perModel = sets.byModel.get(entry.modelId) ?? EMPTY_NUM_SET;
@@ -232,7 +206,7 @@ export function useSymbolicAnnotations(params: {
   const { gridSectionClip, fallbackY = 0 } = params;
   const { annotation: enabled, grid: effectiveGridEnabled } =
     useOverlayChannelGate(params.enabled, params.gridEnabled ?? params.enabled);
-  const stores = useActiveStores();
+  const stores = useSymbolicActiveStores();
   const hiddenSets = useHiddenOwnerSets();
   // Trigger parse if EITHER subset is enabled — the parse pass is shared.
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
@@ -333,7 +307,7 @@ export function useSymbolicAnnotationsForDrawing(params: {
   fallbackY?: number;
 }): DrawingAnnotationData {
   const { enabled, axis, sectionPosWorld, viewDepth, flipped, fallbackY = 0 } = params;
-  const stores = useActiveStores();
+  const stores = useSymbolicActiveStores();
   const version = useAnnotationParseTrigger(enabled, stores);
 
   return useMemo(() => {
@@ -462,7 +436,7 @@ export function useSymbolicAnnotationsRichData(params: {
   const { gridSectionClip, fallbackY = 0 } = params;
   const { annotation: enabled, grid: effectiveGridEnabled } =
     useOverlayChannelGate(params.enabled, params.gridEnabled ?? params.enabled);
-  const stores = useActiveStores();
+  const stores = useSymbolicActiveStores();
   const hiddenSets = useHiddenOwnerSets();
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
   const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';

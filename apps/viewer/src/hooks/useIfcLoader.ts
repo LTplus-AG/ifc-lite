@@ -1508,7 +1508,6 @@ export function useIfcLoader() {
       // distinguish that from a genuine determinism defect. (#2385)
       let finalCsgFailures: number | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
-      let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
       // Track all deferred style updates so cache data always uses final colors.
       const cumulativeColorUpdates = new Map<number, [number, number, number, number]>();
       let firstAppendGeometryBatchMs: number | null = null;
@@ -1680,10 +1679,9 @@ export function useIfcLoader() {
               break;
             }
             case 'rtcOffset': {
-              // Capture RTC offset from WASM for multi-model alignment
-              if (event.hasRtc) {
-                capturedRtcOffset = event.rtcOffset;
-              }
+              // CoordinateInfo now carries the exact producer frame. Keep the
+              // event as the early streaming announcement; do not reconstruct
+              // a second, true-only authority here.
               break;
             }
             case 'workerMemory': {
@@ -1804,11 +1802,6 @@ export function useIfcLoader() {
               }
 
               finalCoordinateInfo = event.coordinateInfo ?? null;
-
-              // Store captured RTC offset in coordinate info for multi-model alignment.
-              if (finalCoordinateInfo && capturedRtcOffset) {
-                finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
-              }
 
               // Geometry diagnostics (the typed GeometryDiagnostics contract on the
               // streaming `complete` event). Both warnings live in

@@ -137,14 +137,14 @@
   1358 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
-  1042 apps/viewer/src/hooks/useDrawingGeneration.ts
+  1041 apps/viewer/src/hooks/useDrawingGeneration.ts
   1226 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
   2201 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    483 apps/viewer/src/hooks/useKeyboardShortcuts.ts
-   493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
+   467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
    441 apps/viewer/src/lib/compare/buildFingerprints.ts

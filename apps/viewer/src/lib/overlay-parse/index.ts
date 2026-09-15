@@ -20,6 +20,7 @@ import type {
   OverlayParseResponse,
 } from './overlay-parse.worker.js';
 import type { IfcSourceTransfer } from '@ifc-lite/parser';
+import type { RtcFrame } from '@ifc-lite/geometry';
 
 import { createEmptyFlatProfiles, type FlatProfiles } from './profiles-flat.js';
 import {
@@ -137,8 +138,9 @@ function releaseWorker(): void {
 export async function parseOverlayLines(
   kind: OverlayLineKind,
   source: IfcSourceTransfer,
+  frame?: RtcFrame,
 ): Promise<Float32Array> {
-  const response = await dispatch(kind, source);
+  const response = await dispatch(kind, source, undefined, undefined, frame);
   return response && 'verts' in response ? response.verts : EMPTY_F32;
 }
 
@@ -160,8 +162,9 @@ export async function parseSymbolicFlat(
   source: IfcSourceTransfer,
   debug = false,
   mode: SymbolicFilterMode = 'overlay',
+  frame?: RtcFrame,
 ): Promise<FlatSymbolic> {
-  const response = await dispatch('symbolic', source, debug, mode);
+  const response = await dispatch('symbolic', source, debug, mode, frame);
   return response && 'flat' in response ? response.flat : createEmptyFlatSymbolic();
 }
 
@@ -186,6 +189,7 @@ async function dispatch(
   source: IfcSourceTransfer,
   debug?: boolean,
   mode?: SymbolicFilterMode,
+  frame?: RtcFrame,
 ): Promise<Extract<OverlayParseResponse, { ok: true }> | null> {
   if (!workerFactory) return null;
   const id = nextRequestId++;
@@ -203,7 +207,14 @@ async function dispatch(
       timer = setTimeout(() => {
         if (pending.has(id)) failAll(`overlay parse timed out after ${JOB_TIMEOUT_MS}ms`);
       }, JOB_TIMEOUT_MS);
-      const request: OverlayParseRequest = { id, kind, source, debug, mode };
+      const request: OverlayParseRequest = {
+        id,
+        kind,
+        source,
+        debug,
+        mode,
+        ...(frame === undefined ? {} : { frame: { ...frame } }),
+      };
       // Never a transfer list. When the source is SAB-backed (the huge-model
       // path, which requires cross-origin isolation) it is shared by
       // reference and transferring would detach the viewer's own copy. When

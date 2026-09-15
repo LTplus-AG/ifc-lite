@@ -298,6 +298,10 @@ function applyAlignmentTransformAndUpdateBounds(
     finishEntityBounds(entityBounds, referenceOffset),
   );
 
+  // These vertices have been re-baked into a new affine frame. Preserve the
+  // legacy offsets needed to interpret them, but deliberately drop
+  // `wasmRtcFrame`: it describes the source bytes' mesh-parse frame and would
+  // be false provenance for overlays parsed after this mutation.
   geometry.coordinateInfo = {
     originShift: referenceInfo?.originShift ?? { x: 0, y: 0, z: 0 },
     originalBounds: found ? bounds : zeroBounds(),
@@ -486,6 +490,9 @@ async function alignGeometryAcrossCrs(
     finishEntityBounds(entityBounds, refOffset),
   );
 
+  // A CRS reprojection also creates a derived vertex frame, so it must not
+  // manufacture source-byte `wasmRtcFrame` provenance. Identity alignment
+  // returns before this assignment and therefore preserves the exact frame.
   geometry.coordinateInfo = {
     originShift: reference.coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 },
     originalBounds: bounds,

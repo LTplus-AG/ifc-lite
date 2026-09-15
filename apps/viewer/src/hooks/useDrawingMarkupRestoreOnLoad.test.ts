@@ -17,14 +17,21 @@
  * actually runs.
  */
 
+import '@/test/setup-dom.js';
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { __resetSymbolicAnnotationsCacheForTests, ensureParseFor, getParseFor } from './symbolic-parse-cache.js';
-import { tryRestoreDrawingMarkup, __resetDrawingMarkupRestoreForTests } from './useDrawingMarkupRestoreOnLoad.js';
+import {
+  tryRestoreDrawingMarkup,
+  useDrawingMarkupRestoreOnLoad,
+  __resetDrawingMarkupRestoreForTests,
+} from './useDrawingMarkupRestoreOnLoad.js';
 
 const TAGGED_ANNOTATION_ID = 50;
 
@@ -184,5 +191,72 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
     // every listener) must not duplicate or clobber what was just restored.
     tryRestoreDrawingMarkup('populate-1');
     assert.equal(useViewerStore.getState().measure2DResults.length, 1);
+  });
+
+  it('retries the parse when pending RTC metadata becomes explicit', async () => {
+    const modelId = 'pending-rtc';
+    await seedStore(modelId);
+    const pending = useViewerStore.getState().models.get(modelId)!;
+    useViewerStore.setState({
+      models: new Map([[modelId, { ...pending, loadState: 'streaming-geometry', geometryResult: null }]]),
+    } as never);
+
+    let posts = 0;
+    const previous = __setOverlayWorkerFactoryForTest(() => {
+      const fake = {
+        onmessage: null as ((event: { data: unknown }) => void) | null,
+        onerror: null,
+        onmessageerror: null,
+        postMessage(request: { id: number }) {
+          posts++;
+          queueMicrotask(() => fake.onmessage?.({
+            data: { id: request.id, ok: true, flat: createEmptyFlatSymbolic() },
+          }));
+        },
+        terminate() {},
+      };
+      return fake as unknown as Worker;
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    function Probe(): null {
+      useDrawingMarkupRestoreOnLoad();
+      return null;
+    }
+
+    try {
+      await act(async () => { root.render(createElement(Probe)); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+      assert.equal(posts, 0, 'pending provenance must not parse in a guessed standalone frame');
+
+      await act(async () => {
+        const model = useViewerStore.getState().models.get(modelId)!;
+        useViewerStore.setState({
+          models: new Map([[modelId, {
+            ...model,
+            loadState: 'complete',
+            geometryResult: {
+              meshes: [],
+              totalVertices: 0,
+              totalTriangles: 0,
+              coordinateInfo: {
+                originShift: { x: 0, y: 0, z: 0 },
+                originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+                shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+                hasLargeCoordinates: false,
+                wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false },
+              },
+            },
+          }]]),
+        } as never);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      assert.equal(posts, 1, 'exact-frame publication must trigger the deferred parse');
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      __setOverlayWorkerFactoryForTest(previous);
+    }
   });
 });

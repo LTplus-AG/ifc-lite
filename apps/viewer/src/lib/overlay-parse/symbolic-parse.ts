@@ -335,7 +335,7 @@ export function buildParseResult(
 }
 
 export async function parseSymbolicAnnotations(
-  input: SymbolicParseInput,
+  input: SymbolicParseInput & { frame?: import('@ifc-lite/geometry').RtcFrame },
 ): Promise<ParseResult> {
   const source = input.source;
   if (!source || source.byteLength === 0) {
@@ -354,7 +354,7 @@ export async function parseSymbolicAnnotations(
     // deterministically (AGENTS.md §7). Leaking them to GC lets the
     // FinalizationRegistry free them later against an already-grown/reused
     // shared dlmalloc heap, corrupting the allocator free-list.
-    const collection = processor.parseSymbolicRepresentations(source);
+    const collection = processor.parseSymbolicRepresentations(source, input.frame);
     if (debugEnabled()) {
       console.log(
         `[annotations] parsed ${source.byteLength} bytes →`,

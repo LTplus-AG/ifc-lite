@@ -59,12 +59,16 @@ function store(): IfcDataStore {
   } as unknown as IfcDataStore;
 }
 
-function setFrame(shiftY: number): void {
+function setFrame(target: IfcDataStore, shiftY: number): void {
   useViewerStore.setState({
+    models: new Map(),
+    ifcDataStore: target,
+    loading: false,
     geometryResult: {
       coordinateInfo: {
         originShift: { x: 0, y: shiftY, z: 0 },
         wasmRtcOffset: { x: 0, y: 0, z: RTC_Z },
+        wasmRtcFrame: { x: 0, y: 0, z: RTC_Z, needsShift: true },
       },
     },
   } as never);
@@ -97,7 +101,7 @@ describe('a result filed under one frame is not rebased for another', () => {
 
     try {
       const s = store();
-      setFrame(SHIFT_A);
+      setFrame(s, SHIFT_A);
       const keyA = __symbolicAnnotationsSourceKeyForTests(s);
       const [parse] = ensureParseFor([s]);
       await new Promise((r) => setTimeout(r, 0)); // let dispatch post the request
@@ -109,12 +113,12 @@ describe('a result filed under one frame is not rebased for another', () => {
       assert.ok(live, 'no worker was created');
 
       // Re-align WHILE the parse is in flight, then release it.
-      setFrame(SHIFT_B);
+      setFrame(s, SHIFT_B);
       live.onmessage?.({ data: { id: posted.id, ok: true, flat: oneAnnotation() } });
       await parse;
 
       // Read the entry back under frame A, the frame it was keyed for.
-      setFrame(SHIFT_A);
+      setFrame(s, SHIFT_A);
       const cached = getParseFor(s);
       assert.ok(cached, `nothing cached under frame-A key ${keyA}`);
       const buckets = [...cached.byStorey.values()];

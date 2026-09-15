@@ -147,7 +147,6 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
   it('translates the box by the same amount it translates the mesh (same CRS)', async () => {
     const mesh = boxMesh(11, [0, 0, 0], [1, 2, 3]);
     const geom = geometry([mesh]);
-
     // +2500 m of easting between the two MapConversions, no rotation: the
     // documented acceptance case (a 2.5 m wall move) scaled up to a
     // federation-sized offset.
@@ -279,6 +278,40 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, expected, 1e-3, 'rtc');
     // And it really moved: +2500 easting on top of the RTC rebase.
     assert.ok(Math.abs(mesh.geometryAabb!.min[0] - 3500) < 1e-3, `got ${mesh.geometryAabb!.min[0]}`);
+  });
+
+  it('preserves exact source RTC provenance only for an identity alignment', async () => {
+    const frame = { x: 10, y: 20, z: 30, needsShift: true } as const;
+    const info = coordinateInfo({ wasmRtcFrame: frame });
+    const geom = geometry([boxMesh(25, [0, 0, 0], [1, 1, 1])], info);
+
+    const status = await alignGeometryToReference(
+      geom,
+      georef({ eastings: 0 }, 'EPSG:2056', info),
+      georef({ eastings: 0 }, 'EPSG:2056', info),
+    );
+
+    assert.equal(status, 'identity');
+    assert.deepEqual(geom.coordinateInfo.wasmRtcFrame, frame);
+  });
+
+  it('clears exact source RTC provenance after an affine re-bake', async () => {
+    const sourceInfo = coordinateInfo({
+      wasmRtcFrame: { x: 10, y: 20, z: 30, needsShift: true },
+    });
+    const referenceInfo = coordinateInfo({
+      wasmRtcFrame: { x: 40, y: 50, z: 60, needsShift: true },
+    });
+    const geom = geometry([boxMesh(26, [0, 0, 0], [1, 1, 1])], sourceInfo);
+
+    const status = await alignGeometryToReference(
+      geom,
+      georef({ eastings: 100 }, 'EPSG:2056', sourceInfo),
+      georef({ eastings: 0 }, 'EPSG:2056', referenceInfo),
+    );
+
+    assert.equal(status, 'same-crs');
+    assert.equal(geom.coordinateInfo.wasmRtcFrame, undefined);
   });
 
   it('lands an instanced-only box in the anchor frame across differing RTC offsets', async () => {
@@ -453,6 +486,25 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     // rounding in the positions. The defect this pins is 270 km wide.
     const expected = worldBoundsOfPositions([mesh], [0, 0, 0]);
     assertBoxClose(mesh.geometryAabb, expected, 0.05, 'reprojected');
+  });
+
+  it('clears exact source RTC provenance after a CRS re-bake', async () => {
+    const sourceInfo = coordinateInfo({
+      wasmRtcFrame: { x: 10, y: 20, z: 30, needsShift: true },
+    });
+    const referenceInfo = coordinateInfo({
+      wasmRtcFrame: { x: 40, y: 50, z: 60, needsShift: true },
+    });
+    const geom = geometry([boxMesh(27, [0, 0, 0], [1, 1, 1])], sourceInfo);
+
+    const status = await alignGeometryToReference(
+      geom,
+      georef({ eastings: 500_000, northings: 5_000_000 }, 'EPSG:32632', sourceInfo),
+      georef({ eastings: 300_000, northings: 5_000_000 }, 'EPSG:32633', referenceInfo),
+    );
+
+    assert.equal(status, 'reprojected');
+    assert.equal(geom.coordinateInfo.wasmRtcFrame, undefined);
   });
 });
 

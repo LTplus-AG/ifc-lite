@@ -134,6 +134,10 @@ describe('GeometryProcessor sync path (<2MB) sharedRtcOffset override', () => {
       originShift: { x: 0, y: 0, z: 0 },
       wasmRtcOffset: { x: 100, y: 200, z: 300 },
     });
-    expect(batch?.meshes[0]?.positions[0]).toBe(0);
+    expect(Array.from(batch?.meshes[0]?.positions ?? [])).toEqual([
+      0, 0, 0,
+      1, 0, 0,
+      0, 1, 0,
+    ]);
   });
 });

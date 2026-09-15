@@ -29,7 +29,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'documentPanelVisible', // #4594 documents: templates survive, the panel closes
-  'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts: the slice is renderer ids of the outgoing model; the claim is on a shared channel
+  'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', // #3944 charts: the slice is renderer ids of the outgoing model; the claim is on a shared channel
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
@@ -93,7 +93,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
-  'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts
+  'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'basketVisibilityOwned', 'classFilter',
@@ -215,7 +215,7 @@ function modelRemovedFixture() {
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
   'documentPanelVisible', // #4594 documents
-  'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts
+  'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle

@@ -21,6 +21,16 @@ import { defineSliceTeardown } from '../teardown.js';
 /** How a chart click presents its bucket in 3D — the clash panel's vocabulary. */
 export type ChartFocusMode = 'highlight' | 'isolate' | 'ghost';
 
+/** Stable identity of a selected mark across filtering and bucket reordering. */
+export interface ChartBucketIdentity {
+  seriesKey: string;
+  bucketKey: string;
+  /** Synthetic top-N Other is distinct from a literal category named `__other__`. */
+  isOther: boolean;
+  /** The rendered colour at click time, retained if top-N later folds this bucket into Other. */
+  color: string;
+}
+
 export interface ChartSlice {
   dashboards: DashboardSpec[];
   activeDashboardId: string | null;
@@ -32,6 +42,8 @@ export interface ChartSlice {
   chartSlice: Set<number> | null;
   /** The chart whose selection produced `chartSlice`; it keeps showing the whole scope. */
   chartSliceSource: string | null;
+  /** Exact buckets that produced `chartSlice`; keys survive cross-filter reordering. */
+  chartSliceBuckets: ChartBucketIdentity[] | null;
   /** The panel's claim on the isolate/ghost channel, released only if still owned. */
   chartVisibilityOwned: VisibilityOwnership;
 
@@ -42,7 +54,7 @@ export interface ChartSlice {
   setChartPanelVisible: (visible: boolean) => void;
   setChartFocusMode: (mode: ChartFocusMode) => void;
   setChartColorIn3D: (on: boolean) => void;
-  setChartSlice: (slice: Set<number> | null, source?: string | null) => void;
+  setChartSlice: (slice: Set<number> | null, source?: string | null, buckets?: readonly ChartBucketIdentity[] | null) => void;
   setChartVisibilityOwned: (owned: VisibilityOwnership) => void;
 }
 
@@ -54,6 +66,7 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
   chartColorIn3D: false,
   chartSlice: null,
   chartSliceSource: null,
+  chartSliceBuckets: null,
   chartVisibilityOwned: null,
 
   setDashboards: (dashboards) => {
@@ -76,7 +89,11 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
   setChartPanelVisible: (chartPanelVisible) => set({ chartPanelVisible }),
   setChartFocusMode: (chartFocusMode) => set({ chartFocusMode }),
   setChartColorIn3D: (chartColorIn3D) => set({ chartColorIn3D }),
-  setChartSlice: (chartSlice, source = null) => set({ chartSlice, chartSliceSource: chartSlice ? source : null }),
+  setChartSlice: (chartSlice, source = null, buckets = null) => set({
+    chartSlice,
+    chartSliceSource: chartSlice ? source : null,
+    chartSliceBuckets: chartSlice && buckets ? [...buckets] : null,
+  }),
   setChartVisibilityOwned: (chartVisibilityOwned) => set({ chartVisibilityOwned }),
 });
 
@@ -88,17 +105,17 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
  */
 export const chartTeardown = defineSliceTeardown(
   'chartSlice',
-  ['chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartVisibilityOwned'],
+  ['chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned'],
   {
-    'session-reset': () => ({ chartPanelVisible: false, chartSlice: null, chartSliceSource: null, chartVisibilityOwned: null }),
+    'session-reset': () => ({ chartPanelVisible: false, chartSlice: null, chartSliceSource: null, chartSliceBuckets: null, chartVisibilityOwned: null }),
     'model-removed': ({ isStale }, state) => {
       const slice = state.chartSlice;
       if (!slice) return {};
       const kept = new Set<number>();
       for (const id of slice) if (!isStale(id)) kept.add(id);
       if (kept.size === slice.size) return {};
-      return kept.size > 0 ? { chartSlice: kept } : { chartSlice: null, chartSliceSource: null };
+      return kept.size > 0 ? { chartSlice: kept } : { chartSlice: null, chartSliceSource: null, chartSliceBuckets: null };
     },
-    'all-models-cleared': () => ({ chartSlice: null, chartSliceSource: null, chartVisibilityOwned: null }),
+    'all-models-cleared': () => ({ chartSlice: null, chartSliceSource: null, chartSliceBuckets: null, chartVisibilityOwned: null }),
   },
 );

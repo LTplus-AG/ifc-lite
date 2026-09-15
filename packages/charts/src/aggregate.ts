@@ -164,7 +164,7 @@ function applyTopN(accs: Accumulator[], spec: ChartSpec): Accumulator[] {
 }
 
 function toBucket(acc: Accumulator, color: string): Bucket {
-  return { key: acc.key, label: acc.label, value: acc.value, count: acc.count, ids: Uint32Array.from(acc.ids), color };
+  return { key: acc.key, ...(acc.isOther ? { isOther: true as const } : {}), label: acc.label, value: acc.value, count: acc.count, ids: Uint32Array.from(acc.ids), color };
 }
 
 export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: AggregateOptions = {}): AggregateResult {

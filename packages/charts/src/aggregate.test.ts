@@ -143,6 +143,7 @@ describe('aggregate invariants', () => {
     expect(agg.categories.map((c) => c.label)).toEqual(['a', 'b', 'Other']);
     const other = agg.categories[2];
     expect(other.key).toBe(OTHER_BUCKET_KEY);
+    expect(other.isOther).toBe(true);
     expect(other.color).toBe(OTHER_BUCKET_COLOR);
     expect([...other.ids].sort()).toEqual([4, 5]);
     expect(agg.categoryOf.get(5)).toEqual([2]);
@@ -168,7 +169,9 @@ describe('aggregate invariants', () => {
     // And on a plain chart the real value keeps a palette colour, only the synthetic tail is grey.
     const plain = aggregate({ id: 'o2', title: 'o', source: 'clash', type: 'bar', dimension: 'T', measure: { agg: 'count' }, topN: 1 }, ds);
     expect(plain.categories[0].color).not.toBe(OTHER_BUCKET_COLOR);
+    expect(plain.categories[0].isOther).toBeUndefined();
     expect(plain.categories[1].color).toBe(OTHER_BUCKET_COLOR);
+    expect(plain.categories[1].isOther).toBe(true);
   });
 
   it('clamps a non-positive bin count instead of producing negative bins', () => {

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
-import type { Chart3DLink } from './useChart3DLink';
+import { chartBucketIdentity, sameChartBucketIdentity, type Chart3DLink } from './useChart3DLink';
 
 export interface ChartCardProps {
   spec: ChartSpec;
@@ -51,6 +51,7 @@ export const EMPTY_HINTS: Record<ChartSource, string> = {
 export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onAggregation }: ChartCardProps) {
   const chartSlice = useViewerStore((s) => s.chartSlice);
   const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
+  const chartSliceBuckets = useViewerStore((s) => s.chartSliceBuckets);
   const theme = useViewerStore((s) => s.theme);
   // Colours are kept by label across re-aggregations; the previous palette lives here.
   const paletteRef = useRef<PaletteAssignment | undefined>(undefined);
@@ -84,7 +85,20 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
     else link.selectItems(aggregation, event.items);
   }, [aggregation, link]);
 
-  const { ref } = useEChart({ option, selected: selection.full, partial: selection.partial, onSelect, renderer });
+  const canClearSelection = useCallback((item: { seriesIndex: number; dataIndex: number }) => {
+    if (!aggregation || chartSliceSource !== spec.id) return false;
+    const clicked = chartBucketIdentity(aggregation, item);
+    return clicked !== null && (chartSliceBuckets ?? []).some((active) => sameChartBucketIdentity(active, clicked));
+  }, [aggregation, chartSliceBuckets, chartSliceSource, spec.id]);
+
+  const { ref } = useEChart({
+    option,
+    selected: selection.full,
+    partial: selection.partial,
+    onSelect,
+    canClearSelection,
+    renderer,
+  });
 
   const frame = useCallback(() => {
     if (!aggregation) return;
@@ -123,7 +137,7 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
         // A screen-reader / test-visible legend: one row per bucket, clickable like the bars.
         <ul className="sr-only" data-chart-legend>
           {aggregation.categories.map((bucket, index) => (
-            <li key={bucket.key}>
+            <li key={`${bucket.key}:${'isOther' in bucket && bucket.isOther === true ? 'other' : 'value'}`}>
               <button type="button" onClick={() => link.selectItems(aggregation, [{ seriesIndex: 0, dataIndex: index }])}>
                 {bucket.label}: {bucket.value}
               </button>

@@ -27,12 +27,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import { idsForItems, itemsForIds, type Aggregation, type ChartItem } from '@ifc-lite/charts';
 import { hexToRgba } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
-import type { ChartFocusMode } from '@/store/slices/chartSlice';
+import type { ChartBucketIdentity, ChartFocusMode } from '@/store/slices/chartSlice';
 import type { RGBA } from '@/store/slices/overlaySlice';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { releaseOwnedVisibility } from '@/lib/visibility/ownership';
+import { CHART_OVERLAY_LAYER_ID } from '@/lib/charts/renderer-selection';
 
-export const CHART_OVERLAY_LAYER_ID = 'charts';
 /** Between the lens (50) and the 4D animation (100). */
 export const CHART_OVERLAY_PRIORITY = 75;
 
@@ -47,6 +47,26 @@ function sameSet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
   if (a.size !== b.size) return false;
   for (const id of a) if (!b.has(id)) return false;
   return true;
+}
+
+function isSyntheticOther(bucket: { key: string }): boolean {
+  return 'isOther' in bucket && bucket.isOther === true;
+}
+
+/** Stable identity for a rendered chart item across filtering and re-ordering. */
+export function chartBucketIdentity(
+  aggregation: Aggregation,
+  item: ChartItem,
+): ChartBucketIdentity | null {
+  const series = aggregation.series[item.seriesIndex];
+  const bucket = series?.buckets[item.dataIndex];
+  return series && bucket
+    ? { seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket), color: bucket.color }
+    : null;
+}
+
+export function sameChartBucketIdentity(a: ChartBucketIdentity, b: ChartBucketIdentity): boolean {
+  return a.seriesKey === b.seriesKey && a.bucketKey === b.bucketKey && a.isOther === b.isOther;
 }
 
 /** Release the panel's claim on the isolate / ghost channel, if it still holds it. */
@@ -108,10 +128,14 @@ export function useChart3DLink(): Chart3DLink {
 
   const selectItems = useCallback((aggregation: Aggregation, items: readonly ChartItem[]) => {
     const ids = [...idsForItems(aggregation, items)];
+    const buckets = items.flatMap((item): ChartBucketIdentity[] => {
+      const identity = chartBucketIdentity(aggregation, item);
+      return identity ? [identity] : [];
+    });
     lastWrittenRef.current = new Set(ids);
     selectChartIds(ids);
     presentChartIds(ids, focusMode);
-    useViewerStore.getState().setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id);
+    useViewerStore.getState().setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id, buckets);
   }, [focusMode]);
 
   const clearSelection = useCallback(() => {
@@ -159,20 +183,56 @@ export function useChart3DLink(): Chart3DLink {
  * Keep the `charts` overlay layer in step with the active chart's buckets while
  * "colour in 3D" is on; remove it when it is off or the aggregation is gone.
  */
-export function useChartColorOverlay(aggregation: Aggregation | null): void {
+export function chartColorOverrides(
+  aggregation: Aggregation,
+  selectedIds: ReadonlySet<number> | null,
+  focusMode: ChartFocusMode,
+  selectedBuckets: readonly ChartBucketIdentity[] | null,
+): Map<number, RGBA> {
+  const ghostSelection = focusMode === 'ghost' && selectedIds !== null;
+  const colorOverrides = new Map<number, RGBA>();
+  for (const series of aggregation.series) for (const bucket of series.buckets) {
+    const rgba = hexToRgba(bucket.color, 1);
+    for (let i = 0; i < bucket.ids.length; i++) {
+      const id = bucket.ids[i];
+      // In ghost mode the surrounding model must keep its authored colour.
+      // A renderer colour override is also an opaque-pipeline promotion, so
+      // painting context buckets here would make them bright and solid rather
+      // than translucent (#4832).
+      if (!ghostSelection || selectedIds.has(id)) colorOverrides.set(id, rgba);
+    }
+  }
+  // Bucket membership is allowed to overlap (for example, clash rules). IDs
+  // therefore cannot identify which bucket was clicked. Reapply the exact
+  // selected marks last so their colour wins every overlap (#4832).
+  for (const selected of selectedBuckets ?? []) {
+    const series = aggregation.series.find(({ key }) => key === selected.seriesKey);
+    const bucket = series?.buckets.find((candidate) => (
+      candidate.key === selected.bucketKey && isSyntheticOther(candidate) === selected.isOther
+    ));
+    if (!series) continue;
+    const rgba = hexToRgba(selected.color, 1);
+    const ids = bucket?.ids ?? selectedIds ?? [];
+    for (const id of ids) {
+      if (!ghostSelection || selectedIds.has(id)) colorOverrides.set(id, rgba);
+    }
+  }
+  return colorOverrides;
+}
+
+export function useChartColorOverlay(aggregation: Aggregation | null, selectedBuckets: readonly ChartBucketIdentity[] | null): void {
   const enabled = useViewerStore((s) => s.chartColorIn3D);
+  const modelCount = useViewerStore((s) => s.models.size);
+  const selectedIds = useViewerStore((s) => s.chartSlice);
+  const focusMode = useViewerStore((s) => s.chartFocusMode);
   useEffect(() => {
     const state = useViewerStore.getState();
-    if (!enabled || !aggregation) {
+    if (!enabled || !aggregation || modelCount === 0) {
       state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
       return;
     }
-    const colorOverrides = new Map<number, RGBA>();
-    for (const bucket of aggregation.categories) {
-      const rgba = hexToRgba(bucket.color, 1);
-      for (let i = 0; i < bucket.ids.length; i++) colorOverrides.set(bucket.ids[i], rgba);
-    }
+    const colorOverrides = chartColorOverrides(aggregation, selectedIds, focusMode, selectedBuckets);
     state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null, colorOverrides });
     return () => useViewerStore.getState().removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
-  }, [enabled, aggregation]);
+  }, [enabled, aggregation, modelCount, selectedIds, focusMode, selectedBuckets]);
 }

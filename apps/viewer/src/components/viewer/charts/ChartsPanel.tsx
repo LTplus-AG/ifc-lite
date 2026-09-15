@@ -67,6 +67,8 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const colorIn3D = useViewerStore((s) => s.chartColorIn3D);
   const setColorIn3D = useViewerStore((s) => s.setChartColorIn3D);
   const chartSlice = useViewerStore((s) => s.chartSlice);
+  const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
+  const chartSliceBuckets = useViewerStore((s) => s.chartSliceBuckets);
   const modelCount = useViewerStore((s) => s.models.size);
 
   // Seed the first dashboard so the panel opens with something to click.
@@ -79,18 +81,34 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
 
   const [editing, setEditing] = useState<ChartSpec | null>(null);
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());
+  const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
+  const chartIdSet = useMemo(() => new Set(chartIds), [chartIds]);
   const onAggregation = useCallback((spec: ChartSpec, aggregation: Aggregation | null) => {
     setAggregations((prev) => (prev.get(spec.id) === aggregation ? prev : new Map(prev).set(spec.id, aggregation)));
   }, []);
-  // Colour the 3D view by the first chart that has buckets — the dashboard's headline chart.
+  useEffect(() => {
+    setAggregations((prev) => {
+      if (modelCount === 0) return prev.size === 0 ? prev : new Map();
+      const next = new Map([...prev].filter(([id]) => chartIdSet.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [chartIdSet, modelCount]);
+  // A clicked bucket keeps the colour of the chart it came from. With no
+  // selection, colour by the first populated chart (the dashboard headline).
   const overlayAggregation = useMemo(() => {
+    if (modelCount === 0) return null;
+    if (chartSliceSource && chartIdSet.has(chartSliceSource)) {
+      const selected = aggregations.get(chartSliceSource);
+      if (selected && selected.categories.length > 0) return selected;
+    }
     for (const spec of dashboard?.charts ?? []) {
       const agg = aggregations.get(spec.id);
       if (agg && agg.categories.length > 0) return agg;
     }
     return null;
-  }, [dashboard, aggregations]);
-  useChartColorOverlay(overlayAggregation);
+  }, [dashboard, aggregations, chartSliceSource, chartIdSet, modelCount]);
+  const overlaySelection = overlayAggregation?.spec.id === chartSliceSource ? chartSliceBuckets : null;
+  useChartColorOverlay(overlayAggregation, overlaySelection);
 
   const update = useCallback((next: DashboardSpec) => upsertDashboard(next), [upsertDashboard]);
   const saveChart = useCallback((spec: ChartSpec) => {
@@ -112,7 +130,6 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const setLayout = useCallback((layout: DashboardLayoutItem[]) => {
     if (dashboard) update({ ...dashboard, layout });
   }, [dashboard, update]);
-  const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
   const renderCard = useCallback((id: string) => {
     const spec = dashboard?.charts.find((c) => c.id === id);
     if (!spec) return null;

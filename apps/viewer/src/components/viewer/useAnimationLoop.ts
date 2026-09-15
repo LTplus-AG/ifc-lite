@@ -15,16 +15,15 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
  *   3. If dirty OR animating → render with current state from refs.
  *   4. Sync ViewCube, scale bar, measurements.
  */
-
 import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
+import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
-
 /** Sun cast-shadow render options, driven by the Sun & Sky panel (#2670). */
 export interface SunShadowSettings {
   enabled: boolean;
@@ -233,7 +232,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       const throttled = isContinuousRender &&
         continuousThrottleMs > 0 &&
         (currentTime - lastRenderTime) < continuousThrottleMs;
-
       // Render continuously while the user is interacting (issue #1394), not
       // just when a pointermove happens to set the dirty flag. Pointer events
       // can arrive sparsely (coalesced / slow drag), which left the swap chain
@@ -247,6 +245,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       if (willRender) {
         renderer.consumeRenderRequest();
         const renderStart = performance.now();
+        const selection = chartAwareRendererSelectionFromStore(
+          selectedEntityIdRef.current, selectedEntityIdsRef.current, scene.getColorOverrides());
         // Belt for the renderer's own device-loss latch (#2229). render()
         // contains its failures and degrades to a quiet skip, but this loop
         // must survive even a render-path throw it does not yet contain:
@@ -259,8 +259,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             hiddenIds: hiddenEntitiesRef.current,
             isolatedIds: isolatedEntitiesRef.current,
             ghostExceptIds: ghostExceptEntitiesRef.current,
-            selectedId: selectedEntityIdRef.current,
-            selectedIds: selectedEntityIdsRef.current,
+            selectedId: selection.selectedId,
+            selectedIds: selection.selectedIds,
             emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
             selectedModelIndex: selectedModelIndexRef.current,
             clearColor: clearColorRef.current,

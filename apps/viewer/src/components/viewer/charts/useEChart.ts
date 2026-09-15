@@ -22,6 +22,86 @@ export interface ChartSelectEvent {
   items: ChartItem[];
 }
 
+interface EChartSelectChangedEvent {
+  fromAction?: string;
+  fromActionPayload?: {
+    seriesIndex?: number;
+    dataIndexInside?: number;
+    dataIndex?: number;
+  };
+  selected?: Array<{ seriesIndex: number; dataIndex: number[] }>;
+}
+
+type RawDataIndex = (seriesIndex: number, dataIndexInside: number) => number | undefined;
+
+interface EChartDataModel {
+  getModel: () => {
+    getSeriesByIndex: (seriesIndex: number) => {
+      getData: () => { getRawIndex: (dataIndexInside: number) => number };
+    } | undefined;
+  };
+}
+
+function rawIndexResolver(chart: unknown): RawDataIndex {
+  const engine = chart as EChartDataModel;
+  return (seriesIndex, dataIndexInside) => (
+    engine.getModel().getSeriesByIndex(seriesIndex)?.getData().getRawIndex(dataIndexInside)
+  );
+}
+
+/**
+ * Translate ECharts' cumulative selection event into the clicked bucket.
+ *
+ * `selectchanged.selected` contains every item left selected by the chart.
+ * Passing that list through made a second bucket click merge with the first
+ * one in the 3D selection (#4832). The action payload identifies the bucket
+ * that caused the event, so a select replaces the prior bucket and an
+ * unselect clears it. The cumulative list remains a compatibility fallback
+ * for non-click actions that do not carry a payload.
+ */
+export function selectionFromEChartEvent(
+  params: EChartSelectChangedEvent,
+  rawDataIndex?: RawDataIndex,
+  canClearSelection: boolean | ((item: ChartItem) => boolean) = true,
+): ChartSelectEvent {
+  const payload = params.fromActionPayload;
+  // ECharts' click action exposes an index into the currently filtered series.
+  // `selected`, and our Aggregation/ChartItem contract, use the raw option index.
+  // They differ when legend filtering removes a pie/treemap item (#4832).
+  const clickedDataIndex = payload?.dataIndex
+    ?? (typeof payload?.seriesIndex === 'number' && typeof payload.dataIndexInside === 'number'
+      ? rawDataIndex?.(payload.seriesIndex, payload.dataIndexInside) ?? payload.dataIndexInside
+      : undefined);
+  if (
+    (params.fromAction === 'select' || params.fromAction === 'unselect' || params.fromAction === 'toggleSelected')
+    && typeof payload?.seriesIndex === 'number'
+    && typeof clickedDataIndex === 'number'
+  ) {
+    const seriesIndex = payload.seriesIndex;
+    const dataIndex = clickedDataIndex;
+    const item = { seriesIndex, dataIndex };
+    const canClear = typeof canClearSelection === 'function' ? canClearSelection(item) : canClearSelection;
+    if (params.fromAction === 'unselect') {
+      return canClear ? { items: [] } : { items: [item] };
+    }
+    if (params.fromAction === 'toggleSelected') {
+      const remainsSelected = (params.selected ?? []).some(
+        (selected) => selected.seriesIndex === seriesIndex && selected.dataIndex.includes(dataIndex),
+      );
+      if (!remainsSelected) return canClear ? { items: [] } : { items: [item] };
+    }
+    return { items: [item] };
+  }
+  if (params.fromAction === 'unselect') return { items: [] };
+  const items: ChartItem[] = [];
+  for (const selected of params.selected ?? []) {
+    for (const dataIndex of selected.dataIndex) {
+      items.push({ seriesIndex: selected.seriesIndex, dataIndex });
+    }
+  }
+  return { items };
+}
+
 export interface ChartRendererHandle {
   setOption: (option: EChartsOptionObject) => void;
   /** Push a selection into the chart without firing `onSelect` back; `partial` items get emphasis, not selection. */
@@ -32,6 +112,8 @@ export interface ChartRendererHandle {
 
 export interface ChartRendererEvents {
   onSelect: (event: ChartSelectEvent) => void;
+  /** Only the exact active bucket may clear itself by unselecting. */
+  canClearSelection: (item: ChartItem) => boolean;
 }
 
 /** Creates a chart in `el` synchronously; the real one is ECharts, tests inject a recorder. */
@@ -57,11 +139,11 @@ export const echartsRenderer: ChartRenderer = async () => {
     // `selectchanged` reports every selected item per series after a click.
     chart.on('selectchanged', (params) => {
       if (suppress) return;
-      const items: ChartItem[] = [];
-      for (const s of (params as { selected?: Array<{ seriesIndex: number; dataIndex: number[] }> }).selected ?? []) {
-        for (const dataIndex of s.dataIndex) items.push({ seriesIndex: s.seriesIndex, dataIndex });
-      }
-      events.onSelect({ items });
+      events.onSelect(selectionFromEChartEvent(
+        params as EChartSelectChangedEvent,
+        rawIndexResolver(chart),
+        events.canClearSelection,
+      ));
     });
     return {
       setOption: (option) => chart.setOption(option, { notMerge: true }),
@@ -106,6 +188,8 @@ export interface UseEChartArgs {
   selected: readonly ChartItem[];
   partial: readonly ChartItem[];
   onSelect: (event: ChartSelectEvent) => void;
+  /** True only when the clicked item is the bucket that produced the active slice. */
+  canClearSelection: (item: ChartItem) => boolean;
   renderer?: ChartRenderer;
 }
 
@@ -114,11 +198,13 @@ export interface UseEChartArgs {
  * `option` / `selected`. `width` is the host's measured width in px (0 until
  * measured), for options that size themselves to it.
  */
-export function useEChart({ option, selected, partial, onSelect, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean; width: number } {
+export function useEChart({ option, selected, partial, onSelect, canClearSelection, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean; width: number } {
   const ref = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<ChartRendererHandle | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const canClearSelectionRef = useRef(canClearSelection);
+  canClearSelectionRef.current = canClearSelection;
   const [ready, setReady] = useState(false);
   const [width, setWidth] = useState(0);
   // Re-render on theme change so the tokens are re-read.
@@ -130,7 +216,10 @@ export function useEChart({ option, selected, partial, onSelect, renderer = echa
     let disposed = false;
     void renderer().then((create) => {
       if (disposed) return;
-      handleRef.current = create(el, { onSelect: (e) => onSelectRef.current(e) });
+      handleRef.current = create(el, {
+        onSelect: (e) => onSelectRef.current(e),
+        canClearSelection: (item) => canClearSelectionRef.current(item),
+      });
       setReady(true);
     });
     setWidth(Math.round(el.clientWidth));

@@ -12,18 +12,25 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useRef } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { renderChartSvg, DEFAULT_THEME, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
+import type { Clash, ClashResult } from '@ifc-lite/clash';
+import type { Renderer } from '@ifc-lite/renderer';
+import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf.js';
+import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection.js';
+import { useOverlayCompositor } from '@/components/viewer/schedule/useOverlayCompositor.js';
+import { useColorOverlaySync } from '@/components/viewer/useColorOverlaySync.js';
+import { modelOverviewDashboard } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import { EMPTY_HINTS } from './ChartCard.js';
-import type { ChartRenderer, ChartRendererEvents } from './useEChart.js';
+import { chartColorOverrides } from './useChart3DLink.js';
+import { selectionFromEChartEvent, type ChartRenderer, type ChartRendererEvents } from './useEChart.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -63,10 +70,10 @@ END-ISO-10303-21;
 const OFFSET = 1_000_000;
 const GID = (expressId: number) => OFFSET + expressId;
 
-async function parsedModel(): Promise<FederatedModel> {
-  const bytes = new TextEncoder().encode(MINI_IFC);
+async function parsedModel(id = 'm1', idOffset = OFFSET, ifc = MINI_IFC): Promise<FederatedModel> {
+  const bytes = new TextEncoder().encode(ifc);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return { ...fixtureModel('m1', { idOffset: OFFSET }), name: 'mini.ifc', ifcDataStore: store, maxExpressId: 91 };
+  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 91 };
 }
 
 /** Records every option and selection a card pushes; can fire a chart click. */
@@ -84,6 +91,39 @@ function recordingRenderer(): { renderer: ChartRenderer; charts: Recorded[] } {
     };
   };
   return { renderer, charts };
+}
+
+function ColorSceneProbe({ applied }: { applied: number[][] }) {
+  const pending = useViewerStore((s) => s.pendingColorUpdates);
+  const clearPending = useViewerStore((s) => s.clearPendingColorUpdates);
+  const rendererRef = useRef<Renderer | null>(null);
+  if (!rendererRef.current) {
+    let colors: ReadonlyMap<number, readonly number[]> | null = null;
+    const scene = {
+      setColorOverrides: (next: Map<number, [number, number, number, number]>) => {
+        colors = new Map(next);
+        applied.push([...next.keys()].sort((a, b) => a - b));
+      },
+      clearColorOverrides: () => { colors = null; applied.push([]); },
+      getColorOverrides: () => colors,
+      hasQueuedMeshes: () => false,
+      hasMeshData: () => true,
+      isInstancedEntity: () => false,
+    };
+    rendererRef.current = {
+      getGPUDevice: () => ({}),
+      getPipeline: () => ({}),
+      getScene: () => scene,
+      requestRender: () => {},
+    } as unknown as Renderer;
+  }
+  useColorOverlaySync({
+    rendererRef,
+    isInitialized: true,
+    pendingColorUpdates: pending,
+    clearPendingColorUpdates: clearPending,
+  });
+  return null;
 }
 
 function barData(option: EChartsOptionObject): Array<[string, number, boolean]> {
@@ -108,7 +148,10 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
       chartColorIn3D: false,
       chartSlice: null,
       chartSliceSource: null,
+      chartSliceBuckets: null,
       chartVisibilityOwned: null,
+      clashResult: null,
+      clashGroups: null,
       selectedEntityIds: new Set(),
       selectedEntityId: null,
       selectedEntitiesSet: new Set(),
@@ -181,6 +224,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.isolatedEntities, null);
     assert.deepEqual(s.chartVisibilityOwned && { channel: s.chartVisibilityOwned.channel, ids: [...s.chartVisibilityOwned.ids].sort() }, { channel: 'ghost', ids: [GID(44), GID(45)] });
     assert.deepEqual([...(s.chartSlice ?? [])].sort(), [GID(44), GID(45)]);
+    assert.deepEqual(s.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
 
     // The source chart keeps the whole scope but marks the bucket selected;
     // the storey chart re-aggregates over the slice: one door per level.
@@ -189,6 +233,14 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.match(storeySubtitle!, /2 buckets · 2 elements/);
     const storeyOption = charts[1].options.at(-1)!;
     assert.deepEqual(barData(storeyOption).map(([n, v]) => [n, v]), [['Level 1', 1], ['Level 2', 1]]);
+
+    // A later click replaces — never unions with — the first bucket.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const replaced = useViewerStore.getState();
+    assert.deepEqual([...replaced.selectedEntityIds].sort(), [GID(41), GID(42), GID(43)]);
+    assert.deepEqual([...replaced.selectedEntitiesSet].sort(), ['m1:41', 'm1:42', 'm1:43']);
+    assert.deepEqual([...(replaced.ghostExceptEntities ?? [])].sort(), [GID(41), GID(42), GID(43)]);
   });
 
   it('switching the focus mode re-presents the selection as isolation and releases the ghost claim', async () => {
@@ -236,7 +288,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
   });
 
   it('"Colour in 3D" registers an overlay layer with every bucket\'s ids in its colour, and removes it when off', async () => {
-    const { renderer } = recordingRenderer();
+    const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
     const toggle = ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
@@ -249,25 +301,328 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     const wallColor = layer.colorOverrides?.get(GID(41));
     assert.deepEqual(layer.colorOverrides?.get(GID(42)), wallColor);
     assert.notDeepEqual(layer.colorOverrides?.get(GID(44)), wallColor);
+
+    // Under ghost focus only the clicked bucket keeps the chart paint. Context
+    // retains authored colours and receives translucency from ghostExcept.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const selectedLayer = useViewerStore.getState().overlayLayers.get('charts');
+    assert.deepEqual([...(selectedLayer?.colorOverrides?.keys() ?? [])].sort(), [GID(44), GID(45)]);
+    assert.deepEqual([...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(), [GID(44), GID(45)]);
     click(toggle);
     await settle();
     assert.equal(useViewerStore.getState().overlayLayers.get('charts'), undefined);
+  });
+
+  it('resolves one replacement bucket through both models in a federation', async () => {
+    const secondOffset = 2_000_000;
+    const second = await parsedModel('m2', secondOffset);
+    useViewerStore.setState((state) => ({
+      models: new Map([...state.models, [second.id, second]]),
+    }));
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const state = useViewerStore.getState();
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(44), GID(45), secondOffset + 44, secondOffset + 45]);
+    assert.deepEqual([...state.selectedEntitiesSet].sort(), ['m1:44', 'm1:45', 'm2:44', 'm2:45']);
+  });
+
+  it('uses the clicked chart bucket colour rather than the headline chart colour', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+
+    // Level 1 in the second chart contains walls A/B and door A. Its three ids
+    // must share that storey bucket's colour, not the type colours from chart 1.
+    await act(async () => { charts[1].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const colors = useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides;
+    assert.deepEqual([...(colors?.keys() ?? [])].sort(), [GID(41), GID(42), GID(44)]);
+    assert.deepEqual(colors?.get(GID(41)), colors?.get(GID(44)));
+  });
+
+  it('removes stale chart paint when every dashboard chart is deleted (#4832)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const selected = useViewerStore.getState().selectedEntityIds;
+    const oldPaint = useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides ?? null;
+    assert.ok(oldPaint?.size);
+
+    const active = useViewerStore.getState().dashboards.find((d) => d.id === useViewerStore.getState().activeDashboardId)!;
+    await act(async () => { useViewerStore.getState().upsertDashboard({ ...active, charts: [], layout: [] }); });
+    await settle();
+    assert.equal(useViewerStore.getState().overlayLayers.has('charts'), false);
+    const restored = chartAwareRendererSelectionFromStore(null, selected, oldPaint);
+    assert.equal(restored.selectedIds, selected, 'deleted charts cannot suppress selection through a cached aggregation');
+  });
+
+  it('does not restore cached chart paint after every model is cleared (#4832)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const applied: number[][] = [];
+    function MountedChartScene() {
+      useOverlayCompositor();
+      return <><ColorSceneProbe applied={applied} /><ChartsPanel renderer={renderer} /></>;
+    }
+    const ui = render(<MountedChartScene />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+    assert.equal(useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides?.size, 5);
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    assert.deepEqual(applied.at(-1), [GID(44), GID(45)]);
+
+    const beforeClear = applied.length;
+    await act(async () => { useViewerStore.getState().clearAllModels(); });
+    await settle();
+    await settle();
+    const state = useViewerStore.getState();
+    assert.equal(state.models.size, 0);
+    assert.equal(state.overlayLayers.has('charts'), false, 'an unmounted card aggregation cannot repaint removed model ids');
+    assert.equal(state.pendingColorUpdates?.size ?? 0, 0, 'the mounted scene channel cannot receive removed ids again');
+    const afterClear = applied.slice(beforeClear);
+    assert.ok(afterClear.length > 0 && afterClear.every((ids) => ids.length === 0), 'the scene clears and never reapplies the cached five ids');
+  });
+
+  it('replaces a feedback-selected overlapping bucket in the same chart (#4832)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{
+      ...dashboard.charts[0],
+      title: 'Overlapping rules',
+      source: 'clash',
+      dimension: 'Rule',
+      sort: 'label',
+      topN: undefined,
+    }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    const clash = (id: string, rule: string, a: number, b: number): Clash => ({
+      id,
+      a: { key: `${id}-a`, ref: GID(a), model: 'm1', tag: 'IfcWall' },
+      b: { key: `${id}-b`, ref: GID(b), model: 'm1', tag: 'IfcDoor' },
+      rule,
+      status: 'hard',
+      distance: -0.05,
+      point: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      severity: 'major',
+    });
+    const clashes = [
+      clash('a1', 'Rule A', 41, 42),
+      clash('a2', 'Rule A', 41, 44),
+      clash('b1', 'Rule B', 41, 42),
+    ];
+    const clashResult: ClashResult = {
+      clashes,
+      summary: { total: 3, byRule: { 'Rule A': 2, 'Rule B': 1 }, byTypePair: {}, bySeverity: { critical: 0, major: 3, minor: 0, info: 0 } },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    useViewerStore.setState({
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+      clashResult,
+      clashRunSeq: useViewerStore.getState().clashRunSeq + 1,
+    });
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual(barData(charts[0].options.at(-1)!), [['Rule A', 2, true], ['Rule B', 1, true]]);
+
+    const replacement = selectionFromEChartEvent({
+      fromAction: 'unselect',
+      fromActionPayload: { seriesIndex: 0, dataIndex: 1 },
+      selected: [{ seriesIndex: 0, dataIndex: [0] }],
+    }, undefined, charts[0].events.canClearSelection);
+    assert.deepEqual(replacement, { items: [{ seriesIndex: 0, dataIndex: 1 }] });
+    await act(async () => { charts[0].events.onSelect(replacement); });
+    await settle();
+    const state = useViewerStore.getState();
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42)]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
+  });
+
+  it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [
+      { ...dashboard.charts[0], title: 'Clashes by severity', source: 'clash', dimension: 'Severity', topN: undefined },
+      { ...dashboard.charts[1], title: 'Clashes by rule', source: 'clash', type: 'bar', dimension: 'Rule', sort: undefined, topN: 1 },
+    ];
+    dashboard.layout = dashboard.layout.slice(0, 2);
+    const clash = (id: string, rule: string, severity: Clash['severity'], a: number, b: number): Clash => ({
+      id,
+      a: { key: `${id}-a`, ref: GID(a), model: 'm1', tag: 'IfcWall' },
+      b: { key: `${id}-b`, ref: GID(b), model: 'm1', tag: 'IfcDoor' },
+      rule,
+      status: 'hard',
+      distance: -0.05,
+      point: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      severity,
+    });
+    const clashes = [
+      clash('a1', 'Rule A', 'critical', 41, 42),
+      clash('a2', 'Rule A', 'critical', 41, 44),
+      clash('b1', 'Rule B', 'critical', 41, 45),
+      clash('b2', 'Rule B', 'major', 43, 43),
+      clash('b3', 'Rule B', 'major', 43, 43),
+    ];
+    const clashResult: ClashResult = {
+      clashes,
+      summary: {
+        total: clashes.length,
+        byRule: { 'Rule A': 2, 'Rule B': 3 },
+        byTypePair: {},
+        bySeverity: { critical: 3, major: 2, minor: 0, info: 0 },
+      },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    useViewerStore.setState({
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+      clashResult,
+      clashRunSeq: useViewerStore.getState().clashRunSeq + 1,
+      clashGroups: null,
+      clashReviews: new Map(),
+      chartSlice: null,
+      chartSliceSource: null,
+      chartSliceBuckets: null,
+      selectedEntityIds: new Set(),
+      selectedEntitiesSet: new Set(),
+      selectedEntities: [],
+      overlayLayers: new Map(),
+    });
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+
+    // Critical cross-filters rules to [A (2), B (1)]. Clicking A then makes
+    // the rule chart the source, restoring [B (3), A (2)]. Since rules share
+    // ids, a stored positional index 0 would let B overwrite A's clicked paint.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const filteredRules = charts[1].options.at(-1)!;
+    assert.deepEqual(barData(filteredRules).map(([name, value]) => [name, value]), [['Rule A', 2], ['Other', 1]]);
+    const filteredSeries = filteredRules.series as Array<{ data: Array<{ name: string; itemStyle: { color: string } }> }>;
+    const clickedColor = filteredSeries[0].data[0].itemStyle.color;
+
+    await act(async () => { charts[1].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual(barData(charts[1].options.at(-1)!).map(([name, value]) => [name, value]), [['Rule B', 3], ['Other', 2]]);
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
+    assert.equal(state.chartSliceBuckets?.[0]?.color, clickedColor, 'the click-time colour survives folding into Other');
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42), GID(44)]);
+    const expected = [
+      Number.parseInt(clickedColor.slice(1, 3), 16) / 255,
+      Number.parseInt(clickedColor.slice(3, 5), 16) / 255,
+      Number.parseInt(clickedColor.slice(5, 7), 16) / 255,
+      1,
+    ];
+    const colors = state.overlayLayers.get('charts')?.colorOverrides;
+    assert.deepEqual(colors?.get(GID(41)), expected, 'shared id keeps clicked Rule A colour');
+    assert.deepEqual(colors?.get(GID(42)), expected, 'second shared id keeps clicked Rule A colour');
+    assert.deepEqual(colors?.get(GID(44)), expected);
+    assert.equal(colors?.has(GID(43)), false, 'unselected Rule B context keeps authored colour');
+  });
+
+  it('distinguishes synthetic top-N Other from a literal __other__ bucket (#4832)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{
+      ...dashboard.charts[0],
+      title: 'Top clash rules',
+      source: 'clash',
+      dimension: 'Rule',
+      topN: 1,
+    }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    const clash = (id: string, rule: string, a: number, b: number): Clash => ({
+      id,
+      a: { key: `${id}-a`, ref: GID(a), model: 'm1', tag: 'IfcWall' },
+      b: { key: `${id}-b`, ref: GID(b), model: 'm1', tag: 'IfcDoor' },
+      rule,
+      status: 'hard',
+      distance: -0.05,
+      point: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      severity: 'major',
+    });
+    const clashes = [
+      clash('literal-1', '__other__', 41, 42),
+      clash('literal-2', '__other__', 41, 44),
+      clash('literal-3', '__other__', 42, 44),
+      clash('tail-1', 'Tail 1', 41, 43),
+      clash('tail-2', 'Tail 1', 43, 45),
+      clash('tail-3', 'Tail 2', 45, 45),
+    ];
+    const clashResult: ClashResult = {
+      clashes,
+      summary: { total: clashes.length, byRule: { __other__: 3, 'Tail 1': 2, 'Tail 2': 1 }, byTypePair: {}, bySeverity: { critical: 0, major: 6, minor: 0, info: 0 } },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id, clashResult, clashRunSeq: useViewerStore.getState().clashRunSeq + 1 });
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+    const data = (charts[0].options.at(-1)!.series as Array<{ data: Array<{ name: string; itemStyle: { color: string } }> }>)[0].data;
+    assert.deepEqual(data.map((item) => item.name), ['__other__', 'Other']);
+    const gray = data[1].itemStyle.color;
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
+    const expected = [
+      Number.parseInt(gray.slice(1, 3), 16) / 255,
+      Number.parseInt(gray.slice(3, 5), 16) / 255,
+      Number.parseInt(gray.slice(5, 7), 16) / 255,
+      1,
+    ];
+    assert.deepEqual(state.overlayLayers.get('charts')?.colorOverrides?.get(GID(41)), expected, 'shared id keeps synthetic Other gray');
   });
 
   it('a click on a stacked segment selects only that series share of the category (review finding)', async () => {
     const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
     // The third seeded chart is "Types per storey": storey on the axis, one series per type.
     const option = charts[2].options.at(-1)!;
-    const series = option.series as Array<{ name: string; data: Array<{ name: string; value: number }> }>;
+    const series = option.series as Array<{ name: string; data: Array<{ name: string; value: number; itemStyle: { color: string } }> }>;
     const doorSeries = series.findIndex((s) => s.name === 'IfcDoor');
     const level1 = series[doorSeries].data.findIndex((d) => d.name === 'Level 1');
     assert.ok(doorSeries >= 0 && level1 >= 0, JSON.stringify(series.map((s) => [s.name, s.data.map((d) => [d.name, d.value])])));
+    const segmentColor = series[doorSeries].data[level1].itemStyle.color;
     await act(async () => { charts[2].events.onSelect({ items: [{ seriesIndex: doorSeries, dataIndex: level1 }] }); });
     await settle();
     // Level 1 holds walls A, B and door A; the door segment selects door A only.
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [GID(44)]);
+    assert.deepEqual(useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides?.get(GID(44)), [
+      Number.parseInt(segmentColor.slice(1, 3), 16) / 255,
+      Number.parseInt(segmentColor.slice(3, 5), 16) / 255,
+      Number.parseInt(segmentColor.slice(5, 7), 16) / 255,
+      1,
+    ]);
     // The other charts re-aggregate over that one door — singular, not "1 elements".
     assert.match(ui.querySelectorAll('[data-chart-subtitle]')[0]!.textContent!, /1 bucket · 1 element$/);
   });
@@ -304,14 +659,25 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     let closed = 0;
     const ui = render(<ChartsPanel renderer={renderer} onClose={() => { closed += 1; }} />);
     await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
     await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
     assert.ok(useViewerStore.getState().chartVisibilityOwned);
+    const selected = useViewerStore.getState().selectedEntityIds;
+    const livePaint = useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides ?? null;
+    assert.equal(chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected, livePaint).selectedIds.size, 0);
     click(ui.querySelector('button[aria-label="Close charts"]')!);
     assert.equal(closed, 1);
     cleanup();
     assert.equal(useViewerStore.getState().chartVisibilityOwned, null);
     assert.equal(useViewerStore.getState().ghostExceptEntities, null);
+    assert.equal(useViewerStore.getState().overlayLayers.get('charts'), undefined);
+    assert.equal(
+      chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected, null).selectedIds,
+      selected,
+      'after paint teardown the logical selection returns to the ordinary renderer unchanged',
+    );
   });
 
   it('removing the model releases the panel\'s claim and drops the slice', async () => {
@@ -327,10 +693,48 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
   });
 });
 
+describe('overlapping chart bucket paint (#4832)', () => {
+  it('keeps the clicked bucket colour authoritative for a shared entity', () => {
+    const dataset: ChartDataset = {
+      source: 'clash',
+      columns: [{ id: 'Rule', label: 'Rule', kind: 'category' }],
+      rows: [
+        { ids: [1, 2], values: ['Rule A'] },
+        { ids: [1, 3], values: ['Rule B'] },
+      ],
+      fingerprint: 'overlap',
+    };
+    const aggregation = aggregate({
+      id: 'rules',
+      title: 'Rules',
+      source: 'clash',
+      type: 'bar',
+      dimension: 'Rule',
+      measure: { agg: 'count' },
+      sort: 'label',
+    }, dataset);
+    const clicked = { seriesKey: aggregation.series[0].key, bucketKey: aggregation.series[0].buckets[0].key, isOther: false, color: aggregation.series[0].buckets[0].color };
+    const clickedColor = aggregation.series[0].buckets[0].color;
+    const otherColor = aggregation.series[0].buckets[1].color;
+    assert.notEqual(clickedColor, otherColor, 'the fixture must expose an overwrite');
+
+    const colors = chartColorOverrides(aggregation, new Set([1, 2]), 'ghost', [clicked]);
+    const expected = [
+      Number.parseInt(clickedColor.slice(1, 3), 16) / 255,
+      Number.parseInt(clickedColor.slice(3, 5), 16) / 255,
+      Number.parseInt(clickedColor.slice(5, 7), 16) / 255,
+      1,
+    ];
+    assert.deepEqual(colors.get(1), expected, 'shared id keeps clicked Rule A, not later Rule B');
+    assert.deepEqual(colors.get(2), expected);
+    assert.equal(colors.has(3), false, 'ghost context retains its authored colour');
+  });
+});
+
 describe('report export from the panel (#3944)', () => {
   beforeEach(async () => {
     const model = await parsedModel();
-    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null, chartSlice: null, chartSliceSource: null, chartVisibilityOwned: null, selectedEntityIds: new Set(), overlayLayers: new Map(), cameraCallbacks: {} });
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null, chartSlice: null, chartSliceSource: null, chartSliceBuckets: null, chartVisibilityOwned: null, selectedEntityIds: new Set(), overlayLayers: new Map(), cameraCallbacks: {} });
   });
   afterEach(() => cleanup());
 

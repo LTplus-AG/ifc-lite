@@ -1,5 +1,16 @@
 # @ifc-lite/create
 
+## 2.5.0
+
+### Minor Changes
+
+- [#4835](https://github.com/LTplus-AG/ifc-lite/pull/4835) [`863a60e`](https://github.com/LTplus-AG/ifc-lite/commit/863a60ea70034cb8b5c2ebd27e7153a312556c6c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add IfcWorkCalendar / IfcWorkTime / IfcRecurrencePattern support to the 4D scheduling pipeline: calendars and their working / exception times are now extracted, round-tripped losslessly on export, and readable from `bim.schedule.data()`. `IfcCreator.addIfcWorkCalendar` (plus the `assignCalendarToTasks` alias) authors them, exposed through `bim.create.*`. Calendars are surfaced read-only — deriving working-day-aware task dates from a recurrence pattern is not implemented.
+
+### Patch Changes
+
+- Updated dependencies [[`863a60e`](https://github.com/LTplus-AG/ifc-lite/commit/863a60ea70034cb8b5c2ebd27e7153a312556c6c)]:
+  - @ifc-lite/parser@6.5.0
+
 ## 2.4.0
 
 ### Minor Changes

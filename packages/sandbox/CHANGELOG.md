@@ -1,5 +1,17 @@
 # @ifc-lite/sandbox
 
+## 2.4.0
+
+### Minor Changes
+
+- [#4835](https://github.com/LTplus-AG/ifc-lite/pull/4835) [`863a60e`](https://github.com/LTplus-AG/ifc-lite/commit/863a60ea70034cb8b5c2ebd27e7153a312556c6c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add IfcWorkCalendar / IfcWorkTime / IfcRecurrencePattern support to the 4D scheduling pipeline: calendars and their working / exception times are now extracted, round-tripped losslessly on export, and readable from `bim.schedule.data()`. `IfcCreator.addIfcWorkCalendar` (plus the `assignCalendarToTasks` alias) authors them, exposed through `bim.create.*`. Calendars are surfaced read-only — deriving working-day-aware task dates from a recurrence pattern is not implemented.
+
+### Patch Changes
+
+- [#4822](https://github.com/LTplus-AG/ifc-lite/pull/4822) [`a46657b`](https://github.com/LTplus-AG/ifc-lite/commit/a46657b63fc2848c3fc2b26359fdf511662b6368) Thanks [@louistrue](https://github.com/louistrue)! - Keep an explicit empty entity list distinct from an omitted list when resetting viewer colors, so a zero-match reset is a no-op instead of clearing every override.
+- Updated dependencies [[`a46657b`](https://github.com/LTplus-AG/ifc-lite/commit/a46657b63fc2848c3fc2b26359fdf511662b6368), [`863a60e`](https://github.com/LTplus-AG/ifc-lite/commit/863a60ea70034cb8b5c2ebd27e7153a312556c6c)]:
+  - @ifc-lite/sdk@6.1.0
+
 ## 2.3.1
 
 ### Patch Changes

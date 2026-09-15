@@ -1,5 +1,11 @@
 # @ifc-lite/geometry
 
+## 7.0.2
+
+### Patch Changes
+
+- [#4823](https://github.com/LTplus-AG/ifc-lite/pull/4823) [`d65019b`](https://github.com/LTplus-AG/ifc-lite/commit/d65019bf483643d287f5eba517fc6934c82e862d) Thanks [@louistrue](https://github.com/louistrue)! - Clean analytic prism cuts before their final ulp weld so removable slivers cannot choose a surviving seam coordinate, while preserving the audited pre-clean result when hygiene would open the surface.
+
 ## 7.0.1
 
 ### Patch Changes

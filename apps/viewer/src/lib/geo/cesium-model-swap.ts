@@ -53,6 +53,7 @@ export async function swapCesiumModel<T>(
   next: T,
   whenReady: (next: T) => Promise<void>,
   isSuperseded: () => boolean = () => false,
+  onSwapped: (next: T) => void = () => {},
 ): Promise<SwapOutcome> {
   // Replacing a primitive with itself must touch nothing. Adding it a second
   // time is not harmless on a real PrimitiveCollection — it would duplicate the
@@ -77,7 +78,10 @@ export async function swapCesiumModel<T>(
   }
   // A first model has no drawable predecessor to protect. Preserve its eager
   // publication; the stale-before-add gate above is the lifecycle guarantee.
-  if (previous === null) return 'swapped';
+  if (previous === null) {
+    onSwapped(next);
+    return 'swapped';
+  }
   try {
     await whenReady(next);
   } catch {
@@ -98,5 +102,9 @@ export async function swapCesiumModel<T>(
     return 'superseded';
   }
   if (previous !== null) primitives.remove(previous);
+  // Commit publication before resolving the async swap. Effect cleanup can
+  // then see and retire the exact primitive that replaced `previous`, even if
+  // cancellation lands in the microtask that resumes the caller (#4807).
+  onSwapped(next);
   return 'swapped';
 }

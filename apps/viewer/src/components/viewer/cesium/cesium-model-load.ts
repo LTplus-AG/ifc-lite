@@ -100,26 +100,32 @@ export async function loadCesiumModel({
     ownership = 'collection';
     // Viewer.destroy() invalidates `viewer.scene`; retain the collection that
     // accepted this primitive before readiness can suspend.
-    const primitives = viewer.scene.primitives;
+    const scene = viewer.scene;
+    const primitives = scene.primitives;
+    let published = false;
     const outcome = await swapCesiumModel(
       primitives, modelRef.current, model,
       (next) => whenModelRenderable(viewer, next, 5_000, lifetime), isSuperseded,
+      (next) => {
+        if (!lifetime.isLive(viewer) || primitives.isDestroyed()) return;
+        // This callback runs inside the swap commit, before its promise
+        // resolves. A cleanup that lands in the caller's continuation gap can
+        // therefore remove this exact primitive instead of a destroyed
+        // predecessor or a null ref.
+        ownership = 'released';
+        modelRef.current = next;
+        onInstalled(next, key);
+        published = true;
+        if (lifetime.isLive(viewer) && !primitives.isDestroyed()) scene.requestRender();
+      },
     );
-    // `swap` owns `model` until this effect publishes it. A supersession can
-    // land in the microtask between swap resolving and this continuation.
     if (outcome === 'superseded') {
       ownership = 'released';
       return;
     }
-    if (isSuperseded()) {
-      if (!primitives.isDestroyed()) primitives.remove(model);
-      ownership = 'released';
-      return;
-    }
-    ownership = 'released';
-    modelRef.current = model;
-    onInstalled(model, key);
-    if (lifetime.isLive(viewer)) viewer.scene.requestRender();
+    // A synchronous collection retirement can make the commit callback decline
+    // publication. The collection owns (and has already released) the model.
+    if (!published) ownership = 'released';
   } catch (error) {
     console.warn('[CesiumOverlay] Failed to load IFC model into Cesium:', error);
     // A collection owns every primitive handed to swap; it alone may release

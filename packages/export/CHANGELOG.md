@@ -1,5 +1,13 @@
 # @ifc-lite/export
 
+## 4.3.4
+
+### Patch Changes
+
+- [#4850](https://github.com/LTplus-AG/ifc-lite/pull/4850) [`ce84d98`](https://github.com/LTplus-AG/ifc-lite/commit/ce84d98de5fa2276eb598dff636d580df252babc) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Follow decomposition in the IFC5 tree filter, so an aggregated element and its geometry survive the default export. `Ifc5Exporter`'s `onlyTreeEntities` (default `true`) kept only what the spatial hierarchy named, so an element attached to its parent by `IfcRelAggregates` / `IfcRelNests` rather than by spatial containment — an `IfcRoof`'s `IfcSlab` parts, an assembly's members — was dropped along with its geometry while the parent stayed as a node with nothing under it. The tree set is now closed over decomposition, and an aggregated child that containment leaves unplaced is listed under the parent that decomposes it instead of being emitted unreachable.
+- Updated dependencies [[`12482c5`](https://github.com/LTplus-AG/ifc-lite/commit/12482c5f64c1298782508d536af65c4b30c342b2), [`3b10435`](https://github.com/LTplus-AG/ifc-lite/commit/3b10435ab117b1fcaf3ad7c47f7d9fdf74e0f2a4)]:
+  - @ifc-lite/geometry@7.1.0
+
 ## 4.3.3
 
 ### Patch Changes

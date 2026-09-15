@@ -1,5 +1,17 @@
 # @ifc-lite/geometry
 
+## 7.1.0
+
+### Minor Changes
+
+- [#4842](https://github.com/LTplus-AG/ifc-lite/pull/4842) [`12482c5`](https://github.com/LTplus-AG/ifc-lite/commit/12482c5f64c1298782508d536af65c4b30c342b2) Thanks [@louistrue](https://github.com/louistrue)! - Expose the mesh producer's exact RTC frame, persist it in cache format v20, and let grid, alignment, and symbolic overlay extraction use that frame instead of independently voting on coordinate shifting.
+
+### Patch Changes
+
+- [#4839](https://github.com/LTplus-AG/ifc-lite/pull/4839) [`3b10435`](https://github.com/LTplus-AG/ifc-lite/commit/3b10435ab117b1fcaf3ad7c47f7d9fdf74e0f2a4) Thanks [@louistrue](https://github.com/louistrue)! - Use the WASM pre-pass RTC decision for incremental mesh processing while retaining coordinate inference only for native producers without frame metadata.
+- Updated dependencies [[`12482c5`](https://github.com/LTplus-AG/ifc-lite/commit/12482c5f64c1298782508d536af65c4b30c342b2)]:
+  - @ifc-lite/wasm@9.1.0
+
 ## 7.0.2
 
 ### Patch Changes

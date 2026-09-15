@@ -12,13 +12,16 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useRef } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Clash, ClashResult } from '@ifc-lite/clash';
+import type { Renderer } from '@ifc-lite/renderer';
 import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf.js';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection.js';
+import { useOverlayCompositor } from '@/components/viewer/schedule/useOverlayCompositor.js';
+import { useColorOverlaySync } from '@/components/viewer/useColorOverlaySync.js';
 import { modelOverviewDashboard } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -27,7 +30,7 @@ import { render, click, cleanup } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import { EMPTY_HINTS } from './ChartCard.js';
 import { chartColorOverrides } from './useChart3DLink.js';
-import type { ChartRenderer, ChartRendererEvents } from './useEChart.js';
+import { selectionFromEChartEvent, type ChartRenderer, type ChartRendererEvents } from './useEChart.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -88,6 +91,39 @@ function recordingRenderer(): { renderer: ChartRenderer; charts: Recorded[] } {
     };
   };
   return { renderer, charts };
+}
+
+function ColorSceneProbe({ applied }: { applied: number[][] }) {
+  const pending = useViewerStore((s) => s.pendingColorUpdates);
+  const clearPending = useViewerStore((s) => s.clearPendingColorUpdates);
+  const rendererRef = useRef<Renderer | null>(null);
+  if (!rendererRef.current) {
+    let colors: ReadonlyMap<number, readonly number[]> | null = null;
+    const scene = {
+      setColorOverrides: (next: Map<number, [number, number, number, number]>) => {
+        colors = new Map(next);
+        applied.push([...next.keys()].sort((a, b) => a - b));
+      },
+      clearColorOverrides: () => { colors = null; applied.push([]); },
+      getColorOverrides: () => colors,
+      hasQueuedMeshes: () => false,
+      hasMeshData: () => true,
+      isInstancedEntity: () => false,
+    };
+    rendererRef.current = {
+      getGPUDevice: () => ({}),
+      getPipeline: () => ({}),
+      getScene: () => scene,
+      requestRender: () => {},
+    } as unknown as Renderer;
+  }
+  useColorOverlaySync({
+    rendererRef,
+    isInitialized: true,
+    pendingColorUpdates: pending,
+    clearPendingColorUpdates: clearPending,
+  });
+  return null;
 }
 
 function barData(option: EChartsOptionObject): Array<[string, number, boolean]> {
@@ -329,6 +365,94 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(useViewerStore.getState().overlayLayers.has('charts'), false);
     const restored = chartAwareRendererSelectionFromStore(null, selected, oldPaint);
     assert.equal(restored.selectedIds, selected, 'deleted charts cannot suppress selection through a cached aggregation');
+  });
+
+  it('does not restore cached chart paint after every model is cleared (#4832)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const applied: number[][] = [];
+    function MountedChartScene() {
+      useOverlayCompositor();
+      return <><ColorSceneProbe applied={applied} /><ChartsPanel renderer={renderer} /></>;
+    }
+    const ui = render(<MountedChartScene />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+    assert.equal(useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides?.size, 5);
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    assert.deepEqual(applied.at(-1), [GID(44), GID(45)]);
+
+    const beforeClear = applied.length;
+    await act(async () => { useViewerStore.getState().clearAllModels(); });
+    await settle();
+    await settle();
+    const state = useViewerStore.getState();
+    assert.equal(state.models.size, 0);
+    assert.equal(state.overlayLayers.has('charts'), false, 'an unmounted card aggregation cannot repaint removed model ids');
+    assert.equal(state.pendingColorUpdates?.size ?? 0, 0, 'the mounted scene channel cannot receive removed ids again');
+    const afterClear = applied.slice(beforeClear);
+    assert.ok(afterClear.length > 0 && afterClear.every((ids) => ids.length === 0), 'the scene clears and never reapplies the cached five ids');
+  });
+
+  it('replaces a feedback-selected overlapping bucket in the same chart (#4832)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{
+      ...dashboard.charts[0],
+      title: 'Overlapping rules',
+      source: 'clash',
+      dimension: 'Rule',
+      sort: 'label',
+      topN: undefined,
+    }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    const clash = (id: string, rule: string, a: number, b: number): Clash => ({
+      id,
+      a: { key: `${id}-a`, ref: GID(a), model: 'm1', tag: 'IfcWall' },
+      b: { key: `${id}-b`, ref: GID(b), model: 'm1', tag: 'IfcDoor' },
+      rule,
+      status: 'hard',
+      distance: -0.05,
+      point: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      severity: 'major',
+    });
+    const clashes = [
+      clash('a1', 'Rule A', 41, 42),
+      clash('a2', 'Rule A', 41, 44),
+      clash('b1', 'Rule B', 41, 42),
+    ];
+    const clashResult: ClashResult = {
+      clashes,
+      summary: { total: 3, byRule: { 'Rule A': 2, 'Rule B': 1 }, byTypePair: {}, bySeverity: { critical: 0, major: 3, minor: 0, info: 0 } },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    useViewerStore.setState({
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+      clashResult,
+      clashRunSeq: useViewerStore.getState().clashRunSeq + 1,
+    });
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual(barData(charts[0].options.at(-1)!), [['Rule A', 2, true], ['Rule B', 1, true]]);
+
+    const replacement = selectionFromEChartEvent({
+      fromAction: 'unselect',
+      fromActionPayload: { seriesIndex: 0, dataIndex: 1 },
+      selected: [{ seriesIndex: 0, dataIndex: [0] }],
+    }, undefined, charts[0].events.canClearSelection);
+    assert.deepEqual(replacement, { items: [{ seriesIndex: 0, dataIndex: 1 }] });
+    await act(async () => { charts[0].events.onSelect(replacement); });
+    await settle();
+    const state = useViewerStore.getState();
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42)]);
+    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
   });
 
   it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {

@@ -62,7 +62,7 @@ function rawIndexResolver(chart: unknown): RawDataIndex {
 export function selectionFromEChartEvent(
   params: EChartSelectChangedEvent,
   rawDataIndex?: RawDataIndex,
-  canClearSelection = true,
+  canClearSelection: boolean | ((item: ChartItem) => boolean) = true,
 ): ChartSelectEvent {
   const payload = params.fromActionPayload;
   // ECharts' click action exposes an index into the currently filtered series.
@@ -79,16 +79,18 @@ export function selectionFromEChartEvent(
   ) {
     const seriesIndex = payload.seriesIndex;
     const dataIndex = clickedDataIndex;
+    const item = { seriesIndex, dataIndex };
+    const canClear = typeof canClearSelection === 'function' ? canClearSelection(item) : canClearSelection;
     if (params.fromAction === 'unselect') {
-      return canClearSelection ? { items: [] } : { items: [{ seriesIndex, dataIndex }] };
+      return canClear ? { items: [] } : { items: [item] };
     }
     if (params.fromAction === 'toggleSelected') {
       const remainsSelected = (params.selected ?? []).some(
         (selected) => selected.seriesIndex === seriesIndex && selected.dataIndex.includes(dataIndex),
       );
-      if (!remainsSelected) return canClearSelection ? { items: [] } : { items: [{ seriesIndex, dataIndex }] };
+      if (!remainsSelected) return canClear ? { items: [] } : { items: [item] };
     }
-    return { items: [{ seriesIndex, dataIndex }] };
+    return { items: [item] };
   }
   if (params.fromAction === 'unselect') return { items: [] };
   const items: ChartItem[] = [];
@@ -110,8 +112,8 @@ export interface ChartRendererHandle {
 
 export interface ChartRendererEvents {
   onSelect: (event: ChartSelectEvent) => void;
-  /** Only the chart that produced the active slice may clear it by unselecting. */
-  canClearSelection: () => boolean;
+  /** Only the exact active bucket may clear itself by unselecting. */
+  canClearSelection: (item: ChartItem) => boolean;
 }
 
 /** Creates a chart in `el` synchronously; the real one is ECharts, tests inject a recorder. */
@@ -140,7 +142,7 @@ export const echartsRenderer: ChartRenderer = async () => {
       events.onSelect(selectionFromEChartEvent(
         params as EChartSelectChangedEvent,
         rawIndexResolver(chart),
-        events.canClearSelection(),
+        events.canClearSelection,
       ));
     });
     return {
@@ -186,8 +188,8 @@ export interface UseEChartArgs {
   selected: readonly ChartItem[];
   partial: readonly ChartItem[];
   onSelect: (event: ChartSelectEvent) => void;
-  /** True when this chart produced the active slice, rather than reflecting feedback selection. */
-  canClearSelection: boolean;
+  /** True only when the clicked item is the bucket that produced the active slice. */
+  canClearSelection: (item: ChartItem) => boolean;
   renderer?: ChartRenderer;
 }
 
@@ -216,7 +218,7 @@ export function useEChart({ option, selected, partial, onSelect, canClearSelecti
       if (disposed) return;
       handleRef.current = create(el, {
         onSelect: (e) => onSelectRef.current(e),
-        canClearSelection: () => canClearSelectionRef.current,
+        canClearSelection: (item) => canClearSelectionRef.current(item),
       });
       setReady(true);
     });

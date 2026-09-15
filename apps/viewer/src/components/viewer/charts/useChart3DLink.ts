@@ -53,6 +53,22 @@ function isSyntheticOther(bucket: { key: string }): boolean {
   return 'isOther' in bucket && bucket.isOther === true;
 }
 
+/** Stable identity for a rendered chart item across filtering and re-ordering. */
+export function chartBucketIdentity(
+  aggregation: Aggregation,
+  item: ChartItem,
+): ChartBucketIdentity | null {
+  const series = aggregation.series[item.seriesIndex];
+  const bucket = series?.buckets[item.dataIndex];
+  return series && bucket
+    ? { seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket) }
+    : null;
+}
+
+export function sameChartBucketIdentity(a: ChartBucketIdentity, b: ChartBucketIdentity): boolean {
+  return a.seriesKey === b.seriesKey && a.bucketKey === b.bucketKey && a.isOther === b.isOther;
+}
+
 /** Release the panel's claim on the isolate / ghost channel, if it still holds it. */
 export function releaseChartVisibility(): void {
   const state = useViewerStore.getState();
@@ -112,10 +128,9 @@ export function useChart3DLink(): Chart3DLink {
 
   const selectItems = useCallback((aggregation: Aggregation, items: readonly ChartItem[]) => {
     const ids = [...idsForItems(aggregation, items)];
-    const buckets = items.flatMap(({ seriesIndex, dataIndex }): ChartBucketIdentity[] => {
-      const series = aggregation.series[seriesIndex];
-      const bucket = series?.buckets[dataIndex];
-      return series && bucket ? [{ seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket) }] : [];
+    const buckets = items.flatMap((item): ChartBucketIdentity[] => {
+      const identity = chartBucketIdentity(aggregation, item);
+      return identity ? [identity] : [];
     });
     lastWrittenRef.current = new Set(ids);
     selectChartIds(ids);
@@ -207,16 +222,17 @@ export function chartColorOverrides(
 
 export function useChartColorOverlay(aggregation: Aggregation | null, selectedBuckets: readonly ChartBucketIdentity[] | null): void {
   const enabled = useViewerStore((s) => s.chartColorIn3D);
+  const modelCount = useViewerStore((s) => s.models.size);
   const selectedIds = useViewerStore((s) => s.chartSlice);
   const focusMode = useViewerStore((s) => s.chartFocusMode);
   useEffect(() => {
     const state = useViewerStore.getState();
-    if (!enabled || !aggregation) {
+    if (!enabled || !aggregation || modelCount === 0) {
       state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
       return;
     }
     const colorOverrides = chartColorOverrides(aggregation, selectedIds, focusMode, selectedBuckets);
     state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null, colorOverrides });
     return () => useViewerStore.getState().removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
-  }, [enabled, aggregation, selectedIds, focusMode, selectedBuckets]);
+  }, [enabled, aggregation, modelCount, selectedIds, focusMode, selectedBuckets]);
 }

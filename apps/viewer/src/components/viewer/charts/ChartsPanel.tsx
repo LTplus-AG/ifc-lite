@@ -88,13 +88,15 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   }, []);
   useEffect(() => {
     setAggregations((prev) => {
+      if (modelCount === 0) return prev.size === 0 ? prev : new Map();
       const next = new Map([...prev].filter(([id]) => chartIdSet.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [chartIdSet]);
+  }, [chartIdSet, modelCount]);
   // A clicked bucket keeps the colour of the chart it came from. With no
   // selection, colour by the first populated chart (the dashboard headline).
   const overlayAggregation = useMemo(() => {
+    if (modelCount === 0) return null;
     if (chartSliceSource && chartIdSet.has(chartSliceSource)) {
       const selected = aggregations.get(chartSliceSource);
       if (selected && selected.categories.length > 0) return selected;
@@ -104,7 +106,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
       if (agg && agg.categories.length > 0) return agg;
     }
     return null;
-  }, [dashboard, aggregations, chartSliceSource, chartIdSet]);
+  }, [dashboard, aggregations, chartSliceSource, chartIdSet, modelCount]);
   const overlaySelection = overlayAggregation?.spec.id === chartSliceSource ? chartSliceBuckets : null;
   useChartColorOverlay(overlayAggregation, overlaySelection);
 

@@ -19,7 +19,7 @@ export const PATTERNS = [
   },
   { name: 'destructured RTC offset', re: /\b(?:const|let)\s*\{[^}]*\bwasmRtcOffset\b[^}]*\}\s*=/ },
   { name: 'direct RTC component read', re: /\bwasmRtcOffset(?:\?\.|\.)[xyz]\b/ },
-  { name: 'IFC-to-viewer RTC tuple', re: /rtc\.x\s*,\s*(?:y:\s*)?rtc\.z\s*,\s*(?:z:\s*)?(?:-|−)rtc\.y/ },
+  { name: 'IFC-to-viewer RTC tuple', re: /\b(\w+)\.x\s*,\s*(?:y:\s*)?\1\.z\s*,\s*(?:z:\s*)?(?:-|−)\1\.y/ },
   { name: 'IFC-to-viewer axis object', re: /\by:\s*(\w+)\.z\s*,\s*z:\s*(?:0\s*-\s*|-)\1\.y/ },
   { name: 'viewer-to-IFC axis object', re: /\by:\s*(?:0\s*-\s*|-)(\w+)\.z\s*,\s*z:\s*\1\.y/ },
   { name: 'multiline Y from Z component', re: /^\s*y:\s*\w+\.z,?\s*(?:\/\/.*)?$/ },

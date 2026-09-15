@@ -21,6 +21,7 @@ const copies = [
   'const { wasmRtcOffset } = info;',
   'const up = info.wasmRtcOffset?.z ?? 0;',
   'const yup = { x: rtc.x, y: rtc.z, z: -rtc.y };',
+  'return [point.x, point.z, -point.y];',
   'return { x: p.x, y: p.z, z: 0 - p.y };',
   'return { x: p.x, y: 0 - p.z, z: p.y };',
   '  y: p.z,',

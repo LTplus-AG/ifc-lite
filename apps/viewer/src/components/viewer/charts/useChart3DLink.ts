@@ -159,20 +159,39 @@ export function useChart3DLink(): Chart3DLink {
  * Keep the `charts` overlay layer in step with the active chart's buckets while
  * "colour in 3D" is on; remove it when it is off or the aggregation is gone.
  */
+export function chartColorOverrides(
+  aggregation: Aggregation,
+  selectedIds: ReadonlySet<number> | null,
+  focusMode: ChartFocusMode,
+): Map<number, RGBA> {
+  const ghostSelection = focusMode === 'ghost' && selectedIds !== null;
+  const colorOverrides = new Map<number, RGBA>();
+  for (const bucket of aggregation.categories) {
+    const rgba = hexToRgba(bucket.color, 1);
+    for (let i = 0; i < bucket.ids.length; i++) {
+      const id = bucket.ids[i];
+      // In ghost mode the surrounding model must keep its authored colour.
+      // A renderer colour override is also an opaque-pipeline promotion, so
+      // painting context buckets here would make them bright and solid rather
+      // than translucent (#4832).
+      if (!ghostSelection || selectedIds.has(id)) colorOverrides.set(id, rgba);
+    }
+  }
+  return colorOverrides;
+}
+
 export function useChartColorOverlay(aggregation: Aggregation | null): void {
   const enabled = useViewerStore((s) => s.chartColorIn3D);
+  const selectedIds = useViewerStore((s) => s.chartSlice);
+  const focusMode = useViewerStore((s) => s.chartFocusMode);
   useEffect(() => {
     const state = useViewerStore.getState();
     if (!enabled || !aggregation) {
       state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
       return;
     }
-    const colorOverrides = new Map<number, RGBA>();
-    for (const bucket of aggregation.categories) {
-      const rgba = hexToRgba(bucket.color, 1);
-      for (let i = 0; i < bucket.ids.length; i++) colorOverrides.set(bucket.ids[i], rgba);
-    }
+    const colorOverrides = chartColorOverrides(aggregation, selectedIds, focusMode);
     state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null, colorOverrides });
     return () => useViewerStore.getState().removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
-  }, [enabled, aggregation]);
+  }, [enabled, aggregation, selectedIds, focusMode]);
 }

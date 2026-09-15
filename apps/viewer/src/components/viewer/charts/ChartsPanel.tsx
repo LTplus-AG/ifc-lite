@@ -67,6 +67,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const colorIn3D = useViewerStore((s) => s.chartColorIn3D);
   const setColorIn3D = useViewerStore((s) => s.setChartColorIn3D);
   const chartSlice = useViewerStore((s) => s.chartSlice);
+  const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
   const modelCount = useViewerStore((s) => s.models.size);
 
   // Seed the first dashboard so the panel opens with something to click.
@@ -82,14 +83,19 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const onAggregation = useCallback((spec: ChartSpec, aggregation: Aggregation | null) => {
     setAggregations((prev) => (prev.get(spec.id) === aggregation ? prev : new Map(prev).set(spec.id, aggregation)));
   }, []);
-  // Colour the 3D view by the first chart that has buckets — the dashboard's headline chart.
+  // A clicked bucket keeps the colour of the chart it came from. With no
+  // selection, colour by the first populated chart (the dashboard headline).
   const overlayAggregation = useMemo(() => {
+    if (chartSliceSource) {
+      const selected = aggregations.get(chartSliceSource);
+      if (selected && selected.categories.length > 0) return selected;
+    }
     for (const spec of dashboard?.charts ?? []) {
       const agg = aggregations.get(spec.id);
       if (agg && agg.categories.length > 0) return agg;
     }
     return null;
-  }, [dashboard, aggregations]);
+  }, [dashboard, aggregations, chartSliceSource]);
   useChartColorOverlay(overlayAggregation);
 
   const update = useCallback((next: DashboardSpec) => upsertDashboard(next), [upsertDashboard]);

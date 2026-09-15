@@ -22,6 +22,52 @@ export interface ChartSelectEvent {
   items: ChartItem[];
 }
 
+interface EChartSelectChangedEvent {
+  fromAction?: string;
+  fromActionPayload?: {
+    seriesIndex?: number;
+    dataIndex?: number;
+  };
+  selected?: Array<{ seriesIndex: number; dataIndex: number[] }>;
+}
+
+/**
+ * Translate ECharts' cumulative selection event into the clicked bucket.
+ *
+ * `selectchanged.selected` contains every item left selected by the chart.
+ * Passing that list through made a second bucket click merge with the first
+ * one in the 3D selection (#4832). The action payload identifies the bucket
+ * that caused the event, so a select replaces the prior bucket and an
+ * unselect clears it. The cumulative list remains a compatibility fallback
+ * for non-click actions that do not carry a payload.
+ */
+export function selectionFromEChartEvent(params: EChartSelectChangedEvent): ChartSelectEvent {
+  const payload = params.fromActionPayload;
+  if (params.fromAction === 'unselect') return { items: [] };
+  if (
+    (params.fromAction === 'select' || params.fromAction === 'toggleSelected')
+    && typeof payload?.seriesIndex === 'number'
+    && typeof payload.dataIndex === 'number'
+  ) {
+    const seriesIndex = payload.seriesIndex;
+    const dataIndex = payload.dataIndex;
+    if (params.fromAction === 'toggleSelected') {
+      const remainsSelected = (params.selected ?? []).some(
+        (selected) => selected.seriesIndex === seriesIndex && selected.dataIndex.includes(dataIndex),
+      );
+      if (!remainsSelected) return { items: [] };
+    }
+    return { items: [{ seriesIndex, dataIndex }] };
+  }
+  const items: ChartItem[] = [];
+  for (const selected of params.selected ?? []) {
+    for (const dataIndex of selected.dataIndex) {
+      items.push({ seriesIndex: selected.seriesIndex, dataIndex });
+    }
+  }
+  return { items };
+}
+
 export interface ChartRendererHandle {
   setOption: (option: EChartsOptionObject) => void;
   /** Push a selection into the chart without firing `onSelect` back; `partial` items get emphasis, not selection. */
@@ -57,11 +103,7 @@ export const echartsRenderer: ChartRenderer = async () => {
     // `selectchanged` reports every selected item per series after a click.
     chart.on('selectchanged', (params) => {
       if (suppress) return;
-      const items: ChartItem[] = [];
-      for (const s of (params as { selected?: Array<{ seriesIndex: number; dataIndex: number[] }> }).selected ?? []) {
-        for (const dataIndex of s.dataIndex) items.push({ seriesIndex: s.seriesIndex, dataIndex });
-      }
-      events.onSelect({ items });
+      events.onSelect(selectionFromEChartEvent(params as EChartSelectChangedEvent));
     });
     return {
       setOption: (option) => chart.setOption(option, { notMerge: true }),

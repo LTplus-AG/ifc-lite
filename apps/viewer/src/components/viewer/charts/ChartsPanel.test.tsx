@@ -63,10 +63,10 @@ END-ISO-10303-21;
 const OFFSET = 1_000_000;
 const GID = (expressId: number) => OFFSET + expressId;
 
-async function parsedModel(): Promise<FederatedModel> {
+async function parsedModel(id = 'm1', idOffset = OFFSET): Promise<FederatedModel> {
   const bytes = new TextEncoder().encode(MINI_IFC);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return { ...fixtureModel('m1', { idOffset: OFFSET }), name: 'mini.ifc', ifcDataStore: store, maxExpressId: 91 };
+  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 91 };
 }
 
 /** Records every option and selection a card pushes; can fire a chart click. */
@@ -189,6 +189,14 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.match(storeySubtitle!, /2 buckets · 2 elements/);
     const storeyOption = charts[1].options.at(-1)!;
     assert.deepEqual(barData(storeyOption).map(([n, v]) => [n, v]), [['Level 1', 1], ['Level 2', 1]]);
+
+    // A later click replaces — never unions with — the first bucket.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const replaced = useViewerStore.getState();
+    assert.deepEqual([...replaced.selectedEntityIds].sort(), [GID(41), GID(42), GID(43)]);
+    assert.deepEqual([...replaced.selectedEntitiesSet].sort(), ['m1:41', 'm1:42', 'm1:43']);
+    assert.deepEqual([...(replaced.ghostExceptEntities ?? [])].sort(), [GID(41), GID(42), GID(43)]);
   });
 
   it('switching the focus mode re-presents the selection as isolation and releases the ghost claim', async () => {
@@ -236,7 +244,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
   });
 
   it('"Colour in 3D" registers an overlay layer with every bucket\'s ids in its colour, and removes it when off', async () => {
-    const { renderer } = recordingRenderer();
+    const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
     const toggle = ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
@@ -249,9 +257,50 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     const wallColor = layer.colorOverrides?.get(GID(41));
     assert.deepEqual(layer.colorOverrides?.get(GID(42)), wallColor);
     assert.notDeepEqual(layer.colorOverrides?.get(GID(44)), wallColor);
+
+    // Under ghost focus only the clicked bucket keeps the chart paint. Context
+    // retains authored colours and receives translucency from ghostExcept.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const selectedLayer = useViewerStore.getState().overlayLayers.get('charts');
+    assert.deepEqual([...(selectedLayer?.colorOverrides?.keys() ?? [])].sort(), [GID(44), GID(45)]);
+    assert.deepEqual([...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(), [GID(44), GID(45)]);
     click(toggle);
     await settle();
     assert.equal(useViewerStore.getState().overlayLayers.get('charts'), undefined);
+  });
+
+  it('resolves one replacement bucket through both models in a federation', async () => {
+    const secondOffset = 2_000_000;
+    const second = await parsedModel('m2', secondOffset);
+    useViewerStore.setState((state) => ({
+      models: new Map([...state.models, [second.id, second]]),
+    }));
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    const state = useViewerStore.getState();
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(44), GID(45), secondOffset + 44, secondOffset + 45]);
+    assert.deepEqual([...state.selectedEntitiesSet].sort(), ['m1:44', 'm1:45', 'm2:44', 'm2:45']);
+  });
+
+  it('uses the clicked chart bucket colour rather than the headline chart colour', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+
+    // Level 1 in the second chart contains walls A/B and door A. Its three ids
+    // must share that storey bucket's colour, not the type colours from chart 1.
+    await act(async () => { charts[1].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const colors = useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides;
+    assert.deepEqual([...(colors?.keys() ?? [])].sort(), [GID(41), GID(42), GID(44)]);
+    assert.deepEqual(colors?.get(GID(41)), colors?.get(GID(44)));
   });
 
   it('a click on a stacked segment selects only that series share of the category (review finding)', async () => {

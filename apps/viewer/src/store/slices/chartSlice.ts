@@ -27,6 +27,8 @@ export interface ChartBucketIdentity {
   bucketKey: string;
   /** Synthetic top-N Other is distinct from a literal category named `__other__`. */
   isOther: boolean;
+  /** The rendered colour at click time, retained if top-N later folds this bucket into Other. */
+  color: string;
 }
 
 export interface ChartSlice {

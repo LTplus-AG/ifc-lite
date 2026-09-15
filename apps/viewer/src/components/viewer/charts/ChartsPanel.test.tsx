@@ -224,7 +224,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.isolatedEntities, null);
     assert.deepEqual(s.chartVisibilityOwned && { channel: s.chartVisibilityOwned.channel, ids: [...s.chartVisibilityOwned.ids].sort() }, { channel: 'ghost', ids: [GID(44), GID(45)] });
     assert.deepEqual([...(s.chartSlice ?? [])].sort(), [GID(44), GID(45)]);
-    assert.deepEqual(s.chartSliceBuckets, [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
+    assert.deepEqual(s.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
 
     // The source chart keeps the whole scope but marks the bucket selected;
     // the storey chart re-aggregates over the slice: one door per level.
@@ -452,14 +452,14 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     const state = useViewerStore.getState();
     assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42)]);
-    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
   });
 
   it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {
     const dashboard = modelOverviewDashboard();
     dashboard.charts = [
       { ...dashboard.charts[0], title: 'Clashes by severity', source: 'clash', dimension: 'Severity', topN: undefined },
-      { ...dashboard.charts[1], title: 'Clashes by rule', source: 'clash', type: 'bar', dimension: 'Rule', sort: undefined },
+      { ...dashboard.charts[1], title: 'Clashes by rule', source: 'clash', type: 'bar', dimension: 'Rule', sort: undefined, topN: 1 },
     ];
     dashboard.layout = dashboard.layout.slice(0, 2);
     const clash = (id: string, rule: string, severity: Clash['severity'], a: number, b: number): Clash => ({
@@ -518,15 +518,16 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
     await settle();
     const filteredRules = charts[1].options.at(-1)!;
-    assert.deepEqual(barData(filteredRules).map(([name, value]) => [name, value]), [['Rule A', 2], ['Rule B', 1]]);
+    assert.deepEqual(barData(filteredRules).map(([name, value]) => [name, value]), [['Rule A', 2], ['Other', 1]]);
     const filteredSeries = filteredRules.series as Array<{ data: Array<{ name: string; itemStyle: { color: string } }> }>;
     const clickedColor = filteredSeries[0].data[0].itemStyle.color;
 
     await act(async () => { charts[1].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
     await settle();
-    assert.deepEqual(barData(charts[1].options.at(-1)!).map(([name, value]) => [name, value]), [['Rule B', 3], ['Rule A', 2]]);
+    assert.deepEqual(barData(charts[1].options.at(-1)!).map(([name, value]) => [name, value]), [['Rule B', 3], ['Other', 2]]);
     const state = useViewerStore.getState();
-    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
+    assert.equal(state.chartSliceBuckets?.[0]?.color, clickedColor, 'the click-time colour survives folding into Other');
     assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42), GID(44)]);
     const expected = [
       Number.parseInt(clickedColor.slice(1, 3), 16) / 255,
@@ -589,7 +590,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
     const state = useViewerStore.getState();
-    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
     const expected = [
       Number.parseInt(gray.slice(1, 3), 16) / 255,
       Number.parseInt(gray.slice(3, 5), 16) / 255,
@@ -712,7 +713,7 @@ describe('overlapping chart bucket paint (#4832)', () => {
       measure: { agg: 'count' },
       sort: 'label',
     }, dataset);
-    const clicked = { seriesKey: aggregation.series[0].key, bucketKey: aggregation.series[0].buckets[0].key, isOther: false };
+    const clicked = { seriesKey: aggregation.series[0].key, bucketKey: aggregation.series[0].buckets[0].key, isOther: false, color: aggregation.series[0].buckets[0].color };
     const clickedColor = aggregation.series[0].buckets[0].color;
     const otherColor = aggregation.series[0].buckets[1].color;
     assert.notEqual(clickedColor, otherColor, 'the fixture must expose an overwrite');

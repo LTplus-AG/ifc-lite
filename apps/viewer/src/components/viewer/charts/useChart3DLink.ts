@@ -61,7 +61,7 @@ export function chartBucketIdentity(
   const series = aggregation.series[item.seriesIndex];
   const bucket = series?.buckets[item.dataIndex];
   return series && bucket
-    ? { seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket) }
+    ? { seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket), color: bucket.color }
     : null;
 }
 
@@ -210,10 +210,10 @@ export function chartColorOverrides(
     const bucket = series?.buckets.find((candidate) => (
       candidate.key === selected.bucketKey && isSyntheticOther(candidate) === selected.isOther
     ));
-    if (!series || !bucket) continue;
-    const rgba = hexToRgba(bucket.color, 1);
-    for (let i = 0; i < bucket.ids.length; i++) {
-      const id = bucket.ids[i];
+    if (!series) continue;
+    const rgba = hexToRgba(selected.color, 1);
+    const ids = bucket?.ids ?? selectedIds ?? [];
+    for (const id of ids) {
       if (!ghostSelection || selectedIds.has(id)) colorOverrides.set(id, rgba);
     }
   }

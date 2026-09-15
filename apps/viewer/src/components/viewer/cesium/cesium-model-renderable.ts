@@ -11,6 +11,12 @@ export type CesiumModelPrimitive = {
   destroy?: () => void;
 };
 
+/** A viewer lifetime can cancel readiness without pretending it timed out. */
+export interface RenderableCancellation {
+  isRetired(): boolean;
+  onRetire(listener: () => void): () => void;
+}
+
 /**
  * Resolves once `model` can actually draw.
  *
@@ -28,16 +34,23 @@ export function whenModelRenderable(
   viewer: { scene: { requestRender(): void; postRender: { addEventListener(cb: () => void): () => void } }; },
   model: CesiumModelPrimitive,
   timeoutMs = 5_000,
+  cancellation?: RenderableCancellation,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let done = false;
-    const finish = (ok: boolean) => {
+    let offCancel: (() => void) | undefined;
+    const finish = (outcome: 'ready' | 'timeout' | 'cancelled') => {
       if (done) return;
       done = true;
       offReady?.();
       offFrame?.();
+      offCancel?.();
       globalThis.clearTimeout(timer);
-      if (ok) { resolve(); return; }
+      if (outcome === 'ready') { resolve(); return; }
+      if (outcome === 'cancelled') {
+        reject(new Error('model readiness cancelled because its Viewer retired'));
+        return;
+      }
       // Bounded on purpose: the timeout path degrades to exactly the old
       // behaviour (drop the previous model and accept a brief blank), so a
       // model that is merely slow costs a flicker, not a stranded primitive.
@@ -51,15 +64,17 @@ export function whenModelRenderable(
         // Scene runs afterRender (and readyEvent) BEFORE postRender in the
         // same frame. That frame has not drawn the new model yet.
         if (skipReadyFrame) { skipReadyFrame = false; viewer.scene.requestRender(); return; }
-        finish(true);
+        finish('ready');
       });
       viewer.scene.requestRender();
     };
     let offFrame: (() => void) | undefined;
     let offReady: (() => void) | undefined;
-    const timer = globalThis.setTimeout(() => finish(false), timeoutMs);
+    const timer = globalThis.setTimeout(() => finish('timeout'), timeoutMs);
+    if (cancellation?.isRetired()) { finish('cancelled'); return; }
+    offCancel = cancellation?.onRetire(() => finish('cancelled'));
     if (model.ready) { afterReady(false); return; }
-    if (!model.readyEvent) { finish(true); return; } // nothing to wait on
+    if (!model.readyEvent) { finish('ready'); return; } // nothing to wait on
     offReady = model.readyEvent.addEventListener(() => { offReady?.(); afterReady(true); });
     viewer.scene.requestRender();
   });

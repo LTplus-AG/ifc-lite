@@ -25,11 +25,13 @@ import { sunPosition, sunTimes } from '@ifc-lite/solar';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { getCesiumModule } from './cesium-module';
+import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
 
 export interface UseCesiumSolarParams {
   status: 'idle' | 'loading' | 'ready' | 'error';
   bridgeVersion: number;
   viewerRef: RefObject<InstanceType<typeof import('cesium').Viewer> | null>;
+  viewerLifetimeRef: RefObject<CesiumViewerLifetime | null>;
   bridgeRef: RefObject<CesiumBridge | null>;
   /** The primitive currently on the globe, whose shadow mode this sets. */
   modelRef: RefObject<{ shadows?: unknown } | null>;
@@ -55,6 +57,7 @@ export function useCesiumSolar({
   status,
   bridgeVersion,
   viewerRef,
+  viewerLifetimeRef,
   bridgeRef,
   modelRef: cesiumModelRef,
   modelEpoch: cesiumModelEpoch,
@@ -81,9 +84,10 @@ export function useCesiumSolar({
   // publishes the resolved sun position/times back to the store for the panel.
   useEffect(() => {
     const viewer = viewerRef.current;
+    const lifetime = viewerLifetimeRef.current;
     const bridge = bridgeRef.current;
     const Cesium = getCesiumModule();
-    if (status !== 'ready' || !viewer || !bridge || !Cesium) return;
+    if (status !== 'ready' || !viewer || !lifetime?.isLive(viewer) || !bridge || !Cesium) return;
 
     // Never mutate the default Cesium lighting until the study is first
     // enabled — a plain georeferenced model shouldn't have its context
@@ -146,7 +150,7 @@ export function useCesiumSolar({
               radius,
               date,
               showAnalemmas: true,
-            });
+            }, lifetime);
             sunPathDomeDayRef.current = dayKey;
           } else {
             // Same day, new time → just move the sun marker + beam.
@@ -166,7 +170,7 @@ export function useCesiumSolar({
       sunPathDomeDayRef.current = null;
     }
 
-    viewer.scene.requestRender();
+    if (lifetime.isLive(viewer)) viewer.scene.requestRender();
   }, [
     status,
     bridgeVersion,
@@ -187,8 +191,9 @@ export function useCesiumSolar({
   // composites over the app background like the rest of the overlay.
   useEffect(() => {
     const viewer = viewerRef.current;
+    const lifetime = viewerLifetimeRef.current;
     const Cesium = getCesiumModule();
-    if (status !== 'ready' || !viewer || !Cesium) return;
+    if (status !== 'ready' || !viewer || !lifetime?.isLive(viewer) || !Cesium) return;
     const scene = viewer.scene;
     if (scene.skyAtmosphere) scene.skyAtmosphere.show = envSkyEnabled;
     scene.fog.enabled = envSkyEnabled;
@@ -199,10 +204,13 @@ export function useCesiumSolar({
     if (scene.sun && !solarTouchedSceneRef.current) {
       scene.sun.show = envSkyEnabled;
     }
-    scene.requestRender();
+    if (lifetime.isLive(viewer)) scene.requestRender();
   }, [status, envSkyEnabled]);
 
   const invalidate = () => {
+    // Viewer teardown owns the DataSourceCollection. Do not ask a destroyed
+    // collection to remove it; retirement makes the dome's late attach a noop.
+    sunPathDomeRef.current?.destroy();
     sunPathDomeRef.current = null;
     sunPathDomeDayRef.current = null;
     solarTouchedSceneRef.current = false;

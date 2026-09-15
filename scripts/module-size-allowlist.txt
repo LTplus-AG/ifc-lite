@@ -67,7 +67,7 @@
    428 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    541 apps/viewer/src/components/viewer/BCFPanel.tsx
   1061 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
-   487 apps/viewer/src/components/viewer/CesiumOverlay.tsx
+   486 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
    418 apps/viewer/src/components/viewer/chat/ExecutableCodeBlock.tsx
   1802 apps/viewer/src/components/viewer/ChatPanel.tsx

@@ -32,6 +32,13 @@ export interface TerrainElevationSample {
 export interface ResolveTerrainElevationOptions {
   cacheNamespace?: string;
   preferOrthometric?: boolean;
+  /** Cancels fallbacks and detailed sampling when the owning Viewer retires. */
+  cancellation?: TerrainElevationCancellation;
+}
+
+export interface TerrainElevationCancellation {
+  isCancelled(): boolean;
+  onCancel(listener: () => void): () => void;
 }
 
 // Module-level cache so bridge rebuilds (georef edits, clamp toggles)
@@ -126,6 +133,7 @@ function getTerrainSourceCandidates(
     position: InstanceType<typeof import('cesium').Cartographic>,
     lat: number,
     lon: number,
+    cancellation?: TerrainElevationCancellation,
   ) => Promise<{ height: number | undefined | null; elapsedMs?: number; skipped?: boolean }>;
 }> {
   const candidates = [
@@ -135,7 +143,11 @@ function getTerrainSourceCandidates(
         _Cesium: typeof import('cesium'),
         viewer: InstanceType<typeof import('cesium').Viewer>,
         position: InstanceType<typeof import('cesium').Cartographic>,
+        _lat: number,
+        _lon: number,
+        cancellation?: TerrainElevationCancellation,
       ) => {
+        if (cancellation?.isCancelled()) return { height: null, skipped: true };
         if (!viewer.scene.sampleHeightSupported) return { height: null, skipped: true };
         return { height: viewer.scene.sampleHeight(position) };
       },
@@ -146,22 +158,29 @@ function getTerrainSourceCandidates(
         _Cesium: typeof import('cesium'),
         viewer: InstanceType<typeof import('cesium').Viewer>,
         position: InstanceType<typeof import('cesium').Cartographic>,
+        _lat: number,
+        _lon: number,
+        cancellation?: TerrainElevationCancellation,
       ) => {
+        if (cancellation?.isCancelled()) return { height: null, skipped: true };
         if (!viewer.scene.sampleHeightSupported) return { height: null, skipped: true };
 
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let stopCancellation: (() => void) | undefined;
         try {
           const t0 = performance.now();
           const detailed = viewer.scene.sampleHeightMostDetailed([position]);
           const timeout = new Promise<null>((resolve) => {
             timeoutId = setTimeout(() => resolve(null), SAMPLE_DETAILED_TIMEOUT_MS);
           });
-          const winner = await Promise.race([detailed, timeout]);
+          const cancelled = new Promise<null>((resolve) => {
+            stopCancellation = cancellation?.onCancel(() => resolve(null));
+          });
+          const winner = await Promise.race([detailed, timeout, cancelled]);
           const elapsedMs = performance.now() - t0;
           if (winner === null) {
-            console.debug(
-              `[TerrainElevation] sampleHeightMostDetailed timed out after ${elapsedMs.toFixed(0)}ms`,
-            );
+            const reason = cancellation?.isCancelled() ? 'cancelled' : 'timed out';
+            console.debug(`[TerrainElevation] sampleHeightMostDetailed ${reason} after ${elapsedMs.toFixed(0)}ms`);
             return { height: null, elapsedMs, skipped: true };
           }
 
@@ -169,6 +188,7 @@ function getTerrainSourceCandidates(
           return { height: r0?.height, elapsedMs };
         } finally {
           if (timeoutId !== undefined) clearTimeout(timeoutId);
+          stopCancellation?.();
         }
       },
     },
@@ -178,7 +198,11 @@ function getTerrainSourceCandidates(
         _Cesium: typeof import('cesium'),
         viewer: InstanceType<typeof import('cesium').Viewer>,
         position: InstanceType<typeof import('cesium').Cartographic>,
+        _lat: number,
+        _lon: number,
+        cancellation?: TerrainElevationCancellation,
       ) => {
+        if (cancellation?.isCancelled()) return { height: null, skipped: true };
         const h = viewer.scene.globe.getHeight(position);
         if (h !== undefined && Math.abs(h) <= 1e-3) {
           return { height: null, skipped: true };
@@ -194,7 +218,9 @@ function getTerrainSourceCandidates(
         _position: InstanceType<typeof import('cesium').Cartographic>,
         lat: number,
         lon: number,
+        cancellation?: TerrainElevationCancellation,
       ) => {
+        if (cancellation?.isCancelled()) return { height: null, skipped: true };
         const t0 = performance.now();
         const elev = await queryTerrainElevation({ lat, lon });
         return { height: elev, elapsedMs: performance.now() - t0 };
@@ -219,6 +245,8 @@ export async function resolveTerrainElevationDetailed(
   options: ResolveTerrainElevationOptions = {},
 ): Promise<TerrainElevationSample | null> {
   const cacheNamespace = options.cacheNamespace ?? 'default';
+  const cancellation = options.cancellation;
+  if (cancellation?.isCancelled()) return null;
   const preferOrthometric = options.preferOrthometric ?? false;
   const cacheKey = terrainCacheKey(lat, lon, cacheNamespace);
   const cached = terrainElevationCache.get(cacheKey);
@@ -236,10 +264,12 @@ export async function resolveTerrainElevationDetailed(
   };
 
   for (const candidate of getTerrainSourceCandidates(preferOrthometric)) {
+    if (cancellation?.isCancelled()) return null;
     try {
       const { height, elapsedMs, skipped } = await candidate.resolve(
-        Cesium, viewer, position, lat, lon,
+        Cesium, viewer, position, lat, lon, cancellation,
       );
+      if (cancellation?.isCancelled()) return null;
       if (height !== undefined && height !== null && isPlausibleElevation(height)) {
         return acceptTerrainElevation(
           cacheKey,

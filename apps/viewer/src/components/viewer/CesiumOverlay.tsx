@@ -32,6 +32,7 @@ import { useCesiumBridge } from './cesium/useCesiumBridge';
 import { useCesiumModel } from './cesium/useCesiumModel';
 import { useCesiumSolar } from './cesium/useCesiumSolar';
 import { useCesiumCameraSync } from './cesium/useCesiumCameraSync';
+import { CesiumViewerLifetime } from './cesium/cesium-viewer-lifetime';
 
 export interface CesiumOverlayProps {
   mapConversion?: MapConversion;
@@ -63,6 +64,8 @@ export function CesiumOverlay({
 }: CesiumOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof import('cesium').Viewer> | null>(null);
+  /** Published synchronously after construction; retires all async owners (#4807). */
+  const viewerLifetimeRef = useRef<CesiumViewerLifetime | null>(null);
   const bridgeRef = useRef<CesiumBridge | null>(null);
   const cameraBridgeRef = useRef<CesiumBridge | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -107,6 +110,17 @@ export function CesiumOverlay({
     if (!cesiumEnabled || !containerRef.current) return;
 
     let cancelled = false;
+    /** Exact owner for this effect run; status gates all consumers. */
+    let ownedViewer: InstanceType<typeof import('cesium').Viewer> | null = null;
+    let ownedLifetime: CesiumViewerLifetime | null = null;
+    const destroyOwnedViewer = () => {
+      ownedLifetime?.retire();
+      if (ownedViewer && !ownedViewer.isDestroyed?.()) ownedViewer.destroy();
+      if (viewerRef.current === ownedViewer) viewerRef.current = null;
+      if (viewerLifetimeRef.current === ownedLifetime) viewerLifetimeRef.current = null;
+      ownedViewer = null;
+      ownedLifetime = null;
+    };
     // Cesium's `addEventListener` returns its own remover; hold it so the
     // cleanup can detach the basemap error listener with the effect.
     let removeBasemapErrorListener: (() => void) | null = null;
@@ -143,14 +157,14 @@ export function CesiumOverlay({
           maximumRenderTimeChange: Infinity,
           baseLayer: false,
         });
+        const lifetime = new CesiumViewerLifetime(viewer);
+        ownedViewer = viewer;
+        ownedLifetime = lifetime;
+        viewerRef.current = viewer;
+        viewerLifetimeRef.current = lifetime;
+        if (cancelled) { destroyOwnedViewer(); return; }
 
-        if (cancelled) { viewer.destroy(); return; }
-
-        // Disable Cesium's user input — the IFC viewer drives the camera,
-        // and any input Cesium intercepts (even a stray wheel/touch event
-        // past pointer-events:none) interferes with our orbit/zoom and
-        // produces "stuck to terrain" symptoms. enableInputs is the
-        // master kill-switch; the per-mode flags below are belt-and-braces.
+        // IFC viewer owns input; Cesium camera controls stay disabled.
         const scene = viewer.scene;
         const sscc = scene.screenSpaceCameraController;
         sscc.enableInputs = false;
@@ -291,7 +305,7 @@ export function CesiumOverlay({
               // `!cancelled`: a bad host can take a while to fail (or a slow
               // one to succeed), and the user may have switched sources by
               // then — same guard as the custom XYZ basemap above.
-              if (!cancelled) {
+              if (!cancelled && lifetime.isLive(viewer)) {
                 viewer.scene.primitives.add(tileset);
                 tilesetRef.current = tileset;
               } else {
@@ -331,26 +345,23 @@ export function CesiumOverlay({
           // z-fight underneath them.
           scene.globe.show = false;
         }
-        if (cancelled) { viewer.destroy(); return; }
+        if (cancelled || !lifetime.isLive(viewer)) { destroyOwnedViewer(); return; }
 
-        // Add terrain
         if (terrainEnabled && ionToken) {
           try {
             const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
-            viewer.terrainProvider = terrainProvider;
-          } catch { /* terrain unavailable */ }
+            if (lifetime.isLive(viewer)) viewer.terrainProvider = terrainProvider;
+          } catch (err) {
+            // Terrain is optional, but do not hide a live setup failure.
+            if (lifetime.isLive(viewer)) console.warn('[CesiumOverlay] terrain unavailable:', err);
+          }
         }
-
-        // Add data source layer. custom-3dtiles is handled inline above (it
-        // needs `customTilesetUrl` and warns instead of failing silently);
-        // this helper only owns the three built-in tileset sources.
         if (dataSource !== 'custom-3dtiles') {
-          tilesetRef.current = await addDataSourceLayer(Cesium, viewer, dataSource, ionToken);
+          const tileset = await addDataSourceLayer(Cesium, viewer, dataSource, ionToken, lifetime);
+          if (!cancelled && lifetime.isLive(viewer)) tilesetRef.current = tileset;
         }
+        if (cancelled || !lifetime.isLive(viewer)) { destroyOwnedViewer(); return; }
 
-        if (cancelled) { viewer.destroy(); return; }
-
-        viewerRef.current = viewer;
         setStatus('ready');
       } catch (err) {
         if (!cancelled) {
@@ -363,17 +374,11 @@ export function CesiumOverlay({
 
     return () => {
       cancelled = true;
+      destroyOwnedViewer();
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
-      if (viewerRef.current) {
-        viewerRef.current.destroy();
-        viewerRef.current = null;
-      }
-      // Invalidate model ref — the destroyed viewer took the primitive with it,
-      // so Effect 2c must re-load the GLB into the next viewer instance. The
-      // store flag has to follow, or it advertises a model that is gone.
       invalidateModelRef.current();
       bridgeRef.current = null;
       // The destroyed viewer also took the tileset + sun-path entities.
@@ -392,6 +397,7 @@ export function CesiumOverlay({
   const { bridgeVersion } = useCesiumBridge({
     status,
     viewerRef,
+    viewerLifetimeRef,
     bridgeRef,
     cameraBridgeRef,
     mapConversion,
@@ -411,6 +417,7 @@ export function CesiumOverlay({
     status,
     bridgeVersion,
     viewerRef,
+    viewerLifetimeRef,
     bridgeRef,
     geometryResult,
     coordinateInfo,
@@ -428,6 +435,7 @@ export function CesiumOverlay({
     status,
     bridgeVersion,
     viewerRef,
+    viewerLifetimeRef,
     bridgeRef,
     modelRef: cesiumModelRef,
     modelEpoch: cesiumModelEpoch,
@@ -450,15 +458,6 @@ export function CesiumOverlay({
         className="absolute inset-0 z-0"
         style={{ pointerEvents: 'none' }}
       />
-      {/*
-        One stack, not three absolutely positioned siblings at the same offset.
-        The basemap warning is raised from inside the init routine, since the
-        custom branch runs before `setStatus('ready')`, so it and the loading banner
-        are both on screen for exactly the case that most needs reading, a slow
-        or refused tile host, and at `top-2 left-1/2` they landed on top of each
-        other. Stacked, each banner keeps its own colour and the order is
-        status-then-warning.
-      */}
       {(status === 'loading' || (status === 'error' && error) || basemapWarning) && (
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5">
         {status === 'loading' && (

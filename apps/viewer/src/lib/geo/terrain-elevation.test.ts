@@ -83,6 +83,34 @@ afterEach(() => {
 });
 
 describe('terrain elevation source cascade', () => {
+  it('cancels detailed sampling without falling through or publishing its result (#4807)', async () => {
+    let resolveDetailed!: (value: Array<{ height?: number }>) => void;
+    const detailed = new Promise<Array<{ height?: number }>>((resolve) => { resolveDetailed = resolve; });
+    let globeCalls = 0;
+    const { viewer } = makeViewer({
+      sampleHeight: () => undefined,
+      sampleHeightMostDetailed: () => detailed,
+      globe: { getHeight: () => { globeCalls += 1; return 42; } },
+    });
+    let cancelled = false;
+    const listeners = new Set<() => void>();
+    const cancellation = {
+      isCancelled: () => cancelled,
+      onCancel(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); },
+    };
+    const pending = resolveTerrainElevationDetailed(CESIUM, viewer, 47.3, 8.5, {
+      cacheNamespace: freshNs(), cancellation,
+    });
+    await Promise.resolve();
+    cancelled = true;
+    for (const listener of listeners) listener();
+
+    assert.equal(await pending, null);
+    assert.equal(globeCalls, 0, 'retirement must stop the fallback cascade');
+    assert.equal(listeners.size, 0, 'the detailed-sampling cancellation listener must be released');
+    resolveDetailed([{ height: 123 }]);
+  });
+
   it('falls past an implausible reading to the next source', async () => {
     // THE case the mutation exposed. -50000 is below the Mariana Trench and is
     // the depth-buffer garbage the guard exists to reject. If the guard were

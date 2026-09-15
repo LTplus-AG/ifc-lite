@@ -13,6 +13,14 @@ export type SwapOutcome = 'swapped' | 'superseded';
 export interface PrimitiveCollectionLike<T> {
   add(primitive: T): unknown;
   remove(primitive: T): boolean;
+  isDestroyed?: () => boolean;
+}
+
+type Destroyable = { destroy?: () => void; isDestroyed?: () => boolean };
+
+function releaseStandalone<T>(primitive: T): void {
+  const destroyable = primitive as T & Destroyable;
+  if (!destroyable.isDestroyed?.()) destroyable.destroy?.();
 }
 
 /**
@@ -50,7 +58,25 @@ export async function swapCesiumModel<T>(
   // time is not harmless on a real PrimitiveCollection — it would duplicate the
   // draw or throw — and there would be nothing left to release afterwards.
   if (previous === next) return 'swapped';
-  primitives.add(next);
+  // A first load can become stale before it reaches the collection too. Never
+  // add an orphan to a destroyed/stale scene just to immediately remove it.
+  if (isSuperseded() || primitives.isDestroyed?.()) {
+    releaseStandalone(next);
+    return 'superseded';
+  }
+  try {
+    primitives.add(next);
+  } catch (error) {
+    if (isSuperseded() || primitives.isDestroyed?.()) {
+      releaseStandalone(next);
+      return 'superseded';
+    }
+    // `add` did not take ownership when it threw.
+    releaseStandalone(next);
+    throw error;
+  }
+  // A first model has no drawable predecessor to protect. Preserve its eager
+  // publication; the stale-before-add gate above is the lifecycle guarantee.
   if (previous === null) return 'swapped';
   try {
     await whenReady(next);
@@ -64,10 +90,13 @@ export async function swapCesiumModel<T>(
   // reference to, and leave `next` in the collection owned by nobody —
   // rendering geometry that has already been superseded. Back out instead:
   // drop what we added (which destroys it) and leave the live model alone.
-  if (isSuperseded()) {
-    primitives.remove(next);
+  if (isSuperseded() || primitives.isDestroyed?.()) {
+    // A live collection owns its children and `remove` releases them. A
+    // destroyed collection has already done so; calling it again is the exact
+    // DeveloperError reported in #4807.
+    if (!primitives.isDestroyed?.()) primitives.remove(next);
     return 'superseded';
   }
-  primitives.remove(previous);
+  if (previous !== null) primitives.remove(previous);
   return 'swapped';
 }

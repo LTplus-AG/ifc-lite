@@ -13,6 +13,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { PrimitiveCollection } from 'cesium';
 import { swapCesiumModel } from './cesium-model-swap.js';
 
 /** Records every operation and the collection's contents after each one. */
@@ -138,6 +139,21 @@ describe('swapCesiumModel', () => {
     assert.deepEqual([...c.contents], ['old'], 'the live model must survive untouched');
   });
 
+  it('backs out when primitive attachment schedules supersession in a microtask (#4807)', async () => {
+    const c = fakeCollection();
+    c.add('old');
+    let superseded = false;
+    const originalAdd = c.add;
+    c.add = (primitive: string) => {
+      const result = originalAdd(primitive);
+      if (primitive === 'next') queueMicrotask(() => { superseded = true; });
+      return result;
+    };
+
+    assert.equal(await swapCesiumModel(c, 'old', 'next', readyNow, () => superseded), 'superseded');
+    assert.deepEqual([...c.contents], ['old']);
+  });
+
   it('reports "swapped" when it was not superseded', async () => {
     const c = fakeCollection();
     c.add('old');
@@ -145,13 +161,13 @@ describe('swapCesiumModel', () => {
     assert.equal(await swapCesiumModel(c, 'old', 'new', readyNow, () => false), 'swapped');
   });
 
-  it('does not consult supersession when there is nothing to replace', async () => {
-    // A first load has no previous model to protect, so it must reach the globe
-    // even if the run that started it has been superseded.
+  it('rejects a superseded first load before it reaches the collection', async () => {
+    // A first load has no predecessor, but a retired owner must still prevent
+    // it from entering the collection.
     const c = fakeCollection();
 
-    assert.equal(await swapCesiumModel(c, null, 'first', readyNow, () => true), 'swapped');
-    assert.deepEqual([...c.contents], ['first']);
+    assert.equal(await swapCesiumModel(c, null, 'first', readyNow, () => true), 'superseded');
+    assert.deepEqual([...c.contents], []);
   });
 
   it('touches nothing when asked to replace a model with itself', async () => {
@@ -166,5 +182,40 @@ describe('swapCesiumModel', () => {
 
     assert.deepEqual(c.ops, [], 'no add, no remove');
     assert.deepEqual([...c.contents], ['same']);
+  });
+
+  it('does not touch a real destroyed collection while replacement readiness is pending (#4807)', async () => {
+    // This is Cesium's actual ownership implementation, not a mock: destroying
+    // the collection releases both children. Calling remove afterwards throws
+    // the DeveloperError reported by PostHog.
+    const collection = new PrimitiveCollection();
+    const old = new PrimitiveCollection();
+    const next = new PrimitiveCollection();
+    collection.add(old);
+    const gate = deferredReady();
+    let stale = false;
+
+    const swap = swapCesiumModel(collection, old, next, gate.whenReady, () => stale);
+    await Promise.resolve();
+    collection.destroy();
+    stale = true;
+    gate.release();
+
+    assert.equal(await swap, 'superseded');
+    assert.equal(next.isDestroyed(), true, 'collection retirement owns and releases the pending replacement once');
+  });
+
+  it('releases a stale standalone first model once without attaching it (#4807)', async () => {
+    const ops: string[] = [];
+    const c = {
+      add() { ops.push('add'); },
+      remove() { ops.push('remove'); return true; },
+    };
+    let releases = 0;
+    const standalone = { destroy() { releases += 1; } };
+
+    assert.equal(await swapCesiumModel(c, null, standalone, readyNow, () => true), 'superseded');
+    assert.equal(releases, 1);
+    assert.deepEqual(ops, []);
   });
 });

@@ -6,6 +6,16 @@ import assert from 'node:assert/strict';
 import { Event, Matrix4 } from 'cesium';
 import { whenModelRenderable } from './cesium-model-renderable';
 
+function cancellation() {
+  let retired = false;
+  const listeners = new Set<() => void>();
+  return {
+    isRetired: () => retired,
+    onRetire(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); },
+    retire() { retired = true; for (const listener of listeners) listener(); },
+  };
+}
+
 it('drives an idle request-render scene through readiness and the first drawn replacement frame (#4226)', async () => {
   const readyEvent = new Event(), postRender = new Event();
   let requested = false, drawn = 0, completed = false;
@@ -40,5 +50,23 @@ it('requests the first drawn frame for a model that was already ready (#4226)', 
     { modelMatrix: new Matrix4(), ready: true });
   try { assert.equal(requested, true); }
   finally { postRender.raiseEvent(); await waiting; }
+  assert.equal(postRender.numberOfListeners, 0);
+});
+
+it('cancels readiness listeners when its Viewer retires between ready and the draw frame (#4807)', async () => {
+  const readyEvent = new Event(), postRender = new Event();
+  const lifetime = cancellation();
+  const model = { modelMatrix: new Matrix4(), ready: false, readyEvent };
+  const waiting = whenModelRenderable(
+    { scene: { postRender, requestRender() {} } }, model, 5_000, lifetime,
+  );
+
+  model.ready = true;
+  readyEvent.raiseEvent();
+  assert.equal(postRender.numberOfListeners, 1, 'the next frame is still required by #4226');
+  lifetime.retire();
+
+  await assert.rejects(waiting, /Viewer retired/);
+  assert.equal(readyEvent.numberOfListeners, 0);
   assert.equal(postRender.numberOfListeners, 0);
 });

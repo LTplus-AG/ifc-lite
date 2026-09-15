@@ -32,10 +32,13 @@ import { egm96Undulation } from '@/lib/geo/egm96-undulation';
 import { holdCameraY, type ViewerHeightFrame } from '@/lib/geo/viewer-up-scale';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { getCesiumModule } from './cesium-module';
+import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
 
 export interface UseCesiumBridgeParams {
   status: 'idle' | 'loading' | 'ready' | 'error';
   viewerRef: RefObject<InstanceType<typeof import('cesium').Viewer> | null>;
+  /** Synchronously retired before the Viewer owning async terrain work dies. */
+  viewerLifetimeRef: RefObject<CesiumViewerLifetime | null>;
   /** Written by this hook; read by the model, camera and solar hooks. */
   bridgeRef: RefObject<CesiumBridge | null>;
   /** The camera-side bridge, which diverges from the model's only while a
@@ -57,6 +60,7 @@ export interface UseCesiumBridgeResult {
 export function useCesiumBridge({
   status,
   viewerRef,
+  viewerLifetimeRef,
   bridgeRef,
   cameraBridgeRef,
   mapConversion,
@@ -112,7 +116,8 @@ export function useCesiumBridge({
     (async () => {
       const Cesium = getCesiumModule();
       const viewer = viewerRef.current;
-      if (!Cesium || !viewer) return;
+      const lifetime = viewerLifetimeRef.current;
+      if (!Cesium || !viewer || !lifetime?.isLive(viewer)) return;
 
       const cameraConversion = cameraMapConversion ?? mapConversion;
       const usesSeparateCameraBridge = cameraConversion !== mapConversion;
@@ -120,7 +125,7 @@ export function useCesiumBridge({
         cameraConversion, projectedCRS, coordinateInfo, lengthUnitScale,
         undefined, heightsAreEllipsoidal,
       );
-      if (cancelled) return;
+      if (cancelled || !lifetime.isLive(viewer)) return;
       if (!cameraTentative) {
         bridgeRef.current = null;
         cameraBridgeRef.current = null;
@@ -142,10 +147,14 @@ export function useCesiumBridge({
             preferOrthometricTerrain ? 'orthometric' : 'visual-surface',
           ].join(':'),
           preferOrthometric: preferOrthometricTerrain,
+          cancellation: {
+            isCancelled: () => cancelled || !lifetime.isLive(viewer),
+            onCancel: (stop) => lifetime.onRetire(stop),
+          },
         });
       }
       catch (err) { console.warn('[CesiumOverlay] terrain query failed:', err); }
-      if (cancelled) return;
+      if (cancelled || !lifetime.isLive(viewer)) return;
       const terrainH = terrainSample?.height ?? null;
       const modelTentative = usesSeparateCameraBridge
         ? await createCesiumBridge(
@@ -153,7 +162,7 @@ export function useCesiumBridge({
             undefined, heightsAreEllipsoidal,
           )
         : cameraTentative;
-      if (cancelled) return;
+      if (cancelled || !lifetime.isLive(viewer)) return;
       if (!modelTentative) {
         bridgeRef.current = null;
         return;
@@ -263,7 +272,8 @@ export function useCesiumBridge({
       setBridgeVersion((v) => v + 1);
     })();
 
-    return () => { cancelled = true; };
+    const stop = lifetimeRefStop(viewerLifetimeRef, () => { cancelled = true; });
+    return () => { cancelled = true; stop(); };
     // terrainEnabled and ionToken intentionally omitted — Effect 1 already
     // owns those (it destroys/recreates the viewer when they change), and
     // listing them here would cause a redundant bridge rebuild while the
@@ -286,4 +296,12 @@ export function useCesiumBridge({
   ]);
 
   return { bridgeVersion };
+}
+
+/** Subscribe without retaining a stale lifetime when a new viewer replaces it. */
+function lifetimeRefStop(
+  lifetimeRef: RefObject<CesiumViewerLifetime | null>,
+  stop: () => void,
+): () => void {
+  return lifetimeRef.current?.onRetire(stop) ?? (() => {});
 }

@@ -30,54 +30,17 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { VisibilityEpochTracker } from '@ifc-lite/renderer';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
 import { ghostExemptSelection } from '@/lib/ghost-selection';
-import { buildCesiumModelGLB, cesiumModelGLBKey, cesiumPlacementKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
-import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
+import { cesiumPlacementKey } from '@/lib/geo/cesium-model-glb';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { getCesiumModule } from './cesium-module';
-import { whenModelRenderable, type CesiumModelPrimitive } from './cesium-model-renderable';
-
-/**
- * Build a Cesium model matrix for placing the IFC model in ECEF.
- * Extracted as a pure function so it can be called from both
- * the GLB load effect (initial) and the matrix update effect (instant).
- */
-export function buildCesiumModelMatrix(
-  Cesium: typeof import('cesium'),
-  bridge: CesiumBridge,
-  coordinateInfo: CoordinateInfo | undefined,
-) {
-  // GLB vertices are in viewer-space metres (geometry engine converts during
-  // extraction; the effective map scale is already folded into the rotation).
-  const bounds = coordinateInfo?.originalBounds;
-  // Viewer bounds are already in metres (geometry engine converts from IFC native unit)
-  const mvx = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
-  const mvy = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
-  const mvz = bounds ? (bounds.min.z + bounds.max.z) / 2 : 0;
-
-  // bridge.modelOrigin.height is the placement altitude — Effect 2 already
-  // baked terrain clamping (when applicable) into it before constructing the
-  // bridge, so there's no per-frame clamp adjustment to make here.
-  const origin = Cesium.Cartesian3.fromDegrees(
-    bridge.modelOrigin.longitude, bridge.modelOrigin.latitude, bridge.modelOrigin.height,
-  );
-  const enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
-  // No lengthUnitScale here: viewer-space GLB vertices are already in metres.
-  // Reuse the bridge's convergence-corrected viewer-to-ENU rotation so the
-  // model geometry and the camera frame agree on north; a grid-only rotation
-  // here would leave the model rotated by the meridian convergence off the
-  // true-north basemap (up to ~8 deg for Krovak). See #1408.
-  const rot = bridge.viewerRotation;
-  const tx = -(rot.eastFromVx * mvx + rot.eastFromVz * mvz);
-  const ty = -(rot.northFromVx * mvx + rot.northFromVz * mvz);
-  const tz = -bridge.viewerUpScale * mvy;
-  const ifcToEnu = new Cesium.Matrix4(
-    rot.eastFromVx,  0, rot.eastFromVz,  tx,
-    rot.northFromVx, 0, rot.northFromVz, ty,
-    0,               bridge.viewerUpScale, 0,      tz,
-    0,               0, 0,               1,
-  );
-  return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
-}
+import type { CesiumModelPrimitive } from './cesium-model-renderable';
+import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
+import {
+  buildCesiumModelMatrix,
+  loadCesiumModel,
+  type CesiumModelGlbCache,
+} from './cesium-model-load';
+export { buildCesiumModelMatrix } from './cesium-model-load';
 
 export interface UseCesiumModelParams {
   /** Viewer readiness, owned by the viewer effect. */
@@ -85,6 +48,8 @@ export interface UseCesiumModelParams {
   /** Bumped when the coordinate bridge is rebuilt. */
   bridgeVersion: number;
   viewerRef: RefObject<InstanceType<typeof import('cesium').Viewer> | null>;
+  /** Retired synchronously before the Viewer destroys its collections (#4807). */
+  viewerLifetimeRef: RefObject<CesiumViewerLifetime | null>;
   bridgeRef: RefObject<CesiumBridge | null>;
   geometryResult?: GeometryResult | null;
   coordinateInfo?: CoordinateInfo;
@@ -116,6 +81,7 @@ export function useCesiumModel({
   status,
   bridgeVersion,
   viewerRef,
+  viewerLifetimeRef,
   bridgeRef,
   geometryResult,
   coordinateInfo,
@@ -188,7 +154,7 @@ export function useCesiumModel({
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<CesiumModelPrimitive | null>(null);
-  const glbCacheRef = useRef<{ key: string; glb: Uint8Array } | null>(null);
+  const glbCacheRef = useRef<CesiumModelGlbCache>(null);
   // Key of the model actually ON the globe, which is not the same thing as the
   // key of the last GLB built — see the gate in the load effect.
   const loadedKeyRef = useRef<string | null>(null);
@@ -205,7 +171,8 @@ export function useCesiumModel({
       // evicts it (#2583), so a session that unloads its model, or a viewer
       // that leaves 'ready', is torn down here instead.
       const live = viewerRef.current;
-      if (cesiumModelRef.current && live) {
+      const lifetime = viewerLifetimeRef.current;
+      if (cesiumModelRef.current && live && lifetime?.isLive(live)) {
         live.scene.primitives.remove(cesiumModelRef.current);
         live.scene.requestRender();
       }
@@ -215,133 +182,33 @@ export function useCesiumModel({
       return;
     }
     const viewer = viewerRef.current;
+    const lifetime = viewerLifetimeRef.current;
     const bridge = bridgeRef.current;
     const Cesium = getCesiumModule();
-    if (!viewer || !bridge || !Cesium) return;
+    if (!viewer || !lifetime?.isLive(viewer) || !bridge || !Cesium) return;
 
     let cancelled = false;
-    const superseded = () => cancelled || cesiumPlacementKey(useViewerStore.getState().modelPlacement) !== placementKey;
+    const superseded = () => cancelled || !lifetime.isLive(viewer)
+      || cesiumPlacementKey(useViewerStore.getState().modelPlacement) !== placementKey;
 
-    const startExport = async () => {
-      if (superseded()) return;
-      // Declared at this scope so the catch can release a model that was built
-      // but never installed (the viewer was destroyed mid-load).
-      let model: CesiumModelPrimitive | null = null;
-      try {
-        // Reuse the cached GLB when it was built from the same mesh set. The key
-        // spans flat AND instanced geometry (see cesiumModelGLBKey), so an
-        // all-instanced batch still invalidates it.
-        const glbInput: CesiumModelGLBInput = {
-          geometryResult,
-          geometryContentVersion,
-          placementKey,
-          hiddenIds: visibilityRef.current.hiddenIds,
-          isolatedIds: visibilityRef.current.isolatedIds,
-          visibilityVersion,
-          ghostExceptIds: visibilityRef.current.ghostExceptIds,
-          selectedIds: visibilityRef.current.selectedIds,
-          ghostVersion,
-        };
-        const key = cesiumModelGLBKey(glbInput);
-        const cached = glbCacheRef.current;
-        // Gate on what is ON THE GLOBE, not on what has been BUILT. The two
-        // diverge whenever a load is cancelled or `fromGltfAsync` rejects: the
-        // bytes cache already holds the new key while the old primitive is
-        // still displayed, and gating on the byte cache would then treat the
-        // stale model as current and never retry the load.
-        if (cesiumModelRef.current && loadedKeyRef.current === key) {
-          // Model already loaded with same geometry — just update matrix
-          return;
-        }
-
-        // The previous model deliberately stays on the globe while its
-        // replacement is built and loaded — `swapCesiumModel` exchanges them
-        // at the end, so the map never goes blank mid-rebuild (#2583).
-        let glbBytes: Uint8Array;
-        if (cached?.key === key) {
-          glbBytes = cached.glb;
-        } else {
-          await new Promise(r => setTimeout(r, 50));
-          if (superseded()) return;
-          const built = buildCesiumModelGLB(glbInput);
-          glbBytes = built.glb;
-          glbCacheRef.current = { key: built.key, glb: built.glb };
-        }
-        if (superseded()) return;
-
-        await new Promise(r => setTimeout(r, 0));
-        if (superseded()) return;
-
-        // Build initial model matrix
-        const modelMatrix = buildCesiumModelMatrix(Cesium, bridge, coordinateInfo);
-
-        const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
-        const glbUrl = URL.createObjectURL(blob);
-        try {
-          model = await Cesium.Model.fromGltfAsync({
-            url: glbUrl,
-            modelMatrix,
-            shadows: Cesium.ShadowMode.DISABLED,
-            // The generated GLB stores viewer-space vertices and buildModelMatrix
-            // already maps viewer axes into ENU. Avoid Cesium's default glTF
-            // Y-up/Z-forward correction or the model is rotated onto its side.
-            upAxis: Cesium.Axis.Z,
-            forwardAxis: Cesium.Axis.X,
-          });
-          // Ambient floor. The overlay composits transparently with the
-          // atmosphere/skybox off, so the scene's ONLY light is the directional
-          // sun — without an environment map the model's shadowed faces get no
-          // ambient and read muddy. Give the model a flat image-based-lighting
-          // ambient via a constant spherical-harmonic term: every surface stays
-          // readable while the sun still shapes the lit faces. (#1380)
-          try {
-            const ibl = (model as unknown as {
-              imageBasedLighting?: { sphericalHarmonicCoefficients: unknown };
-            }).imageBasedLighting;
-            if (ibl) {
-              const a = new Cesium.Cartesian3(0.72, 0.72, 0.75); // neutral daylight ambient
-              const z = Cesium.Cartesian3.ZERO;
-              ibl.sphericalHarmonicCoefficients = [a, z, z, z, z, z, z, z, z];
-            }
-          } catch (e) {
-            console.warn('[CesiumOverlay] could not set model ambient IBL:', e);
-          }
-        } finally {
-          URL.revokeObjectURL(glbUrl);
-        }
-        if (superseded()) {
-          model?.destroy?.();
-          return;
-        }
-
-        const outcome = await swapCesiumModel(
-          viewer.scene.primitives,
-          cesiumModelRef.current,
-          model,
-          (m) => whenModelRenderable(viewer, m),
-          superseded,
-        );
-        // Superseded: a newer build owns the outcome, the globe still shows the
-        // previous model, and `model` has already been destroyed. Recording it
-        // would leave the refs pointing at geometry nobody is rendering.
-        if (outcome === 'superseded' || superseded()) return;
-        cesiumModelRef.current = model;
-        loadedKeyRef.current = key;
-        setCesiumGlbLoaded(true);
-        // A rebuild no longer flips `cesiumGlbLoaded` false→true, so that flag
-        // can no longer tell the solar effect "there is a different primitive
-        // now, re-apply its shadow mode". This epoch does.
-        setCesiumModelEpoch((e) => e + 1);
-        viewer.scene.requestRender();
-      } catch (err) {
-        console.warn('[CesiumOverlay] Failed to load IFC model into Cesium:', err);
-        // A model built but never installed (the viewer was destroyed mid-load,
-        // so `primitives.add` threw) owns GPU buffers nothing will release.
-        if (model && cesiumModelRef.current !== model) model.destroy?.();
-      }
+    const startExport = () => {
+      void loadCesiumModel({
+        Cesium, viewer, lifetime, bridge, coordinateInfo, glbCacheRef,
+        modelRef: cesiumModelRef, loadedKey: loadedKeyRef.current, isSuperseded: superseded,
+        glbInput: { geometryResult, geometryContentVersion, placementKey,
+          hiddenIds: visibilityRef.current.hiddenIds, isolatedIds: visibilityRef.current.isolatedIds,
+          visibilityVersion, ghostExceptIds: visibilityRef.current.ghostExceptIds,
+          selectedIds: visibilityRef.current.selectedIds, ghostVersion },
+        onInstalled: (_model, key) => {
+          loadedKeyRef.current = key;
+          setCesiumGlbLoaded(true);
+          setCesiumModelEpoch((epoch) => epoch + 1);
+        },
+      });
     };
 
     const deferTimer = setTimeout(startExport, 1000);
+    const stopOnViewerRetire = lifetime.onRetire(() => { cancelled = true; });
 
     // Cancel the in-flight build only. Evicting the live model here is what
     // blanked the map on every re-run (#2583); the model is exchanged for its
@@ -350,6 +217,7 @@ export function useCesiumModel({
     return () => {
       cancelled = true;
       clearTimeout(deferTimer);
+      stopOnViewerRetire();
     };
   }, [status, bridgeVersion, geometryResult, geometryContentVersion, placementKey, visibilityVersion, ghostVersion]);
 
@@ -360,8 +228,9 @@ export function useCesiumModel({
     const model = cesiumModelRef.current;
     const bridge = bridgeRef.current;
     const viewer = viewerRef.current;
+    const lifetime = viewerLifetimeRef.current;
     const Cesium = getCesiumModule();
-    if (!model || !bridge || !viewer || !Cesium) return;
+    if (!model || !bridge || !viewer || !lifetime?.isLive(viewer) || !Cesium) return;
 
     const newMatrix = buildCesiumModelMatrix(Cesium, bridge, coordinateInfo);
     model.modelMatrix = newMatrix;

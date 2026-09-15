@@ -14,6 +14,7 @@ import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { loadCesium } from './cesium-module';
 import { buildCesiumModelMatrix, useCesiumModel } from './useCesiumModel';
+import { CesiumViewerLifetime } from './cesium-viewer-lifetime';
 
 afterEach(() => { cleanup(); mock.restoreAll(); setGlobalRendererRef({ current: null }); });
 
@@ -52,6 +53,7 @@ it('rebuilds the World Context GLB for preview and cancel without a geometry or 
   }) as unknown as InstanceType<typeof Cesium.Model>);
   const primitives = new Cesium.PrimitiveCollection();
   const viewerRef = { current: { scene: { primitives, requestRender() {} } } as unknown as InstanceType<typeof Cesium.Viewer> };
+  const viewerLifetimeRef = { current: new CesiumViewerLifetime(viewerRef.current) };
   const bridgeRef = { current: { modelOrigin: { longitude: 0, latitude: 0, height: 0 },
     viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
     viewerUpScale: 1,
@@ -64,7 +66,7 @@ it('rebuilds the World Context GLB for preview and cancel without a geometry or 
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m', { idOffset: 0 }), geometryResult: geometry }),
     modelPlacement: emptyPlacementState(), hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null });
   function World() {
-    const { modelEpoch } = useCesiumModel({ status: 'ready', bridgeVersion: 0, viewerRef, bridgeRef,
+    const { modelEpoch } = useCesiumModel({ status: 'ready', bridgeVersion: 0, viewerRef, viewerLifetimeRef, bridgeRef,
       geometryResult: geometry, coordinateInfo: geometry.coordinateInfo });
     return <output>{modelEpoch}</output>;
   }

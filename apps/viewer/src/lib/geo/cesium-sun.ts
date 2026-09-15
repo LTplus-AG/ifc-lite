@@ -31,6 +31,11 @@ import {
 type CesiumNs = typeof import('cesium');
 type CesiumViewer = InstanceType<typeof import('cesium').Viewer>;
 
+interface CesiumViewerLifetime {
+  isLive(viewer: CesiumViewer): boolean;
+  onRetire(listener: () => void): () => void;
+}
+
 export interface SolarSceneOptions {
   /** Studied instant. */
   date: Date;
@@ -111,16 +116,25 @@ const SUN_COLOR = [255, 230, 120] as const;
 export class SunPathDome {
   private readonly Cesium: CesiumNs;
   private readonly viewer: CesiumViewer;
+  private readonly dataSources: InstanceType<typeof import('cesium').DataSourceCollection>;
   private readonly dataSource: InstanceType<typeof import('cesium').CustomDataSource>;
   private readonly options: SunPathDomeOptions;
   private readonly enuToEcef: InstanceType<typeof import('cesium').Matrix4>;
   private sunMarker: InstanceType<typeof import('cesium').Entity> | null = null;
   private sunBeam: InstanceType<typeof import('cesium').Entity> | null = null;
+  private destroyed = false;
+  private unsubscribeRetire: () => void = () => {};
 
   /** Build the dome's data source + static geometry and add it to the viewer. */
-  constructor(Cesium: CesiumNs, viewer: CesiumViewer, options: SunPathDomeOptions) {
+  constructor(
+    Cesium: CesiumNs,
+    viewer: CesiumViewer,
+    options: SunPathDomeOptions,
+    private readonly lifetime?: CesiumViewerLifetime,
+  ) {
     this.Cesium = Cesium;
     this.viewer = viewer;
+    this.dataSources = viewer.dataSources;
     this.options = options;
     this.dataSource = new Cesium.CustomDataSource('ifc-lite-sun-path');
 
@@ -130,15 +144,24 @@ export class SunPathDome {
       options.origin.height,
     );
     this.enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(originCart);
+    this.unsubscribeRetire = lifetime?.onRetire(() => { this.destroy(); }) ?? (() => {});
+    if (this.destroyed) return;
 
     this.buildStatic();
     this.update(options.date);
     // Await attach, THEN request a render: the viewer runs in requestRenderMode,
     // so a render requested before the data source is attached would paint
     // nothing and the dome would stay invisible until the next camera move.
-    viewer.dataSources
+    this.dataSources
       .add(this.dataSource)
       .then(() => {
+        // `add` can resolve after its Viewer retired. The collection may still
+        // be live (tests and a source-switch overlap), so remove the late
+        // source through that collection without ever touching Scene.
+        if (this.destroyed || !this.isLive()) {
+          this.detachDataSource();
+          return;
+        }
         viewer.scene.requestRender();
         console.log('[SunPathDome] built', {
           lat: options.origin.latitude,
@@ -227,6 +250,7 @@ export class SunPathDome {
 
   /** Reposition the live sun marker + beam for a new instant. */
   update(date: Date): void {
+    if (this.destroyed || !this.isLive()) return;
     const { origin } = this.options;
     const pos = sunPosition(date, origin.latitude, origin.longitude);
     const dir = azimuthAltitudeToEnu(pos.azimuth, pos.altitude);
@@ -266,12 +290,26 @@ export class SunPathDome {
     if (this.sunBeam?.polyline) {
       this.sunBeam.polyline.show = new this.Cesium.ConstantProperty(show);
     }
-    this.viewer.scene.requestRender();
+    if (this.isLive()) this.viewer.scene.requestRender();
   }
 
   /** Remove every dome entity and detach the data source from the viewer. */
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.unsubscribeRetire();
     this.dataSource.entities.removeAll();
-    void this.viewer.dataSources.remove(this.dataSource, true);
+    this.detachDataSource();
+  }
+
+  private detachDataSource(): void {
+    const sources = this.dataSources;
+    // During viewer teardown the collection has already claimed all sources.
+    // Calling remove after that is a Cesium DeveloperError, not cleanup.
+    if (!sources.isDestroyed()) void sources.remove(this.dataSource, true);
+  }
+
+  private isLive(): boolean {
+    return this.lifetime?.isLive(this.viewer) ?? true;
   }
 }

@@ -32,6 +32,23 @@ interface EChartSelectChangedEvent {
   selected?: Array<{ seriesIndex: number; dataIndex: number[] }>;
 }
 
+type RawDataIndex = (seriesIndex: number, dataIndexInside: number) => number | undefined;
+
+interface EChartDataModel {
+  getModel: () => {
+    getSeriesByIndex: (seriesIndex: number) => {
+      getData: () => { getRawIndex: (dataIndexInside: number) => number };
+    } | undefined;
+  };
+}
+
+function rawIndexResolver(chart: unknown): RawDataIndex {
+  const engine = chart as EChartDataModel;
+  return (seriesIndex, dataIndexInside) => (
+    engine.getModel().getSeriesByIndex(seriesIndex)?.getData().getRawIndex(dataIndexInside)
+  );
+}
+
 /**
  * Translate ECharts' cumulative selection event into the clicked bucket.
  *
@@ -42,10 +59,16 @@ interface EChartSelectChangedEvent {
  * unselect clears it. The cumulative list remains a compatibility fallback
  * for non-click actions that do not carry a payload.
  */
-export function selectionFromEChartEvent(params: EChartSelectChangedEvent): ChartSelectEvent {
+export function selectionFromEChartEvent(params: EChartSelectChangedEvent, rawDataIndex?: RawDataIndex): ChartSelectEvent {
   const payload = params.fromActionPayload;
   if (params.fromAction === 'unselect') return { items: [] };
-  const clickedDataIndex = payload?.dataIndexInside ?? payload?.dataIndex;
+  // ECharts' click action exposes an index into the currently filtered series.
+  // `selected`, and our Aggregation/ChartItem contract, use the raw option index.
+  // They differ when legend filtering removes a pie/treemap item (#4832).
+  const clickedDataIndex = payload?.dataIndex
+    ?? (typeof payload?.seriesIndex === 'number' && typeof payload.dataIndexInside === 'number'
+      ? rawDataIndex?.(payload.seriesIndex, payload.dataIndexInside) ?? payload.dataIndexInside
+      : undefined);
   if (
     (params.fromAction === 'select' || params.fromAction === 'toggleSelected')
     && typeof payload?.seriesIndex === 'number'
@@ -105,7 +128,7 @@ export const echartsRenderer: ChartRenderer = async () => {
     // `selectchanged` reports every selected item per series after a click.
     chart.on('selectchanged', (params) => {
       if (suppress) return;
-      events.onSelect(selectionFromEChartEvent(params as EChartSelectChangedEvent));
+      events.onSelect(selectionFromEChartEvent(params as EChartSelectChangedEvent, rawIndexResolver(chart)));
     });
     return {
       setOption: (option) => chart.setOption(option, { notMerge: true }),

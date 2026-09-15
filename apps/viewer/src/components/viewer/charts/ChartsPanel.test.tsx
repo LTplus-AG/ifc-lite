@@ -14,10 +14,12 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import type { Clash, ClashResult } from '@ifc-lite/clash';
 import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf.js';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection.js';
+import { modelOverviewDashboard } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -65,8 +67,8 @@ END-ISO-10303-21;
 const OFFSET = 1_000_000;
 const GID = (expressId: number) => OFFSET + expressId;
 
-async function parsedModel(id = 'm1', idOffset = OFFSET): Promise<FederatedModel> {
-  const bytes = new TextEncoder().encode(MINI_IFC);
+async function parsedModel(id = 'm1', idOffset = OFFSET, ifc = MINI_IFC): Promise<FederatedModel> {
+  const bytes = new TextEncoder().encode(ifc);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 91 };
 }
@@ -110,8 +112,10 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
       chartColorIn3D: false,
       chartSlice: null,
       chartSliceSource: null,
-      chartSliceItems: null,
+      chartSliceBuckets: null,
       chartVisibilityOwned: null,
+      clashResult: null,
+      clashGroups: null,
       selectedEntityIds: new Set(),
       selectedEntityId: null,
       selectedEntitiesSet: new Set(),
@@ -184,7 +188,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.isolatedEntities, null);
     assert.deepEqual(s.chartVisibilityOwned && { channel: s.chartVisibilityOwned.channel, ids: [...s.chartVisibilityOwned.ids].sort() }, { channel: 'ghost', ids: [GID(44), GID(45)] });
     assert.deepEqual([...(s.chartSlice ?? [])].sort(), [GID(44), GID(45)]);
-    assert.deepEqual(s.chartSliceItems, [{ seriesIndex: 0, dataIndex: 1 }]);
+    assert.deepEqual(s.chartSliceBuckets, [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor' }]);
 
     // The source chart keeps the whole scope but marks the bucket selected;
     // the storey chart re-aggregates over the slice: one door per level.
@@ -307,6 +311,92 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual(colors?.get(GID(41)), colors?.get(GID(44)));
   });
 
+  it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [
+      { ...dashboard.charts[0], title: 'Clashes by severity', source: 'clash', dimension: 'Severity', topN: undefined },
+      { ...dashboard.charts[1], title: 'Clashes by rule', source: 'clash', type: 'bar', dimension: 'Rule', sort: undefined },
+    ];
+    dashboard.layout = dashboard.layout.slice(0, 2);
+    const clash = (id: string, rule: string, severity: Clash['severity'], a: number, b: number): Clash => ({
+      id,
+      a: { key: `${id}-a`, ref: GID(a), model: 'm1', tag: 'IfcWall' },
+      b: { key: `${id}-b`, ref: GID(b), model: 'm1', tag: 'IfcDoor' },
+      rule,
+      status: 'hard',
+      distance: -0.05,
+      point: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      severity,
+    });
+    const clashes = [
+      clash('a1', 'Rule A', 'critical', 41, 42),
+      clash('a2', 'Rule A', 'critical', 41, 44),
+      clash('b1', 'Rule B', 'critical', 41, 45),
+      clash('b2', 'Rule B', 'major', 43, 43),
+      clash('b3', 'Rule B', 'major', 43, 43),
+    ];
+    const clashResult: ClashResult = {
+      clashes,
+      summary: {
+        total: clashes.length,
+        byRule: { 'Rule A': 2, 'Rule B': 3 },
+        byTypePair: {},
+        bySeverity: { critical: 3, major: 2, minor: 0, info: 0 },
+      },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    useViewerStore.setState({
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+      clashResult,
+      clashRunSeq: useViewerStore.getState().clashRunSeq + 1,
+      clashGroups: null,
+      clashReviews: new Map(),
+      chartSlice: null,
+      chartSliceSource: null,
+      chartSliceBuckets: null,
+      selectedEntityIds: new Set(),
+      selectedEntitiesSet: new Set(),
+      selectedEntities: [],
+      overlayLayers: new Map(),
+    });
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
+
+    // Critical cross-filters rules to [A (2), B (1)]. Clicking A then makes
+    // the rule chart the source, restoring [B (3), A (2)]. Since rules share
+    // ids, a stored positional index 0 would let B overwrite A's clicked paint.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const filteredRules = charts[1].options.at(-1)!;
+    assert.deepEqual(barData(filteredRules).map(([name, value]) => [name, value]), [['Rule A', 2], ['Rule B', 1]]);
+    const filteredSeries = filteredRules.series as Array<{ data: Array<{ name: string; itemStyle: { color: string } }> }>;
+    const clickedColor = filteredSeries[0].data[0].itemStyle.color;
+
+    await act(async () => { charts[1].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual(barData(charts[1].options.at(-1)!).map(([name, value]) => [name, value]), [['Rule B', 3], ['Rule A', 2]]);
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.chartSliceBuckets, [{ seriesKey: 'Rule', bucketKey: 'Rule A' }]);
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42), GID(44)]);
+    const expected = [
+      Number.parseInt(clickedColor.slice(1, 3), 16) / 255,
+      Number.parseInt(clickedColor.slice(3, 5), 16) / 255,
+      Number.parseInt(clickedColor.slice(5, 7), 16) / 255,
+      1,
+    ];
+    const colors = state.overlayLayers.get('charts')?.colorOverrides;
+    assert.deepEqual(colors?.get(GID(41)), expected, 'shared id keeps clicked Rule A colour');
+    assert.deepEqual(colors?.get(GID(42)), expected, 'second shared id keeps clicked Rule A colour');
+    assert.deepEqual(colors?.get(GID(44)), expected);
+    assert.equal(colors?.has(GID(43)), false, 'unselected Rule B context keeps authored colour');
+  });
+
   it('a click on a stacked segment selects only that series share of the category (review finding)', async () => {
     const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
@@ -419,7 +509,7 @@ describe('overlapping chart bucket paint (#4832)', () => {
       measure: { agg: 'count' },
       sort: 'label',
     }, dataset);
-    const clicked = { seriesIndex: 0, dataIndex: 0 };
+    const clicked = { seriesKey: aggregation.series[0].key, bucketKey: aggregation.series[0].buckets[0].key };
     const clickedColor = aggregation.series[0].buckets[0].color;
     const otherColor = aggregation.series[0].buckets[1].color;
     assert.notEqual(clickedColor, otherColor, 'the fixture must expose an overwrite');
@@ -440,7 +530,7 @@ describe('overlapping chart bucket paint (#4832)', () => {
 describe('report export from the panel (#3944)', () => {
   beforeEach(async () => {
     const model = await parsedModel();
-    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null, chartSlice: null, chartSliceSource: null, chartSliceItems: null, chartVisibilityOwned: null, selectedEntityIds: new Set(), overlayLayers: new Map(), cameraCallbacks: {} });
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null, chartSlice: null, chartSliceSource: null, chartSliceBuckets: null, chartVisibilityOwned: null, selectedEntityIds: new Set(), overlayLayers: new Map(), cameraCallbacks: {} });
   });
   afterEach(() => cleanup());
 

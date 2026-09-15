@@ -27,7 +27,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { idsForItems, itemsForIds, type Aggregation, type ChartItem } from '@ifc-lite/charts';
 import { hexToRgba } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
-import type { ChartFocusMode } from '@/store/slices/chartSlice';
+import type { ChartBucketIdentity, ChartFocusMode } from '@/store/slices/chartSlice';
 import type { RGBA } from '@/store/slices/overlaySlice';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { releaseOwnedVisibility } from '@/lib/visibility/ownership';
@@ -108,10 +108,15 @@ export function useChart3DLink(): Chart3DLink {
 
   const selectItems = useCallback((aggregation: Aggregation, items: readonly ChartItem[]) => {
     const ids = [...idsForItems(aggregation, items)];
+    const buckets = items.flatMap(({ seriesIndex, dataIndex }): ChartBucketIdentity[] => {
+      const series = aggregation.series[seriesIndex];
+      const bucket = series?.buckets[dataIndex];
+      return series && bucket ? [{ seriesKey: series.key, bucketKey: bucket.key }] : [];
+    });
     lastWrittenRef.current = new Set(ids);
     selectChartIds(ids);
     presentChartIds(ids, focusMode);
-    useViewerStore.getState().setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id, items);
+    useViewerStore.getState().setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id, buckets);
   }, [focusMode]);
 
   const clearSelection = useCallback(() => {
@@ -163,7 +168,7 @@ export function chartColorOverrides(
   aggregation: Aggregation,
   selectedIds: ReadonlySet<number> | null,
   focusMode: ChartFocusMode,
-  selectedItems: readonly ChartItem[] | null,
+  selectedBuckets: readonly ChartBucketIdentity[] | null,
 ): Map<number, RGBA> {
   const ghostSelection = focusMode === 'ghost' && selectedIds !== null;
   const colorOverrides = new Map<number, RGBA>();
@@ -181,9 +186,10 @@ export function chartColorOverrides(
   // Bucket membership is allowed to overlap (for example, clash rules). IDs
   // therefore cannot identify which bucket was clicked. Reapply the exact
   // selected marks last so their colour wins every overlap (#4832).
-  for (const item of selectedItems ?? []) {
-    const bucket = aggregation.series[item.seriesIndex]?.buckets[item.dataIndex];
-    if (!bucket) continue;
+  for (const selected of selectedBuckets ?? []) {
+    const series = aggregation.series.find(({ key }) => key === selected.seriesKey);
+    const bucket = series?.buckets.find(({ key }) => key === selected.bucketKey);
+    if (!series || !bucket) continue;
     const rgba = hexToRgba(bucket.color, 1);
     for (let i = 0; i < bucket.ids.length; i++) {
       const id = bucket.ids[i];
@@ -193,7 +199,7 @@ export function chartColorOverrides(
   return colorOverrides;
 }
 
-export function useChartColorOverlay(aggregation: Aggregation | null, selectedItems: readonly ChartItem[] | null): void {
+export function useChartColorOverlay(aggregation: Aggregation | null, selectedBuckets: readonly ChartBucketIdentity[] | null): void {
   const enabled = useViewerStore((s) => s.chartColorIn3D);
   const selectedIds = useViewerStore((s) => s.chartSlice);
   const focusMode = useViewerStore((s) => s.chartFocusMode);
@@ -203,8 +209,8 @@ export function useChartColorOverlay(aggregation: Aggregation | null, selectedIt
       state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
       return;
     }
-    const colorOverrides = chartColorOverrides(aggregation, selectedIds, focusMode, selectedItems);
+    const colorOverrides = chartColorOverrides(aggregation, selectedIds, focusMode, selectedBuckets);
     state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null, colorOverrides });
     return () => useViewerStore.getState().removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
-  }, [enabled, aggregation, selectedIds, focusMode, selectedItems]);
+  }, [enabled, aggregation, selectedIds, focusMode, selectedBuckets]);
 }

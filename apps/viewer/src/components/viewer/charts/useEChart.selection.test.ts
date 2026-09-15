@@ -55,6 +55,54 @@ describe('chart click replacement selection (#4832)', () => {
     }
   });
 
+  it('maps a real legend-filtered internal click index back to the raw bucket (#4832)', () => {
+    const host = document.createElement('div');
+    const chart = echarts.init(host, undefined, { renderer: 'svg', width: 400, height: 300 });
+    const emitted: ChartSelectEvent[] = [];
+    const rawEvents: Array<Parameters<typeof selectionFromEChartEvent>[0]> = [];
+    chart.setOption({
+      animation: false,
+      legend: { data: ['A', 'B'], selected: { A: false, B: true } },
+      series: [{
+        type: 'pie',
+        selectedMode: 'multiple',
+        data: [{ name: 'A', value: 1 }, { name: 'B', value: 2 }],
+      }],
+    });
+    const internals = chart as unknown as {
+      getModel: () => {
+        getSeriesByIndex: (index: number) => {
+          getData: () => {
+            getItemGraphicEl: (index: number) => object | undefined;
+            getRawIndex: (index: number) => number;
+          };
+        };
+      };
+    };
+    const rawIndex = (seriesIndex: number, dataIndexInside: number): number => (
+      internals.getModel().getSeriesByIndex(seriesIndex).getData().getRawIndex(dataIndexInside)
+    );
+    chart.on('selectchanged', (rawEvent) => {
+      const event = rawEvent as Parameters<typeof selectionFromEChartEvent>[0];
+      rawEvents.push(event);
+      emitted.push(selectionFromEChartEvent(event, rawIndex));
+    });
+
+    try {
+      const series = internals.getModel().getSeriesByIndex(0);
+      const visibleB = series.getData().getItemGraphicEl(0);
+      assert.ok(visibleB, 'legend filtering leaves B at internal index zero');
+      assert.equal(series.getData().getRawIndex(0), 1);
+      chart.getZr().trigger('click', { target: visibleB, topTarget: visibleB });
+
+      assert.equal(rawEvents[0]?.fromActionPayload?.dataIndexInside, 0);
+      assert.deepEqual(rawEvents[0]?.selected, [{ seriesIndex: 0, dataIndex: [1] }]);
+      assert.deepEqual(emitted, [{ items: [{ seriesIndex: 0, dataIndex: 1 }] }]);
+    } finally {
+      chart.dispose();
+    }
+  });
+
   it('clears selection when the current bucket is unselected', () => {
     assert.deepEqual(selectionFromEChartEvent({
       fromAction: 'toggleSelected',

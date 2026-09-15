@@ -13,13 +13,19 @@
  * releases exactly like clash's and the basket's.
  */
 import type { StateCreator } from 'zustand';
-import type { ChartItem, DashboardSpec } from '@ifc-lite/charts';
+import type { DashboardSpec } from '@ifc-lite/charts';
 import type { VisibilityOwnership } from '@/lib/visibility/ownership';
 import { loadDashboards, saveDashboards } from '../../lib/charts/persistence.js';
 import { defineSliceTeardown } from '../teardown.js';
 
 /** How a chart click presents its bucket in 3D — the clash panel's vocabulary. */
 export type ChartFocusMode = 'highlight' | 'isolate' | 'ghost';
+
+/** Stable identity of a selected mark across filtering and bucket reordering. */
+export interface ChartBucketIdentity {
+  seriesKey: string;
+  bucketKey: string;
+}
 
 export interface ChartSlice {
   dashboards: DashboardSpec[];
@@ -32,8 +38,8 @@ export interface ChartSlice {
   chartSlice: Set<number> | null;
   /** The chart whose selection produced `chartSlice`; it keeps showing the whole scope. */
   chartSliceSource: string | null;
-  /** Exact bucket marks that produced `chartSlice`; ids alone are ambiguous when buckets overlap. */
-  chartSliceItems: ChartItem[] | null;
+  /** Exact buckets that produced `chartSlice`; keys survive cross-filter reordering. */
+  chartSliceBuckets: ChartBucketIdentity[] | null;
   /** The panel's claim on the isolate/ghost channel, released only if still owned. */
   chartVisibilityOwned: VisibilityOwnership;
 
@@ -44,7 +50,7 @@ export interface ChartSlice {
   setChartPanelVisible: (visible: boolean) => void;
   setChartFocusMode: (mode: ChartFocusMode) => void;
   setChartColorIn3D: (on: boolean) => void;
-  setChartSlice: (slice: Set<number> | null, source?: string | null, items?: readonly ChartItem[] | null) => void;
+  setChartSlice: (slice: Set<number> | null, source?: string | null, buckets?: readonly ChartBucketIdentity[] | null) => void;
   setChartVisibilityOwned: (owned: VisibilityOwnership) => void;
 }
 
@@ -56,7 +62,7 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
   chartColorIn3D: false,
   chartSlice: null,
   chartSliceSource: null,
-  chartSliceItems: null,
+  chartSliceBuckets: null,
   chartVisibilityOwned: null,
 
   setDashboards: (dashboards) => {
@@ -79,10 +85,10 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
   setChartPanelVisible: (chartPanelVisible) => set({ chartPanelVisible }),
   setChartFocusMode: (chartFocusMode) => set({ chartFocusMode }),
   setChartColorIn3D: (chartColorIn3D) => set({ chartColorIn3D }),
-  setChartSlice: (chartSlice, source = null, items = null) => set({
+  setChartSlice: (chartSlice, source = null, buckets = null) => set({
     chartSlice,
     chartSliceSource: chartSlice ? source : null,
-    chartSliceItems: chartSlice && items ? [...items] : null,
+    chartSliceBuckets: chartSlice && buckets ? [...buckets] : null,
   }),
   setChartVisibilityOwned: (chartVisibilityOwned) => set({ chartVisibilityOwned }),
 });
@@ -95,17 +101,17 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
  */
 export const chartTeardown = defineSliceTeardown(
   'chartSlice',
-  ['chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartSliceItems', 'chartVisibilityOwned'],
+  ['chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned'],
   {
-    'session-reset': () => ({ chartPanelVisible: false, chartSlice: null, chartSliceSource: null, chartSliceItems: null, chartVisibilityOwned: null }),
+    'session-reset': () => ({ chartPanelVisible: false, chartSlice: null, chartSliceSource: null, chartSliceBuckets: null, chartVisibilityOwned: null }),
     'model-removed': ({ isStale }, state) => {
       const slice = state.chartSlice;
       if (!slice) return {};
       const kept = new Set<number>();
       for (const id of slice) if (!isStale(id)) kept.add(id);
       if (kept.size === slice.size) return {};
-      return kept.size > 0 ? { chartSlice: kept } : { chartSlice: null, chartSliceSource: null, chartSliceItems: null };
+      return kept.size > 0 ? { chartSlice: kept } : { chartSlice: null, chartSliceSource: null, chartSliceBuckets: null };
     },
-    'all-models-cleared': () => ({ chartSlice: null, chartSliceSource: null, chartSliceItems: null, chartVisibilityOwned: null }),
+    'all-models-cleared': () => ({ chartSlice: null, chartSliceSource: null, chartSliceBuckets: null, chartVisibilityOwned: null }),
   },
 );

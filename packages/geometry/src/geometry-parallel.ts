@@ -289,8 +289,8 @@ export async function* processParallel(
   let workerError: Error | null = null;
   let workersCompleted = 0;
   let totalMeshes = 0;
-  // CSG / opening diagnostics merged across all workers, forwarded on the final
-  // completion event so loadFile callers can read a typed per-load summary.
+  let wasmFrameResolved = false;
+  // CSG/opening diagnostics merged across workers for the final load summary.
   let diagnostics: GeometryDiagnostics | null = null;
   let endSentToWorkers = false;
   let streamStartSentToWorkers = false;
@@ -454,15 +454,12 @@ export async function* processParallel(
         // ~one wrapper object per mesh (~110k per large load) on the main
         // thread. Pass the transferred objects straight through.
         const meshes: MeshData[] = msg.meshes as MeshData[];
-        // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
-        // Opaque repeated occurrences render ONLY via these shards (taken off the
-        // flat `meshes` array), so their count must be folded into the running
-        // total for an accurate `totalSoFar`.
+        // Opaque repeated occurrences render only through per-batch IFNS shards;
+        // include them in the running total even though they are not flat meshes.
         const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;
         const instancedOccurrences =
           (msg as { instancedOccurrences?: number }).instancedOccurrences ?? 0;
-        // #924 compare parity: geometry-diff hashes for instanced-only entities
-        // (no flat mesh carries them). Forward straight through to the consumer.
+        // #924: forward geometry-diff hashes for instanced-only entities.
         const instancedGeometryHashIds =
           (msg as { instancedGeometryHashIds?: Uint32Array }).instancedGeometryHashIds;
         const instancedGeometryHashValues =
@@ -481,16 +478,18 @@ export async function* processParallel(
           (instancedShards && instancedShards.length > 0) ||
           (instancedGeometryHashIds && instancedGeometryHashIds.length > 0)
         ) {
-          // Update totalMeshes per batch so consumers see a live
-          // running count via `totalSoFar`. The `complete` event
-          // below used to be the only updater, leaving streamed
-          // batches reporting a stale total until the worker exited.
+          if (!wasmFrameResolved) {
+            workerError ??= new Error('Geometry worker emitted a batch before the RTC frame was resolved');
+            workersCompleted++;
+            worker.terminate();
+            wake();
+            return;
+          }
           if (meshes.length > 0) {
             totalMeshes += meshes.length;
             coordinator.processMeshesIncremental(meshes);
           }
-          // Instanced occurrences left the flat array but are still rendered
-          // geometry — count them so totalSoFar reflects the full model.
+          // Count rendered instanced occurrences omitted from the flat array.
           totalMeshes += instancedOccurrences;
           const coordinateInfo = coordinator.getCurrentCoordinateInfo();
           eventQueue.push({
@@ -707,6 +706,7 @@ export async function* processParallel(
       prepassMeta.unitScale,
       effectiveNeedsShift ? { x: rtcX, y: rtcY, z: rtcZ } : null,
     );
+    wasmFrameResolved = true;
 
     eventQueue.push({
       type: 'rtcOffset',

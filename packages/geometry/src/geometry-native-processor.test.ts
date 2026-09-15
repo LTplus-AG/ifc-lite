@@ -13,7 +13,7 @@
  * `streamNativeGeometry`, and these tests fail if that delegation is undone.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@ifc-lite/wasm', () => ({
   default: vi.fn(async () => undefined),
@@ -21,6 +21,7 @@ vi.mock('@ifc-lite/wasm', () => ({
 }));
 
 const bridgeMocks = vi.hoisted(() => ({
+  processGeometry: vi.fn(),
   processGeometryStreaming: vi.fn(),
 }));
 
@@ -29,7 +30,7 @@ vi.mock('./platform-bridge.js', async (importOriginal) => {
   const bridge: import('./platform-bridge.js').IPlatformBridge = {
     init: async () => {},
     isInitialized: () => true,
-    processGeometry: () => Promise.reject(new Error('not used by these tests')),
+    processGeometry: (content) => bridgeMocks.processGeometry(content),
     processGeometryStreaming: (content, options) =>
       bridgeMocks.processGeometryStreaming(content, options),
     getApi: () => null,
@@ -55,6 +56,11 @@ const mesh = (expressId: number): MeshData => ({
   normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
   indices: new Uint32Array([0, 1, 2]),
   color: [1, 0, 0, 1],
+});
+
+const largeMesh = (expressId: number): MeshData => ({
+  ...mesh(expressId),
+  positions: new Float32Array([20000, 0, 0, 20010, 10, 10]),
 });
 
 const batch = (expressId: number): GeometryBatch => ({
@@ -91,6 +97,42 @@ const streamOf = (processor: GeometryProcessor) =>
   drainWithDeadline(processor.processStreaming(new Uint8Array([65, 66, 67])));
 
 describe('GeometryProcessor.processStreaming on the native branch', () => {
+  beforeEach(() => {
+    bridgeMocks.processGeometry.mockReset();
+    bridgeMocks.processGeometryStreaming.mockReset();
+  });
+
+  it('retains coordinate inference for the adaptive native route (#4799)', async () => {
+    bridgeMocks.processGeometry.mockResolvedValue({ meshes: [largeMesh(1)] });
+    const events = await drainWithDeadline(
+      new GeometryProcessor().processAdaptive(new Uint8Array([65, 66, 67])),
+    );
+
+    const batchEvent = events.find((event) => event.type === 'batch');
+    if (batchEvent?.type !== 'batch') throw new Error('adaptive native route emitted no batch');
+    expect(batchEvent.coordinateInfo?.originShift).toEqual({ x: 20005, y: 5, z: 5 });
+    expect(batchEvent.meshes[0]?.positions[0]).toBe(-5);
+  });
+
+  it('retains coordinate inference for buffer-native streaming (#4799)', async () => {
+    bridgeMocks.processGeometryStreaming.mockImplementation(
+      (_content: unknown, options: StreamingOptions) => {
+        options.onBatch?.({
+          meshes: [largeMesh(1)],
+          progress: { processed: 1, total: 1, currentType: 'IfcWall' },
+        });
+        options.onComplete?.({ ...twoMeshStats(), totalMeshes: 1 });
+        return Promise.resolve({ ...twoMeshStats(), totalMeshes: 1 });
+      },
+    );
+
+    const events = await streamOf(new GeometryProcessor());
+    const batchEvent = events.find((event) => event.type === 'batch');
+    if (batchEvent?.type !== 'batch') throw new Error('native streaming route emitted no batch');
+    expect(batchEvent.coordinateInfo?.originShift).toEqual({ x: 20005, y: 5, z: 5 });
+    expect(batchEvent.meshes[0]?.positions[0]).toBe(-5);
+  });
+
   it('delivers `complete` when the bridge rejects after completing (microtask)', async () => {
     bridgeMocks.processGeometryStreaming.mockImplementation(
       (_content: unknown, options: StreamingOptions) => {

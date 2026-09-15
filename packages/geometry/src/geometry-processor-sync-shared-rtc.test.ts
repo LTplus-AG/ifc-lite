@@ -99,18 +99,27 @@ describe('GeometryProcessor sync path (<2MB) sharedRtcOffset override', () => {
     });
 
     wasmMocks.processGeometryBatch.mockReturnValue({
-      length: 0,
-      get: () => undefined,
+      length: 1,
+      get: () => ({
+        expressId: 11,
+        ifcType: 'IfcWall',
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+        indices: new Uint32Array([0, 1, 2]),
+        color: new Float32Array([1, 0, 0, 1]),
+        free: vi.fn(),
+      }),
       free: vi.fn(),
     });
 
     const geometry = new GeometryProcessor();
     const buffer = new Uint8Array([65, 66, 67]);
 
-    for await (const _event of geometry.processAdaptive(buffer, {
+    const events = [];
+    for await (const event of geometry.processAdaptive(buffer, {
       sharedRtcOffset: { x: 100, y: 200, z: 300 },
     })) {
-      // Drain the generator; assertions are on the mock call args below.
+      events.push(event);
     }
 
     expect(wasmMocks.processGeometryBatch).toHaveBeenCalledTimes(1);
@@ -120,5 +129,11 @@ describe('GeometryProcessor sync path (<2MB) sharedRtcOffset override', () => {
     expect(rtcY).toBe(200);
     expect(rtcZ).toBe(300);
     expect(needsShift).toBe(true);
+    const batch = events.find((event) => event.type === 'batch');
+    expect(batch?.coordinateInfo).toMatchObject({
+      originShift: { x: 0, y: 0, z: 0 },
+      wasmRtcOffset: { x: 100, y: 200, z: 300 },
+    });
+    expect(batch?.meshes[0]?.positions[0]).toBe(0);
   });
 });

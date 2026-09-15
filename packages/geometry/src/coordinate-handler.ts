@@ -13,6 +13,7 @@
  */
 
 import type { MeshData } from './types.js';
+import { inferWasmRtcApplied } from './coordinate-rtc-policy.js';
 
 /**
  * The "normal coordinate" ceiling, in metres: 10 km, a generous campus/site.
@@ -76,9 +77,13 @@ export class CoordinateHandler {
     private accumulatedBounds: AABB | null = null;
     private shiftCalculated: boolean = false;
 
-    // WASM RTC detection - if WASM already applied RTC, skip TypeScript shift
-    private wasmRtcDetected: boolean = false;
-    // Active threshold for coordinate validation (set based on wasmRtcDetected)
+    // Authoritative pre-pass state. Undefined is reserved for native producers
+    // that cannot report their coordinate frame and therefore need inference.
+    private wasmRtcApplied: boolean | undefined = undefined;
+    // Sampling is a separate bounds policy: a validated near-origin WASM model
+    // can use it even when the pre-pass authoritatively applied no RTC shift.
+    private fastBoundsEligible: boolean = false;
+    // Active threshold used by both bounds validation and position cleanup.
     private activeThreshold: number = 1e7;
 
     // World→render metadata supplied by the WASM pre-pass (issue #945). These
@@ -104,15 +109,14 @@ export class CoordinateHandler {
      * Calculate bounding box from all meshes (filtering out corrupted values)
      * @param meshes - Meshes to calculate bounds from
      * @param maxCoord - Optional max coordinate threshold (default: MAX_REASONABLE_COORD).
-     *   NOTE: Ignored when WASM RTC is active — coordinates are already guaranteed
-     *   small and valid by the WASM layer, so the fast sampling path is used instead.
+     *   NOTE: Ignored after this handler has established sampling eligibility.
      */
     calculateBounds(meshes: MeshData[], maxCoord?: number): AABB {
-        // PERF: When WASM RTC is detected, coordinates are already small and valid.
+        // PERF: Once the initial frame/bounds decision validates a producer,
         // Skip per-vertex Number.isFinite + Math.abs checks (saves ~6 calls per vertex
         // across 63.5M vertices = ~380M function calls avoided).
-        // maxCoord is intentionally unused here — WASM RTC guarantees valid bounds.
-        if (this.wasmRtcDetected && this.shiftCalculated) {
+        // maxCoord is intentionally unused on this established sampling path.
+        if (this.fastBoundsEligible && this.shiftCalculated) {
             return this.calculateBoundsFast(meshes);
         }
 
@@ -164,7 +168,7 @@ export class CoordinateHandler {
 
     /**
      * Fast bounds calculation using vertex sampling.
-     * Used when WASM RTC is confirmed — coordinates are small and valid.
+     * Used after the initial coordinate-frame decision validates sampling.
      * Samples first and last vertex of each mesh instead of scanning all vertices.
      * For 208K meshes this is ~416K vertex checks vs 63.5M = ~150x faster.
      * Accuracy is excellent because meshes are localized objects.
@@ -416,16 +420,18 @@ export class CoordinateHandler {
     }
 
     /**
-     * Process meshes incrementally for streaming
-     * Accumulates bounds and applies shift once calculated
+     * Process a batch using authoritative WASM metadata when available.
      *
-     * IMPORTANT: Detects if WASM already applied RTC offset by checking if
-     * majority of meshes have small coordinates. If so, skips TypeScript shift.
+     * Native buffer streaming and adaptive native processing have no pre-pass
+     * decision and retain the legacy first-vertex vote. WASM callers set their
+     * authoritative frame first through `setWasmMetadata`.
      */
     processMeshesIncremental(batch: MeshData[]): void {
-        // If WASM RTC was detected, use stricter threshold to exclude outliers
-        // Store in instance variable so shiftPositions uses the same threshold
-        this.activeThreshold = this.wasmRtcDetected ? NORMAL_COORD_THRESHOLD_M : this.MAX_REASONABLE_COORD;
+        // Applied WASM RTC uses the stricter post-RTC validation threshold.
+        // Known-not-applied and unknown native coordinates start broad.
+        this.activeThreshold = this.wasmRtcApplied === true
+            ? NORMAL_COORD_THRESHOLD_M
+            : this.MAX_REASONABLE_COORD;
         const batchBounds = this.calculateBounds(batch, this.activeThreshold);
 
         if (this.accumulatedBounds === null) {
@@ -457,45 +463,34 @@ export class CoordinateHandler {
                 const distanceFromOrigin = Math.sqrt(
                     centroid.x ** 2 + centroid.y ** 2 + centroid.z ** 2
                 );
+                const requiresShift =
+                    distanceFromOrigin > NORMAL_COORD_THRESHOLD_M || maxSize > NORMAL_COORD_THRESHOLD_M;
+                const boundsWithinNormalThreshold = [
+                    ...Object.values(this.accumulatedBounds.min), ...Object.values(this.accumulatedBounds.max),
+                ].every((value) => Math.abs(value) < NORMAL_COORD_THRESHOLD_M);
 
-                // DETECT IF WASM ALREADY APPLIED RTC
-                // If majority of meshes have small coordinates, WASM already shifted them
-                let smallCoordCount = 0;
-                let largeCoordCount = 0;
-                const SMALL_COORD_THRESHOLD = NORMAL_COORD_THRESHOLD_M; // Use same threshold as RTC detection
+                const wasmRtcApplied = this.wasmRtcApplied
+                    ?? inferWasmRtcApplied(batch, NORMAL_COORD_THRESHOLD_M);
 
-                for (const mesh of batch) {
-                    const positions = mesh.positions;
-                    if (positions.length >= 3) {
-                        // Check first vertex of each mesh
-                        const x = Math.abs(positions[0]);
-                        const y = Math.abs(positions[1]);
-                        const z = Math.abs(positions[2]);
-                        const maxCoord = Math.max(x, y, z);
-                        if (maxCoord < SMALL_COORD_THRESHOLD) {
-                            smallCoordCount++;
-                        } else {
-                            largeCoordCount++;
-                        }
-                    }
-                }
-
-                // If >50% have small coords, WASM RTC was likely applied
-                const totalMeshes = smallCoordCount + largeCoordCount;
-                const wasmRtcLikelyApplied = totalMeshes > 0 && (smallCoordCount / totalMeshes) > 0.5;
-
-                if (wasmRtcLikelyApplied) {
-                    this.wasmRtcDetected = true;
+                if (wasmRtcApplied) {
                     // Recalculate bounds excluding outliers (use stricter threshold)
                     this.accumulatedBounds = this.calculateBounds(batch, NORMAL_COORD_THRESHOLD_M);
+                    this.activeThreshold = NORMAL_COORD_THRESHOLD_M;
                 }
 
                 // Check if shift is needed (>10km from origin) AND WASM didn't already apply RTC
-                if ((distanceFromOrigin > NORMAL_COORD_THRESHOLD_M || maxSize > NORMAL_COORD_THRESHOLD_M) && !wasmRtcLikelyApplied) {
+                if (requiresShift && !wasmRtcApplied) {
                     this.originShift = centroid;
                 }
+
+                // Keep the established WASM fast path independent of whether
+                // RTC was actually needed. Unknown native producers retain the
+                // legacy inference behavior; shifted data remains fully checked.
+                this.fastBoundsEligible = wasmRtcApplied ||
+                    (this.wasmRtcApplied === false && !requiresShift && boundsWithinNormalThreshold &&
+                        this.originShift.x === 0 && this.originShift.y === 0 && this.originShift.z === 0);
+                this.shiftCalculated = true;
             }
-            this.shiftCalculated = true;
         }
 
         // Apply shift to this batch (only if we determined shift is needed AND WASM didn't already apply)
@@ -537,7 +532,7 @@ export class CoordinateHandler {
         }
 
         this.originShift = { x: 0, y: 0, z: 0 };
-        this.wasmRtcDetected = true;
+        this.fastBoundsEligible = true;
         this.shiftCalculated = true;
         this.activeThreshold = NORMAL_COORD_THRESHOLD_M;
     }
@@ -608,6 +603,7 @@ export class CoordinateHandler {
     setWasmMetadata(lengthUnitScale: number | undefined, rtcOffset: Vec3 | null): void {
         this.lengthUnitScale = lengthUnitScale;
         this.appliedWasmRtcOffset = rtcOffset ? { ...rtcOffset } : null;
+        this.wasmRtcApplied = rtcOffset !== null;
     }
 
     /**
@@ -617,7 +613,8 @@ export class CoordinateHandler {
         this.accumulatedBounds = null;
         this.shiftCalculated = false;
         this.originShift = { x: 0, y: 0, z: 0 };
-        this.wasmRtcDetected = false;
+        this.wasmRtcApplied = undefined;
+        this.fastBoundsEligible = false;
         this.activeThreshold = this.MAX_REASONABLE_COORD;
         this.appliedWasmRtcOffset = null;
         this.lengthUnitScale = undefined;

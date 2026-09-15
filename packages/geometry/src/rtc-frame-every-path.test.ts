@@ -179,7 +179,21 @@ function installFakeWorkers(detectedNeedsShift: boolean): void {
         return;
       }
       if (index === 0 && m.type === 'stream-end') {
-        queueMicrotask(() => self.onmessage?.({ data: { type: 'complete', totalMeshes: 0 } }));
+        queueMicrotask(() => {
+          self.onmessage?.({
+            data: {
+              type: 'batch',
+              meshes: [{
+                expressId: 11,
+                positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+                normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+                indices: new Uint32Array([0, 1, 2]),
+                color: [1, 1, 1, 1],
+              }],
+            },
+          });
+          self.onmessage?.({ data: { type: 'complete', totalMeshes: 1 } });
+        });
         return;
       }
       if (index === 1 && m.type === 'prepass-streaming') {
@@ -210,7 +224,6 @@ async function frameFromParallelPath(
   sharedRtcOffset?: { x: number; y: number; z: number },
 ): Promise<{ applied: Frame; announced: Frame }> {
   installFakeWorkers(detectedNeedsShift);
-
   const events: StreamingGeometryEvent[] = [];
   const gen = processParallel(new Uint8Array(16), new CoordinateHandler(), sharedRtcOffset, undefined, {
     workerCountOverride: 1,
@@ -229,6 +242,12 @@ async function frameFromParallelPath(
   const start = streamStartMessages[0] as { rtcX: number; rtcY: number; rtcZ: number; needsShift: boolean };
   const announcement = events.find((e) => e.type === 'rtcOffset');
   if (announcement?.type !== 'rtcOffset') throw new Error('parallel path announced no rtcOffset event');
+  const batch = events.find((e) => e.type === 'batch');
+  if (batch?.type !== 'batch') throw new Error('parallel path emitted no mesh batch');
+  expect(batch.coordinateInfo?.originShift).toEqual({ x: 0, y: 0, z: 0 });
+  expect(batch.coordinateInfo?.wasmRtcOffset).toEqual(
+    start.needsShift ? { x: start.rtcX, y: start.rtcY, z: start.rtcZ } : undefined,
+  );
   return {
     applied: { x: start.rtcX, y: start.rtcY, z: start.rtcZ, needsShift: start.needsShift },
     announced: { ...announcement.rtcOffset, needsShift: announcement.hasRtc },

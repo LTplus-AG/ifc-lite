@@ -135,7 +135,11 @@ describe('GeometryProcessor byte streaming (processStreaming, mocked WASM)', () 
 
     const batchEvent = events.find((event) => event.type === 'batch');
     expect(batchEvent?.totalSoFar).toBe(1);
-    expect((batchEvent?.coordinateInfo as { buildingRotation?: number })?.buildingRotation).toBe(0.5);
+    expect(batchEvent?.coordinateInfo).toMatchObject({
+      originShift: { x: 0, y: 0, z: 0 },
+      wasmRtcOffset: { x: 10, y: 20, z: 30 },
+      buildingRotation: 0.5,
+    });
 
     const completeEvent = events.find((event) => event.type === 'complete');
     expect((completeEvent?.coordinateInfo as { buildingRotation?: number })?.buildingRotation).toBe(0.5);

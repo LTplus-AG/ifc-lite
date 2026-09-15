@@ -17,6 +17,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { renderChartSvg, DEFAULT_THEME, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf.js';
+import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -307,16 +308,25 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
     // The third seeded chart is "Types per storey": storey on the axis, one series per type.
     const option = charts[2].options.at(-1)!;
-    const series = option.series as Array<{ name: string; data: Array<{ name: string; value: number }> }>;
+    const series = option.series as Array<{ name: string; data: Array<{ name: string; value: number; itemStyle: { color: string } }> }>;
     const doorSeries = series.findIndex((s) => s.name === 'IfcDoor');
     const level1 = series[doorSeries].data.findIndex((d) => d.name === 'Level 1');
     assert.ok(doorSeries >= 0 && level1 >= 0, JSON.stringify(series.map((s) => [s.name, s.data.map((d) => [d.name, d.value])])));
+    const segmentColor = series[doorSeries].data[level1].itemStyle.color;
     await act(async () => { charts[2].events.onSelect({ items: [{ seriesIndex: doorSeries, dataIndex: level1 }] }); });
     await settle();
     // Level 1 holds walls A, B and door A; the door segment selects door A only.
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [GID(44)]);
+    assert.deepEqual(useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides?.get(GID(44)), [
+      Number.parseInt(segmentColor.slice(1, 3), 16) / 255,
+      Number.parseInt(segmentColor.slice(3, 5), 16) / 255,
+      Number.parseInt(segmentColor.slice(5, 7), 16) / 255,
+      1,
+    ]);
     // The other charts re-aggregate over that one door — singular, not "1 elements".
     assert.match(ui.querySelectorAll('[data-chart-subtitle]')[0]!.textContent!, /1 bucket · 1 element$/);
   });
@@ -353,14 +363,24 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     let closed = 0;
     const ui = render(<ChartsPanel renderer={renderer} onClose={() => { closed += 1; }} />);
     await settle();
+    click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    await settle();
     await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
     assert.ok(useViewerStore.getState().chartVisibilityOwned);
+    const selected = useViewerStore.getState().selectedEntityIds;
+    assert.equal(chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected).selectedIds.size, 0);
     click(ui.querySelector('button[aria-label="Close charts"]')!);
     assert.equal(closed, 1);
     cleanup();
     assert.equal(useViewerStore.getState().chartVisibilityOwned, null);
     assert.equal(useViewerStore.getState().ghostExceptEntities, null);
+    assert.equal(useViewerStore.getState().overlayLayers.get('charts'), undefined);
+    assert.equal(
+      chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected).selectedIds,
+      selected,
+      'after paint teardown the logical selection returns to the ordinary renderer unchanged',
+    );
   });
 
   it('removing the model releases the panel\'s claim and drops the slice', async () => {

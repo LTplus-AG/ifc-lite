@@ -26,6 +26,7 @@ interface EChartSelectChangedEvent {
   fromAction?: string;
   fromActionPayload?: {
     seriesIndex?: number;
+    dataIndexInside?: number;
     dataIndex?: number;
   };
   selected?: Array<{ seriesIndex: number; dataIndex: number[] }>;
@@ -44,13 +45,14 @@ interface EChartSelectChangedEvent {
 export function selectionFromEChartEvent(params: EChartSelectChangedEvent): ChartSelectEvent {
   const payload = params.fromActionPayload;
   if (params.fromAction === 'unselect') return { items: [] };
+  const clickedDataIndex = payload?.dataIndexInside ?? payload?.dataIndex;
   if (
     (params.fromAction === 'select' || params.fromAction === 'toggleSelected')
     && typeof payload?.seriesIndex === 'number'
-    && typeof payload.dataIndex === 'number'
+    && typeof clickedDataIndex === 'number'
   ) {
     const seriesIndex = payload.seriesIndex;
-    const dataIndex = payload.dataIndex;
+    const dataIndex = clickedDataIndex;
     if (params.fromAction === 'toggleSelected') {
       const remainsSelected = (params.selected ?? []).some(
         (selected) => selected.seriesIndex === seriesIndex && selected.dataIndex.includes(dataIndex),

@@ -31,8 +31,8 @@ import type { ChartFocusMode } from '@/store/slices/chartSlice';
 import type { RGBA } from '@/store/slices/overlaySlice';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { releaseOwnedVisibility } from '@/lib/visibility/ownership';
+import { CHART_OVERLAY_LAYER_ID } from '@/lib/charts/renderer-selection';
 
-export const CHART_OVERLAY_LAYER_ID = 'charts';
 /** Between the lens (50) and the 4D animation (100). */
 export const CHART_OVERLAY_PRIORITY = 75;
 
@@ -166,7 +166,7 @@ export function chartColorOverrides(
 ): Map<number, RGBA> {
   const ghostSelection = focusMode === 'ghost' && selectedIds !== null;
   const colorOverrides = new Map<number, RGBA>();
-  for (const bucket of aggregation.categories) {
+  for (const series of aggregation.series) for (const bucket of series.buckets) {
     const rgba = hexToRgba(bucket.color, 1);
     for (let i = 0; i < bucket.ids.length; i++) {
       const id = bucket.ids[i];

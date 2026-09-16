@@ -103,7 +103,8 @@ ifc-lite schema --compact    # names and descriptions only
 `bim.cost` reads the canonical cost graph from the loaded IFC source snapshot.
 References are model-qualified and evaluated amounts remain decimal strings:
 
-The example below uses the canonical `cost.ifc` fixture (fetch it with
+The example below uses the canonical fixture at
+`tests/models/cost/buildingsmart-cost-composition.ifc` (fetch it with
 `pnpm fixtures`), which contains the `External wall total` item.
 
 ```js

@@ -1045,7 +1045,7 @@ ifc-lite eval model.ifc "bim.storeys().map(s => s.name)"
 ifc-lite eval model.ifc "bim.properties({modelId:'default', expressId:42})"
 
 # Evaluate an IfcCostItem; amounts are decimal strings
-ifc-lite eval cost.ifc "bim.cost.evaluateItem({modelId:'default',expressId:42})" --json
+ifc-lite eval tests/models/cost/buildingsmart-cost-composition.ifc "bim.cost.evaluateItem({modelId:'default',expressId:42})" --json
 
 # Complex query
 ifc-lite eval model.ifc "bim.query().byType('IfcDoor').toArray().filter(d => d.name.includes('Fire'))"

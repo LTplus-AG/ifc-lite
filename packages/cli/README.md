@@ -17,12 +17,12 @@ ifc-lite props model.ifc --id 42
 ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
 ifc-lite create wall --height 3 --thickness 0.2 --start 0,0,0 --end 5,0,0 --out wall.ifc
 ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"
-ifc-lite eval cost.ifc "bim.cost.evaluateItem({modelId:'default',expressId:42})" --json
+ifc-lite eval tests/models/cost/buildingsmart-cost-composition.ifc "bim.cost.evaluateItem({modelId:'default',expressId:42})" --json
 ifc-lite view model.ifc
 ```
 
-The `cost.ifc` command above uses the canonical cost fixture (fetch it with
-`pnpm fixtures`); express ID 42 is its `External wall total` cost item.
+The cost command above uses the canonical fixture at the shown path (fetch it
+with `pnpm fixtures`); express ID 42 is its `External wall total` cost item.
 
 `bim.cost` reads the loaded IFC source snapshot and returns decimal strings;
 pending generic mutation overlays are not included until reload.

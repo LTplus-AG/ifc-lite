@@ -272,5 +272,130 @@ class EndToEndFaultInjection(unittest.TestCase):
         self.assertEqual(report.summary()["failures"], 0)
 
 
+class ReviewFindingRegressions(unittest.TestCase):
+    """Each test reproduces a divergence the comparator used to report as a
+    pass (0 failures, or an absorbed DEGRADED row) and asserts it is now a
+    FAILURE."""
+
+    @staticmethod
+    def rows(report, path):
+        return [r for r in report.rows if r[0] == path]
+
+    def assert_failure_at(self, report, path):
+        rows = self.rows(report, path)
+        self.assertEqual(len(rows), 1, f"expected exactly one row at {path}: {report.rows}")
+        self.assertEqual(rows[0][1], cc.COST_FAILURE, rows[0])
+        self.assertGreater(report.summary()["failures"], 0)
+
+    def test_value_node_name_category_condition_are_compared(self):
+        for field, wrong in (("Name", "renamed"), ("Category", "Equipment"), ("Condition", "Winter rate")):
+            with self.subTest(field=field):
+                lite, ref = _baseline_pair()
+                lite["Nodes"]["item:CHILD1/value/0"][field] = wrong
+                self.assert_failure_at(cc.compare_cost(lite, ref), f"node:item:CHILD1/value/0/{field}")
+
+    def test_has_cost_data_is_compared(self):
+        lite, ref = _baseline_pair()
+        lite["HasCostData"] = False
+        self.assert_failure_at(cc.compare_cost(lite, ref), "HasCostData")
+
+    def test_quantity_name_and_unit_type_are_compared(self):
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:CHILD1/quantity/0"] = {
+                "Kind": "Quantity", "Type": "IfcQuantityArea", "Name": "Scaffolding area",
+                "Dimension": "area", "Value": 100.0,
+            }
+            dump["Nodes"]["item:CHILD1/value/0/unitBasis/unit"] = {
+                "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "AREAUNIT",
+                "Currency": None, "Symbol": None, "Dimension": None,
+            }
+        lite["Nodes"]["item:CHILD1/quantity/0"]["Name"] = "Brick wall volume"
+        lite["Nodes"]["item:CHILD1/value/0/unitBasis/unit"]["UnitType"] = "VOLUMEUNIT"
+        report = cc.compare_cost(lite, ref)
+        self.assert_failure_at(report, "node:item:CHILD1/quantity/0/Name")
+        self.assert_failure_at(report, "node:item:CHILD1/value/0/unitBasis/unit/UnitType")
+
+    @staticmethod
+    def measure_pair():
+        """A value whose AppliedValue is an IfcMeasureWithUnit (7 GBP)."""
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            node = dump["Nodes"]["item:CHILD1/value/0"]
+            node["Applied"] = {"Kind": "Reference", "Node": "item:CHILD1/value/0/ref"}
+            node["Resolved"] = 7.0
+            dump["Nodes"]["item:CHILD1/value/0/ref"] = {
+                "Kind": "Measure", "Type": "IfcMeasureWithUnit", "ValueType": "IfcMonetaryMeasure",
+                "Value": 7.0, "UnitNode": "item:CHILD1/value/0/ref/unit", "Resolved": 7.0,
+            }
+            dump["Nodes"]["item:CHILD1/value/0/ref/unit"] = {
+                "Kind": "Unit", "Type": "IfcMonetaryUnit", "UnitType": None,
+                "Currency": "GBP", "Symbol": None, "Dimension": None,
+            }
+        return lite, ref
+
+    def test_measure_with_unit_node_matches_across_casing(self):
+        lite, ref = self.measure_pair()
+        lite["Nodes"]["item:CHILD1/value/0/ref"]["ValueType"] = "IFCMONETARYMEASURE"
+        report = cc.compare_cost(lite, ref)
+        self.assertEqual(report.summary()["failures"], 0, report.failures)
+        self.assertEqual(self.rows(report, "node:item:CHILD1/value/0/ref/Value")[0][1], cc.COST_MATCH)
+
+    def test_measure_with_unit_value_type_and_unit_are_compared(self):
+        for field, wrong in (("Value", 70.0), ("ValueType", "IfcAreaMeasure"), ("UnitNode", "elsewhere")):
+            with self.subTest(field=field):
+                lite, ref = self.measure_pair()
+                lite["Nodes"]["item:CHILD1/value/0/ref"][field] = wrong
+                self.assert_failure_at(cc.compare_cost(lite, ref), f"node:item:CHILD1/value/0/ref/{field}")
+
+    def test_measure_with_unit_dumped_as_missing_is_a_failure(self):
+        """The shape the ifc-lite dumper used to emit for a measure-with-unit
+        AppliedValue: a Missing Value node where the reference has a body."""
+        lite, ref = self.measure_pair()
+        lite["Nodes"]["item:CHILD1/value/0/ref"] = {"Kind": "Value", "Missing": True}
+        self.assert_failure_at(cc.compare_cost(lite, ref), "node:item:CHILD1/value/0/ref/Missing")
+
+    @staticmethod
+    def ifc2x3_pair():
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["SchemaVersion"] = "IFC2X3"
+            dump["Currency"] = None
+            for item in dump["Items"].values():
+                if item["ResolvedTotal"] is not None:
+                    item["ResolvedTotal"]["Currency"] = None
+        return lite, ref
+
+    def test_ifc2x3_wrong_number_is_a_failure_not_partial_read(self):
+        lite, ref = self.ifc2x3_pair()
+        lite["DiagnosticCodes"] = ["IFC2X3_PARTIAL_READ"]
+        lite["Nodes"]["item:CHILD1/value/0"]["Resolved"] = 999.0
+        self.assert_failure_at(cc.compare_cost(lite, ref), "node:item:CHILD1/value/0/Resolved")
+
+    def test_ifc2x3_null_without_the_partial_read_diagnostic_is_a_failure(self):
+        lite, ref = self.ifc2x3_pair()
+        lite["Nodes"]["item:CHILD1/value/0"]["Resolved"] = None
+        self.assert_failure_at(cc.compare_cost(lite, ref), "node:item:CHILD1/value/0/Resolved")
+
+    def test_ifc2x3_null_with_the_partial_read_diagnostic_is_degraded(self):
+        lite, ref = self.ifc2x3_pair()
+        lite["DiagnosticCodes"] = ["IFC2X3_PARTIAL_READ"]
+        lite["Nodes"]["item:CHILD1/value/0"]["Resolved"] = None
+        rows = self.rows(cc.compare_cost(lite, ref), "node:item:CHILD1/value/0/Resolved")
+        self.assertEqual(rows[0][1], "DEGRADED:IFC2X3_PARTIAL_READ")
+
+    def test_spot_currency_omission_with_resolved_model_currency_is_a_failure(self):
+        lite, ref = _baseline_pair()
+        lite["Items"]["CHILD1"]["ResolvedTotal"]["Currency"] = None
+        self.assert_failure_at(cc.compare_cost(lite, ref), "item:CHILD1/ResolvedTotal")
+
+    def test_total_currency_omission_with_unresolved_model_currency_is_degraded(self):
+        lite, ref = _baseline_pair()
+        lite["Currency"] = None
+        lite["Items"]["CHILD1"]["ResolvedTotal"]["Currency"] = None
+        rows = self.rows(cc.compare_cost(lite, ref), "item:CHILD1/ResolvedTotal/Currency")
+        self.assertEqual(rows[0][1], "DEGRADED:CURRENCY_UNRESOLVED")
+
+
 if __name__ == "__main__":
     unittest.main()

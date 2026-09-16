@@ -157,6 +157,8 @@ export interface ChartItem {
 
 export interface Aggregation {
   spec: ChartSpec;
+  /** Source-data revision, stable across cross-filtering of the same dataset. */
+  dataFingerprint: string;
   /** Category axis in display order; every series aligns to it. */
   categories: Bucket[];
   series: BucketSeries[];
@@ -165,7 +167,7 @@ export interface Aggregation {
   unbucketed: number;
   /** Bucketed rows that contributed no finite value to a sum. */
   unmeasured?: number;
-  /** Rows whose selected dimension or measure was non-scalar/incompatible. */
+  /** Rows whose selected dimension, stack, or measure was non-scalar/incompatible. */
   unsupported?: number;
   /** Element id → every index into `categories` it belongs to (a clash element under two rules is in two). */
   categoryOf: Map<number, number[]>;

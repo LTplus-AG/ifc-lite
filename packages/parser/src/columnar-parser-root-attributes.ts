@@ -14,6 +14,7 @@
 
 import { EntityExtractor } from './entity-extractor.js';
 import { getAttributeNames, getAttributeNamesAcrossSchemas } from './ifc-schema.js';
+import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from './generated/schema-registry-by-version.js';
 import { SKIP_DISPLAY_ATTRS } from './columnar-parser-indexes.js';
 import type { EntityRef } from './types.js';
 import type { IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
@@ -163,14 +164,21 @@ export function extractAllEntityAttributes(
  * Skips structural/reference attributes using the IFC schema. Used by query layer for coercion.
  */
 export function getRawNamedAttributes(
-    entity: IfcEntity
+    entity: IfcEntity,
+    schemaVersion?: SchemaVersionWithRegistry,
 ): Array<{ name: string; raw: IfcAttributeValue }> {
     const attrs = entity.attributes || [];
     // This reader is shared by EntityNode.allAttributes() and must recognize
     // IFC2X3-only and IFC4X3-only classes as well as the IFC4 codegen pin.
     // The schema-union helper preserves the pinned result when available and
     // supplies the missing names for the other bundled schemas.
-    const attrNames = getAttributeNamesAcrossSchemas(entity.type);
+    const registry = schemaVersion ? getSchemaRegistryForVersion(schemaVersion) : undefined;
+    const exact = registry
+        ? registry.entities[entity.type]
+            ?? Object.values(registry.entities).find((candidate) => candidate.name.toUpperCase() === entity.type.toUpperCase())
+        : undefined;
+    const attrNames = exact?.allAttributes?.map((attribute) => attribute.name)
+        ?? getAttributeNamesAcrossSchemas(entity.type);
 
     const result: Array<{ name: string; raw: IfcAttributeValue }> = [];
     const len = Math.min(attrs.length, attrNames.length);

@@ -201,10 +201,11 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
       if (row.statuses?.[dimension] === 'unsupported') unsupported += 1;
       continue;
     }
+    let rowUnsupported = row.statuses?.[dimension] === 'unsupported';
     const resolvedMeasure = measureOf(row, spec, measureColumn);
     if (resolvedMeasure === null) {
       unmeasured += 1;
-      if (row.statuses?.[measureColumn] === 'unsupported') unsupported += 1;
+      rowUnsupported ||= row.statuses?.[measureColumn] === 'unsupported';
     }
     const measure = resolvedMeasure ?? 0;
     total += measure;
@@ -217,6 +218,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
 
     if (stackColumn >= 0) {
       const raw = row.values[stackColumn];
+      rowUnsupported ||= row.statuses?.[stackColumn] === 'unsupported';
       const stackKey = raw === null || raw === undefined || raw === '' ? MISSING_KEY : String(raw);
       let s = series.get(stackKey);
       if (!s) {
@@ -230,6 +232,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
       }
       bump(cell, row, measure);
     }
+    if (rowUnsupported) unsupported += 1;
   }
 
   const ordered = applyTopN(orderBuckets([...categories.values()], spec), spec);
@@ -276,7 +279,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
   }
 
   const unit = measureColumn >= 0 ? dataset.columns[measureColumn].unit : undefined;
-  return { spec, categories: categoryBuckets, series: seriesOut, total, unbucketed, unmeasured, unsupported, categoryOf, unit, palette };
+  return { spec, dataFingerprint: dataset.fingerprint, categories: categoryBuckets, series: seriesOut, total, unbucketed, unmeasured, unsupported, categoryOf, unit, palette };
 }
 
 /** The element ids behind a set of category indices — what a chart click selects in 3D. */

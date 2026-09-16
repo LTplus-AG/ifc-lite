@@ -21,7 +21,7 @@ import { stringToEntityRef, type EntityRef } from '@/store/types';
 import { createElementFieldReader } from '@/lib/charts/element-field-reader';
 import { extractProjectUnits, measureUnit, type ProjectUnits } from '@ifc-lite/parser';
 import type { ColumnDefinition } from '@ifc-lite/lists';
-import { resolveListColumnUnits } from '@/lib/units/list-column-units';
+import { resolveListColumnUnits, sourceUnitSymbolForMeasure } from '@/lib/units/list-column-units';
 import { alternativesForUnitType } from '@/lib/units/alternatives';
 import { convertValue } from '@/lib/units/convert';
 
@@ -105,14 +105,22 @@ export function buildElementsDataset(
         readField: (expressId, field) => {
           const index = resolvedFields.findIndex((candidate) => elementFieldColumnId(candidate) === elementFieldColumnId(field));
           const cell = reader.readResolved(expressId, field);
-          if (cell.status !== 'value' || typeof cell.value !== 'number' || index < 0) return cell;
+          if (cell.status !== 'value' || index < 0) return cell;
           const declaredType = cell.dataType?.toUpperCase();
           const bindingType = field.dataType?.toUpperCase();
           const declaredKind = declaredType ? measureUnit(declaredType) : undefined;
           const bindingKind = bindingType ? measureUnit(bindingType) : undefined;
-          if (declaredKind?.kind === 'typed' && bindingKind?.kind === 'typed' && declaredKind.unitType !== bindingKind.unitType) {
+          if (bindingType && declaredType && bindingType !== declaredType
+            && !(declaredKind?.kind === 'typed' && bindingKind?.kind === 'typed' && declaredKind.unitType === bindingKind.unitType)) {
             return { value: null, status: 'unsupported' as const };
           }
+          if (field.valueKind === 'category') {
+            const projectUnits = modelUnits.get(modelId);
+            const sourceSymbol = projectUnits && declaredType ? sourceUnitSymbolForMeasure(projectUnits, declaredType) : undefined;
+            const suffix = cell.unit ?? sourceSymbol ?? (declaredKind?.kind === 'typed' ? cell.dataType : undefined);
+            return { ...cell, value: suffix ? `${cell.value} ${suffix}` : cell.value };
+          }
+          if (typeof cell.value !== 'number') return cell;
           if (cell.unit) {
             const kind = declaredKind?.kind === 'typed' ? declaredKind : bindingKind?.kind === 'typed' ? bindingKind : undefined;
             const targetSymbol = resolvedFields[index]?.unit;

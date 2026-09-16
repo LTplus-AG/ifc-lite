@@ -81,6 +81,13 @@ function sourceUnitFor(pu: ProjectUnits, kind: ColumnUnitKind): (LinearUnit & { 
   return { scale: length.siScale ** power, offset: 0, symbol: kind.defaultSymbol };
 }
 
+/** Resolve a model's source symbol for a typed IFC measure, including derived area/volume units. */
+export function sourceUnitSymbolForMeasure(pu: ProjectUnits, dataType: string): string | null {
+  const measure = measureUnit(dataType);
+  if (measure?.kind !== 'typed') return null;
+  return sourceUnitFor(pu, { unitType: measure.unitType, defaultSymbol: measure.defaultSymbol })?.symbol ?? null;
+}
+
 interface TargetUnit extends LinearUnit {
   symbol: string;
 }
@@ -91,6 +98,8 @@ export interface ListColumnUnitResolver {
   /** The column's target display symbol, or `null` when it isn't
    *  convertible (no quantity/measure unit semantics). */
   unitSymbol(colIndex: number): string | null;
+  /** The unit a particular model declares for a column, before conversion. */
+  sourceUnitSymbol(colIndex: number, modelId: string): string | null;
   /** Convert `rawValue` (as declared by model `modelId`) into the column's
    *  target unit. Passes through unchanged - never throws - for a
    *  non-convertible column, a non-finite/non-numeric value, or an
@@ -114,6 +123,11 @@ export function resolveListColumnUnits(
   return {
     unitSymbol(colIndex) {
       return targets[colIndex]?.symbol ?? null;
+    },
+    sourceUnitSymbol(colIndex, modelId) {
+      const kind = kinds[colIndex];
+      const pu = modelUnits.get(modelId);
+      return kind && pu ? sourceUnitFor(pu, kind)?.symbol ?? null : null;
     },
     convertCell(colIndex, rawValue, modelId) {
       const kind = kinds[colIndex];

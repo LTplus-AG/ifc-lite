@@ -285,6 +285,39 @@ describe('chart source adapters over real producers (#3944)', () => {
     assert.equal(row?.statuses?.[column], 'unsupported');
   });
 
+  it('elements: rejects incompatible measures and unit-qualifies categorical values (#4833)', async () => {
+    const modelSource = (prefix: string, nominal: string) => MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `#200=IFCSIUNIT(*,.LENGTHUNIT.,${prefix},.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+#203=IFCPROPERTYSINGLEVALUE('Value',$,${nominal},$);
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);
+ENDSEC;
+END-ISO-10303-21;`);
+    const parsedModel = async (id: string, offset: number, prefix: string, nominal: string) => ({
+      ...fixtureModel(id, { idOffset: offset }),
+      ifcDataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(modelSource(prefix, nominal)).buffer),
+      maxExpressId: 205,
+    });
+    const mm = await parsedModel('mm', 0, '.MILLI.', 'IFCLENGTHMEASURE(1.)');
+    const metre = await parsedModel('metre', OFFSET, '$', 'IFCLENGTHMEASURE(1.)');
+    const ratio = await parsedModel('ratio', OFFSET, '$', 'IFCRATIOMEASURE(2.)');
+    const category: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Value', valueKind: 'category' };
+    useViewerStore.setState({ models: new Map([[mm.id, mm], [metre.id, metre]]), activeModelId: mm.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const categories = buildElementsDataset({ kind: 'all' }, [category], useViewerStore.getState());
+    const categoryColumn = categories.columns.findIndex(({ id }) => id === elementFieldColumnId(category));
+    assert.deepEqual(categories.rows.filter(({ ids }) => ids[0] === 41 || ids[0] === GID(41)).map(({ values }) => values[categoryColumn]), ['1 mm', '1 m']);
+
+    const numeric: ElementFieldBinding = { ...category, valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    useViewerStore.setState({ models: new Map([[mm.id, mm], [ratio.id, ratio]]), activeModelId: mm.id });
+    const numbers = buildElementsDataset({ kind: 'all' }, [numeric], useViewerStore.getState());
+    const numberColumn = numbers.columns.findIndex(({ id }) => id === elementFieldColumnId(numeric));
+    const ratioRow = numbers.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.equal(ratioRow?.values[numberColumn], null);
+    assert.equal(ratioRow?.statuses?.[numberColumn], 'unsupported');
+  });
+
   it('ids and compare: rows carry the renderer id of the entity the result names', () => {
     useViewerStore.setState({
       idsValidationReport: {

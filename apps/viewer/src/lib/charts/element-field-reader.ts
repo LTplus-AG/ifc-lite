@@ -14,6 +14,8 @@ import { createListDataProvider } from '@/lib/lists/adapter';
 export interface ElementFieldOption {
   binding: ElementFieldBinding;
   label: string;
+  /** False when the field exists but every inspected value is missing. */
+  observedValue: boolean;
 }
 
 export interface ElementFieldCatalog {
@@ -30,6 +32,10 @@ interface ObservedKind {
 }
 
 function inferKind(observed: ObservedKind): ElementFieldValueKind {
+  if (!observed.text && !observed.number && !observed.boolean && observed.dataTypes.size > 0) {
+    const measures = [...observed.dataTypes].map(measureUnit);
+    if (measures.every((measure) => measure?.kind === 'typed')) return 'number';
+  }
   if (observed.number && !observed.text && !observed.boolean) {
     const unitTypes = new Set<string>();
     let allTypedMeasures = observed.dataTypes.size > 0;
@@ -48,14 +54,14 @@ function inferKind(observed: ObservedKind): ElementFieldValueKind {
 }
 
 function observe(observed: ObservedKind, property: Property): void {
-  if (property.values) return;
+  if (property.unit) observed.units.add(property.unit);
+  if (property.dataType) observed.dataTypes.add(property.dataType.toUpperCase());
+  if (property.values && property.values.length !== 1) return;
   const normalized = normalizeElementFieldValue(property.value, typeof property.value === 'number' ? 'number' : typeof property.value === 'boolean' ? 'boolean' : 'category');
   if (normalized.status !== 'value') return;
   if (typeof normalized.value === 'number') observed.number = true;
   else if (typeof normalized.value === 'boolean') observed.boolean = true;
   else observed.text = true;
-  if (property.unit) observed.units.add(property.unit);
-  if (property.dataType) observed.dataTypes.add(property.dataType.toUpperCase());
 }
 
 function observeRaw(observed: ObservedKind, raw: unknown, declaredType?: string): void {
@@ -134,7 +140,8 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     if (cached) return cached;
     cached = new Map<string, unknown>();
     const entity = store.getEntity(id);
-    if (entity) for (const { name, raw } of getRawNamedAttributes(entity)) cached.set(name, raw);
+    const registeredVersion = store.schemaVersion === 'IFC5' ? undefined : store.schemaVersion;
+    if (entity) for (const { name, raw } of getRawNamedAttributes(entity, registeredVersion)) cached.set(name, raw);
     for (const name of ['GlobalId', 'Name', 'Description', 'ObjectType', 'Tag', 'PredefinedType']) {
       const value = rawAttributeValue(store, id, name);
       if (value !== undefined && value !== '') cached.set(name, value);
@@ -184,14 +191,14 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
       return { ...normalizeElementFieldValue(attrsFor(id).get(binding.attributeName), binding.valueKind), ...(dataType ? { dataType } : {}) };
     }
     const property = propertyFor(id, binding.psetName, binding.propertyName);
-    if (property?.values) return { value: null, status: 'unsupported' };
+    if (property?.values && property.values.length !== 1) return { value: null, status: 'unsupported' };
     const normalized = normalizeElementFieldValue(property?.value, binding.valueKind);
     const value = binding.valueKind === 'category'
       && normalized.status === 'value'
       && typeof normalized.value === 'string'
-      && (property?.unit || property?.dataType)
+      && property?.unit
       && (typeof property.value === 'number' || (Array.isArray(property.value) && typeof property.value[1] === 'number'))
-      ? `${normalized.value} ${property.unit ?? property.dataType}`
+      ? `${normalized.value} ${property.unit}`
       : normalized.value;
     return { ...normalized, value, ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
   };
@@ -239,7 +246,7 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
           const kind = attributeKinds.get(attributeName) ?? emptyObservation();
           const valueKind = inferKind(kind);
           const dataType = valueKind === 'number' && kind.dataTypes.size > 0 ? [...kind.dataTypes].sort()[0] : undefined;
-          return { binding: { kind: 'attribute', attributeName, valueKind, ...(dataType ? { dataType } : {}) } as const, label: attributeName };
+          return { binding: { kind: 'attribute', attributeName, valueKind, ...(dataType ? { dataType } : {}) } as const, label: attributeName, observedValue: kind.text || kind.number || kind.boolean };
         });
       const properties = new Map<string, ElementFieldOption[]>();
       for (const { psetName, propertyName, kind } of observed.values()) {
@@ -249,6 +256,7 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
         const option: ElementFieldOption = {
           binding: { kind: 'property', psetName, propertyName, valueKind, ...(unit ? { unit } : {}), ...(dataType ? { dataType } : {}) },
           label: `${psetName}.${propertyName}`,
+          observedValue: kind.text || kind.number || kind.boolean,
         };
         const bucket = properties.get(psetName) ?? [];
         bucket.push(option);

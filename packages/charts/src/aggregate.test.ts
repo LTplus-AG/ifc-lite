@@ -167,6 +167,16 @@ describe('aggregate invariants', () => {
     expect(result.unsupported).toBe(1);
   });
 
+  it('reports an unsupported stack value instead of hiding it as missing (#4833)', () => {
+    const input: ChartDataset = {
+      source: 'elements', fingerprint: 'unsupported-stack',
+      columns: [{ id: 'group', label: 'Group', kind: 'category' }, { id: 'stack', label: 'Stack', kind: 'category' }],
+      rows: [{ ids: [1], values: ['A', null], statuses: ['value', 'unsupported'] }],
+    };
+    const result = aggregate({ id: 'stack', title: 'Stack', source: 'elements', type: 'stackedBar', dimension: 'group', stackBy: 'stack', measure: { agg: 'count' } }, input);
+    expect(result.unsupported).toBe(1);
+  });
+
   it('folds the tail past topN into a grey Other bucket that still carries every id', () => {
     const ds = dataset([['T', 'category']], [[[1], ['a']], [[2], ['a']], [[3], ['b']], [[4], ['c']], [[5], ['d']]]);
     const agg = aggregate({ id: 't', title: 't', source: 'clash', type: 'pie', dimension: 'T', measure: { agg: 'count' }, topN: 2 }, ds);

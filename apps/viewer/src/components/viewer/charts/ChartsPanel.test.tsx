@@ -277,6 +277,20 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.ok(identity);
     const changed = aggregate(spec, dataset(['B', 'A', 'B']));
     assert.equal(chartSelectionIsLive(changed, [identity], new Set([1, 2])), false);
+
+    const filtered = aggregate(spec, dataset(['A', 'A', 'B']), { slice: new Set([1]) });
+    const filteredIdentity = chartBucketIdentity(filtered, { seriesIndex: 0, dataIndex: 0 });
+    assert.ok(filteredIdentity);
+    assert.equal(chartSelectionIsLive(selected, [filteredIdentity], new Set([1])), true, 'removing another chart filter must not clear the click');
+
+    const otherSpec = { ...spec, topN: 1 };
+    const folded = aggregate(otherSpec, dataset(['A', 'A', 'A', 'B', 'C']));
+    const otherIdentity = chartBucketIdentity(folded, { seriesIndex: 0, dataIndex: 1 });
+    assert.ok(otherIdentity);
+    const unfolded = aggregate({ ...otherSpec, topN: 3 }, dataset(['A', 'A', 'A', 'B', 'C']));
+    assert.equal(chartSelectionIsLive(unfolded, [otherIdentity], new Set([4, 5])), true);
+    const expanded = aggregate(otherSpec, dataset(['A', 'A', 'A', 'B', 'C', 'C']));
+    assert.equal(chartSelectionIsLive(expanded, [otherIdentity], new Set([4, 5])), false);
   });
 
   it('resets an incompatible histogram and sum when its IFC field becomes categorical (#4833)', async () => {
@@ -368,7 +382,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.isolatedEntities, null);
     assert.deepEqual(s.chartVisibilityOwned && { channel: s.chartVisibilityOwned.channel, ids: [...s.chartVisibilityOwned.ids].sort() }, { channel: 'ghost', ids: [GID(44), GID(45)] });
     assert.deepEqual([...(s.chartSlice ?? [])].sort(), [GID(44), GID(45)]);
-    assert.deepEqual(s.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
+    assert.deepEqual(s.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
 
     // The source chart keeps the whole scope but marks the bucket selected;
     // the storey chart re-aggregates over the slice: one door per level.
@@ -1128,7 +1142,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     const state = useViewerStore.getState();
     assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42)]);
-    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
   });
 
   it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {
@@ -1202,7 +1216,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     assert.deepEqual(barData(charts[1].options.at(-1)!).map(([name, value]) => [name, value]), [['Rule B', 3], ['Other', 2]]);
     const state = useViewerStore.getState();
-    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
     assert.equal(state.chartSliceBuckets?.[0]?.color, clickedColor, 'the click-time colour survives folding into Other');
     assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42), GID(44)]);
     const expected = [
@@ -1317,7 +1331,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
     const state = useViewerStore.getState();
-    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
     const expected = [
       Number.parseInt(gray.slice(1, 3), 16) / 255,
       Number.parseInt(gray.slice(3, 5), 16) / 255,

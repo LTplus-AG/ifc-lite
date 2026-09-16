@@ -18,4 +18,16 @@ describe('schema-union named attributes (#4833)', () => {
     expect(named.find(({ name }) => name === 'Name')?.raw).toBe('Kerb');
     expect(named.find(({ name }) => name === 'PredefinedType')?.raw).toBe('.USERDEFINED.');
   });
+
+  it('uses the loaded schema when a shared entity changed positional attributes', () => {
+    const entity = {
+      expressId: 1,
+      type: 'IFCBUILDINGELEMENTPROXY',
+      attributes: ['gid', null, 'Proxy', null, null, null, null, null, '.ELEMENT.'],
+    } as IfcEntity;
+
+    const named = getRawNamedAttributes(entity, 'IFC2X3');
+    expect(named.find(({ name }) => name === 'CompositionType')?.raw).toBe('.ELEMENT.');
+    expect(named.some(({ name }) => name === 'PredefinedType')).toBe(false);
+  });
 });

@@ -55,7 +55,7 @@ export function chartBucketIdentity(
   const series = aggregation.series[item.seriesIndex];
   const bucket = series?.buckets[item.dataIndex];
   return series && bucket
-    ? { seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket), color: bucket.color, ids: [...bucket.ids] }
+    ? { dataFingerprint: aggregation.dataFingerprint, seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket), color: bucket.color, ids: [...bucket.ids] }
     : null;
 }
 
@@ -81,16 +81,19 @@ export function chartSelectionIsLive(
   for (const id of selectedIds) if (!liveIds.has(id)) return false;
   for (const selected of selectedBuckets) {
     const series = aggregation.series.find((candidate) => candidate.key === selected.seriesKey);
+    const sameData = selected.dataFingerprint === aggregation.dataFingerprint;
     if (selected.isOther) {
+      if (sameData) continue;
       const carrier = series?.buckets.find((candidate) => {
         const ids = new Set(candidate.ids);
-        return selected.ids.every((id) => ids.has(id));
+        return candidate.ids.length === selected.ids.length && selected.ids.every((id) => ids.has(id));
       });
       if (!carrier) return false;
       continue;
     }
     const bucket = series?.buckets.find((candidate) => candidate.key === selected.bucketKey && Boolean(candidate.isOther) === selected.isOther);
     if (bucket) {
+      if (sameData && selected.ids.every((id) => new Set(bucket.ids).has(id))) continue;
       const selectedIdsAtClick = new Set(selected.ids);
       if (bucket.ids.length !== selectedIdsAtClick.size) return false;
       for (const id of bucket.ids) if (!selectedIdsAtClick.has(id)) return false;

@@ -36,10 +36,12 @@ function coerceRaw(raw: IfcAttributeValue): string | number | boolean | null {
 }
 
 export function extractAllEntityAttributesFromEntity(
-  entity: IfcEntity
+  entity: IfcEntity,
+  schemaVersion?: IfcDataStore['schemaVersion'],
 ): Array<{ name: string; value: string | number | boolean }> {
   const result: Array<{ name: string; value: string | number | boolean }> = [];
-  for (const { name, raw } of getRawNamedAttributes(entity)) {
+  const registeredVersion = schemaVersion === 'IFC5' ? undefined : schemaVersion;
+  for (const { name, raw } of getRawNamedAttributes(entity, registeredVersion)) {
     const value = coerceRaw(raw);
     if (value !== null) result.push({ name, value });
   }
@@ -118,7 +120,7 @@ export class EntityNode {
   allAttributes(): Array<{ name: string; value: string | number | boolean }> {
     const entity = this.store.getEntity(this.expressId);
     if (entity) {
-      return extractAllEntityAttributesFromEntity(entity);
+      return extractAllEntityAttributesFromEntity(entity, this.store.schemaVersion);
     }
 
     // Fallback: return individually known attributes

@@ -23,7 +23,11 @@ function mergeOptions(target: Map<string, ElementFieldOption>, options: readonly
       : JSON.stringify(['property', option.binding.psetName, option.binding.propertyName]);
     const previous = target.get(id);
     if (!previous) target.set(id, option);
-    else if (previous.binding.valueKind !== option.binding.valueKind
+    else if (!option.observedValue) continue;
+    else if (!previous.observedValue) target.set(id, option);
+    else if ((previous.binding.valueKind !== option.binding.valueKind
+        && previous.binding.valueKind !== 'number'
+        && option.binding.valueKind !== 'number')
       || !compatibleDataTypes(previous.binding, option.binding)
       || (previous.binding.valueKind === 'number' && previous.binding.unit !== option.binding.unit && !previous.binding.dataType && !option.binding.dataType)) {
       target.set(id, { ...option, binding: { ...option.binding, valueKind: 'category', unit: undefined } as ElementFieldBinding });

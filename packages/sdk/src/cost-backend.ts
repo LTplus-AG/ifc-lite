@@ -130,15 +130,15 @@ function validateEvaluationTarget(target: EntityRef): void {
   if (!target || typeof target.modelId !== 'string' || target.modelId.length === 0) {
     throw new Error('bim.cost evaluation requires a model-qualified EntityRef');
   }
-  if (!Number.isInteger(target.expressId) || target.expressId < 0) {
-    throw new Error('bim.cost evaluation requires a non-negative integer expressId');
+  if (!Number.isSafeInteger(target.expressId) || target.expressId < 0) {
+    throw new Error('bim.cost evaluation requires a non-negative safe integer expressId');
   }
 }
 
 function validateEvaluationOptions(options: CostEvaluationOptions | undefined): void {
   if (options?.Precision !== undefined
-    && (!Number.isInteger(options.Precision) || options.Precision < 1)) {
-    throw new Error('bim.cost evaluation Precision must be a positive integer');
+    && (!Number.isInteger(options.Precision) || options.Precision < 1 || options.Precision > 10_000)) {
+    throw new Error('bim.cost evaluation Precision must be an integer from 1 through 10000');
   }
 }
 

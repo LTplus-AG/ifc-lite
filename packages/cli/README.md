@@ -21,6 +21,9 @@ ifc-lite eval cost.ifc "bim.cost.evaluateItem({modelId:'default',expressId:42})"
 ifc-lite view model.ifc
 ```
 
+The `cost.ifc` command above uses the canonical cost fixture (fetch it with
+`pnpm fixtures`); express ID 42 is its `External wall total` cost item.
+
 `bim.cost` reads the loaded IFC source snapshot and returns decimal strings;
 pending generic mutation overlays are not included until reload.
 

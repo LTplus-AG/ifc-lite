@@ -52,12 +52,13 @@ export function projectUnit(
 export function createContext(
   extraction: CostGraphExtraction, options?: CostEvaluationOptions,
 ): CostEvaluationContext {
+  const maximumPrecision = 10_000;
   const requestedPrecision = options?.Precision;
   const invalidOptions = requestedPrecision !== undefined &&
-    (!Number.isInteger(requestedPrecision) || requestedPrecision < 1 || requestedPrecision > 1_000_000_000);
+    (!Number.isInteger(requestedPrecision) || requestedPrecision < 1 || requestedPrecision > maximumPrecision);
   const diagnostics: CostDiagnostic[] = invalidOptions ? [{
     Code: 'INVALID_NUMBER',
-    Message: `Cost evaluation Precision must be an integer from 1 through 1000000000; received ${String(requestedPrecision)}`,
+    Message: `Cost evaluation Precision must be an integer from 1 through ${maximumPrecision}; received ${String(requestedPrecision)}`,
     Severity: 'error',
   }] : [];
   const DecimalValue = Decimal.clone({

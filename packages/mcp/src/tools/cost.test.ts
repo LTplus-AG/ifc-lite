@@ -56,6 +56,11 @@ describe('#4855 MCP cost tools', () => {
     const evaluateTool = costTools.find(tool => tool.name === 'cost_evaluate');
     if (!evaluateTool) throw new Error('cost evaluation tool not registered');
     expect(() => evaluateTool.handler({ target: 'item', express_id: 42, precision: 0 }, ctx))
-      .toThrow('precision must be a positive integer');
+      .toThrow('precision must be an integer from 1 through 10000');
+    expect(() => evaluateTool.handler({ target: 'item', express_id: 42, precision: 10_001 }, ctx))
+      .toThrow('precision must be an integer from 1 through 10000');
+    expect(() => evaluateTool.handler({
+      target: 'item', express_id: Number.MAX_SAFE_INTEGER + 1,
+    }, ctx)).toThrow('express_id must be a non-negative safe integer');
   });
 });

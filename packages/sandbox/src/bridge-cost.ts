@@ -17,8 +17,8 @@ function entityRef(value: unknown): EntityRef {
   }
   const candidate = value as Partial<EntityRef>;
   if (typeof candidate.modelId !== 'string' || candidate.modelId.length === 0
-    || !Number.isInteger(candidate.expressId) || (candidate.expressId ?? -1) < 0) {
-    throw new Error('cost evaluation requires a model-qualified EntityRef with a non-negative integer expressId');
+    || !Number.isSafeInteger(candidate.expressId) || (candidate.expressId ?? -1) < 0) {
+    throw new Error('cost evaluation requires a model-qualified EntityRef with a non-negative safe integer expressId');
   }
   return { modelId: candidate.modelId, expressId: candidate.expressId as number };
 }
@@ -34,8 +34,9 @@ function evaluationOptions(value: unknown): CostEvaluationOptions | undefined {
     throw new Error("cost evaluation options only accept the exact 'Precision' field");
   }
   if (candidate.Precision === undefined) return {};
-  if (!Number.isInteger(candidate.Precision) || (candidate.Precision as number) < 1) {
-    throw new Error('cost evaluation Precision must be a positive integer');
+  if (!Number.isInteger(candidate.Precision) || (candidate.Precision as number) < 1 ||
+      (candidate.Precision as number) > 10_000) {
+    throw new Error('cost evaluation Precision must be an integer from 1 through 10000');
   }
   return { Precision: candidate.Precision as number };
 }

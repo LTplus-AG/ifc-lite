@@ -71,7 +71,7 @@ function valueGraph(CostValues: CostValueInfo[]): CostGraphExtraction {
 }
 
 describe('#4854 cost evaluator blocker regressions', () => {
-  it.each([0, 1.5, 1_000_000_001, Number.NaN, Number.POSITIVE_INFINITY])(
+  it.each([0, 1.5, 10_001, 1_000_000_001, Number.NaN, Number.POSITIVE_INFINITY])(
     'refuses invalid evaluation Precision %s without throwing', async (Precision) => {
       const extraction = extractCostOnDemand(await parse(step('IFC4', [...PROJECT,
         "#10=IFCCOSTVALUE('Value',$,IFCMONETARYMEASURE(10.),$,$,$,$,$,$,$);",

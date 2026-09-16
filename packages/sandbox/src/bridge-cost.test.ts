@@ -44,6 +44,12 @@ describe('#4855 sandbox cost bridge', () => {
       await expect(sandbox.eval(`bim.cost.evaluateItem(
         { modelId: 'sandbox-a', expressId: 42 }, { precision: 34 }
       )`)).rejects.toThrow("exact 'Precision' field");
+      await expect(sandbox.eval(`bim.cost.evaluateItem(
+        { modelId: 'sandbox-a', expressId: ${String(Number.MAX_SAFE_INTEGER + 1)} }
+      )`)).rejects.toThrow('non-negative safe integer expressId');
+      await expect(sandbox.eval(`bim.cost.evaluateItem(
+        { modelId: 'sandbox-a', expressId: 42 }, { Precision: 10001 }
+      )`)).rejects.toThrow('integer from 1 through 10000');
     } finally {
       sandbox.dispose();
     }

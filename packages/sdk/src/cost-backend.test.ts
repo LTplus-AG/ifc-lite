@@ -116,4 +116,14 @@ describe('#4855 cost SDK adapter', () => {
     expect(() => cost.evaluateItem({ expressId: 42 } as never))
       .toThrow('bim.cost evaluation requires a model-qualified EntityRef');
   });
+
+  it('rejects unsafe identifiers and impractical decimal precision', () => {
+    const backend = createCostBackend(() => { throw new Error('model resolution must not run'); });
+    expect(() => backend.evaluateItem(
+      { modelId: 'default', expressId: Number.MAX_SAFE_INTEGER + 1 },
+    )).toThrow('non-negative safe integer expressId');
+    expect(() => backend.evaluateItem(
+      { modelId: 'default', expressId: 1 }, { Precision: 10_001 },
+    )).toThrow('integer from 1 through 10000');
+  });
 });

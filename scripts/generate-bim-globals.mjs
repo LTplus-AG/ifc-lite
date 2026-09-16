@@ -126,7 +126,7 @@ function collectDeclarations(sources) {
       if (existing && existing.source !== rel) {
         console.error(
           `❌ Type '${name}' is declared in both ${existing.source} and ${rel}. ` +
-            'DERIVED_TYPE_SOURCES must resolve every name unambiguously.',
+            'BIM_DERIVED_TYPE_GROUPS must resolve every name unambiguously.',
         );
         process.exit(1);
       }
@@ -191,7 +191,7 @@ function derivedTypeGroupLines(group) {
       console.error(
         `❌ Cannot extract type '${name}': it is referenced by the sandbox bim type surface ` +
           `but declared in none of:\n${group.sources.map(s => `     ${s}`).join('\n')}\n` +
-          '   Add the file that declares it to this group\'s sources in scripts/generate-bim-globals.mjs.',
+          '   Add the file that declares it to this group\'s sources in scripts/lib/bim-derived-type-groups.mjs.',
       );
       process.exit(1);
     }

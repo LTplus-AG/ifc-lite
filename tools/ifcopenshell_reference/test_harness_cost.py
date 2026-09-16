@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Known-answer tests for `compare_cost.py` (issue #4859).
+"""Known-answer tests for the cost comparator (issue #4859).
 
 Run: python3 -m unittest test_harness_cost  (stdlib only — no IfcOpenShell,
 no ifc-lite build required; the comparator is pure Python over plain dicts).
@@ -12,8 +12,16 @@ geometry fault-injection tests: it perturbs a copy of a real, once-generated
 canonical dump pair (see `_baseline_pair`, itself produced from the actual
 `buildingsmart-cost-composition.ifc` fixture the CI lane uses — recorded here
 as a literal to keep this test engine-independent and fast) and asserts
-`compare()` actually classifies the corruption as FAILURE, not MATCH and not
-a silently-absorbed DEGRADED category.
+`compare_cost()` actually classifies the corruption as FAILURE, not MATCH and
+not a silently-absorbed DEGRADED category.
+
+Imports the pre-existing `compare` module (which now carries the cost
+comparator alongside the geometry one — see its "Cost differential parity"
+section) rather than a standalone `compare_cost` module: a revert of only
+the cost-adding hunk leaves `compare.py` importable, so a corrupted or
+missing comparator surfaces here as a real assertion/attribute failure
+inside a test body, not a collection-time import error that would hide
+every assertion below behind a load failure.
 """
 
 from __future__ import annotations
@@ -21,7 +29,7 @@ from __future__ import annotations
 import copy
 import unittest
 
-import compare_cost as cc
+import compare as cc
 
 
 def _baseline_pair():
@@ -102,7 +110,7 @@ def _baseline_pair():
 class ComparatorClassification(unittest.TestCase):
     def test_positive_control_unperturbed_pair_is_all_match(self):
         lite, ref = _baseline_pair()
-        report = cc.compare(lite, ref)
+        report = cc.compare_cost(lite, ref)
         summary = report.summary()
         self.assertEqual(summary["failures"], 0)
         self.assertEqual(summary["degradations"], 0)
@@ -117,12 +125,12 @@ class ComparatorClassification(unittest.TestCase):
         ref["HasCostData"] = False
         ref["Items"] = {}
         with self.assertRaises(ValueError):
-            cc.compare(lite, ref)
+            cc.compare_cost(lite, ref)
 
     def test_named_degradation_currency_unresolved_is_distinct_from_match_and_failure(self):
         lite, ref = _baseline_pair()
         lite["Currency"] = None
-        report = cc.compare(lite, ref)
+        report = cc.compare_cost(lite, ref)
         currency_rows = [r for r in report.rows if r[0] == "Currency"]
         self.assertEqual(len(currency_rows), 1)
         self.assertEqual(currency_rows[0][1], "DEGRADED:CURRENCY_UNRESOLVED")
@@ -131,7 +139,7 @@ class ComparatorClassification(unittest.TestCase):
 
 class EndToEndFaultInjection(unittest.TestCase):
     """Each test perturbs a COPY of the real dump pair and asserts
-    `compare()`'s exit-worthy failure count actually goes non-zero — proof
+    `compare_cost()`'s exit-worthy failure count actually goes non-zero — proof
     the comparator's red path has teeth, not just that individual field
     comparisons are correct in isolation."""
 
@@ -141,24 +149,24 @@ class EndToEndFaultInjection(unittest.TestCase):
         # relationship / flips its direction).
         lite["Items"]["CHILD1"]["ParentGlobalId"] = None
         lite["Items"]["PARENT1"]["ChildGlobalIds"] = []
-        report = cc.compare(lite, ref)
+        report = cc.compare_cost(lite, ref)
         self.assertGreater(report.summary()["failures"], 0)
-        self.assertTrue(any(r[0] == "item:CHILD1/ParentGlobalId" and r[1] == cc.FAILURE for r in report.rows))
+        self.assertTrue(any(r[0] == "item:CHILD1/ParentGlobalId" and r[1] == cc.COST_FAILURE for r in report.rows))
 
     def test_missing_reference_is_a_failure(self):
         lite, ref = _baseline_pair()
         del lite["Items"]["CHILD1"]
-        report = cc.compare(lite, ref)
+        report = cc.compare_cost(lite, ref)
         self.assertGreater(report.summary()["failures"], 0)
-        self.assertTrue(any(r[0] == "item:CHILD1" and r[1] == cc.FAILURE for r in report.rows))
+        self.assertTrue(any(r[0] == "item:CHILD1" and r[1] == cc.COST_FAILURE for r in report.rows))
 
     def test_altered_total_is_a_failure(self):
         lite, ref = _baseline_pair()
         lite["Items"]["PARENT1"]["ResolvedTotal"]["Amount"] = 800.0
         lite["Nodes"]["item:PARENT1/value/0"]["Resolved"] = 800.0
-        report = cc.compare(lite, ref)
+        report = cc.compare_cost(lite, ref)
         self.assertGreater(report.summary()["failures"], 0)
-        self.assertTrue(any(r[0] == "item:PARENT1/ResolvedTotal" and r[1] == cc.FAILURE for r in report.rows))
+        self.assertTrue(any(r[0] == "item:PARENT1/ResolvedTotal" and r[1] == cc.COST_FAILURE for r in report.rows))
 
     def test_broken_shared_reference_is_a_failure(self):
         """Two items sharing one IfcCostValue must be caught if a dumper
@@ -166,7 +174,7 @@ class EndToEndFaultInjection(unittest.TestCase):
         instead of pointing at the same node)."""
         lite, ref = _baseline_pair()
         ref["Nodes"]["item:CHILD1/value/0"] = {"SharedWith": "item:PARENT1/value/0/component/0"}
-        report = cc.compare(lite, ref)
+        report = cc.compare_cost(lite, ref)
         self.assertGreater(report.summary()["failures"], 0)
 
     def test_unlisted_mismatch_is_a_failure_not_a_degradation(self):
@@ -175,8 +183,8 @@ class EndToEndFaultInjection(unittest.TestCase):
         arbitrary divergence."""
         lite, ref = _baseline_pair()
         lite["Items"]["PARENT1"]["Name"] = "Wrong Name Entirely"
-        report = cc.compare(lite, ref)
-        self.assertTrue(any(r[0] == "item:PARENT1/Name" and r[1] == cc.FAILURE for r in report.rows))
+        report = cc.compare_cost(lite, ref)
+        self.assertTrue(any(r[0] == "item:PARENT1/Name" and r[1] == cc.COST_FAILURE for r in report.rows))
         self.assertFalse(any(r[0] == "item:PARENT1/Name" and r[1].startswith("DEGRADED:") for r in report.rows))
 
     def test_positive_control_perturbed_copy_stays_green_when_reverted(self):
@@ -185,7 +193,7 @@ class EndToEndFaultInjection(unittest.TestCase):
         accidentally already divergent)."""
         lite, ref = _baseline_pair()
         lite2 = copy.deepcopy(lite)
-        report = cc.compare(lite2, ref)
+        report = cc.compare_cost(lite2, ref)
         self.assertEqual(report.summary()["failures"], 0)
 
 

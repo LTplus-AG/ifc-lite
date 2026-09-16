@@ -7,7 +7,8 @@
  * ifc-lite side of the cost differential parity pair. Reads an IFC file
  * through the shipped `@ifc-lite/parser` cost read model
  * (`extractCostOnDemand`, via `@ifc-lite/sdk`'s `createCostBackend`) and
- * emits the shared canonical cost schema documented in `compare_cost.py`.
+ * emits the shared canonical cost schema documented in `compare.py`'s "Cost
+ * differential parity" section.
  *
  * This dumper does NOT read or adapt IfcOpenShell source: it only calls our
  * own already-tested read model (packages/parser/src/cost-extractor.ts,

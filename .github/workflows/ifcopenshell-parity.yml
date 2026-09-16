@@ -27,8 +27,11 @@
 #
 # `cost-quick` / `cost-full` extend the same pattern to the independent 5D
 # cost-verification slice (#4859, parent #4322): a GlobalId-keyed canonical
-# cost record + comparator (tools/ifcopenshell_reference/compare_cost.py),
-# fed by two dumpers that never read each other's implementation —
+# cost record + comparator living in the pre-existing
+# tools/ifcopenshell_reference/compare.py (its "Cost differential parity"
+# section, alongside the geometry comparator — compare_cost.py is now just a
+# thin CLI wrapper around it), fed by two dumpers that never read each
+# other's implementation —
 # `dump_ifclite_cost.mjs` reads through the shipped ifc-lite cost read model
 # (packages/parser/src/cost-extractor.ts, packages/sdk's createCostBackend),
 # `dump_reference_cost.py` uses the pinned IfcOpenShell purely as a

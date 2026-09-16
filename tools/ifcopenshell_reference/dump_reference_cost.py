@@ -12,8 +12,9 @@ read `IfcCostSchedule` / `IfcCostItem` / `IfcCostValue` / `IfcQuantity*` /
 reference dedup scheme, and the arithmetic-tree resolution below are written
 from the IFC4 specification, independently of `dump_ifclite_cost.mjs` and
 independently of IfcOpenShell's own internal cost-resolution helpers (which
-are not read, imported, or consulted here) — see `compare_cost.py`'s module
-docstring for the shared canonical schema both dumpers must emit.
+are not read, imported, or consulted here) — see `compare.py`'s "Cost
+differential parity" section docstring for the shared canonical schema both
+dumpers must emit.
 
 Usage: python3 dump_reference_cost.py <model.ifc> --out <dump.json>
 """

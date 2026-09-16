@@ -47,9 +47,11 @@ function parseNumericLiteral(value) {
 
 /**
  * Deterministic, engine-independent node registry. A "node" is a
- * IfcCostValue / IfcAppliedValue / IfcQuantity* / unit-basis reached from a
- * canonical traversal (items sorted by GlobalId, then their CostValues /
- * CostQuantities / Components / UnitBasis in IFC ordered-attribute order —
+ * IfcCostValue / IfcAppliedValue, an IfcMeasureWithUnit (used as an
+ * AppliedValue or a UnitBasis) and its UnitComponent, or an IfcQuantity*,
+ * reached from a canonical traversal (items sorted by GlobalId, then their
+ * CostValues / CostQuantities, then per value its AppliedValue reference,
+ * Components and UnitBasis in IFC ordered-attribute order —
  * both dumpers see the same file so this order is identical on both sides).
  *
  * The first path that reaches a given underlying entity registers it; every
@@ -63,52 +65,16 @@ function parseNumericLiteral(value) {
  */
 class NodeRegistry {
   constructor(graph) {
-    this.graph = graph;
     this.byExpressId = new Map(); // expressId -> first path
     this.nodes = {}; // path -> node body (or { SharedWith })
     this.valueByExpressId = new Map(graph.CostValues.map(v => [v.ref.expressId, v]));
     this.quantityByExpressId = new Map(graph.CostQuantities.map(v => [v.ref.expressId, v]));
     this.unitByExpressId = new Map(graph.Units.map(v => [v.ref.expressId, v]));
+    this.measureByExpressId = new Map(graph.MeasuresWithUnit.map(v => [v.ref.expressId, v]));
   }
 
   registerValue(path, expressId) {
-    const seen = this.byExpressId.get(expressId);
-    if (seen !== undefined) {
-      this.nodes[path] = { SharedWith: seen };
-      return path;
-    }
-    this.byExpressId.set(expressId, path);
-    const value = this.valueByExpressId.get(expressId);
-    if (!value) {
-      this.nodes[path] = { Kind: 'Value', Missing: true };
-      return path;
-    }
-    const applied = value.AppliedValue
-      ? value.AppliedValue.Kind === 'Typed'
-        ? { Kind: 'Typed', Type: value.AppliedValue.Type, Value: parseNumericLiteral(value.AppliedValue.Value) ?? null }
-        : value.AppliedValue.Kind === 'Reference'
-          ? { Kind: 'Reference', Node: this.registerValue(`${path}/ref`, value.AppliedValue.ref.expressId) }
-          : { Kind: 'Unsupported' }
-      : null;
-    const components = value.Components
-      ? value.Components.map((ref, idx) => this.registerValue(`${path}/component/${idx}`, ref.expressId))
-      : null;
-    const unitBasis = value.UnitBasis
-      ? this.registerUnit(`${path}/unitBasis`, value.UnitBasis.expressId)
-      : null;
-    this.nodes[path] = {
-      Kind: 'Value',
-      Type: value.Type ?? null,
-      Name: value.Name ?? null,
-      Category: value.Category ?? value.CostType ?? null,
-      Condition: value.Condition ?? null,
-      ArithmeticOperator: value.ArithmeticOperator ?? null,
-      Applied: applied,
-      Components: components,
-      UnitBasisNode: unitBasis,
-      Resolved: resolveNode(this.nodes, path, applied, value.ArithmeticOperator, components),
-    };
-    return path;
+    return this.walk({ kind: 'value', path, expressId });
   }
 
   registerQuantity(path, expressId) {
@@ -129,32 +95,149 @@ class NodeRegistry {
     return path;
   }
 
-  registerUnit(path, expressId) {
+  /**
+   * Iterative depth-first walk over value -> (AppliedValue | Components |
+   * UnitBasis) -> measure -> unit. A recursive walk overflowed the JS stack on
+   * a deeply composed IfcCostValue chain the parser itself reads fine, so the
+   * stack is explicit: a frame CLAIMS its entity on entry (so a later path, or
+   * a cycle back into it, records `SharedWith` exactly as the old pre-order
+   * recursion did) and writes its body on exit, after every dependency's body
+   * exists. Children are pushed in reverse so they are visited in IFC
+   * ordered-attribute order, which keeps path registration order - and so
+   * which path owns a shared entity - identical to dump_reference_cost.py.
+   * The global `byExpressId` claim is also the cycle guard: every entity is
+   * expanded at most once, so the walk is bounded by the entity count.
+   */
+  walk(root) {
+    const stack = [{ ...root, entered: false }];
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      if (frame.entered) {
+        stack.pop();
+        this.finish(frame);
+        continue;
+      }
+      frame.entered = true;
+      const children = this.enter(frame);
+      if (children === null) {
+        stack.pop();
+        continue;
+      }
+      for (let i = children.length - 1; i >= 0; i--) stack.push({ ...children[i], entered: false });
+    }
+    return root.path;
+  }
+
+  /** Claim the frame's entity and return its child frames, or null when the frame is already final. */
+  enter(frame) {
+    const { path, expressId } = frame;
     const seen = this.byExpressId.get(expressId);
-    if (seen !== undefined) { this.nodes[path] = { SharedWith: seen }; return path; }
+    if (seen !== undefined) {
+      this.nodes[path] = { SharedWith: seen };
+      return null;
+    }
     this.byExpressId.set(expressId, path);
-    const u = this.unitByExpressId.get(expressId);
-    if (!u) { this.nodes[path] = { Kind: 'Unit', Missing: true }; return path; }
-    this.nodes[path] = {
-      Kind: 'Unit',
-      Type: u.Type ?? null,
-      UnitType: u.UnitType ?? null,
-      Currency: u.Currency ?? null,
-      Symbol: u.Symbol ?? null,
-      Dimension: u.Dimension ?? null,
-    };
-    return path;
+    if (frame.kind === 'value') {
+      // An AppliedValue reference may target an IfcCostValue/IfcAppliedValue
+      // OR an IfcMeasureWithUnit; dispatch on what the entity actually is.
+      if (this.measureByExpressId.has(expressId) && !this.valueByExpressId.has(expressId)) {
+        frame.kind = 'measure';
+        return this.measureChildren(frame);
+      }
+      const value = this.valueByExpressId.get(expressId);
+      if (!value) {
+        this.nodes[path] = { Kind: 'Value', Missing: true };
+        return null;
+      }
+      frame.value = value;
+      const children = [];
+      if (value.AppliedValue?.Kind === 'Reference') {
+        children.push({ kind: 'value', path: `${path}/ref`, expressId: value.AppliedValue.ref.expressId });
+      }
+      (value.Components ?? []).forEach((ref, idx) => {
+        children.push({ kind: 'value', path: `${path}/component/${idx}`, expressId: ref.expressId });
+      });
+      if (value.UnitBasis) {
+        children.push({ kind: 'measure', path: `${path}/unitBasis`, expressId: value.UnitBasis.expressId });
+      }
+      return children;
+    }
+    if (frame.kind === 'measure') return this.measureChildren(frame);
+    return [];
+  }
+
+  measureChildren(frame) {
+    const measure = this.measureByExpressId.get(frame.expressId);
+    if (!measure) {
+      this.nodes[frame.path] = { Kind: 'Measure', Missing: true };
+      return null;
+    }
+    frame.measure = measure;
+    return [{ kind: 'unit', path: `${frame.path}/unit`, expressId: measure.UnitComponent.expressId }];
+  }
+
+  finish(frame) {
+    const { path } = frame;
+    if (frame.kind === 'value') {
+      const value = frame.value;
+      const applied = value.AppliedValue
+        ? value.AppliedValue.Kind === 'Typed'
+          ? { Kind: 'Typed', Type: value.AppliedValue.Type, Value: parseNumericLiteral(value.AppliedValue.Value) ?? null }
+          : value.AppliedValue.Kind === 'Reference'
+            ? { Kind: 'Reference', Node: `${path}/ref` }
+            : { Kind: 'Unsupported' }
+        : null;
+      const components = value.Components
+        ? value.Components.map((_, idx) => `${path}/component/${idx}`)
+        : null;
+      this.nodes[path] = {
+        Kind: 'Value',
+        Type: value.Type ?? null,
+        Name: value.Name ?? null,
+        Category: value.Category ?? value.CostType ?? null,
+        Condition: value.Condition ?? null,
+        ArithmeticOperator: value.ArithmeticOperator ?? null,
+        Applied: applied,
+        Components: components,
+        UnitBasisNode: value.UnitBasis ? `${path}/unitBasis` : null,
+        Resolved: resolveNode(this.nodes, applied, value.ArithmeticOperator, components),
+      };
+    } else if (frame.kind === 'measure') {
+      const value = parseNumericLiteral(frame.measure.ValueComponent) ?? null;
+      this.nodes[path] = {
+        Kind: 'Measure',
+        Type: 'IfcMeasureWithUnit',
+        ValueType: frame.measure.ValueType ?? null,
+        Value: value,
+        UnitNode: `${path}/unit`,
+        Resolved: value,
+      };
+    } else {
+      const u = this.unitByExpressId.get(frame.expressId);
+      this.nodes[path] = u
+        ? {
+          Kind: 'Unit',
+          Type: u.Type ?? null,
+          UnitType: u.UnitType ?? null,
+          Currency: u.Currency ?? null,
+          Symbol: u.Symbol ?? null,
+          Dimension: u.Dimension ?? null,
+        }
+        : { Kind: 'Unit', Missing: true };
+    }
   }
 }
 
-/** Recursively resolve a just-registered node to a plain number, or null. Cycle-safe via `nodes` already-written bodies. */
-function resolveNode(nodes, path, applied, operator, componentPaths) {
+/**
+ * Resolve a value node whose dependencies' bodies are already written (the
+ * walk guarantees that) to a plain number, or null. Not recursive: it only
+ * reads the dependencies' own `Resolved` fields. A dependency still being
+ * walked (a reference cycle) has no body yet and resolves to null.
+ */
+function resolveNode(nodes, applied, operator, componentPaths) {
   if (applied) {
     if (applied.Kind === 'Typed') return applied.Value;
-    if (applied.Kind === 'Reference') {
-      const target = nodes[applied.Node];
-      return target ? nodeResolved(nodes, applied.Node) : null;
-    }
+    if (applied.Kind === 'Reference') return nodeResolved(nodes, applied.Node);
     return null;
   }
   if (operator && componentPaths && componentPaths.length > 0) {
@@ -177,8 +260,10 @@ function resolveNode(nodes, path, applied, operator, componentPaths) {
 function nodeResolved(nodes, path) {
   const node = nodes[path];
   if (!node) return null;
-  if (node.SharedWith) return nodeResolved(nodes, node.SharedWith);
-  return node.Resolved ?? null;
+  // A SharedWith target is always a first-registration path, never another
+  // SharedWith pointer, so this is a single hop rather than a chain.
+  const body = node.SharedWith ? nodes[node.SharedWith] : node;
+  return body?.Resolved ?? null;
 }
 
 function buildCanonicalDump(graph) {
@@ -248,12 +333,11 @@ function buildCanonicalDump(graph) {
 
   const scheduleExpressIdToGlobalId = new Map(graph.CostSchedules.map(s => [s.ref.expressId, s.GlobalId]));
 
-  const projectUnitCurrency = (() => {
-    for (const unit of graph.Units) {
-      if (unit.Type === 'IfcMonetaryUnit' && unit.Currency) return unit.Currency;
-    }
-    return null;
-  })();
+  // The project currency is the one IfcProject.UnitsInContext assigns (the
+  // read model leaves it unset when that assignment declares conflicting
+  // currencies) - NOT the first IfcMonetaryUnit in the file, which can be an
+  // unassigned unit that merely precedes the project's in STEP order.
+  const projectUnitCurrency = graph.Currency ?? null;
 
   const items = {};
   for (const gid of sortedGlobalIds) {
@@ -319,6 +403,10 @@ function buildCanonicalDump(graph) {
     SchemaVersion: graph.SchemaVersion,
     Currency: projectUnitCurrency,
     HasCostData: graph.HasCostData,
+    // Lite-only evidence field, never compared as a value: compare.py reads it
+    // as the paired marker a DEGRADED:IFC2X3_PARTIAL_READ classification
+    // requires (the read model's own diagnostic, not the comparator's guess).
+    DiagnosticCodes: [...new Set(graph.Diagnostics.map(d => d.Code))].sort(),
     Schedules: schedules,
     Items: items,
     Nodes: registry.nodes,

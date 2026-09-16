@@ -38,68 +38,135 @@ def numeric(value):
         return None
 
 
+KIND_LABELS = {"value": "Value", "measure": "Measure", "unit": "Unit"}
+
+# Entity types an IfcAppliedValueSelect reference may target.
+REFERENCE_APPLIED_TYPES = ("IfcCostValue", "IfcAppliedValue", "IfcMeasureWithUnit")
+
+
+def applied_reference(entity):
+    """The entity an AppliedValue references, or None for a simple measure,
+    an unset attribute, or an unsupported target."""
+    applied_value = getattr(entity, "AppliedValue", None)
+    if applied_value is None or hasattr(applied_value, "wrappedValue"):
+        return None
+    return applied_value if applied_value.is_a() in REFERENCE_APPLIED_TYPES else None
+
+
 class NodeRegistry:
     """Mirrors the JS `NodeRegistry` in dump_ifclite_cost.mjs: first-seen path
     wins per underlying entity id(); later paths to the same entity record a
-    thin `SharedWith` pointer instead of a duplicate body."""
+    thin `SharedWith` pointer instead of a duplicate body.
+
+    The walk over value -> (AppliedValue | Components | UnitBasis) ->
+    IfcMeasureWithUnit -> UnitComponent is iterative: a recursive walk hits
+    Python's recursion limit on a deeply composed IfcCostValue chain. A frame
+    claims its entity on entry (so a later path, or a cycle back into it,
+    records `SharedWith`) and writes its body on exit, after every dependency's
+    body exists; children are pushed in reverse so they are visited in IFC
+    ordered-attribute order. The global `by_id` claim doubles as the cycle
+    guard: every entity is expanded at most once."""
 
     def __init__(self):
         self.by_id = {}   # entity.id() -> first path
         self.nodes = {}    # path -> node body
 
     def register_value(self, path, entity):
+        return self._walk({"kind": "value", "path": path, "entity": entity})
+
+    def _walk(self, root):
+        stack = [dict(root, entered=False)]
+        while stack:
+            frame = stack[-1]
+            if frame["entered"]:
+                stack.pop()
+                self._finish(frame)
+                continue
+            frame["entered"] = True
+            children = self._enter(frame)
+            if children is None:
+                stack.pop()
+                continue
+            for child in reversed(children):
+                stack.append(dict(child, entered=False))
+        return root["path"]
+
+    def _enter(self, frame):
+        path, entity, kind = frame["path"], frame["entity"], frame["kind"]
         if entity is None:
-            self.nodes[path] = {"Kind": "Value", "Missing": True}
-            return path
+            self.nodes[path] = {"Kind": KIND_LABELS[kind], "Missing": True}
+            return None
         seen = self.by_id.get(entity.id())
         if seen is not None:
             self.nodes[path] = {"SharedWith": seen}
-            return path
+            return None
         self.by_id[entity.id()] = path
+        if kind == "value" and entity.is_a("IfcMeasureWithUnit"):
+            # An AppliedValue reference may target an IfcMeasureWithUnit
+            # rather than another IfcCostValue/IfcAppliedValue.
+            frame["kind"] = kind = "measure"
+        if kind == "value":
+            children = []
+            if applied_reference(entity) is not None:
+                children.append({"kind": "value", "path": f"{path}/ref", "entity": entity.AppliedValue})
+            for idx, comp in enumerate(getattr(entity, "Components", None) or ()):
+                children.append({"kind": "value", "path": f"{path}/component/{idx}", "entity": comp})
+            unit_basis = getattr(entity, "UnitBasis", None)
+            if unit_basis is not None:
+                children.append({"kind": "measure", "path": f"{path}/unitBasis", "entity": unit_basis})
+            return children
+        if kind == "measure":
+            return [{"kind": "unit", "path": f"{path}/unit", "entity": getattr(entity, "UnitComponent", None)}]
+        return []
 
-        applied = None
-        applied_value = getattr(entity, "AppliedValue", None)
-        if applied_value is not None:
-            if hasattr(applied_value, "wrappedValue"):
-                # A simple measure (IfcMonetaryMeasure, IfcRatioMeasure, ...)
-                applied = {"Kind": "Typed", "Type": applied_value.is_a(), "Value": numeric(applied_value.wrappedValue)}
-            elif hasattr(applied_value, "is_a") and applied_value.is_a() in ("IfcCostValue", "IfcAppliedValue"):
-                ref_path = self.register_value(f"{path}/ref", applied_value)
-                applied = {"Kind": "Reference", "Node": ref_path}
-            else:
-                applied = {"Kind": "Unsupported"}
-
-        operator = getattr(entity, "ArithmeticOperator", None)
-        components_attr = getattr(entity, "Components", None) or []
-        components = None
-        if components_attr:
-            components = [
-                self.register_value(f"{path}/component/{idx}", comp)
-                for idx, comp in enumerate(components_attr)
-            ]
-
-        unit_basis_node = None
-        unit_basis = getattr(entity, "UnitBasis", None)
-        if unit_basis is not None:
-            unit_basis_node = self.register_unit(f"{path}/unitBasis", unit_basis)
-
-        category = getattr(entity, "Category", None) or getattr(entity, "CostType", None)
-        condition = getattr(entity, "Condition", None)
-
-        node = {
-            "Kind": "Value",
-            "Type": entity.is_a(),
-            "Name": getattr(entity, "Name", None),
-            "Category": category,
-            "Condition": condition,
-            "ArithmeticOperator": operator,
-            "Applied": applied,
-            "Components": components,
-            "UnitBasisNode": unit_basis_node,
-        }
-        node["Resolved"] = resolve_node(self.nodes, node)
-        self.nodes[path] = node
-        return path
+    def _finish(self, frame):
+        path, entity, kind = frame["path"], frame["entity"], frame["kind"]
+        if kind == "value":
+            applied = None
+            applied_value = getattr(entity, "AppliedValue", None)
+            if applied_value is not None:
+                if hasattr(applied_value, "wrappedValue"):
+                    # A simple measure (IfcMonetaryMeasure, IfcRatioMeasure, ...)
+                    applied = {"Kind": "Typed", "Type": applied_value.is_a(), "Value": numeric(applied_value.wrappedValue)}
+                elif applied_reference(entity) is not None:
+                    applied = {"Kind": "Reference", "Node": f"{path}/ref"}
+                else:
+                    applied = {"Kind": "Unsupported"}
+            components_attr = getattr(entity, "Components", None) or ()
+            node = {
+                "Kind": "Value",
+                "Type": entity.is_a(),
+                "Name": getattr(entity, "Name", None),
+                "Category": getattr(entity, "Category", None) or getattr(entity, "CostType", None),
+                "Condition": getattr(entity, "Condition", None),
+                "ArithmeticOperator": getattr(entity, "ArithmeticOperator", None),
+                "Applied": applied,
+                "Components": [f"{path}/component/{idx}" for idx in range(len(components_attr))] or None,
+                "UnitBasisNode": f"{path}/unitBasis" if getattr(entity, "UnitBasis", None) is not None else None,
+            }
+            node["Resolved"] = resolve_node(self.nodes, node)
+            self.nodes[path] = node
+        elif kind == "measure":
+            value_component = getattr(entity, "ValueComponent", None)
+            value = numeric(getattr(value_component, "wrappedValue", None))
+            self.nodes[path] = {
+                "Kind": "Measure",
+                "Type": entity.is_a(),
+                "ValueType": value_component.is_a() if value_component is not None else None,
+                "Value": value,
+                "UnitNode": f"{path}/unit",
+                "Resolved": value,
+            }
+        else:
+            type_name = entity.is_a()
+            self.nodes[path] = {
+                "Kind": "Unit",
+                "Type": type_name,
+                "UnitType": getattr(entity, "UnitType", None),
+                "Currency": getattr(entity, "Currency", None) if type_name == "IfcMonetaryUnit" else None,
+                "Symbol": None,
+                "Dimension": None,
+            }
 
     def register_quantity(self, path, entity):
         if entity is None:
@@ -129,36 +196,15 @@ class NodeRegistry:
         }
         return path
 
-    def register_unit(self, path, entity):
-        if entity is None:
-            self.nodes[path] = {"Kind": "Unit", "Missing": True}
-            return path
-        seen = self.by_id.get(entity.id())
-        if seen is not None:
-            self.nodes[path] = {"SharedWith": seen}
-            return path
-        self.by_id[entity.id()] = path
-        type_name = entity.is_a()
-        currency = getattr(entity, "Currency", None) if type_name == "IfcMonetaryUnit" else None
-        symbol = None
-        unit_type = getattr(entity, "UnitType", None)
-        self.nodes[path] = {
-            "Kind": "Unit",
-            "Type": type_name,
-            "UnitType": unit_type,
-            "Currency": currency,
-            "Symbol": symbol,
-            "Dimension": None,
-        }
-        return path
-
 
 def node_resolved(nodes, path):
     node = nodes.get(path)
     if node is None:
         return None
     if "SharedWith" in node:
-        return node_resolved(nodes, node["SharedWith"])
+        # A SharedWith target is always a first-registration path, never
+        # another pointer: one hop, not a chain.
+        node = nodes.get(node["SharedWith"]) or {}
     return node.get("Resolved")
 
 
@@ -200,6 +246,19 @@ def resolve_node(nodes, node):
             return total
         return None
     return None
+
+
+def project_currency_of(model):
+    """The currency IfcProject.UnitsInContext assigns - not the first
+    IfcMonetaryUnit in STEP order, which may be an unassigned unit. None when
+    there is no assignment or it declares conflicting currencies."""
+    currencies = set()
+    for project in model.by_type("IfcProject")[:1]:
+        assignment = getattr(project, "UnitsInContext", None)
+        for unit in (getattr(assignment, "Units", None) or ()):
+            if unit.is_a("IfcMonetaryUnit") and getattr(unit, "Currency", None):
+                currencies.add(unit.Currency)
+    return next(iter(currencies)) if len(currencies) == 1 else None
 
 
 def build_canonical_dump(model):
@@ -271,10 +330,7 @@ def build_canonical_dump(model):
             if r.id() in item_ids:
                 task_items.setdefault(r.id(), []).append(process.id())
 
-    project_currency = None
-    for unit in model.by_type("IfcMonetaryUnit"):
-        project_currency = getattr(unit, "Currency", None)
-        break
+    project_currency = project_currency_of(model)
 
     items = {}
     for gid in sorted_gids:

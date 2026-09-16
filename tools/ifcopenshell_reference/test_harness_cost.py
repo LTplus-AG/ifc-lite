@@ -348,6 +348,19 @@ class ReviewFindingRegressions(unittest.TestCase):
                 lite["Nodes"]["item:CHILD1/value/0/ref"][field] = wrong
                 self.assert_failure_at(cc.compare_cost(lite, ref), f"node:item:CHILD1/value/0/ref/{field}")
 
+    def test_both_missing_with_different_kinds_is_a_failure(self):
+        lite, ref = self.measure_pair()
+        lite["Nodes"]["item:CHILD1/value/0/ref"] = {"Kind": "Value", "Missing": True}
+        ref["Nodes"]["item:CHILD1/value/0/ref"] = {"Kind": "Measure", "Missing": True}
+        self.assert_failure_at(cc.compare_cost(lite, ref), "node:item:CHILD1/value/0/ref/Kind")
+
+    def test_both_missing_with_the_same_kind_matches(self):
+        lite, ref = self.measure_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:CHILD1/value/0/ref"] = {"Kind": "Measure", "Missing": True}
+        rows = self.rows(cc.compare_cost(lite, ref), "node:item:CHILD1/value/0/ref/Kind")
+        self.assertEqual(rows[0][1], cc.COST_MATCH)
+
     def test_measure_with_unit_dumped_as_missing_is_a_failure(self):
         """The shape the ifc-lite dumper used to emit for a measure-with-unit
         AppliedValue: a Missing Value node where the reference has a body."""

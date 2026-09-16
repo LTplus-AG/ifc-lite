@@ -107,6 +107,18 @@ class ReferenceDumper(unittest.TestCase):
         dump = self.dump(currency_model(["GBP", "EUR"]))
         self.assertIsNone(dump["Currency"])
 
+    def test_empty_category_is_kept_distinct_from_absent(self):
+        def category(label):
+            dump = self.dump(_ifc([
+                "#1=IFCPROJECT('0JYq7Z8qH3nP9JjM4fLg2A',$,'p',$,$,$,$,$,$);",
+                f"#30=IFCCOSTVALUE('v',$,IFCMONETARYMEASURE(5.),$,$,$,{label},$,$,$);",
+                "#10=IFCCOSTITEM('1JYq7Z8qH3nP9JjM4fLg2A',$,'i',$,$,'CI-1',.USERDEFINED.,(#30),$);",
+            ]))
+            return _chain_root(dump)["Category"]
+        self.assertEqual(category("''"), "")
+        self.assertIsNone(category("$"))
+        self.assertEqual(category("'Labor'"), "Labor")
+
     def test_deep_applied_value_chain_does_not_hit_the_recursion_limit(self):
         dump = self.dump(chain_model(CHAIN_DEPTH))
         self.assertEqual(_chain_root(dump)["Resolved"], 5.0)

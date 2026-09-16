@@ -400,6 +400,14 @@ def compare_cost_node(report, path, lite_nodes, ref_nodes, lite_schema, lite_dia
             report.add(f"node:{path}/Missing", COST_FAILURE, f"lite={lite_node} ref={ref_node}")
         else:
             report.add(f"node:{path}/Missing", COST_MATCH)
+        # Both-missing is only a match for the SAME kind of dangling node: a
+        # missing Value and a missing Measure are different divergences.
+        kind_ok = lite_node.get("Kind") == ref_node.get("Kind")
+        report.add(f"node:{path}/Kind", COST_MATCH if kind_ok else COST_FAILURE,
+                   f"lite={lite_node.get('Kind')} ref={ref_node.get('Kind')}")
+        type_ok = _cost_norm_type(lite_node.get("Type")) == _cost_norm_type(ref_node.get("Type"))
+        report.add(f"node:{path}/Type", COST_MATCH if type_ok else COST_FAILURE,
+                   f"lite={lite_node.get('Type')} ref={ref_node.get('Type')}")
         return
 
     kind_ok = lite_node.get("Kind") == ref_node.get("Kind")

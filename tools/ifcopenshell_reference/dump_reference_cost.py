@@ -137,7 +137,10 @@ class NodeRegistry:
                 "Kind": "Value",
                 "Type": entity.is_a(),
                 "Name": getattr(entity, "Name", None),
-                "Category": getattr(entity, "Category", None) or getattr(entity, "CostType", None),
+                # `is None`, not truthiness: a present-but-empty Category ("")
+                # is a real IfcLabel value and must not fall back to CostType
+                # or collapse into "absent".
+                "Category": category_of(entity),
                 "Condition": getattr(entity, "Condition", None),
                 "ArithmeticOperator": getattr(entity, "ArithmeticOperator", None),
                 "Applied": applied,
@@ -246,6 +249,12 @@ def resolve_node(nodes, node):
             return total
         return None
     return None
+
+
+def category_of(entity):
+    """IFC4 Category, else the IFC2X3 CostType. An empty label is kept."""
+    category = getattr(entity, "Category", None)
+    return category if category is not None else getattr(entity, "CostType", None)
 
 
 def project_currency_of(model):

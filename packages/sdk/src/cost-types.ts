@@ -99,7 +99,10 @@ export interface CostGraphData {
   Currency?: string;
 }
 
-export interface CostEvaluationOptions { Precision?: number }
+export interface CostEvaluationOptions {
+  /** Decimal significant-digit precision from 1 through 10,000. Defaults to 34 (decimal128). */
+  Precision?: number;
+}
 export interface CostEvaluationData {
   ref: EntityRef; Amount?: string; Currency?: string;
   Dimension?: CostQuantityDimension | 'ratio'; QuantityApplied?: string;

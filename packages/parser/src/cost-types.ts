@@ -281,6 +281,6 @@ export interface CostEvaluationResult {
 }
 
 export interface CostEvaluationOptions {
-  /** Decimal significant-digit precision from 1 through 1,000,000,000. Defaults to 34 (decimal128). */
+  /** Decimal significant-digit precision from 1 through 10,000. Defaults to 34 (decimal128). */
   Precision?: number;
 }

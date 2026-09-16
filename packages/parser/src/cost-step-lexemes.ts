@@ -4,12 +4,30 @@
 
 const STEP_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:E[+-]?\d+)?$/i;
 const TYPED_VALUE = /^[A-Z][A-Z0-9_]*\s*\(([\s\S]*)\)$/i;
-const STEP_REFERENCE = /^#([1-9]\d*)$/;
+const STEP_REFERENCE = /^#(0|[1-9]\d*)$/;
 const STEP_ZERO = /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:E[+-]?\d+)?$/i;
 
-function withoutComments(token: string): string {
-  return token.replace(/\/\*[\s\S]*?\*\//g, ' ').trim();
+export function withoutStepComments(token: string): string {
+  const scan = new StepTextScan(token);
+  const pieces: string[] = [];
+  let retainedFrom = 0;
+  for (let index = 0; index < token.length;) {
+    const skipped = scan.skipLexicalAt(index);
+    if (skipped > index) {
+      if (token[index] === '/') {
+        pieces.push(token.slice(retainedFrom, index), ' ');
+        retainedFrom = skipped;
+      }
+      index = skipped;
+      continue;
+    }
+    index++;
+  }
+  pieces.push(token.slice(retainedFrom));
+  return pieces.join('').trim();
 }
+
+const withoutComments = withoutStepComments;
 
 /** Distinguish an omitted STEP attribute from malformed-but-present input. */
 export function costAttributePresent(token: string | undefined): boolean {

@@ -82,6 +82,11 @@ function multiplicationDimensions(
 function divisionDimensions(
   operands: EvaluatedCost[], valueId: number, report: CostDiagnosticSink,
 ): Pick<EvaluatedCost, 'currency' | 'dimension' | 'rateDimension' | 'monetary'> | false {
+  const currencies = new Set(operands.map(operand => operand.currency).filter((entry): entry is string => entry !== undefined));
+  if (currencies.size > 1) {
+    report('MIXED_CURRENCY', 'Division cannot combine different currencies', valueId);
+    return false;
+  }
   const signed = operands.map((operand, index) => ({ operand, sign: index === 0 ? 1 : -1 }));
   let moneyExponent = 0;
   const dimensions = new Map<CostQuantityDimension, number>();
@@ -105,20 +110,6 @@ function divisionDimensions(
   }
   report('INCOMPATIBLE_UNIT', 'Division produces an unsupported inverse or compound dimension', valueId);
   return false;
-}
-
-function divideIdentity(operands: EvaluatedCost[]): Pick<EvaluatedCost, 'currency' | 'dimension'> | undefined {
-  let identity: Pick<EvaluatedCost, 'currency' | 'dimension'> = {
-    currency: operands[0].currency, dimension: operands[0].dimension,
-  };
-  for (const divisor of operands.slice(1)) {
-    const divisorIsRatio = divisor.currency === undefined && divisor.dimension === 'ratio';
-    if (divisorIsRatio) continue;
-    if (identity.currency === divisor.currency && identity.dimension === divisor.dimension) {
-      identity = { dimension: 'ratio' };
-    } else return undefined;
-  }
-  return identity;
 }
 
 export function combineCosts(
@@ -198,11 +189,6 @@ export function combineCosts(
     }
     const dimensions = divisionDimensions(operands, valueId, report);
     if (dimensions === false) return { invalid: true };
-    const identity = divideIdentity(operands);
-    if (!identity) {
-      report('INCOMPATIBLE_UNIT', 'Division produces an unsupported inverse or compound unit', valueId);
-      return { invalid: true };
-    }
     let amount = amounts[0];
     for (const next of amounts.slice(1)) {
       const divided = amount.div(next);

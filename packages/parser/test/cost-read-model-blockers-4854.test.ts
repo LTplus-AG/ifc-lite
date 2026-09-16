@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ColumnarParser } from '../src/columnar-parser.js';
 import { evaluateCostItem, evaluateCostValue } from '../src/cost-evaluator.js';
 import { extractCostOnDemand } from '../src/cost-extractor.js';
+import { costReferenceLexeme, withoutStepComments } from '../src/cost-step-lexemes.js';
 import type {
   CostDiagnostic, CostGraphExtraction, CostMeasureWithUnitInfo, CostQuantityInfo, CostValueInfo,
 } from '../src/cost-types.js';
@@ -405,6 +406,51 @@ describe('#4854 cost evaluator blocker regressions', () => {
     expect(evaluateCostValue(extraction, 22).Diagnostics).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ Code: 'INCOMPATIBLE_UNIT' }),
     ]));
+  });
+
+  it.each(['IFC4', 'IFC4X3_ADD2'])('derives a monetary rate when %s money is divided by length', async (schema) => {
+    const extraction = extractCostOnDemand(await parse(step(schema, [
+      "#1=IFCPROJECT('project',$,'Rates',$,$,$,$,$,#2);",
+      '#2=IFCUNITASSIGNMENT((#3,#4));',
+      '#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+      "#4=IFCMONETARYUNIT('GBP');",
+      "#20=IFCCOSTVALUE('Money',$,IFCMONETARYMEASURE(10.),$,$,$,$,$,$,$);",
+      "#21=IFCCOSTVALUE('Length',$,IFCLENGTHMEASURE(2.),$,$,$,$,$,$,$);",
+      "#22=IFCCOSTVALUE('Rate',$,$,$,$,$,$,$,.DIVIDE.,(#20,#21));",
+    ])));
+    expect(evaluateCostValue(extraction, 22)).toMatchObject({
+      Amount: '5', Currency: 'GBP', Dimension: 'length', Diagnostics: [],
+    });
+  });
+
+  it('accepts the Part 21 #0 entity-instance name but rejects leading-zero references', () => {
+    expect(costReferenceLexeme('#0')).toBe(0);
+    expect(costReferenceLexeme('#00')).toBeUndefined();
+    expect(costReferenceLexeme('#01')).toBeUndefined();
+  });
+
+  it('removes comments linearly without treating comment delimiters in strings as trivia', () => {
+    const unterminatedOpeners = '/*x'.repeat(40_000);
+    expect(withoutStepComments(`'literal /* retained */' /* removed */ #3`))
+      .toBe("'literal /* retained */'   #3");
+    expect(withoutStepComments(unterminatedOpeners)).toBe(unterminatedOpeners);
+  }, 1_000);
+
+  it('propagates a nesting cycle failure through every evaluated ancestor', async () => {
+    const extraction = extractCostOnDemand(await parse(step('IFC4', [...PROJECT,
+      "#10=IFCCOSTVALUE('A value',$,IFCMONETARYMEASURE(10.),$,$,$,$,$,$,$);",
+      "#11=IFCCOSTVALUE('B value',$,IFCMONETARYMEASURE(20.),$,$,$,$,$,$,$);",
+      "#20=IFCCOSTITEM('a',$,'A',$,$,'A',$,(#10),$);",
+      "#21=IFCCOSTITEM('b',$,'B',$,$,'B',$,(#11),$);",
+      "#30=IFCRELNESTS('a-b',$,$,$,#20,(#21));",
+      "#31=IFCRELNESTS('b-a',$,$,$,#21,(#20));",
+    ])));
+    for (const expressId of [20, 21]) {
+      expect(evaluateCostItem(extraction, expressId)).toMatchObject({
+        Amount: undefined,
+        Diagnostics: expect.arrayContaining([expect.objectContaining({ Code: 'NESTING_CYCLE' })]),
+      });
+    }
   });
 
   it('rejects non-IfcPhysicalQuantity references without inserting malformed quantity nodes', async () => {

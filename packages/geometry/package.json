@@ -15,6 +15,11 @@
       "types": "./dist/geometry-class.d.ts",
       "import": "./dist/geometry-class.js",
       "default": "./dist/geometry-class.js"
+    },
+    "./world-frame": {
+      "types": "./dist/world-frame.d.ts",
+      "import": "./dist/world-frame.js",
+      "default": "./dist/world-frame.js"
     }
   },
   "scripts": {

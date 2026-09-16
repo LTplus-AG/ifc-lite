@@ -57,7 +57,8 @@ import {
   type BCFTopic,
 } from '@ifc-lite/bcf';
 import { parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
-import { GeometryProcessor, renderFrameWorldOffset, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
+import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import {
   createClashEngine,
   disciplineMatrixRules,

@@ -4,8 +4,8 @@
 
 /**
  * The viewer's name for the shared render-frame helpers. The implementation
- * lives in `@ifc-lite/geometry` (`world-frame.ts`), next to `CoordinateInfo`,
+ * lives in `@ifc-lite/geometry/world-frame`, next to `CoordinateInfo`,
  * so the CLI, the MCP playground and the SDK convert with the same code
  * (#4879).
  */
-export { ifcToViewerAxes, viewerToIfcAxes, totalYupOffset } from '@ifc-lite/geometry';
+export { ifcToViewerAxes, viewerToIfcAxes, totalYupOffset } from '@ifc-lite/geometry/world-frame';

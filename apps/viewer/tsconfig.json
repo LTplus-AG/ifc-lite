@@ -11,6 +11,7 @@
       "@ifc-lite/parser/browser": ["../../packages/parser/src/browser"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
       "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
+      "@ifc-lite/geometry/world-frame": ["../../packages/geometry/src/world-frame"],
       "@ifc-lite/renderer": ["../../packages/renderer/src"],
       "@ifc-lite/query": ["../../packages/query/src"],
       "@ifc-lite/spatial": ["../../packages/spatial/src"],

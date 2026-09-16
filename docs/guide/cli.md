@@ -633,7 +633,7 @@ ifc-lite clash model.ifc --matrix --csv clashes.csv
 | `--mode <m>` | `hard` (default) or `clearance` |
 | `--tolerance <m>` | Penetration tolerance in metres (hard mode) |
 | `--clearance <m>` | Required clearance in metres (clearance mode) |
-| `--bcf <file>` | Write results as a BCF archive |
+| `--bcf <file>` | Write results as a BCF archive. Viewpoint cameras are in the model's IFC world coordinates, so other BCF tools frame the clash on georeferenced models too |
 | `--group <g>` | BCF topic grouping: `cluster` (default), `rule`, `typePair`, `element` |
 | `--bcf-status <s>` | Topic status for exported BCF topics |
 | `--max-topics <N>` | Cap the number of BCF topics |

@@ -17,25 +17,24 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson, routeConsoleDiagnosticsToStderr } from '../output.js';
-import { GeometryProcessor, renderFrameWorldOffset, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
+import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   createClashEngine,
-  disciplineMatrixRules,
   groupClashes,
   isClusterGroupingIneffective,
   classifyRuleCoverage,
   ruleHadNoMatch,
   type Clash,
-  type ClashMode,
   sortClashes,
   type ClashResult,
-  type ClashRule,
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { writeBCF } from '@ifc-lite/bcf';
 import { writeClashCsv } from './clash-csv.js';
+import { buildRules, parseGroupBy, parseMode, parseNumberFlag } from './clash-args.js';
 
 /** Maximum number of clashes embedded in --json output before truncation. */
 const JSON_CLASH_CAP = 1000;
@@ -110,52 +109,6 @@ async function meshModel(store: IfcDataStore, modelId: string, filePath: string)
   }
   meshCache.set(modelId, meshed);
   return meshed;
-}
-
-function parseMode(raw: string | undefined): ClashMode {
-  const mode = raw ?? 'hard';
-  if (mode !== 'hard' && mode !== 'clearance') {
-    fatal(`Invalid --mode "${mode}". Supported modes: hard, clearance`);
-  }
-  return mode;
-}
-
-function parseNumberFlag(raw: string | undefined, flag: string): number | undefined {
-  if (raw === undefined) return undefined;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) {
-    fatal(`Invalid ${flag} value "${raw}" (must be a number)`);
-  }
-  return value;
-}
-
-type ClashGroupByCli = 'cluster' | 'rule' | 'typePair' | 'element';
-
-function parseGroupBy(raw: string | undefined): ClashGroupByCli {
-  const g = raw ?? 'cluster';
-  if (g !== 'cluster' && g !== 'rule' && g !== 'typePair' && g !== 'element') {
-    fatal(`Invalid --group "${g}". Supported: cluster, rule, typePair, element`);
-  }
-  return g as ClashGroupByCli;
-}
-
-function buildRules(args: string[], mode: ClashMode, tolerance: number | undefined, clearance: number | undefined): ClashRule[] {
-  if (hasFlag(args, '--matrix')) {
-    return disciplineMatrixRules(mode, clearance);
-  }
-
-  const a = getFlag(args, '--a') ?? '*';
-  const b = getFlag(args, '--b');
-  const rule: ClashRule = {
-    id: 'cli-rule',
-    name: b ? `${a} vs ${b}` : `${a} self-clash`,
-    a,
-    mode,
-  };
-  if (b !== undefined) rule.b = b;
-  if (tolerance !== undefined) rule.tolerance = tolerance;
-  if (clearance !== undefined) rule.clearance = clearance;
-  return [rule];
 }
 
 /**

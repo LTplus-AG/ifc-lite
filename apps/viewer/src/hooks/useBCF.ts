@@ -17,9 +17,7 @@ import type { BCFTopic, BCFViewpoint, BCFHeaderFile } from '@ifc-lite/bcf';
 import {
   createViewpoint,
   extractViewpointState,
-  computeMarkerPositions,
-  translateViewpoint,
-  viewpointFromWorld,
+  computeMarkerPositions, translateViewpoint, viewpointFromWorld,
   type ViewerCameraState,
   type ViewerBounds,
   type OverlayBBox,

@@ -32,7 +32,8 @@ import {
   type BCFViewpoint,
   type ViewerBounds,
 } from '@ifc-lite/bcf';
-import { federationFrameInfo, renderFrameWorldOffset, type CoordinateInfo } from '@ifc-lite/geometry';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { federationFrameInfo, renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import type { FederatedModel } from '@/store/types';
 
 /**

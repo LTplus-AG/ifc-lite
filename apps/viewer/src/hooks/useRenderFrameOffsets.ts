@@ -28,7 +28,8 @@
  */
 
 import { useMemo } from 'react';
-import { federationFrameInfo, type CoordinateInfo } from '@ifc-lite/geometry';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';

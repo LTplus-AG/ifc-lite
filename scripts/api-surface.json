@@ -65,6 +65,7 @@
     "translateViewpoint: function",
     "updateTopicStatus: function",
     "uuidToIfcGuid: function",
+    "viewpointFromWorld: function",
     "writeBCF: function"
   ],
   "@ifc-lite/bcf-api": [
@@ -5750,6 +5751,15 @@
     "geometryClassOf: function",
     "isPlacedGeometryClass: function",
     "isTypeLibraryGeometryClass: function"
+  ],
+  "@ifc-lite/geometry/world-frame": [
+    "FrameCandidate: interface",
+    "RenderFrameInfo: type",
+    "federationFrameInfo: function",
+    "ifcToViewerAxes: function",
+    "renderFrameWorldOffset: function",
+    "totalYupOffset: function",
+    "viewerToIfcAxes: function"
   ],
   "@ifc-lite/ids": [
     "ClassificationInfo: interface",

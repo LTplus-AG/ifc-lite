@@ -70,9 +70,13 @@ import {
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
-import { CATALOG, paramsFor } from './data';
-import type { CatalogTool } from './types';
+import { CATALOG } from './data';
 import type { ViewerController, ColorTuple } from './playground-viewer-types';
+import {
+  createAnthropicToolDefinitions,
+  type AnthropicToolDef,
+} from './playground-tool-definitions';
+export type { AnthropicInputSchema, AnthropicToolDef } from './playground-tool-definitions';
 // Value import, but a deliberately cheap one: `three-webgl-support` pulls in
 // neither three.js nor React (see its header), so reading the latched verdict
 // costs the dispatcher nothing at import time.
@@ -1949,106 +1953,11 @@ export function supportedToolNames(): string[] {
   return Object.keys(IMPLS);
 }
 
-/** Anthropic-compatible JSON schema for a single tool's input. */
-export interface AnthropicInputSchema {
-  type: 'object';
-  properties: Record<string, {
-    type: string;
-    description?: string;
-    enum?: unknown[];
-    minimum?: number;
-    maximum?: number;
-  }>;
-  required?: string[];
-}
-export interface AnthropicToolDef {
-  name: string;
-  description: string;
-  input_schema: AnthropicInputSchema;
-}
-
-/**
- * Descriptions that are true of the stdio MCP server but NOT of the browser
- * playground, overridden for the agent only (#2471).
- *
- * CATALOG is shared: it also drives the public /mcp landing page, which
- * documents the stdio server (`npx -y @ifc-lite/mcp`) and even ships a
- * two-file `diff-versions` recipe built on `model_load`. Editing the catalog
- * entry itself would trade an agent-facing inaccuracy for a docs-facing one,
- * so the override lives here, where the audience is known.
- */
-const PLAYGROUND_DESCRIPTION_OVERRIDES: Record<string, string> = {
-  // The impl throws UNSUPPORTED_OPERATION unconditionally, but the catalog
-  // text ("Load an additional .ifc from disk into the federated session")
-  // invited the agent to call it on every request and let it discover the
-  // single-model contract only from the runtime refusal.
-  model_load:
-    'NOT AVAILABLE HERE. The browser playground holds exactly one model and cannot federate. ' +
-    'Ask the user to load a different file instead. (The stdio MCP server does support this.)',
-};
-
 /** Build the `tools` array Anthropic expects, derived from CATALOG +
  *  supportedToolNames(). Always returns the literal-typed shape Anthropic's
  *  SDK demands (input_schema.type === 'object'). */
 export function anthropicToolDefinitions(): AnthropicToolDef[] {
-  const supported = new Set(supportedToolNames());
-  return CATALOG.tools
-    .filter((t: CatalogTool) => supported.has(t.name))
-    .map((t) => ({
-      name: t.name,
-      description: PLAYGROUND_DESCRIPTION_OVERRIDES[t.name] ?? t.description,
-      input_schema: ensureObjectSchema(t),
-    }));
-}
-
-/** Anthropic requires every tool's input_schema.type === 'object'. Some catalog
- *  schemas are missing `properties` — fill in a minimal one from paramsFor(). */
-function ensureObjectSchema(tool: CatalogTool): AnthropicInputSchema {
-  const raw = tool.inputSchema as {
-    type?: string;
-    properties?: Record<string, {
-      type?: string;
-      description?: string;
-      enum?: unknown[];
-      minimum?: number;
-      maximum?: number;
-    }>;
-    required?: string[];
-  } | undefined;
-  if (raw && raw.type === 'object' && raw.properties && Object.keys(raw.properties).length > 0) {
-    const properties: AnthropicInputSchema['properties'] = {};
-    for (const [k, v] of Object.entries(raw.properties)) {
-      properties[k] = {
-        type: typeof v?.type === 'string' ? v.type : 'string',
-        ...(v?.description ? { description: v.description } : {}),
-        ...(Array.isArray(v?.enum) ? { enum: v.enum } : {}),
-        ...(typeof v?.minimum === 'number' ? { minimum: v.minimum } : {}),
-        ...(typeof v?.maximum === 'number' ? { maximum: v.maximum } : {}),
-      };
-    }
-    return {
-      type: 'object',
-      properties,
-      ...(Array.isArray(raw.required) && raw.required.length > 0 ? { required: raw.required } : {}),
-    };
-  }
-  const params = paramsFor(tool);
-  const properties: AnthropicInputSchema['properties'] = {};
-  const required: string[] = [];
-  for (const p of params) {
-    properties[p.name] = { type: jsonSchemaType(p.type), ...(p.description ? { description: p.description } : {}) };
-    if (p.required) required.push(p.name);
-  }
-  return { type: 'object', properties, ...(required.length > 0 ? { required } : {}) };
-}
-
-function jsonSchemaType(t: string): string {
-  if (t.startsWith('integer')) return 'integer';
-  if (t.startsWith('number')) return 'number';
-  if (t.startsWith('boolean')) return 'boolean';
-  if (t.endsWith('[]') || t.startsWith('Array<')) return 'array';
-  if (t.startsWith('{') || t.startsWith('object')) return 'object';
-  return 'string';
+  return createAnthropicToolDefinitions(supportedToolNames());
 }
 
 /**

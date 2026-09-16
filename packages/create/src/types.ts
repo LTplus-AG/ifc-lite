@@ -547,6 +547,13 @@ export interface ProjectParams {
   Schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   /** Length unit: 'METRE' (default), 'MILLIMETRE', 'FOOT' */
   LengthUnit?: string;
+  /**
+   * Project currency (e.g. 'CHF'), written as an IfcMonetaryUnit in the
+   * IfcUnitAssignment. THERE IS NO DEFAULT: leave it out and the file states no
+   * currency, which is a different answer from a guessed one and is the answer
+   * the cost read model gives back.
+   */
+  Currency?: string;
   Author?: string;
   Organization?: string;
   /**

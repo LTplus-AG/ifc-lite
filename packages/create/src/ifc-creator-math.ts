@@ -7,7 +7,7 @@
  * These have zero coupling to class state — they take inputs and return outputs.
  */
 
-import type { Point3D } from './types.js';
+import type { Point3D, PropertyDef, QuantityDef } from './types.js';
 
 // ============================================================================
 // Internal helpers
@@ -138,4 +138,48 @@ export function intList(values: number[] | undefined): string {
   return values === undefined || values.length === 0
     ? '$'
     : `(${values.map(v => String(Math.trunc(v))).join(',')})`;
+}
+
+/**
+ * Serialize an IfcPropertySingleValue NominalValue as a named SELECT branch.
+ *
+ * Moved here from `IfcCreator` (it never touched class state) so that file
+ * stays inside its recorded module-size budget.
+ */
+export function serializePropertyValue(prop: PropertyDef): string {
+  const val = prop.NominalValue;
+  if (typeof val === 'string') {
+    const typeName = prop.Type ?? 'IfcLabel';
+    return `${typeName.toUpperCase()}('${esc(val)}')`;
+  }
+  if (typeof val === 'number') {
+    const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
+    return typeName === 'IfcInteger' ? `IFCINTEGER(${Math.round(val)})` : `IFCREAL(${num(val)})`;
+  }
+  if (typeof val === 'boolean') {
+    // `Type: 'IfcLogical'` (tri-state) must not be downgraded to IFCBOOLEAN.
+    const typeName = prop.Type === 'IfcLogical' ? 'IFCLOGICAL' : 'IFCBOOLEAN';
+    return `${typeName}(${val ? '.T.' : '.F.'})`;
+  }
+  return '$';
+}
+
+/**
+ * Serialize the `Unit, <Kind>Value` pair of an IfcPhysicalSimpleQuantity.
+ *
+ * Moved here from `IfcCreator` for the same reason as
+ * {@link serializePropertyValue}.
+ */
+export function quantityValueField(qty: QuantityDef): string {
+  switch (qty.Kind) {
+    case 'IfcQuantityLength':
+    case 'IfcQuantityArea':
+    case 'IfcQuantityVolume':
+    case 'IfcQuantityWeight':
+      return `$,${num(qty.Value)}`;
+    case 'IfcQuantityCount':
+      return `$,${Math.round(qty.Value)}`;
+    default:
+      return `$,${num(qty.Value)}`;
+  }
 }

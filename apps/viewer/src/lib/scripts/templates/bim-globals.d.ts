@@ -656,7 +656,7 @@ declare const bim: {
   /** IFC creation from scratch */
   create: {
     /** Create a new IFC project. Returns a creator handle (number). */
-    project(params: { Name?: string; Description?: string; Schema?: string; LengthUnit?: string; Author?: string; Organization?: string }): number;
+    project(params: { Name?: string; Description?: string; Schema?: string; LengthUnit?: string; Currency?: string; Author?: string; Organization?: string }): number;
     /** Generate the IFC STEP file content. Returns { content, entities, stats }. */
     toIfc(handle: number): { content: string; entities: Array<{ expressId: number; type: string; Name?: string }>; stats: { entityCount: number; fileSize: number } };
     /** Assign a named colour to an element. Call before toIfc(). */
@@ -687,6 +687,30 @@ declare const bim: {
     assignProductsToTask(handle: number, taskId: number, productIds: number[]): number;
     /** Ergonomic alias for addIfcRelNests — nest child tasks under a summary parent. Returns relationship expressId. */
     nestTasks(handle: number, parentTaskId: number, childTaskIds: number[]): number;
+    /** Create an IfcCostSchedule (IFC4 / IFC4X3 only). Returns schedule expressId. */
+    addIfcCostSchedule(handle: number, params: { Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: 'BUDGET' | 'COSTPLAN' | 'ESTIMATE' | 'TENDER' | 'PRICEDBILLOFQUANTITIES' | 'UNPRICEDBILLOFQUANTITIES' | 'SCHEDULEOFRATES' | 'USERDEFINED' | 'NOTDEFINED'; Status?: string; SubmittedOn?: string; UpdateDate?: string }): number;
+    /** Create an IfcCostItem (IFC4 / IFC4X3 only). Returns cost item expressId. */
+    addIfcCostItem(handle: number, params: { Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: 'USERDEFINED' | 'NOTDEFINED'; CostValues?: number[]; CostQuantities?: number[] }): number;
+    /** Create an IfcCostValue (IFC4 / IFC4X3 only). Returns cost value expressId. */
+    addIfcCostValue(handle: number, params: { Name?: string; Description?: string; AppliedValue?: { Type: 'IfcMonetaryMeasure' | 'IfcAreaMeasure' | 'IfcVolumeMeasure' | 'IfcLengthMeasure' | 'IfcMassMeasure' | 'IfcTimeMeasure' | 'IfcCountMeasure' | 'IfcNumericMeasure' | 'IfcRatioMeasure' | 'IfcReal' | 'IfcInteger'; Value: number }; AppliedValueRef?: number; UnitBasis?: number; ApplicableDate?: string; FixedUntilDate?: string; Category?: string; Condition?: string; ArithmeticOperator?: 'ADD' | 'DIVIDE' | 'MULTIPLY' | 'SUBTRACT'; Components?: number[] }): number;
+    /** Create an IfcSIUnit for use as a quantity or measure unit. Returns unit expressId. */
+    addIfcSIUnit(handle: number, params: { UnitType: 'LENGTHUNIT' | 'AREAUNIT' | 'VOLUMEUNIT' | 'MASSUNIT' | 'TIMEUNIT'; Prefix?: string; Name: string }): number;
+    /** Create an IfcPhysicalSimpleQuantity for IfcCostItem.CostQuantities. Returns quantity expressId. */
+    addIfcPhysicalQuantity(handle: number, params: { Kind: 'IfcQuantityLength' | 'IfcQuantityArea' | 'IfcQuantityVolume' | 'IfcQuantityWeight' | 'IfcQuantityTime' | 'IfcQuantityCount' | 'IfcQuantityNumber'; Name: string; Value: number; Description?: string; Unit?: number; Formula?: string }): number;
+    /** Create an IfcMonetaryUnit for a currency code. Returns unit expressId. */
+    addIfcMonetaryUnit(handle: number, currency: string): number;
+    /** Create an IfcMeasureWithUnit (a typed value paired with a unit). Returns its expressId. */
+    addIfcMeasureWithUnit(handle: number, value: { Type: 'IfcMonetaryMeasure' | 'IfcAreaMeasure' | 'IfcVolumeMeasure' | 'IfcLengthMeasure' | 'IfcMassMeasure' | 'IfcTimeMeasure' | 'IfcCountMeasure' | 'IfcNumericMeasure' | 'IfcRatioMeasure' | 'IfcReal' | 'IfcInteger'; Value: number }, unitId: number): number;
+    /** Assign cost items to an IfcCostSchedule. Returns relationship expressId. */
+    assignCostItemsToSchedule(handle: number, scheduleId: number, costItemIds: number[]): number;
+    /** Assign cost items to the product they price. Returns relationship expressId. */
+    assignCostItemsToProduct(handle: number, productId: number, costItemIds: number[]): number;
+    /** Assign tasks to a cost item (an IfcCostItem is an IfcControl). Returns relationship expressId. */
+    assignTasksToCostItem(handle: number, costItemId: number, taskIds: number[]): number;
+    /** Nest child cost items under a parent (IfcRelNests). Returns relationship expressId. */
+    nestCostItems(handle: number, parentCostItemId: number, childCostItemIds: number[]): number;
+    /** Canonical IfcRelAssignsToProduct. Prefer assignCostItemsToProduct. */
+    addIfcRelAssignsToProduct(handle: number, relatingProductId: number, relatedObjectIds: number[]): number;
     /** Create ANY IFC type extruded along a Start→End axis. Returns expressId. */
     addAxisElement(handle: number, storeyId: number, params: unknown): number;
     /** Create ANY IFC type with a profile at a placement. Returns expressId. */

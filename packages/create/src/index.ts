@@ -226,3 +226,19 @@ export type {
   CreatedEntity,
   CreateResult,
 } from './types.js';
+
+// Cost / 5D authoring (IfcCostSchedule, IfcCostItem, IfcCostValue)
+export type {
+  CostArithmeticOperator,
+  CostItemParams,
+  CostItemPredefinedType,
+  CostMeasureType,
+  CostQuantityKind,
+  CostQuantityParams,
+  CostScheduleParams,
+  CostSchedulePredefinedType,
+  CostSIUnitType,
+  CostTypedValue,
+  CostValueParams,
+  SIUnitParams,
+} from './types-cost.js';

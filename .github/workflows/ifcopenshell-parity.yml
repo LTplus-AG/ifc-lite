@@ -209,15 +209,23 @@ jobs:
         with:
           persist-credentials: false
       # Gate on cost-affecting changes only, mirroring `quick`'s geometry
-      # gate above — a PR that touches none of these paths no-ops.
+      # gate above — a PR that touches none of these paths no-ops. The
+      # parser/SDK trees are whole, not just their cost-*.ts files: the dumper
+      # goes through IfcParser.parseColumnar, the generic entity reader and
+      # the SDK's public index, and the parser's pure-TS read-path deps
+      # (data, encoding) sit under the same read. compare.py is listed by
+      # name because the cost comparator lives there, and `*cost*` would
+      # not match it.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
             cost:
-              - "packages/parser/src/cost-*.ts"
-              - "packages/sdk/src/cost-*.ts"
-              - "packages/sdk/src/namespaces/cost.ts"
+              - "packages/parser/src/**"
+              - "packages/sdk/src/**"
+              - "packages/data/src/**"
+              - "packages/encoding/src/**"
+              - "tools/ifcopenshell_reference/compare.py"
               - "tools/ifcopenshell_reference/*cost*"
               - "tools/ifcopenshell_reference/reference_cost/**"
               - "tools/ifcopenshell_reference/cost_fixtures/**"
@@ -251,6 +259,13 @@ jobs:
       - if: steps.filter.outputs.cost == 'true'
         name: Build ifc-lite cost read-model chain
         run: pnpm turbo build --filter=@ifc-lite/sdk
+      # ifc-lite dumper known-answer tests (deep-chain stack safety, project
+      # currency). The IfcOpenShell half skips here - no reference engine in
+      # this lane - and runs in cost-full.
+      - if: steps.filter.outputs.cost == 'true'
+        name: Dumper tests (ifc-lite side)
+        working-directory: tools/ifcopenshell_reference
+        run: python3 -m unittest test_dumpers_cost -v
       - if: steps.filter.outputs.cost == 'true'
         name: Differential vs committed reference (in-tree fixture)
         working-directory: tools/ifcopenshell_reference
@@ -290,6 +305,9 @@ jobs:
         run: pnpm turbo build --filter=@ifc-lite/sdk
       - name: Install pinned reference engine
         run: pip install -r tools/ifcopenshell_reference/requirements.lock
+      - name: Comparator + dumper tests (both engines)
+        working-directory: tools/ifcopenshell_reference
+        run: python3 -m unittest test_harness_cost test_dumpers_cost -v
       - name: Regenerate reference + differential (in-tree fixture)
         working-directory: tools/ifcopenshell_reference
         run: |
@@ -306,13 +324,13 @@ jobs:
           fi
 
   report-scheduled-failure:
-    needs: full
-    if: always() && github.event_name == 'schedule' && needs.full.result != 'success'
+    needs: [full, cost-full]
+    if: always() && github.event_name == 'schedule' && (needs.full.result != 'success' || needs.cost-full.result != 'success')
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
       workflow_name: IfcOpenShell parity
-      jobs: full
-      result: ${{ needs.full.result }}
+      jobs: full, cost-full
+      result: full=${{ needs.full.result }}, cost-full=${{ needs.cost-full.result }}
     permissions:
       contents: read
       issues: write

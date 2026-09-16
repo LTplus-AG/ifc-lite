@@ -468,3 +468,55 @@ describe('buildCostTree — follow-up review findings on PR #4875', () => {
     assert.equal(treeHasMixedCurrencyEvaluation(buildCostTree(sameGraph), (ref) => sameBackend.evaluateItem(ref)), false);
   });
 });
+
+describe('buildCostTree — bounded expansion of multiply-parented nesting (PR #4875)', () => {
+  it('expands a 30-level diamond chain once per item, not once per path (2^30)', () => {
+    // Level i has items L_i and R_i; each nests BOTH L_{i+1} and R_{i+1}.
+    // A top item nests L_0 and R_0. Path-by-path expansion would build ~2^31
+    // nodes; the once-per-tree rule keeps it linear in items + edges.
+    const levels = 30;
+    const lines = [...PROJECT_GBP, "#1000=IFCCOSTITEM('top',$,'Top',$,$,$,.USERDEFINED.,$,$);"];
+    const left = (i: number) => 2000 + i;
+    const right = (i: number) => 3000 + i;
+    for (let i = 0; i < levels; i++) {
+      lines.push(`#${left(i)}=IFCCOSTITEM('l${i}',$,'L${i}',$,$,$,.USERDEFINED.,$,$);`);
+      lines.push(`#${right(i)}=IFCCOSTITEM('r${i}',$,'R${i}',$,$,$,.USERDEFINED.,$,$);`);
+    }
+    let relId = 5000;
+    lines.push(`#${relId++}=IFCRELNESTS('top',$,$,$,#1000,(#${left(0)},#${right(0)}));`);
+    for (let i = 0; i < levels - 1; i++) {
+      for (const parent of [left(i), right(i)]) {
+        lines.push(`#${relId++}=IFCRELNESTS('n${relId}',$,$,$,#${parent},(#${left(i + 1)},#${right(i + 1)}));`);
+      }
+    }
+    const itemCount = 1 + 2 * levels;
+    const edgeCount = 2 + 4 * (levels - 1);
+
+    const started = Date.now();
+    const tree = buildCostTree(backendFor('m1', buildStoreFromStep(lines)).data());
+    const elapsedMs = Date.now() - started;
+
+    let nodes = 0;
+    let repeated = 0;
+    const expandedKeys = new Set<string>();
+    const pending = [...tree.unassignedItems];
+    while (pending.length > 0) {
+      const node = pending.pop()!;
+      nodes++;
+      const key = `${node.ref.modelId}:${node.ref.expressId}`;
+      if (node.repeated) {
+        repeated++;
+        assert.deepEqual(node.children, [], 'a repeated occurrence is a leaf reference');
+      } else {
+        assert.equal(expandedKeys.has(key), false, `item ${key} expanded more than once`);
+        expandedKeys.add(key);
+      }
+      pending.push(...node.children);
+    }
+    assert.deepEqual(tree.unassignedItems.map((n) => n.item.Name), ['Top']);
+    assert.equal(expandedKeys.size, itemCount, 'every item is expanded exactly once');
+    assert.equal(nodes, 1 + edgeCount, 'one node per root plus one per nesting edge');
+    assert.equal(repeated, nodes - itemCount);
+    assert.ok(elapsedMs < 5000, `built in ${elapsedMs}ms`);
+  });
+});

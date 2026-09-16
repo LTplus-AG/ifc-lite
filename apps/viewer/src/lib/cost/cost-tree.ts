@@ -40,6 +40,11 @@ export interface CostTreeItemNode {
   ref: EntityRefLike;
   item: CostItemData;
   children: CostTreeItemNode[];
+  /** True when this item's subtree was already expanded elsewhere in the
+   *  same `CostTree` (a second nesting parent, a second schedule, or a
+   *  nesting cycle). Such an occurrence is a leaf reference: `children` is
+   *  always empty, so shared descendants are expanded once per tree. */
+  repeated?: boolean;
 }
 
 export interface CostTreeScheduleNode {
@@ -179,10 +184,21 @@ export function buildCostTree(graph: CostGraphData): CostTree {
     }
   }
 
+  /** Keys whose subtree has already been expanded somewhere in this tree.
+   *
+   *  Bounded-expansion rule: each item's subtree is expanded at most ONCE per
+   *  `CostTree`, at its first occurrence in build order (schedules in
+   *  `CostSchedules` order, then unassigned roots). Any later occurrence —
+   *  a second nesting parent (diamond / MULTIPLE_NESTING_PARENTS), a second
+   *  schedule, or a nesting cycle back to an ancestor — is a leaf reference
+   *  with `repeated: true` and no children. Without this, a diamond chain
+   *  N levels deep expands 2^N paths and the node count, and the rendered
+   *  rows, grow exponentially. With it, the node count is bounded by
+   *  (items + nesting edges + roots). */
+  const expanded = new Set<string>();
+
   /** Iterative depth-first build — an arbitrarily deep acyclic nesting
-   *  chain must not exhaust the JS call stack. `onPath` holds the keys on
-   *  the current root-to-node path: a key already on it is a cycle and is
-   *  emitted as a leaf (the extractor separately reports NESTING_CYCLE). */
+   *  chain must not exhaust the JS call stack. */
   function buildNode(rootKey: string): CostTreeItemNode {
     const makeNode = (key: string): CostTreeItemNode => {
       const item = itemsByKey.get(key);
@@ -190,7 +206,11 @@ export function buildCostTree(graph: CostGraphData): CostTree {
       return { ref: item.ref, item, children: [] };
     };
     const root = makeNode(rootKey);
-    const onPath = new Set<string>([rootKey]);
+    if (expanded.has(rootKey)) {
+      root.repeated = true;
+      return root;
+    }
+    expanded.add(rootKey);
     const stack: Array<{ key: string; node: CostTreeItemNode; next: number }> = [
       { key: rootKey, node: root, next: 0 },
     ];
@@ -198,15 +218,17 @@ export function buildCostTree(graph: CostGraphData): CostTree {
       const frame = stack[stack.length - 1];
       const childKeys = childKeysByParent.get(frame.key) ?? [];
       if (frame.next >= childKeys.length) {
-        onPath.delete(frame.key);
         stack.pop();
         continue;
       }
       const childKey = childKeys[frame.next++];
       const child = makeNode(childKey);
       frame.node.children.push(child);
-      if (onPath.has(childKey)) continue;
-      onPath.add(childKey);
+      if (expanded.has(childKey)) {
+        child.repeated = true;
+        continue;
+      }
+      expanded.add(childKey);
       stack.push({ key: childKey, node: child, next: 0 });
     }
     return root;

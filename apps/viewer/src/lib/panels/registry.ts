@@ -36,6 +36,7 @@ import {
   FileWarning,
   BarChart3,
   FileText,
+  Coins,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -63,7 +64,8 @@ export type WorkspacePanelId =
   | 'loadReport'
   | 'appearance'
   | 'charts'
-  | 'document';
+  | 'document'
+  | 'cost';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -129,6 +131,11 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   { id: 'charts', title: 'Charts', short: 'Charts', Icon: BarChart3, group: 'work', region: 'bottom', prefersWide: true },
   // A free-form page over the model — text with bindings, logos, charts, BCF topics — printed to PDF (#4594).
   { id: 'document', title: 'Document', short: 'Document', Icon: FileText, group: 'work', region: 'bottom', prefersWide: true },
+  // Read-only IFC 5D cost inspector: schedule/item tree + detail (#4858). APPENDED
+  // so the frozen Alt+1..0 mapping stays intact (no Alt shortcut). Flag-free
+  // like 'zones'/'loadReport' above (#1869 precedent) — docks in the right
+  // pane, no dedicated costPanelVisible boolean or bottom-strip wiring.
+  { id: 'cost', title: 'Cost', short: 'Cost', Icon: Coins, group: 'inspect', region: 'side', prefersWide: true },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

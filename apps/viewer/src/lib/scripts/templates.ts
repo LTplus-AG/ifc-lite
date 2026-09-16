@@ -25,6 +25,7 @@ import federationCompare from './templates/federation-compare.ts?raw';
 import resetView from './templates/reset-view.ts?raw';
 import createBuilding from './templates/create-building.ts?raw';
 import constructionSchedule from './templates/construction-schedule.ts?raw';
+import costReport from './templates/cost-report.ts?raw';
 
 
 export interface ScriptTemplate {
@@ -92,6 +93,12 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     description:
       'Scheduler — build an IfcWorkSchedule with IfcTasks, IfcRelSequence dependencies, and product assignments that drive the 4D Gantt animation. Accepts a CSV attachment for real task data.',
     code: stripModuleLine(constructionSchedule),
+  },
+  {
+    name: 'Cost report (5D)',
+    description:
+      'Cost Estimator — read the loaded IfcCostSchedule/IfcCostItem graph via bim.cost, print resolved amounts (or diagnostics for what could not be evaluated), and export a CSV. Read-only.',
+    code: stripModuleLine(costReport),
   },
   {
     name: 'Reset view',

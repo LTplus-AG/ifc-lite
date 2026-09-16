@@ -8,6 +8,7 @@ import {
   CANONICAL,
   CANONICAL_CALL_EXPRESSIONS,
   DISTINCT_FRAME_EXPRESSIONS,
+  SEPARATE_AXIS_CONTRACTS,
   validateProseMentions,
   scanRepo,
   scanText,
@@ -32,10 +33,10 @@ for (const copy of copies) {
   test(`detects ${copy}`, () => assert.ok(scanText('apps/viewer/src/probe.ts', copy).length > 0));
 }
 
-function syntheticRepo(overrides, exceptions = []) {
+function syntheticRepo(overrides, exceptions = [], contracts = []) {
   const padding = Array.from({ length: 120 }, (_, index) => `apps/viewer/src/pad-${index}.ts`);
   const files = [...new Set([...padding, ...Object.keys(overrides)])];
-  return scanRepo(files, (file) => overrides[file] ?? '', exceptions);
+  return scanRepo(files, (file) => overrides[file] ?? '', exceptions, contracts);
 }
 
 test('the canonical module is the sole implementation', () => {
@@ -117,6 +118,22 @@ test('registry entries ratchet when their exact line disappears', () => {
 
 test('refuses a vacuous scan', () => {
   assert.throws(() => scanRepo(['apps/viewer/src/one.ts'], () => ''), /suspiciously small/);
+});
+
+test('a separate axis contract excuses its own file only, and goes stale when it stops converting (#4879)', () => {
+  const [contract] = SEPARATE_AXIS_CONTRACTS;
+  const copy = 'return { x: p.x, y: p.z, z: -p.y };';
+  const excused = syntheticRepo({ [contract.file]: copy, 'packages/clash/src/copy.ts': copy }, [], [contract]);
+  assert.ok(excused.violations.length > 0);
+  assert.ok(excused.violations.every((hit) => hit.file === 'packages/clash/src/copy.ts'));
+  assert.deepEqual(excused.stale, []);
+  const idle = syntheticRepo({ [contract.file]: '// no conversion' }, [], [contract]);
+  assert.deepEqual(idle.stale, [contract]);
+});
+
+test('package sources are scanned, not just the viewer (#4879)', () => {
+  const result = scanRepo();
+  assert.ok(result.scanned > 1000, `expected viewer + package sources, scanned ${result.scanned}`);
 });
 
 test('the live viewer has no unregistered copy or stale exception', () => {

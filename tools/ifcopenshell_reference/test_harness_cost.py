@@ -136,6 +136,81 @@ class ComparatorClassification(unittest.TestCase):
         self.assertEqual(currency_rows[0][1], "DEGRADED:CURRENCY_UNRESOLVED")
         self.assertEqual(report.summary()["failures"], 0)
 
+    def test_currency_present_but_wrong_is_a_failure_not_a_degradation(self):
+        """A currency that IS resolved on the lite side but disagrees with
+        the reference (e.g. 'XYZ' vs 'GBP') must be a FAILURE. Only the
+        lite=None/ref=present case is a named CURRENCY_UNRESOLVED
+        degradation - this is the case an overly-broad guard (dropping the
+        `lite_currency is None` condition) would wrongly absorb."""
+        lite, ref = _baseline_pair()
+        lite["Currency"] = "XYZ"
+        ref["Currency"] = "GBP"
+        report = cc.compare_cost(lite, ref)
+        currency_rows = [r for r in report.rows if r[0] == "Currency"]
+        self.assertEqual(len(currency_rows), 1)
+        self.assertEqual(currency_rows[0][1], cc.COST_FAILURE)
+        self.assertGreater(report.summary()["failures"], 0)
+
+    def test_unit_basis_node_match(self):
+        """Both sides link the same value node to the same non-null unit
+        basis (a 'per N units' rate basis) - must be a plain match, not
+        silently skipped."""
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+            dump["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+                "Kind": "Unit", "Type": "IfcMonetaryUnit", "UnitType": "USERDEFINED",
+                "Currency": "GBP", "Symbol": "per 137.5 m", "Dimension": None,
+            }
+        report = cc.compare_cost(lite, ref)
+        rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/UnitBasisNode"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][1], cc.COST_MATCH)
+        self.assertEqual(report.summary()["failures"], 0)
+
+    def test_unit_basis_node_differing_is_a_failure(self):
+        """The two sides record a unit basis at different node paths (e.g.
+        divergent shared-reference traversal order) - a real divergence,
+        not a coincidental one, must be a FAILURE."""
+        lite, ref = _baseline_pair()
+        lite["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+        lite["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+            "Kind": "Unit", "Type": "IfcMonetaryUnit", "UnitType": "USERDEFINED",
+            "Currency": "GBP", "Symbol": "per 137.5 m", "Dimension": None,
+        }
+        ref["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:CHILD1/value/0/unitBasis"
+        ref["Nodes"]["item:CHILD1/value/0/unitBasis"] = {
+            "Kind": "Unit", "Type": "IfcMonetaryUnit", "UnitType": "USERDEFINED",
+            "Currency": "GBP", "Symbol": "per 137.5 m", "Dimension": None,
+        }
+        report = cc.compare_cost(lite, ref)
+        rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/UnitBasisNode"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][1], cc.COST_FAILURE)
+        self.assertGreater(report.summary()["failures"], 0)
+
+    def test_unit_basis_node_one_sided_is_a_failure_not_a_silent_pass(self):
+        """Reproduces the demonstrated blind spot: the reference links a
+        value node to a non-null unit basis (a 'per 137.5 units' rate) and
+        ifc-lite reports UnitBasisNode: None for the same node. Without an
+        explicit comparison this silently passes (0 failures) because the
+        dropped basis changes nothing else that's compared - dropping a
+        UnitBasis is an order-of-magnitude error, not a rounding one, so it
+        must be a FAILURE."""
+        lite, ref = _baseline_pair()
+        # lite: UnitBasisNode stays None (already the baseline value) -
+        # mirrors ifc-lite failing to extract IfcCostValue.UnitBasis.
+        ref["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+        ref["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+            "Kind": "Unit", "Type": "IfcMonetaryUnit", "UnitType": "USERDEFINED",
+            "Currency": "GBP", "Symbol": "per 137.5 m", "Dimension": None,
+        }
+        report = cc.compare_cost(lite, ref)
+        rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/UnitBasisNode"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][1], cc.COST_FAILURE)
+        self.assertGreater(report.summary()["failures"], 0)
+
 
 class EndToEndFaultInjection(unittest.TestCase):
     """Each test perturbs a COPY of the real dump pair and asserts

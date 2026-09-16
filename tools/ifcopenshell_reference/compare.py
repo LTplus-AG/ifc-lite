@@ -417,6 +417,14 @@ def compare_cost_node(report, path, lite_nodes, ref_nodes, lite_schema, currency
         report.add(f"node:{path}/Components", COST_MATCH if comp_ok else COST_FAILURE,
                    f"lite={lite_node.get('Components')} ref={ref_node.get('Components')}")
 
+        # A UnitBasis is a rate ("per N units") - dropping or mismatching it
+        # is an order-of-magnitude error, not a rounding one, so any
+        # divergence (including None on one side only) is a FAILURE; there
+        # is no named degradation for it. None on both sides is a match.
+        unit_basis_ok = lite_node.get("UnitBasisNode") == ref_node.get("UnitBasisNode")
+        report.add(f"node:{path}/UnitBasisNode", COST_MATCH if unit_basis_ok else COST_FAILURE,
+                   f"lite={lite_node.get('UnitBasisNode')} ref={ref_node.get('UnitBasisNode')}")
+
         resolved_ok = _cost_numbers_close(lite_node.get("Resolved"), ref_node.get("Resolved"))
         if not resolved_ok and currency_absent_both and lite_schema == "IFC2X3":
             report.add(f"node:{path}/Resolved", cost_degraded("IFC2X3_PARTIAL_READ"),

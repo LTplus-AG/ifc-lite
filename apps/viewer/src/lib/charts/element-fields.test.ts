@@ -42,7 +42,10 @@ describe('chart IFC field reader (#4833)', () => {
     const view = new MutablePropertyView(store.properties, 'fixture');
     view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
     view.setProperty(50, 'Pset_SlabCommon', 'SurfaceSpreadOfFlame', 'UPDATED');
-    assert.equal(createElementFieldReader(store, view).read(52, SPREAD), 'UPDATED');
+    view.setProperty(50, 'AddedTypePset', 'NewField', 'NEW');
+    const updatedReader = createElementFieldReader(store, view);
+    assert.equal(updatedReader.read(52, SPREAD), 'UPDATED');
+    assert.ok(updatedReader.discover([52]).properties.get('AddedTypePset')?.some(({ binding }) => binding.kind === 'property' && binding.propertyName === 'NewField'));
     const deleted = new MutablePropertyView(store.properties, 'fixture');
     deleted.setOnDemandExtractor((id) => id === 50 ? extractTypeEntityOwnProperties(store, id) : extractPropertiesOnDemand(store, id));
     deleted.deleteProperty(50, 'Pset_SlabCommon', 'SurfaceSpreadOfFlame');
@@ -69,7 +72,14 @@ describe('chart IFC field reader (#4833)', () => {
     const multi: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Multi', valueKind: 'category' };
     assert.deepEqual(reader.readResolved(52, length), { value: 1, status: 'value', unit: 'm', dataType: 'IFCLENGTHMEASURE' });
     assert.deepEqual(reader.readResolved(52, multi), { value: null, status: 'unsupported' });
+    const overlay = new MutablePropertyView(store.properties, 'fixture');
+    overlay.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    const overlayReader = createElementFieldReader(store, overlay);
+    assert.deepEqual(overlayReader.readResolved(52, length), { value: 1, status: 'value', unit: 'm', dataType: 'IFCLENGTHMEASURE' });
+    assert.deepEqual(overlayReader.readResolved(52, multi), { value: null, status: 'unsupported' });
     const mixed = reader.discover([52, 395]).properties.get('Probe')?.find(({ binding }) => binding.kind === 'property' && binding.propertyName === 'MixedMeasure');
     assert.equal(mixed?.binding.valueKind, 'category', 'incompatible IFC measure dimensions are never summable');
+    assert.equal(mixed && reader.read(52, mixed.binding), '1 IFCLENGTHMEASURE');
+    assert.equal(mixed && reader.read(395, mixed.binding), '2 IFCAREAMEASURE');
   });
 });

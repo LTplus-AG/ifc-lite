@@ -13,13 +13,13 @@
  * (`toGlobalIdFromModels`), so a bucket's ids go straight to selection and
  * visibility.
  */
-import { elementsDataset, type ChartDataset, type ChartScope, type ElementFieldBinding, type ElementsDatasetModel } from '@ifc-lite/charts';
+import { elementFieldColumnId, elementsDataset, type ChartDataset, type ChartScope, type ElementFieldBinding, type ElementsDatasetModel } from '@ifc-lite/charts';
 import { useViewerStore, type ViewerState } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
 import { createElementFieldReader } from '@/lib/charts/element-field-reader';
-import { extractProjectUnits, measureUnit } from '@ifc-lite/parser';
+import { extractProjectUnits, measureUnit, type ProjectUnits } from '@ifc-lite/parser';
 import type { ColumnDefinition } from '@ifc-lite/lists';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 import { alternativesForUnitType } from '@/lib/units/alternatives';
@@ -29,6 +29,12 @@ type ModelsState = Pick<ViewerState, 'models' | 'activeModelId' | 'pinboardEntit
 
 function isFieldList(value: readonly ElementFieldBinding[] | ModelsState): value is readonly ElementFieldBinding[] {
   return Array.isArray(value);
+}
+
+function hasSourceUnit(units: ProjectUnits | undefined, unitType: string): boolean {
+  if (!units) return false;
+  if (units.resolvedForUnitType(unitType)) return true;
+  return (unitType === 'AREAUNIT' || unitType === 'VOLUMEUNIT') && Boolean(units.resolvedForUnitType('LENGTHUNIT'));
 }
 
 /** Per-model include sets for a scope, or `null` for "every element". */
@@ -77,7 +83,7 @@ export function buildElementsDataset(
   const unitResolver = resolveListColumnUnits(unitColumns, modelUnits, state.unitDisplayOverrides);
   const resolvedFields = fields.map((field, index) => {
     const measure = field.dataType ? measureUnit(field.dataType) : undefined;
-    const hasDeclaredUnits = [...modelUnits.values()].some((units) => units.declaredCount > 0);
+    const hasDeclaredUnits = measure?.kind === 'typed' && [...modelUnits.values()].some((units) => hasSourceUnit(units, measure.unitType));
     const hasOverride = measure?.kind === 'typed' && state.unitDisplayOverrides[measure.unitType] !== undefined;
     const unit = field.unit || hasDeclaredUnits || hasOverride ? (unitResolver.unitSymbol(index) ?? field.unit) : undefined;
     return { ...field, ...(unit ? { unit } : {}) };
@@ -97,10 +103,7 @@ export function buildElementsDataset(
       include,
       ...(reader ? {
         readField: (expressId, field) => {
-          const index = resolvedFields.findIndex((candidate) => candidate.kind === field.kind
-            && (field.kind === 'attribute'
-              ? candidate.kind === 'attribute' && candidate.attributeName === field.attributeName
-              : candidate.kind === 'property' && candidate.psetName === field.psetName && candidate.propertyName === field.propertyName));
+          const index = resolvedFields.findIndex((candidate) => elementFieldColumnId(candidate) === elementFieldColumnId(field));
           const cell = reader.readResolved(expressId, field);
           if (cell.status !== 'value' || typeof cell.value !== 'number' || index < 0) return cell;
           const declaredType = cell.dataType?.toUpperCase();
@@ -119,7 +122,8 @@ export function buildElementsDataset(
             return { value: convertValue(cell.value, source, target), status: 'value' as const };
           }
           const projectUnits = modelUnits.get(modelId);
-          if ((declaredKind?.kind === 'typed' || bindingKind?.kind === 'typed') && (!projectUnits || projectUnits.declaredCount === 0)) {
+          const unitKind = declaredKind?.kind === 'typed' ? declaredKind : bindingKind?.kind === 'typed' ? bindingKind : undefined;
+          if (unitKind && !hasSourceUnit(projectUnits, unitKind.unitType)) {
             return { value: null, status: 'unsupported' as const };
           }
           return { ...cell, value: unitResolver.convertCell(index, cell.value, modelId) };

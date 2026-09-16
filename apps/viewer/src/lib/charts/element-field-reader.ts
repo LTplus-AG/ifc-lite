@@ -4,8 +4,8 @@
 
 import type { CellValue, ElementFieldBinding, ElementFieldValueKind, NormalizedElementFieldValue } from '@ifc-lite/charts';
 import { normalizeElementFieldValue } from '@ifc-lite/charts';
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { getAttributeNamesAcrossSchemas, getRawNamedAttributes } from '@ifc-lite/parser';
+import type { IfcDataStore, SchemaRegistry } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, getRawNamedAttributes, getSchemaRegistryForVersion, measureUnit } from '@ifc-lite/parser';
 import { PropertyValueType, RelationshipType, type Property, type PropertySet } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { findPropertyInSets } from '@ifc-lite/query';
@@ -30,8 +30,19 @@ interface ObservedKind {
 }
 
 function inferKind(observed: ObservedKind): ElementFieldValueKind {
-  if (observed.dataTypes.size > 1 || observed.units.size > 1) return 'category';
-  if (observed.number && !observed.text && !observed.boolean) return 'number';
+  if (observed.number && !observed.text && !observed.boolean) {
+    const unitTypes = new Set<string>();
+    let allTypedMeasures = observed.dataTypes.size > 0;
+    for (const dataType of observed.dataTypes) {
+      const measure = measureUnit(dataType);
+      if (measure?.kind === 'typed') unitTypes.add(measure.unitType);
+      else allTypedMeasures = false;
+    }
+    const compatibleMeasures = allTypedMeasures && unitTypes.size === 1;
+    if (observed.dataTypes.size > 1 && !compatibleMeasures) return 'category';
+    if (observed.units.size > 1 && !compatibleMeasures) return 'category';
+    return 'number';
+  }
   if (observed.boolean && !observed.text && !observed.number) return 'boolean';
   return 'category';
 }
@@ -47,7 +58,8 @@ function observe(observed: ObservedKind, property: Property): void {
   if (property.dataType) observed.dataTypes.add(property.dataType.toUpperCase());
 }
 
-function observeRaw(observed: ObservedKind, raw: unknown): void {
+function observeRaw(observed: ObservedKind, raw: unknown, declaredType?: string): void {
+  if (declaredType) observed.dataTypes.add(declaredType.toUpperCase());
   if (Array.isArray(raw) && raw.length === 2 && typeof raw[0] === 'string' && raw[0].toUpperCase().startsWith('IFC')) {
     observed.dataTypes.add(raw[0].toUpperCase());
   }
@@ -91,7 +103,23 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
   const provider = createListDataProvider(store);
   const attributes = new Map<number, Map<string, unknown>>();
   const occurrenceSets = new Map<number, PropertySet[]>();
+  const typeSets = new Map<number, PropertySet[]>();
   const typeIds = new Map<number, number>();
+  const attributeTypes = new Map<string, Map<string, string>>();
+  const schemaRegistry: SchemaRegistry | undefined = store.schemaVersion === 'IFC5'
+    ? undefined
+    : getSchemaRegistryForVersion(store.schemaVersion);
+
+  const attributeTypeFor = (typeName: string, attributeName: string): string | undefined => {
+    let byName = attributeTypes.get(typeName);
+    if (!byName) {
+      const direct = schemaRegistry?.entities[typeName];
+      const metadata = direct ?? Object.values(schemaRegistry?.entities ?? {}).find((entity) => entity.name.toUpperCase() === typeName.toUpperCase());
+      byName = new Map((metadata?.allAttributes ?? []).map((attribute) => [attribute.name, attribute.type]));
+      attributeTypes.set(typeName, byName);
+    }
+    return byName.get(attributeName);
+  };
 
   const definingTypeId = (id: number): number => {
     const cached = typeIds.get(id);
@@ -125,6 +153,17 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     return cached;
   };
 
+  const typeSetsFor = (id: number): PropertySet[] => {
+    const typeId = definingTypeId(id);
+    if (typeId < 0) return [];
+    let cached = typeSets.get(typeId);
+    if (!cached) {
+      cached = mutationView?.getForEntity(typeId) ?? provider.getTypePropertySets?.(id) ?? [];
+      typeSets.set(typeId, cached);
+    }
+    return cached;
+  };
+
   const propertyFor = (id: number, psetName: string, propertyName: string): Property | undefined => {
     const mutation = mutationView?.getPropertyMutation(id, psetName, propertyName);
     if (mutation?.operation === 'DELETE') {
@@ -136,18 +175,25 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     const typeId = definingTypeId(id);
     const typeMutation = typeId < 0 ? undefined : mutationView?.getPropertyMutation(typeId, psetName, propertyName);
     if (typeMutation?.operation === 'DELETE') return { name: propertyName, type: PropertyValueType.String, value: null };
-    if (typeId >= 0 && mutationView) {
-      const mutatedType = findPropertyInSets(mutationView.getForEntity(typeId), psetName, propertyName);
-      if (mutatedType) return mutatedType;
-    }
-    return findPropertyInSets(provider.getTypePropertySets?.(id) ?? [], psetName, propertyName);
+    return findPropertyInSets(typeSetsFor(id), psetName, propertyName);
   };
 
   const readResolved = (id: number, binding: ElementFieldBinding): NormalizedElementFieldValue & { unit?: string; dataType?: string } => {
-    if (binding.kind === 'attribute') return normalizeElementFieldValue(attrsFor(id).get(binding.attributeName), binding.valueKind);
+    if (binding.kind === 'attribute') {
+      const dataType = binding.dataType ?? attributeTypeFor(store.entities.getTypeName(id), binding.attributeName);
+      return { ...normalizeElementFieldValue(attrsFor(id).get(binding.attributeName), binding.valueKind), ...(dataType ? { dataType } : {}) };
+    }
     const property = propertyFor(id, binding.psetName, binding.propertyName);
     if (property?.values) return { value: null, status: 'unsupported' };
-    return { ...normalizeElementFieldValue(property?.value, binding.valueKind), ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
+    const normalized = normalizeElementFieldValue(property?.value, binding.valueKind);
+    const value = binding.valueKind === 'category'
+      && normalized.status === 'value'
+      && typeof normalized.value === 'string'
+      && (property?.unit || property?.dataType)
+      && (typeof property.value === 'number' || (Array.isArray(property.value) && typeof property.value[1] === 'number'))
+      ? `${normalized.value} ${property.unit ?? property.dataType}`
+      : normalized.value;
+    return { ...normalized, value, ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
   };
 
   return {
@@ -182,23 +228,24 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
         for (const [name, raw] of attrsFor(id)) {
           let kind = attributeKinds.get(name);
           if (!kind) { kind = emptyObservation(); attributeKinds.set(name, kind); }
-          observeRaw(kind, raw);
+          observeRaw(kind, raw, attributeTypeFor(typeName, name));
         }
         ingest(setsFor(id));
-        ingest(provider.getTypePropertySets?.(id) ?? []);
+        ingest(typeSetsFor(id));
       }
       const attributeOptions = [...attributeNames]
         .sort()
         .map((attributeName) => {
           const kind = attributeKinds.get(attributeName) ?? emptyObservation();
-          const dataType = kind.dataTypes.size === 1 ? [...kind.dataTypes][0] : undefined;
-          return { binding: { kind: 'attribute', attributeName, valueKind: inferKind(kind), ...(dataType ? { dataType } : {}) } as const, label: attributeName };
+          const valueKind = inferKind(kind);
+          const dataType = valueKind === 'number' && kind.dataTypes.size > 0 ? [...kind.dataTypes].sort()[0] : undefined;
+          return { binding: { kind: 'attribute', attributeName, valueKind, ...(dataType ? { dataType } : {}) } as const, label: attributeName };
         });
       const properties = new Map<string, ElementFieldOption[]>();
       for (const { psetName, propertyName, kind } of observed.values()) {
         const valueKind = inferKind(kind);
         const unit = valueKind === 'number' && kind.units.size === 1 ? [...kind.units][0] : undefined;
-        const dataType = valueKind === 'number' && kind.dataTypes.size === 1 ? [...kind.dataTypes][0] : undefined;
+        const dataType = valueKind === 'number' && kind.dataTypes.size > 0 ? [...kind.dataTypes].sort()[0] : undefined;
         const option: ElementFieldOption = {
           binding: { kind: 'property', psetName, propertyName, valueKind, ...(unit ? { unit } : {}), ...(dataType ? { dataType } : {}) },
           label: `${psetName}.${propertyName}`,

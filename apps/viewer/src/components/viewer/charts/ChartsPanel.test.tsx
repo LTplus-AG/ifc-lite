@@ -35,7 +35,7 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import { EMPTY_HINTS } from './ChartCard.js';
-import { chartColorOverrides } from './useChart3DLink.js';
+import { chartBucketIdentity, chartColorOverrides, chartSelectionIsLive } from './useChart3DLink.js';
 import { selectionFromEChartEvent, type ChartRenderer, type ChartRendererEvents } from './useEChart.js';
 
 const MINI_IFC = `ISO-10303-21;
@@ -241,6 +241,42 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await act(async () => { added.events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
     await settle();
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
+  });
+
+  it('enables IFC field discovery when an existing non-element chart switches to Elements (#4833)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{ ...dashboard.charts[0], title: 'Clash chart', source: 'clash', dimension: 'Severity' }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id });
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Clash chart"]')!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const chartSource = ui.querySelector<HTMLSelectElement>('select[aria-label="Source"]')!;
+    await act(async () => {
+      chartSource.value = 'elements';
+      chartSource.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    const fieldSource = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    assert.equal([...fieldSource.options].find(({ value }) => value === 'attribute')?.disabled, false);
+    assert.equal([...fieldSource.options].find(({ value }) => value === 'property')?.disabled, false);
+  });
+
+  it('invalidates a selected bucket when a mutation changes its membership (#4833)', () => {
+    const spec = { id: 'field', title: 'Rating', source: 'elements' as const, type: 'bar' as const, dimension: 'Rating', measure: { agg: 'count' as const } };
+    const dataset = (ratings: readonly string[]): ChartDataset => ({
+      source: 'elements',
+      fingerprint: ratings.join(','),
+      columns: [{ id: 'Rating', label: 'Rating', kind: 'category' }],
+      rows: ratings.map((rating, index) => ({ ids: [index + 1], values: [rating] })),
+    });
+    const selected = aggregate(spec, dataset(['A', 'A', 'B']));
+    const identity = chartBucketIdentity(selected, { seriesIndex: 0, dataIndex: 0 });
+    assert.ok(identity);
+    const changed = aggregate(spec, dataset(['B', 'A', 'B']));
+    assert.equal(chartSelectionIsLive(changed, [identity], new Set([1, 2])), false);
   });
 
   it('resets an incompatible histogram and sum when its IFC field becomes categorical (#4833)', async () => {

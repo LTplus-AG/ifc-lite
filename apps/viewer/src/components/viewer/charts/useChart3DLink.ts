@@ -81,8 +81,20 @@ export function chartSelectionIsLive(
   for (const id of selectedIds) if (!liveIds.has(id)) return false;
   for (const selected of selectedBuckets) {
     const series = aggregation.series.find((candidate) => candidate.key === selected.seriesKey);
+    if (selected.isOther) {
+      const carrier = series?.buckets.find((candidate) => {
+        const ids = new Set(candidate.ids);
+        return selected.ids.every((id) => ids.has(id));
+      });
+      if (!carrier) return false;
+      continue;
+    }
     const bucket = series?.buckets.find((candidate) => candidate.key === selected.bucketKey && Boolean(candidate.isOther) === selected.isOther);
-    if (!bucket) {
+    if (bucket) {
+      const selectedIdsAtClick = new Set(selected.ids);
+      if (bucket.ids.length !== selectedIdsAtClick.size) return false;
+      for (const id of bucket.ids) if (!selectedIdsAtClick.has(id)) return false;
+    } else {
       const folded = series?.buckets.find((candidate) => candidate.isOther);
       const foldedIds = new Set(folded?.ids ?? []);
       if (!folded || selected.ids.some((id) => !foldedIds.has(id))) return false;

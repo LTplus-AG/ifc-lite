@@ -7,6 +7,7 @@ import { EntityFlags } from '@ifc-lite/data';
 import type { ElementFieldBinding } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 import { createElementFieldReader, type ElementFieldCatalog, type ElementFieldOption } from '@/lib/charts/element-field-reader';
+import { measureUnit } from '@ifc-lite/parser';
 
 export interface ElementFieldCatalogState {
   catalog: ElementFieldCatalog;
@@ -23,11 +24,19 @@ function mergeOptions(target: Map<string, ElementFieldOption>, options: readonly
     const previous = target.get(id);
     if (!previous) target.set(id, option);
     else if (previous.binding.valueKind !== option.binding.valueKind
-      || previous.binding.dataType !== option.binding.dataType
-      || (previous.binding.valueKind === 'number' && previous.binding.unit !== option.binding.unit && !previous.binding.dataType)) {
+      || !compatibleDataTypes(previous.binding, option.binding)
+      || (previous.binding.valueKind === 'number' && previous.binding.unit !== option.binding.unit && !previous.binding.dataType && !option.binding.dataType)) {
       target.set(id, { ...option, binding: { ...option.binding, valueKind: 'category', unit: undefined } as ElementFieldBinding });
     }
   }
+}
+
+function compatibleDataTypes(a: ElementFieldBinding, b: ElementFieldBinding): boolean {
+  if (a.dataType === b.dataType) return true;
+  if (!a.dataType || !b.dataType) return false;
+  const left = measureUnit(a.dataType);
+  const right = measureUnit(b.dataType);
+  return left?.kind === 'typed' && right?.kind === 'typed' && left.unitType === right.unitType;
 }
 
 export function useElementFieldCatalog(enabled: boolean): ElementFieldCatalogState {

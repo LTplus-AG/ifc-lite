@@ -18,6 +18,22 @@ import { MutablePropertyView } from './mutable-property-view.js';
 import { PropertyValueType } from '@ifc-lite/data';
 
 describe('MutablePropertyView.setProperty — dataType round-trip', () => {
+  it('preserves on-demand unit and multi-value metadata through an unchanged overlay (#4833)', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => [{
+      name: 'Probe',
+      globalId: 'pset',
+      properties: [
+        { name: 'Length', type: PropertyValueType.Real, value: 1, unit: 'm', dataType: 'IFCLENGTHMEASURE' },
+        { name: 'Choices', type: PropertyValueType.String, value: 'A, B', values: ['A', 'B'] },
+      ],
+    }]);
+
+    const properties = view.getForEntity(7)[0].properties;
+    expect(properties[0]).toMatchObject({ unit: 'm', dataType: 'IFCLENGTHMEASURE' });
+    expect(properties[1].values).toEqual(['A', 'B']);
+  });
+
   it('stores dataType on the PropertyMutation and returns it from getPropertyMutation', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setProperty(7, 'Pset_WallCommon', 'MaxHeight', 900, PropertyValueType.Real, undefined, false, 'IFCLENGTHMEASURE');

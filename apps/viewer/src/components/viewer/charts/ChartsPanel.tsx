@@ -86,7 +86,10 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
     return [...new Map(fields.map((field) => [elementFieldColumnId(field), field])).values()];
   }, [dashboard, draftElementField]);
   const datasets = useChartDatasets(scope, elementFields);
-  const fieldCatalog = useElementFieldCatalog(editing?.source === 'elements');
+  // The editor can switch sources without replacing its outer `editing` seed;
+  // keep discovery available for the whole edit session so Clash → Elements
+  // exposes IFC fields immediately.
+  const fieldCatalog = useElementFieldCatalog(editing !== null);
   const link = useChart3DLink();
 
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());

@@ -113,7 +113,7 @@ export function asEnum(value: unknown): string | undefined {
 }
 
 export function asRef(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
     ? value
     : undefined;
 }

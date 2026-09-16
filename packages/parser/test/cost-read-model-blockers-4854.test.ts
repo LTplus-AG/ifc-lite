@@ -429,6 +429,23 @@ describe('#4854 cost evaluator blocker regressions', () => {
     expect(costReferenceLexeme('#01')).toBeUndefined();
   });
 
+  it.each(['IFC4', 'IFC4X3_ADD2'])('retains an %s product assignment to cost item #0', async (schema) => {
+    const extraction = extractCostOnDemand(await parse(step(schema, [
+      "#0=IFCCOSTITEM('item',$,'Item',$,$,'I',$,$,$);",
+      "#21=IFCWALLTYPE('type',$,'Type',$,$,$,$,$,$,.STANDARD.);",
+      "#30=IFCRELASSIGNSTOPRODUCT('assignment',$,$,$,(#0),$,#21);",
+    ])));
+    expect(extraction.CostItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ expressId: 0 }),
+    ]));
+    expect(extraction.Relationships).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        expressId: 30, Type: 'IfcRelAssignsToProduct', RelatedObjects: [0],
+        RelatingProduct: 21, InvalidReferences: undefined,
+      }),
+    ]));
+  });
+
   it('removes comments linearly without treating comment delimiters in strings as trivia', () => {
     const unterminatedOpeners = '/*x'.repeat(40_000);
     expect(withoutStepComments(`'literal /* retained */' /* removed */ #3`))

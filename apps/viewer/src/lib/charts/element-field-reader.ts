@@ -116,11 +116,13 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     ? undefined
     : getSchemaRegistryForVersion(store.schemaVersion);
 
+  const schemaEntityFor = (typeName: string) => schemaRegistry?.entities[typeName]
+    ?? Object.values(schemaRegistry?.entities ?? {}).find((entity) => entity.name.toUpperCase() === typeName.toUpperCase());
+
   const attributeTypeFor = (typeName: string, attributeName: string): string | undefined => {
     let byName = attributeTypes.get(typeName);
     if (!byName) {
-      const direct = schemaRegistry?.entities[typeName];
-      const metadata = direct ?? Object.values(schemaRegistry?.entities ?? {}).find((entity) => entity.name.toUpperCase() === typeName.toUpperCase());
+      const metadata = schemaEntityFor(typeName);
       byName = new Map((metadata?.allAttributes ?? []).map((attribute) => [attribute.name, attribute.type]));
       attributeTypes.set(typeName, byName);
     }
@@ -223,7 +225,8 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
         const typeName = store.entities.getTypeName(id);
         if (!seenTypes.has(typeName)) {
           seenTypes.add(typeName);
-          for (const name of getAttributeNamesAcrossSchemas(typeName)) attributeNames.add(name);
+          const schemaNames = schemaEntityFor(typeName)?.allAttributes?.map((attribute) => attribute.name);
+          for (const name of schemaNames ?? getAttributeNamesAcrossSchemas(typeName)) attributeNames.add(name);
         }
         for (const [name, raw] of attrsFor(id)) {
           let kind = attributeKinds.get(name);

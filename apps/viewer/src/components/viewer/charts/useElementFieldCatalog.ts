@@ -30,7 +30,7 @@ function mergeOptions(target: Map<string, ElementFieldOption>, options: readonly
         && option.binding.valueKind !== 'number')
       || !compatibleDataTypes(previous.binding, option.binding)
       || (previous.binding.valueKind === 'number' && previous.binding.unit !== option.binding.unit && !previous.binding.dataType && !option.binding.dataType)) {
-      target.set(id, { ...option, binding: { ...option.binding, valueKind: 'category', unit: undefined } as ElementFieldBinding });
+      target.set(id, { ...option, binding: { ...option.binding, valueKind: 'category', unit: undefined, dataType: undefined } as ElementFieldBinding });
     }
   }
 }

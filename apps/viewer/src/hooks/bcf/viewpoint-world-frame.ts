@@ -35,7 +35,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
 import { resolveRenderFrame } from '../useRenderFrameOffsets';
 import { renderToWorldViewer } from '@/components/viewer/tools/measure-modes/coordinates';
-import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
+import { ifcToViewerAxes, viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
 
 /**
  * Render frame -> IFC world translation, in IFC Z-up metres (the axes BCF
@@ -117,8 +117,7 @@ function isRenderFrameViewpoint(
 
 /** Distance from a BCF (Z-up) point to Y-up viewer bounds; 0 inside. */
 function distanceToBounds(p: BCFPoint, bounds: ViewerBounds): number {
-  // BCF (x, y, z) is viewer (x, z, -y).
-  const q = { x: p.x, y: p.z, z: -p.y };
+  const q = ifcToViewerAxes(p);
   const gap = (v: number, min: number, max: number): number => Math.max(min - v, 0, v - max);
   return Math.hypot(
     gap(q.x, bounds.min.x, bounds.max.x),

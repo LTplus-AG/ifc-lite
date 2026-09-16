@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { translateViewpoint } from './viewpoint-frame.js';
+import { translateViewpoint, viewpointFromWorld } from './viewpoint-frame.js';
 import type { BCFViewpoint } from './types.js';
 
 /** Roughly where the #4806 reporter's georeferenced model sits. */
@@ -69,5 +69,33 @@ describe('translateViewpoint (#4806)', () => {
   it('is the identity for a zero offset', () => {
     const local = localViewpoint();
     expect(translateViewpoint(local, { x: 0, y: 0, z: 0 })).toBe(local);
+  });
+});
+
+describe('viewpointFromWorld (#4879)', () => {
+  /** Y-up render-frame bounds of a model drawn near the origin. */
+  const RENDER_BOUNDS = { min: { x: -20, y: 0, z: -20 }, max: { x: 20, y: 10, z: 20 } };
+
+  it('moves a world viewpoint back into the render frame: camera and clipping plane', () => {
+    const world = translateViewpoint(localViewpoint(), OFFSET);
+    const local = viewpointFromWorld(world, OFFSET, RENDER_BOUNDS);
+    expect(local.perspectiveCamera?.cameraViewPoint).toEqual({ x: 10, y: -20, z: 5 });
+    expect(local.clippingPlanes?.[0].location).toEqual({ x: 0, y: 0, z: 3 });
+    expect(local.perspectiveCamera?.cameraDirection).toEqual({ x: 0, y: 1, z: 0 });
+  });
+
+  it('reads a world viewpoint as world when there are no bounds to compare against', () => {
+    const world = translateViewpoint(localViewpoint(), OFFSET);
+    expect(viewpointFromWorld(world, OFFSET).perspectiveCamera?.cameraViewPoint).toEqual({ x: 10, y: -20, z: 5 });
+  });
+
+  it('keeps a pre-#4806 render-frame viewpoint where it is', () => {
+    const legacy = localViewpoint();
+    expect(viewpointFromWorld(legacy, OFFSET, RENDER_BOUNDS)).toBe(legacy);
+  });
+
+  it('is the identity for a zero offset', () => {
+    const world = localViewpoint();
+    expect(viewpointFromWorld(world, { x: 0, y: 0, z: 0 }, RENDER_BOUNDS)).toBe(world);
   });
 });

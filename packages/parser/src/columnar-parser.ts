@@ -13,7 +13,7 @@ import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
-import { parsePropertyValueWithComplex } from './on-demand-extractors.js';
+import { extractPsetsFromIds } from './on-demand-extractors.js';
 import { readQuantitySet } from './quantity-collect.js';
 import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
 import type { DropCensus } from './drop-census.js';
@@ -722,7 +722,7 @@ export class ColumnarParser {
     extractPropertiesOnDemand(
         store: IfcDataStore,
         entityId: number
-    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
+    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandPropertyMap || !store.source?.length) {
             // Fallback to pre-computed property table (e.g., server-parsed data)
@@ -734,55 +734,7 @@ export class ColumnarParser {
             return [];
         }
 
-        const extractor = new EntityExtractor(store.source);
-        const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
-
-        for (const psetId of psetIds) {
-            const psetRef = getEntityRefFromStore(store, psetId);
-            if (!psetRef) continue;
-
-            const psetEntity = extractor.extractEntity(psetRef);
-            if (!psetEntity) continue;
-
-            const psetAttrs = psetEntity.attributes || [];
-            const psetGlobalId = typeof psetAttrs[0] === 'string' ? psetAttrs[0] : undefined;
-            const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''; // not `PropertySet #<id>` (#3530)
-            const hasProperties = psetAttrs[4];
-
-            const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
-
-            if (Array.isArray(hasProperties)) {
-                for (const propRef of hasProperties) {
-                    if (typeof propRef !== 'number') continue;
-
-                    const propEntityRef = getEntityRefFromStore(store, propRef);
-                    if (!propEntityRef) continue;
-
-                    const propEntity = extractor.extractEntity(propEntityRef);
-                    if (!propEntity) continue;
-
-                    const propAttrs = propEntity.attributes || [];
-                    const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
-                    if (!propName) continue;
-
-                    const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
-                    const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
-                        name: propName,
-                        type: parsed.type,
-                        value: parsed.value,
-                    };
-                    if (parsed.values) entry.values = parsed.values;
-                    if (parsed.dataType) entry.dataType = parsed.dataType;
-                    properties.push(entry);
-                }
-            }
-
-            if (properties.length > 0 || psetName) {
-                result.push({ name: psetName, globalId: psetGlobalId, properties });
-            }
-        }
-
-        return result;
+        return extractPsetsFromIds(store, new EntityExtractor(store.source), psetIds);
     }
 
     /**
@@ -826,7 +778,7 @@ export class ColumnarParser {
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> }> {
     const parser = new ColumnarParser();
     return parser.extractPropertiesOnDemand(store, entityId);
 }

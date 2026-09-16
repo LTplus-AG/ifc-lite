@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { IfcParser, extractScheduleOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { addViewpointToTopic, createBCFProject, createBCFTopic, createViewpoint, readBCF, writeBCF } from '@ifc-lite/bcf';
-import { aggregate, validateDashboardSpec } from '@ifc-lite/charts';
+import { aggregate, elementFieldColumnId, validateDashboardSpec, type ElementFieldBinding } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -168,6 +168,62 @@ describe('chart source adapters over real producers (#3944)', () => {
     const off = buildScheduleDataset(useViewerStore.getState());
     assert.equal(off.rows[0].values[col(SCHEDULE_COLUMNS.phase)], 'scheduled');
     assert.notEqual(off.fingerprint, ds.fingerprint);
+  });
+
+  it('elements: converts an explicit property unit into the project display unit (#4833)', async () => {
+    const additions = `
+#200=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#201=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+#203=IFCPROPERTYSINGLEVALUE('ExplicitLength',$,IFCLENGTHMEASURE(1.),#201);
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);`;
+    const source = MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `${additions}\nENDSEC;\nEND-ISO-10303-21;`);
+    const bytes = new TextEncoder().encode(source);
+    const unitStore = await new IfcParser().parseColumnar(bytes.buffer);
+    const model = { ...fixtureModel('units', { idOffset: OFFSET }), ifcDataStore: unitStore, maxExpressId: 205 };
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]),
+      activeModelId: model.id,
+      mutationViews: new Map(),
+      mutationVersion: 0,
+      unitDisplayOverrides: {},
+    });
+    const field: ElementFieldBinding = {
+      kind: 'property', psetName: 'Probe', propertyName: 'ExplicitLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE', unit: 'm',
+    };
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
+    const row = dataset.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.notEqual(column, -1, JSON.stringify(dataset.columns));
+    assert.equal(dataset.columns[column]?.unit, 'mm');
+    assert.equal(row?.values[column], 1_000, 'one explicit metre is normalized to project millimetres');
+    assert.equal(row?.statuses?.[column], 'value');
+  });
+
+  it('elements: does not invent an SI unit for a typed value without project or explicit units (#4833)', async () => {
+    const additions = `
+#203=IFCPROPERTYSINGLEVALUE('UnconfirmedLength',$,IFCLENGTHMEASURE(1.),$);
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);`;
+    const source = MINI_IFC.replace('ENDSEC;\nEND-ISO-10303-21;', `${additions}\nENDSEC;\nEND-ISO-10303-21;`);
+    const bytes = new TextEncoder().encode(source);
+    const noUnitStore = await new IfcParser().parseColumnar(bytes.buffer);
+    const model = { ...fixtureModel('no-units', { idOffset: OFFSET }), ifcDataStore: noUnitStore, maxExpressId: 205 };
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]), activeModelId: model.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {},
+    });
+    const field: ElementFieldBinding = {
+      kind: 'property', psetName: 'Probe', propertyName: 'UnconfirmedLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE',
+    };
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
+    const row = dataset.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.equal(dataset.columns[column]?.unit, undefined);
+    assert.equal(row?.values[column], null);
+    assert.equal(row?.statuses?.[column], 'unsupported');
   });
 
   it('ids and compare: rows carry the renderer id of the entity the result names', () => {

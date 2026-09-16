@@ -50,10 +50,11 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
 
 export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading, onDraftElementFieldChange }: ChartEditorProps) {
   const [draft, setDraft] = useState<ChartSpec>(spec);
-  const columns = datasets[draft.source].columns;
+  const ownFieldId = draft.elementField ? elementFieldColumnId(draft.elementField) : undefined;
+  const columns = datasets[draft.source].columns.filter((column) => draft.source !== 'elements' || !column.id.startsWith('ifc-field:') || column.id === ownFieldId);
   const rowCount = datasets[draft.source].rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
-  const categoryColumns = columns.filter((c) => c.kind === 'category');
+  const categoryColumns = columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
   const dims = dimensionColumns(draft.type, columns);
   const dimensionOk = dims.some((c) => c.id === draft.dimension);
   const measureOk = draft.measure.agg === 'count' || numberColumns.some((c) => c.id === draft.measure.column);
@@ -76,7 +77,12 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       next.dimension = nextId;
       next.stackBy = undefined;
       next.measure = { agg: 'count' };
-    } else if (nextId) next.dimension = nextId;
+    } else if (nextId) {
+      if (next.type === 'histogram' || next.type === 'timeline') next.type = 'bar';
+      next.dimension = nextId;
+      next.stackBy = undefined;
+      if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
+    }
     else if (oldId && (next.dimension === oldId || next.stackBy === oldId || next.measure.column === oldId)) {
       next.dimension = datasets.elements.columns.find((column) => column.kind === 'category' && column.id !== oldId)?.id ?? '';
       if (next.stackBy === oldId) next.stackBy = undefined;

@@ -15,7 +15,7 @@
  */
 import { EntityFlags } from '@ifc-lite/data';
 import type { CellValue, ChartDataset, ChartDatasetColumn, ChartDatasetRow, ElementFieldBinding } from './types.js';
-import { elementFieldColumn, elementFieldColumnId } from './element-field.js';
+import { elementFieldColumn, elementFieldColumnId, type NormalizedElementFieldValue } from './element-field.js';
 
 /** The columns of a columnar entity table this adapter reads — structural, so
  *  any store shape that carries them (parsed, cached, server-hydrated) works. */
@@ -61,7 +61,7 @@ export interface ElementsDatasetModel {
   /** Keep only these express ids (a list scope, the visible set); all when absent. */
   include?: ReadonlySet<number>;
   /** Host-owned IFC reader. Called only for requested fields and included rows. */
-  readField?: (expressId: number, binding: ElementFieldBinding) => CellValue;
+  readField?: (expressId: number, binding: ElementFieldBinding) => CellValue | NormalizedElementFieldValue;
   /** Changes whenever this model's resolved field values or unit interpretation do. */
   valueRevision?: string | number;
 }
@@ -106,12 +106,16 @@ export function elementsDataset(models: readonly ElementsDatasetModel[], fields:
       if (model.include && !model.include.has(expressId)) continue;
       const globalId = model.toGlobalId(expressId);
       rowIds.push(globalId);
+      const fieldCells = uniqueFields.map((field) => model.readField?.(expressId, field) ?? null);
+      const fieldValues = fieldCells.map((cell) => typeof cell === 'object' && cell !== null && 'status' in cell ? cell.value : cell);
+      const fieldStatuses = fieldCells.map((cell) => typeof cell === 'object' && cell !== null && 'status' in cell ? cell.status : (cell === null ? 'missing' : 'value'));
       rows.push({
         ids: [globalId],
         values: [
           entities.getTypeName(expressId), storeyOf(expressId), model.name, entities.getName(expressId),
-          ...uniqueFields.map((field) => model.readField?.(expressId, field) ?? null),
+          ...fieldValues,
         ],
+        statuses: ['value', 'value', 'value', 'value', ...fieldStatuses],
       });
     }
     fingerprintParts.push(`${model.name}:${rowIds.length}/${entities.count}#${fingerprintRows(rowIds)}@${model.valueRevision ?? 0}`);

@@ -23,7 +23,7 @@ const fireRating: ElementFieldBinding = {
   kind: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', valueKind: 'category',
 };
 const withFireRating = elementsDataset(
-  [{ store, toGlobalId: (id) => id, name: 'office.ifc', readField: (id, field) => readIfcField(id, field) }],
+  [{ store, toGlobalId: (id) => id, name: 'office.ifc', readField: () => null }], // replace with your cached IFC reader
   [fireRating],
 );
 

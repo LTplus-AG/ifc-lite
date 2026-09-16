@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractTypeEntityOwnProperties } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ElementFieldBinding } from '@ifc-lite/charts';
 import { createElementFieldReader } from './element-field-reader.js';
@@ -34,5 +34,42 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(createElementFieldReader(store, view).read(52, FIRE), null);
     view.deleteProperty(52, 'Pset_SlabCommon', 'FireRating');
     assert.equal(createElementFieldReader(store, view).read(52, FIRE), null);
+  });
+
+  it('applies defining-type edits and deletions before inherited fallback', async () => {
+    const bytes = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const view = new MutablePropertyView(store.properties, 'fixture');
+    view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    view.setProperty(50, 'Pset_SlabCommon', 'SurfaceSpreadOfFlame', 'UPDATED');
+    assert.equal(createElementFieldReader(store, view).read(52, SPREAD), 'UPDATED');
+    const deleted = new MutablePropertyView(store.properties, 'fixture');
+    deleted.setOnDemandExtractor((id) => id === 50 ? extractTypeEntityOwnProperties(store, id) : extractPropertiesOnDemand(store, id));
+    deleted.deleteProperty(50, 'Pset_SlabCommon', 'SurfaceSpreadOfFlame');
+    assert.equal(createElementFieldReader(store, deleted).read(52, SPREAD), null);
+  });
+
+  it('preserves explicit units and rejects multi-valued properties as unsupported', async () => {
+    const fixture = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url), 'utf8');
+    const extra = `
+#60001=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#60002=IFCPROPERTYSINGLEVALUE('ExplicitLength',$,IFCLENGTHMEASURE(1.),#60001);
+#60003=IFCPROPERTYENUMERATEDVALUE('Multi',$,(IFCLABEL('A'),IFCLABEL('B')),$);
+#60004=IFCPROPERTYSINGLEVALUE('MixedMeasure',$,IFCLENGTHMEASURE(1.),$);
+#60005=IFCPROPERTYSINGLEVALUE('MixedMeasure',$,IFCAREAMEASURE(2.),$);
+#60006=IFCPROPERTYSET('g-explicit',#1,'Probe',$,(#60002,#60003,#60004));
+#60007=IFCPROPERTYSET('g-area',#1,'Probe',$,(#60005));
+#60008=IFCRELDEFINESBYPROPERTIES('g-rel',#1,$,$,(#52),#60006);
+#60009=IFCRELDEFINESBYPROPERTIES('g-area-rel',#1,$,$,(#395),#60007);`;
+    const source = fixture.replace('ENDSEC;\nEND-ISO-10303-21;', `${extra}\nENDSEC;\nEND-ISO-10303-21;`);
+    const bytes = new TextEncoder().encode(source);
+    const store = await new IfcParser().parseColumnar(bytes.buffer);
+    const reader = createElementFieldReader(store);
+    const length: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'ExplicitLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    const multi: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Multi', valueKind: 'category' };
+    assert.deepEqual(reader.readResolved(52, length), { value: 1, status: 'value', unit: 'm', dataType: 'IFCLENGTHMEASURE' });
+    assert.deepEqual(reader.readResolved(52, multi), { value: null, status: 'unsupported' });
+    const mixed = reader.discover([52, 395]).properties.get('Probe')?.find(({ binding }) => binding.kind === 'property' && binding.propertyName === 'MixedMeasure');
+    assert.equal(mixed?.binding.valueKind, 'category', 'incompatible IFC measure dimensions are never summable');
   });
 });

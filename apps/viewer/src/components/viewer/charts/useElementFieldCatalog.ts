@@ -5,7 +5,6 @@
 import { useEffect, useState } from 'react';
 import { EntityFlags } from '@ifc-lite/data';
 import type { ElementFieldBinding } from '@ifc-lite/charts';
-import { elementFieldColumnId } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 import { createElementFieldReader, type ElementFieldCatalog, type ElementFieldOption } from '@/lib/charts/element-field-reader';
 
@@ -18,10 +17,14 @@ const EMPTY: ElementFieldCatalog = { attributes: [], properties: new Map() };
 
 function mergeOptions(target: Map<string, ElementFieldOption>, options: readonly ElementFieldOption[]): void {
   for (const option of options) {
-    const id = elementFieldColumnId(option.binding);
+    const id = option.binding.kind === 'attribute'
+      ? JSON.stringify(['attribute', option.binding.attributeName])
+      : JSON.stringify(['property', option.binding.psetName, option.binding.propertyName]);
     const previous = target.get(id);
     if (!previous) target.set(id, option);
-    else if (previous.binding.valueKind !== option.binding.valueKind || previous.binding.dataType !== option.binding.dataType) {
+    else if (previous.binding.valueKind !== option.binding.valueKind
+      || previous.binding.dataType !== option.binding.dataType
+      || (previous.binding.valueKind === 'number' && previous.binding.unit !== option.binding.unit && !previous.binding.dataType)) {
       target.set(id, { ...option, binding: { ...option.binding, valueKind: 'category', unit: undefined } as ElementFieldBinding });
     }
   }
@@ -39,7 +42,7 @@ export function useElementFieldCatalog(enabled: boolean): ElementFieldCatalogSta
       return;
     }
     let cancelled = false;
-    setState((previous) => ({ ...previous, loading: true }));
+    setState({ catalog: EMPTY, loading: true });
     const run = async (): Promise<void> => {
       const attrs = new Map<string, ElementFieldOption>();
       const props = new Map<string, ElementFieldOption>();
@@ -51,11 +54,15 @@ export function useElementFieldCatalog(enabled: boolean): ElementFieldCatalogSta
         for (let i = 0; i < store.entities.count; i++) {
           if ((store.entities.flags[i] & EntityFlags.HAS_GEOMETRY) !== 0 && (store.entities.flags[i] & EntityFlags.IS_TYPE) === 0) ids.push(store.entities.expressId[i]);
         }
-        const discovered = createElementFieldReader(store, mutationViews.get(model.id)).discover(ids);
-        mergeOptions(attrs, discovered.attributes);
-        for (const options of discovered.properties.values()) mergeOptions(props, options);
-        // Yield between models so removal/reload can cancel publication.
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        const reader = createElementFieldReader(store, mutationViews.get(model.id));
+        for (let start = 0; start < ids.length; start += 500) {
+          const discovered = reader.discover(ids.slice(start, start + 500));
+          mergeOptions(attrs, discovered.attributes);
+          for (const options of discovered.properties.values()) mergeOptions(props, options);
+          // Bound main-thread work and let a model unload/reload cancel the scan.
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          if (cancelled) return;
+        }
       }
       if (cancelled) return;
       const properties = new Map<string, ElementFieldOption[]>();

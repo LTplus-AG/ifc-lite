@@ -117,12 +117,16 @@ await page.locator('select[aria-label="Scope"]').selectOption('all');
 await page.getByRole('button', { name: /Add chart/ }).click();
 await page.waitForSelector('[data-chart-editor]');
 await shot('editor-open');
-await page.locator('[data-chart-editor] select[aria-label="Chart type"]').selectOption('treemap');
-await page.locator('[data-chart-editor] input[aria-label="Chart title"]').fill('Elements treemap');
+const sourcePicker = page.locator('[data-chart-editor] select[aria-label="Element field source"]');
+await sourcePicker.selectOption('property');
+await page.locator('[data-chart-editor] select[aria-label="IFC property set"]').selectOption('Pset_SlabCommon');
+await page.locator('[data-chart-editor] select[aria-label="IFC property"]').selectOption({ label: 'FireRating' });
+await page.locator('[data-chart-editor] input[aria-label="Chart title"]').fill('Elements by fire rating');
 await page.getByRole('button', { name: 'Save chart' }).click();
 await page.waitForTimeout(1200);
 log('chart count', await state('s.dashboards[0].charts.length'));
-await shot('editor-saved-treemap');
+log('saved IFC field', await state('s.dashboards[0].charts.at(-1).elementField'));
+await shot('editor-saved-ifc-property');
 
 // Presets: Coordination (needs a clash run for data) — run clash via the store? Use preset switch and see empty-state messaging.
 await page.locator('select[aria-label="Dashboard"]').selectOption({ label: 'Coordination' });

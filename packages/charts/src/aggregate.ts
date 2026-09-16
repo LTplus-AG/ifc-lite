@@ -185,6 +185,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
   let total = 0;
   let unbucketed = 0;
   let unmeasured = 0;
+  let unsupported = 0;
 
   const bump = (acc: Accumulator, row: ChartDatasetRow, measure: number): void => {
     acc.value += measure;
@@ -197,10 +198,14 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
     const keyed = keyer(row.values[dimension]);
     if (!keyed) {
       unbucketed += 1;
+      if (row.statuses?.[dimension] === 'unsupported') unsupported += 1;
       continue;
     }
     const resolvedMeasure = measureOf(row, spec, measureColumn);
-    if (resolvedMeasure === null) unmeasured += 1;
+    if (resolvedMeasure === null) {
+      unmeasured += 1;
+      if (row.statuses?.[measureColumn] === 'unsupported') unsupported += 1;
+    }
     const measure = resolvedMeasure ?? 0;
     total += measure;
     let cat = categories.get(keyed.key);
@@ -271,7 +276,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
   }
 
   const unit = measureColumn >= 0 ? dataset.columns[measureColumn].unit : undefined;
-  return { spec, categories: categoryBuckets, series: seriesOut, total, unbucketed, unmeasured, categoryOf, unit, palette };
+  return { spec, categories: categoryBuckets, series: seriesOut, total, unbucketed, unmeasured, unsupported, categoryOf, unit, palette };
 }
 
 /** The element ids behind a set of category indices — what a chart click selects in 3D. */

@@ -117,25 +117,21 @@ export {
     parsePropertyValueWithComplex,
 } from './property-value-parser.js';
 import { parsePropertyValueWithComplex } from './property-value-parser.js';
-
-
+import { resolvePropertyUnit } from './property-unit.js';
 // ============================================================================
 // Property Set Extraction Helpers
 // ============================================================================
 
-/**
- * Extract property sets from a list of pset IDs using the entity index.
- * Shared logic between instance-level and type-level property extraction.
- */
+/** Extract property sets from IDs, shared by instance- and type-level extraction. */
 export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     psetIds: number[]
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
-    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> }> {
+    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> }> = [];
 
     for (const psetId of psetIds) {
-        const psetRef = store.entityIndex.byId.get(psetId);
+        const psetRef = store.entityIndex.byId.get(psetId) ?? store.deferredEntityIndex?.get(psetId);
         if (!psetRef) continue;
 
         // Only extract IFCPROPERTYSET entities (skip quantity sets etc.)
@@ -149,13 +145,13 @@ export function extractPsetsFromIds(
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''; // not `PropertySet #<id>` (#3530)
         const hasProperties = psetAttrs[4];
 
-        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
+        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> = [];
 
         if (Array.isArray(hasProperties)) {
             for (const propRef of hasProperties) {
                 if (typeof propRef !== 'number') continue;
 
-                const propEntityRef = store.entityIndex.byId.get(propRef);
+                const propEntityRef = store.entityIndex.byId.get(propRef) ?? store.deferredEntityIndex?.get(propRef);
                 if (!propEntityRef) continue;
 
                 const propEntity = extractor.extractEntity(propEntityRef);
@@ -166,13 +162,15 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
-                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
+                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string } = {
                     name: propName,
                     type: parsed.type,
                     value: parsed.value,
                 };
                 if (parsed.values) entry.values = parsed.values;
                 if (parsed.dataType) entry.dataType = parsed.dataType;
+                const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs);
+                if (unit) entry.unit = unit;
                 properties.push(entry);
             }
         }

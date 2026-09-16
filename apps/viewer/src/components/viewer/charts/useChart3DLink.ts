@@ -78,12 +78,16 @@ export function chartSelectionIsLive(
   selectedIds: ReadonlySet<number>,
 ): boolean {
   const liveIds = aggregationIds(aggregation);
-  const ownedIds = new Set(selectedBuckets.flatMap(({ ids }) => ids));
-  // Bucket names and top-N membership may legitimately change after a click.
-  // The saved selection-time IDs are the stable ownership proof: retain folded
-  // or unfolded buckets only while every selected ID still exists in the live
-  // source aggregation and is owned by one of the saved clicked buckets.
-  for (const id of selectedIds) if (!liveIds.has(id) || !ownedIds.has(id)) return false;
+  for (const id of selectedIds) if (!liveIds.has(id)) return false;
+  for (const selected of selectedBuckets) {
+    const series = aggregation.series.find((candidate) => candidate.key === selected.seriesKey);
+    const bucket = series?.buckets.find((candidate) => candidate.key === selected.bucketKey && Boolean(candidate.isOther) === selected.isOther);
+    if (!bucket) {
+      const folded = series?.buckets.find((candidate) => candidate.isOther);
+      const foldedIds = new Set(folded?.ids ?? []);
+      if (!folded || selected.ids.some((id) => !foldedIds.has(id))) return false;
+    }
+  }
   return true;
 }
 

@@ -7,8 +7,8 @@ import type { CellValue, ChartDatasetColumn, ElementFieldBinding, ElementFieldVa
 /** Stable, collision-free dataset column id for a persisted IFC field binding. */
 export function elementFieldColumnId(binding: ElementFieldBinding): string {
   const identity = binding.kind === 'attribute'
-    ? ['attribute', binding.attributeName]
-    : ['property', binding.psetName, binding.propertyName];
+    ? ['attribute', binding.attributeName, binding.valueKind, binding.dataType ?? '']
+    : ['property', binding.psetName, binding.propertyName, binding.valueKind, binding.dataType ?? ''];
   return `ifc-field:${JSON.stringify(identity)}`;
 }
 

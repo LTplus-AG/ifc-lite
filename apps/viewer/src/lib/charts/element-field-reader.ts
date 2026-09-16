@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CellValue, ElementFieldBinding, ElementFieldValueKind } from '@ifc-lite/charts';
+import type { CellValue, ElementFieldBinding, ElementFieldValueKind, NormalizedElementFieldValue } from '@ifc-lite/charts';
 import { normalizeElementFieldValue } from '@ifc-lite/charts';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { getAttributeNamesAcrossSchemas, getRawNamedAttributes } from '@ifc-lite/parser';
-import { PropertyValueType, type Property, type PropertySet } from '@ifc-lite/data';
+import { PropertyValueType, RelationshipType, type Property, type PropertySet } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { findPropertyInSets } from '@ifc-lite/query';
 import { createListDataProvider } from '@/lib/lists/adapter';
@@ -30,12 +30,14 @@ interface ObservedKind {
 }
 
 function inferKind(observed: ObservedKind): ElementFieldValueKind {
+  if (observed.dataTypes.size > 1 || observed.units.size > 1) return 'category';
   if (observed.number && !observed.text && !observed.boolean) return 'number';
   if (observed.boolean && !observed.text && !observed.number) return 'boolean';
   return 'category';
 }
 
 function observe(observed: ObservedKind, property: Property): void {
+  if (property.values) return;
   const normalized = normalizeElementFieldValue(property.value, typeof property.value === 'number' ? 'number' : typeof property.value === 'boolean' ? 'boolean' : 'category');
   if (normalized.status !== 'value') return;
   if (typeof normalized.value === 'number') observed.number = true;
@@ -46,6 +48,9 @@ function observe(observed: ObservedKind, property: Property): void {
 }
 
 function observeRaw(observed: ObservedKind, raw: unknown): void {
+  if (Array.isArray(raw) && raw.length === 2 && typeof raw[0] === 'string' && raw[0].toUpperCase().startsWith('IFC')) {
+    observed.dataTypes.add(raw[0].toUpperCase());
+  }
   const numeric = normalizeElementFieldValue(raw, 'number');
   const logical = normalizeElementFieldValue(raw, 'boolean');
   const normalized = numeric.status === 'value'
@@ -77,6 +82,7 @@ function rawAttributeValue(store: IfcDataStore, expressId: number, name: string)
 
 export interface ElementFieldReader {
   read(expressId: number, binding: ElementFieldBinding): CellValue;
+  readResolved(expressId: number, binding: ElementFieldBinding): NormalizedElementFieldValue & { unit?: string; dataType?: string };
   discover(expressIds: readonly number[]): ElementFieldCatalog;
 }
 
@@ -85,6 +91,15 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
   const provider = createListDataProvider(store);
   const attributes = new Map<number, Map<string, unknown>>();
   const occurrenceSets = new Map<number, PropertySet[]>();
+  const typeIds = new Map<number, number>();
+
+  const definingTypeId = (id: number): number => {
+    const cached = typeIds.get(id);
+    if (cached !== undefined) return cached;
+    const typeId = store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse')[0] ?? -1;
+    typeIds.set(id, typeId);
+    return typeId;
+  };
 
   const attrsFor = (id: number): Map<string, unknown> => {
     let cached = attributes.get(id);
@@ -118,16 +133,28 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     const occurrence = findPropertyInSets(setsFor(id), psetName, propertyName);
     // A present null/empty occurrence is authoritative and suppresses type fallback.
     if (occurrence) return occurrence;
+    const typeId = definingTypeId(id);
+    const typeMutation = typeId < 0 ? undefined : mutationView?.getPropertyMutation(typeId, psetName, propertyName);
+    if (typeMutation?.operation === 'DELETE') return { name: propertyName, type: PropertyValueType.String, value: null };
+    if (typeId >= 0 && mutationView) {
+      const mutatedType = findPropertyInSets(mutationView.getForEntity(typeId), psetName, propertyName);
+      if (mutatedType) return mutatedType;
+    }
     return findPropertyInSets(provider.getTypePropertySets?.(id) ?? [], psetName, propertyName);
+  };
+
+  const readResolved = (id: number, binding: ElementFieldBinding): NormalizedElementFieldValue & { unit?: string; dataType?: string } => {
+    if (binding.kind === 'attribute') return normalizeElementFieldValue(attrsFor(id).get(binding.attributeName), binding.valueKind);
+    const property = propertyFor(id, binding.psetName, binding.propertyName);
+    if (property?.values) return { value: null, status: 'unsupported' };
+    return { ...normalizeElementFieldValue(property?.value, binding.valueKind), ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
   };
 
   return {
     read(id, binding) {
-      const raw = binding.kind === 'attribute'
-        ? attrsFor(id).get(binding.attributeName)
-        : propertyFor(id, binding.psetName, binding.propertyName)?.value;
-      return normalizeElementFieldValue(raw, binding.valueKind).value;
+      return readResolved(id, binding).value;
     },
+    readResolved,
 
     discover(expressIds) {
       const attributeNames = new Set<string>();
@@ -162,7 +189,11 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
       }
       const attributeOptions = [...attributeNames]
         .sort()
-        .map((attributeName) => ({ binding: { kind: 'attribute', attributeName, valueKind: inferKind(attributeKinds.get(attributeName) ?? emptyObservation()) } as const, label: attributeName }));
+        .map((attributeName) => {
+          const kind = attributeKinds.get(attributeName) ?? emptyObservation();
+          const dataType = kind.dataTypes.size === 1 ? [...kind.dataTypes][0] : undefined;
+          return { binding: { kind: 'attribute', attributeName, valueKind: inferKind(kind), ...(dataType ? { dataType } : {}) } as const, label: attributeName };
+        });
       const properties = new Map<string, ElementFieldOption[]>();
       for (const { psetName, propertyName, kind } of observed.values()) {
         const valueKind = inferKind(kind);

@@ -16,7 +16,7 @@ import { act, useEffect, useRef, useState } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Clash, ClashResult } from '@ifc-lite/clash';
 import type { Renderer } from '@ifc-lite/renderer';
-import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
+import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ElementFieldBinding, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import { captureUiSnapshot, restoreUiSnapshot } from '@/lib/tours/snapshot.js';
 import { CLASH_TOUR } from '@/lib/tours/tours/clash.js';
@@ -70,7 +70,8 @@ DATA;
 #90=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel000000000000000090',$,$,$,(#41,#42,#44),#5);
 #91=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel000000000000000091',$,$,$,(#43,#45),#6);
 #100=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI60'),$);
-#101=IFCPROPERTYSET('0Pset00000000000000101',$,'Pset_WallCommon',$,(#100));
+#106=IFCPROPERTYSINGLEVALUE('ReferenceLength',$,IFCLENGTHMEASURE(2.),$);
+#101=IFCPROPERTYSET('0Pset00000000000000101',$,'Pset_WallCommon',$,(#100,#106));
 #102=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000102',$,$,$,(#41,#42),#101);
 #103=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI30'),$);
 #104=IFCPROPERTYSET('0Pset00000000000000104',$,'Pset_WallCommon',$,(#103));
@@ -85,7 +86,7 @@ const GID = (expressId: number) => OFFSET + expressId;
 async function parsedModel(id = 'm1', idOffset = OFFSET, ifc = MINI_IFC): Promise<FederatedModel> {
   const bytes = new TextEncoder().encode(ifc);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 105 };
+  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 106 };
 }
 
 /** Records every option and selection a card pushes; can fire a chart click. */
@@ -240,6 +241,53 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await act(async () => { added.events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
     await settle();
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
+  });
+
+  it('resets an incompatible histogram and sum when its IFC field becomes categorical (#4833)', async () => {
+    const numeric: ElementFieldBinding = {
+      kind: 'property', psetName: 'Pset_WallCommon', propertyName: 'ReferenceLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE',
+    };
+    const categorical: ElementFieldBinding = {
+      kind: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', valueKind: 'category', dataType: 'IFCLABEL',
+    };
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    let property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    const numericId = [...property.options].find((option) => option.textContent === numeric.propertyName)!.value;
+    await act(async () => {
+      property.value = numericId;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'histogram');
+    const measure = ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!;
+    await act(async () => {
+      measure.value = `sum:${numericId}`;
+      measure.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.match(measure.value, /^sum:/);
+
+    property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    const categoryId = [...property.options].find((option) => option.textContent === categorical.propertyName)!.value;
+    await act(async () => {
+      property.value = categoryId;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'bar');
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!.value, 'count');
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    const saved = useViewerStore.getState().dashboards[0].charts.at(-1)!;
+    assert.deepEqual(saved.measure, { agg: 'count' });
+    assert.equal(saved.dimension, categoryId);
   });
 
   it('a mount undone while the engine is still loading creates no chart, and the seed is idempotent — what StrictMode does in dev (browser finding)', async () => {

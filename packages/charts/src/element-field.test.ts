@@ -44,7 +44,7 @@ describe('IFC chart fields (#4833)', () => {
     const one = elementsDataset([model(1)], [field, field]);
     expect(one.columns.map(({ id }) => id)).toContain(elementFieldColumnId(field));
     expect(one.columns).toHaveLength(5);
-    expect(one.rows).toEqual([{ ids: [104], values: ['IfcWall', '', 'A', 'Wall', 'STANDARD'] }]);
+    expect(one.rows).toEqual([{ ids: [104], values: ['IfcWall', '', 'A', 'Wall', 'STANDARD'], statuses: ['value', 'value', 'value', 'value', 'value'] }]);
     expect(elementsDataset([model(2)], [field]).fingerprint).not.toBe(one.fingerprint);
   });
 });

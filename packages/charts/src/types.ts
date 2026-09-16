@@ -32,6 +32,8 @@ export interface ChartDatasetRow {
   ids: ArrayLike<number>;
   /** One value per dataset column, in column order. */
   values: CellValue[];
+  /** Optional normalization status per column; omitted by adapters without IFC scalar diagnostics. */
+  statuses?: Array<'value' | 'missing' | 'unsupported'>;
 }
 
 export interface ChartDataset {
@@ -163,6 +165,8 @@ export interface Aggregation {
   unbucketed: number;
   /** Bucketed rows that contributed no finite value to a sum. */
   unmeasured?: number;
+  /** Rows whose selected dimension or measure was non-scalar/incompatible. */
+  unsupported?: number;
   /** Element id → every index into `categories` it belongs to (a clash element under two rules is in two). */
   categoryOf: Map<number, number[]>;
   /** Display unit of the summed column, when the measure is a sum. */

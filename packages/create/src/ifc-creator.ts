@@ -1845,7 +1845,9 @@ export class IfcCreator {
   /** Create an IfcCostValue (IFC4 / IFC4X3 only). Returns its expressId. */
   addIfcCostValue(params: CostValueParams): number {
     assertCostSchema(this.schema, 'addIfcCostValue');
-    return emitCostValue(params, this.schema, this.emitEntity);
+    const id = emitCostValue(params, this.schema, this.emitEntity);
+    this.entities.push({ expressId: id, type: 'IfcCostValue', Name: params.Name });
+    return id;
   }
 
   /** Create an IfcMonetaryUnit for `currency`. No default — omit it to leave the currency unstated. */

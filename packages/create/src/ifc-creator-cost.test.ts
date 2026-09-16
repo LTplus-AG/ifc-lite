@@ -498,9 +498,39 @@ describe('IfcCreator cost authoring — malformed input is refused (#4856)', () 
       .toThrow(/Properties\[0\] is missing/);
     expect(() => creator.addIfcElementQuantity(wall, { Name: 'Qto_Sparse', Quantities: new Array(1) }))
       .toThrow(/Quantities\[0\] is missing/);
+    expect(() => creator.addIfcPropertySet(wall, { Name: 'Pset_Empty', Properties: [] }))
+      .toThrow(/Properties must contain at least one entry/);
+    expect(() => creator.addIfcElementQuantity(wall, { Name: 'Qto_Empty', Quantities: [] }))
+      .toThrow(/Quantities must contain at least one entry/);
     const step = creator.toIfc().content;
     expect(step).not.toContain('Pset_Sparse');
     expect(step).not.toContain('Qto_Sparse');
+    expect(step).not.toContain('Pset_Empty');
+    expect(step).not.toContain('Qto_Empty');
+  });
+
+  it('refuses out-of-vocabulary types and enums from untyped (sandbox) input', () => {
+    const creator = seededCreator(50);
+    const bogus = 'BOGUS' as never;
+    expect(() => creator.addIfcCostValue({ AppliedValue: { Type: 'IfcBogusMeasure' as never, Value: 1 } }))
+      .toThrow(/Type 'IfcBogusMeasure' is not one of/);
+    expect(() => creator.addIfcPhysicalQuantity({ Kind: 'IfcQuantityBogus' as never, Name: 'Q', Value: 1 }))
+      .toThrow(/Kind 'IfcQuantityBogus' is not one of/);
+    expect(() => creator.addIfcCostValue({ Name: 'V', ArithmeticOperator: bogus }))
+      .toThrow(/ArithmeticOperator 'BOGUS' is not one of/);
+    expect(() => creator.addIfcCostItem({ Name: 'I', PredefinedType: bogus }))
+      .toThrow(/PredefinedType 'BOGUS' is not one of/);
+    expect(() => creator.addIfcCostSchedule({ Name: 'S', PredefinedType: bogus }))
+      .toThrow(/PredefinedType 'BOGUS' is not one of/);
+    const step = creator.toIfc().content;
+    expect(step).not.toMatch(/BOGUS/i);
+    expect(step).not.toContain('IFCCOSTSCHEDULE');
+  });
+
+  it('lists created IfcCostValues in toIfc().entities, like schedules and items', () => {
+    const creator = seededCreator(51);
+    const id = creator.addIfcCostValue({ Name: 'Rate', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 5 } });
+    expect(creator.toIfc().entities).toContainEqual({ expressId: id, type: 'IfcCostValue', Name: 'Rate' });
   });
 
   it('refuses an invented currency of ""', () => {

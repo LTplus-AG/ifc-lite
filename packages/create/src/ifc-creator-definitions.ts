@@ -21,11 +21,13 @@ import type { EmitEntity } from './ifc-creator-cost.js';
 import type { PropertySetDef, QuantitySetDef } from './types.js';
 
 /**
- * Refuse a sparse array before anything is emitted. `map` skips holes and
- * `join` renders them as empty refs, so `new Array(1)` would otherwise write
- * `()` instead of failing the way the pre-split `for...of` loop did.
+ * Refuse an empty or sparse array before anything is emitted. Both aggregates
+ * are `SET [1:?]`, so `[]` would write a schema-invalid `()`; and `map`
+ * skips holes while `join` renders them as empty refs, so `new Array(1)`
+ * would write the same instead of failing like the pre-split `for...of` loop.
  */
 function assertDense(items: readonly unknown[], what: string): void {
+  if (!Array.isArray(items) || items.length === 0) throw new Error(`${what} must contain at least one entry`);
   for (let i = 0; i < items.length; i++) {
     if (!(i in items) || items[i] == null) throw new Error(`${what}[${i}] is missing`);
   }

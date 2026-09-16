@@ -73,6 +73,36 @@ export function stepReal(v: number): string {
   return `${mantissa.includes('.') ? mantissa : `${mantissa}.`}E${exponent}`;
 }
 
+/**
+ * Runtime allow-lists for every closed vocabulary a cost method writes. The
+ * TypeScript unions only bind typed callers; the sandbox hands these methods
+ * untyped script input, and an unchecked string becomes `IFCBOGUSMEASURE(1.)`
+ * or `.BOGUS.` — well-formed STEP naming nothing in the schema.
+ */
+const MEASURE_TYPES = new Set<string>([
+  'IfcMonetaryMeasure', 'IfcAreaMeasure', 'IfcVolumeMeasure', 'IfcLengthMeasure',
+  'IfcMassMeasure', 'IfcTimeMeasure', 'IfcCountMeasure', 'IfcNumericMeasure',
+  'IfcRatioMeasure', 'IfcReal', 'IfcInteger',
+]);
+const QUANTITY_KINDS = new Set<string>([
+  'IfcQuantityLength', 'IfcQuantityArea', 'IfcQuantityVolume', 'IfcQuantityWeight',
+  'IfcQuantityTime', 'IfcQuantityCount', 'IfcQuantityNumber',
+]);
+const ARITHMETIC_OPERATORS = new Set<string>(['ADD', 'DIVIDE', 'MULTIPLY', 'SUBTRACT']);
+const COST_SCHEDULE_TYPES = new Set<string>([
+  'BUDGET', 'COSTPLAN', 'ESTIMATE', 'TENDER', 'PRICEDBILLOFQUANTITIES',
+  'UNPRICEDBILLOFQUANTITIES', 'SCHEDULEOFRATES', 'USERDEFINED', 'NOTDEFINED',
+]);
+const COST_ITEM_TYPES = new Set<string>(['USERDEFINED', 'NOTDEFINED']);
+
+/** Refuse a value outside its closed vocabulary; `undefined` (absent) passes. */
+function assertOneOf(value: unknown, allowed: ReadonlySet<string>, what: string, context: string): void {
+  if (value === undefined) return;
+  if (typeof value !== 'string' || !allowed.has(value)) {
+    throw new Error(`${context}: ${what} '${String(value)}' is not one of ${[...allowed].join(', ')}`);
+  }
+}
+
 /** EXPRESS INTEGER-valued measures: IfcInteger always, IfcCountMeasure from IFC4X3 on. */
 function isIntegerMeasure(type: string, schema: CostSchema): boolean {
   return type === 'IfcInteger' || (type === 'IfcCountMeasure' && schema === 'IFC4X3');
@@ -105,6 +135,8 @@ export function assertCostSchema(schema: string, method: string): void {
  * and picking one by inspecting the value would silently retype the file.
  */
 export function typedValue(value: CostTypedValue, schema: CostSchema, context: string): string {
+  if (value === undefined || value === null) throw new Error(`${context}: a typed value is required`);
+  assertOneOf(value.Type, MEASURE_TYPES, 'Type', context);
   if (!Number.isFinite(value.Value)) {
     throw new Error(`${context}: ${value.Type} value must be a finite number`);
   }
@@ -236,6 +268,7 @@ export function emitPhysicalQuantity(
   schema: CostSchema,
   emit: EmitEntity,
 ): number {
+  assertOneOf(params.Kind, QUANTITY_KINDS, 'Kind', 'addIfcPhysicalQuantity');
   const context = `addIfcPhysicalQuantity: ${params.Kind} '${params.Name}'`;
   if (params.Kind === 'IfcQuantityNumber' && schema !== 'IFC4X3') {
     throw new Error(`${context} does not exist in ${schema}; IfcQuantityNumber requires Schema "IFC4X3"`);
@@ -274,6 +307,7 @@ export function emitPhysicalQuantity(
  * [8] ArithmeticOperator, [9] Components.
  */
 export function emitCostValue(params: CostValueParams, schema: CostSchema, emit: EmitEntity): number {
+  assertOneOf(params.ArithmeticOperator, ARITHMETIC_OPERATORS, 'ArithmeticOperator', 'addIfcCostValue');
   if (params.AppliedValue !== undefined && params.AppliedValueRef !== undefined) {
     throw new Error(
       'addIfcCostValue: AppliedValue and AppliedValueRef are the two branches of one SELECT — give at most one');
@@ -307,6 +341,7 @@ export function emitCostItem(
   ownerRef: string,
   emit: EmitEntity,
 ): number {
+  assertOneOf(params.PredefinedType, COST_ITEM_TYPES, 'PredefinedType', 'addIfcCostItem');
   return emit('IFCCOSTITEM',
     `'${globalId}',${ownerRef},'${esc(params.Name)}',${optStr(params.Description)},`
     + `${optStr(params.ObjectType)},${optStr(params.Identification)},`
@@ -356,6 +391,7 @@ export function emitCostSchedule(
   ownerRef: string,
   emit: EmitEntity,
 ): number {
+  assertOneOf(params.PredefinedType, COST_SCHEDULE_TYPES, 'PredefinedType', 'addIfcCostSchedule');
   return emit('IFCCOSTSCHEDULE',
     `'${globalId}',${ownerRef},'${esc(params.Name)}',${optStr(params.Description)},`
     + `${optStr(params.ObjectType)},${optStr(params.Identification)},`

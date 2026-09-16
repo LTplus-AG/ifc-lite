@@ -110,6 +110,9 @@ export function buildElementsDataset(
           const bindingType = field.dataType?.toUpperCase();
           const declaredKind = declaredType ? measureUnit(declaredType) : undefined;
           const bindingKind = bindingType ? measureUnit(bindingType) : undefined;
+          if (field.valueKind === 'number' && !bindingType && declaredKind?.kind === 'typed') {
+            return { value: null, status: 'unsupported' as const };
+          }
           if (bindingType && declaredType && bindingType !== declaredType
             && !(declaredKind?.kind === 'typed' && bindingKind?.kind === 'typed' && declaredKind.unitType === bindingKind.unitType)) {
             return { value: null, status: 'unsupported' as const };

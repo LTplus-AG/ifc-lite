@@ -78,7 +78,8 @@ function sourceUnitFor(pu: ProjectUnits, kind: ColumnUnitKind): (LinearUnit & { 
   if (power === undefined) return undefined;
   const length = pu.unitForMeasure('IfcLengthMeasure');
   if (!length) return undefined;
-  return { scale: length.siScale ** power, offset: 0, symbol: kind.defaultSymbol };
+  const exponent = power === 2 ? '²' : '³';
+  return { scale: length.siScale ** power, offset: 0, symbol: `${length.symbol}${exponent}` };
 }
 
 /** Resolve a model's source symbol for a typed IFC measure, including derived area/volume units. */

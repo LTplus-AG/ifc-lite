@@ -227,6 +227,7 @@ describe('resolveListColumnUnits (issue #1573 follow-up)', () => {
     ];
     const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});
     assert.strictEqual(resolver.unitSymbol(0), 'm²');
+    assert.strictEqual(resolver.sourceUnitSymbol(0, 'm1'), 'mm²');
     assert.ok(Math.abs((resolver.convertCell(0, 1_000_000, 'm1') as number) - 1) < 1e-9);
   });
 
@@ -236,6 +237,7 @@ describe('resolveListColumnUnits (issue #1573 follow-up)', () => {
     ];
     const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});
     assert.strictEqual(resolver.unitSymbol(0), 'm³');
+    assert.strictEqual(resolver.sourceUnitSymbol(0, 'm1'), 'mm³');
     assert.ok(Math.abs((resolver.convertCell(0, 1_000_000_000, 'm1') as number) - 1) < 1e-9);
   });
 

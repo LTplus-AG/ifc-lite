@@ -193,7 +193,9 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
       return { ...normalizeElementFieldValue(attrsFor(id).get(binding.attributeName), binding.valueKind), ...(dataType ? { dataType } : {}) };
     }
     const property = propertyFor(id, binding.psetName, binding.propertyName);
-    if (property?.values && property.values.length !== 1) return { value: null, status: 'unsupported' };
+    if (property?.values && (property.values.length !== 1 || String(property.value) !== property.values[0])) {
+      return { value: null, status: 'unsupported' };
+    }
     const normalized = normalizeElementFieldValue(property?.value, binding.valueKind);
     return { ...normalized, ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
   };

@@ -131,13 +131,22 @@ function restore(geometry: Geometry, baseline: RotationBaseline): void {
     const pristine = baseline.meshes.get(mesh);
     // A mesh with no baseline has never been baked, so it already IS pristine.
     if (!pristine) continue;
-    // A buffer of a different length is not the one this baseline was taken
-    // from — `releaseGeometryMemory` swaps a mesh's arrays for empty ones in
-    // bounded mode, and writing the pristine vertices back would undo exactly
-    // the memory that release freed. A bake cannot restore what is gone.
-    if (mesh.positions.length !== pristine.positions.length) continue;
-    mesh.positions = new Float32Array(pristine.positions);
-    if (pristine.normals) mesh.normals = new Float32Array(pristine.normals);
+    // VERTICES ONLY. A buffer of a different length is not the one this
+    // baseline was taken from — `releaseGeometryMemory` swaps a mesh's arrays
+    // for empty ones in bounded mode, and writing the pristine vertices back
+    // would undo exactly the memory that release freed. A bake cannot restore
+    // what is gone.
+    //
+    // The skip stops at the buffers. `origin`, `localToWorld` and
+    // `geometryAabb` are what carry a whole-model yaw's PLACEMENT effect, they
+    // are small, and the release never touched them — so skipping them leaves a
+    // released mesh holding a rotated placement that a later zero-angle bake
+    // cannot undo, because the baseline is dropped at zero and the mesh is
+    // re-streamed with pristine vertices under a rotated origin.
+    if (mesh.positions.length === pristine.positions.length) {
+      mesh.positions = new Float32Array(pristine.positions);
+      if (pristine.normals) mesh.normals = new Float32Array(pristine.normals);
+    }
     // Absent stays absent: a mesh that never carried an origin must not gain a
     // [0,0,0] the renderer would then read as a local frame.
     if (pristine.origin) mesh.origin = [...pristine.origin]; else delete mesh.origin;

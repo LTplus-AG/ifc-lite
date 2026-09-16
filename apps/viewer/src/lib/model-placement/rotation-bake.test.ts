@@ -10,6 +10,8 @@ import type { Translation } from './translation.js';
 
 const ROTATION: ModelRotation = { angle: degreesToRadians(30), pivot: [10, 4, 0] as Translation };
 const OTHER: ModelRotation = { angle: degreesToRadians(-55), pivot: [10, 4, 0] as Translation };
+/** Non-round angle, off-origin pivot: no term can cancel by symmetry. */
+const SKEW: ModelRotation = { angle: degreesToRadians(37.4), pivot: [13.7, -4.9, 0] as Translation };
 
 type Geometry = Pick<GeometryResult, 'meshes' | 'coordinateInfo' | 'instancedGeometryAabbs'>;
 
@@ -146,6 +148,43 @@ describe('ModelRotationBaker', () => {
     assert.deepEqual(meshSnapshot(appended, 1), meshSnapshot(fresh, 1));
   });
 
+  it('keeps a baseline that still describes some of the republished meshes', () => {
+    const baker = new ModelRotationBaker(), value = geometry();
+    const kept = value.meshes[0];
+    baker.reconcile(targets(value, ROTATION), 1);
+    const bakedKept = meshSnapshot(value, 0);
+    // Partial overlap: the baselined mesh object survives into a NEW array
+    // beside a mesh this baseline has never seen.
+    const partial = { ...value, meshes: [kept, streamedMesh()] } as Geometry;
+    assert.deepEqual(baker.reconcile(targets(partial, ROTATION), 1), ['m']);
+    assert.deepEqual(meshSnapshot(partial, 0), bakedKept,
+      'the surviving mesh was re-rotated instead of restored and re-baked');
+    const control = new ModelRotationBaker(), fresh = geometry();
+    fresh.meshes.push(streamedMesh());
+    control.reconcile(targets(fresh, ROTATION), 1);
+    assert.deepEqual(meshSnapshot(partial, 1), meshSnapshot(fresh, 1),
+      'the newly arrived mesh was not rotated exactly once');
+  });
+
+  const instanced = (min: number[], max: number[]) =>
+    new Map([[99, { min, max }]]) as unknown as GeometryResult['instancedGeometryAabbs'];
+
+  it('does not hand a replaced model the vanished model\'s instanced boxes', () => {
+    const baker = new ModelRotationBaker(), first = geometry();
+    first.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+    baker.reconcile(targets(first, ROTATION), 1);
+    // A collab replacement: a whole new geometry with no mesh in common, and
+    // instanced boxes of its own that the stale baseline must not overwrite.
+    const replacement = geometry();
+    replacement.instancedGeometryAabbs = instanced([-7.21, 1.13, -3.48], [-2.64, 4.82, 0.97]);
+    const control = new ModelRotationBaker(), fresh = geometry();
+    fresh.instancedGeometryAabbs = instanced([-7.21, 1.13, -3.48], [-2.64, 4.82, 0.97]);
+    control.reconcile(targets(fresh, ROTATION), 1);
+    assert.deepEqual(baker.reconcile(targets(replacement, ROTATION), 1), ['m']);
+    assert.deepEqual(replacement.instancedGeometryAabbs, fresh.instancedGeometryAabbs,
+      'the replacement inherited the vanished model\'s instanced boxes');
+  });
+
   it('does not put back vertices a bounded-mode release has freed', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     baker.reconcile(targets(value, ROTATION), 1);
@@ -157,5 +196,49 @@ describe('ModelRotationBaker', () => {
     baker.reconcile(targets(released, OTHER), 1);
     assert.equal(released.meshes[0].positions.length, 0,
       'the bake resurrected buffers the release had freed');
+  });
+
+  /** Every field a bake can restore, all off-axis and non-round: a partial or
+   * dropped restore cannot land on the right number by luck. */
+  const releasableMesh = (): MeshData => ({ expressId: 7,
+    positions: new Float32Array([0.37, 0.19, -0.84, 2.61, 0.19, -0.84, 2.61, 1.73, 0.46]),
+    normals: new Float32Array([0.6, 0, 0.8, 0.6, 0, 0.8, 0.6, 0, 0.8]),
+    indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1],
+    origin: [418.63, 7.41, -253.19],
+    geometryAabb: { min: [419, 7.6, -254.03], max: [421.24, 9.14, -252.73] },
+    localToWorld: [1, 0, 0, 418.63, 0, 1, 0, 7.41, 0, 0, 1, -253.19, 0, 0, 0, 1],
+  } as unknown as MeshData);
+
+  const releasable = (): Geometry => ({ ...geometry(), meshes: [releasableMesh()] } as Geometry);
+  const placement = (value: Geometry) => ({ origin: value.meshes[0].origin,
+    localToWorld: value.meshes[0].localToWorld, geometryAabb: value.meshes[0].geometryAabb });
+  /** In place and without a version bump, exactly as `releaseGeometryMemory`
+   * does it: the buffers go, the placement fields are left alone. */
+  const release = (value: Geometry): Geometry => {
+    value.meshes[0].positions = new Float32Array(0);
+    value.meshes[0].normals = new Float32Array(0);
+    return { ...value, meshes: value.meshes } as Geometry;
+  };
+
+  it('restores a released mesh\'s placement, which the release never freed', () => {
+    const baker = new ModelRotationBaker(), value = releasable();
+    const pristine = structuredClone(placement(value));
+    baker.reconcile(targets(value, SKEW), 1);
+    assert.notDeepEqual(placement(value), pristine, 'the fixture must move under this rotation');
+    assert.deepEqual(baker.reconcile(targets(release(value), ZERO_ROTATION), 1), ['m']);
+    assert.equal(value.meshes[0].positions.length, 0, 'the bake resurrected freed buffers');
+    // The baseline is dropped at zero, so a placement left rotated here is
+    // unrecoverable — a silent, permanent error while the UI reports 0°.
+    assert.deepEqual(placement(value), pristine, 'the released mesh kept its rotated placement');
+  });
+
+  it('re-bakes a released mesh from its pristine placement rather than compounding', () => {
+    const baker = new ModelRotationBaker(), value = releasable();
+    baker.reconcile(targets(value, SKEW), 1);
+    baker.reconcile(targets(release(value), OTHER), 1);
+    // Straight to OTHER from pristine is where the released mesh must land.
+    const control = new ModelRotationBaker(), fresh = releasable();
+    control.reconcile(targets(fresh, OTHER), 1);
+    assert.deepEqual(placement(value), placement(fresh));
   });
 });

@@ -4,7 +4,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { applyModelRotation, captureRotationBaseline, modelBoundsCentre } from './rotation-geometry.js';
+import {
+  applyModelRotation, baselineIsForeign, captureRotationBaseline, modelBoundsCentre,
+} from './rotation-geometry.js';
 import { degreesToRadians, rotateWorkspacePoint, type ModelRotation } from './rotation.js';
 import { addTranslation, fromRenderTranslation, type Translation } from './translation.js';
 
@@ -213,6 +215,24 @@ describe('applyModelRotation', () => {
     assert.equal(value.meshes[0].origin, undefined);
     const after = worldPoints(value);
     for (let i = 0; i < before.length; i += 1) close(after[i], rotateWorkspacePoint(before[i], ROTATION), `absolute vertex ${i}`);
+  });
+});
+
+describe('baselineIsForeign', () => {
+  it('is foreign only when the baseline describes none of the meshes', () => {
+    const value = geometry();
+    const known = value.meshes[0];
+    const baseline = captureRotationBaseline(value);
+    assert.equal(baselineIsForeign(value, baseline), false, 'the geometry it was captured from');
+    // Partial overlap: streaming republishes an array that still holds the
+    // baselined mesh alongside a newcomer. Dropping the baseline here would
+    // throw away the only pristine copy of the surviving mesh's bytes, and the
+    // next bake would compound on top of the angle already in them.
+    assert.equal(baselineIsForeign({ ...value, meshes: [known, mesh()] } as Geometry, baseline), false,
+      'a baseline that still describes one of the meshes was called foreign');
+    // No mesh in common: a replacement, and the baseline can restore nothing.
+    assert.equal(baselineIsForeign({ ...value, meshes: [mesh(), mesh()] } as Geometry, baseline), true,
+      'a baseline that describes none of the meshes was not called foreign');
   });
 });
 

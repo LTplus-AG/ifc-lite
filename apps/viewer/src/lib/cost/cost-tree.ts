@@ -50,8 +50,9 @@ export interface CostTreeScheduleNode {
 
 export interface CostTree {
   schedules: CostTreeScheduleNode[];
-  /** Items reachable from no `IfcRelAssignsToControl` schedule assignment
-   *  AND not nested under another item — surfaced explicitly so nothing a
+  /** Items reachable from no schedule assignment AND not nested under
+   *  another item (plus one representative per otherwise-unreachable
+   *  nesting cycle) — surfaced explicitly so nothing a
    *  real model declares is silently dropped from the tree. */
   unassignedItems: CostTreeItemNode[];
 }
@@ -101,17 +102,41 @@ function buildScheduleMap(graph: CostGraphData): Map<string, CostScheduleData> {
   return map;
 }
 
+/** Relationship types that assign cost items to a controlling schedule.
+ *  `IfcRelSchedulesCostItems` is the IFC2X3 subtype of
+ *  `IfcRelAssignsToControl` with the same schedule-to-item endpoints, and
+ *  the parser's cost extractor emits it as its own `Type`. */
+function isScheduleAssignment(rel: CostRelationshipData): boolean {
+  return rel.Type === 'IfcRelAssignsToControl' || rel.Type === 'IfcRelSchedulesCostItems';
+}
+
+/** Append `key` to the de-duplicated list stored under `owner`. Duplicate
+ *  relationship entities naming the same pair must not render twice. */
+function pushUnique(lists: Map<string, string[]>, seen: Set<string>, owner: string, key: string): void {
+  const pairKey = `${owner}>${key}`;
+  if (seen.has(pairKey)) return;
+  seen.add(pairKey);
+  const list = lists.get(owner);
+  if (list) list.push(key);
+  else lists.set(owner, [key]);
+}
+
 /**
  * Build the schedule → item → nested-item tree. Two relationship shapes
  * drive it:
- *  - `IfcRelAssignsToControl` where `RelatingControl` is a KNOWN SCHEDULE
- *    ref assigns its `RelatedObjects` (cost items) to that schedule.
+ *  - `IfcRelAssignsToControl` (or IFC2X3 `IfcRelSchedulesCostItems`) where
+ *    `RelatingControl` is a KNOWN SCHEDULE ref assigns its `RelatedObjects`
+ *    (cost items) to that schedule.
  *  - `IfcRelNests` where `RelatingObject` is a KNOWN ITEM ref nests its
  *    `RelatedObjects` (cost items) as children.
  *
  * A child appearing under its parent via `IfcRelNests` is not ALSO listed
  * as a schedule root even if it happens to carry its own control
  * assignment elsewhere — the tree shows nesting structure once.
+ *
+ * Items reachable from no root (an unscheduled nesting cycle A → B → A has
+ * no un-nested member) get one representative root per component, chosen
+ * as the first unreached item in `CostItems` order, so they stay visible.
  */
 export function buildCostTree(graph: CostGraphData): CostTree {
   const itemsByKey = buildItemMap(graph);
@@ -119,72 +144,118 @@ export function buildCostTree(graph: CostGraphData): CostTree {
 
   const childKeysByParent = new Map<string, string[]>();
   const nestedChildKeys = new Set<string>();
-  for (const rel of graph.Relationships) {
-    if (rel.Type !== 'IfcRelNests' || !rel.RelatingObject) continue;
-    const parentKey = refKey(rel.RelatingObject);
-    if (!itemsByKey.has(parentKey)) continue;
-    const list = childKeysByParent.get(parentKey) ?? [];
-    for (const child of rel.RelatedObjects ?? []) {
-      const childKey = refKey(child);
-      if (!itemsByKey.has(childKey)) continue;
-      list.push(childKey);
-      nestedChildKeys.add(childKey);
-    }
-    childKeysByParent.set(parentKey, list);
-  }
-
-  function buildNode(key: string, visiting: Set<string>): CostTreeItemNode {
-    const item = itemsByKey.get(key);
-    if (!item) throw new Error(`cost-tree: item ${key} vanished mid-build`);
-    // Defensive cycle guard: the extractor already reports NESTING_CYCLE in
-    // graph.Diagnostics, but the tree builder must not infinite-loop or
-    // stack-overflow if it is ever handed a cyclic graph before that
-    // diagnostic is checked upstream.
-    if (visiting.has(key)) return { ref: item.ref, item, children: [] };
-    const nextVisiting = new Set(visiting);
-    nextVisiting.add(key);
-    const childKeys = childKeysByParent.get(key) ?? [];
-    return {
-      ref: item.ref,
-      item,
-      children: childKeys.map((childKey) => buildNode(childKey, nextVisiting)),
-    };
-  }
-
+  const firstParentByChild = new Map<string, string>();
+  const seenNestPairs = new Set<string>();
   const scheduleRootKeysBySchedule = new Map<string, string[]>();
   const assignedItemKeys = new Set<string>();
+  const seenAssignPairs = new Set<string>();
+
   for (const rel of graph.Relationships) {
-    if (rel.Type !== 'IfcRelAssignsToControl' || !rel.RelatingControl) continue;
-    const controlKey = refKey(rel.RelatingControl);
-    if (!schedulesByKey.has(controlKey)) continue;
-    const list = scheduleRootKeysBySchedule.get(controlKey) ?? [];
-    for (const related of rel.RelatedObjects ?? []) {
-      const relatedKey = refKey(related);
-      if (!itemsByKey.has(relatedKey)) continue;
-      list.push(relatedKey);
-      assignedItemKeys.add(relatedKey);
+    if (rel.Type === 'IfcRelNests' && rel.RelatingObject) {
+      const parentKey = refKey(rel.RelatingObject);
+      if (!itemsByKey.has(parentKey)) continue;
+      for (const child of rel.RelatedObjects ?? []) {
+        const childKey = refKey(child);
+        if (!itemsByKey.has(childKey)) continue;
+        pushUnique(childKeysByParent, seenNestPairs, parentKey, childKey);
+        nestedChildKeys.add(childKey);
+        if (!firstParentByChild.has(childKey)) firstParentByChild.set(childKey, parentKey);
+      }
+    } else if (isScheduleAssignment(rel) && rel.RelatingControl) {
+      const controlKey = refKey(rel.RelatingControl);
+      if (!schedulesByKey.has(controlKey)) continue;
+      for (const related of rel.RelatedObjects ?? []) {
+        const relatedKey = refKey(related);
+        if (!itemsByKey.has(relatedKey)) continue;
+        pushUnique(scheduleRootKeysBySchedule, seenAssignPairs, controlKey, relatedKey);
+        assignedItemKeys.add(relatedKey);
+      }
     }
-    scheduleRootKeysBySchedule.set(controlKey, list);
+  }
+
+  /** Iterative depth-first build — an arbitrarily deep acyclic nesting
+   *  chain must not exhaust the JS call stack. `onPath` holds the keys on
+   *  the current root-to-node path: a key already on it is a cycle and is
+   *  emitted as a leaf (the extractor separately reports NESTING_CYCLE). */
+  function buildNode(rootKey: string): CostTreeItemNode {
+    const makeNode = (key: string): CostTreeItemNode => {
+      const item = itemsByKey.get(key);
+      if (!item) throw new Error(`cost-tree: item ${key} vanished mid-build`);
+      return { ref: item.ref, item, children: [] };
+    };
+    const root = makeNode(rootKey);
+    const onPath = new Set<string>([rootKey]);
+    const stack: Array<{ key: string; node: CostTreeItemNode; next: number }> = [
+      { key: rootKey, node: root, next: 0 },
+    ];
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const childKeys = childKeysByParent.get(frame.key) ?? [];
+      if (frame.next >= childKeys.length) {
+        onPath.delete(frame.key);
+        stack.pop();
+        continue;
+      }
+      const childKey = childKeys[frame.next++];
+      const child = makeNode(childKey);
+      frame.node.children.push(child);
+      if (onPath.has(childKey)) continue;
+      onPath.add(childKey);
+      stack.push({ key: childKey, node: child, next: 0 });
+    }
+    return root;
+  }
+
+  const reached = new Set<string>();
+  function markReachable(rootKey: string): void {
+    const pending = [rootKey];
+    while (pending.length > 0) {
+      const key = pending.pop()!;
+      if (reached.has(key)) continue;
+      reached.add(key);
+      for (const childKey of childKeysByParent.get(key) ?? []) pending.push(childKey);
+    }
   }
 
   const schedules: CostTreeScheduleNode[] = graph.CostSchedules.map((schedule) => {
     const key = refKey(schedule.ref);
-    const rootKeys = scheduleRootKeysBySchedule.get(key) ?? [];
+    const rootKeys = (scheduleRootKeysBySchedule.get(key) ?? []).filter((k) => !nestedChildKeys.has(k));
+    rootKeys.forEach(markReachable);
     return {
       ref: schedule.ref,
       schedule,
-      items: rootKeys.map((rootKey) => buildNode(rootKey, new Set())),
+      items: rootKeys.map((rootKey) => buildNode(rootKey)),
     };
   });
 
-  const unassignedItems: CostTreeItemNode[] = [];
+  const unassignedKeys: string[] = [];
   for (const item of graph.CostItems) {
     const key = refKey(item.ref);
     if (assignedItemKeys.has(key) || nestedChildKeys.has(key)) continue;
-    unassignedItems.push(buildNode(key, new Set()));
+    unassignedKeys.push(key);
+    markReachable(key);
+  }
+  // Components with no un-nested member (pure nesting cycles, or items
+  // hanging off one) are otherwise unreachable from every root. Every
+  // unreached item is nested under an unreached parent, so climbing first
+  // parents always ends on a cycle member: that member becomes the
+  // representative root, so an item hanging off the cycle is not promoted
+  // above it.
+  for (const item of graph.CostItems) {
+    let key = refKey(item.ref);
+    if (reached.has(key)) continue;
+    const climbed = new Set<string>();
+    while (!climbed.has(key)) {
+      climbed.add(key);
+      const parentKey = firstParentByChild.get(key);
+      if (parentKey === undefined) break;
+      key = parentKey;
+    }
+    unassignedKeys.push(key);
+    markReachable(key);
   }
 
-  return { schedules, unassignedItems };
+  return { schedules, unassignedItems: unassignedKeys.map((key) => buildNode(key)) };
 }
 
 /**
@@ -233,7 +304,7 @@ export function getOwningSchedules(graph: CostGraphData, itemRef: EntityRefLike)
   const owners: CostScheduleData[] = [];
   const seen = new Set<string>();
   for (const rel of graph.Relationships) {
-    if (rel.Type !== 'IfcRelAssignsToControl' || !rel.RelatingControl) continue;
+    if (!isScheduleAssignment(rel) || !rel.RelatingControl) continue;
     const controlKey = refKey(rel.RelatingControl);
     const schedule = schedulesByKey.get(controlKey);
     if (!schedule) continue;

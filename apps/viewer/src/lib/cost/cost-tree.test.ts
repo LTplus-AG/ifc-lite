@@ -313,3 +313,98 @@ describe('buildCostTree — a cost item as RelatingControl (alternate nesting id
     );
   });
 });
+
+describe('buildCostTree — review findings on PR #4875', () => {
+  it('keeps an unscheduled IfcRelNests cycle visible via one representative root', () => {
+    // A -> B -> A with no schedule assignment: every item is a nested child,
+    // so the plain "not assigned AND not nested" rule surfaces nothing and
+    // the panel would claim the model has no cost items.
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#39=IFCCOSTITEM('x',$,'Hangs off cycle',$,$,$,.USERDEFINED.,$,$);",
+      "#40=IFCCOSTITEM('a',$,'A',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('b',$,'B',$,$,$,.USERDEFINED.,$,$);",
+      "#60=IFCRELNESTS('n1',$,$,$,#40,(#41));",
+      "#61=IFCRELNESTS('n2',$,$,$,#41,(#40,#39));",
+    ]);
+    const tree = buildCostTree(backendFor('m1', store).data());
+    // The representative is a cycle member (reached by climbing parents
+    // from #39), never the item hanging off the cycle, even though #39
+    // comes first in CostItems order.
+    assert.deepEqual(tree.unassignedItems.map((n) => n.item.Name), ['B']);
+    const [b] = tree.unassignedItems;
+    assert.deepEqual(b.children.map((c) => c.item.Name), ['A', 'Hangs off cycle']);
+    const a = b.children[0];
+    assert.deepEqual(a.children.map((c) => c.item.Name), ['B']);
+    assert.deepEqual(a.children[0].children, [], 'the cycle guard stops at the repeated B');
+  });
+
+  it('does not render a nested child that is also schedule-assigned as a schedule root', () => {
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#40=IFCCOSTITEM('p',$,'Parent',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('c',$,'Child',$,$,$,.USERDEFINED.,$,$);",
+      "#50=IFCCOSTSCHEDULE('cs',$,'Budget',$,$,$,.BUDGET.,$,$,$);",
+      "#60=IFCRELNESTS('n1',$,$,$,#40,(#41));",
+      "#61=IFCRELASSIGNSTOCONTROL('r1',$,$,$,(#40,#41),$,#50);",
+    ]);
+    const tree = buildCostTree(backendFor('m1', store).data());
+    assert.deepEqual(tree.schedules[0].items.map((n) => n.item.Name), ['Parent']);
+    assert.deepEqual(tree.schedules[0].items[0].children.map((n) => n.item.Name), ['Child']);
+    assert.deepEqual(tree.unassignedItems, []);
+  });
+
+  it('treats IFC2X3 IfcRelSchedulesCostItems as a schedule assignment', () => {
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#40=IFCCOSTITEM('ci',$,'Scheduled 2x3 item',$,$,$,.USERDEFINED.,$,$);",
+      "#50=IFCCOSTSCHEDULE('cs',$,'2x3 budget',$,$,$,.BUDGET.,$,$,$);",
+      "#60=IFCRELSCHEDULESCOSTITEMS('r1',$,$,$,(#40),$,#50);",
+    ], 'IFC2X3');
+    const graph = backendFor('m1', store).data();
+    assert.ok(graph.Relationships.some((r) => r.Type === 'IfcRelSchedulesCostItems'), 'read model emits the IFC2X3 relationship');
+    const tree = buildCostTree(graph);
+    assert.deepEqual(tree.schedules[0].items.map((n) => n.item.Name), ['Scheduled 2x3 item']);
+    assert.deepEqual(tree.unassignedItems, []);
+    assert.deepEqual(
+      getOwningSchedules(graph, { modelId: 'm1', expressId: 40 }).map((s) => s.Name),
+      ['2x3 budget'],
+    );
+  });
+
+  it('dedupes duplicate relationship entities naming the same pair', () => {
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#40=IFCCOSTITEM('p',$,'Parent',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('c',$,'Child',$,$,$,.USERDEFINED.,$,$);",
+      "#50=IFCCOSTSCHEDULE('cs',$,'Budget',$,$,$,.BUDGET.,$,$,$);",
+      "#60=IFCRELNESTS('n1',$,$,$,#40,(#41));",
+      "#61=IFCRELNESTS('n2',$,$,$,#40,(#41));",
+      "#62=IFCRELASSIGNSTOCONTROL('r1',$,$,$,(#40),$,#50);",
+      "#63=IFCRELASSIGNSTOCONTROL('r2',$,$,$,(#40),$,#50);",
+    ]);
+    const tree = buildCostTree(backendFor('m1', store).data());
+    assert.equal(tree.schedules[0].items.length, 1);
+    assert.equal(tree.schedules[0].items[0].children.length, 1);
+  });
+
+  it('builds a very deep acyclic nesting chain without exhausting the call stack', () => {
+    const depth = 20000;
+    const lines = [...PROJECT_GBP];
+    for (let i = 0; i < depth; i++) {
+      lines.push(`#${1000 + i}=IFCCOSTITEM('c${i}',$,'Item ${i}',$,$,$,.USERDEFINED.,$,$);`);
+    }
+    for (let i = 0; i < depth - 1; i++) {
+      lines.push(`#${100000 + i}=IFCRELNESTS('n${i}',$,$,$,#${1000 + i},(#${1001 + i}));`);
+    }
+    const tree = buildCostTree(backendFor('m1', buildStoreFromStep(lines)).data());
+    assert.equal(tree.unassignedItems.length, 1);
+    let node = tree.unassignedItems[0];
+    let levels = 1;
+    while (node.children.length > 0) {
+      node = node.children[0];
+      levels++;
+    }
+    assert.equal(levels, depth);
+  });
+});

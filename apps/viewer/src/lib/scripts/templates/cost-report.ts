@@ -11,7 +11,8 @@ export {} // module boundary (stripped by transpiler)
 // `bim.cost` (the same read model the viewer's Cost panel uses — see
 // docs/guide/cost-panel.md) and prints a per-item report: resolved amount
 // and currency, or — when a value could not be evaluated — the evaluator's
-// own diagnostic, never a guess. Exports a CSV alongside the console report.
+// own diagnostic, never a guess. Exports a JSON report alongside the console
+// report.
 //
 // This script is READ-ONLY: `bim.cost` has no write/author methods.
 // Spreadsheet-style cost editing is out of scope for the viewer's Cost
@@ -63,13 +64,16 @@ if (!data.HasCostData) {
     })
   }
 
-  const header = ['expressId', 'name', 'identification', 'amount', 'currency', 'diagnostics']
-  const csvEscape = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-  const csv = [
-    header.join(','),
-    ...rows.map((r) => [r.id, r.name, r.identification, r.amount, r.currency, r.diagnostics].map(csvEscape).join(',')),
-  ].join('\n')
+  // JSON, not CSV: `bim.export.csv()`/`bim.export.json()` resolve columns from an
+  // entity's property/quantity sets (`SetName.ValueName`), and these rows carry
+  // `bim.cost.evaluateItem()` results instead — a resolved amount, currency and
+  // diagnostics text with no backing pset/qset to point a column path at. Rolling
+  // a CSV writer by hand here would just be an eighth escaper (the repo caps this
+  // at exactly one per language — see `scripts/check-csv-escaper-copies.mjs`), so
+  // this template hands the report to `bim.export.download()` as JSON, which
+  // needs no escaping of its own: `JSON.stringify` already quotes every value.
+  const json = JSON.stringify(rows, null, 2)
 
-  bim.export.download(csv, 'cost-report.csv', 'text/csv')
-  console.log(`[cost] exported cost-report.csv (${rows.length} row(s))`)
+  bim.export.download(json, 'cost-report.json', 'application/json')
+  console.log(`[cost] exported cost-report.json (${rows.length} row(s))`)
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { finiteTranslation, ZERO_TRANSLATION, type Translation } from './translation.js';
+import { finiteTranslation, subtractTranslation, ZERO_TRANSLATION, type Translation } from './translation.js';
 
 /**
  * A whole-model rotation about the workspace VERTICAL axis only.
@@ -76,6 +76,21 @@ export function parseRotationDegrees(text: string): number {
   const degrees = Number(match[1].replace(',', '.'));
   if (!Number.isFinite(degrees)) throw new Error('Enter a finite rotation angle in degrees.');
   return degreesToRadians(degrees);
+}
+
+/**
+ * Convert a point observed on the PLACED model into the model's own
+ * un-translated frame, which is the frame a pivot must be in.
+ *
+ * The order of operations is rotate-about-pivot, then translate: the rotation is
+ * baked into the model's geometry and the placement offset is applied on top of
+ * those vertices. So a pivot taken off the model where it currently sits — its
+ * bounds centre, a picked point — is wrong by exactly that offset, and the model
+ * would swing about a point the user did not choose. Rotating and then moving is
+ * not the same arrangement as moving and then rotating.
+ */
+export function pivotInModelFrame(placedPoint: Translation, translation: Translation): Translation {
+  return subtractTranslation(placedPoint, translation);
 }
 
 /**

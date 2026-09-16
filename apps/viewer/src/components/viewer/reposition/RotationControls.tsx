@@ -4,19 +4,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
-import { parseRotationDegrees, radiansToDegrees, isZeroRotation } from '@/lib/model-placement/rotation';
-import { finiteTranslation, subtractTranslation, type Translation } from '@/lib/model-placement/translation';
+import { parseRotationDegrees, pivotInModelFrame, radiansToDegrees, isZeroRotation } from '@/lib/model-placement/rotation';
+import { finiteTranslation, type Translation } from '@/lib/model-placement/translation';
 import { modelCenter } from '@/lib/model-placement/scene';
 
 const button = 'border px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40';
 const AXES = ['X', 'Y'] as const;
 
-/**
- * The pivot the rotation turns about, in the model's UN-translated workspace
- * frame — the rotation is baked into the geometry and the placement offset is
- * applied on top of it, so a pivot read off the moved model would be in the
- * wrong frame by exactly that offset.
- */
+/** The pivot the rotation turns about — the model's bounds centre, taken back
+ * into the model's own un-translated frame (see `pivotInModelFrame`). */
 function defaultPivot(modelId: string): Translation {
   const state = useViewerStore.getState();
   const existing = placementFor(state.modelPlacement, modelId).rotation;
@@ -26,7 +22,7 @@ function defaultPivot(modelId: string): Translation {
   if (!isZeroRotation(existing)) return existing.pivot;
   const centre = modelCenter(modelId);
   if (!centre) return [0, 0, 0];
-  return subtractTranslation(centre, placementFor(state.modelPlacement, modelId).translation);
+  return pivotInModelFrame(centre, placementFor(state.modelPlacement, modelId).translation);
 }
 
 /** Rotation is entered as a value, not dragged, so it has no preview stage:

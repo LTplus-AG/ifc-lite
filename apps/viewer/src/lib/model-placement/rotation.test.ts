@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { degreesToRadians, equalRotation, finiteRotation, normalizeAngle, parseRotationDegrees,
-  radiansToDegrees, rotateWorkspacePoint, ZERO_ROTATION } from './rotation.js';
+  pivotInModelFrame, radiansToDegrees, rotateWorkspacePoint, ZERO_ROTATION } from './rotation.js';
 import type { Translation } from './translation.js';
 
 describe('rotation values', () => {
@@ -39,6 +39,21 @@ describe('rotation values', () => {
     assert.deepEqual(rotateWorkspacePoint(pivot, { angle: degreesToRadians(37), pivot }), pivot);
     const moved = rotateWorkspacePoint([11, 4, 0], { angle: degreesToRadians(90), pivot });
     assert.ok(Math.abs(moved[0] - 10) < 1e-9 && Math.abs(moved[1] - 5) < 1e-9, `got ${moved}`);
+  });
+
+  it('takes a pivot back into the model frame, because rotation precedes translation', () => {
+    // A point observed on the PLACED model, and the offset it is placed by.
+    // Rotating about the observed point would swing the model about a point the
+    // user did not choose, by exactly that offset.
+    assert.deepEqual(pivotInModelFrame([10, 5, 2], [3, 1, -4]), [7, 4, 6]);
+    // Composing the two orders on one point shows they disagree: turning the
+    // model-frame pivot and then translating is not translating and then
+    // turning about the placed point.
+    const placed: Translation = [10, 5, 0], offset: Translation = [3, 1, 0];
+    const rotation = { angle: degreesToRadians(90), pivot: pivotInModelFrame(placed, offset) };
+    const rotateThenTranslate = rotateWorkspacePoint([12, 5, 0], rotation);
+    const translateThenRotate = rotateWorkspacePoint([12, 5, 0], { angle: rotation.angle, pivot: placed });
+    assert.notDeepEqual(rotateThenTranslate, translateThenRotate);
   });
 
   it('two zero-angle rotations are equal whatever their pivots', () => {

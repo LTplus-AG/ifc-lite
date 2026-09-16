@@ -402,6 +402,30 @@ describe('IfcCreator cost authoring — malformed input is refused (#4856)', () 
       .toThrow(/is not an express id/);
     expect(() => creator.addIfcRelAssignsToProduct(1, [])).toThrow(/at least one entity/);
   });
+
+  // The test above only ever exercises the RelatedObjects validation branch of
+  // `addIfcRelAssignsToProduct`: an empty list throws before the
+  // RelatingProduct id is even looked at. This test gives RelatedObjects a
+  // valid, non-empty list so the RelatingProduct check is the one that has to
+  // catch the bad id — otherwise a broken/removed `requireRef` on
+  // RelatingProduct would pass every existing test in this file.
+  it('refuses an invalid RelatingProduct id on IfcRelAssignsToProduct, and writes nothing partial', () => {
+    const creator = seededCreator(7);
+    const item = creator.addIfcCostItem({ Name: 'I' });
+
+    expect(() => creator.addIfcRelAssignsToProduct(0, [item]))
+      .toThrow(/relatingProductId must be an express id/);
+
+    // Proof the failed call wrote NOTHING — not even a malformed line — for
+    // either the express id counter or the STEP text: the next entity gets
+    // the very next id (nothing was silently consumed), and the STEP text
+    // contains no IFCRELASSIGNSTOPRODUCT record at all.
+    const next = creator.addIfcCostItem({ Name: 'J' });
+    expect(next).toBe(item + 1);
+
+    const step = creator.toIfc().content;
+    expect(step).not.toContain('IFCRELASSIGNSTOPRODUCT');
+  });
 });
 
 /**

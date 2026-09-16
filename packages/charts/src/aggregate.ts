@@ -133,10 +133,10 @@ function rowInSlice(row: ChartDatasetRow, slice: ReadonlySet<number> | null | un
   return false;
 }
 
-function measureOf(row: ChartDatasetRow, spec: ChartSpec, measureColumn: number): number {
+function measureOf(row: ChartDatasetRow, spec: ChartSpec, measureColumn: number): number | null {
   if (spec.measure.agg === 'count') return 1;
   const v = row.values[measureColumn];
-  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
 function orderBuckets(accs: Accumulator[], spec: ChartSpec): Accumulator[] {
@@ -184,6 +184,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
   const series = new Map<string, { label: string; cells: Map<string, Accumulator> }>();
   let total = 0;
   let unbucketed = 0;
+  let unmeasured = 0;
 
   const bump = (acc: Accumulator, row: ChartDatasetRow, measure: number): void => {
     acc.value += measure;
@@ -198,7 +199,9 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
       unbucketed += 1;
       continue;
     }
-    const measure = measureOf(row, spec, measureColumn);
+    const resolvedMeasure = measureOf(row, spec, measureColumn);
+    if (resolvedMeasure === null) unmeasured += 1;
+    const measure = resolvedMeasure ?? 0;
     total += measure;
     let cat = categories.get(keyed.key);
     if (!cat) {
@@ -268,7 +271,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
   }
 
   const unit = measureColumn >= 0 ? dataset.columns[measureColumn].unit : undefined;
-  return { spec, categories: categoryBuckets, series: seriesOut, total, unbucketed, categoryOf, unit, palette };
+  return { spec, categories: categoryBuckets, series: seriesOut, total, unbucketed, unmeasured, categoryOf, unit, palette };
 }
 
 /** The element ids behind a set of category indices — what a chart click selects in 3D. */

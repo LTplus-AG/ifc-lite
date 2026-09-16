@@ -13,13 +13,21 @@
  * (`toGlobalIdFromModels`), so a bucket's ids go straight to selection and
  * visibility.
  */
-import { elementsDataset, type ChartDataset, type ChartScope, type ElementsDatasetModel } from '@ifc-lite/charts';
+import { elementsDataset, type ChartDataset, type ChartScope, type ElementFieldBinding, type ElementsDatasetModel } from '@ifc-lite/charts';
 import { useViewerStore, type ViewerState } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
+import { createElementFieldReader } from '@/lib/charts/element-field-reader';
+import { extractProjectUnits } from '@ifc-lite/parser';
+import type { ColumnDefinition } from '@ifc-lite/lists';
+import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 
-type ModelsState = Pick<ViewerState, 'models' | 'activeModelId' | 'pinboardEntities'>;
+type ModelsState = Pick<ViewerState, 'models' | 'activeModelId' | 'pinboardEntities' | 'mutationViews' | 'mutationVersion' | 'unitDisplayOverrides'>;
+
+function isFieldList(value: readonly ElementFieldBinding[] | ModelsState): value is readonly ElementFieldBinding[] {
+  return Array.isArray(value);
+}
 
 /** Per-model include sets for a scope, or `null` for "every element". */
 function includeSets(scope: ChartScope, state: ModelsState): Map<string, Set<number>> | null {
@@ -42,8 +50,33 @@ function includeSets(scope: ChartScope, state: ModelsState): Map<string, Set<num
   return sets;
 }
 
-export function buildElementsDataset(scope: ChartScope, state: ModelsState = useViewerStore.getState()): ChartDataset {
+export function buildElementsDataset(scope: ChartScope, state?: ModelsState): ChartDataset;
+export function buildElementsDataset(scope: ChartScope, fields: readonly ElementFieldBinding[], state?: ModelsState): ChartDataset;
+export function buildElementsDataset(
+  scope: ChartScope,
+  fieldsOrState: readonly ElementFieldBinding[] | ModelsState = [],
+  explicitState?: ModelsState,
+): ChartDataset {
+  const fields = isFieldList(fieldsOrState) ? fieldsOrState : [];
+  const state = (isFieldList(fieldsOrState) ? explicitState : fieldsOrState) ?? useViewerStore.getState();
   const includes = includeSets(scope, state);
+  const unitColumns: ColumnDefinition[] = fields.map((field, index) => ({
+    id: String(index),
+    source: field.kind,
+    propertyName: field.kind === 'attribute' ? field.attributeName : field.propertyName,
+    ...(field.kind === 'property' ? { psetName: field.psetName } : {}),
+    ...(field.dataType ? { dataType: field.dataType } : {}),
+  }));
+  const modelUnits = new Map();
+  for (const model of state.models.values()) {
+    const store = model.ifcDataStore;
+    if (store?.source?.length && store.entityIndex) modelUnits.set(model.id, extractProjectUnits(store.source, store.entityIndex));
+  }
+  const unitResolver = resolveListColumnUnits(unitColumns, modelUnits, state.unitDisplayOverrides);
+  const resolvedFields = fields.map((field, index) => {
+    const unit = unitResolver.unitSymbol(index) ?? field.unit;
+    return { ...field, ...(unit ? { unit } : {}) };
+  });
   const models: ElementsDatasetModel[] = [];
   for (const model of state.models.values()) {
     const store = model.ifcDataStore;
@@ -51,9 +84,26 @@ export function buildElementsDataset(scope: ChartScope, state: ModelsState = use
     const include = includes?.get(model.id) ?? (includes ? new Set<number>() : undefined);
     // The store's federation id rule, not offset arithmetic of our own.
     const modelId = model.id;
-    models.push({ store, toGlobalId: (expressId) => toGlobalIdFromModels(state.models, modelId, expressId), name: model.name ?? modelId, include });
+    const reader = resolvedFields.length > 0 ? createElementFieldReader(store, state.mutationViews.get(modelId)) : undefined;
+    models.push({
+      store,
+      toGlobalId: (expressId) => toGlobalIdFromModels(state.models, modelId, expressId),
+      name: model.name ?? modelId,
+      include,
+      ...(reader ? {
+        readField: (expressId, field) => {
+          const index = resolvedFields.findIndex((candidate) => candidate.kind === field.kind
+            && (field.kind === 'attribute'
+              ? candidate.kind === 'attribute' && candidate.attributeName === field.attributeName
+              : candidate.kind === 'property' && candidate.psetName === field.psetName && candidate.propertyName === field.propertyName));
+          const raw = reader.read(expressId, field);
+          return index < 0 ? raw : unitResolver.convertCell(index, raw, modelId);
+        },
+        valueRevision: `${model.sourceFingerprint ?? model.sourceContentHash ?? model.loadedAt}:${state.mutationVersion}:${JSON.stringify(state.unitDisplayOverrides)}`,
+      } : {}),
+    });
   }
-  const dataset = elementsDataset(models);
+  const dataset = elementsDataset(models, resolvedFields);
   // The scope is part of the identity of the rows: the same models with a
   // different include set are a different dataset.
   return { ...dataset, fingerprint: `${scope.kind}:${dataset.fingerprint}` };

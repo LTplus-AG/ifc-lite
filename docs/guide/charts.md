@@ -21,7 +21,7 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 
 | Source | One row per | Columns | A bucket selects |
 |--------|-------------|---------|------------------|
-| **Elements** | element instance across every loaded model | `IFC type`, `Storey`, `Model`, `Name` — straight off the entity tables, no list needs to run | the elements |
+| **Elements** | geometry-bearing element instance across every loaded model | `IFC type`, `Storey`, `Model`, `Name`, plus one exact IFC attribute or property selected in the chart editor | the elements |
 | **Clash results** | clash of the current run (after exclusions) | `Rule`, `Severity`, `Detection` (hard / clearance / touch), `Review status`, `Type A`, `Type B`, `Type pair`, `Model A`, `Model B`, `Storey`, `Distance` (m, for a penetration histogram), `Group` | both elements of every clash in it |
 | **BCF topics** | topic of the loaded project | `Status`, `Type`, `Priority`, `Assigned to`, `Stage`, `Labels`, `Author`, `Due` (overdue / this week / later / none), `Age` (days), and the dates `Created`, `Modified`, `Due date`, `Closed` | the components of the topics' viewpoints that are loaded |
 | **Schedule tasks** | task of the active schedule | `Task`, `Status`, `Phase at cursor` (not started / in progress / done, following the 4D playback), `Task type`, `Critical`, `Milestone`, `Duration` (days), `Products`, and the dates `Start`, `Finish` | the tasks' products |
@@ -31,6 +31,14 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 Date columns feed the `timeline` chart, which buckets per ISO week — topics created or closed per week, tasks starting per week. There is no run history in the viewer, so BCF dates are the only time axis; clash counts over successive runs are not charted.
 
 The dashboard's **scope** applies to the elements source and decides which elements its rows cover: all loaded models, only what is visible right now (the same answer the Lists panel's "visible only" gives), or the basket.
+
+### IFC attributes and properties
+
+For an **Elements** chart, **Element field** can stay on the built-in columns or select an **IFC attribute** by its exact EXPRESS name, or an **IFC property** by its exact property-set and property names. For example, selecting `Pset_WallCommon.FireRating` makes its distinct values available to **Group by**; a consistently numeric property can also drive **Sum** or a histogram. Names are exact and case-sensitive, including dots and slashes.
+
+Occurrence properties take precedence. If the occurrence does not carry the selected property, its first defining type is consulted; an explicit empty/null occurrence value or a deleted property stays missing and suppresses inheritance. Attribute values are read only from the occurrence. Unsupported multi-valued or complex values are missing rather than stringified, while `0`, `false`, and identifiers such as `"001"` remain real values.
+
+Field kind and unit interpretation are saved in the version-1 dashboard document, so temporarily unloading a model cannot reinterpret the chart. A saved field that is unavailable in the currently loaded federation remains selected and is labelled unavailable instead of being silently replaced. Property edits and deletions invalidate the data even when element ids and row counts do not change. Compatible typed measures are normalized to one display unit across models before aggregation; incompatible or unresolved values are not silently summed. A sum subtitle reports rows without a measure separately, so an all-missing field cannot look like a measured zero.
 
 ## Chart ↔ 3D
 

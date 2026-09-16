@@ -11,18 +11,27 @@ npm install @ifc-lite/charts
 ## Usage
 
 ```ts
-import { aggregate, elementsDataset, idsForCategories, categoriesForIds, renderChartSvg } from '@ifc-lite/charts';
-import type { ChartSpec } from '@ifc-lite/charts';
+import { aggregate, elementFieldColumnId, elementsDataset, idsForCategories, categoriesForIds, renderChartSvg } from '@ifc-lite/charts';
+import type { ChartSpec, ElementFieldBinding } from '@ifc-lite/charts';
 
 // One row per element instance with IfcType / Storey / Model / Name, straight
 // off the columnar entity table; `toGlobalId` is the host's own local → renderer id resolver.
 const dataset = elementsDataset([{ store, toGlobalId: (id) => id, name: 'office.ifc' }]);
 
-const spec: ChartSpec = {
-  id: 'by-type', title: 'Elements by type', source: 'elements', type: 'bar',
-  dimension: 'IfcType', measure: { agg: 'count' }, topN: 12,
+// A host can materialize only the exact IFC fields its saved charts request.
+const fireRating: ElementFieldBinding = {
+  kind: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', valueKind: 'category',
 };
-const agg = aggregate(spec, dataset);
+const withFireRating = elementsDataset(
+  [{ store, toGlobalId: (id) => id, name: 'office.ifc', readField: (id, field) => readIfcField(id, field) }],
+  [fireRating],
+);
+
+const spec: ChartSpec = {
+  id: 'by-rating', title: 'Walls by fire rating', source: 'elements', type: 'bar',
+  elementField: fireRating, dimension: elementFieldColumnId(fireRating), measure: { agg: 'count' }, topN: 12,
+};
+const agg = aggregate(spec, withFireRating);
 agg.categories;                     // buckets, largest first, each with `ids: Uint32Array` and a stable colour
 idsForCategories(agg, [0]);         // chart click → the element ids to select / isolate / ghost in 3D
 categoriesForIds(agg, selectedIds); // 3D selection → { full, partial } bucket indices to highlight in the chart
@@ -33,7 +42,8 @@ const svg = renderChartSvg({ aggregation: agg, width: 640, height: 400 }); // ve
 ## Features
 
 - `aggregate(spec, dataset, { slice, palette })`: count / sum by one dimension, optionally stacked by a second; `topN` + `Other`; histogram bins (Sturges default); ISO-week `timeline` for date columns; a `slice` of ids to cross-filter one chart by another; colours assigned by label and kept across re-aggregations
-- `elementsDataset(models)`: the elements source without a query engine — one typed-array pass over the entity table and spatial hierarchy
+- `elementsDataset(models, fields?)`: the elements source without a query engine — one typed-array pass over the entity table and spatial hierarchy, optionally materializing only requested IFC fields through host readers
+- `elementFieldColumnId` / `elementFieldLabel` / `normalizeElementFieldValue`: collision-free persisted field identities and scalar normalization for IFC attributes and properties
 - `buildEChartsOption` / `renderChartSvg`: ECharts options with persistent multi-select and emphasis blur, and SSR SVG output
 - `validateDashboardSpec` / `isDashboardSpec` / `isReportSpec`: structural validation of saved dashboards and report templates (`DashboardSpec`, `ReportSpec`)
 

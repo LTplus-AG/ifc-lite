@@ -47,6 +47,29 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
   str(errors, chart, 'title', path);
   if (!SOURCES.has(String(chart.source))) errors.push({ path: `${path}.source`, message: `expected one of ${[...SOURCES].join(', ')}` });
   if (!TYPES.has(String(chart.type))) errors.push({ path: `${path}.type`, message: `expected one of ${[...TYPES].join(', ')}` });
+  if (chart.elementField !== undefined) {
+    const fieldPath = `${path}.elementField`;
+    if (!isRecord(chart.elementField)) {
+      errors.push({ path: fieldPath, message: 'expected an IFC field binding object' });
+    } else {
+      const field = chart.elementField;
+      if (chart.source !== 'elements') errors.push({ path: fieldPath, message: 'elementField is only valid for the elements source' });
+      if (field.valueKind !== 'category' && field.valueKind !== 'number' && field.valueKind !== 'boolean') {
+        errors.push({ path: `${fieldPath}.valueKind`, message: 'expected category, number, or boolean' });
+      }
+      if (field.unit !== undefined && (typeof field.unit !== 'string' || field.unit.length === 0)) {
+        errors.push({ path: `${fieldPath}.unit`, message: 'expected a non-empty string' });
+      }
+      if (field.dataType !== undefined && (typeof field.dataType !== 'string' || field.dataType.length === 0)) {
+        errors.push({ path: `${fieldPath}.dataType`, message: 'expected a non-empty IFC measure name' });
+      }
+      if (field.kind === 'attribute') str(errors, field, 'attributeName', fieldPath);
+      else if (field.kind === 'property') {
+        str(errors, field, 'psetName', fieldPath);
+        str(errors, field, 'propertyName', fieldPath);
+      } else errors.push({ path: `${fieldPath}.kind`, message: 'expected attribute or property' });
+    }
+  }
   str(errors, chart, 'dimension', path);
   str(errors, chart, 'stackBy', path, true);
   if (chart.type === 'stackedBar' && typeof chart.stackBy !== 'string') errors.push({ path: `${path}.stackBy`, message: 'a stackedBar needs stackBy' });

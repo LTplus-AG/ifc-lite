@@ -89,7 +89,15 @@ describe('validateDashboardSpec', () => {
 
   it('accepts a well-formed dashboard and a report extending it', () => {
     expect(validateDashboardSpec(good)).toEqual([]);
+    expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField: { kind: 'property', psetName: 'Pset/A.B', propertyName: 'Fire.Rating/A', valueKind: 'category' } }], layout: [good.layout[0]] })).toEqual([]);
     expect(validateDashboardSpec({ ...good, page: { size: 'A4', orientation: 'landscape' }, titleBlock: { project: 'X' }, snapshots: true })).toEqual([]);
+  });
+
+  it('rejects malformed or non-element IFC field bindings without changing dashboard version 1', () => {
+    const invalid = { ...good, charts: [{ ...bar, source: 'clash', elementField: { kind: 'property', psetName: '', propertyName: 'X', valueKind: 'guess' } }], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(invalid).map(({ path }) => path).sort()).toEqual([
+      '.charts[0].elementField', '.charts[0].elementField.psetName', '.charts[0].elementField.valueKind',
+    ]);
   });
 
   it('reports every problem at once with its path', () => {

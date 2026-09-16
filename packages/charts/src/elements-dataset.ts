@@ -14,7 +14,8 @@
  * a bucket's ids can go straight to selection and visibility.
  */
 import { EntityFlags } from '@ifc-lite/data';
-import type { ChartDataset, ChartDatasetColumn, ChartDatasetRow } from './types.js';
+import type { CellValue, ChartDataset, ChartDatasetColumn, ChartDatasetRow, ElementFieldBinding } from './types.js';
+import { elementFieldColumn, elementFieldColumnId } from './element-field.js';
 
 /** The columns of a columnar entity table this adapter reads — structural, so
  *  any store shape that carries them (parsed, cached, server-hydrated) works. */
@@ -59,6 +60,10 @@ export interface ElementsDatasetModel {
   name: string;
   /** Keep only these express ids (a list scope, the visible set); all when absent. */
   include?: ReadonlySet<number>;
+  /** Host-owned IFC reader. Called only for requested fields and included rows. */
+  readField?: (expressId: number, binding: ElementFieldBinding) => CellValue;
+  /** Changes whenever this model's resolved field values or unit interpretation do. */
+  valueRevision?: string | number;
 }
 
 /** FNV-1a over the row identities, so two include sets of equal size differ. */
@@ -76,7 +81,9 @@ function isElementRow(flags: number): boolean {
   return (flags & EntityFlags.HAS_GEOMETRY) !== 0 && (flags & EntityFlags.IS_TYPE) === 0;
 }
 
-export function elementsDataset(models: readonly ElementsDatasetModel[]): ChartDataset {
+export function elementsDataset(models: readonly ElementsDatasetModel[], fields: readonly ElementFieldBinding[] = []): ChartDataset {
+  const uniqueFields = [...new Map(fields.map((field) => [elementFieldColumnId(field), field])).values()];
+  const columns = [...ELEMENT_DATASET_COLUMNS, ...uniqueFields.map(elementFieldColumn)];
   const rows: ChartDatasetRow[] = [];
   const fingerprintParts: string[] = [];
   for (const model of models) {
@@ -101,10 +108,13 @@ export function elementsDataset(models: readonly ElementsDatasetModel[]): ChartD
       rowIds.push(globalId);
       rows.push({
         ids: [globalId],
-        values: [entities.getTypeName(expressId), storeyOf(expressId), model.name, entities.getName(expressId)],
+        values: [
+          entities.getTypeName(expressId), storeyOf(expressId), model.name, entities.getName(expressId),
+          ...uniqueFields.map((field) => model.readField?.(expressId, field) ?? null),
+        ],
       });
     }
-    fingerprintParts.push(`${model.name}:${rowIds.length}/${entities.count}#${fingerprintRows(rowIds)}`);
+    fingerprintParts.push(`${model.name}:${rowIds.length}/${entities.count}#${fingerprintRows(rowIds)}@${model.valueRevision ?? 0}`);
   }
-  return { source: 'elements', columns: ELEMENT_DATASET_COLUMNS, rows, fingerprint: fingerprintParts.join('|') };
+  return { source: 'elements', columns, rows, fingerprint: `${uniqueFields.map(elementFieldColumnId).join(',')}|${fingerprintParts.join('|')}` };
 }

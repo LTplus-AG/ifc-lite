@@ -35,7 +35,8 @@ export function describeAggregation(aggregation: Aggregation): string {
   if (aggregation.categories.length === 0 && aggregation.unbucketed === 0) return 'No data';
   const total = aggregation.spec.measure.agg === 'count' ? plural(aggregation.total, 'element') : `${aggregation.total.toLocaleString()} ${aggregation.unit ?? ''}`.trim();
   const rest = aggregation.unbucketed > 0 ? ` · ${aggregation.unbucketed} without a value` : '';
-  return `${plural(aggregation.categories.length, 'bucket')} · ${total}${rest}`;
+  const unmeasured = (aggregation.unmeasured ?? 0) > 0 ? ` · ${aggregation.unmeasured} without a measure` : '';
+  return `${plural(aggregation.categories.length, 'bucket')} · ${total}${rest}${unmeasured}`;
 }
 
 /** What fills an empty chart, per source — where the data comes from, in the app's own words. */

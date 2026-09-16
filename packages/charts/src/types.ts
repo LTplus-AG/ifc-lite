@@ -52,10 +52,27 @@ export interface ChartMeasure {
   column?: string;
 }
 
+export type ElementFieldValueKind = 'category' | 'number' | 'boolean';
+
+interface ElementFieldBindingBase {
+  /** Persisted interpretation; empty scopes must not change a field's kind. */
+  valueKind: ElementFieldValueKind;
+  /** Stable common unit used for numeric aggregation, when safely resolved. */
+  unit?: string;
+  /** IFC typed-measure name used to normalize values across model units. */
+  dataType?: string;
+}
+
+export type ElementFieldBinding =
+  | (ElementFieldBindingBase & { kind: 'attribute'; attributeName: string })
+  | (ElementFieldBindingBase & { kind: 'property'; psetName: string; propertyName: string });
+
 export interface ChartSpec {
   id: string;
   title: string;
   source: ChartSource;
+  /** One exact IFC attribute/property materialized beside the built-in element columns. */
+  elementField?: ElementFieldBinding;
   type: ChartType;
   /** Column id to bucket by. A `date` column for `timeline`, a `number` column for `histogram`. */
   dimension: string;
@@ -144,6 +161,8 @@ export interface Aggregation {
   total: number;
   /** Rows the spec could not place (missing dimension value). */
   unbucketed: number;
+  /** Bucketed rows that contributed no finite value to a sum. */
+  unmeasured?: number;
   /** Element id → every index into `categories` it belongs to (a clash element under two rules is in two). */
   categoryOf: Map<number, number[]>;
   /** Display unit of the summed column, when the measure is a sum. */

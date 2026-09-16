@@ -8,8 +8,10 @@
  * selects, like the clash panel's — nothing here needs a portal.
  */
 import { useState } from 'react';
-import type { ChartDataset, ChartDatasetColumn, ChartSource, ChartSpec, ChartType } from '@ifc-lite/charts';
+import { elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
+import { ElementFieldPicker } from './ElementFieldPicker';
+import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
 
 const TYPE_LABELS: Record<ChartType, string> = {
   bar: 'Bar',
@@ -34,6 +36,9 @@ export interface ChartEditorProps {
   datasets: Record<ChartSource, ChartDataset>;
   onSave: (spec: ChartSpec) => void;
   onCancel: () => void;
+  elementFieldCatalog: ElementFieldCatalog;
+  elementFieldCatalogLoading: boolean;
+  onDraftElementFieldChange: (field: ElementFieldBinding | undefined) => void;
 }
 
 /** The columns a chart type can bucket by. */
@@ -43,7 +48,7 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
   return columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
 }
 
-export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorProps) {
+export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading, onDraftElementFieldChange }: ChartEditorProps) {
   const [draft, setDraft] = useState<ChartSpec>(spec);
   const columns = datasets[draft.source].columns;
   const rowCount = datasets[draft.source].rows.length;
@@ -58,7 +63,27 @@ export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorPro
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
     const allowed = dimensionColumns(draft.type, cols);
-    setDraft({ ...draft, source, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+    onDraftElementFieldChange(undefined);
+    setDraft({ ...draft, source, elementField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+  };
+
+  const setElementField = (elementField: ElementFieldBinding | undefined): void => {
+    const oldId = draft.elementField ? elementFieldColumnId(draft.elementField) : undefined;
+    const nextId = elementField ? elementFieldColumnId(elementField) : undefined;
+    const next: ChartSpec = { ...draft, elementField };
+    if (nextId && elementField?.valueKind === 'number') {
+      next.type = 'histogram';
+      next.dimension = nextId;
+      next.stackBy = undefined;
+      next.measure = { agg: 'count' };
+    } else if (nextId) next.dimension = nextId;
+    else if (oldId && (next.dimension === oldId || next.stackBy === oldId || next.measure.column === oldId)) {
+      next.dimension = datasets.elements.columns.find((column) => column.kind === 'category' && column.id !== oldId)?.id ?? '';
+      if (next.stackBy === oldId) next.stackBy = undefined;
+      if (next.measure.column === oldId) next.measure = { agg: 'count' };
+    }
+    onDraftElementFieldChange(elementField);
+    setDraft(next);
   };
 
   const setType = (type: ChartType): void => {
@@ -91,6 +116,9 @@ export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorPro
             {(Object.keys(SOURCE_LABELS) as ChartSource[]).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
           </select>
         </label>
+        {draft.source === 'elements' && (
+          <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
+        )}
         <label className="flex flex-col gap-0.5">
           <span className="text-muted-foreground">Chart</span>
           <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label="Chart type">

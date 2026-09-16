@@ -69,6 +69,12 @@ DATA;
 #45=IFCDOOR('0Door00000000000000045',$,'Door B',$,$,#24,#28,$,$,$,$,$);
 #90=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel000000000000000090',$,$,$,(#41,#42,#44),#5);
 #91=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel000000000000000091',$,$,$,(#43,#45),#6);
+#100=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI60'),$);
+#101=IFCPROPERTYSET('0Pset00000000000000101',$,'Pset_WallCommon',$,(#100));
+#102=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000102',$,$,$,(#41,#42),#101);
+#103=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI30'),$);
+#104=IFCPROPERTYSET('0Pset00000000000000104',$,'Pset_WallCommon',$,(#103));
+#105=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000105',$,$,$,(#43),#104);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -79,7 +85,7 @@ const GID = (expressId: number) => OFFSET + expressId;
 async function parsedModel(id = 'm1', idOffset = OFFSET, ifc = MINI_IFC): Promise<FederatedModel> {
   const bytes = new TextEncoder().encode(ifc);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 91 };
+  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 105 };
 }
 
 /** Records every option and selection a card pushes; can fire a chart click. */
@@ -207,6 +213,33 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     // What ECharts would draw for the first card.
     assert.deepEqual(barData(charts[0].options.at(-1)!), [['IfcWall', 3, false], ['IfcDoor', 2, false]]);
     assert.equal(useViewerStore.getState().dashboards.length, 1);
+  });
+
+  it('authors a property chart through the visible editor and keeps real member ids (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    assert.ok(source, 'the Elements source exposes an IFC field selector');
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property set"]')!.value, 'Pset_WallCommon');
+    assert.match(ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!.textContent!, /FireRating/);
+
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    const added = charts.at(-1)!;
+    assert.deepEqual(barData(added.options.at(-1)!).map(([name, count]) => [name, count]), [['EI60', 2], ['EI30', 1]]);
+    await act(async () => { added.events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
   });
 
   it('a mount undone while the engine is still loading creates no chart, and the seed is idempotent — what StrictMode does in dev (browser finding)', async () => {

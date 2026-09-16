@@ -60,6 +60,11 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter (quick, cost-quick) lists a pull_request's changed
+  # files through the pulls API. On this public repo `contents: read` has
+  # been enough, but the action documents `pull-requests: read`; grant it so
+  # a private fork or copy does not fail the filter step. Read-only.
+  pull-requests: read
 
 jobs:
   quick:

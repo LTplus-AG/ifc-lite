@@ -96,18 +96,11 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     [models, geometryResult],
   );
 
-  // Georef edits change the absolute storey badges (#4843), never the grouping.
-  const georefMutations = useViewerStore((state) => state.georefMutations);
+  const georefMutations = useViewerStore((state) => state.georefMutations); // storey badges only (#4843)
 
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
-    (): UnifiedStorey[] => buildUnifiedStoreys(
-      models,
-      sortMode,
-      geometricIds,
-      geometryReadyModelIds,
-      georefMutations,
-    ),
+    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode, geometricIds, geometryReadyModelIds, georefMutations),
     [models, sortMode, geometricIds, geometryReadyModelIds, georefMutations]
   );
 
@@ -284,8 +277,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         unifiedStoreys,
         sortMode,
         geometricIds,
-        geometryReadyModelIds,
-        georefMutations,
+        geometryReadyModelIds, georefMutations,
       );
     },
     [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations]

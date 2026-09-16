@@ -1,5 +1,40 @@
 # @ifc-lite/viewer
 
+## 1.46.0
+
+### Minor Changes
+
+- [#4875](https://github.com/LTplus-AG/ifc-lite/pull/4875) [`4d91c25`](https://github.com/LTplus-AG/ifc-lite/commit/4d91c25c1d3c29cf9e206b72ea69a0deb426cda4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add a read-only Cost panel for inspecting IFC 5D cost schedules, nested
+  cost items, resolved values, quantities, currency, diagnostics, and
+  assigned products/tasks. Selecting a cost item selects its assigned
+  products through the viewer's `FederationRegistry`, so a federated session
+  resolves the right model even when two models share the same local
+  express-id.
+  
+  Empty, unresolved, cyclic, mixed-currency, and federated states are each
+  shown explicitly rather than collapsed into one generic banner. Adds a
+  "Cost report (5D)" scripting template and user documentation
+  (`docs/guide/cost-panel.md`). No spreadsheet-style cost editing —
+  read-only, as scoped.
+
+### Patch Changes
+
+- [#4872](https://github.com/LTplus-AG/ifc-lite/pull/4872) [`1cc533f`](https://github.com/LTplus-AG/ifc-lite/commit/1cc533f5ca326a8d574ca5e870dfdafec7df32d0) Thanks [@louistrue](https://github.com/louistrue)! - BCF viewpoints are now written and read in IFC world coordinates ([#4806](https://github.com/LTplus-AG/ifc-lite/issues/4806)). The viewer captured the camera, section plane and clash/IDS framing cameras in its origin-shifted render frame, so for a georeferenced model BIMcollab, usBIM and other BCF tools put the camera kilometres from the building, and imported cameras landed off-model the same way. `@ifc-lite/bcf` adds `translateViewpoint`, and `createBCFFromClashResult` accepts a `worldOffset`. Viewpoints written by earlier ifc-lite versions still open in place. Topics and viewpoints captured from the BCF panel while a clash is focused now carry the clashing pair as found objects and colouring, and the Clash panel's topic records its source-file header.
+
+- [#4880](https://github.com/LTplus-AG/ifc-lite/pull/4880) [`35c0517`](https://github.com/LTplus-AG/ifc-lite/commit/35c0517d9779297704979131f451a4ae704bf744) Thanks [@louistrue](https://github.com/louistrue)! - BCF viewpoints are written in IFC world coordinates outside the viewer too ([#4879](https://github.com/LTplus-AG/ifc-lite/issues/4879)). `ifc-lite clash --bcf`, the MCP playground's `clash_bcf_export` and `bim.bcf.createViewpoint({ camera: bim.viewer.getCamera() })` wrote render-frame (origin-shifted, RTC-local) cameras, so other BCF tools put the camera hundreds of kilometres from a georeferenced building. A new `@ifc-lite/geometry/world-frame` entry point holds the one render frame <-> world conversion (`renderFrameWorldOffset`, `totalYupOffset`, `ifcToViewerAxes`, `viewerToIfcAxes`, `federationFrameInfo`), which the viewer, CLI, playground and SDK all use. `@ifc-lite/bcf` adds `viewpointFromWorld`, the inverse of `translateViewpoint` that keeps viewpoints written by ifc-lite before [#4806](https://github.com/LTplus-AG/ifc-lite/issues/4806) in place. In the SDK, `ViewerBackendMethods` gains an optional `getRenderFrameOffset()`; when a backend provides it (the viewer does), `bim.bcf.createViewpoint()` adds it and `bim.bcf.extractViewpointState()` subtracts it, so viewpoints are world coordinates and extracted cameras are ready for `bim.viewer.setCamera()`. Backends without it, and `new BCFNamespace()` with no backend, behave as before.
+- Updated dependencies [[`1cc533f`](https://github.com/LTplus-AG/ifc-lite/commit/1cc533f5ca326a8d574ca5e870dfdafec7df32d0), [`35c0517`](https://github.com/LTplus-AG/ifc-lite/commit/35c0517d9779297704979131f451a4ae704bf744), [`e43c455`](https://github.com/LTplus-AG/ifc-lite/commit/e43c455711d4070b530436413db948fedcc34053), [`8733dc9`](https://github.com/LTplus-AG/ifc-lite/commit/8733dc9cb391344606b9bc59beb00a6f9d1de135), [`20bff7c`](https://github.com/LTplus-AG/ifc-lite/commit/20bff7c4069d267aa2662266b6213c3b2b406753)]:
+  - @ifc-lite/bcf@4.1.0
+  - @ifc-lite/clash@2.3.0
+  - @ifc-lite/geometry@7.2.0
+  - @ifc-lite/sdk@6.2.0
+  - @ifc-lite/mcp@0.17.0
+  - @ifc-lite/sandbox@2.5.0
+  - @ifc-lite/parser@7.0.0
+  - @ifc-lite/create@2.6.0
+  - @ifc-lite/export@4.3.5
+  - @ifc-lite/ids@1.17.2
+  - @ifc-lite/query@2.4.1
+
 ## 1.45.2
 
 ### Patch Changes

@@ -1,5 +1,20 @@
 # @ifc-lite/parser
 
+## 7.0.0
+
+### Major Changes
+
+- [#4867](https://github.com/LTplus-AG/ifc-lite/pull/4867) [`e43c455`](https://github.com/LTplus-AG/ifc-lite/commit/e43c455711d4070b530436413db948fedcc34053) Thanks [@louistrue](https://github.com/louistrue)! - Expose the canonical IFC 5D cost read model and decimal evaluation through
+  `bim.cost`, CLI/headless and MCP backends, MCP tools, viewer-local SDK calls,
+  remote capability reporting, and the sandbox bridge.
+  
+  Bound public cost-evaluation precision to 1 through 10,000 significant digits
+  so caller-controlled division cannot request impractical decimal output.
+
+### Minor Changes
+
+- [#4863](https://github.com/LTplus-AG/ifc-lite/pull/4863) [`20bff7c`](https://github.com/LTplus-AG/ifc-lite/commit/20bff7c4069d267aa2662266b6213c3b2b406753) Thanks [@louistrue](https://github.com/louistrue)! - Add a schema-aware IFC cost graph and exact-decimal evaluator with exact relationships, direct CostQuantities-only rates, nested-category totals, dimensional units, currency, and IFC2X3 diagnostics.
+
 ## 6.5.0
 
 ### Minor Changes

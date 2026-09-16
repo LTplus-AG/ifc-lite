@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/sandbox",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "QuickJS-in-WASM sandboxed script execution for ifc-lite",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/bcf",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "BIM Collaboration Format (BCF) support for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

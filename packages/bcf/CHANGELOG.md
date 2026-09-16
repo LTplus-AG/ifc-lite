@@ -1,5 +1,13 @@
 # @ifc-lite/bcf
 
+## 4.1.0
+
+### Minor Changes
+
+- [#4872](https://github.com/LTplus-AG/ifc-lite/pull/4872) [`1cc533f`](https://github.com/LTplus-AG/ifc-lite/commit/1cc533f5ca326a8d574ca5e870dfdafec7df32d0) Thanks [@louistrue](https://github.com/louistrue)! - BCF viewpoints are now written and read in IFC world coordinates ([#4806](https://github.com/LTplus-AG/ifc-lite/issues/4806)). The viewer captured the camera, section plane and clash/IDS framing cameras in its origin-shifted render frame, so for a georeferenced model BIMcollab, usBIM and other BCF tools put the camera kilometres from the building, and imported cameras landed off-model the same way. `@ifc-lite/bcf` adds `translateViewpoint`, and `createBCFFromClashResult` accepts a `worldOffset`. Viewpoints written by earlier ifc-lite versions still open in place. Topics and viewpoints captured from the BCF panel while a clash is focused now carry the clashing pair as found objects and colouring, and the Clash panel's topic records its source-file header.
+
+- [#4880](https://github.com/LTplus-AG/ifc-lite/pull/4880) [`35c0517`](https://github.com/LTplus-AG/ifc-lite/commit/35c0517d9779297704979131f451a4ae704bf744) Thanks [@louistrue](https://github.com/louistrue)! - BCF viewpoints are written in IFC world coordinates outside the viewer too ([#4879](https://github.com/LTplus-AG/ifc-lite/issues/4879)). `ifc-lite clash --bcf`, the MCP playground's `clash_bcf_export` and `bim.bcf.createViewpoint({ camera: bim.viewer.getCamera() })` wrote render-frame (origin-shifted, RTC-local) cameras, so other BCF tools put the camera hundreds of kilometres from a georeferenced building. A new `@ifc-lite/geometry/world-frame` entry point holds the one render frame <-> world conversion (`renderFrameWorldOffset`, `totalYupOffset`, `ifcToViewerAxes`, `viewerToIfcAxes`, `federationFrameInfo`), which the viewer, CLI, playground and SDK all use. `@ifc-lite/bcf` adds `viewpointFromWorld`, the inverse of `translateViewpoint` that keeps viewpoints written by ifc-lite before [#4806](https://github.com/LTplus-AG/ifc-lite/issues/4806) in place. In the SDK, `ViewerBackendMethods` gains an optional `getRenderFrameOffset()`; when a backend provides it (the viewer does), `bim.bcf.createViewpoint()` adds it and `bim.bcf.extractViewpointState()` subtracts it, so viewpoints are world coordinates and extracted cameras are ready for `bim.viewer.setCamera()`. Backends without it, and `new BCFNamespace()` with no backend, behave as before.
+
 ## 4.0.0
 
 ### Major Changes

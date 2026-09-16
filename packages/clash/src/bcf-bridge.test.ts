@@ -292,6 +292,34 @@ describe('createBCFFromClashResult', () => {
     expect(orange?.components.map((c) => c.ifcGuid).sort()).toEqual(['GUID_B1', 'GUID_B2']);
   });
 
+  it('writes the framing camera in world coordinates when given the render-frame offset (#4806)', async () => {
+    // Clash bounds come from origin-shifted meshes. A georeferenced model
+    // (the #4806 report sat near X 41266 / Y 308208 / Z 123) must still get
+    // a camera that looks at the group's WORLD centre, or BIMcollab / usBIM
+    // put the camera kilometres from the building.
+    const { result, groups } = makeFixture();
+    const worldOffset = { x: 41266, y: 308208, z: 123 };
+    const project = await createBCFFromClashResult(result, groups, { author: 'tester', worldOffset });
+    const cam = project.topics.get(uuidFromSeed('group-critical'))?.viewpoints[0]?.perspectiveCamera;
+    expect(cam).toBeDefined();
+    // Local centre [2, 1.5, 1] (Y-up) is BCF [2, -1, 1.5]; plus the offset.
+    const worldCentre = { x: 2 + worldOffset.x, y: -1 + worldOffset.y, z: 1.5 + worldOffset.z };
+    expect(cam!.cameraViewPoint.x).toBeCloseTo(6.265886914190135 + worldOffset.x, 6);
+    expect(cam!.cameraViewPoint.y).toBeCloseTo(-5.265886914190135 + worldOffset.y, 6);
+    expect(cam!.cameraViewPoint.z).toBeCloseTo(4.486120839933094 + worldOffset.z, 6);
+    // The camera ray passes through the world centre: the point at the
+    // camera-to-centre distance along CameraDirection IS that centre.
+    const d = Math.hypot(
+      worldCentre.x - cam!.cameraViewPoint.x,
+      worldCentre.y - cam!.cameraViewPoint.y,
+      worldCentre.z - cam!.cameraViewPoint.z,
+    );
+    expect(d).toBeLessThan(20);
+    expect(cam!.cameraViewPoint.x + cam!.cameraDirection.x * d).toBeCloseTo(worldCentre.x, 6);
+    expect(cam!.cameraViewPoint.y + cam!.cameraDirection.y * d).toBeCloseTo(worldCentre.y, 6);
+    expect(cam!.cameraViewPoint.z + cam!.cameraDirection.z * d).toBeCloseTo(worldCentre.z, 6);
+  });
+
   it('invokes the snapshot provider per group', async () => {
     const { result, groups } = makeFixture();
     const seen: string[] = [];

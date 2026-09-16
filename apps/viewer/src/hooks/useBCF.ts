@@ -35,6 +35,8 @@ import { deriveHeaderFiles } from './bcfHeaderFiles';
 import { toast } from '@/components/ui/toast';
 import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-capture';
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
+import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame, viewpointToRenderFrame, viewpointToWorld } from './bcf/viewpoint-world-frame';
+import { focusedClashComponents } from './bcf/focused-clash-components';
 
 // ============================================================================
 // Types
@@ -59,26 +61,18 @@ interface CreateViewpointOptions {
   /**
    * Federated entity refs to record in the viewpoint's `<Selection>` as
    * "found objects", INDEPENDENT of the live viewer selection (merged in
-   * alongside whatever `includeSelection` derives, deduped).
-   *
-   * Exists for the clash-to-BCF export (#4806): `focusClash` deliberately
-   * clears the live selection and paints the clashing pair only through the
-   * clash-highlight colour channel (#1277/#1339), so by the time
-   * `createViewpointFromState` runs, `selectedEntityId`/`selectedEntityIds`
-   * are empty and carry nothing to write — the exported topic's
-   * `<Selection>` was entirely absent, not merely empty. This lets a caller
-   * name the "found objects" directly instead of resurrecting an actual
-   * viewer selection, which would re-introduce exactly what #1277/#1339
-   * removed (selection-blue, the 2-SEL counter, selected-treatment under
-   * isolate/ghost).
+   * alongside whatever `includeSelection` derives, deduped). When omitted and
+   * `includeSelection` is on, the focused clash's painted elements are used
+   * (`focusedClashComponents`): `focusClash` clears the live selection and
+   * paints the pair only through the clash colour channel (#1277/#1339), so
+   * without this every capture made while a clash is focused had no
+   * `<Selection>` at all (#4806).
    */
   additionalSelectedRefs?: number[];
   /**
    * Federated entity refs to record as BCF `<Coloring>`, grouped by an ARGB
-   * hex colour (e.g. `'FFFF8000'`, matching `BCFColoring.color`).
-   * Independent of any renderer state — for the clash export, this mirrors
-   * the on-screen amber/cyan clash-pair tint (`CLASH_COLOR_A`/`CLASH_COLOR_B`)
-   * into the exported viewpoint.
+   * hex colour (e.g. `'FFFF8000'`, matching `BCFColoring.color`). Defaults
+   * like `additionalSelectedRefs`, to the focused clash's on-screen tint.
    */
   additionalColoredRefs?: { color: string; refs: number[] }[];
 }
@@ -307,15 +301,13 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
   /**
    * Get model bounds from loaded models
    */
-  const getBounds = useCallback((): ViewerBounds | null => {
-    // Get bounds from first loaded model's geometry result
-    for (const model of models.values()) {
-      if (model.geometryResult?.coordinateInfo?.shiftedBounds) {
-        return model.geometryResult.coordinateInfo.shiftedBounds;
-      }
-    }
-    return null;
-  }, [models]);
+  const getBounds = useCallback((): ViewerBounds | null => renderFrameBounds(models), [models]);
+
+  /** Render frame -> IFC world, IFC Z-up (#4806). BCF positions are world. */
+  const getWorldOffset = useCallback(
+    () => bcfWorldOffset(models, useViewerStore.getState().geometryResult),
+    [models],
+  );
 
   /**
    * Convert expressId (with model offset) to IFC GlobalId string
@@ -356,9 +348,13 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         includeSnapshot = true, snapshotOverride, capturedSectionPlane,
         includeSelection = true,
         includeHidden = true,
-        additionalSelectedRefs,
-        additionalColoredRefs,
       } = opts;
+      // Default the found objects to the focused clash, whichever panel is capturing (#4806).
+      const focusedClash = includeSelection
+        ? focusedClashComponents(useViewerStore.getState().clashHighlightColors)
+        : null;
+      const additionalSelectedRefs = opts.additionalSelectedRefs ?? focusedClash?.selectedRefs;
+      const additionalColoredRefs = opts.additionalColoredRefs ?? focusedClash?.coloredRefs;
 
       // Snapshot FIRST, camera after: the PNG and the camera's `aspectRatio`
       // describe one frame, so they must come from one drawing buffer.
@@ -451,8 +447,9 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         }
       }
 
-      // Create viewpoint
-      return createViewpoint({
+      // Camera and section plane are captured in the render frame; the
+      // viewpoint is stored and written in world coordinates (#4806).
+      return viewpointToWorld(createViewpoint({
         camera: cameraState,
         sectionPlane: viewerSectionPlane,
         bounds: viewpointBounds,
@@ -461,9 +458,10 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         hiddenGuids,
         visibleGuids,
         coloredGuids,
-      });
+      }), getWorldOffset());
     },
     [
+      getWorldOffset,
       getCameraState,
       captureSnapshot,
       sectionPlane,
@@ -537,7 +535,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       const bounds = getBounds() ?? undefined;
       const state = extractViewpointState(
-        viewpoint,
+        viewpointToRenderFrame(viewpoint, getWorldOffset(), bounds),
         bounds,
         renderer.getCamera().getDistance(),
       );
@@ -545,7 +543,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         applyCameraState(renderer, state.camera, animate);
       }
     },
-    [getRenderer, getBounds],
+    [getRenderer, getBounds, getWorldOffset],
   );
 
   /**
@@ -563,7 +561,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       // Extract state from viewpoint (once, reused for camera, section plane, and selection)
       const state = extractViewpointState(
-        viewpoint,
+        viewpointToRenderFrame(viewpoint, getWorldOffset(), bounds), // world -> render frame (#4806)
         bounds,
         renderer.getCamera().getDistance() // Use current distance as reference
       );
@@ -688,6 +686,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     [
       getRenderer,
       getBounds,
+      getWorldOffset,
       sectionPlane,
       setSectionPlaneAxis,
       setSectionPlanePosition,
@@ -720,7 +719,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         return renderer.getScene().getEntityBoundingBox(result.expressId);
       };
 
-      const markers = computeMarkerPositions([topic], boundsLookup, {
+      const markers = computeMarkerPositions([topicToRenderFrame(topic, getWorldOffset(), getBounds())], boundsLookup, {
         targetDistance: renderer.getCamera().getDistance(),
       });
 
@@ -753,7 +752,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // Fallback: camera from latest viewpoint only — preserve selection/visibility
       applyViewpointCamera(topic.viewpoints[topic.viewpoints.length - 1], true);
     },
-    [applyViewpointCamera, getRenderer, globalIdToExpressId],
+    [applyViewpointCamera, getRenderer, globalIdToExpressId, getWorldOffset, getBounds],
   );
 
   return {

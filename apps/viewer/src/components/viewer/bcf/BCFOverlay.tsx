@@ -23,6 +23,7 @@ import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { globalIdToExpressId as globalIdToExpressIdLookup } from '@/hooks/bcfIdLookup';
+import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from '@/hooks/bcf/viewpoint-world-frame';
 import {
   computeMarkerPositions,
   BCFOverlayRenderer,
@@ -160,9 +161,12 @@ export function BCFOverlay() {
   }, []);
 
   // Topics list
+  // Stored viewpoints are world coordinates; markers are placed in the render frame (#4806).
   const topics = (() => {
     if (!bcfProject) return [];
-    return Array.from(bcfProject.topics.values());
+    const offset = bcfWorldOffset(models, useViewerStore.getState().geometryResult);
+    const bounds = renderFrameBounds(models);
+    return Array.from(bcfProject.topics.values(), (topic) => topicToRenderFrame(topic, offset, bounds));
   })();
 
   // Compute markers — recomputes when topics, bounds, loading, or readiness changes

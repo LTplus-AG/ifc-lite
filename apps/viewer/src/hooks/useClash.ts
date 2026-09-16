@@ -36,6 +36,7 @@ import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { contactClusters } from '@ifc-lite/clash/contact';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { bcfWorldOffset } from '@/hooks/bcf/viewpoint-world-frame';
 import { withInstancedMeshes } from '@/utils/instancedExport';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import {
@@ -1240,9 +1241,8 @@ export function useClash() {
         }
       }
 
-      // Each topic's status follows its members' review status (least-resolved
-      // wins), mapped to a BCF status in the bridge. Read the live reviews map so
-      // an edit made just before export is reflected. (#1468)
+      // Topic status follows the members' least-resolved review status, mapped in
+      // the bridge; the live reviews map reflects an edit made just before export (#1468).
       const reviewsMap = state.clashReviews;
       const reviewStatusOf = (clash: Clash): ClashReviewStatus =>
         reviewsMap.get(clashReviewKey(clash))?.status ?? 'open';
@@ -1252,8 +1252,8 @@ export function useClash() {
           author: 'clash@ifc-lite',
           projectName: 'Clash report',
           reviewStatusOf,
-          // Resolve model ids to file names for the BCF Header (#1591).
-          modelNameOf: (id) => state.models.get(id)?.name ?? id,
+          modelNameOf: (id) => state.models.get(id)?.name ?? id, // BCF Header file names (#1591)
+          worldOffset: bcfWorldOffset(state.models, state.geometryResult), // render frame -> world (#4806)
           maxTopics: config.maxTopics,
           ...(snapshotProvider ? { snapshotProvider } : {}),
         });

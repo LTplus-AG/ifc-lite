@@ -113,6 +113,7 @@ export function fixtureDataStore(
       getDescription: (id: number) => byId.get(id)?.description ?? '',
       getObjectType: (id: number) => byId.get(id)?.objectType ?? '',
       getExpressIdByGlobalId: (guid: string) => byGlobalId.get(guid) ?? 0,
+      getGlobalId: (id: number) => byId.get(id)?.globalId ?? '',
       count: entities.length,
       expressId: expressIdCol,
       // Every fixture row is "some product"; no scanner branches on the value,

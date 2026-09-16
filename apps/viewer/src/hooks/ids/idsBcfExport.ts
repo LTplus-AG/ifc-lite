@@ -18,6 +18,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { bcfWorldOffset, projectViewpointsToWorld } from '@/hooks/bcf/viewpoint-world-frame';
 import { useViewerStore, type FederatedModel } from '@/store';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
@@ -248,6 +249,8 @@ export async function runIdsBcfExport({
     },
     exportOptions,
   );
+  // Entity bounds (and so the framing cameras) are in the render frame; BCF is world (#4806).
+  projectViewpointsToWorld(bcfProject, bcfWorldOffset(models, legacyGeometryResult));
 
   // Phase 4: Write BCF and download
   setBcfExportProgress({ phase: 'writing', current: 1, total: 2, message: 'Writing BCF file...' });

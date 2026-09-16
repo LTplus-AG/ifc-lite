@@ -62,6 +62,7 @@
     "readBCF: function",
     "sectionPlaneToClippingPlane: function",
     "toARGBColor: function",
+    "translateViewpoint: function",
     "updateTopicStatus: function",
     "uuidToIfcGuid: function",
     "writeBCF: function"

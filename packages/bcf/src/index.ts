@@ -71,6 +71,7 @@ export {
   createViewpoint,
   extractViewpointState,
 } from './viewpoint.js';
+export { translateViewpoint } from './viewpoint-frame.js';
 
 // 3D Overlay (viewer-agnostic marker positioning)
 export type {

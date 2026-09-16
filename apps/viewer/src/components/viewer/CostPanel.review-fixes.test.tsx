@@ -155,4 +155,16 @@ describe('CostPanel review fixes (PR #4875)', () => {
     });
     assert.equal(row(container, 'Parent item').getAttribute('aria-selected'), 'true');
   });
+
+  it('lists the legacy single-model store (ifcDataStore with an empty models Map)', () => {
+    useViewerStore.setState({
+      models: new Map(),
+      activeModelId: null,
+      ifcDataStore: buildStoreFromStep(step(10)),
+    });
+    const container = renderPanel();
+    assert.doesNotMatch(container.textContent ?? '', /No models loaded\./);
+    act(() => row(container, 'Parent item').click());
+    assert.match(container.textContent ?? '', /10 GBP/);
+  });
 });

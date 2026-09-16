@@ -27,6 +27,7 @@
 import { useMemo } from 'react';
 import type { CostGraphData } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
+import { getAllModelEntries } from '@/sdk/adapters/model-compat';
 import { useCostBackend } from './useCostBackend';
 
 export interface CostModelEntry {
@@ -41,11 +42,15 @@ export interface CostModelEntry {
 
 export function useCostModels(): CostModelEntry[] {
   const models = useViewerStore((s) => s.models);
+  // The legacy single-model path keeps its store in `ifcDataStore` with an
+  // empty `models` Map; `getAllModelEntries` (the same compat layer the
+  // `bim.cost` adapter resolves ids through) surfaces it as one entry.
+  const legacyDataStore = useViewerStore((s) => s.ifcDataStore);
   const backend = useCostBackend();
 
   return useMemo(() => {
     const entries: CostModelEntry[] = [];
-    for (const model of models.values()) {
+    for (const [, model] of getAllModelEntries({ models, ifcDataStore: legacyDataStore })) {
       const hasSource = !!model.ifcDataStore?.source && model.ifcDataStore.source.byteLength > 0;
       if (!hasSource) {
         entries.push({ modelId: model.id, modelName: model.name, graph: null });
@@ -63,5 +68,5 @@ export function useCostModels(): CostModelEntry[] {
       }
     }
     return entries;
-  }, [models, backend]);
+  }, [models, legacyDataStore, backend]);
 }

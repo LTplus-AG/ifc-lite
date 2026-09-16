@@ -30,6 +30,7 @@ import {
 } from './ingest/viewerModelIngest.js';
 import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
+import { modelRotationBaker } from '../lib/model-placement/rotation-bake.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 
@@ -222,22 +223,21 @@ export function useIfcFederation(
   const realignFederation = useCallback(async (): Promise<void> => {
     const state = useViewerStore.getState();
     const allModels = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
-    if (allModels.length === 0) {
-      toast.info('No models loaded — nothing to re-align.');
-      return;
-    }
+    if (allModels.length === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
 
     const referenceSelection = findReferenceGeorefModel();
-    if (!referenceSelection) {
-      toast.error('Cannot re-align: no model with valid georeferencing.');
-      return;
-    }
+    if (!referenceSelection) { toast.error('Cannot re-align: no model with valid georeferencing.'); return; }
 
     // Snapshot georef edits once for the whole pass. Cross-CRS projection
     // awaits can race new edits; re-reading here would mix coordinate frames
     // across models. Apply a newer edit only on the next explicit realignment.
     const georefMutations = state.georefMutations;
     state.closeReposition();
+    // Contract in `rotation-bake.ts`: a model rotation must never be inside a
+    // `preAlignment` snapshot, so every model is un-rotated before this pass
+    // snapshots or restores anything. `useModelRotationSync` re-applies the
+    // declared headings on top of the new alignment.
+    modelRotationBaker.unbake((modelId) => (state.models.get(modelId) as FederatedModel | undefined)?.geometryResult);
 
     const { counts, anchorGeoref, movedModelIds } = await realignFederationModels({
       models: allModels,

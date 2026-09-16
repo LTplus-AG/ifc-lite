@@ -2,12 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { finiteTranslation, assertRenderableTranslation, type Translation } from './translation.js';
+import { finiteRotation, normalizeAngle, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 import type { ModelPlacement } from './state.js';
 
 export interface PlacementManifestEntry {
   instanceId: string;
   sourceContentHash: string | null;
   translation: Translation;
+  /** Absent in every record written before model rotation existed, and in every
+   * record for an unrotated model. Absent reads as "no rotation" — such a
+   * record must load, not be rejected and not be discarded. */
+  rotation?: ModelRotation;
   locked: boolean;
 }
 export interface PlacementManifest {
@@ -40,10 +45,19 @@ export function parsePlacementManifest(text: string): PlacementManifest {
       !finiteTranslation(entry.translation) || typeof entry.locked !== 'boolean' || seen.has(entry.instanceId)) {
       throw new Error('Invalid or duplicate model placement entry.');
     }
+    // Absent is the pre-rotation shape and reads as no rotation. PRESENT and
+    // malformed is still rejected: a record that claims a heading it cannot
+    // express must not be silently downgraded to zero.
+    if (entry.rotation !== undefined && !finiteRotation(entry.rotation)) {
+      throw new Error('Invalid model rotation entry.');
+    }
     assertRenderableTranslation(entry.translation);
+    const rotation: ModelRotation = entry.rotation
+      ? { angle: normalizeAngle(entry.rotation.angle), pivot: [...entry.rotation.pivot] } : ZERO_ROTATION;
+    assertRenderableTranslation(rotation.pivot);
     seen.add(entry.instanceId);
     return { instanceId: entry.instanceId, sourceContentHash: entry.sourceContentHash,
-      translation: [...entry.translation], locked: entry.locked };
+      translation: [...entry.translation], rotation, locked: entry.locked };
   });
   return { version: 1, units: 'm', axes: 'engineering-z-up', frameKey: value.frameKey, models };
 }
@@ -53,7 +67,11 @@ export function makePlacementManifest(
 ): PlacementManifest {
   return { version: 1, units: 'm', axes: 'engineering-z-up', frameKey,
     models: [...models].map(([instanceId, model]) => ({ instanceId, sourceContentHash: model.sourceContentHash ?? null,
-      translation: placements.get(instanceId)?.translation ?? [0, 0, 0], locked: placements.get(instanceId)?.locked ?? false })) };
+      translation: placements.get(instanceId)?.translation ?? [0, 0, 0],
+      // Written only when there is a heading to write, so an unrotated
+      // workspace produces byte-identical manifests to before this existed.
+      rotation: placements.get(instanceId)?.rotation?.angle ? placements.get(instanceId)?.rotation : undefined,
+      locked: placements.get(instanceId)?.locked ?? false })) };
 }
 
 /** Unambiguous fingerprint matching only. Duplicate sources need explicit instance
@@ -78,7 +96,9 @@ export function resolvePlacementManifest(
       throw new Error('A bound model has different source contents.');
     }
     if (result.has(id)) throw new Error('Two saved placements cannot target the same model instance.');
-    result.set(id, { translation: [...entry.translation], locked: entry.locked });
+    const rotation = entry.rotation ?? ZERO_ROTATION;
+    result.set(id, { translation: [...entry.translation],
+      rotation: { angle: rotation.angle, pivot: [...rotation.pivot] }, locked: entry.locked });
   }
   return result;
 }

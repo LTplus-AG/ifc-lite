@@ -11,6 +11,7 @@ import { useRepositionPicking, type PickRole } from './useRepositionPicking';
 
 import { PlacementFiles } from './PlacementFiles';
 import { PlacementGizmo } from './PlacementGizmo';
+import { RotationControls } from './RotationControls';
 
 const AXES = ['X', 'Y', 'Z'] as const;
 const button = 'border px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40';
@@ -173,11 +174,12 @@ export function RepositionPanel() {
         onChange={(e) => setNudgeField(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); run(() => useViewerStore.getState().setRepositionNudge(parseMoveLength(nudgeField))); } }} onBlur={() => run(() => useViewerStore.getState().setRepositionNudge(parseMoveLength(nudgeField)))} /></label>
       <p>Hold Shift while picking for orthogonal movement. Choose X/Y/Z, then ↑/↓ to nudge. Enter applies. Escape cancels.</p>
       {selected.map((id) => <p key={id} className="font-mono truncate">{models.get(id)?.name}: {displayedTranslation(placement, id).map((v) => v.toFixed(4)).join(', ')} m</p>)}
+      <RotationControls selected={selected} onError={setError} />
       {error && <p role="alert" className="text-red-600">{error}</p>}
       <div className="flex flex-wrap gap-1">
         <button className={`${button} bg-teal-600 text-white`} disabled={!preview} onClick={apply}>Apply</button>
-        <button className={button} disabled={!placement.undo.length} onClick={() => run(() => useViewerStore.getState().undoModelTranslation())}>Undo move</button>
-        <button className={button} disabled={!placement.redo.length} onClick={() => run(() => useViewerStore.getState().redoModelTranslation())}>Redo move</button>
+        <button className={button} disabled={!placement.undo.length} onClick={() => run(() => useViewerStore.getState().undoModelTranslation())}>Undo placement</button>
+        <button className={button} disabled={!placement.redo.length} onClick={() => run(() => useViewerStore.getState().redoModelTranslation())}>Redo placement</button>
         <button className={button} onClick={() => run(() => useViewerStore.getState().resetModelTranslations(selected))}>Reset placement</button>
       </div>
       <PlacementFiles />

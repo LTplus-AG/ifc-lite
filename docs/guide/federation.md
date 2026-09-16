@@ -137,11 +137,39 @@ Select one or several moving models and choose a fixed reference model.
    their automatically aligned positions. Locks prevent starting new moves;
    undo restores positions without changing subsequent lock settings.
 
+### Rotating a model
+
+**Rotate** turns the selected models about the workspace **vertical axis only**
+— the heading change that seats a building on a site. Tilting a model out of
+plumb is not offered.
+
+- **Heading** is an absolute angle in degrees, positive counter-clockwise seen
+  from above, wrapped to (-180°, 180°]. Re-entering it always turns the model
+  once from its original geometry, so an angle can be edited without
+  compounding, and `0` restores the model exactly.
+- **Pivot X / Y** is the workspace point the axis passes through, in metres. It
+  defaults to the model's bounds centre and is shown, never implied; elevation
+  does not affect a vertical-axis turn. Once a model has a heading it keeps the
+  pivot it was given until you change it.
+- The rotation is applied to the model **before** the translation above, and the
+  pivot is a point in the model's un-translated frame. Rotating and then moving
+  is not the same arrangement as moving and then rotating.
+- Rotating creates one undo entry for the whole selection on the same stack as
+  moves, and rides **Undo placement** / **Redo placement** and **Reset
+  placement** with them. Locked models refuse to rotate.
+
+Unlike a move, a rotation has no drag preview: it rewrites the model's geometry,
+which is what keeps rendering, picking, bounds, spatial queries and graphical
+exports reading one set of coordinates rather than each applying the angle for
+itself. Large models therefore take a moment to turn.
+
 Manual placement composes with automatic georeference alignment. It does not
 edit `IfcLocalPlacement`, map conversion, source geometry or scan files.
-Re-aligning the federation cancels picked anchors and preserves manual
-translations as literal workspace vectors. Rotation, scaling, CRS conversion
-and automatic scan registration are separate operations.
+Re-aligning the federation cancels picked anchors, preserves manual translations
+as literal workspace vectors, and re-applies model rotations on top of the new
+alignment. Pointcloud handles follow the workspace translation but are not
+rotated. Scaling, CRS conversion and automatic scan registration are separate
+operations.
 
 Positions are saved locally by source contents and coordinate frame. Reloading
 an unambiguous source restores its committed position; previews are never

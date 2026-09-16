@@ -5,8 +5,10 @@ import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
 import { beginPlacement, cancelPlacement, commitPlacement, emptyPlacementState, previewPlacement,
-  replayPlacement, resetPlacements, retainLoadedPlacements, placementFor, importPlacements,
+  replayPlacement, resetPlacements, retainLoadedPlacements, placementFor, importPlacements, rotatePlacements,
   type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
+import type { ModelRotation } from '../../lib/model-placement/rotation.js';
+import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { constrainTranslation, finiteTranslation, subtractTranslation,
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
 import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
@@ -26,6 +28,9 @@ export interface ModelPlacementSlice {
   undoModelTranslation: () => void;
   redoModelTranslation: () => void;
   resetModelTranslations: (ids: readonly string[]) => void;
+  /** Set the ABSOLUTE heading of the named models about the workspace vertical
+   * axis. Undoes with the moves, on the same stack. */
+  setModelRotation: (ids: readonly string[], rotation: ModelRotation) => void;
   setModelPositionLocked: (modelId: string, locked: boolean) => void;
   setRepositionNudge: (metres: number) => void;
   importModelPlacements: (manifest: PlacementManifest, bindings?: ReadonlyMap<string, string>) => void;
@@ -78,6 +83,19 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     if (ids.some((id) => !state.models.has(id))) throw new Error('A selected model is no longer loaded.');
     return { modelPlacement: resetPlacements(state.modelPlacement, ids) };
   }),
+  setModelRotation: (ids, rotation) => set((state) => {
+    if (ids.some((id) => !state.models.has(id))) throw new Error('A selected model is no longer loaded.');
+    // A rotation is baked into mesh geometry; a pointcloud is a renderer handle
+    // that only carries a translation. Rotating the selection would turn the
+    // model and leave its cloud behind, so refuse rather than half-apply it.
+    if (ids.some((id) => state.models.get(id)?.pointCloudHandleId !== undefined)) {
+      throw new Error('Pointclouds cannot be rotated. Select only IFC models to rotate.');
+    }
+    const rotated = rotatePlacements(state.modelPlacement, ids, rotation);
+    // Same rule as a move: a committed change stamps the frame its numbers are in.
+    return { modelPlacement: rotated.placements === state.modelPlacement.placements ? rotated
+      : { ...rotated, frameKey: placementFrameKey(state) } };
+  }),
   setModelPositionLocked: (modelId, locked) => set((state) => {
     if (!state.models.has(modelId)) return {};
     const base = state.modelPlacement.preview?.before.has(modelId) ? cancelPlacement(state.modelPlacement) : state.modelPlacement;
@@ -93,9 +111,12 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
 
 export const modelPlacementTeardown = defineSliceTeardown('modelPlacementSlice',
   ['modelPlacement', 'repositionOpen', 'repositionNudge', 'placementStaleMeasurements'], {
-    'session-reset': () => ({ modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }),
-    'all-models-cleared': () => ({ modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }),
+    // The baselines go with the geometry they describe — nothing to restore
+    // them onto once the models are gone, and they are geometry-sized.
+    'session-reset': () => { modelRotationBaker.clear(); return { modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }; },
+    'all-models-cleared': () => { modelRotationBaker.clear(); return { modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }; },
     'model-removed': (scope, state) => {
+      modelRotationBaker.forget(scope.modelId);
       if (!state.modelPlacement) return {};
       const ids = new Set(state.models?.keys());
       ids.delete(scope.modelId);

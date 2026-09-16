@@ -4,10 +4,18 @@
 
 import { addTranslation, equalTranslation, finiteTranslation, assertRenderableTranslation, ZERO_TRANSLATION,
   type MoveConstraint, type Translation } from './translation.js';
+import { equalRotation, finiteRotation, normalizeAngle, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 
 export interface ModelPlacement {
   translation: Translation;
+  /** Yaw about the workspace vertical axis, applied to the model's geometry
+   * BEFORE `translation`. Vertical axis only — see `rotation.ts`. */
+  rotation: ModelRotation;
   locked: boolean;
+}
+
+function samePlacement(a: ModelPlacement, b: ModelPlacement): boolean {
+  return equalTranslation(a.translation, b.translation) && equalRotation(a.rotation, b.rotation);
 }
 
 export interface PlacementAnchor {
@@ -49,7 +57,7 @@ export function emptyPlacementState(): PlacementState {
 }
 
 export function placementFor(state: PlacementState, modelId: string): ModelPlacement {
-  return state.placements.get(modelId) ?? { translation: ZERO_TRANSLATION, locked: false };
+  return state.placements.get(modelId) ?? { translation: ZERO_TRANSLATION, rotation: ZERO_ROTATION, locked: false };
 }
 
 export function displayedTranslation(state: PlacementState, modelId: string): Translation {
@@ -100,8 +108,8 @@ export function commitPlacement(state: PlacementState): PlacementState {
 function commitPlacements(
   state: PlacementState, before: ReadonlyMap<string, ModelPlacement>, after: ReadonlyMap<string, ModelPlacement>,
 ): PlacementState {
-  const changed = [...after].some(([id, value]) => !equalTranslation(value.translation,
-    before.get(id)?.translation ?? ZERO_TRANSLATION));
+  const changed = [...after].some(([id, value]) => !samePlacement(value,
+    before.get(id) ?? { translation: ZERO_TRANSLATION, rotation: ZERO_ROTATION, locked: value.locked }));
   if (!changed) return cancelPlacement(state);
   const placements = new Map(state.placements);
   for (const [id, value] of after) placements.set(id, value);
@@ -110,18 +118,26 @@ function commitPlacements(
     undo: [...state.undo.slice(-99), { id: revision, timestamp: Date.now(), before, after }] };
 }
 
+/** A placement as it arrives from outside. `rotation` is optional because a
+ * record written before model rotation existed does not carry one; such a
+ * record loads as no rotation rather than being rejected or discarded. */
+export type IncomingPlacement = Omit<ModelPlacement, 'rotation'> & { rotation?: ModelRotation };
+
 /** Import positions atomically and keep current locks authoritative. */
-export function importPlacements(state: PlacementState, incoming: ReadonlyMap<string, ModelPlacement>): PlacementState {
+export function importPlacements(state: PlacementState, incoming: ReadonlyMap<string, IncomingPlacement>): PlacementState {
   const before = new Map<string, ModelPlacement>();
   const after = new Map<string, ModelPlacement>();
-  for (const [id, value] of incoming) {
+  for (const [id, incomingValue] of incoming) {
+    const value: ModelPlacement = { ...incomingValue, rotation: incomingValue.rotation ?? ZERO_ROTATION };
     const current = placementFor(state, id);
-    if (current.locked && !equalTranslation(current.translation, value.translation)) {
+    if (current.locked && !samePlacement(current, value)) {
       throw new Error('Unlock the affected models before importing their positions.');
     }
     assertRenderableTranslation(value.translation);
+    assertRenderablePivot(value.rotation);
     before.set(id, current);
-    after.set(id, { translation: [...value.translation], locked: current.locked });
+    after.set(id, { translation: [...value.translation],
+      rotation: { angle: value.rotation.angle, pivot: [...value.rotation.pivot] }, locked: current.locked });
   }
   return commitPlacements(state, before, after);
 }
@@ -133,9 +149,41 @@ export function resetPlacements(state: PlacementState, ids: readonly string[]): 
     const placement = placementFor(state, id);
     if (placement.locked) throw new Error('Unlock the selected models before resetting placement.');
     before.set(id, placement);
-    after.set(id, { ...placement, translation: ZERO_TRANSLATION });
+    after.set(id, { ...placement, translation: ZERO_TRANSLATION, rotation: ZERO_ROTATION });
   }
   return commitPlacements(state, before, after);
+}
+
+function assertRenderablePivot(rotation: ModelRotation): void {
+  if (!finiteRotation(rotation)) throw new Error('Enter a finite rotation angle and pivot.');
+  assertRenderableTranslation(rotation.pivot);
+}
+
+/**
+ * Set the ABSOLUTE heading of every named model — not a delta, so re-editing
+ * the angle cannot compound and the geometry bake can always restore its
+ * pristine baseline and turn once.
+ *
+ * One command for the whole group, so it undoes as one, exactly like a move.
+ * Rotation has no preview stage: unlike a drag it is entered as a value, and
+ * baking it costs a pass over the model's vertices.
+ */
+export function rotatePlacements(
+  state: PlacementState, ids: readonly string[], rotation: ModelRotation,
+): PlacementState {
+  assertRenderablePivot(rotation);
+  const normalized: ModelRotation = { angle: normalizeAngle(rotation.angle), pivot: [...rotation.pivot] };
+  const before = new Map<string, ModelPlacement>();
+  const after = new Map<string, ModelPlacement>();
+  for (const id of new Set(ids)) {
+    const placement = placementFor(state, id);
+    if (placement.locked) throw new Error('Unlock the selected models before rotating them.');
+    before.set(id, placement);
+    after.set(id, { ...placement, rotation: { angle: normalized.angle, pivot: [...normalized.pivot] } });
+  }
+  if (before.size === 0) throw new Error('Choose at least one model to rotate.');
+  // A pending move preview holds a `before` map this command would invalidate.
+  return commitPlacements(cancelPlacement(state), before, after);
 }
 
 export function replayPlacement(state: PlacementState, direction: 'undo' | 'redo'): PlacementState {

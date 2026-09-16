@@ -13,7 +13,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
-import { emptyPlacementState, displayedTranslation } from '@/lib/model-placement/state';
+import { emptyPlacementState, displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { ToolOverlays } from '../ToolOverlays';
 import { HomeTab } from '../ribbon/tabs/HomeTab';
 
@@ -69,9 +69,9 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Apply'));
     for (const id of ['ifc', 'scan']) assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, id), [0.125, -0.25, 0]);
     assert.equal(useViewerStore.getState().modelPlacement.undo.length, 1, 'one mixed group command');
-    click(button(ui, 'Undo move'));
+    click(button(ui, 'Undo placement'));
     for (const id of ['ifc', 'scan']) assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, id), [0, 0, 0]);
-    click(button(ui, 'Redo move'));
+    click(button(ui, 'Redo placement'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0.125, -0.25, 0]);
   });
 
@@ -115,7 +115,7 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Preview distance'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, -0.125, 0]);
     click(button(ui, 'Apply'));
-    click(button(ui, 'Undo move'));
+    click(button(ui, 'Undo placement'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, 0, 0]);
   });
 
@@ -138,13 +138,13 @@ describe('model repositioning user interactions (#4226)', () => {
     });
     const ui = render(<WithShortcuts />);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));
-    click(button(ui, 'Undo move'));
+    click(button(ui, 'Undo placement'));
     act(() => { useViewerStore.getState().setAttribute('ifc', 1, 'Name', 'Renamed'); });
     assert.equal(useViewerStore.getState().modelPlacement.redo.length, 0, 'new authoring edit discards the abandoned move branch');
     act(() => useViewerStore.getState().undo('ifc'));
     type(input(ui, 'Delta X'), '7'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));
     assert.equal(useViewerStore.getState().redoStacks.size, 0, 'new move discards the abandoned authoring branch');
-    click(button(ui, 'Undo move')); click(button(ui, 'Redo move'));
+    click(button(ui, 'Undo placement')); click(button(ui, 'Redo placement'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [7, 0, 0]);
   });
 
@@ -277,6 +277,51 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Preview values'));
     assert.match(ui.querySelector('[role="alert"]')!.textContent!, /Enter a number/);
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, 0, 0]);
+  });
+
+  it('rotates the selected model about a shown pivot, and undoes with the moves (#4869)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    // A non-zero angle and an off-origin pivot: 0°, or a pivot at the origin,
+    // would pass whether or not the value reached the placement.
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+    const rotated = placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation;
+    assert.ok(Math.abs(rotated.angle - Math.PI / 6) < 1e-9, `angle ${rotated.angle}`);
+    assert.deepEqual([...rotated.pivot], [10, 4, 0]);
+    // One entry on the SAME stack the moves use.
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 1);
+    click(button(ui, 'Undo placement'));
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+    click(button(ui, 'Redo placement'));
+    assert.ok(Math.abs(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle - Math.PI / 6) < 1e-9);
+    click(button(ui, 'Clear rotation'));
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('reports a bad rotation angle instead of storing one (#4869)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30rad');
+    click(button(ui, 'Apply rotation'));
+    assert.match(ui.querySelector('[role="alert"]')!.textContent!, /degrees/i);
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('offers no rotation control for a pointcloud selection (#4869)', () => {
+    act(() => {
+      const models = new Map(useViewerStore.getState().models);
+      models.set('scan', { ...models.get('scan')!, pointCloudHandleId: 3 });
+      useViewerStore.setState({ models });
+      useViewerStore.getState().openReposition(['scan']);
+    });
+    const ui = render(<ToolOverlays />);
+    // A boolean, not the element: asserting an HTMLElement equals null makes
+    // node build a diff of the whole DOM node and run the runner out of memory.
+    assert.equal(ui.querySelector('input[aria-label="Rotation angle in degrees"]') === null, true);
+    assert.match(ui.textContent!, /Pointclouds cannot be rotated/);
   });
 
   it('cancels placement when a different tool is selected', () => {

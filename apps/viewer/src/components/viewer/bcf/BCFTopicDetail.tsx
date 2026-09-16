@@ -53,7 +53,6 @@ export interface BCFTopicDetailProps {
   onAddComment: (text: string, viewpointGuid?: string) => void;
   onAddViewpoint: () => void;
   onAddSectionViewpoint: () => void;
-  /** Why Capture 2D is unavailable, or null when it can run. */
   sectionViewpointBlockReason: string | null;
   onActivateViewpoint: (viewpoint: BCFViewpoint) => void;
   onDeleteViewpoint: (viewpointGuid: string) => void;
@@ -203,7 +202,6 @@ export function BCFTopicDetail({
 
           {/* Viewpoints */}
           <div>
-            {/* Buttons sit under the label: beside it they overflowed the default sidebar width (#4802). */}
             <div className="mb-2 space-y-1.5">
               <h4 className="text-sm font-medium">Viewpoints</h4>
               <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} capture2DBlockReason={sectionViewpointBlockReason} />

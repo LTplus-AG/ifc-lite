@@ -120,7 +120,7 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
   {
     name: 'Cost report (5D)',
     description:
-      'Cost Estimator — read the loaded IfcCostSchedule/IfcCostItem graph via bim.cost, print resolved amounts (or diagnostics for what could not be evaluated), and export a CSV. Read-only.',
+      'Cost Estimator — read the loaded IfcCostSchedule/IfcCostItem graph via bim.cost, print resolved amounts (or diagnostics for what could not be evaluated), and download the report as JSON. Read-only.',
     code: stripModuleLine(injectCycleCodes(costReport)),
   },
   {

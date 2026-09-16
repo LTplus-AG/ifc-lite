@@ -72,10 +72,6 @@ export const SEPARATE_AXIS_CONTRACTS = [
 /** Canonical helper calls that acquire the field without reimplementing it. */
 export const CANONICAL_CALL_EXPRESSIONS = [
   {
-    file: 'apps/viewer/src/components/viewer/tools/measure-modes/coordinates.ts',
-    text: 'const offset = totalYupOffset({ originShift: frame.originShift, wasmRtcOffset: frame.wasmRtcOffsetIfc });',
-  },
-  {
     file: 'apps/viewer/src/lib/geo/reproject.ts',
     text: 'const rtcYup = ifcToViewerAxes(coordinateInfo.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });',
   },

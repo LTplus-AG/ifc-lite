@@ -29,7 +29,6 @@ import {
   type BCFPoint,
   type BCFProject,
   type BCFTopic,
-  type BCFViewpoint,
   type ViewerBounds,
 } from '@ifc-lite/bcf';
 import type { CoordinateInfo } from '@ifc-lite/geometry';

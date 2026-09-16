@@ -34,6 +34,7 @@ import { buildExportNamespace } from './bridge-export.js';
 import { buildScheduleNamespace } from './bridge-schedule.js';
 import { buildStructuralNamespace } from './bridge-structural.js';
 import { buildClashNamespace } from './bridge-clash.js';
+import { buildCostNamespace } from './bridge-cost.js';
 /** How to marshal the return value back to QuickJS */
 type ReturnType =
   | 'void'       // No return value
@@ -187,6 +188,9 @@ export const NAMESPACE_SCHEMAS: NamespaceSchema[] = [
 
   // ── bim.structural ─────────────────────────────────────────
   buildStructuralNamespace(),
+
+  // ── bim.cost ───────────────────────────────────────────────
+  buildCostNamespace(),
 
   // ── bim.clash ──────────────────────────────────────────────
   buildClashNamespace(),

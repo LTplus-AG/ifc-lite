@@ -25,6 +25,7 @@ import type {
   FilesBackendMethods,
   ScheduleBackendMethods,
   StructuralBackendMethods,
+  CostBackendMethods,
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './adapters/types.js';
 import { LEGACY_MODEL_ID } from './adapters/model-compat.js';
@@ -41,6 +42,7 @@ import { createExportAdapter } from './adapters/export-adapter.js';
 import { createFilesAdapter } from './adapters/files-adapter.js';
 import { createScheduleAdapter } from './adapters/schedule-adapter.js';
 import { createStructuralAdapter } from './adapters/structural-adapter.js';
+import { createCostAdapter } from './adapters/cost-adapter.js';
 
 export class LocalBackend implements BimBackend {
   readonly model: ModelBackendMethods;
@@ -56,6 +58,7 @@ export class LocalBackend implements BimBackend {
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
   readonly structural: StructuralBackendMethods;
+  readonly cost: CostBackendMethods;
 
   private storeApi: StoreApi;
 
@@ -74,6 +77,7 @@ export class LocalBackend implements BimBackend {
     this.files = createFilesAdapter(store);
     this.schedule = createScheduleAdapter(store);
     this.structural = createStructuralAdapter(store);
+    this.cost = createCostAdapter(store);
   }
 
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void {

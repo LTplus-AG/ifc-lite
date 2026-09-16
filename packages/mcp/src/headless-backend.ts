@@ -20,13 +20,14 @@ import type {
   FilesBackendMethods,
   ScheduleBackendMethods,
   StructuralBackendMethods,
+  CostBackendMethods,
   EntityRef,
   EntityData,
   PropertySetData,
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createEffectiveEntityCheck, createHeadlessMutateAdapter, type EntityRefCheck, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter, type EntityRefCheck, type StyleBackendMethods } from '@ifc-lite/sdk';
 import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -64,6 +65,7 @@ export class HeadlessLikeBackend implements BimBackend {
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
   readonly structural: StructuralBackendMethods;
+  readonly cost: CostBackendMethods;
 
   private dataStore: IfcDataStore;
   private modelName: string;
@@ -129,6 +131,10 @@ export class HeadlessLikeBackend implements BimBackend {
     this.files = { list() { return []; }, text() { return null; }, csv() { return null; }, csvColumns() { return []; } };
     this.schedule = this.createScheduleAdapter();
     this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
+    this.cost = createCostBackend(modelId => {
+      if (modelId) this.assertKnownModelId(modelId);
+      return { modelId: this.modelId, store: this.dataStore };
+    });
   }
 
   subscribe(_event: BimEventType, _handler: (data: unknown) => void): () => void {

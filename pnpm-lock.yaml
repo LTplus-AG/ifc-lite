@@ -1488,6 +1488,9 @@ importers:
         specifier: ^0.32.0
         version: 0.32.0
     devDependencies:
+      '@ifc-lite/parser':
+        specifier: workspace:^
+        version: link:../parser
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

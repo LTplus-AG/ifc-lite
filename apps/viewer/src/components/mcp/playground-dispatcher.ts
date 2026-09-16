@@ -80,6 +80,7 @@ import { getThreeWebglVerdict } from './three-webgl-support';
 import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
 import { sanitizeFilename } from '../../lib/export/download';
+import { playgroundCostTools } from './playground-cost';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -490,8 +491,7 @@ export function topClashRows(clashes: Clash[], cap: number): {
     : null;
   return { rows, truncated };
 }
-
-const IMPLS: Record<string, ToolImpl> = {
+const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   // ── Discovery ───────────────────────────────────────────────────────────
   async model_info(m) {
     // entityIndex.byType keys are raw STEP storage names (IFCWALL, …) —

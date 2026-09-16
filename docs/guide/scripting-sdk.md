@@ -17,6 +17,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.create` | Create IFC elements from scratch |
 | `bim.export` | Export to CSV, glTF, STEP, HBJSON, and more |
 | `bim.clash` | Run clash rules and the discipline matrix |
+| `bim.cost` | Read and evaluate IFC 5D cost schedules, items, values, and quantities |
 | `bim.ids` | IDS validation |
 | `bim.bcf` | BCF topics, comments, viewpoints |
 | `bim.files`, `bim.schedule`, `bim.spatial`, `bim.spaces`, `bim.drawing`, `bim.list`, `bim.bsdd`, `bim.events`, `bim.sandbox` | Supporting namespaces (file access, scheduling, spatial ops, space program, 2D drawings, entity tables, bSDD lookups, events, sandboxed sub-scripts) |
@@ -95,7 +96,23 @@ ifc-lite schema              # full schema with params and return types
 ifc-lite schema --compact    # names and descriptions only
 ```
 
-`ifc-lite schema` documents the `bim` object `eval`/`run` actually hand your script — a root `bim` namespace of top-level methods, plus the scriptable namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `clash`, and `export` — and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). There `query` is the chain reached via `bim.query()` (`.byType(...).toArray()`), not a namespace of standalone lookups. That differs from the sandbox's own bridge schema shown below, where `bim.query.byType(...)` runs and returns data in one call — the sandbox and `eval`/`run` hand scripts different `bim` shapes, so pick the one matching where the script will run. Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
+`ifc-lite schema` documents the `bim` object `eval`/`run` actually hand your script — a root `bim` namespace of top-level methods, plus the scriptable namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `cost`, `clash`, and `export` — and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). There `query` is the chain reached via `bim.query()` (`.byType(...).toArray()`), not a namespace of standalone lookups. That differs from the sandbox's own bridge schema shown below, where `bim.query.byType(...)` runs and returns data in one call — the sandbox and `eval`/`run` hand scripts different `bim` shapes, so pick the one matching where the script will run. Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
+
+### IFC 5D cost data
+
+`bim.cost` reads the canonical cost graph from the loaded IFC source snapshot.
+References are model-qualified and evaluated amounts remain decimal strings:
+
+```js
+const graph = bim.cost.data();
+const total = graph.CostItems.find(item => item.Name === 'External wall total');
+const result = bim.cost.evaluateItem(total.ref, { Precision: 34 });
+console.log(result.Amount, result.Currency, result.Diagnostics);
+```
+
+`CostValues`, `CostQuantities`, relationships, and diagnostic references all
+use `{ modelId, expressId }`. Generic mutation overlays are not folded into
+this read model; replacing or reloading the IFC source refreshes it.
 
 ## The sandbox
 

@@ -90,7 +90,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Category | Examples |
 | --- | --- |
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `units` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |

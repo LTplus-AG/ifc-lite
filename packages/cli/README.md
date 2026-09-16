@@ -17,8 +17,12 @@ ifc-lite props model.ifc --id 42
 ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
 ifc-lite create wall --height 3 --thickness 0.2 --start 0,0,0 --end 5,0,0 --out wall.ifc
 ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"
+ifc-lite eval cost.ifc "bim.cost.evaluateItem({modelId:'default',expressId:42})" --json
 ifc-lite view model.ifc
 ```
+
+`bim.cost` reads the loaded IFC source snapshot and returns decimal strings;
+pending generic mutation overlays are not included until reload.
 
 ## Commands
 

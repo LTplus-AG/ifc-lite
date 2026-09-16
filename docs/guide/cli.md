@@ -1044,9 +1044,15 @@ ifc-lite eval model.ifc "bim.storeys().map(s => s.name)"
 # Get properties of a specific entity
 ifc-lite eval model.ifc "bim.properties({modelId:'default', expressId:42})"
 
+# Evaluate an IfcCostItem; amounts are decimal strings
+ifc-lite eval cost.ifc "bim.cost.evaluateItem({modelId:'default',expressId:42})" --json
+
 # Complex query
 ifc-lite eval model.ifc "bim.query().byType('IfcDoor').toArray().filter(d => d.name.includes('Fire'))"
 ```
+
+Cost reads use the loaded IFC source snapshot; pending generic mutation overlays
+are not included until the source is replaced or reloaded.
 
 !!! tip "Power Move for LLMs"
     The `eval` command is the most flexible tool. LLMs can write arbitrary SDK code and execute it without needing dedicated subcommands. The full API is discoverable via `ifc-lite schema`.

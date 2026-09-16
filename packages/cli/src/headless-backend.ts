@@ -22,6 +22,7 @@ import type {
   FilesBackendMethods,
   ScheduleBackendMethods,
   StructuralBackendMethods,
+  CostBackendMethods,
   EntityRef,
   EntityData,
   EntityAttributeData,
@@ -35,7 +36,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createEffectiveEntityCheck, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
+import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -78,11 +79,11 @@ import {
   extractRelationshipsOnDemand,
   expandTypes,
   QUERY_REL_TYPE_MAP,
-  extractScheduleOnDemand,
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { createStructuralAdapter } from './headless-backend-structural.js';
+import { createScheduleAdapter } from './headless-backend-schedule.js';
 import { edgeSurvives } from '@ifc-lite/data';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
@@ -154,6 +155,7 @@ export class HeadlessBackend implements BimBackend {
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
   readonly structural: StructuralBackendMethods;
+  readonly cost: CostBackendMethods;
   readonly spaces: SpacesBackendMethods;
   readonly style: StyleBackendMethods;
 
@@ -182,8 +184,12 @@ export class HeadlessBackend implements BimBackend {
     this.export = this.createExportAdapter();
     this.lens = this.createLensAdapter();
     this.files = this.createFilesAdapter();
-    this.schedule = this.createScheduleAdapter();
+    this.schedule = createScheduleAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
     this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
+    this.cost = createCostBackend(modelId => {
+      if (modelId) this.assertKnownModelId(modelId);
+      return { modelId: MODEL_ID, store: this.dataStore };
+    });
     this.spaces = this.createSpacesAdapter();
     this.style = this.createStyleAdapter();
   }
@@ -771,32 +777,6 @@ export class HeadlessBackend implements BimBackend {
       text() { return null; },
       csv() { return null; },
       csvColumns() { return []; },
-    };
-  }
-
-  private createScheduleAdapter(): ScheduleBackendMethods {
-    const store = this.dataStore;
-    let cached: ReturnType<ScheduleBackendMethods['data']> | null = null;
-
-    // Unknown ids surface a clear error instead of silently returning the wrong
-    // data, and they surface the SAME error the write guard gives.
-    const assertModel = (modelId?: string) => {
-      if (modelId) this.assertKnownModelId(modelId);
-    };
-
-    const extract = (modelId?: string) => {
-      assertModel(modelId);
-      if (!cached) {
-        cached = extractScheduleOnDemand(store) as ReturnType<ScheduleBackendMethods['data']>;
-      }
-      return cached;
-    };
-
-    return {
-      data: (modelId) => extract(modelId),
-      tasks: (modelId) => extract(modelId).tasks,
-      workSchedules: (modelId) => extract(modelId).workSchedules,
-      sequences: (modelId) => extract(modelId).sequences,
     };
   }
 

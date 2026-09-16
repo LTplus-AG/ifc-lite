@@ -16,6 +16,7 @@ import { exportTools } from './export.js';
 import { viewerTools } from './viewer.js';
 import { draftLayerTools } from './layer.js';
 import { layerReviewTools } from './layer-review.js';
+import { costTools } from './cost.js';
 
 /** Agent draft-layer family (06-agents.md): draft lifecycle + review loop. */
 export const layerTools = [...draftLayerTools, ...layerReviewTools];
@@ -35,6 +36,7 @@ export {
   diffTools,
   exportTools,
   viewerTools,
+  costTools,
 };
 export { resetLayerWorkspace, getLayerWorkspace, disposeLayerWorkspace } from './layer-store.js';
 
@@ -56,6 +58,7 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(diffTools);
   registry.registerAll(exportTools);
   registry.registerAll(viewerTools);
+  registry.registerAll(costTools);
   registry.registerAll(layerTools);
   return registry;
 }

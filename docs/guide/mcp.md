@@ -4,6 +4,12 @@ The `@ifc-lite/mcp` package turns any IFC model into a set of tools an LLM agent
 
 The server bundles the same headless kernel the [CLI](cli.md) and [server](server.md) use, and can optionally drive the WebGL viewer so an agent paints results into a live 3D scene.
 
+For 5D workflows, `cost_data` returns the canonical IFC cost graph and
+`cost_evaluate` evaluates an `item` or `value` by local `express_id`. Pass
+`model_id` whenever multiple models are loaded. Amounts are decimal strings,
+diagnostics retain model-qualified references, and results describe the loaded
+source snapshot rather than pending mutation overlays.
+
 ## Quickstart
 
 ### stdio (local agents)

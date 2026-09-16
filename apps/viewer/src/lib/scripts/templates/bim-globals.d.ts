@@ -140,7 +140,7 @@ interface BimFileAttachment {
   hasTextContent: boolean;
 }
 
-// ── Clash engine types ──────────────────────────────────────────────────
+// ── Clash engine types ────────────────────────────────────────────────
 //
 // Extracted by the generator from the sources below — these declarations are
 // the engine's own text, not a copy maintained in the generator:
@@ -372,6 +372,126 @@ declare namespace BimClash {
    *   scale, not as a measurement.
    */
   export type ClashDistanceKind = 'mesh' | 'estimate';
+}
+
+// ── Cost SDK types ────────────────────────────────────────────────────
+//
+// Extracted by the generator from the sources below — these declarations are
+// the engine's own text, not a copy maintained in the generator:
+//   packages/sdk/src/cost-types.ts
+//   packages/sdk/src/types.ts
+
+declare namespace BimCost {
+  export interface CostGraphData {
+    modelId: string;
+    source: 'loaded-source';
+    SchemaVersion: CostSchemaVersion;
+    CostSchedules: CostScheduleData[];
+    CostItems: CostItemData[];
+    CostValues: CostValueData[];
+    CostQuantities: CostQuantityData[];
+    Units: CostUnitData[];
+    MeasuresWithUnit: CostMeasureWithUnitData[];
+    ProjectUnits: Partial<Record<CostQuantityDimension, EntityRef>>;
+    Relationships: CostRelationshipData[];
+    Diagnostics: CostDiagnosticData[];
+    HasCostData: boolean;
+    Currency?: string;
+  }
+
+  export interface CostScheduleData {
+    ref: EntityRef;
+    GlobalId?: string; Name?: string; Description?: string; ObjectType?: string;
+    Identification?: string; PredefinedType?: string; Status?: string;
+    SubmittedOn?: string; UpdateDate?: string; ID?: string;
+  }
+
+  export interface CostItemData {
+    ref: EntityRef;
+    GlobalId?: string; Name?: string; Description?: string; ObjectType?: string;
+    Identification?: string; PredefinedType?: string;
+    CostValues?: EntityRef[]; CostQuantities?: EntityRef[];
+  }
+
+  export interface CostValueData {
+    ref: EntityRef;
+    Type?: 'IfcCostValue' | 'IfcAppliedValue';
+    Name?: string; Description?: string; AppliedValue?: CostAppliedValueData;
+    UnitBasis?: EntityRef; InvalidUnitBasis?: boolean; ApplicableDate?: string;
+    FixedUntilDate?: string; Category?: string; Condition?: string;
+    InvalidCondition?: boolean; ArithmeticOperator?: string; Components?: EntityRef[];
+    CostType?: string;
+  }
+
+  export interface CostEvaluationOptions { Precision?: number }
+
+  export interface CostEvaluationData {
+    ref: EntityRef; Amount?: string; Currency?: string;
+    Dimension?: CostQuantityDimension | 'ratio'; QuantityApplied?: string;
+    Diagnostics: CostDiagnosticData[];
+  }
+
+  export type CostSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
+
+  export interface CostQuantityData {
+    ref: EntityRef; Type: string; Name?: string; Description?: string; Unit?: EntityRef;
+    InvalidUnit?: boolean; LengthValue?: string; AreaValue?: string; VolumeValue?: string;
+    CountValue?: string; WeightValue?: string; TimeValue?: string; NumberValue?: string;
+    Formula?: string; Dimension?: CostQuantityDimension; HasQuantities?: EntityRef[];
+    InvalidHasQuantities?: boolean;
+  }
+
+  export interface CostUnitData {
+    ref: EntityRef; Type: string; UnitType?: string; Prefix?: string; Name?: string;
+    Symbol?: string; Currency?: string; Dimension?: CostQuantityDimension; Scale?: string;
+  }
+
+  export interface CostMeasureWithUnitData {
+    ref: EntityRef; ValueComponent: string; UnitComponent: EntityRef;
+    ValueType?: string; ValueDimension?: CostQuantityDimension;
+  }
+
+  export type CostQuantityDimension = 'length' | 'area' | 'volume' | 'mass' | 'time' | 'count' | 'number';
+
+  /** Reference to a specific entity within a federated model set */
+  export interface EntityRef {
+    modelId: string;
+    expressId: number;
+  }
+
+  export interface CostRelationshipData {
+    ref: EntityRef; Type: CostRelationshipType; GlobalId?: string; Name?: string;
+    Description?: string; RelatedObjects?: EntityRef[]; InvalidRelatedObjects?: boolean;
+    InvalidReferences?: boolean; RelatedDefinitions?: EntityRef[]; RelatingControl?: EntityRef;
+    RelatingObject?: EntityRef; RelatingProduct?: EntityRef; RelatingProcess?: EntityRef;
+    RelatingContext?: EntityRef; RelatingAppliedValue?: EntityRef; ComponentOfTotal?: EntityRef;
+    Components?: EntityRef[]; ArithmeticOperator?: string;
+  }
+
+  export interface CostDiagnosticData {
+    Code: CostDiagnosticCode;
+    Message: string;
+    Severity: 'warning' | 'error';
+    ref?: EntityRef;
+    RelatedRef?: EntityRef;
+  }
+
+  export type CostAppliedValueData =
+    | { Kind: 'Typed'; Type: string; Value: string }
+    | { Kind: 'Reference'; ref: EntityRef }
+    | { Kind: 'Unsupported'; Raw: unknown; InvalidNumber?: boolean };
+
+  export type CostRelationshipType =
+    | 'IfcRelAssignsToControl' | 'IfcRelAssignsToProduct' | 'IfcRelAssignsToProcess'
+    | 'IfcRelNests' | 'IfcRelDeclares' | 'IfcRelAssociatesAppliedValue'
+    | 'IfcRelSchedulesCostItems' | 'IfcAppliedValueRelationship';
+
+  export type CostDiagnosticCode =
+    | 'IFC2X3_PARTIAL_READ' | 'UNSUPPORTED_SCHEMA' | 'MISSING_REFERENCE' | 'INVALID_LIST'
+    | 'MULTIPLE_NESTING_PARENTS' | 'NESTING_CYCLE' | 'QUANTITY_CYCLE' | 'VALUE_CYCLE'
+    | 'MISSING_VALUE' | 'INVALID_NUMBER' | 'UNSUPPORTED_APPLIED_VALUE' | 'UNSUPPORTED_CONDITION'
+    | 'UNSUPPORTED_UNIT' | 'INCOMPATIBLE_UNIT' | 'MISSING_CURRENCY' | 'MIXED_CURRENCY'
+    | 'DIVISION_BY_ZERO';
 }
 interface BimStructuralLoad {
   ExpressId: number; Type: string; Name?: string;
@@ -675,6 +795,21 @@ declare const bim: {
     loadGroups(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Type: string; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; ActionType?: string; ActionSource?: string; Coefficient?: number; Purpose?: string; SelfWeightCoefficients?: number[]; ActivityGlobalIds: string[] }>;
     /** All IfcStructuralResultGroup entities. */
     resultGroups(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name?: string; Description?: string; ObjectType?: string; TheoryType?: string; IsLinear?: boolean; ResultForLoadGroupGlobalId?: string; ActivityGlobalIds: string[] }>;
+  };
+  /** IFC 5D cost graph and decimal evaluation from the loaded source snapshot */
+  cost: {
+    /** Read the complete canonical cost graph. */
+    data(modelId?: string): BimCost.CostGraphData;
+    /** List IfcCostSchedule records. */
+    schedules(modelId?: string): BimCost.CostScheduleData[];
+    /** List IfcCostItem records. */
+    items(modelId?: string): BimCost.CostItemData[];
+    /** List IfcCostValue and IfcAppliedValue records. */
+    values(modelId?: string): BimCost.CostValueData[];
+    /** Evaluate an IfcCostItem using decimal arithmetic. */
+    evaluateItem(ref: BimCost.EntityRef, options?: BimCost.CostEvaluationOptions): BimCost.CostEvaluationData;
+    /** Evaluate an IfcCostValue using decimal arithmetic. */
+    evaluateValue(ref: BimCost.EntityRef, options?: BimCost.CostEvaluationOptions): BimCost.CostEvaluationData;
   };
   /** Geometric clash / interference detection over host-meshed ClashElement[]. Read-only analysis - selectors are IFC-type globs (e.g. "IfcDuct*|IfcPipe*", "!IfcSpace"), never GlobalIds. The host meshes the model and builds the elements. */
   clash: {

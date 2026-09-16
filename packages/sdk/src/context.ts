@@ -35,6 +35,7 @@ import { StructuralNamespace } from './namespaces/structural.js';
 import { ClashNamespace } from './namespaces/clash.js';
 import { SpacesNamespace } from './namespaces/spaces.js';
 import { StyleNamespace } from './namespaces/style.js';
+import { CostNamespace } from './namespaces/cost.js';
 import { RemoteBackend } from './transport/remote-backend.js';
 
 export class BimContext {
@@ -59,6 +60,7 @@ export class BimContext {
   readonly clash: ClashNamespace;
   readonly spaces: SpacesNamespace;
   readonly style: StyleNamespace;
+  readonly cost: CostNamespace;
 
   private _queryNamespace: QueryNamespace;
   private _backend: BimBackend;
@@ -95,6 +97,7 @@ export class BimContext {
     this.clash = new ClashNamespace();
     this.spaces = new SpacesNamespace(this._backend);
     this.style = new StyleNamespace(this._backend);
+    this.cost = new CostNamespace(this._backend);
     // Cache the bound function so every access returns the same reference
     this._boundOn = this.events.on.bind(this.events);
   }

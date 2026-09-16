@@ -34,7 +34,12 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
 - `bim.export` - CSV, glTF, STEP, HBJSON
 - `bim.ids` / `bim.bcf` / `bim.clash` - validation, collaboration, interference checks
 - `bim.drawing` / `bim.list` / `bim.lens` - section cuts and SVG, schedules, rule-based coloring
+- `bim.cost` - canonical IFC 5D graph and decimal-string item/value evaluation
 - `bim.create` / `bim.spaces` / `bim.spatial` / `bim.schedule` / `bim.files` / `bim.events` / `bim.bsdd` / `bim.sandbox`
+
+Cost reads describe the loaded IFC source snapshot. Every STEP reference is an
+`EntityRef` (`{ modelId, expressId }`); pending generic mutation overlays are
+not silently folded into the graph.
 
 Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`, and the full `IfcCreator` API re-exported from `@ifc-lite/create`.
 

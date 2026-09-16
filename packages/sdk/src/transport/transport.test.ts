@@ -320,7 +320,7 @@ describe('RemoteBackend', () => {
   // undefined-is-not-a-function further down the call stack.
   it.each([
     'model', 'query', 'selection', 'visibility', 'viewer',
-    'mutate', 'store', 'spatial', 'export', 'lens', 'files', 'schedule',
+    'mutate', 'store', 'spatial', 'export', 'lens', 'files', 'schedule', 'cost',
   ] as const)('throws a named error for any %s method', (ns) => {
     const { transport } = fakeTransport();
     const backend = new RemoteBackend(transport);

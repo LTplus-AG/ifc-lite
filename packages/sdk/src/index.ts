@@ -151,6 +151,7 @@ export type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  CostBackendMethods,
 
   // Schedule data
   ScheduleExtractionData,
@@ -181,6 +182,13 @@ export type {
   StructuralLoadDropReason,
   BoundaryConditionData,
 } from './types.js';
+
+export type {
+  CostSchemaVersion, CostQuantityDimension, CostDiagnosticCode, CostDiagnosticData,
+  CostScheduleData, CostAppliedValueData, CostValueData, CostItemData, CostQuantityData,
+  CostUnitData, CostMeasureWithUnitData, CostRelationshipType, CostRelationshipData,
+  CostGraphData, CostEvaluationOptions, CostEvaluationData,
+} from './cost-types.js';
 
 export { entityRefToString, stringToEntityRef, dispatchToBackend } from './types.js';
 
@@ -232,6 +240,9 @@ export { CreateNamespace } from './namespaces/create.js';
 export { FilesNamespace } from './namespaces/files.js';
 export { ScheduleNamespace } from './namespaces/schedule.js';
 export { StructuralNamespace } from './namespaces/structural.js';
+export { CostNamespace } from './namespaces/cost.js';
+export { createCostBackend } from './cost-backend.js';
+export type { CostModelResolver, ResolvedCostModel } from './cost-backend.js';
 
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';

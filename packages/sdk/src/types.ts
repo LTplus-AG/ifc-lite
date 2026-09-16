@@ -13,6 +13,7 @@ import type { StructuralBackendMethods } from './structural-types.js';
 // Re-exported below via `export * from './schedule-types.js'`; imported by name
 // too because `BimBackend` references it in this file's own scope.
 import type { ScheduleBackendMethods } from './schedule-types.js';
+import type { CostBackendMethods } from './cost-types.js';
 import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
 
 // ============================================================================
@@ -674,6 +675,7 @@ export * from './schedule-types.js';
 
 /** Why one `Values` slot of a load configuration carries no nested load. */
 export * from './structural-types.js';
+export * from './cost-types.js';
 export * from './backend-extension-types.js';
 
 // ============================================================================
@@ -702,6 +704,8 @@ export interface BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  /** IFC 5D cost reads, when the backend retains loaded source bytes. */
+  readonly cost?: CostBackendMethods;
   /** Structural analysis reads, when supported by the backend. */
   readonly structural?: StructuralBackendMethods;
   /** Space derivation — present only on local backends with store access. */

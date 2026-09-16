@@ -25,10 +25,11 @@
  * `dist/index.js` runs on plain node with no loader and no tsconfig `paths`
  * rewriting in the middle of the import graph.
  *
- * Two things the schema names rather than spells out are EXTRACTED from their
- * defining sources here (see `derivedTypeLines` and DERIVED_TYPE_SOURCES):
- * the `BimClash.*` clash-engine types, and the sandbox `console`. Transcribing
- * either into this file would put a hand-maintained copy of another package's
+ * Types the schema names rather than spells out are EXTRACTED from their
+ * defining sources here (see `derivedTypeLines` and `BIM_DERIVED_TYPE_GROUPS`):
+ * the `BimClash.*` clash-engine types and `BimCost.*` SDK types. The sandbox
+ * `console` is likewise derived. Transcribing any of them would put a
+ * hand-maintained copy of another package's
  * types in the one script whose whole purpose is to stop such copies rotting
  * (#2422). Because both are derived, a change upstream turns the `--check`
  * gate red exactly as a schema change does.
@@ -46,6 +47,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
+import { BIM_DERIVED_TYPE_GROUPS } from './lib/bim-derived-type-groups.mjs';
 
 const CHECK = process.argv.includes('--check');
 
@@ -90,26 +92,12 @@ if (!Array.isArray(SANDBOX_CONSOLE_LEVELS) || SANDBOX_CONSOLE_LEVELS.length === 
 // ungated drift surface, in a generator that exists because an ungated surface
 // rotted (#2418, #2422).
 //
-// Emitted inside `declare namespace BimClash` so that (a) cross-references
+// Emitted inside each group's `declare namespace` so that (a) cross-references
 // between the extracted declarations resolve verbatim, with no identifier
 // rewriting, and (b) exactly one name enters the ambient global scope —
-// `Clash`, `Vec3` and `AABB` at top level would collide with a script author's
-// own declarations.
+// names at top level cannot collide with a script author's own declarations.
 
 /** Sources searched for extracted declarations, in resolution order. */
-const DERIVED_TYPE_SOURCES = [
-  'packages/clash/src/types.ts',
-  'packages/clash/src/disciplines.ts',
-  'packages/spatial/src/aabb.ts',
-];
-
-/**
- * Roots of the extraction. Everything these reach, transitively, is emitted;
- * anything they reach that is NOT in DERIVED_TYPE_SOURCES is a hard error, so
- * a field added upstream can never be silently dropped from the declaration.
- */
-const DERIVED_TYPE_ROOTS = ['ClashResult', 'ClashGroup', 'ClashRule', 'ClashRulePreset'];
-
 /**
  * Type names that resolve without a declaration of ours: TypeScript keywords
  * and the `lib` globals the templates tsconfig loads (ES2022, no DOM).
@@ -125,9 +113,9 @@ const AMBIENT_TYPE_NAMES = new Set([
  * keyed by name. Later files do not override earlier ones — a duplicate name
  * across sources is ambiguous, so it is refused rather than silently resolved.
  */
-function collectDeclarations() {
+function collectDeclarations(sources) {
   const byName = new Map();
-  for (const rel of DERIVED_TYPE_SOURCES) {
+  for (const rel of sources) {
     const path = join(ROOT, rel);
     const text = readFileSync(path, 'utf-8');
     const sourceFile = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true);
@@ -188,11 +176,11 @@ function declarationText(entry) {
  * body. Roots come first, in declared order, then dependencies in discovery
  * order — deterministic, which the `--check` gate depends on.
  */
-function derivedTypeLines() {
-  const declarations = collectDeclarations();
+function derivedTypeGroupLines(group) {
+  const declarations = collectDeclarations(group.sources);
   const emitted = [];
   const seen = new Set();
-  const queue = [...DERIVED_TYPE_ROOTS];
+  const queue = [...group.roots];
 
   while (queue.length > 0) {
     const name = queue.shift();
@@ -202,8 +190,8 @@ function derivedTypeLines() {
     if (!entry) {
       console.error(
         `❌ Cannot extract type '${name}': it is referenced by the sandbox bim type surface ` +
-          `but declared in none of:\n${DERIVED_TYPE_SOURCES.map(s => `     ${s}`).join('\n')}\n` +
-          '   Add the file that declares it to DERIVED_TYPE_SOURCES in scripts/generate-bim-globals.mjs.',
+          `but declared in none of:\n${group.sources.map(s => `     ${s}`).join('\n')}\n` +
+          '   Add the file that declares it to this group\'s sources in scripts/generate-bim-globals.mjs.',
       );
       process.exit(1);
     }
@@ -215,13 +203,13 @@ function derivedTypeLines() {
   }
 
   const lines = [
-    '// ── Clash engine types ──────────────────────────────────────────────────',
+    `// ── ${group.title} ${'─'.repeat(Math.max(1, 66 - group.title.length))}`,
     '//',
     '// Extracted by the generator from the sources below — these declarations are',
     '// the engine\'s own text, not a copy maintained in the generator:',
-    ...DERIVED_TYPE_SOURCES.map(source => `//   ${source}`),
+    ...group.sources.map(source => `//   ${source}`),
     '',
-    'declare namespace BimClash {',
+    `declare namespace ${group.namespace} {`,
   ];
   for (const entry of emitted) {
     for (const line of declarationText(entry).split('\n')) {
@@ -233,6 +221,12 @@ function derivedTypeLines() {
   lines.pop();
   lines.push('}');
   return lines;
+}
+
+function derivedTypeLines() {
+  return BIM_DERIVED_TYPE_GROUPS.flatMap((group, index) => [
+    ...(index === 0 ? [] : ['']), ...derivedTypeGroupLines(group),
+  ]);
 }
 
 /** Map an ArgType to a TypeScript type string */

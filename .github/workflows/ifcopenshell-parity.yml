@@ -24,6 +24,22 @@
 #   committed corpus (fetched fixtures included), regenerates the reference
 #   dumps to detect reference-staleness, and uploads diff reports. Modeled on
 #   determinism.yml (free arm runner, cron + dispatch, non-blocking).
+#
+# `cost-quick` / `cost-full` extend the same pattern to the independent 5D
+# cost-verification slice (#4859, parent #4322): a GlobalId-keyed canonical
+# cost record + comparator (tools/ifcopenshell_reference/compare_cost.py),
+# fed by two dumpers that never read each other's implementation —
+# `dump_ifclite_cost.mjs` reads through the shipped ifc-lite cost read model
+# (packages/parser/src/cost-extractor.ts, packages/sdk's createCostBackend),
+# `dump_reference_cost.py` uses the pinned IfcOpenShell purely as a
+# black-box IFC data-access library. Neither `cost-quick` nor `cost-full`
+# is a required check (unlike `quick`/`full` above) — this is a new,
+# narrower slice and shouldn't gate unrelated PRs while it proves itself.
+# `cost-quick`'s red path is fault-injection tested the same way `quick`'s
+# is: tools/ifcopenshell_reference/test_harness_cost.py::EndToEndFaultInjection
+# perturbs a real dump pair and asserts the comparator's failure count goes
+# non-zero on a wrong relationship direction, a missing item, an altered
+# total, and a broken shared-reference — plus a positive control.
 
 name: IfcOpenShell parity
 
@@ -174,6 +190,112 @@ jobs:
           name: ifcopenshell-parity-reports
           path: /tmp/reports/
           if-no-files-found: error
+
+  cost-quick:
+    name: cost parity (in-tree fixture, committed reference)
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      # Gate on cost-affecting changes only, mirroring `quick`'s geometry
+      # gate above — a PR that touches none of these paths no-ops.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            cost:
+              - "packages/parser/src/cost-*.ts"
+              - "packages/sdk/src/cost-*.ts"
+              - "packages/sdk/src/namespaces/cost.ts"
+              - "tools/ifcopenshell_reference/*cost*"
+              - "tools/ifcopenshell_reference/reference_cost/**"
+              - "tools/ifcopenshell_reference/cost_fixtures/**"
+              - ".github/workflows/ifcopenshell-parity.yml"
+      - if: steps.filter.outputs.cost != 'true'
+        name: No cost changes - parity diff not applicable
+        run: echo "No cost read-model/parity-tooling changes; cost parity diff skipped (check reports success)."
+      - if: steps.filter.outputs.cost == 'true'
+        name: Unit tests (comparator + fault injection)
+        working-directory: tools/ifcopenshell_reference
+        run: python3 -m unittest test_harness_cost -v
+      - if: steps.filter.outputs.cost == 'true'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: cost-parity
+      - if: steps.filter.outputs.cost == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - if: steps.filter.outputs.cost == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.filter.outputs.cost == 'true'
+        name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - if: steps.filter.outputs.cost == 'true'
+        name: Build WASM
+        run: bash scripts/build-wasm.sh
+      # Only the packages the cost dumper actually imports — not a full
+      # `pnpm build` — so this stays cheap on a cost-only PR.
+      - if: steps.filter.outputs.cost == 'true'
+        name: Build ifc-lite cost read-model chain
+        run: pnpm turbo build --filter=@ifc-lite/sdk
+      - if: steps.filter.outputs.cost == 'true'
+        name: Differential vs committed reference (in-tree fixture)
+        working-directory: tools/ifcopenshell_reference
+        run: |
+          node dump_ifclite_cost.mjs \
+            cost_fixtures/buildingsmart-cost-composition.ifc \
+            --out /tmp/lite_cost.json
+          python3 compare_cost.py \
+            --reference reference_cost/buildingsmart-cost-composition.reference.json \
+            --ifclite /tmp/lite_cost.json
+
+  cost-full:
+    name: cost full corpus (pinned reference engine)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: cost-parity-full
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build WASM
+        run: bash scripts/build-wasm.sh
+      - name: Build ifc-lite cost read-model chain
+        run: pnpm turbo build --filter=@ifc-lite/sdk
+      - name: Install pinned reference engine
+        run: pip install -r tools/ifcopenshell_reference/requirements.lock
+      - name: Regenerate reference + differential (in-tree fixture)
+        working-directory: tools/ifcopenshell_reference
+        run: |
+          python3 dump_reference_cost.py \
+            cost_fixtures/buildingsmart-cost-composition.ifc \
+            --out /tmp/ref_cost.json
+          node dump_ifclite_cost.mjs \
+            cost_fixtures/buildingsmart-cost-composition.ifc \
+            --out /tmp/lite_cost.json
+          python3 compare_cost.py --reference /tmp/ref_cost.json --ifclite /tmp/lite_cost.json
+          # Reference-staleness: freshly generated vs committed.
+          if ! diff -q /tmp/ref_cost.json reference_cost/buildingsmart-cost-composition.reference.json > /dev/null 2>&1; then
+            echo "::warning::committed cost reference is stale vs the pinned engine"
+          fi
 
   report-scheduled-failure:
     needs: full

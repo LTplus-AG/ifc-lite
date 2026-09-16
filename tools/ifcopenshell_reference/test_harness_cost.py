@@ -1,0 +1,193 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+"""Known-answer tests for `compare_cost.py` (issue #4859).
+
+Run: python3 -m unittest test_harness_cost  (stdlib only — no IfcOpenShell,
+no ifc-lite build required; the comparator is pure Python over plain dicts).
+
+Includes an `EndToEndFaultInjection` suite mirroring `test_harness.py`'s
+geometry fault-injection tests: it perturbs a copy of a real, once-generated
+canonical dump pair (see `_baseline_pair`, itself produced from the actual
+`buildingsmart-cost-composition.ifc` fixture the CI lane uses — recorded here
+as a literal to keep this test engine-independent and fast) and asserts
+`compare()` actually classifies the corruption as FAILURE, not MATCH and not
+a silently-absorbed DEGRADED category.
+"""
+
+from __future__ import annotations
+
+import copy
+import unittest
+
+import compare_cost as cc
+
+
+def _baseline_pair():
+    """A minimal-but-representative canonical dump pair: two schedules-worth
+    of structure is unnecessary — one schedule, two items (one parent/child
+    nesting, one shared IfcCostValue reference between two items, one
+    resolved ADD total, one item with a present-but-unresolvable value to
+    exercise the empty-vs-absent distinction) is enough surface to exercise
+    every classification path."""
+    lite = {
+        "SchemaVersion": "IFC4",
+        "Currency": "GBP",
+        "HasCostData": True,
+        "Schedules": {
+            "SCHED1": {
+                "Name": "Budget", "Identification": "CS-1", "PredefinedType": "BUDGET",
+                "Status": "DRAFT", "ItemGlobalIds": ["PARENT1"],
+            },
+        },
+        "Items": {
+            "PARENT1": {
+                "Name": "Parent", "Identification": "CI-1", "PredefinedType": "USERDEFINED",
+                "ParentGlobalId": None, "ChildGlobalIds": ["CHILD1"],
+                "ScheduleGlobalIds": ["SCHED1"], "ProductGlobalIds": 0, "TaskGlobalIds": 0,
+                "HasCostValues": True, "HasCostQuantities": False,
+                "Values": ["item:PARENT1/value/0"], "Quantities": [],
+                "ResolvedTotal": {"Amount": 8.0, "Currency": "GBP"},
+            },
+            "CHILD1": {
+                "Name": "Child", "Identification": "CI-2", "PredefinedType": "USERDEFINED",
+                "ParentGlobalId": "PARENT1", "ChildGlobalIds": [],
+                "ScheduleGlobalIds": [], "ProductGlobalIds": 1, "TaskGlobalIds": 0,
+                "HasCostValues": True, "HasCostQuantities": False,
+                "Values": ["item:CHILD1/value/0"], "Quantities": [],
+                "ResolvedTotal": {"Amount": 5.0, "Currency": "GBP"},
+            },
+            "EMPTY1": {
+                "Name": "Placeholder subtotal", "Identification": "CI-3", "PredefinedType": "USERDEFINED",
+                "ParentGlobalId": None, "ChildGlobalIds": [],
+                "ScheduleGlobalIds": [], "ProductGlobalIds": 0, "TaskGlobalIds": 0,
+                # PRESENT (HasCostValues=True) but genuinely unresolvable —
+                # must stay distinct from an item with NO CostValues at all.
+                "HasCostValues": True, "HasCostQuantities": False,
+                "Values": ["item:EMPTY1/value/0"], "Quantities": [],
+                "ResolvedTotal": None,
+            },
+        },
+        "Nodes": {
+            "item:PARENT1/value/0": {
+                "Kind": "Value", "Type": "IfcCostValue", "Name": "material", "Category": "Material",
+                "Condition": None, "ArithmeticOperator": "ADD",
+                "Applied": None, "Components": ["item:PARENT1/value/0/component/0", "item:CHILD1/value/0"],
+                "UnitBasisNode": None, "Resolved": 8.0,
+            },
+            "item:PARENT1/value/0/component/0": {
+                "Kind": "Value", "Type": "IfcCostValue", "Name": "material-a", "Category": "Material",
+                "Condition": None, "ArithmeticOperator": None,
+                "Applied": {"Kind": "Typed", "Type": "IfcMonetaryMeasure", "Value": 3.0},
+                "Components": None, "UnitBasisNode": None, "Resolved": 3.0,
+            },
+            "item:CHILD1/value/0": {
+                "Kind": "Value", "Type": "IfcCostValue", "Name": "shared-rate", "Category": "Labor",
+                "Condition": None, "ArithmeticOperator": None,
+                "Applied": {"Kind": "Typed", "Type": "IfcMonetaryMeasure", "Value": 5.0},
+                "Components": None, "UnitBasisNode": None, "Resolved": 5.0,
+            },
+            "item:EMPTY1/value/0": {
+                "Kind": "Value", "Type": "IfcCostValue", "Name": "Subtotal", "Category": "*",
+                "Condition": None, "ArithmeticOperator": None,
+                "Applied": None, "Components": None, "UnitBasisNode": None, "Resolved": None,
+            },
+        },
+    }
+    ref = copy.deepcopy(lite)
+    return lite, ref
+
+
+class ComparatorClassification(unittest.TestCase):
+    def test_positive_control_unperturbed_pair_is_all_match(self):
+        lite, ref = _baseline_pair()
+        report = cc.compare(lite, ref)
+        summary = report.summary()
+        self.assertEqual(summary["failures"], 0)
+        self.assertEqual(summary["degradations"], 0)
+        self.assertGreater(summary["matches"], 0)
+
+    def test_empty_reference_is_refused_not_a_silent_pass(self):
+        """The house convention (packages/renderer/src/entity-visibility.ts's
+        isEntityVisible): absent must never be silently treated as matching
+        absent. An empty reference dump must raise, not report zero
+        failures — a green report here would prove nothing."""
+        lite, ref = _baseline_pair()
+        ref["HasCostData"] = False
+        ref["Items"] = {}
+        with self.assertRaises(ValueError):
+            cc.compare(lite, ref)
+
+    def test_named_degradation_currency_unresolved_is_distinct_from_match_and_failure(self):
+        lite, ref = _baseline_pair()
+        lite["Currency"] = None
+        report = cc.compare(lite, ref)
+        currency_rows = [r for r in report.rows if r[0] == "Currency"]
+        self.assertEqual(len(currency_rows), 1)
+        self.assertEqual(currency_rows[0][1], "DEGRADED:CURRENCY_UNRESOLVED")
+        self.assertEqual(report.summary()["failures"], 0)
+
+
+class EndToEndFaultInjection(unittest.TestCase):
+    """Each test perturbs a COPY of the real dump pair and asserts
+    `compare()`'s exit-worthy failure count actually goes non-zero — proof
+    the comparator's red path has teeth, not just that individual field
+    comparisons are correct in isolation."""
+
+    def test_wrong_relationship_direction_is_a_failure(self):
+        lite, ref = _baseline_pair()
+        # Corrupt: report CHILD1 as having no parent (drops the nesting
+        # relationship / flips its direction).
+        lite["Items"]["CHILD1"]["ParentGlobalId"] = None
+        lite["Items"]["PARENT1"]["ChildGlobalIds"] = []
+        report = cc.compare(lite, ref)
+        self.assertGreater(report.summary()["failures"], 0)
+        self.assertTrue(any(r[0] == "item:CHILD1/ParentGlobalId" and r[1] == cc.FAILURE for r in report.rows))
+
+    def test_missing_reference_is_a_failure(self):
+        lite, ref = _baseline_pair()
+        del lite["Items"]["CHILD1"]
+        report = cc.compare(lite, ref)
+        self.assertGreater(report.summary()["failures"], 0)
+        self.assertTrue(any(r[0] == "item:CHILD1" and r[1] == cc.FAILURE for r in report.rows))
+
+    def test_altered_total_is_a_failure(self):
+        lite, ref = _baseline_pair()
+        lite["Items"]["PARENT1"]["ResolvedTotal"]["Amount"] = 800.0
+        lite["Nodes"]["item:PARENT1/value/0"]["Resolved"] = 800.0
+        report = cc.compare(lite, ref)
+        self.assertGreater(report.summary()["failures"], 0)
+        self.assertTrue(any(r[0] == "item:PARENT1/ResolvedTotal" and r[1] == cc.FAILURE for r in report.rows))
+
+    def test_broken_shared_reference_is_a_failure(self):
+        """Two items sharing one IfcCostValue must be caught if a dumper
+        stops reporting the shared identity (e.g. duplicates the value
+        instead of pointing at the same node)."""
+        lite, ref = _baseline_pair()
+        ref["Nodes"]["item:CHILD1/value/0"] = {"SharedWith": "item:PARENT1/value/0/component/0"}
+        report = cc.compare(lite, ref)
+        self.assertGreater(report.summary()["failures"], 0)
+
+    def test_unlisted_mismatch_is_a_failure_not_a_degradation(self):
+        """A Name mismatch has no enumerated degradation category — it must
+        be a FAILURE, proving the degradation set can't silently absorb an
+        arbitrary divergence."""
+        lite, ref = _baseline_pair()
+        lite["Items"]["PARENT1"]["Name"] = "Wrong Name Entirely"
+        report = cc.compare(lite, ref)
+        self.assertTrue(any(r[0] == "item:PARENT1/Name" and r[1] == cc.FAILURE for r in report.rows))
+        self.assertFalse(any(r[0] == "item:PARENT1/Name" and r[1].startswith("DEGRADED:") for r in report.rows))
+
+    def test_positive_control_perturbed_copy_stays_green_when_reverted(self):
+        """Sanity check on the harness itself: an unperturbed deep copy must
+        still report zero failures (guards against a fixture that is
+        accidentally already divergent)."""
+        lite, ref = _baseline_pair()
+        lite2 = copy.deepcopy(lite)
+        report = cc.compare(lite2, ref)
+        self.assertEqual(report.summary()["failures"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

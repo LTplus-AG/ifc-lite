@@ -25,3 +25,7 @@ reads back with none rather than a guess — and an omitted list attribute is
 written as absent while an EMPTY array is refused, because the two are different
 answers. Cost authoring is refused explicitly under IFC2X3, where the entities
 have a different attribute layout, rather than silently writing nothing.
+
+A fractional `IfcQuantityCount` value is refused rather than silently rounded:
+`IfcQuantityCount.CountValue` is stored as an unparsed string on read, so a
+rounded count would round-trip altered with no trace of the change.

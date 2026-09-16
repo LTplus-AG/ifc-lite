@@ -166,12 +166,14 @@ export function emitPhysicalQuantity(params: CostQuantityParams, emit: EmitEntit
   if (!Number.isFinite(params.Value)) {
     throw new Error(`addIfcPhysicalQuantity: ${params.Kind} '${params.Name}' value must be a finite number`);
   }
+  if (params.Kind === 'IfcQuantityCount' && !Number.isInteger(params.Value)) {
+    throw new Error(
+      `addIfcPhysicalQuantity: IfcQuantityCount '${params.Name}' value must be a finite integer`);
+  }
   const unitRef = params.Unit === undefined
     ? '$'
     : requireRef(params.Unit, 'Unit', 'addIfcPhysicalQuantity');
-  const value = params.Kind === 'IfcQuantityCount'
-    ? num(Math.round(params.Value))
-    : num(params.Value);
+  const value = num(params.Value);
   return emit(params.Kind.toUpperCase(),
     `'${esc(params.Name)}',${optStr(params.Description)},${unitRef},${value},${optStr(params.Formula)}`);
 }

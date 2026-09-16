@@ -390,6 +390,29 @@ describe('IfcCreator cost authoring — malformed input is refused (#4856)', () 
     })).toThrow(/must be a finite number/);
   });
 
+  it('refuses a fractional IfcQuantityCount rather than silently rounding it, and writes nothing partial', () => {
+    const creator = seededCreator(41);
+    const before = creator.addIfcPhysicalQuantity({
+      Kind: 'IfcQuantityLength', Name: 'L', Value: 1,
+    });
+
+    expect(() => creator.addIfcPhysicalQuantity({
+      Kind: 'IfcQuantityCount', Name: 'Units', Value: 3.7,
+    })).toThrow(/IfcQuantityCount.*must be a finite integer/);
+
+    // Proof the failed call wrote NOTHING — not even a malformed line — for
+    // either the express id counter or the STEP text: the next entity gets
+    // the very next id (nothing was silently consumed), and the STEP text
+    // contains no IFCQUANTITYCOUNT record at all.
+    const next = creator.addIfcPhysicalQuantity({
+      Kind: 'IfcQuantityLength', Name: 'M', Value: 2,
+    });
+    expect(next).toBe(before + 1);
+
+    const step = creator.toIfc().content;
+    expect(step).not.toContain('IFCQUANTITYCOUNT');
+  });
+
   it('refuses an invented currency of ""', () => {
     const creator = seededCreator(5);
     expect(() => creator.addIfcMonetaryUnit('  ')).toThrow(/non-empty string/);

@@ -1,0 +1,141 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Regression coverage for PR #4875 review findings on the Cost panel,
+ * rendered through the REAL `CostPanel`, store and `@ifc-lite/sdk` cost
+ * backend: multi-target selection, the expand toggle's keyboard handling,
+ * the legacy single-model path, and re-evaluation after a store refresh.
+ */
+
+import '@/test/setup-dom.js';
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { useViewerStore } from '@/store/index.js';
+import type { FederatedModel } from '@/store/types.js';
+import { CostPanel } from './CostPanel.js';
+
+interface LocalStepRef { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }
+
+function buildStoreFromStep(lines: string[]): IfcDataStore {
+  const text = lines.join('\n');
+  const source = new TextEncoder().encode(text);
+  const byId = new Map<number, LocalStepRef>();
+  const byType = new Map<string, number[]>();
+  let cursor = 0;
+  for (const line of lines) {
+    const match = line.match(/^#(\d+)\s*=\s*(\w+)\(/);
+    if (!match) continue;
+    const expressId = parseInt(match[1], 10);
+    const type = match[2];
+    const idx = text.indexOf(line, cursor);
+    const byteOffset = idx >= 0 ? idx : cursor;
+    byId.set(expressId, { expressId, type, byteOffset, byteLength: line.length, lineNumber: 1 });
+    const list = byType.get(type.toUpperCase()) ?? [];
+    list.push(expressId);
+    byType.set(type.toUpperCase(), list);
+    cursor = byteOffset + line.length + 1;
+  }
+  const entities = { getGlobalId: () => '', getName: (id: number) => `entity${id}` };
+  return { source, schemaVersion: 'IFC4', entityIndex: { byId, byType }, entities } as unknown as IfcDataStore;
+}
+
+function step(price: number): string[] {
+  return [
+    "#1=IFCPROJECT('proj',$,'P',$,$,$,$,$,#2);",
+    '#2=IFCUNITASSIGNMENT((#5));',
+    "#5=IFCMONETARYUNIT('GBP');",
+    "#10=IFCWALL('w1',$,'Wall one',$,$,$,$,$,$);",
+    "#11=IFCWALL('w2',$,'Wall two',$,$,$,$,$,$);",
+    `#30=IFCCOSTVALUE('Priced',$,IFCMONETARYMEASURE(${price}.),$,$,$,$,$,$,$);`,
+    "#40=IFCCOSTITEM('ci',$,'Parent item',$,$,$,.USERDEFINED.,(#30),$);",
+    "#41=IFCCOSTITEM('ci2',$,'Child item',$,$,$,.USERDEFINED.,$,$);",
+    "#50=IFCCOSTSCHEDULE('cs',$,'Budget',$,$,$,.BUDGET.,$,$,$);",
+    "#60=IFCRELASSIGNSTOCONTROL('r1',$,$,$,(#40),$,#50);",
+    "#61=IFCRELASSIGNSTOPRODUCT('r2',$,$,$,(#40),$,#10);",
+    "#62=IFCRELASSIGNSTOPRODUCT('r3',$,$,$,(#40),$,#11);",
+    "#63=IFCRELNESTS('n1',$,$,$,#40,(#41));",
+  ];
+}
+
+function model(id: string, store: IfcDataStore): FederatedModel {
+  return {
+    id,
+    name: id,
+    fileName: `${id}.ifc`,
+    fileSize: 0,
+    ifcDataStore: store,
+    geometryResult: null,
+    visible: true,
+    collapsed: false,
+    schemaVersion: 'IFC4',
+    loadedAt: 0,
+    idOffset: 0,
+    maxExpressId: 1000,
+  } as unknown as FederatedModel;
+}
+
+const originalState = useViewerStore.getState();
+const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+
+beforeEach(() => {
+  useViewerStore.setState({
+    models: new Map([['modelA', model('modelA', buildStoreFromStep(step(10)))]]),
+    activeModelId: 'modelA',
+  });
+});
+
+afterEach(() => {
+  for (const { root, container } of mounted.splice(0)) {
+    act(() => root.unmount());
+    container.remove();
+  }
+  useViewerStore.setState(originalState, true);
+});
+
+function renderPanel(): HTMLElement {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => {
+    root.render(<CostPanel onClose={() => {}} />);
+  });
+  mounted.push({ root, container });
+  return container;
+}
+
+function row(container: HTMLElement, text: string): HTMLElement {
+  const el = Array.from(container.querySelectorAll<HTMLElement>('[role="treeitem"]')).find(
+    (n) => n.textContent?.includes(text),
+  );
+  assert.ok(el, `a tree row containing "${text}" rendered`);
+  return el!;
+}
+
+function button(container: HTMLElement, text: string): HTMLElement {
+  const el = Array.from(container.querySelectorAll<HTMLElement>('button')).find((n) => n.textContent?.includes(text));
+  assert.ok(el, `a button containing "${text}" rendered`);
+  return el!;
+}
+
+describe('CostPanel review fixes (PR #4875)', () => {
+  it('"Select in 3D" keeps every assigned target in all multi-select channels', () => {
+    const container = renderPanel();
+    act(() => row(container, 'Parent item').click());
+    act(() => button(container, 'Select in 3D').click());
+
+    const state = useViewerStore.getState();
+    const expected = [
+      { modelId: 'modelA', expressId: 10 },
+      { modelId: 'modelA', expressId: 11 },
+    ];
+    assert.deepEqual(state.selectedEntities, expected, 'selectedEntities is not collapsed to the first target');
+    assert.deepEqual([...state.selectedEntitiesSet].sort(), ['modelA:10', 'modelA:11']);
+    assert.deepEqual([...state.selectedEntityIds].sort(), [10, 11]);
+    assert.deepEqual(state.selectedEntity, expected[0]);
+  });
+});

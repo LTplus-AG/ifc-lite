@@ -244,3 +244,72 @@ describe('buildCostTree — nesting, schedule assignment, and the unassigned buc
     assert.deepEqual(getOwningSchedules(graph, { modelId: 'm1', expressId: 40 }), []);
   });
 });
+
+describe('buildCostTree — IfcRelNests may legally nest a non-cost-item child', () => {
+  it('drops the non-cost-item child but keeps the real sibling, and never throws', () => {
+    // #10 is an IfcWall, not an IfcCostItem — schema-valid RelatedObjects
+    // member of IfcRelNests (it may decompose any IfcObjectDefinition).
+    // Without the `itemsByKey.has(childKey)` guard at cost-tree.ts:123,
+    // buildNode(#10) is reached and throws "item ... vanished mid-build",
+    // crashing the whole Cost panel for this model.
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#10=IFCWALL('w',$,'Not a cost item',$,$,$,$,$,$);",
+      "#40=IFCCOSTITEM('ciA',$,'Parent item',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('ciB',$,'Real child',$,$,$,.USERDEFINED.,$,$);",
+      "#60=IFCRELNESTS('n1',$,$,$,#40,(#10,#41));",
+    ]);
+    const graph = backendFor('m1', store).data();
+
+    // Fixture can fail: without the guard, this call throws synchronously.
+    const tree = buildCostTree(graph);
+
+    assert.equal(tree.unassignedItems.length, 1);
+    assert.equal(tree.unassignedItems[0].item.Name, 'Parent item');
+    // The real cost-item child still surfaces — and ONLY it, the wall never
+    // masquerades as a nested cost-tree node.
+    assert.deepEqual(tree.unassignedItems[0].children.map((c) => c.item.Name), ['Real child']);
+  });
+});
+
+describe('buildCostTree — a cost item as RelatingControl (alternate nesting idiom)', () => {
+  it('surfaces items assigned to a non-schedule control in the unassigned bucket, never silently dropped', () => {
+    // `IfcCostItem` is an `IfcControl`, so #40 legally sits as the
+    // `RelatingControl` of an `IfcRelAssignsToControl` naming #41 — schema
+    // -valid but NOT a schedule assignment. Without the
+    // `schedulesByKey.has(controlKey)` guard at cost-tree.ts:153, #41 gets
+    // marked "assigned" against a bogus schedule key that matches no real
+    // `IfcCostSchedule` node, so it vanishes from both the schedule tree
+    // and the unassigned bucket — contradicting cost-tree.ts's own stated
+    // goal that nothing a real model declares is silently dropped.
+    //
+    // Decision: both #40 (the control) and #41 (its related item) belong
+    // in the unassigned bucket. Neither is nested (no IfcRelNests) and
+    // neither is assigned to a real IfcCostSchedule, so under the tree's
+    // existing "not assigned AND not nested" rule they surface there —
+    // the same place a cost item with no relationships at all would land.
+    //
+    // A real schedule assignment (#42 -> #50) is included alongside so the
+    // fixture can fail: without the guard, #41 disappears from BOTH
+    // buckets while #42 still resolves correctly under its real schedule,
+    // proving the bug is specific to the bogus-control path.
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#40=IFCCOSTITEM('ciX',$,'Not a schedule control',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('ciY',$,'Related item',$,$,$,.USERDEFINED.,$,$);",
+      "#42=IFCCOSTITEM('ciZ',$,'Scheduled item',$,$,$,.USERDEFINED.,$,$);",
+      "#50=IFCCOSTSCHEDULE('cs1',$,'Real schedule',$,$,$,.BUDGET.,$,$,$);",
+      "#60=IFCRELASSIGNSTOCONTROL('r1',$,$,$,(#41),$,#40);",
+      "#61=IFCRELASSIGNSTOCONTROL('r2',$,$,$,(#42),$,#50);",
+    ]);
+    const graph = backendFor('m1', store).data();
+    const tree = buildCostTree(graph);
+
+    assert.equal(tree.schedules.length, 1);
+    assert.deepEqual(tree.schedules[0].items.map((n) => n.item.Name), ['Scheduled item']);
+    assert.deepEqual(
+      tree.unassignedItems.map((n) => n.item.Name).sort(),
+      ['Not a schedule control', 'Related item'],
+    );
+  });
+});

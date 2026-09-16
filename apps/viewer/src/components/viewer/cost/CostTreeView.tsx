@@ -50,6 +50,7 @@ function ItemRow({
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const selected = refEquals(selectedRef, node.ref);
+  const { t } = useTranslation();
   return (
     <div>
       <div
@@ -74,14 +75,14 @@ function ItemRow({
               setExpanded((v) => !v);
             }}
             className="shrink-0 text-muted-foreground"
-            aria-label={expanded ? 'Collapse' : 'Expand'}
+            aria-label={expanded ? t('costPanel.collapse') : t('costPanel.expand')}
           >
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <span className="truncate">{node.item.Name ?? `Cost item #${node.ref.expressId}`}</span>
+        <span className="truncate">{node.item.Name ?? t('costPanel.itemFallbackName', { id: node.ref.expressId })}</span>
         {node.item.Identification && (
           <span className="shrink-0 text-[10px] text-muted-foreground">{node.item.Identification}</span>
         )}
@@ -165,7 +166,7 @@ function CostGraphTree({
       )}
       {tree.schedules.map((schedule) => (
         <div key={`${modelId}:${schedule.ref.expressId}`} className="mb-1">
-          <div className="truncate text-[11px] font-semibold">{schedule.schedule.Name ?? `Schedule #${schedule.ref.expressId}`}</div>
+          <div className="truncate text-[11px] font-semibold">{schedule.schedule.Name ?? t('costPanel.scheduleFallbackName', { id: schedule.ref.expressId })}</div>
           {schedule.items.length === 0 ? (
             <div className="pl-4 text-[10px] text-muted-foreground">{t('costPanel.noItemsInSchedule')}</div>
           ) : (

@@ -27,6 +27,13 @@ import createBuilding from './templates/create-building.ts?raw';
 import constructionSchedule from './templates/construction-schedule.ts?raw';
 import costReport from './templates/cost-report.ts?raw';
 
+// Real import (this file, unlike the templates above, runs as normal app
+// code — not inside the QuickJS script sandbox) so the `cost-report`
+// template's cycle-code check can be injected from the Cost panel's own
+// list rather than hand-copied (finding: templates.ts and cost-tree.ts
+// must agree on which diagnostic codes count as "cyclic" — see
+// templates.test.ts).
+import { CYCLE_CODES_LIST } from '../cost/cost-tree';
 
 export interface ScriptTemplate {
   name: string;
@@ -37,6 +44,22 @@ export interface ScriptTemplate {
 /** Strip the `export {}` module boundary line that enables type checking */
 function stripModuleLine(raw: string): string {
   return raw.replace(/^export \{\}[^\n]*\n\n?/, '');
+}
+
+/**
+ * Substitute the `cost-report` template's placeholder cycle-code literal
+ * with the real, current `CYCLE_CODES_LIST` from `cost-tree.ts` — the
+ * script sandbox has no module resolution of its own, so this is the only
+ * point where the template and the Cost panel can share one source of
+ * truth. Throws if the marker is missing so a future edit to the template
+ * can't silently drop the substitution.
+ */
+function injectCycleCodes(raw: string): string {
+  const marker = /const cycleCodes: string\[\] = \[[^\]]*\] \/\/ CYCLE_CODES_INJECT/;
+  if (!marker.test(raw)) {
+    throw new Error('cost-report.ts: CYCLE_CODES_INJECT marker not found — template/cost-tree.ts sync is broken');
+  }
+  return raw.replace(marker, `const cycleCodes: string[] = ${JSON.stringify(CYCLE_CODES_LIST)} // CYCLE_CODES_INJECT`);
 }
 
 export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
@@ -98,7 +121,7 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     name: 'Cost report (5D)',
     description:
       'Cost Estimator — read the loaded IfcCostSchedule/IfcCostItem graph via bim.cost, print resolved amounts (or diagnostics for what could not be evaluated), and export a CSV. Read-only.',
-    code: stripModuleLine(costReport),
+    code: stripModuleLine(injectCycleCodes(costReport)),
   },
   {
     name: 'Reset view',

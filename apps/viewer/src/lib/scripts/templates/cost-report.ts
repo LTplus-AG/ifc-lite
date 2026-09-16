@@ -37,9 +37,15 @@ if (!data.HasCostData) {
       : '[cost] no project currency declared.')
   }
 
-  const cyclic = data.Diagnostics.some((d) => d.Code === 'NESTING_CYCLE')
+  // Kept in sync with the Cost panel's own `CYCLE_CODES_LIST`
+  // (apps/viewer/src/lib/cost/cost-tree.ts) — templates.ts substitutes the
+  // real list into the literal below at template-build time (see the
+  // CYCLE_CODES_INJECT marker and templates.test.ts's sync assertion), so
+  // this file never hand-duplicates which diagnostic codes count as cyclic.
+  const cycleCodes: string[] = ['NESTING_CYCLE'] // CYCLE_CODES_INJECT
+  const cyclic = data.Diagnostics.some((d) => cycleCodes.includes(d.Code))
   if (cyclic) {
-    console.log('[cost] WARNING: a cost item nesting cycle was detected — see per-item diagnostics below.')
+    console.log('[cost] WARNING: a cost item cycle was detected — see per-item diagnostics below.')
   }
 
   type Row = { id: string; name: string; identification: string; amount: string; currency: string; diagnostics: string }

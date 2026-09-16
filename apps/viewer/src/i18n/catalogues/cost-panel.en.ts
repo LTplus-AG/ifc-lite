@@ -25,4 +25,9 @@ export const costPanelEn = {
   'costPanel.assignedTargets': 'Assigned products / tasks',
   'costPanel.selectInViewport': 'Select in 3D',
   'costPanel.noAssignedTargets': 'No products or tasks assigned.',
+  'costPanel.collapse': 'Collapse',
+  'costPanel.expand': 'Expand',
+  'costPanel.itemFallbackName': 'Cost item #{id}',
+  'costPanel.scheduleFallbackName': 'Schedule #{id}',
+  'costPanel.identification': 'ID {value}',
 } as const satisfies Record<string, TranslationValue>;

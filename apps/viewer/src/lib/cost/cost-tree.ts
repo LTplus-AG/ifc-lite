@@ -56,7 +56,13 @@ export interface CostTree {
   unassignedItems: CostTreeItemNode[];
 }
 
-const CYCLE_CODES = new Set<CostDiagnosticData['Code']>(['NESTING_CYCLE', 'QUANTITY_CYCLE', 'VALUE_CYCLE']);
+/** The cycle diagnostic codes the Cost panel treats as "cyclic". Exported
+ *  so `templates.ts` can inject the same list into the `cost-report`
+ *  script template at build time instead of duplicating it — a hand-copied
+ *  list in the template would silently drift from this one the next time a
+ *  cycle code is added here (see `templates.test.ts`). */
+export const CYCLE_CODES_LIST: readonly CostDiagnosticData['Code'][] = ['NESTING_CYCLE', 'QUANTITY_CYCLE', 'VALUE_CYCLE'];
+const CYCLE_CODES = new Set<CostDiagnosticData['Code']>(CYCLE_CODES_LIST);
 
 export interface CostModelStateFlags {
   /** Verbatim from the extractor — the authoritative "this model genuinely

@@ -119,7 +119,7 @@ describe('CostPanel teardown (#4858)', () => {
     const container = renderPanel();
     clickText(container, 'Teardown item');
     assert.match(container.textContent ?? '', /Resolved value/, 'detail pane shows the selected item');
-    assert.match(container.textContent ?? '', /10 GBP|10GBP|10/, 'resolved amount rendered');
+    assert.match(container.textContent ?? '', /10 GBP/, 'resolved amount rendered');
 
     act(() => {
       useViewerStore.getState().removeModel('modelA');

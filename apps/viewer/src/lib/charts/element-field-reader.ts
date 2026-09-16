@@ -193,14 +193,7 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     const property = propertyFor(id, binding.psetName, binding.propertyName);
     if (property?.values && property.values.length !== 1) return { value: null, status: 'unsupported' };
     const normalized = normalizeElementFieldValue(property?.value, binding.valueKind);
-    const value = binding.valueKind === 'category'
-      && normalized.status === 'value'
-      && typeof normalized.value === 'string'
-      && property?.unit
-      && (typeof property.value === 'number' || (Array.isArray(property.value) && typeof property.value[1] === 'number'))
-      ? `${normalized.value} ${property.unit}`
-      : normalized.value;
-    return { ...normalized, value, ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
+    return { ...normalized, ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
   };
 
   return {

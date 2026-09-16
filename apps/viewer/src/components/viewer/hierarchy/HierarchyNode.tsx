@@ -368,15 +368,15 @@ export function HierarchyNode({
         )}
 
         {/* Storey Elevation */}
-        {node.storeyElevation !== undefined && (
+        {node.storeyDisplayElevation !== undefined && (
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-none">
-                {node.storeyElevation >= 0 ? '+' : ''}{node.storeyElevation.toFixed(2)}m
+                {node.storeyDisplayElevation >= 0 ? '+' : ''}{node.storeyDisplayElevation.toFixed(2)}m
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">Elevation: {node.storeyElevation >= 0 ? '+' : ''}{node.storeyElevation.toFixed(2)}m</p>
+              <p className="text-xs">Elevation: {node.storeyDisplayElevation >= 0 ? '+' : ''}{node.storeyDisplayElevation.toFixed(2)}m</p>
             </TooltipContent>
           </Tooltip>
         )}

@@ -33,6 +33,35 @@ import {
 import type { TreeNode, NodeType, StoreyData, UnifiedStorey, HierarchySortMode } from './types';
 import { DEFAULT_HIERARCHY_SORT } from './types';
 import { getSpatialNodeElements, indexSpatialNodes } from './spatialElements';
+import {
+  createStoreyDisplayElevationResolver,
+} from '@/lib/geo/storey-elevation';
+import type { GeorefMutationDataLike } from '@/lib/geo/effective-georef';
+
+/** Per-model georef edits, keyed like the store's `georefMutations`. */
+export type GeorefMutationsByModel = ReadonlyMap<string, GeorefMutationDataLike>;
+
+/** Absolute storey elevation for a badge, given the relative one (#4843). */
+type StoreyDisplayElevation = (storeyId: number, relativeElevationMeters: number) => number;
+
+/** The badge value source for one model. Legacy single-store mode keys its
+ *  georef edits under `__legacy__`, matching the Inspector. */
+function storeyDisplayElevationFor(
+  modelId: string,
+  dataStore: IfcDataStore,
+  model: FederatedModel | undefined,
+  georefMutations: GeorefMutationsByModel | undefined,
+): StoreyDisplayElevation {
+  const mutationKey = modelId === 'legacy' ? '__legacy__' : modelId;
+  return createStoreyDisplayElevationResolver(
+    dataStore,
+    model?.geometryResult?.coordinateInfo,
+    georefMutations?.get(mutationKey),
+  );
+}
+
+/** Two contributors show the same badge when they round to the same centimetre. */
+const DISPLAY_ELEVATION_AGREEMENT_M = 0.005;
 
 /** Helper to create elevation key (with 0.5m tolerance for matching) */
 export function elevationKey(elevation: number): string {
@@ -141,6 +170,7 @@ export function buildUnifiedStoreys(
   sortMode: HierarchySortMode = DEFAULT_HIERARCHY_SORT,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
+  georefMutations?: GeorefMutationsByModel,
 ): UnifiedStorey[] {
   if (models.size <= 1) return [];
 
@@ -158,6 +188,7 @@ export function buildUnifiedStoreys(
       ? indexSpatialNodes(hierarchy.project)
       : new Map<number, SpatialNode>();
     const descendantSpaceCache = new Map<number, Set<number>>();
+    const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
 
     for (const [storeyId, elements] of byStorey.entries()) {
       const elevation = storeyElevations.get(storeyId) ?? 0;
@@ -181,6 +212,7 @@ export function buildUnifiedStoreys(
         storeyId,
         name,
         elevation,
+        displayElevation: displayElevationOf(storeyId, elevation),
         elements: directElements,
         objects: summarizeObjects(
           directElements,
@@ -204,11 +236,18 @@ export function buildUnifiedStoreys(
         if (name.length < unified.name.length) {
           unified.name = name;
         }
+        if (
+          unified.displayElevation !== undefined
+          && Math.abs(unified.displayElevation - storeyData.displayElevation) > DISPLAY_ELEVATION_AGREEMENT_M
+        ) {
+          unified.displayElevation = undefined;
+        }
       } else {
         storeysByElevation.set(key, {
           key,
           name,
           elevation,
+          displayElevation: storeyData.displayElevation,
           storeys: [storeyData],
           totalElements: directElements.length,
           objects: storeyData.objects,
@@ -253,6 +292,7 @@ function buildSpatialNodes(
   descendantSpaceCache: Map<number, Set<number>>,
   sortMode: HierarchySortMode,
   hasShape: ((id: number) => boolean) | null = null,
+  displayElevationOf: StoreyDisplayElevation | null = null,
 ): void {
   const nodeId = `${parentNodeId}-${spatialNode.expressId}`;
   const nodeType = getNodeType(spatialNode.type);
@@ -313,7 +353,9 @@ function buildSpatialNodes(
     elementCount: hasDirectElements ? objects.counted : undefined,
     countSummary: hasDirectElements ? objects : undefined,
     countTooltipLines: hasDirectElements ? countBadgeLines(objects.counted, objects) : undefined,
-    storeyElevation: spatialNode.elevation,
+    storeyDisplayElevation: spatialNode.elevation === undefined
+      ? undefined
+      : (displayElevationOf?.(spatialNode.expressId, spatialNode.elevation) ?? spatialNode.elevation),
     // Store idOffset for lazy visibility computation
     _idOffset: idOffset,
   });
@@ -348,6 +390,7 @@ function buildSpatialNodes(
         descendantSpaceCache,
         sortMode,
         hasShape,
+        displayElevationOf,
       );
     }
 
@@ -382,6 +425,7 @@ export function buildTreeData(
   sortMode: HierarchySortMode = DEFAULT_HIERARCHY_SORT,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
+  georefMutations?: GeorefMutationsByModel,
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
 
@@ -407,7 +451,7 @@ export function buildTreeData(
         elementCount: unified.objects.counted,
         countSummary: unified.objects,
         countTooltipLines: countBadgeLines(unified.objects.counted, unified.objects),
-        storeyElevation: unified.elevation,
+        storeyDisplayElevation: unified.displayElevation,
       });
 
       // If expanded, show elements grouped by model
@@ -435,6 +479,11 @@ export function buildTreeData(
             elementCount: storey.objects.counted,
             countSummary: storey.objects,
             countTooltipLines: countBadgeLines(storey.objects.counted, storey.objects),
+            // Federated models can sit at different absolute heights even when
+            // their relative elevations group them together; label each one.
+            storeyDisplayElevation: unified.displayElevation === undefined
+              ? storey.displayElevation
+              : undefined,
             _idOffset: offset,
           });
 
@@ -522,6 +571,7 @@ export function buildTreeData(
             geometricIds,
             geometryReadyModelIds?.has(modelId),
           ),
+          storeyDisplayElevationFor(modelId, model.ifcDataStore, model, georefMutations),
         );
       }
     }
@@ -550,6 +600,7 @@ export function buildTreeData(
           geometricIds,
           geometryReadyModelIds?.has(modelId),
         ),
+        storeyDisplayElevationFor(modelId, model.ifcDataStore, model, georefMutations),
       );
     }
   } else if (ifcDataStore?.spatialHierarchy?.project) {
@@ -575,6 +626,7 @@ export function buildTreeData(
         geometricIds,
         geometryReadyModelIds?.has('legacy'),
       ),
+      storeyDisplayElevationFor('legacy', ifcDataStore, undefined, georefMutations),
     );
   }
 

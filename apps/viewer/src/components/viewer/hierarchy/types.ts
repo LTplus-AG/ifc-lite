@@ -96,7 +96,15 @@ export interface TreeNode {
    * can be asserted through the same entry point as the number it explains.
    */
   countTooltipLines?: string[];
-  storeyElevation?: number;
+  /**
+   * The storey elevation badge, in metres, for DISPLAY only: the storey's
+   * absolute height (world Z through the placement chain, or height above the
+   * map datum when georeferenced), computed per model — see
+   * `displayStoreyElevationMeters` (#4843). Never feed it back into grouping,
+   * sorting, matching or placement, which use the relative
+   * `spatialHierarchy.storeyElevations`.
+   */
+  storeyDisplayElevation?: number;
   /** Internal: ID offset for lazy visibility computation */
   _idOffset?: number;
   /**
@@ -127,7 +135,10 @@ export interface StoreyData {
   modelId: string;
   storeyId: number;
   name: string;
+  /** Model-relative elevation (m): drives grouping, sorting and matching. */
   elevation: number;
+  /** Absolute elevation (m) for the badge only (#4843). */
+  displayElevation: number;
   /** Everything contained in the storey — what the tree lists. */
   elements: number[];
   /** The object count and its breakdown — what a badge may show. */
@@ -138,7 +149,13 @@ export interface StoreyData {
 export interface UnifiedStorey {
   key: string;  // Elevation-based key for matching
   name: string;
+  /** Model-relative elevation (m) of the first contributor: grouping/sorting. */
   elevation: number;
+  /**
+   * Absolute elevation (m) for the badge (#4843), or undefined when the
+   * contributing models disagree — each model row then shows its own.
+   */
+  displayElevation?: number;
   storeys: StoreyData[];
   /** Contained entities across every contributing model — rows, not objects. */
   totalElements: number;

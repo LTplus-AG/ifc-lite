@@ -43,11 +43,11 @@ except ImportError:  # the stdlib-only lanes have no reference engine
 CHAIN_DEPTH = 1500
 
 
-def _ifc(data_lines):
+def _ifc(data_lines, schema="IFC4"):
     return "\n".join([
         "ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION(('cost dumper test'),'2;1');",
         "FILE_NAME('t.ifc','2026-09-16T00:00:00',(''),(''),'','','');",
-        "FILE_SCHEMA(('IFC4'));", "ENDSEC;", "DATA;",
+        f"FILE_SCHEMA(('{schema}'));", "ENDSEC;", "DATA;",
         *data_lines,
         "ENDSEC;", "END-ISO-10303-21;", "",
     ])
@@ -87,6 +87,20 @@ def currency_model(assigned_units, extra_units=""):
     return _ifc(lines)
 
 
+def number_quantity_model():
+    """An IFC4X3 cost item with one IfcQuantityNumber (3.0)."""
+    return _ifc([
+        "#1=IFCPROJECT('0JYq7Z8qH3nP9JjM4fLg2A',$,'p',$,$,$,$,$,$);",
+        "#20=IFCQUANTITYNUMBER('Fixings',$,$,3.,$);",
+        "#30=IFCCOSTVALUE('v',$,IFCMONETARYMEASURE(5.),$,$,$,$,$,$,$);",
+        "#10=IFCCOSTITEM('1JYq7Z8qH3nP9JjM4fLg2A',$,'i',$,$,'CI-1',.USERDEFINED.,(#30),(#20));",
+    ], schema="IFC4X3_ADD2")
+
+
+def _number_quantity(dump):
+    return dump["Nodes"]["item:1JYq7Z8qH3nP9JjM4fLg2A/quantity/0"]
+
+
 def _chain_root(dump):
     return dump["Nodes"]["item:1JYq7Z8qH3nP9JjM4fLg2A/value/0"]
 
@@ -119,6 +133,10 @@ class ReferenceDumper(unittest.TestCase):
         self.assertIsNone(category("$"))
         self.assertEqual(category("'Labor'"), "Labor")
 
+    def test_quantity_number_carries_its_value_and_dimension(self):
+        quantity = _number_quantity(self.dump(number_quantity_model()))
+        self.assertEqual((quantity["Dimension"], quantity["Value"]), ("number", 3.0))
+
     def test_deep_applied_value_chain_does_not_hit_the_recursion_limit(self):
         dump = self.dump(chain_model(CHAIN_DEPTH))
         self.assertEqual(_chain_root(dump)["Resolved"], 5.0)
@@ -146,6 +164,10 @@ class IfcLiteDumper(unittest.TestCase):
     def test_currency_comes_from_units_in_context_not_step_order(self):
         dump = self.dump(currency_model(["GBP"], extra_units="#5=IFCMONETARYUNIT('EUR');"))
         self.assertEqual(dump["Currency"], "GBP")
+
+    def test_quantity_number_carries_its_value_and_dimension(self):
+        quantity = _number_quantity(self.dump(number_quantity_model()))
+        self.assertEqual((quantity["Dimension"], quantity["Value"]), ("number", 3))
 
     def test_deep_applied_value_chain_does_not_overflow_the_stack(self):
         dump = self.dump(chain_model(CHAIN_DEPTH), "--stack-size=200")

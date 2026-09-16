@@ -188,6 +188,8 @@ class NodeRegistry:
             "IfcQuantityCount": ("CountValue", "count"),
             "IfcQuantityWeight": ("WeightValue", "weight"),
             "IfcQuantityTime": ("TimeValue", "time"),
+            # IFC4X3 only.
+            "IfcQuantityNumber": ("NumberValue", "number"),
         }.get(type_name, (None, None))
         value = numeric(getattr(entity, dimension_field[0], None)) if dimension_field[0] else None
         self.nodes[path] = {

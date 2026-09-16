@@ -194,7 +194,12 @@ jobs:
   cost-quick:
     name: cost parity (in-tree fixture, committed reference)
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: ubuntu-24.04-arm
+    # x64, unlike `quick`/`full` above: those only need maturin/Python
+    # wheels (fine on the arm runner), but this job needs the WASM
+    # toolchain (`./.github/actions/setup-wasm-build`, pinned
+    # jetli/wasm-pack-action@v0.15.0), which is only validated against
+    # x64 — the same runner test.yml's own WASM build job uses.
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -257,7 +262,7 @@ jobs:
   cost-full:
     name: cost full corpus (pinned reference engine)
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4

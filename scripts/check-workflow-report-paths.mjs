@@ -137,7 +137,7 @@ const REQUIRED_STEP_RUN = new Map([
 const REPORTER_NEEDS = new Map([
   ['determinism.yml', ['arm64-determinism', 'wasm32-mesh-determinism']],
   ['export-schema-conformance.yml', ['validate']],
-  ['ifcopenshell-parity.yml', ['full']],
+  ['ifcopenshell-parity.yml', ['full', 'cost-full']],
   ['wide-arithmetic.yml', ['wide-arithmetic-tripwire']],
   ['xmatch-fixture.yml', ['content-matching-fixture']],
 ]);

@@ -131,8 +131,10 @@ function pushUnique(lists: Map<string, string[]>, seen: Set<string>, owner: stri
  *    `RelatedObjects` (cost items) as children.
  *
  * A child appearing under its parent via `IfcRelNests` is not ALSO listed
- * as a schedule root even if it happens to carry its own control
- * assignment elsewhere — the tree shows nesting structure once.
+ * as a root of a schedule whose tree already contains that parent — within
+ * one schedule the tree shows nesting structure once. When the parent is
+ * outside the schedule, the directly assigned child is still that
+ * schedule's root.
  *
  * Items reachable from no root (an unscheduled nesting cycle A → B → A has
  * no un-nested member) get one representative root per component, chosen
@@ -145,6 +147,7 @@ export function buildCostTree(graph: CostGraphData): CostTree {
   const childKeysByParent = new Map<string, string[]>();
   const nestedChildKeys = new Set<string>();
   const firstParentByChild = new Map<string, string>();
+  const parentKeysByChild = new Map<string, string[]>();
   const seenNestPairs = new Set<string>();
   const scheduleRootKeysBySchedule = new Map<string, string[]>();
   const assignedItemKeys = new Set<string>();
@@ -160,6 +163,9 @@ export function buildCostTree(graph: CostGraphData): CostTree {
         pushUnique(childKeysByParent, seenNestPairs, parentKey, childKey);
         nestedChildKeys.add(childKey);
         if (!firstParentByChild.has(childKey)) firstParentByChild.set(childKey, parentKey);
+        const parents = parentKeysByChild.get(childKey);
+        if (parents) parents.push(parentKey);
+        else parentKeysByChild.set(childKey, [parentKey]);
       }
     } else if (isScheduleAssignment(rel) && rel.RelatingControl) {
       const controlKey = refKey(rel.RelatingControl);
@@ -206,20 +212,41 @@ export function buildCostTree(graph: CostGraphData): CostTree {
     return root;
   }
 
-  const reached = new Set<string>();
-  function markReachable(rootKey: string): void {
+  /** Add every key reachable from `rootKey` through nesting to `into`. */
+  function collectReachable(rootKey: string, into: Set<string>): void {
     const pending = [rootKey];
     while (pending.length > 0) {
       const key = pending.pop()!;
-      if (reached.has(key)) continue;
-      reached.add(key);
+      if (into.has(key)) continue;
+      into.add(key);
       for (const childKey of childKeysByParent.get(key) ?? []) pending.push(childKey);
     }
   }
 
+  const reached = new Set<string>();
+  const markReachable = (rootKey: string): void => collectReachable(rootKey, reached);
+
   const schedules: CostTreeScheduleNode[] = graph.CostSchedules.map((schedule) => {
     const key = refKey(schedule.ref);
-    const rootKeys = (scheduleRootKeysBySchedule.get(key) ?? []).filter((k) => !nestedChildKeys.has(k));
+    const assignedKeys = scheduleRootKeysBySchedule.get(key) ?? [];
+    // A directly assigned item is a root of THIS schedule unless one of its
+    // nesting parents is already placed in this schedule's tree (it then
+    // shows under that parent). A parent outside the schedule does not
+    // hide it, or the schedule would render empty.
+    const inSchedule = new Set<string>();
+    for (const assignedKey of assignedKeys) collectReachable(assignedKey, inSchedule);
+    const rootKeys = assignedKeys.filter(
+      (k) => !(parentKeysByChild.get(k) ?? []).some((parentKey) => inSchedule.has(parentKey)),
+    );
+    // Assigned items that nest each other in a cycle all have a parent in
+    // the schedule; the first one not yet covered becomes a root.
+    const covered = new Set<string>();
+    for (const rootKey of rootKeys) collectReachable(rootKey, covered);
+    for (const assignedKey of assignedKeys) {
+      if (covered.has(assignedKey)) continue;
+      rootKeys.push(assignedKey);
+      collectReachable(assignedKey, covered);
+    }
     rootKeys.forEach(markReachable);
     return {
       ref: schedule.ref,

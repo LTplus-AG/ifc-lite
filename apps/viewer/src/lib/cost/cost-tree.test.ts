@@ -408,3 +408,36 @@ describe('buildCostTree — review findings on PR #4875', () => {
     assert.equal(levels, depth);
   });
 });
+
+describe('buildCostTree — follow-up review findings on PR #4875', () => {
+  it('keeps a directly assigned child as a schedule root when its nesting parent is outside the schedule', () => {
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#40=IFCCOSTITEM('a',$,'Unassigned parent',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('b',$,'Scheduled child',$,$,$,.USERDEFINED.,$,$);",
+      "#50=IFCCOSTSCHEDULE('cs',$,'Budget',$,$,$,.BUDGET.,$,$,$);",
+      "#60=IFCRELNESTS('n1',$,$,$,#40,(#41));",
+      "#61=IFCRELASSIGNSTOCONTROL('r1',$,$,$,(#41),$,#50);",
+    ]);
+    const tree = buildCostTree(backendFor('m1', store).data());
+    assert.deepEqual(tree.schedules[0].items.map((n) => n.item.Name), ['Scheduled child']);
+    assert.deepEqual(tree.unassignedItems.map((n) => n.item.Name), ['Unassigned parent']);
+    assert.deepEqual(tree.unassignedItems[0].children.map((n) => n.item.Name), ['Scheduled child']);
+  });
+
+  it('keeps schedule-assigned items that nest each other in a cycle visible under the schedule', () => {
+    const store = buildStoreFromStep([
+      ...PROJECT_GBP,
+      "#40=IFCCOSTITEM('a',$,'A',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('b',$,'B',$,$,$,.USERDEFINED.,$,$);",
+      "#50=IFCCOSTSCHEDULE('cs',$,'Budget',$,$,$,.BUDGET.,$,$,$);",
+      "#60=IFCRELNESTS('n1',$,$,$,#40,(#41));",
+      "#61=IFCRELNESTS('n2',$,$,$,#41,(#40));",
+      "#62=IFCRELASSIGNSTOCONTROL('r1',$,$,$,(#40,#41),$,#50);",
+    ]);
+    const tree = buildCostTree(backendFor('m1', store).data());
+    assert.deepEqual(tree.schedules[0].items.map((n) => n.item.Name), ['A']);
+    assert.deepEqual(tree.schedules[0].items[0].children.map((n) => n.item.Name), ['B']);
+    assert.deepEqual(tree.unassignedItems, []);
+  });
+});

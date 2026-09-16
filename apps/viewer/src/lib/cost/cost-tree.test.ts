@@ -24,6 +24,7 @@ import {
   getAssignedTargets,
   getOwningSchedules,
   isUnresolved,
+  treeHasMixedCurrencyEvaluation,
 } from './cost-tree.js';
 
 /** Mirrors the helper in `packages/parser/test/cost-extractor.test.ts` —
@@ -439,5 +440,31 @@ describe('buildCostTree — follow-up review findings on PR #4875', () => {
     assert.deepEqual(tree.schedules[0].items.map((n) => n.item.Name), ['A']);
     assert.deepEqual(tree.schedules[0].items[0].children.map((n) => n.item.Name), ['B']);
     assert.deepEqual(tree.unassignedItems, []);
+  });
+
+  it('detects MIXED_CURRENCY that only item evaluation reports, including in a nested item', () => {
+    const lines = (secondCurrency: string) => [
+      "#1=IFCPROJECT('proj',$,'P',$,$,$,$,$,#2);",
+      '#2=IFCUNITASSIGNMENT((#5));',
+      "#5=IFCMONETARYUNIT('GBP');",
+      `#6=IFCMONETARYUNIT('${secondCurrency}');`,
+      '#20=IFCMEASUREWITHUNIT(IFCMONETARYMEASURE(5.),#5);',
+      '#21=IFCMEASUREWITHUNIT(IFCMONETARYMEASURE(1.),#6);',
+      "#30=IFCCOSTVALUE('Pounds',$,#20,$,$,$,$,$,$,$);",
+      "#31=IFCCOSTVALUE('Other',$,#21,$,$,$,$,$,$,$);",
+      "#32=IFCCOSTVALUE('Sum',$,$,$,$,$,$,$,.ADD.,(#30,#31));",
+      "#40=IFCCOSTITEM('p',$,'Parent',$,$,$,.USERDEFINED.,$,$);",
+      "#41=IFCCOSTITEM('c',$,'Mixed child',$,$,$,.USERDEFINED.,(#32),$);",
+      "#60=IFCRELNESTS('n1',$,$,$,#40,(#41));",
+    ];
+    const mixedBackend = backendFor('m1', buildStoreFromStep(lines('USD')));
+    const mixedGraph = mixedBackend.data();
+    assert.equal(classifyCostModel(mixedGraph).mixedCurrency, false, 'extraction alone does not report it');
+    assert.equal(treeHasMixedCurrencyEvaluation(buildCostTree(mixedGraph), (ref) => mixedBackend.evaluateItem(ref)), true);
+
+    // Control: same currency on both operands is not mixed (fixture can fail).
+    const sameBackend = backendFor('m1', buildStoreFromStep(lines('GBP')));
+    const sameGraph = sameBackend.data();
+    assert.equal(treeHasMixedCurrencyEvaluation(buildCostTree(sameGraph), (ref) => sameBackend.evaluateItem(ref)), false);
   });
 });

@@ -18,10 +18,17 @@
  */
 
 import { AlertTriangle, ChevronDown, ChevronRight, Coins, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n/useTranslation';
-import { buildCostTree, classifyCostModel, type CostTreeItemNode, type EntityRefLike } from '@/lib/cost/cost-tree';
+import {
+  buildCostTree,
+  classifyCostModel,
+  treeHasMixedCurrencyEvaluation,
+  type CostTreeItemNode,
+  type EntityRefLike,
+} from '@/lib/cost/cost-tree';
+import { useCostBackend } from './useCostBackend';
 import type { CostModelEntry } from './useCostModels';
 
 export interface CostTreeViewProps {
@@ -150,8 +157,20 @@ function CostGraphTree({
   selectedRef: EntityRefLike | null;
   onSelectItem: (modelId: string, ref: EntityRefLike) => void;
 }) {
-  const tree = buildCostTree(graph);
-  const state = classifyCostModel(graph);
+  const backend = useCostBackend();
+  const tree = useMemo(() => buildCostTree(graph), [graph]);
+  // MIXED_CURRENCY from arithmetic only appears in item evaluations, not in
+  // the extraction diagnostics classifyCostModel reads; evaluate once per graph.
+  const evaluationMixedCurrency = useMemo(() => {
+    try {
+      return treeHasMixedCurrencyEvaluation(tree, (ref) => backend.evaluateItem(ref));
+    } catch (err) {
+      console.warn('[CostTreeView] cost evaluation for the mixed-currency badge failed', err);
+      return false;
+    }
+  }, [tree, backend]);
+  const extractionState = classifyCostModel(graph);
+  const state = { ...extractionState, mixedCurrency: extractionState.mixedCurrency || evaluationMixedCurrency };
   const { t } = useTranslation();
   return (
     <div>

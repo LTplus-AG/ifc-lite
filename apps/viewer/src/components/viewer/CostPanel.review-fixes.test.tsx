@@ -181,4 +181,27 @@ describe('CostPanel review fixes (PR #4875)', () => {
     assert.match(container.textContent ?? '', /25 GBP/, 'resolved value follows the refreshed graph');
     assert.doesNotMatch(container.textContent ?? '', /10 GBP/);
   });
+  it('shows the mixed-currency badge when only item evaluation reports MIXED_CURRENCY', () => {
+    const mixed = (second: string) => buildStoreFromStep([
+      "#1=IFCPROJECT('proj',$,'P',$,$,$,$,$,#2);",
+      '#2=IFCUNITASSIGNMENT((#5));',
+      "#5=IFCMONETARYUNIT('GBP');",
+      `#6=IFCMONETARYUNIT('${second}');`,
+      '#20=IFCMEASUREWITHUNIT(IFCMONETARYMEASURE(5.),#5);',
+      '#21=IFCMEASUREWITHUNIT(IFCMONETARYMEASURE(1.),#6);',
+      "#30=IFCCOSTVALUE('Pounds',$,#20,$,$,$,$,$,$,$);",
+      "#31=IFCCOSTVALUE('Other',$,#21,$,$,$,$,$,$,$);",
+      "#32=IFCCOSTVALUE('Sum',$,$,$,$,$,$,$,.ADD.,(#30,#31));",
+      "#40=IFCCOSTITEM('ci',$,'Mixed item',$,$,$,.USERDEFINED.,(#32),$);",
+    ]);
+    useViewerStore.setState({ models: new Map([['modelA', model('modelA', mixed('USD'))]]) });
+    const container = renderPanel();
+    assert.match(container.textContent ?? '', /Mixed currency/, 'badge shown without opening the item');
+
+    // Control: a single currency shows no badge (fixture can fail).
+    act(() => {
+      useViewerStore.setState({ models: new Map([['modelA', model('modelA', mixed('GBP'))]]) });
+    });
+    assert.doesNotMatch(container.textContent ?? '', /Mixed currency/);
+  });
 });

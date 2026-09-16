@@ -286,6 +286,29 @@ export function buildCostTree(graph: CostGraphData): CostTree {
 }
 
 /**
+ * Whether evaluating the tree's items reports `MIXED_CURRENCY`. Arithmetic
+ * that combines explicitly GBP- and USD-valued operands only surfaces that
+ * code at evaluation time, never in `graph.Diagnostics`, so the model-level
+ * badge must also consult evaluations. Only root items are evaluated: an
+ * item evaluation includes its nested items, and every item is reachable
+ * from some root.
+ */
+export function treeHasMixedCurrencyEvaluation(
+  tree: CostTree,
+  evaluateItem: (ref: EntityRefLike) => { Diagnostics: ReadonlyArray<Pick<CostDiagnosticData, 'Code'>> },
+): boolean {
+  const seen = new Set<string>();
+  const roots = [...tree.schedules.flatMap((s) => s.items), ...tree.unassignedItems];
+  for (const root of roots) {
+    const key = refKey(root.ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (evaluateItem(root.ref).Diagnostics.some((d) => d.Code === 'MIXED_CURRENCY')) return true;
+  }
+  return false;
+}
+
+/**
  * Assigned products/tasks for one cost item — the union of every
  * relationship shape the read model can carry:
  *  - `IfcRelAssignsToProduct` naming this item in `RelatedObjects` → target

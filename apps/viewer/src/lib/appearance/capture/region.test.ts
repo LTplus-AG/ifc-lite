@@ -9,6 +9,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type ViewerState } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { emptyPlacementState } from '@/lib/model-placement/state';
+import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { captureRegion, captureRegistration } from './region';
 
 function fixture() {
@@ -25,7 +26,7 @@ function fixture() {
   const model = { ...fixtureModel('capture'), loadedAt: 1, geometryResult: geometry };
   let state: ViewerState = { ...useViewerStore.getState(), models: new Map([['capture', model]]), activeModelId: 'capture',
     geometryResult: geometry, modelPlacement: { ...emptyPlacementState(),
-      placements: new Map([['capture', { translation: [7,8,9] as const, locked: false }]]) } };
+      placements: new Map([['capture', testPlacement([7,8,9] as const)]]) } };
   return { mesh, getState: () => state, update: (next: typeof state) => { state = next; } };
 }
 
@@ -68,7 +69,7 @@ test('capture refuses placement copies and stale sources or workspace movement (
   const registration = captureRegistration('capture', f.mesh, f.getState);
   assert.throws(() => captureRegion({ ...f.mesh }, [0], registration), /another captured/);
   f.update({ ...f.getState(), modelPlacement: { ...f.getState().modelPlacement,
-    placements: new Map([['capture', { translation: [8,8,9], locked: false }]]) } });
+    placements: new Map([['capture', testPlacement([8,8,9])]]) } });
   assert.throws(() => registration.validate(), /changed/);
   const current = captureRegistration('capture', f.mesh, f.getState);
   f.update({ ...f.getState(), models: new Map() });

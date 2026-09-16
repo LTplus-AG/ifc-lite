@@ -13,6 +13,7 @@ import { render, cleanup } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
+import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { usePlacementCoordinateInfo } from './usePlacementCoordinateInfo';
 import { resolveScanSectionPosition } from './scanSectionMath';
 import { setGlobalRendererRef } from './useBCF';
@@ -51,7 +52,7 @@ it('refreshes section extents after a scan alignment toggle without another plac
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), geometryResult: {
     meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: source,
   } }, { ...fixtureModel('scan'), pointCloudHandleId: 7 }), pointCloudAlignmentEnabled: false,
-  modelPlacement: { ...emptyPlacementState(), placements: new Map([['m', { translation: [1, 0, 0], locked: false }]]) } });
+  modelPlacement: { ...emptyPlacementState(), placements: new Map([['m', testPlacement([1, 0, 0])]]) } });
   function Cut() { return <output>{resolveScanSectionPosition(50, 'x', usePlacementCoordinateInfo(source))}</output>; }
   const ui = render(<Cut />);
   assert.equal(ui.textContent, '55.5');
@@ -75,7 +76,7 @@ it('refreshes section bounds after the child uploads a realigned geometry frame 
   setGlobalRendererRef(rendererRef);
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), geometryResult: {
     meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: source,
-  } }), modelPlacement: { ...emptyPlacementState(), placements: new Map([['m', { translation: [1, 0, 0], locked: false }]]) } });
+  } }), modelPlacement: { ...emptyPlacementState(), placements: new Map([['m', testPlacement([1, 0, 0])]]) } });
   const indices = new Map([['m', 0]]);
   function Upload({ geometry }: { geometry: GeometryResult }) {
     // The real viewport also uploads in a child effect, AFTER the parent has
@@ -109,7 +110,7 @@ it('updates both section extents only after the queued final batch is actually f
   const zero = { x: 0, y: 0, z: 0 }, source: CoordinateInfo = { originShift: zero,
     originalBounds: { min: zero, max: { x: 1, y: 1, z: 1 } }, shiftedBounds: { min: zero, max: { x: 1, y: 1, z: 1 } }, hasLargeCoordinates: false };
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), geometryResult: { meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: source } }),
-    modelPlacement: { ...emptyPlacementState(), placements: new Map([['m', { translation: [100, 0, 0], locked: false }]]) } });
+    modelPlacement: { ...emptyPlacementState(), placements: new Map([['m', testPlacement([100, 0, 0])]]) } });
   renderer.setModelTranslation(0, [100, 0, 0]);
   const triangle = (x: number) => ({ expressId: x + 1, modelIndex: 0, positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
     normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] as [number, number, number, number] });

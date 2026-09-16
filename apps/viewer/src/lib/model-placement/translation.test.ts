@@ -7,6 +7,7 @@ import { addTranslation, subtractTranslation, constrainTranslation, orthogonalAx
   parseMoveLength, translationAtDistance, fromRenderTranslation, toRenderTranslation } from './translation.js';
 import { beginPlacement, cancelPlacement, commitPlacement, displayedTranslation, emptyPlacementState,
   previewPlacement, replayPlacement, resetPlacements, retainLoadedPlacements } from './state.js';
+import { testPlacement } from './test-fixtures.js';
 
 describe('workspace placement invariants (#4226)', () => {
   it('retains a millimetre correction after a ten-million-metre source offset', () => {
@@ -83,10 +84,10 @@ describe('workspace placement invariants (#4226)', () => {
 
   it('refuses locked or missing members atomically and rejects overflow before preview', () => {
     const state = emptyPlacementState();
-    const locked = { ...state, placements: new Map([['scan', { translation: [0, 0, 0] as const, locked: true }]]) };
+    const locked = { ...state, placements: new Map([['scan', testPlacement([0, 0, 0] as const, { locked: true })]]) };
     assert.throws(() => beginPlacement(locked, ['ifc', 'scan'], ids), /Unlock/);
     assert.throws(() => beginPlacement(state, ['missing'], ids), /no longer loaded/);
-    const far = { ...state, placements: new Map([['scan', { translation: [1e308, 0, 0] as const, locked: false }]]) };
+    const far = { ...state, placements: new Map([['scan', testPlacement([1e308, 0, 0] as const)]]) };
     assert.throws(() => previewPlacement(beginPlacement(far, ['scan'], ids), [1e308, 0, 0]), /finite/);
     assert.equal(far.preview, null);
   });
@@ -106,12 +107,12 @@ describe('drag and atomic import invariants (#4226)', () => {
 
   it('imports a group as one reversible move and refuses a partial locked import', () => {
     const base = emptyPlacementState();
-    const incoming = new Map([['ifc', { translation: [1, 2, 3] as const, locked: true }], ['scan', { translation: [4, 5, 6] as const, locked: false }]]);
+    const incoming = new Map([['ifc', testPlacement([1, 2, 3] as const, { locked: true })], ['scan', testPlacement([4, 5, 6] as const)]]);
     const imported = importPlacements(base, incoming);
     assert.equal(imported.undo.length, 1);
     assert.deepEqual(displayedTranslation(replayPlacement(imported, 'undo'), 'ifc'), [0, 0, 0]);
     assert.deepEqual(displayedTranslation(replayPlacement(replayPlacement(imported, 'undo'), 'redo'), 'scan'), [4, 5, 6]);
-    const locked = { ...base, placements: new Map([['scan', { translation: [0, 0, 0] as const, locked: true }]]) };
+    const locked = { ...base, placements: new Map([['scan', testPlacement([0, 0, 0] as const, { locked: true })]]) };
     assert.throws(() => importPlacements(locked, incoming), /Unlock/);
     assert.deepEqual(displayedTranslation(locked, 'ifc'), [0, 0, 0]);
   });

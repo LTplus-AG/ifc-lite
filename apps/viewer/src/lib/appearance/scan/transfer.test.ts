@@ -9,6 +9,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
+import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { sameLandmarkGeometry } from './geometry-proof';
 import { targetTransferFrame } from './transfer-frame';
 import { validateTransferReview, type ScanTransferSettings } from './prepare-transfer';
@@ -38,7 +39,7 @@ test('target frame restores unequal federation rebases exactly once and ignores 
   const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
   const info = { originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: true, originShift: { x: 100, y: 200, z: 300 }, wasmRtcOffset: { x: 1000, y: 2000, z: 3000 }, buildingRotation: Math.PI / 2 };
   const models = new Map([['anchor', { ...first, loadedAt: 1, geometryResult: { ...geometry, coordinateInfo: info } }], ['target', { ...target, loadedAt: 2, geometryResult: { ...geometry, coordinateInfo: { ...info, originShift: { x: 10, y: 20, z: 30 } } } }]]);
-  const state = { ...useViewerStore.getState(), models, modelPlacement: { ...emptyPlacementState(), placements: new Map([['target', { translation: [1, 2, 3] as const, locked: false }]]) } };
+  const state = { ...useViewerStore.getState(), models, modelPlacement: { ...emptyPlacementState(), placements: new Map([['target', testPlacement([1, 2, 3] as const)]]) } };
   assert.deepEqual(targetTransferFrame(state, 'target'), { rotation: [[1,0,0],[0,1,0],[0,0,1]], sourceAnchor: [0,0,0], targetAnchor: [91,-268,183] });
   assert.deepEqual(targetTransferFrame({ ...state, models: new Map([['target', models.get('target')!]]) }, 'target').targetAnchor, [1,2,3]);
   assert.throws(() => targetTransferFrame({ ...state, models: new Map([['target', { ...models.get('target')!, federationAlignmentStatus: 'same-crs' }]]) }, 'target'), /realigned/);

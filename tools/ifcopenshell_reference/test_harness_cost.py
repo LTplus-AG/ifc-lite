@@ -342,7 +342,8 @@ class ReviewFindingRegressions(unittest.TestCase):
         self.assertEqual(self.rows(report, "node:item:CHILD1/value/0/ref/Value")[0][1], cc.COST_MATCH)
 
     def test_measure_with_unit_value_type_and_unit_are_compared(self):
-        for field, wrong in (("Value", 70.0), ("ValueType", "IfcAreaMeasure"), ("UnitNode", "elsewhere")):
+        for field, wrong in (("Value", 70.0), ("ValueType", "IfcAreaMeasure"), ("UnitNode", "elsewhere"),
+                             ("Resolved", 70.0)):
             with self.subTest(field=field):
                 lite, ref = self.measure_pair()
                 lite["Nodes"]["item:CHILD1/value/0/ref"][field] = wrong

@@ -480,6 +480,11 @@ def compare_cost_node(report, path, lite_nodes, ref_nodes, lite_schema, lite_dia
         report.add(f"node:{path}/Value", COST_MATCH if val_ok else COST_FAILURE,
                    f"lite={lite_node.get('Value')} ref={ref_node.get('Value')}")
         compare_cost_scalar(report, f"node:{path}/UnitNode", lite_node.get("UnitNode"), ref_node.get("UnitNode"))
+        # Resolved is what a parent value's arithmetic reads, so it is compared
+        # in its own right even though both dumpers derive it from Value today.
+        resolved_ok = _cost_numbers_close(lite_node.get("Resolved"), ref_node.get("Resolved"))
+        report.add(f"node:{path}/Resolved", COST_MATCH if resolved_ok else COST_FAILURE,
+                   f"lite={lite_node.get('Resolved')} ref={ref_node.get('Resolved')}")
 
     if lite_node.get("Kind") == "Quantity" or ref_node.get("Kind") == "Quantity":
         compare_cost_scalar(report, f"node:{path}/Name", lite_node.get("Name"), ref_node.get("Name"))

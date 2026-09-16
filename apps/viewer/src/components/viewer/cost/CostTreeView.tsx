@@ -74,6 +74,11 @@ function ItemRow({
               e.stopPropagation();
               setExpanded((v) => !v);
             }}
+            // Enter/Space on the toggle must not bubble to the row's
+            // onKeyDown, which would also select the item.
+            onKeyDown={(e) => {
+              e.stopPropagation();
+            }}
             className="shrink-0 text-muted-foreground"
             aria-label={expanded ? t('costPanel.collapse') : t('costPanel.expand')}
           >

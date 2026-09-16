@@ -138,4 +138,21 @@ describe('CostPanel review fixes (PR #4875)', () => {
     assert.deepEqual([...state.selectedEntityIds].sort(), [10, 11]);
     assert.deepEqual(state.selectedEntity, expected[0]);
   });
+
+  it('Enter on the expand/collapse toggle does not also select the item', () => {
+    const container = renderPanel();
+    const parentRow = row(container, 'Parent item');
+    const toggle = parentRow.querySelector<HTMLButtonElement>('button[aria-label]');
+    assert.ok(toggle, 'the parent row has an expand/collapse toggle (fixture can fail)');
+    act(() => {
+      toggle!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    assert.equal(parentRow.getAttribute('aria-selected'), 'false', 'toggle keydown must not select the row');
+
+    // Control: Enter on the row itself does select it.
+    act(() => {
+      parentRow.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    assert.equal(row(container, 'Parent item').getAttribute('aria-selected'), 'true');
+  });
 });

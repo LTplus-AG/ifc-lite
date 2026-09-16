@@ -12,14 +12,12 @@
  *
  * TWO ORDERING CONTRACTS, both load-bearing:
  *
- *  1. **Nothing else may rewrite a rotated model's vertices.** The only things
- *     that do are a federation re-align and a collab model replacement. The
- *     re-align path must call {@link ModelRotationBaker.unbake} BEFORE it
- *     snapshots or restores anything, so a rotation can never end up baked
- *     inside a `preAlignment` snapshot — a snapshot that contained one would
- *     restore *to* a rotated state and the next bake would compound it. A
- *     collab replacement hands over a new geometry object, which this detects
- *     by identity.
+ *  1. **Nothing else may rewrite a rotated model's vertices IN PLACE without
+ *     bumping the content version.** A federation re-align must call
+ *     {@link ModelRotationBaker.unbake} BEFORE it snapshots or restores
+ *     anything, so a rotation can never end up baked inside a `preAlignment`
+ *     snapshot — a snapshot that contained one would restore *to* a rotated
+ *     state and the next bake would compound it.
  *
  *  2. **A bump this baker did not cause invalidates every baseline.** Together
  *     with (1) that is sound: an external rewrite always leaves the geometry
@@ -27,13 +25,25 @@
  *     lands in the right place. Hence {@link ModelRotationBaker.settle}, which
  *     the caller uses to say "this bump was mine".
  *
+ * Nothing here relies on the identity of the geometry OBJECT. Streaming
+ * (`appendGeometryBatch`) pushes meshes onto the live array and republishes it
+ * under a new object without bumping the version, so a new object can carry
+ * already-baked meshes; a collab replacement carries none of them. Baselines
+ * are therefore keyed by MESH identity: a replacement is the case where no mesh
+ * is known, an append the case where some are, and a mesh that is not in the
+ * baseline has never been baked. That is what keeps rotating from compounding
+ * on geometry that streams in after the user has set an angle.
+ *
  * Baselines cost a copy of a model's position and normal buffers, so one is
  * captured only when a model is actually rotated and released the moment its
  * rotation returns to zero.
  */
 
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { applyModelRotation, captureRotationBaseline, type RotationBaseline } from './rotation-geometry.js';
+import {
+  applyModelRotation, baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
+  type RotationBaseline,
+} from './rotation-geometry.js';
 import { equalRotation, isZeroRotation, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 
 type Geometry = Pick<GeometryResult, 'meshes' | 'coordinateInfo' | 'instancedGeometryAabbs'>;
@@ -66,21 +76,29 @@ export class ModelRotationBaker {
       const geometry = target.geometry;
       if (!geometry || geometry.meshes.length === 0) continue;
       let entry = this.entries.get(modelId);
-      if (entry && (entry.geometry !== geometry || entry.version !== contentVersion)) {
+      if (entry && (entry.version !== contentVersion || baselineIsForeign(geometry, entry.baseline))) {
         // The vertices this baseline described are gone — the model was
         // replaced, or something outside this baker rewrote them. It can no
         // longer restore anything, so it must not be used to.
         this.entries.delete(modelId);
         entry = undefined;
       }
+      let appended = false;
       if (!entry) {
         // No baseline is captured for an unrotated model: that is the common
         // case and a baseline is a copy of the whole geometry.
         if (isZeroRotation(target.rotation)) continue;
         entry = { geometry, baseline: captureRotationBaseline(geometry), applied: ZERO_ROTATION, version: contentVersion };
         this.entries.set(modelId, entry);
+      } else {
+        // A streamed batch appends to the SAME mesh array and republishes it as
+        // a new object, so the object identity says nothing; the meshes do.
+        // Baseline the pristine newcomers and re-bake, or they would stay
+        // un-rotated while their neighbours are rotated.
+        appended = captureAppendedMeshBaselines(geometry, entry.baseline);
+        entry.geometry = geometry;
       }
-      if (equalRotation(entry.applied, target.rotation)) continue;
+      if (!appended && equalRotation(entry.applied, target.rotation)) continue;
       applyModelRotation(geometry, entry.baseline, target.rotation);
       moved.push(modelId);
       // Back at zero the geometry is the baseline, so holding the copy buys

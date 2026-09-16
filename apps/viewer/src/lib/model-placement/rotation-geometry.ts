@@ -38,48 +38,112 @@ type Geometry = Pick<GeometryResult, 'meshes' | 'coordinateInfo' | 'instancedGeo
  * the failure `federationRealign.capturePreAlignment` documents at length, and
  * this is the same rule.
  */
+export interface MeshBaseline {
+  positions: Float32Array;
+  normals: Float32Array | undefined;
+  origin: [number, number, number] | undefined;
+  localToWorld: number[] | undefined;
+  // Boxes are REPLACED by the bake below, never mutated, so sharing the
+  // objects is sound at the same depth `capturePreAlignment` shares them.
+  geometryAabb: EntityWorldAabb | undefined;
+}
+
 export interface RotationBaseline {
-  positions: Float32Array[];
-  normals: (Float32Array | undefined)[];
-  origins: ([number, number, number] | undefined)[];
-  localToWorld: (number[] | undefined)[];
-  geometryAabbs: (EntityWorldAabb | undefined)[];
+  /**
+   * Keyed by MESH IDENTITY, not by index. Streaming appends meshes to the live
+   * array (`appendGeometryBatch`), so after a bake the array can hold already
+   * rotated meshes and pristine new ones at once. Identity keys let a mesh that
+   * was baked keep its own pristine bytes and a mesh that has never been baked
+   * be recognised as pristine, which is what makes applying the declared
+   * ABSOLUTE angle to a mixed array land every mesh in the same place.
+   */
+  meshes: Map<MeshData, MeshBaseline>;
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
   shiftedBounds: GeometryResult['coordinateInfo']['shiftedBounds'];
 }
 
-export function captureRotationBaseline(geometry: Geometry): RotationBaseline {
+function captureMesh(mesh: MeshData): MeshBaseline {
   return {
-    positions: geometry.meshes.map((mesh) => new Float32Array(mesh.positions)),
-    normals: geometry.meshes.map((mesh) => (
-      mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined
-    )),
-    origins: geometry.meshes.map((mesh) => (mesh.origin ? [...mesh.origin] : undefined)),
-    localToWorld: geometry.meshes.map((mesh) => (mesh.localToWorld ? [...mesh.localToWorld] : undefined)),
-    // Boxes are REPLACED by the bake below, never mutated, so sharing the
-    // objects is sound at the same depth `capturePreAlignment` shares them.
-    geometryAabbs: geometry.meshes.map((mesh) => mesh.geometryAabb),
+    positions: new Float32Array(mesh.positions),
+    normals: mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined,
+    origin: mesh.origin ? [...mesh.origin] : undefined,
+    localToWorld: mesh.localToWorld ? [...mesh.localToWorld] : undefined,
+    geometryAabb: mesh.geometryAabb,
+  };
+}
+
+export function captureRotationBaseline(geometry: Geometry): RotationBaseline {
+  const meshes = new Map<MeshData, MeshBaseline>();
+  for (const mesh of geometry.meshes) meshes.set(mesh, captureMesh(mesh));
+  return {
+    meshes,
     instancedGeometryAabbs: geometry.instancedGeometryAabbs
       ? new Map(geometry.instancedGeometryAabbs) : undefined,
     shiftedBounds: structuredClone(geometry.coordinateInfo.shiftedBounds),
   };
 }
 
+/**
+ * Take a baseline of any mesh in `geometry` this baseline has never seen — a
+ * streamed batch appended after the model was baked. Such a mesh is pristine by
+ * construction: nothing has rotated it yet.
+ *
+ * @returns true when at least one mesh was new, i.e. a re-bake is owed even
+ *   though the declared angle has not changed.
+ */
+export function captureAppendedMeshBaselines(geometry: Geometry, baseline: RotationBaseline): boolean {
+  let captured = false;
+  for (const mesh of geometry.meshes) {
+    if (baseline.meshes.has(mesh)) continue;
+    baseline.meshes.set(mesh, captureMesh(mesh));
+    // The pristine bounds have to grow with the model, or restoring to a zero
+    // angle would write back the bounds of the batches that had arrived when
+    // the first bake happened.
+    growPristineBounds(baseline, mesh);
+    captured = true;
+  }
+  return captured;
+}
+
+function growPristineBounds(baseline: RotationBaseline, mesh: MeshData): void {
+  const box = baseline.shiftedBounds;
+  if (!box) return;
+  const origin = mesh.origin, positions = mesh.positions;
+  const ox = origin ? origin[0] : 0, oy = origin ? origin[1] : 0, oz = origin ? origin[2] : 0;
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    box.min.x = Math.min(box.min.x, x); box.max.x = Math.max(box.max.x, x);
+    box.min.y = Math.min(box.min.y, y); box.max.y = Math.max(box.max.y, y);
+    box.min.z = Math.min(box.min.z, z); box.max.z = Math.max(box.max.z, z);
+  }
+}
+
+/** True when none of `geometry`'s meshes is one this baseline describes — the
+ * geometry was wholly replaced rather than appended to, so the baseline can no
+ * longer restore anything. */
+export function baselineIsForeign(geometry: Geometry, baseline: RotationBaseline): boolean {
+  return !geometry.meshes.some((mesh) => baseline.meshes.has(mesh));
+}
+
 function restore(geometry: Geometry, baseline: RotationBaseline): void {
-  const count = Math.min(geometry.meshes.length, baseline.positions.length);
-  for (let i = 0; i < count; i += 1) {
-    const mesh = geometry.meshes[i];
-    mesh.positions = new Float32Array(baseline.positions[i]);
-    const normals = baseline.normals[i];
-    if (normals) mesh.normals = new Float32Array(normals);
+  for (const mesh of geometry.meshes) {
+    const pristine = baseline.meshes.get(mesh);
+    // A mesh with no baseline has never been baked, so it already IS pristine.
+    if (!pristine) continue;
+    // A buffer of a different length is not the one this baseline was taken
+    // from — `releaseGeometryMemory` swaps a mesh's arrays for empty ones in
+    // bounded mode, and writing the pristine vertices back would undo exactly
+    // the memory that release freed. A bake cannot restore what is gone.
+    if (mesh.positions.length !== pristine.positions.length) continue;
+    mesh.positions = new Float32Array(pristine.positions);
+    if (pristine.normals) mesh.normals = new Float32Array(pristine.normals);
     // Absent stays absent: a mesh that never carried an origin must not gain a
     // [0,0,0] the renderer would then read as a local frame.
-    const origin = baseline.origins[i];
-    if (origin) mesh.origin = [...origin]; else delete mesh.origin;
-    const localToWorld = baseline.localToWorld[i];
-    if (localToWorld) mesh.localToWorld = [...localToWorld]; else delete mesh.localToWorld;
-    const box = baseline.geometryAabbs[i];
-    if (box) mesh.geometryAabb = box; else delete mesh.geometryAabb;
+    if (pristine.origin) mesh.origin = [...pristine.origin]; else delete mesh.origin;
+    if (pristine.localToWorld) mesh.localToWorld = [...pristine.localToWorld];
+    else delete mesh.localToWorld;
+    if (pristine.geometryAabb) mesh.geometryAabb = pristine.geometryAabb; else delete mesh.geometryAabb;
   }
   geometry.instancedGeometryAabbs = baseline.instancedGeometryAabbs
     ? new Map(baseline.instancedGeometryAabbs) : undefined;

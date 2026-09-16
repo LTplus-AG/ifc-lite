@@ -113,4 +113,49 @@ describe('ModelRotationBaker', () => {
     assert.deepEqual(baker.unbake(() => geometry()), []);
     assert.deepEqual(snapshot(value), rotated);
   });
+
+  // Streaming appends to the SAME mesh array and wraps it in a new
+  // `geometryResult` object without bumping the content version — see
+  // `appendGeometryBatch`. Rotate while a large model is still streaming and
+  // every later batch arrives this way.
+  const streamedMesh = (): MeshData => ({ expressId: 2,
+    positions: new Float32Array([1.37, 0.42, -2.09, 4.73, 0.42, -2.09, 4.73, 3.11, 0.66]),
+    normals: new Float32Array([0, 0.6, 0.8, 0, 0.6, 0.8, 0, 0.6, 0.8]),
+    indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1],
+    origin: [117.31, 5.25, -38.47] } as unknown as MeshData);
+  const meshSnapshot = (value: Geometry, index: number) =>
+    [...value.meshes[index].positions, ...(value.meshes[index].normals ?? []),
+      ...(value.meshes[index].origin ?? [])];
+
+  it('does not re-rotate the meshes it already baked when a batch is appended in place', () => {
+    const baker = new ModelRotationBaker(), value = geometry();
+    baker.reconcile(targets(value, ROTATION), 1);
+    const bakedFirst = meshSnapshot(value, 0);
+    // Exactly what `appendGeometryBatch` does: push onto the live array, wrap
+    // it in a new object, leave the content version alone.
+    value.meshes.push(streamedMesh());
+    const appended = { ...value, meshes: value.meshes } as Geometry;
+    assert.deepEqual(baker.reconcile(targets(appended, ROTATION), 1), ['m']);
+    assert.deepEqual(meshSnapshot(appended, 0), bakedFirst,
+      'the already-baked mesh was rotated a second time');
+    // …and the mesh that arrived un-rotated is rotated exactly once.
+    const control = new ModelRotationBaker();
+    const fresh = geometry();
+    fresh.meshes.push(streamedMesh());
+    control.reconcile(targets(fresh, ROTATION), 1);
+    assert.deepEqual(meshSnapshot(appended, 1), meshSnapshot(fresh, 1));
+  });
+
+  it('does not put back vertices a bounded-mode release has freed', () => {
+    const baker = new ModelRotationBaker(), value = geometry();
+    baker.reconcile(targets(value, ROTATION), 1);
+    // `releaseGeometryMemory` swaps every mesh's buffers for empty ones and
+    // republishes the geometry, in place and without a version bump.
+    value.meshes[0].positions = new Float32Array(0);
+    value.meshes[0].normals = new Float32Array(0);
+    const released = { ...value, meshes: value.meshes } as Geometry;
+    baker.reconcile(targets(released, OTHER), 1);
+    assert.equal(released.meshes[0].positions.length, 0,
+      'the bake resurrected buffers the release had freed');
+  });
 });

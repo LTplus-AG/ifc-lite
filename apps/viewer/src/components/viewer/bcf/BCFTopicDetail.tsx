@@ -53,7 +53,8 @@ export interface BCFTopicDetailProps {
   onAddComment: (text: string, viewpointGuid?: string) => void;
   onAddViewpoint: () => void;
   onAddSectionViewpoint: () => void;
-  canAddSectionViewpoint: boolean;
+  /** Why Capture 2D is unavailable, or null when it can run. */
+  sectionViewpointBlockReason: string | null;
   onActivateViewpoint: (viewpoint: BCFViewpoint) => void;
   onDeleteViewpoint: (viewpointGuid: string) => void;
   onUpdateStatus: (status: string) => void;
@@ -77,7 +78,7 @@ export function BCFTopicDetail({
   onAddComment,
   onAddViewpoint,
   onAddSectionViewpoint,
-  canAddSectionViewpoint,
+  sectionViewpointBlockReason,
   onActivateViewpoint,
   onDeleteViewpoint,
   onUpdateStatus,
@@ -202,9 +203,10 @@ export function BCFTopicDetail({
 
           {/* Viewpoints */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            {/* Buttons sit under the label: beside it they overflowed the default sidebar width (#4802). */}
+            <div className="mb-2 space-y-1.5">
               <h4 className="text-sm font-medium">Viewpoints</h4>
-              <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} canCapture2D={canAddSectionViewpoint} />
+              <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} capture2DBlockReason={sectionViewpointBlockReason} />
             </div>
 
             {/* Capture info - what will be included */}

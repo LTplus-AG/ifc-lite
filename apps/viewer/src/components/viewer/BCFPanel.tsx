@@ -490,7 +490,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onAddComment={handleAddComment}
             onAddViewpoint={handleCaptureViewpoint}
             onAddSectionViewpoint={() => void sectionCapture.capture()}
-            canAddSectionViewpoint={sectionCapture.canCapture}
+            sectionViewpointBlockReason={sectionCapture.disabledReason}
             onActivateViewpoint={handleActivateViewpoint}
             onDeleteViewpoint={handleDeleteViewpoint}
             onUpdateStatus={handleUpdateStatus}

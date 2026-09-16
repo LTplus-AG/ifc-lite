@@ -5,6 +5,7 @@
 import type { EntityRef, SectionPlane, CameraState, ViewerBackendMethods } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef } from './model-compat.js';
+import { bcfWorldOffset } from '../../hooks/bcf/viewpoint-world-frame.js';
 import { toGlobalIdForRef } from '../../store/globalId.js';
 import {
   resolvePresentationColorMap,
@@ -240,6 +241,17 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
         target: [viewpoint.target.x, viewpoint.target.y, viewpoint.target.z],
         up: [viewpoint.up.x, viewpoint.up.y, viewpoint.up.z],
       };
+    },
+    /**
+     * The camera above is in the render frame (large coordinates shifted
+     * towards the origin). `bim.bcf.createViewpoint()` /
+     * `extractViewpointState()` convert with this, by the same frame rule the
+     * BCF panel uses, so SDK viewpoints are world coordinates too (#4879).
+     */
+    getRenderFrameOffset(): [number, number, number] {
+      const state = store.getState();
+      const offset = bcfWorldOffset(state.models, state.geometryResult);
+      return [offset.x, offset.y, offset.z];
     },
   };
 }

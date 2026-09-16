@@ -83,7 +83,7 @@ export class BimContext {
     this.lens = new LensNamespace();
     this.export = new ExportNamespace(this._backend);
     this.ids = new IDSNamespace();
-    this.bcf = new BCFNamespace();
+    this.bcf = new BCFNamespace(this._backend);
     this.drawing = new DrawingNamespace();
     this.list = new ListNamespace();
     this.spatial = new SpatialNamespace(this._backend);

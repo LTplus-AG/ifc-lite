@@ -71,7 +71,14 @@ export interface ClashBcfOptions {
   maxMembersPerTopic?: number;
   cameraDistanceFactor?: number;
   snapshotProvider?: (group: ClashGroup) => Promise<Uint8Array | undefined>;
-  /** Shift from the (origin-shifted) clash-bounds frame to IFC world coordinates, IFC Z-up metres (#4806). */
+  /**
+   * Shift from the (origin-shifted) clash-bounds frame to IFC world
+   * coordinates, IFC Z-up metres (#4806). Clash bounds come off meshes in the
+   * mesher's render frame, so pass `renderFrameWorldOffset(coordinateInfo)`
+   * from `@ifc-lite/geometry` for the `GeometryResult` the elements were
+   * built from; omitting it writes render-frame cameras, which only coincide
+   * with world coordinates for a model that was not shifted (#4879).
+   */
   worldOffset?: { x: number; y: number; z: number };
 }
 

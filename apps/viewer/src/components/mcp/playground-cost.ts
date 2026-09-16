@@ -27,14 +27,29 @@ export const playgroundCostTools: Record<string, Handler> = {
 
   async cost_evaluate(model, args, context) {
     const selected = selectedModel(model, args, context);
-    const expressId = Number(args.express_id);
-    const target = String(args.target ?? '');
-    if (!Number.isInteger(expressId) || expressId < 0 || (target !== 'item' && target !== 'value')) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: "Provide a non-negative express_id and target 'item' or 'value'." });
+    const expressId = args.express_id;
+    const target = args.target;
+    if (typeof expressId !== 'number' || !Number.isSafeInteger(expressId) || expressId < 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: 'express_id must be a non-negative safe integer.',
+      });
     }
-    const precision = args.precision === undefined ? undefined : Number(args.precision);
-    if (precision !== undefined && (!Number.isInteger(precision) || precision < 1)) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'precision must be a positive integer.' });
+    if (target !== 'item' && target !== 'value') {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: "target must be 'item' or 'value'.",
+      });
+    }
+    const precision = args.precision;
+    if (
+      precision !== undefined &&
+      (typeof precision !== 'number' || !Number.isInteger(precision) || precision < 1 || precision > 10_000)
+    ) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: 'precision must be an integer from 1 through 10000.',
+      });
     }
     const options = precision === undefined ? undefined : { Precision: precision };
     const entityRef = { modelId: selected.id, expressId };

@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { dispatch, parsePlaygroundModel } from './playground-dispatcher.js';
+import { anthropicToolDefinitions, dispatch, parsePlaygroundModel } from './playground-dispatcher.js';
 
 const path = fileURLToPath(new URL('../../../../../tests/models/cost/buildingsmart-cost-composition.ifc', import.meta.url));
 const available = existsSync(path);
@@ -30,5 +30,30 @@ describe('#4855 MCP playground cost tools', () => {
       data: { CostItems: Array<{ ref: { expressId: number }; Name?: string }> };
     }).data.CostItems.find(value => value.ref.expressId === 42);
     assert.equal(item?.Name, 'External wall total');
+
+    const unsafeId = await dispatch(model, 'cost_evaluate', {
+      target: 'item',
+      express_id: Number.MAX_SAFE_INTEGER + 1,
+    });
+    assert.equal(unsafeId.isError, true);
+    assert.equal(unsafeId.errorCode, 'INVALID_INPUT');
+
+    const excessivePrecision = await dispatch(model, 'cost_evaluate', {
+      target: 'item',
+      express_id: 42,
+      precision: 10_001,
+    });
+    assert.equal(excessivePrecision.isError, true);
+    assert.equal(excessivePrecision.errorCode, 'INVALID_INPUT');
+  });
+
+  it('advertises the browser cost evaluation constraints to Anthropic', () => {
+    const tool = anthropicToolDefinitions().find(candidate => candidate.name === 'cost_evaluate');
+    assert.ok(tool);
+    assert.deepEqual(tool.input_schema.properties.target.enum, ['item', 'value']);
+    assert.equal(tool.input_schema.properties.express_id.minimum, 0);
+    assert.equal(tool.input_schema.properties.express_id.maximum, Number.MAX_SAFE_INTEGER);
+    assert.equal(tool.input_schema.properties.precision.minimum, 1);
+    assert.equal(tool.input_schema.properties.precision.maximum, 10_000);
   });
 });

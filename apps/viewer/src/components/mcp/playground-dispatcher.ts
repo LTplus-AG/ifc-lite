@@ -1952,7 +1952,13 @@ export function supportedToolNames(): string[] {
 /** Anthropic-compatible JSON schema for a single tool's input. */
 export interface AnthropicInputSchema {
   type: 'object';
-  properties: Record<string, { type: string; description?: string }>;
+  properties: Record<string, {
+    type: string;
+    description?: string;
+    enum?: unknown[];
+    minimum?: number;
+    maximum?: number;
+  }>;
   required?: string[];
 }
 export interface AnthropicToolDef {
@@ -1998,11 +2004,27 @@ export function anthropicToolDefinitions(): AnthropicToolDef[] {
 /** Anthropic requires every tool's input_schema.type === 'object'. Some catalog
  *  schemas are missing `properties` — fill in a minimal one from paramsFor(). */
 function ensureObjectSchema(tool: CatalogTool): AnthropicInputSchema {
-  const raw = tool.inputSchema as { type?: string; properties?: Record<string, { type?: string; description?: string }>; required?: string[] } | undefined;
+  const raw = tool.inputSchema as {
+    type?: string;
+    properties?: Record<string, {
+      type?: string;
+      description?: string;
+      enum?: unknown[];
+      minimum?: number;
+      maximum?: number;
+    }>;
+    required?: string[];
+  } | undefined;
   if (raw && raw.type === 'object' && raw.properties && Object.keys(raw.properties).length > 0) {
     const properties: AnthropicInputSchema['properties'] = {};
     for (const [k, v] of Object.entries(raw.properties)) {
-      properties[k] = { type: typeof v?.type === 'string' ? v.type : 'string', ...(v?.description ? { description: v.description } : {}) };
+      properties[k] = {
+        type: typeof v?.type === 'string' ? v.type : 'string',
+        ...(v?.description ? { description: v.description } : {}),
+        ...(Array.isArray(v?.enum) ? { enum: v.enum } : {}),
+        ...(typeof v?.minimum === 'number' ? { minimum: v.minimum } : {}),
+        ...(typeof v?.maximum === 'number' ? { maximum: v.maximum } : {}),
+      };
     }
     return {
       type: 'object',

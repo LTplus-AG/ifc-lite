@@ -166,7 +166,11 @@ export function getRawNamedAttributes(
     entity: IfcEntity
 ): Array<{ name: string; raw: IfcAttributeValue }> {
     const attrs = entity.attributes || [];
-    const attrNames = getAttributeNames(entity.type);
+    // This reader is shared by EntityNode.allAttributes() and must recognize
+    // IFC2X3-only and IFC4X3-only classes as well as the IFC4 codegen pin.
+    // The schema-union helper preserves the pinned result when available and
+    // supplies the missing names for the other bundled schemas.
+    const attrNames = getAttributeNamesAcrossSchemas(entity.type);
 
     const result: Array<{ name: string; raw: IfcAttributeValue }> = [];
     const len = Math.min(attrs.length, attrNames.length);
@@ -270,4 +274,3 @@ export function pickLongName(entity: IfcEntity): string {
     const raw = (entity.attributes || [])[idx.longName];
     return typeof raw === 'string' ? raw : '';
 }
-

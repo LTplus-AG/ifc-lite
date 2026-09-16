@@ -39,7 +39,7 @@
  *    lists `[1:?]`) and is refused loudly rather than degraded to `$`.
  */
 
-import { esc, num, optStr, optEnum, refList } from './ifc-creator-math.js';
+import { esc, optStr, optEnum, refList } from './ifc-creator-math.js';
 import type {
   CostItemParams,
   CostQuantityParams,
@@ -51,6 +51,32 @@ import type {
 
 /** Allocate an express id, emit `#id=TYPE(attrs);`, and return the id. */
 export type EmitEntity = (type: string, attrs: string) => number;
+
+/** The schemas cost entities can be authored in (IFC2X3 is refused up front). */
+export type CostSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
+
+/**
+ * Serialize a finite number as an exact STEP REAL.
+ *
+ * The shared `num()` expands exponent notation through `toFixed(10)`, which
+ * is fine for geometry but turns 1e-11 into 0 and leaves 1e21 in JS exponent
+ * form. A cost amount has no tolerance for either, and ISO 10303-21 REAL
+ * allows an exponent (`1.E-11`), so the shortest round-trip digits from
+ * `toString()` are kept and only rewritten into STEP's spelling.
+ */
+export function stepReal(v: number): string {
+  const s = v.toString();
+  const e = s.search(/e/i);
+  if (e < 0) return s.includes('.') ? s : `${s}.`;
+  const mantissa = s.slice(0, e);
+  const exponent = s.slice(e + 1).replace(/^\+/, '');
+  return `${mantissa.includes('.') ? mantissa : `${mantissa}.`}E${exponent}`;
+}
+
+/** EXPRESS INTEGER-valued measures: IfcInteger always, IfcCountMeasure from IFC4X3 on. */
+function isIntegerMeasure(type: string, schema: CostSchema): boolean {
+  return type === 'IfcInteger' || (type === 'IfcCountMeasure' && schema === 'IFC4X3');
+}
 
 /**
  * Refuse IFC2X3 cost authoring by name, loudly.
@@ -78,12 +104,19 @@ export function assertCostSchema(schema: string, method: string): void {
  * a valid IfcMonetaryMeasure, IfcAreaMeasure, IfcCountMeasure and IfcInteger,
  * and picking one by inspecting the value would silently retype the file.
  */
-export function typedValue(value: CostTypedValue, context: string): string {
+export function typedValue(value: CostTypedValue, schema: CostSchema, context: string): string {
   if (!Number.isFinite(value.Value)) {
     throw new Error(`${context}: ${value.Type} value must be a finite number`);
   }
-  if (value.Type === 'IfcInteger') return `IFCINTEGER(${Math.round(value.Value)})`;
-  return `${value.Type.toUpperCase()}(${num(value.Value)})`;
+  // Rounding would silently change the caller's number: an INTEGER measure
+  // given a fraction is a caller error, not something to fix up.
+  if (isIntegerMeasure(value.Type, schema)) {
+    if (!Number.isInteger(value.Value)) {
+      throw new Error(`${context}: ${value.Type} value must be an integer in ${schema}, got ${value.Value}`);
+    }
+    return `${value.Type.toUpperCase()}(${value.Value.toString()})`;
+  }
+  return `${value.Type.toUpperCase()}(${stepReal(value.Value)})`;
 }
 
 /**
@@ -132,8 +165,39 @@ export function emitMonetaryUnit(currency: string, emit: EmitEntity): number {
   return emit('IFCMONETARYUNIT', `'${esc(currency)}'`);
 }
 
-/** Emit an IfcSIUnit. [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name. */
+const SI_PREFIXES = new Set([
+  'ATTO', 'CENTI', 'DECA', 'DECI', 'EXA', 'FEMTO', 'GIGA', 'HECTO',
+  'KILO', 'MEGA', 'MICRO', 'MILLI', 'NANO', 'PETA', 'PICO', 'TERA',
+]);
+
+/** The one IfcSIUnitName each authorable UnitType is dimensionally consistent with. */
+const SI_NAME_FOR_UNIT_TYPE: Record<string, string> = {
+  LENGTHUNIT: 'METRE',
+  AREAUNIT: 'SQUARE_METRE',
+  VOLUMEUNIT: 'CUBIC_METRE',
+  MASSUNIT: 'GRAM',
+  TIMEUNIT: 'SECOND',
+};
+
+/**
+ * Emit an IfcSIUnit. [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name.
+ *
+ * All three are ENUMERATION literals and `Name` is mandatory, so an unknown or
+ * empty string is refused rather than written as `.WHATEVER.` or `$` (the
+ * sandbox passes these straight through from untyped script input).
+ */
 export function emitSIUnit(params: SIUnitParams, emit: EmitEntity): number {
+  const expected = SI_NAME_FOR_UNIT_TYPE[params.UnitType];
+  if (expected === undefined) {
+    throw new Error(
+      `addIfcSIUnit: UnitType must be one of ${Object.keys(SI_NAME_FOR_UNIT_TYPE).join(', ')}, got '${params.UnitType}'`);
+  }
+  if (params.Name !== expected) {
+    throw new Error(`addIfcSIUnit: a ${params.UnitType} must be named '${expected}', got '${params.Name}'`);
+  }
+  if (params.Prefix !== undefined && !SI_PREFIXES.has(params.Prefix)) {
+    throw new Error(`addIfcSIUnit: Prefix '${params.Prefix}' is not an IfcSIPrefix`);
+  }
   return emit('IFCSIUNIT',
     `*,${optEnum(params.UnitType)},${optEnum(params.Prefix)},${optEnum(params.Name)}`);
 }
@@ -146,10 +210,11 @@ export function emitSIUnit(params: SIUnitParams, emit: EmitEntity): number {
 export function emitMeasureWithUnit(
   value: CostTypedValue,
   unitId: number,
+  schema: CostSchema,
   emit: EmitEntity,
 ): number {
   const unitRef = requireRef(unitId, 'UnitComponent', 'addIfcMeasureWithUnit');
-  return emit('IFCMEASUREWITHUNIT', `${typedValue(value, 'addIfcMeasureWithUnit')},${unitRef}`);
+  return emit('IFCMEASUREWITHUNIT', `${typedValue(value, schema, 'addIfcMeasureWithUnit')},${unitRef}`);
 }
 
 /**
@@ -160,20 +225,37 @@ export function emitMeasureWithUnit(
  * opposite of `IfcCostValue.AppliedValue`. Naming a branch here would be as
  * wrong as omitting one there.
  *
+ * The rules are schema-dependent: IfcCountMeasure is NUMBER in IFC4 but
+ * INTEGER in IFC4X3, IfcQuantityNumber only exists from IFC4X3, and every kind
+ * except IfcQuantityNumber carries a `WR: <Value> >= 0` rule.
+ *
  * [0] Name, [1] Description, [2] Unit, [3] <Kind>Value, [4] Formula.
  */
-export function emitPhysicalQuantity(params: CostQuantityParams, emit: EmitEntity): number {
-  if (!Number.isFinite(params.Value)) {
-    throw new Error(`addIfcPhysicalQuantity: ${params.Kind} '${params.Name}' value must be a finite number`);
+export function emitPhysicalQuantity(
+  params: CostQuantityParams,
+  schema: CostSchema,
+  emit: EmitEntity,
+): number {
+  const context = `addIfcPhysicalQuantity: ${params.Kind} '${params.Name}'`;
+  if (params.Kind === 'IfcQuantityNumber' && schema !== 'IFC4X3') {
+    throw new Error(`${context} does not exist in ${schema}; IfcQuantityNumber requires Schema "IFC4X3"`);
   }
-  if (params.Kind === 'IfcQuantityCount' && !Number.isInteger(params.Value)) {
-    throw new Error(
-      `addIfcPhysicalQuantity: IfcQuantityCount '${params.Name}' value must be a finite integer`);
+  if (!Number.isFinite(params.Value)) {
+    throw new Error(`${context} value must be a finite number`);
+  }
+  if (params.Kind === 'IfcQuantityCount' && schema === 'IFC4X3' && !Number.isInteger(params.Value)) {
+    throw new Error(`${context} value must be a finite integer in IFC4X3 (IfcCountMeasure is INTEGER)`);
+  }
+  if (params.Kind !== 'IfcQuantityNumber' && params.Value < 0) {
+    throw new Error(`${context} value must be non-negative, got ${params.Value}`);
   }
   const unitRef = params.Unit === undefined
     ? '$'
     : requireRef(params.Unit, 'Unit', 'addIfcPhysicalQuantity');
-  const value = num(params.Value);
+  // An IFC4X3 count is INTEGER, so it takes no trailing `.` (that spells a REAL).
+  const value = params.Kind === 'IfcQuantityCount' && schema === 'IFC4X3'
+    ? params.Value.toString()
+    : stepReal(params.Value);
   return emit(params.Kind.toUpperCase(),
     `'${esc(params.Name)}',${optStr(params.Description)},${unitRef},${value},${optStr(params.Formula)}`);
 }
@@ -191,14 +273,14 @@ export function emitPhysicalQuantity(params: CostQuantityParams, emit: EmitEntit
  * [4] ApplicableDate, [5] FixedUntilDate, [6] Category, [7] Condition,
  * [8] ArithmeticOperator, [9] Components.
  */
-export function emitCostValue(params: CostValueParams, emit: EmitEntity): number {
+export function emitCostValue(params: CostValueParams, schema: CostSchema, emit: EmitEntity): number {
   if (params.AppliedValue !== undefined && params.AppliedValueRef !== undefined) {
     throw new Error(
       'addIfcCostValue: AppliedValue and AppliedValueRef are the two branches of one SELECT — give at most one');
   }
   let applied = '$';
   if (params.AppliedValue !== undefined) {
-    applied = typedValue(params.AppliedValue, 'addIfcCostValue');
+    applied = typedValue(params.AppliedValue, schema, 'addIfcCostValue');
   } else if (params.AppliedValueRef !== undefined) {
     applied = requireRef(params.AppliedValueRef, 'AppliedValueRef', 'addIfcCostValue');
   }

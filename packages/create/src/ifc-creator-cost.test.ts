@@ -52,7 +52,10 @@ async function extract(content: string): Promise<CostGraphExtraction> {
 }
 
 /** A creator whose GlobalIds and timestamps are fixed, so output is reproducible. */
-function seededCreator(seed: number, extra: { Currency?: string } = {}): IfcCreator {
+function seededCreator(
+  seed: number,
+  extra: { Currency?: string; Schema?: 'IFC4' | 'IFC4X3' } = {},
+): IfcCreator {
   const rng = seededRng(seed);
   return new IfcCreator({
     Name: 'Cost fixture',
@@ -73,8 +76,8 @@ interface Fixture {
  * every expressId, so a test can assert on identity (shared references) and not
  * only on values.
  */
-function buildCostFixture(options: { Currency?: string } = { Currency: 'CHF' }): Fixture {
-  const creator = seededCreator(4856, options);
+function buildCostFixture(options: { Currency?: string } = { Currency: 'CHF' }, seed = 4856): Fixture {
+  const creator = seededCreator(seed, options);
   const storey = creator.addIfcBuildingStorey({ Name: 'Level 0', Elevation: 0 });
   const wall = creator.addIfcWall(storey, {
     Name: 'Basement wall', Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.3, Height: 3,
@@ -212,6 +215,22 @@ describe('IfcCreator cost authoring — author, serialise, re-read (#4856)', () 
     });
   });
 
+  it('writes very small and very large amounts exactly, in STEP exponent form', async () => {
+    const creator = seededCreator(7);
+    const tiny = creator.addIfcCostValue({ Name: 'Tiny', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 1e-11 } });
+    const huge = creator.addIfcCostValue({ Name: 'Huge', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 1.5e21 } });
+    const step = creator.toIfc().content;
+    // Not `0.0` (value lost) and not `1.5e+21` (JS spelling, invalid STEP).
+    expect(step).toContain('IFCMONETARYMEASURE(1.E-11)');
+    expect(step).toContain('IFCMONETARYMEASURE(1.5E21)');
+
+    const graph = await extract(step);
+    const read = (id: number) => graph.CostValues.find(v => v.expressId === id)?.AppliedValue;
+    expect(read(tiny)).toMatchObject({ Kind: 'Typed', Type: 'IFCMONETARYMEASURE' });
+    expect(Number((read(tiny) as { Value: string }).Value)).toBe(1e-11);
+    expect(Number((read(huge) as { Value: string }).Value)).toBe(1.5e21);
+  });
+
   it('keeps an IfcQuantityArea value BARE — it is a defined type, not a SELECT', async () => {
     const { creator, ids } = buildCostFixture();
     const step = creator.toIfc().content;
@@ -285,11 +304,10 @@ describe('IfcCreator cost authoring — author, serialise, re-read (#4856)', () 
     const first = buildCostFixture().creator.toIfc().content;
     const second = buildCostFixture().creator.toIfc().content;
     expect(first).toBe(second);
-    // A different seed must NOT also be identical, or the check above proves
-    // nothing about ordering.
-    const other = seededCreator(9999, { Currency: 'CHF' });
-    other.addIfcCostSchedule({ Name: 'Bid package 3' });
-    expect(other.toIfc().content).not.toBe(first);
+    // The SAME graph under a different seed must NOT also be identical, or the
+    // check above proves nothing about the seed reaching the output.
+    const other = buildCostFixture(undefined, 9999).creator.toIfc().content;
+    expect(other).not.toBe(first);
   });
 });
 
@@ -390,15 +408,15 @@ describe('IfcCreator cost authoring — malformed input is refused (#4856)', () 
     })).toThrow(/must be a finite number/);
   });
 
-  it('refuses a fractional IfcQuantityCount rather than silently rounding it, and writes nothing partial', () => {
-    const creator = seededCreator(41);
+  it('refuses a fractional IFC4X3 IfcQuantityCount rather than silently rounding it, and writes nothing partial', () => {
+    const creator = seededCreator(41, { Schema: 'IFC4X3' });
     const before = creator.addIfcPhysicalQuantity({
       Kind: 'IfcQuantityLength', Name: 'L', Value: 1,
     });
 
     expect(() => creator.addIfcPhysicalQuantity({
       Kind: 'IfcQuantityCount', Name: 'Units', Value: 3.7,
-    })).toThrow(/IfcQuantityCount.*must be a finite integer/);
+    })).toThrow(/IfcQuantityCount.*must be a finite integer in IFC4X3/);
 
     // Proof the failed call wrote NOTHING — not even a malformed line — for
     // either the express id counter or the STEP text: the next entity gets
@@ -411,6 +429,78 @@ describe('IfcCreator cost authoring — malformed input is refused (#4856)', () 
 
     const step = creator.toIfc().content;
     expect(step).not.toContain('IFCQUANTITYCOUNT');
+  });
+
+  it('keeps a fractional IFC4 IfcQuantityCount (IfcCountMeasure is NUMBER there) and writes IFC4X3 counts as INTEGER', () => {
+    const ifc4 = seededCreator(42);
+    ifc4.addIfcPhysicalQuantity({ Kind: 'IfcQuantityCount', Name: 'Half', Value: 0.5 });
+    expect(ifc4.toIfc().content).toContain("IFCQUANTITYCOUNT('Half',$,$,0.5,$)");
+
+    const ifc4x3 = seededCreator(43, { Schema: 'IFC4X3' });
+    ifc4x3.addIfcPhysicalQuantity({ Kind: 'IfcQuantityCount', Name: 'Units', Value: 3 });
+    // `3.` would spell a REAL in an INTEGER slot.
+    expect(ifc4x3.toIfc().content).toContain("IFCQUANTITYCOUNT('Units',$,$,3,$)");
+  });
+
+  it('refuses IfcQuantityNumber outside IFC4X3, where the entity does not exist', () => {
+    expect(() => seededCreator(44).addIfcPhysicalQuantity({
+      Kind: 'IfcQuantityNumber', Name: 'N', Value: 1,
+    })).toThrow(/IfcQuantityNumber requires Schema "IFC4X3"/);
+
+    const ifc4x3 = seededCreator(45, { Schema: 'IFC4X3' });
+    // IfcNumericMeasure has no >= 0 rule, so a negative number is legal here.
+    ifc4x3.addIfcPhysicalQuantity({ Kind: 'IfcQuantityNumber', Name: 'N', Value: -2 });
+    expect(ifc4x3.toIfc().content).toContain("IFCQUANTITYNUMBER('N',$,$,-2.,$)");
+  });
+
+  it('refuses a negative physical quantity (WR: <Value> >= 0)', () => {
+    const creator = seededCreator(46);
+    for (const Kind of ['IfcQuantityArea', 'IfcQuantityLength', 'IfcQuantityCount'] as const) {
+      expect(() => creator.addIfcPhysicalQuantity({ Kind, Name: 'Neg', Value: -1 }))
+        .toThrow(/must be non-negative/);
+    }
+    expect(creator.toIfc().content).not.toContain("'Neg'");
+  });
+
+  it('refuses an IfcInteger fraction instead of rounding it', () => {
+    const creator = seededCreator(47);
+    expect(() => creator.addIfcCostValue({
+      AppliedValue: { Type: 'IfcInteger', Value: 1.6 },
+    })).toThrow(/IfcInteger value must be an integer/);
+    creator.addIfcCostValue({ Name: 'Whole', AppliedValue: { Type: 'IfcInteger', Value: 2 } });
+    const step = creator.toIfc().content;
+    expect(step).toContain('IFCINTEGER(2)');
+    expect(step).not.toContain('IFCINTEGER(2.)');
+  });
+
+  it('refuses a missing, unknown or dimensionally wrong IfcSIUnit enum', () => {
+    const creator = seededCreator(48);
+    expect(() => creator.addIfcSIUnit({ UnitType: 'AREAUNIT', Name: '' })).toThrow(/must be named 'SQUARE_METRE'/);
+    expect(() => creator.addIfcSIUnit({ UnitType: 'AREAUNIT', Name: 'METRE' })).toThrow(/must be named 'SQUARE_METRE'/);
+    expect(() => creator.addIfcSIUnit({ UnitType: 'LENGTHUNIT', Name: 'METRE', Prefix: 'KILOS' }))
+      .toThrow(/not an IfcSIPrefix/);
+    expect(() => creator.addIfcSIUnit({ UnitType: 'BOGUSUNIT' as 'AREAUNIT', Name: 'SQUARE_METRE' }))
+      .toThrow(/UnitType must be one of/);
+    creator.addIfcSIUnit({ UnitType: 'LENGTHUNIT', Prefix: 'MILLI', Name: 'METRE' });
+    const step = creator.toIfc().content;
+    expect(step).toContain('IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)');
+    // Only the valid unit was added to the project's own units: every refusal
+    // left nothing behind.
+    const baseline = seededCreator(48).toIfc().content;
+    expect(step.match(/IFCSIUNIT\(/g)?.length).toBe((baseline.match(/IFCSIUNIT\(/g)?.length ?? 0) + 1);
+  });
+
+  it('refuses a sparse Properties or Quantities array instead of writing an empty ref', () => {
+    const creator = seededCreator(49);
+    const storey = creator.addIfcBuildingStorey({ Name: 'L0', Elevation: 0 });
+    const wall = creator.addIfcWall(storey, { Name: 'W', Start: [0, 0, 0], End: [1, 0, 0], Thickness: 0.2, Height: 3 });
+    expect(() => creator.addIfcPropertySet(wall, { Name: 'Pset_Sparse', Properties: new Array(1) }))
+      .toThrow(/Properties\[0\] is missing/);
+    expect(() => creator.addIfcElementQuantity(wall, { Name: 'Qto_Sparse', Quantities: new Array(1) }))
+      .toThrow(/Quantities\[0\] is missing/);
+    const step = creator.toIfc().content;
+    expect(step).not.toContain('Pset_Sparse');
+    expect(step).not.toContain('Qto_Sparse');
   });
 
   it('refuses an invented currency of ""', () => {

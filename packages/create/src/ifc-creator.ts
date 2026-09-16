@@ -1845,7 +1845,7 @@ export class IfcCreator {
   /** Create an IfcCostValue (IFC4 / IFC4X3 only). Returns its expressId. */
   addIfcCostValue(params: CostValueParams): number {
     assertCostSchema(this.schema, 'addIfcCostValue');
-    return emitCostValue(params, this.emitEntity);
+    return emitCostValue(params, this.schema, this.emitEntity);
   }
 
   /** Create an IfcMonetaryUnit for `currency`. No default — omit it to leave the currency unstated. */
@@ -1863,13 +1863,13 @@ export class IfcCreator {
   /** Create an IfcMeasureWithUnit — what a UnitBasis or entity-valued AppliedValue points at. */
   addIfcMeasureWithUnit(value: CostTypedValue, unitId: number): number {
     assertCostSchema(this.schema, 'addIfcMeasureWithUnit');
-    return emitMeasureWithUnit(value, unitId, this.emitEntity);
+    return emitMeasureWithUnit(value, unitId, this.schema, this.emitEntity);
   }
 
   /** Create a standalone IfcPhysicalSimpleQuantity for IfcCostItem.CostQuantities. */
   addIfcPhysicalQuantity(params: CostQuantityParams): number {
     assertCostSchema(this.schema, 'addIfcPhysicalQuantity');
-    return emitPhysicalQuantity(params, this.emitEntity);
+    return emitPhysicalQuantity(params, this.schema, this.emitEntity);
   }
 
   /** Emit an IfcRelAssignsToProduct — see {@link emitRelAssignsToProduct} for the direction rule. */

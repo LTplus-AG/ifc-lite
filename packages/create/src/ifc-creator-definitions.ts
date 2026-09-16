@@ -20,6 +20,17 @@ import { esc, quantityValueField, serializePropertyValue } from './ifc-creator-m
 import type { EmitEntity } from './ifc-creator-cost.js';
 import type { PropertySetDef, QuantitySetDef } from './types.js';
 
+/**
+ * Refuse a sparse array before anything is emitted. `map` skips holes and
+ * `join` renders them as empty refs, so `new Array(1)` would otherwise write
+ * `()` instead of failing the way the pre-split `for...of` loop did.
+ */
+function assertDense(items: readonly unknown[], what: string): void {
+  for (let i = 0; i < items.length; i++) {
+    if (!(i in items) || items[i] == null) throw new Error(`${what}[${i}] is missing`);
+  }
+}
+
 /** The creator hooks these emitters need. */
 export interface DefinitionContext {
   emit: EmitEntity;
@@ -38,6 +49,7 @@ export function emitPropertySet(
   pset: PropertySetDef,
   context: DefinitionContext,
 ): number {
+  assertDense(pset.Properties, `addIfcPropertySet '${pset.Name}': Properties`);
   const propIds = pset.Properties.map(prop =>
     context.emit('IFCPROPERTYSINGLEVALUE', `'${esc(prop.Name)}',$,${serializePropertyValue(prop)},$`));
   const refs = propIds.map(id => `#${id}`).join(',');
@@ -57,6 +69,7 @@ export function emitElementQuantity(
   qset: QuantitySetDef,
   context: DefinitionContext,
 ): number {
+  assertDense(qset.Quantities, `addIfcElementQuantity '${qset.Name}': Quantities`);
   const qtyIds = qset.Quantities.map(qty =>
     context.emit(qty.Kind.toUpperCase(),
       `'${esc(qty.Name)}',$,${quantityValueField(qty)}${context.ifc4Only('$')}`));

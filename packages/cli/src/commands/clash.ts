@@ -17,7 +17,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson, routeConsoleDiagnosticsToStderr } from '../output.js';
-import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, renderFrameWorldOffset, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   createClashEngine,
@@ -58,10 +58,20 @@ export function worstFirst(clashes: readonly Clash[]): Clash[] {
 }
 
 /**
+ * Meshes plus the frame they are in. The mesher shifts large coordinates
+ * towards the origin, so clash bounds are render-frame values; the frame is
+ * what turns them back into world coordinates for BCF (#4879).
+ */
+interface MeshedModel {
+  meshes: MeshData[];
+  coordinateInfo: CoordinateInfo | undefined;
+}
+
+/**
  * Mesh a model once and cache the meshes by model id so repeated clash runs
  * within a single process never re-mesh the same file.
  */
-const meshCache = new Map<string, MeshData[]>();
+const meshCache = new Map<string, MeshedModel>();
 
 let sharedProcessor: GeometryProcessor | undefined;
 
@@ -78,28 +88,28 @@ async function getProcessor(): Promise<GeometryProcessor> {
  * Mesh the whole model. Prefers the parsed `store.source` bytes; falls back to
  * reading the file path from disk when the store did not retain its source.
  */
-async function meshModel(store: IfcDataStore, modelId: string, filePath: string): Promise<MeshData[]> {
+async function meshModel(store: IfcDataStore, modelId: string, filePath: string): Promise<MeshedModel> {
   const cached = meshCache.get(modelId);
   if (cached) return cached;
 
-  const mesh = async (bytes: Uint8Array): Promise<MeshData[]> => {
+  const mesh = async (bytes: Uint8Array): Promise<MeshedModel> => {
     const processor = await getProcessor();
     const result = await processor.process(bytes);
-    return result.meshes;
+    return { meshes: result.meshes, coordinateInfo: result.coordinateInfo };
   };
 
   // The wasm mesher is a genuine whole-file consumer, so the source is
   // materialised — but scoped, so the buffer cannot outlive the mesh pass
   // (only the meshes are cached).
-  let meshes: MeshData[];
+  let meshed: MeshedModel;
   if (store.source.byteLength > 0) {
-    meshes = await store.source.withMaterializedAsync(mesh);
+    meshed = await store.source.withMaterializedAsync(mesh);
   } else {
     const buffer = await readFile(filePath);
-    meshes = await mesh(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength));
+    meshed = await mesh(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength));
   }
-  meshCache.set(modelId, meshes);
-  return meshes;
+  meshCache.set(modelId, meshed);
+  return meshed;
 }
 
 function parseMode(raw: string | undefined): ClashMode {
@@ -302,7 +312,7 @@ export async function clashCommand(args: string[]): Promise<void> {
   try {
     const modelId = basename(filePath);
     if (!jsonOutput) process.stderr.write(`  Meshing ${modelId} ...\n`);
-    const meshes = await meshModel(store, modelId, filePath);
+    const { meshes, coordinateInfo } = await meshModel(store, modelId, filePath);
 
     const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
 
@@ -335,6 +345,9 @@ export async function clashCommand(args: string[]): Promise<void> {
         author: 'ifc-lite clash',
         projectName: 'Clash report',
         // Headless: no snapshots (no renderer) — viewer export embeds those.
+        // Clash bounds are in the mesher's shifted frame; BCF cameras are
+        // world coordinates, or other tools look kilometres away (#4879).
+        worldOffset: renderFrameWorldOffset(coordinateInfo),
         ...(bcfStatus ? { status: bcfStatus } : {}),
         ...(maxTopics != null ? { maxTopics } : {}),
       });

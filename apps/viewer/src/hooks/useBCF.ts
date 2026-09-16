@@ -18,6 +18,8 @@ import {
   createViewpoint,
   extractViewpointState,
   computeMarkerPositions,
+  translateViewpoint,
+  viewpointFromWorld,
   type ViewerCameraState,
   type ViewerBounds,
   type OverlayBBox,
@@ -35,7 +37,7 @@ import { deriveHeaderFiles } from './bcfHeaderFiles';
 import { toast } from '@/components/ui/toast';
 import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-capture';
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
-import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame, viewpointToRenderFrame, viewpointToWorld } from './bcf/viewpoint-world-frame';
+import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
 
 // ============================================================================
@@ -449,7 +451,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       // Camera and section plane are captured in the render frame; the
       // viewpoint is stored and written in world coordinates (#4806).
-      return viewpointToWorld(createViewpoint({
+      return translateViewpoint(createViewpoint({
         camera: cameraState,
         sectionPlane: viewerSectionPlane,
         bounds: viewpointBounds,
@@ -535,7 +537,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       const bounds = getBounds() ?? undefined;
       const state = extractViewpointState(
-        viewpointToRenderFrame(viewpoint, getWorldOffset(), bounds),
+        viewpointFromWorld(viewpoint, getWorldOffset(), bounds),
         bounds,
         renderer.getCamera().getDistance(),
       );
@@ -561,7 +563,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       // Extract state from viewpoint (once, reused for camera, section plane, and selection)
       const state = extractViewpointState(
-        viewpointToRenderFrame(viewpoint, getWorldOffset(), bounds), // world -> render frame (#4806)
+        viewpointFromWorld(viewpoint, getWorldOffset(), bounds), // world -> render frame (#4806)
         bounds,
         renderer.getCamera().getDistance() // Use current distance as reference
       );

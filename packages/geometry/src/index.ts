@@ -46,6 +46,17 @@ export { geometryAabbAt, geometryVolumeAt } from './geometry-fingerprints.js';
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
 export type { RtcFrame } from './rtc-frame.js';
+// Render frame <-> IFC world coordinates (#4879): the one axis swap and offset
+// sum every BCF/clash/SDK producer uses to write world positions.
+export {
+  ifcToViewerAxes,
+  viewerToIfcAxes,
+  totalYupOffset,
+  renderFrameWorldOffset,
+  federationFrameInfo,
+  type RenderFrameInfo,
+  type FrameCandidate,
+} from './world-frame.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is

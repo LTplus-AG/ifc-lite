@@ -33,10 +33,7 @@
  */
 
 import type { Point3 } from './components';
-import {
-  ifcToViewerAxes,
-  viewerToIfcAxes,
-} from '@/lib/geo/coordinate-frame';
+import { totalYupOffset, viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
 
 /**
  * The offsets the geometry pipeline applied to get from the model's own
@@ -68,13 +65,8 @@ export interface RenderFrameOffsets {
  * in the same axes would fold the model's north offset into its height.
  */
 export function renderToWorldViewer(p: Point3, frame: RenderFrameOffsets): Point3 {
-  const shift = frame.originShift ?? { x: 0, y: 0, z: 0 };
-  const rtcViewer = ifcToViewerAxes(frame.wasmRtcOffsetIfc ?? { x: 0, y: 0, z: 0 });
-  return {
-    x: p.x + shift.x + rtcViewer.x,
-    y: p.y + shift.y + rtcViewer.y,
-    z: p.z + shift.z + rtcViewer.z,
-  };
+  const offset = totalYupOffset({ originShift: frame.originShift, wasmRtcOffset: frame.wasmRtcOffsetIfc });
+  return { x: p.x + offset.x, y: p.y + offset.y, z: p.z + offset.z };
 }
 
 /** A picked point expressed in every frame the viewer can honestly offer. */

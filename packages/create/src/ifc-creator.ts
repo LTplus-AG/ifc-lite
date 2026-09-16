@@ -26,9 +26,9 @@ import type {
   WallDoorParams, WallWindowParams, DoorParams, WindowParams, RampParams, RailingParams,
   PlateParams, MemberParams, FootingParams, PileParams,
   SpaceParams, CurtainWallParams, FurnishingParams, ProxyParams,
-  ProjectParams, SiteParams, BuildingParams, StoreyParams,
-  PropertySetDef, PropertyDef, QuantitySetDef, QuantityDef,
-  MaterialDef, MaterialLayerDef,
+  ProjectParams, StoreyParams,
+  PropertySetDef, QuantitySetDef,
+  MaterialDef,
   WorkScheduleParams, WorkPlanParams, TaskParams, SequenceParams,
   WorkCalendarParams,
   CreatedEntity, CreateResult,
@@ -40,7 +40,7 @@ import type {
 } from './types-cost.js';
 import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
-  optStr, optEnum, serializePropertyValue, quantityValueField,
+  optStr, optEnum,
   NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3,
 } from './ifc-creator-math.js';
 import { emitWorkCalendar, emitTaskTime } from './ifc-creator-scheduling.js';
@@ -1070,7 +1070,6 @@ export class IfcCreator {
     const name = params.Name ?? 'Space';
     const desc = params.Description ? `'${esc(params.Description)}'` : '$';
     const objType = params.ObjectType ? `'${esc(params.ObjectType)}'` : '$';
-    const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
     const longName = params.LongName ? `'${esc(params.LongName)}'` : '$';
 
     this.line(spaceId, 'IFCSPACE',

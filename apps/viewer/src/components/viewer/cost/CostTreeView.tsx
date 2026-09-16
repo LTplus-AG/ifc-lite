@@ -66,7 +66,10 @@ function ItemRow({
         tabIndex={0}
         onClick={() => onSelectItem(modelId, node.ref)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') onSelectItem(modelId, node.ref);
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          // Space would otherwise also scroll the panel.
+          e.preventDefault();
+          onSelectItem(modelId, node.ref);
         }}
         className={cn(
           'flex cursor-pointer items-center gap-1 rounded py-0.5 pr-2 text-xs hover:bg-accent',

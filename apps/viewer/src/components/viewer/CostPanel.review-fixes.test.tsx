@@ -204,4 +204,14 @@ describe('CostPanel review fixes (PR #4875)', () => {
     });
     assert.doesNotMatch(container.textContent ?? '', /Mixed currency/);
   });
+  it('Space on a tree row selects it and prevents the default page scroll', () => {
+    const container = renderPanel();
+    const parentRow = row(container, 'Parent item');
+    const event = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    act(() => {
+      parentRow.dispatchEvent(event);
+    });
+    assert.equal(event.defaultPrevented, true, 'Space must not also scroll the panel');
+    assert.equal(row(container, 'Parent item').getAttribute('aria-selected'), 'true');
+  });
 });

@@ -55,7 +55,9 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
     () => graph.CostItems.find((i) => i.ref.expressId === itemRef.expressId),
     [graph, itemRef],
   );
-  const evaluation = useMemo(() => backend.evaluateItem(itemRef), [backend, itemRef]);
+  // `graph` is not read by the callback, but a refreshed graph means the
+  // backend's underlying store changed, so the evaluation must recompute.
+  const evaluation = useMemo(() => backend.evaluateItem(itemRef), [backend, itemRef, graph]);
   const quantities = useMemo(() => {
     const qIds = new Set(item?.CostQuantities?.map((r) => r.expressId) ?? []);
     return graph.CostQuantities.filter((q) => qIds.has(q.ref.expressId));

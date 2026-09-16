@@ -167,4 +167,18 @@ describe('CostPanel review fixes (PR #4875)', () => {
     act(() => row(container, 'Parent item').click());
     assert.match(container.textContent ?? '', /10 GBP/);
   });
+
+  it('re-evaluates the selected item when its model data is refreshed', () => {
+    const container = renderPanel();
+    act(() => row(container, 'Parent item').click());
+    assert.match(container.textContent ?? '', /10 GBP/);
+
+    act(() => {
+      useViewerStore.setState({
+        models: new Map([['modelA', model('modelA', buildStoreFromStep(step(25)))]]),
+      });
+    });
+    assert.match(container.textContent ?? '', /25 GBP/, 'resolved value follows the refreshed graph');
+    assert.doesNotMatch(container.textContent ?? '', /10 GBP/);
+  });
 });

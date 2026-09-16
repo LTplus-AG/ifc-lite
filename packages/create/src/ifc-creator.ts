@@ -1823,9 +1823,8 @@ export class IfcCreator {
     return this.addIfcRelNests(parentTaskId, childTaskIds);
   }
 
-  // Public API — Cost / 5D. Every method delegates to the one shared builder in
-  // `ifc-creator-cost.ts` and refuses IFC2X3 by name (that schema lays the cost
-  // entities out differently, so the IFC4 layout would parse and mislead).
+  // Public API — Cost / 5D. Every method delegates to `ifc-creator-cost.ts` and refuses
+  // IFC2X3 by name (its cost entity layout differs, so IFC4 records would parse and mislead).
   /** Create an IfcCostSchedule (IFC4 / IFC4X3 only). Returns its expressId. */
   addIfcCostSchedule(params: CostScheduleParams): number {
     assertCostSchema(this.schema, 'addIfcCostSchedule');

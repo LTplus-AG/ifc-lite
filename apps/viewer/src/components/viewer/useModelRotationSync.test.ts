@@ -9,7 +9,9 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { emptyPlacementState, placementFor } from '@/lib/model-placement/state';
 import { degreesToRadians } from '@/lib/model-placement/rotation';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
-import { reconcileModelRotations } from './useModelRotationSync';
+import { realignFederationModels } from '@/hooks/ingest/federationRealign';
+import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
+import { reconcileModelRotations, subscribeModelRotationSync, withModelRotationsUnbaked } from './useModelRotationSync';
 
 /** 30°, an off-origin pivot, and an asymmetric shape: at 0°, at the origin, or
  * on a symmetric shape this fixture would pass whether or not it turned. */
@@ -115,6 +117,35 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       /Pointclouds cannot be rotated/);
     // And the refusal is atomic: the IFC model in the same selection is untouched.
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('a re-align never snapshots a rotated model, and re-applies each heading exactly once', async () => {
+    // Two models so the anchor's `updateModel` fires the live subscription
+    // BEFORE the second model is snapshotted — the window a mid-pass reconcile
+    // would re-rotate it in.
+    const pristine = vertices({ geometryResult: geometryResult() } as FederatedModel);
+    const second = { ...fixtureModel('second'), geometryResult: geometryResult() } as FederatedModel;
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['second', second]]) });
+    const unsubscribe = subscribeModelRotationSync();
+    try {
+      useViewerStore.getState().setModelRotation(['ifc', 'second'], { angle: ANGLE, pivot: [...PIVOT] });
+      const rotated = vertices(useViewerStore.getState().models.get('second') as FederatedModel);
+      assert.notDeepEqual(rotated, pristine, 'the fixture must turn under this heading');
+
+      const state = useViewerStore.getState();
+      await withModelRotationsUnbaked(() => realignFederationModels({
+        models: [...state.models] as Array<[string, FederatedModel]>, anchorModelId: 'ifc',
+        anchorGeoref: {} as ModelGeoref, resolveGeoref: () => null, updateModel: state.updateModel,
+      }));
+
+      const after = useViewerStore.getState().models.get('second') as FederatedModel;
+      const snapshot = after.preAlignment!;
+      assert.deepEqual([...snapshot.positions[0], ...(snapshot.origins[0] ?? [])], pristine,
+        'the pre-alignment snapshot captured a rotated model');
+      assert.deepEqual(vertices(after), rotated, 'the heading was not re-applied exactly once after the re-align');
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('rejects a non-finite angle or pivot rather than storing one', () => {

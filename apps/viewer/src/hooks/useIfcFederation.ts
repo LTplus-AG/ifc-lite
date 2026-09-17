@@ -30,7 +30,7 @@ import {
 } from './ingest/viewerModelIngest.js';
 import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
-import { modelRotationBaker } from '../lib/model-placement/rotation-bake.js';
+import { withModelRotationsUnbaked } from '../components/viewer/useModelRotationSync.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 
@@ -233,13 +233,10 @@ export function useIfcFederation(
     // across models. Apply a newer edit only on the next explicit realignment.
     const georefMutations = state.georefMutations;
     state.closeReposition();
-    // Contract in `rotation-bake.ts`: a model rotation must never be inside a
-    // `preAlignment` snapshot, so every model is un-rotated before this pass
-    // snapshots or restores anything. `useModelRotationSync` re-applies the
-    // declared headings on top of the new alignment.
-    modelRotationBaker.unbake((modelId) => (state.models.get(modelId) as FederatedModel | undefined)?.geometryResult);
-
-    const { counts, anchorGeoref, movedModelIds } = await realignFederationModels({
+    // A model rotation must never be inside a `preAlignment` snapshot, so every
+    // model stays un-rotated for the whole pass; the declared headings are
+    // re-applied once on top of the new alignment (`useModelRotationSync`).
+    const { counts, anchorGeoref, movedModelIds } = await withModelRotationsUnbaked(() => realignFederationModels({
       models: allModels,
       anchorModelId: referenceSelection.modelId,
       anchorGeoref: referenceSelection.georef,
@@ -253,7 +250,7 @@ export function useIfcFederation(
           : null
       ),
       updateModel: state.updateModel,
-    });
+    }));
 
     // Manual offsets remain explicit workspace vectors after re-alignment.
     // Picked anchors were cancelled above; exchange files must name the new frame.

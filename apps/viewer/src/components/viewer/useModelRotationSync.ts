@@ -18,12 +18,14 @@ import { buildSpatialIndexForModel } from '@/utils/loadingUtils';
  * for `queryByBounds` / `raycast` / `queryFrustum` (#2013).
  */
 let reconciling = false;
+/** Depth of {@link withModelRotationsUnbaked} passes in flight. */
+let suspended = 0;
 
 export function reconcileModelRotations(state: ViewerState): string[] {
   // The bump below re-enters this through the subscription. The second pass
   // would find nothing to do, but re-entering a geometry rewrite is not a thing
   // to leave to luck.
-  if (reconciling) return [];
+  if (reconciling || suspended > 0) return [];
   reconciling = true;
   try {
     return bake(state);
@@ -53,17 +55,47 @@ function bake(state: ViewerState): string[] {
   return moved;
 }
 
+/**
+ * Run an operation that rewrites model vertices in place — a federation
+ * re-align — with every model un-rotated for its WHOLE duration, then re-apply
+ * the declared headings once on top of what it produced.
+ *
+ * Un-baking at the start is not enough on its own: the operation's own store
+ * writes (`updateModel` per model) fire the subscription, and a reconcile in the
+ * middle would re-rotate models the operation has not reached yet — which it
+ * would then snapshot as their "pre-alignment" state, baking a heading into the
+ * snapshot that the next re-align restores and rotates again.
+ */
+export async function withModelRotationsUnbaked<T>(run: () => Promise<T>): Promise<T> {
+  suspended += 1;
+  try {
+    const state = useViewerStore.getState();
+    modelRotationBaker.unbake((modelId) => (state.models.get(modelId) as FederatedModel | undefined)?.geometryResult);
+    return await run();
+  } finally {
+    suspended -= 1;
+    // Once, after the operation has written everything, so the headings land
+    // on its final geometry. Also on a throw: the models must not be left
+    // un-rotated under a placement that still declares a heading.
+    if (suspended === 0) reconcileModelRotations(useViewerStore.getState());
+  }
+}
+
+/** Keep geometry in step with declared headings on every store change that can
+ * move either. Returns the unsubscribe. */
+export function subscribeModelRotationSync(): () => void {
+  reconcileModelRotations(useViewerStore.getState());
+  return useViewerStore.subscribe((state, previous) => {
+    if (state.modelPlacement !== previous.modelPlacement
+      || state.models !== previous.models
+      || state.geometryContentVersion !== previous.geometryContentVersion) {
+      reconcileModelRotations(state);
+    }
+  });
+}
+
 /** Subscribed synchronously, like the placement sync beside it, so a pick
  * cannot observe the committed heading before the geometry carries it. */
 export function useModelRotationSync(): void {
-  useEffect(() => {
-    reconcileModelRotations(useViewerStore.getState());
-    return useViewerStore.subscribe((state, previous) => {
-      if (state.modelPlacement !== previous.modelPlacement
-        || state.models !== previous.models
-        || state.geometryContentVersion !== previous.geometryContentVersion) {
-        reconcileModelRotations(state);
-      }
-    });
-  }, []);
+  useEffect(() => subscribeModelRotationSync(), []);
 }

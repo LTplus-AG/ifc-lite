@@ -489,7 +489,7 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
 
   it('parent= is a supported rule, not a refusal (#4903)', () => {
     const out = adapt('parent=Foo');
-    assert.deepEqual(out.rules, [Rule.parent('eq', 'Foo')]);
+    assert.deepEqual(out.rules, [{ kind: 'parent', op: 'eq', value: 'Foo' }]);
     assert.deepEqual(out.unsupported, []);
   });
 

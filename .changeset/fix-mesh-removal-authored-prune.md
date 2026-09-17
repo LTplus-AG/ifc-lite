@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/renderer": patch
+"@ifc-lite/renderer": minor
 "@ifc-lite/viewer": patch
 ---
 

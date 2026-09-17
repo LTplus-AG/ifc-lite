@@ -7871,6 +7871,7 @@
     "federationRegistry: const",
     "frameTotalMs: function",
     "hasTimestampQueryFeature: function",
+    "hostsOtherEntities: function",
     "invertAppearancePartition: function",
     "isEntityVisible: function",
     "isNegativeDelta: function",

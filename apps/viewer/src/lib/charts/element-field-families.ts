@@ -211,7 +211,10 @@ export function createElementFamilyReader(
       const relations = into.relations;
       relations.material ||= (provider.getMaterialNames?.(id) ?? []).length > 0;
       relations.type ||= Boolean(provider.getEntityDefiningTypeName?.(id));
+      // Only a DISPLAYABLE reference (a code or a name) counts as an observed
+      // value; an association whose reference could not be read is not one.
       for (const ref of provider.getClassifications?.(id) ?? []) {
+        if (!(ref.code || ref.name)) continue;
         relations.classification = true;
         if (ref.system) relations.classificationSystems.add(ref.system);
       }

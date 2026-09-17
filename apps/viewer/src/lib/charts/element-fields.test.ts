@@ -219,6 +219,18 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(reader.discover([52]).properties.get('Pset_SlabCommon')?.some(({ binding }) => binding.kind === 'property' && binding.propertyName === 'SurfaceSpreadOfFlame'), true);
   });
 
+  it('a classification association whose reference has neither code nor name is not an observed value (#4833 review)', async () => {
+    const store = await parseSampleWith(`
+#60080=IFCCLASSIFICATION('X',$,$,'Sys',$,$,$);
+#60081=IFCCLASSIFICATIONREFERENCE($,$,$,#60080,$,$);
+#60082=IFCRELASSOCIATESCLASSIFICATION('g-cls',#1,$,$,(#52),#60081);`);
+    const reader = createElementFieldReader(store);
+    const relations = reader.discover([52]).relations;
+    assert.equal(relations.find(({ binding }) => binding.kind === 'classification' && !binding.system)?.observedValue, false);
+    assert.equal(relations.some(({ binding }) => binding.kind === 'classification' && binding.system === 'Sys'), false, 'a system with nothing displayable is not offered');
+    assert.equal(reader.readResolved(52, { kind: 'classification', valueKind: 'category' }).status, 'missing');
+  });
+
   it('never offers an entity-reference attribute as a value, even though its STEP slot holds a number', async () => {
     const store = await parseSampleWith(`
 #60020=IFCDIRECTION((0.,0.,1.));

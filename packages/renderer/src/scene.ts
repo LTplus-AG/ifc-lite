@@ -2711,23 +2711,18 @@ export class Scene {
       }
     }
 
-    // Collect MeshData for visible elements
-    // Use the base key (strip "#N" bucket suffix) for piece filtering, since
-    // meshData stores the original color, not the bucket key. Pieces are
-    // matched through bucketBaseKey so the comparison stays correct with
-    // spatial chunking on (base key = "cell~colour" then, and a piece only
-    // belongs to this batch when BOTH its cell and colour match).
+    // Collect the visible pieces of THIS batch. `colorKey` is the bucket key,
+    // so match each piece's OWNING bucket exactly: matching on the base key
+    // (suffix "#N" stripped) pulled sibling overflow buckets' pieces into the
+    // partial — drawn twice, and inheriting the wrong batch's quantization
+    // (#4832). Only a batch with no bucket (streaming fragment) uses base key.
+    const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
     const visibleMeshData: MeshData[] = [];
     for (const expressId of visibleIds) {
-      const pieces = this.meshDataMap.get(expressId);
-      if (pieces) {
-        // Add all pieces for this element
-        for (const piece of pieces) {
-          // Only include pieces that match this batch's cell + color
-          if (this.bucketBaseKey(piece) === baseKey) {
-            visibleMeshData.push(piece);
-          }
+      for (const piece of this.meshDataMap.get(expressId) ?? []) {
+        if (bucket ? this.meshDataBucket.get(piece) === bucket : this.bucketBaseKey(piece) === baseKey) {
+          visibleMeshData.push(piece);
         }
       }
     }
@@ -2740,7 +2735,7 @@ export class Scene {
     // decision (#4832): the overlay built from the same source must match its depth.
     const color = visibleMeshData[0].color;
     const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline, undefined,
-      inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(visibleMeshData[0])?.batchedMesh));
+      inheritedQuantization(this.quantizedBatchesEnabled, bucket?.batchedMesh));
 
     // Cache it
     this.partialBatchCache.set(cacheKey, partialBatch);

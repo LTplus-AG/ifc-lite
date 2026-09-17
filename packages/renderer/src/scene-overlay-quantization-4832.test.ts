@@ -28,6 +28,7 @@ import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import { createSceneBatch } from './scene-batch-upload.js';
+import { groupOverridePieces } from './scene-derived-batches.js';
 import type { BatchedMesh } from './types.js';
 import { MAX_QUANT_EXTENT } from './quantize.js';
 
@@ -37,10 +38,10 @@ import { MAX_QUANT_EXTENT } from './quantize.js';
 };
 
 /** Fake device that keeps the mapped-at-creation bytes so batches can be read back. */
-function fakeDevice(): { device: GPUDevice; bytes: WeakMap<GPUBuffer, ArrayBuffer> } {
+function fakeDevice(maxBufferSize = 1 << 30): { device: GPUDevice; bytes: WeakMap<GPUBuffer, ArrayBuffer> } {
   const bytes = new WeakMap<GPUBuffer, ArrayBuffer>();
   const device = {
-    limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
+    limits: { maxBufferSize, maxStorageBufferBindingSize: 1 << 30 },
     createBuffer: (desc: GPUBufferDescriptor) => {
       const backing = new ArrayBuffer(desc.size);
       const buffer = { size: desc.size, getMappedRange: () => backing, unmap() {}, destroy() {} } as unknown as GPUBuffer;
@@ -204,6 +205,47 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
     const partial = scene.getOrCreatePartialBatch(`${base.id}:${base.colorKey}`, base.colorKey, new Set([11]), device, fakePipeline);
     assert.ok(partial, 'partial batch built');
     assertCoincidentWithBase(scene, partial, bytes);
+  });
+
+  it('a partial batch of an overflow "#N" bucket holds only that bucket\'s pieces and inherits ITS quantization', () => {
+    const scene = quantizedChunkedScene();
+    // One 28-byte-stride triangle is 84 vertex bytes; a limit of 150 × 0.9 = 135
+    // fits one mesh, so the second same-cell, same-colour mesh overflows into
+    // a "#N" sub-bucket. The wall makes the FIRST bucket f32; the triangle
+    // alone in the overflow bucket quantizes.
+    const { device, bytes } = fakeDevice(150);
+    scene.appendToBatches([longWall(10, [0.33, 0.2, 0.1]), triangle(11, [5.33, 0.2, 0.1])], device, fakePipeline);
+    const batches = scene.getBatchedMeshes();
+    assert.strictEqual(batches.length, 2, 'sanity: overflow split into two buckets');
+    const overflow = batches.find((b) => b.colorKey.includes('#'));
+    assert.ok(overflow, 'sanity: an overflow "#N" bucket exists');
+    assert.deepStrictEqual(overflow.expressIds, [11]);
+    assert.ok(overflow.quantized, 'sanity: the overflow bucket quantizes on its own');
+
+    // Both entities visible: the partial for the overflow batch must NOT pull
+    // the wall in from the sibling bucket (it would be drawn twice and the
+    // partial would inherit the sibling's f32 decision).
+    const partial = scene.getOrCreatePartialBatch(`${overflow.id}:${overflow.colorKey}`, overflow.colorKey, new Set([10, 11]), device, fakePipeline);
+    assert.ok(partial, 'partial batch built');
+    assert.deepStrictEqual(partial.expressIds, [11], 'only the owning bucket\'s piece');
+    assertCoincidentWithBase(scene, partial, bytes);
+  });
+
+  it('an unbucketed piece never shares an overlay group with a bucketed piece of the same key', () => {
+    const bucketed = triangle(1, [0, 0, 0]);
+    const unbucketed = triangle(2, [0, 0, 0]);
+    const sourceBatch = { quantized: { min: [0, 0, 0], step: 1 / 1024 } } as unknown as BatchedMesh;
+    const groups = groupOverridePieces(
+      new Map([[1, RED], [2, RED]]),
+      (id) => (id === 1 ? [bucketed] : [unbucketed]),
+      (piece) => (piece === bucketed ? { key: 'cell~grey', batchedMesh: sourceBatch } : undefined),
+      () => 'cell~grey', // the fallback key equals the real bucket key on purpose
+      () => 'red',
+    );
+    assert.strictEqual(groups.size, 2, 'two groups, not one');
+    const byPiece = [...groups.values()].map((g) => [g.meshData[0], g.sourceBatch] as const);
+    assert.deepStrictEqual(byPiece.find(([p]) => p === bucketed)?.[1], sourceBatch, 'bucketed piece keeps its source batch');
+    assert.strictEqual(byPiece.find(([p]) => p === unbucketed)?.[1], null, 'unbucketed piece has no source to inherit');
   });
 
   it('a derived batch that cannot honour an inherited quantization is reported, never silent', () => {

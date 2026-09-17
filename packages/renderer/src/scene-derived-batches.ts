@@ -68,7 +68,9 @@ export interface OverrideGroup {
  * `sourceOf` resolves a piece to its owning bucket (key + built batch) or
  * undefined when it is not bucketed (textured meshes, mid-stream pieces);
  * `fallbackKey` then supplies a spatial key with the same cell/model shape
- * so unbucketed pieces still group compactly.
+ * so unbucketed pieces still group compactly. Fallback keys live in their
+ * own namespace: a bucket's key IS a base key, so an unbucketed piece must
+ * never share a group (and thus a `sourceBatch`) with a bucketed one.
  */
 export function groupOverridePieces(
   overrides: ReadonlyMap<number, readonly [number, number, number, number]>,
@@ -81,7 +83,7 @@ export function groupOverridePieces(
   for (const [expressId, color] of overrides) {
     for (const piece of piecesOf(expressId) ?? []) {
       const source = sourceOf(piece);
-      const key = `${source?.key ?? fallbackKey(piece)}:${colorKey(color)}`;
+      const key = `${source ? source.key : `unbucketed:${fallbackKey(piece)}`}:${colorKey(color)}`;
       let group = groups.get(key);
       if (!group) {
         group = { color: [color[0], color[1], color[2], color[3]], meshData: [], sourceBatch: source?.batchedMesh ?? null };

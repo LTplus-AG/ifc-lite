@@ -25,6 +25,7 @@
  */
 
 import type { SectionPlane, SectionPlaneAxis } from './types.js';
+import { clearLastSectionMode } from './slices/sectionSlice.js';
 
 interface SectionVisibilityState {
   activeTool: string;
@@ -96,8 +97,13 @@ export function revealSectionCut(getState: () => SectionWriterState): void {
   }
 }
 
-/** No cut on screen, and none parked for the next time the Section tool opens. */
+/**
+ * No cut on screen, and none waiting for the next time the Section tool opens:
+ * neither the parked cut nor the persisted last cardinal mode, which
+ * SectionPanel re-applies (and re-enables) on mount.
+ */
 export function clearSectionCut(getState: () => SectionWriterState): void {
   const plane = getState().sectionPlane;
   if (plane.enabled || plane.parked) getState().setSectionPlaneEnabled(false);
+  clearLastSectionMode();
 }

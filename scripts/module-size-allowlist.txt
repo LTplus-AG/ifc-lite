@@ -140,7 +140,7 @@
   1226 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2201 apps/viewer/src/hooks/useIfcLoader.ts
+  2204 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    483 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -255,10 +255,10 @@
    487 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    612 packages/geometry/src/coordinate-handler.ts
-  1560 packages/geometry/src/geometry-parallel.ts
-  1757 packages/geometry/src/geometry.worker.ts
+  1568 packages/geometry/src/geometry-parallel.ts
+  1775 packages/geometry/src/geometry.worker.ts
    918 packages/geometry/src/ifc-lite-bridge.ts
-  1518 packages/geometry/src/index.ts
+  1527 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts

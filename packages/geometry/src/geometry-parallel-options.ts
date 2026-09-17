@@ -98,4 +98,19 @@ export interface ProcessParallelOptions {
    * (workers process disjoint, deterministic element slices).
    */
   workerCountOverride?: number;
+  /**
+   * Issue #4884 — silence budget (ms) for one busy geometry worker before the
+   * pool treats its WASM call as hung: the worker is replaced, a single-job call
+   * is skipped (reported on `complete.skippedHungElements`), a multi-job call is
+   * re-run one job per call, and the rest of its work is replayed. `0` disables
+   * recovery. Default `DEFAULT_HUNG_JOB_TIMEOUT_MS` (30 s).
+   */
+  hungJobTimeoutMs?: number;
+  /**
+   * Issue #4884 — abort the stream: every worker is terminated immediately and
+   * the generator returns. Consumers that abandon the stream (watchdog, cancel,
+   * superseded load) should abort, because `return()` alone cannot reach the
+   * generator's cleanup while it waits on a silent worker.
+   */
+  signal?: AbortSignal;
 }

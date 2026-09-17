@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,9 @@ test('the REAL docs tree has no page mkdocs --strict would reject as omitted fro
   // #4875 added docs/guide/cost-panel.md without a nav entry; the strict site
   // build in the ifclite.dev deploy then failed and froze the nightly
   // production advance.
-  const run = spawnSync(process.execPath, [join(HERE, 'check-mkdocs-nav.mjs'), '--root', REPO_ROOT], { encoding: 'utf8' });
-  assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+  const gate = join(HERE, 'check-mkdocs-nav.mjs');
+  assert.ok(existsSync(gate), 'the docs nav gate (scripts/docs/check-mkdocs-nav.mjs) is missing');
+  const run = spawnSync(process.execPath, [gate, '--root', REPO_ROOT], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr.trim() || run.stdout.trim());
   assert.match(run.stdout, /every docs page is in mkdocs\.yml nav or declared not_in_nav/);
 });

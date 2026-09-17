@@ -21,6 +21,7 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
+import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import { IfcQuery } from '@ifc-lite/query';
 import { buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
@@ -30,6 +31,7 @@ import {
 } from './ingest/viewerModelIngest.js';
 import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
+import { rebaseFederationOntoNewAnchor } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 
@@ -138,17 +140,13 @@ export function useIfcFederation(
       setError(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
-      // Pick the shared RTC origin from the earliest existing model so every
-      // federated model lands in one coordinate space (pixel-perfect alignment,
-      // no post-shift). Threaded into the canonical loader below.
-      let sharedRtcOffset: { x: number; y: number; z: number } | undefined;
-      const existingModelsForRtc = Array.from(useViewerStore.getState().models.values()) as FederatedModel[];
-      if (existingModelsForRtc.length > 0) {
-        const sorted = [...existingModelsForRtc].sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
-        sharedRtcOffset = sorted.find(
-          (model) => model.geometryResult?.coordinateInfo?.wasmRtcOffset != null,
-        )?.geometryResult?.coordinateInfo?.wasmRtcOffset;
-      }
+      // Shared RTC origin: earliest existing model with a real anchor, or
+      // `undefined` if none has one yet — the post-load rebase step below
+      // is what makes THAT case order-independent too (#4897).
+      const existingModelsForRtcEntries = Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>;
+      const existingModelsForRtc = existingModelsForRtcEntries.map(([, model]) => model);
+      const hadAnyRealAnchorBeforeLoad = existingModelsForRtc.some((m) => m.geometryResult?.coordinateInfo?.wasmRtcOffset != null);
+      const sharedRtcOffset = chooseSharedRtcOffset(existingModelsForRtc);
 
       // THE canonical load path. loadFile acquires bytes, detects format
       // (IFC / IFCX / GLB / point cloud), produces geometry through the single
@@ -169,6 +167,8 @@ export function useIfcFederation(
       if (loadSessionRef.current !== currentSession) return null;
       const registered = useViewerStore.getState().models.has(modelId);
       if (registered) {
+        // May have just introduced the FIRST real RTC anchor (#4897, see `federationRtcRebase.ts`).
+        rebaseFederationOntoNewAnchor(existingModelsForRtcEntries, hadAnyRealAnchorBeforeLoad, modelId);
         console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
       }
       return registered ? modelId : null;

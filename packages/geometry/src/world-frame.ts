@@ -82,6 +82,16 @@ export interface FrameCandidate {
  * so that model's offsets ARE the scene's offsets; reading a later model's
  * would describe a frame nothing is drawn in. `fallback` covers a single
  * model loaded without a federation entry. Null when nothing has geometry.
+ *
+ * This is only accurate because the federation loader (`useIfcFederation.ts`)
+ * keeps every model's `wasmRtcOffset` converging on one value: later models
+ * join an established real anchor via `chooseSharedRtcOffset`, and once a
+ * model FIRST introduces a real anchor, every already-loaded, still-raw
+ * model is re-based onto it (`rtc-rebase.ts`) rather than left behind in the
+ * frame it happened to load in. Without that re-basing step, a model with
+ * no `wasmRtcOffset` could stay in a raw frame while a later, large-
+ * coordinate model picked its own — the earliest-loaded model would then no
+ * longer describe the frame every model is actually drawn in (#4897).
  */
 export function federationFrameInfo(
   models: Iterable<FrameCandidate>,
@@ -97,4 +107,32 @@ export function federationFrameInfo(
     }
   }
   return info ?? fallback?.coordinateInfo ?? null;
+}
+
+/**
+ * The `sharedRtcOffset` a newly-loading model should be given: the earliest
+ * already-loaded model's `wasmRtcOffset`, or `undefined` when no
+ * already-loaded model has one yet (including when there is no earlier
+ * model at all) — the loading model is then free to detect its own.
+ *
+ * `undefined` here is NOT "no frame exists" — every earlier model, offset or
+ * not, already rendered in SOME frame. It only means no model has picked a
+ * real (non-zero-shift) anchor for the federation yet, so the caller must
+ * decide what happens when this loading model turns out to need one: see
+ * `federationFrameInfo`'s doc and #4897. `useIfcFederation.ts` handles that
+ * by re-basing (`rtc-rebase.ts`) every already-loaded, still-raw model onto
+ * this one's anchor the moment it is known, rather than pretending "no
+ * anchor chosen yet" is a frame these already-raw models were drawn in.
+ */
+export function chooseSharedRtcOffset(existingModels: Iterable<FrameCandidate>): Vec3 | undefined {
+  let earliestOffsetAt = Infinity;
+  let earliestOffset: Readonly<Vec3> | null = null;
+  for (const model of existingModels) {
+    const offset = model.geometryResult?.coordinateInfo?.wasmRtcOffset;
+    if (offset != null && model.loadedAt < earliestOffsetAt) {
+      earliestOffsetAt = model.loadedAt;
+      earliestOffset = offset;
+    }
+  }
+  return earliestOffset ? { ...earliestOffset } : undefined;
 }

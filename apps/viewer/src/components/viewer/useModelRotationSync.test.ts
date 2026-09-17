@@ -34,8 +34,24 @@ function geometryResult(): GeometryResult {
   } as unknown as GeometryResult;
 }
 
+/** A SECOND model's geometry, deliberately unlike `geometryResult()` on every
+ * component: a cross-model test can only see a baker that restored one
+ * model's baseline onto another when the two fixtures differ. */
+function secondGeometryResult(): GeometryResult {
+  return {
+    meshes: [{ expressId: 2, positions: new Float32Array([0, 0, 0, 0, 0, 5, 2, 0, 5]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1], origin: [-60, 11, 250] } as MeshData],
+    coordinateInfo: { originShift: { x: 0, y: 0, z: 0 },
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 0, z: 5 } },
+      shiftedBounds: { min: { x: -60, y: 11, z: 250 }, max: { x: -58, y: 11, z: 255 } },
+      hasLargeCoordinates: false },
+  } as unknown as GeometryResult;
+}
+
 const vertices = (model: FederatedModel) => [...model.geometryResult!.meshes[0].positions,
   ...(model.geometryResult!.meshes[0].origin ?? [])];
+const modelOf = (id: string) => useViewerStore.getState().models.get(id) as FederatedModel;
 const live = () => useViewerStore.getState().models.get('ifc') as FederatedModel;
 
 describe('model rotation reaches the geometry every render path reads (#4869)', () => {
@@ -193,14 +209,15 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
     // Two models so the anchor's `updateModel` fires the live subscription
     // BEFORE the second model is snapshotted — the window a mid-pass reconcile
     // would re-rotate it in.
-    const pristine = vertices({ geometryResult: geometryResult() } as FederatedModel);
-    const second = { ...fixtureModel('second'), geometryResult: geometryResult() } as FederatedModel;
+    const pristine = vertices({ geometryResult: secondGeometryResult() } as FederatedModel);
+    const second = { ...fixtureModel('second'), geometryResult: secondGeometryResult() } as FederatedModel;
     useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['second', second]]) });
     const unsubscribe = subscribeModelRotationSync();
     try {
       useViewerStore.getState().setModelRotation(['ifc', 'second'], { angle: ANGLE, pivot: [...PIVOT] });
-      const rotated = vertices(useViewerStore.getState().models.get('second') as FederatedModel);
+      const rotated = vertices(modelOf('second'));
       assert.notDeepEqual(rotated, pristine, 'the fixture must turn under this heading');
+      assert.notDeepEqual(rotated, vertices(live()), 'the two fixtures must stay distinguishable');
 
       const state = useViewerStore.getState();
       await withModelRotationsUnbaked(() => realignFederationModels({
@@ -219,17 +236,23 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
   });
 
   it('a geometry update to one model leaves every other rotated model where it is', () => {
-    const second = { ...fixtureModel('second'), geometryResult: geometryResult() } as FederatedModel;
+    // The two models carry DIFFERENT geometry and each expectation is captured
+    // from its own model: with one shared fixture a baker that restored
+    // `ifc`'s baseline onto `second` would land on the right numbers by
+    // coincidence, and this test would not see the mix-up.
+    const second = { ...fixtureModel('second'), geometryResult: secondGeometryResult() } as FederatedModel;
     useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['second', second]]) });
     const unsubscribe = subscribeModelRotationSync();
     try {
       useViewerStore.getState().setModelRotation(['ifc', 'second'], { angle: ANGLE, pivot: [...PIVOT] });
       const rotated = vertices(live());
+      const rotatedSecond = vertices(modelOf('second'));
+      assert.notDeepEqual(rotatedSecond, rotated, 'the two fixtures must stay distinguishable');
       // A collab peer edit on the other, inactive model: a new geometry for it
       // and a bump of the store-wide content version (room-model-apply.ts).
-      applyRoomModelData(useViewerStore.getState(), 'second', { geometryResult: geometryResult() });
+      applyRoomModelData(useViewerStore.getState(), 'second', { geometryResult: secondGeometryResult() });
       assert.deepEqual(vertices(live()), rotated, 'an untouched model re-applied its heading on another model\'s update');
-      assert.deepEqual(vertices(useViewerStore.getState().models.get('second') as FederatedModel), rotated,
+      assert.deepEqual(vertices(modelOf('second')), rotatedSecond,
         'the replaced model did not take its heading exactly once');
     } finally {
       unsubscribe();
@@ -237,7 +260,7 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
   });
 
   it('turns every selected model about the ONE workspace pivot, whatever their translations', () => {
-    const second = { ...fixtureModel('second'), geometryResult: geometryResult() } as FederatedModel;
+    const second = { ...fixtureModel('second'), geometryResult: secondGeometryResult() } as FederatedModel;
     const offsets = new Map<string, Translation>([['ifc', [3.5, -1.25, 0.5]], ['second', [100.75, -20.5, 2]]]);
     useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['second', second]]),
       modelPlacement: { ...emptyPlacementState(), placements: new Map([...offsets].map(([id, t]) => [id, testPlacement(t)])) } });

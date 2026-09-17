@@ -7,7 +7,9 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { emptyPlacementState, placementFor } from '@/lib/model-placement/state';
-import { degreesToRadians } from '@/lib/model-placement/rotation';
+import { degreesToRadians, rotateWorkspacePoint } from '@/lib/model-placement/rotation';
+import { addTranslation, type Translation } from '@/lib/model-placement/translation';
+import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 import { realignFederationModels } from '@/hooks/ingest/federationRealign';
 import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
@@ -164,6 +166,26 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
         'the replaced model did not take its heading exactly once');
     } finally {
       unsubscribe();
+    }
+  });
+
+  it('turns every selected model about the ONE workspace pivot, whatever their translations', () => {
+    const second = { ...fixtureModel('second'), geometryResult: geometryResult() } as FederatedModel;
+    const offsets = new Map<string, Translation>([['ifc', [3.5, -1.25, 0.5]], ['second', [100.75, -20.5, 2]]]);
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['second', second]]),
+      modelPlacement: { ...emptyPlacementState(), placements: new Map([...offsets].map(([id, t]) => [id, testPlacement(t)])) } });
+    const workspace = { angle: ANGLE, pivot: [42.5, 7.25, 0] as Translation };
+    useViewerStore.getState().setModelRotation(['ifc', 'second'], workspace);
+    const local: Translation = [11.5, -6.75, 1.5];
+    for (const [id, offset] of offsets) {
+      const placement = placementFor(useViewerStore.getState().modelPlacement, id);
+      // Rendered: rotate the model-frame point, then translate it.
+      const rendered = addTranslation(rotateWorkspacePoint(local, placement.rotation), placement.translation);
+      // Asked for: the placed point turned about the entered workspace pivot.
+      const intended = rotateWorkspacePoint(addTranslation(local, offset), workspace);
+      for (let axis = 0; axis < 3; axis += 1) {
+        assert.ok(Math.abs(rendered[axis] - intended[axis]) < 1e-9, `${id} axis ${axis}: ${rendered[axis]} vs ${intended[axis]}`);
+      }
     }
   });
 

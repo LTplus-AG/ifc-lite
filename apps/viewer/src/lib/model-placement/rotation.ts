@@ -17,7 +17,9 @@ import { finiteTranslation, subtractTranslation, ZERO_TRANSLATION, type Translat
  * +Y — the convention `Scene.rotateMeshesForEntity` and `rotateEntity` already
  * use for per-entity yaw, and this must not become a second one.
  *
- * `pivot` is a workspace point in engineering X/Y/Z metres. Its Z is carried so
+ * `pivot` is in engineering X/Y/Z metres, in the model's UN-TRANSLATED frame as
+ * stored on a placement (`rotatePlacements` converts the workspace point a user
+ * enters with `pivotInModelFrame`). Its Z is carried so
  * the value round-trips through the manifest unchanged, but a vertical-axis
  * rotation cannot read it: only the horizontal pair positions the axis.
  */

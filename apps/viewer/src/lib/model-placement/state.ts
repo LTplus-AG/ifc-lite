@@ -4,7 +4,7 @@
 
 import { addTranslation, equalTranslation, finiteTranslation, assertRenderableTranslation, ZERO_TRANSLATION,
   type MoveConstraint, type Translation } from './translation.js';
-import { equalRotation, finiteRotation, normalizeAngle, ZERO_ROTATION, type ModelRotation } from './rotation.js';
+import { equalRotation, finiteRotation, normalizeAngle, pivotInModelFrame, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 
 export interface ModelPlacement {
   translation: Translation;
@@ -164,6 +164,10 @@ function assertRenderablePivot(rotation: ModelRotation): void {
  * the angle cannot compound and the geometry bake can always restore its
  * pristine baseline and turn once.
  *
+ * `rotation.pivot` is ONE workspace point for the whole selection. Each model
+ * stores it in its own un-translated frame (rotation precedes translation), so
+ * models with different translations still turn about the same point.
+ *
  * One command for the whole group, so it undoes as one, exactly like a move.
  * Rotation has no preview stage: unlike a drag it is entered as a value, and
  * baking it costs a pass over the model's vertices.
@@ -179,7 +183,7 @@ export function rotatePlacements(
     const placement = placementFor(state, id);
     if (placement.locked) throw new Error('Unlock the selected models before rotating them.');
     before.set(id, placement);
-    after.set(id, { ...placement, rotation: { angle: normalized.angle, pivot: [...normalized.pivot] } });
+    after.set(id, { ...placement, rotation: { angle: normalized.angle, pivot: pivotInModelFrame(normalized.pivot, placement.translation) } });
   }
   if (before.size === 0) throw new Error('Choose at least one model to rotate.');
   // A pending move preview holds a `before` map this command would invalidate.

@@ -29,7 +29,8 @@ export interface ModelPlacementSlice {
   redoModelTranslation: () => void;
   resetModelTranslations: (ids: readonly string[]) => void;
   /** Set the ABSOLUTE heading of the named models about the workspace vertical
-   * axis. Undoes with the moves, on the same stack. */
+   * axis through `rotation.pivot`, a workspace point. Undoes with the moves, on
+   * the same stack. */
   setModelRotation: (ids: readonly string[], rotation: ModelRotation) => void;
   setModelPositionLocked: (modelId: string, locked: boolean) => void;
   setRepositionNudge: (metres: number) => void;

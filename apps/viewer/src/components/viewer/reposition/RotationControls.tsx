@@ -4,25 +4,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
-import { parseRotationDegrees, pivotInModelFrame, radiansToDegrees, isZeroRotation } from '@/lib/model-placement/rotation';
-import { finiteTranslation, type Translation } from '@/lib/model-placement/translation';
+import { parseRotationDegrees, radiansToDegrees, isZeroRotation, type ModelRotation } from '@/lib/model-placement/rotation';
+import { addTranslation, finiteTranslation, type Translation } from '@/lib/model-placement/translation';
 import { modelCenter } from '@/lib/model-placement/scene';
 
 const button = 'border px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40';
 const AXES = ['X', 'Y'] as const;
 
-/** The pivot the rotation turns about — the model's bounds centre, taken back
- * into the model's own un-translated frame (see `pivotInModelFrame`). */
+/** A stored pivot is in the model's un-translated frame; the panel shows and
+ * accepts WORKSPACE points, which is where it sits once the model is placed. */
+function workspacePivot(rotation: ModelRotation, translation: Translation): Translation {
+  return addTranslation(rotation.pivot, translation);
+}
+
+/** The workspace point the rotation turns about — the placed model's bounds
+ * centre until the model has a heading. */
 function defaultPivot(modelId: string): Translation {
-  const state = useViewerStore.getState();
-  const existing = placementFor(state.modelPlacement, modelId).rotation;
+  const placement = placementFor(useViewerStore.getState().modelPlacement, modelId);
   // Once a model has a heading, keep the pivot it was given: re-deriving the
   // bounds centre of an already-turned model walks the axis a little further
   // on every edit, because a rotated model has a different bounding box.
-  if (!isZeroRotation(existing)) return existing.pivot;
-  const centre = modelCenter(modelId);
-  if (!centre) return [0, 0, 0];
-  return pivotInModelFrame(centre, placementFor(state.modelPlacement, modelId).translation);
+  if (!isZeroRotation(placement.rotation)) return workspacePivot(placement.rotation, placement.translation);
+  return modelCenter(modelId) ?? [0, 0, 0];
 }
 
 /** Rotation is entered as a value, not dragged, so it has no preview stage:
@@ -76,14 +79,15 @@ export function RotationControls({ selected, onError }: { selected: readonly str
           (index === 0 ? [event.target.value, previous[1]] : [previous[0], event.target.value]))}
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyRotation(degrees, pivot); } }} /></label>)}
     </div>
-    <p className="text-zinc-500">Pivot is a workspace point in metres; elevation does not affect a vertical-axis turn.
-      It defaults to the model&apos;s bounds centre.</p>
+    <p className="text-zinc-500">Pivot is one workspace point in metres for every selected model; elevation does not
+      affect a vertical-axis turn. It defaults to the model&apos;s bounds centre and moves with the model afterwards.</p>
     <div className="flex flex-wrap gap-1">
       <button className={button} onClick={() => applyRotation(degrees, pivot)}>Apply rotation</button>
       <button className={button} onClick={() => applyRotation('0', pivot)}>Clear rotation</button>
     </div>
     {selected.map((id) => <p key={id} className="font-mono truncate">{models.get(id)?.name}:
       {' '}{radiansToDegrees(placementFor(placement, id).rotation.angle).toFixed(3)}° about
-      {' '}{placementFor(placement, id).rotation.pivot.slice(0, 2).map((value) => value.toFixed(3)).join(', ')}</p>)}
+      {' '}{workspacePivot(placementFor(placement, id).rotation, placementFor(placement, id).translation).slice(0, 2)
+        .map((value) => value.toFixed(3)).join(', ')}</p>)}
   </fieldset>;
 }

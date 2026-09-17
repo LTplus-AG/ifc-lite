@@ -147,13 +147,15 @@ plumb is not offered.
   from above, wrapped to (-180°, 180°]. Re-entering it always turns the model
   once from its original geometry, so an angle can be edited without
   compounding, and `0` restores the model exactly.
-- **Pivot X / Y** is the workspace point the axis passes through, in metres. It
-  defaults to the model's bounds centre and is shown, never implied; elevation
-  does not affect a vertical-axis turn. Once a model has a heading it keeps the
-  pivot it was given until you change it.
-- The rotation is applied to the model **before** the translation above, and the
-  pivot is a point in the model's un-translated frame. Rotating and then moving
-  is not the same arrangement as moving and then rotating.
+- **Pivot X / Y** is the workspace point the axis passes through, in metres —
+  one point for every selected model, whatever their translations. It defaults
+  to the model's bounds centre and is shown, never implied; elevation does not
+  affect a vertical-axis turn. Once a model has a heading it keeps the pivot it
+  was given until you change it.
+- The rotation is applied to the model **before** the translation above, so the
+  pivot is stored in each model's own frame and moves with the model when it is
+  moved afterwards. Rotating and then moving is not the same arrangement as
+  moving and then rotating.
 - Rotating creates one undo entry for the whole selection on the same stack as
   moves, and rides **Undo placement** / **Redo placement** and **Reset
   placement** with them. Locked models refuse to rotate.

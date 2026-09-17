@@ -9,6 +9,7 @@
 
 import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, ClassicBar } from '@/icons';
 import { useViewerStore } from '@/store';
+import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
@@ -45,7 +46,8 @@ export function ViewTab() {
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
   const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
   const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
-  const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
+  // Effective, not raw: the Cesium world context defaults this on (#4771).
+  const envSkyEnabled = useEffectiveSkyEnabled();
   const envPreset = useViewerStore((state) => state.envPreset);
 
   // SpaceMouse panel state (3D mouse navigation, #1677)

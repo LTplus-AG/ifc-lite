@@ -21,6 +21,7 @@
 import { useRef, useState } from 'react';
 import { Play, Pause, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { cn } from '@/lib/utils';
 import type { CesiumDataSource } from '@/store/slices/cesiumSlice';
@@ -56,13 +57,16 @@ const SWEEP_MODES: Array<{ value: SolarSweepMode; label: string; hint: string }>
 export function SunSkyPanel() {
   const open = useViewerStore((s) => s.envPanelOpen);
 
-  const skyEnabled = useViewerStore((s) => s.envSkyEnabled);
   const setSkyEnabled = useViewerStore((s) => s.setEnvSkyEnabled);
   const preset = useViewerStore((s) => s.envPreset);
   const setPreset = useViewerStore((s) => s.setEnvPreset);
 
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
+  // Cesium-context "on by default until the user says otherwise" (#4771):
+  // the toggle below only renders in that context, so this is always the
+  // effective on-screen state, not the raw persisted flag.
+  const skyEnabled = useEffectiveSkyEnabled();
   const setCesiumEnabled = useViewerStore((s) => s.setCesiumEnabled);
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
   const setDataSource = useViewerStore((s) => s.setCesiumDataSource);
@@ -133,15 +137,16 @@ export function SunSkyPanel() {
           {/* Environment — the preset IS the whole look: every preset except
               Default brings its own sky. In the world context the model is
               lit by Cesium's sun instead, so the choice becomes a single
-              Atmosphere switch. */}
+              Sky switch (on by default there, #4771 — a persisted choice
+              still wins). */}
           {cesiumEnabled ? (
             <>
               <div className="flex items-center gap-1">
                 <ToggleChip
-                  label="Atmosphere"
+                  label="Sky"
                   active={skyEnabled}
                   onClick={() => setSkyEnabled(!skyEnabled)}
-                  title="Sky, sun disc and haze in the world context"
+                  title="Sky, sun disc and haze in the world context — also drives lighting"
                 />
                 <span className="flex-1 px-1 text-[9px] leading-tight text-muted-foreground">
                   Lighting follows the sun &amp; atmosphere

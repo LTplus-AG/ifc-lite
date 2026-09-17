@@ -20,6 +20,7 @@
 
 import { useEffect, useRef, type RefObject } from 'react';
 import { useViewerStore } from '@/store';
+import { resolveSkyEnabled } from '@/store/slices/environmentSlice';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { sunPosition, sunTimes } from '@ifc-lite/solar';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
@@ -69,7 +70,13 @@ export function useCesiumSolar({
   const solarShowSunPath = useViewerStore((s) => s.solarShowSunPath);
   const solarShowShadows = useViewerStore((s) => s.solarShowShadows);
   const setSolarSunInfo = useViewerStore((s) => s.setSolarSunInfo);
-  const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
+  const rawSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
+  const skyEnabledSetByUser = useViewerStore((s) => s.envSkyEnabledSetByUser);
+  const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
+  // This hook only runs while the Cesium overlay is mounted (cesiumEnabled),
+  // but the resolver still reads it explicitly rather than assuming — same
+  // pure function every consumer of the flag uses (#4771).
+  const envSkyEnabled = resolveSkyEnabled(rawSkyEnabled, skyEnabledSetByUser, cesiumEnabled);
 
   // Active sun-path dome entity collection (null when solar study is off).
   const sunPathDomeRef = useRef<SunPathDome | null>(null);

@@ -9,6 +9,17 @@ import { createStore } from 'zustand/vanilla';
 import { createEnvironmentSlice, type EnvironmentSlice } from './environmentSlice.js';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 
+// `resolveSkyEnabled` is loaded dynamically below (not via a static named
+// import) so that reverting it for the #4771 revert-oracle check fails this
+// suite's own assertions rather than the whole file's static ESM link step —
+// a static `import { resolveSkyEnabled }` throws "does not provide an export
+// named" at load time when reverted, which the oracle reports as a build
+// failure rather than an observed regression.
+async function loadResolveSkyEnabled() {
+  const mod = await import('./environmentSlice.js') as { resolveSkyEnabled?: typeof import('./environmentSlice.js').resolveSkyEnabled };
+  return mod.resolveSkyEnabled;
+}
+
 const STORAGE_KEY = 'ifc-lite:environment';
 
 const makeStore = () => createStore<EnvironmentSlice>(createEnvironmentSlice);
@@ -212,6 +223,66 @@ describe('environmentSlice', () => {
     // Not the preset's own angle either: the stored override is clamped, not
     // discarded, so this cannot pass by falling back to the preset seed.
     assert.notStrictEqual(angle, LIGHTING_PRESETS.overcast.shadowSunAngleDeg);
+  });
+
+  // #4771: sky on by default in the Cesium world context only, without
+  // touching the WebGPU-shared `envSkyEnabled` default, and a user's
+  // persisted choice (true OR false) always wins over the context default.
+  describe('resolveSkyEnabled', () => {
+    it('never-set: context decides — on for Cesium, off for WebGPU', async () => {
+      const resolveSkyEnabled = await loadResolveSkyEnabled();
+      assert.strictEqual(resolveSkyEnabled!(false, false, true), true, 'Cesium context, never set -> on');
+      assert.strictEqual(resolveSkyEnabled!(false, false, false), false, 'WebGPU context, never set -> off (unchanged)');
+    });
+
+    it('persisted true survives in both contexts', async () => {
+      const resolveSkyEnabled = await loadResolveSkyEnabled();
+      assert.strictEqual(resolveSkyEnabled!(true, true, true), true);
+      assert.strictEqual(resolveSkyEnabled!(true, true, false), true);
+    });
+
+    it('persisted false survives in both contexts — must NOT be re-enabled by the Cesium default', async () => {
+      const resolveSkyEnabled = await loadResolveSkyEnabled();
+      assert.strictEqual(resolveSkyEnabled!(false, true, true), false, 'a deliberate off must not be silently re-enabled');
+      assert.strictEqual(resolveSkyEnabled!(false, true, false), false);
+    });
+  });
+
+  describe('envSkyEnabledSetByUser (persistence marker for the #4771 context default)', () => {
+    it('starts false when nothing was ever persisted', () => {
+      const s = makeStore();
+      assert.strictEqual(s.getState().envSkyEnabledSetByUser, false);
+      assert.strictEqual(s.getState().envSkyEnabled, false);
+    });
+
+    it('setEnvSkyEnabled marks the choice as user-set and persists both fields', () => {
+      const s = makeStore();
+      s.getState().setEnvSkyEnabled(false);
+      assert.strictEqual(s.getState().envSkyEnabledSetByUser, true);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const parsed = JSON.parse(raw!);
+      assert.strictEqual(parsed.skyEnabled, false);
+      assert.strictEqual(parsed.skyEnabledSetByUser, true);
+    });
+
+    it('rehydrates envSkyEnabledSetByUser from a persisted true marker', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ skyEnabled: false, skyEnabledSetByUser: true }));
+      const s = makeStore();
+      assert.strictEqual(s.getState().envSkyEnabled, false);
+      assert.strictEqual(s.getState().envSkyEnabledSetByUser, true);
+    });
+
+    it('a change to an unrelated dial does NOT retroactively mark sky as user-set', () => {
+      // persist() always writes the whole blob (see "persists every dial
+      // together" above) — it must not turn "never touched sky" into "user
+      // explicitly chose off" just because some OTHER setter ran first.
+      const s = makeStore();
+      s.getState().setEnvExposure(1.5);
+      assert.strictEqual(s.getState().envSkyEnabledSetByUser, false);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const parsed = JSON.parse(raw!);
+      assert.strictEqual(parsed.skyEnabledSetByUser, false);
+    });
   });
 
   it('envPanelOpen is session-only: toggling it does not touch persisted storage', () => {

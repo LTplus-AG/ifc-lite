@@ -5,6 +5,7 @@ import { usePointCloudSync, type UsePointCloudSyncParams } from './usePointCloud
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useModelPlacementPersistence } from './useModelPlacementPersistence.js';
 import { useModelPlacementSync } from './useModelPlacementSync.js';
+import { useModelRotationSync } from './useModelRotationSync.js';
 
 /** Upload assets, reconcile streamed ownership, then compose placement. The order
  * matters: a replacement upload must not wipe the placement applied beforehand. */
@@ -13,6 +14,9 @@ export function useModelAssetsSync(params: UsePointCloudSyncParams & {
   geometry: unknown;
 }): void {
   useModelPlacementPersistence();
+  // Before the placement sync: a rotation rewrites vertices, and the offsets the
+  // placement sync hands the renderer sit on top of whatever those vertices are.
+  useModelRotationSync();
   usePointCloudSync(params);
   usePointCloudLifecycle(params);
   useModelPlacementSync(params.rendererRef, params.isInitialized, params.modelIdToIndex, params.geometry);

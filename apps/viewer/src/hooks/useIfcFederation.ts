@@ -31,6 +31,7 @@ import {
 } from './ingest/viewerModelIngest.js';
 import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
+import { withModelRotationsUnbaked } from '../components/viewer/useModelRotationSync.js';
 import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
@@ -221,24 +222,20 @@ export function useIfcFederation(
   const realignFederation = useCallback(async (): Promise<void> => {
     const state = useViewerStore.getState();
     const allModels = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
-    if (allModels.length === 0) {
-      toast.info('No models loaded — nothing to re-align.');
-      return;
-    }
+    if (allModels.length === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
 
     const referenceSelection = findReferenceGeorefModel();
-    if (!referenceSelection) {
-      toast.error('Cannot re-align: no model with valid georeferencing.');
-      return;
-    }
+    if (!referenceSelection) { toast.error('Cannot re-align: no model with valid georeferencing.'); return; }
 
     // Snapshot georef edits once for the whole pass. Cross-CRS projection
     // awaits can race new edits; re-reading here would mix coordinate frames
     // across models. Apply a newer edit only on the next explicit realignment.
     const georefMutations = state.georefMutations;
     state.closeReposition();
-
-    const { counts, anchorGeoref, movedModelIds } = await realignFederationModels({
+    // A model rotation must never be inside a `preAlignment` snapshot, so every
+    // model stays un-rotated for the whole pass; the declared headings are
+    // re-applied once on top of the new alignment (`useModelRotationSync`).
+    const { counts, anchorGeoref, movedModelIds } = await withModelRotationsUnbaked(() => realignFederationModels({
       models: allModels,
       anchorModelId: referenceSelection.modelId,
       anchorGeoref: referenceSelection.georef,
@@ -252,7 +249,7 @@ export function useIfcFederation(
           : null
       ),
       updateModel: state.updateModel,
-    });
+    }));
 
     // Manual offsets remain explicit workspace vectors after re-alignment.
     // Picked anchors were cancelled above; exchange files must name the new frame.

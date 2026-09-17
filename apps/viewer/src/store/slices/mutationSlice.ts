@@ -45,6 +45,7 @@ import { EntityExtractor, type MapConversion, type ProjectedCRS } from '@ifc-lit
 import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
+import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import type { TypeViewMode } from '../constants.js';
 import {
@@ -2567,12 +2568,10 @@ export const createMutationSlice: StateCreator<
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { error: 'Failed to create store editor' };
 
-    // Source's bounding box drives the offset magnitude. Multi-model
-    // federations key meshes by globalId — route through the central
-    // conversion helper so federation/single-model semantics stay in
-    // one place (legacy stores fall through to expressId === globalId).
+    // Source's bounding box drives the offset magnitude; meshes are keyed by globalId (federation-aware).
+    // Read in the MODEL frame, not the live baked bytes: the rotation bake turns the appended copy once (#4873).
     const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, sourceExpressId);
-    const meshes = state.geometryResult?.meshes;
+    const meshes = state.geometryResult?.meshes?.filter((m) => m.expressId === sourceGlobalId).map((m) => modelRotationBaker.inModelFrame(m));
     const sourceBounds = getEntityBounds(meshes ?? null, sourceGlobalId);
     const bbox: ViewerBox = sourceBounds
       ? {

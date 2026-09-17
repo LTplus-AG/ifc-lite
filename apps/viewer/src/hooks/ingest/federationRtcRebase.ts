@@ -31,6 +31,7 @@ import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import type { PreAlignmentSnapshot } from '../../store/index.js';
 import { buildSpatialIndexForModel, invalidateSpatialIndex } from '../../utils/loadingUtils.js';
 import { hasInstancedShards } from '../../store/instancedShardModels.js';
+import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 
 /**
  * A model whose geometry is final. A model still streaming keeps receiving
@@ -84,6 +85,11 @@ export function convergeFederationRtcFrame(): void {
     const geometry = model.geometryResult!;
     return !isOnRtcAnchor(geometry.coordinateInfo, anchor) && !carriesGpuInstancedGeometry(geometry) && !instancedIds.has(geometry);
   });
+  // Captured BEFORE the move, while each model's `CoordinateInfo` still
+  // records the frame it is leaving: everything recorded in that frame outside
+  // the geometry has to be shifted by the same vector.
+  const deltas = new Map(movable.map(([modelId, model]) =>
+    [modelId, rtcRebaseDeltaFor(model.geometryResult!.coordinateInfo, anchor)] as const));
   // Withdraw each index BEFORE the geometry moves: the rebuild below is
   // async, and until it lands raycasts and bounds queries would be answered
   // from the previous frame's boxes.
@@ -116,6 +122,22 @@ export function convergeFederationRtcFrame(): void {
     lastRefusalKey = key;
   }
   if (moved.length === 0) return;
+
+  // A model's HEADING rides the move for free — a yaw and a pure translation
+  // commute, so the already-baked vertices are still correct. What does not is
+  // the render-frame state the rotation feature records ALONGSIDE the geometry:
+  // the pristine baseline a later heading edit restores, and the stored pivot
+  // that edit turns about (`rotation-bake.ts`, contract 3). Both move here,
+  // BEFORE the `updateModel` calls below republish `models` and wake the
+  // rotation sync, so no bake can ever observe a half-converged frame.
+  const movedIds = settled.filter(([, model]) => moved.includes(model.geometryResult!)).map(([modelId]) => modelId);
+  for (const modelId of movedIds) {
+    const delta = deltas.get(modelId);
+    if (delta) modelRotationBaker.rebaseFrame(modelId, delta);
+  }
+  useViewerStore.getState().rebasePlacementFrame(new Map(
+    movedIds.flatMap((modelId) => { const delta = deltas.get(modelId); return delta ? [[modelId, delta] as const] : []; }),
+  ));
 
   // Origins and coordinateInfo changed in place: bump the content version so
   // the merged-mesh cache and GPU buffers rebuild from them.

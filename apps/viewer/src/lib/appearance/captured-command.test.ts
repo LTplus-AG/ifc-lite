@@ -16,6 +16,7 @@ import { fixtureModel } from '@/test/store-fixture';
 import { texturedProductSource as source, texturedProductPng as png } from '@/test/textured-product-fixture';
 import { rebuildSpatialHierarchy } from '@/utils/spatialHierarchy';
 import { emptyPlacementState } from '@/lib/model-placement/state';
+import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { entityRefToString } from '@/store/types';
 import { createIfcFromCapturedMesh } from './create-captured-mesh';
 import { createAppearancePlanner, type AppearanceWorker } from './planner-worker-client';
@@ -45,7 +46,7 @@ async function setup(federated = false) {
   useViewerStore.setState({ models: new Map([...(federated ? [['other', other] as const] : []), ['capture', model]]), activeModelId: 'capture',
     geometryResult: geometry, mutationViews: new Map([['capture', view]]), storeEditors: new Map([['capture', editor]]),
     undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null,
-    modelPlacement: { ...emptyPlacementState(), placements: new Map([['capture', { translation: [10,20,30], locked: false }]]) } });
+    modelPlacement: { ...emptyPlacementState(), placements: new Map([['capture', testPlacement([10,20,30])]]) } });
   const asset = await appearanceAssets.add(png, { owner: { kind: 'draft', id: 'capture-test' } });
   const meshes = new Map<number, MeshData>();
   const renderer = { prepareAuthoredOwner(parts: readonly MeshData[]) {

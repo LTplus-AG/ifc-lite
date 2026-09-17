@@ -13,7 +13,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
-import { emptyPlacementState, displayedTranslation } from '@/lib/model-placement/state';
+import { emptyPlacementState, displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { ToolOverlays } from '../ToolOverlays';
 import { HomeTab } from '../ribbon/tabs/HomeTab';
 
@@ -69,9 +69,9 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Apply'));
     for (const id of ['ifc', 'scan']) assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, id), [0.125, -0.25, 0]);
     assert.equal(useViewerStore.getState().modelPlacement.undo.length, 1, 'one mixed group command');
-    click(button(ui, 'Undo move'));
+    click(button(ui, 'Undo placement'));
     for (const id of ['ifc', 'scan']) assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, id), [0, 0, 0]);
-    click(button(ui, 'Redo move'));
+    click(button(ui, 'Redo placement'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0.125, -0.25, 0]);
   });
 
@@ -115,7 +115,7 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Preview distance'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, -0.125, 0]);
     click(button(ui, 'Apply'));
-    click(button(ui, 'Undo move'));
+    click(button(ui, 'Undo placement'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, 0, 0]);
   });
 
@@ -138,13 +138,13 @@ describe('model repositioning user interactions (#4226)', () => {
     });
     const ui = render(<WithShortcuts />);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));
-    click(button(ui, 'Undo move'));
+    click(button(ui, 'Undo placement'));
     act(() => { useViewerStore.getState().setAttribute('ifc', 1, 'Name', 'Renamed'); });
     assert.equal(useViewerStore.getState().modelPlacement.redo.length, 0, 'new authoring edit discards the abandoned move branch');
     act(() => useViewerStore.getState().undo('ifc'));
     type(input(ui, 'Delta X'), '7'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));
     assert.equal(useViewerStore.getState().redoStacks.size, 0, 'new move discards the abandoned authoring branch');
-    click(button(ui, 'Undo move')); click(button(ui, 'Redo move'));
+    click(button(ui, 'Undo placement')); click(button(ui, 'Redo placement'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [7, 0, 0]);
   });
 
@@ -277,6 +277,130 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Preview values'));
     assert.match(ui.querySelector('[role="alert"]')!.textContent!, /Enter a number/);
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, 0, 0]);
+  });
+
+  it('rotates the selected model about a shown pivot, and undoes with the moves (#4869)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    // A non-zero angle and an off-origin pivot: 0°, or a pivot at the origin,
+    // would pass whether or not the value reached the placement.
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+    const rotated = placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation;
+    assert.ok(Math.abs(rotated.angle - Math.PI / 6) < 1e-9, `angle ${rotated.angle}`);
+    assert.deepEqual([...rotated.pivot], [10, 4, 0]);
+    // One entry on the SAME stack the moves use.
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 1);
+    click(button(ui, 'Undo placement'));
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+    click(button(ui, 'Redo placement'));
+    assert.ok(Math.abs(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle - Math.PI / 6) < 1e-9);
+    click(button(ui, 'Clear rotation'));
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('applies a heading on top of an unapplied move instead of discarding it (#4873)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
+    assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'ifc'), [5, 0, 0]);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+
+    const placed = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
+    // The previewed move is committed WITH the heading, not silently dropped.
+    assert.deepEqual(placed.translation, [5, 0, 0], 'the pending move was discarded by the rotation');
+    assert.ok(Math.abs(placed.rotation.angle - Math.PI / 6) < 1e-9, `angle ${placed.rotation.angle}`);
+    // The pivot is a workspace point on the model AS DRAWN, so in the model's
+    // own frame it is the entered point less the move it was read off.
+    assert.deepEqual([...placed.rotation.pivot], [5, 4, 0]);
+    assert.equal(input(ui, 'Rotation pivot X').value, '10', 'the model turned about a point the user did not choose');
+    // One entry for the pair, so one undo puts back both.
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 1);
+    click(button(ui, 'Undo placement'));
+    const undone = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
+    assert.deepEqual(undone.translation, [0, 0, 0]);
+    assert.equal(undone.rotation.angle, 0);
+  });
+
+  it('carries the shown pivot with a move that is still only previewed (#4873)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+    assert.equal(input(ui, 'Rotation pivot X').value, '10');
+    // Previewed, NOT applied: the model is drawn 3 m along, and the axis it
+    // turns about is drawn with it — so a second heading entered now must be
+    // read against that position and not the committed one.
+    type(input(ui, 'Delta X'), '3'); click(button(ui, 'Preview values'));
+    assert.equal(input(ui, 'Rotation pivot X').value, '13', 'the shown pivot stayed behind the previewed model');
+    assert.equal(input(ui, 'Rotation pivot Y').value, '4');
+  });
+
+  it('reports a bad rotation angle instead of storing one (#4869)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30rad');
+    click(button(ui, 'Apply rotation'));
+    assert.match(ui.querySelector('[role="alert"]')!.textContent!, /degrees/i);
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('refuses a cleared pivot field instead of turning about zero (#4873)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '');
+    click(button(ui, 'Apply rotation'));
+    assert.match(ui.querySelector('[role="alert"]')!.textContent!, /pivot/i);
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('offers no rotation control for a model with GPU-instanced geometry, and says why (#4869)', () => {
+    act(() => {
+      const models = new Map(useViewerStore.getState().models);
+      models.set('ifc', { ...models.get('ifc')!, geometryResult: { meshes: [], instancedGeometryHashes: new Map([[5, 1n]]) } as never });
+      useViewerStore.setState({ models });
+      useViewerStore.getState().openReposition(['ifc']);
+    });
+    const ui = render(<ToolOverlays />);
+    assert.equal(ui.querySelector('input[aria-label="Rotation angle in degrees"]') === null, true);
+    assert.match(ui.textContent!, /GPU-instanced geometry cannot be rotated/);
+  });
+
+  it('keeps the shown pivot on the model when the model is moved after rotating (#4869)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+    type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));
+    assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'ifc'), [5, 0, 0]);
+    // The axis moved with the model, so the workspace pivot shown must too.
+    assert.equal(input(ui, 'Rotation pivot X').value, '15');
+    assert.equal(input(ui, 'Rotation pivot Y').value, '4');
+  });
+
+  it('offers no rotation control for a pointcloud selection (#4869)', () => {
+    act(() => {
+      const models = new Map(useViewerStore.getState().models);
+      models.set('scan', { ...models.get('scan')!, pointCloudHandleId: 3 });
+      useViewerStore.setState({ models });
+      useViewerStore.getState().openReposition(['scan']);
+    });
+    const ui = render(<ToolOverlays />);
+    // A boolean, not the element: asserting an HTMLElement equals null makes
+    // node build a diff of the whole DOM node and run the runner out of memory.
+    assert.equal(ui.querySelector('input[aria-label="Rotation angle in degrees"]') === null, true);
+    assert.match(ui.textContent!, /Pointclouds cannot be rotated/);
   });
 
   it('cancels placement when a different tool is selected', () => {

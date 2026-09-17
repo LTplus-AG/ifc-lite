@@ -68,5 +68,6 @@ it('repairs corrupt storage on the next committed save (#4226)', () => {
   disk.setItem('ifc-lite:placements:v1:' + placementFrameKey(original), '{broken');
   original.modelPlacement = importPlacements(original.modelPlacement, new Map([['a', { translation: [12, 3, 4], locked: false }]]));
   saveWorkspacePlacements(disk, original);
-  assert.deepEqual(restoreWorkspacePlacements(disk, state('b')).get('b'), { translation: [12, 3, 4], locked: false });
+  assert.deepEqual(restoreWorkspacePlacements(disk, state('b')).get('b'),
+    { translation: [12, 3, 4], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false });
 });

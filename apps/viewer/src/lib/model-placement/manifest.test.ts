@@ -7,7 +7,9 @@ import { makePlacementManifest, parsePlacementManifest, resolvePlacementManifest
 
 describe('placement exchange identity and precision (#4226)', () => {
   const source = new Map([['original', { sourceContentHash: 'source-a' }]]);
-  const placements = new Map([['original', { translation: [10_000_000.001, -2, 3] as const, locked: true }]]);
+  const placements = new Map([['original', { translation: [10_000_000.001, -2, 3] as const,
+    // Non-zero and off-origin, so the round-trip cannot pass by defaulting.
+    rotation: { angle: 0.5235987755982988, pivot: [12.5, -7.25, 0] as const }, locked: true }]]);
   const manifest = () => makePlacementManifest(source, placements, 'frame-a');
 
   it('restores exact doubles against source identity after runtime ids change', () => {
@@ -15,6 +17,28 @@ describe('placement exchange identity and precision (#4226)', () => {
     const restored = resolvePlacementManifest(parsed, new Map([['reloaded', { sourceContentHash: 'source-a' }]]), 'frame-a');
     assert.deepEqual(restored.get('reloaded'), placements.get('original'));
     assert.equal(restored.has('original'), false);
+  });
+
+  it('loads a record written before rotation existed as no rotation (#4869)', () => {
+    // The exact bytes an older build wrote: no `rotation` key at all.
+    const legacy = JSON.stringify({ version: 1, units: 'm', axes: 'engineering-z-up', frameKey: 'frame-a',
+      models: [{ instanceId: 'original', sourceContentHash: 'source-a', translation: [1, 2, 3], locked: false }] });
+    const parsed = parsePlacementManifest(legacy);
+    assert.deepEqual(parsed.models[0].rotation, { angle: 0, pivot: [0, 0, 0] });
+    const restored = resolvePlacementManifest(parsed, source, 'frame-a');
+    assert.deepEqual(restored.get('original'),
+      { translation: [1, 2, 3], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false });
+  });
+
+  it('writes no rotation key for an unrotated model, and rejects a malformed one', () => {
+    const unrotated = makePlacementManifest(source,
+      new Map([['original', { translation: [1, 2, 3] as const, rotation: { angle: 0, pivot: [9, 9, 9] as const }, locked: false }]]), 'frame-a');
+    assert.equal('rotation' in JSON.parse(JSON.stringify(unrotated)).models[0], false);
+    for (const rotation of [{ angle: 'x', pivot: [0, 0, 0] }, { angle: 1 }, { angle: Number.NaN, pivot: [0, 0, 0] }, null]) {
+      const text = JSON.stringify({ version: 1, units: 'm', axes: 'engineering-z-up', frameKey: 'frame-a',
+        models: [{ instanceId: 'a', sourceContentHash: null, translation: [0, 0, 0], rotation, locked: false }] });
+      assert.throws(() => parsePlacementManifest(text), /rotation/i, `accepted ${JSON.stringify(rotation)}`);
+    }
   });
 
   it('refuses changed frames, changed source bytes, and ambiguous duplicate instances', () => {

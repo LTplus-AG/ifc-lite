@@ -5,10 +5,14 @@ import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
 import { beginPlacement, cancelPlacement, commitPlacement, emptyPlacementState, previewPlacement,
-  replayPlacement, resetPlacements, retainLoadedPlacements, placementFor, importPlacements,
-  type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
-import { constrainTranslation, finiteTranslation, subtractTranslation,
+  rebasePlacementPivots, replayPlacement, resetPlacements, retainLoadedPlacements, placementFor, importPlacements,
+  rotatePlacements, type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
+import type { ModelRotation } from '../../lib/model-placement/rotation.js';
+import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
+import { rotationRefusal } from '../../lib/model-placement/rotation-refusal.js';
+import { constrainTranslation, finiteTranslation, fromRenderTranslation, subtractTranslation,
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
+import type { Vec3 } from '@ifc-lite/geometry';
 import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
 import { placementFrameKey } from '../../lib/model-placement/persistence.js';
 
@@ -26,15 +30,35 @@ export interface ModelPlacementSlice {
   undoModelTranslation: () => void;
   redoModelTranslation: () => void;
   resetModelTranslations: (ids: readonly string[]) => void;
+  /** Set the ABSOLUTE heading of the named models about the workspace vertical
+   * axis through `rotation.pivot`, a workspace point. Undoes with the moves, on
+   * the same stack. */
+  setModelRotation: (ids: readonly string[], rotation: ModelRotation) => void;
   setModelPositionLocked: (modelId: string, locked: boolean) => void;
+  /**
+   * Follow recorded pivots onto a new RTC anchor after the federation
+   * convergence moved a model's render frame (`federationRtcRebase.ts`).
+   * `deltas` are RENDER-frame (Y-up) vectors per moved model; the placement
+   * state keeps engineering Z-up metres, so they are converted here rather
+   * than teaching the frame code about workspace axes.
+   */
+  rebasePlacementFrame: (deltas: ReadonlyMap<string, Vec3>) => void;
   setRepositionNudge: (metres: number) => void;
   importModelPlacements: (manifest: PlacementManifest, bindings?: ReadonlyMap<string, string>) => void;
 }
 
 export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelPlacementSlice> = (set, get) => ({
   modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>(),
-  importModelPlacements: (manifest, bindings) => set((state) => ({ modelPlacement: importPlacements(state.modelPlacement,
-    resolvePlacementManifest(manifest, state.models, placementFrameKey(state), bindings)) })),
+  importModelPlacements: (manifest, bindings) => set((state) => {
+    const incoming = resolvePlacementManifest(manifest, state.models, placementFrameKey(state), bindings);
+    // Refused like an unlocked-model conflict: atomically, with the reason shown
+    // by the import panel, rather than silently dropping the heading.
+    // The same refusal the rotate command applies, so no path can record a
+    // heading the bake would only partly carry out.
+    const refusal = rotationRefusal(state, [...incoming].filter(([, placement]) => placement.rotation.angle !== 0).map(([id]) => id));
+    if (refusal) throw new Error(refusal);
+    return { modelPlacement: importPlacements(state.modelPlacement, incoming) };
+  }),
   openReposition: (modelIds) => {
     const state = get();
     const ids = modelIds ?? (state.activeModelId ? [state.activeModelId] : [...state.models.keys()].slice(0, 1));
@@ -78,6 +102,23 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     if (ids.some((id) => !state.models.has(id))) throw new Error('A selected model is no longer loaded.');
     return { modelPlacement: resetPlacements(state.modelPlacement, ids) };
   }),
+  setModelRotation: (ids, rotation) => set((state) => {
+    if (ids.some((id) => !state.models.has(id))) throw new Error('A selected model is no longer loaded.');
+    // A rotation is baked into flat mesh geometry. Pointclouds and GPU-instanced
+    // occurrences are drawn from renderer data it never touches, so refuse
+    // rather than turn part of the selection (see rotation-refusal.ts).
+    const refusal = rotationRefusal(state, ids);
+    if (refusal) throw new Error(refusal);
+    const rotated = rotatePlacements(state.modelPlacement, ids, rotation);
+    // Same rule as a move: a committed change stamps the frame its numbers are in.
+    return { modelPlacement: rotated.placements === state.modelPlacement.placements ? rotated
+      : { ...rotated, frameKey: placementFrameKey(state) } };
+  }),
+  rebasePlacementFrame: (deltas) => set((state) => {
+    const workspace = new Map([...deltas].map(([id, delta]) => [id, fromRenderTranslation(delta)] as const));
+    const rebased = rebasePlacementPivots(state.modelPlacement, workspace);
+    return rebased === state.modelPlacement ? {} : { modelPlacement: rebased };
+  }),
   setModelPositionLocked: (modelId, locked) => set((state) => {
     if (!state.models.has(modelId)) return {};
     const base = state.modelPlacement.preview?.before.has(modelId) ? cancelPlacement(state.modelPlacement) : state.modelPlacement;
@@ -93,9 +134,12 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
 
 export const modelPlacementTeardown = defineSliceTeardown('modelPlacementSlice',
   ['modelPlacement', 'repositionOpen', 'repositionNudge', 'placementStaleMeasurements'], {
-    'session-reset': () => ({ modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }),
-    'all-models-cleared': () => ({ modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }),
+    // The baselines go with the geometry they describe — nothing to restore
+    // them onto once the models are gone, and they are geometry-sized.
+    'session-reset': () => { modelRotationBaker.clear(); return { modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }; },
+    'all-models-cleared': () => { modelRotationBaker.clear(); return { modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>() }; },
     'model-removed': (scope, state) => {
+      modelRotationBaker.forget(scope.modelId);
       if (!state.modelPlacement) return {};
       const ids = new Set(state.models?.keys());
       ids.delete(scope.modelId);

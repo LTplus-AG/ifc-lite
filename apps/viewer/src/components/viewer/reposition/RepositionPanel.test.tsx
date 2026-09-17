@@ -310,6 +310,17 @@ describe('model repositioning user interactions (#4226)', () => {
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
   });
 
+  it('refuses a cleared pivot field instead of turning about zero (#4873)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '');
+    click(button(ui, 'Apply rotation'));
+    assert.match(ui.querySelector('[role="alert"]')!.textContent!, /pivot/i);
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
   it('offers no rotation control for a model with GPU-instanced geometry, and says why (#4869)', () => {
     act(() => {
       const models = new Map(useViewerStore.getState().models);

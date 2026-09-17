@@ -54,6 +54,8 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   const applyRotation = useCallback((text: string, fields: readonly [string, string]) => {
     try {
       const angle = parseRotationDegrees(text);
+      // Number('') is 0: a cleared field would silently turn the model about the origin.
+      if (fields.some((field) => field.trim() === '')) throw new Error('Enter a finite pivot X and Y in metres.');
       const point: Translation = [Number(fields[0].replace(',', '.')), Number(fields[1].replace(',', '.')), 0];
       if (!finiteTranslation(point)) throw new Error('Enter a finite pivot X and Y in metres.');
       useViewerStore.getState().setModelRotation(selected, { angle, pivot: point });

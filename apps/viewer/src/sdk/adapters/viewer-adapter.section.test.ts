@@ -48,7 +48,7 @@ describe('SDK viewer section (#4910)', () => {
   });
 
   it('setSection(null) clears the cut, including the one remembered for the next open', () => {
-    viewer.setSection({ axis: 'y', position: 20, enabled: true });
+    viewer.setSection({ axis: 'y', position: 20, enabled: true, flipped: false });
     useViewerStore.getState().setActiveTool('select');
     viewer.setSection(null);
     useViewerStore.getState().setActiveTool('section');

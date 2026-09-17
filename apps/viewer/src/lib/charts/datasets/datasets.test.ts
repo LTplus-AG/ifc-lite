@@ -13,7 +13,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, extractPropertiesOnDemand, extractScheduleOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
+import { clashReviewKey, createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { addViewpointToTopic, createBCFProject, createBCFTopic, createViewpoint, readBCF, writeBCF } from '@ifc-lite/bcf';
 import { aggregate, elementFieldColumnId, validateDashboardSpec, type ElementFieldBinding } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
@@ -316,6 +316,94 @@ END-ISO-10303-21;`);
     const ratioRow = numbers.rows.find(({ ids }) => ids[0] === GID(41));
     assert.equal(ratioRow?.values[numberColumn], null);
     assert.equal(ratioRow?.statuses?.[numberColumn], 'unsupported');
+  });
+
+  /** A model whose project declares one unit list and carries one `Probe.Cost` / `Probe.Value` property on the wall. */
+  const unitModel = async (id: string, offset: number, units: string, property: string, extra = '') => {
+    const source = MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `${units}
+#202=IFCUNITASSIGNMENT((#200));
+${property}
+${extra}
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);
+ENDSEC;
+END-ISO-10303-21;`);
+    return {
+      ...fixtureModel(id, { idOffset: offset }),
+      ifcDataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer),
+      maxExpressId: 210,
+    };
+  };
+  const cellOf = (dataset: ReturnType<typeof buildElementsDataset>, field: ElementFieldBinding, id: number) => {
+    const column = dataset.columns.findIndex((c) => c.id === elementFieldColumnId(field));
+    const row = dataset.rows.find(({ ids }) => ids[0] === id);
+    return { unit: dataset.columns[column]?.unit, value: row?.values[column], status: row?.statuses?.[column] };
+  };
+
+  it('elements: never sums two currencies — a monetary column is one currency, other currencies read unsupported (#4833)', async () => {
+    const cost = "#203=IFCPROPERTYSINGLEVALUE('Cost',$,IFCMONETARYMEASURE(10.),$);";
+    const usd = await unitModel('usd', 0, "#200=IFCMONETARYUNIT('USD');", cost);
+    const eur = await unitModel('eur', OFFSET, "#200=IFCMONETARYUNIT('EUR');", cost);
+    const usd2 = await unitModel('usd2', 2 * OFFSET, "#200=IFCMONETARYUNIT('USD');", cost);
+    const field: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Cost', valueKind: 'number', dataType: 'IFCMONETARYMEASURE' };
+    const discovered = createElementFieldReader(usd.ifcDataStore).discover([41]).properties.get('Probe')?.[0]?.binding;
+    assert.deepEqual(discovered, field, 'a monetary property is discovered as a number keyed by its measure');
+
+    useViewerStore.setState({ models: new Map([[usd.id, usd], [eur.id, eur], [usd2.id, usd2]]), activeModelId: usd.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    assert.deepEqual(cellOf(dataset, field, 41), { unit: '$', value: 10, status: 'value' });
+    assert.deepEqual(cellOf(dataset, field, 2 * OFFSET + 41), { unit: '$', value: 10, status: 'value' }, 'the same currency in another model sums');
+    assert.deepEqual(cellOf(dataset, field, GID(41)), { unit: '$', value: null, status: 'unsupported' }, 'there is no exchange rate to fold euros into dollars');
+    const agg = aggregate({ id: 'c', title: 'c', source: 'elements', type: 'bar', dimension: 'Model', measure: { agg: 'sum', column: elementFieldColumnId(field) } }, dataset);
+    assert.equal(agg.total, 20);
+    assert.equal(agg.unsupported, 1);
+    assert.equal(agg.unit, '$');
+  });
+
+  it('elements: an explicit unit is converted by its own scale, and an unresolvable one is never read as the project unit (#4833)', async () => {
+    const mmProject = "#200=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);";
+    // A decimetre is a real SI unit the viewer has no curated alternative for: only its parsed scale can convert it.
+    const dm = await unitModel('dm', 0, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(1.),#206);", '#206=IFCSIUNIT(*,.LENGTHUNIT.,.DECI.,.METRE.);');
+    // `#999` names no entity: the file declares a unit we cannot read.
+    const broken = await unitModel('broken', OFFSET, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(1.),#999);");
+    const field: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Length', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    useViewerStore.setState({ models: new Map([[dm.id, dm], [broken.id, broken]]), activeModelId: dm.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const decimetre = cellOf(dataset, field, 41);
+    assert.equal(decimetre.unit, 'mm');
+    assert.ok(typeof decimetre.value === 'number' && Math.abs(decimetre.value - 100) < 1e-9, `1 dm is 100 mm, got ${String(decimetre.value)}`);
+    assert.deepEqual(cellOf(dataset, field, GID(41)), { unit: 'mm', value: null, status: 'unsupported' }, 'an unreadable explicit unit must not fall back to the project millimetres');
+    assert.equal(createElementFieldReader(broken.ifcDataStore).readResolved(41, field).unit, '#999');
+  });
+
+  it('clash: the fingerprint follows a regroup and a review status edit, so a selected Other bucket cannot stay live on moved rows (#4833)', async () => {
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [
+        box('0Wall00000000000000041', GID(41), 'IfcWall', [0, 0, 0], [1, 1, 1]),
+        box('0Beam00000000000000042', GID(42), 'IfcBeam', [0.5, 0, 0], [1.5, 1, 1]),
+        box('0Door00000000000000043', GID(43), 'IfcDoor', [0.8, 0, 0], [1.8, 1, 1]),
+      ],
+      [{ id: 'str', name: 'STR', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }, { id: 'arc', name: 'ARC', a: 'IfcWall', b: 'IfcDoor', mode: 'hard' }],
+    );
+    assert.equal(result.clashes.length, 2);
+    const [first, second] = result.clashes;
+    const group = (title: string, members: typeof result.clashes) => ({
+      id: title, title, members, bounds: { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] }, representativePoint: [0, 0, 0] as [number, number, number], severity: first.severity,
+    });
+    const state = (groups: ReturnType<typeof group>[], review: 'open' | 'accepted') => {
+      useViewerStore.setState({ clashResult: result, clashRunSeq: 3, clashGroups: groups, clashReviews: new Map([[clashReviewKey(first), { status: review }]]) });
+      return buildClashDataset(useViewerStore.getState());
+    };
+    const together = state([group('G1', [first, second])], 'open');
+    const apart = state([group('G1', [first]), group('G2', [second])], 'open');
+    assert.notEqual(apart.fingerprint, together.fingerprint, 'moving a clash between groups changes which bucket it is in');
+    assert.equal(apart.rows.length, together.rows.length);
+    const accepted = state([group('G1', [first]), group('G2', [second])], 'accepted');
+    assert.notEqual(accepted.fingerprint, apart.fingerprint, 'a status edit keeps the review count but moves the row');
+    assert.equal(state([group('G1', [first]), group('G2', [second])], 'accepted').fingerprint, accepted.fingerprint, 'the same state fingerprints the same');
   });
 
   it('ids and compare: rows carry the renderer id of the entity the result names', () => {

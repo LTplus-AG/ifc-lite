@@ -5,17 +5,31 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { IfcParser, extractPropertiesOnDemand, extractTypeEntityOwnProperties } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ElementFieldBinding } from '@ifc-lite/charts';
 import { createElementFieldReader } from './element-field-reader.js';
 
 const FIRE: ElementFieldBinding = { kind: 'property', psetName: 'Pset_SlabCommon', propertyName: 'FireRating', valueKind: 'category' };
 const SPREAD: ElementFieldBinding = { kind: 'property', psetName: 'Pset_SlabCommon', propertyName: 'SurfaceSpreadOfFlame', valueKind: 'category' };
+const SAMPLE = new URL('../../../public/samples/building-architecture.ifc', import.meta.url);
+/** The committed sample may be checked out with CRLF line endings. */
+const FILE_END = /ENDSEC;\r?\nEND-ISO-10303-21;/;
+
+async function parseText(source: string): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(source);
+  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+}
+
+async function parseSampleWith(extra: string): Promise<IfcDataStore> {
+  const fixture = await readFile(SAMPLE, 'utf8');
+  assert.match(fixture, FILE_END);
+  return parseText(fixture.replace(FILE_END, `${extra}\nENDSEC;\nEND-ISO-10303-21;`));
+}
 
 describe('chart IFC field reader (#4833)', () => {
   it('uses occurrence precedence and type-only fallback on the committed authoring fixture', async () => {
-    const bytes = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+    const bytes = await readFile(SAMPLE);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
     const reader = createElementFieldReader(store);
 
@@ -26,7 +40,7 @@ describe('chart IFC field reader (#4833)', () => {
   });
 
   it('keeps explicit null and deletion missing instead of resurrecting the type value', async () => {
-    const bytes = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+    const bytes = await readFile(SAMPLE);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
     const view = new MutablePropertyView(store.properties, 'fixture');
     view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
@@ -37,7 +51,7 @@ describe('chart IFC field reader (#4833)', () => {
   });
 
   it('applies defining-type edits and deletions before inherited fallback', async () => {
-    const bytes = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+    const bytes = await readFile(SAMPLE);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
     const view = new MutablePropertyView(store.properties, 'fixture');
     view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
@@ -52,41 +66,74 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(createElementFieldReader(store, deleted).read(52, SPREAD), null);
   });
 
-  it('preserves explicit units and rejects multi-valued properties as unsupported', async () => {
-    const fixture = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url), 'utf8');
-    const extra = `
+  it('preserves explicit units with their scale and never sums an incompatible measure', async () => {
+    const store = await parseSampleWith(`
 #60001=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #60002=IFCPROPERTYSINGLEVALUE('ExplicitLength',$,IFCLENGTHMEASURE(1.),#60001);
-#60003=IFCPROPERTYENUMERATEDVALUE('Multi',$,(IFCLABEL('A'),IFCLABEL('B')),$);
 #60004=IFCPROPERTYSINGLEVALUE('MixedMeasure',$,IFCLENGTHMEASURE(1.),$);
 #60005=IFCPROPERTYSINGLEVALUE('MixedMeasure',$,IFCAREAMEASURE(2.),$);
-#60010=IFCPROPERTYLISTVALUE('Singleton',$,(IFCLABEL('Only')),$);
-#60011=IFCPROPERTYSINGLEVALUE('Inner',$,IFCLABEL('A'),$);
-#60012=IFCCOMPLEXPROPERTY('Complex',$,'Usage',(#60011));
-#60006=IFCPROPERTYSET('g-explicit',#1,'Probe',$,(#60002,#60003,#60004,#60010,#60012));
+#60006=IFCPROPERTYSET('g-explicit',#1,'Probe',$,(#60002,#60004));
 #60007=IFCPROPERTYSET('g-area',#1,'Probe',$,(#60005));
 #60008=IFCRELDEFINESBYPROPERTIES('g-rel',#1,$,$,(#52),#60006);
-#60009=IFCRELDEFINESBYPROPERTIES('g-area-rel',#1,$,$,(#395),#60007);`;
-    const source = fixture.replace('ENDSEC;\nEND-ISO-10303-21;', `${extra}\nENDSEC;\nEND-ISO-10303-21;`);
-    const bytes = new TextEncoder().encode(source);
-    const store = await new IfcParser().parseColumnar(bytes.buffer);
+#60009=IFCRELDEFINESBYPROPERTIES('g-area-rel',#1,$,$,(#395),#60007);`);
     const reader = createElementFieldReader(store);
     const length: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'ExplicitLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
-    const multi: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Multi', valueKind: 'category' };
-    const singleton: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Singleton', valueKind: 'category' };
-    const complex: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Complex', valueKind: 'category' };
-    assert.deepEqual(reader.readResolved(52, length), { value: 1, status: 'value', unit: 'm', dataType: 'IFCLENGTHMEASURE' });
-    assert.deepEqual(reader.readResolved(52, multi), { value: null, status: 'unsupported' });
-    assert.deepEqual(reader.readResolved(52, singleton), { value: 'Only', status: 'value' });
-    assert.deepEqual(reader.readResolved(52, complex), { value: null, status: 'unsupported' });
+    assert.deepEqual(reader.readResolved(52, length), { value: 1, status: 'value', unit: 'm', unitSiScale: 1, dataType: 'IFCLENGTHMEASURE' });
     const overlay = new MutablePropertyView(store.properties, 'fixture');
     overlay.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
-    const overlayReader = createElementFieldReader(store, overlay);
-    assert.deepEqual(overlayReader.readResolved(52, length), { value: 1, status: 'value', unit: 'm', dataType: 'IFCLENGTHMEASURE' });
-    assert.deepEqual(overlayReader.readResolved(52, multi), { value: null, status: 'unsupported' });
+    assert.deepEqual(createElementFieldReader(store, overlay).readResolved(52, length), { value: 1, status: 'value', unit: 'm', unitSiScale: 1, dataType: 'IFCLENGTHMEASURE' });
     const mixed = reader.discover([52, 395]).properties.get('Probe')?.find(({ binding }) => binding.kind === 'property' && binding.propertyName === 'MixedMeasure');
     assert.equal(mixed?.binding.valueKind, 'category', 'incompatible IFC measure dimensions are never summable');
     assert.equal(mixed && reader.read(52, mixed.binding), '1');
     assert.equal(mixed && reader.read(395, mixed.binding), '2');
+  });
+
+  it('reads multi-valued property shapes as categories by their display and never as numbers, whatever their member count', async () => {
+    // Shape is a property of the DEFINITION, not of how many members one
+    // occurrence happens to carry: a one-member list is a list and an
+    // upper-bound-only bounded value is a range (#4833).
+    const store = await parseSampleWith(`
+#60003=IFCPROPERTYENUMERATEDVALUE('Multi',$,(IFCLABEL('A'),IFCLABEL('B')),$);
+#60010=IFCPROPERTYLISTVALUE('Singleton',$,(IFCLABEL('Only')),$);
+#60011=IFCPROPERTYSINGLEVALUE('Inner',$,IFCLABEL('A'),$);
+#60012=IFCCOMPLEXPROPERTY('Complex',$,'Usage',(#60011));
+#60013=IFCPROPERTYBOUNDEDVALUE('UpperOnly',$,IFCLENGTHMEASURE(5.),$,$,$);
+#60014=IFCPROPERTYLISTVALUE('OneNumber',$,(IFCLENGTHMEASURE(7.)),$);
+#60015=IFCPROPERTYENUMERATEDVALUE('Status',$,(IFCLABEL('NEW')),$);
+#60006=IFCPROPERTYSET('g-shapes',#1,'Probe',$,(#60003,#60010,#60012,#60013,#60014,#60015));
+#60008=IFCRELDEFINESBYPROPERTIES('g-rel',#1,$,$,(#52),#60006);`);
+    const reader = createElementFieldReader(store);
+    const category = (propertyName: string): ElementFieldBinding => ({ kind: 'property', psetName: 'Probe', propertyName, valueKind: 'category' });
+    const number = (propertyName: string): ElementFieldBinding => ({ kind: 'property', psetName: 'Probe', propertyName, valueKind: 'number', dataType: 'IFCLENGTHMEASURE' });
+
+    assert.deepEqual(reader.readResolved(52, category('Multi')), { value: 'A, B', status: 'value' });
+    assert.deepEqual(reader.readResolved(52, category('Singleton')), { value: 'Only', status: 'value' });
+    assert.deepEqual(reader.readResolved(52, category('Status')), { value: 'NEW', status: 'value' });
+    assert.deepEqual(reader.readResolved(52, category('Complex')), { value: 'Inner: A', status: 'value' });
+    assert.deepEqual(reader.readResolved(52, number('UpperOnly')), { value: null, status: 'unsupported' }, 'a bound is not a value');
+    assert.deepEqual(reader.readResolved(52, number('OneNumber')), { value: null, status: 'unsupported' }, 'a one-member list is not a scalar');
+    assert.deepEqual(reader.readResolved(52, number('Multi')), { value: null, status: 'unsupported' });
+
+    const offered = reader.discover([52]).properties.get('Probe') ?? [];
+    const kindOf = (name: string) => offered.find(({ binding }) => binding.kind === 'property' && binding.propertyName === name)?.binding.valueKind;
+    assert.equal(kindOf('UpperOnly'), 'category', 'a bounded value is never offered for summing');
+    assert.equal(kindOf('OneNumber'), 'category');
+    assert.equal(kindOf('Status'), 'category');
+  });
+
+  it('never offers an entity-reference attribute as a value, even though its STEP slot holds a number', async () => {
+    const store = await parseSampleWith(`
+#60020=IFCDIRECTION((0.,0.,1.));
+#60021=IFCSTRUCTURALCURVEMEMBER('g-member',#1,'Member',$,$,$,$,.RIGID_JOINED_MEMBER.,#60020);`);
+    const reader = createElementFieldReader(store);
+    const catalog = reader.discover([60021]);
+    const names = catalog.attributes.map(({ binding }) => binding.kind === 'attribute' ? binding.attributeName : '');
+    assert.ok(names.includes('PredefinedType'), names.join(','));
+    assert.ok(!names.includes('Axis'), 'IfcStructuralCurveMember.Axis is an IfcDirection reference, not a measure');
+    assert.deepEqual(
+      reader.readResolved(60021, { kind: 'attribute', attributeName: 'Axis', valueKind: 'number' }),
+      { value: null, status: 'unsupported' },
+      'a persisted binding to a reference attribute reads unsupported rather than as the referenced id',
+    );
   });
 });

@@ -101,6 +101,10 @@ export interface ListColumnUnitResolver {
   unitSymbol(colIndex: number): string | null;
   /** The unit a particular model declares for a column, before conversion. */
   sourceUnitSymbol(colIndex: number, modelId: string): string | null;
+  /** The column's target unit as a conversion target, for a value whose
+   *  source unit is NOT the model's declared one (a property's own explicit
+   *  `Unit`); `null` for a non-convertible column. */
+  targetUnit(colIndex: number): (LinearUnit & { symbol: string }) | null;
   /** Convert `rawValue` (as declared by model `modelId`) into the column's
    *  target unit. Passes through unchanged - never throws - for a
    *  non-convertible column, a non-finite/non-numeric value, or an
@@ -129,6 +133,9 @@ export function resolveListColumnUnits(
       const kind = kinds[colIndex];
       const pu = modelUnits.get(modelId);
       return kind && pu ? sourceUnitFor(pu, kind)?.symbol ?? null : null;
+    },
+    targetUnit(colIndex) {
+      return targets[colIndex] ?? null;
     },
     convertCell(colIndex, rawValue, modelId) {
       const kind = kinds[colIndex];

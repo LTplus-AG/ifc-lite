@@ -19,22 +19,15 @@ import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
 import { createElementFieldReader } from '@/lib/charts/element-field-reader';
-import { extractProjectUnits, measureUnit, type ProjectUnits } from '@ifc-lite/parser';
+import { resolveFieldCell, resolveFieldColumnUnit } from '@/lib/charts/element-field-units';
+import { extractProjectUnits, type ProjectUnits } from '@ifc-lite/parser';
 import type { ColumnDefinition } from '@ifc-lite/lists';
-import { resolveListColumnUnits, sourceUnitSymbolForMeasure } from '@/lib/units/list-column-units';
-import { alternativesForUnitType } from '@/lib/units/alternatives';
-import { convertValue } from '@/lib/units/convert';
+import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 
 type ModelsState = Pick<ViewerState, 'models' | 'activeModelId' | 'pinboardEntities' | 'mutationViews' | 'mutationVersion' | 'unitDisplayOverrides'>;
 
 function isFieldList(value: readonly ElementFieldBinding[] | ModelsState): value is readonly ElementFieldBinding[] {
   return Array.isArray(value);
-}
-
-function hasSourceUnit(units: ProjectUnits | undefined, unitType: string): boolean {
-  if (!units) return false;
-  if (units.resolvedForUnitType(unitType)) return true;
-  return (unitType === 'AREAUNIT' || unitType === 'VOLUMEUNIT') && Boolean(units.resolvedForUnitType('LENGTHUNIT'));
 }
 
 /** Per-model include sets for a scope, or `null` for "every element". */
@@ -68,6 +61,9 @@ export function buildElementsDataset(
   const fields = isFieldList(fieldsOrState) ? fieldsOrState : [];
   const state = (isFieldList(fieldsOrState) ? explicitState : fieldsOrState) ?? useViewerStore.getState();
   const includes = includeSets(scope, state);
+  // One target unit per numeric field for the whole federation, through the
+  // same resolver the Lists table sums with; each cell is converted from the
+  // unit it is actually in (see `element-field-units`).
   const unitColumns: ColumnDefinition[] = fields.map((field, index) => ({
     id: String(index),
     source: field.kind,
@@ -75,19 +71,17 @@ export function buildElementsDataset(
     ...(field.kind === 'property' ? { psetName: field.psetName } : {}),
     ...(field.dataType ? { dataType: field.dataType } : {}),
   }));
-  const modelUnits = new Map();
+  const modelUnits = new Map<string, ProjectUnits>();
   for (const model of state.models.values()) {
     const store = model.ifcDataStore;
     if (store?.source?.length && store.entityIndex) modelUnits.set(model.id, extractProjectUnits(store.source, store.entityIndex));
   }
-  const unitResolver = resolveListColumnUnits(unitColumns, modelUnits, state.unitDisplayOverrides);
+  const resolver = resolveListColumnUnits(unitColumns, modelUnits, state.unitDisplayOverrides);
   const resolvedFields = fields.map((field, index) => {
-    const measure = field.dataType ? measureUnit(field.dataType) : undefined;
-    const hasDeclaredUnits = measure?.kind === 'typed' && [...modelUnits.values()].some((units) => hasSourceUnit(units, measure.unitType));
-    const hasOverride = measure?.kind === 'typed' && state.unitDisplayOverrides[measure.unitType] !== undefined;
-    const unit = field.unit || hasDeclaredUnits || hasOverride ? (unitResolver.unitSymbol(index) ?? field.unit) : undefined;
+    const unit = resolveFieldColumnUnit(field, index, modelUnits, state.unitDisplayOverrides, resolver);
     return { ...field, ...(unit ? { unit } : {}) };
   });
+  const fieldIndex = new Map(resolvedFields.map((field, index) => [elementFieldColumnId(field), index]));
   const models: ElementsDatasetModel[] = [];
   for (const model of state.models.values()) {
     const store = model.ifcDataStore;
@@ -103,41 +97,10 @@ export function buildElementsDataset(
       include,
       ...(reader ? {
         readField: (expressId, field) => {
-          const index = resolvedFields.findIndex((candidate) => elementFieldColumnId(candidate) === elementFieldColumnId(field));
+          const index = fieldIndex.get(elementFieldColumnId(field)) ?? -1;
           const cell = reader.readResolved(expressId, field);
-          if (cell.status !== 'value' || index < 0) return cell;
-          const declaredType = cell.dataType?.toUpperCase();
-          const bindingType = field.dataType?.toUpperCase();
-          const declaredKind = declaredType ? measureUnit(declaredType) : undefined;
-          const bindingKind = bindingType ? measureUnit(bindingType) : undefined;
-          if (field.valueKind === 'number' && !bindingType && declaredKind?.kind === 'typed') {
-            return { value: null, status: 'unsupported' as const };
-          }
-          if (bindingType && declaredType && bindingType !== declaredType
-            && !(declaredKind?.kind === 'typed' && bindingKind?.kind === 'typed' && declaredKind.unitType === bindingKind.unitType)) {
-            return { value: null, status: 'unsupported' as const };
-          }
-          if (field.valueKind === 'category') {
-            const projectUnits = modelUnits.get(modelId);
-            const sourceSymbol = projectUnits && declaredType ? sourceUnitSymbolForMeasure(projectUnits, declaredType) : undefined;
-            const suffix = cell.unit ?? sourceSymbol ?? (declaredKind?.kind === 'typed' ? cell.dataType : undefined);
-            return { ...cell, value: suffix ? `${cell.value} ${suffix}` : cell.value };
-          }
-          if (typeof cell.value !== 'number') return cell;
-          if (cell.unit) {
-            const kind = declaredKind?.kind === 'typed' ? declaredKind : bindingKind?.kind === 'typed' ? bindingKind : undefined;
-            const targetSymbol = resolvedFields[index]?.unit;
-            const source = kind ? alternativesForUnitType(kind.unitType).find((unit) => unit.symbol === cell.unit) : undefined;
-            const target = kind && targetSymbol ? alternativesForUnitType(kind.unitType).find((unit) => unit.symbol === targetSymbol) : undefined;
-            if (!source || !target) return { value: null, status: 'unsupported' as const };
-            return { value: convertValue(cell.value, source, target), status: 'value' as const };
-          }
-          const projectUnits = modelUnits.get(modelId);
-          const unitKind = declaredKind?.kind === 'typed' ? declaredKind : bindingKind?.kind === 'typed' ? bindingKind : undefined;
-          if (unitKind && !hasSourceUnit(projectUnits, unitKind.unitType)) {
-            return { value: null, status: 'unsupported' as const };
-          }
-          return { ...cell, value: unitResolver.convertCell(index, cell.value, modelId) };
+          if (index < 0) return cell;
+          return resolveFieldCell(cell, { field, index, columnUnit: resolvedFields[index].unit, modelId, projectUnits: modelUnits.get(modelId), resolver });
         },
         valueRevision: `${model.sourceFingerprint ?? model.sourceContentHash ?? model.loadedAt}:${state.mutationVersion}:${JSON.stringify(state.unitDisplayOverrides)}`,
       } : {}),

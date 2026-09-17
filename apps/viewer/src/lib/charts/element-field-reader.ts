@@ -2,91 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CellValue, ElementFieldBinding, ElementFieldValueKind, NormalizedElementFieldValue } from '@ifc-lite/charts';
+/**
+ * Reads one IFC attribute or property per element for the charts (#4833),
+ * over the model's parse plus its mutation overlay. Occurrence values win;
+ * a property the occurrence lacks falls back to its defining type
+ * (IfcRelDefinesByType); an explicit null or a deleted property stays missing
+ * and suppresses that fallback. Everything is cached per element/type, so a
+ * dataset pass over thousands of elements parses each pset once.
+ */
+import type { CellValue, ElementFieldBinding, NormalizedElementFieldValue } from '@ifc-lite/charts';
 import { normalizeElementFieldValue } from '@ifc-lite/charts';
-import type { IfcDataStore, SchemaRegistry } from '@ifc-lite/parser';
-import { getAttributeNamesAcrossSchemas, getRawNamedAttributes, getSchemaRegistryForVersion, measureUnit } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { getRawNamedAttributes } from '@ifc-lite/parser';
 import { PropertyValueType, RelationshipType, type Property, type PropertySet } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { findPropertyInSets } from '@ifc-lite/query';
 import { createListDataProvider } from '@/lib/lists/adapter';
+import { createElementAttributeSchema } from './element-field-schema';
+import {
+  catalogFromObservations, emptyObservation, emptyObservations, observeAttribute, observeProperty, propertyObservationKey,
+  type ElementFieldCatalog, type ElementFieldObservations,
+} from './element-field-discovery';
 
-export interface ElementFieldOption {
-  binding: ElementFieldBinding;
-  label: string;
-  /** False when the field exists but every inspected value is missing. */
-  observedValue: boolean;
-}
+export type { ElementFieldCatalog, ElementFieldOption } from './element-field-discovery';
 
-export interface ElementFieldCatalog {
-  attributes: ElementFieldOption[];
-  properties: Map<string, ElementFieldOption[]>;
-}
+/** Attributes the columnar entity table resolves itself — always text, so always scalar. */
+const TABLE_ATTRIBUTES = ['GlobalId', 'Name', 'Description', 'ObjectType', 'Tag', 'PredefinedType'] as const;
 
-interface ObservedKind {
-  text: boolean;
-  number: boolean;
-  boolean: boolean;
-  units: Set<string>;
-  dataTypes: Set<string>;
-}
-
-function inferKind(observed: ObservedKind): ElementFieldValueKind {
-  if (!observed.text && !observed.number && !observed.boolean && observed.dataTypes.size > 0) {
-    const measures = [...observed.dataTypes].map(measureUnit);
-    if (measures.every((measure) => measure?.kind === 'typed')) return 'number';
-  }
-  if (observed.number && !observed.text && !observed.boolean) {
-    const unitTypes = new Set<string>();
-    let allTypedMeasures = observed.dataTypes.size > 0;
-    for (const dataType of observed.dataTypes) {
-      const measure = measureUnit(dataType);
-      if (measure?.kind === 'typed') unitTypes.add(measure.unitType);
-      else allTypedMeasures = false;
-    }
-    const compatibleMeasures = allTypedMeasures && unitTypes.size === 1;
-    if (observed.dataTypes.size > 1 && !compatibleMeasures) return 'category';
-    if (observed.units.size > 1 && !compatibleMeasures) return 'category';
-    return 'number';
-  }
-  if (observed.boolean && !observed.text && !observed.number) return 'boolean';
-  return 'category';
-}
-
-function observe(observed: ObservedKind, property: Property): void {
-  if (property.unit) observed.units.add(property.unit);
-  if (property.dataType) observed.dataTypes.add(property.dataType.toUpperCase());
-  if (property.values && property.values.length !== 1) return;
-  const normalized = normalizeElementFieldValue(property.value, typeof property.value === 'number' ? 'number' : typeof property.value === 'boolean' ? 'boolean' : 'category');
-  if (normalized.status !== 'value') return;
-  if (typeof normalized.value === 'number') observed.number = true;
-  else if (typeof normalized.value === 'boolean') observed.boolean = true;
-  else observed.text = true;
-}
-
-function observeRaw(observed: ObservedKind, raw: unknown, declaredType?: string): void {
-  if (declaredType) observed.dataTypes.add(declaredType.toUpperCase());
-  if (Array.isArray(raw) && raw.length === 2 && typeof raw[0] === 'string' && raw[0].toUpperCase().startsWith('IFC')) {
-    observed.dataTypes.add(raw[0].toUpperCase());
-  }
-  const numeric = normalizeElementFieldValue(raw, 'number');
-  const logical = normalizeElementFieldValue(raw, 'boolean');
-  const normalized = numeric.status === 'value'
-    ? numeric
-    : logical.status === 'value'
-      ? logical
-      : normalizeElementFieldValue(raw, 'category');
-  if (normalized.status !== 'value') return;
-  if (typeof normalized.value === 'number') observed.number = true;
-  else if (typeof normalized.value === 'boolean') observed.boolean = true;
-  else observed.text = true;
-}
-
-function emptyObservation(): ObservedKind {
-  return { text: false, number: false, boolean: false, units: new Set(), dataTypes: new Set() };
-}
-
-function rawAttributeValue(store: IfcDataStore, expressId: number, name: string): unknown {
+function tableAttributeValue(store: IfcDataStore, expressId: number, name: string): unknown {
   switch (name) {
     case 'GlobalId': return store.entities.getGlobalId(expressId);
     case 'Name': return store.entities.getName(expressId);
@@ -98,36 +41,32 @@ function rawAttributeValue(store: IfcDataStore, expressId: number, name: string)
   }
 }
 
+/** A read with the provenance the dataset needs to convert it: the property's explicit unit and declared measure. */
+export type ResolvedElementFieldValue = NormalizedElementFieldValue & { unit?: string; unitSiScale?: number; dataType?: string };
+
 export interface ElementFieldReader {
   read(expressId: number, binding: ElementFieldBinding): CellValue;
-  readResolved(expressId: number, binding: ElementFieldBinding): NormalizedElementFieldValue & { unit?: string; dataType?: string };
+  readResolved(expressId: number, binding: ElementFieldBinding): ResolvedElementFieldValue;
+  /** The value shapes these elements expose, mergeable across chunks and models. */
+  observe(expressIds: readonly number[]): ElementFieldObservations;
+  /** `catalogFromObservations(observe(ids))` — one model's catalog. */
   discover(expressIds: readonly number[]): ElementFieldCatalog;
 }
+
+const UNSUPPORTED: ResolvedElementFieldValue = { value: null, status: 'unsupported' };
 
 /** Cached model-local reader. Recreate it when the store or mutation revision changes. */
 export function createElementFieldReader(store: IfcDataStore, mutationView?: MutablePropertyView): ElementFieldReader {
   const provider = createListDataProvider(store);
+  const schema = createElementAttributeSchema(store);
   const attributes = new Map<number, Map<string, unknown>>();
   const occurrenceSets = new Map<number, PropertySet[]>();
   const typeSets = new Map<number, PropertySet[]>();
   const typeIds = new Map<number, number>();
-  const attributeTypes = new Map<string, Map<string, string>>();
-  const schemaRegistry: SchemaRegistry | undefined = store.schemaVersion === 'IFC5'
-    ? undefined
-    : getSchemaRegistryForVersion(store.schemaVersion);
+  const registeredVersion = store.schemaVersion === 'IFC5' ? undefined : store.schemaVersion;
 
-  const schemaEntityFor = (typeName: string) => schemaRegistry?.entities[typeName]
-    ?? Object.values(schemaRegistry?.entities ?? {}).find((entity) => entity.name.toUpperCase() === typeName.toUpperCase());
-
-  const attributeTypeFor = (typeName: string, attributeName: string): string | undefined => {
-    let byName = attributeTypes.get(typeName);
-    if (!byName) {
-      const metadata = schemaEntityFor(typeName);
-      byName = new Map((metadata?.allAttributes ?? []).map((attribute) => [attribute.name, attribute.type]));
-      attributeTypes.set(typeName, byName);
-    }
-    return byName.get(attributeName);
-  };
+  const isScalar = (typeName: string, attributeName: string): boolean =>
+    (TABLE_ATTRIBUTES as readonly string[]).includes(attributeName) || schema.isScalarAttribute(typeName, attributeName);
 
   const definingTypeId = (id: number): number => {
     const cached = typeIds.get(id);
@@ -142,10 +81,9 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     if (cached) return cached;
     cached = new Map<string, unknown>();
     const entity = store.getEntity(id);
-    const registeredVersion = store.schemaVersion === 'IFC5' ? undefined : store.schemaVersion;
     if (entity) for (const { name, raw } of getRawNamedAttributes(entity, registeredVersion)) cached.set(name, raw);
-    for (const name of ['GlobalId', 'Name', 'Description', 'ObjectType', 'Tag', 'PredefinedType']) {
-      const value = rawAttributeValue(store, id, name);
+    for (const name of TABLE_ATTRIBUTES) {
+      const value = tableAttributeValue(store, id, name);
       if (value !== undefined && value !== '') cached.set(name, value);
     }
     for (const { name, value } of mutationView?.getAttributeMutationsForEntity(id) ?? []) cached.set(name, value);
@@ -187,81 +125,70 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     return findPropertyInSets(typeSetsFor(id), psetName, propertyName);
   };
 
-  const readResolved = (id: number, binding: ElementFieldBinding): NormalizedElementFieldValue & { unit?: string; dataType?: string } => {
+  const readResolved = (id: number, binding: ElementFieldBinding): ResolvedElementFieldValue => {
     if (binding.kind === 'attribute') {
-      const dataType = binding.dataType ?? attributeTypeFor(store.entities.getTypeName(id), binding.attributeName);
-      return { ...normalizeElementFieldValue(attrsFor(id).get(binding.attributeName), binding.valueKind), ...(dataType ? { dataType } : {}) };
+      const typeName = store.entities.getTypeName(id);
+      const raw = attrsFor(id).get(binding.attributeName);
+      // A reference or collection attribute is never a value, whatever its slot holds (#4833).
+      if (raw !== undefined && !isScalar(typeName, binding.attributeName)) return UNSUPPORTED;
+      const dataType = binding.dataType ?? schema.attributeType(typeName, binding.attributeName);
+      return { ...normalizeElementFieldValue(raw, binding.valueKind), ...(dataType ? { dataType } : {}) };
     }
     const property = propertyFor(id, binding.psetName, binding.propertyName);
-    if (property?.values && (property.values.length !== 1 || String(property.value) !== property.values[0])) {
-      return { value: null, status: 'unsupported' };
+    if (property?.values) {
+      // Enumerated / list / bounded / table: a shape, not a scalar. Its joined
+      // display string is a category; it is never a number or a boolean.
+      if (binding.valueKind !== 'category') return UNSUPPORTED;
+      return normalizeElementFieldValue(typeof property.value === 'string' ? property.value : null, 'category');
     }
     const normalized = normalizeElementFieldValue(property?.value, binding.valueKind);
-    return { ...normalized, ...(property?.unit ? { unit: property.unit } : {}), ...(property?.dataType ? { dataType: property.dataType } : {}) };
+    return {
+      ...normalized,
+      ...(property?.unit ? { unit: property.unit } : {}),
+      ...(property?.unitSiScale !== undefined ? { unitSiScale: property.unitSiScale } : {}),
+      ...(property?.dataType ? { dataType: property.dataType } : {}),
+    };
+  };
+
+  const observe = (expressIds: readonly number[]): ElementFieldObservations => {
+    const observations = emptyObservations();
+    const seenTypes = new Set<string>();
+    const ingest = (sets: readonly PropertySet[]): void => {
+      for (const set of sets) for (const property of set.properties) {
+        if (!set.name || !property.name) continue;
+        const key = propertyObservationKey(set.name, property.name);
+        let entry = observations.properties.get(key);
+        if (!entry) {
+          entry = { psetName: set.name, propertyName: property.name, kind: emptyObservation() };
+          observations.properties.set(key, entry);
+        }
+        observeProperty(entry.kind, property);
+      }
+    };
+    for (const id of expressIds) {
+      const typeName = store.entities.getTypeName(id);
+      if (!seenTypes.has(typeName)) {
+        seenTypes.add(typeName);
+        for (const name of schema.attributeNames(typeName)) {
+          if (isScalar(typeName, name) && !observations.attributes.has(name)) observations.attributes.set(name, emptyObservation());
+        }
+      }
+      for (const [name, raw] of attrsFor(id)) {
+        if (!isScalar(typeName, name)) continue;
+        let kind = observations.attributes.get(name);
+        if (!kind) { kind = emptyObservation(); observations.attributes.set(name, kind); }
+        observeAttribute(kind, raw, schema.attributeType(typeName, name));
+      }
+      ingest(setsFor(id));
+      ingest(typeSetsFor(id));
+    }
+    return observations;
   };
 
   return {
-    read(id, binding) {
-      return readResolved(id, binding).value;
-    },
+    read: (id, binding) => readResolved(id, binding).value,
     readResolved,
-
-    discover(expressIds) {
-      const attributeNames = new Set<string>();
-      const attributeKinds = new Map<string, ObservedKind>();
-      const observed = new Map<string, { psetName: string; propertyName: string; kind: ObservedKind }>();
-      const seenTypes = new Set<string>();
-      const ingest = (sets: readonly PropertySet[]) => {
-        for (const set of sets) for (const property of set.properties) {
-          if (!set.name || !property.name) continue;
-          const key = JSON.stringify([set.name, property.name]);
-          let entry = observed.get(key);
-          if (!entry) {
-            entry = { psetName: set.name, propertyName: property.name, kind: emptyObservation() };
-            observed.set(key, entry);
-          }
-          observe(entry.kind, property);
-        }
-      };
-      for (const id of expressIds) {
-        const typeName = store.entities.getTypeName(id);
-        if (!seenTypes.has(typeName)) {
-          seenTypes.add(typeName);
-          const schemaNames = schemaEntityFor(typeName)?.allAttributes?.map((attribute) => attribute.name);
-          for (const name of schemaNames ?? getAttributeNamesAcrossSchemas(typeName)) attributeNames.add(name);
-        }
-        for (const [name, raw] of attrsFor(id)) {
-          let kind = attributeKinds.get(name);
-          if (!kind) { kind = emptyObservation(); attributeKinds.set(name, kind); }
-          observeRaw(kind, raw, attributeTypeFor(typeName, name));
-        }
-        ingest(setsFor(id));
-        ingest(typeSetsFor(id));
-      }
-      const attributeOptions = [...attributeNames]
-        .sort()
-        .map((attributeName) => {
-          const kind = attributeKinds.get(attributeName) ?? emptyObservation();
-          const valueKind = inferKind(kind);
-          const dataType = valueKind === 'number' && kind.dataTypes.size > 0 ? [...kind.dataTypes].sort()[0] : undefined;
-          return { binding: { kind: 'attribute', attributeName, valueKind, ...(dataType ? { dataType } : {}) } as const, label: attributeName, observedValue: kind.text || kind.number || kind.boolean };
-        });
-      const properties = new Map<string, ElementFieldOption[]>();
-      for (const { psetName, propertyName, kind } of observed.values()) {
-        const valueKind = inferKind(kind);
-        const unit = valueKind === 'number' && kind.units.size === 1 ? [...kind.units][0] : undefined;
-        const dataType = valueKind === 'number' && kind.dataTypes.size > 0 ? [...kind.dataTypes].sort()[0] : undefined;
-        const option: ElementFieldOption = {
-          binding: { kind: 'property', psetName, propertyName, valueKind, ...(unit ? { unit } : {}), ...(dataType ? { dataType } : {}) },
-          label: `${psetName}.${propertyName}`,
-          observedValue: kind.text || kind.number || kind.boolean,
-        };
-        const bucket = properties.get(psetName) ?? [];
-        bucket.push(option);
-        properties.set(psetName, bucket);
-      }
-      for (const options of properties.values()) options.sort((a, b) => a.label.localeCompare(b.label));
-      return { attributes: attributeOptions, properties: new Map([...properties].sort(([a], [b]) => a.localeCompare(b))) };
-    },
+    observe,
+    discover: (expressIds) => catalogFromObservations(observe(expressIds)),
   };
 }

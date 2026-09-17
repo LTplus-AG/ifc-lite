@@ -132,7 +132,9 @@ in BCF axes; `translateViewpoint` applies it on export, and
 `viewpointFromWorld` undoes it on import (a viewpoint written by ifc-lite
 before #4806, still in the render frame, is recognised against the model
 bounds and kept as it is). For a federation, `federationFrameInfo` picks the
-earliest-loaded model's frame, which the others are aligned to.
+federation's shared RTC frame (see [Federation → Coordinates in a
+Federation](federation.md#coordinates-in-a-federation)), which every meshed
+model is converged onto whatever order the models loaded in.
 
 ```typescript
 import { createViewpoint, translateViewpoint, viewpointFromWorld } from '@ifc-lite/bcf';

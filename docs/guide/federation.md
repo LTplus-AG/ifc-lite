@@ -17,35 +17,46 @@ Model C: expressIds 1-2000    -> globalIds 8001-10000   (offset: 8000)
 Federated models share one **RTC frame** so their meshes align pixel-for-pixel
 instead of each model floating in its own re-based origin (see [Geometry
 Guide → Coordinate Handling](geometry.md#coordinate-handling) for what an RTC
-offset is and why the mesher applies one). Two separate rules decide which
-frame that is, and they do not select the same way:
+offset is and why the mesher applies one). One rule decides which frame that
+is, and it does not depend on load order:
 
-- **The RTC anchor applied at load.** When a model is added to a running
-  federation, the viewer picks `sharedRtcOffset` from the **earliest-loaded
-  model that has a `wasmRtcOffset`**, skipping any model without one, and
-  threads it into the new model's geometry processing so it re-bases onto
-  that anchor (`apps/viewer/src/hooks/useIfcFederation.ts`). If no loaded
-  model has a `wasmRtcOffset`, the new model uses its own RTC offset.
+- **The anchor is the earliest-loaded model that has a `wasmRtcOffset`.**
+  Models without one (small, near-origin coordinates) are skipped. If no model
+  has one, every model is in the raw frame and there is nothing to share.
+- **At load**, the viewer passes that anchor to the new model as
+  `sharedRtcOffset`, so it is meshed against it
+  (`apps/viewer/src/hooks/useIfcFederation.ts`, `chooseSharedRtcOffset` in
+  `@ifc-lite/geometry/world-frame`).
+- **After every federated load settles**, the viewer converges every other
+  loaded model onto the anchor (`apps/viewer/src/hooks/ingest/federationRtcRebase.ts`,
+  `convergeGeometryOntoRtcAnchor` in `@ifc-lite/geometry/rtc-rebase`). This is
+  what covers a near-origin model loaded *before* the first anchored one, and
+  loads that overlap and finish in either order. The move is a translation of
+  each mesh's double-precision `origin` plus the model's `coordinateInfo`
+  (`wasmRtcOffset`, `wasmRtcFrame`, `originalBounds`, `shiftedBounds`); the
+  float32 vertex `positions` are never touched, so no precision is lost at
+  map-coordinate magnitudes. A model's `coordinateInfo` can therefore change
+  after it has loaded: read it when you need it rather than caching it.
 - **The frame reported to consumers.** `federationFrameInfo`
-  (`@ifc-lite/geometry/world-frame`) returns the `coordinateInfo` of the
-  **earliest-loaded model that has any `coordinateInfo`**, with or without a
-  `wasmRtcOffset`. `renderFrameWorldOffset`, BCF viewpoint export and the
-  other world-coordinate readouts use that as the federation's frame.
+  (`@ifc-lite/geometry/world-frame`) applies the same rule: the
+  `coordinateInfo` of the earliest-loaded model with a `wasmRtcOffset`, or,
+  when no model has one, of the earliest-loaded model with any
+  `coordinateInfo`. `renderFrameWorldOffset`, BCF viewpoint export and the
+  other world-coordinate readouts use it as the federation's frame.
 
-When the earliest-loaded model has a `wasmRtcOffset`, both rules pick the same
-model and every later model shares its anchor. They can differ when the
-earliest-loaded model has no `wasmRtcOffset`: for example, a model with small,
-near-origin coordinates. If a large-coordinate model is added after it, the
-anchor rule skips the first model and finds no shared offset, so the second
-model re-bases onto its own RTC offset. `federationFrameInfo` still reports the
-first model's (unshifted) frame, which does not match the frame the second
-model was drawn in, so world coordinates read off the second model come out
-wrong by its RTC offset. Loading the large-coordinate model first avoids
-this, because every model added afterwards then finds and reuses its anchor,
-and both rules agree. This is tracked
-as a known limitation; check the [GitHub issue
-tracker](https://github.com/LTplus-AG/ifc-lite/issues) for its current status
-before relying on federation coordinates being load-order independent.
+Loading a near-origin model and a georeferenced model in either order gives
+the same scene and the same reported frame.
+
+Two kinds of model stay outside the shared frame:
+
+- **Point clouds** (LAS/LAZ and the other scan formats) are never meshed
+  against an RTC anchor in any load order; they are placed by the point-cloud
+  georeference alignment instead, so the convergence leaves them alone.
+- **Models with GPU-instanced geometry** cannot be moved after load, because
+  their instance transforms live in renderer-owned buffers. If such a model is
+  not already on the anchor, the viewer leaves it where it is, names it in a
+  warning toast, and still converges every other model. Load the
+  georeferenced model first to avoid this.
 
 ### Global vs Local IDs
 

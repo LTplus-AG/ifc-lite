@@ -491,6 +491,14 @@ The viewer, `ifc-lite clash --bcf` and `bim.bcf` in the SDK already apply this
 conversion for you; see [BCF Collaboration → Coordinate
 frames](bcf.md#coordinate-frames) for the equivalent viewpoint-export path.
 
+In a federation, every model is drawn against one shared `wasmRtcOffset`, and
+a model loaded before that anchor was known is moved onto it after the fact:
+each mesh's `origin` and the model's `coordinateInfo` change, while its
+`positions` do not. Use `federationFrameInfo` from
+`@ifc-lite/geometry/world-frame` for the federation's frame instead of any one
+model's load-time `coordinateInfo`; see [Federation → Coordinates in a
+Federation](federation.md#coordinates-in-a-federation).
+
 ## Geometry Processors
 
 ### Extrusion Processor

@@ -97,7 +97,7 @@ function ItemRow({
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <span className="truncate">{node.item.Name ?? t('costPanel.itemFallbackName', { id: node.ref.expressId })}</span>
+        <span className="truncate">{node.item.Name || t('costPanel.itemFallbackName', { id: node.ref.expressId })}</span>
         {node.item.Identification && (
           <span className="shrink-0 text-[10px] text-muted-foreground">{node.item.Identification}</span>
         )}
@@ -193,7 +193,7 @@ function CostGraphTree({
       )}
       {tree.schedules.map((schedule) => (
         <div key={`${modelId}:${schedule.ref.expressId}`} className="mb-1">
-          <div className="truncate text-[11px] font-semibold">{schedule.schedule.Name ?? t('costPanel.scheduleFallbackName', { id: schedule.ref.expressId })}</div>
+          <div className="truncate text-[11px] font-semibold">{schedule.schedule.Name || t('costPanel.scheduleFallbackName', { id: schedule.ref.expressId })}</div>
           {schedule.items.length === 0 ? (
             <div className="pl-4 text-[10px] text-muted-foreground">{t('costPanel.noItemsInSchedule')}</div>
           ) : (

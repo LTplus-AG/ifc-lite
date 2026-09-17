@@ -74,7 +74,7 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
   return (
     <div className="flex h-full flex-col overflow-y-auto p-3 text-xs">
       <div className="mb-2">
-        <div className="text-sm font-semibold">{item.Name ?? t('costPanel.itemFallbackName', { id: item.ref.expressId })}</div>
+        <div className="text-sm font-semibold">{item.Name || t('costPanel.itemFallbackName', { id: item.ref.expressId })}</div>
         {item.Description && <div className="text-muted-foreground">{item.Description}</div>}
         <div className="mt-0.5 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
           {item.Identification && <span>{t('costPanel.identification', { value: item.Identification })}</span>}
@@ -103,7 +103,7 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
         <div className="mb-3">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('costPanel.schedule')}</div>
           {owningSchedules.map((s) => (
-            <div key={s.ref.expressId} className="mt-0.5">{s.Name ?? t('costPanel.scheduleFallbackName', { id: s.ref.expressId })}</div>
+            <div key={s.ref.expressId} className="mt-0.5">{s.Name || t('costPanel.scheduleFallbackName', { id: s.ref.expressId })}</div>
           ))}
         </div>
       )}
@@ -115,7 +115,7 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
             const value = q.LengthValue ?? q.AreaValue ?? q.VolumeValue ?? q.WeightValue ?? q.CountValue ?? q.TimeValue ?? q.NumberValue;
             return (
               <div key={q.ref.expressId} className="mt-0.5 flex justify-between gap-2">
-                <span className="truncate text-muted-foreground">{q.Name ?? q.Type}</span>
+                <span className="truncate text-muted-foreground">{q.Name || q.Type}</span>
                 <span>{value ?? '—'}</span>
               </div>
             );

@@ -1272,6 +1272,8 @@ export class Scene {
     }
 
     this.pendingBatchKeys.clear();
+    // Depth writers changed (membership / f32↔quantized may flip): overlays follow (#4832). Finalize re-applies once itself.
+    if (!this.finalizeInProgress) this.reapplyColorOverrides(device, pipeline);
   }
 
   /**

@@ -273,6 +273,24 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
     });
   }
 
+  it('a non-streaming bucket rebuild that flips the base to f32 rebuilds the installed overlay to match', () => {
+    const scene = quantizedChunkedScene();
+    const { device, bytes } = fakeDevice();
+    scene.appendToBatches([triangle(11, [5.33, 0.2, 0.1]), triangle(12, [6.33, 0.2, 0.1])], device, fakePipeline);
+    scene.setColorOverrides(new Map([[11, RED]]), device, fakePipeline);
+    assert.ok(scene.getOverrideBatches()[0]?.quantized, 'sanity: overlay inherited a quantized base');
+
+    // A >64 m wall lands in the same cell+colour bucket; rebuildPendingBatches
+    // replaces the base batch with an f32 one. The overlay must follow.
+    scene.appendToBatches([longWall(10, [0.33, 0.2, 0.1])], device, fakePipeline);
+    const base = scene.getBatchedMeshes();
+    assert.strictEqual(base.length, 1, 'sanity: still one bucket');
+    assert.strictEqual(base[0].quantized, undefined, 'sanity: rebuilt base batch is f32');
+    const overlays = scene.getOverrideBatches();
+    assert.strictEqual(overlays.length, 1, 'overlay rebuilt, not duplicated');
+    assertCoincidentWithBase(scene, overlays[0], bytes);
+  });
+
   it('a derived batch that cannot honour an inherited quantization is reported, never silent', () => {
     const { device } = fakeDevice();
     const warnings: string[] = [];

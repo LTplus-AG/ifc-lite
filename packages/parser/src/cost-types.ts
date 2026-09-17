@@ -27,7 +27,8 @@ export type CostDiagnosticCode =
   | 'INCOMPATIBLE_UNIT'
   | 'MISSING_CURRENCY'
   | 'MIXED_CURRENCY'
-  | 'DIVISION_BY_ZERO';
+  | 'DIVISION_BY_ZERO'
+  | 'PENDING_EDIT_NOT_APPLIED';
 
 export interface CostDiagnostic {
   Code: CostDiagnosticCode;

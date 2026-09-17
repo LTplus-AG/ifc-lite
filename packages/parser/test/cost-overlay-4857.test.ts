@@ -74,7 +74,21 @@ const FIXTURE = [
   "#52=IFCRELASSIGNSTOPRODUCT('prod-gid-0000000000001',$,$,$,(#41),$,#1);",
 ];
 
-function overlay(parts: CostMutationOverlay): CostMutationOverlay { return parts; }
+/**
+ * A full overlay contract with every member defaulted to "no pending edit".
+ * What an attribute edit serializes to is the exporter's decision and is
+ * pinned against the real exporter in `@ifc-lite/sdk`'s
+ * `cost-backend-mutations.test.ts`; these tests pin the reader's side of the
+ * contract: tombstones, retypes, and reading the record text it is handed.
+ */
+function overlay(parts: Partial<CostMutationOverlay>): CostMutationOverlay {
+  return {
+    isDeleted: () => false,
+    retypes: () => new Map(),
+    effectiveRecord: (_id, text) => ({ text, notWritten: [] }),
+    ...parts,
+  };
+}
 
 function itemById(graph: ReturnType<typeof extractCostOnDemand>, expressId: number) {
   return graph.CostItems.find(item => item.expressId === expressId);
@@ -90,74 +104,6 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
     expect(itemById(graph, 41)?.parentGlobalId).toBe('item-gid-0000000000001');
     expect(itemById(graph, 41)?.productExpressIds).toEqual([1]);
     expect(itemById(graph, 40)?.controllingScheduleGlobalIds).toEqual(['sched-gid-000000000001']);
-  });
-
-  it('a pending rename of a nested cost item is what the read model reports', () => {
-    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
-      overlay: overlay({
-        getAttributeMutationsForEntity: id =>
-          id === 41 ? [{ name: 'Name', value: 'Facade material (revised)' }] : [],
-      }),
-    });
-    expect(itemById(graph, 41)?.Name).toBe('Facade material (revised)');
-    // The deprecated lower-cased mirror is derived from the same read, so it
-    // cannot drift from the canonical field.
-    expect(itemById(graph, 41)?.name).toBe('Facade material (revised)');
-    // Nothing else moved.
-    expect(itemById(graph, 42)?.Name).toBe('Facade labour');
-    expect(itemById(graph, 41)?.parentGlobalId).toBe('item-gid-0000000000001');
-  });
-
-  it('resolves an edit to the slot its EXPRESS name names, not slot 2', () => {
-    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
-      overlay: overlay({
-        getAttributeMutationsForEntity: id =>
-          id === 41 ? [{ name: 'Identification', value: 'A.1-rev2' }] : [],
-      }),
-    });
-    expect(itemById(graph, 41)?.Identification).toBe('A.1-rev2');
-    expect(itemById(graph, 41)?.Name).toBe('Facade material');
-  });
-
-  it('applies a pending edit to a cost value, including its lexeme-read Category', () => {
-    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
-      overlay: overlay({
-        getAttributeMutationsForEntity: id => id === 20
-          ? [{ name: 'Name', value: 'Unit rate 2026' }, { name: 'Category', value: 'Material (imported)' }]
-          : [],
-      }),
-    });
-    const value = graph.CostValues.find(entry => entry.expressId === 20);
-    expect(value?.Name).toBe('Unit rate 2026');
-    expect(value?.Category).toBe('Material (imported)');
-    // The amount is read from the lexeme, not the parsed attribute — an
-    // untouched slot must survive the overlay's lexeme patching byte-exact.
-    expect(value?.AppliedValue).toEqual({ Kind: 'Typed', Type: 'IFCMONETARYMEASURE', Value: '87.45' });
-    expect(value?.UnitBasis).toBe(12);
-  });
-
-  it('escapes a quote in a pending edit rather than corrupting the record', () => {
-    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
-      overlay: overlay({
-        getAttributeMutationsForEntity: id =>
-          id === 20 ? [{ name: 'Category', value: "Owner's supply" }] : [],
-      }),
-    });
-    const value = graph.CostValues.find(entry => entry.expressId === 20);
-    expect(value?.Category).toBe("Owner's supply");
-    expect(value?.AppliedValue).toEqual({ Kind: 'Typed', Type: 'IFCMONETARYMEASURE', Value: '87.45' });
-  });
-
-  it('a pending edit naming no slot on the type is dropped, not misapplied', () => {
-    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
-      overlay: overlay({
-        getAttributeMutationsForEntity: id =>
-          id === 41 ? [{ name: 'NotAnAttribute', value: 'nowhere' }] : [],
-      }),
-    });
-    expect(itemById(graph, 41)?.Name).toBe('Facade material');
-    expect(itemById(graph, 41)?.GlobalId).toBe('item-gid-0000000000002');
-    expect(itemById(graph, 41)?.Identification).toBe('A.1');
   });
 
   it('a deleted cost item disappears from the graph and from its parent nest', () => {
@@ -184,56 +130,6 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
     // compatibility view drops the unresolvable entry.
     expect(itemById(graph, 41)?.CostValues).toEqual([20]);
     expect(itemById(graph, 41)?.costValues).toEqual([]);
-  });
-
-  it('an empty-string edit is PRESENT-and-empty, not absent', () => {
-    // `IfcCostValue.Condition` (slot 7) is `$` in the fixture, so the reader
-    // reports neither a Condition nor `InvalidCondition`. Editing it to `''`
-    // must make the slot PRESENT — which the reader distinguishes from absent
-    // by raising `InvalidCondition` for a present-but-unreadable string. Had
-    // the overlay collapsed `''` to `$`, this assertion would read the same
-    // as the unedited baseline below and the distinction would be gone.
-    const baseline = extractCostOnDemand(buildStoreFromStep(FIXTURE));
-    expect(baseline.CostValues.find(entry => entry.expressId === 20)?.Condition).toBeUndefined();
-    expect(baseline.CostValues.find(entry => entry.expressId === 20)?.InvalidCondition).toBeUndefined();
-
-    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
-      overlay: overlay({
-        getAttributeMutationsForEntity: id =>
-          id === 20 ? [{ name: 'Condition', value: '' }] : [],
-      }),
-    });
-    const value = graph.CostValues.find(entry => entry.expressId === 20);
-    expect(value?.InvalidCondition).toBe(true);
-    expect(value?.AppliedValue).toEqual({ Kind: 'Typed', Type: 'IFCMONETARYMEASURE', Value: '87.45' });
-  });
-
-  /**
-   * IFC2X3 and IFC4 disagree about where `IfcCostSchedule.Status` lives —
-   * slot 8 in IFC2X3, slot 7 in IFC4 — so an edit resolved against the
-   * cross-schema union instead of the model's OWN schema lands one slot off,
-   * on `SubmittedOn`. Nothing in an IFC4 fixture can catch that.
-   */
-  const FIXTURE_2X3 = [
-    "#30=IFCCOSTSCHEDULE('sched-gid-000000000001',$,'Tender schedule',$,$,$,$,$,'Issued',$,$,'CS-1',.TENDER.);",
-    "#40=IFCCOSTITEM('item-gid-0000000000001',$,'Facade package',$,$);",
-  ];
-
-  it('resolves an edit against the model own schema, not the cross-schema union', () => {
-    const baseline = extractCostOnDemand(buildStoreFromStep(FIXTURE_2X3, 'IFC2X3'));
-    expect(baseline.CostSchedules[0]).toMatchObject({ Status: 'Issued', ID: 'CS-1' });
-    expect(baseline.CostSchedules[0].SubmittedOn).toBeUndefined();
-
-    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE_2X3, 'IFC2X3'), {
-      overlay: overlay({
-        getAttributeMutationsForEntity: id =>
-          id === 30 ? [{ name: 'Status', value: 'Revised' }] : [],
-      }),
-    });
-    expect(graph.CostSchedules[0].Status).toBe('Revised');
-    // The IFC4 slot for Status is IFC2X3's SubmittedOn — it must stay absent.
-    expect(graph.CostSchedules[0].SubmittedOn).toBeUndefined();
-    expect(graph.CostSchedules[0].ID).toBe('CS-1');
   });
 
   it('a deleted entity is unreachable through a reference, not only through ids()', () => {
@@ -305,34 +201,26 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
     expect(nestsRel?.RelatedObjects).toContain(42);
   });
 
-  /**
-   * Resolved through a guarded dynamic import on purpose. A static value
-   * import of a module the revert-oracle gate deletes turns a reverted run
-   * into a LOAD failure, which the gate cannot attribute to an assertion;
-   * degrading to a sentinel keeps the failure a value mismatch.
-   */
-  async function lexemeFor(value: string): Promise<string> {
-    try {
-      const module = await import('../src/cost-overlay.js');
-      return module.costOverlayStringLexeme?.(value) ?? '<unavailable>';
-    } catch {
-      return '<unavailable>';
-    }
-  }
-
-  it('writes a pending edit as an escaped STEP string literal', async () => {
-    // The lexeme is what a re-serializing reader would carry through, so an
-    // unescaped apostrophe would terminate the literal early. STEP escapes a
-    // quote by doubling it.
-    expect(await lexemeFor("Owner's supply")).toBe("'Owner''s supply'");
-    expect(await lexemeFor('')).toBe("''");
-    expect(await lexemeFor("''")).toBe("''''''");
+  it('reads a record from the text the overlay hands back, under its pending class', () => {
+    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
+      overlay: overlay({
+        retypes: () => new Map([[42, 'IfcTask']]),
+        effectiveRecord: (id, text) => ({
+          text: id === 41 ? text.replace("'Facade material'", "'Facade material (revised)'") : text,
+          notWritten: id === 20 ? ['refused for the test'] : [],
+        }),
+      }),
+    });
+    expect(itemById(graph, 41)?.Name).toBe('Facade material (revised)');
+    expect(graph.CostItems.map(item => item.expressId)).toEqual([40, 41]);
+    expect(graph.Diagnostics.filter(diagnostic => diagnostic.Code === 'PENDING_EDIT_NOT_APPLIED'))
+      .toEqual([expect.objectContaining({ expressId: 20, Severity: 'warning' })]);
   });
 
   it('an overlay that touches nothing returns the same graph as no overlay at all', () => {
     const plain = extractCostOnDemand(buildStoreFromStep(FIXTURE));
     const overlaid = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
-      overlay: overlay({ isDeleted: () => false, getAttributeMutationsForEntity: () => [] }),
+      overlay: overlay({}),
     });
     expect(JSON.stringify(overlaid)).toBe(JSON.stringify(plain));
   });

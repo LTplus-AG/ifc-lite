@@ -7,6 +7,8 @@ import {
   type CostAppliedValue, type CostDiagnostic, type CostEvaluationResult,
   type CostGraphExtraction, type CostMutationOverlay, type CostRelationshipInfo, type IfcDataStore,
 } from '@ifc-lite/parser';
+import { effectiveSourceRecord } from '@ifc-lite/export';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EntityRef } from './types.js';
 import type {
   CostAppliedValueData, CostBackendMethods, CostDiagnosticData, CostEvaluationData,
@@ -18,11 +20,25 @@ export interface ResolvedCostModel {
   modelId: string;
   store: IfcDataStore;
   /**
-   * The model's PENDING edit overlay, when it has one (#4857). A host with no
-   * loaded-model editing — the CLI and MCP headless backends — returns none,
-   * and every read takes the cached on-disk path exactly as before.
+   * The model's pending edits — the same `MutablePropertyView` `bim.export.ifc()`
+   * writes through — when it has any (#4857). A host with no loaded-model
+   * editing (the CLI and MCP headless backends) returns none, and every read
+   * takes the cached on-disk path exactly as before.
    */
-  overlay?: CostMutationOverlay;
+  mutationView?: MutablePropertyView;
+}
+
+/**
+ * The cost read model's view of `view`: tombstones and retypes straight off the
+ * view, and every record as `effectiveSourceRecord` — the exporter's own
+ * pipeline — writes it. No edit kind is re-serialized here.
+ */
+function costOverlay(view: MutablePropertyView, store: IfcDataStore): CostMutationOverlay {
+  return {
+    isDeleted: id => view.isDeleted(id),
+    retypes: () => new Map([...view.getTypeMutations()].map(([id, mutation]) => [id, mutation.newType])),
+    effectiveRecord: (id, text, type) => effectiveSourceRecord(view, id, text, type, store.schemaVersion),
+  };
 }
 export type CostModelResolver = (modelId?: string) => ResolvedCostModel;
 
@@ -179,11 +195,11 @@ export function createCostBackend(resolveModel: CostModelResolver): CostBackendM
     if (!resolved.store.source || resolved.store.source.byteLength === 0) {
       throw new Error(`bim.cost requires loaded IFC source bytes for model '${resolved.modelId}'`);
     }
-    const overlay = options?.includeMutations === false ? undefined : resolved.overlay;
-    if (overlay) {
+    const view = options?.includeMutations === false ? undefined : resolved.mutationView;
+    if (view) {
       // Pending edits are live state: extract fresh, and never write the
       // result into the unmutated-graph cache above.
-      return { ...resolved, graph: extractCostOnDemand(resolved.store, { overlay }) };
+      return { ...resolved, graph: extractCostOnDemand(resolved.store, { overlay: costOverlay(view, resolved.store) }) };
     }
     let cached = cache.get(resolved.store);
     if (!cached || cached.source !== resolved.store.source

@@ -247,6 +247,17 @@ describe('BCF output validates against the official buildingSMART XSDs', () => {
         ]);
       });
 
+      // #3612: validity alone did not satisfy Solibri, which reads the root
+      // shape too. Every governed entry names its XSD and nothing else.
+      it('names the governing XSD on every root element, without xmlns:xsd', async () => {
+        const entries = await writeAndUnzip(maximalProject(version));
+        for (const [name, xml] of entries) {
+          const xsd = SCHEMA_FOR_ENTRY.find(([re]) => re.test(name))![1];
+          expect(xml, name).toContain(`xsi:noNamespaceSchemaLocation="${xsd}"`);
+          expect(xml, name).not.toContain('xmlns:xsd');
+        }
+      });
+
       it('emits a schema-valid project.bcfp', async () => {
         const entries = await writeAndUnzip(maximalProject(version));
         const { valid, messages } = await validate(

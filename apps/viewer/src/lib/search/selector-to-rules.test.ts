@@ -518,6 +518,15 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
     assert.match(reported('/Pset_[/.FireRating=2HR')[0] ?? '', /not a valid regular expression/);
   });
 
+  it('a regular expression JavaScript cannot compile is refused in parent= too (#4903)', () => {
+    // Same guard as the Name= case above, exercised on adaptParent's own
+    // regexProblem check rather than assuming the dimensions share coverage.
+    const out = adapt('parent=/D[0-9/');
+    assert.deepEqual(out.rules, []);
+    assert.match(out.unsupported[0] ?? '', /not a valid regular expression/);
+    assert.match(out.unsupported[0] ?? '', /D\[0-9/);
+  });
+
   it('every unsupported entry quotes the text the user typed', () => {
     // Only the dropped "+ IfcDoor" group remains unsupported here — the
     // GlobalId subtraction, Description=x, type=WT01 AND parent=Foo now all

@@ -139,6 +139,7 @@ import { placedFlatGeometry } from './placed-geometry';
 import { placedSymbols } from './placed-symbols';
 import { createEmptyParseResult } from '../overlay-parse/symbolic-shapes';
 import { placementSnapshot, placementSnapshotIsCurrent } from './placement-snapshot';
+import { rotatePlacements } from './state';
 import type { GeometryResult } from '@ifc-lite/geometry';
 
 it('places drawing/export triangles and local placement metadata without mutating sources (#4226)', () => {
@@ -182,4 +183,12 @@ it('refuses an asynchronous analysis result after a contributing model moves or 
   const moved = { ...state, modelPlacement: importPlacements(state.modelPlacement, new Map([['a', { translation: [0.001, 0, 0], locked: false }]])) };
   assert.equal(placementSnapshotIsCurrent(snapshot, moved), false);
   assert.equal(placementSnapshotIsCurrent(snapshot, { ...state, models: new Map([['b', {}]]) }), false);
+});
+
+it('refuses an asynchronous result captured before a contributing model was rotated (#4869)', () => {
+  const state = { models: new Map([['a', {}]]), modelPlacement: emptyPlacementState(), pointCloudAlignmentEnabled: true };
+  const snapshot = placementSnapshot(state, ['a']);
+  // Same translation, new heading: a clash or index built on the old vertices is stale.
+  const rotated = { ...state, modelPlacement: rotatePlacements(state.modelPlacement, ['a'], { angle: 0.4, pivot: [3, -2, 0] }) };
+  assert.equal(placementSnapshotIsCurrent(snapshot, rotated), false);
 });

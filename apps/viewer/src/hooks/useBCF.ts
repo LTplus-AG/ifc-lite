@@ -37,6 +37,7 @@ import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-ca
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
+import { activeSectionPlane } from '@/store/section-active';
 
 // ============================================================================
 // Types
@@ -379,14 +380,10 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       const bounds = getBounds() ?? undefined;
       const capturedSection = capturedSectionPlane ? capturedSectionPlaneInput(capturedSectionPlane, bounds) : null;
-      const viewerSectionPlane = capturedSection?.sectionPlane ?? (sectionPlane.enabled
-        ? {
-            axis: sectionPlane.axis,
-            position: sectionPlane.position,
-            enabled: true,
-            flipped: sectionPlane.flipped,
-          }
-        : undefined);
+      // Only the cut on screen: `enabled` outlives the Section tool (#4806).
+      const shown = activeSectionPlane(useViewerStore.getState());
+      const viewerSectionPlane = capturedSection?.sectionPlane
+        ?? (shown ? { axis: shown.axis, position: shown.position, enabled: true, flipped: shown.flipped } : undefined);
       const viewpointBounds = capturedSection?.bounds ?? bounds;
 
       // Get selected GUIDs - convert expressIds to IFC GlobalId strings.
@@ -464,7 +461,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       getWorldOffset,
       getCameraState,
       captureSnapshot,
-      sectionPlane,
       getBounds,
       selectedEntityId,
       selectedEntityIds,

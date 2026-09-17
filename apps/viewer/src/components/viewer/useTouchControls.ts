@@ -13,6 +13,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { invalidateSelectionPick, markTouchSelection, selectViewportTarget } from './referenceSelection.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
+import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
+import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 
@@ -81,6 +83,12 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // at current view distance — never to a selected entity's center, which
     // would pivot far from the user's touch and feel disconnected.
     const anchorOrbitPivotUnderFinger = (touch: Touch) => {
+      // A focused clash orbits around the clashing pair, not the finger (#4806).
+      const clashPivot = focusedClashOrbitPivot(useViewerStore.getState());
+      if (clashPivot) {
+        camera.setOrbitCenter(clashPivot);
+        return;
+      }
       const rect = canvas.getBoundingClientRect();
       const tx = touch.clientX - rect.left;
       const ty = touch.clientY - rect.top;
@@ -105,37 +113,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // Anchor to the scene centre (stable) rather than the drifting camera
       // target, projected onto the finger ray (issue #1107, item 3). Matches
       // the mouse orbit fallback in useMouseControls.
-      const anchorBounds = camera.getOrbitAnchorBounds();
-      const bounds = anchorBounds ?? camera.getSceneBounds();
-      const anchor = bounds
-        ? {
-            x: (bounds.min.x + bounds.max.x) / 2,
-            y: (bounds.min.y + bounds.max.y) / 2,
-            z: (bounds.min.z + bounds.max.z) / 2,
-          }
-        : camera.getTarget();
-      if (anchorBounds) {
-        // Outlier model (issue #1394): orbit around the robust model centre
-        // directly. Projecting onto the finger ray would place the pivot in the
-        // empty space beside the sparse model and swing it out of frame.
-        camera.setOrbitCenter(anchor);
-      } else {
-        const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
-        const toAnchor = {
-          x: anchor.x - ray.origin.x,
-          y: anchor.y - ray.origin.y,
-          z: anchor.z - ray.origin.z,
-        };
-        const d = Math.max(
-          1,
-          toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z,
-        );
-        camera.setOrbitCenter({
-          x: ray.origin.x + ray.direction.x * d,
-          y: ray.origin.y + ray.direction.y * d,
-          z: ray.origin.z + ray.direction.z * d,
-        });
-      }
+      camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, canvas.width, canvas.height));
     };
 
     const handleTouchStart = async (e: TouchEvent) => {

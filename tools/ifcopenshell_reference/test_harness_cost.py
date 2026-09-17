@@ -211,6 +211,55 @@ class ComparatorClassification(unittest.TestCase):
         self.assertEqual(rows[0][1], cc.COST_FAILURE)
         self.assertGreater(report.summary()["failures"], 0)
 
+    def test_unit_symbol_and_dimension_match(self):
+        """Both sides now derive a real Symbol/Dimension for a unit node
+        (issue #4882 item 4) - agreeing values must be a plain match."""
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+            dump["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+                "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "LENGTHUNIT",
+                "Currency": None, "Symbol": "mm", "Dimension": "length",
+            }
+        report = cc.compare_cost(lite, ref)
+        symbol_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Symbol"]
+        dimension_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Dimension"]
+        self.assertEqual(len(symbol_rows), 1)
+        self.assertEqual(len(dimension_rows), 1)
+        self.assertEqual(symbol_rows[0][1], cc.COST_MATCH)
+        self.assertEqual(dimension_rows[0][1], cc.COST_MATCH)
+        self.assertEqual(report.summary()["failures"], 0)
+
+    def test_unit_symbol_and_dimension_mismatch_is_a_failure_not_a_silent_pass(self):
+        """Before #4882, the reference dumper hardcoded Symbol/Dimension to
+        null on every unit node and compare.py never compared these fields,
+        so a unit-conversion or serialization regression that changed a
+        node's Symbol/Dimension passed cost parity undetected - the same
+        shape of hole as the UnitBasisNode blind spot above. lite reports a
+        millimetre unit ("mm"/"length"); ref reports a mass unit ("g"/
+        "mass") at the same node path - a real, non-coincidental divergence
+        that must surface as a FAILURE on both fields, with no named
+        degradation absorbing it."""
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+        lite["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+            "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "LENGTHUNIT",
+            "Currency": None, "Symbol": "mm", "Dimension": "length",
+        }
+        ref["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+            "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "MASSUNIT",
+            "Currency": None, "Symbol": "g", "Dimension": "mass",
+        }
+        report = cc.compare_cost(lite, ref)
+        symbol_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Symbol"]
+        dimension_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Dimension"]
+        self.assertEqual(len(symbol_rows), 1)
+        self.assertEqual(len(dimension_rows), 1)
+        self.assertEqual(symbol_rows[0][1], cc.COST_FAILURE)
+        self.assertEqual(dimension_rows[0][1], cc.COST_FAILURE)
+        self.assertGreaterEqual(report.summary()["failures"], 2)
+
 
 class EndToEndFaultInjection(unittest.TestCase):
     """Each test perturbs a COPY of the real dump pair and asserts

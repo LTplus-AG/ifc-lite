@@ -53,6 +53,28 @@ def applied_reference(entity):
     return applied_value if applied_value.is_a() in REFERENCE_APPLIED_TYPES else None
 
 
+def value_components_and_operator(entity):
+    """(Components, ArithmeticOperator) for an IfcAppliedValue/IfcCostValue.
+
+    IFC4/IFC4X3 carry these as direct attributes on IfcAppliedValue. IFC2X3's
+    IfcAppliedValue has neither attribute (see IFC2X3_TC1.exp's ENTITY
+    IfcAppliedValue) - it instead carries an inverse `ValueOfComponents : SET
+    [0:?] OF IfcAppliedValueRelationship FOR ComponentOfTotal`, and the
+    separate IfcAppliedValueRelationship entity holds `Components` and
+    `ArithmeticOperator`. When an entity has no direct Components, fall back
+    to the first such relationship (a `total` is not expected to name more
+    than one in practice; the spec does not bound the SET's cardinality)."""
+    components = list(getattr(entity, "Components", None) or ())
+    operator = getattr(entity, "ArithmeticOperator", None)
+    if not components:
+        relationships = getattr(entity, "ValueOfComponents", None) or ()
+        if relationships:
+            relationship = relationships[0]
+            components = list(getattr(relationship, "Components", None) or ())
+            operator = getattr(relationship, "ArithmeticOperator", None)
+    return components, operator
+
+
 class NodeRegistry:
     """Mirrors the JS `NodeRegistry` in dump_ifclite_cost.mjs: first-seen path
     wins per underlying entity id(); later paths to the same entity record a
@@ -109,7 +131,8 @@ class NodeRegistry:
             children = []
             if applied_reference(entity) is not None:
                 children.append({"kind": "value", "path": f"{path}/ref", "entity": entity.AppliedValue})
-            for idx, comp in enumerate(getattr(entity, "Components", None) or ()):
+            components, _ = value_components_and_operator(entity)
+            for idx, comp in enumerate(components):
                 children.append({"kind": "value", "path": f"{path}/component/{idx}", "entity": comp})
             unit_basis = getattr(entity, "UnitBasis", None)
             if unit_basis is not None:
@@ -132,7 +155,7 @@ class NodeRegistry:
                     applied = {"Kind": "Reference", "Node": f"{path}/ref"}
                 else:
                     applied = {"Kind": "Unsupported"}
-            components_attr = getattr(entity, "Components", None) or ()
+            components_attr, operator = value_components_and_operator(entity)
             node = {
                 "Kind": "Value",
                 "Type": entity.is_a(),
@@ -142,7 +165,7 @@ class NodeRegistry:
                 # or collapse into "absent".
                 "Category": category_of(entity),
                 "Condition": getattr(entity, "Condition", None),
-                "ArithmeticOperator": getattr(entity, "ArithmeticOperator", None),
+                "ArithmeticOperator": operator,
                 "Applied": applied,
                 "Components": [f"{path}/component/{idx}" for idx in range(len(components_attr))] or None,
                 "UnitBasisNode": f"{path}/unitBasis" if getattr(entity, "UnitBasis", None) is not None else None,
@@ -162,13 +185,15 @@ class NodeRegistry:
             }
         else:
             type_name = entity.is_a()
+            is_monetary = type_name == "IfcMonetaryUnit"
+            symbol, dimension = (None, None) if is_monetary else unit_symbol_and_dimension(entity, type_name)
             self.nodes[path] = {
                 "Kind": "Unit",
                 "Type": type_name,
                 "UnitType": getattr(entity, "UnitType", None),
-                "Currency": getattr(entity, "Currency", None) if type_name == "IfcMonetaryUnit" else None,
-                "Symbol": None,
-                "Dimension": None,
+                "Currency": getattr(entity, "Currency", None) if is_monetary else None,
+                "Symbol": symbol,
+                "Dimension": dimension,
             }
 
     def register_quantity(self, path, entity):
@@ -186,7 +211,14 @@ class NodeRegistry:
             "IfcQuantityArea": ("AreaValue", "area"),
             "IfcQuantityVolume": ("VolumeValue", "volume"),
             "IfcQuantityCount": ("CountValue", "count"),
-            "IfcQuantityWeight": ("WeightValue", "weight"),
+            # Despite the entity name, WeightValue is typed IfcMassMeasure
+            # and IfcQuantityWeight.Unit is constrained to MASSUNIT (see
+            # IFC4X3.exp's ENTITY IfcQuantityWeight, WR21) - "mass" is the
+            # dimension per spec, matching ifc-lite's own read model
+            # (packages/parser/src/cost-quantities.ts maps
+            # IFCQUANTITYWEIGHT -> 'mass', and cost-types.ts's
+            # CostQuantityDimension union has no "weight" member).
+            "IfcQuantityWeight": ("WeightValue", "mass"),
             "IfcQuantityTime": ("TimeValue", "time"),
             # IFC4X3 only.
             "IfcQuantityNumber": ("NumberValue", "number"),
@@ -249,8 +281,65 @@ def resolve_node(nodes, node):
                     return None
                 total /= v
             return total
+        if operator == "MODULO":
+            if len(values) != 2 or values[1] == 0:
+                return None
+            return values[0] % values[1]
         return None
     return None
+
+
+# IFC4/IFC4X3 IfcSIPrefix -> its symbol (ISO 80000-1 / IFC4X3.exp's TYPE
+# IfcSIPrefix). Matches packages/parser/src/cost-units.ts's PREFIX_SYMBOL.
+SI_PREFIX_SYMBOL = {
+    "EXA": "E", "PETA": "P", "TERA": "T", "GIGA": "G", "MEGA": "M", "KILO": "k",
+    "HECTO": "h", "DECA": "da", "DECI": "d", "CENTI": "c", "MILLI": "m",
+    "MICRO": "µ", "NANO": "n", "PICO": "p", "FEMTO": "f", "ATTO": "a",
+}
+
+# IfcUnitEnum -> the shared CostQuantityDimension label (matches
+# packages/parser/src/cost-units.ts's dimensionForUnitType and
+# packages/parser/src/cost-types.ts's CostQuantityDimension union).
+UNIT_TYPE_DIMENSION = {
+    "LENGTHUNIT": "length", "AREAUNIT": "area", "VOLUMEUNIT": "volume",
+    "MASSUNIT": "mass", "TIMEUNIT": "time", "USERDEFINED": "number",
+}
+
+# Named-unit Name -> its conventional symbol (matches cost-units.ts's
+# namedSymbol table). A name absent here is used verbatim as its own symbol.
+NAMED_UNIT_SYMBOL = {"HOUR": "h", "MINUTE": "min", "FOOT": "ft", "INCH": "in"}
+
+
+def si_symbol(dimension, prefix):
+    """The SI symbol for an IfcSIUnit, from its resolved dimension and
+    optional IfcSIPrefix - independent of the specific IfcSIUnitName, which
+    IFC constrains to the one name valid for each UnitType (see IFC4X3.exp's
+    ENTITY IfcSIUnit WR1)."""
+    stem = {"mass": "g", "time": "s", "length": "m", "area": "m", "volume": "m"}.get(dimension)
+    if stem is None:
+        return "1" if dimension == "number" else None
+    exponent = {"area": "²", "volume": "³"}.get(dimension, "")
+    prefix_symbol = SI_PREFIX_SYMBOL.get(prefix, prefix) if prefix else ""
+    return f"{prefix_symbol}{stem}{exponent}"
+
+
+def named_symbol(name):
+    if name is None:
+        return None
+    return NAMED_UNIT_SYMBOL.get(name.upper(), name)
+
+
+def unit_symbol_and_dimension(entity, type_name):
+    """(Symbol, Dimension) for a non-monetary IfcNamedUnit. IfcSIUnit derives
+    its symbol from UnitType + Prefix (IfcSIUnitName is fixed per UnitType,
+    so it carries no extra symbol information); IfcConversionBasedUnit /
+    IfcConversionBasedUnitWithOffset / IfcContextDependentUnit instead carry
+    a free-text Name, mapped through the same conventional-symbol table
+    ifc-lite's own read model uses."""
+    dimension = UNIT_TYPE_DIMENSION.get(getattr(entity, "UnitType", None))
+    if type_name == "IfcSIUnit":
+        return si_symbol(dimension, getattr(entity, "Prefix", None)), dimension
+    return named_symbol(getattr(entity, "Name", None)), dimension
 
 
 def category_of(entity):

@@ -500,6 +500,13 @@ def compare_cost_node(report, path, lite_nodes, ref_nodes, lite_schema, lite_dia
         currency_ok = lite_node.get("Currency") == ref_node.get("Currency")
         report.add(f"node:{path}/Currency", COST_MATCH if currency_ok else COST_FAILURE,
                    f"lite={lite_node.get('Currency')} ref={ref_node.get('Currency')}")
+        # Both dumpers now derive Symbol/Dimension (the reference dumper no
+        # longer hardcodes them to null - see dump_reference_cost.py's
+        # unit_symbol_and_dimension); an unresolved-vs-resolved or an
+        # outright-differing pair is a real divergence, not a named
+        # degradation, same as UnitBasisNode above.
+        compare_cost_scalar(report, f"node:{path}/Symbol", lite_node.get("Symbol"), ref_node.get("Symbol"))
+        compare_cost_scalar(report, f"node:{path}/Dimension", lite_node.get("Dimension"), ref_node.get("Dimension"))
 
 
 def compare_cost(lite, ref):

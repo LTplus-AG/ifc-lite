@@ -141,6 +141,94 @@ class ReferenceDumper(unittest.TestCase):
         dump = self.dump(chain_model(CHAIN_DEPTH))
         self.assertEqual(_chain_root(dump)["Resolved"], 5.0)
 
+    def test_modulo_operator_evaluates_non_trivially(self):
+        """IfcArithmeticOperatorEnum.MODULO is IFC4X3-only (see
+        IFC4X3.exp's TYPE IfcArithmeticOperatorEnum). 5 MODULO 2 = 1 is
+        chosen so neither operand nor a null-resolution coincidentally
+        produces the right answer (unlike `x MODULO 1`, always 0)."""
+        dump = self.dump(_ifc([
+            "#1=IFCPROJECT('0JYq7Z8qH3nP9JjM4fLg2A',$,'p',$,$,$,$,$,#2);",
+            "#2=IFCUNITASSIGNMENT((#3));",
+            "#3=IFCMONETARYUNIT('GBP');",
+            "#31=IFCCOSTVALUE('a',$,IFCMONETARYMEASURE(5.),$,$,$,$,$,$,$);",
+            "#32=IFCCOSTVALUE('b',$,IFCMONETARYMEASURE(2.),$,$,$,$,$,$,$);",
+            "#30=IFCCOSTVALUE('total',$,$,$,$,$,$,$,.MODULO.,(#31,#32));",
+            "#10=IFCCOSTITEM('1JYq7Z8qH3nP9JjM4fLg2A',$,'i',$,$,'CI-1',.USERDEFINED.,(#30),$);",
+        ], schema="IFC4X3_ADD2"))
+        self.assertEqual(_chain_root(dump)["Resolved"], 1.0)
+
+    def test_quantity_weight_dimension_is_mass_not_weight(self):
+        """IfcQuantityWeight.WeightValue is typed IfcMassMeasure and its
+        Unit is constrained to MASSUNIT (IFC4X3.exp's ENTITY
+        IfcQuantityWeight, WR21); "mass" also matches ifc-lite's own read
+        model (packages/parser/src/cost-quantities.ts maps
+        IFCQUANTITYWEIGHT -> 'mass')."""
+        dump = self.dump(_ifc([
+            "#1=IFCPROJECT('0JYq7Z8qH3nP9JjM4fLg2A',$,'p',$,$,$,$,$,$);",
+            "#20=IFCQUANTITYWEIGHT('Steel',$,$,42.5,$);",
+            "#30=IFCCOSTVALUE('v',$,IFCMONETARYMEASURE(5.),$,$,$,$,$,$,$);",
+            "#10=IFCCOSTITEM('1JYq7Z8qH3nP9JjM4fLg2A',$,'i',$,$,'CI-1',.USERDEFINED.,(#30),(#20));",
+        ], schema="IFC4X3_ADD2"))
+        quantity = _number_quantity(dump)
+        self.assertEqual((quantity["Dimension"], quantity["Value"]), ("mass", 42.5))
+
+    def test_unit_basis_si_unit_carries_a_real_symbol_and_dimension(self):
+        """Before #4882 the reference dumper hardcoded every unit node's
+        Symbol/Dimension to null; a prefixed millimetre unit must now
+        report its real symbol ("mm") and dimension ("length"), matching
+        ifc-lite's own read model (packages/parser/src/cost-units.ts)."""
+        dump = self.dump(_ifc([
+            "#1=IFCPROJECT('0JYq7Z8qH3nP9JjM4fLg2A',$,'p',$,$,$,$,$,#2);",
+            "#2=IFCUNITASSIGNMENT((#3));",
+            "#3=IFCMONETARYUNIT('GBP');",
+            "#40=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);",
+            "#41=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1000.),#40);",
+            "#30=IFCCOSTVALUE('v',$,IFCMONETARYMEASURE(5.),#41,$,$,$,$,$,$);",
+            "#10=IFCCOSTITEM('1JYq7Z8qH3nP9JjM4fLg2A',$,'i',$,$,'CI-1',.USERDEFINED.,(#30),$);",
+        ]))
+        unit = dump["Nodes"]["item:1JYq7Z8qH3nP9JjM4fLg2A/value/0/unitBasis/unit"]
+        self.assertEqual((unit["Symbol"], unit["Dimension"]), ("mm", "length"))
+
+    def test_ifc2x3_legacy_formula_resolves_via_applied_value_relationship(self):
+        """IFC2X3's IfcAppliedValue carries neither Components nor
+        ArithmeticOperator directly (see IFC2X3_TC1.exp's ENTITY
+        IfcAppliedValue); a total's components/operator instead live on the
+        IfcAppliedValueRelationship reachable via the inverse
+        `ValueOfComponents`. Exercises NodeRegistry.register_value directly
+        (white-box, bypassing IfcCostItem->value linkage): IFC2X3's
+        IfcCostItem carries no CostValues attribute at all (5 own attributes
+        - GlobalId, OwnerHistory, Name, Description, ObjectType - confirmed
+        via ifcopenshell's schema declaration), and ifc-lite's own IFC2X3
+        extractItems() deliberately never populates item.CostValues either
+        (packages/parser/src/cost-extractor.ts's schemaIs2x3 branch returns
+        early) - see packages/parser/test/cost-read-model-4854.test.ts's
+        'keeps IFC2X3 metadata and legacy edges inspectable but refuses
+        evaluation', which asserts CostItems[0].CostValues is undefined.
+        Item-level IFC2X3 value linkage is therefore a separate, larger gap
+        on both dumpers, out of scope here; this test targets only the
+        formula-resolution machinery the review thread flagged
+        (dump_reference_cost.py's _enter/resolve_node, previously emitting
+        Resolved: null for a resolvable IFC2X3 formula)."""
+        import dump_reference_cost
+
+        text = _ifc([
+            "#1=IFCPROJECT('0JYq7Z8qH3nP9JjM4fLg2A',$,'p',$,$,$,$,$,#2);",
+            "#2=IFCUNITASSIGNMENT((#3));",
+            "#3=IFCMONETARYUNIT(.GBP.);",
+            "#30=IFCCOSTVALUE('total',$,$,$,$,$,'CostType',$);",
+            "#31=IFCCOSTVALUE('a',$,IFCMONETARYMEASURE(7.),$,$,$,'CostType',$);",
+            "#32=IFCCOSTVALUE('b',$,IFCMONETARYMEASURE(3.),$,$,$,'CostType',$);",
+            "#33=IFCAPPLIEDVALUERELATIONSHIP(#30,(#31,#32),.ADD.,$,$);",
+            "#10=IFCCOSTITEM('1JYq7Z8qH3nP9JjM4fLg2A',$,'i',$,$);",
+        ], schema="IFC2X3")
+        model = ifcopenshell.file.from_string(text)
+        registry = dump_reference_cost.NodeRegistry()
+        registry.register_value("test", model.by_id(30))
+        node = registry.nodes["test"]
+        self.assertEqual(node["ArithmeticOperator"], "ADD")
+        self.assertEqual(node["Components"], ["test/component/0", "test/component/1"])
+        self.assertEqual(node["Resolved"], 10.0)
+
 
 @unittest.skipIf(shutil.which("node") is None or not os.path.exists(SDK_DIST),
                  "node or the built @ifc-lite/sdk chain is unavailable (pnpm turbo build --filter=@ifc-lite/sdk)")

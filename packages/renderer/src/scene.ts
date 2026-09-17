@@ -18,6 +18,7 @@ import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
 import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import {
@@ -1299,8 +1300,8 @@ export class Scene {
    * raycast bounds. This is the proper removal path.
    *
    * Notes:
-   *   - For color-merged meshes (the `entityIds` per-vertex case)
-   *     a single MeshData often hosts many entities. We do NOT
+   *   - For color-merged meshes (`entityIds` naming other entities,
+   *     `hostsOtherEntities`) a single MeshData hosts many entities. We do NOT
    *     drop the whole mesh in that case — that would also remove
    *     the other entities — but we DO clear the bbox + meshDataMap
    *     for the requested expressId, so picking and selection stop
@@ -1331,10 +1332,8 @@ export class Scene {
     let removedDedicated = false;
 
     for (const meshData of meshDataList) {
-      // Color-merged path: shared mesh, keep it but drop our entry.
-      if (meshData.entityIds && meshData.entityIds.length > 0) {
-        continue;
-      }
+      // Color-merged path (entityIds naming OTHER entities): keep the shared mesh, drop our entry.
+      if (hostsOtherEntities(meshData)) continue;
       removedDedicated = true;
 
       // Dedicated mesh — drop from its bucket and decrement the

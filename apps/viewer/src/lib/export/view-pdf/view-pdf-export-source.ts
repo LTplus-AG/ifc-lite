@@ -54,6 +54,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { getGlobalCanvas, getGlobalRenderer } from '@/hooks/useBCF';
 import { selectModelMeshes } from '@/lib/type-view-visibility';
 import { computeIsolationFilterSet } from '@/store/basketVisibleSet';
+import { activeSectionPlane } from '@/store/section-active';
 import { withInstancedMeshes, type InstancedModelRange } from '@/utils/instancedExport';
 import type { useViewerStore } from '@/store';
 import type { ViewMeshInput } from './collect-view-meshes';
@@ -100,7 +101,7 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
     },
     camera,
     section: resolveSectionInput(state),
-    sectionEnabled: state.sectionPlane.enabled,
+    sectionEnabled: activeSectionPlane(state) !== null,
     canvasCssHeightPx: canvas ? canvas.clientHeight : null,
   };
 }
@@ -213,8 +214,9 @@ export function readViewZoom(): ViewZoomSnapshot | null {
  * never shows.
  */
 function resolveSectionInput(state: ViewerState): ViewSectionResolveInput | null {
-  const sectionPlane = state.sectionPlane;
-  if (!sectionPlane.enabled) return null;
+  // Only the cut on screen: the sheet is the view (#4910).
+  const sectionPlane = activeSectionPlane(state);
+  if (!sectionPlane) return null;
 
   const sceneBounds = getGlobalRenderer()?.getCamera()?.getSceneBounds() ?? null;
   if (!sceneBounds) return null;

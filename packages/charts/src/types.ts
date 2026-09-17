@@ -32,6 +32,8 @@ export interface ChartDatasetRow {
   ids: ArrayLike<number>;
   /** One value per dataset column, in column order. */
   values: CellValue[];
+  /** Optional normalization status per column; omitted by adapters without IFC scalar diagnostics. */
+  statuses?: Array<'value' | 'missing' | 'unsupported'>;
 }
 
 export interface ChartDataset {
@@ -52,10 +54,43 @@ export interface ChartMeasure {
   column?: string;
 }
 
+export type ElementFieldValueKind = 'category' | 'number' | 'boolean';
+
+interface ElementFieldBindingBase {
+  /** Persisted interpretation; empty scopes must not change a field's kind. */
+  valueKind: ElementFieldValueKind;
+  /** Stable common unit used for numeric aggregation, when safely resolved. */
+  unit?: string;
+  /** IFC typed-measure name used to normalize values across model units. */
+  dataType?: string;
+}
+
+/** Spatial levels a `spatial` field can name; `Storey` is a built-in column already. */
+export type ElementFieldSpatialLevel = 'Container' | 'Building' | 'Site' | 'Project';
+
+/** Relation-borne fields read names, so they are only ever categories. */
+type ElementFieldCategoryBindingBase = Omit<ElementFieldBindingBase, 'valueKind'> & { valueKind: 'category' };
+
+export type ElementFieldBinding =
+  | (ElementFieldBindingBase & { kind: 'attribute'; attributeName: string })
+  | (ElementFieldBindingBase & { kind: 'property'; psetName: string; propertyName: string })
+  /** An `IfcPhysicalSimpleQuantity` by its exact `IfcElementQuantity` and quantity names. */
+  | (Omit<ElementFieldBindingBase, 'valueKind'> & { valueKind: 'number' | 'category'; kind: 'quantity'; qsetName: string; quantityName: string })
+  /** Every material name the element is associated with (`IfcRelAssociatesMaterial`), joined. */
+  | (ElementFieldCategoryBindingBase & { kind: 'material' })
+  /** `IfcClassificationReference` identification (else name), optionally for one classification system only. */
+  | (ElementFieldCategoryBindingBase & { kind: 'classification'; system?: string })
+  /** `Name` of the element's defining `IfcTypeObject` (`IfcRelDefinesByType`). */
+  | (ElementFieldCategoryBindingBase & { kind: 'type' })
+  /** Name of the containing spatial element at one level (`IfcRelContainedInSpatialStructure` / `IfcRelAggregates`). */
+  | (ElementFieldCategoryBindingBase & { kind: 'spatial'; level: ElementFieldSpatialLevel });
+
 export interface ChartSpec {
   id: string;
   title: string;
   source: ChartSource;
+  /** One exact IFC attribute/property materialized beside the built-in element columns. */
+  elementField?: ElementFieldBinding;
   type: ChartType;
   /** Column id to bucket by. A `date` column for `timeline`, a `number` column for `histogram`. */
   dimension: string;
@@ -138,12 +173,18 @@ export interface ChartItem {
 
 export interface Aggregation {
   spec: ChartSpec;
+  /** Source-data revision, stable across cross-filtering of the same dataset. */
+  dataFingerprint: string;
   /** Category axis in display order; every series aligns to it. */
   categories: Bucket[];
   series: BucketSeries[];
   total: number;
   /** Rows the spec could not place (missing dimension value). */
   unbucketed: number;
+  /** Bucketed rows that contributed no finite value to a sum. */
+  unmeasured?: number;
+  /** Rows whose selected dimension, stack, or measure was non-scalar/incompatible. */
+  unsupported?: number;
   /** Element id → every index into `categories` it belongs to (a clash element under two rules is in two). */
   categoryOf: Map<number, number[]>;
   /** Display unit of the summed column, when the measure is a sum. */

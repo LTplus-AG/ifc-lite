@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Plus, X } from 'lucide-react';
-import type { Aggregation, ChartScope, ChartSpec, DashboardLayoutItem, DashboardSpec } from '@ifc-lite/charts';
+import { elementFieldColumnId, type Aggregation, type ChartScope, type ChartSpec, type DashboardLayoutItem, type DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
@@ -27,6 +27,7 @@ import { useChart3DLink, useChartColorOverlay } from './useChart3DLink';
 import { useChartDatasets } from './useChartDatasets';
 import type { ChartRenderer } from './useEChart';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
+import { useElementFieldCatalog } from './useElementFieldCatalog';
 
 const FOCUS_LABEL: Record<ChartFocusMode, string> = { highlight: 'Highlight', isolate: 'Isolate', ghost: 'Ghost others' };
 const SCOPE_LABEL: Record<ChartScope['kind'], string> = { all: 'All models', visible: 'Visible elements', basket: 'Basket', list: 'Saved list' };
@@ -76,10 +77,23 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
 
   const dashboard = useMemo(() => dashboards.find((d) => d.id === activeDashboardId) ?? null, [dashboards, activeDashboardId]);
   const scope = dashboard?.scope ?? { kind: 'all' as const };
-  const datasets = useChartDatasets(scope);
+  const [editing, setEditing] = useState<ChartSpec | null>(null);
+  // Only SAVED charts decide which IFC fields the shared datasets carry. The
+  // editor's draft binds to a synthesized column of its own (`editorColumns`),
+  // so picking through fields never rebuilds every card's dataset (#4833).
+  const elementFields = useMemo(() => {
+    const fields = (dashboard?.charts ?? [])
+      .filter((chart) => chart.source === 'elements')
+      .flatMap((chart) => chart.elementField ? [chart.elementField] : []);
+    return [...new Map(fields.map((field) => [elementFieldColumnId(field), field])).values()];
+  }, [dashboard]);
+  const datasets = useChartDatasets(scope, elementFields);
+  // The editor can switch sources without replacing its outer `editing` seed;
+  // keep discovery available for the whole edit session so Clash → Elements
+  // exposes IFC fields immediately.
+  const fieldCatalog = useElementFieldCatalog(editing !== null);
   const link = useChart3DLink();
 
-  const [editing, setEditing] = useState<ChartSpec | null>(null);
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());
   const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
   const chartIdSet = useMemo(() => new Set(chartIds), [chartIds]);
@@ -119,11 +133,17 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const saveChart = useCallback((spec: ChartSpec) => {
     if (!dashboard) return;
     const exists = dashboard.charts.some((c) => c.id === spec.id);
+    const previous = dashboard.charts.find((c) => c.id === spec.id);
+    const previousField = previous?.elementField ? elementFieldColumnId(previous.elementField) : '';
+    const nextField = spec.elementField ? elementFieldColumnId(spec.elementField) : '';
+    if (previous && (previous.source !== spec.source || previousField !== nextField) && chartSliceSource === spec.id && chartSlice && chartSliceBuckets) {
+      link.clearSelectionIfOwned(spec.id, chartSlice, chartSliceBuckets);
+    }
     const charts = exists ? dashboard.charts.map((c) => (c.id === spec.id ? spec : c)) : [...dashboard.charts, spec];
     const layout = exists ? dashboard.layout : [...dashboard.layout, { chartId: spec.id, x: 0, y: dashboard.layout.length * 4, w: 6, h: 4 }];
     update({ ...dashboard, charts, layout });
     setEditing(null);
-  }, [dashboard, update]);
+  }, [chartSlice, chartSliceBuckets, chartSliceSource, dashboard, link, update]);
   const removeChart = useCallback((id: string) => {
     if (!dashboard) return;
     update({ ...dashboard, charts: dashboard.charts.filter((c) => c.id !== id), layout: dashboard.layout.filter((l) => l.chartId !== id) });
@@ -216,7 +236,14 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
 
       {editing && (
         <div className="border-b border-border bg-muted/20">
-          <ChartEditor spec={editing} datasets={datasets} onSave={saveChart} onCancel={() => setEditing(null)} />
+          <ChartEditor
+            spec={editing}
+            datasets={datasets}
+            elementFieldCatalog={fieldCatalog.catalog}
+            elementFieldCatalogLoading={fieldCatalog.loading}
+            onSave={saveChart}
+            onCancel={() => setEditing(null)}
+          />
         </div>
       )}
 

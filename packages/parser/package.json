@@ -17,7 +17,7 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
+    "build": "pnpm exec tsc && node ./scripts/rewrite-worker-urls.mjs && node ./scripts/verify-dist-worker-urls.mjs",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"

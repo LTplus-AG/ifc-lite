@@ -135,6 +135,10 @@ classDiagram
         +AABB originalBounds
         +AABB shiftedBounds
         +boolean hasLargeCoordinates
+        +Vec3? wasmRtcOffset
+        +RtcFrame? wasmRtcFrame
+        +number? buildingRotation
+        +number? lengthUnitScale
     }
 
     GeometryResult "1" --> "*" MeshData
@@ -426,32 +430,66 @@ flowchart LR
 
 ### Auto Origin Shift
 
-The geometry processor automatically handles large coordinates:
+For a georeferenced or otherwise far-from-origin model, the large offset is
+usually removed by the WASM mesh pass itself and reported as
+`coordinateInfo.wasmRtcOffset` — an **IFC Z-up** translation, not yet in the
+mesh's Y-up axes. `originShift` (already Y-up) is a second, JS-side shift that
+only fires when WASM did *not* re-base the model and it is still more than
+`NORMAL_COORD_THRESHOLD_M` (10&nbsp;km) from the origin
+(`packages/geometry/src/coordinate-handler.ts`). For most real georeferenced
+models `wasmRtcOffset` is the one that is set and `originShift` stays
+`{ x: 0, y: 0, z: 0 }` — reading only `originShift`, as the previous version of
+this example did, silently drops the WASM offset and hands back render-frame
+coordinates while presenting them as world coordinates.
+
+`hasLargeCoordinates` tracks only the JS `originShift` path, so it is `false`
+whenever WASM already re-based the model. `wasmRtcOffset !== undefined` alone
+is not enough either, because a model shifted only by `originShift` has
+`hasLargeCoordinates: true` and no `wasmRtcOffset`. To ask "was this model
+shifted at all?", check both:
+`coordinateInfo.hasLargeCoordinates || coordinateInfo.wasmRtcOffset !== undefined`.
+
+`@ifc-lite/geometry/world-frame` is the one place that combines both offsets
+and applies the Y-up/Z-up axis swap (`scripts/check-rtc-frame-copies.mjs`
+fails CI on any hand-rolled copy of this arithmetic outside that module):
 
 ```typescript
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, type Vec3 } from '@ifc-lite/geometry';
+import { renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/world-frame';
 
 const geometry = new GeometryProcessor();
 await geometry.init();
 
 const result = await geometry.process(new Uint8Array(buffer));
 
-// Access the computed shift from coordinate info (returned on the result)
-const coordInfo = result.coordinateInfo;
-if (coordInfo?.originShift) {
-  console.log(`Origin shifted by:`, coordInfo.originShift);
-  // { x: 487234.5, y: 5234891.2, z: 0 }
-}
+// Render-frame -> IFC world translation, in IFC Z-up metres. Folds in both
+// wasmRtcOffset (Z-up) and originShift (Y-up) and performs the axis swap.
+const offset = renderFrameWorldOffset(result.coordinateInfo);
 
-// Convert local coordinates back to world
-function toWorldCoords(localPos: Vector3, shift: Vector3): Vector3 {
+// A point read off a mesh (positions + origin) is in the Y-up render frame.
+// Convert it to IFC Z-up first, then add the offset, to get IFC world
+// coordinates:
+function toWorldCoords(renderFramePointYup: Vec3): Vec3 {
+  const zUp = viewerToIfcAxes(renderFramePointYup);
   return {
-    x: localPos.x + shift.x,
-    y: localPos.y + shift.y,
-    z: localPos.z + shift.z
+    x: zUp.x + offset.x,
+    y: zUp.y + offset.y,
+    z: zUp.z + offset.z,
   };
 }
 ```
+
+For `coordinateInfo` `{ originShift: { x: 0, y: 0, z: 0 }, wasmRtcOffset: {
+x: 2000031.105, y: 1000012, z: 500 } }` (the WASM-shifted case above),
+`renderFrameWorldOffset` returns `{ x: 2000031.105, y: 1000012, z: 500 }`.
+Converting a render-frame point `{ x: 12.5, y: 3.2, z: -8.1 }` (Y-up) with the
+code above gives the Z-up point `{ x: 12.5, y: 8.1, z: 3.2 }` and then the
+IFC world point `{ x: 2000043.605, y: 1000020.1, z: 503.2 }` (Z-up) — verified by running `world-frame.ts`'s `renderFrameWorldOffset`
+and `viewerToIfcAxes` directly against this `coordinateInfo`.
+
+The viewer, `ifc-lite clash --bcf` and `bim.bcf` in the SDK already apply this
+conversion for you; see [BCF Collaboration → Coordinate
+frames](bcf.md#coordinate-frames) for the equivalent viewpoint-export path.
 
 ## Geometry Processors
 

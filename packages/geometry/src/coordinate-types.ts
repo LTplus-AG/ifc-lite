@@ -19,7 +19,14 @@ export interface CoordinateInfo {
   originShift: Vec3;
   originalBounds: AABB;
   shiftedBounds: AABB;
-  /** True when large coordinates required an RTC shift, not IFC georeferencing. */
+  /**
+   * True only when the JS-side `originShift` fired: the geometry reaching
+   * `CoordinateHandler` was still beyond `NORMAL_COORD_THRESHOLD_M`, which in
+   * practice means WASM did not re-base it. Stays `false` when WASM applied
+   * `wasmRtcOffset` instead, and `wasmRtcOffset` is absent when only
+   * `originShift` fired, so neither field alone answers "was this model
+   * shifted?". Use `hasLargeCoordinates || wasmRtcOffset !== undefined`.
+   */
   hasLargeCoordinates: boolean;
   /** RTC offset applied by WASM in IFC coordinates (Z-up). */
   wasmRtcOffset?: Vec3;

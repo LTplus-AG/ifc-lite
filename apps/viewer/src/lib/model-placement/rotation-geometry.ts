@@ -60,6 +60,9 @@ export interface RotationBaseline {
    */
   meshes: Map<MeshData, MeshBaseline>;
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
+  /** The map object the last bake left on the geometry. Anything else there
+   * was installed from outside (streaming completion) and is pristine. */
+  bakedInstanced: Map<number, EntityWorldAabb> | undefined;
   shiftedBounds: GeometryResult['coordinateInfo']['shiftedBounds'];
 }
 
@@ -80,12 +83,13 @@ export function captureRotationBaseline(geometry: Geometry): RotationBaseline {
     meshes,
     instancedGeometryAabbs: geometry.instancedGeometryAabbs
       ? new Map(geometry.instancedGeometryAabbs) : undefined,
+    bakedInstanced: geometry.instancedGeometryAabbs,
     shiftedBounds: structuredClone(geometry.coordinateInfo.shiftedBounds),
   };
 }
 
 /**
- * Take a baseline of any mesh in `geometry` this baseline has never seen — a
+ * Take a baseline of anything in `geometry` this baseline has never seen — a
  * streamed batch appended after the model was baked. Such a mesh is pristine by
  * construction: nothing has rotated it yet.
  *
@@ -94,6 +98,13 @@ export function captureRotationBaseline(geometry: Geometry): RotationBaseline {
  */
 export function captureAppendedMeshBaselines(geometry: Geometry, baseline: RotationBaseline): boolean {
   let captured = false;
+  // Streaming completion republishes the same meshes with the accumulated
+  // instanced-only boxes. They have never been rotated, so they replace the
+  // baseline's copy — otherwise the next restore would drop them.
+  if (geometry.instancedGeometryAabbs !== baseline.bakedInstanced) {
+    baseline.instancedGeometryAabbs = geometry.instancedGeometryAabbs ? new Map(geometry.instancedGeometryAabbs) : undefined;
+    captured = true;
+  }
   for (const mesh of geometry.meshes) {
     if (baseline.meshes.has(mesh)) continue;
     baseline.meshes.set(mesh, captureMesh(mesh));
@@ -291,7 +302,10 @@ export function applyModelRotation(
   geometry: Geometry, baseline: RotationBaseline, rotation: ModelRotation,
 ): boolean {
   restore(geometry, baseline);
-  if (isZeroRotation(rotation)) return true;
+  if (isZeroRotation(rotation)) {
+    baseline.bakedInstanced = geometry.instancedGeometryAabbs;
+    return true;
+  }
   const pivot = toRenderTranslation(rotation.pivot);
   const yaw: Yaw = { cos: Math.cos(rotation.angle), sin: Math.sin(rotation.angle), px: pivot[0], pz: pivot[2] };
   const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
@@ -316,6 +330,7 @@ export function applyModelRotation(
     }
     geometry.instancedGeometryAabbs = next;
   }
+  baseline.bakedInstanced = geometry.instancedGeometryAabbs;
   if (Number.isFinite(bounds.min[0])) {
     geometry.coordinateInfo = { ...geometry.coordinateInfo, shiftedBounds: {
       min: { x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] },

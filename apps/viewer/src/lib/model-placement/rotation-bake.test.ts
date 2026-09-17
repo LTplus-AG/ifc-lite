@@ -182,6 +182,25 @@ describe('ModelRotationBaker', () => {
       'the replacement inherited the vanished model\'s instanced boxes');
   });
 
+  it('adopts instanced boxes installed after the bake and turns them exactly once', () => {
+    const baker = new ModelRotationBaker(), value = geometry();
+    baker.reconcile(targets(value, ROTATION));
+    // Streaming completion: the loader republishes the SAME meshes with the
+    // accumulated instanced-only boxes, which have never been rotated.
+    const completed = { ...value, instancedGeometryAabbs: instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]) } as Geometry;
+    assert.deepEqual(baker.reconcile(targets(completed, ROTATION)), ['m']);
+    const control = (rotation: ModelRotation) => {
+      const fresh = geometry();
+      fresh.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+      new ModelRotationBaker().reconcile(targets(fresh, rotation));
+      return fresh.instancedGeometryAabbs;
+    };
+    assert.deepEqual(completed.instancedGeometryAabbs, control(ROTATION), 'the installed boxes were not rotated once');
+    // The next bake restores from the baseline: it must not drop them.
+    baker.reconcile(targets(completed, OTHER));
+    assert.deepEqual(completed.instancedGeometryAabbs, control(OTHER), 'a later bake dropped or compounded the installed boxes');
+  });
+
   it('does not put back vertices a bounded-mode release has freed', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     baker.reconcile(targets(value, ROTATION));

@@ -12,6 +12,34 @@ Model B: expressIds 1-3000    -> globalIds 5001-8000    (offset: 5000)
 Model C: expressIds 1-2000    -> globalIds 8001-10000   (offset: 8000)
 ```
 
+## Coordinates in a Federation
+
+Federated models share one **RTC frame** so their meshes align pixel-for-pixel
+instead of each model floating in its own re-based origin (see [Geometry
+Guide → Coordinate Handling](geometry.md#coordinate-handling) for what an RTC
+offset is and why the mesher applies one). When a model is added to a running
+federation, the viewer picks `sharedRtcOffset` from the **earliest-loaded
+model that already has a `wasmRtcOffset`**, and threads it into that new
+model's geometry processing so it re-bases onto the same anchor
+(`apps/viewer/src/hooks/useIfcFederation.ts`). `federationFrameInfo`
+(`@ifc-lite/geometry/world-frame`) reports that same earliest-loaded model's
+`coordinateInfo` as the federation's frame, for `renderFrameWorldOffset` /
+BCF export and any other consumer that needs the shared anchor.
+
+This has a load-order caveat: a model with small, near-origin coordinates has
+no `wasmRtcOffset` at all, so it does not count as a candidate anchor. If such
+a model loads first and a large-coordinate model is added afterwards, there is
+no shared offset yet when the second model loads, so it picks its own,
+un-shared RTC anchor instead of joining the first model's (zero) frame — the
+two models then render in different frames, and `federationFrameInfo`
+(which still reports the earliest-loaded model, per the rule above) names a
+frame that does not match what the second model was actually drawn in.
+Loading the large-coordinate model first avoids this, because every
+model added afterwards then finds and reuses its real anchor. This is tracked
+as a known limitation; check the [GitHub issue
+tracker](https://github.com/LTplus-AG/ifc-lite/issues) for its current status
+before relying on federation coordinates being load-order independent.
+
 ### Global vs Local IDs
 
 - **Local expressId**: The original ID within a single IFC file (e.g., `#42`)

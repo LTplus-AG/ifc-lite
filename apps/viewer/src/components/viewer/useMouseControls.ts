@@ -494,12 +494,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // to what the user is looking at. On miss, place pivot at current distance along
       // the cursor ray so orbit always feels connected to where you're pointing.
       // A focused clash with nothing selected orbits around the clashing pair (#4806).
-      const clashPivot = willOrbit && !selectedEntityIdRef.current
-        ? focusedClashOrbitPivot(useViewerStore.getState())
-        : null;
-      if (clashPivot) {
-        camera.setOrbitCenter(clashPivot);
-      } else if (willOrbit) {
+      const clashPivot = willOrbit
+        ? focusedClashOrbitPivot(useViewerStore.getState(), selectedEntityIdRef.current) : null;
+      if (clashPivot) camera.setOrbitCenter(clashPivot);
+      else if (willOrbit) {
         const rect = canvas.getBoundingClientRect();
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;

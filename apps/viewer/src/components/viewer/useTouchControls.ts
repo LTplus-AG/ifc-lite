@@ -66,6 +66,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     hiddenEntitiesRef,
     isolatedEntitiesRef,
     isInteractingRef,
+    selectedEntityIdRef,
     handlePickForSelection,
     getPickOptions,
   } = params;
@@ -83,8 +84,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // at current view distance — never to a selected entity's center, which
     // would pivot far from the user's touch and feel disconnected.
     const anchorOrbitPivotUnderFinger = (touch: Touch) => {
-      // A focused clash orbits around the clashing pair, not the finger (#4806).
-      const clashPivot = focusedClashOrbitPivot(useViewerStore.getState());
+      // A focused clash with nothing selected orbits around the clashing pair (#4806).
+      const clashPivot = focusedClashOrbitPivot(useViewerStore.getState(), selectedEntityIdRef.current);
       if (clashPivot) {
         camera.setOrbitCenter(clashPivot);
         return;

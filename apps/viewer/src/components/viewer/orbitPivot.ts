@@ -27,15 +27,16 @@ export interface OrbitPivotCamera {
 
 /**
  * Centre of the focused clash's overlap box, or `null` when no clash is
- * focused. `Clash.bounds` is built from the viewer's render meshes, so it is
+ * focused or an entity is selected (a selection always wins, on mouse and
+ * touch alike). `Clash.bounds` is built from the viewer's render meshes, so it is
  * already in the camera's (render) frame, the same box `frameClashRegion`
  * frames.
  */
 export function focusedClashOrbitPivot(state: {
   clashSelectedId: string | null;
   clashResult: ClashResult | null;
-}): Vec3 | null {
-  if (state.clashSelectedId === null || !state.clashResult) return null;
+}, selectedEntityId: number | null): Vec3 | null {
+  if (selectedEntityId !== null || state.clashSelectedId === null || !state.clashResult) return null;
   const clash = state.clashResult.clashes.find((c) => c.id === state.clashSelectedId);
   if (!clash) return null;
   const { min, max } = clash.bounds;

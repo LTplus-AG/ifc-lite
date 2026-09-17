@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { placementFor } from '@/lib/model-placement/state';
+import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { parseRotationDegrees, radiansToDegrees, isZeroRotation, type ModelRotation } from '@/lib/model-placement/rotation';
 import { addTranslation, finiteTranslation, type Translation } from '@/lib/model-placement/translation';
 import { modelCenter } from '@/lib/model-placement/scene';
@@ -21,11 +21,15 @@ function workspacePivot(rotation: ModelRotation, translation: Translation): Tran
 /** The workspace point the rotation turns about — the placed model's bounds
  * centre until the model has a heading. */
 function defaultPivot(modelId: string): Translation {
-  const placement = placementFor(useViewerStore.getState().modelPlacement, modelId);
+  const state = useViewerStore.getState().modelPlacement;
+  const placement = placementFor(state, modelId);
   // Once a model has a heading, keep the pivot it was given: re-deriving the
   // bounds centre of an already-turned model walks the axis a little further
   // on every edit, because a rotated model has a different bounding box.
-  if (!isZeroRotation(placement.rotation)) return workspacePivot(placement.rotation, placement.translation);
+  // Against the DISPLAYED translation, so an unapplied move preview — which
+  // `rotatePlacements` commits along with the heading — carries the shown axis
+  // with the model, exactly as `modelCenter` already does for the other branch.
+  if (!isZeroRotation(placement.rotation)) return workspacePivot(placement.rotation, displayedTranslation(state, modelId));
   return modelCenter(modelId) ?? [0, 0, 0];
 }
 
@@ -37,6 +41,9 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   const primary = selected[0];
   const current = primary ? placementFor(placement, primary).rotation : null;
   const translation = primary ? placementFor(placement, primary).translation : null;
+  // The pending move too: the shown pivot has to follow the previewed
+  // position, not only a committed one.
+  const previewDelta = primary && placement.preview?.before.has(primary) ? placement.preview.delta : null;
   const pendingInstancedShards = useViewerStore((s) => s.pendingInstancedShards);
   const [degrees, setDegrees] = useState('0');
   const [pivot, setPivot] = useState<[string, string]>(['0', '0']);
@@ -49,7 +56,7 @@ export function RotationControls({ selected, onError }: { selected: readonly str
     setPivot([String(Number(point[0].toFixed(4))), String(Number(point[1].toFixed(4)))]);
     // The translation too: the stored pivot moves with the model, so the
     // workspace point shown has to follow a move made after rotating.
-  }, [primary, current?.angle, current?.pivot, translation]);
+  }, [primary, current?.angle, current?.pivot, translation, previewDelta]);
 
   const applyRotation = useCallback((text: string, fields: readonly [string, string]) => {
     try {
@@ -74,7 +81,8 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   return <fieldset className="space-y-1 border-t pt-2">
     <legend className="font-medium">Rotate</legend>
     <p className="text-zinc-500">About the vertical axis only, counter-clockwise seen from above.
-      Applied to the model before the placement offset above.</p>
+      Applied to the model before the placement offset above. A previewed move that has not been
+      applied yet is committed together with the heading.</p>
     <label className="block">Heading
       <input aria-label="Rotation angle in degrees" className="border w-24 bg-transparent p-1 ml-2 font-mono"
         value={degrees} onChange={(event) => setDegrees(event.target.value)}
@@ -94,7 +102,7 @@ export function RotationControls({ selected, onError }: { selected: readonly str
     </div>
     {selected.map((id) => <p key={id} className="font-mono truncate">{models.get(id)?.name}:
       {' '}{radiansToDegrees(placementFor(placement, id).rotation.angle).toFixed(3)}° about
-      {' '}{workspacePivot(placementFor(placement, id).rotation, placementFor(placement, id).translation).slice(0, 2)
+      {' '}{workspacePivot(placementFor(placement, id).rotation, displayedTranslation(placement, id)).slice(0, 2)
         .map((value) => value.toFixed(3)).join(', ')}</p>)}
   </fieldset>;
 }

@@ -301,6 +301,48 @@ describe('model repositioning user interactions (#4226)', () => {
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
   });
 
+  it('applies a heading on top of an unapplied move instead of discarding it (#4873)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
+    assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'ifc'), [5, 0, 0]);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+
+    const placed = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
+    // The previewed move is committed WITH the heading, not silently dropped.
+    assert.deepEqual(placed.translation, [5, 0, 0], 'the pending move was discarded by the rotation');
+    assert.ok(Math.abs(placed.rotation.angle - Math.PI / 6) < 1e-9, `angle ${placed.rotation.angle}`);
+    // The pivot is a workspace point on the model AS DRAWN, so in the model's
+    // own frame it is the entered point less the move it was read off.
+    assert.deepEqual([...placed.rotation.pivot], [5, 4, 0]);
+    assert.equal(input(ui, 'Rotation pivot X').value, '10', 'the model turned about a point the user did not choose');
+    // One entry for the pair, so one undo puts back both.
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 1);
+    click(button(ui, 'Undo placement'));
+    const undone = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
+    assert.deepEqual(undone.translation, [0, 0, 0]);
+    assert.equal(undone.rotation.angle, 0);
+  });
+
+  it('carries the shown pivot with a move that is still only previewed (#4873)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+    assert.equal(input(ui, 'Rotation pivot X').value, '10');
+    // Previewed, NOT applied: the model is drawn 3 m along, and the axis it
+    // turns about is drawn with it — so a second heading entered now must be
+    // read against that position and not the committed one.
+    type(input(ui, 'Delta X'), '3'); click(button(ui, 'Preview values'));
+    assert.equal(input(ui, 'Rotation pivot X').value, '13', 'the shown pivot stayed behind the previewed model');
+    assert.equal(input(ui, 'Rotation pivot Y').value, '4');
+  });
+
   it('reports a bad rotation angle instead of storing one (#4869)', () => {
     act(() => useViewerStore.getState().openReposition(['ifc']));
     const ui = render(<ToolOverlays />);

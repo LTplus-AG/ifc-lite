@@ -171,22 +171,41 @@ function assertRenderablePivot(rotation: ModelRotation): void {
  * One command for the whole group, so it undoes as one, exactly like a move.
  * Rotation has no preview stage: unlike a drag it is entered as a value, and
  * baking it costs a pass over the model's vertices.
+ *
+ * A PENDING MOVE PREVIEW IS CARRIED, NOT DROPPED. The models are drawn at
+ * committed + preview delta, so that offset is the position the pivot was read
+ * off and the move the Apply button was about to commit. Cancelling the preview
+ * would put the models back without saying so and turn them about a point they
+ * no longer sit on, so the move is committed WITH the heading, as one command,
+ * and each model's pivot is taken against its moved translation.
  */
 export function rotatePlacements(
   state: PlacementState, ids: readonly string[], rotation: ModelRotation,
 ): PlacementState {
   assertRenderablePivot(rotation);
   const normalized: ModelRotation = { angle: normalizeAngle(rotation.angle), pivot: [...rotation.pivot] };
+  const rotating = new Set(ids);
+  if (rotating.size === 0) throw new Error('Choose at least one model to rotate.');
+  const preview = state.preview;
   const before = new Map<string, ModelPlacement>();
   const after = new Map<string, ModelPlacement>();
-  for (const id of new Set(ids)) {
+  // The previewed models too, even when they are not the ones being turned:
+  // their pending move is committed by this command rather than discarded.
+  for (const id of new Set([...rotating, ...(preview?.modelIds ?? [])])) {
     const placement = placementFor(state, id);
-    if (placement.locked) throw new Error('Unlock the selected models before rotating them.');
+    if (placement.locked) {
+      throw new Error(rotating.has(id) ? 'Unlock the selected models before rotating them.'
+        : 'Unlock the previewed models before rotating.');
+    }
+    const translation = preview?.before.has(id)
+      ? addTranslation(placement.translation, preview.delta) : placement.translation;
+    assertRenderableTranslation(translation);
     before.set(id, placement);
-    after.set(id, { ...placement, rotation: { angle: normalized.angle, pivot: pivotInModelFrame(normalized.pivot, placement.translation) } });
+    after.set(id, rotating.has(id)
+      ? { ...placement, translation, rotation: { angle: normalized.angle, pivot: pivotInModelFrame(normalized.pivot, translation) } }
+      : { ...placement, translation });
   }
-  if (before.size === 0) throw new Error('Choose at least one model to rotate.');
-  // A pending move preview holds a `before` map this command would invalidate.
+  // The preview's own `before` map is superseded by the one built here.
   return commitPlacements(cancelPlacement(state), before, after);
 }
 

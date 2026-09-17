@@ -48,10 +48,20 @@ export function inheritedQuantization(
   sourceBatch: BatchedMesh | null | undefined,
 ): BatchQuantization {
   if (!quantizedBatchesEnabled) return 'off';
-  // Source not built yet (mid-stream hydration): nothing to inherit from, so
-  // decide like a base batch would. Finalize re-hands overrides afterwards.
+  // Source not built yet (mid-stream): nothing to inherit from, so decide like
+  // a base batch would. `Scene.finalizeStreaming*` re-applies the installed
+  // overrides once the buckets are built, so this choice never outlives them.
   if (!sourceBatch) return 'auto';
   return sourceBatch.quantized ? 'required' : 'off';
+}
+
+/** Mutable copy of an installed override map, in `Scene.setColorOverrides` input shape. */
+export function cloneOverrides(
+  overrides: ReadonlyMap<number, readonly [number, number, number, number]>,
+): Map<number, [number, number, number, number]> {
+  const copy = new Map<number, [number, number, number, number]>();
+  for (const [id, c] of overrides) copy.set(id, [c[0], c[1], c[2], c[3]]);
+  return copy;
 }
 
 /** One overlay group: pieces of a single source bucket sharing an override colour. */

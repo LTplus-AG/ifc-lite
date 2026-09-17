@@ -33,7 +33,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, dest
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
-import { inheritedQuantization, groupOverridePieces, type BatchQuantization } from './scene-derived-batches.js';
+import { inheritedQuantization, groupOverridePieces, cloneOverrides, type BatchQuantization } from './scene-derived-batches.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
@@ -585,10 +585,9 @@ export class Scene {
   }
 
   /**
-   * Whether THIS mesh's source batch renders quantized — drives the
-   * hydrated-mesh lattice snap in createMeshFromData (a mesh whose batch
-   * fell back to f32, e.g. >64m extent, must NOT snap). Falls back to the
-   * global flag when the mesh isn't bucketed (mid-stream hydration).
+   * Whether THIS mesh's source batch renders quantized — drives the hydrated-mesh
+   * lattice snap in createMeshFromData (a batch that fell back to f32 must NOT
+   * snap). Same rule as overlay/partial batches; global flag while unbucketed.
    */
   isMeshQuantized(meshData: MeshData): boolean {
     return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(meshData)?.batchedMesh) !== 'off';
@@ -2085,6 +2084,7 @@ export class Scene {
     for (const batch of oldBatches) {
       if (!fragmentSet.has(batch)) destroyGpuResources(batch);
     }
+    this.reapplyColorOverrides(device, pipeline);
   }
 
   /**
@@ -2212,6 +2212,7 @@ export class Scene {
             if (!fragmentSet.has(batch)) destroyGpuResources(batch);
           }
           scene.finalizeInProgress = false;
+          scene.reapplyColorOverrides(device, pipeline); // never throws: the swap above is committed
           resolve();
         } catch (err) {
           rollback();
@@ -2509,8 +2510,7 @@ export class Scene {
    * @param bucketKey - Optional unique key for this batch. When omitted the
    *   base color key is used (fine for overlay / partial batches that don't
    *   participate in the main buckets map).
-   * @param quantization - Bucket batches decide from their own extent ('auto');
-   *   overlay / partial batches pass `inheritedQuantization(source)` (#4832).
+   * @param quantization - 'auto' for bucket batches; derived batches pass `inheritedQuantization(source)` (#4832).
    */
   private createBatchedMesh(
     meshes: MeshData[], color: [number, number, number, number],
@@ -2711,11 +2711,10 @@ export class Scene {
       }
     }
 
-    // Collect the visible pieces of THIS batch. `colorKey` is the bucket key,
-    // so match each piece's OWNING bucket exactly: matching on the base key
-    // (suffix "#N" stripped) pulled sibling overflow buckets' pieces into the
-    // partial — drawn twice, and inheriting the wrong batch's quantization
-    // (#4832). Only a batch with no bucket (streaming fragment) uses base key.
+    // `colorKey` is the bucket key: match each piece's OWNING bucket exactly.
+    // Matching the base key (suffix "#N" stripped) pulled sibling overflow
+    // buckets' pieces in — drawn twice, wrong quantization inherited (#4832).
+    // Only a batch with no bucket (a streaming fragment) uses the base key.
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
     const visibleMeshData: MeshData[] = [];
@@ -2754,12 +2753,10 @@ export class Scene {
   // pipeline (depthCompare 'equal'), so hidden entities never leak through.
 
   /**
-   * Set color overrides for lens / chart / IDS / compare / 4D coloring.
-   * Builds overlay batches grouped by SOURCE bucket + override color, each
-   * inheriting its source batch's quantization (#4832, see
-   * `scene-derived-batches.ts`). Original batches are NEVER modified —
-   * clearing is instant. Applies the same buffer-size splitting as regular
-   * batches (only the unbucketed fallback groups can still need it).
+   * Set color overrides for lens / chart / IDS / compare / 4D coloring. Overlay
+   * batches are grouped by SOURCE bucket + override color and inherit the
+   * source batch's quantization (#4832, `scene-derived-batches.ts`). Original
+   * batches are NEVER modified — clearing is instant.
    */
   setColorOverrides(
     overrides: Map<number, [number, number, number, number]>,
@@ -2806,7 +2803,6 @@ export class Scene {
       (c) => this.colorKey(c),
     );
 
-    // Build overlay batches per group, splitting if buffers would exceed GPU limit
     const maxBufferSize = this.getMaxBufferSize(device);
     for (const { color, meshData, sourceBatch } of colorGroups.values()) {
       const quantization = inheritedQuantization(this.quantizedBatchesEnabled, sourceBatch);
@@ -2816,9 +2812,17 @@ export class Scene {
     }
   }
 
-  /**
-   * Clear all color overrides — instant, no batch rebuild needed.
-   */
+  /** Rebuild the installed overlays against the batches that write depth NOW:
+   *  finalize replaces the fragments/unbuilt buckets a mid-stream override had
+   *  to decide without (#4832). Best-effort — a committed finalize must not be
+   *  undone by an overlay allocation failure, so that is reported, not thrown. */
+  private reapplyColorOverrides(device: GPUDevice, pipeline: RenderPipeline): void {
+    if (!this.colorOverrides) return;
+    try { this.setColorOverrides(cloneOverrides(this.colorOverrides), device, pipeline); }
+    catch (err) { console.warn('[Scene] overlay rebuild after finalize failed — colours may be missing until the next repaint', err); }
+  }
+
+  /** Clear all color overrides — instant, no batch rebuild needed. */
   clearColorOverrides(): void {
     this.destroyOverrideBatches();
     this.colorOverrideGeneration++;

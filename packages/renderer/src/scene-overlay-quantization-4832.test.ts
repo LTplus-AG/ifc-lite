@@ -28,7 +28,6 @@ import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import { createSceneBatch } from './scene-batch-upload.js';
-import { groupOverridePieces } from './scene-derived-batches.js';
 import type { BatchedMesh } from './types.js';
 import { MAX_QUANT_EXTENT } from './quantize.js';
 
@@ -231,22 +230,48 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
     assertCoincidentWithBase(scene, partial, bytes);
   });
 
-  it('an unbucketed piece never shares an overlay group with a bucketed piece of the same key', () => {
-    const bucketed = triangle(1, [0, 0, 0]);
-    const unbucketed = triangle(2, [0, 0, 0]);
-    const sourceBatch = { quantized: { min: [0, 0, 0], step: 1 / 1024 } } as unknown as BatchedMesh;
-    const groups = groupOverridePieces(
-      new Map([[1, RED], [2, RED]]),
-      (id) => (id === 1 ? [bucketed] : [unbucketed]),
-      (piece) => (piece === bucketed ? { key: 'cell~grey', batchedMesh: sourceBatch } : undefined),
-      () => 'cell~grey', // the fallback key equals the real bucket key on purpose
-      () => 'red',
-    );
-    assert.strictEqual(groups.size, 2, 'two groups, not one');
-    const byPiece = [...groups.values()].map((g) => [g.meshData[0], g.sourceBatch] as const);
-    assert.deepStrictEqual(byPiece.find(([p]) => p === bucketed)?.[1], sourceBatch, 'bucketed piece keeps its source batch');
-    assert.strictEqual(byPiece.find(([p]) => p === unbucketed)?.[1], null, 'unbucketed piece has no source to inherit');
+  it('an unbucketed piece (picking-only addMeshData) never drags a bucketed piece into its overlay group', () => {
+    const scene = quantizedChunkedScene();
+    const { device, bytes } = fakeDevice();
+    // Bucketed: the wall forces the shared cell (0,0,0) bucket to f32.
+    scene.appendToBatches([longWall(10, [0.33, 0.2, 0.1]), triangle(11, [5.33, 0.2, 0.1])], device, fakePipeline);
+    // Registered for picking only — no bucket — in the SAME cell and colour, so
+    // its fallback key equals the real bucket's key.
+    scene.addMeshData(triangle(12, [6.33, 0.2, 0.1]));
+
+    // Unbucketed id first: grouped together, the whole group would take its
+    // (absent) source and quantize on its own small extent against an f32 base.
+    scene.setColorOverrides(new Map([[12, RED], [11, RED]]), device, fakePipeline);
+
+    const bucketedOverlay = scene.getOverrideBatches().find((b) => b.expressIds.includes(11));
+    assert.ok(bucketedOverlay, 'overlay for the bucketed piece built');
+    assert.deepStrictEqual(bucketedOverlay.expressIds, [11], 'not grouped with the unbucketed piece');
+    assertCoincidentWithBase(scene, bucketedOverlay, bytes);
   });
+
+  for (const [label, finalize] of [
+    ['finalizeStreaming', (s: Scene, d: GPUDevice) => { s.finalizeStreaming(d, fakePipeline); }],
+    ['finalizeStreamingAsync', (s: Scene, d: GPUDevice) => s.finalizeStreamingAsync(d, fakePipeline)],
+  ] as const) {
+    it(`overrides applied mid-stream are rebuilt against the batches ${label} installs`, async () => {
+      const scene = quantizedChunkedScene();
+      const { device, bytes } = fakeDevice();
+      scene.appendToBatches([longWall(10, [0.33, 0.2, 0.1]), triangle(11, [5.33, 0.2, 0.1])], device, fakePipeline, true);
+      // Bucket exists but has no built batch yet: the overlay can only decide on
+      // its own (small) extent, and quantizes.
+      scene.setColorOverrides(new Map([[11, RED]]), device, fakePipeline);
+      assert.ok(scene.getOverrideBatches()[0]?.quantized, 'sanity: mid-stream overlay quantized on its own extent');
+
+      await finalize(scene, device);
+
+      const base = scene.getBatchedMeshes();
+      assert.strictEqual(base.length, 1, 'sanity: one finalized bucket batch');
+      assert.strictEqual(base[0].quantized, undefined, 'sanity: the finalized base batch is f32 (the wall)');
+      const overlays = scene.getOverrideBatches();
+      assert.strictEqual(overlays.length, 1, 'overlay rebuilt, not duplicated');
+      assertCoincidentWithBase(scene, overlays[0], bytes);
+    });
+  }
 
   it('a derived batch that cannot honour an inherited quantization is reported, never silent', () => {
     const { device } = fakeDevice();

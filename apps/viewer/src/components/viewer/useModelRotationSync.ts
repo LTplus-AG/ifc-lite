@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { useViewerStore, type ViewerState, type FederatedModel } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
 import { modelRotationBaker, type RotationTarget } from '@/lib/model-placement/rotation-bake';
-import { buildSpatialIndexForModel } from '@/utils/loadingUtils';
+import { buildSpatialIndexForModel, invalidateSpatialIndex } from '@/utils/loadingUtils';
 
 /**
  * Make each model's geometry agree with the heading its placement declares.
@@ -46,6 +46,9 @@ function bake(state: ViewerState): string[] {
   for (const modelId of moved) {
     const model = next.models.get(modelId) as FederatedModel | undefined;
     if (model?.ifcDataStore && model.geometryResult) {
+      // Withdraw the old index now: the rebuild is asynchronous, and until it
+      // lands a raycast would be answered from the previous heading's boxes.
+      invalidateSpatialIndex(model.ifcDataStore);
       buildSpatialIndexForModel(model.geometryResult.meshes, modelId, model.ifcDataStore);
     }
   }

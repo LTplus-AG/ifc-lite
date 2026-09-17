@@ -55,6 +55,16 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
     assert.ok(useViewerStore.getState().geometryContentVersion > version, 'content version did not bump');
   });
 
+  it('withdraws the pre-rotation spatial index at once instead of serving it until the rebuild lands', () => {
+    const stale = { stale: true } as unknown as NonNullable<FederatedModel['ifcDataStore']>['spatialIndex'];
+    live().ifcDataStore!.spatialIndex = stale;
+    useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
+    assert.deepEqual(reconcileModelRotations(useViewerStore.getState()), ['ifc']);
+    // The rebuild is asynchronous; synchronously after the bake a raycast must
+    // not be answered from boxes describing the previous heading.
+    assert.notEqual(live().ifcDataStore!.spatialIndex, stale, 'raycasts still read the pre-rotation index');
+  });
+
   it('does not re-bake a heading that has not changed', () => {
     useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
     reconcileModelRotations(useViewerStore.getState());

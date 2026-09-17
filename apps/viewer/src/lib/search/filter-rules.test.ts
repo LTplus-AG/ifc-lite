@@ -201,6 +201,18 @@ describe('isFilterRule / parseFilterRules', () => {
     assert.strictEqual(isFilterRule(Rule.globalId(['325Q7Fhnf67OZC$$r43uzK'])), true);
     assert.strictEqual(isFilterRule(Rule.attribute('Description', 'eq', 'Foo')), true);
     assert.strictEqual(isFilterRule(Rule.typeName('eq', 'WT01')), true);
+    assert.strictEqual(isFilterRule({ kind: 'parent', op: 'matches', value: 'Level.*', valueKind: 'regex' }), true);
+  });
+  it('rejects a persisted parent rule the evaluator cannot read (#4903)', () => {
+    // `matchParentRule` lower-cases `value` per ancestor: an array throws there.
+    assert.strictEqual(isFilterRule({ kind: 'parent', op: 'ne', value: [] }), false);
+    assert.strictEqual(isFilterRule({ kind: 'parent', op: 'bogus', value: 'Level 3' }), false);
+    assert.strictEqual(isFilterRule({ kind: 'parent', value: 'Level 3' }), false);
+    assert.strictEqual(isFilterRule({ kind: 'parent', op: 'eq', value: 'Level 3', valueKind: 'glob' }), false);
+    assert.deepStrictEqual(
+      parseFilterRules([{ kind: 'parent', op: 'ne', value: [] }, { kind: 'parent', op: 'eq', value: 'Level 3' }]),
+      [{ kind: 'parent', op: 'eq', value: 'Level 3' }],
+    );
   });
   it('rejects unknown kinds and non-objects', () => {
     assert.strictEqual(isFilterRule({ kind: 'bogus' }), false);

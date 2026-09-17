@@ -211,6 +211,113 @@ class ComparatorClassification(unittest.TestCase):
         self.assertEqual(rows[0][1], cc.COST_FAILURE)
         self.assertGreater(report.summary()["failures"], 0)
 
+    def test_unit_symbol_and_dimension_match(self):
+        """Both sides now derive a real Symbol/Dimension for a unit node
+        (issue #4882 item 4) - agreeing values must be a plain match."""
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+            dump["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+                "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "LENGTHUNIT",
+                "Currency": None, "Symbol": "mm", "Dimension": "length",
+            }
+        report = cc.compare_cost(lite, ref)
+        symbol_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Symbol"]
+        dimension_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Dimension"]
+        self.assertEqual(len(symbol_rows), 1)
+        self.assertEqual(len(dimension_rows), 1)
+        self.assertEqual(symbol_rows[0][1], cc.COST_MATCH)
+        self.assertEqual(dimension_rows[0][1], cc.COST_MATCH)
+        self.assertEqual(report.summary()["failures"], 0)
+
+    def test_unit_symbol_and_dimension_mismatch_is_a_failure_not_a_silent_pass(self):
+        """Before #4882, the reference dumper hardcoded Symbol/Dimension to
+        null on every unit node and compare.py never compared these fields,
+        so a unit-conversion or serialization regression that changed a
+        node's Symbol/Dimension passed cost parity undetected - the same
+        shape of hole as the UnitBasisNode blind spot above. lite reports a
+        millimetre unit ("mm"/"length"); ref reports a mass unit ("g"/
+        "mass") at the same node path - a real, non-coincidental divergence
+        that must surface as a FAILURE on both fields, with no named
+        degradation absorbing it."""
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+        lite["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+            "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "LENGTHUNIT",
+            "Currency": None, "Symbol": "mm", "Dimension": "length",
+        }
+        ref["Nodes"]["item:PARENT1/value/0/unitBasis"] = {
+            "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "MASSUNIT",
+            "Currency": None, "Symbol": "g", "Dimension": "mass",
+        }
+        report = cc.compare_cost(lite, ref)
+        symbol_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Symbol"]
+        dimension_rows = [r for r in report.rows if r[0] == "node:item:PARENT1/value/0/unitBasis/Dimension"]
+        self.assertEqual(len(symbol_rows), 1)
+        self.assertEqual(len(dimension_rows), 1)
+        self.assertEqual(symbol_rows[0][1], cc.COST_FAILURE)
+        self.assertEqual(dimension_rows[0][1], cc.COST_FAILURE)
+        self.assertGreaterEqual(report.summary()["failures"], 2)
+
+    @staticmethod
+    def _unit_basis_pair(unit):
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["Nodes"]["item:PARENT1/value/0"]["UnitBasisNode"] = "item:PARENT1/value/0/unitBasis"
+            dump["Nodes"]["item:PARENT1/value/0/unitBasis"] = dict(unit)
+        return lite, ref
+
+    def test_unresolved_non_monetary_unit_metadata_on_both_sides_is_a_failure(self):
+        """A length/area/volume/mass/time/userdefined unit gets a Dimension
+        and (from its prefix, or its Name for a named unit) a Symbol on both
+        dumpers, so null on BOTH sides means neither side resolved it - an
+        agreeing pair of unresolved values proves nothing and must not
+        report MATCH. That includes a named unit with an empty Name."""
+        for unit_type_name in ("IfcSIUnit", "IfcConversionBasedUnit", "IfcContextDependentUnit"):
+            with self.subTest(type=unit_type_name):
+                lite, ref = self._unit_basis_pair({
+                    "Kind": "Unit", "Type": unit_type_name, "UnitType": "LENGTHUNIT",
+                    "Currency": None, "Symbol": None, "Dimension": None,
+                })
+                report = cc.compare_cost(lite, ref)
+                for field in ("Symbol", "Dimension"):
+                    rows = [r for r in report.rows if r[0] == f"node:item:PARENT1/value/0/unitBasis/{field}"]
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0][1], cc.COST_FAILURE, rows[0])
+                    self.assertIn("unresolved", rows[0][2])
+                self.assertGreaterEqual(report.summary()["failures"], 2)
+
+    def test_unit_type_outside_the_cost_dimensions_may_stay_unresolved(self):
+        """Neither dumper derives a Dimension or SI Symbol for unit types
+        outside length/area/volume/mass/time/userdefined (e.g. a plane-angle
+        IfcSIUnit), so null on both sides is the expected, explicit outcome
+        for that kind - and a monetary unit never carries either field."""
+        for unit in (
+            {"Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "PLANEANGLEUNIT",
+             "Currency": None, "Symbol": None, "Dimension": None},
+            {"Kind": "Unit", "Type": "IFCMONETARYUNIT", "UnitType": None,
+             "Currency": "GBP", "Symbol": None, "Dimension": None},
+        ):
+            with self.subTest(unit=unit["Type"]):
+                report = cc.compare_cost(*self._unit_basis_pair(unit))
+                self.assertEqual(report.summary()["failures"], 0, report.failures)
+
+    def test_ambiguous_ifc2x3_formula_is_reported_not_matched(self):
+        """An IFC2X3 total named by several IfcAppliedValueRelationships has
+        no single defined formula; the reference dumper flags it rather than
+        picking one, and the comparator must surface that flag as a FAILURE
+        even though both sides then agree on null Components/Resolved."""
+        lite, ref = _baseline_pair()
+        for dump in (lite, ref):
+            dump["SchemaVersion"] = "IFC2X3"
+        ref["Nodes"]["item:EMPTY1/value/0"]["AmbiguousFormulaRelationships"] = 2
+        report = cc.compare_cost(lite, ref)
+        rows = [r for r in report.rows if r[0] == "node:item:EMPTY1/value/0/AmbiguousFormulaRelationships"]
+        self.assertEqual(len(rows), 1, report.rows)
+        self.assertEqual(rows[0][1], cc.COST_FAILURE)
+        self.assertIn("ambiguous", rows[0][2])
+
 
 class EndToEndFaultInjection(unittest.TestCase):
     """Each test perturbs a COPY of the real dump pair and asserts
@@ -308,7 +415,7 @@ class ReviewFindingRegressions(unittest.TestCase):
             }
             dump["Nodes"]["item:CHILD1/value/0/unitBasis/unit"] = {
                 "Kind": "Unit", "Type": "IfcSIUnit", "UnitType": "AREAUNIT",
-                "Currency": None, "Symbol": None, "Dimension": None,
+                "Currency": None, "Symbol": "m²", "Dimension": "area",
             }
         lite["Nodes"]["item:CHILD1/quantity/0"]["Name"] = "Brick wall volume"
         lite["Nodes"]["item:CHILD1/value/0/unitBasis/unit"]["UnitType"] = "VOLUMEUNIT"

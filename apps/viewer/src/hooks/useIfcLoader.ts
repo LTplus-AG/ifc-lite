@@ -1770,7 +1770,7 @@ export function useIfcLoader() {
                     firstAppendGeometryBatchMs = performance.now() - totalStartTime;
                     console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
                   }
-                  appendGeometryBatch(pendingMeshes, event.coordinateInfo);
+                  appendGeometryBatch(modelId, pendingMeshes, event.coordinateInfo);
                   pendingMeshes = [];
                   lastRenderTime = eventReceived;
                   markFirstVisibleGeometry();
@@ -1804,7 +1804,7 @@ export function useIfcLoader() {
                   firstAppendGeometryBatchMs = performance.now() - totalStartTime;
                   console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
                 }
-                appendGeometryBatch(pendingMeshes, event.coordinateInfo);
+                appendGeometryBatch(modelId, pendingMeshes, event.coordinateInfo);
                 pendingMeshes = [];
                 markFirstVisibleGeometry();
               }

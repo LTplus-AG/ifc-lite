@@ -15,6 +15,7 @@
  * Regions:
  *   package-index (docs/api/typescript.md)  — table of published packages
  *                                             from each package.json
+ *   python-api    (docs/api/python.md)      — the rust/python/README.md body
  *   cli-commands  (docs/guide/cli.md)       — command summary parsed from
  *                                             the CLI HELP text
  *   perf-numbers  (docs/guide/performance.md) — benchmark numbers stamped
@@ -266,11 +267,44 @@ function genLandingBench() {
   ].join('\n');
 }
 
+/**
+ * python-api: the whole `rust/python/README.md` body (everything after its
+ * own `# ifclite-geom` title), stamped into `docs/api/python.md` so the docs
+ * site, the GitHub README and the PyPI project page — which renders the same
+ * README — cannot drift apart (#4899). Only the relative `./examples/...`
+ * links are rewritten, since this page is not sitting next to
+ * `rust/python/examples` the way the README is.
+ */
+function genPythonApi() {
+  const readmePath = join(ROOT, 'rust', 'python', 'README.md');
+  const readme = readFileSync(readmePath, 'utf-8');
+  const lines = readme.split('\n');
+  const firstHeading = lines.findIndex((line) => line.startsWith('# '));
+  if (firstHeading === -1) {
+    throw new Error('rust/python/README.md has no top-level `# ` heading to strip');
+  }
+  let body = lines.slice(firstHeading + 1).join('\n').trim();
+
+  const EXAMPLES_DIR =
+    'https://github.com/LTplus-AG/ifc-lite/tree/main/rust/python/examples';
+  const EXAMPLES_FILE =
+    'https://github.com/LTplus-AG/ifc-lite/blob/main/rust/python/examples';
+  body = body.replace(/\]\(\.\/examples\/([^)]+)\)/g, `](${EXAMPLES_FILE}/$1)`);
+  body = body.replace(/\]\(\.\/examples\)/g, `](${EXAMPLES_DIR})`);
+
+  return body;
+}
+
 const REGIONS = [
   {
     name: 'package-index',
     file: 'docs/api/typescript.md',
     generate: (currentDoc) => genPackageIndex(currentDoc),
+  },
+  {
+    name: 'python-api',
+    file: 'docs/api/python.md',
+    generate: () => genPythonApi(),
   },
   {
     name: 'cli-commands',
@@ -301,7 +335,10 @@ function applyRegion(fileText, name, body) {
       `Markers for region "${name}" not found. Add:\n  ${begin}\n  ${end}\nto the doc first.`,
     );
   }
-  return fileText.replace(re, `$1\n${body}\n$2`);
+  // A replacement CALLBACK, never a replacement string: a generated body is
+  // arbitrary text (python-api stamps the whole rust/python/README.md), and a
+  // string replacement would expand any `$``, `$'`, `$&` or `$1` inside it.
+  return fileText.replace(re, (_match, open, close) => `${open}\n${body}\n${close}`);
 }
 
 let stale = 0;

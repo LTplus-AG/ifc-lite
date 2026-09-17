@@ -10,6 +10,8 @@ import {
   costAttributePresent, costNumericLexeme, costNumericTypeLexeme, costReferenceLexeme, costReferenceListLexeme,
   splitCostAttributeLexemes,
 } from './cost-step-lexemes.js';
+import type { CostMutationOverlay } from './cost-overlay.js';
+import type { CostDiagnostic } from './cost-types.js';
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
 class CostSourceCache implements IfcSourceBytes {
@@ -36,20 +38,87 @@ class CostSourceCache implements IfcSourceBytes {
   toTransferable(): ReturnType<IfcSourceBytes['toTransferable']> { return this.source.toTransferable(); }
 }
 
-/** Memoized source reader used once per cost extraction. */
+/**
+ * Memoized source reader used once per cost extraction.
+ *
+ * When an {@link CostMutationOverlay} is supplied, every read goes through it
+ * first: a tombstoned entity does not exist (no id, no type, no record), a
+ * retyped entity is listed under and reports its pending class, and a record
+ * any pending edit reaches is read from the text the exporter will write for
+ * it. This is the one place the overlay is applied — see `cost-overlay.ts`
+ * for why it is here and not on the finished graph. The caches below are
+ * per-reader and a reader is built per extraction, so an overlaid read never
+ * reuses an unoverlaid entry.
+ */
 export class CostEntityReader {
   private readonly extractor: EntityExtractor;
   private readonly source: IfcSourceBytes;
   private readonly cache = new Map<number, IfcEntity | null>();
   private readonly lexemeCache = new Map<number, string[]>();
+  private readonly recordCache = new Map<number, string | null | undefined>();
+  private retyped: ReadonlyMap<number, string> | undefined;
 
-  constructor(private readonly store: IfcDataStore) {
+  constructor(
+    private readonly store: IfcDataStore,
+    private readonly overlay?: CostMutationOverlay,
+    private readonly diagnostics?: CostDiagnostic[],
+  ) {
     this.source = new CostSourceCache(asSourceBytes(store.source));
     this.extractor = new EntityExtractor(this.source);
   }
 
+  /** True when a pending edit has deleted `expressId` from the loaded model. */
+  private isDeleted(expressId: number): boolean {
+    return this.overlay?.isDeleted(expressId) === true;
+  }
+
+  /** Pending retypes, UPPERCASE, restricted to entities the source actually has. */
+  private retypes(): ReadonlyMap<number, string> {
+    if (!this.retyped) {
+      const retyped = new Map<number, string>();
+      for (const [id, type] of this.overlay?.retypes() ?? []) {
+        if (getEntityRefFromStore(this.store, id)) retyped.set(id, type.toUpperCase());
+      }
+      this.retyped = retyped;
+    }
+    return this.retyped;
+  }
+
+  /**
+   * The record text an overlaid read sees, or `undefined` when the record
+   * reads exactly as the source states it (no overlay, or no edit reaches it)
+   * and the unoverlaid source path applies. `null` means no record at all.
+   */
+  private overlaidRecord(expressId: number): string | null | undefined {
+    if (!this.overlay) return undefined;
+    if (this.recordCache.has(expressId)) return this.recordCache.get(expressId);
+    const ref = this.isDeleted(expressId) ? null : getEntityRefFromStore(this.store, expressId);
+    let text: string | null | undefined = null;
+    if (ref) {
+      const sourceText = this.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
+      const effective = this.overlay.effectiveRecord(expressId, sourceText, ref.type);
+      // Unchanged text reads through the shared source extractor and caches.
+      text = effective.text === sourceText ? undefined : effective.text;
+      for (const reason of effective.notWritten) {
+        this.diagnostics?.push({
+          Code: 'PENDING_EDIT_NOT_APPLIED', Severity: 'warning', expressId,
+          Message: `A pending edit to #${expressId} is not written on export and is not reflected here: ${reason}`,
+        });
+      }
+    }
+    this.recordCache.set(expressId, text);
+    return text;
+  }
+
   ids(type: string): readonly number[] {
-    return this.store.entityIndex.byType.get(type.toUpperCase()) ?? [];
+    const wanted = type.toUpperCase();
+    const ids = this.store.entityIndex.byType.get(wanted) ?? [];
+    if (!this.overlay) return ids;
+    const retyped = this.retypes();
+    const kept = ids.filter(id => !this.isDeleted(id) && (retyped.get(id) ?? wanted) === wanted);
+    const retypedIn = [...retyped].filter(([id, newType]) => newType === wanted && !this.isDeleted(id) && !ids.includes(id));
+    if (retypedIn.length === 0) return kept;
+    return [...kept, ...retypedIn.map(([id]) => id)].sort((a, b) => a - b);
   }
 
   get schemaVersion(): IfcDataStore['schemaVersion'] {
@@ -59,23 +128,37 @@ export class CostEntityReader {
   get(expressId: number): IfcEntity | null {
     const cached = this.cache.get(expressId);
     if (cached !== undefined) return cached;
-    const ref = getEntityRefFromStore(this.store, expressId);
-    const entity = ref ? this.extractor.extractEntity(ref) : null;
+    const record = this.overlaidRecord(expressId);
+    let entity: IfcEntity | null;
+    if (record === undefined) {
+      const ref = getEntityRefFromStore(this.store, expressId);
+      entity = ref ? this.extractor.extractEntity(ref) : null;
+    } else if (record === null) {
+      entity = null;
+    } else {
+      const bytes = new TextEncoder().encode(record);
+      entity = new EntityExtractor(bytes).extractEntity({
+        expressId, type: this.typeOf(expressId) ?? '', byteOffset: 0, byteLength: bytes.byteLength, lineNumber: 0,
+      });
+    }
     this.cache.set(expressId, entity);
     return entity;
   }
 
   typeOf(expressId: number): string | undefined {
-    return getEntityRefFromStore(this.store, expressId)?.type.toUpperCase();
+    if (this.isDeleted(expressId)) return undefined;
+    const type = getEntityRefFromStore(this.store, expressId)?.type.toUpperCase();
+    if (type === undefined || !this.overlay) return type;
+    return this.retypes().get(expressId) ?? type;
   }
 
   attributeLexeme(expressId: number, index: number): string | undefined {
     let lexemes = this.lexemeCache.get(expressId);
     if (!lexemes) {
-      const ref = getEntityRefFromStore(this.store, expressId);
-      lexemes = ref
-        ? splitCostAttributeLexemes(this.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength))
-        : [];
+      const record = this.overlaidRecord(expressId);
+      const ref = record === undefined ? getEntityRefFromStore(this.store, expressId) : undefined;
+      const text = record ?? (ref ? this.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength) : undefined);
+      lexemes = text === undefined ? [] : splitCostAttributeLexemes(text);
       this.lexemeCache.set(expressId, lexemes);
     }
     return lexemes[index];

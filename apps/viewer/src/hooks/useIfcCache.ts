@@ -400,7 +400,7 @@ export function useIfcCache() {
               break;
             }
             allMeshes.push(...chunkMeshes);
-            appendGeometryBatch(chunkMeshes, open.coordinateInfo);
+            appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
             if ((i & 3) === 3 || i === open.chunks.length - 1) {
               setProgress({
                 phase: 'Loading geometry from cache',

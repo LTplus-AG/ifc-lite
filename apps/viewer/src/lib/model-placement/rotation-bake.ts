@@ -10,7 +10,7 @@
  * redoing, importing and resetting all move the same declared value, so all
  * five arrive here and none needs its own geometry path.
  *
- * TWO ORDERING CONTRACTS, both load-bearing:
+ * THREE ORDERING CONTRACTS, all load-bearing:
  *
  *  1. **Nothing else may rewrite a rotated model's vertices IN PLACE without
  *     bumping the content version.** A federation re-align must call
@@ -26,6 +26,21 @@
  *     untouched model's already-rotated vertices as "pristine" and turn it a
  *     second time. The only in-place rewrite of existing meshes is a re-align,
  *     which (1) already brackets.
+ *
+ *  3. **An operation that moves a model's RENDER FRAME rather than its geometry
+ *     must move the baseline with it**, by calling {@link
+ *     ModelRotationBaker.rebaseFrame} before it republishes the model. The
+ *     federation RTC convergence (`hooks/ingest/federationRtcRebase.ts`, #4897)
+ *     is that operation: it shifts each mesh's f64 `origin` and the
+ *     `CoordinateInfo` anchor and leaves `positions` untouched, so contract (1)
+ *     does not catch it — the vertices never change and un-baking around it
+ *     would be wrong anyway, because a yaw and a pure translation commute and
+ *     the already-baked heading rides along correctly. What does NOT ride along
+ *     is the pristine copy: a baseline taken in the pre-convergence frame would
+ *     restore pre-convergence origins, dropping the model back out of the
+ *     shared frame on the next heading edit. The stored PIVOT is frame-relative
+ *     for the same reason and is rebased beside it
+ *     (`modelPlacementSlice.rebasePlacementFrame`).
  *
  * Nothing here relies on the identity of the geometry OBJECT. Streaming
  * (`appendGeometryBatch`) pushes meshes onto the live array and republishes it
@@ -49,11 +64,12 @@
  * rotation returns to zero.
  */
 
-import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData, Vec3 } from '@ifc-lite/geometry';
+import { applyModelRotation } from './rotation-geometry.js';
 import {
-  applyModelRotation, baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
-  type RotationBaseline,
-} from './rotation-geometry.js';
+  baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
+  rebaseBaselineByRtcDelta, type RotationBaseline,
+} from './rotation-baseline.js';
 import { equalRotation, isZeroRotation, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 
 type Geometry = Pick<GeometryResult, 'meshes' | 'coordinateInfo' | 'instancedGeometryAabbs'>;
@@ -163,6 +179,18 @@ export class ModelRotationBaker {
     }
     this.entries.clear();
     return moved;
+  }
+
+  /**
+   * Follow one model's live geometry onto a new RTC anchor (contract 3): the
+   * federation convergence moved its meshes by `delta` without a bake, so the
+   * pristine copy a later restore writes back has to move by the same delta.
+   *
+   * A no-op for a model with no baseline, which is every un-rotated model.
+   */
+  rebaseFrame(modelId: string, delta: Readonly<Vec3>): void {
+    const entry = this.entries.get(modelId);
+    if (entry) rebaseBaselineByRtcDelta(entry.baseline, delta);
   }
 
   /** Drop one model's baseline without restoring anything — the model and its

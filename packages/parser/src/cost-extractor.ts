@@ -20,6 +20,7 @@ import type {
   CostScheduleInfo,
   CostValueInfo,
 } from './cost-types.js';
+import type { CostExtractionOptions } from './cost-overlay.js';
 import { CostUnitResolver } from './cost-units.js';
 
 function scalarString(value: unknown): string | undefined {
@@ -240,7 +241,10 @@ function extractValues(
 }
 
 /** Extract a schema-aware, read-only IFC cost graph from a parsed store. */
-export function extractCostOnDemand(store: IfcDataStore): CostGraphExtraction {
+export function extractCostOnDemand(
+  store: IfcDataStore,
+  options?: CostExtractionOptions,
+): CostGraphExtraction {
   const schema = store.schemaVersion;
   const diagnostics: CostDiagnostic[] = [];
   const empty = (): CostGraphExtraction => ({
@@ -249,7 +253,7 @@ export function extractCostOnDemand(store: IfcDataStore): CostGraphExtraction {
     HasCostData: false, costSchedules: [], costItems: [], hasCost: false,
   });
   if (!store.source?.length) return empty();
-  const reader = new CostEntityReader(store);
+  const reader = new CostEntityReader(store, options?.overlay, diagnostics);
   const hasCost = reader.ids('IFCCOSTSCHEDULE').length + reader.ids('IFCCOSTITEM').length +
     reader.ids('IFCCOSTVALUE').length + reader.ids('IFCAPPLIEDVALUE').length > 0;
   if (!hasCost) return empty();

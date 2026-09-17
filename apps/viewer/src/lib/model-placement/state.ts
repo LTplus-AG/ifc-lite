@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { addTranslation, equalTranslation, finiteTranslation, assertRenderableTranslation, ZERO_TRANSLATION,
-  type MoveConstraint, type Translation } from './translation.js';
+import { addTranslation, equalTranslation, finiteTranslation, assertRenderableTranslation, subtractTranslation,
+  ZERO_TRANSLATION, type MoveConstraint, type Translation } from './translation.js';
 import { equalRotation, finiteRotation, normalizeAngle, pivotInModelFrame, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 
 export interface ModelPlacement {
@@ -211,6 +211,65 @@ export function rotatePlacements(
   }
   // The preview's own `before` map is superseded by the one built here.
   return commitPlacements(cancelPlacement(state), before, after);
+}
+
+/**
+ * Re-express every recorded pivot after the workspace frame ITSELF moved under
+ * the models — the federation RTC convergence putting a model onto the shared
+ * anchor (`hooks/ingest/federationRtcRebase.ts`, #4897).
+ *
+ * A translation is a DIFFERENCE of workspace points, so a frame shift leaves it
+ * alone. A pivot is a POINT and is not: leaving it behind would turn the model
+ * about a place kilometres from where the user put the axis, because the same
+ * numbers now name somewhere else. History is rebased with the live placements,
+ * or an undo would restore a pivot recorded in a frame no model is in any more.
+ *
+ * `deltas` is per model, in engineering workspace metres, and names only the
+ * models that actually moved; a point moves by `-delta`, like the render-frame
+ * origins the convergence shifts.
+ */
+export function rebasePlacementPivots(
+  state: PlacementState, deltas: ReadonlyMap<string, Translation>,
+): PlacementState {
+  if (deltas.size === 0) return state;
+  // Unchanged placements are returned by IDENTITY throughout, so the no-op case
+  // can be detected and the revision left alone — bumping it would cancel an
+  // in-flight asynchronous pick for nothing.
+  const shift = (id: string, placement: ModelPlacement): ModelPlacement => {
+    const delta = deltas.get(id);
+    // A zero angle carries no meaningful pivot (`equalRotation` ignores it), so
+    // moving it would only churn history.
+    if (!delta || placement.rotation.angle === 0) return placement;
+    return { ...placement, rotation: { angle: placement.rotation.angle,
+      pivot: subtractTranslation(placement.rotation.pivot, delta) } };
+  };
+  const shiftMap = (map: ReadonlyMap<string, ModelPlacement>): ReadonlyMap<string, ModelPlacement> => {
+    let moved = false;
+    const next = new Map<string, ModelPlacement>();
+    for (const [id, placement] of map) {
+      const shifted = shift(id, placement);
+      if (shifted !== placement) moved = true;
+      next.set(id, shifted);
+    }
+    return moved ? next : map;
+  };
+  const shiftCommand = (command: PlacementCommand): PlacementCommand => {
+    const before = shiftMap(command.before), after = shiftMap(command.after);
+    return before === command.before && after === command.after ? command : { ...command, before, after };
+  };
+  const placements = shiftMap(state.placements);
+  const undo = state.undo.map(shiftCommand), redo = state.redo.map(shiftCommand);
+  // A pending move was picked against workspace points that have just moved, and
+  // its two anchors can belong to models that moved by different deltas, so
+  // there is no honest way to carry it. Cancelled, exactly as an explicit
+  // re-alignment cancels it.
+  const preview = state.preview && [...state.preview.modelIds, state.preview.source?.modelId,
+    state.preview.target?.modelId].some((id) => id !== undefined && deltas.has(id))
+    ? null : state.preview;
+  if (placements === state.placements && preview === state.preview
+    && undo.every((command, index) => command === state.undo[index])
+    && redo.every((command, index) => command === state.redo[index])) return state;
+  return { ...state, placements, preview, undo, redo, revision: state.revision + 1 };
 }
 
 export function replayPlacement(state: PlacementState, direction: 'undo' | 'redo'): PlacementState {

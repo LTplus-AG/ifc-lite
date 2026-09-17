@@ -5,7 +5,22 @@
 import { createCostBackend, type CostBackendMethods } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getDefaultModelId, getModelForRef } from './model-compat.js';
+import { getMutationViewForModel } from './mutation-view.js';
 
+/**
+ * `bim.cost` over a loaded viewer model.
+ *
+ * The model's `MutablePropertyView` is handed straight to the backend (#4857),
+ * which reads every edited cost record through the exporter's own mutation
+ * pipeline, so there is no adapter shape in between to drift. `getMutationViewForModel`
+ * returns `null` until the session actually edits the model, and `null`
+ * becomes `undefined` here — an unedited model keeps the cached, on-disk read
+ * path it has always taken.
+ *
+ * This is the same view `export.ifc` passes to `StepExporter` when
+ * `includeMutations` is not `false`, which is what makes the read model and
+ * the exported bytes describe one file rather than two.
+ */
 export function createCostAdapter(store: StoreApi): CostBackendMethods {
   return createCostBackend(requestedModelId => {
     const state = store.getState();
@@ -14,6 +29,7 @@ export function createCostAdapter(store: StoreApi): CostBackendMethods {
     const model = getModelForRef(state, modelId);
     if (!model) throw new Error(`Unknown modelId '${modelId}'`);
     if (!model.ifcDataStore) throw new Error(`bim.cost requires loaded IFC source bytes for model '${modelId}'`);
-    return { modelId, store: model.ifcDataStore };
+    const mutationView = getMutationViewForModel(store, modelId) ?? undefined;
+    return { modelId, store: model.ifcDataStore, ...(mutationView ? { mutationView } : {}) };
   });
 }

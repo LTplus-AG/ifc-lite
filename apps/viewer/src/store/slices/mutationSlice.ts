@@ -995,9 +995,9 @@ function runInStoreElementBuilder(
     if (mesh) {
       createdMesh = mesh;
       const cross = get() as unknown as {
-        appendGeometryBatch?: (batch: MeshData[]) => void;
+        appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
       };
-      cross.appendGeometryBatch?.([mesh]);
+      cross.appendGeometryBatch?.(modelId, [mesh]);
       revealAddedGeometryInModelView(get);
     }
   }
@@ -2386,9 +2386,9 @@ export const createMutationSlice: StateCreator<
     });
     if (columnMesh) {
       const cross = get() as unknown as {
-        appendGeometryBatch?: (batch: MeshData[]) => void;
+        appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
       };
-      cross.appendGeometryBatch?.([columnMesh]);
+      cross.appendGeometryBatch?.(modelId, [columnMesh]);
       revealAddedGeometryInModelView(get);
     }
 
@@ -2640,9 +2640,9 @@ export const createMutationSlice: StateCreator<
     // renderer picks them up via its standard tick.
     if (clonedMeshes.length > 0) {
       const cross = get() as unknown as {
-        appendGeometryBatch?: (batch: MeshData[]) => void;
+        appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
       };
-      cross.appendGeometryBatch?.(clonedMeshes);
+      cross.appendGeometryBatch?.(modelId, clonedMeshes);
       revealAddedGeometryInModelView(get);
     }
 

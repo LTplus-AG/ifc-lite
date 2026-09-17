@@ -11,7 +11,7 @@ export type CostDiagnosticCode =
   | 'MULTIPLE_NESTING_PARENTS' | 'NESTING_CYCLE' | 'QUANTITY_CYCLE' | 'VALUE_CYCLE'
   | 'MISSING_VALUE' | 'INVALID_NUMBER' | 'UNSUPPORTED_APPLIED_VALUE' | 'UNSUPPORTED_CONDITION'
   | 'UNSUPPORTED_UNIT' | 'INCOMPATIBLE_UNIT' | 'MISSING_CURRENCY' | 'MIXED_CURRENCY'
-  | 'DIVISION_BY_ZERO';
+  | 'DIVISION_BY_ZERO' | 'PENDING_EDIT_NOT_APPLIED';
 
 export interface CostDiagnosticData {
   Code: CostDiagnosticCode;
@@ -109,11 +109,31 @@ export interface CostEvaluationData {
   Diagnostics: CostDiagnosticData[];
 }
 
+/**
+ * Whether a cost read observes the loaded model's PENDING edits (#4857).
+ *
+ * `includeMutations` defaults to `true` and means "the cost graph as this
+ * session would export it": renames, retitles and deletions that are staged
+ * in the model's edit overlay are already applied, so `bim.cost.*` and
+ * `bim.export.ifc()` describe the same file.
+ *
+ * `includeMutations: false` means "the cost graph as the file on disk states
+ * it" — the same answer the read model gave before any edit was made. It does
+ * NOT mean an empty cost graph, and it does not mean "cost data is
+ * unavailable": a model with cost entities and pending edits still reports
+ * every one of those entities, at their on-disk values. The flag is the exact
+ * mirror of `bim.export.ifc`'s option of the same name, which likewise
+ * exports the unmutated file rather than an empty one.
+ */
+export interface CostReadOptions {
+  includeMutations?: boolean;
+}
+
 export interface CostBackendMethods {
-  data(modelId?: string): CostGraphData;
-  schedules(modelId?: string): CostScheduleData[];
-  items(modelId?: string): CostItemData[];
-  values(modelId?: string): CostValueData[];
-  evaluateItem(ref: EntityRef, options?: CostEvaluationOptions): CostEvaluationData;
-  evaluateValue(ref: EntityRef, options?: CostEvaluationOptions): CostEvaluationData;
+  data(modelId?: string, options?: CostReadOptions): CostGraphData;
+  schedules(modelId?: string, options?: CostReadOptions): CostScheduleData[];
+  items(modelId?: string, options?: CostReadOptions): CostItemData[];
+  values(modelId?: string, options?: CostReadOptions): CostValueData[];
+  evaluateItem(ref: EntityRef, options?: CostEvaluationOptions & CostReadOptions): CostEvaluationData;
+  evaluateValue(ref: EntityRef, options?: CostEvaluationOptions & CostReadOptions): CostEvaluationData;
 }

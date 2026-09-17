@@ -15,6 +15,8 @@ import { realignFederationModels } from '@/hooks/ingest/federationRealign';
 import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
+import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
+import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { reconcileModelRotations, subscribeModelRotationSync, withModelRotationsUnbaked } from './useModelRotationSync';
 
 /** 30°, an off-origin pivot, and an asymmetric shape: at 0°, at the origin, or
@@ -285,5 +287,129 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       assert.throws(() => useViewerStore.getState().setModelRotation(['ifc'], { angle: rotation.angle, pivot: [...rotation.pivot] }));
     }
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+});
+
+/**
+ * The federation RTC convergence (#4897, reworked by #4906) is the SECOND
+ * operation that rewrites a settled model's render frame in place, after a
+ * re-align. It shifts each mesh's f64 `origin` and the `CoordinateInfo` frame
+ * — exactly the state a rotation baseline and a stored pivot are recorded in —
+ * so a heading and a convergence have to compose without either being applied
+ * twice or dropped. These read the ABSOLUTE world position, the one quantity
+ * neither operation is allowed to change behind the other's back.
+ */
+describe('a federation RTC convergence composes with a model heading (#4869 + #4897)', () => {
+  /** Non-round and asymmetric in sign: a round anchor hides axis mix-ups. */
+  const ANCHOR = { x: 1234567.891, y: -987654.321, z: 42.75 };
+
+  function anchoredModel(id: string, loadedAt: number): FederatedModel {
+    const geometry = secondGeometryResult();
+    geometry.coordinateInfo = { ...geometry.coordinateInfo,
+      wasmRtcOffset: { ...ANCHOR }, wasmRtcFrame: { ...ANCHOR, needsShift: true } };
+    return { ...fixtureModel(id), geometryResult: geometry, loadedAt } as FederatedModel;
+  }
+
+  /** Every vertex in absolute world coordinates: render position + the mesh's
+   * f64 origin + the frame offset. A convergence changes the last two and must
+   * leave the sum untouched; a bake changes the first two and must move the sum
+   * by exactly one heading. */
+  function worldVertices(model: FederatedModel): number[] {
+    const geometry = model.geometryResult!;
+    const offset = totalYupOffset(geometry.coordinateInfo);
+    const out: number[] = [];
+    for (const mesh of geometry.meshes) {
+      const origin = mesh.origin ?? [0, 0, 0];
+      for (let i = 0; i < mesh.positions.length; i += 3) {
+        out.push(mesh.positions[i] + origin[0] + offset.x,
+          mesh.positions[i + 1] + origin[1] + offset.y,
+          mesh.positions[i + 2] + origin[2] + offset.z);
+      }
+    }
+    return out;
+  }
+
+  /** The pivot `RotationControls.defaultPivot` offers for a model that already
+   * has a heading: the one it was given, back in workspace coordinates. */
+  function shownPivot(modelId: string): Translation {
+    const placement = placementFor(useViewerStore.getState().modelPlacement, modelId);
+    return addTranslation(placement.rotation.pivot, placement.translation);
+  }
+
+  /** A single raw-framed model, as `beforeEach` leaves it but with a
+   * `loadedAt` so the anchor choice is deterministic. */
+  function seed(): void {
+    modelRotationBaker.clear();
+    const model = { ...fixtureModel('ifc'), geometryResult: geometryResult(), loadedAt: 1 } as FederatedModel;
+    useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState(), geometryContentVersion: 0 });
+  }
+
+  /** The ordinary way a convergence happens: a georeferenced model joins a
+   * federation whose existing model was meshed in the raw frame. */
+  function joinGeoreferencedModel(): void {
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['geo', anchoredModel('geo', 2)]]) });
+    convergeFederationRtcFrame();
+  }
+
+  it('leaves an already-baked heading exactly where it is in the world', () => {
+    seed();
+    useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
+    reconcileModelRotations(useViewerStore.getState());
+    const before = worldVertices(live());
+    const renderOrigin = [...live().geometryResult!.meshes[0].origin!];
+
+    joinGeoreferencedModel();
+
+    // Not vacuous: the rotated model really was moved onto the shared anchor.
+    assert.notDeepEqual([...live().geometryResult!.meshes[0].origin!], renderOrigin,
+      'the rotated model was never converged, so this test proves nothing');
+    const after = worldVertices(live());
+    for (let i = 0; i < before.length; i += 1) {
+      assert.ok(Math.abs(after[i] - before[i]) < 1e-6,
+        `component ${i}: the convergence moved a rotated model in the world, ${after[i]} vs ${before[i]}`);
+    }
+  });
+
+  it('re-editing the heading after a convergence lands the model where it would have without one', () => {
+    const edit = () => {
+      useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
+      reconcileModelRotations(useViewerStore.getState());
+    };
+    const reEdit = () => {
+      useViewerStore.getState().setModelRotation(['ifc'], { angle: degreesToRadians(-55), pivot: shownPivot('ifc') });
+      reconcileModelRotations(useViewerStore.getState());
+    };
+
+    seed(); edit(); reEdit();
+    const withoutConverge = worldVertices(live());
+
+    seed(); edit(); joinGeoreferencedModel(); reEdit();
+    const withConverge = worldVertices(live());
+
+    for (let i = 0; i < withoutConverge.length; i += 1) {
+      assert.ok(Math.abs(withConverge[i] - withoutConverge[i]) < 1e-3,
+        `component ${i}: ${withConverge[i]} with a convergence in between vs ${withoutConverge[i]} without`);
+    }
+  });
+
+  it('clearing the heading after a convergence restores the model into the SHARED frame', () => {
+    seed();
+    const pristine = worldVertices(live());
+    useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
+    reconcileModelRotations(useViewerStore.getState());
+    assert.notDeepEqual(worldVertices(live()).map((v) => Math.round(v)), pristine.map((v) => Math.round(v)),
+      'the fixture must actually turn under this heading');
+    joinGeoreferencedModel();
+
+    useViewerStore.getState().setModelRotation(['ifc'], { angle: 0, pivot: shownPivot('ifc') });
+    reconcileModelRotations(useViewerStore.getState());
+
+    // Clearing a heading restores the pristine shape — at the pristine WORLD
+    // position, not back in the raw frame the model was loaded in.
+    const cleared = worldVertices(live());
+    for (let i = 0; i < pristine.length; i += 1) {
+      assert.ok(Math.abs(cleared[i] - pristine[i]) < 1e-6,
+        `component ${i}: clearing the heading left the model at ${cleared[i]} instead of ${pristine[i]}`);
+    }
   });
 });

@@ -20,6 +20,11 @@
       "types": "./dist/world-frame.d.ts",
       "import": "./dist/world-frame.js",
       "default": "./dist/world-frame.js"
+    },
+    "./rtc-rebase": {
+      "types": "./dist/rtc-rebase.d.ts",
+      "import": "./dist/rtc-rebase.js",
+      "default": "./dist/rtc-rebase.js"
     }
   },
   "scripts": {

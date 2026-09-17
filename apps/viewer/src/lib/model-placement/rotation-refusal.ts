@@ -14,6 +14,7 @@
  */
 
 import type { ViewerState } from '@/store';
+import { hasInstancedShards } from '@/store/instancedShardModels';
 import { modelIndices } from './model-indices.js';
 
 export const POINTCLOUD_ROTATION_REFUSAL = 'Pointclouds cannot be rotated. Select only IFC models to rotate.';
@@ -34,15 +35,22 @@ export function setInstancedModelIndexSource(source: () => readonly number[] | n
 }
 
 /**
- * True when any of the model's geometry is drawn GPU-instanced. Three signals,
+ * True when any of the model's geometry is drawn GPU-instanced. Four signals,
  * because each covers a moment the others miss: the instanced-only entity maps
- * on a finished geometry, shard bytes queued but not yet uploaded, and the
- * renderer's own templates (which also catch an entity only partly instanced).
+ * on a finished geometry, shard bytes queued but not yet uploaded, shards
+ * already drained into renderer buffers, and the renderer's own templates
+ * (which also catch an entity only partly instanced).
+ *
+ * The drained-shard signal is the SAME register the federation RTC convergence
+ * refuses on (`store/instancedShardModels.ts`, #4897). The two must agree: a
+ * model the convergence will not move but a rotation will turn would end up
+ * carrying a baked heading in a frame the rest of the federation has left.
  */
 export function modelHasInstancedGeometry(state: RefusalState, modelId: string): boolean {
   const geometry = state.models.get(modelId)?.geometryResult;
   if ((geometry?.instancedGeometryHashes?.size ?? 0) > 0 || (geometry?.instancedGeometryAabbs?.size ?? 0) > 0) return true;
   if (state.pendingInstancedShards?.some((shard) => shard.modelId === modelId)) return true;
+  if (hasInstancedShards(modelId)) return true;
   const owners = instancedOwners();
   if (!owners || owners.length === 0) return false;
   const index = modelIndices(state.models).get(modelId);

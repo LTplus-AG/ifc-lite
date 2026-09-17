@@ -251,6 +251,12 @@ function resolveNode(nodes, applied, operator, componentPaths) {
         if (values.slice(1).some(v => v === 0)) return null;
         return values.slice(1).reduce((a, b) => a / b, values[0]);
       }
+      // Truncated remainder (sign of the dividend); dump_reference_cost.py
+      // uses math.fmod to match.
+      case 'MODULO': {
+        if (values.length !== 2 || values[1] === 0) return null;
+        return values[0] % values[1];
+      }
       default: return null;
     }
   }

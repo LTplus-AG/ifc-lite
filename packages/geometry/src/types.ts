@@ -178,9 +178,12 @@ export interface MeshData {
    *  precision — don't conflate the two. */
   localBounds?: { min: [number, number, number]; max: [number, number, number] };
   /** The resolved `IfcLocalPlacement` chain applied to this mesh (issue
-   *  #1474): row-major 4x4, 16 numbers, WebGL Y-up metres (same frame as
-   *  `positions`). Absent when not captured. All of one entity's `MeshData`
-   *  pieces share the same value (one placement per element). */
+   *  #1474): row-major 4x4, 16 numbers, WebGL Y-up axis convention — but its
+   *  translation is the placement's PRE-RTC absolute origin, not the frame
+   *  `positions` render in (`mesh_world.rs` assigns this before subtracting
+   *  the model's RTC offset). Do NOT shift it when RTC changes. Absent when
+   *  not captured. All of one entity's `MeshData` pieces share the same
+   *  value (one placement per element). */
   localToWorld?: number[];
 }
 

@@ -4,10 +4,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { applyModelRotation, modelBoundsCentre } from './rotation-geometry.js';
 import {
-  applyModelRotation, baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
-  modelBoundsCentre,
-} from './rotation-geometry.js';
+  baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
+} from './rotation-baseline.js';
 import { degreesToRadians, rotateWorkspacePoint, type ModelRotation } from './rotation.js';
 import { addTranslation, fromRenderTranslation, type Translation } from './translation.js';
 

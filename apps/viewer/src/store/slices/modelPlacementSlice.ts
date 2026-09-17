@@ -5,13 +5,14 @@ import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
 import { beginPlacement, cancelPlacement, commitPlacement, emptyPlacementState, previewPlacement,
-  replayPlacement, resetPlacements, retainLoadedPlacements, placementFor, importPlacements, rotatePlacements,
-  type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
+  rebasePlacementPivots, replayPlacement, resetPlacements, retainLoadedPlacements, placementFor, importPlacements,
+  rotatePlacements, type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
 import type { ModelRotation } from '../../lib/model-placement/rotation.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { rotationRefusal } from '../../lib/model-placement/rotation-refusal.js';
-import { constrainTranslation, finiteTranslation, subtractTranslation,
+import { constrainTranslation, finiteTranslation, fromRenderTranslation, subtractTranslation,
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
+import type { Vec3 } from '@ifc-lite/geometry';
 import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
 import { placementFrameKey } from '../../lib/model-placement/persistence.js';
 
@@ -34,6 +35,14 @@ export interface ModelPlacementSlice {
    * the same stack. */
   setModelRotation: (ids: readonly string[], rotation: ModelRotation) => void;
   setModelPositionLocked: (modelId: string, locked: boolean) => void;
+  /**
+   * Follow recorded pivots onto a new RTC anchor after the federation
+   * convergence moved a model's render frame (`federationRtcRebase.ts`).
+   * `deltas` are RENDER-frame (Y-up) vectors per moved model; the placement
+   * state keeps engineering Z-up metres, so they are converted here rather
+   * than teaching the frame code about workspace axes.
+   */
+  rebasePlacementFrame: (deltas: ReadonlyMap<string, Vec3>) => void;
   setRepositionNudge: (metres: number) => void;
   importModelPlacements: (manifest: PlacementManifest, bindings?: ReadonlyMap<string, string>) => void;
 }
@@ -104,6 +113,11 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     // Same rule as a move: a committed change stamps the frame its numbers are in.
     return { modelPlacement: rotated.placements === state.modelPlacement.placements ? rotated
       : { ...rotated, frameKey: placementFrameKey(state) } };
+  }),
+  rebasePlacementFrame: (deltas) => set((state) => {
+    const workspace = new Map([...deltas].map(([id, delta]) => [id, fromRenderTranslation(delta)] as const));
+    const rebased = rebasePlacementPivots(state.modelPlacement, workspace);
+    return rebased === state.modelPlacement ? {} : { modelPlacement: rebased };
   }),
   setModelPositionLocked: (modelId, locked) => set((state) => {
     if (!state.models.has(modelId)) return {};

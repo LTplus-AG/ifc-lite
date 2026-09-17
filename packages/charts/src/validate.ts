@@ -38,6 +38,8 @@ function num(errors: DashboardValidationError[], obj: Record<string, unknown>, k
   if (typeof v !== 'number' || !Number.isFinite(v)) errors.push({ path: `${path}.${key}`, message: 'expected a finite number' });
 }
 
+const SPATIAL_LEVELS = new Set(['Container', 'Building', 'Site', 'Project']);
+
 function validateChart(chart: unknown, path: string, errors: DashboardValidationError[]): void {
   if (!isRecord(chart)) {
     errors.push({ path, message: 'expected a chart object' });
@@ -67,7 +69,15 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       else if (field.kind === 'property') {
         str(errors, field, 'psetName', fieldPath);
         str(errors, field, 'propertyName', fieldPath);
-      } else errors.push({ path: `${fieldPath}.kind`, message: 'expected attribute or property' });
+      } else if (field.kind === 'quantity') {
+        str(errors, field, 'qsetName', fieldPath);
+        str(errors, field, 'quantityName', fieldPath);
+      } else if (field.kind === 'classification') str(errors, field, 'system', fieldPath, true);
+      else if (field.kind === 'spatial') {
+        if (!SPATIAL_LEVELS.has(String(field.level))) errors.push({ path: `${fieldPath}.level`, message: `expected one of ${[...SPATIAL_LEVELS].join(', ')}` });
+      } else if (field.kind !== 'material' && field.kind !== 'type') {
+        errors.push({ path: `${fieldPath}.kind`, message: 'expected attribute, property, quantity, material, classification, type or spatial' });
+      }
     }
   }
   str(errors, chart, 'dimension', path);

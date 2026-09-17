@@ -21,7 +21,7 @@ export interface ElementFieldCatalogState {
   loading: boolean;
 }
 
-const EMPTY: ElementFieldCatalog = { attributes: [], properties: new Map() };
+const EMPTY: ElementFieldCatalog = { attributes: [], properties: new Map(), quantities: new Map(), relations: [] };
 const CHUNK = 500;
 
 export function useElementFieldCatalog(enabled: boolean): ElementFieldCatalogState {

@@ -390,6 +390,36 @@ END-ISO-10303-21;`);
     const ratio: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Ratio', valueKind: 'number', dataType: 'IFCREAL' };
     useViewerStore.setState({ models: new Map([[realMm.id, realMm]]), activeModelId: realMm.id });
     assert.equal(cellOf(buildElementsDataset({ kind: 'all' }, [ratio], useViewerStore.getState()), ratio, GID(41)).status, 'unsupported');
+  it('elements: a quantity sums in one unit across a millimetre and a metre model, and honours its own explicit Unit (#4833)', async () => {
+    const qtoModel = async (id: string, offset: number, prefix: string, depth: string, unitRef = '$', extra = '') => {
+      const source = MINI_IFC
+        .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+        .replace('ENDSEC;\nEND-ISO-10303-21;', `#200=IFCSIUNIT(*,.LENGTHUNIT.,${prefix},.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+${extra}
+#203=IFCQUANTITYLENGTH('Depth',$,${unitRef},${depth},$);
+#204=IFCELEMENTQUANTITY('0Qto000000000000000204',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);
+ENDSEC;
+END-ISO-10303-21;`);
+      return { ...fixtureModel(id, { idOffset: offset }), ifcDataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer), maxExpressId: 210 };
+    };
+    const mm = await qtoModel('mm', 0, '.MILLI.', '250.');
+    const metre = await qtoModel('metre', OFFSET, '$', '0.25');
+    // A metre-project quantity that declares its own centimetre unit.
+    const explicit = await qtoModel('explicit', 2 * OFFSET, '$', '25.', '#206', '#206=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);');
+    const field: ElementFieldBinding = { kind: 'quantity', qsetName: 'Qto_WallBaseQuantities', quantityName: 'Depth', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    assert.deepEqual(createElementFieldReader(mm.ifcDataStore).discover([41]).quantities.get('Qto_WallBaseQuantities')?.[0]?.binding, field);
+    useViewerStore.setState({ models: new Map([[mm.id, mm], [metre.id, metre], [explicit.id, explicit]]), activeModelId: mm.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const near = (cell: { value: unknown }, expected: number) => typeof cell.value === 'number' && Math.abs(cell.value - expected) < 1e-9;
+    assert.equal(cellOf(dataset, field, 41).unit, 'mm');
+    assert.ok(near(cellOf(dataset, field, 41), 250));
+    assert.ok(near(cellOf(dataset, field, GID(41)), 250), `0.25 m is 250 mm, got ${String(cellOf(dataset, field, GID(41)).value)}`);
+    assert.ok(near(cellOf(dataset, field, 2 * OFFSET + 41), 250), `25 cm is 250 mm, got ${String(cellOf(dataset, field, 2 * OFFSET + 41).value)}`);
+    const agg = aggregate({ id: 'q', title: 'q', source: 'elements', type: 'bar', dimension: 'Model', measure: { agg: 'sum', column: elementFieldColumnId(field) } }, dataset);
+    assert.ok(Math.abs(agg.total - 750) < 1e-9);
+    assert.equal(agg.unit, 'mm');
   });
 
   it('clash: the fingerprint follows a regroup and a review status edit, so a selected Other bucket cannot stay live on moved rows (#4833)', async () => {

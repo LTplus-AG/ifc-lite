@@ -27,6 +27,21 @@ export interface ElementFieldOption {
 export interface ElementFieldCatalog {
   attributes: ElementFieldOption[];
   properties: Map<string, ElementFieldOption[]>;
+  /** `IfcElementQuantity` name -> its quantities. */
+  quantities: Map<string, ElementFieldOption[]>;
+  /** Material, defining type, classification (any system, then one per system), spatial levels. */
+  relations: ElementFieldOption[];
+}
+
+export type ElementFieldSpatialLevel = Extract<ElementFieldBinding, { kind: 'spatial' }>['level'];
+
+/** Which relation-borne families at least one inspected element exposes. */
+export interface RelationObservations {
+  material: boolean;
+  classification: boolean;
+  classificationSystems: Set<string>;
+  type: boolean;
+  spatial: Set<ElementFieldSpatialLevel>;
 }
 
 /** The value shapes one field was seen with. Sets union, flags OR, so two records merge losslessly. */
@@ -44,11 +59,20 @@ export interface PropertyObservation {
   kind: ObservedKind;
 }
 
+export interface QuantityObservation {
+  qsetName: string;
+  quantityName: string;
+  kind: ObservedKind;
+}
+
 export interface ElementFieldObservations {
   /** Attribute name → shapes; only attributes the schema declares as scalars are recorded. */
   attributes: Map<string, ObservedKind>;
   /** `JSON.stringify([psetName, propertyName])` → shapes. */
   properties: Map<string, PropertyObservation>;
+  /** `JSON.stringify([qsetName, quantityName])` → shapes (numeric by definition, typed by `QuantityType`). */
+  quantities: Map<string, QuantityObservation>;
+  relations: RelationObservations;
 }
 
 export function emptyObservation(): ObservedKind {
@@ -56,7 +80,12 @@ export function emptyObservation(): ObservedKind {
 }
 
 export function emptyObservations(): ElementFieldObservations {
-  return { attributes: new Map(), properties: new Map() };
+  return {
+    attributes: new Map(),
+    properties: new Map(),
+    quantities: new Map(),
+    relations: { material: false, classification: false, classificationSystems: new Set(), type: false, spatial: new Set() },
+  };
 }
 
 function mergeKind(into: ObservedKind, from: ObservedKind): void {
@@ -79,6 +108,16 @@ export function mergeObservations(into: ElementFieldObservations, from: ElementF
     if (target) mergeKind(target.kind, observation.kind);
     else into.properties.set(key, { ...observation, kind: { ...observation.kind, units: new Set(observation.kind.units), dataTypes: new Set(observation.kind.dataTypes) } });
   }
+  for (const [key, observation] of from.quantities) {
+    const target = into.quantities.get(key);
+    if (target) mergeKind(target.kind, observation.kind);
+    else into.quantities.set(key, { ...observation, kind: { ...observation.kind, units: new Set(observation.kind.units), dataTypes: new Set(observation.kind.dataTypes) } });
+  }
+  into.relations.material ||= from.relations.material;
+  into.relations.classification ||= from.relations.classification;
+  into.relations.type ||= from.relations.type;
+  for (const system of from.relations.classificationSystems) into.relations.classificationSystems.add(system);
+  for (const level of from.relations.spatial) into.relations.spatial.add(level);
 }
 
 export function propertyObservationKey(psetName: string, propertyName: string): string {
@@ -185,5 +224,38 @@ export function catalogFromObservations(observations: ElementFieldObservations):
     properties.set(psetName, bucket);
   }
   for (const options of properties.values()) options.sort((a, b) => a.label.localeCompare(b.label));
-  return { attributes, properties: new Map([...properties].sort(([a], [b]) => a.localeCompare(b))) };
+  const quantities = new Map<string, ElementFieldOption[]>();
+  for (const { qsetName, quantityName, kind } of observations.quantities.values()) {
+    // A quantity is a number by definition; its measure comes from the quantity entity's own class.
+    const dataType = [...kind.dataTypes].sort()[0];
+    const option: ElementFieldOption = {
+      binding: { kind: 'quantity', qsetName, quantityName, valueKind: 'number', ...(dataType ? { dataType } : {}) },
+      label: `${qsetName}.${quantityName}`,
+      observedValue: kind.number,
+    };
+    const bucket = quantities.get(qsetName) ?? [];
+    bucket.push(option);
+    quantities.set(qsetName, bucket);
+  }
+  for (const options of quantities.values()) options.sort((a, b) => a.label.localeCompare(b.label));
+  return {
+    attributes,
+    properties: new Map([...properties].sort(([a], [b]) => a.localeCompare(b))),
+    quantities: new Map([...quantities].sort(([a], [b]) => a.localeCompare(b))),
+    relations: relationOptions(observations.relations),
+  };
+}
+
+const SPATIAL_LEVELS: readonly ElementFieldSpatialLevel[] = ['Container', 'Building', 'Site', 'Project'];
+
+/** Relation families are always offered; `observedValue` says whether any inspected element carries one. */
+function relationOptions(relations: RelationObservations): ElementFieldOption[] {
+  const option = (binding: ElementFieldBinding, label: string, observedValue: boolean): ElementFieldOption => ({ binding, label, observedValue });
+  return [
+    option({ kind: 'material', valueKind: 'category' }, 'Material (IfcRelAssociatesMaterial)', relations.material),
+    option({ kind: 'type', valueKind: 'category' }, 'Type name (IfcRelDefinesByType)', relations.type),
+    option({ kind: 'classification', valueKind: 'category' }, 'Classification, any system (IfcRelAssociatesClassification)', relations.classification),
+    ...[...relations.classificationSystems].sort().map((system) => option({ kind: 'classification', system, valueKind: 'category' }, `Classification: ${system}`, true)),
+    ...SPATIAL_LEVELS.map((level) => option({ kind: 'spatial', level, valueKind: 'category' }, `${level} (spatial structure)`, relations.spatial.has(level))),
+  ];
 }

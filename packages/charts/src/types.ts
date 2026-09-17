@@ -65,9 +65,22 @@ interface ElementFieldBindingBase {
   dataType?: string;
 }
 
+/** Spatial levels a `spatial` field can name; `Storey` is a built-in column already. */
+export type ElementFieldSpatialLevel = 'Container' | 'Building' | 'Site' | 'Project';
+
 export type ElementFieldBinding =
   | (ElementFieldBindingBase & { kind: 'attribute'; attributeName: string })
-  | (ElementFieldBindingBase & { kind: 'property'; psetName: string; propertyName: string });
+  | (ElementFieldBindingBase & { kind: 'property'; psetName: string; propertyName: string })
+  /** An `IfcPhysicalSimpleQuantity` by its exact `IfcElementQuantity` and quantity names. */
+  | (ElementFieldBindingBase & { kind: 'quantity'; qsetName: string; quantityName: string })
+  /** Every material name the element is associated with (`IfcRelAssociatesMaterial`), joined. */
+  | (ElementFieldBindingBase & { kind: 'material' })
+  /** `IfcClassificationReference` identification (else name), optionally for one classification system only. */
+  | (ElementFieldBindingBase & { kind: 'classification'; system?: string })
+  /** `Name` of the element's defining `IfcTypeObject` (`IfcRelDefinesByType`). */
+  | (ElementFieldBindingBase & { kind: 'type' })
+  /** Name of the containing spatial element at one level (`IfcRelContainedInSpatialStructure` / `IfcRelAggregates`). */
+  | (ElementFieldBindingBase & { kind: 'spatial'; level: ElementFieldSpatialLevel });
 
 export interface ChartSpec {
   id: string;

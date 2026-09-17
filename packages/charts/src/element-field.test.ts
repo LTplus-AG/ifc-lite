@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { EntityFlags } from '@ifc-lite/data';
 import { elementsDataset } from './elements-dataset.js';
-import { elementFieldColumnId, normalizeElementFieldValue } from './element-field.js';
+import { elementFieldColumnId, elementFieldLabel, normalizeElementFieldValue } from './element-field.js';
 import type { ElementFieldBinding } from './types.js';
 
 describe('IFC chart fields (#4833)', () => {
@@ -13,6 +13,20 @@ describe('IFC chart fields (#4833)', () => {
     const a: ElementFieldBinding = { kind: 'property', psetName: 'P.set/A', propertyName: 'B.C', valueKind: 'category' };
     const b: ElementFieldBinding = { kind: 'property', psetName: 'P', propertyName: 'set/A.B.C', valueKind: 'category' };
     expect(elementFieldColumnId(a)).not.toBe(elementFieldColumnId(b));
+  });
+
+  it('gives every field family a distinct, self-describing identity and label', () => {
+    const bindings: ElementFieldBinding[] = [
+      { kind: 'quantity', qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetVolume', valueKind: 'number', dataType: 'IFCVOLUMEMEASURE' },
+      { kind: 'material', valueKind: 'category' },
+      { kind: 'classification', valueKind: 'category' },
+      { kind: 'classification', system: 'Uniclass', valueKind: 'category' },
+      { kind: 'type', valueKind: 'category' },
+      { kind: 'spatial', level: 'Building', valueKind: 'category' },
+      { kind: 'spatial', level: 'Site', valueKind: 'category' },
+    ];
+    expect(new Set(bindings.map(elementFieldColumnId)).size).toBe(bindings.length);
+    expect(bindings.map(elementFieldLabel)).toEqual(['Qto_WallBaseQuantities.NetVolume', 'Material', 'Classification', 'Classification (Uniclass)', 'Type name', 'Building', 'Site']);
   });
 
   it('normalizes supported scalars without numeric coercion of identifiers', () => {

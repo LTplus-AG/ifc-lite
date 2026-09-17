@@ -90,6 +90,16 @@ describe('validateDashboardSpec', () => {
   it('accepts a well-formed dashboard and a report extending it', () => {
     expect(validateDashboardSpec(good)).toEqual([]);
     expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField: { kind: 'property', psetName: 'Pset/A.B', propertyName: 'Fire.Rating/A', valueKind: 'category' } }], layout: [good.layout[0]] })).toEqual([]);
+    for (const elementField of [
+      { kind: 'quantity', qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetVolume', valueKind: 'number', dataType: 'IFCVOLUMEMEASURE' },
+      { kind: 'material', valueKind: 'category' },
+      { kind: 'classification', system: 'Uniclass', valueKind: 'category' },
+      { kind: 'classification', valueKind: 'category' },
+      { kind: 'type', valueKind: 'category' },
+      { kind: 'spatial', level: 'Building', valueKind: 'category' },
+    ] as const) {
+      expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField }], layout: [good.layout[0]] })).toEqual([]);
+    }
     expect(validateDashboardSpec({ ...good, page: { size: 'A4', orientation: 'landscape' }, titleBlock: { project: 'X' }, snapshots: true })).toEqual([]);
   });
 
@@ -98,6 +108,10 @@ describe('validateDashboardSpec', () => {
     expect(validateDashboardSpec(invalid).map(({ path }) => path).sort()).toEqual([
       '.charts[0].elementField', '.charts[0].elementField.psetName', '.charts[0].elementField.valueKind',
     ]);
+    const badLevel = { ...good, charts: [{ ...bar, elementField: { kind: 'spatial', level: 'Storey', valueKind: 'category' } }], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(badLevel).map(({ path }) => path)).toEqual(['.charts[0].elementField.level']);
+    const badQuantity = { ...good, charts: [{ ...bar, elementField: { kind: 'quantity', qsetName: 'Qto_X', valueKind: 'number' } }], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(badQuantity).map(({ path }) => path)).toEqual(['.charts[0].elementField.quantityName']);
   });
 
   it('reports every problem at once with its path', () => {

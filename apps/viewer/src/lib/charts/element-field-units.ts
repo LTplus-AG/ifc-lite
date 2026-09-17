@@ -131,8 +131,9 @@ export function resolveFieldCell(cell: ResolvedElementFieldValue, context: Field
 
   const target = resolver.targetUnit(index);
   if (!columnUnit || !target) return UNSUPPORTED;
-  if (cell.unit) {
-    const source = explicitSourceUnit(kind.unitType, cell.unit, cell.unitSiScale);
+  if (cell.unit !== undefined || cell.unitSiScale !== undefined) {
+    // A quantity's explicit Unit arrives as a scale alone; a property's as symbol plus scale.
+    const source = explicitSourceUnit(kind.unitType, cell.unit ?? '', cell.unitSiScale);
     return source ? { value: convertValue(cell.value, source, target), status: 'value' } : UNSUPPORTED;
   }
   if (!hasSourceUnit(projectUnits, kind.unitType)) return UNSUPPORTED;

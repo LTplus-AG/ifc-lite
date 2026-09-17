@@ -4,6 +4,18 @@
 
 import type { CellValue, ChartDatasetColumn, ElementFieldBinding, ElementFieldValueKind } from './types.js';
 
+function identityOf(binding: ElementFieldBinding): string[] {
+  switch (binding.kind) {
+    case 'attribute': return ['attribute', binding.attributeName];
+    case 'property': return ['property', binding.psetName, binding.propertyName];
+    case 'quantity': return ['quantity', binding.qsetName, binding.quantityName];
+    case 'material': return ['material'];
+    case 'classification': return ['classification', binding.system ?? ''];
+    case 'type': return ['type'];
+    case 'spatial': return ['spatial', binding.level];
+  }
+}
+
 /**
  * Stable, collision-free dataset column id. Two bindings that differ in kind
  * or measure are two columns; the persisted `unit` is deliberately NOT part
@@ -12,16 +24,19 @@ import type { CellValue, ChartDatasetColumn, ElementFieldBinding, ElementFieldVa
  * property share the column and read the same, honestly-labelled numbers.
  */
 export function elementFieldColumnId(binding: ElementFieldBinding): string {
-  const identity = binding.kind === 'attribute'
-    ? ['attribute', binding.attributeName, binding.valueKind, binding.dataType ?? '']
-    : ['property', binding.psetName, binding.propertyName, binding.valueKind, binding.dataType ?? ''];
-  return `ifc-field:${JSON.stringify(identity)}`;
+  return `ifc-field:${JSON.stringify([...identityOf(binding), binding.valueKind, binding.dataType ?? ''])}`;
 }
 
 export function elementFieldLabel(binding: ElementFieldBinding): string {
-  return binding.kind === 'attribute'
-    ? binding.attributeName
-    : `${binding.psetName}.${binding.propertyName}`;
+  switch (binding.kind) {
+    case 'attribute': return binding.attributeName;
+    case 'property': return `${binding.psetName}.${binding.propertyName}`;
+    case 'quantity': return `${binding.qsetName}.${binding.quantityName}`;
+    case 'material': return 'Material';
+    case 'classification': return binding.system ? `Classification (${binding.system})` : 'Classification';
+    case 'type': return 'Type name';
+    case 'spatial': return binding.level;
+  }
 }
 
 export function elementFieldColumn(binding: ElementFieldBinding): ChartDatasetColumn {

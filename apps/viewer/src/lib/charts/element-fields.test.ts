@@ -146,6 +146,27 @@ describe('chart IFC field reader (#4833)', () => {
     const speed = reader.readResolved(52, { kind: 'property', psetName: 'Probe', propertyName: 'Speed', valueKind: 'number', dataType: 'IFCLINEARVELOCITYMEASURE' });
     assert.equal(speed.unit, '#60035', 'a derived unit with a dangling factor has no trustworthy scale');
     assert.equal(speed.unitSiScale, undefined);
+  it('reads the relation-borne families of the committed sample: material, quantity, defining type and spatial container', async () => {
+    const bytes = await readFile(SAMPLE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const reader = createElementFieldReader(store);
+    assert.deepEqual(reader.readResolved(52, { kind: 'material', valueKind: 'category' }), { value: 'concrete_reinforced_in-situ', status: 'value' });
+    assert.deepEqual(reader.readResolved(52, { kind: 'type', valueKind: 'category' }), { value: 'house - groundfloor', status: 'value' });
+    assert.deepEqual(
+      reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'number', dataType: 'IFCAREAMEASURE' }),
+      { value: 25.749999999991743, status: 'value', dataType: 'IFCAREAMEASURE' },
+    );
+    assert.equal(reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'Depth', valueKind: 'number' }).dataType, 'IFCLENGTHMEASURE');
+    assert.equal(reader.readResolved(52, { kind: 'spatial', level: 'Building', valueKind: 'category' }).status, 'value');
+    assert.equal(reader.readResolved(52, { kind: 'classification', valueKind: 'category' }).status, 'missing', 'the sample classifies the project, not the slab');
+
+    const catalog = reader.discover([52]);
+    const netArea = catalog.quantities.get('Qto_SlabBaseQuantities')?.find(({ binding }) => binding.kind === 'quantity' && binding.quantityName === 'NetArea')?.binding;
+    assert.deepEqual(netArea, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'number', dataType: 'IFCAREAMEASURE' });
+    const relation = (kind: string) => catalog.relations.find(({ binding }) => binding.kind === kind);
+    assert.equal(relation('material')?.observedValue, true);
+    assert.equal(relation('type')?.observedValue, true);
+    assert.equal(relation('classification')?.observedValue, false);
   });
 
   it('a type property every occurrence overrides does not shape the field: a label on the type under numbers on the occurrences is a number (#4833 review)', async () => {

@@ -32,7 +32,7 @@ import { modelOverviewDashboard } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, type } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import { EMPTY_HINTS } from './ChartCard.js';
 import { chartBucketIdentity, chartColorOverrides, chartSelectionIsLive } from './useChart3DLink.js';
@@ -45,7 +45,9 @@ FILE_NAME('t','',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
-#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);
+#200=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
 #2=IFCSITE('0Site000000000000000002',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
 #3=IFCBUILDING('0Building00000000000003',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
 #5=IFCBUILDINGSTOREY('0Storey00000000000005',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
@@ -76,6 +78,18 @@ DATA;
 #103=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI30'),$);
 #104=IFCPROPERTYSET('0Pset00000000000000104',$,'Pset_WallCommon',$,(#103));
 #105=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000105',$,$,$,(#43),#104);
+#110=IFCMATERIAL('Concrete',$,$);
+#111=IFCRELASSOCIATESMATERIAL('0Mat000000000000000111',$,$,$,(#41,#42),#110);
+#112=IFCMATERIAL('Timber',$,$);
+#113=IFCRELASSOCIATESMATERIAL('0Mat000000000000000113',$,$,$,(#43),#112);
+#120=IFCQUANTITYAREA('NetSideArea',$,$,10.,$);
+#121=IFCELEMENTQUANTITY('0Qto000000000000000121',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#120));
+#122=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000122',$,$,$,(#41,#42,#43),#121);
+#130=IFCWALLTYPE('0WallType0000000000130',$,'WT-Standard',$,$,$,$,$,$,.STANDARD.);
+#131=IFCRELDEFINESBYTYPE('0Typ000000000000000131',$,$,$,(#41,#42),#130);
+#140=IFCCLASSIFICATION('Molio','1.0',$,'CCI',$,$,$);
+#141=IFCCLASSIFICATIONREFERENCE('https://example.invalid/E-AAA','E-AAA','Wall class',#140,$,$);
+#142=IFCRELASSOCIATESCLASSIFICATION('0Cls000000000000000142',$,$,$,(#43),#141);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -86,7 +100,7 @@ const GID = (expressId: number) => OFFSET + expressId;
 async function parsedModel(id = 'm1', idOffset = OFFSET, ifc = MINI_IFC): Promise<FederatedModel> {
   const bytes = new TextEncoder().encode(ifc);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 106 };
+  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 202 };
 }
 
 /** Records every option and selection a card pushes; can fire a chart click. */
@@ -302,6 +316,95 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(state.chartSliceBuckets, bucketsBefore, 'the clicked bucket identities are untouched');
     // The saved charts still see only the built-in columns: the draft column is the editor's alone.
     assert.deepEqual(barData(charts[0].options.at(-1)!).map(([name, count]) => [name, count]), [['IfcWall', 3], ['IfcDoor', 2]]);
+  });
+
+  /** Open the editor for a new chart and switch its IFC field family. */
+  async function openEditorWithFamily(ui: HTMLElement, family: string): Promise<void> {
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = family;
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+  }
+  async function choose(select: HTMLSelectElement, value: string): Promise<void> {
+    await act(async () => {
+      select.value = value;
+      select.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+  }
+
+  it('charts by material through the editor and a bucket click selects exactly the elements carrying it (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'relation');
+    const relation = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC relation"]')!;
+    const labels = [...relation.options].map((option) => option.textContent ?? '');
+    assert.ok(labels.some((label) => label.startsWith('Material (IfcRelAssociatesMaterial)')), labels.join(' | '));
+    assert.ok(labels.some((label) => label.startsWith('Type name (IfcRelDefinesByType)')));
+    assert.ok(labels.includes('Classification: CCI'), `a discovered classification system (IfcClassification.Name) is offered on its own: ${labels.join(' | ')}`);
+    assert.ok(labels.some((label) => label.startsWith('Building (spatial structure)')));
+    await choose(relation, [...relation.options].find((option) => option.textContent?.startsWith('Material'))!.value);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    const added = charts.at(-1)!;
+    assert.deepEqual(barData(added.options.at(-1)!).map(([name, count]) => [name, count]), [['Concrete', 2], ['Timber', 1]]);
+    await act(async () => { added.events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
+  });
+
+  it('charts a quantity as a summable number in the project unit and a classification system by its codes (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'quantity');
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="IFC quantity set"]')!.value, 'Qto_WallBaseQuantities');
+    const quantity = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC quantity"]')!;
+    assert.deepEqual([...quantity.options].map((option) => option.textContent), ['NetSideArea']);
+    // A quantity is a number: the editor switches to a histogram and offers its sum.
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'histogram');
+    const measure = ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!;
+    const sum = [...measure.options].find((option) => option.textContent?.startsWith('Sum of Qto_WallBaseQuantities.NetSideArea'));
+    assert.ok(sum, [...measure.options].map((o) => o.textContent).join(' | '));
+    await choose(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!, 'bar');
+    await choose(ui.querySelector<HTMLSelectElement>('select[aria-label="Group by"]')!, 'IfcType');
+    await choose(measure, sum!.value);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    const subtitle = [...ui.querySelectorAll('[data-chart-subtitle]')].at(-1)!.textContent!;
+    assert.match(subtitle, /30 m²/, subtitle);
+    assert.doesNotMatch(subtitle, /unsupported/);
+
+    await openEditorWithFamily(ui, 'relation');
+    const relation = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC relation"]')!;
+    await choose(relation, [...relation.options].find((option) => option.textContent === 'Classification: CCI')!.value);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    assert.deepEqual(barData(charts.at(-1)!.options.at(-1)!).map(([name, count]) => [name, count]), [['E-AAA', 1]]);
+    assert.match([...ui.querySelectorAll('[data-chart-subtitle]')].at(-1)!.textContent!, /4 without a value/);
+  });
+
+  it('filters property sets and properties by name so a model with hundreds of psets stays pickable (#4833)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'property');
+    const property = () => [...ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!.options].map((option) => option.textContent);
+    assert.deepEqual(property(), ['FireRating', 'ReferenceLength']);
+    const filter = ui.querySelector<HTMLInputElement>('input[aria-label="Filter fields"]')!;
+    type(filter, 'fire');
+    await settle();
+    assert.deepEqual(property(), ['FireRating'], 'a field-name filter hides the properties that do not match');
+    type(filter, 'nothing-like-this');
+    await settle();
+    const setSelect = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property set"]')!;
+    assert.deepEqual([...setSelect.options].map((option) => option.textContent), ['Pset_WallCommon'], 'the chosen set stays listed so the selection is never orphaned, but nothing else matches');
   });
 
   it('clearing a numeric IFC field back to the built-in columns leaves a saveable bar chart, not an orphaned histogram (#4833 review)', async () => {

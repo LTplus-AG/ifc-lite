@@ -43,7 +43,7 @@ const svg = renderChartSvg({ aggregation: agg, width: 640, height: 400 }); // ve
 
 - `aggregate(spec, dataset, { slice, palette })`: count / sum by one dimension, optionally stacked by a second; `topN` + `Other`; histogram bins (Sturges default); ISO-week `timeline` for date columns; a `slice` of ids to cross-filter one chart by another; colours assigned by label and kept across re-aggregations
 - `elementsDataset(models, fields?)`: the elements source without a query engine — one typed-array pass over the entity table and spatial hierarchy, optionally materializing only requested IFC fields through host readers
-- `elementFieldColumnId` / `elementFieldLabel` / `normalizeElementFieldValue`: collision-free persisted field identities and scalar normalization for IFC attributes and properties
+- `elementFieldColumnId` / `elementFieldLabel` / `normalizeElementFieldValue`: collision-free persisted field identities and scalar normalization for IFC attributes, properties, quantities, material, classification, defining type and spatial container (`ElementFieldBinding`)
 - `buildEChartsOption` / `renderChartSvg`: ECharts options with persistent multi-select and emphasis blur, and SSR SVG output
 - `validateDashboardSpec` / `isDashboardSpec` / `isReportSpec`: structural validation of saved dashboards and report templates (`DashboardSpec`, `ReportSpec`)
 

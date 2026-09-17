@@ -18,7 +18,7 @@ const OUT = process.env.WALKTHROUGH_OUT ?? join(tmpdir(), 'ifc-lite-charts-ifc-f
 mkdirSync(OUT, { recursive: true });
 const STORE = '__ifc_lite_viewer_store__';
 const BASE = process.env.WALKTHROUGH_BASE ?? 'http://localhost:5199';
-const FIELDS = (process.env.WALKTHROUGH_FIELDS ?? 'property:Pset_SlabCommon:FireRating,attribute::PredefinedType').split(',').map((s) => s.split(':'));
+const FIELDS = (process.env.WALKTHROUGH_FIELDS ?? 'property:Pset_SlabCommon:FireRating,attribute::ObjectType,relation::Material,quantity:Qto_SlabBaseQuantities:NetArea').split(',').map((s) => s.split(':'));
 const log = (...a) => console.log('[walk]', ...a);
 const findings = [];
 const note = (s) => { findings.push(s); log('FINDING:', s); };
@@ -59,9 +59,21 @@ for (const [source, setName, fieldName] of FIELDS) {
     return select && [...select.options].some((o) => o.value === src && !o.disabled);
   }, source, { timeout: 60000 });
   await picker.selectOption(source);
-  if (source === 'property') {
-    await page.locator('[data-chart-editor] select[aria-label="IFC property set"]').selectOption(setName);
-    await page.locator('[data-chart-editor] select[aria-label="IFC property"]').selectOption({ label: fieldName });
+  if (source === 'property' || source === 'quantity') {
+    await page.locator(`[data-chart-editor] select[aria-label="IFC ${source} set"]`).selectOption(setName);
+    await page.locator(`[data-chart-editor] select[aria-label="IFC ${source}"]`).selectOption({ label: fieldName });
+    if (source === 'quantity') {
+      // A quantity opens as a histogram; chart its sum per storey so the bucket click is a selection of elements.
+      await page.locator('[data-chart-editor] select[aria-label="Chart type"]').selectOption('bar');
+      await page.locator('[data-chart-editor] select[aria-label="Group by"]').selectOption('Storey');
+      const measure = page.locator('[data-chart-editor] select[aria-label="Measure"]');
+      const sumValue = await measure.locator('option').evaluateAll((opts) => opts.find((o) => o.textContent.startsWith('Sum of'))?.value);
+      await measure.selectOption(sumValue);
+    }
+  } else if (source === 'relation') {
+    const relation = page.locator('[data-chart-editor] select[aria-label="IFC relation"]');
+    const value = await relation.locator('option').evaluateAll((opts, name) => opts.find((o) => o.textContent.startsWith(name))?.value, fieldName);
+    await relation.selectOption(value);
   } else {
     await page.locator('[data-chart-editor] select[aria-label="IFC attribute"]').selectOption({ label: fieldName });
   }
@@ -94,7 +106,7 @@ for (const [source, setName, fieldName] of FIELDS) {
   if (selection.source !== saved.id) note(`${title}: chart slice not owned by the new chart`);
   // The legend formats counts with toLocaleString ("1,234"): keep the digits only.
   const expected = Number.parseInt((buckets[0].split(': ').at(-1) ?? '').replace(/\D/g, ''), 10);
-  if (Number.isFinite(expected) && selection.n !== expected) note(`${title}: bucket reports ${expected} elements but ${selection.n} are selected`);
+  if (saved.measure?.agg === 'count' && Number.isFinite(expected) && selection.n !== expected) note(`${title}: bucket reports ${expected} elements but ${selection.n} are selected`);
   await shot(`selected-${fieldName}`);
   // Clear for the next chart.
   await legend.first().evaluate((b) => b.click());

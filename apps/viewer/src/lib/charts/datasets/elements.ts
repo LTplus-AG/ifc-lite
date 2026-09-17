@@ -66,9 +66,14 @@ export function buildElementsDataset(
   // unit it is actually in (see `element-field-units`).
   const unitColumns: ColumnDefinition[] = fields.map((field, index) => ({
     id: String(index),
-    source: field.kind,
-    propertyName: field.kind === 'attribute' ? field.attributeName : field.propertyName,
-    ...(field.kind === 'property' ? { psetName: field.psetName } : {}),
+    // Only `dataType` drives the resolver; source and names are descriptive.
+    source: field.kind === 'type' ? 'attribute' : field.kind,
+    propertyName: field.kind === 'attribute' ? field.attributeName
+      : field.kind === 'property' ? field.propertyName
+        : field.kind === 'quantity' ? field.quantityName
+          : field.kind === 'spatial' ? field.level
+            : field.kind === 'type' ? 'Type' : field.kind,
+    ...(field.kind === 'property' ? { psetName: field.psetName } : field.kind === 'quantity' ? { psetName: field.qsetName } : {}),
     ...(field.dataType ? { dataType: field.dataType } : {}),
   }));
   const modelUnits = new Map<string, ProjectUnits>();

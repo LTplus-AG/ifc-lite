@@ -14,7 +14,11 @@
  */
 
 import { isModelTagOp } from '../model-tags/types.js';
-import type { FilterRule } from './filter-rules.js';
+import type { FilterRule, StringOp } from './filter-rules.js';
+
+const STRING_OPS: ReadonlySet<unknown> = new Set<StringOp>([
+  'eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches',
+]);
 
 export function isFilterRule(value: unknown): value is FilterRule {
   if (typeof value !== 'object' || value === null) return false;
@@ -23,6 +27,16 @@ export function isFilterRule(value: unknown): value is FilterRule {
     // Structural: a bad op or a non-string id must not reach the evaluator.
     const r = value as { op?: unknown; tagIds?: unknown };
     return isModelTagOp(r.op) && Array.isArray(r.tagIds) && r.tagIds.every((t) => typeof t === 'string');
+  }
+  if (kind === 'parent') {
+    // Structural: `matchParentRule` lower-cases `value` per ancestor, so a
+    // persisted non-string value (or an unknown op) must not reach it.
+    const r = value as { op?: unknown; value?: unknown; valueKind?: unknown };
+    return (
+      STRING_OPS.has(r.op) &&
+      typeof r.value === 'string' &&
+      (r.valueKind === undefined || r.valueKind === 'literal' || r.valueKind === 'regex')
+    );
   }
   return (
     kind === 'model' ||
@@ -37,8 +51,7 @@ export function isFilterRule(value: unknown): value is FilterRule {
     kind === 'material' ||
     kind === 'classification' ||
     kind === 'elevation' ||
-    kind === 'type' ||
-    kind === 'parent'
+    kind === 'type'
   );
 }
 

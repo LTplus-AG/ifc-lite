@@ -4,6 +4,7 @@
 
 import type { StateCreator } from 'zustand';
 import { retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
+import { pruneMeshesFromGeometry } from './data-mesh-prune.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
@@ -78,33 +79,18 @@ export interface DataSlice {
     options?: { override?: boolean },
   ) => void;
   /**
-   * Pending mesh removals for the renderer. Authoring actions
-   * (split, delete) push globalIds here; `useGeometryStreaming`
-   * flushes them on the next frame via
-   * `scene.removeMeshesForEntities` and then calls
-   * `pruneGeometryMeshes` to drop the matching meshes out of
-   * `geometryResult.meshes` so picking + bounds recomputation stay
-   * consistent.
+   * Pending mesh removals for the renderer. Authoring actions (split, delete)
+   * push globalIds here; `useGeometryStreaming` flushes them on the next frame
+   * via `scene.removeMeshesForEntities`, then calls `pruneGeometryMeshes` to
+   * drop the matching meshes out of `geometryResult.meshes` so picking and
+   * bounds recomputation stay consistent.
    *
-   * Stored as a Set on the slice rather than a transient ref so
-   * tests + headless workflows can observe it directly.
+   * A Set on the slice rather than a transient ref, so tests and headless
+   * workflows can observe it directly.
    */
   pendingMeshRemovals: Set<number> | null;
   setPendingMeshRemovals: (ids: Set<number>) => void;
   clearPendingMeshRemovals: () => void;
-  /**
-   * Prune the drained ids out of `geometryResult.meshes` and subtract their
-   * triangle/vertex counts from the running totals. Called by the streaming
-   * hook right after `scene.removeMeshesForEntities` (the renderer-side hard
-   * removal) so the STORE copy stops disagreeing with the scene — picking,
-   * bounds recomputation, `StatusBar`'s triangle readout, and
-   * `lib/collab/geometry-sync.ts`'s re-sum all key off this array.
-   *
-   * Matches on which meshes are actually present for `ids`, not on
-   * `ids.size`: draining the same id twice (already pruned) or naming an id
-   * with no mesh removes/subtracts nothing rather than double-counting or
-   * going negative.
-   */
   pruneGeometryMeshes: (ids: Set<number>) => void;
   /**
    * Emit-both GPU-instancing: raw IFNS shard bytes (transferable ArrayBuffers)
@@ -425,46 +411,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   }),
 
   clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
-
-  pruneGeometryMeshes: (ids) => set((state) => {
-    if (!state.geometryResult || ids.size === 0) return {};
-
-    const meshes = state.geometryResult.meshes;
-    const kept: typeof meshes = [];
-    let removedTriangles = 0;
-    let removedVertices = 0;
-    for (let i = 0; i < meshes.length; i++) {
-      const mesh = meshes[i];
-      if (ids.has(mesh.expressId)) {
-        removedTriangles += mesh.indices.length / 3;
-        removedVertices += mesh.positions.length / 3;
-      } else {
-        kept.push(mesh);
-      }
-    }
-    // Nothing in `ids` actually matched a mesh (already pruned, or the id
-    // never had one) — leave totals untouched rather than subtracting zero
-    // and still bumping the tick for no visible change.
-    if (kept.length === meshes.length) return {};
-
-    const geometryResult = {
-      ...state.geometryResult,
-      meshes: kept,
-      totalTriangles: state.geometryResult.totalTriangles - removedTriangles,
-      totalVertices: state.geometryResult.totalVertices - removedVertices,
-    };
-    const modelId = state.activeModelId;
-    if (!modelId) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const model = state.models.get(modelId);
-    if (!model) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const models = new Map(state.models);
-    models.set(modelId, { ...model, geometryResult });
-    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
-  }),
+  pruneGeometryMeshes: (ids) => set((state) => pruneMeshesFromGeometry(state, ids)),
 
   appendInstancedShards: (modelId, shards) => set((state) => ({
     // Accumulate across batches — useGeometryStreaming drains once per frame.

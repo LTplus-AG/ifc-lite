@@ -403,7 +403,9 @@ jobs:
                 continue
               fi
 
-              # Take a HEALTHY row if the commit has one, not merely the
+              # A READY row wins over everything (#4917 review): a same-commit
+              # redeploy still BUILDING must not hide the READY build already
+              # serving the alias. Otherwise take a HEALTHY row, not merely the
               # newest. A redeploy can leave an ERROR or CANCELED row in front
               # of a READY one, and a build that succeeded is still what the
               # alias serves. Falls back to the first row so a commit whose
@@ -411,7 +413,8 @@ jobs:
               state="$(printf '%s' "$body" \
                 | jq -r '[.deployments[]? | select(.target == "production")
                           | (.readyState // .state // "UNKNOWN")] as $s
-                         | (($s | map(select(. != "CANCELED" and . != "ERROR")) | first)
+                         | (($s | map(select(. == "READY")) | first)
+                            // ($s | map(select(. != "CANCELED" and . != "ERROR")) | first)
                             // ($s | first) // "")' 2>/dev/null || true)"
               case "$state" in
                 READY)

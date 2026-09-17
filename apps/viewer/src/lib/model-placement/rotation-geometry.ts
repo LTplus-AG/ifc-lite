@@ -212,9 +212,22 @@ function rotatedLocalToWorld(matrix: number[], yaw: Yaw): number[] {
  * render-frame pivot swings it about a point displaced by that offset, which
  * on a georeferenced model is kilometres from the vertices it describes.
  */
-function worldBoxYaw(yaw: Yaw, coordinateInfo: Geometry['coordinateInfo']): Yaw {
-  const offset = totalYupOffset(coordinateInfo);
+function worldBoxYaw(yaw: Yaw, offset: { x: number; z: number }): Yaw {
   return { ...yaw, px: yaw.px + offset.x, pz: yaw.pz + offset.z };
+}
+
+/** Grow render-frame `bounds` by an absolute world box, taken back out of the
+ * absolute frame by `offset`. */
+function growByWorldBox(bounds: { min: number[]; max: number[] }, box: EntityWorldAabb, offset: { x: number; y: number; z: number }): void {
+  const o = [offset.x, offset.y, offset.z];
+  for (let axis = 0; axis < 3; axis += 1) {
+    const lo = box.min[axis] - o[axis], hi = box.max[axis] - o[axis];
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
+  }
+  for (let axis = 0; axis < 3; axis += 1) {
+    bounds.min[axis] = Math.min(bounds.min[axis], box.min[axis] - o[axis]);
+    bounds.max[axis] = Math.max(bounds.max[axis], box.max[axis] - o[axis]);
+  }
 }
 
 function rotateMesh(mesh: MeshData, yaw: Yaw, boxYaw: Yaw, bounds: { min: number[]; max: number[] }): void {
@@ -282,14 +295,25 @@ export function applyModelRotation(
   const pivot = toRenderTranslation(rotation.pivot);
   const yaw: Yaw = { cos: Math.cos(rotation.angle), sin: Math.sin(rotation.angle), px: pivot[0], pz: pivot[2] };
   const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
-  const boxYaw = worldBoxYaw(yaw, geometry.coordinateInfo);
-  for (const mesh of geometry.meshes) rotateMesh(mesh, yaw, boxYaw, bounds);
+  const offset = totalYupOffset(geometry.coordinateInfo);
+  const boxYaw = worldBoxYaw(yaw, offset);
+  for (const mesh of geometry.meshes) {
+    rotateMesh(mesh, yaw, boxYaw, bounds);
+    // A mesh whose buffers a bounded-mode release freed has no vertices left to
+    // measure, but its entity box still says where it is.
+    if (mesh.positions.length === 0 && mesh.geometryAabb) growByWorldBox(bounds, mesh.geometryAabb, offset);
+  }
   const instanced = geometry.instancedGeometryAabbs;
   if (instanced && instanced.size > 0) {
     // The instanced-only channel has no vertices on this side to measure, so
     // its boxes are corner-transformed instead.
     const next = new Map<number, EntityWorldAabb>();
-    for (const [expressId, box] of instanced) next.set(expressId, rotatedBox(box, boxYaw));
+    for (const [expressId, box] of instanced) {
+      const rotated = rotatedBox(box, boxYaw);
+      next.set(expressId, rotated);
+      // These entities are drawn, so the model extent has to contain them.
+      growByWorldBox(bounds, rotated, offset);
+    }
     geometry.instancedGeometryAabbs = next;
   }
   if (Number.isFinite(bounds.min[0])) {

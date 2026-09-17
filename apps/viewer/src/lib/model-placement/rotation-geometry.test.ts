@@ -208,6 +208,35 @@ describe('applyModelRotation', () => {
     }
   });
 
+  it('keeps instanced-only entities and released meshes inside the rotated shifted bounds', () => {
+    const value = geometry();
+    const shift = { x: 31.5, y: -2.25, z: 17.75 };
+    value.coordinateInfo.originShift = shift;
+    // Render-frame extents, stored absolute as the contract requires.
+    const instancedExtent = { min: [1, 0, 2], max: [5, 3, 9] };
+    value.instancedGeometryAabbs = new Map([[99, {
+      min: [1 + shift.x, 0 + shift.y, 2 + shift.z], max: [5 + shift.x, 3 + shift.y, 9 + shift.z] }]]);
+    const released = { ...mesh(), expressId: 43, positions: new Float32Array(0), normals: new Float32Array(0),
+      origin: [60, 0, 20], geometryAabb: { min: [60 + shift.x, 0 + shift.y, 20 + shift.z], max: [64 + shift.x, 2 + shift.y, 25 + shift.z] } } as MeshData;
+    value.meshes.push(released);
+    const releasedExtent = { min: [60, 0, 20], max: [64, 2, 25] };
+
+    applyModelRotation(value, captureRotationBaseline(value), ROTATION);
+
+    const bounds = value.coordinateInfo.shiftedBounds!;
+    for (const [what, extent] of [['instanced', instancedExtent], ['released', releasedExtent]] as const) {
+      for (const x of [extent.min[0], extent.max[0]]) {
+        for (const z of [extent.min[2], extent.max[2]]) {
+          const turned = rotateWorkspacePoint(fromRenderTranslation({ x, y: extent.min[1], z }), ROTATION);
+          assert.ok(turned[0] >= bounds.min.x - 1e-3 && turned[0] <= bounds.max.x + 1e-3,
+            `${what} corner x ${turned[0]} outside [${bounds.min.x}, ${bounds.max.x}]`);
+          assert.ok(-turned[1] >= bounds.min.z - 1e-3 && -turned[1] <= bounds.max.z + 1e-3,
+            `${what} corner z ${-turned[1]} outside [${bounds.min.z}, ${bounds.max.z}]`);
+        }
+      }
+    }
+  });
+
   it('is absolute: re-applying an angle re-bakes rather than compounding', () => {
     const once = geometry();
     const baselineOnce = captureRotationBaseline(once);

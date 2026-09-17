@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Types for the build-time script, so `test/worker-url-specifiers.test.ts` can
- * import its pure half under `allowJs: false` without an `@ts-ignore`.
+ * Types for the build-time script, so `test/worker-url-specifiers-4895.test.ts`
+ * can import its pure half under `allowJs: false` without an `@ts-ignore`.
  */
 export declare function rewriteWorkerUrls(
   text: string,
-  hasEmittedSibling: (jsSpecifier: string) => boolean,
+  emitsSibling: (jsSpecifier: string) => boolean,
 ): { text: string; rewritten: string[]; left: string[] };

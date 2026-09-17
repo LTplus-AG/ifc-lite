@@ -10,17 +10,25 @@
  *
  * The build now rewrites those specifiers and then verifies the result. Both
  * halves are exercised here against synthetic file contents and a synthetic
- * "does this file exist" answer — never against this checkout's own `dist`,
- * which a future build change could make vacuously green.
+ * filesystem — never against this checkout's own `dist`, which a future build
+ * change could make vacuously green.
  *
  * The verifier is tested INDEPENDENTLY of the rewrite on purpose. #633 already
  * rewrote geometry's worker URLs and #637 still had to ship, because the
  * rewrite named the files to touch, missed one, and nothing checked the
  * output. A rewrite that quietly does nothing has to fail the build.
+ *
+ * The `classifyTarget` block exists because review of #4900 found the first
+ * spelling of this change had no test for the one thing that touched a
+ * filesystem: both halves took an injected "does this exist" predicate, and
+ * every test stubbed it. The stub was correct and the real predicate
+ * (`existsSync`) was not, so nothing here could fail. Those cases are now
+ * driven through the real classifier with a synthetic `inspect`.
  */
 
 import { describe, expect, it } from 'vitest';
 
+import { classifyTarget } from '../scripts/lib/shipped-target.mjs';
 import { rewriteWorkerUrls } from '../scripts/rewrite-worker-urls.mjs';
 import { findUnshippedTargets } from '../scripts/verify-dist-worker-urls.mjs';
 
@@ -58,7 +66,16 @@ describe('#4895 — the build rewrites worker specifiers to the file tsc emitted
     expect(rewritten).toHaveLength(2);
   });
 
-  it('leaves a specifier alone when no sibling was emitted, and reports it', () => {
+  it('matches a ../ specifier too, which the first pattern skipped entirely', () => {
+    const { rewritten } = rewriteWorkerUrls(
+      "new Worker(new URL('../parser.worker.ts', import.meta.url))",
+      (name) => name === '../parser.worker.js',
+    );
+
+    expect(rewritten).toEqual(['../parser.worker.ts -> ../parser.worker.js']);
+  });
+
+  it('leaves a specifier alone when no sibling is shipped, and reports it', () => {
     const { text, rewritten, left } = rewriteWorkerUrls(
       "new Worker(new URL('./ghost.worker.ts', import.meta.url))",
       emitted,
@@ -79,41 +96,95 @@ describe('#4895 — the build rewrites worker specifiers to the file tsc emitted
 });
 
 describe('#4895 — the verifier fails on a specifier the package does not ship', () => {
-  const ships = (specifier: string) => specifier === './parser.worker.js';
+  const ships = (specifier: string) =>
+    specifier === './parser.worker.js' ? ('shipped' as const) : ('missing' as const);
 
   it('reports the unrewritten .ts specifier that shipped in 6.5.0 and 7.0.0', () => {
-    const { checked, missing } = findUnshippedTargets(EMITTED_LINE, ships);
+    const { checked, problems } = findUnshippedTargets(EMITTED_LINE, ships);
 
     expect(checked).toEqual(['./parser.worker.ts']);
-    expect(missing).toEqual(['./parser.worker.ts']);
+    expect(problems).toEqual([{ specifier: './parser.worker.ts', verdict: 'missing' }]);
   });
 
   it('passes once the specifier points at the emitted worker', () => {
-    const { missing } = findUnshippedTargets(
+    const { problems } = findUnshippedTargets(
       "new Worker(new URL('./parser.worker.js', import.meta.url))",
       ships,
     );
 
-    expect(missing).toEqual([]);
+    expect(problems).toEqual([]);
   });
 
   it('catches a missing .js target too, which the rewrite would never look at', () => {
     // #637's failure mode: the rewrite ran, reported success, and left a dist
     // file pointing at something absent. The verifier re-derives the answer
-    // from the emitted files instead of trusting the rewrite, so it still
-    // fails here.
-    const { missing } = findUnshippedTargets(
+    // from the emitted files instead of trusting the rewrite.
+    const { problems } = findUnshippedTargets(
       "new Worker(new URL('./dropped-by-the-build.js', import.meta.url))",
       ships,
     );
 
-    expect(missing).toEqual(['./dropped-by-the-build.js']);
+    expect(problems).toEqual([
+      { specifier: './dropped-by-the-build.js', verdict: 'missing' },
+    ]);
+  });
+
+  it('inspects ../ specifiers, which the first pattern did not match', () => {
+    const { checked } = findUnshippedTargets(
+      "new Worker(new URL('../src/parser.worker.ts', import.meta.url))",
+      ships,
+    );
+
+    expect(checked).toEqual(['../src/parser.worker.ts']);
   });
 
   it('counts what it inspected, so a scan that found nothing is distinguishable', () => {
-    const { checked, missing } = findUnshippedTargets('export const x = 1;', ships);
+    const { checked, problems } = findUnshippedTargets('export const x = 1;', ships);
 
     expect(checked).toEqual([]);
-    expect(missing).toEqual([]);
+    expect(problems).toEqual([]);
+  });
+});
+
+describe('#4895 — what counts as shipped (review of #4900)', () => {
+  const DIST = '/repo/packages/parser/dist';
+
+  /** A synthetic dist: one emitted worker, one subdirectory, one source file outside. */
+  const inspect = (path: string) => {
+    if (path === `${DIST}/parser.worker.js`) return 'file' as const;
+    if (path === `${DIST}/subdir`) return 'directory' as const;
+    if (path === '/repo/packages/parser/src/parser.worker.ts') return 'file' as const;
+    return 'missing' as const;
+  };
+
+  const verdictFor = (specifier: string, fileDir = DIST) =>
+    classifyTarget({ distRoot: DIST, fileDir, specifier, inspect });
+
+  it('accepts a regular file inside dist', () => {
+    expect(verdictFor('./parser.worker.js')).toBe('shipped');
+  });
+
+  it('rejects a target that climbs out of dist, even though the file exists', () => {
+    // `files` is ["dist", "README.md"], so the real source file this resolves
+    // to exists for a developer and is absent from the tarball. `existsSync`
+    // answered yes here, which is the defect review found.
+    expect(verdictFor('./../src/parser.worker.ts')).toBe('outside-dist');
+    expect(verdictFor('../src/parser.worker.ts')).toBe('outside-dist');
+  });
+
+  it('rejects dist itself', () => {
+    expect(verdictFor('./..', `${DIST}/subdir`)).toBe('outside-dist');
+  });
+
+  it('rejects a directory, which is not a loadable worker', () => {
+    expect(verdictFor('./subdir')).toBe('not-a-file');
+  });
+
+  it('reports a target that is simply absent', () => {
+    expect(verdictFor('./never-emitted.js')).toBe('missing');
+  });
+
+  it('resolves relative to the file holding the specifier, not to dist', () => {
+    expect(verdictFor('../parser.worker.js', `${DIST}/subdir`)).toBe('shipped');
   });
 });

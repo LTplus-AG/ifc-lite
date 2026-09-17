@@ -13,48 +13,51 @@
  * rewrite that does its job produce the same green build.
  *
  * So this runs after `rewrite-worker-urls.mjs` and re-derives the answer from
- * the emitted files alone: every `new URL('./x', import.meta.url)` in
- * `dist/**\/*.js` must resolve to a file that exists in `dist`. It does not
- * trust, read or import the rewrite step; if that step is deleted, rewrites
- * the wrong file, or stops matching a future specifier shape, this fails.
+ * the emitted files alone. It does not trust, read or import the rewrite step;
+ * if that step is deleted, rewrites the wrong file, or stops matching a future
+ * specifier shape, this fails. The two share only `lib/shipped-target.mjs`,
+ * which answers what counts as shipped — the same question in both, and two
+ * spellings of it is how #637 happened.
  *
- * WHAT "SHIPS" MEANS HERE. `package.json#files` is `["dist", "README.md"]`, so
- * presence in `dist` after the build is presence in the tarball. A future
- * narrower `files` list would make this check too permissive — that is the
- * stated hole, and `pnpm pack` remains the ground truth.
+ * WHAT COUNTS AS SHIPPED. `package.json#files` is `["dist", "README.md"]`, so
+ * a regular file inside `dist` after the build is a file in the tarball —
+ * which is why a target outside `dist` and a target that is a directory both
+ * fail here even though they exist on disk. See lib/shipped-target.mjs for the
+ * three ways the first spelling of this check got that wrong.
  *
  * WHAT IT CANNOT SEE. Lexical, like the rewrite: a specifier assembled from
  * variables at runtime has no literal to resolve, and passes silently.
  */
 
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
+import { classifyTarget, REASONS, relativeUrlSpecifier } from './lib/shipped-target.mjs';
+
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
-/** Any relative `new URL(…, import.meta.url)`, not only `.ts` ones. */
-const SPECIFIER = /new URL\(\s*(['"])(\.\/[^'"]+)\1\s*,\s*import\.meta\.url\s*\)/g;
-
 /**
- * Collect the specifiers in one file that do not resolve to an existing file.
+ * Collect the specifiers in one file that are not shipped, with the reason.
  *
- * Pure so `test/verify-dist-worker-urls.test.ts` can exercise it against
+ * Pure so `test/worker-url-specifiers-4895.test.ts` can exercise it against
  * synthetic content rather than this checkout's own `dist`, which a future
  * build change could otherwise make vacuously green.
  *
  * @param {string} text file contents
- * @param {(specifier: string) => boolean} resolvesToShippedFile
- * @returns {{ checked: string[], missing: string[] }}
+ * @param {(specifier: string) => 'shipped' | 'outside-dist' | 'not-a-file' | 'missing'} classify
+ * @returns {{ checked: string[], problems: { specifier: string, verdict: string }[] }}
  */
-export function findUnshippedTargets(text, resolvesToShippedFile) {
+export function findUnshippedTargets(text, classify) {
   const checked = [];
-  const missing = [];
-  for (const [, , specifier] of text.matchAll(SPECIFIER)) {
+  const problems = [];
+  for (const [, , specifier] of text.matchAll(relativeUrlSpecifier())) {
     checked.push(specifier);
-    if (!resolvesToShippedFile(specifier)) missing.push(specifier);
+    const verdict = classify(specifier);
+    if (verdict !== 'shipped') problems.push({ specifier, verdict });
   }
-  return { checked, missing };
+  return { checked, problems };
 }
 
 function* emittedJsFiles(dir) {
@@ -62,6 +65,14 @@ function* emittedJsFiles(dir) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) yield* emittedJsFiles(full);
     else if (entry.name.endsWith('.js')) yield full;
+  }
+}
+
+function inspect(absolutePath) {
+  try {
+    return statSync(absolutePath).isFile() ? 'file' : 'directory';
+  } catch {
+    return 'missing';
   }
 }
 
@@ -77,17 +88,19 @@ function main() {
 
   for (const file of emittedJsFiles(DIST)) {
     files += 1;
-    const relative = file.slice(DIST.length + 1);
-    const { checked, missing } = findUnshippedTargets(readFileSync(file, 'utf8'), (specifier) =>
-      existsSync(resolve(dirname(file), specifier)),
+    const relativePath = file.slice(DIST.length + 1);
+    const { checked, problems } = findUnshippedTargets(readFileSync(file, 'utf8'), (specifier) =>
+      classifyTarget({ distRoot: DIST, fileDir: dirname(file), specifier, inspect }),
     );
     specifiers += checked.length;
-    for (const specifier of missing) failures.push(`dist/${relative}: ${specifier}`);
+    for (const { specifier, verdict } of problems) {
+      failures.push(`dist/${relativePath}: ${specifier} — ${REASONS[verdict] ?? verdict}`);
+    }
   }
 
   if (failures.length > 0) {
     console.error(
-      `verify-dist-worker-urls: ${failures.length} specifier(s) point at a file this package does not ship:`,
+      `verify-dist-worker-urls: ${failures.length} specifier(s) point at something this package does not ship:`,
     );
     for (const line of failures) console.error(`  ${line}`);
     console.error(
@@ -104,6 +117,10 @@ function main() {
   );
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// `isMainEntry` rather than comparing `import.meta.url` to `argv[1]` by hand:
+// the hand-rolled spelling this file shipped with fell through silently on a
+// symlinked path and exited 0 having checked nothing, which is the exact
+// failure that helper's header documents.
+if (isMainEntry(import.meta.url)) {
   main();
 }

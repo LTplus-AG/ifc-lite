@@ -21,11 +21,11 @@
  * because the worker URL also lived in `dist/geometry-parallel.js`. This
  * script takes no list — it walks every emitted `.js`.
  *
- * WHAT IT REWRITES. Only a `new URL('./x.ts', import.meta.url)` whose sibling
- * `./x.js` exists in `dist`. A `.ts` specifier with no emitted counterpart is
- * left alone and reported, because rewriting it would swap one missing file
- * for another and hide the real problem from
- * `verify-dist-worker-urls.mjs`, which runs next and fails on it.
+ * WHAT IT REWRITES. Only a `.ts` specifier whose sibling `.js` is a regular
+ * file inside `dist`, i.e. a path the tarball will actually contain. A `.ts`
+ * specifier with no such counterpart is left alone and reported, because
+ * rewriting it would swap one missing file for another and hide the real
+ * problem from `verify-dist-worker-urls.mjs`, which runs next and fails on it.
  *
  * WHAT IT CANNOT SEE. It is lexical. A worker URL assembled at runtime from
  * variables (`new URL('./' + name + '.ts', import.meta.url)`) has no literal
@@ -33,32 +33,33 @@
  * in exactly the same way, so such a URL would pass both silently.
  */
 
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
+import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
+import { classifyTarget, relativeTsUrlSpecifier } from './lib/shipped-target.mjs';
 
-/** `new URL('./something.ts', import.meta.url)`, single or double quoted. */
-const SPECIFIER = /new URL\(\s*(['"])(\.\/[^'"]+\.ts)\1\s*,\s*import\.meta\.url\s*\)/g;
+const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
 /**
  * Rewrite the `.ts` worker specifiers in one emitted file.
  *
- * Pure so `test/rewrite-worker-urls.test.ts` can exercise it without a build:
- * `hasEmittedSibling(specifier)` answers whether the `.js` counterpart exists,
- * and is the only thing that touches the filesystem in the real run.
+ * Pure so `test/worker-url-specifiers-4895.test.ts` can exercise it without a
+ * build: `emitsSibling(jsSpecifier)` answers whether the `.js` counterpart is
+ * a shipped file, and is the only thing that touches the filesystem in a real
+ * run.
  *
  * @param {string} text file contents
- * @param {(jsSpecifier: string) => boolean} hasEmittedSibling
+ * @param {(jsSpecifier: string) => boolean} emitsSibling
  * @returns {{ text: string, rewritten: string[], left: string[] }}
  */
-export function rewriteWorkerUrls(text, hasEmittedSibling) {
+export function rewriteWorkerUrls(text, emitsSibling) {
   const rewritten = [];
   const left = [];
-  const out = text.replace(SPECIFIER, (match, quote, specifier) => {
+  const out = text.replace(relativeTsUrlSpecifier(), (match, quote, specifier) => {
     const asJs = specifier.replace(/\.ts$/, '.js');
-    if (!hasEmittedSibling(asJs)) {
+    if (!emitsSibling(asJs)) {
       left.push(specifier);
       return match;
     }
@@ -76,6 +77,14 @@ function* emittedJsFiles(dir) {
   }
 }
 
+function inspect(absolutePath) {
+  try {
+    return statSync(absolutePath).isFile() ? 'file' : 'directory';
+  } catch {
+    return 'missing';
+  }
+}
+
 function main() {
   if (!existsSync(DIST)) {
     console.error('rewrite-worker-urls: dist/ does not exist — run tsc first.');
@@ -89,8 +98,11 @@ function main() {
   for (const file of emittedJsFiles(DIST)) {
     scanned += 1;
     const before = readFileSync(file, 'utf8');
-    const result = rewriteWorkerUrls(before, (asJs) =>
-      existsSync(resolve(dirname(file), asJs)),
+    const result = rewriteWorkerUrls(
+      before,
+      (asJs) =>
+        classifyTarget({ distRoot: DIST, fileDir: dirname(file), specifier: asJs, inspect }) ===
+        'shipped',
     );
     left.push(...result.left);
     if (result.text !== before) {
@@ -107,11 +119,13 @@ function main() {
   for (const line of changed) console.log(`  ${line}`);
   for (const specifier of left) {
     console.warn(
-      `  left alone: ${specifier} — no emitted sibling. verify-dist-worker-urls will fail on it.`,
+      `  left alone: ${specifier} — no shipped sibling. verify-dist-worker-urls will fail on it.`,
     );
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// See the note in verify-dist-worker-urls.mjs: the hand-rolled entry check
+// this file shipped with fell through silently on a symlinked path.
+if (isMainEntry(import.meta.url)) {
   main();
 }

@@ -4,7 +4,13 @@
 
 import type { CellValue, ChartDatasetColumn, ElementFieldBinding, ElementFieldValueKind } from './types.js';
 
-/** Stable, collision-free dataset column id for a persisted IFC field binding. */
+/**
+ * Stable, collision-free dataset column id. Two bindings that differ in kind
+ * or measure are two columns; the persisted `unit` is deliberately NOT part
+ * of the identity: it is discovery's hint, while the column's unit is the ONE
+ * target the dataset resolves per federation, so two charts of the same
+ * property share the column and read the same, honestly-labelled numbers.
+ */
 export function elementFieldColumnId(binding: ElementFieldBinding): string {
   const identity = binding.kind === 'attribute'
     ? ['attribute', binding.attributeName, binding.valueKind, binding.dataType ?? '']

@@ -43,13 +43,16 @@ export function useElementFieldCatalog(enabled: boolean): ElementFieldCatalogSta
         if (cancelled) return;
         const store = model.ifcDataStore;
         if (!store) continue;
-        const ids: number[] = [];
-        for (let i = 0; i < store.entities.count; i++) {
-          if ((store.entities.flags[i] & EntityFlags.HAS_GEOMETRY) !== 0 && (store.entities.flags[i] & EntityFlags.IS_TYPE) === 0) ids.push(store.entities.expressId[i]);
-        }
         const reader = createElementFieldReader(store, mutationViews.get(model.id));
-        for (let start = 0; start < ids.length; start += CHUNK) {
-          mergeObservations(observations, reader.observe(ids.slice(start, start + CHUNK)));
+        const { entities } = store;
+        // Walk the entity table in chunks too, so even the id scan of a very
+        // large model yields to the event loop and can be cancelled.
+        for (let start = 0; start < entities.count; start += CHUNK) {
+          const ids: number[] = [];
+          for (let i = start; i < Math.min(start + CHUNK, entities.count); i++) {
+            if ((entities.flags[i] & EntityFlags.HAS_GEOMETRY) !== 0 && (entities.flags[i] & EntityFlags.IS_TYPE) === 0) ids.push(entities.expressId[i]);
+          }
+          if (ids.length > 0) mergeObservations(observations, reader.observe(ids));
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
           if (cancelled) return;
         }

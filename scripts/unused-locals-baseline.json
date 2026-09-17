@@ -1,5 +1,5 @@
 {
-  "apps/viewer": 251,
+  "apps/viewer": 252,
   "apps/viewer-embed": 254,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
@@ -33,7 +33,7 @@
   "packages/merge": 0,
   "packages/mutations": 1,
   "packages/oauth-pkce": 0,
-  "packages/parser": 109,
+  "packages/parser": 113,
   "packages/plugin-api": 0,
   "packages/pointcloud": 1,
   "packages/provenance": 0,

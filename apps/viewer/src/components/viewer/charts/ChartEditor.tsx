@@ -94,10 +94,16 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       next.stackBy = undefined;
       if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
     }
-    else if (oldId && (next.dimension === oldId || next.stackBy === oldId || next.measure.column === oldId)) {
-      next.dimension = editorColumns(datasets.elements, next).find((column) => column.kind === 'category')?.id ?? '';
-      if (next.stackBy === oldId) next.stackBy = undefined;
-      if (next.measure.column === oldId) next.measure = { agg: 'count' };
+    else {
+      // Back to the built-in columns: a histogram over the cleared numeric
+      // field has no number column left, so it would sit unsaveable (#4833).
+      if (next.type === 'histogram' || next.type === 'timeline') next.type = 'bar';
+      const columns = editorColumns(datasets.elements, next);
+      if (!dimensionColumns(next.type, columns).some((column) => column.id === next.dimension)) {
+        next.dimension = columns.find((column) => column.kind === 'category')?.id ?? '';
+      }
+      if (oldId && next.stackBy === oldId) next.stackBy = undefined;
+      if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
     }
     setDraft(next);
   };

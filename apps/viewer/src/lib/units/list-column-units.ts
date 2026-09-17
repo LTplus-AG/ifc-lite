@@ -76,6 +76,9 @@ function sourceUnitFor(pu: ProjectUnits, kind: ColumnUnitKind): (LinearUnit & { 
   }
   const power = AREA_VOLUME_POWER[kind.unitType];
   if (power === undefined) return undefined;
+  // Derive only from a DECLARED length unit: `unitForMeasure` falls back to
+  // the SI metre, which would label a unit-less file's areas `m²` (#4833).
+  if (!pu.resolvedForUnitType('LENGTHUNIT')) return undefined;
   const length = pu.unitForMeasure('IfcLengthMeasure');
   if (!length) return undefined;
   const exponent = power === 2 ? '²' : '³';

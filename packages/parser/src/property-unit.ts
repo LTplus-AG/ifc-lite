@@ -31,10 +31,11 @@ export function resolvePropertyUnit(
   propertyType: string,
   attributes: unknown[],
 ): ExplicitPropertyUnit | undefined {
+  // IfcPropertyTableValue carries DefiningUnit and DefinedUnit (slots 5 and
+  // 6); a single `unit` cannot represent both, so a table reports none.
   const type = propertyType.toUpperCase();
   const unitIndex = type === 'IFCPROPERTYBOUNDEDVALUE' ? 4
-    : type === 'IFCPROPERTYTABLEVALUE' ? 7
-      : type === 'IFCPROPERTYSINGLEVALUE' || type === 'IFCPROPERTYLISTVALUE' ? 3 : -1;
+    : type === 'IFCPROPERTYSINGLEVALUE' || type === 'IFCPROPERTYLISTVALUE' ? 3 : -1;
   const unitRef = unitIndex >= 0 && typeof attributes[unitIndex] === 'number'
     ? attributes[unitIndex]
     : undefined;

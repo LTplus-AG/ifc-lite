@@ -135,19 +135,19 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
       return { ...normalizeElementFieldValue(raw, binding.valueKind), ...(dataType ? { dataType } : {}) };
     }
     const property = propertyFor(id, binding.psetName, binding.propertyName);
-    if (property?.values) {
-      // Enumerated / list / bounded / table: a shape, not a scalar. Its joined
-      // display string is a category; it is never a number or a boolean.
-      if (binding.valueKind !== 'category') return UNSUPPORTED;
-      return normalizeElementFieldValue(typeof property.value === 'string' ? property.value : null, 'category');
-    }
-    const normalized = normalizeElementFieldValue(property?.value, binding.valueKind);
-    return {
-      ...normalized,
+    const provenance = {
       ...(property?.unit ? { unit: property.unit } : {}),
       ...(property?.unitSiScale !== undefined ? { unitSiScale: property.unitSiScale } : {}),
       ...(property?.dataType ? { dataType: property.dataType } : {}),
     };
+    if (property?.values) {
+      // Enumerated / list / bounded / table: a shape, not a scalar. Its joined
+      // display string is a category (unit-qualified like any other category);
+      // it is never a number or a boolean.
+      if (binding.valueKind !== 'category') return UNSUPPORTED;
+      return { ...normalizeElementFieldValue(typeof property.value === 'string' ? property.value : null, 'category'), ...provenance };
+    }
+    return { ...normalizeElementFieldValue(property?.value, binding.valueKind), ...provenance };
   };
 
   const observe = (expressIds: readonly number[]): ElementFieldObservations => {

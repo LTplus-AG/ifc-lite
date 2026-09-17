@@ -212,7 +212,7 @@ describe('chart source adapters over real producers (#3944)', () => {
     assert.equal(overlayRow?.values[column], 1_000, 'installing an unchanged overlay preserves the explicit metre unit');
   });
 
-  it('elements: does not invent an SI unit for a typed value without project or explicit units (#4833)', async () => {
+  it('elements: a typed value with neither project nor explicit unit is unsupported, while the column still names its target (#4833)', async () => {
     const additions = `
 #203=IFCPROPERTYSINGLEVALUE('UnconfirmedLength',$,IFCLENGTHMEASURE(1.),$);
 #204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
@@ -230,8 +230,8 @@ describe('chart source adapters over real producers (#3944)', () => {
     const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
     const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
     const row = dataset.rows.find(({ ids }) => ids[0] === GID(41));
-    assert.equal(dataset.columns[column]?.unit, undefined);
-    assert.equal(row?.values[column], null);
+    assert.equal(dataset.columns[column]?.unit, 'm', 'the column has one target so explicit-unit rows of another model could still sum into it');
+    assert.equal(row?.values[column], null, 'a value whose own unit is unknown is never read as metres');
     assert.equal(row?.statuses?.[column], 'unsupported');
   });
 
@@ -280,7 +280,7 @@ describe('chart source adapters over real producers (#3944)', () => {
     const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
     const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
     const row = dataset.rows.find(({ ids }) => ids[0] === GID(41));
-    assert.equal(dataset.columns[column].unit, undefined);
+    assert.equal(dataset.columns[column].unit, 'm');
     assert.equal(row?.values[column], null);
     assert.equal(row?.statuses?.[column], 'unsupported');
   });

@@ -23,7 +23,10 @@ import { buildCompareDataset } from '@/lib/charts/datasets/compare';
 
 export type ChartDatasets = Record<ChartSource, ChartDataset>;
 
-export function useChartDatasets(scope: ChartScope, elementFields: readonly ElementFieldBinding[] = []): ChartDatasets {
+/** Module-level so a caller that passes no fields does not hand the memo a fresh `[]` every render. */
+const NO_FIELDS: readonly ElementFieldBinding[] = [];
+
+export function useChartDatasets(scope: ChartScope, elementFields: readonly ElementFieldBinding[] = NO_FIELDS): ChartDatasets {
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);

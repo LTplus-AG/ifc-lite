@@ -100,13 +100,17 @@ describe('chart IFC field reader (#4833)', () => {
 #60013=IFCPROPERTYBOUNDEDVALUE('UpperOnly',$,IFCLENGTHMEASURE(5.),$,$,$);
 #60014=IFCPROPERTYLISTVALUE('OneNumber',$,(IFCLENGTHMEASURE(7.)),$);
 #60015=IFCPROPERTYENUMERATEDVALUE('Status',$,(IFCLABEL('NEW')),$);
-#60006=IFCPROPERTYSET('g-shapes',#1,'Probe',$,(#60003,#60010,#60012,#60013,#60014,#60015));
+#60016=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#60017=IFCPROPERTYLISTVALUE('Lengths',$,(IFCLENGTHMEASURE(1.),IFCLENGTHMEASURE(2.)),#60016);
+#60006=IFCPROPERTYSET('g-shapes',#1,'Probe',$,(#60003,#60010,#60012,#60013,#60014,#60015,#60017));
 #60008=IFCRELDEFINESBYPROPERTIES('g-rel',#1,$,$,(#52),#60006);`);
     const reader = createElementFieldReader(store);
     const category = (propertyName: string): ElementFieldBinding => ({ kind: 'property', psetName: 'Probe', propertyName, valueKind: 'category' });
     const number = (propertyName: string): ElementFieldBinding => ({ kind: 'property', psetName: 'Probe', propertyName, valueKind: 'number', dataType: 'IFCLENGTHMEASURE' });
 
     assert.deepEqual(reader.readResolved(52, category('Multi')), { value: 'A, B', status: 'value' });
+    // A shaped value keeps its provenance so the dataset can unit-qualify the category (review find).
+    assert.deepEqual(reader.readResolved(52, category('Lengths')), { value: '1, 2', status: 'value', unit: 'm', unitSiScale: 1 });
     assert.deepEqual(reader.readResolved(52, category('Singleton')), { value: 'Only', status: 'value' });
     assert.deepEqual(reader.readResolved(52, category('Status')), { value: 'NEW', status: 'value' });
     assert.deepEqual(reader.readResolved(52, category('Complex')), { value: 'Inner: A', status: 'value' });

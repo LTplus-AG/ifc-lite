@@ -304,6 +304,42 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual(barData(charts[0].options.at(-1)!).map(([name, count]) => [name, count]), [['IfcWall', 3], ['IfcDoor', 2]]);
   });
 
+  it('clearing a numeric IFC field back to the built-in columns leaves a saveable bar chart, not an orphaned histogram (#4833 review)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    const property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    await act(async () => {
+      property.value = [...property.options].find((option) => option.textContent === 'ReferenceLength')!.value;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'histogram');
+    await act(async () => {
+      source.value = 'built-in';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'bar');
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Group by"]')!.value, 'IfcType');
+    const save = [...ui.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Save chart')!;
+    assert.equal(save.disabled, false, 'the chart is saveable again');
+    click(save);
+    await settle();
+    const saved = useViewerStore.getState().dashboards[0].charts.at(-1)!;
+    assert.equal(saved.elementField, undefined);
+    assert.equal(saved.type, 'bar');
+  });
+
   it('invalidates a selected bucket when a mutation changes its membership (#4833)', () => {
     const spec = { id: 'field', title: 'Rating', source: 'elements' as const, type: 'bar' as const, dimension: 'Rating', measure: { agg: 'count' as const } };
     const dataset = (ratings: readonly string[]): ChartDataset => ({

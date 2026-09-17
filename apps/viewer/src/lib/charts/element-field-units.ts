@@ -44,7 +44,6 @@ export function resolveFieldColumnUnit(
   field: ElementFieldBinding,
   index: number,
   modelUnits: ReadonlyMap<string, ProjectUnits>,
-  overrides: Record<string, string>,
   resolver: ListColumnUnitResolver,
 ): string | undefined {
   const measure = field.dataType ? measureUnit(field.dataType) : undefined;
@@ -57,9 +56,12 @@ export function resolveFieldColumnUnit(
     return undefined;
   }
   if (measure?.kind !== 'typed') return field.unit;
-  const hasDeclaredUnits = [...modelUnits.values()].some((units) => hasSourceUnit(units, measure.unitType));
-  const hasOverride = overrides[measure.unitType] !== undefined;
-  return field.unit || hasDeclaredUnits || hasOverride ? (resolver.unitSymbol(index) ?? field.unit) : undefined;
+  // The column's target: an override, else the first model's declared unit,
+  // else the SI default. A model that declares no unit for this measure has
+  // its project-unit rows refused per row (`hasSourceUnit`); rows carrying
+  // their own explicit unit still convert into the target, so a federation of
+  // explicit `Pa` and `kPa` values with no project PRESSUREUNIT sums in `Pa`.
+  return resolver.unitSymbol(index) ?? field.unit;
 }
 
 /** A source unit for an explicit symbol: its parsed scale, or a curated alternative's when only the symbol is known. */

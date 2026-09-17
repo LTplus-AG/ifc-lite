@@ -78,7 +78,7 @@ export function buildElementsDataset(
   }
   const resolver = resolveListColumnUnits(unitColumns, modelUnits, state.unitDisplayOverrides);
   const resolvedFields = fields.map((field, index) => {
-    const unit = resolveFieldColumnUnit(field, index, modelUnits, state.unitDisplayOverrides, resolver);
+    const unit = resolveFieldColumnUnit(field, index, modelUnits, resolver);
     return { ...field, ...(unit ? { unit } : {}) };
   });
   const fieldIndex = new Map(resolvedFields.map((field, index) => [elementFieldColumnId(field), index]));

@@ -14,7 +14,7 @@
 
 import { EntityExtractor } from './entity-extractor.js';
 import { getAttributeNames, getAttributeNamesAcrossSchemas } from './ifc-schema.js';
-import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from './generated/schema-registry-by-version.js';
+import { getSchemaRegistryForVersion, type SchemaRegistry, type SchemaVersionWithRegistry } from './generated/schema-registry-by-version.js';
 import { SKIP_DISPLAY_ATTRS } from './columnar-parser-indexes.js';
 import type { EntityRef } from './types.js';
 import type { IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
@@ -163,6 +163,19 @@ export function extractAllEntityAttributes(
  * Returns named raw attribute pairs for an entity, filtered to display-relevant attributes.
  * Skips structural/reference attributes using the IFC schema. Used by query layer for coercion.
  */
+/** STEP type names are UPPERCASE and registry keys are PascalCase; index each registry once instead of scanning it per entity. */
+const REGISTRY_BY_UPPER = new WeakMap<SchemaRegistry, Map<string, SchemaRegistry['entities'][string]>>();
+function registryEntity(registry: SchemaRegistry, typeName: string): SchemaRegistry['entities'][string] | undefined {
+    const direct = registry.entities[typeName];
+    if (direct) return direct;
+    let byUpper = REGISTRY_BY_UPPER.get(registry);
+    if (!byUpper) {
+        byUpper = new Map(Object.values(registry.entities).map((candidate) => [candidate.name.toUpperCase(), candidate]));
+        REGISTRY_BY_UPPER.set(registry, byUpper);
+    }
+    return byUpper.get(typeName.toUpperCase());
+}
+
 export function getRawNamedAttributes(
     entity: IfcEntity,
     schemaVersion?: SchemaVersionWithRegistry,
@@ -172,11 +185,7 @@ export function getRawNamedAttributes(
     // IFC2X3-only and IFC4X3-only classes as well as the IFC4 codegen pin.
     // The schema-union helper preserves the pinned result when available and
     // supplies the missing names for the other bundled schemas.
-    const registry = schemaVersion ? getSchemaRegistryForVersion(schemaVersion) : undefined;
-    const exact = registry
-        ? registry.entities[entity.type]
-            ?? Object.values(registry.entities).find((candidate) => candidate.name.toUpperCase() === entity.type.toUpperCase())
-        : undefined;
+    const exact = schemaVersion ? registryEntity(getSchemaRegistryForVersion(schemaVersion), entity.type) : undefined;
     const attrNames = exact?.allAttributes?.map((attribute) => attribute.name)
         ?? getAttributeNamesAcrossSchemas(entity.type);
 

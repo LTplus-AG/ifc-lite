@@ -197,6 +197,7 @@
     "ELEMENT_COLUMNS: const",
     "ELEMENT_DATASET_COLUMNS: const",
     "ElementFieldBinding: type",
+    "ElementFieldSpatialLevel: type",
     "ElementFieldValueKind: type",
     "ElementsDatasetModel: interface",
     "ElementsEntityTable: interface",

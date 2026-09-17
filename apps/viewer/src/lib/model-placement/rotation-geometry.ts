@@ -103,6 +103,16 @@ export function captureAppendedMeshBaselines(geometry: Geometry, baseline: Rotat
   // baseline's copy — otherwise the next restore would drop them.
   if (geometry.instancedGeometryAabbs !== baseline.bakedInstanced) {
     baseline.instancedGeometryAabbs = geometry.instancedGeometryAabbs ? new Map(geometry.instancedGeometryAabbs) : undefined;
+    // A late box can sit outside the extent measured when the first bake ran,
+    // and only appended MESHES grow the pristine bounds below. `restore`
+    // clones those bounds back, and the zero-angle branch of
+    // `applyModelRotation` returns before anything re-measures them — so
+    // without this `modelBoundsCentre` and the section calculations would be
+    // handed an extent the model no longer fits in.
+    if (baseline.instancedGeometryAabbs) {
+      const offset = totalYupOffset(geometry.coordinateInfo);
+      for (const box of baseline.instancedGeometryAabbs.values()) growPristineBoundsByWorldBox(baseline, box, offset);
+    }
     captured = true;
   }
   for (const mesh of geometry.meshes) {
@@ -115,6 +125,27 @@ export function captureAppendedMeshBaselines(geometry: Geometry, baseline: Rotat
     captured = true;
   }
   return captured;
+}
+
+/** Grow the pristine shifted bounds by an ABSOLUTE world box. The boxes carry
+ * the RTC offset and the origin shift folded in and the bounds do not, so the
+ * box is taken back out of that frame first — the same conversion
+ * `growByWorldBox` does for the rotated bounds. */
+function growPristineBoundsByWorldBox(
+  baseline: RotationBaseline, box: EntityWorldAabb, offset: { x: number; y: number; z: number },
+): void {
+  const bounds = baseline.shiftedBounds;
+  if (!bounds) return;
+  const o = [offset.x, offset.y, offset.z];
+  const axes = ['x', 'y', 'z'] as const;
+  for (let axis = 0; axis < 3; axis += 1) {
+    if (!Number.isFinite(box.min[axis] - o[axis]) || !Number.isFinite(box.max[axis] - o[axis])) return;
+  }
+  for (let axis = 0; axis < 3; axis += 1) {
+    const key = axes[axis];
+    bounds.min[key] = Math.min(bounds.min[key], box.min[axis] - o[axis]);
+    bounds.max[key] = Math.max(bounds.max[key], box.max[axis] - o[axis]);
+  }
 }
 
 function growPristineBounds(baseline: RotationBaseline, mesh: MeshData): void {

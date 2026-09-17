@@ -5,7 +5,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import {
-  applyModelRotation, baselineIsForeign, captureRotationBaseline, modelBoundsCentre,
+  applyModelRotation, baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
+  modelBoundsCentre,
 } from './rotation-geometry.js';
 import { degreesToRadians, rotateWorkspacePoint, type ModelRotation } from './rotation.js';
 import { addTranslation, fromRenderTranslation, type Translation } from './translation.js';
@@ -300,6 +301,43 @@ describe('baselineIsForeign', () => {
     // No mesh in common: a replacement, and the baseline can restore nothing.
     assert.equal(baselineIsForeign({ ...value, meshes: [mesh(), mesh()] } as Geometry, baseline), true,
       'a baseline that describes none of the meshes was not called foreign');
+  });
+});
+
+describe('captureAppendedMeshBaselines', () => {
+  it('grows the pristine shifted bounds by an instanced box that arrives after the first bake', () => {
+    // Streaming completion republishes the accumulated instanced-only boxes
+    // after the model has already been baked. Only appended MESHES used to
+    // grow the pristine bounds, so a late box outside the first bake's extent
+    // was lost the moment the heading went back to zero.
+    const value = geometry();
+    const shift = { x: 31.5, y: -2.25, z: 17.75 };
+    value.coordinateInfo.originShift = shift;
+    // Render-frame extents, stored absolute as the contract requires.
+    const absolute = (box: { min: number[]; max: number[] }) => ({
+      min: [box.min[0] + shift.x, box.min[1] + shift.y, box.min[2] + shift.z] as [number, number, number],
+      max: [box.max[0] + shift.x, box.max[1] + shift.y, box.max[2] + shift.z] as [number, number, number] });
+    value.instancedGeometryAabbs = new Map([[99, absolute({ min: [101, 5, -40], max: [102, 6, -39] })]]);
+    const baseline = captureRotationBaseline(value);
+    applyModelRotation(value, baseline, ROTATION);
+
+    const lateExtent = { min: [400, 50, -300], max: [430, 62, -280] };
+    value.instancedGeometryAabbs = new Map([...baseline.instancedGeometryAabbs!, [100, absolute(lateExtent)]]);
+    assert.equal(captureAppendedMeshBaselines(value, baseline), true, 'the late boxes were not adopted');
+
+    // Back to zero: `restore` clones the pristine bounds and the zero-angle
+    // branch returns without re-measuring, so those bounds are the answer
+    // `modelBoundsCentre` and the section calculations get.
+    applyModelRotation(value, baseline, { angle: 0, pivot: PIVOT });
+    const bounds = value.coordinateInfo.shiftedBounds!;
+    const axes = ['x', 'y', 'z'] as const;
+    for (let axis = 0; axis < 3; axis += 1) {
+      const key = axes[axis];
+      assert.ok(bounds.min[key] <= lateExtent.min[axis] + 1e-3,
+        `late instanced box min ${key} ${lateExtent.min[axis]} outside pristine bounds min ${bounds.min[key]}`);
+      assert.ok(bounds.max[key] >= lateExtent.max[axis] - 1e-3,
+        `late instanced box max ${key} ${lateExtent.max[axis]} outside pristine bounds max ${bounds.max[key]}`);
+    }
   });
 });
 

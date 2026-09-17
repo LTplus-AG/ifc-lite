@@ -6,6 +6,8 @@ import { useViewerStore, type ViewerState, type FederatedModel } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
 import { modelRotationBaker, type RotationTarget } from '@/lib/model-placement/rotation-bake';
 import { buildSpatialIndexForModel, invalidateSpatialIndex } from '@/utils/loadingUtils';
+import { getGlobalRenderer } from '@/hooks/useBCF';
+import { setInstancedModelIndexSource } from '@/lib/model-placement/rotation-refusal';
 
 /**
  * Make each model's geometry agree with the heading its placement declares.
@@ -97,5 +99,9 @@ export function subscribeModelRotationSync(): () => void {
 /** Subscribed synchronously, like the placement sync beside it, so a pick
  * cannot observe the committed heading before the geometry carries it. */
 export function useModelRotationSync(): void {
-  useEffect(() => subscribeModelRotationSync(), []);
+  useEffect(() => {
+    const unregister = setInstancedModelIndexSource(() => getGlobalRenderer()?.getScene().getInstancedModelIndices() ?? null);
+    const unsubscribe = subscribeModelRotationSync();
+    return () => { unsubscribe(); unregister(); };
+  }, []);
 }

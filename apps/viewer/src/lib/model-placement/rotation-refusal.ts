@@ -14,7 +14,6 @@
  */
 
 import type { ViewerState } from '@/store';
-import { getGlobalRenderer } from '@/hooks/useBCF';
 import { modelIndices } from './model-indices.js';
 
 export const POINTCLOUD_ROTATION_REFUSAL = 'Pointclouds cannot be rotated. Select only IFC models to rotate.';
@@ -23,6 +22,16 @@ export const INSTANCED_ROTATION_REFUSAL =
 export const LOADING_ROTATION_REFUSAL = 'Wait for the model to finish loading before rotating it.';
 
 type RefusalState = Pick<ViewerState, 'models' | 'pendingInstancedShards'>;
+
+/** The renderer's instanced-template owners, registered by the viewport side.
+ * Injected rather than imported: this module is reached from a store slice, and
+ * importing the renderer accessor there closes an import cycle back into the
+ * store while it is still initialising. */
+let instancedOwners: () => readonly number[] | null = () => null;
+export function setInstancedModelIndexSource(source: () => readonly number[] | null): () => void {
+  instancedOwners = source;
+  return () => { if (instancedOwners === source) instancedOwners = () => null; };
+}
 
 /**
  * True when any of the model's geometry is drawn GPU-instanced. Three signals,
@@ -34,7 +43,7 @@ export function modelHasInstancedGeometry(state: RefusalState, modelId: string):
   const geometry = state.models.get(modelId)?.geometryResult;
   if ((geometry?.instancedGeometryHashes?.size ?? 0) > 0 || (geometry?.instancedGeometryAabbs?.size ?? 0) > 0) return true;
   if (state.pendingInstancedShards?.some((shard) => shard.modelId === modelId)) return true;
-  const owners = getGlobalRenderer()?.getScene().getInstancedModelIndices();
+  const owners = instancedOwners();
   if (!owners || owners.length === 0) return false;
   const index = modelIndices(state.models).get(modelId);
   return index !== undefined && owners.includes(index);

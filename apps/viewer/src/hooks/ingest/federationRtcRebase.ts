@@ -18,6 +18,7 @@
  */
 
 import { rebaseGeometryOntoFirstRealAnchor } from '@ifc-lite/geometry/rtc-rebase';
+import { realRtcAnchorOf } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { buildSpatialIndexForModel } from '../../utils/loadingUtils.js';
 
@@ -37,11 +38,11 @@ export function rebaseFederationOntoNewAnchor(
   if (hadAnyRealAnchorBeforeLoad || existingModelsForRtcEntries.length === 0) return;
 
   const justLoaded = useViewerStore.getState().models.get(justLoadedModelId) as FederatedModel | undefined;
-  const newOffset = justLoaded?.geometryResult?.coordinateInfo?.wasmRtcOffset;
+  const newOffset = realRtcAnchorOf(justLoaded);
   const existingGeometries = existingModelsForRtcEntries
     .map(([, model]) => model.geometryResult)
     .filter((geometry): geometry is NonNullable<typeof geometry> => geometry != null);
-  const moved = rebaseGeometryOntoFirstRealAnchor(existingGeometries, newOffset ?? null);
+  const moved = rebaseGeometryOntoFirstRealAnchor(existingGeometries, newOffset);
   if (moved.length === 0) return;
 
   // Mesh positions and coordinateInfo were mutated in place, same as

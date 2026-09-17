@@ -145,8 +145,8 @@ export function useIfcFederation(
       // is what makes THAT case order-independent too (#4897).
       const existingModelsForRtcEntries = Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>;
       const existingModelsForRtc = existingModelsForRtcEntries.map(([, model]) => model);
-      const hadAnyRealAnchorBeforeLoad = existingModelsForRtc.some((m) => m.geometryResult?.coordinateInfo?.wasmRtcOffset != null);
       const sharedRtcOffset = chooseSharedRtcOffset(existingModelsForRtc);
+      const hadAnyRealAnchorBeforeLoad = sharedRtcOffset != null;
 
       // THE canonical load path. loadFile acquires bytes, detects format
       // (IFC / IFCX / GLB / point cloud), produces geometry through the single

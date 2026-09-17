@@ -28,9 +28,38 @@ describe('Vercel Skew Protection document pin (#4649)', () => {
     );
 
     assert.equal(
-      headers?.get('set-cookie'),
+      headers?.getSetCookie()[0],
       `__vdpl=${DEPLOYMENT_ID}; Path=/; Secure; SameSite=Lax`,
     );
+  });
+
+  // #4886: Vercel serves every real navigation from the LATEST deployment, so
+  // the Path=/ pin above is rewritten by any navigation in any tab. Verified
+  // against production: an older tab's hashed worker then 404s. The pin scoped
+  // to this build's asset directory is what keeps that tab's requests routed.
+  test('also pins the asset directory of this build, which outranks the browser-wide pin', () => {
+    const headers = deploymentPinHeaders(
+      request({ 'sec-fetch-dest': 'document', 'sec-fetch-mode': 'navigate' }),
+      DEPLOYMENT_ID,
+      '1',
+    );
+
+    assert.deepEqual(headers?.getSetCookie(), [
+      `__vdpl=${DEPLOYMENT_ID}; Path=/; Secure; SameSite=Lax`,
+      `__vdpl=${DEPLOYMENT_ID}; Path=/assets/${DEPLOYMENT_ID}/; Max-Age=604800; Secure; SameSite=Lax`,
+    ]);
+  });
+
+  test('scopes the asset pin to exactly the directory the build writes', async () => {
+    const { deploymentAssetsDir } = await import('./lib/deployment-assets-dir.mjs');
+    const cookie = deploymentPinHeaders(request({ 'sec-fetch-dest': 'document' }), DEPLOYMENT_ID, '1')
+      ?.getSetCookie()[1] ?? '';
+    assert.ok(cookie.includes(`; Path=/${deploymentAssetsDir(DEPLOYMENT_ID, '1')}/;`), cookie);
+  });
+
+  test('sets no asset pin when the id cannot be a path segment', () => {
+    const headers = deploymentPinHeaders(request({ 'sec-fetch-dest': 'document' }), 'not-a-deployment', '1');
+    assert.equal(headers?.getSetCookie().length, 1);
   });
 
   test('overwrites a mismatched legacy pin instead of trusting it', () => {
@@ -43,7 +72,9 @@ describe('Vercel Skew Protection document pin (#4649)', () => {
       '1',
     );
 
-    assert.match(headers?.get('set-cookie') ?? '', new RegExp(`^__vdpl=${DEPLOYMENT_ID};`));
+    for (const cookie of headers?.getSetCookie() ?? []) {
+      assert.match(cookie, new RegExp(`^__vdpl=${DEPLOYMENT_ID};`));
+    }
   });
 
   test('recognizes document requests without Sec-Fetch-Dest', () => {
@@ -75,11 +106,25 @@ describe('Vercel Skew Protection document pin (#4649)', () => {
   test('returns Vercel next responses while keeping dotted documents eligible', () => {
     const response = middleware(request({ accept: '*/*' }));
     assert.equal(response.headers.get('x-middleware-next'), '1');
+    // Both pins must survive `next()`: Headers.set would silently keep one.
+    const previous = { id: process.env.VERCEL_DEPLOYMENT_ID, skew: process.env.VERCEL_SKEW_PROTECTION_ENABLED };
+    process.env.VERCEL_DEPLOYMENT_ID = DEPLOYMENT_ID;
+    process.env.VERCEL_SKEW_PROTECTION_ENABLED = '1';
+    try {
+      const documentResponse = middleware(request({ 'sec-fetch-dest': 'document' }));
+      assert.equal(documentResponse.headers.getSetCookie().length, 2);
+    } finally {
+      for (const [key, value] of [['VERCEL_DEPLOYMENT_ID', previous.id], ['VERCEL_SKEW_PROTECTION_ENABLED', previous.skew]]) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
     assert.equal(config.runtime, 'nodejs');
     assert.equal(middlewareMatches('/'), true);
     assert.equal(middlewareMatches('/model/42'), true);
     assert.equal(middlewareMatches('/index.html'), true);
     assert.equal(middlewareMatches('/assets/main.js'), false);
+    assert.equal(middlewareMatches(`/assets/${DEPLOYMENT_ID}/main.js`), false);
     assert.equal(middlewareMatches('/api/epsg/2056'), false);
     assert.ok(deploymentPinHeaders(
       new Request('https://www.ifclite.com/index.html', {

@@ -5,16 +5,41 @@
 import {
   evaluateCostItem, evaluateCostValue, extractCostOnDemand,
   type CostAppliedValue, type CostDiagnostic, type CostEvaluationResult,
-  type CostGraphExtraction, type CostRelationshipInfo, type IfcDataStore,
+  type CostGraphExtraction, type CostMutationOverlay, type CostRelationshipInfo, type IfcDataStore,
 } from '@ifc-lite/parser';
+import { effectiveSourceRecord } from '@ifc-lite/export';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EntityRef } from './types.js';
 import type {
   CostAppliedValueData, CostBackendMethods, CostDiagnosticData, CostEvaluationData,
   CostEvaluationOptions,
-  CostGraphData, CostRelationshipData,
+  CostGraphData, CostReadOptions, CostRelationshipData,
 } from './cost-types.js';
 
-export interface ResolvedCostModel { modelId: string; store: IfcDataStore }
+export interface ResolvedCostModel {
+  modelId: string;
+  store: IfcDataStore;
+  /**
+   * The model's pending edits — the same `MutablePropertyView` `bim.export.ifc()`
+   * writes through — when it has any (#4857). A host with no loaded-model
+   * editing (the CLI and MCP headless backends) returns none, and every read
+   * takes the cached on-disk path exactly as before.
+   */
+  mutationView?: MutablePropertyView;
+}
+
+/**
+ * The cost read model's view of `view`: tombstones and retypes straight off the
+ * view, and every record as `effectiveSourceRecord` — the exporter's own
+ * pipeline — writes it. No edit kind is re-serialized here.
+ */
+function costOverlay(view: MutablePropertyView, store: IfcDataStore): CostMutationOverlay {
+  return {
+    isDeleted: id => view.isDeleted(id),
+    retypes: () => new Map([...view.getTypeMutations()].map(([id, mutation]) => [id, mutation.newType])),
+    effectiveRecord: (id, text, type) => effectiveSourceRecord(view, id, text, type, store.schemaVersion),
+  };
+}
 export type CostModelResolver = (modelId?: string) => ResolvedCostModel;
 
 function ref(modelId: string, expressId: number): EntityRef { return { modelId, expressId }; }
@@ -142,15 +167,39 @@ function validateEvaluationOptions(options: CostEvaluationOptions | undefined): 
   }
 }
 
+/**
+ * THE cost read entry point, and the one cache between an edit and a read.
+ *
+ * The cache holds the UNMUTATED graph and nothing else. It is keyed on the
+ * store's `source` / `schemaVersion` / `entityIndex` identities — all three
+ * replaced wholesale when a model is reloaded and none of them touched by a
+ * pending edit — so what it holds cannot go stale under editing: a pending
+ * edit never enters it.
+ *
+ * A read that observes pending edits therefore does not consult the cache at
+ * all; it re-extracts through the overlay (#4857). That is the deliberate
+ * trade. A second cache keyed on "the overlay as it stood" would need a
+ * revision signal bumped at every one of `MutablePropertyView`'s mutation
+ * entry points, and one missed entry point is a read that silently reports a
+ * pre-edit cost graph — the failure this repo has shipped before. Re-reading
+ * costs one cost-scoped extraction per call and only on models that actually
+ * have an overlay; being wrong costs a wrong number in a tender.
+ */
 export function createCostBackend(resolveModel: CostModelResolver): CostBackendMethods {
   const cache = new WeakMap<IfcDataStore, {
     source: IfcDataStore['source']; schemaVersion: IfcDataStore['schemaVersion'];
     entityIndex: IfcDataStore['entityIndex']; graph: CostGraphExtraction;
   }>();
-  const resolve = (modelId?: string) => {
+  const resolve = (modelId?: string, options?: CostReadOptions) => {
     const resolved = resolveModel(modelId);
     if (!resolved.store.source || resolved.store.source.byteLength === 0) {
       throw new Error(`bim.cost requires loaded IFC source bytes for model '${resolved.modelId}'`);
+    }
+    const view = options?.includeMutations === false ? undefined : resolved.mutationView;
+    if (view) {
+      // Pending edits are live state: extract fresh, and never write the
+      // result into the unmutated-graph cache above.
+      return { ...resolved, graph: extractCostOnDemand(resolved.store, { overlay: costOverlay(view, resolved.store) }) };
     }
     let cached = cache.get(resolved.store);
     if (!cached || cached.source !== resolved.store.source
@@ -164,20 +213,23 @@ export function createCostBackend(resolveModel: CostModelResolver): CostBackendM
     }
     return { ...resolved, graph: cached.graph };
   };
-  const data = (modelId?: string) => { const value = resolve(modelId); return projectCostGraph(value.modelId, value.graph); };
+  const data = (modelId?: string, options?: CostReadOptions) => {
+    const value = resolve(modelId, options);
+    return projectCostGraph(value.modelId, value.graph);
+  };
   return {
     data,
-    schedules: modelId => data(modelId).CostSchedules,
-    items: modelId => data(modelId).CostItems,
-    values: modelId => data(modelId).CostValues,
+    schedules: (modelId, options) => data(modelId, options).CostSchedules,
+    items: (modelId, options) => data(modelId, options).CostItems,
+    values: (modelId, options) => data(modelId, options).CostValues,
     evaluateItem: (target, options) => {
       validateEvaluationTarget(target); validateEvaluationOptions(options);
-      const value = resolve(target.modelId);
+      const value = resolve(target.modelId, options);
       return projectEvaluation(value.modelId, evaluateCostItem(value.graph, target.expressId, options));
     },
     evaluateValue: (target, options) => {
       validateEvaluationTarget(target); validateEvaluationOptions(options);
-      const value = resolve(target.modelId);
+      const value = resolve(target.modelId, options);
       return projectEvaluation(value.modelId, evaluateCostValue(value.graph, target.expressId, options));
     },
   };

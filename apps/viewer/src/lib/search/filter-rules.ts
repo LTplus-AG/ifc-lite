@@ -13,7 +13,7 @@
  * collides with the IFC `type` attribute name on element rows.
  */
 
-import { isModelTagOp, type ModelTagOp } from '../model-tags/types.js';
+import { type ModelTagOp } from '../model-tags/types.js';
 
 // ── Operator enums ────────────────────────────────────────────────────────────
 
@@ -255,6 +255,20 @@ export interface TypeNameRule {
   valueKind?: TextKind;
 }
 
+/** `parent=Foo` (#4903) — direct or indirect spatial-hierarchy child of an
+ *  element named `Foo`; walks containment AND aggregation, any depth, via
+ *  `@ifc-lite/data`'s shared `collectSpatialAncestors` (see
+ *  `filter-match.ts`'s `matchParentRule`). Multi-valued like `material`:
+ *  ANY ancestor Name matching a positive op, or NONE violating a negative
+ *  one; no (matching) ancestors satisfies neither op — EMPTY, not "no filter". */
+export interface ParentRule {
+  kind: 'parent';
+  op: StringOp;
+  value: string;
+  /** How `value` reads. Only consulted by the `matches` / `notMatches` ops. */
+  valueKind?: TextKind;
+}
+
 export type FilterRule =
   | ModelRule
   | ModelTagRule
@@ -269,7 +283,8 @@ export type FilterRule =
   | MaterialRule
   | ClassificationRule
   | ElevationRule
-  | TypeNameRule;
+  | TypeNameRule
+  | ParentRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
 
@@ -364,36 +379,12 @@ export const Rule = {
   elevation: (op: NumericOp, value: number): ElevationRule => ({ kind: 'elevation', op, value }),
   typeName: (op: StringOp, value: string, valueKind?: TextKind): TypeNameRule =>
     ({ kind: 'type', op, value, ...(valueKind ? { valueKind } : {}) }),
+  parent: (op: StringOp, value: string, valueKind?: TextKind): ParentRule =>
+    ({ kind: 'parent', op, value, ...(valueKind ? { valueKind } : {}) }),
 } as const;
 
 // ── JSON guards ──────────────────────────────────────────────────────────────
-
-export function isFilterRule(value: unknown): value is FilterRule {
-  if (typeof value !== 'object' || value === null) return false;
-  const kind = (value as { kind?: unknown }).kind;
-  if (kind === 'modelTag') {
-    // Structural: a bad op or a non-string id must not reach the evaluator.
-    const r = value as { op?: unknown; tagIds?: unknown };
-    return isModelTagOp(r.op) && Array.isArray(r.tagIds) && r.tagIds.every((t) => typeof t === 'string');
-  }
-  return (
-    kind === 'model' ||
-    kind === 'storey' ||
-    kind === 'ifcType' ||
-    kind === 'predefinedType' ||
-    kind === 'name' ||
-    kind === 'globalId' ||
-    kind === 'attribute' ||
-    kind === 'property' ||
-    kind === 'quantity' ||
-    kind === 'material' ||
-    kind === 'classification' ||
-    kind === 'elevation' ||
-    kind === 'type'
-  );
-}
-
-export function parseFilterRules(raw: unknown): FilterRule[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(isFilterRule);
-}
+// `isFilterRule` / `parseFilterRules`: split into `filter-rule-guards.ts` to
+// stay under the module size cap; re-exported so existing imports of this
+// module keep working.
+export { isFilterRule, parseFilterRules } from './filter-rule-guards.js';

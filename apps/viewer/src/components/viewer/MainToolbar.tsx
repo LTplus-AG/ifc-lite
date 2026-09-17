@@ -59,6 +59,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore } from '@/store';
+import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
@@ -321,7 +322,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
   const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
   const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
-  const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
+  // Effective, not raw: the Cesium world context defaults this on (#4771).
+  const envSkyEnabled = useEffectiveSkyEnabled();
   const envPreset = useViewerStore((state) => state.envPreset);
   // SpaceMouse panel state (3D mouse navigation, #1677)
   const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);

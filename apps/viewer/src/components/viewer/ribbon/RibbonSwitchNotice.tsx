@@ -20,6 +20,7 @@ import { dismissNotice, isNoticeDismissed, isTourCompleted } from '@/lib/tours/s
 import { useTourStore } from '@/lib/tours/tour-store';
 import { useViewerStore } from '@/store';
 import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
+import { useTranslation } from '@/i18n';
 
 const NOTICE_ID = 'ribbon-default';
 
@@ -37,6 +38,7 @@ function hasExplicitToolbarChoice(): boolean {
 }
 
 export function RibbonSwitchNotice() {
+  const { t } = useTranslation();
   const setToolbarStyle = useViewerStore((s) => s.setToolbarStyle);
   // `startTour` refuses to run on mobile. Offering "Show me what moved" there
   // would retire the notice on click and then show nothing, so the invitation
@@ -64,7 +66,7 @@ export function RibbonSwitchNotice() {
     <div className="flex items-center gap-2 border-t border-primary/25 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
       <PanelTop className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0 truncate text-foreground/80">
-        The tabbed ribbon is now the default toolbar. Same commands, grouped by task.
+        {t('ribbon.notice.message')}
       </span>
       {!isMobile && (
         <>
@@ -75,7 +77,7 @@ export function RibbonSwitchNotice() {
               startTour('ribbon', 'invite');
             }}
           >
-            Show me what moved
+            {t('ribbon.notice.showTour')}
           </button>
           <span aria-hidden="true" className="text-muted-foreground/40">|</span>
         </>
@@ -87,11 +89,11 @@ export function RibbonSwitchNotice() {
           setToolbarStyle('classic');
         }}
       >
-        Keep the classic bar
+        {t('ribbon.notice.keepClassic')}
       </button>
       <div className="flex-1" />
       <button
-        aria-label="Dismiss toolbar notice"
+        aria-label={t('ribbon.notice.dismissAriaLabel')}
         className="shrink-0 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
         onClick={close}
       >

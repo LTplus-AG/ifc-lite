@@ -6,6 +6,7 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
+import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
@@ -15,6 +16,7 @@ export const en = {
   ...appearanceAssignmentMembersEn,
   ...sectionToolEn,
   ...costPanelEn,
+  ...ribbonToolbarEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

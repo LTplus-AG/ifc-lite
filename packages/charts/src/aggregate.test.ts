@@ -137,6 +137,46 @@ describe('aggregate invariants', () => {
     expect(agg.unit).toBe('m²');
   });
 
+  it('reports missing sum contributions instead of presenting them as measured zero (#4833)', () => {
+    const dataset: ChartDataset = {
+      source: 'elements', fingerprint: 'missing-measure',
+      columns: [{ id: 'group', label: 'Group', kind: 'category' }, { id: 'value', label: 'Value', kind: 'number', unit: 'm' }],
+      rows: [
+        { ids: [1], values: ['A', null] },
+        { ids: [2], values: ['A', 0] },
+        { ids: [3], values: ['B', null] },
+      ],
+    };
+    const result = aggregate({ id: 'sum', title: 'Sum', source: 'elements', type: 'bar', dimension: 'group', measure: { agg: 'sum', column: 'value' } }, dataset);
+    expect(result.total).toBe(0);
+    expect(result.unmeasured).toBe(2);
+    expect(result.categories.map(({ count, value }) => ({ count, value }))).toEqual([{ count: 2, value: 0 }, { count: 1, value: 0 }]);
+  });
+
+  it('reports unsupported scalar contributions separately from missing (#4833)', () => {
+    const dataset: ChartDataset = {
+      source: 'elements', fingerprint: 'unsupported',
+      columns: [{ id: 'group', label: 'Group', kind: 'category' }, { id: 'value', label: 'Value', kind: 'number' }],
+      rows: [
+        { ids: [1], values: ['A', null], statuses: ['value', 'unsupported'] },
+        { ids: [2], values: ['A', null], statuses: ['value', 'missing'] },
+      ],
+    };
+    const result = aggregate({ id: 'sum', title: 'Sum', source: 'elements', type: 'bar', dimension: 'group', measure: { agg: 'sum', column: 'value' } }, dataset);
+    expect(result.unmeasured).toBe(2);
+    expect(result.unsupported).toBe(1);
+  });
+
+  it('reports an unsupported stack value instead of hiding it as missing (#4833)', () => {
+    const input: ChartDataset = {
+      source: 'elements', fingerprint: 'unsupported-stack',
+      columns: [{ id: 'group', label: 'Group', kind: 'category' }, { id: 'stack', label: 'Stack', kind: 'category' }],
+      rows: [{ ids: [1], values: ['A', null], statuses: ['value', 'unsupported'] }],
+    };
+    const result = aggregate({ id: 'stack', title: 'Stack', source: 'elements', type: 'stackedBar', dimension: 'group', stackBy: 'stack', measure: { agg: 'count' } }, input);
+    expect(result.unsupported).toBe(1);
+  });
+
   it('folds the tail past topN into a grey Other bucket that still carries every id', () => {
     const ds = dataset([['T', 'category']], [[[1], ['a']], [[2], ['a']], [[3], ['b']], [[4], ['c']], [[5], ['d']]]);
     const agg = aggregate({ id: 't', title: 't', source: 'clash', type: 'pie', dimension: 'T', measure: { agg: 'count' }, topN: 2 }, ds);

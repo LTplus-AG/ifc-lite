@@ -9,6 +9,7 @@ import { costQuantityExactValue, extractCostQuantities } from './cost-quantities
 import { asEnum, asRef, asString, CostEntityReader } from './cost-reader.js';
 import { diagnoseCostGraphs, extractCostRelationships } from './cost-relationships.js';
 import { isZeroCostNumericLexeme } from './cost-step-lexemes.js';
+import { getInheritanceChain } from './ifc-schema.js';
 import type {
   CostAppliedValue,
   CostDiagnostic,
@@ -19,6 +20,7 @@ import type {
   CostScheduleInfo,
   CostValueInfo,
 } from './cost-types.js';
+import type { CostExtractionOptions } from './cost-overlay.js';
 import { CostUnitResolver } from './cost-units.js';
 
 function scalarString(value: unknown): string | undefined {
@@ -97,6 +99,22 @@ function finiteCompatibilityNumber(value: string | undefined): number | undefine
   const converted = Number(value);
   if (!Number.isFinite(converted)) return undefined;
   return converted !== 0 || isZeroCostNumericLexeme(value) ? converted : undefined;
+}
+
+/**
+ * `IfcRelAssignsToControl` legitimately binds tasks, resources and actors
+ * to a control (assigning a task to a cost item is exactly this
+ * relationship, with the cost item as `RelatingControl`) — not just
+ * products. `productExpressIds`/`productGlobalIds` are documented as an
+ * `IfcProduct` view, so this discriminates the related object's type via
+ * the schema-derived inheritance chain (same approach used elsewhere in
+ * the parser for product/group/root classification) before it is
+ * admitted (#4877).
+ */
+function isProductLike(reader: CostEntityReader, expressId: number): boolean {
+  const type = reader.typeOf(expressId);
+  if (!type) return false;
+  return getInheritanceChain(type).some((ancestor) => ancestor.toUpperCase() === 'IFCPRODUCT');
 }
 
 function pushInvalidList(
@@ -223,7 +241,10 @@ function extractValues(
 }
 
 /** Extract a schema-aware, read-only IFC cost graph from a parsed store. */
-export function extractCostOnDemand(store: IfcDataStore): CostGraphExtraction {
+export function extractCostOnDemand(
+  store: IfcDataStore,
+  options?: CostExtractionOptions,
+): CostGraphExtraction {
   const schema = store.schemaVersion;
   const diagnostics: CostDiagnostic[] = [];
   const empty = (): CostGraphExtraction => ({
@@ -232,7 +253,7 @@ export function extractCostOnDemand(store: IfcDataStore): CostGraphExtraction {
     HasCostData: false, costSchedules: [], costItems: [], hasCost: false,
   });
   if (!store.source?.length) return empty();
-  const reader = new CostEntityReader(store);
+  const reader = new CostEntityReader(store, options?.overlay, diagnostics);
   const hasCost = reader.ids('IFCCOSTSCHEDULE').length + reader.ids('IFCCOSTITEM').length +
     reader.ids('IFCCOSTVALUE').length + reader.ids('IFCAPPLIEDVALUE').length > 0;
   if (!hasCost) return empty();
@@ -351,7 +372,7 @@ export function extractCostOnDemand(store: IfcDataStore): CostGraphExtraction {
         if (schedule && relatedItem) {
           schedule.costItemGlobalIds.push(relatedItem.GlobalId ?? '');
           relatedItem.controllingScheduleGlobalIds.push(schedule.GlobalId ?? '');
-        } else if (item) {
+        } else if (item && isProductLike(reader, relatedId)) {
           item.productExpressIds.push(relatedId);
           item.productGlobalIds.push(store.entities?.getGlobalId?.(relatedId) ?? '');
         }

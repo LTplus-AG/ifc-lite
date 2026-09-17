@@ -64,6 +64,7 @@ export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
       axis: s.sectionPlane.axis,
       position: s.sectionPlane.position,
       enabled: s.sectionPlane.enabled,
+      parked: s.sectionPlane.parked === true, // a cut left in the Section tool (#4910)
       flipped: s.sectionPlane.flipped,
       custom: s.sectionPlane.custom ? structuredClone(s.sectionPlane.custom) : undefined,
     },
@@ -218,6 +219,7 @@ export function restoreUiSnapshot(
         axis: snapshot.sectionPlane.axis,
         position: snapshot.sectionPlane.position,
         enabled: snapshot.sectionPlane.enabled,
+        parked: snapshot.sectionPlane.parked,
         flipped: snapshot.sectionPlane.flipped,
         custom: snapshot.sectionPlane.custom,
       },

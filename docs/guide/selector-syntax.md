@@ -72,7 +72,8 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `GlobalId=`, `GlobalId!=` | ✅ | reuses the same globalId rule the bare term builds; `*=`, `>`/`>=`/`<`/`<=`, `/regex/`, and `NULL` are reported |
 | `Description=`, `ObjectType=`, `Tag=`, any other schema attribute | ✅ | all eight operators, `= NULL` / `!= NULL` as presence — see below |
 | `type=WT01` | ✅ | matches the relating type's Name; `=`, `!=`, `*=`, `!*=` and `/regex/`, like `Name=` — no `>`, `>=`, `<`, `<=` |
-| `parent=`, `query:` | ❌ | reported, not applied |
+| `parent=Foo` | ✅ | any ancestor's Name, walking containment **and** aggregation to any depth — see below |
+| `query:` | ❌ | **deliberately** out of scope — see below, not "not supported yet" |
 | `+` unions of groups | ❌ | the first group is applied, the rest reported |
 
 ### Which quantities a selector can reach
@@ -126,6 +127,34 @@ The reach stops at one hop: an element inside a space nested inside *another* sp
 rather than directly under the storey, is not resolved. That deeper case is
 uncommon (most authoring tools put a space directly under its storey) and is left
 open in #4094 rather than guessed at.
+
+### How far `parent=` reaches, and why it is not `location=`
+
+`parent="Level 3"` matches an element that is a direct **or indirect** child, in the
+spatial hierarchy, of an element named `Level 3` — walking upward through **both**
+`IfcRelContainedInSpatialStructure` (containment) and `IfcRelAggregates`
+(aggregation) edges, to **any** depth. That is deliberately wider than `location=`,
+which stops at one hop through a containing space: `parent=` also reaches a
+grandparent (a wall's storey's building), a part aggregated under an assembly that
+itself sits in a storey, and any combination of the two edge kinds in one walk.
+
+Matching an element with no matching ancestor — or no ancestors at all — is an
+**empty result**, not "no filter": `parent="Nonexistent"` finds nothing, the same
+way an unmatched `material=` or `type=` finds nothing. Operators `=`, `!=`, `*=`,
+`!*=` and `/regex/` all work, like `type=`/`material=` — no `>`, `>=`, `<`, `<=`.
+Built once, in `@ifc-lite/data`'s `collectSpatialAncestors`, so the CLI/MCP/SDK
+axis can reuse the same traversal when it adopts `parent=` (tracked separately).
+
+### `query:` is refused permanently, not "not supported yet"
+
+`query:{keys}={value}` resolves an open key-path language (attribute/property/
+material/type chains, counting functions like `.count`) rather than one bounded
+comparison. Unlike every other construct in the grammar table above, there is no
+fixed rule shape to build for it — a partial resolver would silently narrow some
+key paths and refuse others with no principled line between them, the same
+zero-match-reads-as-everything risk this whole adapter exists to avoid. This is a
+permanent decision (#4094), not a gap on a roadmap: a `query:` term is always
+reported by name and never turned into a rule.
 
 ## Where else can I filter?
 

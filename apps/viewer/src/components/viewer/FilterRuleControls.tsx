@@ -105,5 +105,6 @@ export function blankRuleOfKind(kind: FilterRule['kind']): FilterRule {
     case 'classification': return Rule.classification('', 'contains', '');
     case 'elevation':      return Rule.elevation('gt', 0);
     case 'type':           return Rule.typeName('contains', '');
+    case 'parent':         return Rule.parent('contains', '');
   }
 }

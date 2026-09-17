@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export { extractCostOnDemand } from './cost-extractor.js';
+export type { CostExtractionOptions, CostMutationOverlay } from './cost-overlay.js';
 export { evaluateCostItem, evaluateCostValue } from './cost-evaluator.js';
 export type {
   CostAppliedValue,

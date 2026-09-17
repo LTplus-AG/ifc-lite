@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyLoadError, errorCaptureProps } from './load-errors.js';
+import { bundleAgeHours, classifyLoadError, errorCaptureProps } from './load-errors.js';
 import { formatLoadError } from './load-error-message.js';
 
 describe('classifyLoadError', () => {
@@ -812,5 +812,20 @@ describe('wasm runtime traps (#1898)', () => {
     assert.match(msg, /geometry engine crashed/i);
     assert.match(msg, /memory/i);
     assert.doesNotMatch(msg, /unreachable/);
+  });
+});
+
+describe('bundleAgeHours (#4886)', () => {
+  const built = '2026-09-14T06:36:09.000Z';
+
+  it('reports whole hours since the build', () => {
+    assert.equal(bundleAgeHours(built, Date.parse('2026-09-15T06:52:10.208Z')), 24);
+    assert.equal(bundleAgeHours(built, Date.parse(built)), 0);
+  });
+
+  it('reports nothing when the build date is unknown, invalid, or in the future', () => {
+    assert.equal(bundleAgeHours(undefined, Date.now()), undefined);
+    assert.equal(bundleAgeHours('dev', Date.now()), undefined);
+    assert.equal(bundleAgeHours(built, Date.parse('2026-09-13T00:00:00Z')), undefined);
   });
 });

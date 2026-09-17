@@ -23,6 +23,8 @@ export type ChartFocusMode = 'highlight' | 'isolate' | 'ghost';
 
 /** Stable identity of a selected mark across filtering and bucket reordering. */
 export interface ChartBucketIdentity {
+  /** Underlying dataset revision; cross-filtering does not change it. */
+  dataFingerprint?: string;
   seriesKey: string;
   bucketKey: string;
   /** Synthetic top-N Other is distinct from a literal category named `__other__`. */

@@ -94,10 +94,14 @@ describe('#4854 schema-aware cost graph', () => {
 
     expect(extraction.SchemaVersion).toBe('IFC4');
     expect(extraction.Currency).toBe('CHF');
+    // #20 is the WALL (an IfcProduct), #21 the TASK bound through the same
+    // IfcRelAssignsToControl (#82) — only the product belongs in
+    // `productExpressIds` (#4877); the task assignment is still proven below
+    // via the raw IfcRelAssignsToControl relationship record.
     expect(root).toMatchObject({
       Name: 'Root item', Description: 'Root description', Identification: 'CI-1',
       CostValues: [50, 51], CostQuantities: [30], childGlobalIds: ['child-a', 'child-b'],
-      productExpressIds: [20, 21],
+      productExpressIds: [20],
     });
     expect(extraction.CostQuantities.map(quantity => quantity.expressId)).toEqual([30, 34]);
     expect(extraction.CostQuantities.some(quantity => quantity.AreaValue === '999')).toBe(false);

@@ -399,8 +399,8 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     sectionPlane: { ...state.sectionPlane, enabled: !state.sectionPlane.enabled },
   })),
 
-  setSectionPlaneEnabled: (enabled) => set((state) => ({
-    sectionPlane: { ...state.sectionPlane, enabled },
+  setSectionPlaneEnabled: (enabled) => set((state) => ({ // an explicit on/off also drops a parked cut (#4910)
+    sectionPlane: { ...state.sectionPlane, enabled, parked: false },
   })),
 
   flipSectionPlane: () => set((state) => {

@@ -197,6 +197,7 @@ function baseParams(scene: FakeScene, overrides: ReshapeOverrides) {
     clearPendingMeshColorUpdates: noop,
     clearPendingColorUpdates: noop,
     clearPendingMeshRemovals: noop,
+    pruneGeometryMeshes: noop,
     clearPendingMeshTranslations: noop,
     clearPendingMeshRotations: noop,
     renderer: fakeRenderer(scene),

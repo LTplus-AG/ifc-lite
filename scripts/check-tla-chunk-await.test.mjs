@@ -46,17 +46,22 @@ const ASSETS_REL = join('apps', 'viewer', 'dist', 'assets');
  * create the assets directory at all"; an empty map creates it with no .js
  * files in it.
  */
-function runOn(chunks) {
+function runOn(chunks, { assetsRel = ASSETS_REL, env = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tla-chunk-await-'));
   try {
     if (chunks !== null) {
-      const assets = join(dir, ASSETS_REL);
+      const assets = join(dir, assetsRel);
       mkdirSync(assets, { recursive: true });
       for (const [name, text] of Object.entries(chunks)) {
         writeFileSync(join(assets, name), text);
       }
     }
-    const r = spawnSync(process.execPath, [GATE, '--root', dir], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [GATE, '--root', dir], {
+      encoding: 'utf8',
+      // Scrub the Vercel variables from the parent so a local run never
+      // inherits a deployment layout, then apply the case's own.
+      env: { ...process.env, VERCEL_DEPLOYMENT_ID: '', VERCEL_SKEW_PROTECTION_ENABLED: '', ...env },
+    });
     return { status: r.status, out: `${r.stdout}${r.stderr}` };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -149,6 +154,17 @@ test('RED: chunks emitted but not one __tla-wrapped chunk must fail, not tick', 
   assert.doesNotMatch(out, /✅/);
   assert.match(out, /NOT ONE of\s*\n?them exports a `__tla` binding/);
   assert.match(out, /2 \.js chunk\(s\)/);
+});
+
+test('a Skew-Protected Vercel build is inspected in its per-deployment asset dir (#4886)', () => {
+  const env = { VERCEL_DEPLOYMENT_ID: 'dpl_Test123', VERCEL_SKEW_PROTECTION_ENABLED: '1' };
+  const assetsRel = join(ASSETS_REL, 'dpl_Test123');
+  const healthy = runOn({ 'store-abc.js': TLA_CHUNK, 'LayersPanel-x.js': GOOD_IMPORTER }, { assetsRel, env });
+  assert.equal(healthy.status, 0, healthy.out);
+  // Chunks flat in assets/ while the build is nested means the gate would be
+  // reading the wrong directory: it must refuse, not pass on nothing.
+  const misplaced = runOn({ 'store-abc.js': TLA_CHUNK, 'LayersPanel-x.js': GOOD_IMPORTER }, { env });
+  assert.notEqual(misplaced.status, 0, misplaced.out);
 });
 
 test('RED: an assets dir with no .js chunks at all must fail', () => {

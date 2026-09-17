@@ -37,6 +37,7 @@ import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-ca
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
+import { activeSectionPlane, clearSectionCut, showSectionCut } from '@/store/section-active';
 
 // ============================================================================
 // Types
@@ -184,15 +185,10 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
   );
 
   // Store selectors
-  const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
-  const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
-  const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
-  const toggleSectionPlane = useViewerStore((s) => s.toggleSectionPlane);
-  const flipSectionPlane = useViewerStore((s) => s.flipSectionPlane);
 
   // Selection and visibility actions
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
@@ -379,14 +375,10 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       const bounds = getBounds() ?? undefined;
       const capturedSection = capturedSectionPlane ? capturedSectionPlaneInput(capturedSectionPlane, bounds) : null;
-      const viewerSectionPlane = capturedSection?.sectionPlane ?? (sectionPlane.enabled
-        ? {
-            axis: sectionPlane.axis,
-            position: sectionPlane.position,
-            enabled: true,
-            flipped: sectionPlane.flipped,
-          }
-        : undefined);
+      // Only the cut on screen: `enabled` outlives the Section tool (#4806).
+      const shown = activeSectionPlane(useViewerStore.getState());
+      const viewerSectionPlane = capturedSection?.sectionPlane
+        ?? (shown ? { axis: shown.axis, position: shown.position, enabled: true, flipped: shown.flipped } : undefined);
       const viewpointBounds = capturedSection?.bounds ?? bounds;
 
       // Get selected GUIDs - convert expressIds to IFC GlobalId strings.
@@ -464,7 +456,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       getWorldOffset,
       getCameraState,
       captureSnapshot,
-      sectionPlane,
       getBounds,
       selectedEntityId,
       selectedEntityIds,
@@ -571,23 +562,13 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         applyCameraState(renderer, camera, animate);
       }
 
-      // Apply section plane
-      if (viewpointSectionPlane) {
-        // Set axis and position
-        setSectionPlaneAxis(viewpointSectionPlane.axis);
-        setSectionPlanePosition(viewpointSectionPlane.position);
-
-        // Toggle enabled state if needed
-        const currentEnabled = sectionPlane.enabled;
-        if (viewpointSectionPlane.enabled !== currentEnabled) {
-          toggleSectionPlane();
-        }
-
-        // Toggle flip state if needed
-        const currentFlipped = sectionPlane.flipped;
-        if (viewpointSectionPlane.flipped !== currentFlipped) {
-          flipSectionPlane();
-        }
+      // A viewpoint with clipping planes shows its cut (opening the Section
+      // tool — the renderer draws a cut nowhere else); one without clears any
+      // cut, parked ones included, so the view matches the topic (#4910).
+      if (viewpointSectionPlane?.enabled) {
+        showSectionCut(useViewerStore.getState, viewpointSectionPlane);
+      } else {
+        clearSectionCut(useViewerStore.getState);
       }
 
       // Apply selection from BCF components. A federated viewpoint can select
@@ -687,11 +668,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       getRenderer,
       getBounds,
       getWorldOffset,
-      sectionPlane,
-      setSectionPlaneAxis,
-      setSectionPlanePosition,
-      toggleSectionPlane,
-      flipSectionPlane,
       globalIdToExpressId,
       models,
       setSelectedEntityId,

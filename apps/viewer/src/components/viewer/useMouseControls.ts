@@ -22,6 +22,7 @@ import type {
 import type { MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
+import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { useViewerStore } from '@/store';
@@ -492,7 +493,11 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Set orbit pivot to the 3D point under the cursor so rotation feels anchored
       // to what the user is looking at. On miss, place pivot at current distance along
       // the cursor ray so orbit always feels connected to where you're pointing.
-      if (willOrbit) {
+      // A focused clash with nothing selected orbits around the clashing pair (#4806).
+      const clashPivot = willOrbit
+        ? focusedClashOrbitPivot(useViewerStore.getState(), selectedEntityIdRef.current) : null;
+      if (clashPivot) camera.setOrbitCenter(clashPivot);
+      else if (willOrbit) {
         const rect = canvas.getBoundingClientRect();
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
@@ -531,45 +536,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
             camera.setOrbitCenter(null);
           }
         } else {
-          // No geometry hit or large model — anchor the pivot to the scene
-          // centre (a stable point on the model) rather than the camera target,
-          // which drifts as you orbit/pan and made repeated rotation feel
-          // untethered (issue #1107, item 3).
-          const anchorBounds = camera.getOrbitAnchorBounds();
-          const bounds = anchorBounds ?? camera.getSceneBounds();
-          const anchor = bounds
-            ? {
-                x: (bounds.min.x + bounds.max.x) / 2,
-                y: (bounds.min.y + bounds.max.y) / 2,
-                z: (bounds.min.z + bounds.max.z) / 2,
-              }
-            : camera.getTarget();
-          let pivot: { x: number; y: number; z: number };
-          if (anchorBounds) {
-            // Outlier model (issue #1394): the geometry is a compact cluster
-            // surrounded by lots of empty space, so the cursor usually misses
-            // it. Projecting the anchor onto the cursor ray (the #1107 path
-            // below) would place the pivot in that empty space *beside* the
-            // model, and orbiting then swings the model out of frame. Orbit
-            // around the robust model centre directly so it stays put.
-            pivot = anchor;
-          } else {
-            // #1107: project the scene centre onto the cursor ray so the pivot
-            // still sits under the pointer, at the scene's depth.
-            const ray = camera.unprojectToRay(cx, cy, canvas.width, canvas.height);
-            const toAnchor = {
-              x: anchor.x - ray.origin.x,
-              y: anchor.y - ray.origin.y,
-              z: anchor.z - ray.origin.z,
-            };
-            const d = Math.max(1, toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z);
-            pivot = {
-              x: ray.origin.x + ray.direction.x * d,
-              y: ray.origin.y + ray.direction.y * d,
-              z: ray.origin.z + ray.direction.z * d,
-            };
-          }
-          camera.setOrbitCenter(pivot);
+          // No geometry hit or large model — anchor the pivot to the scene centre.
+          camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, cx, cy, canvas.width, canvas.height));
         }
       }
 

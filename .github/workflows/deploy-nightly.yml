@@ -62,7 +62,7 @@ concurrency:
 jobs:
   advance-production:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       # No checkout. The job moves one ref, and every question it needs
       # answered is answered server-side: `compare` decides reachability and
@@ -367,20 +367,35 @@ jobs:
           # perform — where the deployment being looked for is a day old and
           # would fall outside any recent-rows window.
           #
-          # QUEUED/BUILDING/READY all prove Vercel picked it up; waiting for
-          # READY would mean sitting through a ~4 min viewer compile.
+          # WAIT FOR A TERMINAL STATE (#4912). This step used to accept
+          # QUEUED/BUILDING as "live" to avoid sitting through the viewer
+          # compile, so a build that later ERRORED still verified, the run
+          # succeeded, and the stuck-production issue CLOSED ITSELF while
+          # production was broken (ifc-lite-dev, strict mkdocs, 2026-09-17).
+          # Only READY verifies. Production builds take 4-8 min plus queueing,
+          # so this polls for up to 20 min of wall clock (the job timeout is 30). A project
+          # whose only production deployment stays ERROR/CANCELED for three
+          # consecutive polls fails the step immediately: a redeploy of the same
+          # commit gets that minute to appear, and nothing longer is worth
+          # waiting for. Until then it stays polled, so a recovery is seen.
           pending="ifc-lite ifc-lite-viewer-embed ifc-lite-dev"
           api_errors=""
-          for attempt in $(seq 1 8); do
+          declare -A bad_polls=()
+          # Bounded by WALL CLOCK, not only by polls (#4917 review): three
+          # serial API calls per poll can each take up to --max-time, so a poll
+          # count alone could outrun the 30-min job timeout and lose the final
+          # diagnostic. 20 min of polling leaves room for it to print.
+          deadline=$((SECONDS + 1200))
+          for attempt in $(seq 1 60); do
             still=""
             api_errors=""
             for project in $pending; do
               # `|| true` and `--max-time`: a DNS blip or a 502 HTML body must
               # retry, not abort the step under `set -e`. The single condition
               # this loop exists to absorb is the one it must survive.
-              resp="$(curl -sS --max-time 30 -w '\n%{http_code}' \
+              resp="$(curl -sS --max-time 15 -w '\n%{http_code}' \
                 -H "Authorization: Bearer $VERCEL_TOKEN" \
-                "https://api.vercel.com/v6/deployments?app=$project&teamId=$TEAM_ID&sha=$SHA&target=production&limit=5" \
+                "https://api.vercel.com/v6/deployments?app=$project&teamId=$TEAM_ID&sha=$SHA&target=production&limit=100" \
                 2>/dev/null || true)"
               code="$(printf '%s' "$resp" | tail -n1)"
               body="$(printf '%s' "$resp" | sed '$d')"
@@ -393,7 +408,9 @@ jobs:
                 continue
               fi
 
-              # Take a HEALTHY row if the commit has one, not merely the
+              # A READY row wins over everything (#4917 review): a same-commit
+              # redeploy still BUILDING must not hide the READY build already
+              # serving the alias. Otherwise take a HEALTHY row, not merely the
               # newest. A redeploy can leave an ERROR or CANCELED row in front
               # of a READY one, and a build that succeeded is still what the
               # alias serves. Falls back to the first row so a commit whose
@@ -401,19 +418,39 @@ jobs:
               state="$(printf '%s' "$body" \
                 | jq -r '[.deployments[]? | select(.target == "production")
                           | (.readyState // .state // "UNKNOWN")] as $s
-                         | (($s | map(select(. != "CANCELED" and . != "ERROR")) | first)
+                         | (($s | map(select(. == "READY")) | first)
+                            // ($s | map(select(. != "CANCELED" and . != "ERROR")) | first)
                             // ($s | first) // "")' 2>/dev/null || true)"
               case "$state" in
-                ""|CANCELED|ERROR)
-                  still="$still $project"
-                  [ -n "$state" ] && echo "  $project: production deployment is $state"
+                READY)
+                  echo "  $project: production deployment READY"
                   ;;
-                *) echo "  $project: production deployment $state" ;;
+                CANCELED|ERROR)
+                  bad_polls[$project]=$(( ${bad_polls[$project]:-0} + 1 ))
+                  echo "  $project: production deployment is $state (poll ${bad_polls[$project]}/3)"
+                  if [ "${bad_polls[$project]}" -ge 3 ]; then
+                    # Fail NOW, not after the other projects finish: waiting
+                    # would hide this diagnostic behind a job timeout, and a
+                    # project dropped from polling could never be seen recover.
+                    echo "::error::Production deployment for $SHA did not build: $project($state)"
+                    echo "::error::Open that project's deployment build log on Vercel; the build itself"
+                    echo "::error::failed (not the deploy config). Fix it on main, then re-run this workflow."
+                    exit 1
+                  fi
+                  still="$still $project"
+                  ;;
+                *)
+                  # "" (not created yet), QUEUED, INITIALIZING, BUILDING.
+                  bad_polls[$project]=0
+                  still="$still $project"
+                  [ -n "$state" ] && echo "  $project: production deployment $state, waiting for READY"
+                  ;;
               esac
             done
             pending="$(echo "$still" | xargs || true)"
             [ -z "$pending" ] && break
-            [ "$attempt" -lt 8 ] && sleep 20 || true
+            [ "$SECONDS" -ge "$deadline" ] && break
+            [ "$attempt" -lt 60 ] && sleep 20 || true
           done
 
           if [ -n "$pending" ]; then
@@ -421,13 +458,13 @@ jobs:
               echo "::error::Vercel API did not answer for:$api_errors"
               echo "::error::That is an API/token problem, not necessarily a deploy-config one."
             fi
-            echo "::error::No live production deployment for $SHA on:$pending"
+            echo "::error::No READY production deployment for $SHA on:$pending"
             echo "::error::If the API answered, check each project's Production Branch is"
             echo "::error::'production' and its Ignored Build Step still exits 1 for production."
             exit 1
           fi
           echo "verified=true" >> "$GITHUB_OUTPUT"
-          echo "All three projects have a live production deployment for $SHA."
+          echo "All three projects have a READY production deployment for $SHA."
 
       # AN ISSUE, NOT A RED RUN, following the pattern in
       # .github/workflows/review-lane-canary.yml: a failed scheduled workflow

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { next } from '@vercel/functions';
+import { deploymentAssetsDir } from './scripts/lib/deployment-assets-dir.mjs';
 
 const DEPLOYMENT_COOKIE = '__vdpl';
 
@@ -27,12 +28,30 @@ export function deploymentPinHeaders(request, deploymentId, skewProtectionEnable
   }
 
   const headers = new Headers();
-  headers.set(
+  headers.append(
     'Set-Cookie',
     `${DEPLOYMENT_COOKIE}=${encodeURIComponent(deploymentId)}; Path=/; Secure; SameSite=Lax`,
   );
+  // The pin above is browser-wide, and Vercel serves every real navigation
+  // from the LATEST deployment, so any navigation in any tab rewrites it and
+  // strands the lazy assets of every older tab (#4886). This second pin is
+  // scoped to the directory this deployment's build wrote its assets into
+  // (see scripts/lib/deployment-assets-dir.mjs): the browser sends the
+  // longest-path cookie first and Vercel honours the first `__vdpl`, so this
+  // build's asset requests stay on this deployment whatever other tabs load.
+  // Bounded to the Skew Protection window so old builds' pins do not pile up.
+  const assetsDir = deploymentAssetsDir(deploymentId, skewProtectionEnabled);
+  if (assetsDir !== 'assets') {
+    headers.append(
+      'Set-Cookie',
+      `${DEPLOYMENT_COOKIE}=${encodeURIComponent(deploymentId)}; Path=/${assetsDir}/; Max-Age=${ASSET_PIN_MAX_AGE_S}; Secure; SameSite=Lax`,
+    );
+  }
   return headers;
 }
+
+/** The project's Skew Protection maximum age (7 days): a pin older than that routes nowhere. */
+const ASSET_PIN_MAX_AGE_S = 7 * 24 * 60 * 60;
 
 /** @param {Request} request */
 function isDocumentRequest(request) {

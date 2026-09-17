@@ -27,7 +27,8 @@ export type CostDiagnosticCode =
   | 'INCOMPATIBLE_UNIT'
   | 'MISSING_CURRENCY'
   | 'MIXED_CURRENCY'
-  | 'DIVISION_BY_ZERO';
+  | 'DIVISION_BY_ZERO'
+  | 'PENDING_EDIT_NOT_APPLIED';
 
 export interface CostDiagnostic {
   Code: CostDiagnosticCode;
@@ -90,7 +91,15 @@ export interface CostItemInfo {
   costValues?: CostValueInfo[];
   parentGlobalId?: string;
   childGlobalIds: string[];
+  /**
+   * Express IDs of the `IfcProduct` instances assigned to this cost item,
+   * via either `IfcRelAssignsToProduct` or `IfcRelAssignsToControl`. Tasks,
+   * resources and actors assigned via `IfcRelAssignsToControl` are excluded
+   * — that relationship also legitimately binds those, but this field is
+   * a products-only view (#4877).
+   */
   productExpressIds: number[];
+  /** GlobalIds parallel to {@link productExpressIds}, same filtering. */
   productGlobalIds: string[];
   controllingScheduleGlobalIds: string[];
 }

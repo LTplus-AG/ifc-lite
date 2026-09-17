@@ -533,6 +533,21 @@ describe('BCF round-trip', () => {
     expect(map.get('clash-3')?.[0]?.topicGuid).toBe(uuidFromSeed('group-major'));
   });
 
+  // The "Export to BCF" dialog path: a clash has no section, so the written
+  // viewpoints must carry no <ClippingPlanes> for BIMcollab / usBIM to apply (#4806).
+  it('writes clash viewpoints without clipping planes', async () => {
+    const { result, groups } = makeFixture();
+    const { writeBCF } = await import('@ifc-lite/bcf');
+    const project = await createBCFFromClashResult(result, groups, { author: 'tester', worldOffset: { x: 41266.679, y: 308208.972, z: 125.95 } });
+    const reloaded = await readBCF(await (await writeBCF(project)).arrayBuffer());
+    const viewpoints = [...reloaded.topics.values()].flatMap((t) => t.viewpoints);
+    expect(viewpoints.length).toBe(groups.length);
+    for (const vp of viewpoints) {
+      expect(vp.perspectiveCamera).toBeDefined();
+      expect(vp.clippingPlanes ?? []).toEqual([]);
+    }
+  });
+
   // Federation provenance (#1591): a cross-model clash topic must record one
   // <Header> source file per distinct model it spans, surviving write -> read.
   it('records header source files for every model a clash group spans', async () => {

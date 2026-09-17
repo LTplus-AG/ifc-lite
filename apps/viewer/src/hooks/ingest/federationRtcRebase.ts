@@ -3,92 +3,121 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The store/spatial-index wiring for `rebaseGeometryOntoFirstRealAnchor`
+ * The store/spatial-index wiring for `convergeGeometryOntoRtcAnchor`
  * (`@ifc-lite/geometry/rtc-rebase`), split out of `useIfcFederation.ts` for
  * module size, same reason `federationRealign.ts` was (#4897).
  *
- * A model with small coordinates gets no `wasmRtcOffset` and is meshed raw.
- * If it loads BEFORE any model that needs a real RTC anchor, `addModel`'s
- * `sharedRtcOffset` (`chooseSharedRtcOffset`) has nothing to give the new
- * model — so call this right after load: when the just-loaded model turns
- * out to be the one that introduces the federation's first real anchor,
- * every earlier, still-raw model is re-based onto it here, keeping the
- * scene — and what `federationFrameInfo` reports — independent of load
- * order.
+ * Call {@link convergeFederationRtcFrame} after EVERY federated load settles,
+ * whether or not that load is still the newest session. It reads the store as
+ * it is then, not a snapshot taken before the load: federated loads can
+ * overlap, and two loads that both started with no anchor would otherwise each
+ * see "no peer" and leave one model raw beside another's anchor. Recomputing
+ * on the final set means the last load to settle always converges everything
+ * that has settled, in either completion order.
  */
 
-import { rebaseGeometryOntoFirstRealAnchor, rtcRebaseRefusedForInstancedGeometry } from '@ifc-lite/geometry/rtc-rebase';
-import { realRtcAnchorOf } from '@ifc-lite/geometry/world-frame';
+import {
+  carriesGpuInstancedGeometry,
+  convergeGeometryOntoRtcAnchor,
+  isOnRtcAnchor,
+  rebaseCoordinateInfoOntoRtcAnchor,
+  rebaseOriginByRtcDelta,
+  rtcRebaseDeltaFor,
+} from '@ifc-lite/geometry/rtc-rebase';
+import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
+import type { Vec3 } from '@ifc-lite/geometry';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
-import { buildSpatialIndexForModel } from '../../utils/loadingUtils.js';
+import type { PreAlignmentSnapshot } from '../../store/index.js';
+import { buildSpatialIndexForModel, invalidateSpatialIndex } from '../../utils/loadingUtils.js';
 
 /**
- * @param existingModelIdsBeforeLoad The IDs of every OTHER model, as captured
- *   before this load started (the same snapshot `sharedRtcOffset` was chosen
- *   from). IDs, not the model objects: the load in between is an unbounded
- *   await, and a store write during it (`releaseGeometryMemory` on
- *   GPU-upload completion, above all) REPLACES a model's entry with a fresh
- *   `{ ...model, geometryResult }` wrapper. Re-basing the captured wrapper
- *   would mutate an object the store no longer holds — reporting the model
- *   as moved while the live one keeps the anchor-less frame forever, which
- *   is exactly the "reported frame != applied frame" failure of #4897. Every
- *   model object below is therefore read from the store at re-base time.
- * @param hadAnyRealAnchorBeforeLoad Whether any of those already had a real
- *   `wasmRtcOffset` — if so, this is a no-op, because `sharedRtcOffset`
- *   already gave the just-loaded model that same anchor. This one IS a
- *   pre-load fact, and is deliberately still computed before the await.
- * @param justLoadedModelId The model that just finished loading.
+ * A model whose geometry is final. A model still streaming keeps receiving
+ * batches meshed against the frame it started with, so moving what it has so
+ * far would split it; it is converged when its own load settles.
  */
-export function rebaseFederationOntoNewAnchor(
-  existingModelIdsBeforeLoad: readonly string[],
-  hadAnyRealAnchorBeforeLoad: boolean,
-  justLoadedModelId: string,
-): void {
-  if (hadAnyRealAnchorBeforeLoad || existingModelIdsBeforeLoad.length === 0) return;
+function hasSettledGeometry(model: FederatedModel): boolean {
+  return model.geometryResult != null
+    && model.loadState !== 'pending'
+    && model.loadState !== 'streaming-geometry'
+    && model.loadState !== 'error';
+}
 
+/**
+ * The pre-alignment snapshot is the model's own frame that a later re-align
+ * restores to. It must follow the model onto the anchor, or a restore (and a
+ * model then skipped for having no georeference) drops it back into the raw
+ * frame beside anchored models.
+ */
+function convergeSnapshot(snapshot: PreAlignmentSnapshot, anchor: Readonly<Vec3>): boolean {
+  if (isOnRtcAnchor(snapshot.coordinateInfo, anchor)) return false;
+  const delta = rtcRebaseDeltaFor(snapshot.coordinateInfo, anchor);
+  snapshot.origins = snapshot.origins.map((origin) => rebaseOriginByRtcDelta(origin, delta));
+  snapshot.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(snapshot.coordinateInfo, anchor);
+  return true;
+}
+
+let lastRefusalKey = '';
+
+/**
+ * Converge every settled federated model onto the federation's RTC anchor
+ * (the earliest-loaded settled model with a `wasmRtcOffset`). A no-op while
+ * no settled model has one.
+ *
+ * GPU-instanced models cannot be moved (see `carriesGpuInstancedGeometry`);
+ * they are named in a warning and a toast, and every other model still
+ * converges, so at most those models render apart.
+ */
+export function convergeFederationRtcFrame(): void {
   const models = useViewerStore.getState().models;
-  const justLoaded = models.get(justLoadedModelId) as FederatedModel | undefined;
-  const newOffset = realRtcAnchorOf(justLoaded);
-  // Live entries only: an id whose model was removed during the load is gone.
-  const existingEntries = existingModelIdsBeforeLoad
-    .map((id) => [id, models.get(id)] as const)
-    .filter((entry): entry is readonly [string, FederatedModel] => entry[1] != null);
-  const existingGeometries = existingEntries
-    .map(([, model]) => model.geometryResult)
-    .filter((geometry): geometry is NonNullable<typeof geometry> => geometry != null);
+  const settled = [...models].filter(
+    (entry): entry is [string, FederatedModel] => hasSettledGeometry(entry[1] as FederatedModel),
+  );
+  const anchor = chooseSharedRtcOffset(settled.map(([, model]) => model));
+  if (!anchor) return;
 
-  // GPU-instanced models cannot be re-based at all: their per-occurrence
-  // transforms live in renderer-owned instance buffers that the content
-  // version bump below deliberately preserves. `rebaseGeometryOntoFirstRealAnchor`
-  // refuses the whole federation for that reason; asking the same predicate it
-  // uses (rather than re-deriving the condition) is what keeps this message
-  // and that decision from drifting apart. All this adds is telling the user,
-  // because those models keep the frame they loaded in.
-  if (rtcRebaseRefusedForInstancedGeometry(existingGeometries, newOffset)) {
-    const message = 'Models loaded before this one use GPU-instanced geometry and keep their original coordinate frame. '
-      + 'Load the georeferenced model first to place the whole federation in one frame.';
-    console.warn(`[ifc-lite] Federation RTC re-base refused (#4897): ${message}`);
-    toast.info(message);
-    return;
+  for (const [, model] of settled) {
+    if (model.preAlignment) convergeSnapshot(model.preAlignment, anchor);
   }
 
-  const moved = rebaseGeometryOntoFirstRealAnchor(existingGeometries, newOffset);
+  // Refuse up front per model, so the spatial index of a model that will
+  // not move is never withdrawn.
+  const movable = settled.filter(([, model]) => {
+    const geometry = model.geometryResult!;
+    return !isOnRtcAnchor(geometry.coordinateInfo, anchor) && !carriesGpuInstancedGeometry(geometry);
+  });
+  // Withdraw each index BEFORE the geometry moves: the rebuild below is
+  // async, and until it lands raycasts and bounds queries would be answered
+  // from the previous frame's boxes.
+  for (const [, model] of movable) {
+    if (model.ifcDataStore) invalidateSpatialIndex(model.ifcDataStore);
+  }
+
+  const { moved, refused } = convergeGeometryOntoRtcAnchor(
+    settled.map(([, model]) => model.geometryResult!),
+    anchor,
+  );
+
+  if (refused.length > 0) {
+    const names = settled.filter(([, model]) => refused.includes(model.geometryResult!)).map(([, model]) => model.name);
+    const key = `${names.join(', ')}|${anchor.x},${anchor.y},${anchor.z}`;
+    const message = `${names.join(', ')} use GPU-instanced geometry and cannot be moved into the federation's shared coordinate frame, so they render apart from the other models. `
+      + 'Load the georeferenced model first to place the whole federation in one frame.';
+    console.warn(`[ifc-lite] Federation RTC re-base refused (#4897): ${message}`);
+    if (key !== lastRefusalKey) toast.info(message);
+    lastRefusalKey = key;
+  }
   if (moved.length === 0) return;
 
-  // Mesh positions and coordinateInfo were mutated in place, same as
-  // `realignFederation`'s restore/re-bake: bumpGeometryContentVersion forces
-  // the merged-mesh cache and GPU buffers to rebuild.
+  // Origins and coordinateInfo changed in place: bump the content version so
+  // the merged-mesh cache and GPU buffers rebuild from them.
   useViewerStore.getState().bumpGeometryContentVersion();
-  for (const [existingModelId, model] of existingEntries) {
-    if (!model.geometryResult || !moved.includes(model.geometryResult)) continue;
-    // Re-wrap the model object (even with an empty patch) so store
-    // subscribers keyed on `models` see a new Map entry: mutating
-    // geometryResult in place alone does not change the Map or model
-    // object identity.
-    useViewerStore.getState().updateModel(existingModelId, {});
+  for (const [modelId, model] of settled) {
+    if (!moved.includes(model.geometryResult!)) continue;
+    // Re-wrap the entry so subscribers keyed on `models` see the change.
+    useViewerStore.getState().updateModel(modelId, {});
     if (model.ifcDataStore) {
-      buildSpatialIndexForModel(model.geometryResult.meshes, existingModelId, model.ifcDataStore);
+      buildSpatialIndexForModel(model.geometryResult!.meshes, modelId, model.ifcDataStore);
     }
   }
 }

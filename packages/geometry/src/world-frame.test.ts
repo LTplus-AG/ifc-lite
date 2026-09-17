@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CoordinateInfo, Vec3 } from './coordinate-types.js';
 import { resolveRtcFrame } from './rtc-frame.js';
-import { rebaseGeometryOntoFirstRealAnchor } from './rtc-rebase.js';
+import { convergeGeometryOntoRtcAnchor } from './rtc-rebase.js';
 import {
   chooseSharedRtcOffset,
   federationFrameInfo,
@@ -87,6 +87,29 @@ describe('federationFrameInfo', () => {
     expect(federationFrameInfo(models)).toBe(anchor);
   });
 
+  it('prefers the earliest ANCHORED model over an earlier raw one (#4897)', () => {
+    // A near-origin model or a raw point cloud loaded first must not define
+    // the reported frame once an anchored model is present: the loader moves
+    // every meshed model onto that anchor, and point clouds never join it.
+    const raw = info({});
+    const models = [
+      { loadedAt: 1, geometryResult: { coordinateInfo: raw } },
+      { loadedAt: 30, geometryResult: { coordinateInfo: later } },
+      { loadedAt: 20, geometryResult: { coordinateInfo: anchor } },
+    ];
+    expect(federationFrameInfo(models)).toBe(anchor);
+  });
+
+  it('falls back to the earliest raw model when no model is anchored', () => {
+    const first = info({});
+    const second = info({});
+    const models = [
+      { loadedAt: 2, geometryResult: { coordinateInfo: second } },
+      { loadedAt: 1, geometryResult: { coordinateInfo: first } },
+    ];
+    expect(federationFrameInfo(models)).toBe(first);
+  });
+
   it('falls back to a single legacy geometry result, and to null', () => {
     expect(federationFrameInfo([], { coordinateInfo: anchor })).toBe(anchor);
     expect(federationFrameInfo([{ loadedAt: 1, geometryResult: { coordinateInfo: later } }], { coordinateInfo: anchor })).toBe(later);
@@ -129,9 +152,11 @@ describe('chooseSharedRtcOffset', () => {
  *
  * This exercises the full production rule end to end: `chooseSharedRtcOffset`
  * picks the frame a new model joins, `resolveRtcFrame` is the mesh path's
- * own frame resolution (rtc-frame.ts), and `rebasePositionsToRtcOffset` is
- * what `useIfcFederation.ts` applies to an already-loaded, still-raw model
- * the moment a later model introduces the federation's first real anchor.
+ * own frame resolution (rtc-frame.ts), and `convergeGeometryOntoRtcAnchor` is
+ * what the viewer applies to every settled model after each load. Meshes are
+ * modelled the way the relativized wasm path emits them: an f64 element
+ * `origin` plus small f32 local detail (1 mm here), so a rebase that narrowed
+ * the anchor into f32 would collapse the detail and fail below.
  */
 describe('#4897 order-permutation: A (small, no offset) then/after B (large, real offset)', () => {
   /** B's real detected IFC anchor: non-round, asymmetric sign, like the repro. */
@@ -141,10 +166,11 @@ describe('#4897 order-permutation: A (small, no offset) then/after B (large, rea
   /** B's world point: B's anchor plus a small local offset, non-round. */
   const WORLD_B: Vec3 = { x: B_ANCHOR.x + 4.5, y: B_ANCHOR.y - 2.25, z: B_ANCHOR.z + 1.125 };
 
+  interface SimMesh { positions: Float32Array; origin?: [number, number, number] }
   interface SimModel {
     loadedAt: number;
-    positions: Float32Array;
-    geometryResult: { coordinateInfo: CoordinateInfo; meshes: Array<{ positions: Float32Array }> };
+    mesh: SimMesh;
+    geometryResult: { coordinateInfo: CoordinateInfo; meshes: SimMesh[] };
   }
 
   /** Load one model against `existing`, exactly like the WASM mesh path does. */
@@ -161,26 +187,22 @@ describe('#4897 order-permutation: A (small, no offset) then/after B (large, rea
       z: worldPointIfc.z - appliedIfc.z,
     };
     const yup = ifcToViewerAxes(localIfc);
-    const positions = new Float32Array([yup.x, yup.y, yup.z]);
+    // f64 element origin, f32 local detail: two vertices 1 mm apart on X.
+    const mesh: SimMesh = { origin: [yup.x, yup.y, yup.z], positions: new Float32Array([0, 0, 0, 0.001, 0, 0]) };
     return {
       loadedAt,
-      positions,
+      mesh,
       geometryResult: {
         coordinateInfo: info({ wasmRtcOffset: frame.needsShift ? appliedIfc : undefined }),
-        meshes: [{ positions }],
+        meshes: [mesh],
       },
     };
   }
 
-  /**
-   * The production re-basing step, calling the EXACT function
-   * `useIfcFederation.ts` calls: when the just-loaded model introduced the
-   * federation's FIRST real anchor, every already-loaded model that was
-   * still in the raw frame joins it too.
-   */
-  function rebaseIfFirstRealAnchor(existing: SimModel[], justLoaded: SimModel): void {
-    const newOffset = justLoaded.geometryResult.coordinateInfo.wasmRtcOffset;
-    rebaseGeometryOntoFirstRealAnchor(existing.map((m) => m.geometryResult), newOffset ?? null);
+  /** The viewer's post-load step: converge every loaded model onto the anchor. */
+  function convergeAll(models: SimModel[]): void {
+    const anchor = chooseSharedRtcOffset(models);
+    if (anchor) convergeGeometryOntoRtcAnchor(models.map((m) => m.geometryResult), anchor);
   }
 
   function simulate(order: 'A-then-B' | 'B-then-A') {
@@ -191,17 +213,23 @@ describe('#4897 order-permutation: A (small, no offset) then/after B (large, rea
     const byName: Record<string, SimModel> = {};
     for (const [name, loadedAt, detected, worldPt] of seq) {
       const model = loadOne(loadedAt, detected, worldPt, models);
-      rebaseIfFirstRealAnchor(models, model);
       models.push(model);
+      convergeAll(models);
       byName[name] = model;
     }
     return { models, A: byName.A, B: byName.B };
   }
 
+  /** A rendered vertex in the render frame: f64 origin + f32 position. */
+  function renderPoint(model: SimModel, vertex = 0): Vec3 {
+    const o = model.mesh.origin ?? [0, 0, 0];
+    const p = model.mesh.positions;
+    return { x: o[0] + p[3 * vertex], y: o[1] + p[3 * vertex + 1], z: o[2] + p[3 * vertex + 2] };
+  }
+
   /** Recover a rendered vertex's IFC world position via `federationFrameInfo`. */
   function worldOf(model: SimModel, frame: CoordinateInfo | null): Vec3 {
-    const p = model.positions;
-    const render = viewerToIfcAxes({ x: p[0], y: p[1], z: p[2] });
+    const render = viewerToIfcAxes(renderPoint(model));
     const offset = renderFrameWorldOffset(frame);
     return { x: render.x + offset.x, y: render.y + offset.y, z: render.z + offset.z };
   }
@@ -250,18 +278,24 @@ describe('#4897 order-permutation: A (small, no offset) then/after B (large, rea
     expect(aWorldAB.z).toBeCloseTo(WORLD_A.z, 3);
     expect(aWorldBA).toEqual(aWorldAB);
 
-    // The distance between A and B, in the render frame, must be the same
-    // huge separation in both orders — not zero (the pre-fix A-first bug
-    // drew A and B on top of each other at the render-frame origin).
-    const dx = ab.A.positions[0] - ab.B.positions[0];
-    const dy = ab.A.positions[1] - ab.B.positions[1];
-    const dz = ab.A.positions[2] - ab.B.positions[2];
-    const distAB = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const dx2 = ba.A.positions[0] - ba.B.positions[0];
-    const dy2 = ba.A.positions[1] - ba.B.positions[1];
-    const dz2 = ba.A.positions[2] - ba.B.positions[2];
-    const distBA = Math.sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
-    expect(distAB).toBeGreaterThan(1_000_000);
-    expect(distBA).toBeCloseTo(distAB, 3);
+    // The render-frame separation of A and B is the same huge distance in
+    // both orders, not zero (the pre-fix A-first bug drew them on top of each
+    // other at the render-frame origin).
+    const dist = (m: { A: SimModel; B: SimModel }) => {
+      const a = renderPoint(m.A);
+      const b = renderPoint(m.B);
+      return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+    };
+    expect(dist(ab)).toBeGreaterThan(1_000_000);
+    expect(dist(ba)).toBeCloseTo(dist(ab), 6);
+  });
+
+  it('keeps 1 mm of element detail exact on the rebased model in both orders', () => {
+    for (const run of [simulate('A-then-B'), simulate('B-then-A')]) {
+      for (const model of [run.A, run.B]) {
+        const detail = renderPoint(model, 1).x - renderPoint(model, 0).x;
+        expect(Math.abs(detail - 0.001)).toBeLessThan(1e-6);
+      }
+    }
   });
 });

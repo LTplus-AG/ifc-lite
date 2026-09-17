@@ -70,7 +70,7 @@ export function renderFrameWorldOffset(info?: RenderFrameInfo | null): Vec3 {
 
 /** A loaded model as far as the federation frame rule is concerned. */
 export interface FrameCandidate {
-  /** Load order; the earliest-loaded model owns the shared frame. */
+  /** Load order; the earliest-loaded anchored model owns the shared frame. */
   loadedAt: number;
   geometryResult?: { coordinateInfo?: CoordinateInfo | null } | null;
 }
@@ -78,41 +78,43 @@ export interface FrameCandidate {
 /**
  * The `CoordinateInfo` whose frame a set of loaded models is drawn in.
  *
- * A federation is aligned to the earliest-loaded model's RTC frame at load,
- * so that model's offsets ARE the scene's offsets; reading a later model's
- * would describe a frame nothing is drawn in. `fallback` covers a single
- * model loaded without a federation entry. Null when nothing has geometry.
+ * The rule is the anchor rule (#4897): the earliest-loaded model that HAS a
+ * `wasmRtcOffset` defines the frame; only when no model has one does the
+ * earliest-loaded model with any `coordinateInfo` answer (every model is then
+ * raw). The federation loader converges every other meshed model onto that
+ * same anchor after each load (`rtc-rebase.ts`, via the viewer's
+ * `federationRtcRebase.ts`), so in either load order this returns the frame the
+ * geometry is actually in. The earlier "earliest model with any
+ * `coordinateInfo`" rule reported a near-origin model's raw frame whenever it
+ * was loaded first, including for a raw point cloud, which never joins the
+ * RTC frame.
  *
- * This is only accurate because the federation loader (`useIfcFederation.ts`)
- * keeps every model's `wasmRtcOffset` converging on one value: later models
- * join an established real anchor via `chooseSharedRtcOffset`, and once a
- * model FIRST introduces a real anchor, every already-loaded, still-raw
- * model is re-based onto it (`rtc-rebase.ts`) rather than left behind in the
- * frame it happened to load in. Without that re-basing step, a model with
- * no `wasmRtcOffset` could stay in a raw frame while a later, large-
- * coordinate model picked its own — the earliest-loaded model would then no
- * longer describe the frame every model is actually drawn in (#4897).
- *
- * The one case where that convergence does NOT hold is the one `rtc-rebase.ts`
- * refuses: a federation whose already-loaded models carry GPU-instanced
- * geometry cannot be re-based at all, so its models keep the frames they
- * loaded in and this reports the earliest of those. The viewer tells the user
- * when that happens rather than leaving the discrepancy silent.
+ * `fallback` covers a single model loaded without a federation entry. Null
+ * when nothing has geometry. The one case where the geometry does NOT all
+ * match is a GPU-instanced model the loader could not move; the viewer
+ * reports that to the user instead of leaving it silent.
  */
 export function federationFrameInfo(
   models: Iterable<FrameCandidate>,
   fallback?: { coordinateInfo?: CoordinateInfo | null } | null,
 ): CoordinateInfo | null {
   let earliest = Infinity;
+  let earliestAnchored = Infinity;
   let info: CoordinateInfo | null = null;
+  let anchoredInfo: CoordinateInfo | null = null;
   for (const model of models) {
     const candidate = model.geometryResult?.coordinateInfo;
-    if (candidate && model.loadedAt < earliest) {
+    if (!candidate) continue;
+    if (model.loadedAt < earliest) {
       earliest = model.loadedAt;
       info = candidate;
     }
+    if (candidate.wasmRtcOffset != null && model.loadedAt < earliestAnchored) {
+      earliestAnchored = model.loadedAt;
+      anchoredInfo = candidate;
+    }
   }
-  return info ?? fallback?.coordinateInfo ?? null;
+  return anchoredInfo ?? info ?? fallback?.coordinateInfo ?? null;
 }
 
 /**
@@ -133,14 +135,9 @@ export function realRtcAnchorOf(candidate?: FrameCandidate | null): Readonly<Vec
  * already-loaded model has one yet (including when there is no earlier
  * model at all) — the loading model is then free to detect its own.
  *
- * `undefined` here is NOT "no frame exists" — every earlier model, offset or
- * not, already rendered in SOME frame. It only means no model has picked a
- * real (non-zero-shift) anchor for the federation yet, so the caller must
- * decide what happens when this loading model turns out to need one: see
- * `federationFrameInfo`'s doc and #4897. `useIfcFederation.ts` handles that
- * by re-basing (`rtc-rebase.ts`) every already-loaded, still-raw model onto
- * this one's anchor the moment it is known, rather than pretending "no
- * anchor chosen yet" is a frame these already-raw models were drawn in.
+ * The same rule picks the anchor every already-loaded model is converged onto
+ * after a load (`rtc-rebase.ts`), so a model loaded before the first anchored
+ * one is moved onto it rather than left in the raw frame it was meshed in.
  */
 export function chooseSharedRtcOffset(existingModels: Iterable<FrameCandidate>): Vec3 | undefined {
   let earliestOffsetAt = Infinity;

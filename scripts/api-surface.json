@@ -5779,11 +5779,15 @@
     "isTypeLibraryGeometryClass: function"
   ],
   "@ifc-lite/geometry/rtc-rebase": [
+    "RtcConvergeResult: interface",
     "RtcRebaseGeometry: interface",
-    "rebaseGeometryOntoFirstRealAnchor: function",
-    "rebasePositionsToRtcOffset: function",
-    "rtcRebaseDeltaYup: function",
-    "rtcRebaseRefusedForInstancedGeometry: function"
+    "carriesGpuInstancedGeometry: function",
+    "convergeGeometryOntoRtcAnchor: function",
+    "isOnRtcAnchor: function",
+    "rebaseCoordinateInfoOntoRtcAnchor: function",
+    "rebaseOriginByRtcDelta: function",
+    "rtcRebaseDeltaFor: function",
+    "rtcRebaseDeltaYup: function"
   ],
   "@ifc-lite/geometry/world-frame": [
     "FrameCandidate: interface",

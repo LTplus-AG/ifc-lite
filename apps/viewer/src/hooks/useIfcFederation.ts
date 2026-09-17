@@ -31,7 +31,7 @@ import {
 } from './ingest/viewerModelIngest.js';
 import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
-import { rebaseFederationOntoNewAnchor } from './ingest/federationRtcRebase.js';
+import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 
@@ -141,12 +141,9 @@ export function useIfcFederation(
       setProgress({ phase: 'Loading file', percent: 0 });
 
       // Shared RTC origin: earliest existing model with a real anchor, or
-      // `undefined` if none has one yet — the post-load rebase step below
-      // is what makes THAT case order-independent too (#4897).
-      const modelsBeforeLoad = useViewerStore.getState().models;
-      const existingModelIdsBeforeLoad = Array.from(modelsBeforeLoad.keys()); // IDs, never the objects: re-read after the load, which replaces them (`rebaseFederationOntoNewAnchor`).
-      const sharedRtcOffset = chooseSharedRtcOffset(modelsBeforeLoad.values() as Iterable<FederatedModel>);
-      const hadAnyRealAnchorBeforeLoad = sharedRtcOffset != null;
+      // `undefined` if none has one yet; the convergence after the load makes
+      // THAT case order-independent too (#4897).
+      const sharedRtcOffset = chooseSharedRtcOffset(useViewerStore.getState().models.values() as Iterable<FederatedModel>);
 
       // THE canonical load path. loadFile acquires bytes, detects format
       // (IFC / IFCX / GLB / point cloud), produces geometry through the single
@@ -164,11 +161,11 @@ export function useIfcFederation(
         sharedRtcOffset,
       }, { sourceHandle: options?.sourceHandle });
 
+      // Before the session check: a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
+      if (useViewerStore.getState().models.has(modelId)) convergeFederationRtcFrame();
       if (loadSessionRef.current !== currentSession) return null;
       const registered = useViewerStore.getState().models.has(modelId);
       if (registered) {
-        // May have just introduced the FIRST real RTC anchor (#4897, see `federationRtcRebase.ts`).
-        rebaseFederationOntoNewAnchor(existingModelIdsBeforeLoad, hadAnyRealAnchorBeforeLoad, modelId);
         console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
       }
       return registered ? modelId : null;

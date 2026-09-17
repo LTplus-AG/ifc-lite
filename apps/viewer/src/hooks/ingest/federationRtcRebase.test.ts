@@ -3,28 +3,27 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The WIRING half of the #4897 re-base. `rtc-rebase.test.ts` proves the
- * translation maths against the pure function; nothing proved that the
- * models the viewer actually re-bases are the ones the STORE holds, or that
- * a federation whose geometry this cannot move is refused rather than half
- * moved. Both of those live here, in `federationRtcRebase.ts`.
+ * The WIRING half of the #4897 convergence. `rtc-rebase.test.ts` proves the
+ * translation against the pure function; this proves the viewer converges the
+ * models the STORE holds when a load settles, whatever loads overlapped and in
+ * whichever order they finished.
  *
- * Every assertion below reads the LIVE store entry after the call, never the
- * object the test handed in: re-basing an object the store has replaced is
- * precisely the failure being guarded against.
+ * Every assertion reads the LIVE store entry after the call.
  */
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { ifcToViewerAxes } from '@ifc-lite/geometry/world-frame';
+import { federationFrameInfo, ifcToViewerAxes } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
-import { rebaseFederationOntoNewAnchor } from './federationRtcRebase.js';
+import { convergeFederationRtcFrame } from './federationRtcRebase.js';
 
 /** Non-round, asymmetric-sign anchor: a round or zero one proves nothing. */
 const ANCHOR = { x: 1234567.891, y: -987654.321, z: 42.75 };
 const DELTA_YUP = ifcToViewerAxes(ANCHOR);
+
+type LoadState = FederatedModel['loadState'];
 
 function coordInfo(over?: Partial<CoordinateInfo>): CoordinateInfo {
   const box = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
@@ -37,12 +36,13 @@ function coordInfo(over?: Partial<CoordinateInfo>): CoordinateInfo {
   };
 }
 
-function mesh(positions: number[], geometryClass?: number): MeshData {
+function mesh(origin: [number, number, number], geometryClass?: number): MeshData {
   return {
     expressId: 1,
-    positions: new Float32Array(positions),
-    normals: new Float32Array(positions.length),
-    indices: new Uint32Array([0, 0, 0]),
+    positions: new Float32Array([0, 0, 0, 0.001, 0, 0]),
+    normals: new Float32Array(6),
+    indices: new Uint32Array([0, 1, 0]),
+    origin,
     ...(geometryClass === undefined ? {} : { geometryClass }),
   } as unknown as MeshData;
 }
@@ -51,13 +51,13 @@ function geometry(meshes: MeshData[], over?: Partial<GeometryResult>): GeometryR
   return {
     meshes,
     totalTriangles: 1,
-    totalVertices: meshes.length,
+    totalVertices: meshes.length * 2,
     coordinateInfo: coordInfo(),
     ...over,
   } as GeometryResult;
 }
 
-function model(id: string, loadedAt: number, geometryResult: GeometryResult | null): FederatedModel {
+function model(id: string, loadedAt: number, geometryResult: GeometryResult | null, loadState: LoadState = 'complete'): FederatedModel {
   return {
     id,
     name: id,
@@ -70,11 +70,24 @@ function model(id: string, loadedAt: number, geometryResult: GeometryResult | nu
     fileSize: 0,
     idOffset: 0,
     maxExpressId: 0,
+    loadState,
   } as unknown as FederatedModel;
 }
 
-function seed(entries: Array<[string, FederatedModel]>): void {
-  useViewerStore.setState({ models: new Map(entries) });
+/** A near-origin model: meshed raw, element origin at (2, 1, -3). */
+const rawModel = (loadedAt: number, loadState?: LoadState) => model('A', loadedAt, geometry([mesh([2, 1, -3])]), loadState);
+/** A large-coordinate model: meshed against ANCHOR, element origin near 0. */
+const anchoredModel = (loadedAt: number, loadState?: LoadState) =>
+  model('B', loadedAt, geometry([mesh([4, 0.5, -1])], { coordinateInfo: coordInfo({ wasmRtcOffset: { ...ANCHOR } }) }), loadState);
+
+function seed(entries: FederatedModel[]): void {
+  useViewerStore.setState({ models: new Map(entries.map((m) => [m.id, m])) });
+}
+
+function setLoadState(id: string, loadState: LoadState): void {
+  const models = new Map(useViewerStore.getState().models);
+  models.set(id, { ...liveModel(id), loadState });
+  useViewerStore.setState({ models });
 }
 
 function liveModel(id: string): FederatedModel {
@@ -83,190 +96,198 @@ function liveModel(id: string): FederatedModel {
   return found as FederatedModel;
 }
 
-/** The later, large-coordinate model that introduces the federation's anchor. */
-function anchorModel(): FederatedModel {
-  return model('B', 2, geometry([mesh([0, 0, 0])], {
-    coordinateInfo: coordInfo({ wasmRtcOffset: ANCHOR }),
-  }));
+function captureWarnings(run: () => void): string[] {
+  const seen: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { seen.push(args.map(String).join(' ')); };
+  try { run(); } finally { console.warn = original; }
+  return seen;
 }
 
-describe('rebaseFederationOntoNewAnchor - store freshness', () => {
-  beforeEach(() => {
-    seed([]);
+/** A's element, in the render frame, where it must be once converged. */
+function assertAConverged(): void {
+  const a = liveModel('A').geometryResult!;
+  assert.deepStrictEqual(a.coordinateInfo.wasmRtcOffset, ANCHOR);
+  assert.deepStrictEqual(a.meshes[0].origin, [2 - DELTA_YUP.x, 1 - DELTA_YUP.y, -3 - DELTA_YUP.z]);
+  assert.deepStrictEqual(Array.from(a.meshes[0].positions), [0, 0, 0, Math.fround(0.001), 0, 0], 'positions never move');
+  assert.deepStrictEqual(
+    federationFrameInfo(useViewerStore.getState().models.values())?.wasmRtcOffset,
+    ANCHOR,
+    'the reported frame is the frame every model is drawn in',
+  );
+}
+
+describe('convergeFederationRtcFrame - load order and overlapping loads', () => {
+  beforeEach(() => seed([]));
+
+  it('sequential A (raw) then B (anchored): A joins B\'s anchor', () => {
+    seed([rawModel(1), anchoredModel(2)]);
+    convergeFederationRtcFrame();
+    assertAConverged();
   });
 
-  it('re-bases the model the STORE holds when the entry was replaced during the load', () => {
-    // A raw model, loaded first. `loadFile`'s await is unbounded, and during
-    // it the store re-wraps this entry: `appendGeometryBatch` and
-    // `releaseGeometryMemory` both `models.set(id, { ...model, geometryResult })`
-    // with a FRESH geometryResult wrapper. Anything the caller captured
-    // before the await is an orphan from that moment on.
-    const originalGeometry = geometry([mesh([0, 1.5, 0])]);
-    seed([['A', model('A', 1, originalGeometry)]]);
-    const idsCapturedBeforeLoad = Array.from(useViewerStore.getState().models.keys());
+  it('overlapping loads, B settles first then A: converged when A settles', () => {
+    // Both loads started with an empty federation, so neither got a shared
+    // offset. A pre-load snapshot would have told both "no peer".
+    seed([rawModel(1, 'streaming-geometry'), anchoredModel(2)]);
+    convergeFederationRtcFrame(); // B's load settles
+    assert.strictEqual(liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset, undefined, 'a still-streaming model is not moved');
+    assert.deepStrictEqual(liveModel('A').geometryResult!.meshes[0].origin, [2, 1, -3]);
 
-    // ...the replacement, mid-load. Same MeshData objects, new wrappers.
-    const replacement = { ...originalGeometry, meshes: originalGeometry.meshes };
-    const models = new Map(useViewerStore.getState().models);
-    models.set('A', { ...liveModel('A'), geometryResult: replacement });
-    models.set('B', anchorModel());
-    useViewerStore.setState({ models });
+    setLoadState('A', 'complete');
+    convergeFederationRtcFrame(); // A's load settles
+    assertAConverged();
+  });
 
-    rebaseFederationOntoNewAnchor(idsCapturedBeforeLoad, false, 'B');
+  it('overlapping loads, A settles first then B: converged when B settles', () => {
+    seed([rawModel(1), anchoredModel(2, 'streaming-geometry')]);
+    convergeFederationRtcFrame(); // A's load settles; B's frame is not final yet
+    assert.strictEqual(liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset, undefined);
 
-    const live = liveModel('A').geometryResult!;
+    setLoadState('B', 'complete');
+    convergeFederationRtcFrame(); // B's load settles
+    assertAConverged();
+  });
+
+  it('both completion orders end in the identical scene', () => {
+    const run = (first: 'A' | 'B') => {
+      seed([rawModel(1, 'streaming-geometry'), anchoredModel(2, 'streaming-geometry')]);
+      const second = first === 'A' ? 'B' : 'A';
+      setLoadState(first, 'complete');
+      convergeFederationRtcFrame();
+      setLoadState(second, 'complete');
+      convergeFederationRtcFrame();
+      return ['A', 'B'].map((id) => {
+        const g = liveModel(id).geometryResult!;
+        return { offset: g.coordinateInfo.wasmRtcOffset, origin: g.meshes[0].origin };
+      });
+    };
+    assert.deepStrictEqual(run('A'), run('B'));
+  });
+
+  it('two anchored models that each picked their own anchor converge on the earliest', () => {
+    const other = { x: 1234000, y: -987000, z: 40 };
+    const c = model('C', 3, geometry([mesh([0, 0, 0])], { coordinateInfo: coordInfo({ wasmRtcOffset: other }) }));
+    seed([anchoredModel(2), c]);
+    convergeFederationRtcFrame();
+    const live = liveModel('C').geometryResult!;
+    assert.deepStrictEqual(live.coordinateInfo.wasmRtcOffset, ANCHOR);
+    const shift = ifcToViewerAxes({ x: ANCHOR.x - other.x, y: ANCHOR.y - other.y, z: ANCHOR.z - other.z });
+    live.meshes[0].origin!.forEach((value, i) => {
+      assert.ok(Math.abs(value + [shift.x, shift.y, shift.z][i]) < 1e-6, `origin[${i}] = ${value}`);
+    });
+  });
+
+  it('is a no-op with no anchored settled model, and idempotent once converged', () => {
+    seed([rawModel(1)]);
+    convergeFederationRtcFrame();
+    assert.strictEqual(liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset, undefined);
+
+    seed([rawModel(1), anchoredModel(2)]);
+    convergeFederationRtcFrame();
+    const version = useViewerStore.getState().geometryContentVersion;
+    convergeFederationRtcFrame();
+    assert.strictEqual(useViewerStore.getState().geometryContentVersion, version, 'a converged federation is not rebuilt again');
+    assertAConverged();
+  });
+
+  it('never moves a raw point cloud loaded before the anchor', () => {
+    const cloud = model('P', 1, { ...geometry([]), pointClouds: [{ expressId: 1 }] } as unknown as GeometryResult);
+    const before = cloud.geometryResult!.coordinateInfo;
+    seed([cloud, anchoredModel(2)]);
+    convergeFederationRtcFrame();
+    assert.strictEqual(liveModel('P').geometryResult!.coordinateInfo, before);
     assert.deepStrictEqual(
-      live.coordinateInfo.wasmRtcOffset,
+      federationFrameInfo(useViewerStore.getState().models.values())?.wasmRtcOffset,
       ANCHOR,
-      'the live store entry, not the pre-await capture, must carry the new anchor',
-    );
-    assert.ok(
-      Math.abs(live.meshes[0].positions[1] - (1.5 - DELTA_YUP.y)) < 0.5,
-      `live mesh must be translated by the re-base delta; got ${live.meshes[0].positions[1]}`,
+      'a raw point cloud loaded first must not define the reported frame',
     );
   });
 
-  it('re-bases the live entry even when the replacement emptied the mesh buffers', () => {
-    // `releaseGeometryMemory` (bounded mode) empties the shared buffers IN
-    // PLACE and re-wraps the entry. The positions then cannot move, but the
-    // frame the model claims still must: geometry is re-streamed against
-    // `coordinateInfo`, so a stale one puts the re-upload in the old frame.
-    const originalGeometry = geometry([mesh([0, 1.5, 0])]);
-    seed([['A', model('A', 1, originalGeometry)]]);
-    const idsCapturedBeforeLoad = Array.from(useViewerStore.getState().models.keys());
-
-    for (const m of originalGeometry.meshes) m.positions = new Float32Array(0);
-    const models = new Map(useViewerStore.getState().models);
-    models.set('A', { ...liveModel('A'), geometryResult: { ...originalGeometry } });
-    models.set('B', anchorModel());
-    useViewerStore.setState({ models });
-
-    rebaseFederationOntoNewAnchor(idsCapturedBeforeLoad, false, 'B');
-
-    assert.deepStrictEqual(
-      liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset,
-      ANCHOR,
-      'the live entry must carry the new anchor after a release-during-load',
-    );
-  });
-
-  it('skips an id whose model was removed during the load instead of throwing', () => {
-    seed([['A', model('A', 1, geometry([mesh([0, 1.5, 0])]))]]);
-    const idsCapturedBeforeLoad = ['A', 'gone'];
-    const models = new Map(useViewerStore.getState().models);
-    models.set('B', anchorModel());
-    useViewerStore.setState({ models });
-
-    assert.doesNotThrow(() => rebaseFederationOntoNewAnchor(idsCapturedBeforeLoad, false, 'B'));
-    assert.deepStrictEqual(liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset, ANCHOR);
+  it('carries the pre-alignment snapshot onto the anchor too', () => {
+    const a = rawModel(1);
+    a.preAlignment = {
+      positions: [new Float32Array([0, 0, 0])],
+      normals: [undefined],
+      origins: [[7, 8, 9], undefined],
+      coordinateInfo: coordInfo(),
+      geometryAabbs: [undefined],
+    } as unknown as FederatedModel['preAlignment'];
+    seed([a, anchoredModel(2)]);
+    convergeFederationRtcFrame();
+    const snapshot = liveModel('A').preAlignment!;
+    assert.deepStrictEqual(snapshot.coordinateInfo.wasmRtcOffset, ANCHOR);
+    assert.deepStrictEqual(snapshot.origins, [
+      [7 - DELTA_YUP.x, 8 - DELTA_YUP.y, 9 - DELTA_YUP.z],
+      [-DELTA_YUP.x, -DELTA_YUP.y, -DELTA_YUP.z],
+    ]);
   });
 });
 
-describe('rebaseFederationOntoNewAnchor - GPU-instanced federations', () => {
-  beforeEach(() => {
-    seed([]);
+describe('convergeFederationRtcFrame - spatial index', () => {
+  beforeEach(() => seed([]));
+
+  it('withdraws a moved model\'s spatial index at once instead of serving it until the rebuild lands', () => {
+    const stale = { stale: true } as unknown as NonNullable<FederatedModel['ifcDataStore']>['spatialIndex'];
+    const a = rawModel(1);
+    a.ifcDataStore = { spatialIndex: stale } as unknown as FederatedModel['ifcDataStore'];
+    const a2 = { ...a, geometryResult: geometry([]) }; // no meshes: the async rebuild is skipped
+    a2.geometryResult!.coordinateInfo = coordInfo();
+    seed([a2, anchoredModel(2)]);
+    convergeFederationRtcFrame();
+    assert.deepStrictEqual(liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset, ANCHOR, 'sanity: A moved');
+    assert.notStrictEqual(liveModel('A').ifcDataStore!.spatialIndex, stale, 'raycasts still read the pre-rebase index');
   });
 
-  /** @returns everything `console.warn` saw while `run` executed. */
-  function captureWarnings(run: () => void): string[] {
-    const seen: string[] = [];
-    const original = console.warn;
-    console.warn = (...args: unknown[]) => { seen.push(args.map(String).join(' ')); };
-    try { run(); } finally { console.warn = original; }
-    return seen;
-  }
+  it('keeps the spatial index of a model that is already on the anchor', () => {
+    const stale = { kept: true } as unknown as NonNullable<FederatedModel['ifcDataStore']>['spatialIndex'];
+    const b = anchoredModel(2);
+    b.ifcDataStore = { spatialIndex: stale } as unknown as FederatedModel['ifcDataStore'];
+    seed([b]);
+    convergeFederationRtcFrame();
+    assert.strictEqual(liveModel('B').ifcDataStore!.spatialIndex, stale);
+  });
+});
 
-  function seedFederation(rawGeometry: GeometryResult): string[] {
-    seed([
-      ['A', model('A', 1, rawGeometry)],
-      ['B', anchorModel()],
-    ]);
-    return ['A'];
-  }
+describe('convergeFederationRtcFrame - GPU-instanced models', () => {
+  beforeEach(() => seed([]));
 
-  const box = (): { min: [number, number, number]; max: [number, number, number] } =>
-    ({ min: [0, 0, 0], max: [1, 1, 1] });
+  const box = () => ({ min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] });
 
-  it('refuses - visibly - a raw model carrying GPU-instanced geometry, moving nothing', () => {
-    // Class 2 is the instanced TEMPLATE; the occurrences that place it live
-    // in instance buffers this re-base cannot reach, so the boxes must not
-    // move either - a moved box would describe geometry that is not there.
-    const instancedBox = box();
-    const raw = geometry([mesh([0, 1.5, 0]), mesh([0, 0, 0], 2)], {
-      instancedGeometryAabbs: new Map([[7, instancedBox]]),
-    });
-    const ids = seedFederation(raw);
+  it('refuses - visibly, by name - an instanced model, and still converges the others', () => {
+    const instanced = model('I', 1, geometry([mesh([2, 1, -3]), mesh([0, 0, 0], 2)], {
+      instancedGeometryAabbs: new Map([[7, box()]]),
+    }));
+    const stale = { stale: true } as unknown as NonNullable<FederatedModel['ifcDataStore']>['spatialIndex'];
+    instanced.ifcDataStore = { spatialIndex: stale } as unknown as FederatedModel['ifcDataStore'];
+    seed([instanced, rawModel(1.5), anchoredModel(2)]);
 
-    const warnings = captureWarnings(() => rebaseFederationOntoNewAnchor(ids, false, 'B'));
+    const warnings = captureWarnings(() => convergeFederationRtcFrame());
 
-    const live = liveModel('A').geometryResult!;
-    assert.strictEqual(live.coordinateInfo.wasmRtcOffset, undefined, 'a refused model keeps its raw frame');
-    assert.deepStrictEqual(Array.from(live.meshes[0].positions), [0, 1.5, 0], 'a refused model keeps its positions');
-    assert.deepStrictEqual(live.instancedGeometryAabbs!.get(7), box(), 'a refused model keeps its instanced boxes');
+    const live = liveModel('I');
+    assert.strictEqual(live.geometryResult!.coordinateInfo.wasmRtcOffset, undefined, 'a refused model keeps its frame');
+    assert.deepStrictEqual(live.geometryResult!.meshes[0].origin, [2, 1, -3]);
+    assert.deepStrictEqual(live.geometryResult!.instancedGeometryAabbs!.get(7), box());
+    assert.strictEqual(live.ifcDataStore!.spatialIndex, stale, 'a refused model keeps its (still correct) index');
     assert.ok(
-      warnings.some((line) => line.includes('#4897')),
-      `the refusal must be reported; console.warn saw ${JSON.stringify(warnings)}`,
+      warnings.some((line) => line.includes('#4897') && line.includes('I use GPU-instanced')),
+      `the refusal must name the model; console.warn saw ${JSON.stringify(warnings)}`,
     );
-  });
-
-  it('refuses on the instanced boxes alone, with no class-2 template present', () => {
-    // Hashing on, no template emitted: `instancedGeometryAabbs` is then the
-    // only signal that this model has instanced-only entities.
-    const raw = geometry([mesh([0, 1.5, 0])], { instancedGeometryAabbs: new Map([[7, box()]]) });
-    const ids = seedFederation(raw);
-
-    rebaseFederationOntoNewAnchor(ids, false, 'B');
-
-    assert.deepStrictEqual(Array.from(liveModel('A').geometryResult!.meshes[0].positions), [0, 1.5, 0]);
+    assertAConverged();
   });
 
   it('refuses on a class-2 template alone, with geometry hashing off', () => {
-    // Hashing off: no `instancedGeometryAabbs` at all, so the template class
-    // is the only signal. Same fixture as the positive control below apart
-    // from that one mesh - if the class check went away this would move.
-    const raw = geometry([mesh([0, 1.5, 0]), mesh([0, 0, 0], 2)]);
-    const ids = seedFederation(raw);
-
-    rebaseFederationOntoNewAnchor(ids, false, 'B');
-
-    assert.deepStrictEqual(Array.from(liveModel('A').geometryResult!.meshes[0].positions), [0, 1.5, 0]);
+    seed([model('I', 1, geometry([mesh([2, 1, -3]), mesh([0, 0, 0], 2)])), anchoredModel(2)]);
+    captureWarnings(() => convergeFederationRtcFrame());
+    assert.deepStrictEqual(liveModel('I').geometryResult!.meshes[0].origin, [2, 1, -3]);
   });
 
-  it('positive control: the same federation without instanced geometry IS re-based', () => {
-    const raw = geometry([mesh([0, 1.5, 0])]);
-    const ids = seedFederation(raw);
-
-    const warnings = captureWarnings(() => rebaseFederationOntoNewAnchor(ids, false, 'B'));
-
-    const live = liveModel('A').geometryResult!;
-    assert.deepStrictEqual(live.coordinateInfo.wasmRtcOffset, ANCHOR);
-    assert.ok(
-      Math.abs(live.meshes[0].positions[1] - (1.5 - DELTA_YUP.y)) < 0.5,
-      `an un-refused model must move; got ${live.meshes[0].positions[1]}`,
-    );
-    assert.deepStrictEqual(warnings, [], 'nothing was refused, so nothing should be reported');
-  });
-
-  it('says nothing when the just-loaded model introduced no anchor at all', () => {
-    // No anchor means there is nothing to re-base ONTO: an ordinary no-op,
-    // not a refusal, so an instanced federation must not be told otherwise.
-    const raw = geometry([mesh([0, 1.5, 0]), mesh([0, 0, 0], 2)]);
-    seed([
-      ['A', model('A', 1, raw)],
-      ['B', model('B', 2, geometry([mesh([0, 0, 0])]))],
-    ]);
-
-    const warnings = captureWarnings(() => rebaseFederationOntoNewAnchor(['A'], false, 'B'));
-
-    assert.deepStrictEqual(warnings, [], 'a plain no-op must not be reported as a refusal');
-  });
-
-  it('an empty instanced-box map is not instanced geometry and does not block the re-base', () => {
-    const raw = geometry([mesh([0, 1.5, 0])], { instancedGeometryAabbs: new Map() });
-    const ids = seedFederation(raw);
-
-    rebaseFederationOntoNewAnchor(ids, false, 'B');
-
-    assert.deepStrictEqual(liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset, ANCHOR);
+  it('says nothing when nothing needs to move', () => {
+    const instanced = model('I', 3, geometry([mesh([0, 0, 0], 2)], {
+      coordinateInfo: coordInfo({ wasmRtcOffset: { ...ANCHOR } }),
+    }));
+    seed([anchoredModel(2), instanced]);
+    const warnings = captureWarnings(() => convergeFederationRtcFrame());
+    assert.deepStrictEqual(warnings, [], 'an instanced model already on the anchor is not a refusal');
   });
 });

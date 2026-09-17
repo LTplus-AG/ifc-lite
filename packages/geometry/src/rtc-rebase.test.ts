@@ -4,8 +4,17 @@
 
 import { describe, expect, it } from 'vitest';
 import type { CoordinateInfo } from './coordinate-types.js';
-import { rebaseGeometryOntoFirstRealAnchor, rebasePositionsToRtcOffset, rtcRebaseDeltaYup } from './rtc-rebase.js';
-import { ifcToViewerAxes, viewerToIfcAxes } from './world-frame.js';
+import {
+  carriesGpuInstancedGeometry,
+  convergeGeometryOntoRtcAnchor,
+  isOnRtcAnchor,
+  rebaseCoordinateInfoOntoRtcAnchor,
+  rebaseOriginByRtcDelta,
+  rtcRebaseDeltaYup,
+} from './rtc-rebase.js';
+import { ifcToViewerAxes } from './world-frame.js';
+
+type Origin = [number, number, number];
 
 function coordInfo(partial: Partial<CoordinateInfo>): CoordinateInfo {
   const box = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
@@ -20,295 +29,230 @@ function coordInfo(partial: Partial<CoordinateInfo>): CoordinateInfo {
 
 /** Non-round, asymmetric-sign IFC anchor, like the #4897 repro's model B. */
 const ANCHOR = { x: 1234567.891, y: -987654.321, z: 42.75 };
+/** Swiss LV95 magnitude: one f32 ULP here is 0.25 m. */
+const LV95 = { x: 2_600_123.456, y: 1_200_654.321, z: 432.1 };
+
+interface TestMesh { positions: Float32Array; origin?: Origin; geometryClass?: number; geometryAabb?: unknown; localToWorld?: number[] }
+
+function raw(meshes: TestMesh[], over: Partial<CoordinateInfo> = {}) {
+  return { coordinateInfo: coordInfo(over), meshes } as {
+    coordinateInfo: CoordinateInfo;
+    meshes: TestMesh[];
+    instancedGeometryAabbs?: Map<number, unknown>;
+    pointClouds?: unknown[];
+  };
+}
 
 describe('rtcRebaseDeltaYup', () => {
-  it('is zero when the anchor does not change', () => {
-    const delta = rtcRebaseDeltaYup(ANCHOR, ANCHOR);
-    expect(delta).toEqual({ x: 0, y: 0, z: 0 });
+  it('is zero when the anchor does not change, including absent -> explicit zero', () => {
+    expect(rtcRebaseDeltaYup(ANCHOR, ANCHOR)).toEqual({ x: 0, y: 0, z: 0 });
+    expect(rtcRebaseDeltaYup(undefined, { x: 0, y: 0, z: 0 })).toEqual({ x: 0, y: 0, z: 0 });
   });
 
-  it('is zero moving from an absent offset to an explicit zero one', () => {
-    const delta = rtcRebaseDeltaYup(undefined, { x: 0, y: 0, z: 0 });
-    expect(delta).toEqual({ x: 0, y: 0, z: 0 });
+  it('is the Y-up form of the new anchor when moving off the raw frame', () => {
+    expect(rtcRebaseDeltaYup(undefined, ANCHOR)).toEqual(ifcToViewerAxes(ANCHOR));
   });
 
-  it('is the Y-up form of the new anchor when moving off the raw (absent) frame', () => {
-    const delta = rtcRebaseDeltaYup(undefined, ANCHOR);
-    expect(delta).toEqual(ifcToViewerAxes(ANCHOR));
-  });
-
-  it('round-trips: applying the delta then its inverse returns the original point', () => {
-    const forward = rtcRebaseDeltaYup(undefined, ANCHOR);
-    const back = rtcRebaseDeltaYup(ANCHOR, { x: 0, y: 0, z: 0 });
-    expect(forward.x + back.x).toBeCloseTo(0, 9);
-    expect(forward.y + back.y).toBeCloseTo(0, 9);
-    expect(forward.z + back.z).toBeCloseTo(0, 9);
+  it('is the Y-up difference when moving between two real anchors', () => {
+    const from = { x: 10, y: 20, z: 30 };
+    const delta = rtcRebaseDeltaYup(from, ANCHOR);
+    const expected = ifcToViewerAxes({ x: ANCHOR.x - 10, y: ANCHOR.y - 20, z: ANCHOR.z - 30 });
+    expect(delta.x).toBeCloseTo(expected.x, 6);
+    expect(delta.y).toBeCloseTo(expected.y, 6);
+    expect(delta.z).toBeCloseTo(expected.z, 6);
   });
 });
 
-describe('rebasePositionsToRtcOffset', () => {
-  it('leaves positions untouched when the anchor is unchanged', () => {
-    const positions = new Float32Array([1.5, -2.25, 3.125, 10, 20, 30]);
+describe('rebaseOriginByRtcDelta', () => {
+  it('treats an absent origin as [0,0,0] and returns a new array', () => {
+    const delta = { x: 1, y: 2, z: 3 };
+    expect(rebaseOriginByRtcDelta(undefined, delta)).toEqual([-1, -2, -3]);
+    const shared: Origin = [5, 5, 5];
+    const moved = rebaseOriginByRtcDelta(shared, delta);
+    expect(moved).toEqual([4, 3, 2]);
+    expect(shared).toEqual([5, 5, 5]);
+  });
+});
+
+describe('precision (#4906 review): the rebase never narrows the anchor into f32', () => {
+  it('keeps 1 mm of element detail exact at a Swiss LV95-scale anchor', () => {
+    // Relativized wasm output: f64 element origin + small f32 local detail.
+    const mesh: TestMesh = { positions: new Float32Array([0, 0, 0, 0.001, 0, 0]), origin: [12.5, 3.25, -7.75] };
+    convergeGeometryOntoRtcAnchor([raw([mesh])], LV95);
+    const origin = mesh.origin ?? [0, 0, 0];
+    const x0 = origin[0] + mesh.positions[0];
+    const x1 = origin[0] + mesh.positions[3];
+    expect(Math.abs((x1 - x0) - 0.001)).toBeLessThan(1e-6);
+    // ...and the element still lands where the new frame says it is.
+    expect(x0 + LV95.x).toBeCloseTo(12.5, 6);
+  });
+
+  it('leaves the f32 positions bit-identical and moves only the f64 origin', () => {
+    const positions = new Float32Array([0.123, -4.5, 6.75, 0.124, -4.5, 6.75]);
     const before = positions.slice();
-    rebasePositionsToRtcOffset(positions, ANCHOR, ANCHOR);
-    expect(positions).toEqual(before);
+    const mesh: TestMesh = { positions, origin: [100.25, 3, -50.5] };
+    convergeGeometryOntoRtcAnchor([raw([mesh])], LV95);
+    expect(mesh.positions).toBe(positions);
+    expect(Array.from(mesh.positions)).toEqual(Array.from(before));
+    const delta = ifcToViewerAxes(LV95);
+    expect(mesh.origin).toEqual([100.25 - delta.x, 3 - delta.y, -50.5 - delta.z]);
   });
 
-  it('shifts a raw-frame mesh into a newly-introduced anchor and the world point stays put', () => {
-    // A raw-frame vertex IS the world point (Y-up-swapped): the box centre
-    // from the #4897 repro, (0, 1.5, 0) render-frame == (0, 0, 1.5) IFC.
-    const positions = new Float32Array([0, 1.5, 0]);
-    const worldBefore = viewerToIfcAxes({ x: positions[0], y: positions[1], z: positions[2] });
-
-    rebasePositionsToRtcOffset(positions, undefined, ANCHOR);
-
-    // The vertex moved...
-    expect(positions[0]).not.toBeCloseTo(0, 3);
-    // ...but adding the new anchor back (render -> world) recovers the SAME
-    // world point: re-basing must not change what a model represents.
-    const worldAfter = viewerToIfcAxes({ x: positions[0], y: positions[1], z: positions[2] });
-    const recovered = { x: worldAfter.x + ANCHOR.x, y: worldAfter.y + ANCHOR.y, z: worldAfter.z + ANCHOR.z };
-    // `positions` is a Float32Array: at ANCHOR's ~1.2e6 magnitude, a single
-    // ULP is ~0.06, so this is a float32-precision comparison, not float64.
-    expect(recovered.x).toBeCloseTo(worldBefore.x, 1);
-    expect(recovered.y).toBeCloseTo(worldBefore.y, 1);
-    expect(recovered.z).toBeCloseTo(worldBefore.z, 1);
-  });
-
-  it('handles a trailing partial vertex without throwing or touching it', () => {
-    const positions = new Float32Array([1, 2, 3, 4, 5]); // 1 full vertex + 2 stray components
-    expect(() => rebasePositionsToRtcOffset(positions, undefined, ANCHOR)).not.toThrow();
-    expect(positions[3]).toBe(4);
-    expect(positions[4]).toBe(5);
+  it('gives an absolute-position mesh (no origin) an origin instead of touching its vertices', () => {
+    const mesh: TestMesh = { positions: new Float32Array([1.5, 2.5, 3.5]) };
+    convergeGeometryOntoRtcAnchor([raw([mesh])], LV95);
+    expect(Array.from(mesh.positions)).toEqual([1.5, 2.5, 3.5]);
+    const delta = ifcToViewerAxes(LV95);
+    expect(mesh.origin).toEqual([-delta.x, -delta.y, -delta.z]);
   });
 });
 
-describe('rebaseGeometryOntoFirstRealAnchor', () => {
-  it('is a no-op when the just-loaded model has no offset', () => {
-    const raw = { coordinateInfo: coordInfo({}), meshes: [{ positions: new Float32Array([1, 2, 3]) }] };
-    const moved = rebaseGeometryOntoFirstRealAnchor([raw], null);
-    expect(moved).toEqual([]);
-    expect(raw.coordinateInfo.wasmRtcOffset).toBeUndefined();
-    expect(raw.meshes[0].positions).toEqual(new Float32Array([1, 2, 3]));
+describe('convergeGeometryOntoRtcAnchor', () => {
+  it('moves every raw geometry onto the anchor and reports it', () => {
+    const a = raw([{ positions: new Float32Array([0, 1.5, 0]) }]);
+    const b = raw([{ positions: new Float32Array([2, 3, 4]), origin: [1, 1, 1] }]);
+    const { moved, refused } = convergeGeometryOntoRtcAnchor([a, b], ANCHOR);
+    expect(moved).toEqual([a, b]);
+    expect(refused).toEqual([]);
+    expect(a.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
+    expect(b.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
   });
 
-  it('is a no-op when an existing model already has a real anchor (loader already unified it)', () => {
-    const existingAnchor = { x: 5, y: 6, z: 7 };
-    const alreadyAnchored = {
-      coordinateInfo: coordInfo({ wasmRtcOffset: existingAnchor }),
-      meshes: [{ positions: new Float32Array([1, 2, 3]) }],
-    };
-    const moved = rebaseGeometryOntoFirstRealAnchor([alreadyAnchored], ANCHOR);
-    expect(moved).toEqual([]);
-    // Untouched: still the ORIGINAL anchor, not overwritten by the new one.
-    expect(alreadyAnchored.coordinateInfo.wasmRtcOffset).toEqual(existingAnchor);
-    expect(alreadyAnchored.meshes[0].positions).toEqual(new Float32Array([1, 2, 3]));
+  it('leaves a geometry already on the anchor alone', () => {
+    const on = raw([{ positions: new Float32Array([1, 2, 3]), origin: [7, 8, 9] }], { wasmRtcOffset: { ...ANCHOR } });
+    const info = on.coordinateInfo;
+    expect(convergeGeometryOntoRtcAnchor([on], ANCHOR)).toEqual({ moved: [], refused: [] });
+    expect(on.coordinateInfo).toBe(info);
+    expect(on.meshes[0].origin).toEqual([7, 8, 9]);
   });
 
-  it('rebases every still-raw model onto the first real anchor introduced', () => {
-    const raw1 = { coordinateInfo: coordInfo({}), meshes: [{ positions: new Float32Array([0, 1.5, 0]) }] };
-    const raw2 = { coordinateInfo: coordInfo({}), meshes: [{ positions: new Float32Array([2, 3, 4]) }] };
-
-    const moved = rebaseGeometryOntoFirstRealAnchor([raw1, raw2], ANCHOR);
-
-    expect(moved).toEqual([raw1, raw2]);
-    expect(raw1.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
-    expect(raw2.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
-    // Positions actually moved (mutated in place) — not merely re-tagged.
-    expect(raw1.meshes[0].positions).not.toEqual(new Float32Array([0, 1.5, 0]));
+  it('moves a geometry drawn against a DIFFERENT real anchor (overlapping loads)', () => {
+    const other = { x: 1234000, y: -987000, z: 40 };
+    const g = raw([{ positions: new Float32Array([1, 2, 3]), origin: [0, 0, 0] }], { wasmRtcOffset: other });
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
+    const delta = rtcRebaseDeltaYup(other, ANCHOR);
+    expect(g.meshes[0].origin).toEqual([-delta.x, -delta.y, -delta.z]);
+    expect(g.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
   });
 
-  it('refuses a federation whose raw model carries an instanced-type template', () => {
-    // Class 2 is a GPU-instanced TEMPLATE: the occurrences that place it are
-    // in instance buffers this module cannot reach, so moving the meshes
-    // would leave one model straddling two frames (#4906 review).
-    const raw = {
-      coordinateInfo: coordInfo({}),
-      meshes: [
-        { positions: new Float32Array([0, 1.5, 0]) },
-        { positions: new Float32Array([1, 1, 1]), geometryClass: 2 },
-      ],
-    };
-    const moved = rebaseGeometryOntoFirstRealAnchor([raw], ANCHOR);
-    expect(moved).toEqual([]);
-    expect(raw.coordinateInfo.wasmRtcOffset).toBeUndefined();
-    expect(raw.meshes[0].positions).toEqual(new Float32Array([0, 1.5, 0]));
+  it('is idempotent: a second call moves nothing', () => {
+    const g = raw([{ positions: new Float32Array([1, 2, 3]), origin: [1, 2, 3] }]);
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
+    const origin = g.meshes[0].origin;
+    expect(convergeGeometryOntoRtcAnchor([g], ANCHOR).moved).toEqual([]);
+    expect(g.meshes[0].origin).toEqual(origin);
   });
 
-  it('refuses on a non-empty instanced-box map even with no template mesh', () => {
-    const raw = {
-      coordinateInfo: coordInfo({}),
-      meshes: [{ positions: new Float32Array([0, 1.5, 0]) }],
-      instancedGeometryAabbs: new Map([[7, { min: [0, 0, 0], max: [1, 1, 1] }]]),
-    };
-    expect(rebaseGeometryOntoFirstRealAnchor([raw], ANCHOR)).toEqual([]);
-    expect(raw.meshes[0].positions).toEqual(new Float32Array([0, 1.5, 0]));
+  it('moves a MeshData shared by two geometries (or listed twice) exactly once', () => {
+    const shared: TestMesh = { positions: new Float32Array([0, 0, 0]), origin: [0, 0, 0] };
+    const g1 = raw([shared]);
+    const g2 = raw([shared]);
+    convergeGeometryOntoRtcAnchor([g1, g2, g1], ANCHOR);
+    const delta = ifcToViewerAxes(ANCHOR);
+    expect(shared.origin).toEqual([-delta.x, -delta.y, -delta.z]);
   });
 
-  it('refuses the WHOLE federation when only one of its models is instanced', () => {
-    // A per-model refusal would move the other models and leave this one
-    // behind, which is the frame split #4897 is about, one level down.
-    const plain = { coordinateInfo: coordInfo({}), meshes: [{ positions: new Float32Array([2, 3, 4]) }] };
-    const instanced = {
-      coordinateInfo: coordInfo({}),
-      meshes: [{ positions: new Float32Array([0, 1.5, 0]), geometryClass: 2 }],
-    };
-    expect(rebaseGeometryOntoFirstRealAnchor([plain, instanced], ANCHOR)).toEqual([]);
-    expect(plain.meshes[0].positions).toEqual(new Float32Array([2, 3, 4]));
-    expect(plain.coordinateInfo.wasmRtcOffset).toBeUndefined();
+  it('refuses a GPU-instanced geometry per model and still moves the others', () => {
+    const plain = raw([{ positions: new Float32Array([2, 3, 4]) }]);
+    const template = raw([{ positions: new Float32Array([0, 1.5, 0]), origin: [1, 1, 1], geometryClass: 2 }]);
+    const boxesOnly = raw([{ positions: new Float32Array([0, 1.5, 0]), origin: [1, 1, 1] }]);
+    boxesOnly.instancedGeometryAabbs = new Map([[7, { min: [0, 0, 0], max: [1, 1, 1] }]]);
+
+    const { moved, refused } = convergeGeometryOntoRtcAnchor([plain, template, boxesOnly], ANCHOR);
+
+    expect(moved).toEqual([plain]);
+    expect(refused).toEqual([template, boxesOnly]);
+    for (const g of [template, boxesOnly]) {
+      expect(g.meshes[0].origin).toEqual([1, 1, 1]);
+      expect(g.coordinateInfo.wasmRtcOffset).toBeUndefined();
+    }
   });
 
-  it('an EMPTY instanced-box map is not instanced geometry and still re-bases', () => {
-    const raw = {
-      coordinateInfo: coordInfo({}),
-      meshes: [{ positions: new Float32Array([0, 1.5, 0]) }],
-      instancedGeometryAabbs: new Map(),
-    };
-    expect(rebaseGeometryOntoFirstRealAnchor([raw], ANCHOR)).toEqual([raw]);
-    expect(raw.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
+  it('an EMPTY instanced-box map is not instanced geometry', () => {
+    const g = raw([{ positions: new Float32Array([0, 1.5, 0]) }]);
+    g.instancedGeometryAabbs = new Map();
+    expect(carriesGpuInstancedGeometry(g)).toBe(false);
+    expect(convergeGeometryOntoRtcAnchor([g], ANCHOR).moved).toEqual([g]);
   });
 
-  it('mutates every mesh of a multi-mesh model, not just the first', () => {
-    const raw = {
-      coordinateInfo: coordInfo({}),
-      meshes: [
-        { positions: new Float32Array([1, 1, 1]) },
-        { positions: new Float32Array([2, 2, 2]) },
-      ],
-    };
-    rebaseGeometryOntoFirstRealAnchor([raw], ANCHOR);
-    expect(raw.meshes[0].positions).not.toEqual(new Float32Array([1, 1, 1]));
-    expect(raw.meshes[1].positions).not.toEqual(new Float32Array([2, 2, 2]));
+  it('never moves or refuses a point cloud: it is raw in every load order', () => {
+    const cloud = raw([]);
+    cloud.pointClouds = [{ expressId: 1 }];
+    const info = cloud.coordinateInfo;
+    expect(convergeGeometryOntoRtcAnchor([cloud], ANCHOR)).toEqual({ moved: [], refused: [] });
+    expect(cloud.coordinateInfo).toBe(info);
   });
 });
 
 /**
- * The frame move must land on EVERYTHING that is in the render frame, in the
- * same call, and on nothing that is not (#4906 review of #4897).
- *
- * Fixtures here are deliberately capable of failing: a non-round anchor so the
- * delta is non-zero on all three axes, an ASYMMETRIC box (a symmetric one
- * shifted the wrong way, or not at all, can still look plausible), and
- * distinct `originalBounds` / `shiftedBounds` objects so a change to one
- * cannot be mistaken for a change to the other.
+ * Fixtures deliberately capable of failing: a non-round anchor so the delta
+ * is non-zero on all three axes, an ASYMMETRIC box, and distinct
+ * `originalBounds` / `shiftedBounds` objects.
  */
-describe('rebaseGeometryOntoFirstRealAnchor — frame-carrying fields', () => {
-  /** Asymmetric on every axis, and `originalBounds !== shiftedBounds`. */
-  function framedGeometry() {
-    return {
-      coordinateInfo: coordInfo({
-        originShift: { x: 3, y: 5, z: 7 },
-        originalBounds: { min: { x: -11, y: 0.5, z: -3 }, max: { x: 4, y: 19, z: 1.25 } },
-        shiftedBounds: { min: { x: -14, y: -4.5, z: -10 }, max: { x: 1, y: 14, z: -5.75 } },
-      }),
-      meshes: [{
-        positions: new Float32Array([-11, 0.5, -3, 4, 19, 1.25]),
-        geometryAabb: { min: [-11, 0.5, -3] as [number, number, number], max: [4, 19, 1.25] as [number, number, number] },
-        localToWorld: [1, 0, 0, 100.5, 0, 1, 0, -200.25, 0, 0, 1, 300.125, 0, 0, 0, 1],
-      }],
-    };
+describe('rebaseCoordinateInfoOntoRtcAnchor / frame-carrying fields', () => {
+  function framed() {
+    return raw([{
+      positions: new Float32Array([-11, 0.5, -3, 4, 19, 1.25]),
+      origin: [0.5, 0.25, 0.125],
+      geometryAabb: { min: [-11, 0.5, -3], max: [4, 19, 1.25] },
+      localToWorld: [1, 0, 0, 100.5, 0, 1, 0, -200.25, 0, 0, 1, 300.125, 0, 0, 0, 1],
+    }], {
+      originShift: { x: 3, y: 5, z: 7 },
+      originalBounds: { min: { x: -11, y: 0.5, z: -3 }, max: { x: 4, y: 19, z: 1.25 } },
+      shiftedBounds: { min: { x: -14, y: -4.5, z: -10 }, max: { x: 1, y: 14, z: -5.75 } },
+      wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false },
+    });
   }
 
-  it('moves both render-frame boxes by the SAME non-zero delta as the positions', () => {
-    const geometry = framedGeometry();
-    const positionsBefore = geometry.meshes[0].positions.slice();
-    const originalBefore = structuredClone(geometry.coordinateInfo.originalBounds);
-    const shiftedBefore = structuredClone(geometry.coordinateInfo.shiftedBounds);
-
-    rebaseGeometryOntoFirstRealAnchor([geometry], ANCHOR);
-
+  it('moves both render-frame boxes by the same non-zero delta as the origin', () => {
+    const g = framed();
+    const originalBefore = structuredClone(g.coordinateInfo.originalBounds);
+    const shiftedBefore = structuredClone(g.coordinateInfo.shiftedBounds);
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
     const delta = ifcToViewerAxes(ANCHOR);
-    // The delta is worth nothing as a witness if it is zero on some axis.
     expect(Math.min(Math.abs(delta.x), Math.abs(delta.y), Math.abs(delta.z))).toBeGreaterThan(1);
-
-    // Positions moved by -delta (f32 at ~1.2e6: one ULP is ~0.06).
-    expect(geometry.meshes[0].positions[0]).toBeCloseTo(positionsBefore[0] - delta.x, 1);
-    expect(geometry.meshes[0].positions[1]).toBeCloseTo(positionsBefore[1] - delta.y, 1);
-    expect(geometry.meshes[0].positions[2]).toBeCloseTo(positionsBefore[2] - delta.z, 1);
-
-    // ...and so did both boxes, by exactly the same delta (f64 here).
-    const { originalBounds, shiftedBounds } = geometry.coordinateInfo;
+    expect(g.meshes[0].origin).toEqual([0.5 - delta.x, 0.25 - delta.y, 0.125 - delta.z]);
     for (const edge of ['min', 'max'] as const) {
       for (const axis of ['x', 'y', 'z'] as const) {
-        expect(originalBounds[edge][axis]).toBeCloseTo(originalBefore[edge][axis] - delta[axis], 9);
-        expect(shiftedBounds[edge][axis]).toBeCloseTo(shiftedBefore[edge][axis] - delta[axis], 9);
+        expect(g.coordinateInfo.originalBounds[edge][axis]).toBeCloseTo(originalBefore[edge][axis] - delta[axis], 9);
+        expect(g.coordinateInfo.shiftedBounds[edge][axis]).toBeCloseTo(shiftedBefore[edge][axis] - delta[axis], 9);
       }
     }
   });
 
-  it('keeps the world position the two boxes report unchanged across the re-base', () => {
-    // What a consumer actually reads: `bounds + originShift + rtcYup`
-    // (`computeFootprintGeoJSON`). The re-base must not move the model.
-    const geometry = framedGeometry();
-    const shift = geometry.coordinateInfo.originShift;
-    const worldBefore = {
-      x: geometry.coordinateInfo.shiftedBounds.min.x + shift.x,
-      y: geometry.coordinateInfo.shiftedBounds.min.y + shift.y,
-      z: geometry.coordinateInfo.shiftedBounds.min.z + shift.z,
-    };
-
-    rebaseGeometryOntoFirstRealAnchor([geometry], ANCHOR);
-
-    const rtcYup = ifcToViewerAxes(geometry.coordinateInfo.wasmRtcOffset!);
-    const after = geometry.coordinateInfo.shiftedBounds.min;
-    expect(after.x + shift.x + rtcYup.x).toBeCloseTo(worldBefore.x, 9);
-    expect(after.y + shift.y + rtcYup.y).toBeCloseTo(worldBefore.y, 9);
-    expect(after.z + shift.z + rtcYup.z).toBeCloseTo(worldBefore.z, 9);
+  it('keeps the world position the boxes report, and originalBounds - shiftedBounds === originShift', () => {
+    const g = framed();
+    const shift = g.coordinateInfo.originShift;
+    const worldBefore = g.coordinateInfo.shiftedBounds.min.x + shift.x;
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
+    const rtcYup = ifcToViewerAxes(g.coordinateInfo.wasmRtcOffset!);
+    expect(g.coordinateInfo.shiftedBounds.min.x + shift.x + rtcYup.x).toBeCloseTo(worldBefore, 9);
+    const { originalBounds, shiftedBounds, originShift } = g.coordinateInfo;
+    expect(originalBounds.max.z - shiftedBounds.max.z).toBeCloseTo(originShift.z, 9);
   });
 
-  it('preserves `originalBounds - shiftedBounds === originShift`', () => {
-    const geometry = framedGeometry();
-    rebaseGeometryOntoFirstRealAnchor([geometry], ANCHOR);
-    const { originalBounds, shiftedBounds, originShift } = geometry.coordinateInfo;
-    for (const edge of ['min', 'max'] as const) {
-      for (const axis of ['x', 'y', 'z'] as const) {
-        expect(originalBounds[edge][axis] - shiftedBounds[edge][axis]).toBeCloseTo(originShift[axis], 9);
-      }
-    }
+  it('replaces the stale wasmRtcFrame with the frame the geometry is now in (#4906 review)', () => {
+    const g = framed();
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
+    // The cache serialiser's invariant: needsShift === (wasmRtcOffset present),
+    // and active components equal the offset.
+    expect(g.coordinateInfo.wasmRtcFrame).toEqual({ ...ANCHOR, needsShift: true });
+    expect(isOnRtcAnchor(g.coordinateInfo, ANCHOR)).toBe(true);
   });
 
   it('leaves the ABSOLUTE-world fields alone: geometryAabb and localToWorld do not move', () => {
-    // Both are RTC-invariant by contract — `geometryAabb` has the file's RTC
-    // folded back in, `localToWorld` is the pre-RTC placement chain — so the
-    // new `wasmRtcOffset` is what re-aligns them with the moved vertices.
-    // Translating them here would move the model in the world.
-    const geometry = framedGeometry();
-    const aabbBefore = structuredClone(geometry.meshes[0].geometryAabb);
-    const l2wBefore = [...geometry.meshes[0].localToWorld];
-
-    rebaseGeometryOntoFirstRealAnchor([geometry], ANCHOR);
-
-    expect(geometry.meshes[0].geometryAabb).toEqual(aabbBefore);
-    expect(geometry.meshes[0].localToWorld).toEqual(l2wBefore);
+    const g = framed();
+    const aabbBefore = structuredClone(g.meshes[0].geometryAabb);
+    const l2wBefore = [...g.meshes[0].localToWorld!];
+    convergeGeometryOntoRtcAnchor([g], ANCHOR);
+    expect(g.meshes[0].geometryAabb).toEqual(aabbBefore);
+    expect(g.meshes[0].localToWorld).toEqual(l2wBefore);
   });
 
-  it('absent stays absent: a mesh with no geometryAabb / localToWorld gains neither', () => {
-    const geometry = {
-      coordinateInfo: coordInfo({
-        originalBounds: { min: { x: -11, y: 0.5, z: -3 }, max: { x: 4, y: 19, z: 1.25 } },
-        shiftedBounds: { min: { x: -11, y: 0.5, z: -3 }, max: { x: 4, y: 19, z: 1.25 } },
-      }),
-      meshes: [{ positions: new Float32Array([-11, 0.5, -3]) }],
-    };
-
-    expect(rebaseGeometryOntoFirstRealAnchor([geometry], ANCHOR)).toEqual([geometry]);
-
-    expect('geometryAabb' in geometry.meshes[0]).toBe(false);
-    expect('localToWorld' in geometry.meshes[0]).toBe(false);
-    // The re-base did happen — otherwise the two assertions above prove nothing.
-    expect(geometry.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
-  });
-
-  it('leaves the boxes untouched when it refuses an instanced federation', () => {
-    const geometry = framedGeometry();
-    (geometry.meshes[0] as { geometryClass?: number }).geometryClass = 2;
-    const originalBefore = structuredClone(geometry.coordinateInfo.originalBounds);
-    const shiftedBefore = structuredClone(geometry.coordinateInfo.shiftedBounds);
-
-    expect(rebaseGeometryOntoFirstRealAnchor([geometry], ANCHOR)).toEqual([]);
-
-    expect(geometry.coordinateInfo.originalBounds).toEqual(originalBefore);
-    expect(geometry.coordinateInfo.shiftedBounds).toEqual(shiftedBefore);
-    expect(geometry.coordinateInfo.wasmRtcOffset).toBeUndefined();
+  it('does not mutate the CoordinateInfo it was given', () => {
+    const info = framed().coordinateInfo;
+    const before = structuredClone(info);
+    rebaseCoordinateInfoOntoRtcAnchor(info, ANCHOR);
+    expect(info).toEqual(before);
   });
 });

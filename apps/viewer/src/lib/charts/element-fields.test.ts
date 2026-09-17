@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { QuantityType } from '@ifc-lite/data';
 import type { ElementFieldBinding } from '@ifc-lite/charts';
 import { createElementFieldReader } from './element-field-reader.js';
 
@@ -146,6 +147,8 @@ describe('chart IFC field reader (#4833)', () => {
     const speed = reader.readResolved(52, { kind: 'property', psetName: 'Probe', propertyName: 'Speed', valueKind: 'number', dataType: 'IFCLINEARVELOCITYMEASURE' });
     assert.equal(speed.unit, '#60035', 'a derived unit with a dangling factor has no trustworthy scale');
     assert.equal(speed.unitSiScale, undefined);
+  });
+
   it('reads the relation-borne families of the committed sample: material, quantity, defining type and spatial container', async () => {
     const bytes = await readFile(SAMPLE);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
@@ -182,6 +185,19 @@ describe('chart IFC field reader (#4833)', () => {
     edited.deleteQuantity(52, 'Qto_SlabBaseQuantities', 'NetArea');
     assert.equal(createElementFieldReader(store, edited).readResolved(52, netArea).status, 'missing');
     assert.equal(createElementFieldReader(store, edited).readResolved(52, { ...netArea, quantityName: 'Depth' }).value, 250.00000000009484, 'sibling quantities are untouched');
+    // A quantity edited without naming a unit keeps its explicit scale; a category read carries it too.
+    const scaled = await parseSampleWith(`
+#60040=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);
+#60041=IFCQUANTITYLENGTH('Girth',$,#60040,12.,$);
+#60042=IFCELEMENTQUANTITY('g-qto',#1,'Qto_Probe',$,$,(#60041));
+#60043=IFCRELDEFINESBYPROPERTIES('g-qto-rel',#1,$,$,(#52),#60042);`);
+    const girth: ElementFieldBinding = { kind: 'quantity', qsetName: 'Qto_Probe', quantityName: 'Girth', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    assert.equal(createElementFieldReader(scaled).readResolved(52, girth).unitSiScale, 0.01);
+    assert.equal(createElementFieldReader(scaled).readResolved(52, { ...girth, valueKind: 'category' }).unitSiScale, 0.01, 'a category read keeps the scale so it can be unit-qualified');
+    const editedScale = new MutablePropertyView(scaled.properties, 'fixture');
+    editedScale.setQuantityExtractor((id) => extractQuantitiesOnDemand(scaled, id));
+    editedScale.setQuantity(52, 'Qto_Probe', 'Girth', 15, QuantityType.Length);
+    assert.deepEqual(createElementFieldReader(scaled, editedScale).readResolved(52, girth), { value: 15, status: 'value', dataType: 'IFCLENGTHMEASURE', unitSiScale: 0.01 });
   });
 
   it('a type property every occurrence overrides does not shape the field: a label on the type under numbers on the occurrences is a number (#4833 review)', async () => {

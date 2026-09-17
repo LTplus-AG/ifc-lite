@@ -87,12 +87,23 @@ export function createElementFamilyReader(
       // The overlay's extractor only knows occurrence-oriented sets, so the
       // type's own HasPropertySets quantities come from the provider; an edit
       // on the type object still wins by set name (review find).
-      const base = provider.getTypeQuantitySets?.(id) ?? [];
+      const base = (provider.getTypeQuantitySets?.(id) ?? []).filter((set) => !mutationView?.isQuantitySetDeleted(typeId, set.name));
       const overlay = mutationView?.hasChanges(typeId) ? mutationView.getQuantitiesForEntity(typeId) : [];
       cached = overlay.length > 0 ? overlayFirst(overlay, base) : base;
       typeQsets.set(typeId, cached);
     }
     return cached;
+  };
+  /**
+   * The explicit-unit scale of a quantity. The overlay rebuilds an edited
+   * quantity without the collector's `explicitUnitSiScale`, so when the edit
+   * did not name a unit of its own the base quantity's scale still applies.
+   */
+  const explicitScaleFor = (id: number, quantity: Quantity, qsetName: string): number | undefined => {
+    const own = explicitQuantityScale(quantity);
+    if (own !== undefined || quantity.unit || !mutationView?.hasChanges(id)) return own;
+    const base = findQuantityInSets(provider.getQuantitySets(id), qsetName, quantity.name);
+    return base ? explicitQuantityScale(base) : undefined;
   };
   const quantityFor = (id: number, qsetName: string, quantityName: string): Quantity | undefined => {
     const occurrence = findQuantityInSets(qsetsFor(id), qsetName, quantityName);
@@ -128,9 +139,15 @@ export function createElementFamilyReader(
           const quantity = quantityFor(id, binding.qsetName, binding.quantityName);
           if (!quantity || !Number.isFinite(quantity.value)) return MISSING;
           const dataType = QUANTITY_MEASURE[quantity.type];
-          const scale = explicitQuantityScale(quantity);
-          if (binding.valueKind !== 'number') return { value: String(quantity.value), status: 'value', ...(dataType ? { dataType } : {}) };
-          return { value: quantity.value, status: 'value', ...(dataType ? { dataType } : {}), ...(scale !== undefined ? { unitSiScale: scale } : {}) };
+          const scale = explicitScaleFor(id, quantity, binding.qsetName);
+          const provenance = {
+            ...(dataType ? { dataType } : {}),
+            // An edit that named its own unit arrives as a symbol; the dataset resolves it like a property's.
+            ...(quantity.unit ? { unit: quantity.unit } : {}),
+            ...(scale !== undefined ? { unitSiScale: scale } : {}),
+          };
+          if (binding.valueKind !== 'number') return { value: String(quantity.value), status: 'value', ...provenance };
+          return { value: quantity.value, status: 'value', ...provenance };
         }
         case 'material': return text(uniqueJoin(provider.getMaterialNames?.(id) ?? []));
         case 'classification': return text(classificationValue(id, binding.system));

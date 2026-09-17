@@ -390,6 +390,8 @@ END-ISO-10303-21;`);
     const ratio: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Ratio', valueKind: 'number', dataType: 'IFCREAL' };
     useViewerStore.setState({ models: new Map([[realMm.id, realMm]]), activeModelId: realMm.id });
     assert.equal(cellOf(buildElementsDataset({ kind: 'all' }, [ratio], useViewerStore.getState()), ratio, GID(41)).status, 'unsupported');
+  });
+
   it('elements: a quantity sums in one unit across a millimetre and a metre model, and honours its own explicit Unit (#4833)', async () => {
     const qtoModel = async (id: string, offset: number, prefix: string, depth: string, unitRef = '$', extra = '') => {
       const source = MINI_IFC

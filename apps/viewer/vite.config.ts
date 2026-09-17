@@ -310,16 +310,10 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    // `assets/<deploymentId>` on a Vercel deployment with Skew Protection, so the
-    // root middleware can scope this build's pin cookie to its own files and a
-    // navigation in another tab can no longer re-pin them (#4886). `assets`
-    // everywhere else (local, CI, previews without Skew Protection).
-    assetsDir: deploymentAssetsDir(process.env.VERCEL_DEPLOYMENT_ID, process.env.VERCEL_SKEW_PROTECTION_ENABLED),
+    assetsDir: deploymentAssetsDir(process.env.VERCEL_DEPLOYMENT_ID, process.env.VERCEL_SKEW_PROTECTION_ENABLED), // #4886
     chunkSizeWarningLimit: 6000,
-    // Opt-in production source maps, for PostHog error tracking. Without them
-    // every captured stack frame is unreadable minified soup ("Could not find
-    // sourcemap for source url"), which is why triaging a production crash has
-    // meant hand-fetching the deployed bundle from its immutable deployment URL.
+    // Opt-in production source maps for PostHog error tracking: without them every
+    // captured stack frame is minified soup ("Could not find sourcemap for source url").
     //
     // Gated on VITE_SOURCEMAP rather than always-on for two reasons: rollup's
     // map generation for this bundle costs real build time and memory, and the

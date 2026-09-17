@@ -76,11 +76,9 @@ function generate(root) {
   return readFileSync(join(root, 'docs', 'api', 'python.md'), 'utf-8');
 }
 
-function region(doc) {
-  const begin = doc.indexOf(BEGIN);
-  const end = doc.indexOf(END);
-  assert.ok(begin !== -1 && end > begin, `python-api markers missing:\n${doc}`);
-  return doc.slice(begin + BEGIN.length, end);
+/** The whole python.md the generator must write around a given body. */
+function expectedDoc(body) {
+  return `${PAGE_HEADER}\n\n${BEGIN}\n${body}\n${END}\n`;
 }
 
 test('python-api stamps README text containing replacement tokens literally (#4926)', () => {
@@ -92,9 +90,7 @@ test('python-api stamps README text containing replacement tokens literally (#49
   ].join('\n');
   const root = makeTree(`# ifclite-geom\n\n${body}\n`);
   try {
-    const doc = generate(root);
-    assert.equal(region(doc), `\n${body}\n`);
-    assert.equal(doc.split(PAGE_HEADER).length - 1, 1, 'page header must appear exactly once');
+    assert.equal(generate(root), expectedDoc(body));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -109,11 +105,12 @@ test('python-api drops the README title and points ./examples links at GitHub (#
   ].join('\n');
   const root = makeTree(readme);
   try {
-    const stamped = region(generate(root));
     assert.equal(
-      stamped,
-      '\nSee [the examples](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/python/examples)' +
-        ' and [triangles](https://github.com/LTplus-AG/ifc-lite/blob/main/rust/python/examples/triangles.py).\n',
+      generate(root),
+      expectedDoc(
+        'See [the examples](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/python/examples)' +
+          ' and [triangles](https://github.com/LTplus-AG/ifc-lite/blob/main/rust/python/examples/triangles.py).',
+      ),
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

@@ -37,23 +37,53 @@ function ownedBy(tab: RibbonTabId, key: RibbonKey): boolean {
   return scope === tab || !TABS.some((name) => name === scope);
 }
 
-/** Marked copy that keeps every `{placeholder}` intact. */
-const mark = (text: string) => `⟦${text}⟧`;
-const PSEUDO: Catalogue = Object.fromEntries(RIBBON_KEYS.map((key) => [key, mark(ribbonToolbarEn[key])]));
+/**
+ * Static keys this render cannot show, each for a stated reason. Everything
+ * else in the catalogue must land on its control.
+ */
+const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
+  'ribbon.themeTooltip', // Radix tooltip content, only mounted on hover
+  'ribbon.infoTooltip', // Radix tooltip content, only mounted on hover
+  'ribbon.expand', // ribbon is expanded
+  'ribbon.file.refreshModelsTooltip', // no models loaded
+  'ribbon.file.shareGroup', // collab feature flag is off under test
+  'ribbon.file.share',
+  'ribbon.file.shareTooltip',
+  'ribbon.file.room',
+  'ribbon.file.roomTooltip',
+  'ribbon.file.roomNotJoinedTooltip',
+  'ribbon.view.worldShowTooltip', // Cesium is enabled
+  'ribbon.view.moveGeorefStopTooltip', // not in placement mode
+  'ribbon.elements.selectionGroup', // a selection exists
+  'ribbon.elements.hideShortcut', // shortcut shows only in tooltip content
+  'ribbon.analyze.appsGroup', // no analysis extensions installed
+  'ribbon.author.exitEditTooltip', // edit mode is off
+  'ribbon.author.editLockedTooltip', // single-user session can edit
+];
 
-/** Every string a user or assistive technology can read in the ribbon. */
-function readableStrings(root: HTMLElement): Set<string> {
-  const out = new Set<string>();
-  for (const element of root.querySelectorAll('*')) {
+/** Key-specific pseudo translation; keeps every `{placeholder}` of the English text. */
+const mark = (key: RibbonKey) => `⟦${key}|${ribbonToolbarEn[key]}⟧`;
+const PSEUDO: Catalogue = Object.fromEntries(RIBBON_KEYS.map((key) => [key, mark(key)]));
+const MARKED = /^⟦(ribbon\.[^|]+)\|/;
+
+/**
+ * Every string a user or assistive technology can read, keyed by its slot
+ * (element position + aria-label or own text). The DOM shape of a tab does not
+ * change with the locale, so the same slot before and after a switch is the
+ * same control.
+ */
+function readableSlots(root: HTMLElement): Map<string, string> {
+  const out = new Map<string, string>();
+  root.querySelectorAll('*').forEach((element, index) => {
     const label = element.getAttribute('aria-label');
-    if (label) out.add(label);
+    if (label) out.set(`${index}:aria`, label);
     const ownText = [...element.childNodes]
       .filter((node) => node.nodeType === node.TEXT_NODE)
       .map((node) => node.textContent ?? '')
       .join('')
       .trim();
-    if (ownText) out.add(ownText);
-  }
+    if (ownText) out.set(`${index}:text`, ownText);
+  });
   return out;
 }
 
@@ -90,32 +120,46 @@ afterEach(() => {
 });
 
 describe('RibbonToolbar localization (#4785)', () => {
-  it('replaces every rendered English ribbon string when the locale switches live', () => {
+  it('puts each key translation on the control that showed its English, on every tab', () => {
     const container = render(<RibbonToolbar />);
     registerLocale('ribbon-pseudo', PSEUDO);
-    const english = new Map<RibbonTabId, Set<string>>();
+    const english = new Map<RibbonTabId, Map<string, string>>();
     for (const tab of TABS) {
       showTab(container, tab);
-      english.set(tab, readableStrings(container));
+      english.set(tab, readableSlots(container));
     }
 
     act(() => setLocale('ribbon-pseudo'));
     const covered = new Set<RibbonKey>();
     for (const tab of TABS) {
       showTab(container, tab);
-      const localized = readableStrings(container);
-      for (const key of RIBBON_KEYS) {
-        const text = ribbonToolbarEn[key];
-        if (!ownedBy(tab, key) || text.includes('{') || !english.get(tab)?.has(text)) continue;
-        covered.add(key);
-        assert.ok(localized.has(mark(text)), `${tab}: ${key} renders its translation`);
-      }
-      for (const text of localized) {
-        const leftover = RIBBON_KEYS.find((key) => ownedBy(tab, key) && ribbonToolbarEn[key] === text);
-        assert.equal(leftover, undefined, `${tab}: "${text}" is still hardcoded English`);
+      const before = english.get(tab) ?? new Map<string, string>();
+      const after = readableSlots(container);
+      assert.equal(after.size, before.size, `${tab}: same readable slots in both locales`);
+      for (const [slot, text] of before) {
+        const shown = after.get(slot) ?? '';
+        // Owned keys whose English is exactly this text (placeholder keys are
+        // interpolated, so they are checked by the literal-catalogue tests).
+        const candidates = RIBBON_KEYS.filter((key) =>
+          ownedBy(tab, key) && !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
+        if (candidates.length > 0) {
+          const match = candidates.find((key) => shown === mark(key));
+          assert.ok(match, `${tab}: "${text}" at ${slot} should be translated, shows "${shown}"`);
+          covered.add(match);
+        }
+        const markedKey = MARKED.exec(shown)?.[1];
+        if (markedKey && !shown.includes('{') && Object.hasOwn(ribbonToolbarEn, markedKey)) {
+          const expected = ribbonToolbarEn[markedKey as RibbonKey];
+          if (!expected.includes('{')) {
+            assert.equal(text, expected, `${tab}: ${markedKey} rendered on the control that showed "${text}"`);
+          }
+        }
       }
     }
-    // The oracle must actually have looked at the ribbon, not at nothing.
-    assert.ok(covered.size >= 100, `expected >= 100 ribbon strings on screen, saw ${covered.size}`);
+    // Independent of what rendered: every static key in the catalogue must have
+    // shown up on its own control, unless listed as not reachable in this state.
+    // A key wired to the wrong control leaves the right key unrendered here.
+    const missing = RIBBON_KEYS.filter((key) => !ribbonToolbarEn[key].includes('{') && !covered.has(key));
+    assert.deepEqual(missing, NOT_RENDERED_IN_THIS_STATE);
   });
 });

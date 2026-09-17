@@ -32,17 +32,24 @@ export function negotiateLocale(
   requested: readonly string[],
   available: readonly Locale[],
 ): Locale | null {
-  const byLowerTag = new Map(available.map((tag) => [tag.toLowerCase(), tag]));
+  // Compare canonical forms (a `locales/iw.ts` file must answer a request
+  // that canonicalizes to `he`), but return the tag as registered, since that
+  // is the loader key.
+  const candidates = available.flatMap((locale) => {
+    const canonical = canonicalize(locale);
+    return canonical ? [{ canonical: canonical.toLowerCase(), locale }] : [];
+  });
+  const byCanonical = new Map(candidates.map(({ canonical, locale }) => [canonical, locale]));
   for (const raw of requested) {
     const tag = raw.trim() === '' ? null : canonicalize(raw.trim());
     if (!tag) continue;
-    const exact = byLowerTag.get(tag.toLowerCase());
+    const exact = byCanonical.get(tag.toLowerCase());
     if (exact) return exact;
     const language = languageOf(tag);
-    const bare = byLowerTag.get(language);
+    const bare = byCanonical.get(language);
     if (bare) return bare;
-    const sibling = available.find((candidate) => languageOf(candidate) === language);
-    if (sibling) return sibling;
+    const sibling = candidates.find(({ canonical }) => languageOf(canonical) === language);
+    if (sibling) return sibling.locale;
   }
   return null;
 }

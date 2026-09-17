@@ -26,6 +26,12 @@ describe('negotiateLocale (#4785)', () => {
     assert.equal(negotiateLocale(['it', 'de'], available), 'de');
   });
 
+  it('matches deprecated or differently cased tags by canonical form, returning the registered tag', () => {
+    assert.equal(negotiateLocale(['he-IL'], ['en', 'iw']), 'iw');
+    assert.equal(negotiateLocale(['iw'], ['en', 'he']), 'he');
+    assert.equal(negotiateLocale(['zh-TW'], ['en', 'zh-hant-tw']), 'zh-hant-tw');
+  });
+
   it('returns null when nothing matches, and skips invalid or blank tags instead of throwing', () => {
     assert.equal(negotiateLocale(['it', 'ja'], available), null);
     const warn = console.warn;

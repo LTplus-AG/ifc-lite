@@ -1,0 +1,94 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Derived batches (issue #4832): the colour-overlay batches built by
+ * `Scene.setColorOverrides` and the partial (visibility) sub-batches built by
+ * `Scene.getOrCreatePartialBatch` are re-merges of geometry that a BASE bucket
+ * batch already draws. The overlay pass tests depth with `depthCompare:
+ * 'equal'`, so a derived batch only paints where its depth is BIT-IDENTICAL
+ * to the base batch's. Two things decide that depth: the shared local origin
+ * (`mergeGeometry`) and whether the vertices went through the 2^-10 lattice
+ * (`quantizeInterleaved`) or stayed f32.
+ *
+ * Quantization is decided per batch from its own extent (u16 range, ~64 m).
+ * Base buckets are `cell~colour` (32 m cells) and essentially always
+ * quantize; an overlay group keyed by override colour alone spans wherever
+ * that colour lands, crosses the limit on any large model, and silently fell
+ * back to f32 — lattice-snapped base against raw-f32 overlay, off by up to one
+ * step, every overlay fragment rejected. The reverse also happens: a base
+ * bucket holding one >64 m element is f32, while a small subset of it
+ * quantizes.
+ *
+ * The rule here: a derived batch never decides quantization for itself. It
+ * (a) is grouped by its SOURCE bucket, so it is a subset of exactly one base
+ * batch and cannot exceed that batch's extent, and (b) inherits the source
+ * batch's f32/quantized decision. A subset of a batch that quantized always
+ * quantizes (min/max only tighten, `floor` is monotonic), so `'required'` is
+ * an invariant, not a hope — `createSceneBatch` reports when it is broken.
+ */
+
+import type { MeshData } from '@ifc-lite/geometry';
+import type { BatchedMesh } from './types.js';
+
+/**
+ * How `createSceneBatch` treats vertex quantization:
+ * - `'off'`: 28-byte f32 records.
+ * - `'auto'`: quantize when the batch extent fits the u16 lattice, else f32
+ *   (bucket batches, streaming fragments — the batch IS the depth writer).
+ * - `'required'`: derived from a source batch that quantized; a fallback here
+ *   would break depth coincidence and is reported (#4832).
+ */
+export type BatchQuantization = 'off' | 'auto' | 'required';
+
+/** Quantization mode for a batch whose depth must match `sourceBatch`'s. */
+export function inheritedQuantization(
+  quantizedBatchesEnabled: boolean,
+  sourceBatch: BatchedMesh | null | undefined,
+): BatchQuantization {
+  if (!quantizedBatchesEnabled) return 'off';
+  // Source not built yet (mid-stream hydration): nothing to inherit from, so
+  // decide like a base batch would. Finalize re-hands overrides afterwards.
+  if (!sourceBatch) return 'auto';
+  return sourceBatch.quantized ? 'required' : 'off';
+}
+
+/** One overlay group: pieces of a single source bucket sharing an override colour. */
+export interface OverrideGroup {
+  color: [number, number, number, number];
+  meshData: MeshData[];
+  /** The bucket batch whose depth this group must match (null when unbuilt / unbucketed). */
+  sourceBatch: BatchedMesh | null;
+}
+
+/**
+ * Group override pieces by `(source bucket, override colour)`.
+ *
+ * `sourceOf` resolves a piece to its owning bucket (key + built batch) or
+ * undefined when it is not bucketed (textured meshes, mid-stream pieces);
+ * `fallbackKey` then supplies a spatial key with the same cell/model shape
+ * so unbucketed pieces still group compactly.
+ */
+export function groupOverridePieces(
+  overrides: ReadonlyMap<number, readonly [number, number, number, number]>,
+  piecesOf: (expressId: number) => readonly MeshData[] | undefined,
+  sourceOf: (piece: MeshData) => { key: string; batchedMesh: BatchedMesh | null } | undefined,
+  fallbackKey: (piece: MeshData) => string,
+  colorKey: (color: readonly [number, number, number, number]) => string,
+): Map<string, OverrideGroup> {
+  const groups = new Map<string, OverrideGroup>();
+  for (const [expressId, color] of overrides) {
+    for (const piece of piecesOf(expressId) ?? []) {
+      const source = sourceOf(piece);
+      const key = `${source?.key ?? fallbackKey(piece)}:${colorKey(color)}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { color: [color[0], color[1], color[2], color[3]], meshData: [], sourceBatch: source?.batchedMesh ?? null };
+        groups.set(key, group);
+      }
+      group.meshData.push(piece);
+    }
+  }
+  return groups;
+}

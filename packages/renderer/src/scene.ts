@@ -33,6 +33,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, dest
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
+import { inheritedQuantization, groupOverridePieces, type BatchQuantization } from './scene-derived-batches.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
@@ -573,11 +574,11 @@ export class Scene {
    * Enable 12-byte lattice-quantized batch vertices (issue #1682 phase 6).
    * ONLY call after the renderer verified its quantized pipeline variants
    * exist (see Renderer.enableQuantizedBatches) — quantized buffers are
-   * undrawable without them. Applies to batches built from now on; every
-   * createBatchedMesh output (buckets, fragments, partial + override
-   * batches) quantizes onto the SAME 2^-10 lattice, so depth-equal overlay
-   * matching and cross-batch coincidence are preserved bit-exactly. Batches
-   * whose extent exceeds the u16 lattice range fall back to f32 silently.
+   * undrawable without them. Applies to batches built from now on: bucket
+   * batches and fragments quantize onto the SAME 2^-10 lattice when their
+   * extent fits the u16 range (else f32); partial + override batches INHERIT
+   * their source batch's decision (#4832, `scene-derived-batches.ts`), so
+   * depth-equal overlay matching and cross-batch coincidence stay bit-exact.
    */
   setQuantizedBatches(enabled: boolean): void {
     this.quantizedBatchesEnabled = enabled;
@@ -590,10 +591,7 @@ export class Scene {
    * global flag when the mesh isn't bucketed (mid-stream hydration).
    */
   isMeshQuantized(meshData: MeshData): boolean {
-    if (!this.quantizedBatchesEnabled) return false;
-    const bucket = this.meshDataBucket.get(meshData);
-    if (bucket?.batchedMesh) return bucket.batchedMesh.quantized !== undefined;
-    return true;
+    return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(meshData)?.batchedMesh) !== 'off';
   }
 
   /** Set (or clear) the HOST budget in bytes for bucket CPU geometry. */
@@ -1140,7 +1138,7 @@ export class Scene {
    * Quantizes RGBA to 10-bit per channel and packs into a compact string.
    * Avoids floating-point template literal overhead of the old approach.
    */
-  private colorKey(color: [number, number, number, number]): string {
+  private colorKey(color: readonly [number, number, number, number]): string {
     // Quantize to 1000 levels (same precision as before, but integer math only)
     const r = Math.round(color[0] * 1000);
     const g = Math.round(color[1] * 1000);
@@ -2511,10 +2509,13 @@ export class Scene {
    * @param bucketKey - Optional unique key for this batch. When omitted the
    *   base color key is used (fine for overlay / partial batches that don't
    *   participate in the main buckets map).
+   * @param quantization - Bucket batches decide from their own extent ('auto');
+   *   overlay / partial batches pass `inheritedQuantization(source)` (#4832).
    */
   private createBatchedMesh(
     meshes: MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, bucketKey?: string,
+    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off',
   ): BatchedMesh {
     // Keep main's model-local frame and translation registration while staging
     // every GPU allocation before publishing Scene state.
@@ -2523,7 +2524,7 @@ export class Scene {
     const result = createSceneBatch(meshes, color, device, pipeline, {
       id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
       origin: this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
-      quantized: this.quantizedBatchesEnabled, lod: this.lodBuildsEnabled,
+      quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);
     this.nextBatchId++;
     if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) {
@@ -2735,9 +2736,11 @@ export class Scene {
       return undefined;
     }
 
-    // Create the partial batch
+    // Drawn INSTEAD of its source batch, so it inherits the source's f32/quantized
+    // decision (#4832): the overlay built from the same source must match its depth.
     const color = visibleMeshData[0].color;
-    const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline);
+    const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline, undefined,
+      inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(visibleMeshData[0])?.batchedMesh));
 
     // Cache it
     this.partialBatchCache.set(cacheKey, partialBatch);
@@ -2756,12 +2759,12 @@ export class Scene {
   // pipeline (depthCompare 'equal'), so hidden entities never leak through.
 
   /**
-   * Set color overrides for lens coloring.
-   * Builds overlay batches grouped by override color.
-   * Original batches are NEVER modified — clearing is instant.
-   *
-   * Applies the same buffer-size splitting as regular batches to prevent
-   * GPU buffer overflow on large models.
+   * Set color overrides for lens / chart / IDS / compare / 4D coloring.
+   * Builds overlay batches grouped by SOURCE bucket + override color, each
+   * inheriting its source batch's quantization (#4832, see
+   * `scene-derived-batches.ts`). Original batches are NEVER modified —
+   * clearing is instant. Applies the same buffer-size splitting as regular
+   * batches (only the unbucketed fallback groups can still need it).
    */
   setColorOverrides(
     overrides: Map<number, [number, number, number, number]>,
@@ -2798,26 +2801,22 @@ export class Scene {
     // override colour directly). No-op when no instanced data is loaded.
     this.setInstancedColorOverrides(overrides);
 
-    // An overlay batch must belong to one model so placement cannot move a
-    // different model's highlighted geometry along with its first mesh.
-    const colorGroups = new Map<string, { color: [number, number, number, number]; meshData: MeshData[] }>();
-    for (const [expressId, color] of overrides) {
-      for (const piece of this.meshDataMap.get(expressId) ?? []) {
-        const key = `${piece.modelIndex ?? 0}:${this.colorKey(color)}`;
-        let group = colorGroups.get(key);
-        if (!group) { group = { color, meshData: [] }; colorGroups.set(key, group); }
-        group.meshData.push(piece);
-      }
-    }
+    // Bucket keys carry cell + colour + model: an overlay batch is a subset of ONE
+    // base batch (never wider than its lattice range) and belongs to one model.
+    const colorGroups = groupOverridePieces(
+      overrides,
+      (id) => this.meshDataMap.get(id),
+      (piece) => this.meshDataBucket.get(piece),
+      (piece) => this.bucketBaseKey(piece),
+      (c) => this.colorKey(c),
+    );
 
-    // Build overlay batches per override color, splitting if buffers would exceed GPU limit
+    // Build overlay batches per group, splitting if buffers would exceed GPU limit
     const maxBufferSize = this.getMaxBufferSize(device);
-    for (const [, { color, meshData }] of colorGroups) {
-      if (meshData.length === 0) continue;
-      const chunks = this.splitMeshDataForBufferLimit(meshData, maxBufferSize);
-      for (const chunk of chunks) {
-        const batch = this.createBatchedMesh(chunk, color, device, pipeline);
-        this.overrideBatches.push(batch);
+    for (const { color, meshData, sourceBatch } of colorGroups.values()) {
+      const quantization = inheritedQuantization(this.quantizedBatchesEnabled, sourceBatch);
+      for (const chunk of this.splitMeshDataForBufferLimit(meshData, maxBufferSize)) {
+        this.overrideBatches.push(this.createBatchedMesh(chunk, color, device, pipeline, undefined, quantization));
       }
     }
   }

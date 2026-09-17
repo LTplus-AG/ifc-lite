@@ -1,0 +1,225 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Regression test for issue #4832 (chart / lens / IDS colours missing on
+ * large models).
+ *
+ * The colour-overlay pass draws with `depthCompare: 'equal'`, so an overlay
+ * batch only paints where its depth is BIT-IDENTICAL to the depth its base
+ * batch wrote. Base buckets are `cell~colour` (32 m cells) and quantize onto
+ * the 2^-10 lattice; overlay batches used to group by override colour alone,
+ * so one spanning more than `MAX_QUANT_EXTENT` (~64 m) fell back to f32 while
+ * its base stayed lattice-snapped. Off-lattice vertices then differed by up
+ * to one lattice step and the overlay was discarded.
+ *
+ * The invariant pinned here: for every entity an overlay (or partial)
+ * batch carries, the positions the GPU will see are bit-identical to those
+ * of the entity's base batch, in BOTH directions of the fallback (overlay
+ * f32 / base quantized, and overlay quantized / base f32).
+ *
+ * Coordinates are deliberately OFF the 2^-10 lattice: lattice-aligned inputs
+ * quantize losslessly and cannot expose the divergence.
+ */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import type { MeshData } from '@ifc-lite/geometry';
+import { Scene } from './scene.js';
+import { createSceneBatch } from './scene-batch-upload.js';
+import type { BatchedMesh } from './types.js';
+import { MAX_QUANT_EXTENT } from './quantize.js';
+
+(globalThis as Record<string, unknown>).GPUBufferUsage = {
+  MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
+  VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512,
+};
+
+/** Fake device that keeps the mapped-at-creation bytes so batches can be read back. */
+function fakeDevice(): { device: GPUDevice; bytes: WeakMap<GPUBuffer, ArrayBuffer> } {
+  const bytes = new WeakMap<GPUBuffer, ArrayBuffer>();
+  const device = {
+    limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
+    createBuffer: (desc: GPUBufferDescriptor) => {
+      const backing = new ArrayBuffer(desc.size);
+      const buffer = { size: desc.size, getMappedRange: () => backing, unmap() {}, destroy() {} } as unknown as GPUBuffer;
+      bytes.set(buffer, backing);
+      return buffer;
+    },
+    createBindGroup: () => ({}),
+    queue: { writeBuffer: () => {} },
+  };
+  return { device: device as unknown as GPUDevice, bytes };
+}
+
+const fakePipeline = {
+  getUniformBufferSize: () => 256,
+  getBindGroupLayout: () => ({}),
+} as unknown as Parameters<Scene['appendToBatches']>[2];
+
+const GREY: [number, number, number, number] = [0.5, 0.5, 0.5, 1];
+const RED: [number, number, number, number] = [1, 0, 0, 1];
+
+/** Off-lattice unit triangle whose element origin puts it at `origin`. */
+function triangle(expressId: number, origin: [number, number, number], color = GREY): MeshData {
+  return {
+    expressId,
+    positions: new Float32Array([0.0003, 0.0007, 0.0001, 1.0004, 0.0007, 0.0001, 0.0003, 1.0009, 0.0001]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color,
+    origin,
+  };
+}
+
+/** A single off-lattice element longer than the u16 lattice range along X. */
+function longWall(expressId: number, origin: [number, number, number]): MeshData {
+  const len = MAX_QUANT_EXTENT + 6.0003;
+  return {
+    expressId,
+    positions: new Float32Array([0.0003, 0.0007, 0.0001, len, 0.0007, 0.0001, 0.0003, 1.0009, 0.0001]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: GREY,
+    origin,
+  };
+}
+
+/**
+ * Positions the shader will see for each entity in a batch, as the f32
+ * values the GPU dequantizes/reads: `quantMin + q * step` for quantized
+ * batches (every term is an exact f32, so the sum is too), raw f32 otherwise.
+ * Keyed by picking id (low 24 bits of the entity lane), positions sorted.
+ */
+function gpuPositionsByEntity(batch: BatchedMesh, bytes: WeakMap<GPUBuffer, ArrayBuffer>): Map<number, string[]> {
+  const buf = bytes.get(batch.vertexBuffer);
+  assert.ok(buf, 'vertex buffer bytes captured');
+  const out = new Map<number, string[]>();
+  const push = (id: number, x: number, y: number, z: number) => {
+    let list = out.get(id);
+    if (!list) { list = []; out.set(id, list); }
+    list.push(`${x},${y},${z}`);
+  };
+  if (batch.quantized) {
+    const u16 = new Uint16Array(buf);
+    const u32 = new Uint32Array(buf);
+    const { min, step } = batch.quantized;
+    for (let v = 0; v * 12 < buf.byteLength; v++) {
+      const w = v * 6;
+      push(
+        u32[v * 3 + 2] & 0x00FFFFFF,
+        Math.fround(min[0] + u16[w] * step),
+        Math.fround(min[1] + u16[w + 1] * step),
+        Math.fround(min[2] + u16[w + 2] * step),
+      );
+    }
+  } else {
+    const f32 = new Float32Array(buf);
+    const u32 = new Uint32Array(buf);
+    for (let b = 0; b + 7 <= f32.length; b += 7) {
+      push(u32[b + 6] & 0x00FFFFFF, f32[b], f32[b + 1], f32[b + 2]);
+    }
+  }
+  for (const list of out.values()) list.sort();
+  return out;
+}
+
+/** Base batch (bucket-owned) that carries `expressId`. */
+function baseBatchFor(scene: Scene, expressId: number): BatchedMesh {
+  const batch = scene.getBatchedMeshes().find((b) => b.expressIds.includes(expressId));
+  assert.ok(batch, `base batch for ${expressId}`);
+  return batch;
+}
+
+/**
+ * The depthCompare:'equal' contract: every entity in `derived` renders at
+ * exactly the positions its base batch does, from the same local origin.
+ */
+function assertCoincidentWithBase(scene: Scene, derived: BatchedMesh, bytes: WeakMap<GPUBuffer, ArrayBuffer>): void {
+  const derivedPositions = gpuPositionsByEntity(derived, bytes);
+  assert.ok(derivedPositions.size > 0, 'derived batch has vertices');
+  for (const [expressId, positions] of derivedPositions) {
+    const base = baseBatchFor(scene, expressId);
+    assert.deepStrictEqual(derived.origin, base.origin, `entity ${expressId}: shared local origin`);
+    const basePositions = gpuPositionsByEntity(base, bytes).get(expressId);
+    assert.deepStrictEqual(positions, basePositions, `entity ${expressId}: GPU positions bit-identical to base batch`);
+    assert.strictEqual(
+      derived.quantized !== undefined, base.quantized !== undefined,
+      `entity ${expressId}: derived batch must take the same f32/quantized path as its base batch`,
+    );
+  }
+}
+
+function quantizedChunkedScene(): Scene {
+  const scene = new Scene();
+  scene.setSpatialChunking({ cellSize: 32 });
+  scene.setQuantizedBatches(true);
+  return scene;
+}
+
+describe('overlay batches stay depth-coincident with their base batches (#4832)', () => {
+  it('overrides on entities >64 m apart (base batches quantized) render bit-identical to base', () => {
+    const scene = quantizedChunkedScene();
+    const { device, bytes } = fakeDevice();
+    // Same material colour, two cells 100 m apart: each base bucket is
+    // cell-compact and quantizes; the overlay group spans both.
+    scene.appendToBatches([triangle(1, [0.33, 0.2, 0.1]), triangle(2, [100.33, 0.2, 0.1])], device, fakePipeline);
+    assert.strictEqual(scene.getBatchedMeshes().length, 2, 'sanity: one base batch per cell');
+    for (const batch of scene.getBatchedMeshes()) assert.ok(batch.quantized, 'sanity: base batches quantize');
+
+    scene.setColorOverrides(new Map([[1, RED], [2, RED]]), device, fakePipeline);
+
+    const overlays = scene.getOverrideBatches();
+    assert.ok(overlays.length > 0, 'overlay batches built');
+    const covered = new Set(overlays.flatMap((b) => b.expressIds));
+    assert.deepStrictEqual([...covered].sort(), [1, 2], 'every overridden entity is painted');
+    for (const overlay of overlays) assertCoincidentWithBase(scene, overlay, bytes);
+  });
+
+  it('override on a small entity whose base batch fell back to f32 (a >64 m batchmate) renders f32 too', () => {
+    const scene = quantizedChunkedScene();
+    const { device, bytes } = fakeDevice();
+    // Both anchor in cell (0,0,0); the wall's own extent forces the bucket to f32.
+    scene.appendToBatches([longWall(10, [0.33, 0.2, 0.1]), triangle(11, [5.33, 0.2, 0.1])], device, fakePipeline);
+    assert.strictEqual(scene.getBatchedMeshes().length, 1, 'sanity: one shared base batch');
+    assert.strictEqual(scene.getBatchedMeshes()[0].quantized, undefined, 'sanity: base batch is f32');
+
+    scene.setColorOverrides(new Map([[11, RED]]), device, fakePipeline);
+
+    const overlays = scene.getOverrideBatches();
+    assert.strictEqual(overlays.length, 1);
+    assertCoincidentWithBase(scene, overlays[0], bytes);
+  });
+
+  it('a partial (visibility) sub-batch inherits its source batch quantization', () => {
+    const scene = quantizedChunkedScene();
+    const { device, bytes } = fakeDevice();
+    scene.appendToBatches([longWall(10, [0.33, 0.2, 0.1]), triangle(11, [5.33, 0.2, 0.1])], device, fakePipeline);
+    const base = scene.getBatchedMeshes()[0];
+    assert.strictEqual(base.quantized, undefined, 'sanity: base batch is f32');
+
+    // Hide the wall: the render loop draws the visible subset through a
+    // partial sub-batch INSTEAD of the base, so overlays must match it too.
+    const partial = scene.getOrCreatePartialBatch(`${base.id}:${base.colorKey}`, base.colorKey, new Set([11]), device, fakePipeline);
+    assert.ok(partial, 'partial batch built');
+    assertCoincidentWithBase(scene, partial, bytes);
+  });
+
+  it('a derived batch that cannot honour an inherited quantization is reported, never silent', () => {
+    const { device } = fakeDevice();
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    try {
+      const batch = createSceneBatch([longWall(10, [0, 0, 0])], GREY, device, fakePipeline, {
+        id: 0, colorKey: 'k', origin: [0, 0, 0], quantized: 'required', lod: false,
+      });
+      assert.strictEqual(batch.quantized, undefined, 'falls back to f32 rather than clamping');
+    } finally {
+      console.warn = original;
+    }
+    assert.strictEqual(warnings.length, 1);
+    assert.match(warnings[0], /4832/);
+  });
+});

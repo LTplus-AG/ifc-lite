@@ -143,6 +143,44 @@ describe('applyModelRotation', () => {
     assert.ok(Math.abs(box.min[1] - source.min[1]) < 1e-6, 'instanced box elevation moved');
   });
 
+  it('turns the ABSOLUTE world boxes about the same axis as the vertices on an origin-shifted model', () => {
+    // `geometryAabb` and the instanced boxes carry the RTC offset and the origin
+    // shift folded in; positions and the pivot do not. Off-axis values on every
+    // component, so a dropped or swapped term cannot cancel.
+    const value = geometry();
+    value.coordinateInfo.originShift = { x: 2_000.25, y: 30.5, z: -1_500.75 };
+    (value.coordinateInfo as { wasmRtcOffset?: { x: number; y: number; z: number } }).wasmRtcOffset = { x: 400_000.5, y: 5_000_000.25, z: 12.5 };
+    const offset = [2_000.25 + 400_000.5, 30.5 + 12.5, -1_500.75 - 5_000_000.25];
+    const absolute = (box: { min: number[]; max: number[] }) => ({
+      min: box.min.map((v, axis) => v + offset[axis]) as [number, number, number],
+      max: box.max.map((v, axis) => v + offset[axis]) as [number, number, number] });
+    value.meshes[0].geometryAabb = absolute(value.meshes[0].geometryAabb!);
+    // An instanced entity whose extent is these render-frame points.
+    const instancedPoints: Translation[] = [[20, 1, -7], [23.5, 4, -2.25]];
+    value.instancedGeometryAabbs = new Map([[99, absolute({ min: [20, 1, -7], max: [23.5, 4, -2.25] })]]);
+
+    applyModelRotation(value, captureRotationBaseline(value), ROTATION);
+
+    const inside = (point: number[], box: { min: number[]; max: number[] }, what: string) => {
+      for (let axis = 0; axis < 3; axis += 1) {
+        const world = point[axis] + offset[axis];
+        assert.ok(world >= box.min[axis] - 1e-3 && world <= box.max[axis] + 1e-3,
+          `${what} axis ${axis}: ${world} outside [${box.min[axis]}, ${box.max[axis]}]`);
+      }
+    };
+    // Render-frame vertices, rotated by the code under test.
+    for (const point of worldPoints(value)) {
+      inside([point[0], point[2], -point[1]], value.meshes[0].geometryAabb!, 'rotated vertex');
+    }
+    // Render-frame instanced extent, rotated independently in engineering axes.
+    for (const x of [instancedPoints[0][0], instancedPoints[1][0]]) {
+      for (const z of [instancedPoints[0][2], instancedPoints[1][2]]) {
+        const turned = rotateWorkspacePoint(fromRenderTranslation({ x, y: 1, z }), ROTATION);
+        inside([turned[0], turned[2], -turned[1]], value.instancedGeometryAabbs!.get(99)!, 'rotated instanced corner');
+      }
+    }
+  });
+
   it('carries the rotation into localToWorld so placement-reading paths agree', () => {
     const value = geometry();
     const matrix = [...value.meshes[0].localToWorld!];

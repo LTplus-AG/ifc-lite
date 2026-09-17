@@ -26,6 +26,7 @@
 import type { EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { isZeroRotation, type ModelRotation } from './rotation.js';
 import { toRenderTranslation } from './translation.js';
+import { totalYupOffset } from '../geo/coordinate-frame.js';
 
 type Geometry = Pick<GeometryResult, 'meshes' | 'coordinateInfo' | 'instancedGeometryAabbs'>;
 
@@ -203,7 +204,20 @@ function rotatedLocalToWorld(matrix: number[], yaw: Yaw): number[] {
   return next;
 }
 
-function rotateMesh(mesh: MeshData, yaw: Yaw, bounds: { min: number[]; max: number[] }): void {
+/**
+ * The same yaw with its pivot moved into the frame the WORLD BOXES live in.
+ * `geometryAabb` and the instanced boxes are absolute: the RTC offset and the
+ * origin shift are folded into them (see `EntityWorldAabb`), while positions,
+ * origins and the pivot are render-frame. Turning an absolute box about a
+ * render-frame pivot swings it about a point displaced by that offset, which
+ * on a georeferenced model is kilometres from the vertices it describes.
+ */
+function worldBoxYaw(yaw: Yaw, coordinateInfo: Geometry['coordinateInfo']): Yaw {
+  const offset = totalYupOffset(coordinateInfo);
+  return { ...yaw, px: yaw.px + offset.x, pz: yaw.pz + offset.z };
+}
+
+function rotateMesh(mesh: MeshData, yaw: Yaw, boxYaw: Yaw, bounds: { min: number[]; max: number[] }): void {
   const origin = mesh.origin;
   // With a per-element local frame the ORIGIN carries the pivot and the vertices
   // rotate about zero as plain vectors. Folding the pivot into the local frame
@@ -244,7 +258,7 @@ function rotateMesh(mesh: MeshData, yaw: Yaw, bounds: { min: number[]; max: numb
       normals[i + 2] = -nx * yaw.sin + nz * yaw.cos;
     }
   }
-  if (mesh.geometryAabb) mesh.geometryAabb = rotatedBox(mesh.geometryAabb, yaw);
+  if (mesh.geometryAabb) mesh.geometryAabb = rotatedBox(mesh.geometryAabb, boxYaw);
   if (mesh.localToWorld && mesh.localToWorld.length >= 12) {
     mesh.localToWorld = rotatedLocalToWorld(mesh.localToWorld, yaw);
   }
@@ -268,13 +282,14 @@ export function applyModelRotation(
   const pivot = toRenderTranslation(rotation.pivot);
   const yaw: Yaw = { cos: Math.cos(rotation.angle), sin: Math.sin(rotation.angle), px: pivot[0], pz: pivot[2] };
   const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
-  for (const mesh of geometry.meshes) rotateMesh(mesh, yaw, bounds);
+  const boxYaw = worldBoxYaw(yaw, geometry.coordinateInfo);
+  for (const mesh of geometry.meshes) rotateMesh(mesh, yaw, boxYaw, bounds);
   const instanced = geometry.instancedGeometryAabbs;
   if (instanced && instanced.size > 0) {
     // The instanced-only channel has no vertices on this side to measure, so
     // its boxes are corner-transformed instead.
     const next = new Map<number, EntityWorldAabb>();
-    for (const [expressId, box] of instanced) next.set(expressId, rotatedBox(box, yaw));
+    for (const [expressId, box] of instanced) next.set(expressId, rotatedBox(box, boxYaw));
     geometry.instancedGeometryAabbs = next;
   }
   if (Number.isFinite(bounds.min[0])) {

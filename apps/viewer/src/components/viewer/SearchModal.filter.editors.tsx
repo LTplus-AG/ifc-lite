@@ -165,6 +165,14 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
         />
       )}
 
+      {rule.kind === 'parent' && (
+        <NameEditor
+          op={rule.op}
+          value={rule.value}
+          onChange={(op, value) => onChange(Rule.parent(op, value))}
+        />
+      )}
+
       <button
         type="button"
         onClick={onRemove}

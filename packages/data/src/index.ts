@@ -50,6 +50,8 @@ export {
 export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
 export { getAggregatedChildren, collectAggregatedDescendants } from './decomposition.js';
 export type { DecompositionRelationships } from './decomposition.js';
+export { collectSpatialAncestors } from './ancestor-lookup.js';
+export type { AncestorRelationships } from './ancestor-lookup.js';
 export { linearToSrgb } from './color.js';
 // Schema-agnostic STEP serialization primitives — the single source of truth
 // re-exported by the per-schema serializer bundles (parser runtime + codegen).

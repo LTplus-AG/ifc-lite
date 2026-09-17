@@ -487,9 +487,15 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
     assert.ok(out.unsupported[0]?.startsWith('"! IfcWaall"'), out.unsupported[0]);
   });
 
-  it('parent= and query:', () => {
-    assert.match(reported('parent=Foo')[0] ?? '', /parent=Foo/);
+  it('parent= is a supported rule, not a refusal (#4903)', () => {
+    const out = adapt('parent=Foo');
+    assert.deepEqual(out.rules, [Rule.parent('eq', 'Foo')]);
+    assert.deepEqual(out.unsupported, []);
+  });
+
+  it('query: is refused permanently, not "not supported yet" (#4094)', () => {
     assert.match(reported('query:types.count=0')[0] ?? '', /query:types\.count=0/);
+    assert.match(reported('query:types.count=0')[0] ?? '', /deliberately out of scope/);
   });
 
   it('an operator the dimension cannot take', () => {
@@ -513,11 +519,11 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
   });
 
   it('every unsupported entry quotes the text the user typed', () => {
-    // Only `parent=Foo` and the dropped "+ IfcDoor" group remain unsupported
-    // here — the GlobalId subtraction, Description=x and type=WT01 now all
-    // become rules (#4094).
+    // Only the dropped "+ IfcDoor" group remains unsupported here — the
+    // GlobalId subtraction, Description=x, type=WT01 AND parent=Foo now all
+    // become rules (#4094, #4903).
     const out = adapt(`IfcWall, ! ${GUID}, type=WT01, parent=Foo, Description=x + IfcDoor`);
-    assert.equal(out.unsupported.length, 2);
+    assert.equal(out.unsupported.length, 1);
     for (const entry of out.unsupported) {
       assert.match(entry, /^"/, `entry does not start with the quoted source: ${entry}`);
     }

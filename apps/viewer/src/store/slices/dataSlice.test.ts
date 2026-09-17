@@ -207,6 +207,26 @@ describe('DataSlice', () => {
       assert.strictEqual(state.models.get(ACTIVE_MODEL_ID)?.geometryResult, null);
       assert.strictEqual(state.models.get(EDITED_MODEL_ID)?.geometryResult, null);
     });
+
+    it('warns on the refused, unknown-modelId path (observable proof the refuse branch actually ran)', () => {
+      // Dropping the batch is otherwise unobservable from state alone — the
+      // "create new geometryResult" path below the refuse guard produces an
+      // object that would just get discarded either way. The console.warn is
+      // the one side effect that only fires if the guard is actually there,
+      // so it's what a mutation that deletes the guard shows up in.
+      seedTwoModels();
+      const originalWarn = console.warn;
+      const calls: unknown[][] = [];
+      console.warn = (...args: unknown[]) => { calls.push(args); };
+      try {
+        state.appendGeometryBatch('some-unregistered-model', [createMockMesh(9)] as any);
+      } finally {
+        console.warn = originalWarn;
+      }
+
+      assert.strictEqual(calls.length, 1);
+      assert.match(String(calls[0][0]), /some-unregistered-model/);
+    });
   });
 
   describe('updateMeshColors', () => {

@@ -20,11 +20,12 @@ export interface CoordinateInfo {
   originalBounds: AABB;
   shiftedBounds: AABB;
   /**
-   * True only when the JS-side `originShift` fired (WASM did not already
-   * re-base the model and it was still beyond `NORMAL_COORD_THRESHOLD_M`).
-   * Stays `false` when WASM applied `wasmRtcOffset` instead, so it is not a
-   * general "was this model shifted?" flag — use `wasmRtcOffset !==
-   * undefined` for that.
+   * True only when the JS-side `originShift` fired: the geometry reaching
+   * `CoordinateHandler` was still beyond `NORMAL_COORD_THRESHOLD_M`, which in
+   * practice means WASM did not re-base it. Stays `false` when WASM applied
+   * `wasmRtcOffset` instead, and `wasmRtcOffset` is absent when only
+   * `originShift` fired, so neither field alone answers "was this model
+   * shifted?". Use `hasLargeCoordinates || wasmRtcOffset !== undefined`.
    */
   hasLargeCoordinates: boolean;
   /** RTC offset applied by WASM in IFC coordinates (Z-up). */

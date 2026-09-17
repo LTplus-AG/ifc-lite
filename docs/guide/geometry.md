@@ -443,8 +443,11 @@ this example did, silently drops the WASM offset and hands back render-frame
 coordinates while presenting them as world coordinates.
 
 `hasLargeCoordinates` tracks only the JS `originShift` path, so it is `false`
-whenever WASM already re-based the model. Use `wasmRtcOffset !== undefined` to
-ask "was this model shifted at all?".
+whenever WASM already re-based the model. `wasmRtcOffset !== undefined` alone
+is not enough either, because a model shifted only by `originShift` has
+`hasLargeCoordinates: true` and no `wasmRtcOffset`. To ask "was this model
+shifted at all?", check both:
+`coordinateInfo.hasLargeCoordinates || coordinateInfo.wasmRtcOffset !== undefined`.
 
 `@ifc-lite/geometry/world-frame` is the one place that combines both offsets
 and applies the Y-up/Z-up axis swap (`scripts/check-rtc-frame-copies.mjs`
@@ -480,8 +483,8 @@ For `coordinateInfo` `{ originShift: { x: 0, y: 0, z: 0 }, wasmRtcOffset: {
 x: 2000031.105, y: 1000012, z: 500 } }` (the WASM-shifted case above),
 `renderFrameWorldOffset` returns `{ x: 2000031.105, y: 1000012, z: 500 }`.
 Converting a render-frame point `{ x: 12.5, y: 3.2, z: -8.1 }` (Y-up) with the
-code above gives the IFC world point `{ x: 2000043.605, y: 1000015.2, z:
-491.9 }` (Z-up) — verified by running `world-frame.ts`'s `renderFrameWorldOffset`
+code above gives the Z-up point `{ x: 12.5, y: 8.1, z: 3.2 }` and then the
+IFC world point `{ x: 2000043.605, y: 1000020.1, z: 503.2 }` (Z-up) — verified by running `world-frame.ts`'s `renderFrameWorldOffset`
 and `viewerToIfcAxes` directly against this `coordinateInfo`.
 
 The viewer, `ifc-lite clash --bcf` and `bim.bcf` in the SDK already apply this

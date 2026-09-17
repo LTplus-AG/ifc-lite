@@ -17,25 +17,32 @@ Model C: expressIds 1-2000    -> globalIds 8001-10000   (offset: 8000)
 Federated models share one **RTC frame** so their meshes align pixel-for-pixel
 instead of each model floating in its own re-based origin (see [Geometry
 Guide → Coordinate Handling](geometry.md#coordinate-handling) for what an RTC
-offset is and why the mesher applies one). When a model is added to a running
-federation, the viewer picks `sharedRtcOffset` from the **earliest-loaded
-model that already has a `wasmRtcOffset`**, and threads it into that new
-model's geometry processing so it re-bases onto the same anchor
-(`apps/viewer/src/hooks/useIfcFederation.ts`). `federationFrameInfo`
-(`@ifc-lite/geometry/world-frame`) reports that same earliest-loaded model's
-`coordinateInfo` as the federation's frame, for `renderFrameWorldOffset` /
-BCF export and any other consumer that needs the shared anchor.
+offset is and why the mesher applies one). Two separate rules decide which
+frame that is, and they do not select the same way:
 
-This has a load-order caveat: a model with small, near-origin coordinates has
-no `wasmRtcOffset` at all, so it does not count as a candidate anchor. If such
-a model loads first and a large-coordinate model is added afterwards, there is
-no shared offset yet when the second model loads, so it picks its own,
-un-shared RTC anchor instead of joining the first model's (zero) frame — the
-two models then render in different frames, and `federationFrameInfo`
-(which still reports the earliest-loaded model, per the rule above) names a
-frame that does not match what the second model was actually drawn in.
-Loading the large-coordinate model first avoids this, because every
-model added afterwards then finds and reuses its real anchor. This is tracked
+- **The RTC anchor applied at load.** When a model is added to a running
+  federation, the viewer picks `sharedRtcOffset` from the **earliest-loaded
+  model that has a `wasmRtcOffset`**, skipping any model without one, and
+  threads it into the new model's geometry processing so it re-bases onto
+  that anchor (`apps/viewer/src/hooks/useIfcFederation.ts`). If no loaded
+  model has a `wasmRtcOffset`, the new model uses its own RTC offset.
+- **The frame reported to consumers.** `federationFrameInfo`
+  (`@ifc-lite/geometry/world-frame`) returns the `coordinateInfo` of the
+  **earliest-loaded model that has any `coordinateInfo`**, with or without a
+  `wasmRtcOffset`. `renderFrameWorldOffset`, BCF viewpoint export and the
+  other world-coordinate readouts use that as the federation's frame.
+
+When the earliest-loaded model has a `wasmRtcOffset`, both rules pick the same
+model and every later model shares its anchor. They can differ when the
+earliest-loaded model has no `wasmRtcOffset`: for example, a model with small,
+near-origin coordinates. If a large-coordinate model is added after it, the
+anchor rule skips the first model and finds no shared offset, so the second
+model re-bases onto its own RTC offset. `federationFrameInfo` still reports the
+first model's (unshifted) frame, which does not match the frame the second
+model was drawn in, so world coordinates read off the second model come out
+wrong by its RTC offset. Loading the large-coordinate model first avoids
+this, because every model added afterwards then finds and reuses its anchor,
+and both rules agree. This is tracked
 as a known limitation; check the [GitHub issue
 tracker](https://github.com/LTplus-AG/ifc-lite/issues) for its current status
 before relying on federation coordinates being load-order independent.

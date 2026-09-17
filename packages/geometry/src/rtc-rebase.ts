@@ -21,7 +21,7 @@
  * repro has no `IfcMapConversion` at all).
  */
 
-import type { CoordinateInfo, Vec3 } from './coordinate-types.js';
+import type { AABB, CoordinateInfo, Vec3 } from './coordinate-types.js';
 import { GEOM_CLASS_INSTANCED_TYPE, geometryClassOf } from './geometry-class.js';
 import { ifcToViewerAxes } from './world-frame.js';
 
@@ -67,6 +67,28 @@ export function rebasePositionsToRtcOffset(
     positions[i + 1] -= delta.y;
     positions[i + 2] -= delta.z;
   }
+}
+
+/**
+ * The same translation {@link rebasePositionsToRtcOffset} applies to
+ * positions, applied to one render-frame box: `min` and `max` each move by
+ * `-delta`.
+ *
+ * Shifting the two corners component-wise is sound ONLY because this is a
+ * pure axis-aligned translation — every corner of the box moves by the same
+ * vector, so the corner that was the minimum along an axis still is. The
+ * general rule for re-framing a box is to transform its EIGHT corners and
+ * re-derive min/max (`swap_zup_to_yup_aabb` in the wasm bindings does that,
+ * and so does the model-rotation path), because a rotation or an axis
+ * negation can make a different corner the extreme one. There is no rotation
+ * and no axis change here: both anchors are metres in the same axes, which
+ * is the premise this whole module rests on.
+ */
+function shiftRenderBoundsByRtcDelta(bounds: AABB, delta: Readonly<Vec3>): AABB {
+  return {
+    min: { x: bounds.min.x - delta.x, y: bounds.min.y - delta.y, z: bounds.min.z - delta.z },
+    max: { x: bounds.max.x - delta.x, y: bounds.max.y - delta.y, z: bounds.max.z - delta.z },
+  };
 }
 
 /** What {@link rebaseGeometryOntoFirstRealAnchor} reads and rewrites per model. */
@@ -136,7 +158,8 @@ export function rtcRebaseRefusedForInstancedGeometry(
  * real anchor: `justLoadedOffset` is non-null AND no `existingGeometries`
  * entry has a `wasmRtcOffset` of its own yet. In that one case, every entry
  * (all of them raw, by that same condition) is mutated in place — mesh
- * positions translated, `coordinateInfo.wasmRtcOffset` replaced — so the
+ * positions translated, the render-frame boxes translated with them and
+ * `coordinateInfo.wasmRtcOffset` replaced — so the
  * WHOLE federation, old models included, ends up in the one frame the new
  * model defined. Returns the geometries actually touched, so the caller
  * knows which models need `bumpGeometryContentVersion()` and a spatial
@@ -150,6 +173,35 @@ export function rtcRebaseRefusedForInstancedGeometry(
  * GPU-instanced geometry, which this cannot reach: see
  * {@link carriesGpuInstancedGeometry}. The caller is expected to tell the
  * user, because those models then keep the frame they loaded in.
+ *
+ * WHAT MOVES, AND WHAT MUST NOT. A re-base changes the render frame only —
+ * where the model's numbers are measured FROM — never where the model is in
+ * the world. So exactly the render-frame data moves: `mesh.positions` and the
+ * two `CoordinateInfo` boxes (`originalBounds`, `shiftedBounds`), with
+ * `wasmRtcOffset` recording the new anchor.
+ *
+ * Three neighbouring fields are ABSOLUTE WORLD and are deliberately left
+ * alone — translating them would be the bug, not the fix:
+ *
+ *  - `MeshData.geometryAabb` (and the `instancedGeometryAabbs` side channel):
+ *    the hasher folds the file's RTC back in, so "two revisions that chose
+ *    different RTC offsets report the same box"
+ *    (`MeshCollection::geometry_aabb_values`, pinned by the Rust test
+ *    `reported_aabb_is_rtc_invariant`). `geometrySummary.ts` compares it
+ *    against vertices only after lifting them with
+ *    `render + rtc + originShift`, which the new `wasmRtcOffset` already
+ *    accounts for.
+ *  - `MeshData.localToWorld`: the resolved placement chain as captured, with
+ *    no RTC subtracted (`transform_mesh_world` assigns the transform before
+ *    it subtracts the offset from the vertices) — "the placement's
+ *    translation in the *original* (pre-RTC) coordinate frame"
+ *    (`Scene.getEntityTransform`). The demesher's reconstruction is
+ *    `true_world = origin + position + rtc` then `inv(localToWorld) *
+ *    true_world` (`simplify_session.rs`), which stays exact across a re-base
+ *    precisely because `localToWorld` does not move with `rtc`.
+ *  - `MeshData.origin`: render-frame, but the per-vertex delta already landed
+ *    in `positions`, so `origin + position` has moved once. Shifting `origin`
+ *    too would double it.
  */
 export function rebaseGeometryOntoFirstRealAnchor<T extends RtcRebaseGeometry>(
   existingGeometries: readonly T[],
@@ -162,10 +214,28 @@ export function rebaseGeometryOntoFirstRealAnchor<T extends RtcRebaseGeometry>(
 
   const moved: T[] = [];
   for (const geometry of existingGeometries) {
+    const fromOffset = geometry.coordinateInfo.wasmRtcOffset;
+    const delta = rtcRebaseDeltaYup(fromOffset, justLoadedOffset);
     for (const mesh of geometry.meshes) {
-      rebasePositionsToRtcOffset(mesh.positions, geometry.coordinateInfo.wasmRtcOffset, justLoadedOffset);
+      rebasePositionsToRtcOffset(mesh.positions, fromOffset, justLoadedOffset);
     }
-    geometry.coordinateInfo = { ...geometry.coordinateInfo, wasmRtcOffset: { ...justLoadedOffset } };
+    // The two boxes move WITH the positions, in the same pass, because both
+    // are render-frame: `originalBounds` is the raw mesh bounds the producer
+    // measured (`CoordinateHandler.calculateBounds` sums `origin + position`)
+    // and `shiftedBounds` is that minus `originShift`. Consumers lift them
+    // back to world by ADDING the offsets — `computeFootprintGeoJSON` does
+    // `bounds + originShift + ifcToViewerAxes(wasmRtcOffset)`, `modelMinZMeters`
+    // does `originalBounds.min.y + rtcYup.y` — so a box left behind while
+    // `wasmRtcOffset` gains the anchor reports a position off by exactly this
+    // delta, and the camera fit / section-plane range read straight off
+    // `shiftedBounds` would frame empty space. Shifting BOTH by the same delta
+    // also preserves `originalBounds - shiftedBounds === originShift`.
+    geometry.coordinateInfo = {
+      ...geometry.coordinateInfo,
+      originalBounds: shiftRenderBoundsByRtcDelta(geometry.coordinateInfo.originalBounds, delta),
+      shiftedBounds: shiftRenderBoundsByRtcDelta(geometry.coordinateInfo.shiftedBounds, delta),
+      wasmRtcOffset: { ...justLoadedOffset },
+    };
     moved.push(geometry);
   }
   return moved;

@@ -29,7 +29,12 @@ import type { FederatedModel } from '../types.js';
  * for authored meshes), and offset ranges are disjoint, so this prunes EVERY
  * geometry that holds a queued id: the active mirror and each model's own.
  *
- * Bounded mode: `releaseGeometryMemory` empties a mesh's buffers but keeps the
+ * Renderer parity: `Scene.removeMeshesForEntity` keeps a colour-merged mesh
+ * (non-empty `entityIds`, which hosts other entities too) and tombstones an
+ * instanced entity, so this keeps those meshes and drops the id from the
+ * instanced-only metadata maps (hashes, AABBs, volumes) as well.
+ *
+ * Bounded mode:`releaseGeometryMemory` empties a mesh's buffers but keeps the
  * mesh and its share of the totals, so counts come from `meshGeometryCounts`,
  * which falls back to the counts retained at release.
  */
@@ -45,7 +50,19 @@ export interface PruneMeshesPatch {
   geometryUpdateTick?: number;
 }
 
-/** A pruned copy of `geometry`, or `geometry` itself when no mesh matched. */
+/** `map` without `ids`, copied only when one of them is actually a key. */
+function withoutIds<V>(map: Map<number, V> | undefined, ids: Set<number>): Map<number, V> | undefined {
+  if (!map) return map;
+  let next: Map<number, V> | undefined;
+  for (const id of ids) {
+    if (!map.has(id)) continue;
+    next ??= new Map(map);
+    next.delete(id);
+  }
+  return next ?? map;
+}
+
+/** A pruned copy of `geometry`, or `geometry` itself when nothing matched. */
 function pruneGeometry(geometry: GeometryResult, ids: Set<number>): GeometryResult {
   const meshes = geometry.meshes;
   const kept: typeof meshes = [];
@@ -53,7 +70,7 @@ function pruneGeometry(geometry: GeometryResult, ids: Set<number>): GeometryResu
   let removedVertices = 0;
   for (let i = 0; i < meshes.length; i++) {
     const mesh = meshes[i];
-    if (ids.has(mesh.expressId)) {
+    if (ids.has(mesh.expressId) && !(mesh.entityIds && mesh.entityIds.length > 0)) {
       const counts = meshGeometryCounts(mesh);
       removedTriangles += counts.triangles;
       removedVertices += counts.vertices;
@@ -61,13 +78,24 @@ function pruneGeometry(geometry: GeometryResult, ids: Set<number>): GeometryResu
       kept.push(mesh);
     }
   }
-  if (kept.length === meshes.length) return geometry;
-  return {
+  const hashes = withoutIds(geometry.instancedGeometryHashes, ids);
+  const aabbs = withoutIds(geometry.instancedGeometryAabbs, ids);
+  const volumes = withoutIds(geometry.instancedGeometryVolumes, ids);
+  const meshesChanged = kept.length !== meshes.length;
+  if (!meshesChanged && hashes === geometry.instancedGeometryHashes
+    && aabbs === geometry.instancedGeometryAabbs && volumes === geometry.instancedGeometryVolumes) {
+    return geometry;
+  }
+  const next: GeometryResult = {
     ...geometry,
-    meshes: kept,
+    meshes: meshesChanged ? kept : meshes,
     totalTriangles: geometry.totalTriangles - removedTriangles,
     totalVertices: geometry.totalVertices - removedVertices,
   };
+  if (hashes) next.instancedGeometryHashes = hashes;
+  if (aabbs) next.instancedGeometryAabbs = aabbs;
+  if (volumes) next.instancedGeometryVolumes = volumes;
+  return next;
 }
 
 export function pruneMeshesFromGeometry(
@@ -99,7 +127,7 @@ export function pruneMeshesFromGeometry(
     patch.models ??= new Map(state.models);
     patch.models.set(modelId, { ...model, geometryResult: next });
   }
-  // Nothing in `ids` matched a mesh anywhere: leave the tick alone too.
+  // Nothing in `ids` matched anywhere: leave the tick alone too.
   if (!patch.geometryResult && !patch.models) return {};
   patch.geometryUpdateTick = state.geometryUpdateTick + 1;
   return patch;

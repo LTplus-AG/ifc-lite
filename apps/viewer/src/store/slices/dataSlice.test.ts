@@ -220,6 +220,31 @@ describe('DataSlice', () => {
       assert.strictEqual(state.models.get('A')?.geometryResult, state.geometryResult);
     });
 
+    // Renderer parity: Scene.removeMeshesForEntity keeps a colour-merged mesh
+    // (it hosts other entities) and tombstones an instanced-only entity.
+    it('keeps colour-merged meshes and drops instanced-only metadata, like the renderer', () => {
+      const merged = { ...createSizedMesh(1, 3, 1), entityIds: new Uint32Array([1, 1, 7]) };
+      state.appendGeometryBatch([merged, createSizedMesh(2, 4, 2)] as any);
+      const geometry = state.geometryResult!;
+      state.geometryResult = {
+        ...geometry,
+        instancedGeometryHashes: new Map([[50, 5n], [51, 6n]]),
+        instancedGeometryAabbs: new Map([[50, { min: [0, 0, 0], max: [1, 1, 1] }]]) as GeometryResult['instancedGeometryAabbs'],
+        instancedGeometryVolumes: new Map([[50, 2], [51, 3]]),
+      };
+
+      state.pruneGeometryMeshes(new Set([1]));
+      assert.strictEqual(state.geometryResult?.meshes.length, 2, 'a colour-merged mesh stays');
+      assert.strictEqual(state.geometryResult?.totalTriangles, 3);
+
+      state.pruneGeometryMeshes(new Set([50]));
+      assert.deepStrictEqual([...state.geometryResult!.instancedGeometryHashes!.keys()], [51]);
+      assert.strictEqual(state.geometryResult?.instancedGeometryAabbs?.size, 0);
+      assert.deepStrictEqual([...state.geometryResult!.instancedGeometryVolumes!.keys()], [51]);
+      assert.strictEqual(state.geometryResult?.meshes.length, 2);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 3, 'an instanced-only prune leaves mesh totals alone');
+    });
+
     it('is a no-op when there is no geometryResult yet', () => {
       assert.doesNotThrow(() => state.pruneGeometryMeshes(new Set([1])));
       assert.strictEqual(state.geometryResult, null);

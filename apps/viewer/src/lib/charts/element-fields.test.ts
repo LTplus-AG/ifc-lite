@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { IfcParser, extractPropertiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ElementFieldBinding } from '@ifc-lite/charts';
 import { createElementFieldReader } from './element-field-reader.js';
@@ -167,6 +167,21 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(relation('material')?.observedValue, true);
     assert.equal(relation('type')?.observedValue, true);
     assert.equal(relation('classification')?.observedValue, false);
+  });
+
+  it('quantities honour the overlay: a deleted occurrence quantity stays missing, type-owned quantities survive an overlay (#4833 review)', async () => {
+    const bytes = await readFile(SAMPLE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const netArea: ElementFieldBinding = { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'number', dataType: 'IFCAREAMEASURE' };
+    // A view with no quantity extractor (the server-hydrated shape) and no edits must not hide the provider's quantities.
+    const idle = new MutablePropertyView(store.properties, 'fixture');
+    assert.equal(createElementFieldReader(store, idle).readResolved(52, netArea).value, 25.749999999991743);
+    // Deleting the occurrence quantity keeps it missing even though the same set could be found by falling back.
+    const edited = new MutablePropertyView(store.properties, 'fixture');
+    edited.setQuantityExtractor((id) => extractQuantitiesOnDemand(store, id));
+    edited.deleteQuantity(52, 'Qto_SlabBaseQuantities', 'NetArea');
+    assert.equal(createElementFieldReader(store, edited).readResolved(52, netArea).status, 'missing');
+    assert.equal(createElementFieldReader(store, edited).readResolved(52, { ...netArea, quantityName: 'Depth' }).value, 250.00000000009484, 'sibling quantities are untouched');
   });
 
   it('a type property every occurrence overrides does not shape the field: a label on the type under numbers on the occurrences is a number (#4833 review)', async () => {

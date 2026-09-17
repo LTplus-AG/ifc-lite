@@ -59,10 +59,22 @@ export function createElementFamilyReader(
   const occurrenceQsets = new Map<number, QuantitySet[]>();
   const typeQsets = new Map<number, QuantitySet[]>();
 
+  /** Overlay sets win by name; base sets the overlay does not know about are kept. */
+  const overlayFirst = (overlay: readonly QuantitySet[], base: readonly QuantitySet[]): QuantitySet[] => {
+    const names = new Set(overlay.map((set) => set.name));
+    return [...overlay, ...base.filter((set) => !names.has(set.name))];
+  };
   const qsetsFor = (id: number): QuantitySet[] => {
     let cached = occurrenceQsets.get(id);
     if (!cached) {
-      cached = mutationView?.getQuantitiesForEntity(id) ?? provider.getQuantitySets(id);
+      const base = provider.getQuantitySets(id);
+      // A view built for a server-hydrated store has no quantity extractor and
+      // answers from the overlay alone; without an edit on this element that
+      // empty answer must not hide the provider's quantities (review find).
+      const overlay = mutationView?.getQuantitiesForEntity(id);
+      cached = !mutationView || !overlay ? base
+        : overlay.length === 0 && !mutationView.hasChanges(id) ? base
+          : overlay;
       occurrenceQsets.set(id, cached);
     }
     return cached;
@@ -72,13 +84,24 @@ export function createElementFamilyReader(
     if (typeId < 0) return [];
     let cached = typeQsets.get(typeId);
     if (!cached) {
-      cached = mutationView?.getQuantitiesForEntity(typeId) ?? provider.getTypeQuantitySets?.(id) ?? [];
+      // The overlay's extractor only knows occurrence-oriented sets, so the
+      // type's own HasPropertySets quantities come from the provider; an edit
+      // on the type object still wins by set name (review find).
+      const base = provider.getTypeQuantitySets?.(id) ?? [];
+      const overlay = mutationView?.hasChanges(typeId) ? mutationView.getQuantitiesForEntity(typeId) : [];
+      cached = overlay.length > 0 ? overlayFirst(overlay, base) : base;
       typeQsets.set(typeId, cached);
     }
     return cached;
   };
-  const quantityFor = (id: number, qsetName: string, quantityName: string): Quantity | undefined =>
-    findQuantityInSets(qsetsFor(id), qsetName, quantityName) ?? findQuantityInSets(typeQsetsFor(id), qsetName, quantityName);
+  const quantityFor = (id: number, qsetName: string, quantityName: string): Quantity | undefined => {
+    const occurrence = findQuantityInSets(qsetsFor(id), qsetName, quantityName);
+    if (occurrence) return occurrence;
+    // A quantity the overlay deleted from the occurrence stays missing: the
+    // defining type's same-named quantity must not resurrect it (review find).
+    if (mutationView?.hasChanges(id) && findQuantityInSets(provider.getQuantitySets(id), qsetName, quantityName)) return undefined;
+    return findQuantityInSets(typeQsetsFor(id), qsetName, quantityName);
+  };
 
   const classificationValue = (id: number, system: string | undefined): string | null => {
     const refs = provider.getClassifications?.(id) ?? [];

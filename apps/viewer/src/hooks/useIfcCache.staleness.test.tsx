@@ -294,10 +294,21 @@ afterEach(async () => {
     pendingInstancedShards: null,
     ifcDataStore: null,
     geometryStreamingActive: false,
+    activeModelId: null,
+    models: new Map(),
   });
 });
 
+type ViewerModels = ReturnType<typeof useViewerStore.getState>['models'];
+
 async function load(entry: CacheResult, isStale: () => boolean): Promise<CacheLoadResult> {
+  // useIfcLoader upserts the primary model (making it active) before it calls
+  // loadFromCache, and appendGeometryBatch only files meshes under a known or
+  // active model (#4922). Register it the same way here, or every chunk is dropped.
+  useViewerStore.setState({
+    activeModelId: 'model-old',
+    models: new Map([['model-old', { id: 'model-old', geometryResult: null }]]) as unknown as ViewerModels,
+  });
   let result!: CacheLoadResult;
   await act(async () => {
     result = await loadFromCache!(entry, 'old.ifc', 'model-old', undefined, undefined, isStale);

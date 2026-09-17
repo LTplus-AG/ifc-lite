@@ -159,6 +159,26 @@ export interface DataSlice {
   updateCoordinateInfo: (coordinateInfo: CoordinateInfo) => void;
 }
 
+/**
+ * Patch that writes `geometryResult` to the top-level mirror AND the active
+ * model's record, as ONE shared object. Every action that replaces the mirror
+ * must go through here: `appendGeometryBatch` builds on the model record
+ * (#4922) and `pruneMeshesFromGeometry` prunes each shared object once, so a
+ * mirror-only write (e.g. a recolor) would be silently reverted by the next
+ * append or active-model switch.
+ */
+function withActiveModelGeometry(
+  state: Pick<DataCrossSliceState, 'activeModelId' | 'models'>,
+  geometryResult: GeometryResult | null,
+): { geometryResult: GeometryResult | null; models?: Map<string, FederatedModel> } {
+  const modelId = state.activeModelId;
+  const model = modelId ? state.models.get(modelId) : undefined;
+  if (!modelId || !model) return { geometryResult };
+  const models = new Map(state.models);
+  models.set(modelId, { ...model, geometryResult });
+  return { geometryResult, models };
+}
+
 const EMPTY_POSITIONS = new Float32Array(0);
 const EMPTY_NORMALS = new Float32Array(0);
 const EMPTY_INDICES = new Uint32Array(0);
@@ -207,19 +227,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
     // for no gain -- the mistake this fix already made once, in `removeModel`.
     const backup = geometryResult !== state.geometryResult ? { meshColorBackup: null } : {};
 
-    const modelId = state.activeModelId;
-    if (!modelId) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1, ...backup };
-    }
-
-    const model = state.models.get(modelId);
-    if (!model) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1, ...backup };
-    }
-
-    const models = new Map(state.models);
-    models.set(modelId, { ...model, geometryResult });
-    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1, ...backup };
+    return { ...withActiveModelGeometry(state, geometryResult), geometryUpdateTick: state.geometryUpdateTick + 1, ...backup };
   }),
 
   setBoundedGeometryMode: (boundedGeometryMode) => set({ boundedGeometryMode }),
@@ -249,17 +257,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
       ...state.geometryResult,
       meshes,
     };
-    const modelId = state.activeModelId;
-    if (!modelId) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const model = state.models.get(modelId);
-    if (!model) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const models = new Map(state.models);
-    models.set(modelId, { ...model, geometryResult });
-    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
+    return { ...withActiveModelGeometry(state, geometryResult), geometryUpdateTick: state.geometryUpdateTick + 1 };
   }),
 
   updateMeshColors: (updates, options) => set((state) => {
@@ -293,10 +291,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
       return mesh;
     });
     return {
-      geometryResult: {
-        ...state.geometryResult,
-        meshes: updatedMeshes,
-      },
+      ...withActiveModelGeometry(state, { ...state.geometryResult, meshes: updatedMeshes }),
       pendingMeshColorUpdates: clonedUpdates,
       ...(meshColorBackup ? { meshColorBackup } : {}),
     };
@@ -330,10 +325,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
     });
 
     return {
-      geometryResult: {
-        ...state.geometryResult,
-        meshes: restoredMeshes,
-      },
+      ...withActiveModelGeometry(state, { ...state.geometryResult, meshes: restoredMeshes }),
       pendingMeshColorUpdates: new Map(backup),
       meshColorBackup: null,
     };
@@ -405,16 +397,6 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
       ...state.geometryResult,
       coordinateInfo,
     };
-    const modelId = state.activeModelId;
-    if (!modelId) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const model = state.models.get(modelId);
-    if (!model) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const models = new Map(state.models);
-    models.set(modelId, { ...model, geometryResult });
-    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
+    return { ...withActiveModelGeometry(state, geometryResult), geometryUpdateTick: state.geometryUpdateTick + 1 };
   }),
 });

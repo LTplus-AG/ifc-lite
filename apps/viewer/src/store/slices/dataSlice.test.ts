@@ -312,6 +312,37 @@ describe('DataSlice', () => {
       assert.strictEqual(editedModel?.geometryResult?.meshes.length, 2);
       assert.deepStrictEqual(editedModel?.geometryResult?.coordinateInfo, seededCoordinateInfo);
     });
+
+    // updateMeshColors used to write only the top-level mirror, while appends
+    // build on the model record — so the next append reverted every recolor.
+    it('keeps colors from updateMeshColors when a later batch is appended to the active model', () => {
+      seedTwoModels();
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [createMockMesh(1), createMockMesh(2)] as any);
+      state.updateMeshColors(new Map([[1, [0, 1, 0, 1] as [number, number, number, number]]]));
+
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [createMockMesh(3)] as any);
+
+      const colorOf = (g: GeometryResult | null | undefined, id: number) => g?.meshes.find((m) => m.expressId === id)?.color;
+      assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [1, 2, 3]);
+      assert.deepStrictEqual(colorOf(state.geometryResult, 1), [0, 1, 0, 1]);
+      assert.deepStrictEqual(colorOf(state.models.get(ACTIVE_MODEL_ID)?.geometryResult, 1), [0, 1, 0, 1]);
+      assert.deepStrictEqual(colorOf(state.geometryResult, 2), [1, 0, 0, 1]);
+      assert.strictEqual(state.models.get(ACTIVE_MODEL_ID)?.geometryResult, state.geometryResult);
+    });
+
+    it('keeps colors restored by resetMeshColors when a later batch is appended to the active model', () => {
+      seedTwoModels();
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [createMockMesh(1)] as any);
+      state.updateMeshColors(new Map([[1, [0, 0, 1, 1] as [number, number, number, number]]]), { override: true });
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [createMockMesh(2)] as any);
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [0, 0, 1, 1], 'override survived the first append');
+
+      state.resetMeshColors();
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [createMockMesh(3)] as any);
+
+      assert.deepStrictEqual(state.geometryResult?.meshes[0].color, [1, 0, 0, 1]);
+      assert.deepStrictEqual(state.models.get(ACTIVE_MODEL_ID)?.geometryResult?.meshes[0].color, [1, 0, 0, 1]);
+    });
   });
 
   describe('pruneGeometryMeshes', () => {

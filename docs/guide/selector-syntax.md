@@ -152,9 +152,9 @@ material/type chains, counting functions like `.count`) rather than one bounded
 comparison. Unlike every other construct in the grammar table above, there is no
 fixed rule shape to build for it — a partial resolver would silently narrow some
 key paths and refuse others with no principled line between them, the same
-zero-match-reads-as-everything risk this whole adapter exists to avoid. It is kept
-reported by name rather than guessed at; a specific, bounded key path with a real
-use case can come back as its own named exception later.
+zero-match-reads-as-everything risk this whole adapter exists to avoid. This is a
+permanent decision (#4094), not a gap on a roadmap: a `query:` term is always
+reported by name and never turned into a rule.
 
 ## Where else can I filter?
 

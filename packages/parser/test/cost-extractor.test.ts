@@ -298,6 +298,37 @@ describe('extractCostOnDemand', () => {
     });
   });
 
+  // #4881: an explicit '' IfcLabel is a real (if empty) value written by the
+  // model author — distinct from an absent ($) attribute. IfcOpenShell 0.8.5
+  // keeps '' for Name/Identification/Condition/Category; the read model must
+  // agree rather than collapsing both to `undefined`.
+  it('keeps an explicit empty IfcLabel distinct from an absent one (#4881)', () => {
+    const lines = [
+      // Item A: Name explicitly '' (present, empty). Item B: Name is $ (absent).
+      "#10=IFCCOSTITEM('item-a-gid',$,'','desc','obj','',.USERDEFINED.,$,$);",
+      "#11=IFCCOSTITEM('item-b-gid',$,$,'desc','obj',$,.USERDEFINED.,$,$);",
+      // Value A: Category/Condition explicitly ''. Value B: both absent ($).
+      "#20=IFCCOSTVALUE('','',IFCMONETARYMEASURE(1.),$,$,$,'','',$,$);",
+      "#21=IFCCOSTVALUE($,$,IFCMONETARYMEASURE(1.),$,$,$,$,$,$,$);",
+    ];
+    const store = buildStoreFromStep(lines);
+    const result = extractCostOnDemand(store);
+
+    const itemA = result.costItems.find((i) => i.globalId === 'item-a-gid');
+    const itemB = result.costItems.find((i) => i.globalId === 'item-b-gid');
+    expect(itemA?.Name).toBe(''); // present, empty — must NOT read as absent
+    expect(itemA?.Identification).toBe('');
+    expect(itemB?.Name).toBeUndefined(); // genuinely absent ($)
+    expect(itemB?.Identification).toBeUndefined();
+
+    const valueA = result.CostValues.find((v) => v.expressId === 20);
+    const valueB = result.CostValues.find((v) => v.expressId === 21);
+    expect(valueA?.Category).toBe('');
+    expect(valueA?.Condition).toBe('');
+    expect(valueB?.Category).toBeUndefined();
+    expect(valueB?.Condition).toBeUndefined();
+  });
+
   describe('IFC2X3', () => {
     it('handles an IfcCostItem with no attributes explicitly, without crashing or misreading', () => {
       // IFC2X3's IfcCostItem is `SUBTYPE OF (IfcControl); END_ENTITY;` — no

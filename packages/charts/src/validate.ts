@@ -47,8 +47,8 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
   }
   str(errors, chart, 'id', path);
   str(errors, chart, 'title', path);
-  if (!SOURCES.has(String(chart.source))) errors.push({ path: `${path}.source`, message: `expected one of ${[...SOURCES].join(', ')}` });
-  if (!TYPES.has(String(chart.type))) errors.push({ path: `${path}.type`, message: `expected one of ${[...TYPES].join(', ')}` });
+  if (typeof chart.source !== 'string' || !SOURCES.has(chart.source)) errors.push({ path: `${path}.source`, message: `expected one of ${[...SOURCES].join(', ')}` });
+  if (typeof chart.type !== 'string' || !TYPES.has(chart.type)) errors.push({ path: `${path}.type`, message: `expected one of ${[...TYPES].join(', ')}` });
   if (chart.elementField !== undefined) {
     const fieldPath = `${path}.elementField`;
     if (!isRecord(chart.elementField)) {
@@ -74,7 +74,7 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
         str(errors, field, 'quantityName', fieldPath);
       } else if (field.kind === 'classification') str(errors, field, 'system', fieldPath, true);
       else if (field.kind === 'spatial') {
-        if (!SPATIAL_LEVELS.has(String(field.level))) errors.push({ path: `${fieldPath}.level`, message: `expected one of ${[...SPATIAL_LEVELS].join(', ')}` });
+        if (typeof field.level !== 'string' || !SPATIAL_LEVELS.has(field.level)) errors.push({ path: `${fieldPath}.level`, message: `expected one of ${[...SPATIAL_LEVELS].join(', ')}` });
       } else if (field.kind !== 'material' && field.kind !== 'type') {
         errors.push({ path: `${fieldPath}.kind`, message: 'expected attribute, property, quantity, material, classification, type or spatial' });
       }
@@ -103,7 +103,7 @@ export function validateDashboardSpec(spec: unknown): DashboardValidationError[]
   str(errors, spec, 'id', '');
   str(errors, spec, 'name', '');
   const scope = spec.scope;
-  if (!isRecord(scope) || !SCOPES.has(String(scope.kind))) {
+  if (!isRecord(scope) || typeof scope.kind !== 'string' || !SCOPES.has(scope.kind)) {
     errors.push({ path: '.scope', message: `expected { kind: ${[...SCOPES].join(' | ')} }` });
   } else if (scope.kind === 'list') {
     str(errors, scope, 'listId', '.scope');

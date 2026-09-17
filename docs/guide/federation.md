@@ -44,8 +44,10 @@ is, and it does not depend on load order:
   `coordinateInfo`. `renderFrameWorldOffset`, BCF viewpoint export and the
   other world-coordinate readouts use it as the federation's frame.
 
-Loading a near-origin model and a georeferenced model in either order gives
-the same scene and the same reported frame.
+For every model that can be converged (see the two exceptions below),
+loading a near-origin model and a georeferenced model in either order gives
+the same scene and the same reported frame. A model that is still streaming
+does not define the reported frame until its load settles.
 
 Two kinds of model stay outside the shared frame:
 

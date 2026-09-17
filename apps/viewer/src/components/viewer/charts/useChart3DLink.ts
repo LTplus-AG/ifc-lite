@@ -79,28 +79,42 @@ export function chartSelectionIsLive(
 ): boolean {
   const liveIds = aggregationIds(aggregation);
   for (const id of selectedIds) if (!liveIds.has(id)) return false;
+  // Every membership test below runs against a Set built ONCE per bucket:
+  // a Set rebuilt inside a per-id predicate is O(ids²) per bucket, which on
+  // a few-thousand-element bucket froze the panel on every re-aggregation.
+  const bucketIdSets = new Map<object, Set<number>>();
+  const idsOf = (bucket: { ids: ArrayLike<number> }): Set<number> => {
+    let ids = bucketIdSets.get(bucket);
+    if (!ids) { ids = new Set(Array.from(bucket.ids)); bucketIdSets.set(bucket, ids); }
+    return ids;
+  };
+  const sameMembers = (bucket: { ids: ArrayLike<number> }, selected: readonly number[]): boolean => {
+    if (bucket.ids.length !== selected.length) return false;
+    const ids = idsOf(bucket);
+    for (const id of selected) if (!ids.has(id)) return false;
+    return true;
+  };
   for (const selected of selectedBuckets) {
     const series = aggregation.series.find((candidate) => candidate.key === selected.seriesKey);
     const sameData = selected.dataFingerprint === aggregation.dataFingerprint;
     if (selected.isOther) {
       if (sameData) continue;
-      const carrier = series?.buckets.find((candidate) => {
-        const ids = new Set(candidate.ids);
-        return candidate.ids.length === selected.ids.length && selected.ids.every((id) => ids.has(id));
-      });
+      const carrier = series?.buckets.find((candidate) => sameMembers(candidate, selected.ids));
       if (!carrier) return false;
       continue;
     }
     const bucket = series?.buckets.find((candidate) => candidate.key === selected.bucketKey && Boolean(candidate.isOther) === selected.isOther);
     if (bucket) {
-      if (sameData && selected.ids.every((id) => new Set(bucket.ids).has(id))) continue;
-      const selectedIdsAtClick = new Set(selected.ids);
-      if (bucket.ids.length !== selectedIdsAtClick.size) return false;
-      for (const id of bucket.ids) if (!selectedIdsAtClick.has(id)) return false;
+      if (sameData) {
+        const live = idsOf(bucket);
+        if (selected.ids.every((id) => live.has(id))) continue;
+      }
+      if (!sameMembers(bucket, selected.ids)) return false;
     } else {
       const folded = series?.buckets.find((candidate) => candidate.isOther);
-      const foldedIds = new Set(folded?.ids ?? []);
-      if (!folded || selected.ids.some((id) => !foldedIds.has(id))) return false;
+      if (!folded) return false;
+      const foldedIds = idsOf(folded);
+      if (selected.ids.some((id) => !foldedIds.has(id))) return false;
     }
   }
   return true;

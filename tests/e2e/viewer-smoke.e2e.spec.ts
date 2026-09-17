@@ -200,7 +200,7 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     // ── 3. Section plane: slider move auto-enables and keeps rendering ─
     // Regression #243 at the integration level: moving the position must
     // auto-enable clipping. The cut is on screen only inside the Section tool (#4910).
-    await storeAction(page, 'state.setSuppressNextSection2DPanelAutoOpen(true); state.setActiveTool('section'); state.setSectionPlanePosition(1.5)');
+    await storeAction(page, "state.setSuppressNextSection2DPanelAutoOpen(true); state.setActiveTool('section'); state.setSectionPlanePosition(1.5)");
     await page.waitForTimeout(300);
     const section = await storeState<{ enabled: boolean; position: number }>(
       page,

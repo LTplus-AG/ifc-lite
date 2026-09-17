@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="markup.xsd">
+    <Header>
+        <File IfcProject="2Ndyd$OSX7s9A04nc4lyye">
+            <Filename>Building-Architecture.ifc</Filename>
+            <Date>2026-06-23T11:53:44+02:00</Date>
+        </File>
+    </Header>
+    <Topic Guid="d9a8d60e-c04f-4a83-a914-b0f395673eac" TopicType="Info" TopicStatus="Offen">
+        <Title>Test Issue</Title>
+        <Priority>Normal</Priority>
+        <Index>0</Index>
+        <CreationDate>2026-09-17T15:40:25+02:00</CreationDate>
+        <CreationAuthor>example@email.com</CreationAuthor>
+        <ModifiedDate>2026-09-17T15:41:09+02:00</ModifiedDate>
+        <ModifiedAuthor>example@email.com</ModifiedAuthor>
+        <DueDate>2026-09-18T00:00:00+02:00</DueDate>
+        <AssignedTo>ARC</AssignedTo>
+        <Stage>Ausführung</Stage>
+        <Description>Test Beschreibung</Description>
+    </Topic>
+    <Viewpoints Guid="2500ce18-7763-4f56-b947-041cb3f5520c">
+        <Viewpoint>viewpoint.bcfv</Viewpoint>
+        <Snapshot>snapshot.png</Snapshot>
+        <Index>0</Index>
+    </Viewpoints>
+</Markup>

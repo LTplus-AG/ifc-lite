@@ -35,6 +35,7 @@ import {
 } from './writer-markup-elements.js';
 import { xsdInt } from './numeric.js';
 import { escapeXml } from './xml-text.js';
+import { bcfRootOpenTag } from './writer-xml-root.js';
 import {
   XML_WHITESPACE_ONLY,
   xsdDateTime,
@@ -76,8 +77,7 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
 }
 
 /**
- * Write bcf.version file
- * Uses buildingSMART standard format with both xsi and xsd namespaces
+ * Write bcf.version file (root attributes: see writer-xml-root.ts, #3612)
  *
  * BCF 2.1's version.xsd declares `<DetailedVersion>` as an optional
  * (minOccurs="0") child of `<Version>`. BCF 3.0's version.xsd redefines
@@ -93,9 +93,9 @@ function writeVersionFile(zip: JSZip, version: '2.1' | '3.0'): void {
   const content =
     version === '3.0'
       ? `<?xml version="1.0" encoding="UTF-8"?>
-<Version xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" VersionId="${version}"/>`
+${bcfRootOpenTag('Version', 'version.xsd', ` VersionId="${version}"`, true)}`
       : `<?xml version="1.0" encoding="UTF-8"?>
-<Version xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" VersionId="${version}">
+${bcfRootOpenTag('Version', 'version.xsd', ` VersionId="${version}"`)}
   <DetailedVersion>${version}</DetailedVersion>
 </Version>`;
 
@@ -133,7 +133,7 @@ function writeProjectFile(zip: JSZip, project: BCFProject, version: '2.1' | '3.0
   const extensionSchema = version === '3.0' ? '' : '\n  <ExtensionSchema/>';
 
   const content = `<?xml version="1.0" encoding="UTF-8"?>
-<${rootElement} xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+${bcfRootOpenTag(rootElement, 'project.xsd')}
   <Project ProjectId="${escapeXml(projectId)}">${nameElement}
   </Project>${extensionSchema}
 </${rootElement}>`;
@@ -310,7 +310,7 @@ function writeMarkupFile(
   }
 
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
+${bcfRootOpenTag('Markup', 'markup.xsd')}`;
 
   // Header (source IFC files) precedes Topic per the BCF markup schema sequence.
   if (topic.header && topic.header.length > 0) {
@@ -524,7 +524,7 @@ async function writeViewpointFiles(
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${escapeXml(viewpoint.guid)}">`;
+${bcfRootOpenTag('VisualizationInfo', 'visinfo.xsd', ` Guid="${escapeXml(viewpoint.guid)}"`)}`;
 
   // Write components
   if (viewpoint.components) {

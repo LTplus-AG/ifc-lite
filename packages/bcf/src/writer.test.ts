@@ -27,7 +27,9 @@ describe('BCF Writer', () => {
     const versionContent = await zip.file('bcf.version')?.async('string');
     expect(versionContent).toContain('VersionId="2.1"');
     expect(versionContent).toContain('<DetailedVersion>2.1</DetailedVersion>');
-    expect(versionContent).toContain('xmlns:xsd');
+    // #3612: Solibri's shape -- schema location, no extra xmlns:xsd.
+    expect(versionContent).toContain('xsi:noNamespaceSchemaLocation="version.xsd"');
+    expect(versionContent).not.toContain('xmlns:xsd');
   });
 
   it('should create project.bcfp file when project has name', async () => {
@@ -533,6 +535,11 @@ describe('BCF Writer', () => {
       }
       // Header must precede Topic per the markup schema sequence.
       expect(markupContent!.indexOf('<Header>')).toBeLessThan(markupContent!.indexOf('<Topic'));
+      // #3612: true is the schema default and is omitted (as Solibri writes
+      // it); an explicit false is kept.
+      const attr = version === '3.0' ? 'IsExternal' : 'isExternal';
+      expect(markupContent).not.toContain(`${attr}="true"`);
+      expect(markupContent).toContain(`${attr}="false"`);
 
       const readProject = await readBCF(await blob.arrayBuffer());
       const readTopic = readProject.topics.get(topicGuid);
@@ -540,7 +547,9 @@ describe('BCF Writer', () => {
       expect(readTopic?.header?.[0]).toEqual({
         ifcProject: '0YvCT2_$X3_xJG3rzD8L_8',
         ifcSpatialStructureElement: undefined,
-        isExternal: true,
+        // Omitted on write because true is the XSD default (#3612); the reader
+        // reports "not stated", which the writer again treats as external.
+        isExternal: undefined,
         filename: 'architecture.ifc',
         date: '2026-07-01T10:00:00.000Z',
         reference: 'architecture.ifc',

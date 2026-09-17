@@ -85,8 +85,10 @@ export function writeHeader(files: BCFHeaderFile[], version: '2.1' | '3.0'): str
 
 /** Write a single `<File>` entry inside the markup `<Header>`. */
 function writeHeaderFile(file: BCFHeaderFile, indent: string, version: '2.1' | '3.0'): string {
-  // isExternal defaults to true (an unresolved reference is treated as external).
-  const isExternal = file.isExternal ?? true;
+  // The schema default for this attribute is true in both 2.1 and 3.0, so it is
+  // written only when explicitly false. Solibri (26.6.1) never writes it and
+  // rejected archives that carried isExternal="true" among other shape
+  // differences (#3612); an unset value keeps meaning "external".
   // BCF 2.1 spells the attribute `isExternal`; 3.0 renamed it `IsExternal`.
   const isExternalAttr = version === '3.0' ? 'IsExternal' : 'isExternal';
 
@@ -97,7 +99,9 @@ function writeHeaderFile(file: BCFHeaderFile, indent: string, version: '2.1' | '
   if (file.ifcSpatialStructureElement) {
     attrs += ` IfcSpatialStructureElement="${escapeXml(file.ifcSpatialStructureElement)}"`;
   }
-  attrs += ` ${isExternalAttr}="${isExternal}"`;
+  if (file.isExternal === false) {
+    attrs += ` ${isExternalAttr}="false"`;
+  }
 
   let content = `\n${indent}<File${attrs}>`;
   if (file.filename) {

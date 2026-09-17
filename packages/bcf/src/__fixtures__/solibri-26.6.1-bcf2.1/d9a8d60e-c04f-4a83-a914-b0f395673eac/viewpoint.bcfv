@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Guid="2500ce18-7763-4f56-b947-041cb3f5520c" xsi:noNamespaceSchemaLocation="visinfo.xsd">
+    <Components>
+        <ViewSetupHints SpacesVisible="false" SpaceBoundariesVisible="false" OpeningsVisible="false"/>
+        <Selection>
+            <Component IfcGuid="0OfZwWc8j9QP5uX8xPTxDH">
+                <OriginatingSystem>IFC manager for sketchup</OriginatingSystem>
+                <AuthoringToolId>454425.1027891.979946.932083.920032</AuthoringToolId>
+            </Component>
+        </Selection>
+        <Visibility DefaultVisibility="true">
+            <Exceptions>
+                <Component IfcGuid="1yP7NInQz5uQzbiOpVFFJr">
+                    <OriginatingSystem>IFC manager for sketchup</OriginatingSystem>
+                </Component>
+            </Exceptions>
+        </Visibility>
+        <Coloring>
+            <Color Color="FF0000FF">
+                <Component IfcGuid="0OfZwWc8j9QP5uX8xPTxDH">
+                    <OriginatingSystem>IFC manager for sketchup</OriginatingSystem>
+                    <AuthoringToolId>454425.1027891.979946.932083.920032</AuthoringToolId>
+                </Component>
+            </Color>
+        </Coloring>
+    </Components>
+    <PerspectiveCamera>
+        <CameraViewPoint>
+            <X>8.375605984446155</X>
+            <Y>-3.193664543687483</Y>
+            <Z>3.876110298462941</Z>
+        </CameraViewPoint>
+        <CameraDirection>
+            <X>-0.534522483824848</X>
+            <Y>0.8017837257372737</Y>
+            <Z>-0.2672612419124243</Z>
+        </CameraDirection>
+        <CameraUpVector>
+            <X>-0.14824986333222015</X>
+            <Y>0.2223747949983303</Y>
+            <Z>0.9636241116594315</Z>
+        </CameraUpVector>
+        <FieldOfView>59.99999999999999</FieldOfView>
+    </PerspectiveCamera>
+</VisualizationInfo>

@@ -6,6 +6,8 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dataSlice.js';
 import { DATA_DEFAULTS } from '../constants.js';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import type { FederatedModel } from '../types.js';
 
 type DataTestState = DataSlice & DataCrossSliceState;
 
@@ -164,6 +166,58 @@ describe('DataSlice', () => {
       assert.strictEqual(state.geometryResult?.meshes.length, 3);
       assert.strictEqual(state.geometryResult?.totalTriangles, 6);
       assert.strictEqual(state.geometryResult?.totalVertices, 12);
+    });
+
+    // Bounded mode empties a mesh's buffers after GPU upload but keeps the mesh
+    // and its share of the totals; a later split/delete prune must subtract
+    // what the mesh contributed, not the zero its empty buffers now report.
+    it('subtracts the pre-release counts for a mesh released in bounded mode', () => {
+      state.setBoundedGeometryMode(true);
+      seedSplit();
+      state.releaseGeometryMemory();
+      assert.strictEqual(state.geometryResult?.meshes[0].indices.length, 0, 'buffers were released (fixture can fail)');
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6);
+
+      state.pruneGeometryMeshes(new Set([1]));
+
+      assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [2, 3]);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5); // 2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 9); // 4+5
+    });
+
+    // The queue carries global ids with no model id, and a split/delete can act
+    // on a federated model that is not active (3D picking does not switch it).
+    it('prunes the owning model even when it is not the active model', () => {
+      const asModel = (id: string, geometryResult: unknown) => ({ id, geometryResult }) as unknown as FederatedModel;
+      const activeGeometry = {
+        meshes: [createSizedMesh(1, 3, 1), createSizedMesh(2, 4, 2)],
+        totalTriangles: 3, totalVertices: 7, coordinateInfo: state.geometryResult?.coordinateInfo,
+      } as unknown as GeometryResult;
+      const otherGeometry = {
+        meshes: [createSizedMesh(1001, 5, 3), createSizedMesh(1002, 6, 4)],
+        totalTriangles: 7, totalVertices: 11, coordinateInfo: activeGeometry.coordinateInfo,
+      } as unknown as GeometryResult;
+      state = {
+        ...state,
+        activeModelId: 'A',
+        geometryResult: activeGeometry,
+        models: new Map([['A', asModel('A', activeGeometry)], ['B', asModel('B', otherGeometry)]]),
+      };
+
+      state.pruneGeometryMeshes(new Set([1001]));
+
+      const b = state.models.get('B')?.geometryResult;
+      assert.deepStrictEqual(b?.meshes.map((m) => m.expressId), [1002]);
+      assert.strictEqual(b?.totalTriangles, 4);
+      assert.strictEqual(b?.totalVertices, 6);
+      assert.strictEqual(state.geometryResult, activeGeometry, 'the active model is untouched');
+      assert.strictEqual(state.models.get('A')?.geometryResult, activeGeometry);
+
+      // Control: an active-model id prunes the mirror and its record to one object.
+      state.pruneGeometryMeshes(new Set([2]));
+      assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [1]);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 1);
+      assert.strictEqual(state.models.get('A')?.geometryResult, state.geometryResult);
     });
 
     it('is a no-op when there is no geometryResult yet', () => {

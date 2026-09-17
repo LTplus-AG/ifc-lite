@@ -482,7 +482,7 @@ export class MutablePropertyView extends MutableOverlayState {
           name: propName,
           type: valueType,
           value: value,
-          unit: unit,
+          unit, dataType,
         }],
       };
       entityPsets.set(psetName, pset);
@@ -496,14 +496,14 @@ export class MutablePropertyView extends MutableOverlayState {
           name: propName,
           type: valueType,
           value: value,
-          unit: unit,
+          unit, dataType,
         };
       } else {
         pset.properties.push({
           name: propName,
           type: valueType,
           value: value,
-          unit: unit,
+          unit, dataType,
         });
       }
     }

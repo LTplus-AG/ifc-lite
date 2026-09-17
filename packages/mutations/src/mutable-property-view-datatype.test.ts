@@ -34,6 +34,17 @@ describe('MutablePropertyView.setProperty — dataType round-trip', () => {
     expect(properties[1].values).toEqual(['A', 'B']);
   });
 
+  it('keeps dataType on a property created in a brand-new pset and on its later update (#4833 review)', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setProperty(7, 'Pset_New', 'Width', 900, PropertyValueType.Real, undefined, false, 'IFCLENGTHMEASURE');
+    expect(view.getForEntity(7).find((set) => set.name === 'Pset_New')?.properties[0]).toMatchObject({ name: 'Width', value: 900, dataType: 'IFCLENGTHMEASURE' });
+    view.setProperty(7, 'Pset_New', 'Width', 950, PropertyValueType.Real, undefined, false, 'IFCLENGTHMEASURE');
+    view.setProperty(7, 'Pset_New', 'Depth', 2, PropertyValueType.Real, 'm', false, 'IFCLENGTHMEASURE');
+    const props = view.getForEntity(7).find((set) => set.name === 'Pset_New')!.properties;
+    expect(props.find((p) => p.name === 'Width')).toMatchObject({ value: 950, dataType: 'IFCLENGTHMEASURE' });
+    expect(props.find((p) => p.name === 'Depth')).toMatchObject({ value: 2, unit: 'm', dataType: 'IFCLENGTHMEASURE' });
+  });
+
   it('stores dataType on the PropertyMutation and returns it from getPropertyMutation', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setProperty(7, 'Pset_WallCommon', 'MaxHeight', 900, PropertyValueType.Real, undefined, false, 'IFCLENGTHMEASURE');

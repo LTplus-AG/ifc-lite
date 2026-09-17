@@ -14,6 +14,7 @@ import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 import { realignFederationModels } from '@/hooks/ingest/federationRealign';
 import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
+import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { reconcileModelRotations, subscribeModelRotationSync, withModelRotationsUnbaked } from './useModelRotationSync';
 
 /** 30°, an off-origin pivot, and an asymmetric shape: at 0°, at the origin, or
@@ -130,6 +131,48 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       /Pointclouds cannot be rotated/);
     // And the refusal is atomic: the IFC model in the same selection is untouched.
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  // GPU-instanced occurrences are drawn from renderer instance data the bake
+  // never touches, so rotating such a model would turn its flat meshes and
+  // leave the instanced ones behind. Refused until that is supported.
+  const withInstanced = (id: string, how: 'instanced-only' | 'pending-shards' | 'streaming') => {
+    const model = { ...fixtureModel(id), geometryResult: geometryResult() } as FederatedModel;
+    if (how === 'instanced-only') model.geometryResult!.instancedGeometryHashes = new Map([[77, 1n]]);
+    if (how === 'streaming') model.loadState = 'streaming-geometry';
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, [id, model]]),
+      ...(how === 'pending-shards' ? { pendingInstancedShards: [{ modelId: id, bytes: new ArrayBuffer(8) }] } : {}) });
+  };
+
+  for (const how of ['instanced-only', 'pending-shards'] as const) {
+    it(`refuses to rotate a model with GPU-instanced geometry (${how}), atomically for a mixed selection`, () => {
+      withInstanced('inst', how);
+      assert.throws(() => useViewerStore.getState().setModelRotation(['ifc', 'inst'], { angle: ANGLE, pivot: [...PIVOT] }),
+        /GPU-instanced geometry cannot be rotated/);
+      assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+      assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'inst').rotation.angle, 0);
+      useViewerStore.setState({ pendingInstancedShards: null });
+    });
+  }
+
+  it('refuses to rotate a model whose geometry is still streaming, before its instancing is known', () => {
+    withInstanced('loading', 'streaming');
+    assert.throws(() => useViewerStore.getState().setModelRotation(['loading'], { angle: ANGLE, pivot: [...PIVOT] }),
+      /finish loading/);
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'loading').rotation.angle, 0);
+  });
+
+  it('refuses a placement manifest that would give an instanced model a heading, and still imports its translation', () => {
+    withInstanced('inst', 'instanced-only');
+    const state = useViewerStore.getState();
+    const manifest = (rotation?: { angle: number; pivot: [number, number, number] }) => ({ version: 1 as const, units: 'm' as const,
+      axes: 'engineering-z-up' as const, frameKey: placementFrameKey(state),
+      models: [{ instanceId: 'inst', sourceContentHash: null, translation: [2.5, -1.25, 0] as Translation, rotation, locked: false }] });
+    assert.throws(() => state.importModelPlacements(manifest({ angle: ANGLE, pivot: [...PIVOT] }), new Map([['inst', 'inst']])),
+      /GPU-instanced geometry cannot be rotated/);
+    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'inst').translation, [0, 0, 0], 'a refused import must apply nothing');
+    useViewerStore.getState().importModelPlacements(manifest(), new Map([['inst', 'inst']]));
+    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'inst').translation, [2.5, -1.25, 0]);
   });
 
   it('a re-align never snapshots a rotated model, and re-applies each heading exactly once', async () => {

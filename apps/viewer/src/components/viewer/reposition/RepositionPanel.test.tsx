@@ -310,6 +310,32 @@ describe('model repositioning user interactions (#4226)', () => {
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
   });
 
+  it('offers no rotation control for a model with GPU-instanced geometry, and says why (#4869)', () => {
+    act(() => {
+      const models = new Map(useViewerStore.getState().models);
+      models.set('ifc', { ...models.get('ifc')!, geometryResult: { meshes: [], instancedGeometryHashes: new Map([[5, 1n]]) } as never });
+      useViewerStore.setState({ models });
+      useViewerStore.getState().openReposition(['ifc']);
+    });
+    const ui = render(<ToolOverlays />);
+    assert.equal(ui.querySelector('input[aria-label="Rotation angle in degrees"]') === null, true);
+    assert.match(ui.textContent!, /GPU-instanced geometry cannot be rotated/);
+  });
+
+  it('keeps the shown pivot on the model when the model is moved after rotating (#4869)', () => {
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    const ui = render(<ToolOverlays />);
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+    type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));
+    assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'ifc'), [5, 0, 0]);
+    // The axis moved with the model, so the workspace pivot shown must too.
+    assert.equal(input(ui, 'Rotation pivot X').value, '15');
+    assert.equal(input(ui, 'Rotation pivot Y').value, '4');
+  });
+
   it('offers no rotation control for a pointcloud selection (#4869)', () => {
     act(() => {
       const models = new Map(useViewerStore.getState().models);

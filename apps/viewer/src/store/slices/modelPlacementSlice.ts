@@ -9,6 +9,7 @@ import { beginPlacement, cancelPlacement, commitPlacement, emptyPlacementState, 
   type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
 import type { ModelRotation } from '../../lib/model-placement/rotation.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
+import { rotationRefusal, INSTANCED_ROTATION_REFUSAL, modelHasInstancedGeometry } from '../../lib/model-placement/rotation-refusal.js';
 import { constrainTranslation, finiteTranslation, subtractTranslation,
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
 import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
@@ -39,8 +40,15 @@ export interface ModelPlacementSlice {
 
 export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelPlacementSlice> = (set, get) => ({
   modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, placementStaleMeasurements: new Set<string>(),
-  importModelPlacements: (manifest, bindings) => set((state) => ({ modelPlacement: importPlacements(state.modelPlacement,
-    resolvePlacementManifest(manifest, state.models, placementFrameKey(state), bindings)) })),
+  importModelPlacements: (manifest, bindings) => set((state) => {
+    const incoming = resolvePlacementManifest(manifest, state.models, placementFrameKey(state), bindings);
+    // Refused like an unlocked-model conflict: atomically, with the reason shown
+    // by the import panel, rather than silently dropping the heading.
+    if ([...incoming].some(([id, placement]) => placement.rotation.angle !== 0 && modelHasInstancedGeometry(state, id))) {
+      throw new Error(INSTANCED_ROTATION_REFUSAL);
+    }
+    return { modelPlacement: importPlacements(state.modelPlacement, incoming) };
+  }),
   openReposition: (modelIds) => {
     const state = get();
     const ids = modelIds ?? (state.activeModelId ? [state.activeModelId] : [...state.models.keys()].slice(0, 1));
@@ -86,12 +94,11 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
   }),
   setModelRotation: (ids, rotation) => set((state) => {
     if (ids.some((id) => !state.models.has(id))) throw new Error('A selected model is no longer loaded.');
-    // A rotation is baked into mesh geometry; a pointcloud is a renderer handle
-    // that only carries a translation. Rotating the selection would turn the
-    // model and leave its cloud behind, so refuse rather than half-apply it.
-    if (ids.some((id) => state.models.get(id)?.pointCloudHandleId !== undefined)) {
-      throw new Error('Pointclouds cannot be rotated. Select only IFC models to rotate.');
-    }
+    // A rotation is baked into flat mesh geometry. Pointclouds and GPU-instanced
+    // occurrences are drawn from renderer data it never touches, so refuse
+    // rather than turn part of the selection (see rotation-refusal.ts).
+    const refusal = rotationRefusal(state, ids);
+    if (refusal) throw new Error(refusal);
     const rotated = rotatePlacements(state.modelPlacement, ids, rotation);
     // Same rule as a move: a committed change stamps the frame its numbers are in.
     return { modelPlacement: rotated.placements === state.modelPlacement.placements ? rotated

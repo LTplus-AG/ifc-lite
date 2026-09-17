@@ -7,6 +7,7 @@ import { placementFor } from '@/lib/model-placement/state';
 import { parseRotationDegrees, radiansToDegrees, isZeroRotation, type ModelRotation } from '@/lib/model-placement/rotation';
 import { addTranslation, finiteTranslation, type Translation } from '@/lib/model-placement/translation';
 import { modelCenter } from '@/lib/model-placement/scene';
+import { rotationRefusal } from '@/lib/model-placement/rotation-refusal';
 
 const button = 'border px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40';
 const AXES = ['X', 'Y'] as const;
@@ -35,6 +36,8 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   const models = useViewerStore((s) => s.models);
   const primary = selected[0];
   const current = primary ? placementFor(placement, primary).rotation : null;
+  const translation = primary ? placementFor(placement, primary).translation : null;
+  const pendingInstancedShards = useViewerStore((s) => s.pendingInstancedShards);
   const [degrees, setDegrees] = useState('0');
   const [pivot, setPivot] = useState<[string, string]>(['0', '0']);
 
@@ -44,7 +47,9 @@ export function RotationControls({ selected, onError }: { selected: readonly str
     setDegrees(String(Number(radiansToDegrees(rotation.angle).toFixed(6))));
     const point = defaultPivot(primary);
     setPivot([String(Number(point[0].toFixed(4))), String(Number(point[1].toFixed(4)))]);
-  }, [primary, current?.angle, current?.pivot]);
+    // The translation too: the stored pivot moves with the model, so the
+    // workspace point shown has to follow a move made after rotating.
+  }, [primary, current?.angle, current?.pivot, translation]);
 
   const applyRotation = useCallback((text: string, fields: readonly [string, string]) => {
     try {
@@ -57,12 +62,12 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   }, [selected, onError]);
 
   if (selected.length === 0) return null;
-  // A pointcloud carries only a translation, so rotating a mixed selection
-  // would turn the models and leave the cloud behind. Say so instead of
-  // offering a control that can only fail.
-  if (selected.some((id) => models.get(id)?.pointCloudHandleId !== undefined)) {
+  // Pointclouds and GPU-instanced geometry would be left behind by the bake.
+  // Say so instead of offering a control that can only fail.
+  const refusal = rotationRefusal({ models, pendingInstancedShards }, selected);
+  if (refusal) {
     return <fieldset className="space-y-1 border-t pt-2"><legend className="font-medium">Rotate</legend>
-      <p className="text-zinc-500">Pointclouds cannot be rotated. Select only IFC models to rotate.</p></fieldset>;
+      <p className="text-zinc-500">{refusal}</p></fieldset>;
   }
   return <fieldset className="space-y-1 border-t pt-2">
     <legend className="font-medium">Rotate</legend>

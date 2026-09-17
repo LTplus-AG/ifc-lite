@@ -370,6 +370,19 @@ describe('a federation RTC convergence composes with a model heading (#4869 + #4
     }
   });
 
+  it('does not re-bake a model the convergence only re-framed', () => {
+    seed();
+    useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
+    reconcileModelRotations(useViewerStore.getState());
+    joinGeoreferencedModel();
+    // The convergence re-expressed the declared pivot in the new frame. The
+    // heading standing in the vertices has to be re-expressed with it, or this
+    // reads as a changed rotation and pays for a vertex pass and a GPU
+    // re-upload to put the model back exactly where it already is.
+    assert.deepEqual(reconcileModelRotations(useViewerStore.getState()), [],
+      'the convergence provoked a re-bake of a model that did not turn');
+  });
+
   it('re-editing the heading after a convergence lands the model where it would have without one', () => {
     const edit = () => {
       useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });

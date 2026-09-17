@@ -71,6 +71,7 @@ import {
   rebaseBaselineByRtcDelta, type RotationBaseline,
 } from './rotation-baseline.js';
 import { equalRotation, isZeroRotation, ZERO_ROTATION, type ModelRotation } from './rotation.js';
+import { fromRenderTranslation, subtractTranslation } from './translation.js';
 
 type Geometry = Pick<GeometryResult, 'meshes' | 'coordinateInfo' | 'instancedGeometryAabbs'>;
 
@@ -186,11 +187,25 @@ export class ModelRotationBaker {
    * federation convergence moved its meshes by `delta` without a bake, so the
    * pristine copy a later restore writes back has to move by the same delta.
    *
+   * `applied` — the heading already standing in the vertices — is re-expressed
+   * too. Its pivot is a render-frame point like the declared one the store
+   * rebases alongside this, and leaving it in the old frame would make the two
+   * disagree: `reconcile` would read that as a changed rotation and re-bake a
+   * model that has not turned, costing a vertex pass and a GPU re-upload on
+   * every convergence. The re-bake would land in the same place — a bake is
+   * absolute — so this is about work, not correctness.
+   *
    * A no-op for a model with no baseline, which is every un-rotated model.
    */
   rebaseFrame(modelId: string, delta: Readonly<Vec3>): void {
     const entry = this.entries.get(modelId);
-    if (entry) rebaseBaselineByRtcDelta(entry.baseline, delta);
+    if (!entry) return;
+    rebaseBaselineByRtcDelta(entry.baseline, delta);
+    // Render frame to engineering workspace axes; a point moves by `-delta`,
+    // like the origins the convergence shifts.
+    const workspace = fromRenderTranslation(delta);
+    entry.applied = { angle: entry.applied.angle,
+      pivot: subtractTranslation(entry.applied.pivot, workspace) };
   }
 
   /** Drop one model's baseline without restoring anything — the model and its

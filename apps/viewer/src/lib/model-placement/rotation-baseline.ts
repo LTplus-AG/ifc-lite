@@ -21,15 +21,7 @@ import { totalYupOffset } from '../geo/coordinate-frame.js';
 
 export type Geometry = Pick<GeometryResult, 'meshes' | 'coordinateInfo' | 'instancedGeometryAabbs'>;
 
-/**
- * The pristine geometry a bake restores before applying an angle.
- *
- * Owns everything the bake can be asked to put back, and owns it by COPY: a
- * snapshot that shares an array with the live geometry is rewritten by the next
- * in-place edit, which turns the restore into an undetectable no-op. That is
- * the failure `federationRealign.capturePreAlignment` documents at length, and
- * this is the same rule.
- */
+/** One mesh's pristine bytes: everything a restore can be asked to put back. */
 export interface MeshBaseline {
   positions: Float32Array;
   normals: Float32Array | undefined;

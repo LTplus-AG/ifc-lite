@@ -243,10 +243,13 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
     // (absent) source and quantize on its own small extent against an f32 base.
     scene.setColorOverrides(new Map([[12, RED], [11, RED]]), device, fakePipeline);
 
-    const bucketedOverlay = scene.getOverrideBatches().find((b) => b.expressIds.includes(11));
+    const overlays = scene.getOverrideBatches();
+    const bucketedOverlay = overlays.find((b) => b.expressIds.includes(11));
     assert.ok(bucketedOverlay, 'overlay for the bucketed piece built');
     assert.deepStrictEqual(bucketedOverlay.expressIds, [11], 'not grouped with the unbucketed piece');
     assertCoincidentWithBase(scene, bucketedOverlay, bytes);
+    const unbucketedOverlay = overlays.find((b) => b.expressIds.includes(12));
+    assert.ok(unbucketedOverlay && unbucketedOverlay !== bucketedOverlay, 'the unbucketed piece is still painted, in its own batch');
   });
 
   for (const [label, finalize] of [
@@ -288,6 +291,35 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
     assert.strictEqual(base[0].quantized, undefined, 'sanity: rebuilt base batch is f32');
     const overlays = scene.getOverrideBatches();
     assert.strictEqual(overlays.length, 1, 'overlay rebuilt, not duplicated');
+    assertCoincidentWithBase(scene, overlays[0], bytes);
+  });
+
+  it('a non-streaming append that changes nothing under the overlay does NOT rebuild it', () => {
+    const scene = quantizedChunkedScene();
+    const { device } = fakeDevice();
+    scene.appendToBatches([triangle(11, [5.33, 0.2, 0.1])], device, fakePipeline);
+    scene.setColorOverrides(new Map([[11, RED]]), device, fakePipeline);
+    const before = scene.getOverrideBatches()[0];
+    assert.ok(before?.quantized, 'sanity: overlay inherited a quantized base');
+
+    // Same cell + colour, small: the bucket is rebuilt but stays quantized and
+    // the overridden piece stays in it — re-merging the overlay would only be
+    // churn on every incremental add.
+    scene.appendToBatches([triangle(12, [6.33, 0.2, 0.1])], device, fakePipeline);
+    assert.strictEqual(scene.getOverrideBatches()[0], before, 'overlay batch identity preserved');
+  });
+
+  it('a recolour that moves the overridden piece to another bucket rebuilds the overlay against that bucket', () => {
+    const scene = quantizedChunkedScene();
+    const { device, bytes } = fakeDevice();
+    scene.appendToBatches([longWall(10, [0.33, 0.2, 0.1]), triangle(11, [5.33, 0.2, 0.1])], device, fakePipeline);
+    scene.setColorOverrides(new Map([[11, RED]]), device, fakePipeline);
+    assert.strictEqual(scene.getOverrideBatches()[0]?.quantized, undefined, 'sanity: inherited the f32 wall bucket');
+
+    // Material recolour moves the triangle into its own (small, quantized) bucket.
+    scene.updateMeshColors(new Map([[11, [0.1, 0.2, 0.3, 1]]]), device, fakePipeline);
+    const overlays = scene.getOverrideBatches();
+    assert.strictEqual(overlays.length, 1);
     assertCoincidentWithBase(scene, overlays[0], bytes);
   });
 

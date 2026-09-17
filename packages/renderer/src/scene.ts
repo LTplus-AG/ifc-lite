@@ -33,7 +33,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, dest
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
-import { inheritedQuantization, groupOverridePieces, cloneOverrides, type BatchQuantization } from './scene-derived-batches.js';
+import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization, type RebuiltBucket } from './scene-derived-batches.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
@@ -381,6 +381,7 @@ export class Scene {
   // Overlay batches render on top using depthCompare 'equal', so they only
   // paint where original geometry already wrote depth. Clearing is instant.
   private overrideBatches: BatchedMesh[] = [];
+  private overlaySources = new Map<MeshData, string>(); // overridden piece -> bucket key its overlay inherited from (#4832)
   // Defensively-typed: the renderer is the sole writer (via setColorOverrides),
   // external readers go through getColorOverrides() and get a ReadonlyMap.
   private colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null = null;
@@ -584,11 +585,9 @@ export class Scene {
     this.quantizedBatchesEnabled = enabled;
   }
 
-  /**
-   * Whether THIS mesh's source batch renders quantized — drives the hydrated-mesh
-   * lattice snap in createMeshFromData (a batch that fell back to f32 must NOT
-   * snap). Same rule as overlay/partial batches; global flag while unbucketed.
-   */
+  /** Whether THIS mesh's source batch renders quantized — drives the hydrated-mesh
+   *  lattice snap in createMeshFromData (an f32 batch must NOT snap). Same rule
+   *  as overlay/partial batches; global flag while unbucketed. */
   isMeshQuantized(meshData: MeshData): boolean {
     return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(meshData)?.batchedMesh) !== 'off';
   }
@@ -1237,8 +1236,10 @@ export class Scene {
   rebuildPendingBatches(device: GPUDevice, pipeline: RenderPipeline): void {
     if (this.pendingBatchKeys.size === 0) return;
 
+    const rebuilt: RebuiltBucket[] = [];
     for (const key of this.pendingBatchKeys) {
       const bucket = this.buckets.get(key);
+      const previousQuantized = bucket?.batchedMesh?.quantized !== undefined;
 
       // Destroy old GPU batch if it exists
       if (bucket?.batchedMesh) {
@@ -1261,6 +1262,7 @@ export class Scene {
       const color = bucket.meshData[0].color;
       const batchedMesh = this.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
       bucket.batchedMesh = batchedMesh;
+      rebuilt.push({ bucket, previousQuantized });
     }
 
     // Rebuild the flat render array from all buckets (148 max batches — not perf critical)
@@ -1272,8 +1274,9 @@ export class Scene {
     }
 
     this.pendingBatchKeys.clear();
-    // Depth writers changed (membership / f32↔quantized may flip): overlays follow (#4832). Finalize re-applies once itself.
-    if (!this.finalizeInProgress) this.reapplyColorOverrides(device, pipeline);
+    // Overlays follow their depth writers only when one actually changed under
+    // them (flip / bucket move, #4832); finalize re-applies once itself.
+    if (!this.finalizeInProgress && overlaysInvalidatedBy(rebuilt, this.overlaySources)) this.reapplyColorOverrides(device, pipeline);
   }
 
   /**
@@ -2784,19 +2787,13 @@ export class Scene {
       return;
     }
 
-    // Defensive copy so external callers can mutate or reuse `overrides`
-    // without aliasing the renderer's pipeline-routing state. Tuples are
-    // frozen by the readonly type — we don't deep-clone the inner arrays
-    // because they're treated as immutable by every consumer.
+    // Defensive copy: callers may mutate/reuse `overrides`; the tuples are treated as immutable by every consumer.
     this.colorOverrides = new Map(overrides);
 
-    // Mirror the overlay onto the GPU-instanced occurrences: patch their colour
-    // bytes in place (no separate overlay pass — the instanced records carry the
-    // override colour directly). No-op when no instanced data is loaded.
+    // Instanced occurrences carry the override colour in their records (no overlay pass); no-op without instanced data.
     this.setInstancedColorOverrides(overrides);
 
-    // Bucket keys carry cell + colour + model: an overlay batch is a subset of ONE
-    // base batch (never wider than its lattice range) and belongs to one model.
+    // Bucket keys carry cell + colour + model: an overlay batch is a subset of ONE base batch, in one model.
     const colorGroups = groupOverridePieces(
       overrides,
       (id) => this.meshDataMap.get(id),
@@ -2806,7 +2803,8 @@ export class Scene {
     );
 
     const maxBufferSize = this.getMaxBufferSize(device);
-    for (const { color, meshData, sourceBatch } of colorGroups.values()) {
+    for (const { color, meshData, sourceBatch, sourceKey } of colorGroups.values()) {
+      if (sourceKey !== null) for (const piece of meshData) this.overlaySources.set(piece, sourceKey);
       const quantization = inheritedQuantization(this.quantizedBatchesEnabled, sourceBatch);
       for (const chunk of this.splitMeshDataForBufferLimit(meshData, maxBufferSize)) {
         this.overrideBatches.push(this.createBatchedMesh(chunk, color, device, pipeline, undefined, quantization));
@@ -2814,10 +2812,9 @@ export class Scene {
     }
   }
 
-  /** Rebuild the installed overlays against the batches that write depth NOW:
-   *  finalize replaces the fragments/unbuilt buckets a mid-stream override had
-   *  to decide without (#4832). Best-effort — a committed finalize must not be
-   *  undone by an overlay allocation failure, so that is reported, not thrown. */
+  /** Rebuild the installed overlays against the batches that write depth NOW
+   *  (#4832). Best-effort — a committed finalize/rebuild must not be undone by
+   *  an overlay allocation failure, so that is reported, not thrown. */
   private reapplyColorOverrides(device: GPUDevice, pipeline: RenderPipeline): void {
     if (!this.colorOverrides) return;
     try { this.setColorOverrides(cloneOverrides(this.colorOverrides), device, pipeline); }
@@ -2871,6 +2868,7 @@ export class Scene {
   private destroyOverrideBatches(): void {
     for (const batch of this.overrideBatches) destroyGpuResources(batch);
     this.overrideBatches = [];
+    this.overlaySources.clear();
   }
 
   /**

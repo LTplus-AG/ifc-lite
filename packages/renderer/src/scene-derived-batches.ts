@@ -70,6 +70,38 @@ export interface OverrideGroup {
   meshData: MeshData[];
   /** The bucket batch whose depth this group must match (null when unbuilt / unbucketed). */
   sourceBatch: BatchedMesh | null;
+  /** Key of that bucket (null when unbucketed) — recorded so a later rebuild can tell whether the overlay went stale. */
+  sourceKey: string | null;
+}
+
+/** A bucket `rebuildPendingBatches` just rebuilt, with the decision its previous batch had. */
+export interface RebuiltBucket {
+  bucket: { key: string; meshData: readonly MeshData[]; batchedMesh: BatchedMesh | null };
+  previousQuantized: boolean;
+}
+
+/**
+ * Whether a non-streaming rebuild invalidated the installed overlays: a
+ * rebuilt bucket holding an overridden piece flipped f32↔quantized, or an
+ * overridden piece now lives in a different bucket than the one its overlay
+ * inherited from (`overlaySources`: piece → source bucket key at build time).
+ * Anything else — e.g. N meshes appended one by one into a bucket whose
+ * decision holds — leaves the overlays bit-coincident, so rebuilding them
+ * would only be quadratic churn.
+ */
+export function overlaysInvalidatedBy(
+  rebuilt: readonly RebuiltBucket[],
+  overlaySources: ReadonlyMap<MeshData, string>,
+): boolean {
+  if (overlaySources.size === 0) return false;
+  for (const { bucket, previousQuantized } of rebuilt) {
+    const flipped = (bucket.batchedMesh?.quantized !== undefined) !== previousQuantized;
+    for (const piece of bucket.meshData) {
+      const source = overlaySources.get(piece);
+      if (source !== undefined && (flipped || source !== bucket.key)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -96,7 +128,10 @@ export function groupOverridePieces(
       const key = `${source ? source.key : `unbucketed:${fallbackKey(piece)}`}:${colorKey(color)}`;
       let group = groups.get(key);
       if (!group) {
-        group = { color: [color[0], color[1], color[2], color[3]], meshData: [], sourceBatch: source?.batchedMesh ?? null };
+        group = {
+          color: [color[0], color[1], color[2], color[3]], meshData: [],
+          sourceBatch: source?.batchedMesh ?? null, sourceKey: source?.key ?? null,
+        };
         groups.set(key, group);
       }
       group.meshData.push(piece);

@@ -39,6 +39,12 @@ function explicitQuantityScale(quantity: Quantity): number | undefined {
 
 const MISSING: ResolvedElementFieldValue = { value: null, status: 'missing' };
 
+/** A resolved quantity and where it came from, so its explicit scale is looked up on the right entity. */
+interface FoundQuantity {
+  quantity: Quantity;
+  fromType: boolean;
+}
+
 /** De-duplicated, order-preserving join — the Lists engine's multi-value cell. */
 function uniqueJoin(values: readonly string[]): string | null {
   const distinct = [...new Set(values.filter((value) => value.length > 0))];
@@ -70,10 +76,11 @@ export function createElementFamilyReader(
   const overlayFirst = (overlay: readonly QuantitySet[], base: readonly QuantitySet[]): QuantitySet[] => {
     const byName = new Map(overlay.map((set) => [set.name, set]));
     const merged: QuantitySet[] = overlay.map((set) => {
-      const baseSet = base.find((candidate) => candidate.name === set.name);
-      if (!baseSet) return set;
       const named = new Set(set.quantities.map((quantity) => quantity.name));
-      return { ...set, quantities: [...set.quantities, ...baseSet.quantities.filter((quantity) => !named.has(quantity.name))] };
+      const inherited: Quantity[] = [];
+      // Two base instances may share a name (a type set and an occurrence set); every one contributes.
+      for (const baseSet of base) if (baseSet.name === set.name) for (const quantity of baseSet.quantities) if (!named.has(quantity.name)) { named.add(quantity.name); inherited.push(quantity); }
+      return inherited.length > 0 ? { ...set, quantities: [...set.quantities, ...inherited] } : set;
     });
     return [...merged, ...base.filter((set) => !byName.has(set.name))];
   };
@@ -114,19 +121,22 @@ export function createElementFamilyReader(
    * quantity without the collector's `explicitUnitSiScale`, so when the edit
    * did not name a unit of its own the base quantity's scale still applies.
    */
-  const explicitScaleFor = (id: number, quantity: Quantity, qsetName: string): number | undefined => {
-    const own = explicitQuantityScale(quantity);
-    if (own !== undefined || quantity.unit || !mutationView?.hasChanges(id)) return own;
-    const base = findQuantityInSets(provider.getQuantitySets(id), qsetName, quantity.name);
+  const explicitScaleFor = (id: number, found: FoundQuantity, qsetName: string): number | undefined => {
+    const own = explicitQuantityScale(found.quantity);
+    const owner = found.fromType ? definingTypeId(id) : id;
+    if (own !== undefined || found.quantity.unit || !mutationView?.hasChanges(owner)) return own;
+    const baseSets = found.fromType ? provider.getTypeQuantitySets?.(id) ?? [] : provider.getQuantitySets(id);
+    const base = findQuantityInSets(baseSets, qsetName, found.quantity.name);
     return base ? explicitQuantityScale(base) : undefined;
   };
-  const quantityFor = (id: number, qsetName: string, quantityName: string): Quantity | undefined => {
+  const quantityFor = (id: number, qsetName: string, quantityName: string): FoundQuantity | undefined => {
     const occurrence = findQuantityInSets(qsetsFor(id), qsetName, quantityName);
-    if (occurrence) return occurrence;
+    if (occurrence) return { quantity: occurrence, fromType: false };
     // A quantity the overlay deleted from the occurrence stays missing: the
     // defining type's same-named quantity must not resurrect it (review find).
     if (mutationView?.hasChanges(id) && findQuantityInSets(provider.getQuantitySets(id), qsetName, quantityName)) return undefined;
-    return findQuantityInSets(typeQsetsFor(id), qsetName, quantityName);
+    const inherited = findQuantityInSets(typeQsetsFor(id), qsetName, quantityName);
+    return inherited ? { quantity: inherited, fromType: true } : undefined;
   };
 
   const classificationValue = (id: number, system: string | undefined): string | null => {
@@ -156,10 +166,11 @@ export function createElementFamilyReader(
       switch (binding.kind) {
         case 'quantity': {
           if (binding.valueKind === 'boolean') return { value: null, status: 'unsupported' };
-          const quantity = quantityFor(id, binding.qsetName, binding.quantityName);
-          if (!quantity || !Number.isFinite(quantity.value)) return MISSING;
+          const found = quantityFor(id, binding.qsetName, binding.quantityName);
+          if (!found || !Number.isFinite(found.quantity.value)) return MISSING;
+          const { quantity } = found;
           const dataType = QUANTITY_MEASURE[quantity.type];
-          const scale = explicitScaleFor(id, quantity, binding.qsetName);
+          const scale = explicitScaleFor(id, found, binding.qsetName);
           const provenance = {
             ...(dataType ? { dataType } : {}),
             // An edit that named its own unit arrives as a symbol; the dataset resolves it like a property's.
@@ -191,8 +202,11 @@ export function createElementFamilyReader(
           if (Number.isFinite(quantity.value)) entry.kind.number = true;
         }
       };
-      ingest(qsetsFor(id));
-      ingest(typeQsetsFor(id));
+      const occurrenceSets = qsetsFor(id);
+      ingest(occurrenceSets);
+      // A type quantity the occurrence overrides never reaches `read`; its measure must not shape the field (review find).
+      const overridden = new Set(occurrenceSets.flatMap((set) => set.quantities.map((quantity) => JSON.stringify([set.name, quantity.name]))));
+      ingest(typeQsetsFor(id).map((set) => ({ ...set, quantities: set.quantities.filter((quantity) => !overridden.has(JSON.stringify([set.name, quantity.name]))) })));
 
       const relations = into.relations;
       relations.material ||= (provider.getMaterialNames?.(id) ?? []).length > 0;

@@ -250,4 +250,40 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(edited.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'number' }).value, 30);
     assert.equal(edited.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'Depth', valueKind: 'number' }).value, 250.00000000009484, 'the untouched sibling survives the overlay');
   });
+
+  it('a type quantity the occurrence overrides does not shape the field, a type-derived edit keeps the type scale, and two same-named base sets both contribute (#4833 review)', async () => {
+    // Slab type #50 gains Qto_Probe.Size as a LENGTH in centimetres and Qto_Probe.Extra; occurrence #52 carries Qto_Probe.Size as an AREA.
+    const store = await parseSampleWith(`
+#60070=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);
+#60071=IFCQUANTITYLENGTH('Size',$,#60070,40.,$);
+#60072=IFCQUANTITYLENGTH('Extra',$,$,7.,$);
+#60073=IFCELEMENTQUANTITY('g-type-qto',#1,'Qto_Probe',$,$,(#60071,#60072));
+#60074=IFCQUANTITYAREA('Size',$,$,9.,$);
+#60075=IFCELEMENTQUANTITY('g-occ-qto',#1,'Qto_Probe',$,$,(#60074));
+#60076=IFCRELDEFINESBYPROPERTIES('g-occ-qto-rel',#1,$,$,(#52),#60075);`, (source) => {
+      assert.ok(source.includes('(#963)'));
+      return source.replace('(#963)', '(#963,#60073)');
+    });
+    const reader = createElementFieldReader(store);
+    const size = reader.discover([52]).quantities.get('Qto_Probe')?.find(({ binding }) => binding.kind === 'quantity' && binding.quantityName === 'Size')?.binding;
+    assert.equal(size?.valueKind, 'number', 'the overridden type length must not make the area categorical');
+    assert.equal(size?.dataType, 'IFCAREAMEASURE');
+    // A type-derived quantity edited on the type object keeps the type's explicit centimetre scale.
+    const view = new MutablePropertyView(store.properties, 'fixture');
+    view.setQuantity(50, 'Qto_Probe', 'Extra', 8, QuantityType.Length);
+    const extra = createElementFieldReader(store, view).readResolved(52, { kind: 'quantity', qsetName: 'Qto_Probe', quantityName: 'Extra', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' });
+    assert.equal(extra.value, 8);
+    const sizeOnType = createElementFieldReader(store, view).readResolved(52, { kind: 'quantity', qsetName: 'Qto_Probe', quantityName: 'Size', valueKind: 'number', dataType: 'IFCAREAMEASURE' });
+    assert.equal(sizeOnType.value, 9, 'the occurrence area still wins');
+    const typeView = new MutablePropertyView(store.properties, 'fixture');
+    typeView.setQuantity(50, 'Qto_Probe', 'Size', 41, QuantityType.Length);
+    // Occurrence #52 overrides Size, so the type edit is only visible on an element without its own Size: read the type quantity via a fresh store where the occurrence set is absent.
+    const typeOnly = await parseSampleWith(`
+#60070=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);
+#60071=IFCQUANTITYLENGTH('Size',$,#60070,40.,$);
+#60073=IFCELEMENTQUANTITY('g-type-qto',#1,'Qto_Probe',$,$,(#60071));`, (source) => source.replace('(#963)', '(#963,#60073)'));
+    const typeOnlyView = new MutablePropertyView(typeOnly.properties, 'fixture');
+    typeOnlyView.setQuantity(50, 'Qto_Probe', 'Size', 41, QuantityType.Length);
+    assert.deepEqual(createElementFieldReader(typeOnly, typeOnlyView).readResolved(52, { kind: 'quantity', qsetName: 'Qto_Probe', quantityName: 'Size', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' }), { value: 41, status: 'value', dataType: 'IFCLENGTHMEASURE', unitSiScale: 0.01 }, 'an edit on the type keeps the type quantity\'s explicit centimetre scale');
+  });
 });

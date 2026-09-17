@@ -16,6 +16,7 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 // Same allowlist the production relay uses, so dev and prod cannot disagree
 // about which Dalux node a request reaches (#2792).
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
+import { deploymentAssetsDir } from '../../scripts/lib/deployment-assets-dir.mjs';
 
 // --- Build-time changelog parser ---
 interface ReleaseHighlight {
@@ -309,6 +310,11 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    // `assets/<deploymentId>` on a Vercel deployment with Skew Protection, so the
+    // root middleware can scope this build's pin cookie to its own files and a
+    // navigation in another tab can no longer re-pin them (#4886). `assets`
+    // everywhere else (local, CI, previews without Skew Protection).
+    assetsDir: deploymentAssetsDir(process.env.VERCEL_DEPLOYMENT_ID, process.env.VERCEL_SKEW_PROTECTION_ENABLED),
     chunkSizeWarningLimit: 6000,
     // Opt-in production source maps, for PostHog error tracking. Without them
     // every captured stack frame is unreadable minified soup ("Could not find

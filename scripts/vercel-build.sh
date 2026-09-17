@@ -164,5 +164,11 @@ fi
 # can request a content-hashed entry, worker, or WASM asset. Do not move the pin
 # back into index.html: the client-side SameSite=Strict implementation raced the
 # preload scanner on cross-site navigation and caused the #1457 blank page.
+#
+# That Path=/ pin is browser-wide, and every real navigation is served by the
+# LATEST deployment, so it cannot keep an older tab's lazy assets routed (#4886).
+# With Skew Protection on, the viewer build therefore writes its assets to
+# assets/<VERCEL_DEPLOYMENT_ID>/ and the middleware adds a pin scoped to that
+# directory; see scripts/lib/deployment-assets-dir.mjs.
 
 exit $build_status

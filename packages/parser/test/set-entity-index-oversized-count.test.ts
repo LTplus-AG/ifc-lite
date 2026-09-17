@@ -73,7 +73,7 @@ describe('WorkerParser.setEntityIndex and the #3395 refusal count', () => {
     (globalThis as { Worker?: unknown }).Worker = StubWorker;
 
     const parser = new WorkerParser({ workerUrl: 'stub://parser.worker' });
-    void parser.parseColumnar(new SharedArrayBuffer(64), {});
+    parser.parseColumnar(new SharedArrayBuffer(64), {}).catch(() => {}); // #4896: terminate() below now rejects this
     const worker = StubWorker.last;
     if (worker === null) throw new Error('WorkerParser did not construct a Worker');
 
@@ -91,7 +91,7 @@ describe('WorkerParser.setEntityIndex and the #3395 refusal count', () => {
     parser.setEntityIndex(IDS, STARTS, LENGTHS, 4);
     expect(StubWorker.last).toBeNull();
 
-    void parser.parseColumnar(new SharedArrayBuffer(64), {});
+    parser.parseColumnar(new SharedArrayBuffer(64), {}).catch(() => {}); // #4896: terminate() below now rejects this
     const worker = StubWorker.last;
     if (worker === null) throw new Error('WorkerParser did not construct a Worker');
 
@@ -107,7 +107,7 @@ describe('WorkerParser.setEntityIndex and the #3395 refusal count', () => {
     (globalThis as { Worker?: unknown }).Worker = StubWorker;
 
     const parser = new WorkerParser({ workerUrl: 'stub://parser.worker' });
-    void parser.parseColumnar(new SharedArrayBuffer(64), {});
+    parser.parseColumnar(new SharedArrayBuffer(64), {}).catch(() => {}); // #4896: terminate() below now rejects this
     const worker = StubWorker.last;
     if (worker === null) throw new Error('WorkerParser did not construct a Worker');
 
@@ -136,7 +136,7 @@ describe('WorkerParser.setEntityIndex and the #3790 malformed-record stop', () =
     (globalThis as { Worker?: unknown }).Worker = StubWorker;
 
     const parser = new WorkerParser({ workerUrl: 'stub://parser.worker' });
-    void parser.parseColumnar(new SharedArrayBuffer(64), {});
+    parser.parseColumnar(new SharedArrayBuffer(64), {}).catch(() => {}); // #4896: terminate() below now rejects this
     const worker = StubWorker.last;
     if (worker === null) throw new Error('WorkerParser did not construct a Worker');
 
@@ -157,7 +157,7 @@ describe('WorkerParser.setEntityIndex and the #3790 malformed-record stop', () =
     parser.setEntityIndex(IDS, STARTS, LENGTHS, 4, 1);
     expect(StubWorker.last).toBeNull();
 
-    void parser.parseColumnar(new SharedArrayBuffer(64), {});
+    parser.parseColumnar(new SharedArrayBuffer(64), {}).catch(() => {}); // #4896: terminate() below now rejects this
     const worker = StubWorker.last;
     if (worker === null) throw new Error('WorkerParser did not construct a Worker');
 
@@ -174,7 +174,7 @@ describe('WorkerParser.setEntityIndex and the #3790 malformed-record stop', () =
     (globalThis as { Worker?: unknown }).Worker = StubWorker;
 
     const parser = new WorkerParser({ workerUrl: 'stub://parser.worker' });
-    void parser.parseColumnar(new SharedArrayBuffer(64), {});
+    parser.parseColumnar(new SharedArrayBuffer(64), {}).catch(() => {}); // #4896: terminate() below now rejects this
     const worker = StubWorker.last;
     if (worker === null) throw new Error('WorkerParser did not construct a Worker');
 

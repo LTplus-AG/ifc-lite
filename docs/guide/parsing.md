@@ -101,14 +101,26 @@ if (WorkerParser.isSupported()) {
   new Uint8Array(sab).set(new Uint8Array(buffer));
 
   const parser = new WorkerParser();
-  const store = await parser.parseColumnar(sab, {
-    onProgress: ({ phase, percent }) => {
-      // Updates from worker thread
-      updateProgressUI(phase, percent);
+  const controller = new AbortController();
+  try {
+    const store = await parser.parseColumnar(sab, {
+      signal: controller.signal,
+      onProgress: ({ phase, percent }) => {
+        // Updates from worker thread
+        updateProgressUI(phase, percent);
+      }
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      // Cancelled — see below.
+    } else {
+      throw err;
     }
-  });
-  // The worker self-terminates after each parse; call parser.terminate()
-  // only to cancel an in-flight parse early.
+  }
+  // The worker self-terminates after each parse. To cancel an in-flight
+  // parse early, either abort `controller` or call `parser.terminate()`
+  // directly — both terminate the worker and reject the pending
+  // `parseColumnar` promise with an `AbortError`, so `await` never hangs.
 } else {
   // Fall back to the in-process parser (no SAB / not cross-origin isolated)
   const store = await new IfcParser().parseColumnar(buffer);

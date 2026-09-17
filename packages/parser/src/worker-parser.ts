@@ -31,6 +31,20 @@ import type {
 } from './parser.worker.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 
+/**
+ * Build an `AbortError`-shaped error for a cancelled parse. Uses `DOMException`
+ * when available (browsers, modern Node) so `err.name === 'AbortError'` matches
+ * the same check callers already use for `fetch`/`AbortController` cancellation.
+ */
+function makeAbortError(message = 'Parser worker terminated'): Error {
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException(message, 'AbortError') as unknown as Error;
+  }
+  const err = new Error(message);
+  err.name = 'AbortError';
+  return err;
+}
+
 export interface WorkerParserOptions extends ParseOptions {
   /** Fresh per-request 16-byte prepass fingerprint cell; never awaited. */
   sourceFingerprint?: SharedArrayBuffer;
@@ -44,12 +58,27 @@ export interface WorkerParserOptions extends ParseOptions {
    * entity index — saves a duplicate 6–10 s scan on huge files.
    */
   waitForEntityIndex?: boolean;
+  /**
+   * Cancel this parse. If already aborted when `parseColumnar` is called, the
+   * returned promise rejects immediately without spawning a worker. If
+   * aborted while the parse is in flight, the worker is terminated and the
+   * promise rejects with `signal.reason` (an `AbortError` `DOMException` by
+   * default) — the same outcome as calling `terminate()`.
+   */
+  signal?: AbortSignal;
 }
 
 export class WorkerParser {
   private worker: Worker | null = null;
   private requestCounter = 0;
   private readonly workerUrl: URL | string | null;
+  /**
+   * Rejects the in-flight `parseColumnar` promise with an `AbortError` and
+   * tears down the worker. Set for the duration of a request; `terminate()`
+   * invokes it directly so the documented cancel path always settles the
+   * promise instead of leaving it pending forever (#4896).
+   */
+  private cancelActive: ((reason?: unknown) => void) | null = null;
   /**
    * Queued entity-index payload. If `setEntityIndex` is called before the
    * worker is spawned (rare — happens only if the caller races a parser
@@ -94,8 +123,12 @@ export class WorkerParser {
    * pre-pass). The worker neither transfers nor mutates the buffer.
    */
   parseColumnar(source: SharedArrayBuffer, options: WorkerParserOptions = {}): Promise<IfcDataStore> {
+    if (options.signal?.aborted) {
+      return Promise.reject(options.signal.reason ?? makeAbortError('Parse aborted before start'));
+    }
     return new Promise((resolve, reject) => {
       const id = `parse_${Date.now()}_${++this.requestCounter}`;
+      let onSignalAbort: (() => void) | null = null;
       let worker: Worker;
       try {
         // Inlining `new URL(..., import.meta.url)` inside `new Worker(...)`
@@ -109,6 +142,18 @@ export class WorkerParser {
         return;
       }
       this.worker = worker;
+
+      // Reject + terminate on demand — invoked directly by terminate() and,
+      // when a signal is supplied, by its 'abort' listener below. Cleared in
+      // settle() so a request that already resolved/rejected can't be
+      // double-settled by a stray terminate()/abort() afterward.
+      this.cancelActive = (reason?: unknown) => {
+        settle(() => {
+          if (this.worker === worker) this.worker = null;
+          worker.terminate();
+        });
+        reject(reason ?? makeAbortError());
+      };
 
       // ONE accessor, shared by the partial store and the final one. Both
       // alias the same SAB, so this is not merely tidy: `contentKey` is
@@ -133,8 +178,15 @@ export class WorkerParser {
         worker.onmessage = null;
         worker.onerror = null;
         worker.onmessageerror = null;
+        if (onSignalAbort && options.signal) options.signal.removeEventListener('abort', onSignalAbort);
+        this.cancelActive = null;
         cleanup();
       };
+
+      if (options.signal) {
+        onSignalAbort = () => this.cancelActive?.(options.signal!.reason);
+        options.signal.addEventListener('abort', onSignalAbort, { once: true });
+      }
 
       worker.onmessage = (event: MessageEvent<ParserWorkerOutputMessage>) => {
         const msg = event.data;
@@ -304,10 +356,26 @@ export class WorkerParser {
     }
   }
 
-  /** Terminate the worker if running. Safe to call repeatedly. */
+  /**
+   * Terminate the worker if running. Safe to call repeatedly.
+   *
+   * #4896: an in-flight `parseColumnar` promise only ever settled on
+   * `complete`/`error`/`onerror`/`onmessageerror` — none of which fire once
+   * the worker is killed, so the documented "call terminate() to cancel"
+   * path hung the caller's `await` forever. `terminate()` now rejects the
+   * in-flight request with an `AbortError` before tearing the worker down,
+   * so cancellation is distinguishable from both a successful parse and a
+   * parse failure.
+   */
   terminate(): void {
+    if (this.cancelActive) {
+      this.cancelActive();
+      return;
+    }
     if (this.worker) {
-      // Drop the per-request hydration closure, including its packed index seed.
+      // No in-flight promise to settle (e.g. called after a request already
+      // resolved/rejected but before a new one started) — just drop the
+      // worker's handlers and kill it.
       this.worker.onmessage = null;
       this.worker.onerror = null;
       this.worker.onmessageerror = null;

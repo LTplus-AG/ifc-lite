@@ -315,6 +315,17 @@ def main() -> int:
 
 COST_NUMERIC_TOLERANCE = 1e-6
 
+# IfcUnitEnum values for which both dumpers derive a unit node's Dimension
+# (and so a Symbol): dump_reference_cost.py's UNIT_TYPE_DIMENSION and
+# packages/parser/src/cost-units.ts's dimensionForUnitType. A non-monetary
+# unit of one of these types with Symbol or Dimension null is unresolved
+# metadata, never a match - not even when BOTH sides are null. Other unit
+# types (e.g. PLANEANGLEUNIT, or an IfcDerivedUnit's own enum) have no cost
+# dimension on either side, so null there is the expected outcome.
+COST_RESOLVABLE_UNIT_TYPES = frozenset({
+    "LENGTHUNIT", "AREAUNIT", "VOLUMEUNIT", "MASSUNIT", "TIMEUNIT", "USERDEFINED",
+})
+
 COST_MATCH = "MATCH"
 COST_FAILURE = "FAILURE"
 
@@ -458,6 +469,17 @@ def compare_cost_node(report, path, lite_nodes, ref_nodes, lite_schema, lite_dia
         report.add(f"node:{path}/UnitBasisNode", COST_MATCH if unit_basis_ok else COST_FAILURE,
                    f"lite={lite_node.get('UnitBasisNode')} ref={ref_node.get('UnitBasisNode')}")
 
+        # The reference dumper flags an IFC2X3 total named by more than one
+        # IfcAppliedValueRelationship instead of picking one of the unordered
+        # SET's members (dump_reference_cost.py's value_components_and_operator);
+        # its formula is undefined, so it can never be a match.
+        lite_ambiguous = lite_node.get("AmbiguousFormulaRelationships")
+        ref_ambiguous = ref_node.get("AmbiguousFormulaRelationships")
+        if lite_ambiguous is not None or ref_ambiguous is not None:
+            report.add(f"node:{path}/AmbiguousFormulaRelationships", COST_FAILURE,
+                       f"ambiguous formula: lite={lite_ambiguous!r} ref={ref_ambiguous!r} "
+                       "IfcAppliedValueRelationships name this total")
+
         resolved_ok = _cost_numbers_close(lite_node.get("Resolved"), ref_node.get("Resolved"))
         partial_read = (
             lite_schema == "IFC2X3"
@@ -504,9 +526,20 @@ def compare_cost_node(report, path, lite_nodes, ref_nodes, lite_schema, lite_dia
         # longer hardcodes them to null - see dump_reference_cost.py's
         # unit_symbol_and_dimension); an unresolved-vs-resolved or an
         # outright-differing pair is a real divergence, not a named
-        # degradation, same as UnitBasisNode above.
-        compare_cost_scalar(report, f"node:{path}/Symbol", lite_node.get("Symbol"), ref_node.get("Symbol"))
-        compare_cost_scalar(report, f"node:{path}/Dimension", lite_node.get("Dimension"), ref_node.get("Dimension"))
+        # degradation, same as UnitBasisNode above. For a unit type both
+        # dumpers resolve, null on both sides is unresolved, not a match.
+        monetary = "IFCMONETARYUNIT" in (_cost_norm_type(lite_node.get("Type")), _cost_norm_type(ref_node.get("Type")))
+        must_resolve = not monetary and (
+            lite_node.get("UnitType") in COST_RESOLVABLE_UNIT_TYPES
+            or ref_node.get("UnitType") in COST_RESOLVABLE_UNIT_TYPES
+        )
+        for field in ("Symbol", "Dimension"):
+            lite_value, ref_value = lite_node.get(field), ref_node.get(field)
+            if must_resolve and lite_value is None and ref_value is None:
+                report.add(f"node:{path}/{field}", COST_FAILURE,
+                           f"unresolved on both sides for {lite_node.get('Type')} {lite_node.get('UnitType')}")
+            else:
+                compare_cost_scalar(report, f"node:{path}/{field}", lite_value, ref_value)
 
 
 def compare_cost(lite, ref):

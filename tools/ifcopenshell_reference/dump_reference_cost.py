@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 
 import ifcopenshell
@@ -62,17 +63,25 @@ def value_components_and_operator(entity):
     [0:?] OF IfcAppliedValueRelationship FOR ComponentOfTotal`, and the
     separate IfcAppliedValueRelationship entity holds `Components` and
     `ArithmeticOperator`. When an entity has no direct Components, fall back
-    to the first such relationship (a `total` is not expected to name more
-    than one in practice; the spec does not bound the SET's cardinality)."""
+    to its relationship - but only when there is exactly one. The inverse is
+    an unordered SET [0:?] and IFC2X3 defines no way to combine several
+    relationships naming the same total, so picking one would make the
+    formula depend on enumeration order.
+
+    Returns (Components, ArithmeticOperator, ambiguous_count), where
+    ambiguous_count is the number of relationships when there are several
+    (the formula is then left unresolved), else None."""
     components = list(getattr(entity, "Components", None) or ())
     operator = getattr(entity, "ArithmeticOperator", None)
     if not components:
-        relationships = getattr(entity, "ValueOfComponents", None) or ()
+        relationships = list(getattr(entity, "ValueOfComponents", None) or ())
+        if len(relationships) > 1:
+            return [], None, len(relationships)
         if relationships:
             relationship = relationships[0]
             components = list(getattr(relationship, "Components", None) or ())
             operator = getattr(relationship, "ArithmeticOperator", None)
-    return components, operator
+    return components, operator, None
 
 
 class NodeRegistry:
@@ -131,7 +140,7 @@ class NodeRegistry:
             children = []
             if applied_reference(entity) is not None:
                 children.append({"kind": "value", "path": f"{path}/ref", "entity": entity.AppliedValue})
-            components, _ = value_components_and_operator(entity)
+            components, _, _ = value_components_and_operator(entity)
             for idx, comp in enumerate(components):
                 children.append({"kind": "value", "path": f"{path}/component/{idx}", "entity": comp})
             unit_basis = getattr(entity, "UnitBasis", None)
@@ -155,7 +164,7 @@ class NodeRegistry:
                     applied = {"Kind": "Reference", "Node": f"{path}/ref"}
                 else:
                     applied = {"Kind": "Unsupported"}
-            components_attr, operator = value_components_and_operator(entity)
+            components_attr, operator, ambiguous = value_components_and_operator(entity)
             node = {
                 "Kind": "Value",
                 "Type": entity.is_a(),
@@ -170,6 +179,10 @@ class NodeRegistry:
                 "Components": [f"{path}/component/{idx}" for idx in range(len(components_attr))] or None,
                 "UnitBasisNode": f"{path}/unitBasis" if getattr(entity, "UnitBasis", None) is not None else None,
             }
+            if ambiguous is not None:
+                # Only emitted when set, so unambiguous dumps are unchanged;
+                # compare.py reports it as a FAILURE.
+                node["AmbiguousFormulaRelationships"] = ambiguous
             node["Resolved"] = resolve_node(self.nodes, node)
             self.nodes[path] = node
         elif kind == "measure":
@@ -284,7 +297,9 @@ def resolve_node(nodes, node):
         if operator == "MODULO":
             if len(values) != 2 or values[1] == 0:
                 return None
-            return values[0] % values[1]
+            # Truncated remainder (sign of the dividend), matching the JS `%`
+            # in dump_ifclite_cost.mjs's resolveNode; Python's `%` floors.
+            return math.fmod(values[0], values[1])
         return None
     return None
 
@@ -324,7 +339,8 @@ def si_symbol(dimension, prefix):
 
 
 def named_symbol(name):
-    if name is None:
+    # An empty Name has no symbol, as in cost-units.ts's namedSymbol.
+    if not name:
         return None
     return NAMED_UNIT_SYMBOL.get(name.upper(), name)
 

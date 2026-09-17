@@ -68,6 +68,20 @@ function mesh(expressId: number) {
   };
 }
 
+/** A worker-side diagnostics payload recording `failures` CSG failures. */
+function csgDiagnostics(failures: number) {
+  return {
+    schemaVersion: 3, totalCsgFailures: failures, productsWithFailures: failures, hostsWithOpenings: 0,
+    classification: { rectangular: 0, diagonal: 0, nonRectangular: 0, total: 0 },
+    failuresByReason: [{ reason: 'fixture', count: failures }], silentNoOps: 0,
+    rectFast: { fired: 0, openingsCut: 0, deferHostNotBox: 0, deferNotThrough: 0, deferOffFace: 0, deferNearEdge: 0, deferNoOpenings: 0 },
+    worstHosts: [],
+  };
+}
+
+/** Diagnostics a fake worker has accumulated but not yet reported (per worker). */
+const unreported = new WeakMap<FakeWorker, ReturnType<typeof csgDiagnostics>>();
+
 /** Run one slice like `processSliceStreaming`; returns false once the worker hangs. */
 async function runSlice(self: FakeWorker, msg: Posted): Promise<boolean> {
   const flat = msg.jobsFlat as Uint32Array;
@@ -76,12 +90,17 @@ async function runSlice(self: FakeWorker, msg: Posted): Promise<boolean> {
   const perCall = (msg.maxBatchJobs as number | undefined) ?? total;
   for (let offset = 0; offset < total; offset += perCall) {
     const callJobs = Math.min(perCall, total - offset);
-    self.reply({ type: 'progress', processedJobs: offset, totalJobs: total, seq, callJobs });
+    // Like the worker: the pre-call heartbeat carries the flushed calls' diagnostics.
+    const diagnostics = unreported.get(self);
+    unreported.delete(self);
+    self.reply({ type: 'progress', processedJobs: offset, totalJobs: total, seq, callJobs, diagnostics });
     const callIds: number[] = [];
     for (let j = offset; j < offset + callJobs; j++) callIds.push(flat[j * 3]);
     if (callIds.includes(HUNG_ID)) return false;
     await Promise.resolve();
     self.reply({ type: 'batch', meshes: callIds.map(mesh) });
+    // Element 1 records one CSG failure (the only diagnostics in the fixture).
+    if (callIds.includes(1)) unreported.set(self, csgDiagnostics(1));
   }
   self.reply({ type: 'slice-done', seq });
   return true;
@@ -117,7 +136,9 @@ function installFakeWorkers(): void {
       queue = queue.then(async (alive) => {
         if (!alive) return false;
         if (msg.type === 'stream-chunk') return runSlice(self, msg);
-        if (msg.type === 'stream-end') self.reply({ type: 'complete', totalMeshes: 0 });
+        if (msg.type === 'stream-end') {
+          self.reply({ type: 'complete', totalMeshes: 0, diagnostics: unreported.get(self) });
+        }
         return true;
       });
     });
@@ -160,6 +181,9 @@ describe('processParallel hung geometry call recovery (#4884)', () => {
     const rendered = events.flatMap((e) => (e.type === 'batch' ? e.meshes.map((m) => m.expressId) : []));
     expect(rendered.sort()).toEqual([1, 3]);
     expect(complete?.type === 'complete' && complete.totalMeshes).toBe(2);
+    // Element 1 was meshed by the FIRST replacement, which was itself replaced
+    // before it could send `complete`: its diagnostics must still arrive.
+    expect(complete?.type === 'complete' && complete.diagnostics?.totalCsgFailures).toBe(1);
 
     // Pool: process worker 0, pre-pass 1, then two replacements — the first
     // re-ran the hung 3-job call one job per call, the second got only job 3.
@@ -188,14 +212,14 @@ describe('processParallel hung geometry call recovery (#4884)', () => {
     expect(setupOrder.at(-1)).toBe('stream-end');
   });
 
-  it('still fails the stream (no recovery) when the hang budget is disabled', async () => {
+  it('does not recover unless the consumer opts in, so no consumer receives a partial model unasked', async () => {
     installFakeWorkers();
     const gen = processParallel(
       new TextEncoder().encode(SOURCE),
       new CoordinateHandler(),
       undefined,
       undefined,
-      { workerCountOverride: 1, hungJobTimeoutMs: 0 },
+      { workerCountOverride: 1 },
     );
     await expect(drainWithDeadline(gen, 300)).rejects.toThrow(/TIMED_OUT/);
     expect(created).toHaveLength(2);
@@ -209,7 +233,7 @@ describe('processParallel hung geometry call recovery (#4884)', () => {
       new CoordinateHandler(),
       undefined,
       undefined,
-      { workerCountOverride: 1, hungJobTimeoutMs: 0, signal: controller.signal },
+      { workerCountOverride: 1, signal: controller.signal },
     );
     const drained = drainWithDeadline(gen, 2_000);
     await new Promise((resolve) => setTimeout(resolve, 50));

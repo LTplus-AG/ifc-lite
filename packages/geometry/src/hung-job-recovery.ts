@@ -33,12 +33,28 @@
  * unit-testable; {@link startHungJobMonitor} applies it to a live pool.
  */
 
-/** Silence budget for one busy worker before it is treated as hung. Below the
- *  viewer's 40 s mid-stream watchdog (watchdog.ts) so recovery always runs
- *  before the consumer gives up on the stream, and far above the worker's
- *  adaptive per-call target (~8 s). A healthy-but-slow call that trips it is
- *  re-run one job per call, never skipped, so a false positive costs time only. */
-export const DEFAULT_HUNG_JOB_TIMEOUT_MS = 30_000;
+/** Silence budget for one busy worker inside a MULTI-job call before it is
+ *  replaced (the value a consumer opts in with; recovery is off by default).
+ *  Above the viewer's 40 s mid-stream watchdog (watchdog.ts), so no call that
+ *  loaded before recovery existed is disturbed: replacing a worker is not free
+ *  on huge files (a fresh wasm heap plus a source copy). Such a call is re-run
+ *  one job per call, never skipped, so a false positive costs time only. */
+export const DEFAULT_HUNG_JOB_TIMEOUT_MS = 45_000;
+
+/** A SINGLE-job call is only skipped after this multiple of the budget (90 s by
+ *  default), so an element that is merely slow is never dropped. */
+export const SINGLE_JOB_SKIP_FACTOR = 2;
+
+/** Once a busy worker has been silent for this fraction of the budget (30 s by
+ *  default, under the viewer's 40 s watchdog) the monitor reports pool liveness
+ *  until the call returns or is recovered: the pool, not the consumer's
+ *  watchdog, bounds that call from here on. */
+const LIVENESS_AFTER_FRACTION = 2 / 3;
+
+/** Monitor ticks further apart than this many intervals mean the host was
+ *  suspended (sleep, frozen tab). Worker messages posted meanwhile are still
+ *  queued behind the tick, so silence measured across the gap is not evidence. */
+const SUSPEND_GAP_INTERVALS = 3;
 
 /** Upper bound on worker replacements per load. A model where element after
  *  element hangs is not one bad element; past this the pool stops recovering
@@ -67,6 +83,8 @@ interface WorkerLedgerState {
   slices: LedgerSlice[];
   /** The call currently inside WASM, as reported by the worker's pre-call heartbeat. */
   inFlight: { seq: number; fromJob: number; callJobs: number } | null;
+  /** Size of the worker's last call that returned: its learned adaptive batch. */
+  lastReturnedCallJobs: number | undefined;
   lastHeardAt: number;
 }
 
@@ -74,15 +92,18 @@ export class WorkerJobLedger {
   private readonly states: WorkerLedgerState[] = [];
   private nextSeq = 0;
 
-  constructor(workerCount: number, now: number) {
-    for (let i = 0; i < workerCount; i++) {
-      this.states.push({ slices: [], inFlight: null, lastHeardAt: now });
-    }
+  /**
+   * @param retainSlices Keep a copy of every dispatched slice for replay. False
+   *   when recovery is disabled, so a pool that cannot recover pays nothing.
+   */
+  constructor(workerCount: number, now: number, private readonly retainSlices = true) {
+    for (let i = 0; i < workerCount; i++) this.states.push(emptyState(now));
   }
 
   /** Record a chunk before it is transferred to `worker`; returns its seq. */
   recordDispatch(worker: number, jobs: Uint32Array, maxBatchJobs?: number): number {
     const seq = this.nextSeq++;
+    if (!this.retainSlices) return seq;
     this.states[worker].slices.push({
       seq,
       jobs: jobs.slice(),
@@ -102,6 +123,7 @@ export class WorkerJobLedger {
     state.lastHeardAt = now;
     // Slices are processed in dispatch order, so any earlier slice is finished.
     state.slices = state.slices.filter((s) => s.seq >= seq);
+    if (state.inFlight) state.lastReturnedCallJobs = state.inFlight.callJobs;
     state.inFlight = { seq, fromJob, callJobs };
   }
 
@@ -110,16 +132,37 @@ export class WorkerJobLedger {
     const state = this.states[worker];
     state.lastHeardAt = now;
     state.slices = state.slices.filter((s) => s.seq > seq);
-    if (state.inFlight && state.inFlight.seq <= seq) state.inFlight = null;
+    if (state.inFlight && state.inFlight.seq <= seq) {
+      state.lastReturnedCallJobs = state.inFlight.callJobs;
+      state.inFlight = null;
+    }
   }
 
-  /** Workers inside a WASM call that have been silent for at least `timeoutMs`. */
+  /** The host was suspended: restart every silence clock (see SUSPEND_GAP_INTERVALS). */
+  onHostResumed(now: number): void {
+    for (const state of this.states) state.lastHeardAt = now;
+  }
+
+  /**
+   * Workers to replace: silent inside a multi-job call for `timeoutMs`, or inside
+   * a single-job call for `timeoutMs * SINGLE_JOB_SKIP_FACTOR`.
+   */
   findHung(now: number, timeoutMs: number): number[] {
     const hung: number[] = [];
     this.states.forEach((state, worker) => {
-      if (state.inFlight && now - state.lastHeardAt >= timeoutMs) hung.push(worker);
+      if (state.inFlight && now - state.lastHeardAt >= budgetFor(state.inFlight.callJobs, timeoutMs)) hung.push(worker);
     });
     return hung;
+  }
+
+  /** True while some busy worker is silent long enough that the consumer's
+   *  watchdog could fire, yet not long enough to be recovered. */
+  needsLiveness(now: number, timeoutMs: number): boolean {
+    return this.states.some((state) => {
+      if (!state.inFlight) return false;
+      const silent = now - state.lastHeardAt;
+      return silent >= timeoutMs * LIVENESS_AFTER_FRACTION && silent < budgetFor(state.inFlight.callJobs, timeoutMs);
+    });
   }
 
   /**
@@ -130,12 +173,15 @@ export class WorkerJobLedger {
     const state = this.states[worker];
     const inFlight = state.inFlight;
     const pending = state.slices;
-    this.states[worker] = { slices: [], inFlight: null, lastHeardAt: now };
+    this.states[worker] = emptyState(now);
+    // A fresh worker restarts adaptive sizing at its maximum; in the dense region
+    // that just hung, that can trip the budget again. Keep the learned size.
+    const capOf = (slice: LedgerSlice) => slice.maxBatchJobs ?? state.lastReturnedCallJobs;
 
     const plan: RecoveryPlan = { skippedJob: null, slices: [] };
     for (const slice of pending) {
       if (!inFlight || slice.seq !== inFlight.seq) {
-        plan.slices.push(withCap(slice.jobs, slice.maxBatchJobs));
+        plan.slices.push(withCap(slice.jobs, capOf(slice)));
         continue;
       }
       const callStart = inFlight.fromJob * 3;
@@ -147,11 +193,19 @@ export class WorkerJobLedger {
         plan.slices.push(withCap(call.slice(), 1));
       }
       if (callEnd < slice.jobs.length) {
-        plan.slices.push(withCap(slice.jobs.slice(callEnd), slice.maxBatchJobs));
+        plan.slices.push(withCap(slice.jobs.slice(callEnd), capOf(slice)));
       }
     }
     return plan;
   }
+}
+
+function emptyState(now: number): WorkerLedgerState {
+  return { slices: [], inFlight: null, lastReturnedCallJobs: undefined, lastHeardAt: now };
+}
+
+function budgetFor(callJobs: number, timeoutMs: number): number {
+  return callJobs === 1 ? timeoutMs * SINGLE_JOB_SKIP_FACTOR : timeoutMs;
 }
 
 function withCap(jobs: Uint32Array, maxBatchJobs: number | undefined): Omit<LedgerSlice, 'seq'> {
@@ -231,8 +285,9 @@ export interface HungJobPool {
   skipped: SkippedHungElementsCollector;
   /** False once the stream failed or was aborted. */
   isLive: () => boolean;
-  /** A worker was replaced: the consumer's watchdog should see liveness. */
-  onReplaced: () => void;
+  /** A worker was replaced, or a single-job call is in its skip grace: the
+   *  consumer's watchdog should see liveness. */
+  onLiveness: () => void;
   onFailed: (error: Error) => void;
 }
 
@@ -257,15 +312,33 @@ export function startHungJobMonitor(pool: HungJobPool, timeoutMs: number): () =>
     for (const slice of plan.slices) pool.postChunk(i, slice.jobs, slice.maxBatchJobs);
     if (pool.streamEndSent()) replacement.postMessage({ type: 'stream-end' });
     console.warn(
-      `[stream] worker[${i}] silent for ${timeoutMs}ms inside one geometry call — replaced ` +
+      `[stream] worker[${i}] silent for ${budgetFor(plan.skippedJob ? 1 : 2, timeoutMs)}ms inside one geometry call — replaced ` +
         (plan.skippedJob ? `and skipped entity #${plan.skippedJob[0]}` : 'and re-running that call one job at a time') +
         ` (recovery ${recoveries}/${MAX_HUNG_JOB_RECOVERIES})`,
     );
-    pool.onReplaced();
+    pool.onLiveness();
   };
+  const intervalMs = Math.min(2_000, timeoutMs);
+  let lastTickAt = performance.now();
+  // A worker must look hung on two consecutive ticks: messages it posted just
+  // before a tick are delivered between ticks, never skipped past.
+  let suspects = new Set<number>();
   const timer = setInterval(() => {
-    if (!pool.isLive()) return;
-    for (const i of pool.ledger.findHung(performance.now(), timeoutMs)) {
+    const now = performance.now();
+    const gap = now - lastTickAt;
+    lastTickAt = now;
+    if (gap > intervalMs * SUSPEND_GAP_INTERVALS) {
+      pool.ledger.onHostResumed(now);
+      suspects = new Set();
+      return;
+    }
+    // Past the cap nothing is recovered, so nothing may mask the consumer's watchdog.
+    if (!pool.isLive() || recoveries >= MAX_HUNG_JOB_RECOVERIES) return;
+    if (pool.ledger.needsLiveness(now, timeoutMs)) pool.onLiveness();
+    const hung = pool.ledger.findHung(now, timeoutMs);
+    const confirmed = hung.filter((i) => suspects.has(i));
+    suspects = new Set(hung.filter((i) => !suspects.has(i)));
+    for (const i of confirmed) {
       if (recoveries >= MAX_HUNG_JOB_RECOVERIES) return;
       try {
         replace(i);
@@ -276,6 +349,6 @@ export function startHungJobMonitor(pool: HungJobPool, timeoutMs: number): () =>
         return;
       }
     }
-  }, Math.min(2_000, timeoutMs));
+  }, intervalMs);
   return () => clearInterval(timer);
 }

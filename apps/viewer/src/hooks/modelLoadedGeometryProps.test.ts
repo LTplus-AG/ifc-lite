@@ -339,6 +339,14 @@ describe('ifc_model_loaded wiring (#2388)', () => {
     assert.match(src, /reportSkippedHungElements\(file\.name, skippedHungElements, toast\.info\)/);
   });
 
+  it('opts in to hung-call recovery only because it reads the skipped elements, and never caches a partial model (#4884)', () => {
+    assert.match(src, /hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS/);
+    const cacheGate = src.indexOf('!skippedHungElements &&');
+    assert.notEqual(cacheGate, -1, 'the cache write must be gated on skippedHungElements');
+    const saveIdx = src.indexOf('saveToCache(cacheKey', cacheGate);
+    assert.ok(saveIdx !== -1 && saveIdx - cacheGate < 3_000, 'the gate must guard the saveToCache call that follows it');
+  });
+
   it('aborts the geometry stream when it is closed, so a stalled pool is terminated (#4884)', () => {
     assert.match(src, /signal: geometryAbort\.signal/);
     const closeIdx = src.indexOf('closeGeometryIterator = async');

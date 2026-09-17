@@ -353,6 +353,50 @@ The worker count is chosen by a cores/memory heuristic; geometry output is
 identical regardless of the count (workers process deterministic, disjoint
 slices).
 
+### Hung elements and abandoning a stream
+
+A worker in the parallel pool runs one synchronous WASM call at a time. By
+default, an element whose geometry never finishes stalls the stream. Pass
+`hungJobTimeoutMs` (for example `DEFAULT_HUNG_JOB_TIMEOUT_MS`, 45 s) to opt in
+to recovery, but only if you handle `complete.skippedHungElements`:
+
+1. A worker silent inside a multi-element call for that budget is replaced, and that call is re-run one element per call.
+   Nothing is skipped at this stage.
+2. A worker silent inside a single-element call for twice that budget is
+   replaced and the element is skipped.
+3. Everything else the worker had queued is replayed on the replacement.
+
+A load that skipped elements still completes. `complete.skippedHungElements`
+lists their express ids and counts by IFC type, so treat such a `complete` as
+a partial result: tell the user, and don't cache it as the full model. After 16
+replacements the pool stops recovering, and the stream stalls as it did before
+recovery existed.
+
+The pool does not stop its workers when you stop iterating. A
+generator waiting on a silent worker cannot run its cleanup from `return()`,
+so pass a `signal` and abort it when you abandon the stream (cancel, timeout,
+or a newer load):
+
+```typescript
+import { DEFAULT_HUNG_JOB_TIMEOUT_MS } from '@ifc-lite/geometry';
+
+const controller = new AbortController();
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer), {
+  signal: controller.signal,
+  hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS,
+})) {
+  if (event.type === 'batch') renderer.addMeshes(event.meshes, true);
+  if (event.type === 'complete' && event.skippedHungElements) {
+    const { expressIds, byType } = event.skippedHungElements;
+    console.warn(`${expressIds.length} element(s) skipped`, byType);
+  }
+}
+// Elsewhere, on cancel: controller.abort();
+```
+
+`processParallel` takes the same `signal` and `hungJobTimeoutMs` as its last
+two arguments.
+
 ## Coordinate Handling
 
 IFC files often use large georeferenced coordinates that cause precision issues:
@@ -636,7 +680,7 @@ console.log(`  Total vertices: ${result.totalVertices}`);
 ### Sharing the source fingerprint with a parser worker
 
 `GeometryProcessor.processAdaptive` accepts an optional `sourceFingerprint` shared
-cell, also accepted as the last optional argument of `processParallel`. Pass the
+cell, also accepted as the `sourceFingerprint` argument of `processParallel`. Pass the
 same fresh per-load cell to `WorkerParser.parseColumnar`; its layout and lifetime
 are documented in [Browser Worker Mode](./parsing.md#browser-worker-mode). Only the
 parallel prepass produces this key. Other geometry paths and older WASM builds

@@ -41,7 +41,6 @@ import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
-  DEFAULT_HUNG_JOB_TIMEOUT_MS,
   SkippedHungElementsCollector,
   startHungJobMonitor,
   WorkerJobLedger,
@@ -209,6 +208,25 @@ function terminateWorkerQuietly(worker: Worker, label: string): void {
   } catch (err) {
     console.warn(`[stream] ${label} terminate failed:`, err);
   }
+}
+
+/**
+ * A recorded `set-entity-index` setup (#4884). Built OUTSIDE `deliverEntityIndex`
+ * on purpose: a replay closure created in that scope would keep the pre-pass's
+ * transferred id/start/length columns (12 B per entity, ~180 MB on a 1 GB file)
+ * alive for the whole load, where before they were collectable right after the
+ * copy into the shared buffers. This one captures only its `columns` factory.
+ */
+function entityIndexSetup(
+  columns: () => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array },
+): (w: Worker) => void {
+  return (w) => {
+    try {
+      w.postMessage({ type: 'set-entity-index' as const, ...columns() });
+    } catch (err) {
+      console.warn('[stream] set-entity-index dispatch failed:', err);
+    }
+  };
 }
 
 interface PrepassMeta {
@@ -451,6 +469,7 @@ export async function* processParallel(
         if (typeof msg.seq === 'number') {
           ledger.onCallStart(workerIndex, msg.seq, msg.processedJobs, msg.callJobs ?? 1, performance.now());
         }
+        if (msg.diagnostics) diagnostics = mergeGeometryDiagnostics(diagnostics, msg.diagnostics);
         eventQueue.push({ type: 'progress', phase: 'workers' });
         wake();
         return;
@@ -611,14 +630,16 @@ export async function* processParallel(
   const workers: Worker[] = [];
   // Hung-call recovery (#4884): unfinished slices per worker, and every per-load
   // state message in order (never per-worker work) to rebuild a replacement.
-  const ledger = new WorkerJobLedger(workerCount, performance.now());
+  // Opt-in: without a budget nothing is recorded, so the pool costs what it did.
+  const hungJobTimeoutMs = Math.max(0, options?.hungJobTimeoutMs ?? 0);
+  const ledger = new WorkerJobLedger(workerCount, performance.now(), hungJobTimeoutMs > 0);
   const workerSetup: Array<(w: Worker) => void> = [];
   const broadcastSetup = (setup: (w: Worker) => void) => {
-    workerSetup.push(setup);
+    if (hungJobTimeoutMs > 0) workerSetup.push(setup);
     for (const w of workers) setup(w);
   };
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
-  workerSetup.push(postInitMessages);
+  if (hungJobTimeoutMs > 0) workerSetup.push(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
   // rest of the pipeline), so it needs its own: `postInitMessages` can throw
   // (e.g. a `wasmModule` structured-clone failure — the same class of error
@@ -880,18 +901,9 @@ export async function* processParallel(
         new Uint32Array(sabStarts).set(starts);
         new Uint32Array(sabLengths).set(lengths);
       }
-      broadcastSetup((w) => {
-        try {
-          w.postMessage({
-            type: 'set-entity-index' as const,
-            ids: new Uint32Array(sabIds),
-            starts: new Uint32Array(sabStarts),
-            lengths: new Uint32Array(sabLengths),
-          });
-        } catch (err) {
-          console.warn('[stream] set-entity-index dispatch failed:', err);
-        }
-      });
+      broadcastSetup(entityIndexSetup(() => ({
+        ids: new Uint32Array(sabIds), starts: new Uint32Array(sabStarts), lengths: new Uint32Array(sabLengths),
+      })));
       if (options?.onEntityIndex) {
         try {
           options.onEntityIndex(
@@ -906,16 +918,10 @@ export async function* processParallel(
         }
       }
     } else {
-      broadcastSetup((w) => {
-        try {
-          w.postMessage({
-            type: 'set-entity-index' as const,
-            ids: ids.slice(), starts: starts.slice(), lengths: lengths.slice(),
-          });
-        } catch (err) {
-          console.warn('[stream] set-entity-index dispatch failed:', err);
-        }
-      });
+      const copyIds = ids, copyStarts = starts, copyLengths = lengths;
+      broadcastSetup(entityIndexSetup(() => ({
+        ids: copyIds.slice(), starts: copyStarts.slice(), lengths: copyLengths.slice(),
+      })));
       if (options?.onEntityIndex) {
         try {
           options.onEntityIndex(
@@ -1131,9 +1137,9 @@ export async function* processParallel(
     setup: workerSetup, postChunk, streamEndSent: () => endSentToWorkers,
     terminate: terminateWorkerQuietly, source: new Uint8Array(sharedBuffer), skipped: skippedHungElements,
     isLive: () => !aborted && !workerError && !prepassError,
-    onReplaced: () => { eventQueue.push({ type: 'progress', phase: 'workers' }); wake(); },
+    onLiveness: () => { eventQueue.push({ type: 'progress', phase: 'workers' }); wake(); },
     onFailed: (error) => { workerError ??= error; wake(); },
-  }, options?.hungJobTimeoutMs ?? DEFAULT_HUNG_JOB_TIMEOUT_MS);
+  }, hungJobTimeoutMs);
   // Forward the consumer-supplied wasm URL to the pre-pass worker so it
   // doesn't fall back to wasm-bindgen's `import.meta.url` default. The
   // pre-pass worker uses the same `geometry.worker.ts` bundle and the

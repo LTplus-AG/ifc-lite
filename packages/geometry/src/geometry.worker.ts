@@ -426,6 +426,9 @@ export interface GeometryWorkerProgressMessage {
   /** Slice ledger id + size of the call about to run (#4884); absent on the liveness ping. */
   seq?: number;
   callJobs?: number;
+  /** Diagnostics of the calls already flushed since the last report (#4884), so a
+   *  worker replaced mid-slice does not take them with it. */
+  diagnostics?: GeometryDiagnostics;
 }
 
 /** Every call of slice `seq` returned (#4884): the host drops it from its ledger. */
@@ -1269,8 +1272,10 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
     // for several seconds while every worker is busy. Also covers batches
     // that produce zero meshes (flushPending no-ops on empty). `seq`/`callJobs`
     // let the host replace this worker if the call never returns (#4884).
+    const diagnostics = session.diagnostics ?? undefined;
+    session.diagnostics = null;
     (self as unknown as Worker).postMessage(
-      { type: 'progress', processedJobs: jobOffset, totalJobs, seq, callJobs: jobsThisBatch } as GeometryWorkerProgressMessage,
+      { type: 'progress', processedJobs: jobOffset, totalJobs, seq, callJobs: jobsThisBatch, diagnostics } as GeometryWorkerProgressMessage,
     );
     const callStart = performance.now();
     await processBatch(session, jobsFlat.subarray(start, end));

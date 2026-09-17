@@ -760,6 +760,8 @@ export class GeometryProcessor {
     sourceFingerprint?: SharedArrayBuffer,
     /** Terminates the worker pool and ends the stream (#4884). */
     signal?: AbortSignal,
+    /** Opt in to hung-call recovery; see `ProcessParallelOptions.hungJobTimeoutMs` (#4884). */
+    hungJobTimeoutMs?: number,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -770,6 +772,7 @@ export class GeometryProcessor {
       onEntityIndex,
       sourceFingerprint,
       signal,
+      hungJobTimeoutMs,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -839,6 +842,8 @@ export class GeometryProcessor {
       workerCountOverride?: number;
       /** Terminates the parallel worker pool; see `ProcessParallelOptions.signal` (#4884). */
       signal?: AbortSignal;
+      /** Opt in to hung-call recovery on the parallel path (#4884). */
+      hungJobTimeoutMs?: number;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -911,6 +916,7 @@ export class GeometryProcessor {
           options.workerCountOverride,
           options.sourceFingerprint,
           options.signal,
+          options.hungJobTimeoutMs,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

@@ -38,6 +38,7 @@ import {
   type TessellationQuality,
   type GeometryDiagnostics,
   type SkippedHungElements,
+  DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
@@ -1565,6 +1566,7 @@ export function useIfcLoader() {
         const geometryAbort = new AbortController();
         const geometryEvents = geometryProcessor.processAdaptive(geometryView, {
               signal: geometryAbort.signal,
+              hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // reads skippedHungElements below
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
               existingSab: sharedSource ?? undefined,
@@ -1957,6 +1959,9 @@ export function useIfcLoader() {
                 if (
                   cachePlan.shouldCache &&
                   !hasTexturedMeshes &&
+                  // A recovered load is missing elements (#4884); a cache hit would
+                  // serve it silently, without the notice, so re-process instead.
+                  !skippedHungElements &&
                   allMeshes.length > 0 &&
                   finalCoordinateInfo
                 ) {

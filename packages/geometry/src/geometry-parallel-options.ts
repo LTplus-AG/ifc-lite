@@ -99,11 +99,13 @@ export interface ProcessParallelOptions {
    */
   workerCountOverride?: number;
   /**
-   * Issue #4884 — silence budget (ms) for one busy geometry worker before the
-   * pool treats its WASM call as hung: the worker is replaced, a single-job call
-   * is skipped (reported on `complete.skippedHungElements`), a multi-job call is
-   * re-run one job per call, and the rest of its work is replayed. `0` disables
-   * recovery. Default `DEFAULT_HUNG_JOB_TIMEOUT_MS` (30 s).
+   * Issue #4884 — opt in to hung-call recovery with a silence budget (ms), e.g.
+   * `DEFAULT_HUNG_JOB_TIMEOUT_MS`. A busy worker silent that long inside one
+   * WASM call is replaced and the rest of its work replayed: a multi-job call is
+   * re-run one job per call; a single-job call gets twice the budget and is then
+   * skipped (reported on `complete.skippedHungElements`). Off when omitted or
+   * `0`: a consumer that does not read `skippedHungElements` must never receive
+   * a partial model it cannot tell from a complete one.
    */
   hungJobTimeoutMs?: number;
   /**

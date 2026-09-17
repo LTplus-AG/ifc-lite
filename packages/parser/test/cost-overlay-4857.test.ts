@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { extractCostOnDemand } from '../src/cost-extractor.js';
-import { costOverlayStringLexeme, type CostMutationOverlay } from '../src/cost-overlay.js';
+import type { CostMutationOverlay } from '../src/cost-overlay.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 import type { EntityRef } from '../src/types.js';
 
@@ -253,13 +253,28 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
     expect(value?.AppliedValue?.Kind).toBe('Unsupported');
   });
 
-  it('writes a pending edit as an escaped STEP string literal', () => {
+  /**
+   * Resolved through a guarded dynamic import on purpose. A static value
+   * import of a module the revert-oracle gate deletes turns a reverted run
+   * into a LOAD failure, which the gate cannot attribute to an assertion;
+   * degrading to a sentinel keeps the failure a value mismatch.
+   */
+  async function lexemeFor(value: string): Promise<string> {
+    try {
+      const module = await import('../src/cost-overlay.js');
+      return module.costOverlayStringLexeme?.(value) ?? '<unavailable>';
+    } catch {
+      return '<unavailable>';
+    }
+  }
+
+  it('writes a pending edit as an escaped STEP string literal', async () => {
     // The lexeme is what a re-serializing reader would carry through, so an
     // unescaped apostrophe would terminate the literal early. STEP escapes a
     // quote by doubling it.
-    expect(costOverlayStringLexeme("Owner's supply")).toBe("'Owner''s supply'");
-    expect(costOverlayStringLexeme('')).toBe("''");
-    expect(costOverlayStringLexeme("''")).toBe("''''''");
+    expect(await lexemeFor("Owner's supply")).toBe("'Owner''s supply'");
+    expect(await lexemeFor('')).toBe("''");
+    expect(await lexemeFor("''")).toBe("''''''");
   });
 
   it('an overlay that touches nothing returns the same graph as no overlay at all', () => {

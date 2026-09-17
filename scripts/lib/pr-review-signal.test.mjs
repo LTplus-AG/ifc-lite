@@ -111,6 +111,8 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Viewer tests (shard 3)',
     'Viewer tests (shard 7)',
     'Docs checks (docs-only PRs)',
+    // #4912: the strict docs site build, on every PR touching docs.
+    'Docs site build (mkdocs --strict)',
     'AGENTS.md ratchet',
     'MPL license headers',
     'Build + WASM + Rust + Node',
@@ -119,7 +121,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 26);
+  assert.equal(names.length, 27);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

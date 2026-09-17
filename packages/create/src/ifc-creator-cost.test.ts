@@ -179,12 +179,14 @@ describe('IfcCreator cost authoring — author, serialise, re-read (#4856)', () 
     // Product assignment: the WALL is the RelatingProduct, the cost item the
     // RelatedObject. A reversed relationship is the first fault injected below.
     //
-    // `productExpressIds` is the read model's combined "things assigned to this
-    // cost item" view — it also collects the TASK bound through
-    // IfcRelAssignsToControl — so assert the relationship record itself for the
-    // direction-sensitive claim, and containment for the convenience view.
+    // `productExpressIds` is the read model's "things assigned to this cost
+    // item that are themselves IfcProduct subtypes" view (#4877) — the TASK
+    // bound through IfcRelAssignsToControl is NOT a product, so it must be
+    // excluded. Assert both the wall's presence and the task's absence there,
+    // and assert the IfcRelAssignsToControl relationship record itself so the
+    // task assignment is still proven to have been authored and re-read.
     expect(formwork.productExpressIds).toContain(ids.wall);
-    expect(formwork.productExpressIds).toContain(ids.task);
+    expect(formwork.productExpressIds).not.toContain(ids.task);
     expect(rebar.productExpressIds).toEqual([]);
 
     const toProduct = graph.Relationships.filter(r => r.Type === 'IfcRelAssignsToProduct');
@@ -193,6 +195,14 @@ describe('IfcCreator cost authoring — author, serialise, re-read (#4856)', () 
       RelatingProduct: ids.wall, RelatedObjects: [ids.formwork],
     });
     expect(toProduct[0].InvalidReferences).toBeUndefined();
+
+    const toControl = graph.Relationships.filter(r =>
+      r.Type === 'IfcRelAssignsToControl' && r.RelatingControl === ids.formwork);
+    expect(toControl).toHaveLength(1);
+    expect(toControl[0]).toMatchObject({
+      RelatingControl: ids.formwork, RelatedObjects: [ids.task],
+    });
+    expect(toControl[0].InvalidReferences).toBeUndefined();
   });
 
   it('writes typed SELECT values, not bare numbers, for AppliedValue', async () => {

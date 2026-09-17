@@ -55,7 +55,7 @@ export function chartBucketIdentity(
   const series = aggregation.series[item.seriesIndex];
   const bucket = series?.buckets[item.dataIndex];
   return series && bucket
-    ? { seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket), color: bucket.color, ids: [...bucket.ids] }
+    ? { dataFingerprint: aggregation.dataFingerprint, seriesKey: series.key, bucketKey: bucket.key, isOther: isSyntheticOther(bucket), color: bucket.color, ids: [...bucket.ids] }
     : null;
 }
 
@@ -78,12 +78,53 @@ export function chartSelectionIsLive(
   selectedIds: ReadonlySet<number>,
 ): boolean {
   const liveIds = aggregationIds(aggregation);
-  const ownedIds = new Set(selectedBuckets.flatMap(({ ids }) => ids));
-  // Bucket names and top-N membership may legitimately change after a click.
-  // The saved selection-time IDs are the stable ownership proof: retain folded
-  // or unfolded buckets only while every selected ID still exists in the live
-  // source aggregation and is owned by one of the saved clicked buckets.
-  for (const id of selectedIds) if (!liveIds.has(id) || !ownedIds.has(id)) return false;
+  for (const id of selectedIds) if (!liveIds.has(id)) return false;
+  // Every membership test below runs against a Set built ONCE per bucket:
+  // a Set rebuilt inside a per-id predicate is O(ids²) per bucket, which on
+  // a few-thousand-element bucket froze the panel on every re-aggregation.
+  const bucketIdSets = new Map<object, Set<number>>();
+  const idsOf = (bucket: { ids: ArrayLike<number> }): Set<number> => {
+    let ids = bucketIdSets.get(bucket);
+    if (!ids) { ids = new Set(Array.from(bucket.ids)); bucketIdSets.set(bucket, ids); }
+    return ids;
+  };
+  const sameMembers = (bucket: { ids: ArrayLike<number> }, selected: readonly number[]): boolean => {
+    if (bucket.ids.length !== selected.length) return false;
+    const ids = idsOf(bucket);
+    for (const id of selected) if (!ids.has(id)) return false;
+    return true;
+  };
+  for (const selected of selectedBuckets) {
+    const series = aggregation.series.find((candidate) => candidate.key === selected.seriesKey);
+    const sameData = selected.dataFingerprint === aggregation.dataFingerprint;
+    if (selected.isOther) {
+      // Same data, but the spec may have changed its dimension or stack: the
+      // selected series must still exist and still hold every selected id.
+      if (!series) return false;
+      if (sameData) {
+        const inSeries = new Set<number>();
+        for (const bucket of series.buckets) for (const id of bucket.ids) inSeries.add(id);
+        if (selected.ids.every((id) => inSeries.has(id))) continue;
+        return false;
+      }
+      const carrier = series.buckets.find((candidate) => sameMembers(candidate, selected.ids));
+      if (!carrier) return false;
+      continue;
+    }
+    const bucket = series?.buckets.find((candidate) => candidate.key === selected.bucketKey && Boolean(candidate.isOther) === selected.isOther);
+    if (bucket) {
+      if (sameData) {
+        const live = idsOf(bucket);
+        if (selected.ids.every((id) => live.has(id))) continue;
+      }
+      if (!sameMembers(bucket, selected.ids)) return false;
+    } else {
+      const folded = series?.buckets.find((candidate) => candidate.isOther);
+      if (!folded) return false;
+      const foldedIds = idsOf(folded);
+      if (selected.ids.some((id) => !foldedIds.has(id))) return false;
+    }
+  }
   return true;
 }
 

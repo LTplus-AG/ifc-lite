@@ -10,6 +10,7 @@
 import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, ClassicBar } from '@/icons';
 import { useViewerStore } from '@/store';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
+import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
 import {
   RibbonGroup,
@@ -20,6 +21,7 @@ import {
 } from '../primitives';
 
 export function ViewTab() {
+  const { t } = useTranslation();
   // Camera, preset views and the 90° rotations come from the shared
   // command list the classic toolbar also renders, so the two styles
   // cannot host different camera commands (see toolbar/CameraCommands).
@@ -60,11 +62,11 @@ export function ViewTab() {
 
   return (
     <>
-      <RibbonGroup label="Projection">
+      <RibbonGroup label={t('ribbon.view.projectionGroup')}>
         <RibbonLargeButton
           icon={Orthographic}
-          label="Orthographic"
-          tooltip="Toggle orthographic projection"
+          label={t('ribbon.view.orthographic')}
+          tooltip={t('ribbon.view.orthographicTooltip')}
           active={projectionMode === 'orthographic'}
           onClick={() => toggleProjectionMode()}
         />
@@ -72,7 +74,7 @@ export function ViewTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Camera">
+      <RibbonGroup label={t('ribbon.view.cameraGroup')}>
         {cameraCommands
           .filter((command) => command.group === 'camera')
           .map((command) => (
@@ -89,7 +91,7 @@ export function ViewTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="View">
+      <RibbonGroup label={t('ribbon.view.viewGroup')}>
         {/* The six axis views split across two small stacks in registry
             order (top/front/left over bottom/back/right). */}
         {[0, 1].map((column) => (
@@ -126,7 +128,7 @@ export function ViewTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Context">
+      <RibbonGroup label={t('ribbon.view.contextGroup')}>
         {/* Cesium 3D World Context — the world-context affordance is one
             click away when a model has georeferencing. When active, the
             "Move georeference" sub-toggle appears beside it (its amber
@@ -134,8 +136,8 @@ export function ViewTab() {
         {cesiumAvailable && (
           <RibbonLargeButton
             icon={World}
-            label="World"
-            tooltip={cesiumEnabled ? 'Hide 3D world context (Cesium)' : 'Show 3D world context (Cesium)'}
+            label={t('ribbon.view.world')}
+            tooltip={cesiumEnabled ? t('ribbon.view.worldHideTooltip') : t('ribbon.view.worldShowTooltip')}
             active={cesiumEnabled}
             activeClassName="bg-teal-600/20 text-foreground ring-1 ring-inset ring-teal-600/50"
             onClick={() => {
@@ -149,8 +151,8 @@ export function ViewTab() {
         )}
         <RibbonLargeButton
           icon={Lighting}
-          label="Lighting"
-          tooltip="Sun, sky and lighting presets"
+          label={t('ribbon.view.lighting')}
+          tooltip={t('ribbon.view.lightingTooltip')}
           active={envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
           onClick={toggleEnvPanel}
@@ -159,8 +161,8 @@ export function ViewTab() {
           {cesiumAvailable && cesiumEnabled && (
             <RibbonSmallButton
               icon={Move}
-              label="Move georef"
-              tooltip={cesiumPlacementEditMode ? 'Stop moving georeference' : 'Move georeference in Cesium'}
+              label={t('ribbon.view.moveGeoref')}
+              tooltip={cesiumPlacementEditMode ? t('ribbon.view.moveGeorefStopTooltip') : t('ribbon.view.moveGeorefStartTooltip')}
               active={cesiumPlacementEditMode}
               activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
               onClick={() => {
@@ -172,8 +174,8 @@ export function ViewTab() {
           )}
           <RibbonSmallButton
             icon={SpaceMouse}
-            label="SpaceMouse"
-            tooltip="Connect a 3Dconnexion SpaceMouse (WebHID)"
+            label={t('ribbon.view.spaceMouse')}
+            tooltip={t('ribbon.view.spaceMouseTooltip')}
             active={spaceMousePanelOpen || spaceMouseConnected}
             activeClassName="bg-teal-600/20 text-foreground ring-1 ring-inset ring-teal-600/50"
             onClick={toggleSpaceMousePanel}
@@ -183,11 +185,11 @@ export function ViewTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Interface">
+      <RibbonGroup label={t('ribbon.view.interfaceGroup')}>
         <RibbonLargeButton
           icon={Viewpoint}
-          label="Present"
-          tooltip={`Basket presentation dock (views: ${basketViewCount}, entities: ${pinboardEntities.size})`}
+          label={t('ribbon.view.present')}
+          tooltip={t('ribbon.view.presentTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
           active={basketPresentationVisible}
           disabled={!hasModels}
           onClick={toggleBasketPresentationVisible}
@@ -200,16 +202,16 @@ export function ViewTab() {
         <RibbonSmallStack>
           <RibbonSmallButton
             icon={FollowWork}
-            label="Follow work"
-            tooltip="Open the Elements tab on selection and Author in edit mode, then hand the tab back"
+            label={t('ribbon.view.followWork')}
+            tooltip={t('ribbon.view.followWorkTooltip')}
             active={ribbonContextualTabs}
             onClick={() => setRibbonContextualTabs(!ribbonContextualTabs)}
             {...tourAnchor(TOUR_ANCHORS.ribbonFollowWork)}
           />
           <RibbonSmallButton
             icon={ClassicBar}
-            label="Classic bar"
-            tooltip="Switch back to the classic single-strip toolbar (remembered on this browser)"
+            label={t('ribbon.view.classicBar')}
+            tooltip={t('ribbon.view.classicBarTooltip')}
             onClick={() => setToolbarStyle('classic')}
             {...tourAnchor(TOUR_ANCHORS.ribbonClassicSwitch)}
           />

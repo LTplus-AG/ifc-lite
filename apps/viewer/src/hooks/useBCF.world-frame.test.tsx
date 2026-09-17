@@ -107,6 +107,7 @@ beforeEach(async () => {
     selectedEntityId: null,
     selectedEntityIds: new Set(),
     clashHighlightColors: null,
+    activeTool: 'select',
     sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: false, custom: undefined },
   });
   const container = globalThis.document.createElement('div');
@@ -163,6 +164,8 @@ describe('useBCF — viewpoints are in IFC world coordinates (#4806)', () => {
   it('writes the section plane location at world coordinates', async () => {
     await act(async () => {
       useViewerStore.setState({
+        // A cut is exported only while the Section tool draws it (#4806).
+        activeTool: 'section',
         sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: true, axis: 'down', position: 25, flipped: false, custom: undefined },
       });
     });
@@ -179,6 +182,8 @@ describe('useBCF — viewpoints are in IFC world coordinates (#4806)', () => {
   it('round-trips export then import back onto the local camera and section plane', async () => {
     await act(async () => {
       useViewerStore.setState({
+        // A cut is exported only while the Section tool draws it (#4806).
+        activeTool: 'section',
         sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: true, axis: 'down', position: 25, flipped: false, custom: undefined },
       });
     });

@@ -89,7 +89,36 @@ describe('validateDashboardSpec', () => {
 
   it('accepts a well-formed dashboard and a report extending it', () => {
     expect(validateDashboardSpec(good)).toEqual([]);
+    expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField: { kind: 'property', psetName: 'Pset/A.B', propertyName: 'Fire.Rating/A', valueKind: 'category' } }], layout: [good.layout[0]] })).toEqual([]);
+    for (const elementField of [
+      { kind: 'quantity', qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetVolume', valueKind: 'number', dataType: 'IFCVOLUMEMEASURE' },
+      { kind: 'material', valueKind: 'category' },
+      { kind: 'classification', system: 'Uniclass', valueKind: 'category' },
+      { kind: 'classification', valueKind: 'category' },
+      { kind: 'type', valueKind: 'category' },
+      { kind: 'spatial', level: 'Building', valueKind: 'category' },
+    ] as const) {
+      expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField }], layout: [good.layout[0]] })).toEqual([]);
+    }
     expect(validateDashboardSpec({ ...good, page: { size: 'A4', orientation: 'landscape' }, titleBlock: { project: 'X' }, snapshots: true })).toEqual([]);
+  });
+
+  it('rejects malformed or non-element IFC field bindings without changing dashboard version 1', () => {
+    const invalid = { ...good, charts: [{ ...bar, source: 'clash', elementField: { kind: 'property', psetName: '', propertyName: 'X', valueKind: 'guess' } }], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(invalid).map(({ path }) => path).sort()).toEqual([
+      '.charts[0].elementField', '.charts[0].elementField.psetName', '.charts[0].elementField.valueKind',
+    ]);
+    const badLevel = { ...good, charts: [{ ...bar, elementField: { kind: 'spatial', level: 'Storey', valueKind: 'category' } }], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(badLevel).map(({ path }) => path)).toEqual(['.charts[0].elementField.level']);
+    // Relation fields read names: a numeric or boolean relation binding can never bucket (#4833 review).
+    for (const elementField of [{ kind: 'material', valueKind: 'number' }, { kind: 'spatial', level: 'Site', valueKind: 'boolean' }, { kind: 'quantity', qsetName: 'Q', quantityName: 'A', valueKind: 'boolean' }]) {
+      expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].elementField.valueKind']);
+    }
+    // A one-element array stringifies to a valid name; it must still be rejected (#4833 review).
+    const arrayLevel = { ...good, charts: [{ ...bar, source: ['elements'], type: ['bar'], elementField: { kind: 'spatial', level: ['Building'], valueKind: 'category' } }], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(arrayLevel).map(({ path }) => path)).toEqual(expect.arrayContaining(['.charts[0].source', '.charts[0].type', '.charts[0].elementField.level']));
+    const badQuantity = { ...good, charts: [{ ...bar, elementField: { kind: 'quantity', qsetName: 'Qto_X', valueKind: 'number' } }], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(badQuantity).map(({ path }) => path)).toEqual(['.charts[0].elementField.quantityName']);
   });
 
   it('reports every problem at once with its path', () => {

@@ -110,7 +110,7 @@ export async function evalCommand(args: string[]): Promise<void> {
     } else {
       for (const r of results) {
         const val = r.error ? `ERROR: ${r.error}` : formatValue(r.result);
-        process.stdout.write(`${r.Name ?? r.GlobalId}: ${val}\n`);
+        process.stdout.write(`${r.Name || r.GlobalId}: ${val}\n`);
       }
       process.stderr.write(`\n${results.length} entities evaluated\n`);
     }

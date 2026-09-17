@@ -69,6 +69,8 @@
         "VITE_POSTHOG_HOST",
         "VITE_SOURCEMAP",
         "VERCEL_GIT_COMMIT_SHA",
+        "VERCEL_DEPLOYMENT_ID",
+        "VERCEL_SKEW_PROTECTION_ENABLED",
         "GITHUB_SHA"
       ]
     },

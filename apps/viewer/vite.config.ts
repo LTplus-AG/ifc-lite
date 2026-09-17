@@ -16,6 +16,7 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 // Same allowlist the production relay uses, so dev and prod cannot disagree
 // about which Dalux node a request reaches (#2792).
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
+import { deploymentAssetsDir } from '../../scripts/lib/deployment-assets-dir.mjs';
 
 // --- Build-time changelog parser ---
 interface ReleaseHighlight {
@@ -309,11 +310,10 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    assetsDir: deploymentAssetsDir(process.env.VERCEL_DEPLOYMENT_ID, process.env.VERCEL_SKEW_PROTECTION_ENABLED), // #4886
     chunkSizeWarningLimit: 6000,
-    // Opt-in production source maps, for PostHog error tracking. Without them
-    // every captured stack frame is unreadable minified soup ("Could not find
-    // sourcemap for source url"), which is why triaging a production crash has
-    // meant hand-fetching the deployed bundle from its immutable deployment URL.
+    // Opt-in production source maps for PostHog error tracking: without them every
+    // captured stack frame is minified soup ("Could not find sourcemap for source url").
     //
     // Gated on VITE_SOURCEMAP rather than always-on for two reasons: rollup's
     // map generation for this bundle costs real build time and memory, and the

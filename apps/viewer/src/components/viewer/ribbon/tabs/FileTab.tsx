@@ -12,6 +12,7 @@ import { AddFile, CloudSources, Loading, OpenFile, Refresh, Share, CollabsRoom }
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { useTranslation } from '@/i18n';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import { RibbonExportGroup } from './RibbonExportGroup';
@@ -25,6 +26,7 @@ import {
 } from '../primitives';
 
 export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
+  const { t } = useTranslation();
   const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;
   const { loading, models } = useIfc();
 
@@ -46,34 +48,34 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
 
   return (
     <>
-      <RibbonGroup label="Model">
+      <RibbonGroup label={t('ribbon.file.modelGroup')}>
         <RibbonLargeButton
           icon={loading ? Loading : OpenFile}
-          label="Open"
-          tooltip="Open model from disk"
+          label={t('ribbon.file.open')}
+          tooltip={t('ribbon.file.openTooltip')}
           disabled={loading}
           className={loading ? '[&_svg]:animate-spin' : undefined}
           onClick={() => { void handleOpenClick(); }}
         />
         <RibbonLargeButton
           icon={CloudSources}
-          label="Cloud sources"
-          tooltip="Cloud sources (connected CDEs)"
+          label={t('ribbon.file.cloudSources')}
+          tooltip={t('ribbon.file.cloudSourcesTooltip')}
           active={activeWorkspacePanels.has('sources')}
           onClick={() => handleToggleRightPanel('sources')}
         />
         <RibbonSmallStack>
           <RibbonSmallButton
             icon={AddFile}
-            label="Add model"
-            tooltip="Add model to scene (multi-select supported)"
+            label={t('ribbon.file.addModel')}
+            tooltip={t('ribbon.file.addModelTooltip')}
             disabled={loading || !hasModelsLoaded}
             onClick={() => { void handleAddModelClick(); }}
           />
           <RibbonSmallButton
             icon={Refresh}
-            label="Refresh"
-            tooltip={models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}
+            label={t('ribbon.file.refresh')}
+            tooltip={models.size > 1 ? t('ribbon.file.refreshModelsTooltip') : t('ribbon.file.refreshModelTooltip')}
             disabled={loading || !canRefresh}
             onClick={() => { void handleRefresh(); }}
           />
@@ -87,11 +89,11 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
       {collabEnabled && (
         <>
           <RibbonGroupDivider />
-          <RibbonGroup label="Share">
+          <RibbonGroup label={t('ribbon.file.shareGroup')}>
             <RibbonLargeButton
               icon={Share}
-              label="Share"
-              tooltip="Share: link-based multiuser collaboration"
+              label={t('ribbon.file.share')}
+              tooltip={t('ribbon.file.shareTooltip')}
               disabled={!hasModelsLoaded}
               onClick={openShareDialog}
               badge={collabPeerCount > 0 ? (
@@ -108,8 +110,8 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
                 that its geography stays put rather than appearing mid-session. */}
             <RibbonLargeButton
               icon={CollabsRoom}
-              label="Room"
-              tooltip={collabRoomId ? 'Collaboration room' : 'Collaboration room — not in a room yet'}
+              label={t('ribbon.file.room')}
+              tooltip={collabRoomId ? t('ribbon.file.roomTooltip') : t('ribbon.file.roomNotJoinedTooltip')}
               active={collabPanelVisible}
               onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
               badge={collabPeerCount > 0 ? (

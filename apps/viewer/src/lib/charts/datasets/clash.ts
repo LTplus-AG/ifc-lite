@@ -55,11 +55,25 @@ function storeyOf(state: ClashDatasetState, ref: ClashElementRef): string {
   return storeyId ? store?.entities.getName(storeyId) || '' : '';
 }
 
+/** FNV-1a over a sequence of strings; order-sensitive, so a moved member changes it. */
+function fingerprintStrings(parts: Iterable<string>): string {
+  let h = 0x811c9dc5;
+  for (const part of parts) {
+    for (let i = 0; i < part.length; i++) {
+      h ^= part.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    h ^= 0x1f;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
 export function buildClashDataset(state: ClashDatasetState): ChartDataset {
   const result = state.clashResult;
   const rows: ChartDatasetRow[] = [];
+  const groupOf = new Map<string, string>();
   if (result) {
-    const groupOf = new Map<string, string>();
     for (const group of state.clashGroups ?? []) for (const member of group.members) groupOf.set(member.id, group.title);
     const modelName = (id: string): string => state.models.get(id)?.name ?? id;
     for (const clash of result.clashes) {
@@ -85,6 +99,12 @@ export function buildClashDataset(state: ClashDatasetState): ChartDataset {
       });
     }
   }
-  // Reviews change without a new run, so they are part of the identity too.
-  return { source: 'clash', columns: CLASH_DATASET_COLUMNS, rows, fingerprint: `clash:${state.clashRunSeq}:${rows.length}:${state.clashReviews.size}` };
+  // Reviews and groups change without a new run, so their CONTENT is part of
+  // the identity: a status edit keeps `clashReviews.size`, and a manual
+  // regroup keeps the row count, yet both move rows between buckets. A
+  // fingerprint that missed them let a selected top-N "Other" bucket stay
+  // live after its members had been regrouped away (#4833).
+  const reviews = fingerprintStrings([...state.clashReviews].map(([key, review]) => `${key}=${review.status}`).sort());
+  const groups = fingerprintStrings([...groupOf].map(([id, title]) => `${id}=${title}`).sort());
+  return { source: 'clash', columns: CLASH_DATASET_COLUMNS, rows, fingerprint: `clash:${state.clashRunSeq}:${rows.length}:${reviews}:${groups}` };
 }

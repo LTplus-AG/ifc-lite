@@ -11,10 +11,11 @@
  */
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser, extractScheduleOnDemand, type IfcDataStore } from '@ifc-lite/parser';
-import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
+import { IfcParser, extractPropertiesOnDemand, extractScheduleOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { clashReviewKey, createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { addViewpointToTopic, createBCFProject, createBCFTopic, createViewpoint, readBCF, writeBCF } from '@ifc-lite/bcf';
-import { aggregate, validateDashboardSpec } from '@ifc-lite/charts';
+import { aggregate, elementFieldColumnId, validateDashboardSpec, type ElementFieldBinding } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -25,6 +26,7 @@ import { buildIdsDataset, IDS_COLUMNS } from './ids.js';
 import { buildCompareDataset, COMPARE_COLUMNS } from './compare.js';
 import { buildElementsDataset } from './elements.js';
 import { DASHBOARD_PRESETS } from '../presets.js';
+import { createElementFieldReader } from '../element-field-reader.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -168,6 +170,315 @@ describe('chart source adapters over real producers (#3944)', () => {
     const off = buildScheduleDataset(useViewerStore.getState());
     assert.equal(off.rows[0].values[col(SCHEDULE_COLUMNS.phase)], 'scheduled');
     assert.notEqual(off.fingerprint, ds.fingerprint);
+  });
+
+  it('elements: converts an explicit property unit into the project display unit (#4833)', async () => {
+    const additions = `
+#200=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#201=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+#203=IFCPROPERTYSINGLEVALUE('ExplicitLength',$,IFCLENGTHMEASURE(1.),#201);
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);`;
+    const source = MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `${additions}\nENDSEC;\nEND-ISO-10303-21;`);
+    const bytes = new TextEncoder().encode(source);
+    const unitStore = await new IfcParser().parseColumnar(bytes.buffer);
+    const model = { ...fixtureModel('units', { idOffset: OFFSET }), ifcDataStore: unitStore, maxExpressId: 205 };
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]),
+      activeModelId: model.id,
+      mutationViews: new Map(),
+      mutationVersion: 0,
+      unitDisplayOverrides: {},
+    });
+    const field: ElementFieldBinding = {
+      kind: 'property', psetName: 'Probe', propertyName: 'ExplicitLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE', unit: 'm',
+    };
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
+    const row = dataset.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.notEqual(column, -1, JSON.stringify(dataset.columns));
+    assert.equal(dataset.columns[column]?.unit, 'mm');
+    assert.equal(row?.values[column], 1_000, 'one explicit metre is normalized to project millimetres');
+    assert.equal(row?.statuses?.[column], 'value');
+
+    const overlay = new MutablePropertyView(unitStore.properties, 'units');
+    overlay.setOnDemandExtractor((id) => extractPropertiesOnDemand(unitStore, id));
+    useViewerStore.setState({ mutationViews: new Map([[model.id, overlay]]), mutationVersion: 1 });
+    const withOverlay = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const overlayRow = withOverlay.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.equal(overlayRow?.values[column], 1_000, 'installing an unchanged overlay preserves the explicit metre unit');
+  });
+
+  it('elements: a typed value with neither project nor explicit unit is unsupported, while the column still names its target (#4833)', async () => {
+    const additions = `
+#203=IFCPROPERTYSINGLEVALUE('UnconfirmedLength',$,IFCLENGTHMEASURE(1.),$);
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);`;
+    const source = MINI_IFC.replace('ENDSEC;\nEND-ISO-10303-21;', `${additions}\nENDSEC;\nEND-ISO-10303-21;`);
+    const bytes = new TextEncoder().encode(source);
+    const noUnitStore = await new IfcParser().parseColumnar(bytes.buffer);
+    const model = { ...fixtureModel('no-units', { idOffset: OFFSET }), ifcDataStore: noUnitStore, maxExpressId: 205 };
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]), activeModelId: model.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {},
+    });
+    const field: ElementFieldBinding = {
+      kind: 'property', psetName: 'Probe', propertyName: 'UnconfirmedLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE',
+    };
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
+    const row = dataset.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.equal(dataset.columns[column]?.unit, 'm', 'the column has one target so explicit-unit rows of another model could still sum into it');
+    assert.equal(row?.values[column], null, 'a value whose own unit is unknown is never read as metres');
+    assert.equal(row?.statuses?.[column], 'unsupported');
+  });
+
+  it('elements: normalizes numeric attributes, requires their own project unit, and isolates binding identities (#4833)', async () => {
+    const modelSource = (prefix: string, height: number) => MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace("#43=IFCDOOR('0Door00000000000000043',$,'Door C',$,$,#24,#28,$,$,$,$,$);", `#43=IFCDOOR('0Door00000000000000043',$,'Door C',$,$,#24,#28,$,${height},900.,.DOOR.,.SINGLE_SWING_LEFT.,$);`)
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `#200=IFCSIUNIT(*,.LENGTHUNIT.,${prefix},.METRE.);\n#202=IFCUNITASSIGNMENT((#200));\nENDSEC;\nEND-ISO-10303-21;`);
+    const mmStore = await new IfcParser().parseColumnar(new TextEncoder().encode(modelSource('.MILLI.', 2_000)).buffer);
+    const metreStore = await new IfcParser().parseColumnar(new TextEncoder().encode(modelSource('$', 2)).buffer);
+    const discovered = createElementFieldReader(mmStore).discover([43]).attributes.find(({ binding }) => binding.kind === 'attribute' && binding.attributeName === 'OverallHeight');
+    assert.equal(discovered?.binding.dataType, 'IFCPOSITIVELENGTHMEASURE');
+    const field = discovered!.binding;
+    const mm = { ...fixtureModel('mm', { idOffset: 0 }), ifcDataStore: mmStore, maxExpressId: 202 };
+    const metre = { ...fixtureModel('metre', { idOffset: OFFSET }), ifcDataStore: metreStore, maxExpressId: 202 };
+    useViewerStore.setState({ models: new Map([[mm.id, mm], [metre.id, metre]]), activeModelId: mm.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
+    assert.deepEqual(dataset.rows.filter(({ ids }) => ids[0] === 43 || ids[0] === GID(43)).map(({ values }) => values[column]), [2_000, 2_000]);
+
+    const numeric: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'ExplicitLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE', unit: 'm' };
+    const category: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'ExplicitLength', valueKind: 'category' };
+    const explicitSource = modelSource('.MILLI.', 2_000).replace('ENDSEC;\nEND-ISO-10303-21;', "#201=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#203=IFCPROPERTYSINGLEVALUE('ExplicitLength',$,IFCLENGTHMEASURE(1.),#201);\n#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));\n#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);\nENDSEC;\nEND-ISO-10303-21;");
+    const explicitStore = await new IfcParser().parseColumnar(new TextEncoder().encode(explicitSource).buffer);
+    const explicitModel = { ...fixtureModel('explicit', { idOffset: OFFSET }), ifcDataStore: explicitStore, maxExpressId: 205 };
+    useViewerStore.setState({ models: new Map([[explicitModel.id, explicitModel]]), activeModelId: explicitModel.id });
+    const both = buildElementsDataset({ kind: 'all' }, [category, numeric], useViewerStore.getState());
+    const numericColumn = both.columns.findIndex(({ id }) => id === elementFieldColumnId(numeric));
+    assert.equal(both.rows.find(({ ids }) => ids[0] === GID(41))?.values[numericColumn], 1_000);
+  });
+
+  it('elements: unrelated declared units do not validate an implicit length (#4833)', async () => {
+    const additions = `
+#201=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#202=IFCUNITASSIGNMENT((#201));
+#203=IFCPROPERTYSINGLEVALUE('UnconfirmedLength',$,IFCLENGTHMEASURE(1.),$);
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);`;
+    const source = MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `${additions}\nENDSEC;\nEND-ISO-10303-21;`);
+    const unitStore = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+    const model = { ...fixtureModel('area-only', { idOffset: OFFSET }), ifcDataStore: unitStore, maxExpressId: 205 };
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const field: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'UnconfirmedLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const column = dataset.columns.findIndex(({ id }) => id === elementFieldColumnId(field));
+    const row = dataset.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.equal(dataset.columns[column].unit, 'm');
+    assert.equal(row?.values[column], null);
+    assert.equal(row?.statuses?.[column], 'unsupported');
+  });
+
+  it('elements: rejects incompatible measures and unit-qualifies categorical values (#4833)', async () => {
+    const modelSource = (prefix: string, nominal: string) => MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `#200=IFCSIUNIT(*,.LENGTHUNIT.,${prefix},.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+#203=IFCPROPERTYSINGLEVALUE('Value',$,${nominal},$);
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);
+ENDSEC;
+END-ISO-10303-21;`);
+    const parsedModel = async (id: string, offset: number, prefix: string, nominal: string) => ({
+      ...fixtureModel(id, { idOffset: offset }),
+      ifcDataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(modelSource(prefix, nominal)).buffer),
+      maxExpressId: 205,
+    });
+    const mm = await parsedModel('mm', 0, '.MILLI.', 'IFCLENGTHMEASURE(1.)');
+    const metre = await parsedModel('metre', OFFSET, '$', 'IFCLENGTHMEASURE(1.)');
+    const ratio = await parsedModel('ratio', OFFSET, '$', 'IFCRATIOMEASURE(2.)');
+    const category: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Value', valueKind: 'category' };
+    useViewerStore.setState({ models: new Map([[mm.id, mm], [metre.id, metre]]), activeModelId: mm.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const categories = buildElementsDataset({ kind: 'all' }, [category], useViewerStore.getState());
+    const categoryColumn = categories.columns.findIndex(({ id }) => id === elementFieldColumnId(category));
+    assert.deepEqual(categories.rows.filter(({ ids }) => ids[0] === 41 || ids[0] === GID(41)).map(({ values }) => values[categoryColumn]), ['1 mm', '1 m']);
+
+    const numeric: ElementFieldBinding = { ...category, valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    useViewerStore.setState({ models: new Map([[mm.id, mm], [ratio.id, ratio]]), activeModelId: mm.id });
+    const numbers = buildElementsDataset({ kind: 'all' }, [numeric], useViewerStore.getState());
+    const numberColumn = numbers.columns.findIndex(({ id }) => id === elementFieldColumnId(numeric));
+    const ratioRow = numbers.rows.find(({ ids }) => ids[0] === GID(41));
+    assert.equal(ratioRow?.values[numberColumn], null);
+    assert.equal(ratioRow?.statuses?.[numberColumn], 'unsupported');
+  });
+
+  /** A model whose project declares one unit list and carries one `Probe.Cost` / `Probe.Value` property on the wall. */
+  const unitModel = async (id: string, offset: number, units: string, property: string, extra = '') => {
+    const source = MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `${units}
+#202=IFCUNITASSIGNMENT((#200));
+${property}
+${extra}
+#204=IFCPROPERTYSET('0Pset00000000000000204',$,'Probe',$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);
+ENDSEC;
+END-ISO-10303-21;`);
+    return {
+      ...fixtureModel(id, { idOffset: offset }),
+      ifcDataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer),
+      maxExpressId: 210,
+    };
+  };
+  const cellOf = (dataset: ReturnType<typeof buildElementsDataset>, field: ElementFieldBinding, id: number) => {
+    const column = dataset.columns.findIndex((c) => c.id === elementFieldColumnId(field));
+    const row = dataset.rows.find(({ ids }) => ids[0] === id);
+    return { unit: dataset.columns[column]?.unit, value: row?.values[column], status: row?.statuses?.[column] };
+  };
+
+  it('elements: never sums two currencies — a monetary column is one currency, other currencies read unsupported (#4833)', async () => {
+    const cost = "#203=IFCPROPERTYSINGLEVALUE('Cost',$,IFCMONETARYMEASURE(10.),$);";
+    const usd = await unitModel('usd', 0, "#200=IFCMONETARYUNIT('USD');", cost);
+    const eur = await unitModel('eur', OFFSET, "#200=IFCMONETARYUNIT('EUR');", cost);
+    const usd2 = await unitModel('usd2', 2 * OFFSET, "#200=IFCMONETARYUNIT('USD');", cost);
+    const field: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Cost', valueKind: 'number', dataType: 'IFCMONETARYMEASURE' };
+    const discovered = createElementFieldReader(usd.ifcDataStore).discover([41]).properties.get('Probe')?.[0]?.binding;
+    assert.deepEqual(discovered, field, 'a monetary property is discovered as a number keyed by its measure');
+
+    useViewerStore.setState({ models: new Map([[usd.id, usd], [eur.id, eur], [usd2.id, usd2]]), activeModelId: usd.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    assert.deepEqual(cellOf(dataset, field, 41), { unit: '$', value: 10, status: 'value' });
+    assert.deepEqual(cellOf(dataset, field, 2 * OFFSET + 41), { unit: '$', value: 10, status: 'value' }, 'the same currency in another model sums');
+    assert.deepEqual(cellOf(dataset, field, GID(41)), { unit: '$', value: null, status: 'unsupported' }, 'there is no exchange rate to fold euros into dollars');
+    const agg = aggregate({ id: 'c', title: 'c', source: 'elements', type: 'bar', dimension: 'Model', measure: { agg: 'sum', column: elementFieldColumnId(field) } }, dataset);
+    assert.equal(agg.total, 20);
+    assert.equal(agg.unsupported, 1);
+    assert.equal(agg.unit, '$');
+  });
+
+  it('elements: an explicit unit is converted by its own scale, and an unresolvable one is never read as the project unit (#4833)', async () => {
+    const mmProject = "#200=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);";
+    // A decimetre is a real SI unit the viewer has no curated alternative for: only its parsed scale can convert it.
+    const dm = await unitModel('dm', 0, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(1.),#206);", '#206=IFCSIUNIT(*,.LENGTHUNIT.,.DECI.,.METRE.);');
+    // `#999` names no entity: the file declares a unit we cannot read.
+    const broken = await unitModel('broken', OFFSET, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(1.),#999);");
+    const field: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Length', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    useViewerStore.setState({ models: new Map([[dm.id, dm], [broken.id, broken]]), activeModelId: dm.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const decimetre = cellOf(dataset, field, 41);
+    assert.equal(decimetre.unit, 'mm');
+    assert.ok(typeof decimetre.value === 'number' && Math.abs(decimetre.value - 100) < 1e-9, `1 dm is 100 mm, got ${String(decimetre.value)}`);
+    assert.deepEqual(cellOf(dataset, field, GID(41)), { unit: 'mm', value: null, status: 'unsupported' }, 'an unreadable explicit unit must not fall back to the project millimetres');
+    assert.equal(createElementFieldReader(broken.ifcDataStore).readResolved(41, field).unit, '#999');
+  });
+
+  it('elements: an untagged number never joins a typed sum, and an untyped number keeps only a unit equal to the column\'s (#4833 review)', async () => {
+    const mmProject = "#200=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);";
+    // `1000.` with no IFC measure tag: nothing says it is a length.
+    const bare = await unitModel('bare', 0, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Length',$,1000.,$);");
+    const length: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Length', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    useViewerStore.setState({ models: new Map([[bare.id, bare]]), activeModelId: bare.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    assert.deepEqual(cellOf(buildElementsDataset({ kind: 'all' }, [length], useViewerStore.getState()), length, 41), { unit: 'mm', value: null, status: 'unsupported' });
+    // An IfcReal in millimetres under a binding discovered without a measure cannot be converted into anything.
+    const realMm = await unitModel('real', OFFSET, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Ratio',$,IFCREAL(2.),#206);", '#206=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);');
+    const ratio: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Ratio', valueKind: 'number', dataType: 'IFCREAL' };
+    useViewerStore.setState({ models: new Map([[realMm.id, realMm]]), activeModelId: realMm.id });
+    assert.equal(cellOf(buildElementsDataset({ kind: 'all' }, [ratio], useViewerStore.getState()), ratio, GID(41)).status, 'unsupported');
+  });
+
+  it('elements: a quantity sums in one unit across a millimetre and a metre model, and honours its own explicit Unit (#4833)', async () => {
+    const qtoModel = async (id: string, offset: number, prefix: string, depth: string, unitRef = '$', extra = '') => {
+      const source = MINI_IFC
+        .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+        .replace('ENDSEC;\nEND-ISO-10303-21;', `#200=IFCSIUNIT(*,.LENGTHUNIT.,${prefix},.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+${extra}
+#203=IFCQUANTITYLENGTH('Depth',$,${unitRef},${depth},$);
+#204=IFCELEMENTQUANTITY('0Qto000000000000000204',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);
+ENDSEC;
+END-ISO-10303-21;`);
+      return { ...fixtureModel(id, { idOffset: offset }), ifcDataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer), maxExpressId: 210 };
+    };
+    const mm = await qtoModel('mm', 0, '.MILLI.', '250.');
+    const metre = await qtoModel('metre', OFFSET, '$', '0.25');
+    // A metre-project quantity that declares its own centimetre unit.
+    const explicit = await qtoModel('explicit', 2 * OFFSET, '$', '25.', '#206', '#206=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);');
+    const field: ElementFieldBinding = { kind: 'quantity', qsetName: 'Qto_WallBaseQuantities', quantityName: 'Depth', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    assert.deepEqual(createElementFieldReader(mm.ifcDataStore).discover([41]).quantities.get('Qto_WallBaseQuantities')?.[0]?.binding, field);
+    useViewerStore.setState({ models: new Map([[mm.id, mm], [metre.id, metre], [explicit.id, explicit]]), activeModelId: mm.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [field], useViewerStore.getState());
+    const near = (cell: { value: unknown }, expected: number) => typeof cell.value === 'number' && Math.abs(cell.value - expected) < 1e-9;
+    assert.equal(cellOf(dataset, field, 41).unit, 'mm');
+    assert.ok(near(cellOf(dataset, field, 41), 250));
+    assert.ok(near(cellOf(dataset, field, GID(41)), 250), `0.25 m is 250 mm, got ${String(cellOf(dataset, field, GID(41)).value)}`);
+    assert.ok(near(cellOf(dataset, field, 2 * OFFSET + 41), 250), `25 cm is 250 mm, got ${String(cellOf(dataset, field, 2 * OFFSET + 41).value)}`);
+    const agg = aggregate({ id: 'q', title: 'q', source: 'elements', type: 'bar', dimension: 'Model', measure: { agg: 'sum', column: elementFieldColumnId(field) } }, dataset);
+    assert.ok(Math.abs(agg.total - 750) < 1e-9);
+    assert.equal(agg.unit, 'mm');
+  });
+
+  it('elements: one quantity name observed as a Length in one model and an Area in another is a category, not a mis-typed sum (#4833 review)', async () => {
+    const qsetOf = (klass: string, value: string) => `#200=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+#203=${klass}('Size',$,$,${value},$);
+#204=IFCELEMENTQUANTITY('0Qto000000000000000204',$,'Qto_Probe',$,$,(#203));
+#205=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000205',$,$,$,(#41),#204);
+ENDSEC;
+END-ISO-10303-21;`;
+    const parsedQto = async (id: string, offset: number, klass: string, value: string) => ({
+      ...fixtureModel(id, { idOffset: offset }),
+      ifcDataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(MINI_IFC
+        .replace("#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);")
+        .replace('ENDSEC;\nEND-ISO-10303-21;', qsetOf(klass, value))).buffer),
+      maxExpressId: 205,
+    });
+    const asLength = await parsedQto('len', 0, 'IFCQUANTITYLENGTH', '2.');
+    const asArea = await parsedQto('area', OFFSET, 'IFCQUANTITYAREA', '3.');
+    const { mergeObservations, catalogFromObservations, emptyObservations } = await import('../element-field-discovery.js');
+    const merged = emptyObservations();
+    mergeObservations(merged, createElementFieldReader(asLength.ifcDataStore).observe([41]));
+    mergeObservations(merged, createElementFieldReader(asArea.ifcDataStore).observe([41]));
+    const size = catalogFromObservations(merged).quantities.get('Qto_Probe')?.[0]?.binding;
+    assert.equal(size?.kind, 'quantity');
+    assert.equal(size?.valueKind, 'category', 'a length and an area cannot share one sum');
+    useViewerStore.setState({ models: new Map([[asLength.id, asLength], [asArea.id, asArea]]), activeModelId: asLength.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    const dataset = buildElementsDataset({ kind: 'all' }, [size!], useViewerStore.getState());
+    assert.deepEqual([cellOf(dataset, size!, 41).value, cellOf(dataset, size!, GID(41)).value], ['2 m', '3 m²'], 'both rows chart as unit-qualified categories');
+  });
+
+  it('clash: the fingerprint follows a regroup and a review status edit, so a selected Other bucket cannot stay live on moved rows (#4833)', async () => {
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [
+        box('0Wall00000000000000041', GID(41), 'IfcWall', [0, 0, 0], [1, 1, 1]),
+        box('0Beam00000000000000042', GID(42), 'IfcBeam', [0.5, 0, 0], [1.5, 1, 1]),
+        box('0Door00000000000000043', GID(43), 'IfcDoor', [0.8, 0, 0], [1.8, 1, 1]),
+      ],
+      [{ id: 'str', name: 'STR', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }, { id: 'arc', name: 'ARC', a: 'IfcWall', b: 'IfcDoor', mode: 'hard' }],
+    );
+    assert.equal(result.clashes.length, 2);
+    const [first, second] = result.clashes;
+    const group = (title: string, members: typeof result.clashes) => ({
+      id: title, title, members, bounds: { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] }, representativePoint: [0, 0, 0] as [number, number, number], severity: first.severity,
+    });
+    const state = (groups: ReturnType<typeof group>[], review: 'open' | 'accepted') => {
+      useViewerStore.setState({ clashResult: result, clashRunSeq: 3, clashGroups: groups, clashReviews: new Map([[clashReviewKey(first), { status: review }]]) });
+      return buildClashDataset(useViewerStore.getState());
+    };
+    const together = state([group('G1', [first, second])], 'open');
+    const apart = state([group('G1', [first]), group('G2', [second])], 'open');
+    assert.notEqual(apart.fingerprint, together.fingerprint, 'moving a clash between groups changes which bucket it is in');
+    assert.equal(apart.rows.length, together.rows.length);
+    const accepted = state([group('G1', [first]), group('G2', [second])], 'accepted');
+    assert.notEqual(accepted.fingerprint, apart.fingerprint, 'a status edit keeps the review count but moves the row');
+    assert.equal(state([group('G1', [first]), group('G2', [second])], 'accepted').fingerprint, accepted.fingerprint, 'the same state fingerprints the same');
   });
 
   it('ids and compare: rows carry the renderer id of the entity the result names', () => {

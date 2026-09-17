@@ -16,7 +16,7 @@ import { act, useEffect, useRef, useState } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Clash, ClashResult } from '@ifc-lite/clash';
 import type { Renderer } from '@ifc-lite/renderer';
-import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
+import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ElementFieldBinding, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import { captureUiSnapshot, restoreUiSnapshot } from '@/lib/tours/snapshot.js';
 import { CLASH_TOUR } from '@/lib/tours/tours/clash.js';
@@ -32,10 +32,10 @@ import { modelOverviewDashboard } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, type } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import { EMPTY_HINTS } from './ChartCard.js';
-import { chartColorOverrides } from './useChart3DLink.js';
+import { chartBucketIdentity, chartColorOverrides, chartSelectionIsLive } from './useChart3DLink.js';
 import { selectionFromEChartEvent, type ChartRenderer, type ChartRendererEvents } from './useEChart.js';
 
 const MINI_IFC = `ISO-10303-21;
@@ -45,7 +45,9 @@ FILE_NAME('t','',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
-#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,#202);
+#200=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
 #2=IFCSITE('0Site000000000000000002',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
 #3=IFCBUILDING('0Building00000000000003',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
 #5=IFCBUILDINGSTOREY('0Storey00000000000005',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
@@ -69,6 +71,25 @@ DATA;
 #45=IFCDOOR('0Door00000000000000045',$,'Door B',$,$,#24,#28,$,$,$,$,$);
 #90=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel000000000000000090',$,$,$,(#41,#42,#44),#5);
 #91=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel000000000000000091',$,$,$,(#43,#45),#6);
+#100=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI60'),$);
+#106=IFCPROPERTYSINGLEVALUE('ReferenceLength',$,IFCLENGTHMEASURE(2.),$);
+#101=IFCPROPERTYSET('0Pset00000000000000101',$,'Pset_WallCommon',$,(#100,#106));
+#102=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000102',$,$,$,(#41,#42),#101);
+#103=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI30'),$);
+#104=IFCPROPERTYSET('0Pset00000000000000104',$,'Pset_WallCommon',$,(#103));
+#105=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000105',$,$,$,(#43),#104);
+#110=IFCMATERIAL('Concrete',$,$);
+#111=IFCRELASSOCIATESMATERIAL('0Mat000000000000000111',$,$,$,(#41,#42),#110);
+#112=IFCMATERIAL('Timber',$,$);
+#113=IFCRELASSOCIATESMATERIAL('0Mat000000000000000113',$,$,$,(#43),#112);
+#120=IFCQUANTITYAREA('NetSideArea',$,$,10.,$);
+#121=IFCELEMENTQUANTITY('0Qto000000000000000121',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#120));
+#122=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000122',$,$,$,(#41,#42,#43),#121);
+#130=IFCWALLTYPE('0WallType0000000000130',$,'WT-Standard',$,$,$,$,$,$,.STANDARD.);
+#131=IFCRELDEFINESBYTYPE('0Typ000000000000000131',$,$,$,(#41,#42),#130);
+#140=IFCCLASSIFICATION('Molio','1.0',$,'CCI',$,$,$);
+#141=IFCCLASSIFICATIONREFERENCE('https://example.invalid/E-AAA','E-AAA','Wall class',#140,$,$);
+#142=IFCRELASSOCIATESCLASSIFICATION('0Cls000000000000000142',$,$,$,(#43),#141);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -79,7 +100,7 @@ const GID = (expressId: number) => OFFSET + expressId;
 async function parsedModel(id = 'm1', idOffset = OFFSET, ifc = MINI_IFC): Promise<FederatedModel> {
   const bytes = new TextEncoder().encode(ifc);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 91 };
+  return { ...fixtureModel(id, { idOffset }), name: `${id}.ifc`, ifcDataStore: store, maxExpressId: 202 };
 }
 
 /** Records every option and selection a card pushes; can fire a chart click. */
@@ -209,6 +230,300 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(useViewerStore.getState().dashboards.length, 1);
   });
 
+  it('authors a property chart through the visible editor and keeps real member ids (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    assert.ok(source, 'the Elements source exposes an IFC field selector');
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property set"]')!.value, 'Pset_WallCommon');
+    assert.match(ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!.textContent!, /FireRating/);
+
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    const added = charts.at(-1)!;
+    assert.deepEqual(barData(added.options.at(-1)!).map(([name, count]) => [name, count]), [['EI60', 2], ['EI30', 1]]);
+    await act(async () => { added.events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
+  });
+
+  it('enables IFC field discovery when an existing non-element chart switches to Elements (#4833)', async () => {
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{ ...dashboard.charts[0], title: 'Clash chart', source: 'clash', dimension: 'Severity' }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id });
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Clash chart"]')!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const chartSource = ui.querySelector<HTMLSelectElement>('select[aria-label="Source"]')!;
+    await act(async () => {
+      chartSource.value = 'elements';
+      chartSource.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    const fieldSource = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    assert.equal([...fieldSource.options].find(({ value }) => value === 'attribute')?.disabled, false);
+    assert.equal([...fieldSource.options].find(({ value }) => value === 'property')?.disabled, false);
+  });
+
+  it('an unsaved draft field binds the editor alone and leaves a live chart selection untouched (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    // A bucket click on the type chart owns the 3D selection and the slice.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(44), GID(45)]);
+    const sliceBefore = useViewerStore.getState().chartSlice;
+    const bucketsBefore = useViewerStore.getState().chartSliceBuckets;
+
+    // Open a NEW chart's editor and walk through IFC fields without saving.
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    const property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    const numericId = [...property.options].find((option) => option.textContent === 'ReferenceLength')!.value;
+    await act(async () => {
+      property.value = numericId;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    // The draft's column exists for the editor: the histogram binds to it.
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Group by"]')!.value, numericId);
+
+    const state = useViewerStore.getState();
+    assert.equal(state.chartSlice, sliceBefore, 'the draft must not drop or replace the chart selection');
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(44), GID(45)]);
+    assert.equal(state.chartSliceSource, state.dashboards[0].charts[0].id);
+    assert.equal(state.chartSliceBuckets, bucketsBefore, 'the clicked bucket identities are untouched');
+    // The saved charts still see only the built-in columns: the draft column is the editor's alone.
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([name, count]) => [name, count]), [['IfcWall', 3], ['IfcDoor', 2]]);
+  });
+
+  /** Open the editor for a new chart and switch its IFC field family. */
+  async function openEditorWithFamily(ui: HTMLElement, family: string): Promise<void> {
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = family;
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+  }
+  async function choose(select: HTMLSelectElement, value: string): Promise<void> {
+    await act(async () => {
+      select.value = value;
+      select.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+  }
+
+  it('charts by material through the editor and a bucket click selects exactly the elements carrying it (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'relation');
+    const relation = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC relation"]')!;
+    const labels = [...relation.options].map((option) => option.textContent ?? '');
+    assert.ok(labels.some((label) => label.startsWith('Material (IfcRelAssociatesMaterial)')), labels.join(' | '));
+    assert.ok(labels.some((label) => label.startsWith('Type name (IfcRelDefinesByType)')));
+    assert.ok(labels.includes('Classification: CCI'), `a discovered classification system (IfcClassification.Name) is offered on its own: ${labels.join(' | ')}`);
+    assert.ok(labels.some((label) => label.startsWith('Building (spatial structure)')));
+    await choose(relation, [...relation.options].find((option) => option.textContent?.startsWith('Material'))!.value);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    const added = charts.at(-1)!;
+    assert.deepEqual(barData(added.options.at(-1)!).map(([name, count]) => [name, count]), [['Concrete', 2], ['Timber', 1]]);
+    await act(async () => { added.events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
+  });
+
+  it('charts a quantity as a summable number in the project unit and a classification system by its codes (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'quantity');
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="IFC quantity set"]')!.value, 'Qto_WallBaseQuantities');
+    const quantity = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC quantity"]')!;
+    assert.deepEqual([...quantity.options].map((option) => option.textContent), ['NetSideArea']);
+    // A quantity is a number: the editor switches to a histogram and offers its sum.
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'histogram');
+    const measure = ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!;
+    const sum = [...measure.options].find((option) => option.textContent?.startsWith('Sum of Qto_WallBaseQuantities.NetSideArea'));
+    assert.ok(sum, [...measure.options].map((o) => o.textContent).join(' | '));
+    await choose(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!, 'bar');
+    await choose(ui.querySelector<HTMLSelectElement>('select[aria-label="Group by"]')!, 'IfcType');
+    await choose(measure, sum!.value);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    const subtitle = [...ui.querySelectorAll('[data-chart-subtitle]')].at(-1)!.textContent!;
+    assert.match(subtitle, /30 m²/, subtitle);
+    assert.doesNotMatch(subtitle, /unsupported/);
+
+    await openEditorWithFamily(ui, 'relation');
+    const relation = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC relation"]')!;
+    await choose(relation, [...relation.options].find((option) => option.textContent === 'Classification: CCI')!.value);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    assert.deepEqual(barData(charts.at(-1)!.options.at(-1)!).map(([name, count]) => [name, count]), [['E-AAA', 1]]);
+    assert.match([...ui.querySelectorAll('[data-chart-subtitle]')].at(-1)!.textContent!, /4 without a value/);
+  });
+
+  it('filters property sets and properties by name so a model with hundreds of psets stays pickable (#4833)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'property');
+    const property = () => [...ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!.options].map((option) => option.textContent);
+    assert.deepEqual(property(), ['FireRating', 'ReferenceLength']);
+    const filter = ui.querySelector<HTMLInputElement>('input[aria-label="Filter fields"]')!;
+    type(filter, 'fire');
+    await settle();
+    assert.deepEqual(property(), ['FireRating'], 'a field-name filter hides the properties that do not match');
+    // Set names match case-insensitively too (the filter lowercases both sides).
+    type(filter, 'pset_wallcommon');
+    await settle();
+    assert.deepEqual(property(), ['FireRating', 'ReferenceLength'], 'a set-name match keeps every field of the set');
+    type(filter, 'nothing-like-this');
+    await settle();
+    const setSelect = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property set"]')!;
+    assert.deepEqual([...setSelect.options].map((option) => option.textContent), ['Pset_WallCommon'], 'the chosen set stays listed so the selection is never orphaned, but nothing else matches');
+    assert.deepEqual(property(), ['FireRating (unavailable)'], 'no field matches: the list shows only the saved selection, never the unfiltered set');
+  });
+
+  it('clearing a numeric IFC field back to the built-in columns leaves a saveable bar chart, not an orphaned histogram (#4833 review)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    const property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    await act(async () => {
+      property.value = [...property.options].find((option) => option.textContent === 'ReferenceLength')!.value;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'histogram');
+    await act(async () => {
+      source.value = 'built-in';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'bar');
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Group by"]')!.value, 'IfcType');
+    const save = [...ui.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Save chart')!;
+    assert.equal(save.disabled, false, 'the chart is saveable again');
+    click(save);
+    await settle();
+    const saved = useViewerStore.getState().dashboards[0].charts.at(-1)!;
+    assert.equal(saved.elementField, undefined);
+    assert.equal(saved.type, 'bar');
+  });
+
+  it('invalidates a selected bucket when a mutation changes its membership (#4833)', () => {
+    const spec = { id: 'field', title: 'Rating', source: 'elements' as const, type: 'bar' as const, dimension: 'Rating', measure: { agg: 'count' as const } };
+    const dataset = (ratings: readonly string[]): ChartDataset => ({
+      source: 'elements',
+      fingerprint: ratings.join(','),
+      columns: [{ id: 'Rating', label: 'Rating', kind: 'category' }],
+      rows: ratings.map((rating, index) => ({ ids: [index + 1], values: [rating] })),
+    });
+    const selected = aggregate(spec, dataset(['A', 'A', 'B']));
+    const identity = chartBucketIdentity(selected, { seriesIndex: 0, dataIndex: 0 });
+    assert.ok(identity);
+    const changed = aggregate(spec, dataset(['B', 'A', 'B']));
+    assert.equal(chartSelectionIsLive(changed, [identity], new Set([1, 2])), false);
+
+    const filtered = aggregate(spec, dataset(['A', 'A', 'B']), { slice: new Set([1]) });
+    const filteredIdentity = chartBucketIdentity(filtered, { seriesIndex: 0, dataIndex: 0 });
+    assert.ok(filteredIdentity);
+    assert.equal(chartSelectionIsLive(selected, [filteredIdentity], new Set([1])), true, 'removing another chart filter must not clear the click');
+
+    const otherSpec = { ...spec, topN: 1 };
+    const folded = aggregate(otherSpec, dataset(['A', 'A', 'A', 'B', 'C']));
+    const otherIdentity = chartBucketIdentity(folded, { seriesIndex: 0, dataIndex: 1 });
+    assert.ok(otherIdentity);
+    const unfolded = aggregate({ ...otherSpec, topN: 3 }, dataset(['A', 'A', 'A', 'B', 'C']));
+    assert.equal(chartSelectionIsLive(unfolded, [otherIdentity], new Set([4, 5])), true);
+    const expanded = aggregate(otherSpec, dataset(['A', 'A', 'A', 'B', 'C', 'C']));
+    assert.equal(chartSelectionIsLive(expanded, [otherIdentity], new Set([4, 5])), false);
+  });
+
+  it('resets an incompatible histogram and sum when its IFC field becomes categorical (#4833)', async () => {
+    const numeric: ElementFieldBinding = {
+      kind: 'property', psetName: 'Pset_WallCommon', propertyName: 'ReferenceLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE',
+    };
+    const categorical: ElementFieldBinding = {
+      kind: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', valueKind: 'category', dataType: 'IFCLABEL',
+    };
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    let property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    const numericId = [...property.options].find((option) => option.textContent === numeric.propertyName)!.value;
+    await act(async () => {
+      property.value = numericId;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'histogram');
+    const measure = ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!;
+    await act(async () => {
+      measure.value = `sum:${numericId}`;
+      measure.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.match(measure.value, /^sum:/);
+
+    property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    const categoryId = [...property.options].find((option) => option.textContent === categorical.propertyName)!.value;
+    await act(async () => {
+      property.value = categoryId;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'bar');
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!.value, 'count');
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    const saved = useViewerStore.getState().dashboards[0].charts.at(-1)!;
+    assert.deepEqual(saved.measure, { agg: 'count' });
+    assert.equal(saved.dimension, categoryId);
+  });
+
   it('a mount undone while the engine is still loading creates no chart, and the seed is idempotent — what StrictMode does in dev (browser finding)', async () => {
     const live: string[] = [];
     // The engine resolves only after React has mounted, unmounted and mounted again.
@@ -251,7 +566,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.isolatedEntities, null);
     assert.deepEqual(s.chartVisibilityOwned && { channel: s.chartVisibilityOwned.channel, ids: [...s.chartVisibilityOwned.ids].sort() }, { channel: 'ghost', ids: [GID(44), GID(45)] });
     assert.deepEqual([...(s.chartSlice ?? [])].sort(), [GID(44), GID(45)]);
-    assert.deepEqual(s.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
+    assert.deepEqual(s.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'IfcType', bucketKey: 'IfcDoor', isOther: false }]);
 
     // The source chart keeps the whole scope but marks the bucket selected;
     // the storey chart re-aggregates over the slice: one door per level.
@@ -1011,7 +1326,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     const state = useViewerStore.getState();
     assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42)]);
-    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule B', isOther: false }]);
   });
 
   it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {
@@ -1085,7 +1400,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     assert.deepEqual(barData(charts[1].options.at(-1)!).map(([name, value]) => [name, value]), [['Rule B', 3], ['Other', 2]]);
     const state = useViewerStore.getState();
-    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: 'Rule A', isOther: false }]);
     assert.equal(state.chartSliceBuckets?.[0]?.color, clickedColor, 'the click-time colour survives folding into Other');
     assert.deepEqual([...state.selectedEntityIds].sort(), [GID(41), GID(42), GID(44)]);
     const expected = [
@@ -1200,7 +1515,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
     const state = useViewerStore.getState();
-    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
+    assert.deepEqual(state.chartSliceBuckets?.map(({ color: _color, ids: _ids, dataFingerprint: _fingerprint, ...identity }) => identity), [{ seriesKey: 'Rule', bucketKey: '__other__', isOther: true }]);
     const expected = [
       Number.parseInt(gray.slice(1, 3), 16) / 255,
       Number.parseInt(gray.slice(3, 5), 16) / 255,

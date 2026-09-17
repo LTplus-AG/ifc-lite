@@ -21,6 +21,7 @@ import type { StateCreator } from 'zustand';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { CameraCallbacks, CameraViewpoint, EntityRef, SectionPlane } from '../types.js';
 import { entityRefToString } from '../types.js';
+import { activeSectionPlane } from '../section-active.js';
 import type { VisibilityOwnership } from '../../lib/visibility/ownership.js';
 import {
   basketAddIsolation,
@@ -187,12 +188,11 @@ function createNextViewName(views: BasketView[]): string {
 }
 
 function captureSectionSnapshot(state: PinboardCrossSliceState): BasketSectionSnapshot | null {
-  if (state.activeTool !== 'section' || !state.sectionPlane.enabled) {
-    return null;
-  }
+  const plane = activeSectionPlane(state);
+  if (!plane) return null;
 
   return {
-    plane: { ...state.sectionPlane },
+    plane: { ...plane },
     // Basket views restore 3D section state only. 2D drawings are derived, mutable,
     // and global in store state; persisting them per-view causes cross-view leakage.
     drawing2D: null,

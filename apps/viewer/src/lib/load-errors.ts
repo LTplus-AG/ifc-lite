@@ -28,10 +28,17 @@
 import { isCancelledError, isNetworkUnavailableError } from './cancelled-and-network-errors.js';
 import { isFileNotFoundMessage } from './file-not-found-errors.js';
 import { isWebglUnavailable } from './webgl-unavailable.js';
+import { isWorkerScriptSkewMessage } from '@ifc-lite/geometry';
 
 /** Stable, analytics-friendly classification of a load failure. */
 export type LoadErrorKind =
-  /** The WebAssembly geometry engine binary failed to download/compile. */
+  /**
+   * A file the geometry engine needs failed to download: the WebAssembly binary
+   * (404 / wrong MIME / non-OK status), or a worker script that never loaded
+   * (#4886). Both mean the tab's build is gone from the host — typically a tab
+   * left open past Vercel Skew Protection's max age — or a proxy blocked it.
+   * A reload fixes it; a lower tessellation tier cannot.
+   */
   | 'wasm_engine_load'
   /** Out-of-memory / WASM heap exhaustion during processing. */
   | 'out_of_memory'
@@ -269,6 +276,10 @@ export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKin
   // every arm of it is anchored or structural (see ./webgl-unavailable.ts).
   if (isWebglUnavailable(err, message)) return 'webgl_unavailable';
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
+  // BEFORE the worker-crash bucket (#4886): "Geometry worker failed: worker
+  // script failed to load" matched it, so a stale tab was told the model was
+  // too big for its memory and burned a lowest-tier retry that fails the same way.
+  if (isWorkerScriptSkewMessage(message)) return 'wasm_engine_load';
   // Explicit memory-exhaustion signals win over the worker-crash bucket so a
   // worker that died with a clear OOM message is grouped as out_of_memory.
   if (isOutOfMemoryError(message)) return 'out_of_memory';
@@ -315,5 +326,16 @@ export function errorCaptureProps(err: unknown, context?: unknown): Record<strin
   };
   const nav = (globalThis as { navigator?: { onLine?: unknown } }).navigator;
   if (typeof nav?.onLine === 'boolean') props.online = nav.onLine;
+  // How old the running bundle is (#4886): a stale-deploy failure on a tab
+  // older than the host's skew window is expected; on a fresh one it is not.
+  const age = bundleAgeHours(typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : undefined, Date.now());
+  if (age !== undefined) props.bundle_age_hours = age;
   return props;
+}
+
+/** Whole hours since `buildDate` (ISO), or undefined when unknown or in the future. */
+export function bundleAgeHours(buildDate: string | undefined, now: number): number | undefined {
+  const built = buildDate ? Date.parse(buildDate) : NaN;
+  if (!Number.isFinite(built) || now < built) return undefined;
+  return Math.floor((now - built) / 3_600_000);
 }

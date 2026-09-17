@@ -55,6 +55,11 @@
         try {
           document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Lax';
           document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Strict; Secure';
+          // This build's asset-scoped pin (#4886), which outranks the one above
+          // for its own assets: /assets/<deploymentId>/, read off the entry script.
+          var entry = document.querySelector('script[type="module"][src*="/assets/dpl_"]');
+          var scoped = entry && /\/assets\/dpl_[A-Za-z0-9]+\//.exec(entry.getAttribute('src') || '');
+          if (scoped) document.cookie = '__vdpl=; path=' + scoped[0] + '; Max-Age=0; SameSite=Lax; Secure';
           var pd = parentDomain();
           if (pd) document.cookie = '__vdpl=; path=/; domain=.' + pd + '; Max-Age=0; SameSite=Lax; Secure';
         } catch (e) { warn('could not clear __vdpl pin: ' + e); }

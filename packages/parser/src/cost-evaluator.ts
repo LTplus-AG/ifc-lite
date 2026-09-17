@@ -222,10 +222,12 @@ function evaluateValueGraph(root: number, context: Context, quantities: Quantity
       memo.set(frame.id, { invalid: true });
       continue;
     }
-    const categoryTotal = value.AppliedValue === undefined &&
-      value.Components === undefined && value.Category !== undefined;
-    const base = categoryTotal
-      ? combineCategoryValues(value.Category ?? '', categoryTotals, frame.id, session,
+    // An explicit empty Category ('', kept distinct from $ since #4881) names no
+    // category, so it is not a category total: it falls through to typedValue.
+    const category = value.AppliedValue === undefined && value.Components === undefined
+      ? value.Category || undefined : undefined;
+    const base = category !== undefined
+      ? combineCategoryValues(category, categoryTotals, frame.id, session,
         () => diagnostic(context, 'INVALID_LIST', `IfcAppliedValue graph on #${session.owner} exceeds the evaluation budget`, session.owner),
         (Code, Message, id, Severity) => diagnostic(context, Code, Message, id, Severity))
       : value.Components === undefined

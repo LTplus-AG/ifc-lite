@@ -18,3 +18,37 @@ drawing. It deliberately does not cover the drawing panel, toolbar, tours,
 number formatting, or locale persistence. Locales registered in tests exercise
 fallback and live catalogue replacement; they are not languages shipped by
 the viewer.
+
+## Adding a locale
+
+Add one file, `locales/<tag>.ts`, named by its BCP 47 tag (`de.ts`,
+`pt-BR.ts`), that default-exports a partial catalogue:
+
+```ts
+import type { Catalogue } from '../registry';
+
+export default {
+  'ribbon.tab.home': 'Start',
+  'appearanceAssignmentList.summaryProducts': { one: '{count} Objekt', other: '{count} Objekte' },
+} satisfies Catalogue;
+```
+
+No viewer code changes. `locales.boot.ts` discovers the file as a lazy chunk,
+and the viewer picks a locale from `?lang=<tag>` (remembered in
+`localStorage` under `ifc-lite:locale`; `?lang=en` switches back), then the
+remembered choice, then the browser's languages (`de-CH` matches `de`), then
+English. `<html lang>` follows the active locale.
+
+`catalogue-problems.test.ts` loads every file in `locales/` and fails on keys
+that no longer exist, dropped or renamed placeholders, and plural messages
+without `other`; the same problems are logged in the browser console when the
+locale loads. Untranslated keys fall back to English one by one, so a partial
+locale is valid.
+
+## Coverage
+
+The ribbon toolbar catalogue covers the default toolbar's own chrome: tab
+strip, group names, button labels, tooltips and aria-labels on all six tabs,
+and the ribbon switch notice. Labels owned by shared registries (camera
+commands, exporters, extension panels), the classic `MainToolbar`, and the
+rest of the viewer's panels and dialogs are not converted yet.

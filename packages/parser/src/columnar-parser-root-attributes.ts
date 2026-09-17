@@ -14,6 +14,7 @@
 
 import { EntityExtractor } from './entity-extractor.js';
 import { getAttributeNames, getAttributeNamesAcrossSchemas } from './ifc-schema.js';
+import { getSchemaRegistryForVersion, type SchemaRegistry, type SchemaVersionWithRegistry } from './generated/schema-registry-by-version.js';
 import { SKIP_DISPLAY_ATTRS } from './columnar-parser-indexes.js';
 import type { EntityRef } from './types.js';
 import type { IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
@@ -162,11 +163,31 @@ export function extractAllEntityAttributes(
  * Returns named raw attribute pairs for an entity, filtered to display-relevant attributes.
  * Skips structural/reference attributes using the IFC schema. Used by query layer for coercion.
  */
+/** STEP type names are UPPERCASE and registry keys are PascalCase; index each registry once instead of scanning it per entity. */
+const REGISTRY_BY_UPPER = new WeakMap<SchemaRegistry, Map<string, SchemaRegistry['entities'][string]>>();
+function registryEntity(registry: SchemaRegistry, typeName: string): SchemaRegistry['entities'][string] | undefined {
+    const direct = registry.entities[typeName];
+    if (direct) return direct;
+    let byUpper = REGISTRY_BY_UPPER.get(registry);
+    if (!byUpper) {
+        byUpper = new Map(Object.values(registry.entities).map((candidate) => [candidate.name.toUpperCase(), candidate]));
+        REGISTRY_BY_UPPER.set(registry, byUpper);
+    }
+    return byUpper.get(typeName.toUpperCase());
+}
+
 export function getRawNamedAttributes(
-    entity: IfcEntity
+    entity: IfcEntity,
+    schemaVersion?: SchemaVersionWithRegistry,
 ): Array<{ name: string; raw: IfcAttributeValue }> {
     const attrs = entity.attributes || [];
-    const attrNames = getAttributeNames(entity.type);
+    // This reader is shared by EntityNode.allAttributes() and must recognize
+    // IFC2X3-only and IFC4X3-only classes as well as the IFC4 codegen pin.
+    // The schema-union helper preserves the pinned result when available and
+    // supplies the missing names for the other bundled schemas.
+    const exact = schemaVersion ? registryEntity(getSchemaRegistryForVersion(schemaVersion), entity.type) : undefined;
+    const declared = exact?.allAttributes?.map((attribute) => attribute.name);
+    const attrNames = declared && declared.length > 0 ? declared : getAttributeNamesAcrossSchemas(entity.type);
 
     const result: Array<{ name: string; raw: IfcAttributeValue }> = [];
     const len = Math.min(attrs.length, attrNames.length);
@@ -270,4 +291,3 @@ export function pickLongName(entity: IfcEntity): string {
     const raw = (entity.attributes || [])[idx.longName];
     return typeof raw === 'string' ? raw : '';
 }
-

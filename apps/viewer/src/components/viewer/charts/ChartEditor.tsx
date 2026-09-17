@@ -8,8 +8,10 @@
  * selects, like the clash panel's — nothing here needs a portal.
  */
 import { useState } from 'react';
-import type { ChartDataset, ChartDatasetColumn, ChartSource, ChartSpec, ChartType } from '@ifc-lite/charts';
+import { elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
+import { ElementFieldPicker } from './ElementFieldPicker';
+import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
 
 const TYPE_LABELS: Record<ChartType, string> = {
   bar: 'Bar',
@@ -34,6 +36,22 @@ export interface ChartEditorProps {
   datasets: Record<ChartSource, ChartDataset>;
   onSave: (spec: ChartSpec) => void;
   onCancel: () => void;
+  elementFieldCatalog: ElementFieldCatalog;
+  elementFieldCatalogLoading: boolean;
+}
+
+/**
+ * The columns the draft can bind to. Other charts' IFC field columns are
+ * hidden; the draft's own field is a synthesized column, NOT a column of the
+ * shared dataset: an unsaved edit must never rebuild the dashboard's
+ * datasets, because every card re-aggregates over them and reconciles its
+ * live selection against the result (#4833). The resolved display unit is
+ * the card's concern once saved; here the binding's own unit labels the sum.
+ */
+export function editorColumns(dataset: ChartDataset, draft: ChartSpec): ChartDatasetColumn[] {
+  if (draft.source !== 'elements') return dataset.columns;
+  const builtIn = dataset.columns.filter((column) => !column.id.startsWith('ifc-field:'));
+  return draft.elementField ? [...builtIn, elementFieldColumn(draft.elementField)] : builtIn;
 }
 
 /** The columns a chart type can bucket by. */
@@ -43,12 +61,12 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
   return columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
 }
 
-export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorProps) {
+export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading }: ChartEditorProps) {
   const [draft, setDraft] = useState<ChartSpec>(spec);
-  const columns = datasets[draft.source].columns;
+  const columns = editorColumns(datasets[draft.source], draft);
   const rowCount = datasets[draft.source].rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
-  const categoryColumns = columns.filter((c) => c.kind === 'category');
+  const categoryColumns = columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
   const dims = dimensionColumns(draft.type, columns);
   const dimensionOk = dims.some((c) => c.id === draft.dimension);
   const measureOk = draft.measure.agg === 'count' || numberColumns.some((c) => c.id === draft.measure.column);
@@ -58,7 +76,36 @@ export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorPro
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
     const allowed = dimensionColumns(draft.type, cols);
-    setDraft({ ...draft, source, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+    setDraft({ ...draft, source, elementField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+  };
+
+  const setElementField = (elementField: ElementFieldBinding | undefined): void => {
+    const oldId = draft.elementField ? elementFieldColumnId(draft.elementField) : undefined;
+    const nextId = elementField ? elementFieldColumnId(elementField) : undefined;
+    const next: ChartSpec = { ...draft, elementField };
+    if (nextId && elementField?.valueKind === 'number') {
+      next.type = 'histogram';
+      next.dimension = nextId;
+      next.stackBy = undefined;
+      next.measure = { agg: 'count' };
+    } else if (nextId) {
+      if (next.type === 'histogram' || next.type === 'timeline') next.type = 'bar';
+      next.dimension = nextId;
+      next.stackBy = undefined;
+      if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
+    }
+    else {
+      // Back to the built-in columns: a histogram over the cleared numeric
+      // field has no number column left, so it would sit unsaveable (#4833).
+      if (next.type === 'histogram' || next.type === 'timeline') next.type = 'bar';
+      const columns = editorColumns(datasets.elements, next);
+      if (!dimensionColumns(next.type, columns).some((column) => column.id === next.dimension)) {
+        next.dimension = columns.find((column) => column.kind === 'category')?.id ?? '';
+      }
+      if (oldId && next.stackBy === oldId) next.stackBy = undefined;
+      if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
+    }
+    setDraft(next);
   };
 
   const setType = (type: ChartType): void => {
@@ -91,6 +138,9 @@ export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorPro
             {(Object.keys(SOURCE_LABELS) as ChartSource[]).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
           </select>
         </label>
+        {draft.source === 'elements' && (
+          <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
+        )}
         <label className="flex flex-col gap-0.5">
           <span className="text-muted-foreground">Chart</span>
           <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label="Chart type">

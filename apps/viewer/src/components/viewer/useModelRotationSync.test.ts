@@ -175,6 +175,20 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
     assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'inst').translation, [2.5, -1.25, 0]);
   });
 
+  it('refuses a manifest heading for every model the rotate command refuses, not only instanced ones', () => {
+    const cloud = { ...fixtureModel('scan'), pointCloudHandleId: 7 } as unknown as FederatedModel;
+    withInstanced('loading', 'streaming');
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['scan', cloud]]) });
+    const state = useViewerStore.getState();
+    for (const [id, message] of [['scan', /Pointclouds cannot be rotated/], ['loading', /finish loading/]] as const) {
+      const manifest = { version: 1 as const, units: 'm' as const, axes: 'engineering-z-up' as const, frameKey: placementFrameKey(state),
+        models: [{ instanceId: id, sourceContentHash: null, translation: [0, 0, 0] as Translation,
+          rotation: { angle: ANGLE, pivot: [...PIVOT] as Translation }, locked: false }] };
+      assert.throws(() => useViewerStore.getState().importModelPlacements(manifest, new Map([[id, id]])), message, id);
+      assert.equal(placementFor(useViewerStore.getState().modelPlacement, id).rotation.angle, 0, id);
+    }
+  });
+
   it('a re-align never snapshots a rotated model, and re-applies each heading exactly once', async () => {
     // Two models so the anchor's `updateModel` fires the live subscription
     // BEFORE the second model is snapshotted — the window a mid-pass reconcile

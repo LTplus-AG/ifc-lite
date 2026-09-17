@@ -9,7 +9,7 @@ import { beginPlacement, cancelPlacement, commitPlacement, emptyPlacementState, 
   type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
 import type { ModelRotation } from '../../lib/model-placement/rotation.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
-import { rotationRefusal, INSTANCED_ROTATION_REFUSAL, modelHasInstancedGeometry } from '../../lib/model-placement/rotation-refusal.js';
+import { rotationRefusal } from '../../lib/model-placement/rotation-refusal.js';
 import { constrainTranslation, finiteTranslation, subtractTranslation,
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
 import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
@@ -44,9 +44,10 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     const incoming = resolvePlacementManifest(manifest, state.models, placementFrameKey(state), bindings);
     // Refused like an unlocked-model conflict: atomically, with the reason shown
     // by the import panel, rather than silently dropping the heading.
-    if ([...incoming].some(([id, placement]) => placement.rotation.angle !== 0 && modelHasInstancedGeometry(state, id))) {
-      throw new Error(INSTANCED_ROTATION_REFUSAL);
-    }
+    // The same refusal the rotate command applies, so no path can record a
+    // heading the bake would only partly carry out.
+    const refusal = rotationRefusal(state, [...incoming].filter(([, placement]) => placement.rotation.angle !== 0).map(([id]) => id));
+    if (refusal) throw new Error(refusal);
     return { modelPlacement: importPlacements(state.modelPlacement, incoming) };
   }),
   openReposition: (modelIds) => {

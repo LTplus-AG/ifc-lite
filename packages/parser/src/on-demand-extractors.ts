@@ -127,8 +127,8 @@ export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     psetIds: number[]
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> }> {
-    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> }> = [];
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> {
+    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> = [];
 
     for (const psetId of psetIds) {
         const psetRef = store.entityIndex.byId.get(psetId) ?? store.deferredEntityIndex?.get(psetId);
@@ -145,7 +145,7 @@ export function extractPsetsFromIds(
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''; // not `PropertySet #<id>` (#3530)
         const hasProperties = psetAttrs[4];
 
-        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string }> = [];
+        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> = [];
 
         if (Array.isArray(hasProperties)) {
             for (const propRef of hasProperties) {
@@ -162,7 +162,7 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
-                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string } = {
+                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number } = {
                     name: propName,
                     type: parsed.type,
                     value: parsed.value,
@@ -170,7 +170,10 @@ export function extractPsetsFromIds(
                 if (parsed.values) entry.values = parsed.values;
                 if (parsed.dataType) entry.dataType = parsed.dataType;
                 const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs);
-                if (unit) entry.unit = unit;
+                if (unit) {
+                    entry.unit = unit.symbol;
+                    if (unit.siScale !== undefined) entry.unitSiScale = unit.siScale;
+                }
                 properties.push(entry);
             }
         }

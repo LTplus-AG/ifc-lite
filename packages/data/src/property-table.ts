@@ -26,7 +26,14 @@ export interface Property {
    *  list / table) — IDS facet checks pass when ANY candidate matches
    *  (issue #1766). Absent for single values. */
   values?: string[];
+  /** Symbol of the property's own explicit `Unit`, when it declares one; an
+   *  unresolvable unit reference is reported as `#<id>` (#4833). Absent when
+   *  the value is in the project's unit assignment. */
   unit?: string;
+  /** Scale of the explicit `unit` to its SI base (`mm` → `1e-3`), present
+   *  only when that unit resolved. Absent with `unit` set means "declared in
+   *  a unit we could not read" — not convertible, not project-unit either. */
+  unitSiScale?: number;
   /** Raw IFC measure value type of this property (e.g. "IFCVOLUMETRICFLOWRATEMEASURE"),
    *  used to resolve the file's declared display unit (issue #1573). Absent for
    *  properties whose value type carries no measure semantics (labels, enums, ...). */

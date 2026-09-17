@@ -245,6 +245,22 @@ describe('DataSlice', () => {
       assert.strictEqual(state.geometryResult?.totalTriangles, 3, 'an instanced-only prune leaves mesh totals alone');
     });
 
+    // An authored element (addElementMeshes) carries per-vertex entityIds that
+    // name only its own id; wall split only accepts such walls, so its source
+    // must be pruned. A mesh whose entityIds name other entities stays.
+    it('prunes an authored mesh whose entityIds hold only its own id, and keeps a colour-merged one', () => {
+      const authored = { ...createSizedMesh(5, 4, 2), entityIds: new Uint32Array(4).fill(5) };
+      const merged = { ...createSizedMesh(6, 3, 1), entityIds: new Uint32Array([6, 6, 8]) };
+      state.appendGeometryBatch([authored, merged, createSizedMesh(7, 5, 3)] as any);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6);
+
+      state.pruneGeometryMeshes(new Set([5, 6]));
+
+      assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [6, 7]);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 4); // 1+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 8); // 3+5
+    });
+
     it('is a no-op when there is no geometryResult yet', () => {
       assert.doesNotThrow(() => state.pruneGeometryMeshes(new Set([1])));
       assert.strictEqual(state.geometryResult, null);

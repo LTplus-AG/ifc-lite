@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryResult } from '@ifc-lite/geometry';
+import { hostsOtherEntities } from '@ifc-lite/renderer';
 import { meshGeometryCounts } from '@/lib/released-mesh-provenance';
 import type { FederatedModel } from '../types.js';
 
@@ -29,10 +30,12 @@ import type { FederatedModel } from '../types.js';
  * for authored meshes), and offset ranges are disjoint, so this prunes EVERY
  * geometry that holds a queued id: the active mirror and each model's own.
  *
- * Renderer parity: `Scene.removeMeshesForEntity` keeps a colour-merged mesh
- * (non-empty `entityIds`, which hosts other entities too) and tombstones an
- * instanced entity, so this keeps those meshes and drops the id from the
- * instanced-only metadata maps (hashes, AABBs, volumes) as well.
+ * Renderer parity: `Scene.removeMeshesForEntity` (packages/renderer/src/scene.ts)
+ * keeps a mesh only when `hostsOtherEntities` says its `entityIds` name OTHER
+ * entities, and tombstones an instanced entity. This uses the same predicate, so
+ * an authored element's mesh (`entityIds` holding only its own id) is pruned,
+ * a genuinely colour-merged one is kept, and the id also leaves the
+ * instanced-only metadata maps (hashes, AABBs, volumes).
  *
  * Bounded mode:`releaseGeometryMemory` empties a mesh's buffers but keeps the
  * mesh and its share of the totals, so counts come from `meshGeometryCounts`,
@@ -70,7 +73,7 @@ function pruneGeometry(geometry: GeometryResult, ids: Set<number>): GeometryResu
   let removedVertices = 0;
   for (let i = 0; i < meshes.length; i++) {
     const mesh = meshes[i];
-    if (ids.has(mesh.expressId) && !(mesh.entityIds && mesh.entityIds.length > 0)) {
+    if (ids.has(mesh.expressId) && !hostsOtherEntities(mesh)) {
       const counts = meshGeometryCounts(mesh);
       removedTriangles += counts.triangles;
       removedVertices += counts.vertices;

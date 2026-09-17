@@ -24,7 +24,17 @@
  * every test stubbed it. The stub was correct and the real predicate
  * (`existsSync`) was not, so nothing here could fail. Those cases are now
  * driven through the real classifier with a synthetic `inspect`.
+ *
+ * The build-pipeline block is the same gap one level up, also from that
+ * review: every assertion here calls the two functions directly, so dropping
+ * either step from the `build` script leaves this file green while the
+ * published `dist` goes back to naming a file the tarball does not carry.
+ * It reads `package.json` as configuration data, not as source text.
  */
+
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -186,5 +196,41 @@ describe('#4895 — what counts as shipped (review of #4900)', () => {
 
   it('resolves relative to the file holding the specifier, not to dist', () => {
     expect(verdictFor('../parser.worker.js', `${DIST}/subdir`)).toBe('shipped');
+  });
+});
+
+describe('#4895 — the build schedules both steps (review of #4900)', () => {
+  const manifest = JSON.parse(
+    readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'),
+      'utf8',
+    ),
+  ) as { scripts?: Record<string, string> };
+
+  const steps = String(manifest.scripts?.build ?? '')
+    .split('&&')
+    .map((step) => step.trim());
+
+  const indexOfStep = (script: string) =>
+    // @source-text-assertion-ok the read file is package.json, configuration rather than a source file, and the build pipeline IS the subject: nothing else can show that the two steps are still scheduled
+    steps.findIndex((step) => step.includes(`scripts/${script}`));
+
+  it('emits before it rewrites', () => {
+    // @source-text-assertion-ok same subject as above: the assertion is on the build pipeline read from package.json, not on any source file's text
+    expect(steps[0]).toContain('tsc');
+  });
+
+  it('runs the rewrite, or dist keeps the .ts specifier tsc copied in', () => {
+    expect(indexOfStep('rewrite-worker-urls.mjs')).toBeGreaterThan(0);
+  });
+
+  it('runs the verifier, or a rewrite that did nothing still ships', () => {
+    expect(indexOfStep('verify-dist-worker-urls.mjs')).toBeGreaterThan(0);
+  });
+
+  it('verifies after rewriting, since the other order can only fail', () => {
+    expect(indexOfStep('verify-dist-worker-urls.mjs')).toBeGreaterThan(
+      indexOfStep('rewrite-worker-urls.mjs'),
+    );
   });
 });

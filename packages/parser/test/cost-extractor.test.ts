@@ -198,6 +198,29 @@ describe('extractCostOnDemand', () => {
     expect(item.productGlobalIds).toEqual(['wall-A-gid', 'wall-B-gid']);
   });
 
+  // #4877: IfcRelAssignsToControl also legitimately binds tasks, resources
+  // and actors to a control (a task assigned to a cost item is exactly this
+  // relationship, with the cost item as RelatingControl). Both a product
+  // (IfcWall) and a task (IfcTask) are assigned here to prove the branch
+  // discriminates between them — a product-only fixture (the test above)
+  // passes identically whether or not the branch filters by type, so it
+  // cannot tell the two behaviours apart.
+  it('excludes a task assigned via IfcRelAssignsToControl from productExpressIds/productGlobalIds', () => {
+    const lines = [
+      "#1=IFCWALL('wall-gid',$,'Wall A',$,$,$,$,$,$);",
+      "#2=IFCTASK('task-gid',$,'Excavate',$,$,$,$,$,$,$,.NOTDEFINED.,$,$);",
+      "#10=IFCCOSTITEM('ci-gid',$,'Excavation','desc','obj','ID1',.USERDEFINED.,$,$);",
+      "#20=IFCRELASSIGNSTOCONTROL('rel-gid',$,$,$,(#1,#2),$,#10);",
+    ];
+    const store = buildStoreFromStep(lines, {
+      globalIdByExpressId: new Map([[1, 'wall-gid'], [2, 'task-gid']]),
+    });
+    const result = extractCostOnDemand(store);
+    const item = result.costItems[0];
+    expect(item.productExpressIds).toEqual([1]);
+    expect(item.productGlobalIds).toEqual(['wall-gid']);
+  });
+
   describe('UnitBasis (rate vs. flat total)', () => {
     // Shared unit chain: "hour" = an IfcConversionBasedUnit whose
     // ConversionFactor (#51) is 3600 IFCSIUNIT SECONDs (#50) — same fixture

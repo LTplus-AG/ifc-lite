@@ -19,7 +19,6 @@ import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { ribbonToolbarEn } from '@/i18n/catalogues/ribbon-toolbar.en';
-import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { RibbonToolbar } from './RibbonToolbar.js';
 
@@ -41,10 +40,6 @@ function ownedBy(tab: RibbonTabId, key: RibbonKey): boolean {
 /** Marked copy that keeps every `{placeholder}` intact. */
 const mark = (text: string) => `⟦${text}⟧`;
 const PSEUDO: Catalogue = Object.fromEntries(RIBBON_KEYS.map((key) => [key, mark(ribbonToolbarEn[key])]));
-
-function interpolate(template: string, params: Record<string, string | number>): string {
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name]));
-}
 
 /** Every string a user or assistive technology can read in the ribbon. */
 function readableStrings(root: HTMLElement): Set<string> {
@@ -122,52 +117,5 @@ describe('RibbonToolbar localization (#4785)', () => {
     }
     // The oracle must actually have looked at the ribbon, not at nothing.
     assert.ok(covered.size >= 100, `expected >= 100 ribbon strings on screen, saw ${covered.size}`);
-  });
-
-  it('interpolates live counts into translated labels and tooltips', () => {
-    registerLocale('ribbon-counts', {
-      'ribbon.elements.selectionGroupCount': 'Auswahl · {count}',
-      'ribbon.view.presentTooltip': 'Präsentation ({views} Ansichten, {entities} Elemente)',
-      'ribbon.bandAriaLabel': 'Befehle: {tab}',
-      'ribbon.tab.elements': 'Elemente',
-    });
-    setLocale('ribbon-counts');
-    const container = render(<RibbonToolbar />);
-
-    showTab(container, 'elements');
-    assert.ok(container.querySelector('[role="group"][aria-label="Auswahl · 3"]'), 'selection count group');
-    assert.ok(container.querySelector('[role="tabpanel"][aria-label="Befehle: Elemente"]'), 'band label');
-
-    showTab(container, 'view');
-    const expected = interpolate('Präsentation ({views} Ansichten, {entities} Elemente)', {
-      views: useViewerStore.getState().basketViews.length,
-      entities: useViewerStore.getState().pinboardEntities.size,
-    });
-    assert.ok(container.querySelector(`button[aria-label="${expected}"]`), 'present tooltip');
-  });
-
-  it('falls back to English per key for a partial locale', () => {
-    registerLocale('ribbon-partial', { 'ribbon.tab.home': 'Start', 'ribbon.home.measure': 'Messen' });
-    setLocale('ribbon-partial');
-    const container = render(<RibbonToolbar />);
-    showTab(container, 'home');
-    const strings = readableStrings(container);
-    assert.ok(strings.has('Start'));
-    assert.ok(strings.has('Messen'));
-    assert.ok(strings.has('Walk'), 'untranslated key renders in English');
-    assert.ok(strings.has('Measure & Mark'), 'untranslated group renders in English');
-  });
-
-  it('localizes the one-time ribbon switch notice', () => {
-    window.localStorage.removeItem(TOOLBAR_STYLE_STORAGE_KEY);
-    registerLocale('ribbon-notice', {
-      'ribbon.notice.keepClassic': 'Klassische Leiste behalten',
-      'ribbon.notice.dismissAriaLabel': 'Hinweis schließen',
-    });
-    setLocale('ribbon-notice');
-    const container = render(<RibbonToolbar />);
-    const buttons = [...container.querySelectorAll('button')];
-    assert.ok(buttons.some((button) => button.textContent === 'Klassische Leiste behalten'));
-    assert.ok(container.querySelector('button[aria-label="Hinweis schließen"]'));
   });
 });

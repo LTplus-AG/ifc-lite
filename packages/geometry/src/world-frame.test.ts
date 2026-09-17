@@ -112,6 +112,15 @@ describe('federationFrameInfo', () => {
     expect(federationFrameInfo([models[0], { ...models[1], loadState: 'complete' }])).toBe(anchor);
   });
 
+  it('does not let a failed load define the frame either', () => {
+    const raw = info({});
+    const models = [
+      { loadedAt: 1, geometryResult: { coordinateInfo: raw } },
+      { loadedAt: 0, loadState: 'error', geometryResult: { coordinateInfo: anchor } },
+    ];
+    expect(federationFrameInfo(models)).toBe(raw);
+  });
+
   it('falls back to the earliest raw model when no model is anchored', () => {
     const first = info({});
     const second = info({});

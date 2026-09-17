@@ -2274,6 +2274,9 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+      # Seconds, no Python: names the page and the fix before the full build.
+      - name: Every docs page is in the nav or declared not_in_nav
+        run: node scripts/docs/check-mkdocs-nav.mjs
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'

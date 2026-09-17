@@ -35,9 +35,12 @@ export function navPages(text) {
   const pages = new Set();
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i];
+    if (/^\s*(?:#.*)?$/.test(line)) continue; // blank or comment, even at column zero
     if (/^\S/.test(line)) break; // next top-level key
-    const m = /^\s*-\s*(?:[^:]*:\s*)?([^\s:]+\.md)\s*$/.exec(line);
-    if (m) pages.add(m[1]);
+    // The page path is the value after the LAST `: ` (a title may itself contain
+    // colons, quoted or not), or the whole item for an untitled entry.
+    const m = /^\s*-\s*(?:.*:\s+)?["']?([^\s:"']+\.md)["']?\s*$/.exec(line);
+    if (m) pages.add(m[1].replace(/^\/+/, ''));
   }
   return pages;
 }
@@ -50,7 +53,7 @@ export function notInNavPatterns(text) {
   const patterns = [];
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i];
-    if (line.trim() === '') continue;
+    if (line.trim() === '' || /^\s*#/.test(line)) continue;
     if (!/^\s+/.test(line)) break;
     patterns.push(line.trim());
   }
@@ -59,12 +62,14 @@ export function notInNavPatterns(text) {
 
 /** @param {string} page docs-relative, forward slashes @param {string[]} patterns */
 export function isExcluded(page, patterns) {
-  return patterns.some((pattern) => {
+  return patterns.some((raw) => {
+    // A leading slash anchors a gitignore-style pattern at the docs root.
+    const pattern = raw.replace(/^\/+/, '');
     if (pattern.endsWith('/**') && !pattern.slice(0, -3).includes('*')) {
       return page.startsWith(`${pattern.slice(0, -3)}/`);
     }
     if (!pattern.includes('*')) return page === pattern;
-    throw new Error(`not_in_nav pattern "${pattern}" has a shape this check does not understand; extend check-mkdocs-nav.mjs`);
+    throw new Error(`not_in_nav pattern "${raw}" has a shape this check does not understand; extend check-mkdocs-nav.mjs`);
   });
 }
 

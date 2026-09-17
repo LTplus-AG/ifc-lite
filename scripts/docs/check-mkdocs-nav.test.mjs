@@ -4,19 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-import { isExcluded, navPages, notInNavPatterns, omittedPages } from './check-mkdocs-nav.mjs';
-
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-test('the REAL docs tree has no page mkdocs --strict would reject as omitted from nav (#4912)', () => {
-  // #4875 added docs/guide/cost-panel.md without a nav entry; the strict site
-  // build in the ifclite.dev deploy then failed and froze the nightly
-  // production advance. This is that failure, caught in Node tests.
-  assert.deepEqual(omittedPages(REPO_ROOT), []);
-});
+import { isExcluded, navPages, notInNavPatterns } from './check-mkdocs-nav.mjs';
 
 test('reads nav page paths, including titled and untitled entries', () => {
   const pages = navPages(`site_name: x
@@ -25,22 +14,28 @@ nav:
   - Guide:
     - Cost Panel: guide/cost-panel.md
     - guide/untitled.md
+# a column-zero comment between entries does not end the nav
+    - "IFC 5D: cost schedules": guide/cost-schedules.md
+    - Parsing: Advanced: guide/parsing-advanced.md
   - External: https://example.com/page.md
 theme:
   name: material
 `);
-  assert.deepEqual([...pages].sort(), ['guide/cost-panel.md', 'guide/untitled.md', 'index.md']);
+  assert.deepEqual([...pages].sort(), [
+    'guide/cost-panel.md', 'guide/cost-schedules.md', 'guide/parsing-advanced.md', 'guide/untitled.md', 'index.md',
+  ]);
 });
 
 test('reads not_in_nav patterns and applies directory and exact shapes', () => {
   const patterns = notInNavPatterns(`not_in_nav: |
   architecture/evidence/**
-  research/note.md
+  # comments are not patterns
+  /research/note.md
 
 theme:
   name: material
 `);
-  assert.deepEqual(patterns, ['architecture/evidence/**', 'research/note.md']);
+  assert.deepEqual(patterns, ['architecture/evidence/**', '/research/note.md']);
   assert.equal(isExcluded('architecture/evidence/a/README.md', patterns), true);
   assert.equal(isExcluded('architecture/evidence.md', patterns), false);
   assert.equal(isExcluded('research/note.md', patterns), true);

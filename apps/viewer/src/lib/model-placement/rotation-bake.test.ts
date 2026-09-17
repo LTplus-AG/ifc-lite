@@ -126,6 +126,26 @@ describe('ModelRotationBaker', () => {
     [...value.meshes[index].positions, ...(value.meshes[index].normals ?? []),
       ...(value.meshes[index].origin ?? [])];
 
+  it('hands an authoring path a baked mesh in its unrotated frame, so a copy is turned once (#4873)', () => {
+    const baker = new ModelRotationBaker(), value = geometry();
+    const pristine = meshSnapshot(value, 0);
+    baker.reconcile(targets(value, ROTATION));
+    const source = value.meshes[0], baked = meshSnapshot(value, 0);
+    const view = baker.inModelFrame(source);
+    assert.deepEqual([...view.positions, ...(view.normals ?? []), ...(view.origin ?? [])], pristine);
+    // Copies: the bake rewrites buffers in place, and must not reach the baseline through a clone.
+    assert.notEqual(view.positions, source.positions);
+    assert.notEqual(view.normals, source.normals);
+    // Appended the way duplicate appends it, the copy lands exactly on its source.
+    value.meshes.push({ ...view, expressId: 7 });
+    assert.deepEqual(baker.reconcile(targets({ ...value, meshes: value.meshes } as Geometry, ROTATION)), ['m']);
+    assert.deepEqual(meshSnapshot(value, 1), baked, 'the copy was turned twice');
+    // Never baked: the live bytes already are the model frame.
+    const unrotated = geometry();
+    assert.deepEqual(meshSnapshot({ meshes: [new ModelRotationBaker().inModelFrame(unrotated.meshes[0])] } as Geometry, 0),
+      meshSnapshot(unrotated, 0));
+  });
+
   it('does not re-rotate the meshes it already baked when a batch is appended in place', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     baker.reconcile(targets(value, ROTATION));

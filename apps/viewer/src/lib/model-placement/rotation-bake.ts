@@ -36,12 +36,20 @@
  * baseline has never been baked. That is what keeps rotating from compounding
  * on geometry that streams in after the user has set an angle.
  *
+ * THE COROLLARY FOR AUTHORING: a mesh appended to a rotated model must be in
+ * the model's own UNROTATED frame, exactly like a streamed batch, because it
+ * will be turned once on arrival. A mesh built from IFC parameters already is
+ * (add-element, and the wall / slab split, which rebuild their halves through
+ * `addWall` / `addSlab`). A mesh DERIVED from live vertices is not: those are
+ * baked. Such a path reads its source through {@link ModelRotationBaker.inModelFrame}
+ * rather than the live mesh — a copy of the live bytes would be turned twice.
+ *
  * Baselines cost a copy of a model's position and normal buffers, so one is
  * captured only when a model is actually rotated and released the moment its
  * rotation returns to zero.
  */
 
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import {
   applyModelRotation, baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
   type RotationBaseline,
@@ -106,6 +114,35 @@ export class ModelRotationBaker {
       else entry.applied = { angle: target.rotation.angle, pivot: [...target.rotation.pivot] };
     }
     return moved;
+  }
+
+  /**
+   * `mesh` as it stands in its model's own unrotated frame — what an authoring
+   * path that derives new geometry from an existing element (duplicate) must
+   * read, so the new mesh arrives pristine and is turned exactly once.
+   *
+   * The pristine bytes are read from the baseline, not recovered by rotating the
+   * live vertices back: that is exact, and it is the same copy a zero angle
+   * restores. A mesh no baseline describes has never been baked, so it is
+   * returned as it is. Buffers are copies either way — the bake rewrites a
+   * mesh's arrays in place, and a clone sharing them would be turned with it.
+   */
+  inModelFrame(mesh: MeshData): MeshData {
+    for (const entry of this.entries.values()) {
+      const pristine = entry.baseline.meshes.get(mesh);
+      if (!pristine) continue;
+      // A bounded-mode release emptied the live buffers; there is nothing to
+      // clone, and handing back the baseline's vertices would resurrect them.
+      if (mesh.positions.length !== pristine.positions.length) break;
+      const out: MeshData = { ...mesh, positions: new Float32Array(pristine.positions),
+        normals: pristine.normals ? new Float32Array(pristine.normals) : mesh.normals };
+      if (pristine.origin) out.origin = [...pristine.origin]; else delete out.origin;
+      if (pristine.localToWorld) out.localToWorld = [...pristine.localToWorld]; else delete out.localToWorld;
+      if (pristine.geometryAabb) out.geometryAabb = pristine.geometryAabb; else delete out.geometryAabb;
+      return out;
+    }
+    return { ...mesh, positions: new Float32Array(mesh.positions),
+      normals: mesh.normals ? new Float32Array(mesh.normals) : mesh.normals };
   }
 
   /**

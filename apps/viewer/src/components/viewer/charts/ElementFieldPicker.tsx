@@ -52,7 +52,7 @@ export function ElementFieldPicker({ value, catalog, loading, className, onChang
           <span className="text-muted-foreground">Attribute</span>
           <select className={className} value={attributeId} onChange={(event) => onChange(catalog.attributes.find((option) => elementFieldColumnId(option.binding) === event.target.value)?.binding)} aria-label="IFC attribute">
             {!selectedAttributeAvailable && <option value={attributeId}>{value.attributeName} (unavailable)</option>}
-            {catalog.attributes.map((option) => <option key={elementFieldColumnId(option.binding)} value={elementFieldColumnId(option.binding)}>{option.label}</option>)}
+            {catalog.attributes.map((option) => <option key={elementFieldColumnId(option.binding)} value={elementFieldColumnId(option.binding)}>{option.label}{option.observedValue ? '' : ' (no values)'}</option>)}
           </select>
         </label>
       )}
@@ -69,7 +69,7 @@ export function ElementFieldPicker({ value, catalog, loading, className, onChang
             <span className="text-muted-foreground">Property</span>
             <select className={className} value={propertyId} onChange={(event) => onChange(propertyOptions.find((option) => elementFieldColumnId(option.binding) === event.target.value)?.binding)} aria-label="IFC property">
               {!selectedPropertyAvailable && <option value={propertyId}>{value.propertyName} (unavailable)</option>}
-              {propertyOptions.map((option) => <option key={elementFieldColumnId(option.binding)} value={elementFieldColumnId(option.binding)}>{option.binding.kind === 'property' ? option.binding.propertyName : option.label}</option>)}
+              {propertyOptions.map((option) => <option key={elementFieldColumnId(option.binding)} value={elementFieldColumnId(option.binding)}>{option.binding.kind === 'property' ? option.binding.propertyName : option.label}{option.observedValue ? '' : ' (no values)'}</option>)}
             </select>
           </label>
         </>

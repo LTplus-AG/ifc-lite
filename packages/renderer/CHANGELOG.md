@@ -1,5 +1,28 @@
 # @ifc-lite/renderer
 
+## 3.1.0
+
+### Minor Changes
+
+- [#4894](https://github.com/LTplus-AG/ifc-lite/pull/4894) [`076428b`](https://github.com/LTplus-AG/ifc-lite/commit/076428b45a71292f226462577753085f7d23ba64) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Splitting a wall now removes the source wall's mesh from the store and the scene. Walls and other elements added in the viewer carry per-vertex entity ids that name only themselves, and removal used to treat them as colour-merged meshes and keep them, so the triangle count still drifted and the source reappeared on the next scene rebuild. Removal now keeps only meshes that host other entities (`hostsOtherEntities`).
+  
+  Pruning also keeps a federated model's pre-alignment snapshot in step with its meshes, so switching the alignment anchor afterwards restores each mesh from its own snapshot, and a mesh recoloured after a bounded-mode release still subtracts its retained counts when removed.
+
+### Patch Changes
+
+- [#4887](https://github.com/LTplus-AG/ifc-lite/pull/4887) [`1606952`](https://github.com/LTplus-AG/ifc-lite/commit/16069523591defe5650b794acebf66e373f4cdb2) Thanks [@louistrue](https://github.com/louistrue)! - Colour overlays (chart buckets, lens colours, IDS pass/fail, compare, 4D)
+  now paint on every surface of large models. Overlay batches are grouped by
+  their source bucket and inherit that batch's f32/quantized vertex decision
+  instead of re-deciding from their own (much wider) extent, so the
+  `depthCompare: 'equal'` overlay pass finds bit-identical depth. Previously an
+  overlay spanning more than ~64 m fell back to f32 while its base stayed
+  lattice-quantized and the colour was silently discarded ([#4832](https://github.com/LTplus-AG/ifc-lite/issues/4832)). Partial
+  (visibility) sub-batches inherit the same way, and a derived batch that
+  cannot honour an inherited quantization now warns instead of failing
+  silently.
+- Updated dependencies [[`8ccfa05`](https://github.com/LTplus-AG/ifc-lite/commit/8ccfa0573331dc2ecc602b74945f8cc54229829b), [`603d987`](https://github.com/LTplus-AG/ifc-lite/commit/603d9872bef5d340cccfc76fe0708f2feaafad49), [`6a9fc13`](https://github.com/LTplus-AG/ifc-lite/commit/6a9fc132731132bbbec2d9241242ae99e063a27e)]:
+  - @ifc-lite/geometry@7.3.0
+
 ## 3.0.1
 
 ### Patch Changes

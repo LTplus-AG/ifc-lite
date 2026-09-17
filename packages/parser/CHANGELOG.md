@@ -1,5 +1,53 @@
 # @ifc-lite/parser
 
+## 7.1.0
+
+### Minor Changes
+
+- [#4916](https://github.com/LTplus-AG/ifc-lite/pull/4916) [`ef42c0e`](https://github.com/LTplus-AG/ifc-lite/commit/ef42c0edeb4081e0ad9318c3a0f32301a30e6936) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.cost` now reports the cost graph the session would export, not the one on disk. Cost extraction read straight from a loaded model's source bytes, so an edit or a deletion staged in the model's edit overlay was invisible to `bim.cost.data()` / `items()` / `values()` / `evaluateItem()` while `bim.export.ifc()` applied it — the read model and the exported file disagreed about the same model. `extractCostOnDemand` takes an optional `CostMutationOverlay`, applied at `CostEntityReader`, the one funnel every cost extractor reads an entity through: a tombstoned entity is gone from the graph, a retyped entity is listed under its pending class, and an edited record is read from the text the exporter will write for it. Nesting, assignments, controlling schedules, unit resolution and every diagnostic recompute from that one read rather than from a second projection.
+  
+  What an edit becomes in the file is decided once, by the exporter. The new `effectiveSourceRecord` in `@ifc-lite/export` runs the exporter's own retype / named / positional mutation pipeline for one source record, and the SDK builds the cost overlay from it, so enum edits read as the enum the exporter writes, positional edits (`AppliedValue`, `UnitBasis`, `CostValues`, …) are visible, and an edit past the end of a truncated record is skipped exactly as export skips it. `ResolvedCostModel` carries the model's `mutationView`. An edit the exporter declines to write (a non-number in a REAL-typed slot, a record whose arguments do not scan) is reported as a `PENDING_EDIT_NOT_APPLIED` warning instead of the source value being passed off as current.
+  
+  A cost value deleted while an `IfcCostItem` still lists it in `CostValues` reads back as a `MISSING_REFERENCE` error against that item — the same answer the reader already gives for a file with a genuinely dangling reference — rather than being dropped from the canonical list, which would report a coherent graph the file does not contain.
+  
+  The cost reads accept `{ includeMutations: false }` for the graph as the file on disk states it. That is the file's own cost data, not an empty graph. It mirrors `bim.export.ifc`'s option of the same name, and `true` (the default) is what makes the two describe one file.
+
+- [#4889](https://github.com/LTplus-AG/ifc-lite/pull/4889) [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940) Thanks [@louistrue](https://github.com/louistrue)! - Let element charts bind to an exact IFC attribute or property, persist the field interpretation, normalize scalar values for aggregation, and report missing sum contributions. Resolve named attributes across every bundled IFC schema so IFC2X3-only and IFC4X3-only classes participate too (`EntityNode.allAttributes()` now consults the store's own schema version). On-demand property extraction reports a property's explicit `Unit` as `unit` plus `unitSiScale`; an unresolvable unit reference is reported as `#<id>` with no scale instead of being dropped.
+
+### Patch Changes
+
+- [#4909](https://github.com/LTplus-AG/ifc-lite/pull/4909) [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - An explicit empty `Category` (`''`) on an `IfcCostValue` with no `AppliedValue` and no `Components` is no longer evaluated as a category total; it reports `MISSING_VALUE` as before. `ifc-lite eval --type` labels an entity whose `Name` is empty by its `GlobalId` ([#4881](https://github.com/LTplus-AG/ifc-lite/issues/4881)).
+
+- [#4911](https://github.com/LTplus-AG/ifc-lite/pull/4911) [`9f34896`](https://github.com/LTplus-AG/ifc-lite/commit/9f34896cc7c8e19ce9a75367aa8b4cfa23877944) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `CostItemInfo.productExpressIds`/`productGlobalIds` no longer include a task,
+  resource or actor assigned to a cost item via `IfcRelAssignsToControl`. That
+  relationship legitimately binds those objects too, not just products, so the
+  branch previously pushed every related object into fields documented (by
+  name) as an `IfcProduct` view with no type check ([#4877](https://github.com/LTplus-AG/ifc-lite/issues/4877)). The branch now
+  filters related objects to `IfcProduct` subtypes, matching the sibling
+  `IfcRelAssignsToProduct` branch, which already only ever pushed a product.
+  This is a bug fix, not a rename: the field names, types and shape are
+  unchanged, and no consumer in this repo currently reads either field. A
+  downstream consumer that was relying on the previous (undocumented,
+  type-unfiltered) behaviour will see fewer entries in these two arrays.
+
+- [#4909](https://github.com/LTplus-AG/ifc-lite/pull/4909) [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - The cost read model no longer collapses an explicit empty `IfcLabel`/`IfcText` (`''`) to absent. `IfcCostSchedule.Name`/`Identification`/`Status`, `IfcCostItem.Name`/`Description`/`ObjectType`/`Identification`, `IfcCostValue.Name`/`Description`/`Category`/`Condition`/`CostType`, `IfcCostQuantity.Name`/`Description`/`Formula`, unit `Name`/`Symbol`, and relationship `GlobalId`/`Name`/`Description` now keep `''` distinct from an unset (`$`) attribute, matching IfcOpenShell ([#4881](https://github.com/LTplus-AG/ifc-lite/issues/4881)).
+
+- [#4900](https://github.com/LTplus-AG/ifc-lite/pull/4900) [`39153d1`](https://github.com/LTplus-AG/ifc-lite/commit/39153d155e8c0a5620cdc1802837d6e0f9e7619b) Thanks [@LudwigJMarx](https://github.com/LudwigJMarx)! - Point the published worker URL at the file the package ships.
+  
+  `dist/worker-parser.js` carried `new URL('./parser.worker.ts', import.meta.url)`
+  straight from source, but the tarball contains only `dist/parser.worker.js`. So
+  `new WorkerParser()` rejected through `worker.onerror` for every npm consumer,
+  and a bundler resolving the literal at build time failed outright — `vite build`
+  stopped even when the app passed its own `workerUrl`. Affected 6.5.0 and 7.0.0.
+  
+  The build now rewrites those specifiers to the emitted `.js`, and a second step
+  re-derives from the emitted files whether every `new URL('./…', import.meta.url)`
+  resolves to something `dist` holds, failing the build when one does not.
+
+- [#4908](https://github.com/LTplus-AG/ifc-lite/pull/4908) [`84941dd`](https://github.com/LTplus-AG/ifc-lite/commit/84941dd8413a153040714968dcd684a610334c9a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `WorkerParser.terminate()` now settles the in-flight `parseColumnar` promise instead of leaving it pending forever. Calling `terminate()` (or aborting a new `signal` option) terminates the worker and rejects the pending promise with an `AbortError`, so `await parser.parseColumnar(...)` no longer hangs after the documented cancellation path is used. `parseColumnar` also accepts `signal?: AbortSignal`: aborting before the call starts rejects immediately without spawning a worker, and aborting mid-parse terminates that parse's worker and rejects with `signal.reason` (a custom `abort(reason)` is passed through as-is). Overlapping `parseColumnar` calls on one `WorkerParser` are cancelled independently: a signal cancels only its own parse, while `terminate()` rejects every in-flight parse with an `AbortError`.
+- Updated dependencies [[`37a5949`](https://github.com/LTplus-AG/ifc-lite/commit/37a5949b1ed3786b52602b62d04bf1ac451844b3), [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940)]:
+  - @ifc-lite/data@4.5.0
+
 ## 7.0.0
 
 ### Major Changes

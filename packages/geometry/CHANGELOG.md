@@ -1,5 +1,27 @@
 # @ifc-lite/geometry
 
+## 7.3.0
+
+### Minor Changes
+
+- [#4906](https://github.com/LTplus-AG/ifc-lite/pull/4906) [`8ccfa05`](https://github.com/LTplus-AG/ifc-lite/commit/8ccfa0573331dc2ecc602b74945f8cc54229829b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A federation no longer renders a different scene depending on which model loaded first. Previously, loading a small-coordinate model (no RTC offset) before a large-coordinate one left the small model in the raw frame while the large model used its own anchor, and `federationFrameInfo` reported a frame the large model was not drawn in. Now, after every federated load settles, the viewer converges every loaded model onto one anchor: the earliest-loaded model with a `wasmRtcOffset`. It reads the final set of loaded models, so loads that overlap and finish in either order end in the same scene. `federationFrameInfo` applies the same rule, so a near-origin model or a raw point cloud loaded first no longer defines the reported frame.
+  
+  The new `@ifc-lite/geometry/rtc-rebase` module (`convergeGeometryOntoRtcAnchor`) moves a model by translating each mesh's double-precision `origin` and its `coordinateInfo` (`wasmRtcOffset`, `wasmRtcFrame`, `originalBounds`, `shiftedBounds`). The float32 vertex `positions` never change, so millimetre detail survives map-coordinate anchors, where one float32 step is 0.25 to 0.5 m. The absolute-world `geometryAabb` and `localToWorld` fields are RTC-invariant and are left alone. The viewer withdraws a moved model's spatial index before rebuilding it.
+  
+  Point clouds are never moved, because they never join the RTC frame. A model with GPU-instanced geometry cannot be moved after load: the viewer names it in a warning and still converges every other model.
+
+- [#4888](https://github.com/LTplus-AG/ifc-lite/pull/4888) [`6a9fc13`](https://github.com/LTplus-AG/ifc-lite/commit/6a9fc132731132bbbec2d9241242ae99e063a27e) Thanks [@louistrue](https://github.com/louistrue)! - A single element whose geometry never finishes no longer has to fail the whole load with "Geometry stream stalled". `processAdaptive` and `processParallel` accept a new opt-in `hungJobTimeoutMs` (use `DEFAULT_HUNG_JOB_TIMEOUT_MS`, 45 s). With it, the parallel pool replaces a worker stuck inside one geometry call, re-runs that call one element at a time, and skips only an element that stays silent for twice the budget. It reports those elements on `complete.skippedHungElements` (express ids and counts by IFC type) and keeps the replaced worker's diagnostics. Recovery is off unless requested, so a consumer that does not read `skippedHungElements` never receives a partial model. A new `signal` option terminates the worker pool when a consumer abandons the stream, which `return()` alone could not do while the stream waited on a silent worker. The viewer opts in, tells the user which element types were left out, never caches a partial model, and aborts the pool when it closes a stream.
+
+### Patch Changes
+
+- [#4920](https://github.com/LTplus-AG/ifc-lite/pull/4920) [`603d987`](https://github.com/LTplus-AG/ifc-lite/commit/603d9872bef5d340cccfc76fe0708f2feaafad49) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Correct the `hasLargeCoordinates` docstring on `CoordinateInfo`: it only
+  tracks whether the JS-side `originShift` fired, and stays `false` when the
+  WASM mesh pass already re-based the model onto `wasmRtcOffset` instead.
+  Neither field alone is a general "was this model shifted?" flag; use
+  `hasLargeCoordinates || wasmRtcOffset !== undefined`. No behaviour change.
+- Updated dependencies [[`37a5949`](https://github.com/LTplus-AG/ifc-lite/commit/37a5949b1ed3786b52602b62d04bf1ac451844b3), [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940)]:
+  - @ifc-lite/data@4.5.0
+
 ## 7.2.0
 
 ### Minor Changes

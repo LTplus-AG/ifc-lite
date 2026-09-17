@@ -72,6 +72,8 @@ export function renderFrameWorldOffset(info?: RenderFrameInfo | null): Vec3 {
 export interface FrameCandidate {
   /** Load order; the earliest-loaded anchored model owns the shared frame. */
   loadedAt: number;
+  /** A model still streaming has not been converged yet, so it cannot define the frame. */
+  loadState?: string;
   geometryResult?: { coordinateInfo?: CoordinateInfo | null } | null;
 }
 
@@ -89,6 +91,11 @@ export interface FrameCandidate {
  * was loaded first, including for a raw point cloud, which never joins the
  * RTC frame.
  *
+ * Models whose `loadState` is `pending` or `streaming-geometry` are only
+ * considered when no settled model has a frame: until such a load settles the
+ * other models have not been converged onto it, so the settled frame stays the
+ * reported one.
+ *
  * `fallback` covers a single model loaded without a federation entry. Null
  * when nothing has geometry. The one case where the geometry does NOT all
  * match is a GPU-instanced model the loader could not move; the viewer
@@ -98,6 +105,13 @@ export function federationFrameInfo(
   models: Iterable<FrameCandidate>,
   fallback?: { coordinateInfo?: CoordinateInfo | null } | null,
 ): CoordinateInfo | null {
+  const all = [...models];
+  const settled = all.filter((model) => model.loadState !== 'pending' && model.loadState !== 'streaming-geometry');
+  return frameOf(settled) ?? frameOf(all) ?? fallback?.coordinateInfo ?? null;
+}
+
+/** The anchor rule over one candidate set: earliest anchored, else earliest with a frame. */
+function frameOf(models: readonly FrameCandidate[]): CoordinateInfo | null {
   let earliest = Infinity;
   let earliestAnchored = Infinity;
   let info: CoordinateInfo | null = null;
@@ -114,7 +128,7 @@ export function federationFrameInfo(
       anchoredInfo = candidate;
     }
   }
-  return anchoredInfo ?? info ?? fallback?.coordinateInfo ?? null;
+  return anchoredInfo ?? info;
 }
 
 /**

@@ -168,6 +168,16 @@ describe('convergeGeometryOntoRtcAnchor', () => {
     }
   });
 
+  it('refuses a geometry the caller knows is instanced even with no geometry-side signal', () => {
+    // An instanced entity with a non-finite AABB is left out of the box map,
+    // and there may be no class-2 template: only the caller's shard record knows.
+    const g = raw([{ positions: new Float32Array([0, 1.5, 0]), origin: [1, 1, 1] }]);
+    const { moved, refused } = convergeGeometryOntoRtcAnchor([g], ANCHOR, (x) => x === g);
+    expect(moved).toEqual([]);
+    expect(refused).toEqual([g]);
+    expect(g.meshes[0].origin).toEqual([1, 1, 1]);
+  });
+
   it('an EMPTY instanced-box map is not instanced geometry', () => {
     const g = raw([{ positions: new Float32Array([0, 1.5, 0]) }]);
     g.instancedGeometryAabbs = new Map();

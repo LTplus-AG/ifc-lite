@@ -30,6 +30,7 @@ import { toast } from '@/components/ui/toast';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import type { PreAlignmentSnapshot } from '../../store/index.js';
 import { buildSpatialIndexForModel, invalidateSpatialIndex } from '../../utils/loadingUtils.js';
+import { hasInstancedShards } from '../../store/instancedShardModels.js';
 
 /**
  * A model whose geometry is final. A model still streaming keeps receiving
@@ -76,15 +77,12 @@ export function convergeFederationRtcFrame(): void {
   const anchor = chooseSharedRtcOffset(settled.map(([, model]) => model));
   if (!anchor) return;
 
-  for (const [, model] of settled) {
-    if (model.preAlignment) convergeSnapshot(model.preAlignment, anchor);
-  }
-
   // Refuse up front per model, so the spatial index of a model that will
   // not move is never withdrawn.
+  const instancedIds = new Set(settled.filter(([id]) => hasInstancedShards(id)).map(([, model]) => model.geometryResult!));
   const movable = settled.filter(([, model]) => {
     const geometry = model.geometryResult!;
-    return !isOnRtcAnchor(geometry.coordinateInfo, anchor) && !carriesGpuInstancedGeometry(geometry);
+    return !isOnRtcAnchor(geometry.coordinateInfo, anchor) && !carriesGpuInstancedGeometry(geometry) && !instancedIds.has(geometry);
   });
   // Withdraw each index BEFORE the geometry moves: the rebuild below is
   // async, and until it lands raycasts and bounds queries would be answered
@@ -96,7 +94,17 @@ export function convergeFederationRtcFrame(): void {
   const { moved, refused } = convergeGeometryOntoRtcAnchor(
     settled.map(([, model]) => model.geometryResult!),
     anchor,
+    (geometry) => instancedIds.has(geometry),
   );
+
+  // A snapshot follows its model only once the live geometry is on the anchor:
+  // restoring an anchor-framed snapshot onto a refused model or a point cloud
+  // would mix two frames in one model.
+  for (const [, model] of settled) {
+    if (model.preAlignment && isOnRtcAnchor(model.geometryResult!.coordinateInfo, anchor)) {
+      convergeSnapshot(model.preAlignment, anchor);
+    }
+  }
 
   if (refused.length > 0) {
     const names = settled.filter(([, model]) => refused.includes(model.geometryResult!)).map(([, model]) => model.name);

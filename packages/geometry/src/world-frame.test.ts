@@ -100,6 +100,18 @@ describe('federationFrameInfo', () => {
     expect(federationFrameInfo(models)).toBe(anchor);
   });
 
+  it('does not let a still-streaming anchored model define the frame before it settles', () => {
+    // Overlapping loads: the settled raw model has not been converged onto the
+    // streaming model's anchor yet, so that anchor is not the frame in use.
+    const raw = info({});
+    const models = [
+      { loadedAt: 1, geometryResult: { coordinateInfo: raw } },
+      { loadedAt: 0, loadState: 'streaming-geometry', geometryResult: { coordinateInfo: anchor } },
+    ];
+    expect(federationFrameInfo(models)).toBe(raw);
+    expect(federationFrameInfo([models[0], { ...models[1], loadState: 'complete' }])).toBe(anchor);
+  });
+
   it('falls back to the earliest raw model when no model is anchored', () => {
     const first = info({});
     const second = info({});

@@ -166,13 +166,16 @@ export interface RtcConvergeResult<T> {
 export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
   geometries: readonly T[],
   anchor: Readonly<Vec3>,
+  /** Extra instancing evidence the caller holds outside the geometry (e.g.
+   *  shards already handed to the renderer); `true` refuses the geometry. */
+  hasOtherInstancedGeometry?: (geometry: T) => boolean,
 ): RtcConvergeResult<T> {
   const moved: T[] = [];
   const refused: T[] = [];
   const seenMeshes = new Set<object>();
   for (const geometry of new Set(geometries)) {
     if (isPointCloudOnly(geometry) || isOnRtcAnchor(geometry.coordinateInfo, anchor)) continue;
-    if (carriesGpuInstancedGeometry(geometry)) {
+    if (carriesGpuInstancedGeometry(geometry) || hasOtherInstancedGeometry?.(geometry) === true) {
       refused.push(geometry);
       continue;
     }

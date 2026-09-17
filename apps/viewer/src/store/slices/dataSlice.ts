@@ -9,6 +9,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
 import { appendGeometryBatchPatch } from './dataSlice.appendGeometryBatch.js';
+import { noteInstancedShardModel } from '../instancedShardModels.js';
 
 /**
  * Cross-slice state that dataSlice reads/writes via the combined store.
@@ -343,13 +344,16 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
   pruneGeometryMeshes: (ids) => set((state) => pruneMeshesFromGeometry(state, ids)),
 
-  appendInstancedShards: (modelId, shards) => set((state) => ({
+  appendInstancedShards: (modelId, shards) => set((state) => {
+    if (shards.length > 0) noteInstancedShardModel(modelId);
+    return {
     // Accumulate across batches — useGeometryStreaming drains once per frame.
     pendingInstancedShards: [
       ...(state.pendingInstancedShards ?? []),
       ...shards.map((bytes) => ({ modelId, bytes })),
     ],
-  })),
+    };
+  }),
 
   clearInstancedShards: () => set({ pendingInstancedShards: null }),
 

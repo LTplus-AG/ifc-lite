@@ -18,6 +18,7 @@ import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometr
 import { federationFrameInfo, ifcToViewerAxes } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { convergeFederationRtcFrame } from './federationRtcRebase.js';
+import { noteInstancedShardModel } from '../../store/instancedShardModels.js';
 
 /** Non-round, asymmetric-sign anchor: a round or zero one proves nothing. */
 const ANCHOR = { x: 1234567.891, y: -987654.321, z: 42.75 };
@@ -274,6 +275,29 @@ describe('convergeFederationRtcFrame - GPU-instanced models', () => {
       `the refusal must name the model; console.warn saw ${JSON.stringify(warnings)}`,
     );
     assertAConverged();
+  });
+
+  it('refuses a model that handed instanced shards to the renderer even with no geometry-side signal', () => {
+    // e.g. an instanced entity whose AABB was NaN: no box-map entry, no template.
+    const instanced = model('S', 1, geometry([mesh([2, 1, -3])]));
+    noteInstancedShardModel('S');
+    seed([instanced, anchoredModel(2)]);
+    const warnings = captureWarnings(() => convergeFederationRtcFrame());
+    assert.strictEqual(liveModel('S').geometryResult!.coordinateInfo.wasmRtcOffset, undefined);
+    assert.deepStrictEqual(liveModel('S').geometryResult!.meshes[0].origin, [2, 1, -3]);
+    assert.ok(warnings.some((line) => line.includes('S use GPU-instanced')), JSON.stringify(warnings));
+  });
+
+  it('leaves a refused model pre-alignment snapshot in the frame its live geometry is still in', () => {
+    const instanced = model('I', 1, geometry([mesh([2, 1, -3]), mesh([0, 0, 0], 2)]));
+    instanced.preAlignment = {
+      positions: [], normals: [], origins: [[7, 8, 9]], coordinateInfo: coordInfo(), geometryAabbs: [],
+    } as unknown as FederatedModel['preAlignment'];
+    seed([instanced, anchoredModel(2)]);
+    captureWarnings(() => convergeFederationRtcFrame());
+    const snapshot = liveModel('I').preAlignment!;
+    assert.strictEqual(snapshot.coordinateInfo.wasmRtcOffset, undefined);
+    assert.deepStrictEqual(snapshot.origins, [[7, 8, 9]]);
   });
 
   it('refuses on a class-2 template alone, with geometry hashing off', () => {

@@ -120,6 +120,8 @@ export function useIfcFederation(
     }
   ): Promise<string | null> => {
     const modelId = options?.modelId ?? crypto.randomUUID();
+    // Request order, not completion order, decides the RTC anchor of overlapping loads (#4897).
+    const loadedAt = options?.loadedAt ?? Date.now();
     const addStart = performance.now();
     // Bump the per-call ownership token first so that any error path
     // (including the load gate) can compare against this captured value
@@ -157,7 +159,7 @@ export function useIfcFederation(
         name: options?.name,
         visible: options?.visible,
         collapsed: options?.collapsed,
-        loadedAt: options?.loadedAt,
+        loadedAt,
         sharedRtcOffset,
       }, { sourceHandle: options?.sourceHandle });
 

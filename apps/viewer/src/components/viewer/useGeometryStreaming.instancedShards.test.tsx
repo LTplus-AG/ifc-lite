@@ -132,6 +132,7 @@ function baseParams(overrides: Partial<UseGeometryStreamingParams>): UseGeometry
     clearPendingMeshColorUpdates: () => {},
     clearPendingColorUpdates: () => {},
     clearPendingMeshRemovals: () => {},
+    pruneGeometryMeshes: () => {},
     clearPendingMeshTranslations: () => {},
     clearPendingMeshRotations: () => {},
     clearInstancedShards: () => {},

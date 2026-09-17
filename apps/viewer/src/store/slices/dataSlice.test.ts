@@ -19,6 +19,19 @@ const createMockMesh = (expressId: number, color: [number, number, number, numbe
   ifcType: 'IfcWall',
 });
 
+// Deliberately asymmetric mesh sizes (vertex count != triangle count, and
+// every mesh a different size) so a wrong field, a wrong /3 divisor, or an
+// accidental double-subtract shows up as a mismatched number rather than
+// hiding behind a coincidental round or symmetric total.
+const createSizedMesh = (expressId: number, vertexCount: number, triangleCount: number) => ({
+  expressId,
+  positions: new Float32Array(vertexCount * 3),
+  indices: new Uint32Array(triangleCount * 3),
+  normals: new Float32Array(vertexCount * 3),
+  color: [1, 0, 0, 1] as [number, number, number, number],
+  ifcType: 'IfcWall',
+});
+
 type TestSetState = (
   partial:
     | Partial<DataTestState>
@@ -105,6 +118,57 @@ describe('DataSlice', () => {
 
       // DATA_DEFAULTS should not be affected
       assert.strictEqual(DATA_DEFAULTS.ORIGIN_SHIFT.x, 0);
+    });
+  });
+
+  describe('pruneGeometryMeshes', () => {
+    // Mirrors what a wall/slab split does: the source mesh is tombstoned and
+    // two new halves land via appendGeometryBatch, then the drain prunes the
+    // source out from under pendingMeshRemovals.
+    const seedSplit = () => {
+      const source = createSizedMesh(1, 3, 1); // 3 verts, 1 triangle
+      const left = createSizedMesh(2, 4, 2); // 4 verts, 2 triangles
+      const right = createSizedMesh(3, 5, 3); // 5 verts, 3 triangles
+      state.appendGeometryBatch([source, left, right] as any);
+    };
+
+    it('drops the pruned mesh out of geometryResult.meshes and subtracts only its counts', () => {
+      seedSplit();
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6); // 1+2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 12); // 3+4+5
+
+      state.pruneGeometryMeshes(new Set([1]));
+
+      const ids = state.geometryResult?.meshes.map((m) => m.expressId);
+      assert.deepStrictEqual(ids, [2, 3]);
+      // Only the source's counts came off — not a wrong field, not the
+      // wrong divisor, not the whole batch.
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5); // 2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 9); // 4+5
+    });
+
+    it('is idempotent: draining an id twice does not double-subtract or go negative', () => {
+      seedSplit();
+      state.pruneGeometryMeshes(new Set([1]));
+      state.pruneGeometryMeshes(new Set([1]));
+
+      assert.strictEqual(state.geometryResult?.meshes.length, 2);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5);
+      assert.strictEqual(state.geometryResult?.totalVertices, 9);
+    });
+
+    it('leaves totals untouched when the id names no mesh', () => {
+      seedSplit();
+      state.pruneGeometryMeshes(new Set([999]));
+
+      assert.strictEqual(state.geometryResult?.meshes.length, 3);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6);
+      assert.strictEqual(state.geometryResult?.totalVertices, 12);
+    });
+
+    it('is a no-op when there is no geometryResult yet', () => {
+      assert.doesNotThrow(() => state.pruneGeometryMeshes(new Set([1])));
+      assert.strictEqual(state.geometryResult, null);
     });
   });
 

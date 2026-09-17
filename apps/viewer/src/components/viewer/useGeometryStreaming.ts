@@ -152,6 +152,13 @@ export interface UseGeometryStreamingParams {
   clearPendingMeshColorUpdates: () => void;
   clearPendingColorUpdates: () => void;
   clearPendingMeshRemovals: () => void;
+  /**
+   * Prunes drained ids out of the store's `geometryResult.meshes` and
+   * subtracts their triangle/vertex counts — see `pruneGeometryMeshes` in
+   * `dataSlice.ts`. Called right after `scene.removeMeshesForEntities` so
+   * the store stops disagreeing with what the renderer already dropped.
+   */
+  pruneGeometryMeshes: (ids: Set<number>) => void;
   clearPendingMeshTranslations: () => void;
   clearPendingMeshRotations: () => void;
   clearInstancedShards: () => void;
@@ -212,6 +219,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     clearPendingMeshColorUpdates,
     clearPendingColorUpdates,
     clearPendingMeshRemovals,
+    pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
     clearInstancedShards,
@@ -773,6 +781,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     if (pendingMeshRemovals.size > 0) {
       scene.removeMeshesForEntities(pendingMeshRemovals);
+      // Keep the store's geometryResult.meshes (and totalTriangles /
+      // totalVertices) in sync with what the scene just dropped — see
+      // `pruneGeometryMeshes` in dataSlice.ts. Idempotent: a retry after a
+      // failed rebuild below re-prunes the same ids for zero net effect.
+      pruneGeometryMeshes(pendingMeshRemovals);
       if (scene.hasPendingBatches()) {
         const rebuilt = runGpuUpload(
           'rebuildPendingBatches:removals',
@@ -785,7 +798,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       renderer.requestRender();
     }
     clearPendingMeshRemovals();
-  }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals]);
+  }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals, pruneGeometryMeshes]);
 
   // ─── GPU-instancing shards ───────────────────────────────────────────
   // The geometry worker collates each batch into an IFNS shard; the loader

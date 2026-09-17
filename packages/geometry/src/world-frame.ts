@@ -110,6 +110,18 @@ export function federationFrameInfo(
 }
 
 /**
+ * The real `wasmRtcOffset` a single model carries, or `null` if it has none
+ * (still meshed raw). The single-candidate counterpart to
+ * {@link chooseSharedRtcOffset}: callers that need one specific model's own
+ * anchor — e.g. to decide whether it just introduced the federation's
+ * first real anchor — read it through here rather than destructuring
+ * `geometryResult.coordinateInfo.wasmRtcOffset` themselves.
+ */
+export function realRtcAnchorOf(candidate?: FrameCandidate | null): Readonly<Vec3> | null {
+  return candidate?.geometryResult?.coordinateInfo?.wasmRtcOffset ?? null;
+}
+
+/**
  * The `sharedRtcOffset` a newly-loading model should be given: the earliest
  * already-loaded model's `wasmRtcOffset`, or `undefined` when no
  * already-loaded model has one yet (including when there is no earlier
@@ -124,18 +136,6 @@ export function federationFrameInfo(
  * this one's anchor the moment it is known, rather than pretending "no
  * anchor chosen yet" is a frame these already-raw models were drawn in.
  */
-/**
- * The real `wasmRtcOffset` a single model carries, or `null` if it has none
- * (still meshed raw). The single-candidate counterpart to
- * {@link chooseSharedRtcOffset}: callers that need one specific model's own
- * anchor — e.g. to decide whether it just introduced the federation's
- * first real anchor — read it through here rather than destructuring
- * `geometryResult.coordinateInfo.wasmRtcOffset` themselves.
- */
-export function realRtcAnchorOf(candidate?: FrameCandidate | null): Readonly<Vec3> | null {
-  return candidate?.geometryResult?.coordinateInfo?.wasmRtcOffset ?? null;
-}
-
 export function chooseSharedRtcOffset(existingModels: Iterable<FrameCandidate>): Vec3 | undefined {
   let earliestOffsetAt = Infinity;
   let earliestOffset: Readonly<Vec3> | null = null;

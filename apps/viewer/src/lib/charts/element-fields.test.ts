@@ -21,10 +21,10 @@ async function parseText(source: string): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
-async function parseSampleWith(extra: string): Promise<IfcDataStore> {
+async function parseSampleWith(extra: string, patch: (source: string) => string = (source) => source): Promise<IfcDataStore> {
   const fixture = await readFile(SAMPLE, 'utf8');
   assert.match(fixture, FILE_END);
-  return parseText(fixture.replace(FILE_END, `${extra}\nENDSEC;\nEND-ISO-10303-21;`));
+  return parseText(patch(fixture).replace(FILE_END, `${extra}\nENDSEC;\nEND-ISO-10303-21;`));
 }
 
 describe('chart IFC field reader (#4833)', () => {
@@ -146,6 +146,22 @@ describe('chart IFC field reader (#4833)', () => {
     const speed = reader.readResolved(52, { kind: 'property', psetName: 'Probe', propertyName: 'Speed', valueKind: 'number', dataType: 'IFCLINEARVELOCITYMEASURE' });
     assert.equal(speed.unit, '#60035', 'a derived unit with a dangling factor has no trustworthy scale');
     assert.equal(speed.unitSiScale, undefined);
+  });
+
+  it('a type property every occurrence overrides does not shape the field: a label on the type under numbers on the occurrences is a number (#4833 review)', async () => {
+    // The slab type #50 gains Probe.Load as a LABEL; its only occurrence #52 carries Probe.Load as a REAL.
+    const store = await parseSampleWith(`
+#60060=IFCPROPERTYSINGLEVALUE('Load',$,IFCLABEL('heavy'),$);
+#60061=IFCPROPERTYSET('g-type-probe',#1,'Probe',$,(#60060));
+#60062=IFCPROPERTYSINGLEVALUE('Load',$,IFCREAL(12.5),$);
+#60063=IFCPROPERTYSET('g-occ-probe',#1,'Probe',$,(#60062));
+#60064=IFCRELDEFINESBYPROPERTIES('g-occ-rel',#1,$,$,(#52),#60063);`, (source) => source.replace('(#963)', '(#963,#60061)'));
+    const reader = createElementFieldReader(store);
+    const load = reader.discover([52]).properties.get('Probe')?.find(({ binding }) => binding.kind === 'property' && binding.propertyName === 'Load')?.binding;
+    assert.equal(load?.valueKind, 'number', 'the overridden type label must not make the field categorical');
+    assert.equal(reader.read(52, load!), 12.5);
+    // Type-only properties still contribute their shape.
+    assert.equal(reader.discover([52]).properties.get('Pset_SlabCommon')?.some(({ binding }) => binding.kind === 'property' && binding.propertyName === 'SurfaceSpreadOfFlame'), true);
   });
 
   it('never offers an entity-reference attribute as a value, even though its STEP slot holds a number', async () => {

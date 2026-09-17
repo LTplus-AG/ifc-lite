@@ -159,10 +159,11 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
   const observe = (expressIds: readonly number[]): ElementFieldObservations => {
     const observations = emptyObservations();
     const seenTypes = new Set<string>();
-    const ingest = (sets: readonly PropertySet[]): void => {
+    const ingest = (sets: readonly PropertySet[], overridden?: ReadonlySet<string>): void => {
       for (const set of sets) for (const property of set.properties) {
         if (!set.name || !property.name) continue;
         const key = propertyObservationKey(set.name, property.name);
+        if (overridden?.has(key)) continue;
         let entry = observations.properties.get(key);
         if (!entry) {
           entry = { psetName: set.name, propertyName: property.name, kind: emptyObservation() };
@@ -185,8 +186,14 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
         if (!kind) { kind = emptyObservation(); observations.attributes.set(name, kind); }
         observeAttribute(kind, raw, schema.attributeType(typeName, name));
       }
-      ingest(setsFor(id));
-      ingest(typeSetsFor(id));
+      const occurrence = setsFor(id);
+      ingest(occurrence);
+      // A type property the occurrence overrides never reaches `read`, so its
+      // shape must not shape the field either (a label on the type under a
+      // number on every occurrence is a number) — review find.
+      const overridden = new Set<string>();
+      for (const set of occurrence) for (const property of set.properties) if (set.name && property.name) overridden.add(propertyObservationKey(set.name, property.name));
+      ingest(typeSetsFor(id), overridden);
     }
     return observations;
   };

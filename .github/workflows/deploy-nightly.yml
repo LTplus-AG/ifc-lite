@@ -395,7 +395,7 @@ jobs:
               # this loop exists to absorb is the one it must survive.
               resp="$(curl -sS --max-time 15 -w '\n%{http_code}' \
                 -H "Authorization: Bearer $VERCEL_TOKEN" \
-                "https://api.vercel.com/v6/deployments?app=$project&teamId=$TEAM_ID&sha=$SHA&target=production&limit=5" \
+                "https://api.vercel.com/v6/deployments?app=$project&teamId=$TEAM_ID&sha=$SHA&target=production&limit=100" \
                 2>/dev/null || true)"
               code="$(printf '%s' "$resp" | tail -n1)"
               body="$(printf '%s' "$resp" | sed '$d')"

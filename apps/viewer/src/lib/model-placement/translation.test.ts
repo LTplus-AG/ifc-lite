@@ -139,7 +139,7 @@ import { placedFlatGeometry } from './placed-geometry';
 import { placedSymbols } from './placed-symbols';
 import { createEmptyParseResult } from '../overlay-parse/symbolic-shapes';
 import { placementSnapshot, placementSnapshotIsCurrent } from './placement-snapshot';
-import { rotatePlacements } from './state';
+import { placementFor, rotatePlacements } from './state';
 import type { GeometryResult } from '@ifc-lite/geometry';
 
 it('places drawing/export triangles and local placement metadata without mutating sources (#4226)', () => {
@@ -183,6 +183,17 @@ it('refuses an asynchronous analysis result after a contributing model moves or 
   const moved = { ...state, modelPlacement: importPlacements(state.modelPlacement, new Map([['a', { translation: [0.001, 0, 0], locked: false }]])) };
   assert.equal(placementSnapshotIsCurrent(snapshot, moved), false);
   assert.equal(placementSnapshotIsCurrent(snapshot, { ...state, models: new Map([['b', {}]]) }), false);
+});
+
+it('refuses a rotation whose model-frame pivot leaves the renderable range (#4873)', () => {
+  // Both inputs are renderable on their own; their difference is not. Without
+  // a check on the derived value the placement stores a pivot whose f32 is
+  // infinite and the geometry bake turns the model about it.
+  const state = { ...emptyPlacementState(), placements: new Map([['a', testPlacement([-3e38, 0, 0])]]) };
+  assert.equal(Number.isFinite(Math.fround(3e38)), true, 'the entered pivot must itself be renderable');
+  assert.throws(() => rotatePlacements(state, ['a'], { angle: 0.4, pivot: [3e38, 0, 0] }),
+    /renderable coordinate range/);
+  assert.equal(placementFor(state, 'a').rotation.angle, 0, 'a refused rotation must store nothing');
 });
 
 it('refuses an asynchronous result captured before a contributing model was rotated (#4869)', () => {

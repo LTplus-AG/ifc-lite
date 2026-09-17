@@ -200,6 +200,10 @@ export function rotatePlacements(
     const translation = preview?.before.has(id)
       ? addTranslation(placement.translation, preview.delta) : placement.translation;
     assertRenderableTranslation(translation);
+    // The DERIVED pivot too, not only the workspace one: a renderable pivot
+    // less a renderable translation can still leave f32 range, and the bake
+    // would turn the model about an infinite axis rather than refuse.
+    if (rotating.has(id)) assertRenderableTranslation(pivotInModelFrame(normalized.pivot, translation));
     before.set(id, placement);
     after.set(id, rotating.has(id)
       ? { ...placement, translation, rotation: { angle: normalized.angle, pivot: pivotInModelFrame(normalized.pivot, translation) } }

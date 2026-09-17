@@ -316,6 +316,9 @@ describe('extractCostOnDemand', () => {
 
     const itemA = result.costItems.find((i) => i.globalId === 'item-a-gid');
     const itemB = result.costItems.find((i) => i.globalId === 'item-b-gid');
+    // Both records must be extracted, or the toBeUndefined checks below pass vacuously.
+    expect(itemA).toBeDefined();
+    expect(itemB).toBeDefined();
     expect(itemA?.Name).toBe(''); // present, empty — must NOT read as absent
     expect(itemA?.Identification).toBe('');
     expect(itemB?.Name).toBeUndefined(); // genuinely absent ($)
@@ -323,6 +326,8 @@ describe('extractCostOnDemand', () => {
 
     const valueA = result.CostValues.find((v) => v.expressId === 20);
     const valueB = result.CostValues.find((v) => v.expressId === 21);
+    expect(valueA).toBeDefined();
+    expect(valueB).toBeDefined();
     expect(valueA?.Category).toBe('');
     expect(valueA?.Condition).toBe('');
     expect(valueB?.Category).toBeUndefined();

@@ -143,9 +143,9 @@ export function useIfcFederation(
       // Shared RTC origin: earliest existing model with a real anchor, or
       // `undefined` if none has one yet — the post-load rebase step below
       // is what makes THAT case order-independent too (#4897).
-      const existingModelsForRtcEntries = Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>;
-      const existingModelsForRtc = existingModelsForRtcEntries.map(([, model]) => model);
-      const sharedRtcOffset = chooseSharedRtcOffset(existingModelsForRtc);
+      const modelsBeforeLoad = useViewerStore.getState().models;
+      const existingModelIdsBeforeLoad = Array.from(modelsBeforeLoad.keys()); // IDs, never the objects: re-read after the load, which replaces them (`rebaseFederationOntoNewAnchor`).
+      const sharedRtcOffset = chooseSharedRtcOffset(modelsBeforeLoad.values() as Iterable<FederatedModel>);
       const hadAnyRealAnchorBeforeLoad = sharedRtcOffset != null;
 
       // THE canonical load path. loadFile acquires bytes, detects format
@@ -168,7 +168,7 @@ export function useIfcFederation(
       const registered = useViewerStore.getState().models.has(modelId);
       if (registered) {
         // May have just introduced the FIRST real RTC anchor (#4897, see `federationRtcRebase.ts`).
-        rebaseFederationOntoNewAnchor(existingModelsForRtcEntries, hadAnyRealAnchorBeforeLoad, modelId);
+        rebaseFederationOntoNewAnchor(existingModelIdsBeforeLoad, hadAnyRealAnchorBeforeLoad, modelId);
         console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
       }
       return registered ? modelId : null;

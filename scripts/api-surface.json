@@ -5770,7 +5770,8 @@
     "RtcRebaseGeometry: interface",
     "rebaseGeometryOntoFirstRealAnchor: function",
     "rebasePositionsToRtcOffset: function",
-    "rtcRebaseDeltaYup: function"
+    "rtcRebaseDeltaYup: function",
+    "rtcRebaseRefusedForInstancedGeometry: function"
   ],
   "@ifc-lite/geometry/world-frame": [
     "FrameCandidate: interface",

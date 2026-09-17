@@ -22,6 +22,7 @@
  */
 
 import type { CoordinateInfo, Vec3 } from './coordinate-types.js';
+import { GEOM_CLASS_INSTANCED_TYPE, geometryClassOf } from './geometry-class.js';
 import { ifcToViewerAxes } from './world-frame.js';
 
 const ZERO: Readonly<Vec3> = { x: 0, y: 0, z: 0 };
@@ -71,7 +72,59 @@ export function rebasePositionsToRtcOffset(
 /** What {@link rebaseGeometryOntoFirstRealAnchor} reads and rewrites per model. */
 export interface RtcRebaseGeometry {
   coordinateInfo: CoordinateInfo;
-  meshes: ReadonlyArray<{ positions: Float32Array }>;
+  meshes: ReadonlyArray<{ positions: Float32Array; geometryClass?: number }>;
+  /** Present on a `GeometryResult`; read here only by
+   *  {@link carriesGpuInstancedGeometry}. */
+  instancedGeometryAabbs?: ReadonlyMap<number, unknown> | null;
+}
+
+/**
+ * Whether a model carries GPU-instanced geometry, which this re-basing
+ * CANNOT move — the reason {@link rebaseGeometryOntoFirstRealAnchor} refuses
+ * such a federation outright instead of half-moving it.
+ *
+ * An instanced-only entity's geometry never appears in `meshes` as a placed
+ * occurrence: what crosses the boundary is a class-2 template plus a shard of
+ * per-occurrence transforms, and those transforms carry the occurrence's
+ * world position in the frame it was meshed in. They are decoded straight
+ * into renderer-owned instance buffers, and the content-version bump this
+ * re-base relies on deliberately KEEPS the instanced templates of a model
+ * that is still present (`geometry-rebuild.ts`,
+ * `reshapeSceneKeepingPresentInstanced`) — so nothing reachable from a
+ * `GeometryResult` can move them. Translating this model's meshes (and its
+ * `instancedGeometryAabbs`) anyway would split ONE model across two frames
+ * and make its instanced boxes describe geometry that is not there, which is
+ * strictly worse than the load-order dependence of #4897 that this whole
+ * file exists to remove.
+ *
+ * Two signals, because neither alone is sufficient: `instancedGeometryAabbs`
+ * is absent when geometry hashing is off (`types.ts`), and a class-2
+ * template is absent when the wasm build emitted no template for a shard
+ * this build understands. Either one present means "instanced".
+ */
+function carriesGpuInstancedGeometry(geometry: RtcRebaseGeometry): boolean {
+  if (geometry.instancedGeometryAabbs != null && geometry.instancedGeometryAabbs.size > 0) return true;
+  return geometry.meshes.some((mesh) => geometryClassOf(mesh) === GEOM_CLASS_INSTANCED_TYPE);
+}
+
+/**
+ * Whether {@link rebaseGeometryOntoFirstRealAnchor} will refuse THIS call
+ * because of {@link carriesGpuInstancedGeometry} — as opposed to the other
+ * two reasons it can return an empty array, which are ordinary no-ops and
+ * mean nothing needed to move.
+ *
+ * The refusal decision lives here, in one function, called both by the
+ * re-base itself and by the viewer wiring that has to tell the user their
+ * models are staying in separate frames. A caller re-deriving the condition
+ * could drift out of step with the re-base and report the wrong thing.
+ */
+export function rtcRebaseRefusedForInstancedGeometry(
+  existingGeometries: readonly RtcRebaseGeometry[],
+  justLoadedOffset: Readonly<Vec3> | null | undefined,
+): boolean {
+  if (justLoadedOffset == null) return false;
+  if (existingGeometries.some((geometry) => geometry.coordinateInfo.wasmRtcOffset != null)) return false;
+  return existingGeometries.some(carriesGpuInstancedGeometry);
 }
 
 /**
@@ -92,6 +145,11 @@ export interface RtcRebaseGeometry {
  * When an earlier model already has a real anchor, this is a no-op: the
  * loader already gave the new model that SAME anchor as its
  * `sharedRtcOffset` (`chooseSharedRtcOffset`), so nothing here needs to move.
+ *
+ * Also a no-op — a deliberate REFUSAL — when any existing model carries
+ * GPU-instanced geometry, which this cannot reach: see
+ * {@link carriesGpuInstancedGeometry}. The caller is expected to tell the
+ * user, because those models then keep the frame they loaded in.
  */
 export function rebaseGeometryOntoFirstRealAnchor<T extends RtcRebaseGeometry>(
   existingGeometries: readonly T[],
@@ -99,6 +157,8 @@ export function rebaseGeometryOntoFirstRealAnchor<T extends RtcRebaseGeometry>(
 ): T[] {
   if (justLoadedOffset == null) return [];
   if (existingGeometries.some((geometry) => geometry.coordinateInfo.wasmRtcOffset != null)) return [];
+  // Refuse before mutating anything: a partial move is worse than none.
+  if (rtcRebaseRefusedForInstancedGeometry(existingGeometries, justLoadedOffset)) return [];
 
   const moved: T[] = [];
   for (const geometry of existingGeometries) {

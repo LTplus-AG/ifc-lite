@@ -92,6 +92,12 @@ export interface FrameCandidate {
  * no `wasmRtcOffset` could stay in a raw frame while a later, large-
  * coordinate model picked its own — the earliest-loaded model would then no
  * longer describe the frame every model is actually drawn in (#4897).
+ *
+ * The one case where that convergence does NOT hold is the one `rtc-rebase.ts`
+ * refuses: a federation whose already-loaded models carry GPU-instanced
+ * geometry cannot be re-based at all, so its models keep the frames they
+ * loaded in and this reports the earliest of those. The viewer tells the user
+ * when that happens rather than leaving the discrepancy silent.
  */
 export function federationFrameInfo(
   models: Iterable<FrameCandidate>,

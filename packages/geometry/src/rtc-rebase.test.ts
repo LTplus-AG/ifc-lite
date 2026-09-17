@@ -118,6 +118,56 @@ describe('rebaseGeometryOntoFirstRealAnchor', () => {
     expect(raw1.meshes[0].positions).not.toEqual(new Float32Array([0, 1.5, 0]));
   });
 
+  it('refuses a federation whose raw model carries an instanced-type template', () => {
+    // Class 2 is a GPU-instanced TEMPLATE: the occurrences that place it are
+    // in instance buffers this module cannot reach, so moving the meshes
+    // would leave one model straddling two frames (#4906 review).
+    const raw = {
+      coordinateInfo: coordInfo({}),
+      meshes: [
+        { positions: new Float32Array([0, 1.5, 0]) },
+        { positions: new Float32Array([1, 1, 1]), geometryClass: 2 },
+      ],
+    };
+    const moved = rebaseGeometryOntoFirstRealAnchor([raw], ANCHOR);
+    expect(moved).toEqual([]);
+    expect(raw.coordinateInfo.wasmRtcOffset).toBeUndefined();
+    expect(raw.meshes[0].positions).toEqual(new Float32Array([0, 1.5, 0]));
+  });
+
+  it('refuses on a non-empty instanced-box map even with no template mesh', () => {
+    const raw = {
+      coordinateInfo: coordInfo({}),
+      meshes: [{ positions: new Float32Array([0, 1.5, 0]) }],
+      instancedGeometryAabbs: new Map([[7, { min: [0, 0, 0], max: [1, 1, 1] }]]),
+    };
+    expect(rebaseGeometryOntoFirstRealAnchor([raw], ANCHOR)).toEqual([]);
+    expect(raw.meshes[0].positions).toEqual(new Float32Array([0, 1.5, 0]));
+  });
+
+  it('refuses the WHOLE federation when only one of its models is instanced', () => {
+    // A per-model refusal would move the other models and leave this one
+    // behind, which is the frame split #4897 is about, one level down.
+    const plain = { coordinateInfo: coordInfo({}), meshes: [{ positions: new Float32Array([2, 3, 4]) }] };
+    const instanced = {
+      coordinateInfo: coordInfo({}),
+      meshes: [{ positions: new Float32Array([0, 1.5, 0]), geometryClass: 2 }],
+    };
+    expect(rebaseGeometryOntoFirstRealAnchor([plain, instanced], ANCHOR)).toEqual([]);
+    expect(plain.meshes[0].positions).toEqual(new Float32Array([2, 3, 4]));
+    expect(plain.coordinateInfo.wasmRtcOffset).toBeUndefined();
+  });
+
+  it('an EMPTY instanced-box map is not instanced geometry and still re-bases', () => {
+    const raw = {
+      coordinateInfo: coordInfo({}),
+      meshes: [{ positions: new Float32Array([0, 1.5, 0]) }],
+      instancedGeometryAabbs: new Map(),
+    };
+    expect(rebaseGeometryOntoFirstRealAnchor([raw], ANCHOR)).toEqual([raw]);
+    expect(raw.coordinateInfo.wasmRtcOffset).toEqual(ANCHOR);
+  });
+
   it('mutates every mesh of a multi-mesh model, not just the first', () => {
     const raw = {
       coordinateInfo: coordInfo({}),

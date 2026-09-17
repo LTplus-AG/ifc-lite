@@ -227,6 +227,75 @@ describe('DataSlice', () => {
       assert.strictEqual(calls.length, 1);
       assert.match(String(calls[0][0]), /some-unregistered-model/);
     });
+
+    it('preserves the non-active model\'s other FederatedModel fields (name, ifcDataStore, visible, loadState) when appending', () => {
+      // A model whose only meaningful field were `geometryResult` couldn't
+      // catch `next.set(modelId, { geometryResult })` dropping the `...model`
+      // spread — both mutated and correct code would look identical. So this
+      // seeds fields that are actually load-bearing elsewhere in the app.
+      const ifcDataStoreSentinel = { tables: 'sentinel' };
+      const models = new Map<string, any>([
+        [ACTIVE_MODEL_ID, { id: ACTIVE_MODEL_ID, geometryResult: null }],
+        [
+          EDITED_MODEL_ID,
+          {
+            id: EDITED_MODEL_ID,
+            name: 'edited-model.ifc',
+            ifcDataStore: ifcDataStoreSentinel,
+            visible: false,
+            loadState: 'complete',
+            geometryResult: null,
+          },
+        ],
+      ]);
+      state = { ...state, activeModelId: ACTIVE_MODEL_ID, models: models as any };
+
+      state.appendGeometryBatch(EDITED_MODEL_ID, [createMockMesh(301)] as any);
+
+      const editedModel = state.models.get(EDITED_MODEL_ID);
+      assert.strictEqual(editedModel?.geometryResult?.meshes.length, 1);
+      // The rest of the model's fields must survive the update untouched.
+      assert.strictEqual(editedModel?.name, 'edited-model.ifc');
+      assert.strictEqual(editedModel?.ifcDataStore, ifcDataStoreSentinel);
+      assert.strictEqual(editedModel?.visible, false);
+      assert.strictEqual(editedModel?.loadState, 'complete');
+    });
+
+    it('preserves an existing non-zero coordinateInfo when a later batch is appended without one', () => {
+      // A zeroed/default coordinateInfo fixture can't distinguish "preserved"
+      // from "overwritten with the default" — both look the same. This seeds
+      // a real, non-zero originShift/bounds so only preservation passes.
+      const seededCoordinateInfo = {
+        originShift: { x: 12345.6, y: -789.1, z: 42 },
+        originalBounds: { min: { x: 1, y: 2, z: 3 }, max: { x: 100, y: 200, z: 300 } },
+        shiftedBounds: { min: { x: -1, y: -2, z: -3 }, max: { x: 50, y: 60, z: 70 } },
+        hasLargeCoordinates: true,
+      };
+      const models = new Map<string, any>([
+        [ACTIVE_MODEL_ID, { id: ACTIVE_MODEL_ID, geometryResult: null }],
+        [
+          EDITED_MODEL_ID,
+          {
+            id: EDITED_MODEL_ID,
+            geometryResult: {
+              meshes: [createMockMesh(400)],
+              totalTriangles: 1,
+              totalVertices: 3,
+              coordinateInfo: seededCoordinateInfo,
+            },
+          },
+        ],
+      ]);
+      state = { ...state, activeModelId: ACTIVE_MODEL_ID, models: models as any };
+
+      // Append WITHOUT coordinateInfo, mirroring the loader's throttled
+      // mid-stream batches and mutationSlice's split/clone/addWall calls.
+      state.appendGeometryBatch(EDITED_MODEL_ID, [createMockMesh(401)] as any);
+
+      const editedModel = state.models.get(EDITED_MODEL_ID);
+      assert.strictEqual(editedModel?.geometryResult?.meshes.length, 2);
+      assert.deepStrictEqual(editedModel?.geometryResult?.coordinateInfo, seededCoordinateInfo);
+    });
   });
 
   describe('updateMeshColors', () => {

@@ -163,10 +163,11 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
   const observe = (expressIds: readonly number[]): ElementFieldObservations => {
     const observations = emptyObservations();
     const seenTypes = new Set<string>();
-    const ingest = (sets: readonly PropertySet[]): void => {
+    const ingest = (sets: readonly PropertySet[], overridden?: ReadonlySet<string>): void => {
       for (const set of sets) for (const property of set.properties) {
         if (!set.name || !property.name) continue;
         const key = propertyObservationKey(set.name, property.name);
+        if (overridden?.has(key)) continue;
         let entry = observations.properties.get(key);
         if (!entry) {
           entry = { psetName: set.name, propertyName: property.name, kind: emptyObservation() };

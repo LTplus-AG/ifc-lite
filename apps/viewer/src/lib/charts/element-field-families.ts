@@ -59,22 +59,37 @@ export function createElementFamilyReader(
   const occurrenceQsets = new Map<number, QuantitySet[]>();
   const typeQsets = new Map<number, QuantitySet[]>();
 
-  /** Overlay sets win by name; base sets the overlay does not know about are kept. */
+  /**
+   * Merge an overlay that has NO quantity base (a view over a server-hydrated
+   * store answers from its own edits alone) over the provider's sets: a set
+   * the overlay knows keeps the overlay's members and gains the base members
+   * it does not name, so editing Qto_X.A never hides Qto_X.B or Qto_Y. A view
+   * WITH a base already applies edits and deletions to the full list and is
+   * taken as is.
+   */
   const overlayFirst = (overlay: readonly QuantitySet[], base: readonly QuantitySet[]): QuantitySet[] => {
-    const names = new Set(overlay.map((set) => set.name));
-    return [...overlay, ...base.filter((set) => !names.has(set.name))];
+    const byName = new Map(overlay.map((set) => [set.name, set]));
+    const merged: QuantitySet[] = overlay.map((set) => {
+      const baseSet = base.find((candidate) => candidate.name === set.name);
+      if (!baseSet) return set;
+      const named = new Set(set.quantities.map((quantity) => quantity.name));
+      return { ...set, quantities: [...set.quantities, ...baseSet.quantities.filter((quantity) => !named.has(quantity.name))] };
+    });
+    return [...merged, ...base.filter((set) => !byName.has(set.name))];
   };
   const qsetsFor = (id: number): QuantitySet[] => {
     let cached = occurrenceQsets.get(id);
     if (!cached) {
       const base = provider.getQuantitySets(id);
       // A view built for a server-hydrated store has no quantity extractor and
-      // answers from the overlay alone; without an edit on this element that
-      // empty answer must not hide the provider's quantities (review find).
-      const overlay = mutationView?.getQuantitiesForEntity(id);
-      cached = !mutationView || !overlay ? base
-        : overlay.length === 0 && !mutationView.hasChanges(id) ? base
-          : overlay;
+      // answers from the overlay alone, so the overlay is merged over the
+      // provider's sets (minus the ones it deleted) rather than replacing
+      // them: editing Qto_X.A must not make Qto_X.B or Qto_Y vanish
+      // (review find). A view with an extractor already includes the base, and
+      // the merge dedupes by set name.
+      cached = !mutationView ? base
+        : mutationView.hasQuantityBase() ? mutationView.getQuantitiesForEntity(id)
+          : overlayFirst(mutationView.getQuantitiesForEntity(id), base.filter((set) => !mutationView.isQuantitySetDeleted(id, set.name)));
       occurrenceQsets.set(id, cached);
     }
     return cached;
@@ -134,8 +149,13 @@ export function createElementFamilyReader(
 
   return {
     read(id, binding) {
+      // A number is never a boolean, and a name is never a number: a binding
+      // whose persisted kind the family cannot honour reads unsupported rather
+      // than storing text in a numeric or boolean column (review find).
+      if (binding.kind !== 'quantity' && binding.valueKind !== 'category') return { value: null, status: 'unsupported' };
       switch (binding.kind) {
         case 'quantity': {
+          if (binding.valueKind === 'boolean') return { value: null, status: 'unsupported' };
           const quantity = quantityFor(id, binding.qsetName, binding.quantityName);
           if (!quantity || !Number.isFinite(quantity.value)) return MISSING;
           const dataType = QUANTITY_MEASURE[quantity.type];

@@ -234,4 +234,20 @@ describe('chart IFC field reader (#4833)', () => {
       'a persisted binding to a reference attribute reads unsupported rather than as the referenced id',
     );
   });
+
+  it('family bindings honour their persisted kind, and an overlay edit keeps sibling quantities (#4833 review)', async () => {
+    const bytes = await readFile(SAMPLE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const reader = createElementFieldReader(store);
+    assert.deepEqual(reader.readResolved(52, { kind: 'material', valueKind: 'number' }), { value: null, status: 'unsupported' });
+    assert.deepEqual(reader.readResolved(52, { kind: 'type', valueKind: 'boolean' }), { value: null, status: 'unsupported' });
+    assert.deepEqual(reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'boolean' }), { value: null, status: 'unsupported' });
+    assert.equal(reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'category' }).value, '25.749999999991743');
+    // A view without a quantity extractor that edits one quantity keeps the untouched siblings and sets.
+    const view = new MutablePropertyView(store.properties, 'fixture');
+    view.setQuantity(52, 'Qto_SlabBaseQuantities', 'NetArea', 30, QuantityType.Area);
+    const edited = createElementFieldReader(store, view);
+    assert.equal(edited.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'number' }).value, 30);
+    assert.equal(edited.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'Depth', valueKind: 'number' }).value, 250.00000000009484, 'the untouched sibling survives the overlay');
+  });
 });

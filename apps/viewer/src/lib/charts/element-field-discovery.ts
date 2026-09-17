@@ -226,10 +226,14 @@ export function catalogFromObservations(observations: ElementFieldObservations):
   for (const options of properties.values()) options.sort((a, b) => a.label.localeCompare(b.label));
   const quantities = new Map<string, ElementFieldOption[]>();
   for (const { qsetName, quantityName, kind } of observations.quantities.values()) {
-    // A quantity is a number by definition; its measure comes from the quantity entity's own class.
-    const dataType = [...kind.dataTypes].sort()[0];
+    // A quantity is a number by definition and its measure is its entity's
+    // class — unless two models disagree on that class (a Length here, an
+    // Area there): then no single measure fits every row and the name can
+    // only be grouped by (review find).
+    const valueKind = kind.number ? inferKind(kind) : 'number';
+    const { dataType } = numericMetadata(kind, valueKind);
     const option: ElementFieldOption = {
-      binding: { kind: 'quantity', qsetName, quantityName, valueKind: 'number', ...(dataType ? { dataType } : {}) },
+      binding: { kind: 'quantity', qsetName, quantityName, valueKind, ...(dataType ? { dataType } : {}) },
       label: `${qsetName}.${quantityName}`,
       observedValue: kind.number,
     };

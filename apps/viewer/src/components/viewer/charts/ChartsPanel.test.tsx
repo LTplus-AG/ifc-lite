@@ -401,10 +401,15 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     type(filter, 'fire');
     await settle();
     assert.deepEqual(property(), ['FireRating'], 'a field-name filter hides the properties that do not match');
+    // Set names match case-insensitively too (the filter lowercases both sides).
+    type(filter, 'pset_wallcommon');
+    await settle();
+    assert.deepEqual(property(), ['FireRating', 'ReferenceLength'], 'a set-name match keeps every field of the set');
     type(filter, 'nothing-like-this');
     await settle();
     const setSelect = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property set"]')!;
     assert.deepEqual([...setSelect.options].map((option) => option.textContent), ['Pset_WallCommon'], 'the chosen set stays listed so the selection is never orphaned, but nothing else matches');
+    assert.deepEqual(property(), ['FireRating (unavailable)'], 'no field matches: the list shows only the saved selection, never the unfiltered set');
   });
 
   it('clearing a numeric IFC field back to the built-in columns leaves a saveable bar chart, not an orphaned histogram (#4833 review)', async () => {

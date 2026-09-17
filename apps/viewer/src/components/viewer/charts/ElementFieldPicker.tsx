@@ -70,7 +70,9 @@ export function ElementFieldPicker({ value, catalog, loading, className, onChang
   const sets = family === 'property' ? catalog.properties : family === 'quantity' ? catalog.quantities : undefined;
   const visibleSets = sets ? filterSets(sets, filter) : new Map<string, ElementFieldOption[]>();
   const chosenSet = value?.kind === 'property' ? value.psetName : value?.kind === 'quantity' ? value.qsetName : '';
-  const setOptions = visibleSets.get(chosenSet) ?? sets?.get(chosenSet) ?? [];
+  // With a filter active, a set none of whose fields match lists nothing; the
+  // saved selection is kept through the separate "(unavailable)" option.
+  const setOptions = visibleSets.get(chosenSet) ?? [];
   const attributeOptions = catalog.attributes.filter((option) => matches(needle, optionText(option)));
   const relationOptions = catalog.relations.filter((option) => matches(needle, optionText(option)));
   const flatOptions = family === 'attribute' ? attributeOptions : family === 'relation' ? relationOptions : setOptions;

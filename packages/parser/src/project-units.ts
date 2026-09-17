@@ -164,17 +164,20 @@ function resolveDeclaredUnit(
       const elemRefs = Array.isArray(attrs[0]) ? attrs[0] : [];
       const parts: Array<[string, number]> = [];
       let scale = 1.0;
+      let incomplete = false;
       for (const er of elemRefs) {
         if (typeof er !== 'number') continue;
         const el = resolveDerivedElement(extractor, entityIndex, er);
         if (el) {
           scale *= Math.pow(el.unitScale, el.exponent);
           parts.push([el.symbol, el.exponent]);
+        } else {
+          incomplete = true; // a factor we cannot read: the product is not this unit's scale (#4833)
         }
       }
       const symbol = composeDerived(parts);
       if (symbol.length === 0) return null;
-      return { unitType, resolved: { symbol, siScale: scale }, monetary: false };
+      return { unitType, resolved: incomplete ? null : { symbol, siScale: scale }, monetary: false };
     }
     case 'IFCMONETARYUNIT': {
       // [0]=Currency (IfcLabel string in IFC4+, IfcCurrencyEnum in IFC2x3)

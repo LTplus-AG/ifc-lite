@@ -125,6 +125,29 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(kindOf('Status'), 'category');
   });
 
+  it('inherited type properties survive an idle overlay, and an explicit unit of the wrong dimension or with an unreadable factor is reported unresolved (#4833 review)', async () => {
+    const store = await parseSampleWith(`
+#60030=IFCMONETARYUNIT('EUR');
+#60031=IFCPROPERTYSINGLEVALUE('LengthInEuros',$,IFCLENGTHMEASURE(1.),#60030);
+#60032=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#60033=IFCDERIVEDUNITELEMENT(#60032,1);
+#60034=IFCDERIVEDUNITELEMENT(#60099,-1);
+#60035=IFCDERIVEDUNIT((#60033,#60034),.LINEARVELOCITYUNIT.,$);
+#60036=IFCPROPERTYSINGLEVALUE('Speed',$,IFCLINEARVELOCITYMEASURE(3.),#60035);
+#60006=IFCPROPERTYSET('g-units',#1,'Probe',$,(#60031,#60036));
+#60008=IFCRELDEFINESBYPROPERTIES('g-rel',#1,$,$,(#52),#60006);`);
+    const idle = new MutablePropertyView(store.properties, 'fixture');
+    idle.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    assert.equal(createElementFieldReader(store, idle).read(52, SPREAD), 'A2 s1 d0', 'a type-only property is still inherited once an overlay exists');
+    const reader = createElementFieldReader(store);
+    const euros = reader.readResolved(52, { kind: 'property', psetName: 'Probe', propertyName: 'LengthInEuros', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' });
+    assert.equal(euros.unit, '#60030', 'a currency is not a length unit');
+    assert.equal(euros.unitSiScale, undefined);
+    const speed = reader.readResolved(52, { kind: 'property', psetName: 'Probe', propertyName: 'Speed', valueKind: 'number', dataType: 'IFCLINEARVELOCITYMEASURE' });
+    assert.equal(speed.unit, '#60035', 'a derived unit with a dangling factor has no trustworthy scale');
+    assert.equal(speed.unitSiScale, undefined);
+  });
+
   it('never offers an entity-reference attribute as a value, even though its STEP slot holds a number', async () => {
     const store = await parseSampleWith(`
 #60020=IFCDIRECTION((0.,0.,1.));

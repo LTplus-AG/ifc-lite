@@ -4,7 +4,7 @@
 
 import type { IfcDataStore } from './columnar-parser.js';
 import type { EntityExtractor } from './entity-extractor.js';
-import { resolveUnitByRef } from './project-units.js';
+import { measureUnit, resolveUnitByRef } from './project-units.js';
 
 /**
  * The explicit `Unit` an `IfcProperty` subtype declares, when it declares one.
@@ -30,6 +30,8 @@ export function resolvePropertyUnit(
   extractor: EntityExtractor,
   propertyType: string,
   attributes: unknown[],
+  /** The value's IFC measure type when tagged; an explicit unit of another dimension is reported unresolved. */
+  dataType?: string,
 ): ExplicitPropertyUnit | undefined {
   // IfcPropertyTableValue carries DefiningUnit and DefinedUnit (slots 5 and
   // 6); a single `unit` cannot represent both, so a table reports none.
@@ -41,8 +43,13 @@ export function resolvePropertyUnit(
     : undefined;
   if (unitRef === undefined) return undefined;
 
-  const resolved = resolveUnitByRef(extractor, {
+  const entry = resolveUnitByRef(extractor, {
     byId: { get: (id) => store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id) },
-  }, unitRef)?.resolved;
-  return resolved ? { symbol: resolved.symbol, siScale: resolved.siScale } : { symbol: `#${unitRef}` };
+  }, unitRef);
+  const measure = dataType ? measureUnit(dataType) : undefined;
+  const compatible = !entry || !measure
+    || (measure.kind === 'typed' && entry.unitType === measure.unitType)
+    || (measure.kind === 'monetary' && entry.monetary)
+    || measure.kind === 'dimensionless';
+  return entry && compatible ? { symbol: entry.resolved.symbol, siScale: entry.resolved.siScale } : { symbol: `#${unitRef}` };
 }

@@ -113,12 +113,21 @@ export function resolveFieldCell(cell: ResolvedElementFieldValue, context: Field
   }
   if (typeof cell.value !== 'number') return { value: cell.value, status: cell.status };
 
+  // An untagged number (`1.` with no IFC measure) carries no evidence of being
+  // the binding's measure; without its own unit it cannot join a typed sum.
+  if (!declared && unitBearing(bound) && cell.unit === undefined) return UNSUPPORTED;
   const kind = unitBearing(declared) ? declared : unitBearing(bound) ? bound : undefined;
   if (kind?.kind === 'monetary') {
     const currency = cell.unit ?? projectUnits?.monetary()?.symbol;
     return currency && columnUnit && currency === columnUnit ? { value: cell.value, status: 'value' } : UNSUPPORTED;
   }
-  if (kind?.kind !== 'typed') return { value: cell.value, status: 'value' };
+  if (kind?.kind !== 'typed') {
+    // A dimensionless or untyped number with its OWN unit (an `IfcReal` in
+    // `mm`) cannot be converted into anything; only a unit equal to the
+    // column's passes through unchanged.
+    if (cell.unit !== undefined && cell.unit !== columnUnit) return UNSUPPORTED;
+    return { value: cell.value, status: 'value' };
+  }
 
   const target = resolver.targetUnit(index);
   if (!columnUnit || !target) return UNSUPPORTED;

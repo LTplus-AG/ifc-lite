@@ -105,7 +105,13 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     if (typeId < 0) return [];
     let cached = typeSets.get(typeId);
     if (!cached) {
-      cached = mutationView?.getForEntity(typeId) ?? provider.getTypePropertySets?.(id) ?? [];
+      // The overlay's extractor reads occurrence-related sets; a type's own
+      // HasPropertySets need the provider's type extractor. An edit on the
+      // type object still wins by set name (review find).
+      const base = provider.getTypePropertySets?.(id) ?? [];
+      const overlay = mutationView?.hasChanges(typeId) ? mutationView.getForEntity(typeId) : [];
+      const overlayNames = new Set(overlay.map((set) => set.name));
+      cached = overlay.length > 0 ? [...overlay, ...base.filter((set) => !overlayNames.has(set.name))] : base;
       typeSets.set(typeId, cached);
     }
     return cached;

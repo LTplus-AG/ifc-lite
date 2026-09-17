@@ -169,7 +169,7 @@ export function extractPsetsFromIds(
                 };
                 if (parsed.values) entry.values = parsed.values;
                 if (parsed.dataType) entry.dataType = parsed.dataType;
-                const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs);
+                const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;
                 properties.push(entry);

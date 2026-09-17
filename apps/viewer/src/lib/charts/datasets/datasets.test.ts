@@ -378,6 +378,20 @@ END-ISO-10303-21;`);
     assert.equal(createElementFieldReader(broken.ifcDataStore).readResolved(41, field).unit, '#999');
   });
 
+  it('elements: an untagged number never joins a typed sum, and an untyped number keeps only a unit equal to the column\'s (#4833 review)', async () => {
+    const mmProject = "#200=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);";
+    // `1000.` with no IFC measure tag: nothing says it is a length.
+    const bare = await unitModel('bare', 0, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Length',$,1000.,$);");
+    const length: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Length', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' };
+    useViewerStore.setState({ models: new Map([[bare.id, bare]]), activeModelId: bare.id, mutationViews: new Map(), mutationVersion: 0, unitDisplayOverrides: {} });
+    assert.deepEqual(cellOf(buildElementsDataset({ kind: 'all' }, [length], useViewerStore.getState()), length, 41), { unit: 'mm', value: null, status: 'unsupported' });
+    // An IfcReal in millimetres under a binding discovered without a measure cannot be converted into anything.
+    const realMm = await unitModel('real', OFFSET, mmProject, "#203=IFCPROPERTYSINGLEVALUE('Ratio',$,IFCREAL(2.),#206);", '#206=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);');
+    const ratio: ElementFieldBinding = { kind: 'property', psetName: 'Probe', propertyName: 'Ratio', valueKind: 'number', dataType: 'IFCREAL' };
+    useViewerStore.setState({ models: new Map([[realMm.id, realMm]]), activeModelId: realMm.id });
+    assert.equal(cellOf(buildElementsDataset({ kind: 'all' }, [ratio], useViewerStore.getState()), ratio, GID(41)).status, 'unsupported');
+  });
+
   it('clash: the fingerprint follows a regroup and a review status edit, so a selected Other bucket cannot stay live on moved rows (#4833)', async () => {
     const engine = createClashEngine({ backend: 'ts' });
     const result = await engine.run(

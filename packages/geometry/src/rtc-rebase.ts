@@ -214,6 +214,22 @@ export function rebaseGeometryOntoFirstRealAnchor<T extends RtcRebaseGeometry>(
 
   const moved: T[] = [];
   for (const geometry of existingGeometries) {
+    // `delta` deliberately reads only `wasmRtcOffset`, not
+    // `coordinateInfo.originShift` — even though a "still raw" model here
+    // (no `wasmRtcOffset`) CAN carry a non-zero `originShift`:
+    // `CoordinateHandler`'s >10km JS-side fallback sets it when WASM did NOT
+    // apply RTC (#4906 review). That's not a gap: every render-frame value
+    // this function reads or writes (`positions`, `originalBounds`,
+    // `shiftedBounds`) is defined relative to the model's TOTAL offset,
+    // `originShift + ifcToViewerAxes(wasmRtcOffset ?? 0)` (`totalYupOffset`,
+    // `world-frame.ts`), and this call only ever changes the `wasmRtcOffset`
+    // term — `originShift` is copied through unchanged below. So the correct
+    // per-vertex/per-box translation is exactly the CHANGE in that total,
+    // which is exactly the change in `wasmRtcOffset` alone: `originShift`
+    // cancels out of the subtraction because it is the same on both sides.
+    // (Axis note: `originShift` is already Y-up, `wasmRtcOffset` is IFC
+    // Z-up — the two are never added directly, only through
+    // `ifcToViewerAxes`, which is exactly what `rtcRebaseDeltaYup` does.)
     const fromOffset = geometry.coordinateInfo.wasmRtcOffset;
     const delta = rtcRebaseDeltaYup(fromOffset, justLoadedOffset);
     for (const mesh of geometry.meshes) {

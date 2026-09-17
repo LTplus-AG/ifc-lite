@@ -47,9 +47,12 @@ describe('#4854 redistributable canonical cost fixture', () => {
     expect(extraction.Currency).toBe('GBP');
     expect(extraction.Diagnostics).toEqual([]);
     expect(extraction.CostSchedules[0]).toMatchObject({ Name: 'Canonical budget' });
+    // #10 is the IfcWall, #11 the IfcTask bound through the same
+    // IfcRelAssignsToControl (#62): productExpressIds is products-only (#4877),
+    // so only the wall appears; the task assignment is pinned via #62 below.
     expect(total).toMatchObject({ CostValues: [38], childGlobalIds: [
       '3JYq7Z8qH3nP9JjM4fLg2A', '0JYq7Z8qH3nP9JjM4fLg2B',
-    ], productExpressIds: [10, 11] });
+    ], productExpressIds: [10] });
     expect(scaffolding?.CostQuantities).toEqual([20]);
     expect(brick?.CostQuantities).toEqual([21]);
     expect(extraction.CostQuantities).toEqual(expect.arrayContaining([
@@ -63,6 +66,7 @@ describe('#4854 redistributable canonical cost fixture', () => {
     expect(scaffoldingSharedValue).toBe(sharedCostValue);
     expect(extraction.Relationships).toEqual(expect.arrayContaining([
       expect.objectContaining({ Type: 'IfcRelAssignsToControl', RelatingControl: 50, RelatedObjects: [42] }),
+      expect.objectContaining({ Type: 'IfcRelAssignsToControl', RelatingControl: 42, RelatedObjects: [10, 11] }),
       expect.objectContaining({ Type: 'IfcRelAssignsToProduct', RelatingProduct: 10, RelatedObjects: [40] }),
       expect.objectContaining({ Type: 'IfcRelAssignsToProcess', RelatingProcess: 11, RelatedObjects: [42] }),
     ]));

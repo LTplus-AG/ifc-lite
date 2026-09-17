@@ -22,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTranslation } from '@/i18n';
 import {
   groupExportCommands,
   type CsvExportType,
@@ -89,11 +90,12 @@ function RibbonExportButton({
  * parsed data store for the table exports.
  */
 export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
+  const { t } = useTranslation();
   const { commands, handleExportCSV, runExportAction } = useExportCommands();
   const groups = groupExportCommands(commands, (resolved) => resolved.command.group);
 
   return (
-    <RibbonGroup label="Export">
+    <RibbonGroup label={t('ribbon.file.exportGroup')}>
       {groups.map((group) => {
         const buttons = group.map((resolved) => (
           <RibbonExportButton

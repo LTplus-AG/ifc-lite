@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { ThemeSwitch } from '../ThemeSwitch';
 import { SearchInline } from '../SearchInline';
@@ -40,13 +41,13 @@ import { AuthorTab } from './tabs/AuthorTab';
 import { RibbonSwitchNotice } from './RibbonSwitchNotice';
 import { useRibbonContextualTab } from './useRibbonContextualTab';
 
-const RIBBON_TABS: { id: RibbonTabId; label: string }[] = [
-  { id: 'file', label: 'File' },
-  { id: 'home', label: 'Home' },
-  { id: 'view', label: 'View' },
-  { id: 'elements', label: 'Elements' },
-  { id: 'analyze', label: 'Analyze' },
-  { id: 'author', label: 'Author' },
+const RIBBON_TABS: { id: RibbonTabId; labelKey: TranslationKey }[] = [
+  { id: 'file', labelKey: 'ribbon.tab.file' },
+  { id: 'home', labelKey: 'ribbon.tab.home' },
+  { id: 'view', labelKey: 'ribbon.tab.view' },
+  { id: 'elements', labelKey: 'ribbon.tab.elements' },
+  { id: 'analyze', labelKey: 'ribbon.tab.analyze' },
+  { id: 'author', labelKey: 'ribbon.tab.author' },
 ];
 
 interface RibbonToolbarProps {
@@ -56,6 +57,7 @@ interface RibbonToolbarProps {
 export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as RibbonToolbarProps) {
   // The active tab lives in the store so the contextual driver and the
   // walkthrough can open one; it starts on Home and is never persisted.
+  const { t } = useTranslation();
   const activeTab = useViewerStore((s) => s.ribbonTab);
   const setActiveTab = useViewerStore((s) => s.setRibbonTab);
   const ribbonCollapsed = useViewerStore((s) => s.ribbonCollapsed);
@@ -86,7 +88,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
       <div className="flex h-10 items-center gap-0.5 border-b border-zinc-200/70 px-2 dark:border-zinc-800/70">
         <div
           role="tablist"
-          aria-label="Ribbon tabs"
+          aria-label={t('ribbon.tabsAriaLabel')}
           className="flex h-full items-end gap-0.5"
           {...tourAnchor(TOUR_ANCHORS.ribbonTabs)}
         >
@@ -110,7 +112,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
                 )}
               >
-                {tab.label}
+                {t(tab.labelKey)}
                 {/* Drafting-pen underline for the active tab — reads in
                     every theme without a filled pill. */}
                 {isActive && (
@@ -183,7 +185,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
                 <ThemeSwitch />
               </div>
             </TooltipTrigger>
-            <TooltipContent>Toggle theme (Shift+click for secret mode)</TooltipContent>
+            <TooltipContent>{t('ribbon.themeTooltip')}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -191,13 +193,13 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Info and keyboard shortcuts"
+                aria-label={t('ribbon.infoAriaLabel')}
                 onClick={() => onShowShortcuts?.()}
               >
                 <HelpCircle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Info (?)</TooltipContent>
+            <TooltipContent>{t('ribbon.infoTooltip')}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -205,7 +207,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={ribbonCollapsed ? 'Expand the ribbon' : 'Collapse the ribbon'}
+                aria-label={ribbonCollapsed ? t('ribbon.expand') : t('ribbon.collapse')}
                 aria-expanded={!ribbonCollapsed}
                 onClick={() => setRibbonCollapsed(!ribbonCollapsed)}
                 {...tourAnchor(TOUR_ANCHORS.ribbonCollapse)}
@@ -213,7 +215,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
                 {ribbonCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{ribbonCollapsed ? 'Expand the ribbon' : 'Collapse the ribbon'}</TooltipContent>
+            <TooltipContent>{ribbonCollapsed ? t('ribbon.expand') : t('ribbon.collapse')}</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -222,7 +224,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
       {!ribbonCollapsed && (
         <div
           role="tabpanel"
-          aria-label={`${activeTab} commands`}
+          aria-label={t('ribbon.bandAriaLabel', { tab: t(`ribbon.tab.${activeTab}`) })}
           className="flex h-[88px] items-stretch overflow-x-auto overflow-y-hidden px-1"
         >
           {activeTab === 'file' && <FileTab fileCommands={fileCommands} />}

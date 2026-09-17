@@ -11,6 +11,7 @@
 
 import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document } from '@/icons';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
   RibbonGroup,
@@ -28,6 +29,7 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 export function AnalyzeTab() {
+  const { t } = useTranslation();
   const {
     activeWorkspacePanels,
     handleToggleBottomPanel,
@@ -41,24 +43,24 @@ export function AnalyzeTab() {
 
   return (
     <>
-      <RibbonGroup label="Validate">
+      <RibbonGroup label={t('ribbon.analyze.validateGroup')}>
         <RibbonLargeButton
           icon={Issue}
-          label="BCF topics"
+          label={t('ribbon.analyze.bcfTopics')}
           active={activeWorkspacePanels.has('bcf')}
           onClick={() => handleToggleRightPanel('bcf')}
         />
         <RibbonLargeButton
           icon={Check}
-          label="IDS check"
-          tooltip="IDS validation"
+          label={t('ribbon.analyze.ids')}
+          tooltip={t('ribbon.analyze.idsTooltip')}
           active={activeWorkspacePanels.has('ids')}
           onClick={() => handleToggleRightPanel('ids')}
         />
         <RibbonLargeButton
           icon={Clash}
-          label="Clash"
-          tooltip="Clash detection"
+          label={t('ribbon.analyze.clash')}
+          tooltip={t('ribbon.analyze.clashTooltip')}
           active={activeWorkspacePanels.has('clash')}
           onClick={() => handleToggleRightPanel('clash')}
         />
@@ -66,18 +68,18 @@ export function AnalyzeTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Compare">
+      <RibbonGroup label={t('ribbon.analyze.compareGroup')}>
         <RibbonLargeButton
           icon={Compare}
-          label="Compare"
-          tooltip="Compare models"
+          label={t('ribbon.analyze.compare')}
+          tooltip={t('ribbon.analyze.compareTooltip')}
           active={activeWorkspacePanels.has('compare')}
           onClick={() => handleToggleRightPanel('compare')}
         />
         <RibbonLargeButton
           icon={Layer}
-          label="Layers"
-          tooltip="Layer stack"
+          label={t('ribbon.analyze.layers')}
+          tooltip={t('ribbon.analyze.layersTooltip')}
           active={activeWorkspacePanels.has('layers')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
         />
@@ -85,16 +87,16 @@ export function AnalyzeTab() {
             (#2508): the ActivityBar rail was its only entry point. */}
         <RibbonLargeButton
           icon={Zones}
-          label="Zones"
-          tooltip="Location zones (sections / takt areas)"
+          label={t('ribbon.analyze.zones')}
+          tooltip={t('ribbon.analyze.zonesTooltip')}
           active={activeWorkspacePanels.has('zones')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
         />
         {/* Per-model load report (#3927): actionable geometry warnings. */}
         <RibbonLargeButton
           icon={LoadReport}
-          label="Load Report"
-          tooltip="Per-model load report and geometry warnings"
+          label={t('ribbon.analyze.loadReport')}
+          tooltip={t('ribbon.analyze.loadReportTooltip')}
           active={activeWorkspacePanels.has('loadReport')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('loadReport')}
         />
@@ -102,39 +104,39 @@ export function AnalyzeTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Data">
+      <RibbonGroup label={t('ribbon.analyze.dataGroup')}>
         <RibbonLargeButton
           icon={List}
-          label="Lists"
-          tooltip="Entity lists"
+          label={t('ribbon.analyze.lists')}
+          tooltip={t('ribbon.analyze.listsTooltip')}
           active={activeWorkspacePanels.has('lists')}
           onClick={() => handleToggleBottomPanel('lists')}
         />
         <RibbonLargeButton
           icon={Schedule}
-          label="Schedule"
-          tooltip="Construction schedule (Gantt)"
+          label={t('ribbon.analyze.schedule')}
+          tooltip={t('ribbon.analyze.scheduleTooltip')}
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
         />
         <RibbonLargeButton
           icon={Chart}
-          label="Charts"
-          tooltip="Charts bound to the model — click a bar to select it in 3D"
+          label={t('ribbon.analyze.charts')}
+          tooltip={t('ribbon.analyze.chartsTooltip')}
           active={activeWorkspacePanels.has('charts')}
           onClick={() => handleToggleBottomPanel('charts')}
         />
         <RibbonLargeButton
           icon={Document}
-          label="Document"
-          tooltip="A page over the model — text with live labels, logos, charts, BCF topics — printed to PDF"
+          label={t('ribbon.analyze.document')}
+          tooltip={t('ribbon.analyze.documentTooltip')}
           active={activeWorkspacePanels.has('document')}
           onClick={() => handleToggleBottomPanel('document')}
         />
         <RibbonLargeButton
           icon={Script}
-          label="Script"
-          tooltip="Script editor"
+          label={t('ribbon.analyze.script')}
+          tooltip={t('ribbon.analyze.scriptTooltip')}
           active={activeWorkspacePanels.has('script')}
           onClick={() => handleToggleBottomPanel('script')}
         />
@@ -142,11 +144,11 @@ export function AnalyzeTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Style">
+      <RibbonGroup label={t('ribbon.analyze.styleGroup')}>
         <RibbonLargeButton
           icon={Coloring}
-          label="Lens"
-          tooltip="Lens rules"
+          label={t('ribbon.analyze.lens')}
+          tooltip={t('ribbon.analyze.lensTooltip')}
           active={activeWorkspacePanels.has('lens')}
           onClick={() => handleToggleRightPanel('lens')}
         />
@@ -158,7 +160,7 @@ export function AnalyzeTab() {
       {analysisExtensions.length > 0 && (
         <>
           <RibbonGroupDivider />
-          <RibbonGroup label="Apps">
+          <RibbonGroup label={t('ribbon.analyze.appsGroup')}>
             {chunk(analysisExtensions, 3).map((column, i) => (
               <RibbonSmallStack key={i}>
                 {column.map((extension) => (

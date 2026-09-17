@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu
 import { resolveGlobalId, useViewerStore, type HierarchyMode } from '@/store';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { useTranslation } from '@/i18n';
 import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,
@@ -22,6 +23,7 @@ import {
 } from '../primitives';
 
 export function ElementsTab() {
+  const { t } = useTranslation();
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const hideEntities = useViewerStore((state) => state.hideEntities);
@@ -77,11 +79,11 @@ export function ElementsTab() {
           the ribbon's fixed geography is the point) and read their
           availability from the disabled state. The group label carries
           the live count so scene state is visible at a glance. */}
-      <RibbonGroup label="Elements">
+      <RibbonGroup label={t('ribbon.elements.elementsGroup')}>
         <RibbonLargeButton
           icon={Search}
-          label="Search"
-          tooltip="Search and filter elements"
+          label={t('ribbon.elements.search')}
+          tooltip={t('ribbon.elements.searchTooltip')}
           onClick={() => {
             setSearchModalTab('search');
             setSearchModalOpen(true);
@@ -89,15 +91,15 @@ export function ElementsTab() {
         />
         <RibbonLargeButton
           icon={DisplayAll}
-          label="Show all"
-          tooltip="Show all (reset filters)"
+          label={t('ribbon.elements.showAll')}
+          tooltip={t('ribbon.elements.showAllTooltip')}
           shortcut="A"
           onClick={resetVisibilityForHomeFromStore}
         />
         <RibbonLargeButton
           icon={ElementTooltips}
-          label="Hover tips"
-          tooltip="Show entity tooltips on hover"
+          label={t('ribbon.elements.hoverTips')}
+          tooltip={t('ribbon.elements.hoverTipsTooltip')}
           active={hoverTooltipsEnabled}
           onClick={() => toggleHoverTooltips()}
         />
@@ -105,36 +107,36 @@ export function ElementsTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label={hasSelection ? `Selection · ${selectionCount}` : 'Selection'}>
+      <RibbonGroup label={hasSelection ? t('ribbon.elements.selectionGroupCount', { count: selectionCount }) : t('ribbon.elements.selectionGroup')}>
         <RibbonLargeButton
           icon={IsolateSelected}
-          label="Isolate"
-          tooltip="Isolate selection (set basket)"
+          label={t('ribbon.elements.isolate')}
+          tooltip={t('ribbon.elements.isolateTooltip')}
           shortcut="I"
           disabled={!hasSelection}
           onClick={() => executeBasketIsolate()}
         />
         <RibbonLargeButton
           icon={HideSelected}
-          label="Hide"
-          tooltip="Hide selection"
-          shortcut="Del / Space"
+          label={t('ribbon.elements.hide')}
+          tooltip={t('ribbon.elements.hideTooltip')}
+          shortcut={t('ribbon.elements.hideShortcut')}
           disabled={!hasSelection}
           onClick={handleHide}
         />
         <RibbonSmallStack>
           <RibbonSmallButton
             icon={FocusSelected}
-            label="Frame"
-            tooltip="Frame selection"
+            label={t('ribbon.elements.frame')}
+            tooltip={t('ribbon.elements.frameTooltip')}
             shortcut="F"
             disabled={!hasSelection}
             onClick={() => cameraCallbacks.frameSelection?.()}
           />
           <RibbonSmallButton
             icon={CopyGuid}
-            label="Copy guid"
-            tooltip="Copy GlobalID"
+            label={t('ribbon.elements.copyGuid')}
+            tooltip={t('ribbon.elements.copyGuidTooltip')}
             disabled={selectedEntityId === null}
             onClick={handleCopyGuid}
           />
@@ -143,55 +145,55 @@ export function ElementsTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Hierarchy">
+      <RibbonGroup label={t('ribbon.elements.hierarchyGroup')}>
         <RibbonLargeButton
           icon={Spatial}
-          label="Spatial"
-          tooltip="Displays ifc spatial structure"
+          label={t('ribbon.elements.spatial')}
+          tooltip={t('ribbon.elements.spatialTooltip')}
           active={hierarchyMode === 'spatial'}
           onClick={() => handleHierarchyMode('spatial')}
         />
         <RibbonLargeButton
           icon={Class}
-          label="Class"
-          tooltip="Displays class of elements"
+          label={t('ribbon.elements.class')}
+          tooltip={t('ribbon.elements.classTooltip')}
           active={hierarchyMode === 'type'}
           onClick={() => handleHierarchyMode('type')}
         />
         <RibbonLargeButton
           icon={Type}
-          label="Type"
-          tooltip="Displays type of elements"
+          label={t('ribbon.elements.type')}
+          tooltip={t('ribbon.elements.typeTooltip')}
           active={hierarchyMode === 'ifc-type'}
           onClick={() => handleHierarchyMode('ifc-type')}
         />
         <RibbonLargeButton
           icon={Material}
-          label="Materials"
-          tooltip="Displays materials of the model"
+          label={t('ribbon.elements.materials')}
+          tooltip={t('ribbon.elements.materialsTooltip')}
           active={hierarchyMode === 'material'}
           onClick={() => handleHierarchyMode('material')}
         />
         <RibbonLargeButton
           icon={Group}
-          label="Groups"
-          tooltip="Displays groups of the model"
+          label={t('ribbon.elements.groups')}
+          tooltip={t('ribbon.elements.groupsTooltip')}
           active={hierarchyMode === 'groups'}
           onClick={() => handleHierarchyMode('groups')}
         />
       </RibbonGroup>
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Visibility">
+      <RibbonGroup label={t('ribbon.elements.visibilityGroup')}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <RibbonLargeButton
               icon={ClassVisibility}
-              label="Filter"
+              label={t('ribbon.elements.filter')}
               hasMenu
               tooltip={mergeLayers
-                ? `Class visibility (${visibleClassCount} on) · Merge Multilayer Walls is on`
-                : `Class visibility (${visibleClassCount} on)`}
+                ? t('ribbon.elements.filterMergedTooltip', { count: visibleClassCount })
+                : t('ribbon.elements.filterTooltip', { count: visibleClassCount })}
               badge={mergeLayers ? (
                 // Tiny accent dot announcing that a non-default load
                 // setting is active. Decorative — semantics live on the

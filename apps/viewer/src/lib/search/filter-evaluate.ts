@@ -86,6 +86,7 @@ import {
   storeyMatchesRefs,
   materialNamesOf, materialMatchCandidates,
   matchClassificationRule,
+  matchParentRule,
   elevationOf,
   type AttrRows,
   type PsetRows,
@@ -490,9 +491,8 @@ function evaluateRule(
         ?? defaultStoreyName(ctx.store, expressId);
       return setOpMatches(rule.op, storeyName, rule.values);
     }
-    case 'ifcType': {
+    case 'ifcType':
       return setOpMatches(rule.op, ctx.table.getTypeName(expressId), rule.values);
-    }
     case 'predefinedType': {
       // No columnar PredefinedType accessor - resolve from the source buffer
       // against THIS model's store (the federated options object is shared, so
@@ -503,12 +503,10 @@ function evaluateRule(
         ?? '';
       return setOpMatches(rule.op, pt, rule.values);
     }
-    case 'name': {
+    case 'name':
       return stringOpMatches(rule.op, ctx.table.getName(expressId), rule.value, rule.valueKind);
-    }
-    case 'globalId': {
+    case 'globalId':
       return globalIdOpMatches(rule.op, ctx.table.getGlobalId(expressId), rule.values);
-    }
     case 'attribute': {
       if (!attrsFor) return false;
       return matchAttributeRule(rule, attrsFor());
@@ -539,6 +537,8 @@ function evaluateRule(
       if (typeName === null) return false;
       return stringOpMatches(rule.op, typeName, rule.value, rule.valueKind);
     }
+    case 'parent':
+      return matchParentRule(rule, ctx.store, expressId);
   }
 }
 

@@ -85,14 +85,14 @@ describe('SearchModalFilterSelector', () => {
 
   it('a selector with an unsupported part applies the rest AND names what it dropped', () => {
     // `type=WT01` used to be this test's unsupported example; #4094 gave it
-    // a real rule kind (`Rule.typeName`), so `parent=Foo` — still genuinely
-    // unsupported — takes over here.
+    // a real rule kind (`Rule.typeName`), and #4903 gave `parent=` one too, so
+    // `query:` — refused permanently by the #4094 decision — takes over here.
     const container = mount();
-    type(field(container), 'IfcWall, parent=Foo');
+    type(field(container), 'IfcWall, query:types.count=0');
     click(applyButton(container));
 
     assert.deepEqual(rulesInStore(), [Rule.ifcType(WALLS, 'in')]);
-    assert.match(alertText(container), /parent=Foo/);
+    assert.match(alertText(container), /query:types\.count=0/);
   });
 
   it('a selector that maps to no rule at all applies nothing and explains', () => {
@@ -106,7 +106,7 @@ describe('SearchModalFilterSelector', () => {
 
   it('a successful apply clears a previous complaint', () => {
     const container = mount();
-    type(field(container), 'IfcWall, parent=Foo');
+    type(field(container), 'IfcWall, query:types.count=0');
     click(applyButton(container));
     assert.notEqual(alertText(container), '');
 

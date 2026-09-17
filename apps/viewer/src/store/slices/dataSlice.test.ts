@@ -6,6 +6,9 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dataSlice.js';
 import { DATA_DEFAULTS } from '../constants.js';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import type { FederatedModel } from '../types.js';
+import { capturePreAlignment, restorePreAlignment } from '../../hooks/ingest/federationRealign.js';
 
 type DataTestState = DataSlice & DataCrossSliceState;
 
@@ -16,6 +19,19 @@ const createMockMesh = (expressId: number, color: [number, number, number, numbe
   indices: new Uint32Array([0, 1, 2]),
   normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
   color,
+  ifcType: 'IfcWall',
+});
+
+// Deliberately asymmetric mesh sizes (vertex count != triangle count, and
+// every mesh a different size) so a wrong field, a wrong /3 divisor, or an
+// accidental double-subtract shows up as a mismatched number rather than
+// hiding behind a coincidental round or symmetric total.
+const createSizedMesh = (expressId: number, vertexCount: number, triangleCount: number) => ({
+  expressId,
+  positions: new Float32Array(vertexCount * 3),
+  indices: new Uint32Array(triangleCount * 3),
+  normals: new Float32Array(vertexCount * 3),
+  color: [1, 0, 0, 1] as [number, number, number, number],
   ifcType: 'IfcWall',
 });
 
@@ -295,6 +311,185 @@ describe('DataSlice', () => {
       const editedModel = state.models.get(EDITED_MODEL_ID);
       assert.strictEqual(editedModel?.geometryResult?.meshes.length, 2);
       assert.deepStrictEqual(editedModel?.geometryResult?.coordinateInfo, seededCoordinateInfo);
+    });
+  });
+
+  describe('pruneGeometryMeshes', () => {
+    // Mirrors what a wall/slab split does: the source mesh is tombstoned and
+    // two new halves land via appendGeometryBatch, then the drain prunes the
+    // source out from under pendingMeshRemovals.
+    const seedSplit = () => {
+      const source = createSizedMesh(1, 3, 1); // 3 verts, 1 triangle
+      const left = createSizedMesh(2, 4, 2); // 4 verts, 2 triangles
+      const right = createSizedMesh(3, 5, 3); // 5 verts, 3 triangles
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [source, left, right] as any);
+    };
+
+    it('drops the pruned mesh out of geometryResult.meshes and subtracts only its counts', () => {
+      seedSplit();
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6); // 1+2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 12); // 3+4+5
+
+      state.pruneGeometryMeshes(new Set([1]));
+
+      const ids = state.geometryResult?.meshes.map((m) => m.expressId);
+      assert.deepStrictEqual(ids, [2, 3]);
+      // Only the source's counts came off — not a wrong field, not the
+      // wrong divisor, not the whole batch.
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5); // 2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 9); // 4+5
+    });
+
+    it('is idempotent: draining an id twice does not double-subtract or go negative', () => {
+      seedSplit();
+      state.pruneGeometryMeshes(new Set([1]));
+      state.pruneGeometryMeshes(new Set([1]));
+
+      assert.strictEqual(state.geometryResult?.meshes.length, 2);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5);
+      assert.strictEqual(state.geometryResult?.totalVertices, 9);
+    });
+
+    it('leaves totals untouched when the id names no mesh', () => {
+      seedSplit();
+      state.pruneGeometryMeshes(new Set([999]));
+
+      assert.strictEqual(state.geometryResult?.meshes.length, 3);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6);
+      assert.strictEqual(state.geometryResult?.totalVertices, 12);
+    });
+
+    // Bounded mode empties a mesh's buffers after GPU upload but keeps the mesh
+    // and its share of the totals; a later split/delete prune must subtract
+    // what the mesh contributed, not the zero its empty buffers now report.
+    it('subtracts the pre-release counts for a mesh released in bounded mode', () => {
+      state.setBoundedGeometryMode(true);
+      seedSplit();
+      state.releaseGeometryMemory();
+      assert.strictEqual(state.geometryResult?.meshes[0].indices.length, 0, 'buffers were released (fixture can fail)');
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6);
+
+      state.pruneGeometryMeshes(new Set([1]));
+
+      assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [2, 3]);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5); // 2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 9); // 4+5
+    });
+
+    // The queue carries global ids with no model id, and a split/delete can act
+    // on a federated model that is not active (3D picking does not switch it).
+    it('prunes the owning model even when it is not the active model', () => {
+      const asModel = (id: string, geometryResult: unknown) => ({ id, geometryResult }) as unknown as FederatedModel;
+      const activeGeometry = {
+        meshes: [createSizedMesh(1, 3, 1), createSizedMesh(2, 4, 2)],
+        totalTriangles: 3, totalVertices: 7, coordinateInfo: state.geometryResult?.coordinateInfo,
+      } as unknown as GeometryResult;
+      const otherGeometry = {
+        meshes: [createSizedMesh(1001, 5, 3), createSizedMesh(1002, 6, 4)],
+        totalTriangles: 7, totalVertices: 11, coordinateInfo: activeGeometry.coordinateInfo,
+      } as unknown as GeometryResult;
+      state = {
+        ...state,
+        activeModelId: 'A',
+        geometryResult: activeGeometry,
+        models: new Map([['A', asModel('A', activeGeometry)], ['B', asModel('B', otherGeometry)]]),
+      };
+
+      state.pruneGeometryMeshes(new Set([1001]));
+
+      const b = state.models.get('B')?.geometryResult;
+      assert.deepStrictEqual(b?.meshes.map((m) => m.expressId), [1002]);
+      assert.strictEqual(b?.totalTriangles, 4);
+      assert.strictEqual(b?.totalVertices, 6);
+      assert.strictEqual(state.geometryResult, activeGeometry, 'the active model is untouched');
+      assert.strictEqual(state.models.get('A')?.geometryResult, activeGeometry);
+
+      // Control: an active-model id prunes the mirror and its record to one object.
+      state.pruneGeometryMeshes(new Set([2]));
+      assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [1]);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 1);
+      assert.strictEqual(state.models.get('A')?.geometryResult, state.geometryResult);
+    });
+
+    // Renderer parity: Scene.removeMeshesForEntity keeps a colour-merged mesh
+    // (it hosts other entities) and tombstones an instanced-only entity.
+    it('keeps colour-merged meshes and drops instanced-only metadata, like the renderer', () => {
+      const merged = { ...createSizedMesh(1, 3, 1), entityIds: new Uint32Array([1, 1, 7]) };
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [merged, createSizedMesh(2, 4, 2)] as any);
+      const geometry = state.geometryResult!;
+      state.geometryResult = {
+        ...geometry,
+        instancedGeometryHashes: new Map([[50, 5n], [51, 6n]]),
+        instancedGeometryAabbs: new Map([[50, { min: [0, 0, 0], max: [1, 1, 1] }]]) as GeometryResult['instancedGeometryAabbs'],
+        instancedGeometryVolumes: new Map([[50, 2], [51, 3]]),
+      };
+
+      state.pruneGeometryMeshes(new Set([1]));
+      assert.strictEqual(state.geometryResult?.meshes.length, 2, 'a colour-merged mesh stays');
+      assert.strictEqual(state.geometryResult?.totalTriangles, 3);
+
+      state.pruneGeometryMeshes(new Set([50]));
+      assert.deepStrictEqual([...state.geometryResult!.instancedGeometryHashes!.keys()], [51]);
+      assert.strictEqual(state.geometryResult?.instancedGeometryAabbs?.size, 0);
+      assert.deepStrictEqual([...state.geometryResult!.instancedGeometryVolumes!.keys()], [51]);
+      assert.strictEqual(state.geometryResult?.meshes.length, 2);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 3, 'an instanced-only prune leaves mesh totals alone');
+    });
+
+    // An authored element (addElementMeshes) carries per-vertex entityIds that
+    // name only its own id; wall split only accepts such walls, so its source
+    // must be pruned. A mesh whose entityIds name other entities stays.
+    it('prunes an authored mesh whose entityIds hold only its own id, and keeps a colour-merged one', () => {
+      const authored = { ...createSizedMesh(5, 4, 2), entityIds: new Uint32Array(4).fill(5) };
+      const merged = { ...createSizedMesh(6, 3, 1), entityIds: new Uint32Array([6, 6, 8]) };
+      state.appendGeometryBatch(ACTIVE_MODEL_ID, [authored, merged, createSizedMesh(7, 5, 3)] as any);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 6);
+
+      state.pruneGeometryMeshes(new Set([5, 6]));
+
+      assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [6, 7]);
+      assert.strictEqual(state.geometryResult?.totalTriangles, 4); // 1+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 8); // 3+5
+    });
+
+    // updateMeshColors replaces a released mesh with `{ ...mesh, color }`; the
+    // copy must still subtract the counts retained at release.
+    it('subtracts released counts for a mesh recoloured after release', () => {
+      state.setBoundedGeometryMode(true);
+      seedSplit();
+      state.releaseGeometryMemory();
+      state.updateMeshColors(new Map([[1, [0, 1, 0, 1]]]));
+      assert.notStrictEqual(state.geometryResult?.meshes[0].color[0], 1, 'recolour replaced the mesh (fixture can fail)');
+
+      state.pruneGeometryMeshes(new Set([1]));
+
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5); // 2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 9); // 4+5
+    });
+
+    // restorePreAlignment writes snapshot slots back BY INDEX, so a pruned mesh
+    // must take its slot with it or the next mesh gets its predecessor's vertices.
+    it('drops the pruned mesh\'s preAlignment slot so a later restore stays aligned', () => {
+      const meshes = [createSizedMesh(1, 3, 1), createSizedMesh(2, 4, 2), createSizedMesh(3, 5, 3)];
+      const geometry = { meshes, totalTriangles: 6, totalVertices: 12, coordinateInfo: state.geometryResult?.coordinateInfo,
+        instancedGeometryAabbs: new Map([[2, { min: [0, 0, 0], max: [1, 1, 1] }], [9, { min: [0, 0, 0], max: [2, 2, 2] }]]) } as unknown as GeometryResult;
+      const snapshot = capturePreAlignment(geometry);
+      snapshot.positions = meshes.map((m) => new Float32Array(m.positions.length).fill(m.expressId));
+      const model = { id: 'A', geometryResult: geometry, preAlignment: snapshot } as unknown as FederatedModel;
+      state = { ...state, activeModelId: 'A', geometryResult: geometry, models: new Map([['A', model]]) };
+
+      state.pruneGeometryMeshes(new Set([2]));
+
+      const next = state.models.get('A')!;
+      assert.strictEqual(next.preAlignment?.positions.length, 2);
+      assert.deepStrictEqual([...next.preAlignment!.instancedGeometryAabbs!.keys()], [9]);
+      restorePreAlignment(next.geometryResult!, next.preAlignment!);
+      assert.deepStrictEqual(next.geometryResult!.meshes.map((m) => m.positions[0]), [1, 3]);
+    });
+
+    it('is a no-op when there is no geometryResult yet', () => {
+      assert.doesNotThrow(() => state.pruneGeometryMeshes(new Set([1])));
+      assert.strictEqual(state.geometryResult, null);
     });
   });
 

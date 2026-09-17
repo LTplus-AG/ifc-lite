@@ -119,6 +119,14 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   // Name read on the resolved type id — no source-buffer parse, so it's
   // cheap like `storey`/`elevation`, not `material`/`classification`.
   type:           1,
+  // Relationship-graph walk (potentially multi-hop, containment +
+  // aggregation) plus a columnar Name read on each ancestor — no
+  // source-buffer parse, but costlier than the single-hop `type` lookup, so
+  // it sits with `material`/`classification`. No `op:'in'` prefilter bucket
+  // exists for it either (#4903's maintainer ruling: fall back to a full
+  // scan for `parent=`, the same trade-off `location=` already accepted,
+  // and narrow only if a real perf number asks for it).
+  parent:         10,
 };
 
 export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {

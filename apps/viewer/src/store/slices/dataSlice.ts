@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StateCreator } from 'zustand';
-import { retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
+import { carryReleasedMesh, retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
+import { pruneMeshesFromGeometry } from './data-mesh-prune.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
@@ -84,19 +85,19 @@ export interface DataSlice {
     options?: { override?: boolean },
   ) => void;
   /**
-   * Pending mesh removals for the renderer. Authoring actions
-   * (split, delete) push globalIds here; `useGeometryStreaming`
-   * flushes them on the next frame via
-   * `scene.removeMeshesForEntities` and then prunes the matching
-   * meshes out of `geometryResult.meshes` so picking + bounds
-   * recomputation stay consistent.
+   * Pending mesh removals for the renderer. Authoring actions (split, delete)
+   * push globalIds here; `useGeometryStreaming` flushes them on the next frame
+   * via `scene.removeMeshesForEntities`, then calls `pruneGeometryMeshes` to
+   * drop the matching meshes out of `geometryResult.meshes` so picking and
+   * bounds recomputation stay consistent.
    *
-   * Stored as a Set on the slice rather than a transient ref so
-   * tests + headless workflows can observe it directly.
+   * A Set on the slice rather than a transient ref, so tests and headless
+   * workflows can observe it directly.
    */
   pendingMeshRemovals: Set<number> | null;
   setPendingMeshRemovals: (ids: Set<number>) => void;
   clearPendingMeshRemovals: () => void;
+  pruneGeometryMeshes: (ids: Set<number>) => void;
   /**
    * Emit-both GPU-instancing: raw IFNS shard bytes (transferable ArrayBuffers)
    * collated per geometry batch by the worker, tagged with the owning model's
@@ -287,7 +288,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
         if (meshColorBackup && !meshColorBackup.has(mesh.expressId)) {
           meshColorBackup.set(mesh.expressId, mesh.color);
         }
-        return { ...mesh, color: newColor };
+        return carryReleasedMesh(mesh, { ...mesh, color: newColor });
       }
       return mesh;
     });
@@ -348,6 +349,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   }),
 
   clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
+  pruneGeometryMeshes: (ids) => set((state) => pruneMeshesFromGeometry(state, ids)),
 
   appendInstancedShards: (modelId, shards) => set((state) => ({
     // Accumulate across batches — useGeometryStreaming drains once per frame.

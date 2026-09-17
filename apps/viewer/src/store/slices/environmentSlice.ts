@@ -14,6 +14,12 @@
  *
  * Preset/sky/exposure choices persist in localStorage; panel visibility is
  * session-only.
+ *
+ * `envSkyEnabled` itself always rests at `false` here so WebGPU's preset
+ * behaviour (which this flag is shared with) is untouched — the Cesium
+ * world context's "on by default until the user says otherwise" (#4771) is
+ * layered on top by {@link resolveSkyEnabled}, applied by the Cesium-context
+ * consumers rather than baked into this slice's own default.
  */
 
 import type { StateCreator } from 'zustand';
@@ -28,6 +34,14 @@ export interface EnvironmentSlice {
    * enables it — so this flag only drives the world-context scene.)
    */
   envSkyEnabled: boolean;
+  /**
+   * Whether the user has ever explicitly toggled `envSkyEnabled` (from either
+   * rendering path). Distinguishes "never set" from "set to false" — the
+   * Cesium-only default (#4771, {@link resolveSkyEnabled}) must apply only
+   * while this is false; once true, the persisted value wins forever after,
+   * even if it happens to equal the default.
+   */
+  envSkyEnabledSetByUser: boolean;
   /** User exposure trim, multiplied onto the preset exposure. 1 = neutral. */
   envExposure: number;
   /**
@@ -95,6 +109,8 @@ const STORAGE_KEY = 'ifc-lite:environment';
 interface PersistedEnvironment {
   preset?: string;
   skyEnabled?: boolean;
+  /** Presence marker for {@link EnvironmentSlice.envSkyEnabledSetByUser}. */
+  skyEnabledSetByUser?: boolean;
   exposure?: number;
   hardness?: number;
   softness?: number;
@@ -116,11 +132,12 @@ function loadPersisted(): PersistedEnvironment {
   }
 }
 
-function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envExposure' | 'envHardness' | 'envSoftness' | 'envShadowsEnabled' | 'envSunAngle' | 'envShadowResolution' | 'envSunTimeEnabled' | 'envSunTime'>): void {
+function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envSkyEnabledSetByUser' | 'envExposure' | 'envHardness' | 'envSoftness' | 'envShadowsEnabled' | 'envSunAngle' | 'envShadowResolution' | 'envSunTimeEnabled' | 'envSunTime'>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       preset: state.envPreset,
       skyEnabled: state.envSkyEnabled,
+      skyEnabledSetByUser: state.envSkyEnabledSetByUser,
       exposure: state.envExposure,
       hardness: state.envHardness,
       softness: state.envSoftness,
@@ -166,6 +183,29 @@ function clampSunTime(value: number): number {
   return Math.min(18, Math.max(6, value));
 }
 
+/**
+ * Resolves the sky/atmosphere flag as actually applied by a rendering path.
+ *
+ * A user's persisted choice — true OR false — always wins once they have
+ * ever explicitly toggled it (`skyEnabledSetByUser`). Only while that is
+ * still false does context decide: on by default for the Cesium world
+ * context, off by default everywhere else (#4771) — `envSkyEnabled` itself
+ * stays `false` at rest (see the slice's own default) so the WebGPU preset
+ * behaviour this flag is shared with is untouched.
+ *
+ * Pure and side-effect free so it can be unit tested directly against all
+ * three persistence states (never-set, persisted true, persisted false)
+ * without constructing a store.
+ */
+export function resolveSkyEnabled(
+  skyEnabled: boolean,
+  skyEnabledSetByUser: boolean,
+  isCesiumContext: boolean,
+): boolean {
+  if (skyEnabledSetByUser) return skyEnabled;
+  return isCesiumContext;
+}
+
 export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], EnvironmentSlice> = (set, get) => {
   const stored = loadPersisted();
   const initialPreset: LightingPresetId =
@@ -173,6 +213,7 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
   const initial = {
     envPreset: initialPreset,
     envSkyEnabled: stored.skyEnabled === true,
+    envSkyEnabledSetByUser: stored.skyEnabledSetByUser === true,
     envExposure: clampExposure(stored.exposure ?? 1),
     envHardness: clampHardness(stored.hardness ?? 1),
     envSoftness: clampSoftness(stored.softness ?? 1),
@@ -201,7 +242,7 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     // overrides afterwards, until the next preset change.
     setEnvPreset: (preset) =>
       update({ envPreset: preset, envSunAngle: clampSunAngle(LIGHTING_PRESETS[preset].shadowSunAngleDeg) }),
-    setEnvSkyEnabled: (enabled) => update({ envSkyEnabled: enabled }),
+    setEnvSkyEnabled: (enabled) => update({ envSkyEnabled: enabled, envSkyEnabledSetByUser: true }),
     setEnvExposure: (exposure) => update({ envExposure: clampExposure(exposure) }),
     setEnvHardness: (hardness) => update({ envHardness: clampHardness(hardness) }),
     setEnvSoftness: (softness) => update({ envSoftness: clampSoftness(softness) }),

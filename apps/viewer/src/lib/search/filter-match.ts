@@ -19,6 +19,7 @@ import {
   type ClassificationInfo,
 } from '@ifc-lite/parser';
 import { flattenMaterials } from '@ifc-lite/ids';
+import { collectSpatialAncestors } from '@ifc-lite/data';
 
 import {
   type PropertyRule,
@@ -26,6 +27,7 @@ import {
   type ClassificationRule,
   type AttributeRule,
   type StoreyRule,
+  type ParentRule,
   type TextKind,
 } from './filter-rules.js';
 import { valueOpMatches, numericOpMatches, matchStringAnyNone } from './filter-ops.js';
@@ -321,4 +323,23 @@ export function elevationOf(store: IfcDataStore, expressId: number): number | nu
   if (!storeyId) return null;
   const elev = hierarchy.storeyElevations.get(storeyId);
   return typeof elev === 'number' ? elev : null;
+}
+
+// ── Parent (spatial ancestor) resolution ──────────────────────────────────────
+
+/**
+ * `parent=Foo` (#4903) — does ANY ancestor of `expressId`, walking upward
+ * through spatial containment and aggregation to any depth via
+ * `collectSpatialAncestors` (`@ifc-lite/data`, the single shared resolver),
+ * have a Name the rule's op matches? Reuses `matchStringAnyNone`, the same
+ * multi-valued convention `material`/`classification` rules use: an element
+ * with NO ancestors — or none whose Name matches — satisfies neither a
+ * positive nor a negative op, so `parent=` naming nothing in the model reads
+ * as an empty result, never "no filter" (the #4659 inversion this codebase
+ * keeps guarding against).
+ */
+export function matchParentRule(rule: ParentRule, store: IfcDataStore, expressId: number): boolean {
+  const ancestorNames = collectSpatialAncestors(store.relationships, expressId)
+    .map((id) => store.entities.getName(id));
+  return matchStringAnyNone(rule.op, ancestorNames, rule.value, rule.valueKind);
 }

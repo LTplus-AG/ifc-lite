@@ -350,9 +350,9 @@
     },
     "item:3JYq7Z8qH3nP9JjM4fLg2L/value/1/unitBasis/unit": {
       "Currency": null,
-      "Dimension": null,
+      "Dimension": "area",
       "Kind": "Unit",
-      "Symbol": null,
+      "Symbol": "m\u00b2",
       "Type": "IfcSIUnit",
       "UnitType": "AREAUNIT"
     }

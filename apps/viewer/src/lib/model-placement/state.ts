@@ -123,7 +123,7 @@ function commitPlacements(
  * record loads as no rotation rather than being rejected or discarded. */
 export type IncomingPlacement = Omit<ModelPlacement, 'rotation'> & { rotation?: ModelRotation };
 
-/** Import positions atomically and keep current locks authoritative. */
+/** Import placements (translation and rotation) atomically and keep current locks authoritative. */
 export function importPlacements(state: PlacementState, incoming: ReadonlyMap<string, IncomingPlacement>): PlacementState {
   const before = new Map<string, ModelPlacement>();
   const after = new Map<string, ModelPlacement>();
@@ -131,7 +131,7 @@ export function importPlacements(state: PlacementState, incoming: ReadonlyMap<st
     const value: ModelPlacement = { ...incomingValue, rotation: incomingValue.rotation ?? ZERO_ROTATION };
     const current = placementFor(state, id);
     if (current.locked && !samePlacement(current, value)) {
-      throw new Error('Unlock the affected models before importing their positions.');
+      throw new Error('Unlock the affected models before importing their placements.');
     }
     assertRenderableTranslation(value.translation);
     assertRenderablePivot(value.rotation);

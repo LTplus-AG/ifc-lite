@@ -212,6 +212,8 @@ describe('ModelRotationBaker', () => {
     baker.reconcile(targets(released, OTHER));
     assert.equal(released.meshes[0].positions.length, 0,
       'the bake resurrected buffers the release had freed');
+    assert.equal(released.meshes[0].normals.length, 0,
+      'the bake resurrected the normal buffer the release had freed');
   });
 
   /** Every field a bake can restore, all off-axis and non-round: a partial or

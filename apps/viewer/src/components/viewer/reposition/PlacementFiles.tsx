@@ -51,7 +51,7 @@ export function PlacementFiles() {
         try {
           if (manifest.models.some((entry) => !bindings.get(entry.instanceId))) throw new Error('Map every saved instance before importing.');
           useViewerStore.getState().importModelPlacements(manifest, bindings);
-          setManifest(null); setError(''); setStatus('Positions imported. Undo placement restores the previous positions.');
+          setManifest(null); setError(''); setStatus('Placements imported. Undo placement restores the previous placements.');
         } catch (err) { setStatus(''); setError(err instanceof Error ? err.message : String(err)); }
       }}>Import positions</button>
     </fieldset>}

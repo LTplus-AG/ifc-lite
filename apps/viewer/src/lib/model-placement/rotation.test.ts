@@ -9,9 +9,10 @@ import type { Translation } from './translation.js';
 
 describe('rotation values', () => {
   it('parses degrees, a decimal comma and a degree suffix, and nothing else', () => {
-    for (const [text, degrees] of [['90', 90], ['-22.5', -22.5], [' 45 ° ', 45], ['30deg', 30],
-      ['12,5', 12.5], ['1e2', 100]] as const) {
-      assert.ok(Math.abs(radiansToDegrees(parseRotationDegrees(text)) - normalizeAngle(degreesToRadians(degrees)) * 180 / Math.PI) < 1e-9, text);
+    // Radian literals, not re-derived through the conversion helpers under test.
+    for (const [text, radians] of [['90', Math.PI / 2], ['-22.5', -Math.PI / 8], [' 45 ° ', Math.PI / 4],
+      ['30deg', Math.PI / 6], ['12,5', (5 * Math.PI) / 72], ['1e2', (5 * Math.PI) / 9], ['270', -Math.PI / 2]] as const) {
+      assert.ok(Math.abs(parseRotationDegrees(text) - radians) < 1e-12, `${text}: ${parseRotationDegrees(text)} vs ${radians}`);
     }
     for (const text of ['', '90 + 1', '90m', '1.2.3', '90rad', 'abc', '1,000.5']) {
       assert.throws(() => parseRotationDegrees(text), /degrees/i, `accepted ${JSON.stringify(text)}`);

@@ -163,11 +163,11 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
   const observe = (expressIds: readonly number[]): ElementFieldObservations => {
     const observations = emptyObservations();
     const seenTypes = new Set<string>();
-    const ingest = (sets: readonly PropertySet[], overridden?: ReadonlySet<string>): void => {
+    const ingest = (sets: readonly PropertySet[], suppressed?: (psetName: string, propertyName: string, key: string) => boolean): void => {
       for (const set of sets) for (const property of set.properties) {
         if (!set.name || !property.name) continue;
         const key = propertyObservationKey(set.name, property.name);
-        if (overridden?.has(key)) continue;
+        if (suppressed?.(set.name, property.name, key)) continue;
         let entry = observations.properties.get(key);
         if (!entry) {
           entry = { psetName: set.name, propertyName: property.name, kind: emptyObservation() };
@@ -197,7 +197,10 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
       // number on every occurrence is a number) — review find.
       const overridden = new Set<string>();
       for (const set of occurrence) for (const property of set.properties) if (set.name && property.name) overridden.add(propertyObservationKey(set.name, property.name));
-      ingest(typeSetsFor(id), overridden);
+      // A property deleted on the occurrence suppresses type fallback in
+      // `propertyFor`, so it must suppress the type's shape here too (#4833 review).
+      ingest(typeSetsFor(id), (psetName, propertyName, key) =>
+        overridden.has(key) || mutationView?.getPropertyMutation(id, psetName, propertyName)?.operation === 'DELETE');
       families.observe(id, observations);
     }
     return observations;

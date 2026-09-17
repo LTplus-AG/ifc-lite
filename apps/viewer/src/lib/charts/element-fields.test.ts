@@ -219,6 +219,22 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(reader.discover([52]).properties.get('Pset_SlabCommon')?.some(({ binding }) => binding.kind === 'property' && binding.propertyName === 'SurfaceSpreadOfFlame'), true);
   });
 
+  it('a property deleted on the occurrence does not let the type shape the field it no longer reads (#4833 review)', async () => {
+    const store = await parseSampleWith(`
+#60060=IFCPROPERTYSINGLEVALUE('Load',$,IFCLABEL('heavy'),$);
+#60061=IFCPROPERTYSET('g-type-probe',#1,'Probe',$,(#60060));
+#60062=IFCPROPERTYSINGLEVALUE('Load',$,IFCREAL(12.5),$);
+#60063=IFCPROPERTYSET('g-occ-probe',#1,'Probe',$,(#60062));
+#60064=IFCRELDEFINESBYPROPERTIES('g-occ-rel',#1,$,$,(#52),#60063);`, (source) => source.replace('(#963)', '(#963,#60061)'));
+    const view = new MutablePropertyView(store.properties, 'fixture');
+    view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    assert.ok(view.deleteProperty(52, 'Probe', 'Load'), 'the occurrence property exists in the base and can be deleted');
+    const reader = createElementFieldReader(store, view);
+    const load = reader.discover([52]).properties.get('Probe')?.find(({ binding }) => binding.kind === 'property' && binding.propertyName === 'Load')?.binding;
+    assert.notEqual(load?.valueKind, 'category', 'the suppressed type label must not make the deleted field categorical');
+    assert.equal(reader.read(52, { kind: 'property', psetName: 'Probe', propertyName: 'Load', valueKind: 'category' }), null);
+  });
+
   it('a classification association whose reference has neither code nor name is not an observed value (#4833 review)', async () => {
     const store = await parseSampleWith(`
 #60080=IFCCLASSIFICATION('X',$,$,'Sys',$,$,$);

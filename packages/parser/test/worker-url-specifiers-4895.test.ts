@@ -38,9 +38,72 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { classifyTarget } from '../scripts/lib/shipped-target.mjs';
-import { rewriteWorkerUrls } from '../scripts/rewrite-worker-urls.mjs';
-import { findUnshippedTargets } from '../scripts/verify-dist-worker-urls.mjs';
+type TargetKind = 'file' | 'directory' | 'missing';
+type TargetVerdict = 'shipped' | 'outside-dist' | 'not-a-file' | 'missing';
+
+type RewriteWorkerUrls = (
+  text: string,
+  emitsSibling: (jsSpecifier: string) => boolean,
+) => { text: string; rewritten: string[]; left: string[] };
+
+type FindUnshippedTargets = (
+  text: string,
+  classify: (specifier: string) => TargetVerdict,
+) => { checked: string[]; problems: { specifier: string; verdict: TargetVerdict }[] };
+
+type ClassifyTarget = (args: {
+  distRoot: string;
+  fileDir: string;
+  specifier: string;
+  inspect: (absolutePath: string) => TargetKind;
+}) => TargetVerdict;
+
+/**
+ * The three build scripts are loaded, not imported.
+ *
+ * `scripts/check-test-revert-oracle.mjs` reverts the production hunk and
+ * requires the changed tests to go red BY ASSERTION. A static import of a file
+ * the revert deleted kills this module at load instead, no assertion runs, and
+ * the oracle reports INCONCLUSIVE / REVERT-BROKE-BUILD — which is what it did
+ * on the first push of this branch. Loading them this way turns the same
+ * situation into an ordinary failed expectation naming the missing file.
+ */
+async function lade(pfad: string): Promise<Record<string, unknown> | null> {
+  try {
+    return (await import(/* @vite-ignore */ pfad)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+const [modulLib, modulRewrite, modulVerify] = await Promise.all([
+  lade('../scripts/lib/shipped-target.mjs'),
+  lade('../scripts/rewrite-worker-urls.mjs'),
+  lade('../scripts/verify-dist-worker-urls.mjs'),
+]);
+
+function hole<T>(modul: Record<string, unknown> | null, name: string, datei: string): T {
+  if (!modul) {
+    expect.fail(`${datei} is absent, so the build step this file covers is gone`);
+  }
+  if (typeof modul[name] !== 'function') {
+    expect.fail(`${datei} no longer exports ${name}`);
+  }
+  return modul[name] as T;
+}
+
+const classifyTarget: ClassifyTarget = (args) =>
+  hole<ClassifyTarget>(modulLib, 'classifyTarget', 'scripts/lib/shipped-target.mjs')(args);
+
+const rewriteWorkerUrls: RewriteWorkerUrls = (text, emitsSibling) =>
+  hole<RewriteWorkerUrls>(
+    modulRewrite, 'rewriteWorkerUrls', 'scripts/rewrite-worker-urls.mjs',
+  )(text, emitsSibling);
+
+const findUnshippedTargets: FindUnshippedTargets = (text, classify) =>
+  hole<FindUnshippedTargets>(
+    modulVerify, 'findUnshippedTargets', 'scripts/verify-dist-worker-urls.mjs',
+  )(text, classify);
 
 /** The line tsc emits into `dist/worker-parser.js` from `src/worker-parser.ts`. */
 const EMITTED_LINE =

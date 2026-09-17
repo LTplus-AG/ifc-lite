@@ -254,6 +254,58 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
   });
 
   /**
+   * `CostEntityReader.typeOf` guards on `isDeleted` before resolving a type —
+   * `targetIs()` in cost-relationships.ts is the only thing that calls it,
+   * and it backs `InvalidReferences` on every cost relationship. Without the
+   * guard, a deleted relationship target still passes `targetIs()` (the STEP
+   * line, and its type, are still on disk) and `InvalidReferences` never
+   * flips, so the read model would keep reporting a relationship as valid
+   * after its target was deleted through the overlay — the exact mismatch
+   * between the read model and the exported file #4857 exists to fix.
+   *
+   * Both targets deleted here — #1 (IFCWALL) and #42 (IFCCOSTITEM) — are
+   * valid targets for their relationship types WHEN PRESENT (the baseline
+   * assertions below prove that), so a reader that ignored `isDeleted`
+   * entirely, not just this one guard, would still pass a fixture where the
+   * deleted id was never a legal target to begin with.
+   */
+  it('deleting a relationship target flips InvalidReferences, not just the target list', () => {
+    const baseline = extractCostOnDemand(buildStoreFromStep(FIXTURE));
+    const baselineProductRel = baseline.Relationships.find(
+      rel => rel.Type === 'IfcRelAssignsToProduct' && rel.expressId === 52,
+    );
+    const baselineNestsRel = baseline.Relationships.find(
+      rel => rel.Type === 'IfcRelNests' && rel.expressId === 50,
+    );
+    // Present and valid before either target is deleted — the wall (#1) and
+    // the nested cost item (#42) are both legal targets for their
+    // relationship type when they exist.
+    expect(baselineProductRel?.RelatingProduct).toBe(1);
+    expect(baselineProductRel?.InvalidReferences).toBeUndefined();
+    expect(baselineNestsRel?.RelatedObjects).toContain(42);
+    expect(baselineNestsRel?.InvalidReferences).toBeUndefined();
+
+    // Delete the wall #52 assigns cost item #41 to, and the cost item #50
+    // nests under #40 — two different relationship types, two different
+    // reference shapes (a single RelatingProduct vs. a RelatedObjects list).
+    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
+      overlay: overlay({ isDeleted: id => id === 1 || id === 42 }),
+    });
+    const productRel = graph.Relationships.find(
+      rel => rel.Type === 'IfcRelAssignsToProduct' && rel.expressId === 52,
+    );
+    const nestsRel = graph.Relationships.find(
+      rel => rel.Type === 'IfcRelNests' && rel.expressId === 50,
+    );
+    expect(productRel?.InvalidReferences).toBe(true);
+    expect(nestsRel?.InvalidReferences).toBe(true);
+    // The relationship's own record still names the deleted target — only
+    // the validity flag changes, not a silent drop from the list.
+    expect(productRel?.RelatingProduct).toBe(1);
+    expect(nestsRel?.RelatedObjects).toContain(42);
+  });
+
+  /**
    * Resolved through a guarded dynamic import on purpose. A static value
    * import of a module the revert-oracle gate deletes turns a reverted run
    * into a LOAD failure, which the gate cannot attribute to an assertion;

@@ -61,9 +61,9 @@ export interface WorkerParserOptions extends ParseOptions {
   /**
    * Cancel this parse. If already aborted when `parseColumnar` is called, the
    * returned promise rejects immediately without spawning a worker. If
-   * aborted while the parse is in flight, the worker is terminated and the
-   * promise rejects with `signal.reason` (an `AbortError` `DOMException` by
-   * default) — the same outcome as calling `terminate()`.
+   * aborted while the parse is in flight, only THIS request's worker is
+   * terminated and the promise rejects with `signal.reason`: a custom
+   * `abort(reason)` is passed through as-is, the default is an `AbortError`.
    */
   signal?: AbortSignal;
 }
@@ -73,12 +73,14 @@ export class WorkerParser {
   private requestCounter = 0;
   private readonly workerUrl: URL | string | null;
   /**
-   * Rejects the in-flight `parseColumnar` promise with an `AbortError` and
-   * tears down the worker. Set for the duration of a request; `terminate()`
-   * invokes it directly so the documented cancel path always settles the
-   * promise instead of leaving it pending forever (#4896).
+   * One canceller per in-flight `parseColumnar` request. Each call spawns its
+   * OWN worker, so overlapping parses on one instance are possible: a
+   * request's `signal` cancels only that request (via its own closure), while
+   * `terminate()` cancels every entry, so the documented cancel path always
+   * settles each promise instead of leaving it pending forever (#4896).
+   * A request adds itself on spawn and removes itself in `settle()`.
    */
-  private cancelActive: ((reason?: unknown) => void) | null = null;
+  private readonly activeCancels = new Set<(reason?: unknown) => void>();
   /**
    * Queued entity-index payload. If `setEntityIndex` is called before the
    * worker is spawned (rare — happens only if the caller races a parser
@@ -141,19 +143,24 @@ export class WorkerParser {
         reject(new Error(`Failed to spawn parser worker: ${err instanceof Error ? err.message : String(err)}`));
         return;
       }
+      // `this.worker` is only the `setEntityIndex` target: the most recently
+      // spawned worker. Every path below clears it only while it still points
+      // at THIS request's worker, so settling one request never detaches another.
       this.worker = worker;
 
-      // Reject + terminate on demand — invoked directly by terminate() and,
-      // when a signal is supplied, by its 'abort' listener below. Cleared in
-      // settle() so a request that already resolved/rejected can't be
-      // double-settled by a stray terminate()/abort() afterward.
-      this.cancelActive = (reason?: unknown) => {
+      // Reject + terminate THIS request on demand, invoked by terminate() and by
+      // this request's own 'abort' listener. Removed from `activeCancels` in
+      // settle(), and the `settled` guard makes a stray late call a no-op.
+      let settled = false;
+      const cancel = (reason?: unknown) => {
+        if (settled) return;
         settle(() => {
           if (this.worker === worker) this.worker = null;
           worker.terminate();
         });
         reject(reason ?? makeAbortError());
       };
+      this.activeCancels.add(cancel);
 
       // ONE accessor, shared by the partial store and the final one. Both
       // alias the same SAB, so this is not merely tidy: `contentKey` is
@@ -174,17 +181,19 @@ export class WorkerParser {
       };
 
       const settle = (cleanup: () => void) => {
+        settled = true;
         indexReceiver.clear();
         worker.onmessage = null;
         worker.onerror = null;
         worker.onmessageerror = null;
         if (onSignalAbort && options.signal) options.signal.removeEventListener('abort', onSignalAbort);
-        this.cancelActive = null;
+        this.activeCancels.delete(cancel);
         cleanup();
       };
 
       if (options.signal) {
-        onSignalAbort = () => this.cancelActive?.(options.signal!.reason);
+        const signal = options.signal;
+        onSignalAbort = () => cancel(signal.reason);
         options.signal.addEventListener('abort', onSignalAbort, { once: true });
       }
 
@@ -244,7 +253,7 @@ export class WorkerParser {
             restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt, msg.message);
             settle(() => {
               worker.terminate();
-              this.worker = null;
+              if (this.worker === worker) this.worker = null;
             });
             reject(new Error(msg.message));
             return;
@@ -254,7 +263,7 @@ export class WorkerParser {
       worker.onerror = (err) => {
         settle(() => {
           worker.terminate();
-          this.worker = null;
+          if (this.worker === worker) this.worker = null;
         });
         reject(new Error(`Parser worker error: ${err.message || 'unknown failure'}`));
       };
@@ -262,7 +271,7 @@ export class WorkerParser {
       worker.onmessageerror = () => {
         settle(() => {
           worker.terminate();
-          this.worker = null;
+          if (this.worker === worker) this.worker = null;
         });
         reject(new Error('Parser worker structured-clone error (likely corrupted message)'));
       };
@@ -308,7 +317,7 @@ export class WorkerParser {
         // left running (and `this.worker` left pointing at it) forever.
         settle(() => {
           worker.terminate();
-          this.worker = null;
+          if (this.worker === worker) this.worker = null;
         });
         reject(err instanceof Error ? err : new Error(String(err)));
       }
@@ -362,16 +371,15 @@ export class WorkerParser {
    * #4896: an in-flight `parseColumnar` promise only ever settled on
    * `complete`/`error`/`onerror`/`onmessageerror` — none of which fire once
    * the worker is killed, so the documented "call terminate() to cancel"
-   * path hung the caller's `await` forever. `terminate()` now rejects the
-   * in-flight request with an `AbortError` before tearing the worker down,
+   * path hung the caller's `await` forever. `terminate()` now rejects EVERY
+   * in-flight request with an `AbortError` and tears down each one's worker,
    * so cancellation is distinguishable from both a successful parse and a
-   * parse failure.
+   * parse failure. To cancel just one of several overlapping parses, abort
+   * that request's `signal` instead.
    */
   terminate(): void {
-    if (this.cancelActive) {
-      this.cancelActive();
-      return;
-    }
+    // Snapshot: each cancel removes itself from the set while we iterate.
+    for (const cancel of [...this.activeCancels]) cancel();
     if (this.worker) {
       // No in-flight promise to settle (e.g. called after a request already
       // resolved/rejected but before a new one started) — just drop the

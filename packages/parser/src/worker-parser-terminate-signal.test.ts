@@ -25,6 +25,7 @@ import { WorkerParser } from './worker-parser.js';
 class BoundaryWorker {
   static latest: BoundaryWorker | null = null;
   static instanceCount = 0;
+  static instances: BoundaryWorker[] = [];
   id = '';
   terminated = false;
   onmessage: ((event: { data: unknown }) => void) | null = null;
@@ -33,6 +34,7 @@ class BoundaryWorker {
   constructor() {
     BoundaryWorker.latest = this;
     BoundaryWorker.instanceCount += 1;
+    BoundaryWorker.instances.push(this);
   }
   postMessage(message: { type: string; id?: string }) {
     if (message.type === 'parse') this.id = message.id!;
@@ -46,6 +48,7 @@ beforeEach(() => {
   vi.stubGlobal('Worker', BoundaryWorker);
   BoundaryWorker.latest = null;
   BoundaryWorker.instanceCount = 0;
+  BoundaryWorker.instances = [];
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -133,5 +136,102 @@ describe('WorkerParser.parseColumnar signal support (#4896)', () => {
 
     // Aborting now must not throw and must not affect a later request.
     expect(() => controller.abort(new Error('too late'))).not.toThrow();
+  });
+});
+
+/**
+ * Observe whether a promise has settled without real timers: the tracker's
+ * reactions are queued before the drain below, so a promise that is already
+ * settled (or settles during it) flips the flag by the time `drain` returns.
+ */
+function track(promise: Promise<unknown>) {
+  const state = { settled: false };
+  promise.then(
+    () => { state.settled = true; },
+    () => { state.settled = true; },
+  );
+  return state;
+}
+async function drain() {
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+}
+
+describe('WorkerParser overlapping parseColumnar requests (#4908 review)', () => {
+  // Pre-fix, the canceller lived in one shared field that the LATER request
+  // overwrote, and either request's settle() nulled it. Aborting the first
+  // request's signal therefore killed the second request's worker (rejecting
+  // it with the first request's reason) while the first kept running.
+  it("aborting one request's signal rejects only that request", async () => {
+    const parser = new WorkerParser();
+    const controllerA = new AbortController();
+    const controllerB = new AbortController();
+    const a = parser.parseColumnar(new SharedArrayBuffer(8), { signal: controllerA.signal });
+    const b = parser.parseColumnar(new SharedArrayBuffer(8), { signal: controllerB.signal });
+    const [workerA, workerB] = BoundaryWorker.instances;
+    const bState = track(b);
+
+    const reasonA = new Error('A superseded');
+    controllerA.abort(reasonA);
+
+    await expect(a).rejects.toBe(reasonA);
+    expect(workerA.terminated).toBe(true);
+    await drain();
+    expect(bState.settled).toBe(false);
+    expect(workerB.terminated).toBe(false);
+
+    // B's canceller survived A's settlement: its own signal still cancels it.
+    const reasonB = new Error('B superseded');
+    controllerB.abort(reasonB);
+    await expect(b).rejects.toBe(reasonB);
+    expect(workerB.terminated).toBe(true);
+  });
+
+  it("aborting the later request leaves the earlier one running and still cancellable", async () => {
+    const parser = new WorkerParser();
+    const controllerA = new AbortController();
+    const controllerB = new AbortController();
+    const a = parser.parseColumnar(new SharedArrayBuffer(8), { signal: controllerA.signal });
+    const b = parser.parseColumnar(new SharedArrayBuffer(8), { signal: controllerB.signal });
+    const [workerA, workerB] = BoundaryWorker.instances;
+    const aState = track(a);
+
+    controllerB.abort();
+    await expect(b).rejects.toMatchObject({ name: 'AbortError' });
+    expect(workerB.terminated).toBe(true);
+    await drain();
+    expect(aState.settled).toBe(false);
+    expect(workerA.terminated).toBe(false);
+
+    // A still reaches its own settlement path: a worker error rejects A.
+    workerA.onmessage?.({ data: { type: 'error', id: workerA.id, message: 'A failed' } });
+    await expect(a).rejects.toThrow('A failed');
+  });
+
+  it('terminate() rejects every in-flight request with an AbortError', async () => {
+    const parser = new WorkerParser();
+    const a = parser.parseColumnar(new SharedArrayBuffer(8));
+    const b = parser.parseColumnar(new SharedArrayBuffer(8));
+    const [workerA, workerB] = BoundaryWorker.instances;
+
+    parser.terminate();
+
+    await expect(a).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(b).rejects.toMatchObject({ name: 'AbortError' });
+    expect(workerA.terminated).toBe(true);
+    expect(workerB.terminated).toBe(true);
+  });
+
+  it('terminate() still cancels a request after an overlapping one settled', async () => {
+    const parser = new WorkerParser();
+    const a = parser.parseColumnar(new SharedArrayBuffer(8));
+    const b = parser.parseColumnar(new SharedArrayBuffer(8));
+    const [workerA, workerB] = BoundaryWorker.instances;
+
+    workerA.onmessage?.({ data: { type: 'error', id: workerA.id, message: 'A failed' } });
+    await expect(a).rejects.toThrow('A failed');
+
+    parser.terminate();
+    await expect(b).rejects.toMatchObject({ name: 'AbortError' });
+    expect(workerB.terminated).toBe(true);
   });
 });

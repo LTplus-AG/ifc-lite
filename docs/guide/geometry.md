@@ -394,8 +394,9 @@ for await (const event of geometry.processAdaptive(new Uint8Array(buffer), {
 // Elsewhere, on cancel: controller.abort();
 ```
 
-`processParallel` takes the same `signal` and `hungJobTimeoutMs` as its last
-two arguments.
+`GeometryProcessor.processParallel` (`geometry.processParallel(...)`) takes
+positional arguments rather than an options object: pass `signal` and
+`hungJobTimeoutMs` as its last two, after `sourceFingerprint`.
 
 ## Coordinate Handling
 
@@ -680,7 +681,8 @@ console.log(`  Total vertices: ${result.totalVertices}`);
 ### Sharing the source fingerprint with a parser worker
 
 `GeometryProcessor.processAdaptive` accepts an optional `sourceFingerprint` shared
-cell, also accepted as the `sourceFingerprint` argument of `processParallel`. Pass the
+cell. `GeometryProcessor.processParallel` takes it positionally, as the
+`sourceFingerprint` argument after `workerCountOverride`. Pass the
 same fresh per-load cell to `WorkerParser.parseColumnar`; its layout and lifetime
 are documented in [Browser Worker Mode](./parsing.md#browser-worker-mode). Only the
 parallel prepass produces this key. Other geometry paths and older WASM builds

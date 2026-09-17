@@ -24,6 +24,7 @@ import {
 } from '@ifc-lite/embed-protocol';
 import { resolvePresentationColorMap, resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds.js';
 import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
+import { clearSectionCut, revealSectionCut } from '@/store/section-active.js';
 import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
 import { applyInitConfig } from './initConfig.js';
 
@@ -422,14 +423,10 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
       const payload = data as InboundPayloads['SET_SECTION'];
       if (payload.axis !== undefined) state.setSectionPlaneAxis(payload.axis as SectionAxis);
       if (payload.position !== undefined) state.setSectionPlanePosition(payload.position);
-      if (payload.enabled !== undefined) {
-        const current = state.sectionPlane.enabled;
-        if (current !== payload.enabled) state.toggleSectionPlane();
-      }
-      if (payload.flipped !== undefined) {
-        const current = state.sectionPlane.flipped;
-        if (current !== payload.flipped) state.flipSectionPlane();
-      }
+      if (payload.flipped !== undefined && ctx.getState().sectionPlane.flipped !== payload.flipped) state.flipSectionPlane();
+      // The cut is drawn only by the Section tool, so "enabled" opens it (#4910).
+      if (payload.enabled === true) revealSectionCut(ctx.getState);
+      else if (payload.enabled === false) clearSectionCut(ctx.getState);
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

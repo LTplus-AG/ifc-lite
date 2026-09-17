@@ -82,6 +82,13 @@ export function showSectionCut(
   state.setSectionPlaneAxis(cut.axis);
   state.setSectionPlanePosition(cut.position);
   if (getState().sectionPlane.flipped !== cut.flipped) state.flipSectionPlane();
+  revealSectionCut(getState);
+}
+
+/** Put the current cut ON SCREEN: clipping on, and the Section tool (which draws it) open. */
+export function revealSectionCut(getState: () => SectionWriterState): void {
+  const state = getState();
+  if (!state.sectionPlane.enabled) state.setSectionPlaneEnabled(true); // parked until the tool opens
   if (getState().activeTool !== 'section') {
     // A programmatic cut is not the user opening the tool: don't pop the 2D panel.
     state.setSuppressNextSection2DPanelAutoOpen(true);

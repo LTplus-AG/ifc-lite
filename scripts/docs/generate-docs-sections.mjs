@@ -266,11 +266,44 @@ function genLandingBench() {
   ].join('\n');
 }
 
+/**
+ * python-api: the whole `rust/python/README.md` body (everything after its
+ * own `# ifclite-geom` title), stamped into `docs/api/python.md` so the docs
+ * site, the GitHub README and the PyPI project page — which renders the same
+ * README — cannot drift apart (#4899). Only the relative `./examples/...`
+ * links are rewritten, since this page is not sitting next to
+ * `rust/python/examples` the way the README is.
+ */
+function genPythonApi() {
+  const readmePath = join(ROOT, 'rust', 'python', 'README.md');
+  const readme = readFileSync(readmePath, 'utf-8');
+  const lines = readme.split('\n');
+  const firstHeading = lines.findIndex((line) => line.startsWith('# '));
+  if (firstHeading === -1) {
+    throw new Error('rust/python/README.md has no top-level `# ` heading to strip');
+  }
+  let body = lines.slice(firstHeading + 1).join('\n').trim();
+
+  const EXAMPLES_DIR =
+    'https://github.com/LTplus-AG/ifc-lite/tree/main/rust/python/examples';
+  const EXAMPLES_FILE =
+    'https://github.com/LTplus-AG/ifc-lite/blob/main/rust/python/examples';
+  body = body.replace(/\]\(\.\/examples\/([^)]+)\)/g, `](${EXAMPLES_FILE}/$1)`);
+  body = body.replace(/\]\(\.\/examples\)/g, `](${EXAMPLES_DIR})`);
+
+  return body;
+}
+
 const REGIONS = [
   {
     name: 'package-index',
     file: 'docs/api/typescript.md',
     generate: (currentDoc) => genPackageIndex(currentDoc),
+  },
+  {
+    name: 'python-api',
+    file: 'docs/api/python.md',
+    generate: () => genPythonApi(),
   },
   {
     name: 'cli-commands',

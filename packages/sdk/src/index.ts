@@ -187,7 +187,7 @@ export type {
   CostSchemaVersion, CostQuantityDimension, CostDiagnosticCode, CostDiagnosticData,
   CostScheduleData, CostAppliedValueData, CostValueData, CostItemData, CostQuantityData,
   CostUnitData, CostMeasureWithUnitData, CostRelationshipType, CostRelationshipData,
-  CostGraphData, CostEvaluationOptions, CostEvaluationData,
+  CostGraphData, CostEvaluationOptions, CostEvaluationData, CostReadOptions,
 } from './cost-types.js';
 
 export { entityRefToString, stringToEntityRef, dispatchToBackend } from './types.js';

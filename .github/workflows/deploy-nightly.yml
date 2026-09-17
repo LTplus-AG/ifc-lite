@@ -375,11 +375,11 @@ jobs:
           # Only READY verifies. Production builds take 4-8 min plus queueing,
           # so this polls for up to ~20 min (the job timeout is 30). A project
           # whose only production deployment stays ERROR/CANCELED for three
-          # consecutive polls fails fast: a redeploy of the same commit gets
-          # that minute to appear, and nothing longer is worth waiting for.
+          # consecutive polls fails the step immediately: a redeploy of the same
+          # commit gets that minute to appear, and nothing longer is worth
+          # waiting for. Until then it stays polled, so a recovery is seen.
           pending="ifc-lite ifc-lite-viewer-embed ifc-lite-dev"
           api_errors=""
-          failed=""
           declare -A bad_polls=()
           for attempt in $(seq 1 60); do
             still=""
@@ -421,10 +421,15 @@ jobs:
                   bad_polls[$project]=$(( ${bad_polls[$project]:-0} + 1 ))
                   echo "  $project: production deployment is $state (poll ${bad_polls[$project]}/3)"
                   if [ "${bad_polls[$project]}" -ge 3 ]; then
-                    failed="$failed $project($state)"
-                  else
-                    still="$still $project"
+                    # Fail NOW, not after the other projects finish: waiting
+                    # would hide this diagnostic behind a job timeout, and a
+                    # project dropped from polling could never be seen recover.
+                    echo "::error::Production deployment for $SHA did not build: $project($state)"
+                    echo "::error::Open that project's deployment build log on Vercel; the build itself"
+                    echo "::error::failed (not the deploy config). Fix it on main, then re-run this workflow."
+                    exit 1
                   fi
+                  still="$still $project"
                   ;;
                 *)
                   # "" (not created yet), QUEUED, INITIALIZING, BUILDING.
@@ -439,12 +444,6 @@ jobs:
             [ "$attempt" -lt 60 ] && sleep 20 || true
           done
 
-          if [ -n "$failed" ]; then
-            echo "::error::Production deployment for $SHA did not build:$failed"
-            echo "::error::Open the failing project's deployment build log on Vercel; the build itself"
-            echo "::error::failed (not the deploy config). Fix it on main, then re-run this workflow."
-            exit 1
-          fi
           if [ -n "$pending" ]; then
             if [ -n "$api_errors" ]; then
               echo "::error::Vercel API did not answer for:$api_errors"

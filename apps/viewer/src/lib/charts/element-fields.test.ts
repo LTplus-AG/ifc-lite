@@ -271,7 +271,7 @@ describe('chart IFC field reader (#4833)', () => {
     const reader = createElementFieldReader(store);
     assert.deepEqual(reader.readResolved(52, persisted('{"kind":"material","valueKind":"number"}')), { value: null, status: 'unsupported' });
     assert.deepEqual(reader.readResolved(52, persisted('{"kind":"type","valueKind":"boolean"}')), { value: null, status: 'unsupported' });
-    assert.deepEqual(reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'boolean' }), { value: null, status: 'unsupported' });
+    assert.deepEqual(reader.readResolved(52, persisted('{"kind":"quantity","qsetName":"Qto_SlabBaseQuantities","quantityName":"NetArea","valueKind":"boolean"}')), { value: null, status: 'unsupported' });
     assert.equal(reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'category' }).value, '25.749999999991743');
     // A view without a quantity extractor that edits one quantity keeps the untouched siblings and sets.
     const view = new MutablePropertyView(store.properties, 'fixture');

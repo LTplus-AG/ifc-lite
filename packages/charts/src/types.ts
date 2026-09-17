@@ -75,7 +75,7 @@ export type ElementFieldBinding =
   | (ElementFieldBindingBase & { kind: 'attribute'; attributeName: string })
   | (ElementFieldBindingBase & { kind: 'property'; psetName: string; propertyName: string })
   /** An `IfcPhysicalSimpleQuantity` by its exact `IfcElementQuantity` and quantity names. */
-  | (ElementFieldBindingBase & { kind: 'quantity'; qsetName: string; quantityName: string })
+  | (Omit<ElementFieldBindingBase, 'valueKind'> & { valueKind: 'number' | 'category'; kind: 'quantity'; qsetName: string; quantityName: string })
   /** Every material name the element is associated with (`IfcRelAssociatesMaterial`), joined. */
   | (ElementFieldCategoryBindingBase & { kind: 'material' })
   /** `IfcClassificationReference` identification (else name), optionally for one classification system only. */

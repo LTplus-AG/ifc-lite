@@ -230,7 +230,9 @@ export function catalogFromObservations(observations: ElementFieldObservations):
     // class — unless two models disagree on that class (a Length here, an
     // Area there): then no single measure fits every row and the name can
     // only be grouped by (review find).
-    const valueKind = kind.number ? inferKind(kind) : 'number';
+    const inferred = kind.number ? inferKind(kind) : 'number';
+    // A quantity is never a boolean; a shape that would infer one can only be grouped by.
+    const valueKind = inferred === 'boolean' ? 'category' : inferred;
     const { dataType } = numericMetadata(kind, valueKind);
     const option: ElementFieldOption = {
       binding: { kind: 'quantity', qsetName, quantityName, valueKind, ...(dataType ? { dataType } : {}) },

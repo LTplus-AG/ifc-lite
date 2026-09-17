@@ -165,7 +165,9 @@ export function createElementFamilyReader(
       if (binding.kind !== 'quantity' && binding.valueKind !== 'category') return { value: null, status: 'unsupported' };
       switch (binding.kind) {
         case 'quantity': {
-          if (binding.valueKind === 'boolean') return { value: null, status: 'unsupported' };
+          // Saved dashboards are untyped JSON: the type rules a boolean quantity out, a file may not.
+          const persistedKind: string = binding.valueKind;
+          if (persistedKind === 'boolean') return { value: null, status: 'unsupported' };
           const found = quantityFor(id, binding.qsetName, binding.quantityName);
           if (!found || !Number.isFinite(found.quantity.value)) return MISSING;
           const { quantity } = found;

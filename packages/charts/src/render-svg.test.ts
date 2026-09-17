@@ -111,7 +111,7 @@ describe('validateDashboardSpec', () => {
     const badLevel = { ...good, charts: [{ ...bar, elementField: { kind: 'spatial', level: 'Storey', valueKind: 'category' } }], layout: [good.layout[0]] };
     expect(validateDashboardSpec(badLevel).map(({ path }) => path)).toEqual(['.charts[0].elementField.level']);
     // Relation fields read names: a numeric or boolean relation binding can never bucket (#4833 review).
-    for (const elementField of [{ kind: 'material', valueKind: 'number' }, { kind: 'spatial', level: 'Site', valueKind: 'boolean' }]) {
+    for (const elementField of [{ kind: 'material', valueKind: 'number' }, { kind: 'spatial', level: 'Site', valueKind: 'boolean' }, { kind: 'quantity', qsetName: 'Q', quantityName: 'A', valueKind: 'boolean' }]) {
       expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].elementField.valueKind']);
     }
     // A one-element array stringifies to a valid name; it must still be rejected (#4833 review).

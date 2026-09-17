@@ -82,6 +82,9 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       if (typeof field.kind === 'string' && RELATION_KINDS.has(field.kind) && (field.valueKind === 'number' || field.valueKind === 'boolean')) {
         errors.push({ path: `${fieldPath}.valueKind`, message: 'a material, classification, type or spatial field is always a category' });
       }
+      if (field.kind === 'quantity' && field.valueKind === 'boolean') {
+        errors.push({ path: `${fieldPath}.valueKind`, message: 'a quantity is a number or a category, never a boolean' });
+      }
     }
   }
   str(errors, chart, 'dimension', path);

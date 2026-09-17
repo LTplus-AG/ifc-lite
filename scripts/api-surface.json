@@ -5766,11 +5766,19 @@
     "isPlacedGeometryClass: function",
     "isTypeLibraryGeometryClass: function"
   ],
+  "@ifc-lite/geometry/rtc-rebase": [
+    "RtcRebaseGeometry: interface",
+    "rebaseGeometryOntoFirstRealAnchor: function",
+    "rebasePositionsToRtcOffset: function",
+    "rtcRebaseDeltaYup: function"
+  ],
   "@ifc-lite/geometry/world-frame": [
     "FrameCandidate: interface",
     "RenderFrameInfo: type",
+    "chooseSharedRtcOffset: function",
     "federationFrameInfo: function",
     "ifcToViewerAxes: function",
+    "realRtcAnchorOf: function",
     "renderFrameWorldOffset: function",
     "totalYupOffset: function",
     "viewerToIfcAxes: function"

@@ -8,7 +8,7 @@
  * selects, like the clash panel's — nothing here needs a portal.
  */
 import { useState } from 'react';
-import { elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
+import { elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { ElementFieldPicker } from './ElementFieldPicker';
 import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
@@ -38,7 +38,20 @@ export interface ChartEditorProps {
   onCancel: () => void;
   elementFieldCatalog: ElementFieldCatalog;
   elementFieldCatalogLoading: boolean;
-  onDraftElementFieldChange: (field: ElementFieldBinding | undefined) => void;
+}
+
+/**
+ * The columns the draft can bind to. Other charts' IFC field columns are
+ * hidden; the draft's own field is a synthesized column, NOT a column of the
+ * shared dataset: an unsaved edit must never rebuild the dashboard's
+ * datasets, because every card re-aggregates over them and reconciles its
+ * live selection against the result (#4833). The resolved display unit is
+ * the card's concern once saved; here the binding's own unit labels the sum.
+ */
+export function editorColumns(dataset: ChartDataset, draft: ChartSpec): ChartDatasetColumn[] {
+  if (draft.source !== 'elements') return dataset.columns;
+  const builtIn = dataset.columns.filter((column) => !column.id.startsWith('ifc-field:'));
+  return draft.elementField ? [...builtIn, elementFieldColumn(draft.elementField)] : builtIn;
 }
 
 /** The columns a chart type can bucket by. */
@@ -48,10 +61,9 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
   return columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
 }
 
-export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading, onDraftElementFieldChange }: ChartEditorProps) {
+export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading }: ChartEditorProps) {
   const [draft, setDraft] = useState<ChartSpec>(spec);
-  const ownFieldId = draft.elementField ? elementFieldColumnId(draft.elementField) : undefined;
-  const columns = datasets[draft.source].columns.filter((column) => draft.source !== 'elements' || !column.id.startsWith('ifc-field:') || column.id === ownFieldId);
+  const columns = editorColumns(datasets[draft.source], draft);
   const rowCount = datasets[draft.source].rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
   const categoryColumns = columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
@@ -64,7 +76,6 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
     const allowed = dimensionColumns(draft.type, cols);
-    onDraftElementFieldChange(undefined);
     setDraft({ ...draft, source, elementField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
   };
 
@@ -84,11 +95,10 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
     }
     else if (oldId && (next.dimension === oldId || next.stackBy === oldId || next.measure.column === oldId)) {
-      next.dimension = datasets.elements.columns.find((column) => column.kind === 'category' && column.id !== oldId)?.id ?? '';
+      next.dimension = editorColumns(datasets.elements, next).find((column) => column.kind === 'category')?.id ?? '';
       if (next.stackBy === oldId) next.stackBy = undefined;
       if (next.measure.column === oldId) next.measure = { agg: 'count' };
     }
-    onDraftElementFieldChange(elementField);
     setDraft(next);
   };
 

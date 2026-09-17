@@ -78,13 +78,15 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const dashboard = useMemo(() => dashboards.find((d) => d.id === activeDashboardId) ?? null, [dashboards, activeDashboardId]);
   const scope = dashboard?.scope ?? { kind: 'all' as const };
   const [editing, setEditing] = useState<ChartSpec | null>(null);
-  const [draftElementField, setDraftElementField] = useState<ChartSpec['elementField']>();
+  // Only SAVED charts decide which IFC fields the shared datasets carry. The
+  // editor's draft binds to a synthesized column of its own (`editorColumns`),
+  // so picking through fields never rebuilds every card's dataset (#4833).
   const elementFields = useMemo(() => {
-    const fields = [...(dashboard?.charts ?? []), ...(draftElementField ? [{ source: 'elements' as const, elementField: draftElementField }] : [])]
+    const fields = (dashboard?.charts ?? [])
       .filter((chart) => chart.source === 'elements')
       .flatMap((chart) => chart.elementField ? [chart.elementField] : []);
     return [...new Map(fields.map((field) => [elementFieldColumnId(field), field])).values()];
-  }, [dashboard, draftElementField]);
+  }, [dashboard]);
   const datasets = useChartDatasets(scope, elementFields);
   // The editor can switch sources without replacing its outer `editing` seed;
   // keep discovery available for the whole edit session so Clash → Elements
@@ -141,7 +143,6 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
     const layout = exists ? dashboard.layout : [...dashboard.layout, { chartId: spec.id, x: 0, y: dashboard.layout.length * 4, w: 6, h: 4 }];
     update({ ...dashboard, charts, layout });
     setEditing(null);
-    setDraftElementField(undefined);
   }, [chartSlice, chartSliceBuckets, chartSliceSource, dashboard, link, update]);
   const removeChart = useCallback((id: string) => {
     if (!dashboard) return;
@@ -163,7 +164,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
         dataset={datasets[spec.source]}
         link={link}
         renderer={renderer}
-        onEdit={() => { setEditing(spec); setDraftElementField(spec.elementField); }}
+        onEdit={() => setEditing(spec)}
         onRemove={() => removeChart(spec.id)}
         onAggregation={onAggregation}
       />
@@ -220,7 +221,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
           </Button>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => { setEditing(newChartSpec()); setDraftElementField(undefined); }} disabled={!dashboard}>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setEditing(newChartSpec())} disabled={!dashboard}>
             <Plus className="h-3.5 w-3.5 mr-1" />
             Add chart
           </Button>
@@ -240,9 +241,8 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
             datasets={datasets}
             elementFieldCatalog={fieldCatalog.catalog}
             elementFieldCatalogLoading={fieldCatalog.loading}
-            onDraftElementFieldChange={setDraftElementField}
             onSave={saveChart}
-            onCancel={() => { setEditing(null); setDraftElementField(undefined); }}
+            onCancel={() => setEditing(null)}
           />
         </div>
       )}
@@ -253,7 +253,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
         ) : !dashboard || dashboard.charts.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
             <span>No charts yet.</span>
-            <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { setEditing(newChartSpec()); setDraftElementField(undefined); }}>Add a chart</Button>
+            <Button size="sm" className="h-7 px-2 text-xs" onClick={() => setEditing(newChartSpec())}>Add a chart</Button>
           </div>
         ) : (
           <DashboardGrid layout={dashboard.layout} ids={chartIds} renderItem={renderCard} onLayoutChange={setLayout} />

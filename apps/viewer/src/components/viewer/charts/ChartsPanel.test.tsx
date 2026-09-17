@@ -264,6 +264,46 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal([...fieldSource.options].find(({ value }) => value === 'property')?.disabled, false);
   });
 
+  it('an unsaved draft field binds the editor alone and leaves a live chart selection untouched (#4833)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    // A bucket click on the type chart owns the 3D selection and the slice.
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(44), GID(45)]);
+    const sliceBefore = useViewerStore.getState().chartSlice;
+    const bucketsBefore = useViewerStore.getState().chartSliceBuckets;
+
+    // Open a NEW chart's editor and walk through IFC fields without saving.
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Element field source"]')!;
+    await act(async () => {
+      source.value = 'property';
+      source.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    const property = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC property"]')!;
+    const numericId = [...property.options].find((option) => option.textContent === 'ReferenceLength')!.value;
+    await act(async () => {
+      property.value = numericId;
+      property.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    // The draft's column exists for the editor: the histogram binds to it.
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Group by"]')!.value, numericId);
+
+    const state = useViewerStore.getState();
+    assert.equal(state.chartSlice, sliceBefore, 'the draft must not drop or replace the chart selection');
+    assert.deepEqual([...state.selectedEntityIds].sort(), [GID(44), GID(45)]);
+    assert.equal(state.chartSliceSource, state.dashboards[0].charts[0].id);
+    assert.equal(state.chartSliceBuckets, bucketsBefore, 'the clicked bucket identities are untouched');
+    // The saved charts still see only the built-in columns: the draft column is the editor's alone.
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([name, count]) => [name, count]), [['IfcWall', 3], ['IfcDoor', 2]]);
+  });
+
   it('invalidates a selected bucket when a mutation changes its membership (#4833)', () => {
     const spec = { id: 'field', title: 'Rating', source: 'elements' as const, type: 'bar' as const, dimension: 'Rating', measure: { agg: 'count' as const } };
     const dataset = (ratings: readonly string[]): ChartDataset => ({

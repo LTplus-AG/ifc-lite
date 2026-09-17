@@ -219,7 +219,7 @@ export function createElementFamilyReader(
         if (ref.system) relations.classificationSystems.add(ref.system);
       }
       for (const level of ['Container', 'Building', 'Site', 'Project'] as const) {
-        if (spatialValue(id, level)) relations.spatial.add(level);
+        if (!relations.spatial.has(level) && spatialValue(id, level)) relations.spatial.add(level);
       }
     },
   };

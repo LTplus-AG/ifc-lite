@@ -39,6 +39,7 @@ function num(errors: DashboardValidationError[], obj: Record<string, unknown>, k
 }
 
 const SPATIAL_LEVELS = new Set(['Container', 'Building', 'Site', 'Project']);
+const RELATION_KINDS = new Set(['material', 'classification', 'type', 'spatial']);
 
 function validateChart(chart: unknown, path: string, errors: DashboardValidationError[]): void {
   if (!isRecord(chart)) {
@@ -77,6 +78,9 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
         if (typeof field.level !== 'string' || !SPATIAL_LEVELS.has(field.level)) errors.push({ path: `${fieldPath}.level`, message: `expected one of ${[...SPATIAL_LEVELS].join(', ')}` });
       } else if (field.kind !== 'material' && field.kind !== 'type') {
         errors.push({ path: `${fieldPath}.kind`, message: 'expected attribute, property, quantity, material, classification, type or spatial' });
+      }
+      if (typeof field.kind === 'string' && RELATION_KINDS.has(field.kind) && (field.valueKind === 'number' || field.valueKind === 'boolean')) {
+        errors.push({ path: `${fieldPath}.valueKind`, message: 'a material, classification, type or spatial field is always a category' });
       }
     }
   }

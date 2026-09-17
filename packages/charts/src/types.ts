@@ -68,19 +68,22 @@ interface ElementFieldBindingBase {
 /** Spatial levels a `spatial` field can name; `Storey` is a built-in column already. */
 export type ElementFieldSpatialLevel = 'Container' | 'Building' | 'Site' | 'Project';
 
+/** Relation-borne fields read names, so they are only ever categories. */
+type ElementFieldCategoryBindingBase = Omit<ElementFieldBindingBase, 'valueKind'> & { valueKind: 'category' };
+
 export type ElementFieldBinding =
   | (ElementFieldBindingBase & { kind: 'attribute'; attributeName: string })
   | (ElementFieldBindingBase & { kind: 'property'; psetName: string; propertyName: string })
   /** An `IfcPhysicalSimpleQuantity` by its exact `IfcElementQuantity` and quantity names. */
   | (ElementFieldBindingBase & { kind: 'quantity'; qsetName: string; quantityName: string })
   /** Every material name the element is associated with (`IfcRelAssociatesMaterial`), joined. */
-  | (ElementFieldBindingBase & { kind: 'material' })
+  | (ElementFieldCategoryBindingBase & { kind: 'material' })
   /** `IfcClassificationReference` identification (else name), optionally for one classification system only. */
-  | (ElementFieldBindingBase & { kind: 'classification'; system?: string })
+  | (ElementFieldCategoryBindingBase & { kind: 'classification'; system?: string })
   /** `Name` of the element's defining `IfcTypeObject` (`IfcRelDefinesByType`). */
-  | (ElementFieldBindingBase & { kind: 'type' })
+  | (ElementFieldCategoryBindingBase & { kind: 'type' })
   /** Name of the containing spatial element at one level (`IfcRelContainedInSpatialStructure` / `IfcRelAggregates`). */
-  | (ElementFieldBindingBase & { kind: 'spatial'; level: ElementFieldSpatialLevel });
+  | (ElementFieldCategoryBindingBase & { kind: 'spatial'; level: ElementFieldSpatialLevel });
 
 export interface ChartSpec {
   id: string;

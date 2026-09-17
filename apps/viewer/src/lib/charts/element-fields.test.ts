@@ -13,6 +13,8 @@ import { createElementFieldReader } from './element-field-reader.js';
 
 const FIRE: ElementFieldBinding = { kind: 'property', psetName: 'Pset_SlabCommon', propertyName: 'FireRating', valueKind: 'category' };
 const SPREAD: ElementFieldBinding = { kind: 'property', psetName: 'Pset_SlabCommon', propertyName: 'SurfaceSpreadOfFlame', valueKind: 'category' };
+/** A binding as read back from an unvalidated saved dashboard, where the type's guarantees do not hold. */
+const persisted = (json: string): ElementFieldBinding => JSON.parse(json) as ElementFieldBinding;
 const SAMPLE = new URL('../../../public/samples/building-architecture.ifc', import.meta.url);
 /** The committed sample may be checked out with CRLF line endings. */
 const FILE_END = /ENDSEC;\r?\nEND-ISO-10303-21;/;
@@ -267,8 +269,8 @@ describe('chart IFC field reader (#4833)', () => {
     const bytes = await readFile(SAMPLE);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
     const reader = createElementFieldReader(store);
-    assert.deepEqual(reader.readResolved(52, { kind: 'material', valueKind: 'number' }), { value: null, status: 'unsupported' });
-    assert.deepEqual(reader.readResolved(52, { kind: 'type', valueKind: 'boolean' }), { value: null, status: 'unsupported' });
+    assert.deepEqual(reader.readResolved(52, persisted('{"kind":"material","valueKind":"number"}')), { value: null, status: 'unsupported' });
+    assert.deepEqual(reader.readResolved(52, persisted('{"kind":"type","valueKind":"boolean"}')), { value: null, status: 'unsupported' });
     assert.deepEqual(reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'boolean' }), { value: null, status: 'unsupported' });
     assert.equal(reader.readResolved(52, { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', valueKind: 'category' }).value, '25.749999999991743');
     // A view without a quantity extractor that edits one quantity keeps the untouched siblings and sets.

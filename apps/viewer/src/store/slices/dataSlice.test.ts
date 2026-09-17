@@ -8,6 +8,7 @@ import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dat
 import { DATA_DEFAULTS } from '../constants.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
+import { capturePreAlignment, restorePreAlignment } from '../../hooks/ingest/federationRealign.js';
 
 type DataTestState = DataSlice & DataCrossSliceState;
 
@@ -259,6 +260,41 @@ describe('DataSlice', () => {
       assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [6, 7]);
       assert.strictEqual(state.geometryResult?.totalTriangles, 4); // 1+3
       assert.strictEqual(state.geometryResult?.totalVertices, 8); // 3+5
+    });
+
+    // updateMeshColors replaces a released mesh with `{ ...mesh, color }`; the
+    // copy must still subtract the counts retained at release.
+    it('subtracts released counts for a mesh recoloured after release', () => {
+      state.setBoundedGeometryMode(true);
+      seedSplit();
+      state.releaseGeometryMemory();
+      state.updateMeshColors(new Map([[1, [0, 1, 0, 1]]]));
+      assert.notStrictEqual(state.geometryResult?.meshes[0].color[0], 1, 'recolour replaced the mesh (fixture can fail)');
+
+      state.pruneGeometryMeshes(new Set([1]));
+
+      assert.strictEqual(state.geometryResult?.totalTriangles, 5); // 2+3
+      assert.strictEqual(state.geometryResult?.totalVertices, 9); // 4+5
+    });
+
+    // restorePreAlignment writes snapshot slots back BY INDEX, so a pruned mesh
+    // must take its slot with it or the next mesh gets its predecessor's vertices.
+    it('drops the pruned mesh\'s preAlignment slot so a later restore stays aligned', () => {
+      const meshes = [createSizedMesh(1, 3, 1), createSizedMesh(2, 4, 2), createSizedMesh(3, 5, 3)];
+      const geometry = { meshes, totalTriangles: 6, totalVertices: 12, coordinateInfo: state.geometryResult?.coordinateInfo,
+        instancedGeometryAabbs: new Map([[2, { min: [0, 0, 0], max: [1, 1, 1] }], [9, { min: [0, 0, 0], max: [2, 2, 2] }]]) } as unknown as GeometryResult;
+      const snapshot = capturePreAlignment(geometry);
+      snapshot.positions = meshes.map((m) => new Float32Array(m.positions.length).fill(m.expressId));
+      const model = { id: 'A', geometryResult: geometry, preAlignment: snapshot } as unknown as FederatedModel;
+      state = { ...state, activeModelId: 'A', geometryResult: geometry, models: new Map([['A', model]]) };
+
+      state.pruneGeometryMeshes(new Set([2]));
+
+      const next = state.models.get('A')!;
+      assert.strictEqual(next.preAlignment?.positions.length, 2);
+      assert.deepStrictEqual([...next.preAlignment!.instancedGeometryAabbs!.keys()], [9]);
+      restorePreAlignment(next.geometryResult!, next.preAlignment!);
+      assert.deepStrictEqual(next.geometryResult!.meshes.map((m) => m.positions[0]), [1, 3]);
     });
 
     it('is a no-op when there is no geometryResult yet', () => {

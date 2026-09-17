@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StateCreator } from 'zustand';
-import { retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
+import { carryReleasedMesh, retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
 import { pruneMeshesFromGeometry } from './data-mesh-prune.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
@@ -350,7 +350,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
         if (meshColorBackup && !meshColorBackup.has(mesh.expressId)) {
           meshColorBackup.set(mesh.expressId, mesh.color);
         }
-        return { ...mesh, color: newColor };
+        return carryReleasedMesh(mesh, { ...mesh, color: newColor });
       }
       return mesh;
     });

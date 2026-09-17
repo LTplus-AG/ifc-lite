@@ -5,7 +5,7 @@
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from '@ifc-lite/renderer';
 import { meshGeometryCounts } from '@/lib/released-mesh-provenance';
-import type { FederatedModel } from '../types.js';
+import type { FederatedModel, PreAlignmentSnapshot } from '../types.js';
 
 /**
  * Drop drained mesh-removal ids out of `geometryResult.meshes` and subtract
@@ -65,6 +65,32 @@ function withoutIds<V>(map: Map<number, V> | undefined, ids: Set<number>): Map<n
   return next ?? map;
 }
 
+/** Whether the drain drops `mesh`; the one rule the prune and its snapshot filter share. */
+function removesMesh(mesh: GeometryResult['meshes'][number], ids: Set<number>): boolean {
+  return ids.has(mesh.expressId) && !hostsOtherEntities(mesh);
+}
+
+/**
+ * `preAlignment` restores its per-mesh arrays BY INDEX (`restorePreAlignment`
+ * in hooks/ingest/federationRealign.ts), so removing a mesh must remove its
+ * snapshot slot too, or every later mesh is restored from its predecessor's
+ * slot on the next anchor switch. Slots past the snapshot's length belong to
+ * meshes appended after the capture and have nothing to drop.
+ */
+function prunePreAlignment(
+  snapshot: PreAlignmentSnapshot, meshes: GeometryResult['meshes'], ids: Set<number>,
+): PreAlignmentSnapshot {
+  const keep = (_: unknown, i: number) => i >= meshes.length || !removesMesh(meshes[i], ids);
+  return {
+    ...snapshot,
+    positions: snapshot.positions.filter(keep),
+    normals: snapshot.normals.filter(keep),
+    origins: snapshot.origins.filter(keep),
+    geometryAabbs: snapshot.geometryAabbs.filter(keep),
+    instancedGeometryAabbs: withoutIds(snapshot.instancedGeometryAabbs, ids),
+  };
+}
+
 /** A pruned copy of `geometry`, or `geometry` itself when nothing matched. */
 function pruneGeometry(geometry: GeometryResult, ids: Set<number>): GeometryResult {
   const meshes = geometry.meshes;
@@ -73,7 +99,7 @@ function pruneGeometry(geometry: GeometryResult, ids: Set<number>): GeometryResu
   let removedVertices = 0;
   for (let i = 0; i < meshes.length; i++) {
     const mesh = meshes[i];
-    if (ids.has(mesh.expressId) && !hostsOtherEntities(mesh)) {
+    if (removesMesh(mesh, ids)) {
       const counts = meshGeometryCounts(mesh);
       removedTriangles += counts.triangles;
       removedVertices += counts.vertices;
@@ -128,7 +154,13 @@ export function pruneMeshesFromGeometry(
     const next = prune(model.geometryResult);
     if (next === model.geometryResult) continue;
     patch.models ??= new Map(state.models);
-    patch.models.set(modelId, { ...model, geometryResult: next });
+    patch.models.set(modelId, {
+      ...model,
+      geometryResult: next,
+      ...(model.preAlignment
+        ? { preAlignment: prunePreAlignment(model.preAlignment, model.geometryResult.meshes, ids) }
+        : {}),
+    });
   }
   // Nothing in `ids` matched anywhere: leave the tick alone too.
   if (!patch.geometryResult && !patch.models) return {};

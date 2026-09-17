@@ -23,6 +23,19 @@ export function retainReleasedMeshProvenance(mesh: MeshData): void {
   }
 }
 
+/**
+ * Carry a released mesh's retained provenance and counts onto a copy of it
+ * (e.g. `updateMeshColors`' `{ ...mesh, color }`), whose buffers are just as
+ * empty but which the WeakMaps would not otherwise know. Returns `copy`.
+ */
+export function carryReleasedMesh(source: MeshData, copy: MeshData): MeshData {
+  const provenance = released.get(source);
+  if (provenance) released.set(copy, provenance);
+  const counts = releasedCounts.get(source);
+  if (counts) releasedCounts.set(copy, counts);
+  return copy;
+}
+
 /** Counts this mesh contributes to geometryResult totals, live or as retained at release. */
 export function meshGeometryCounts(mesh: MeshData): MeshGeometryCounts {
   if (mesh.indices.length > 0 || mesh.positions.length > 0) {

@@ -118,6 +118,11 @@ await page.getByRole('button', { name: /Add chart/ }).click();
 await page.waitForSelector('[data-chart-editor]');
 await shot('editor-open');
 const sourcePicker = page.locator('[data-chart-editor] select[aria-label="Element field source"]');
+// Discovery scans the federation in chunks and keeps the option disabled until it finishes.
+await page.waitForFunction(() => {
+  const select = document.querySelector('[data-chart-editor] select[aria-label="Element field source"]');
+  return select && [...select.options].some((o) => o.value === 'property' && !o.disabled);
+}, undefined, { timeout: 60000 });
 await sourcePicker.selectOption('property');
 await page.locator('[data-chart-editor] select[aria-label="IFC property set"]').selectOption('Pset_SlabCommon');
 await page.locator('[data-chart-editor] select[aria-label="IFC property"]').selectOption({ label: 'FireRating' });

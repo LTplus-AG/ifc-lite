@@ -98,8 +98,16 @@ export function chartSelectionIsLive(
     const series = aggregation.series.find((candidate) => candidate.key === selected.seriesKey);
     const sameData = selected.dataFingerprint === aggregation.dataFingerprint;
     if (selected.isOther) {
-      if (sameData) continue;
-      const carrier = series?.buckets.find((candidate) => sameMembers(candidate, selected.ids));
+      // Same data, but the spec may have changed its dimension or stack: the
+      // selected series must still exist and still hold every selected id.
+      if (!series) return false;
+      if (sameData) {
+        const inSeries = new Set<number>();
+        for (const bucket of series.buckets) for (const id of bucket.ids) inSeries.add(id);
+        if (selected.ids.every((id) => inSeries.has(id))) continue;
+        return false;
+      }
+      const carrier = series.buckets.find((candidate) => sameMembers(candidate, selected.ids));
       if (!carrier) return false;
       continue;
     }

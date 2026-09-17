@@ -166,7 +166,7 @@ function resolveDeclaredUnit(
       let scale = 1.0;
       let incomplete = false;
       for (const er of elemRefs) {
-        if (typeof er !== 'number') continue;
+        if (typeof er !== 'number') { incomplete = true; continue; }
         const el = resolveDerivedElement(extractor, entityIndex, er);
         if (el) {
           scale *= Math.pow(el.unitScale, el.exponent);

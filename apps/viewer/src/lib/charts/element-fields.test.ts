@@ -155,7 +155,10 @@ describe('chart IFC field reader (#4833)', () => {
 #60061=IFCPROPERTYSET('g-type-probe',#1,'Probe',$,(#60060));
 #60062=IFCPROPERTYSINGLEVALUE('Load',$,IFCREAL(12.5),$);
 #60063=IFCPROPERTYSET('g-occ-probe',#1,'Probe',$,(#60062));
-#60064=IFCRELDEFINESBYPROPERTIES('g-occ-rel',#1,$,$,(#52),#60063);`, (source) => source.replace('(#963)', '(#963,#60061)'));
+#60064=IFCRELDEFINESBYPROPERTIES('g-occ-rel',#1,$,$,(#52),#60063);`, (source) => {
+      assert.ok(source.includes('(#963)'), 'the slab type #50 still lists its HasPropertySets as (#963)');
+      return source.replace('(#963)', '(#963,#60061)');
+    });
     const reader = createElementFieldReader(store);
     const load = reader.discover([52]).properties.get('Probe')?.find(({ binding }) => binding.kind === 'property' && binding.propertyName === 'Load')?.binding;
     assert.equal(load?.valueKind, 'number', 'the overridden type label must not make the field categorical');

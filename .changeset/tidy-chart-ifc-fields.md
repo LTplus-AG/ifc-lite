@@ -1,8 +1,8 @@
 ---
 '@ifc-lite/charts': minor
-'@ifc-lite/data': patch
-'@ifc-lite/mutations': patch
-'@ifc-lite/parser': patch
+'@ifc-lite/data': minor
+'@ifc-lite/mutations': minor
+'@ifc-lite/parser': minor
 '@ifc-lite/query': patch
 ---
 

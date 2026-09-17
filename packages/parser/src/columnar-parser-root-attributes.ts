@@ -186,8 +186,8 @@ export function getRawNamedAttributes(
     // The schema-union helper preserves the pinned result when available and
     // supplies the missing names for the other bundled schemas.
     const exact = schemaVersion ? registryEntity(getSchemaRegistryForVersion(schemaVersion), entity.type) : undefined;
-    const attrNames = exact?.allAttributes?.map((attribute) => attribute.name)
-        ?? getAttributeNamesAcrossSchemas(entity.type);
+    const declared = exact?.allAttributes?.map((attribute) => attribute.name);
+    const attrNames = declared && declared.length > 0 ? declared : getAttributeNamesAcrossSchemas(entity.type);
 
     const result: Array<{ name: string; raw: IfcAttributeValue }> = [];
     const len = Math.min(attrs.length, attrNames.length);

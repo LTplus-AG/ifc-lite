@@ -92,7 +92,8 @@ for (const [source, setName, fieldName] of FIELDS) {
   log('after bucket click', JSON.stringify(selection));
   if (selection.n === 0) note(`${title}: bucket click selected nothing in 3D`);
   if (selection.source !== saved.id) note(`${title}: chart slice not owned by the new chart`);
-  const expected = Number.parseInt(buckets[0].split(': ').at(-1) ?? '', 10);
+  // The legend formats counts with toLocaleString ("1,234"): keep the digits only.
+  const expected = Number.parseInt((buckets[0].split(': ').at(-1) ?? '').replace(/\D/g, ''), 10);
   if (Number.isFinite(expected) && selection.n !== expected) note(`${title}: bucket reports ${expected} elements but ${selection.n} are selected`);
   await shot(`selected-${fieldName}`);
   // Clear for the next chart.

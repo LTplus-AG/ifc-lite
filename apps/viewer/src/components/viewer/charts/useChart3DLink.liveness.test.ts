@@ -19,6 +19,20 @@ function dataset(size: number, fingerprint: string): ChartDataset {
   };
 }
 
+describe('chart selection identity (#4833 review)', () => {
+  it('a same-data Other selection dies with its series: a dimension change that keeps the fingerprint but drops the series is not live', () => {
+    const data = dataset(9, 'rev-1');
+    const folded = aggregate({ ...SPEC, topN: 1, sort: 'label' }, data);
+    const other = chartBucketIdentity(folded, { seriesIndex: 0, dataIndex: 1 })!;
+    assert.equal(other.isOther, true);
+    // The spec now buckets by another column: same dataset fingerprint, the 'Kind' series is gone.
+    const rekeyed = aggregate({ ...SPEC, dimension: 'Kind', topN: 1, sort: 'label' }, { ...data, columns: [{ id: 'Kind', label: 'Other kind', kind: 'category' }], rows: data.rows.map((row) => ({ ...row, values: ['Z'] })) });
+    assert.equal(rekeyed.series[0].key, 'Kind');
+    assert.equal(chartSelectionIsLive(rekeyed, [{ ...other, seriesKey: 'Vanished' }], new Set(other.ids)), false, 'a missing series is not live');
+    assert.equal(chartSelectionIsLive(rekeyed, [other], new Set(other.ids)), true, 'the same series still carrying every id stays live');
+  });
+});
+
 describe('chart selection reconciliation cost (#4833)', () => {
   it('reconciles a selected bucket of tens of thousands of ids in linear time on both the same-data and changed-data paths', () => {
     const size = 60_000;

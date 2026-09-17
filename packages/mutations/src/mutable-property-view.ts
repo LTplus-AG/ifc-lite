@@ -326,7 +326,7 @@ export class MutablePropertyView extends MutableOverlayState {
           unit: mutation.unit ?? prop.unit,
           // An edit that names its own unit replaces the explicit scale too;
           // one that keeps the property's unit keeps its scale.
-          ...(mutation.unit === undefined && prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
+          ...((mutation.unit === undefined || mutation.unit === prop.unit) && prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
           dataType: mutation.dataType ?? prop.dataType,
         }),
         prop => prop,

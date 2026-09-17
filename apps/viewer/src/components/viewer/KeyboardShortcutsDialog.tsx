@@ -19,7 +19,7 @@ function GithubIcon({ className }: { className?: string }) {
 }
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
+import { KEYBOARD_SHORTCUTS } from '@/hooks/keyboard-shortcuts-list';
 import { LearnTab } from '@/components/tours/LearnTab';
 import { navigateToPath } from '@/services/app-navigation';
 

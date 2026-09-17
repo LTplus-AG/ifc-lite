@@ -1,5 +1,29 @@
 # @ifc-lite/sdk
 
+## 6.2.0
+
+### Minor Changes
+
+- [#4880](https://github.com/LTplus-AG/ifc-lite/pull/4880) [`35c0517`](https://github.com/LTplus-AG/ifc-lite/commit/35c0517d9779297704979131f451a4ae704bf744) Thanks [@louistrue](https://github.com/louistrue)! - BCF viewpoints are written in IFC world coordinates outside the viewer too ([#4879](https://github.com/LTplus-AG/ifc-lite/issues/4879)). `ifc-lite clash --bcf`, the MCP playground's `clash_bcf_export` and `bim.bcf.createViewpoint({ camera: bim.viewer.getCamera() })` wrote render-frame (origin-shifted, RTC-local) cameras, so other BCF tools put the camera hundreds of kilometres from a georeferenced building. A new `@ifc-lite/geometry/world-frame` entry point holds the one render frame <-> world conversion (`renderFrameWorldOffset`, `totalYupOffset`, `ifcToViewerAxes`, `viewerToIfcAxes`, `federationFrameInfo`), which the viewer, CLI, playground and SDK all use. `@ifc-lite/bcf` adds `viewpointFromWorld`, the inverse of `translateViewpoint` that keeps viewpoints written by ifc-lite before [#4806](https://github.com/LTplus-AG/ifc-lite/issues/4806) in place. In the SDK, `ViewerBackendMethods` gains an optional `getRenderFrameOffset()`; when a backend provides it (the viewer does), `bim.bcf.createViewpoint()` adds it and `bim.bcf.extractViewpointState()` subtracts it, so viewpoints are world coordinates and extracted cameras are ready for `bim.viewer.setCamera()`. Backends without it, and `new BCFNamespace()` with no backend, behave as before.
+
+- [#4867](https://github.com/LTplus-AG/ifc-lite/pull/4867) [`e43c455`](https://github.com/LTplus-AG/ifc-lite/commit/e43c455711d4070b530436413db948fedcc34053) Thanks [@louistrue](https://github.com/louistrue)! - Expose the canonical IFC 5D cost read model and decimal evaluation through
+  `bim.cost`, CLI/headless and MCP backends, MCP tools, viewer-local SDK calls,
+  remote capability reporting, and the sandbox bridge.
+  
+  Bound public cost-evaluation precision to 1 through 10,000 significant digits
+  so caller-controlled division cannot request impractical decimal output.
+
+### Patch Changes
+
+- Updated dependencies [[`1cc533f`](https://github.com/LTplus-AG/ifc-lite/commit/1cc533f5ca326a8d574ca5e870dfdafec7df32d0), [`35c0517`](https://github.com/LTplus-AG/ifc-lite/commit/35c0517d9779297704979131f451a4ae704bf744), [`e43c455`](https://github.com/LTplus-AG/ifc-lite/commit/e43c455711d4070b530436413db948fedcc34053), [`8733dc9`](https://github.com/LTplus-AG/ifc-lite/commit/8733dc9cb391344606b9bc59beb00a6f9d1de135), [`20bff7c`](https://github.com/LTplus-AG/ifc-lite/commit/20bff7c4069d267aa2662266b6213c3b2b406753)]:
+  - @ifc-lite/bcf@4.1.0
+  - @ifc-lite/clash@2.3.0
+  - @ifc-lite/parser@7.0.0
+  - @ifc-lite/create@2.6.0
+  - @ifc-lite/export@4.3.5
+  - @ifc-lite/ids@1.17.2
+  - @ifc-lite/query@2.4.1
+
 ## 6.1.0
 
 ### Minor Changes

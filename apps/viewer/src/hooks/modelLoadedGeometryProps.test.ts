@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { GeometryDiagnostics } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -158,6 +158,54 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
   });
 });
 
+describe('skipped hung elements (#4884)', () => {
+  const skipped = {
+    expressIds: [812, 9041, 9042],
+    byType: [
+      { ifcType: 'IFCBEAM', count: 2 },
+      { ifcType: 'IFCWALL', count: 1 },
+    ],
+  };
+
+  it('reports how many elements were skipped and of which IFC types, never their ids', () => {
+    const props = buildModelLoadedGeometryProps({
+      diagnostics: diag(),
+      skippedHungElements: skipped,
+      tessellationTier: undefined,
+      skipSmallCuts: false,
+      isResourceRetry: false,
+    });
+    assert.equal(props.hung_elements_skipped, 3);
+    assert.equal(props.hung_element_types, 'IFCBEAM:2,IFCWALL:1');
+    assert.ok(!JSON.stringify(props).includes('812'), 'express ids must stay out of telemetry');
+  });
+
+  it('leaves the skip fields absent on a load that skipped nothing', () => {
+    const props = buildModelLoadedGeometryProps({
+      diagnostics: diag(),
+      tessellationTier: undefined,
+      skipSmallCuts: false,
+      isResourceRetry: false,
+    });
+    assert.equal(props.hung_elements_skipped, undefined);
+    assert.equal(props.hung_element_types, undefined);
+  });
+
+  it('tells the user the model loaded without those elements', () => {
+    const notices: string[] = [];
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      reportSkippedHungElements('tower.ifc', skipped, (message) => notices.push(message));
+    } finally {
+      console.warn = warn;
+    }
+    assert.deepEqual(notices, [
+      '"tower.ifc" loaded without 3 elements whose geometry could not be computed (IFCBEAM, IFCWALL).',
+    ]);
+  });
+});
+
 /**
  * Read and stripped once. `code` has comments removed; `masked` is the same
  * text at the same offsets with string/template/regex bodies blanked. See
@@ -282,6 +330,30 @@ describe('ifc_model_loaded wiring (#2388)', () => {
 
   it('feeds the builder the diagnostics captured on the streaming complete event', () => {
     assert.match(src, /loadDiagnostics = event\.diagnostics/);
+  });
+
+  it('feeds the builder, and the user notice, the elements the stream skipped (#4884)', () => {
+    const args = captureArgsAround('...buildModelLoadedPayload(');
+    assert.ok(args.includes('skippedHungElements'), 'the wasm-path capture must pass skippedHungElements');
+    assert.match(src, /skippedHungElements = event\.skippedHungElements/);
+    assert.match(src, /reportSkippedHungElements\(file\.name, skippedHungElements, toast\.info\)/);
+  });
+
+  it('opts in to hung-call recovery only because it reads the skipped elements, and never caches a partial model (#4884)', () => {
+    assert.match(src, /hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS/);
+    const cacheGate = src.indexOf('!skippedHungElements &&');
+    assert.notEqual(cacheGate, -1, 'the cache write must be gated on skippedHungElements');
+    const saveIdx = src.indexOf('saveToCache(cacheKey', cacheGate);
+    assert.ok(saveIdx !== -1 && saveIdx - cacheGate < 3_000, 'the gate must guard the saveToCache call that follows it');
+  });
+
+  it('aborts the geometry stream when it is closed, so a stalled pool is terminated (#4884)', () => {
+    assert.match(src, /signal: geometryAbort\.signal/);
+    const closeIdx = src.indexOf('closeGeometryIterator = async');
+    assert.notEqual(closeIdx, -1);
+    const returnIdx = src.indexOf('boundedIteratorReturn(geometryIterator)', closeIdx);
+    const abortIdx = src.indexOf('geometryAbort.abort()', closeIdx);
+    assert.ok(abortIdx !== -1 && abortIdx < returnIdx, 'the stream must be aborted before return() is awaited');
   });
 
   it('marks the SERVER fast path\'s capture as a retry when it is one', () => {

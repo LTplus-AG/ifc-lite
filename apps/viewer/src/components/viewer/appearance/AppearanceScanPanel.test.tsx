@@ -83,13 +83,15 @@ test('visibility preserves a frozen alignment but source geometry replacement in
 test('active section clipping refuses alignment before a preview can be published (#4381)', async () => {
   await alignmentFixture();
   const section = useViewerStore.getState().sectionPlane;
-  useViewerStore.setState({ sectionPlane: { ...section, enabled: true } });
+  const tool = useViewerStore.getState().activeTool;
+  // A cut is on screen only inside the Section tool (#4910).
+  useViewerStore.setState({ activeTool: 'section', sectionPlane: { ...section, enabled: true } });
   try {
     const ui = render(<AppearanceScanPanel />);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
     assert.match(ui.textContent!, /Turn off section, terrain and box clipping/);
     assert.equal(ui.querySelector('canvas'), null);
-  } finally { useViewerStore.setState({ sectionPlane: section }); }
+  } finally { useViewerStore.setState({ activeTool: tool, sectionPlane: section }); }
 });
 
 test('alignment offers a loaded IFC without requiring a prior selection to create its mutation view (#4381)', async () => {

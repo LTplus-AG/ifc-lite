@@ -59,7 +59,7 @@ export function getModelForRef(state: ViewerState, modelId: string): ModelLike |
  * List all model entries — from the multi-model Map or the legacy state.
  * Returns [modelId, model][] pairs.
  */
-export function getAllModelEntries(state: ViewerState): [string, ModelLike][] {
+export function getAllModelEntries(state: Pick<ViewerState, 'models' | 'ifcDataStore'>): [string, ModelLike][] {
   if (state.models.size > 0) {
     return [...state.models.entries()];
   }

@@ -1,6 +1,6 @@
 {
-  "apps/viewer": 256,
-  "apps/viewer-embed": 258,
+  "apps/viewer": 252,
+  "apps/viewer-embed": 254,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
@@ -14,7 +14,7 @@
   "packages/codegen": 5,
   "packages/collab": 7,
   "packages/collab-server": 3,
-  "packages/create": 4,
+  "packages/create": 0,
   "packages/create-ifc-lite": 0,
   "packages/data": 0,
   "packages/diff": 0,

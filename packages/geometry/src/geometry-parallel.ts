@@ -25,6 +25,7 @@
  */
 
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
+import { postGeometryWorkerInit } from './geometry-worker-init.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
@@ -39,6 +40,11 @@ import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
 import { resolveRtcFrame } from './rtc-frame.js';
+import {
+  SkippedHungElementsCollector,
+  startHungJobMonitor,
+  WorkerJobLedger,
+} from './hung-job-recovery.js';
 
 /**
  * Prepass class-byte layout, mirroring the `PREPASS_CLASS_*` definitions in
@@ -202,6 +208,25 @@ function terminateWorkerQuietly(worker: Worker, label: string): void {
   } catch (err) {
     console.warn(`[stream] ${label} terminate failed:`, err);
   }
+}
+
+/**
+ * A recorded `set-entity-index` setup (#4884). Built OUTSIDE `deliverEntityIndex`
+ * on purpose: a replay closure created in that scope would keep the pre-pass's
+ * transferred id/start/length columns (12 B per entity, ~180 MB on a 1 GB file)
+ * alive for the whole load, where before they were collectable right after the
+ * copy into the shared buffers. This one captures only its `columns` factory.
+ */
+function entityIndexSetup(
+  columns: () => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array },
+): (w: Worker) => void {
+  return (w) => {
+    try {
+      w.postMessage({ type: 'set-entity-index' as const, ...columns() });
+    } catch (err) {
+      console.warn('[stream] set-entity-index dispatch failed:', err);
+    }
+  };
 }
 
 interface PrepassMeta {
@@ -368,7 +393,10 @@ export async function* processParallel(
     // crash from the worker SCRIPT failing to load (stale-deploy 404, #1251).
     let workerSpoke = false;
     worker.onmessage = (e: MessageEvent) => {
+      // A worker replaced after a hang (#4884) may still flush queued messages.
+      if (workers[workerIndex] !== worker) return;
       workerSpoke = true;
+      ledger.onHeard(workerIndex, performance.now());
       const msg = e.data;
       if (msg.type === 'ready') {
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
@@ -438,8 +466,16 @@ export async function* processParallel(
         // Forward it so the consumer's stall watchdog measures "one WASM
         // call went silent", not "no meshes lately" — a CSG-heavy stretch
         // can keep every worker busy past the watchdog with nothing to show.
+        if (typeof msg.seq === 'number') {
+          ledger.onCallStart(workerIndex, msg.seq, msg.processedJobs, msg.callJobs ?? 1, performance.now());
+        }
+        if (msg.diagnostics) diagnostics = mergeGeometryDiagnostics(diagnostics, msg.diagnostics);
         eventQueue.push({ type: 'progress', phase: 'workers' });
         wake();
+        return;
+      }
+      if (msg.type === 'slice-done') {
+        ledger.onSliceDone(workerIndex, msg.seq, performance.now());
         return;
       }
       if (msg.type === 'batch') {
@@ -542,6 +578,7 @@ export async function* processParallel(
       }
     };
     worker.onerror = (err) => {
+      if (workers[workerIndex] !== worker) return;
       // A hard worker crash (e.g. the wasm thread aborting under memory
       // pressure) fires an ErrorEvent with an empty `message`. Emitting the
       // literal "undefined" produced a cryptic, unclassifiable error in tracking
@@ -591,8 +628,20 @@ export async function* processParallel(
   }
 
   const workers: Worker[] = [];
+  // Hung-call recovery (#4884): unfinished slices per worker, and every per-load
+  // state message in order (never per-worker work) to rebuild a replacement.
+  // Opt-in: without a budget nothing is recorded, so the pool costs what it did.
+  const hungJobTimeoutMs = Math.max(0, options?.hungJobTimeoutMs ?? 0);
+  const ledger = new WorkerJobLedger(workerCount, performance.now(), hungJobTimeoutMs > 0);
+  const workerSetup: Array<(w: Worker) => void> = [];
+  const broadcastSetup = (setup: (w: Worker) => void) => {
+    if (hungJobTimeoutMs > 0) workerSetup.push(setup);
+    for (const w of workers) setup(w);
+  };
+  const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
+  if (hungJobTimeoutMs > 0) workerSetup.push(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
-  // rest of the pipeline), so it needs its own: `postMessage` below can throw
+  // rest of the pipeline), so it needs its own: `postInitMessages` can throw
   // (e.g. a `wasmModule` structured-clone failure — the same class of error
   // `dispatchJobsChunkInternal` already guards against further down), and
   // without this try/catch any worker already pushed to `workers` before the
@@ -602,60 +651,7 @@ export async function* processParallel(
       const worker = makeGeometryWorker();
       workers.push(worker);
       installWorkerHandlers(worker, i);
-      // Instantiate WASM. When the host compiled the module once (above), each
-      // worker `initSync`s it (cheap); otherwise it falls back to compiling from
-      // bytes. The worker's tail-promise serialiser guarantees this `init`
-      // completes before any subsequent `stream-start`/`stream-chunk` runs.
-      //
-      // `wasmUrl` is forwarded only when the consumer explicitly provided one AND
-      // no shared module is available — undefined leaves the worker on
-      // wasm-bindgen's default `import.meta.url`-based resolution (Vite + webpack).
-      const wasmUrlForWorker = options?.wasmUrls?.wasm;
-      worker.postMessage(
-        {
-          type: 'init',
-          ...(sharedWasmModule
-            ? { wasmModule: sharedWasmModule }
-            : wasmUrlForWorker
-              ? { wasmUrl: wasmUrlForWorker }
-              : {}),
-        },
-      );
-      // Issue #540: forward the user's "Merge Multilayer Walls" toggle
-      // BEFORE any stream-start so the worker's IfcAPI has the flag set
-      // before its first parse call. The tail-promise serialiser inside
-      // each worker preserves this order even though the messages are
-      // posted back-to-back. We always send the message so the controller
-      // path doesn't have to remember whether the host called it — the
-      // default `false` is a cheap no-op.
-      worker.postMessage({
-        type: 'set-merge-layers',
-        enabled: options?.mergeLayers === true,
-      });
-      // GPU-instancing partition toggle — default ON; the host sets false for federated
-      // loads so a federated model's geometry stays flat (instancing is primary-only).
-      worker.postMessage({
-        type: 'set-instancing-enabled',
-        enabled: options?.enableInstancing !== false,
-      });
-      // Issue #924: forward the geometry-hash tolerance the same way — always
-      // sent so the controller path stays uniform; null is a cheap no-op.
-      worker.postMessage({
-        type: 'set-compute-geometry-hashes',
-        tolerance: options?.geometryHashTolerance ?? null,
-      });
-      // Issue #976: forward the tessellation-quality level the same way —
-      // null keeps the Rust default (Medium / historical densities).
-      worker.postMessage({
-        type: 'set-tessellation-quality',
-        level: options?.tessellationQuality ?? null,
-      });
-      // Issue #1286: forward the small-cut skip the same way — always sent so a
-      // worker reused by a later export (which omits it) resets to false.
-      worker.postMessage({
-        type: 'set-skip-small-cuts',
-        enabled: options?.skipSmallCuts === true,
-      });
+      postInitMessages(worker);
     }
   } catch (err) {
     for (const w of workers) terminateWorkerQuietly(w, 'process worker (init)');
@@ -718,12 +714,13 @@ export async function* processParallel(
     const emptyU32 = new Uint32Array(0);
     const emptyU8 = new Uint8Array(0);
     const batchSizing = options?.batchSizing ?? readBatchSizingOverride();
-    for (const worker of workers) {
+    const frameMeta = prepassMeta;
+    broadcastSetup((worker) => {
       worker.postMessage({
         type: 'stream-start' as const, sourceSessionId,
         sharedBuffer,
-        unitScale: prepassMeta.unitScale,
-        planeAngleToRadians: prepassMeta.planeAngleToRadians,
+        unitScale: frameMeta.unitScale,
+        planeAngleToRadians: frameMeta.planeAngleToRadians,
         rtcX, rtcY, rtcZ,
         needsShift: effectiveNeedsShift,
         voidKeys: emptyU32,
@@ -733,7 +730,7 @@ export async function* processParallel(
         styleColors: emptyU8,
         ...(batchSizing ? { batchSizing } : {}),
       });
-    }
+    });
 
     // Don't drain queued chunks here — wait for the `styles` event so
     // every chunk gets processed with resolved colours. The styles
@@ -767,11 +764,17 @@ export async function* processParallel(
         sub[o + 1] = jobs[src + 1];
         sub[o + 2] = jobs[src + 2];
       }
-      workers[i].postMessage(
-        { type: 'stream-chunk' as const, jobsFlat: sub },
-        [sub.buffer],
-      );
+      postChunk(i, sub);
     }
+  }
+
+  /** Record a slice in the ledger, then transfer it to worker `i` (#4884). */
+  function postChunk(i: number, jobs: Uint32Array, maxBatchJobs?: number): void {
+    const seq = ledger.recordDispatch(i, jobs, maxBatchJobs);
+    workers[i].postMessage(
+      { type: 'stream-chunk' as const, jobsFlat: jobs, seq, ...(maxBatchJobs !== undefined ? { maxBatchJobs } : {}) },
+      [jobs.buffer],
+    );
   }
 
   function dispatchJobsChunkInternal(jobs: Uint32Array, affinity: Uint32Array | null): void {
@@ -800,10 +803,7 @@ export async function* processParallel(
           sub[j + 1] = jobs[src + 1];
           sub[j + 2] = jobs[src + 2];
         }
-        workers[i].postMessage(
-          { type: 'stream-chunk' as const, jobsFlat: sub },
-          [sub.buffer],
-        );
+        postChunk(i, sub);
       }
     } catch (err) {
       workerError = new Error(`Failed to dispatch jobs chunk: ${err instanceof Error ? err.message : String(err)}`);
@@ -901,18 +901,9 @@ export async function* processParallel(
         new Uint32Array(sabStarts).set(starts);
         new Uint32Array(sabLengths).set(lengths);
       }
-      for (const w of workers) {
-        try {
-          w.postMessage({
-            type: 'set-entity-index' as const,
-            ids: new Uint32Array(sabIds),
-            starts: new Uint32Array(sabStarts),
-            lengths: new Uint32Array(sabLengths),
-          });
-        } catch (err) {
-          console.warn('[stream] set-entity-index dispatch failed:', err);
-        }
-      }
+      broadcastSetup(entityIndexSetup(() => ({
+        ids: new Uint32Array(sabIds), starts: new Uint32Array(sabStarts), lengths: new Uint32Array(sabLengths),
+      })));
       if (options?.onEntityIndex) {
         try {
           options.onEntityIndex(
@@ -927,16 +918,10 @@ export async function* processParallel(
         }
       }
     } else {
-      for (const w of workers) {
-        try {
-          w.postMessage({
-            type: 'set-entity-index' as const,
-            ids: ids.slice(), starts: starts.slice(), lengths: lengths.slice(),
-          });
-        } catch (err) {
-          console.warn('[stream] set-entity-index dispatch failed:', err);
-        }
-      }
+      const copyIds = ids, copyStarts = starts, copyLengths = lengths;
+      broadcastSetup(entityIndexSetup(() => ({
+        ids: copyIds.slice(), starts: copyStarts.slice(), lengths: copyLengths.slice(),
+      })));
       if (options?.onEntityIndex) {
         try {
           options.onEntityIndex(
@@ -1125,13 +1110,36 @@ export async function* processParallel(
   }
 
   const prepassWorker = makePrepassWorker();
+
   // Wrap the rest of the pipeline so worker teardown runs not only on
   // normal completion / error / zero-jobs branches, but also when the
   // consumer abandons the generator via `.return()` / `.throw()` while it
   // is suspended at a `yield` or the `resolveWaiting` await. The viewer's
   // `watchedGeometryStream` relies on this `finally` to tear down workers
   // on break / abort / watchdog (see boundedIteratorReturn). The existing
+  // Abandonment and hung-call recovery (#4884). `return()` cannot reach this
+  // `finally` while the loop is parked on a silent worker, so a stalled load
+  // leaked its pool (hung worker included) into the retry: abort terminates it.
+  let aborted = false;
+  const onAbort = () => {
+    aborted = true;
+    for (const w of workers) terminateWorkerQuietly(w, 'process worker (abort)');
+    terminateWorkerQuietly(prepassWorker, 'pre-pass worker (abort)');
+    wake();
+  };
+  const skippedHungElements = new SkippedHungElementsCollector();
+  let stopHungJobMonitor = () => {};
   try {
+  if (options?.signal?.aborted) onAbort();
+  else options?.signal?.addEventListener('abort', onAbort, { once: true });
+  stopHungJobMonitor = startHungJobMonitor({
+    workers, ledger, makeWorker: makeGeometryWorker, installHandlers: installWorkerHandlers,
+    setup: workerSetup, postChunk, streamEndSent: () => endSentToWorkers,
+    terminate: terminateWorkerQuietly, source: new Uint8Array(sharedBuffer), skipped: skippedHungElements,
+    isLive: () => !aborted && !workerError && !prepassError,
+    onLiveness: () => { eventQueue.push({ type: 'progress', phase: 'workers' }); wake(); },
+    onFailed: (error) => { workerError ??= error; wake(); },
+  }, hungJobTimeoutMs);
   // Forward the consumer-supplied wasm URL to the pre-pass worker so it
   // doesn't fall back to wasm-bindgen's `import.meta.url` default. The
   // pre-pass worker uses the same `geometry.worker.ts` bundle and the
@@ -1208,7 +1216,7 @@ export async function* processParallel(
         const materialColors = (evt.materialColors as Uint8Array | undefined) ?? new Uint8Array(0);
         console.log(`[stream] styles @ ${elapsed()}ms (${styleIds.length} styled, ${voidKeys.length} void hosts), draining ${queuedChunks.length} queued chunks`);
 
-        for (const w of workers) {
+        broadcastSetup((w) => {
           // Slice each typed array per-worker so each can be in its own
           // transfer list without conflict. The slice cost is bounded by
           // `styleIds.length * 4` bytes — under 1 MB for ~250K styles.
@@ -1241,7 +1249,7 @@ export async function* processParallel(
           } catch (err) {
             console.warn('[stream] set-styles dispatch failed:', err);
           }
-        }
+        });
 
         stylesReceived = true;
         // Drain only when ALL gates are open (entity-index too). The
@@ -1292,7 +1300,7 @@ export async function* processParallel(
         const mliLayerThicknesses = evt.mliLayerThicknesses as Float64Array;
         console.log(`[stream] prepass-columns @ ${elapsed()}ms (${referencedRepmaps.length} repmaps, ${instantiatedTypeIds.length} inst-types, ${mliElementIds.length} layer-elems)`);
 
-        for (const w of workers) {
+        broadcastSetup((w) => {
           try {
             const rRepmaps = referencedRepmaps.slice();
             const rTypeIds = instantiatedTypeIds.slice();
@@ -1326,7 +1334,7 @@ export async function* processParallel(
           } catch (err) {
             console.warn('[stream] set-prepass-columns dispatch failed:', err);
           }
-        }
+        });
 
         // Not a dispatch gate (see dispatchJobsChunk); the pre-pass emits this
         // before the first jobs chunk, so drain here only for symmetry with the
@@ -1488,9 +1496,11 @@ export async function* processParallel(
   let prepassCompleteSeen = false;
 
   while (true) {
+    if (aborted) return;
     while (eventQueue.length > 0) {
       yield eventQueue.shift()!;
     }
+    if (aborted) return;
     if (workerError) {
       for (const w of workers) {
         terminateWorkerQuietly(w, 'process worker');
@@ -1545,13 +1555,17 @@ export async function* processParallel(
         `diagnostics.failuresByReason; not every reason leaves an opening/void uncut`,
     );
   }
+  const skippedReport = skippedHungElements.report();
   yield {
     type: 'complete',
     totalMeshes,
     coordinateInfo,
     ...(loadDiagnostics ? { diagnostics: loadDiagnostics } : {}),
+    ...(skippedReport ? { skippedHungElements: skippedReport } : {}),
   };
   } finally {
+    stopHungJobMonitor();
+    options?.signal?.removeEventListener('abort', onAbort);
     for (const w of workers) {
       terminateWorkerQuietly(w, 'process worker');
     }

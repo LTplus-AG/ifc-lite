@@ -122,8 +122,8 @@
    694 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1510 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
-   980 apps/viewer/src/components/viewer/useGeometryStreaming.ts
-   946 apps/viewer/src/components/viewer/useMouseControls.ts
+   970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   916 apps/viewer/src/components/viewer/useMouseControls.ts
    684 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
@@ -132,7 +132,7 @@
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    461 apps/viewer/src/hooks/useAnnotation2D.ts
-   768 apps/viewer/src/hooks/useBCF.ts
+   764 apps/viewer/src/hooks/useBCF.ts
   1358 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
@@ -140,9 +140,9 @@
   1226 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2201 apps/viewer/src/hooks/useIfcLoader.ts
+  2209 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
-   483 apps/viewer/src/hooks/useKeyboardShortcuts.ts
+   445 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
@@ -255,10 +255,10 @@
    487 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    612 packages/geometry/src/coordinate-handler.ts
-  1560 packages/geometry/src/geometry-parallel.ts
-  1757 packages/geometry/src/geometry.worker.ts
+  1574 packages/geometry/src/geometry-parallel.ts
+  1780 packages/geometry/src/geometry.worker.ts
    918 packages/geometry/src/ifc-lite-bridge.ts
-  1518 packages/geometry/src/index.ts
+  1533 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts
@@ -309,7 +309,7 @@
    529 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3722 packages/renderer/src/index.ts
+  3723 packages/renderer/src/index.ts
    756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    475 packages/renderer/src/pointcloud/point-cloud-renderer.ts
@@ -317,7 +317,7 @@
    467 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4214 packages/renderer/src/scene.ts
+  4211 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts

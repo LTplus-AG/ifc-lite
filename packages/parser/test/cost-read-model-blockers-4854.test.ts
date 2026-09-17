@@ -139,6 +139,34 @@ describe('#4854 cost evaluator blocker regressions', () => {
     });
   });
 
+  // #4881 keeps an explicit '' IfcLabel instead of reading it as $. An empty
+  // Category names no category, so a value-less IfcCostValue with Category ''
+  // must not become a category total that sums the uncategorized bucket; it
+  // stays a value with nothing to evaluate, exactly as it was when '' read as $.
+  it('does not treat an explicit empty Category as a category total (#4881)', async () => {
+    const extraction = extractCostOnDemand(await parse(step('IFC4', [...PROJECT,
+      "#10=IFCCOSTVALUE('Uncategorized',$,IFCMONETARYMEASURE(100.),$,$,$,$,$,$,$);",
+      "#11=IFCCOSTVALUE('Empty category leaf',$,IFCMONETARYMEASURE(50.),$,$,$,'',$,$,$);",
+      "#12=IFCCOSTVALUE('Empty category subtotal',$,$,$,$,$,'',$,$,$);",
+      "#13=IFCCOSTVALUE('Labour subtotal',$,$,$,$,$,'LABOUR',$,$,$);",
+      "#20=IFCCOSTITEM('child',$,'Child',$,$,'C',$,(#10,#11),$);",
+      "#21=IFCCOSTITEM('parent',$,'Parent',$,$,'P',$,(#12),$);",
+      "#23=IFCCOSTITEM('labour child',$,'Labour child',$,$,'LC',$,(#10,#11),$);",
+      "#22=IFCCOSTITEM('labour parent',$,'Labour parent',$,$,'L',$,(#13),$);",
+      "#30=IFCRELNESTS('nest',$,$,$,#21,(#20));",
+      "#31=IFCRELNESTS('nest2',$,$,$,#22,(#23));",
+    ])));
+    expect(extraction.CostValues.find(value => value.expressId === 12)?.Category).toBe('');
+    expect(evaluateCostItem(extraction, 21)).toMatchObject({
+      Amount: undefined,
+      Diagnostics: expect.arrayContaining([
+        expect.objectContaining({ Code: 'MISSING_VALUE', expressId: 12, Severity: 'warning' }),
+      ]),
+    });
+    // Control: a leaf with Category '' still counts as uncategorized in a named subtotal.
+    expect(evaluateCostItem(extraction, 22)).toMatchObject({ Amount: '150', Currency: 'CHF' });
+  });
+
   it('withholds named subtotals when a child mixes uncategorized cost with an invalid category', async () => {
     const repeated = Array.from({ length: 99_997 }, () => '#11').join(',');
     const extraction = extractCostOnDemand(await parse(step('IFC4', [...PROJECT,

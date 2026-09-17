@@ -403,6 +403,8 @@ jobs:
             docs:
               - 'docs/**'
               - 'mkdocs.yml'
+              # The docs-site job installs from it (#4912).
+              - 'requirements-docs.txt'
               - 'README.md'
               - 'packages/*/README.md'
               # The two SOURCES `scripts/docs/generate-docs-sections.mjs`
@@ -2252,6 +2254,39 @@ jobs:
       - name: Check generated doc sections
         run: node scripts/docs/generate-docs-sections.mjs --check
 
+  # The docs SITE build, in the strict mode production uses (#4912). The
+  # docs-checks job above runs only for docs-only PRs and never builds the site,
+  # and docs.yml builds it only AFTER a push to main. So #4875, a viewer + docs
+  # PR that added a page without a nav entry, merged green; `mkdocs --strict`
+  # then failed on main, and the nightly deploy moved it into `production`,
+  # where apps/landing/build-docs.sh (the ifclite.dev project) runs the same
+  # strict build and the whole production advance stopped. This runs that
+  # exact build on every PR that touches the docs, whatever else it touches.
+  docs-site:
+    name: Docs site build (mkdocs --strict)
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    # Free runner - a pure-Python static site build, not compute-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      # Seconds, no Python: names the page and the fix before the full build.
+      - name: Every docs page is in the nav or declared not_in_nav
+        run: node scripts/docs/check-mkdocs-nav.mjs
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Install docs requirements
+        run: pip install -r requirements-docs.txt
+      - name: Build the docs site strictly, as the ifclite.dev deploy does
+        run: mkdocs build --strict -f mkdocs.yml -d "$RUNNER_TEMP/docs-site"
+
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
@@ -2382,7 +2417,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, agents-md, license-headers]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
@@ -2431,6 +2466,7 @@ jobs:
             [csg-accept-gates]="${{ needs.csg-accept-gates.result }}"
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"
+            [docs-site]="${{ needs.docs-site.result }}"
             [agents-md]="${{ needs.agents-md.result }}"
             [license-headers]="${{ needs.license-headers.result }}"
           )

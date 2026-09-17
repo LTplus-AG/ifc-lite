@@ -31,6 +31,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // side-effect import; keeps `@ifc-lite/parser` out of placement-edit
 // itself so its overlay-path logic stays unit-testable.
 import './lib/placement-edit.boot';
+// Discover contributed `i18n/locales/<tag>.ts` catalogues and activate the
+// negotiated one (?lang=, remembered choice, browser languages; English default).
+import './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
 import { scheduleWasmPrewarm } from './lib/wasm-prewarm';

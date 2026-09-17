@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { buildModelLoadedGeometryProps, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
@@ -37,6 +37,8 @@ import {
   type GeometryResult,
   type TessellationQuality,
   type GeometryDiagnostics,
+  type SkippedHungElements,
+  DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
@@ -348,6 +350,7 @@ export function useIfcLoader() {
     // to CSG fallbacks instead of guessing (#2388). `null` = no producer sent
     // any, which the capture reports as absent rather than as a zero.
     let loadDiagnostics: GeometryDiagnostics | null = null;
+    let skippedHungElements: SkippedHungElements | undefined; // hung geometry calls (#4884)
 
     /**
      * Which phase of the load was in flight, for the captured exception (#1903).
@@ -1559,7 +1562,11 @@ export function useIfcLoader() {
         // When the parser worker is in use, hand the geometry workers the
         // same SAB so we don't pay the file-bytes copy twice.
         const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(buffer);
+        // Closing aborts: return() can't stop a pool parked on a hung worker (#4884).
+        const geometryAbort = new AbortController();
         const geometryEvents = geometryProcessor.processAdaptive(geometryView, {
+              signal: geometryAbort.signal,
+              hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // reads skippedHungElements below
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
               existingSab: sharedSource ?? undefined,
@@ -1581,6 +1588,7 @@ export function useIfcLoader() {
         let geometryIteratorClosed = false;
         closeGeometryIterator = async () => {
           try { parserEntityIndexHandoff.release(); } finally {
+            geometryAbort.abort();
             if (!geometryIteratorClosed && typeof geometryIterator.return === 'function') {
               geometryIteratorClosed = true;
               // return() cannot interrupt a stalled worker await; bound shutdown
@@ -1813,6 +1821,8 @@ export function useIfcLoader() {
                 finalCsgFailures = d.totalCsgFailures;
                 warnGeometryDiagnostics(file.name, d);
               }
+              skippedHungElements = event.skippedHungElements;
+              if (skippedHungElements) reportSkippedHungElements(file.name, skippedHungElements, toast.info);
 
               if (target.kind === 'primary') {
                 // Active-model writes — PRIMARY only. Federated meshes already
@@ -1949,6 +1959,9 @@ export function useIfcLoader() {
                 if (
                   cachePlan.shouldCache &&
                   !hasTexturedMeshes &&
+                  // A recovered load is missing elements (#4884); a cache hit would
+                  // serve it silently, without the notice, so re-process instead.
+                  !skippedHungElements &&
                   allMeshes.length > 0 &&
                   finalCoordinateInfo
                 ) {
@@ -2036,6 +2049,7 @@ export function useIfcLoader() {
           ...errorCaptureProps(err, 'geometry_processing'),
           load_stage: loadStage,
           is_retry: options?.isResourceRetry === true,
+          file_size_mb: Math.round(fileSizeMB * 100) / 100,
         });
         setLoading(false);
         setGeometryStreamingActive(false);
@@ -2116,6 +2130,7 @@ export function useIfcLoader() {
           // so the spread below is a same-value overwrite, not a conflicting one.
           ...buildModelLoadedGeometryProps({
             diagnostics: loadDiagnostics,
+            skippedHungElements,
             tessellationTier: loadTessellationTier,
             skipSmallCuts: skipSmallCutsAtLoad,
             isResourceRetry: isResourceRetryLoad,

@@ -88,6 +88,10 @@ export interface GeometryWorkerStreamStartMessage {
 export interface GeometryWorkerStreamChunkMessage {
   type: 'stream-chunk';
   jobsFlat: Uint32Array;
+  /** Host ledger id (#4884), echoed on this slice's heartbeats and `slice-done`. */
+  seq?: number;
+  /** Per-call job cap (#4884): 1 re-runs a hung call's jobs one by one. */
+  maxBatchJobs?: number;
 }
 
 export interface GeometryWorkerStreamEndMessage {
@@ -419,6 +423,18 @@ export interface GeometryWorkerProgressMessage {
   /** Jobs handed to WASM so far within the current slice (pre-call count). */
   processedJobs: number;
   totalJobs: number;
+  /** Slice ledger id + size of the call about to run (#4884); absent on the liveness ping. */
+  seq?: number;
+  callJobs?: number;
+  /** Diagnostics of the calls already flushed since the last report (#4884), so a
+   *  worker replaced mid-slice does not take them with it. */
+  diagnostics?: GeometryDiagnostics;
+}
+
+/** Every call of slice `seq` returned (#4884): the host drops it from its ledger. */
+export interface GeometryWorkerSliceDoneMessage {
+  type: 'slice-done';
+  seq: number;
 }
 
 export interface GeometryWorkerErrorMessage {
@@ -1240,23 +1256,27 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
 }
 
 /** Run a slice in adaptive-sized chunks, flushing after each chunk. */
-async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint32Array): Promise<void> {
+async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint32Array, seq?: number, maxBatchJobs = Infinity): Promise<void> {
   const totalJobs = Math.floor(jobsFlat.length / 3);
   let jobOffset = 0;
   while (jobOffset < totalJobs) {
-    const batchJobs = Math.max(batchSizing.minJobs, Math.min(batchSizing.maxJobs, adaptiveBatchJobs));
+    const adaptive = Math.max(batchSizing.minJobs, Math.min(batchSizing.maxJobs, adaptiveBatchJobs));
+    const batchJobs = Math.max(1, Math.min(maxBatchJobs, adaptive)); // #4884 cap re-runs a hung call per job
+    const start = jobOffset * 3;
+    const end = Math.min(start + batchJobs * 3, jobsFlat.length);
+    const jobsThisBatch = (end - start) / 3;
     // Liveness heartbeat BEFORE entering the synchronous WASM call: the host
     // forwards it as a `progress` stream event so the consumer's stall
     // watchdog measures "time inside one bounded WASM call", not "time since
     // the last mesh" — a CSG-heavy region can legitimately produce nothing
     // for several seconds while every worker is busy. Also covers batches
-    // that produce zero meshes (flushPending no-ops on empty).
+    // that produce zero meshes (flushPending no-ops on empty). `seq`/`callJobs`
+    // let the host replace this worker if the call never returns (#4884).
+    const diagnostics = session.diagnostics ?? undefined;
+    session.diagnostics = null;
     (self as unknown as Worker).postMessage(
-      { type: 'progress', processedJobs: jobOffset, totalJobs } as GeometryWorkerProgressMessage,
+      { type: 'progress', processedJobs: jobOffset, totalJobs, seq, callJobs: jobsThisBatch, diagnostics } as GeometryWorkerProgressMessage,
     );
-    const start = jobOffset * 3;
-    const end = Math.min(start + batchJobs * 3, jobsFlat.length);
-    const jobsThisBatch = (end - start) / 3;
     const callStart = performance.now();
     await processBatch(session, jobsFlat.subarray(start, end));
     flushPending(session);
@@ -1269,6 +1289,9 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
       batchSizing,
     );
     jobOffset += jobsThisBatch;
+  }
+  if (seq !== undefined) {
+    (self as unknown as Worker).postMessage({ type: 'slice-done', seq } satisfies GeometryWorkerSliceDoneMessage);
   }
 }
 
@@ -1619,7 +1642,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       if (!activeSession) {
         throw new Error('stream-chunk received before stream-start');
       }
-      await processSliceStreaming(activeSession, e.data.jobsFlat);
+      await processSliceStreaming(activeSession, e.data.jobsFlat, e.data.seq, e.data.maxBatchJobs);
       return;
     }
 

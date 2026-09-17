@@ -101,7 +101,7 @@ function viewerToBcfCoords(p: Point3D): Point3D {
 /**
  * Convert from BCF coordinates (Z-up) to viewer coordinates (Y-up)
  */
-function bcfToViewerCoords(p: Point3D): Point3D {
+export function bcfToViewerCoords(p: Point3D): Point3D {
   return {
     x: p.x,
     y: p.z,

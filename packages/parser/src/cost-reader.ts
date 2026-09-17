@@ -102,8 +102,14 @@ export class CostEntityReader {
   }
 }
 
+/**
+ * Read a STEP string attribute (IfcLabel/IfcText/IfcIdentifier) as-is,
+ * keeping an explicit `''` distinct from an absent (`$`) attribute — both
+ * are legal `IfcLabel` values per the schema, and IfcOpenShell keeps them
+ * distinct too (see #4881). Only `undefined` means "not a string at all".
+ */
 export function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+  return typeof value === 'string' ? value : undefined;
 }
 
 export function asEnum(value: unknown): string | undefined {

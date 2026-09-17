@@ -30,9 +30,16 @@ import type {
   CostBackendMethods,
 } from '../types.js';
 
-function makeRemoteProxy<T extends object>(namespace: string): T {
+/**
+ * `optional` names methods the backend contract marks optional and a remote
+ * backend does not provide: they read as absent, so a namespace that probes
+ * them (`backend.viewer.getRenderFrameOffset?.()`) falls back instead of
+ * throwing.
+ */
+function makeRemoteProxy<T extends object>(namespace: string, optional: readonly string[] = []): T {
   return new Proxy(Object.create(null) as T, {
     get(_, method: string) {
+      if (optional.includes(method)) return undefined;
       return (..._args: unknown[]): never => {
         throw new Error(
           `RemoteBackend: Cannot call ${namespace}.${method}() synchronously. ` +
@@ -48,7 +55,7 @@ export class RemoteBackend implements BimBackend {
   readonly query: QueryBackendMethods = makeRemoteProxy('query');
   readonly selection: SelectionBackendMethods = makeRemoteProxy('selection');
   readonly visibility: VisibilityBackendMethods = makeRemoteProxy('visibility');
-  readonly viewer: ViewerBackendMethods = makeRemoteProxy('viewer');
+  readonly viewer: ViewerBackendMethods = makeRemoteProxy('viewer', ['getRenderFrameOffset']);
   readonly mutate: MutateBackendMethods = makeRemoteProxy('mutate');
   readonly store: StoreBackendMethods = makeRemoteProxy('store');
   readonly spatial: SpatialBackendMethods = makeRemoteProxy('spatial');

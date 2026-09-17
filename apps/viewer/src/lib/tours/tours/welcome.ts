@@ -18,7 +18,8 @@ export const WELCOME_TOUR: TourDefinition = {
   title: 'Get started',
   description: 'Load a model, look around, and read BIM data. The core loop in about two minutes.',
   minutes: 2,
-  version: 1,
+  // 2: right-drag became fly navigation (#4864); completed users see the new orbit step.
+  version: 2,
   steps: [
     {
       id: 'load',
@@ -42,7 +43,7 @@ export const WELCOME_TOUR: TourDefinition = {
       id: 'orbit',
       kind: 'canvas',
       title: 'Look around',
-      body: 'Drag to orbit. Right-drag to pan. Scroll to zoom.',
+      body: 'Drag to orbit. Middle-drag or Shift+drag to pan. Scroll to zoom. Hold right-click to fly with WASD.',
       gate: { event: EVENT_CAMERA_INTERACTED },
     },
     {

@@ -26,20 +26,30 @@ import type {
   WallDoorParams, WallWindowParams, DoorParams, WindowParams, RampParams, RailingParams,
   PlateParams, MemberParams, FootingParams, PileParams,
   SpaceParams, CurtainWallParams, FurnishingParams, ProxyParams,
-  ProjectParams, SiteParams, BuildingParams, StoreyParams,
-  PropertySetDef, PropertyDef, QuantitySetDef, QuantityDef,
-  MaterialDef, MaterialLayerDef,
+  ProjectParams, StoreyParams,
+  PropertySetDef, QuantitySetDef,
+  MaterialDef,
   WorkScheduleParams, WorkPlanParams, TaskParams, SequenceParams,
   WorkCalendarParams,
   CreatedEntity, CreateResult,
 } from './types.js';
 
+import type {
+  CostItemParams, CostQuantityParams, CostScheduleParams, CostTypedValue,
+  CostValueParams, SIUnitParams,
+} from './types-cost.js';
 import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
   optStr, optEnum,
   NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3,
 } from './ifc-creator-math.js';
 import { emitWorkCalendar, emitTaskTime } from './ifc-creator-scheduling.js';
+import {
+  assertCostSchema, emitCostItem, emitCostSchedule, emitCostValue,
+  emitMeasureWithUnit, emitMonetaryUnit, emitPhysicalQuantity,
+  emitRelAssignsToProduct, emitSIUnit,
+} from './ifc-creator-cost.js';
+import { emitElementQuantity, emitPropertySet, type DefinitionContext } from './ifc-creator-definitions.js';
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
 
 // ============================================================================
@@ -1060,7 +1070,6 @@ export class IfcCreator {
     const name = params.Name ?? 'Space';
     const desc = params.Description ? `'${esc(params.Description)}'` : '$';
     const objType = params.ObjectType ? `'${esc(params.ObjectType)}'` : '$';
-    const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
     const longName = params.LongName ? `'${esc(params.LongName)}'` : '$';
 
     this.line(spaceId, 'IFCSPACE',
@@ -1538,54 +1547,18 @@ export class IfcCreator {
 
   /** Attach a property set to an element */
   addIfcPropertySet(elementId: number, pset: PropertySetDef): number {
-    const propIds: number[] = [];
-
-    for (const prop of pset.Properties) {
-      const propId = this.id();
-      const valueStr = this.serializePropertyValue(prop);
-      this.line(propId, 'IFCPROPERTYSINGLEVALUE',
-        `'${esc(prop.Name)}',$,${valueStr},$`);
-      propIds.push(propId);
-    }
-
-    const psetId = this.id();
-    const globalId = this.newGlobalId();
-    const refs = propIds.map(id => `#${id}`).join(',');
-    this.line(psetId, 'IFCPROPERTYSET',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(pset.Name)}',$,(${refs})`);
-
-    const relId = this.id();
-    const relGlobalId = this.newGlobalId();
-    this.line(relId, 'IFCRELDEFINESBYPROPERTIES',
-      `'${relGlobalId}',#${this.ownerHistoryId},$,$,(#${elementId}),#${psetId}`);
-
-    return psetId;
+    return emitPropertySet(elementId, pset, this.definitionContext());
   }
 
   /** Attach element quantities to an element */
   addIfcElementQuantity(elementId: number, qset: QuantitySetDef): number {
-    const qtyIds: number[] = [];
+    return emitElementQuantity(elementId, qset, this.definitionContext());
+  }
 
-    for (const qty of qset.Quantities) {
-      const qtyId = this.id();
-      const valueField = this.quantityValueField(qty);
-      this.line(qtyId, qty.Kind.toUpperCase(),
-        `'${esc(qty.Name)}',$,${valueField}${this.ifc4Only('$')}`);
-      qtyIds.push(qtyId);
-    }
-
-    const qsetId = this.id();
-    const globalId = this.newGlobalId();
-    const refs = qtyIds.map(id => `#${id}`).join(',');
-    this.line(qsetId, 'IFCELEMENTQUANTITY',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(qset.Name)}',$,$,(${refs})`);
-
-    const relId = this.id();
-    const relGlobalId = this.newGlobalId();
-    this.line(relId, 'IFCRELDEFINESBYPROPERTIES',
-      `'${relGlobalId}',#${this.ownerHistoryId},$,$,(#${elementId}),#${qsetId}`);
-
-    return qsetId;
+  /** The creator hooks `ifc-creator-definitions.ts`'s emitters need. */
+  private definitionContext(): DefinitionContext {
+    return { emit: this.emitEntity, newGlobalId: () => this.newGlobalId(),
+      ownerRef: `#${this.ownerHistoryId}`, ifc4Only: (v: string) => this.ifc4Only(v) };
   }
 
   // ============================================================================
@@ -1850,6 +1823,81 @@ export class IfcCreator {
     return this.addIfcRelNests(parentTaskId, childTaskIds);
   }
 
+  // Public API — Cost / 5D. Every method delegates to `ifc-creator-cost.ts` and refuses
+  // IFC2X3 by name (its cost entity layout differs, so IFC4 records would parse and mislead).
+  /** Create an IfcCostSchedule (IFC4 / IFC4X3 only). Returns its expressId. */
+  addIfcCostSchedule(params: CostScheduleParams): number {
+    assertCostSchema(this.schema, 'addIfcCostSchedule');
+    const id = emitCostSchedule(params, this.newGlobalId(), `#${this.ownerHistoryId}`, this.emitEntity);
+    this.entities.push({ expressId: id, type: 'IfcCostSchedule', Name: params.Name });
+    return id;
+  }
+
+  /** Create an IfcCostItem (IFC4 / IFC4X3 only). Returns its expressId. */
+  addIfcCostItem(params: CostItemParams): number {
+    assertCostSchema(this.schema, 'addIfcCostItem');
+    const id = emitCostItem(params, this.newGlobalId(), `#${this.ownerHistoryId}`, this.emitEntity);
+    this.entities.push({ expressId: id, type: 'IfcCostItem', Name: params.Name });
+    return id;
+  }
+
+  /** Create an IfcCostValue (IFC4 / IFC4X3 only). Returns its expressId. */
+  addIfcCostValue(params: CostValueParams): number {
+    assertCostSchema(this.schema, 'addIfcCostValue');
+    const id = emitCostValue(params, this.schema, this.emitEntity);
+    this.entities.push({ expressId: id, type: 'IfcCostValue', Name: params.Name });
+    return id;
+  }
+
+  /** Create an IfcMonetaryUnit for `currency`. No default — omit it to leave the currency unstated. */
+  addIfcMonetaryUnit(currency: string): number {
+    assertCostSchema(this.schema, 'addIfcMonetaryUnit');
+    return emitMonetaryUnit(currency, this.emitEntity);
+  }
+
+  /** Create an IfcSIUnit, for use as an IfcMeasureWithUnit or quantity unit. */
+  addIfcSIUnit(params: SIUnitParams): number {
+    assertCostSchema(this.schema, 'addIfcSIUnit');
+    return emitSIUnit(params, this.emitEntity);
+  }
+
+  /** Create an IfcMeasureWithUnit — what a UnitBasis or entity-valued AppliedValue points at. */
+  addIfcMeasureWithUnit(value: CostTypedValue, unitId: number): number {
+    assertCostSchema(this.schema, 'addIfcMeasureWithUnit');
+    return emitMeasureWithUnit(value, unitId, this.schema, this.emitEntity);
+  }
+
+  /** Create a standalone IfcPhysicalSimpleQuantity for IfcCostItem.CostQuantities. */
+  addIfcPhysicalQuantity(params: CostQuantityParams): number {
+    assertCostSchema(this.schema, 'addIfcPhysicalQuantity');
+    return emitPhysicalQuantity(params, this.schema, this.emitEntity);
+  }
+
+  /** Emit an IfcRelAssignsToProduct — see {@link emitRelAssignsToProduct} for the direction rule. */
+  addIfcRelAssignsToProduct(relatingProductId: number, relatedObjectIds: number[]): number {
+    return emitRelAssignsToProduct(relatingProductId, relatedObjectIds,
+      () => this.newGlobalId(), `#${this.ownerHistoryId}`, this.emitEntity);
+  }
+
+  // Ergonomic aliases over the canonical relationships: cost items under a
+  // schedule, cost items pricing a product, tasks bound to a cost item (an
+  // IfcCostItem is an IfcControl), and the cost breakdown hierarchy.
+  assignCostItemsToSchedule(scheduleId: number, costItemIds: number[]): number {
+    return this.addIfcRelAssignsToControl(scheduleId, costItemIds);
+  }
+
+  assignCostItemsToProduct(productId: number, costItemIds: number[]): number {
+    return this.addIfcRelAssignsToProduct(productId, costItemIds);
+  }
+
+  assignTasksToCostItem(costItemId: number, taskIds: number[]): number {
+    return this.addIfcRelAssignsToControl(costItemId, taskIds);
+  }
+
+  nestCostItems(parentCostItemId: number, childCostItemIds: number[]): number {
+    return this.addIfcRelNests(parentCostItemId, childCostItemIds);
+  }
+
   /**
    * Internal — emit an IfcWorkSchedule or IfcWorkPlan (identical attribute
    * layout). Separate helpers are exposed publicly for ergonomics.
@@ -1976,7 +2024,7 @@ ENDSEC;
       `$,'Axis',*,*,*,*,#${this.contextId},$,.GRAPH_VIEW.,$`);
 
     // Units
-    this.unitAssignmentId = this.buildUnits(params.LengthUnit ?? 'METRE');
+    this.unitAssignmentId = this.buildUnits(params.LengthUnit ?? 'METRE', params.Currency);
 
     // Default surface style — light grey with some specularity
     this.defaultStyleId = this.buildDefaultStyle();
@@ -2005,7 +2053,7 @@ ENDSEC;
     this.entities.push({ expressId: this.buildingId, type: 'IfcBuilding', Name: 'Building' });
   }
 
-  private buildUnits(lengthUnit: string): number {
+  private buildUnits(lengthUnit: string, currency?: string): number {
     const dimExpId = this.id();
     this.line(dimExpId, 'IFCDIMENSIONALEXPONENTS', '0,0,0,0,0,0,0');
 
@@ -2028,9 +2076,16 @@ ENDSEC;
     const siAngleId = this.id();
     this.line(siAngleId, 'IFCSIUNIT', `*,.PLANEANGLEUNIT.,$,.RADIAN.`);
 
+    // Absent currency stays absent: no IfcMonetaryUnit is written at all, so
+    // the cost read model reports no project currency rather than a guess.
+    const units = [lengthUnitId, siAreaId, siVolumeId, siAngleId];
+    if (currency !== undefined) {
+      assertCostSchema(this.schema, 'ProjectParams.Currency'); // IFC2X3 Currency is an enum
+      units.push(emitMonetaryUnit(currency, this.emitEntity));
+    }
+
     const assignmentId = this.id();
-    this.line(assignmentId, 'IFCUNITASSIGNMENT',
-      `(#${lengthUnitId},#${siAreaId},#${siVolumeId},#${siAngleId})`);
+    this.line(assignmentId, 'IFCUNITASSIGNMENT', `(${units.map(id => `#${id}`).join(',')})`);
 
     return assignmentId;
   }
@@ -2688,42 +2743,8 @@ ENDSEC;
     return openingId;
   }
 
-  // ============================================================================
-  // Internal — Property/quantity serialization
-  // ============================================================================
-
-  private serializePropertyValue(prop: PropertyDef): string {
-    const val = prop.NominalValue;
-    if (typeof val === 'string') {
-      const typeName = prop.Type ?? 'IfcLabel';
-      return `${typeName.toUpperCase()}('${esc(val)}')`;
-    }
-    if (typeof val === 'number') {
-      const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
-      return typeName === 'IfcInteger' ? `IFCINTEGER(${Math.round(val)})` : `IFCREAL(${num(val)})`;
-    }
-    if (typeof val === 'boolean') {
-      // `Type: 'IfcLogical'` (tri-state) must not be downgraded to IFCBOOLEAN.
-      const typeName = prop.Type === 'IfcLogical' ? 'IFCLOGICAL' : 'IFCBOOLEAN';
-      return `${typeName}(${val ? '.T.' : '.F.'})`;
-    }
-    return '$';
-  }
-
+  // `serializePropertyValue` / `quantityValueField` moved to `ifc-creator-math.ts`.
   private ifc4Only(v: string): string { return this.schema === 'IFC2X3' ? '' : `,${v}`; } // trailing IFC4/4X3-only attribute
-  private quantityValueField(qty: QuantityDef): string {
-    switch (qty.Kind) {
-      case 'IfcQuantityLength':
-      case 'IfcQuantityArea':
-      case 'IfcQuantityVolume':
-      case 'IfcQuantityWeight':
-        return `$,${num(qty.Value)}`;
-      case 'IfcQuantityCount':
-        return `$,${Math.round(qty.Value)}`;
-      default:
-        return `$,${num(qty.Value)}`;
-    }
-  }
 
   // ============================================================================
   // Internal — Relationship finalization

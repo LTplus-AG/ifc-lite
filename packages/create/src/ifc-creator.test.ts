@@ -24,6 +24,14 @@ describe('IfcCreator', () => {
     expect(result.entities.some(e => e.type === 'IfcProject')).toBe(true);
   });
 
+  it('writes an IfcMonetaryUnit for ProjectParams.Currency (#4856)', () => {
+    const creator = new IfcCreator({ Name: 'Test Project', Currency: 'EUR' });
+    const result = creator.toIfc();
+
+    expect(result.content).toContain('IFCMONETARYUNIT');
+    expect(result.content).toContain("'EUR'");
+  });
+
   it('adds a storey and includes it in aggregation', () => {
     const creator = new IfcCreator();
     const storeyId = creator.addIfcBuildingStorey({ Name: 'Ground Floor', Elevation: 0 });

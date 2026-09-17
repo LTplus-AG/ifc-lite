@@ -183,7 +183,7 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
   it('drops an aborted request seed before another model starts (#3985)', async () => {
     (globalThis as { Worker?: unknown }).Worker = StubWorker;
     const parser = new WorkerParser();
-    void parser.parseColumnar(new SharedArrayBuffer(64));
+    const abortedRequest = parser.parseColumnar(new SharedArrayBuffer(64));
     const abandoned = StubWorker.last!;
     const publisher = new WorkerIndexPublisher(true);
     const early = publisher.serialize(parsed, false);
@@ -192,6 +192,9 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
     parser.terminate();
     expect(abandoned.terminated).toBe(true);
     expect(abandoned.onmessage).toBeNull();
+    // #4896: terminate() now settles the abandoned request instead of leaving
+    // it pending forever — it must reject, not silently vanish.
+    await expect(abortedRequest).rejects.toMatchObject({ name: 'AbortError' });
     const done = parser.parseColumnar(new SharedArrayBuffer(64));
     const current = StubWorker.last!;
     // A new request cannot resolve an index reference using the old model seed.

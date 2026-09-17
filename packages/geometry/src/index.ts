@@ -48,6 +48,7 @@ export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handle
 export type { RtcFrame } from './rtc-frame.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
+export { DEFAULT_HUNG_JOB_TIMEOUT_MS, type SkippedHungElements } from './hung-job-recovery.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
@@ -235,6 +236,8 @@ export type StreamingGeometryEvent =
        *  non-parallel load paths. See ./diagnostics.ts for the field semantics
        *  and which counts are exact vs batch-summed upper bounds. */
       diagnostics?: import('./diagnostics.js').GeometryDiagnostics;
+      /** Elements skipped because their geometry never finished (#4884); omitted when none. */
+      skippedHungElements?: import('./hung-job-recovery.js').SkippedHungElements;
     };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
@@ -755,6 +758,10 @@ export class GeometryProcessor {
      */
     workerCountOverride?: number,
     sourceFingerprint?: SharedArrayBuffer,
+    /** Terminates the worker pool and ends the stream (#4884). */
+    signal?: AbortSignal,
+    /** Opt in to hung-call recovery; see `ProcessParallelOptions.hungJobTimeoutMs` (#4884). */
+    hungJobTimeoutMs?: number,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -764,6 +771,8 @@ export class GeometryProcessor {
     yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
       onEntityIndex,
       sourceFingerprint,
+      signal,
+      hungJobTimeoutMs,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -831,6 +840,10 @@ export class GeometryProcessor {
        * Geometry output is unaffected by the count.
        */
       workerCountOverride?: number;
+      /** Terminates the parallel worker pool; see `ProcessParallelOptions.signal` (#4884). */
+      signal?: AbortSignal;
+      /** Opt in to hung-call recovery on the parallel path (#4884). */
+      hungJobTimeoutMs?: number;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -902,6 +915,8 @@ export class GeometryProcessor {
           options.wasmUrls,
           options.workerCountOverride,
           options.sourceFingerprint,
+          options.signal,
+          options.hungJobTimeoutMs,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

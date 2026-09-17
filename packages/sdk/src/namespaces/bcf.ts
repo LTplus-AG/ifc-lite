@@ -10,7 +10,7 @@
  * converting between IDS reports and BCF topics.
  */
 
-import type { AABB } from '../types.js';
+import type { AABB, BimBackend } from '../types.js';
 import {
   type ViewpointOptions,
   type ExtractedViewpointState,
@@ -74,6 +74,21 @@ export interface IDSBCFOptions {
  * The GUID and color utility methods live in `bcf-guid-color.ts`'s base
  * class (module-size split, #4294). */
 export class BCFNamespace extends BCFGuidColorBase {
+  /**
+   * `backend` supplies the viewer's render-frame offset
+   * (`viewer.getRenderFrameOffset`). Without one (`new BCFNamespace()`, as
+   * the CLI's `bcf` command uses it) viewpoints are taken as already being in
+   * world coordinates.
+   */
+  constructor(private readonly backend?: Pick<BimBackend, 'viewer'>) {
+    super();
+  }
+
+  /** Render frame -> IFC world translation, IFC Z-up; zero when unknown. */
+  private worldOffset(): { x: number; y: number; z: number } {
+    const offset = this.backend?.viewer.getRenderFrameOffset?.();
+    return offset ? toVec3(offset) : { x: 0, y: 0, z: 0 };
+  }
 
   // --------------------------------------------------------------------------
   // Project management
@@ -146,6 +161,13 @@ export class BCFNamespace extends BCFGuidColorBase {
    * `IncompleteCameraStateError` for a camera missing position/target/up,
    * and `MissingSectionBoundsError` for an enabled section plane with no
    * `bounds` — see #4251.
+   *
+   * `camera`, `sectionPlane` and `bounds` are read in the viewer's frame,
+   * the one `bim.viewer.getCamera()`/`getSection()` return. The viewpoint is
+   * written in IFC world coordinates, as BCF requires: for a georeferenced
+   * model the viewer draws shifted towards the origin, the backend's
+   * render-frame offset is added to the camera and clipping-plane positions
+   * (#4879). With no viewer (or no shift) the offset is zero.
    */
   async createViewpoint(options?: ViewpointOptions): Promise<unknown> {
     const mod = await loadBCF();
@@ -207,7 +229,8 @@ export class BCFNamespace extends BCFGuidColorBase {
       }));
     }
 
-    return (mod.createViewpoint as AnyFn)(bcfOptions);
+    const viewpoint = (mod.createViewpoint as AnyFn)(bcfOptions);
+    return (mod.translateViewpoint as AnyFn)(viewpoint, this.worldOffset());
   }
 
   /** Add a viewpoint to a topic. */
@@ -227,13 +250,20 @@ export class BCFNamespace extends BCFGuidColorBase {
    * model's AABB) to also recover `sectionPlane`; without it
    * `@ifc-lite/bcf` cannot place a clipping plane and `sectionPlane` is
    * omitted, matching `createViewpoint()`'s own bounds requirement.
+   *
+   * The viewpoint is read as IFC world coordinates and the result is in the
+   * viewer's frame, ready for `setCamera()`: the backend's render-frame
+   * offset is subtracted (#4879). A viewpoint written by ifc-lite before
+   * #4806, still in the render frame, is recognised against `bounds` and
+   * kept as it is.
    */
   async extractViewpointState(viewpoint: unknown, bounds?: AABB): Promise<ExtractedViewpointState> {
     const mod = await loadBCF();
     const bcfBounds = bounds
       ? { min: toVec3(bounds.min), max: toVec3(bounds.max) }
       : undefined;
-    const raw = (mod.extractViewpointState as AnyFn)(viewpoint, bcfBounds) as {
+    const local = (mod.viewpointFromWorld as AnyFn)(viewpoint, this.worldOffset(), bcfBounds);
+    const raw = (mod.extractViewpointState as AnyFn)(local, bcfBounds) as {
       camera?: BcfViewerCameraState;
       sectionPlane?: BcfViewerSectionPlane;
       selectedGuids: string[];

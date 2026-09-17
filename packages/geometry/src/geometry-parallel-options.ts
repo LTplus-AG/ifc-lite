@@ -98,4 +98,21 @@ export interface ProcessParallelOptions {
    * (workers process disjoint, deterministic element slices).
    */
   workerCountOverride?: number;
+  /**
+   * Issue #4884 — opt in to hung-call recovery with a silence budget (ms), e.g.
+   * `DEFAULT_HUNG_JOB_TIMEOUT_MS`. A busy worker silent that long inside one
+   * WASM call is replaced and the rest of its work replayed: a multi-job call is
+   * re-run one job per call; a single-job call gets twice the budget and is then
+   * skipped (reported on `complete.skippedHungElements`). Off when omitted or
+   * `0`: a consumer that does not read `skippedHungElements` must never receive
+   * a partial model it cannot tell from a complete one.
+   */
+  hungJobTimeoutMs?: number;
+  /**
+   * Issue #4884 — abort the stream: every worker is terminated immediately and
+   * the generator returns. Consumers that abandon the stream (watchdog, cancel,
+   * superseded load) should abort, because `return()` alone cannot reach the
+   * generator's cleanup while it waits on a silent worker.
+   */
+  signal?: AbortSignal;
 }

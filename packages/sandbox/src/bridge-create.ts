@@ -14,6 +14,7 @@ import { IfcCreator } from '@ifc-lite/sdk';
 import type { MethodSchema, MethodSemanticContract } from './bridge-schema.js';
 import { creatorRegistry } from './creator-registry.js';
 import { buildScheduleMethods, SCHEDULE_SPECIAL_METHOD_NAMES } from './bridge-create-schedule.js';
+import { buildCostMethods, COST_SPECIAL_METHOD_NAMES } from './bridge-create-cost.js';
 
 // ============================================================================
 // Auto-discovery for bim.create (IfcCreator methods)
@@ -35,9 +36,8 @@ type MethodPattern = 'storey-params' | 'element-params' | 'single-dump' | 'no-ar
 /** Methods with non-standard signatures that need hand-written wiring */
 const SPECIAL_METHODS = new Set<string>([
   'constructor', 'toIfc', 'setColor',
-  // Scheduling lives in bridge-create-schedule.ts — exported list keeps the
-  // two files synchronised without duplicating the method names.
-  ...SCHEDULE_SPECIAL_METHOD_NAMES,
+  // Scheduling / cost live in their own bridge modules; the exported name lists keep them in sync.
+  ...SCHEDULE_SPECIAL_METHOD_NAMES, ...COST_SPECIAL_METHOD_NAMES,
 ]);
 
 /**
@@ -178,6 +178,7 @@ const CREATE_METHOD_SEMANTICS: Partial<Record<string, MethodSemanticContract>> =
   project: {
     taskTags: ['create', 'repair'],
     useWhen: 'Start a new generated IFC model before creating storeys and elements.',
+    cautions: ['Set Currency only when the source states one — there is no default, and an absent currency must stay absent.'],
   },
   toIfc: {
     taskTags: ['create', 'export'],
@@ -430,7 +431,7 @@ export function buildCreateMethods(): MethodSchema[] {
     doc: 'Create a new IFC project. Returns a creator handle (number).',
     args: ['dump'],
     paramNames: ['params'],
-    tsParamTypes: ['{ Name?: string; Description?: string; Schema?: string; LengthUnit?: string; Author?: string; Organization?: string }'],
+    tsParamTypes: ['{ Name?: string; Description?: string; Schema?: string; LengthUnit?: string; Currency?: string; Author?: string; Organization?: string }'],
     tsReturn: 'number',
     call: (_sdk, args, context) => {
       const params = (args[0] ?? {}) as ConstructorParameters<typeof IfcCreator>[0];
@@ -476,11 +477,10 @@ export function buildCreateMethods(): MethodSchema[] {
     llmSemantics: CREATE_METHOD_SEMANTICS.setColor,
   });
 
-  // ── Scheduling / 4D ────────────────────────────────────────
-  // IfcTask / IfcWorkSchedule / IfcRelSequence chains live in a dedicated
-  // module so this file stays under the ~400-line guideline. Adding a new
-  // scheduling method = touch `bridge-create-schedule.ts` only.
-  methods.push(...buildScheduleMethods());
+  // ── Scheduling / 4D and Cost / 5D ──────────────────────────
+  // Both live in dedicated modules so this file stays inside its budget: adding
+  // a method means touching only `bridge-create-schedule.ts` / `-cost.ts`.
+  methods.push(...buildScheduleMethods(), ...buildCostMethods());
 
   // ── Auto-discover all other public methods from IfcCreator.prototype ──
   // Type-safe dynamic dispatch: methods are validated against ALLOWED_METHODS

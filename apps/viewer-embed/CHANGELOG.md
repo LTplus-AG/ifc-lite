@@ -1,5 +1,22 @@
 # @ifc-lite/viewer-embed
 
+## 1.15.6
+
+### Patch Changes
+
+- Updated dependencies [[`1cc533f`](https://github.com/LTplus-AG/ifc-lite/commit/1cc533f5ca326a8d574ca5e870dfdafec7df32d0), [`35c0517`](https://github.com/LTplus-AG/ifc-lite/commit/35c0517d9779297704979131f451a4ae704bf744), [`e43c455`](https://github.com/LTplus-AG/ifc-lite/commit/e43c455711d4070b530436413db948fedcc34053), [`8733dc9`](https://github.com/LTplus-AG/ifc-lite/commit/8733dc9cb391344606b9bc59beb00a6f9d1de135), [`20bff7c`](https://github.com/LTplus-AG/ifc-lite/commit/20bff7c4069d267aa2662266b6213c3b2b406753)]:
+  - @ifc-lite/bcf@4.1.0
+  - @ifc-lite/clash@2.3.0
+  - @ifc-lite/geometry@7.2.0
+  - @ifc-lite/sdk@6.2.0
+  - @ifc-lite/mcp@0.17.0
+  - @ifc-lite/sandbox@2.5.0
+  - @ifc-lite/parser@7.0.0
+  - @ifc-lite/create@2.6.0
+  - @ifc-lite/export@4.3.5
+  - @ifc-lite/ids@1.17.2
+  - @ifc-lite/query@2.4.1
+
 ## 1.15.5
 
 ### Patch Changes

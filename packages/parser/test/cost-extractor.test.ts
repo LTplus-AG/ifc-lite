@@ -198,6 +198,29 @@ describe('extractCostOnDemand', () => {
     expect(item.productGlobalIds).toEqual(['wall-A-gid', 'wall-B-gid']);
   });
 
+  // #4877: IfcRelAssignsToControl also legitimately binds tasks, resources
+  // and actors to a control (a task assigned to a cost item is exactly this
+  // relationship, with the cost item as RelatingControl). Both a product
+  // (IfcWall) and a task (IfcTask) are assigned here to prove the branch
+  // discriminates between them — a product-only fixture (the test above)
+  // passes identically whether or not the branch filters by type, so it
+  // cannot tell the two behaviours apart.
+  it('excludes a task assigned via IfcRelAssignsToControl from productExpressIds/productGlobalIds', () => {
+    const lines = [
+      "#1=IFCWALL('wall-gid',$,'Wall A',$,$,$,$,$,$);",
+      "#2=IFCTASK('task-gid',$,'Excavate',$,$,$,$,$,$,$,.NOTDEFINED.,$,$);",
+      "#10=IFCCOSTITEM('ci-gid',$,'Excavation','desc','obj','ID1',.USERDEFINED.,$,$);",
+      "#20=IFCRELASSIGNSTOCONTROL('rel-gid',$,$,$,(#1,#2),$,#10);",
+    ];
+    const store = buildStoreFromStep(lines, {
+      globalIdByExpressId: new Map([[1, 'wall-gid'], [2, 'task-gid']]),
+    });
+    const result = extractCostOnDemand(store);
+    const item = result.costItems[0];
+    expect(item.productExpressIds).toEqual([1]);
+    expect(item.productGlobalIds).toEqual(['wall-gid']);
+  });
+
   describe('UnitBasis (rate vs. flat total)', () => {
     // Shared unit chain: "hour" = an IfcConversionBasedUnit whose
     // ConversionFactor (#51) is 3600 IFCSIUNIT SECONDs (#50) — same fixture
@@ -296,6 +319,42 @@ describe('extractCostOnDemand', () => {
       expect(value?.unitBasis?.unitSymbol).toBeUndefined();
       expect(value?.unitBasis?.unitSiScale).toBeUndefined();
     });
+  });
+
+  // #4881: an explicit '' IfcLabel is a real (if empty) value written by the
+  // model author — distinct from an absent ($) attribute. IfcOpenShell 0.8.5
+  // keeps '' for Name/Identification/Condition/Category; the read model must
+  // agree rather than collapsing both to `undefined`.
+  it('keeps an explicit empty IfcLabel distinct from an absent one (#4881)', () => {
+    const lines = [
+      // Item A: Name explicitly '' (present, empty). Item B: Name is $ (absent).
+      "#10=IFCCOSTITEM('item-a-gid',$,'','desc','obj','',.USERDEFINED.,$,$);",
+      "#11=IFCCOSTITEM('item-b-gid',$,$,'desc','obj',$,.USERDEFINED.,$,$);",
+      // Value A: Category/Condition explicitly ''. Value B: both absent ($).
+      "#20=IFCCOSTVALUE('','',IFCMONETARYMEASURE(1.),$,$,$,'','',$,$);",
+      "#21=IFCCOSTVALUE($,$,IFCMONETARYMEASURE(1.),$,$,$,$,$,$,$);",
+    ];
+    const store = buildStoreFromStep(lines);
+    const result = extractCostOnDemand(store);
+
+    const itemA = result.costItems.find((i) => i.globalId === 'item-a-gid');
+    const itemB = result.costItems.find((i) => i.globalId === 'item-b-gid');
+    // Both records must be extracted, or the toBeUndefined checks below pass vacuously.
+    expect(itemA).toBeDefined();
+    expect(itemB).toBeDefined();
+    expect(itemA?.Name).toBe(''); // present, empty — must NOT read as absent
+    expect(itemA?.Identification).toBe('');
+    expect(itemB?.Name).toBeUndefined(); // genuinely absent ($)
+    expect(itemB?.Identification).toBeUndefined();
+
+    const valueA = result.CostValues.find((v) => v.expressId === 20);
+    const valueB = result.CostValues.find((v) => v.expressId === 21);
+    expect(valueA).toBeDefined();
+    expect(valueB).toBeDefined();
+    expect(valueA?.Category).toBe('');
+    expect(valueA?.Condition).toBe('');
+    expect(valueB?.Category).toBeUndefined();
+    expect(valueB?.Condition).toBeUndefined();
   });
 
   describe('IFC2X3', () => {

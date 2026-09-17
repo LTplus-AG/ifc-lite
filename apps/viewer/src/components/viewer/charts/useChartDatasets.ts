@@ -12,7 +12,7 @@
  */
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { ChartDataset, ChartScope, ChartSource } from '@ifc-lite/charts';
+import type { ChartDataset, ChartScope, ChartSource, ElementFieldBinding } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 import { buildElementsDataset } from '@/lib/charts/datasets/elements';
 import { buildClashDataset } from '@/lib/charts/datasets/clash';
@@ -23,11 +23,17 @@ import { buildCompareDataset } from '@/lib/charts/datasets/compare';
 
 export type ChartDatasets = Record<ChartSource, ChartDataset>;
 
-export function useChartDatasets(scope: ChartScope): ChartDatasets {
+/** Module-level so a caller that passes no fields does not hand the memo a fresh `[]` every render. */
+const NO_FIELDS: readonly ElementFieldBinding[] = [];
+
+export function useChartDatasets(scope: ChartScope, elementFields: readonly ElementFieldBinding[] = NO_FIELDS): ChartDatasets {
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const pinboardEntities = useViewerStore((s) => s.pinboardEntities);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const visible = scope.kind === 'visible';
   // Only a `visible` scope pays for these subscriptions; the selector returns
   // a constant otherwise so a hide/isolate does not rebuild an `all` dataset.
@@ -35,9 +41,9 @@ export function useChartDatasets(scope: ChartScope): ChartDatasets {
     ? { hidden: s.hiddenEntities, isolated: s.isolatedEntities, classFilter: s.classFilter, lensHidden: s.lensHiddenIds, storeys: s.selectedStoreys, types: s.typeVisibility, hiddenByModel: s.hiddenEntitiesByModel, isolatedByModel: s.isolatedEntitiesByModel }
     : null)));
   const elements = useMemo(
-    () => buildElementsDataset(scope, { models, activeModelId, pinboardEntities }),
+    () => buildElementsDataset(scope, elementFields, { models, activeModelId, pinboardEntities, mutationViews, mutationVersion, unitDisplayOverrides }),
     // `visibility` is read inside the builder through the store; it is a dep so the memo invalidates.
-    [scope, models, activeModelId, pinboardEntities, visibility],
+    [scope, elementFields, models, activeModelId, pinboardEntities, visibility, mutationViews, mutationVersion, unitDisplayOverrides],
   );
 
   const clashInputs = useViewerStore(useShallow((s) => ({ clashResult: s.clashResult, clashReviews: s.clashReviews, clashGroups: s.clashGroups, clashRunSeq: s.clashRunSeq, resolveGlobalIdInModel: s.resolveGlobalIdInModel })));

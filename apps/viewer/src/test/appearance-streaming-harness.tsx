@@ -22,6 +22,7 @@ export function AppearanceStreamingHarness({ renderer }: { renderer: Renderer })
     pendingMeshColorUpdates: null, pendingColorUpdates: null, pendingMeshRemovals: null,
     pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: null,
     clearPendingMeshColorUpdates: noop, clearPendingColorUpdates: noop, clearPendingMeshRemovals: noop,
+    pruneGeometryMeshes: noop,
     clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop, clearInstancedShards: noop });
   return null;
 }

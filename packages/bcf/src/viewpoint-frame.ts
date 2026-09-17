@@ -18,6 +18,7 @@
  */
 
 import type { BCFPoint, BCFViewpoint } from './types.js';
+import { bcfToViewerCoords, type ViewerBounds } from './viewpoint.js';
 
 function add(p: BCFPoint, offset: BCFPoint): BCFPoint {
   return { x: p.x + offset.x, y: p.y + offset.y, z: p.z + offset.z };
@@ -63,4 +64,51 @@ export function translateViewpoint(viewpoint: BCFViewpoint, offset: BCFPoint): B
     }));
   }
   return out;
+}
+
+/**
+ * A stored (world) viewpoint, expressed in the shifted render frame a viewer
+ * draws in: the inverse of `translateViewpoint(viewpoint, offset)` (#4879).
+ *
+ * `offset` is the render frame -> world translation (IFC Z-up). Before #4806
+ * ifc-lite wrote render-frame cameras, and those files and stored projects
+ * still exist. For them, subtracting the offset would throw the camera as far
+ * off as the bug did in the other direction. The two readings differ by the
+ * whole offset, which is only non-zero past the 10 km large-coordinate
+ * threshold, so whichever reading puts the camera nearer `renderBounds` (the
+ * loaded model, Y-up render frame) is unambiguous in practice. Without a
+ * camera or bounds there is nothing to compare, and the viewpoint is read as
+ * the spec says: world.
+ */
+export function viewpointFromWorld(
+  viewpoint: BCFViewpoint,
+  offset: BCFPoint,
+  renderBounds?: ViewerBounds | null,
+): BCFViewpoint {
+  if (offset.x === 0 && offset.y === 0 && offset.z === 0) return viewpoint;
+  if (isRenderFrameViewpoint(viewpoint, offset, renderBounds)) return viewpoint;
+  return translateViewpoint(viewpoint, { x: -offset.x, y: -offset.y, z: -offset.z });
+}
+
+function isRenderFrameViewpoint(
+  viewpoint: BCFViewpoint,
+  offset: BCFPoint,
+  bounds: ViewerBounds | null | undefined,
+): boolean {
+  const eye = (viewpoint.perspectiveCamera ?? viewpoint.orthogonalCamera)?.cameraViewPoint;
+  if (!eye || !bounds) return false;
+  const asRenderFrame = distanceToBounds(eye, bounds);
+  const asWorld = distanceToBounds({ x: eye.x - offset.x, y: eye.y - offset.y, z: eye.z - offset.z }, bounds);
+  return asRenderFrame < asWorld;
+}
+
+/** Distance from a BCF (Z-up) point to Y-up viewer bounds; 0 inside. */
+function distanceToBounds(p: BCFPoint, bounds: ViewerBounds): number {
+  const q = bcfToViewerCoords(p);
+  const gap = (v: number, min: number, max: number): number => Math.max(min - v, 0, v - max);
+  return Math.hypot(
+    gap(q.x, bounds.min.x, bounds.max.x),
+    gap(q.y, bounds.min.y, bounds.max.y),
+    gap(q.z, bounds.min.z, bounds.max.z),
+  );
 }

@@ -29,6 +29,7 @@
 
 import { useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
@@ -60,15 +61,16 @@ export function resolveRenderFrame(
   geometryResult: { coordinateInfo?: CoordinateInfo | null } | null | undefined,
 ): RenderFrameResult {
   // Federated: the earliest-loaded model owns the frame every other model
-  // was aligned to.
-  let earliest = Infinity;
-  let info: CoordinateInfo | null = null;
+  // was aligned to; a legacy single-model load has no federated entry, only
+  // one geometry result. The rule itself is shared with the CLI and SDK
+  // (`federationFrameInfo`, #4879).
+  const info = federationFrameInfo(models.values(), geometryResult);
   let anchorName: string | null = null;
+  let earliest = Infinity;
   let rebased = false;
   for (const [, m] of models) {
-    if (m.loadedAt < earliest && m.geometryResult?.coordinateInfo) {
+    if (m.geometryResult?.coordinateInfo === info && m.loadedAt < earliest) {
       earliest = m.loadedAt;
-      info = m.geometryResult.coordinateInfo;
       anchorName = m.name ?? null;
     }
     // `geometryVolumesSurviveAlignment` is the same two-status question
@@ -76,8 +78,6 @@ export function resolveRenderFrame(
     // statuses under which vertices were re-baked into the anchor frame.
     if (!geometryVolumesSurviveAlignment(m.federationAlignmentStatus)) rebased = true;
   }
-  // Legacy single-model load: no federated entry, one geometry result.
-  if (!info) info = geometryResult?.coordinateInfo ?? null;
 
   return {
     originShift: info?.originShift ?? null,

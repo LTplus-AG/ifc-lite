@@ -15,6 +15,7 @@ import { goHomeFromStore } from '@/store/homeView';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
+import { flySpeedStore } from './flySpeedStore.js';
 
 export interface UseKeyboardControlsParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -192,6 +193,15 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
 
     const keyboardMove = () => {
       if (aborted || !moveLoopRunning) return;
+
+      // A right-button flight owns the camera: a key held from before the press
+      // would otherwise add walk/pan movement on top of the fly speed (#4868
+      // review). Stand down but keep the loop alive, so key-ups still clear and
+      // a still-held key resumes once the flight ends.
+      if (flySpeedStore.get().active) {
+        moveFrameId = requestAnimationFrame(keyboardMove);
+        return;
+      }
 
       let moved = false;
       const isWalkMode = activeToolRef.current === 'walk';

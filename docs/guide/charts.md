@@ -21,7 +21,7 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 
 | Source | One row per | Columns | A bucket selects |
 |--------|-------------|---------|------------------|
-| **Elements** | element instance across every loaded model | `IFC type`, `Storey`, `Model`, `Name` — straight off the entity tables, no list needs to run | the elements |
+| **Elements** | geometry-bearing element instance across every loaded model | `IFC type`, `Storey`, `Model`, `Name`, plus one exact IFC attribute or property selected in the chart editor | the elements |
 | **Clash results** | clash of the current run (after exclusions) | `Rule`, `Severity`, `Detection` (hard / clearance / touch), `Review status`, `Type A`, `Type B`, `Type pair`, `Model A`, `Model B`, `Storey`, `Distance` (m, for a penetration histogram), `Group` | both elements of every clash in it |
 | **BCF topics** | topic of the loaded project | `Status`, `Type`, `Priority`, `Assigned to`, `Stage`, `Labels`, `Author`, `Due` (overdue / this week / later / none), `Age` (days), and the dates `Created`, `Modified`, `Due date`, `Closed` | the components of the topics' viewpoints that are loaded |
 | **Schedule tasks** | task of the active schedule | `Task`, `Status`, `Phase at cursor` (not started / in progress / done, following the 4D playback), `Task type`, `Critical`, `Milestone`, `Duration` (days), `Products`, and the dates `Start`, `Finish` | the tasks' products |
@@ -31,6 +31,27 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 Date columns feed the `timeline` chart, which buckets per ISO week — topics created or closed per week, tasks starting per week. There is no run history in the viewer, so BCF dates are the only time axis; clash counts over successive runs are not charted.
 
 The dashboard's **scope** applies to the elements source and decides which elements its rows cover: all loaded models, only what is visible right now (the same answer the Lists panel's "visible only" gives), or the basket.
+
+### IFC fields: attributes, properties, quantities and relations
+
+For an **Elements** chart, **Element field** can stay on the built-in columns or select one exact IFC field:
+
+| Family | Picks | Value |
+|--------|-------|-------|
+| **IFC attribute** | the attribute's EXPRESS name (`ObjectType`, `OverallHeight`, …) | the occurrence's own attribute; only attributes the schema declares as scalar values are offered |
+| **IFC property** | exact property-set and property names (`Pset_WallCommon.FireRating`) | the occurrence's property, else its defining type's |
+| **IFC quantity** | exact `IfcElementQuantity` and quantity names (`Qto_WallBaseQuantities.NetVolume`) | a number in the project unit, summable and histogrammable; the occurrence's quantity, else its defining type's |
+| **Material / classification / type / spatial** | `Material` (every associated material name, joined), `Type name` (the defining `IfcTypeObject` via `IfcRelDefinesByType`), `Classification` for any system or one discovered system (the reference's identification, else its name), and the `Container`, `Building`, `Site` or `Project` the element sits in | categories |
+
+A **Filter** box narrows set and field names, so a model with hundreds of property sets stays pickable. Filter matching ignores case, but the selected names are the exact IFC names, including dots and slashes. For example, selecting `Pset_WallCommon.FireRating` makes its distinct values available to **Group by**; a consistently numeric property or any quantity can also drive **Sum** or a histogram.
+
+Occurrence properties take precedence. If the occurrence does not carry the selected property, its first defining type is consulted; an explicit empty/null occurrence value or a deleted property stays missing and suppresses inheritance. Attribute values are read only from the occurrence, and only attributes the loaded schema declares as scalar values are offered — a reference attribute (an `IfcDirection`, a placement) or a collection is not a value, whatever its STEP slot holds. `0`, `false`, and identifiers such as `"001"` remain real values.
+
+A property's **shape** decides what it can be. An `IfcPropertySingleValue` is a scalar and, when typed as a measure, a number. An enumerated, list, bounded or table value is a shape, not a scalar: its display string (`A, B`, `5 [1 – 10]`) is a category it can be grouped by, and it is never summed — a one-member list is still a list and an upper bound alone is still a range.
+
+Field kind and unit interpretation are saved in the version-1 dashboard document, so temporarily unloading a model cannot reinterpret the chart. A saved field that is unavailable in the currently loaded federation remains selected and is labelled unavailable instead of being silently replaced. Property edits and deletions invalidate the data even when element ids and row counts do not change. The chart editor's own draft binds to a column of its own and never rebuilds the dashboard's datasets, so browsing fields cannot disturb another chart's live selection. Discovery merges what every loaded model exposes before deciding a field's kind, so a property that is numeric in one model and text in another is a category whichever model loaded first.
+
+A numeric column is summed in **one unit**. Each value is converted into it from the unit it is actually in — the property's own explicit `Unit` when it declares one (converted by that unit's parsed scale, so a decimetre or a derived unit converts even without a curated display alternative), else the model's project unit assignment. A value whose unit cannot be established is reported as unsupported rather than guessed: a typed measure in a model that declares no unit for it, an explicit unit reference the file does not let the parser read, or a monetary amount in a currency other than the column's (there is no exchange rate to fold euros into dollars; the column takes the first model's currency). A sum subtitle reports rows without a measure and unsupported rows separately, so an all-missing field cannot look like a measured zero. Categories are unit-qualified instead (`1 mm` and `1 m` are different labels).
 
 ## Chart ↔ 3D
 

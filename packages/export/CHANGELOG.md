@@ -1,5 +1,13 @@
 # @ifc-lite/export
 
+## 4.3.5
+
+### Patch Changes
+
+- Updated dependencies [[`35c0517`](https://github.com/LTplus-AG/ifc-lite/commit/35c0517d9779297704979131f451a4ae704bf744), [`e43c455`](https://github.com/LTplus-AG/ifc-lite/commit/e43c455711d4070b530436413db948fedcc34053), [`20bff7c`](https://github.com/LTplus-AG/ifc-lite/commit/20bff7c4069d267aa2662266b6213c3b2b406753)]:
+  - @ifc-lite/geometry@7.2.0
+  - @ifc-lite/parser@7.0.0
+
 ## 4.3.4
 
 ### Patch Changes

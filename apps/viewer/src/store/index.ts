@@ -15,6 +15,7 @@ import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, DEFAULT_CONTROLS_MODE, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
+import { registerSectionVisibility } from './section-active.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
@@ -551,6 +552,7 @@ export function getViewerStoreApi() {
   globalStoreRegistry[STORE_SINGLETON_KEY] = store;
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
+  registerSectionVisibility(store); // `sectionPlane.enabled` === the cut is on screen (#4910)
   // Initial reconcile: a persisted panel flag (e.g. scriptPanelVisible) can be
   // true at load before any change fires the subscription, so seed the docked
   // panel from the current flags rather than leaving it on the fallback.

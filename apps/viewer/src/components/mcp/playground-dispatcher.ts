@@ -57,7 +57,8 @@ import {
   type BCFTopic,
 } from '@ifc-lite/bcf';
 import { parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
-import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
+import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import {
   createClashEngine,
   disciplineMatrixRules,
@@ -368,15 +369,21 @@ const CLASH_MESH_CACHE_MAX = 3;
  * alone: the playground reuses a filename-slug id, so an edited re-upload would
  * otherwise hit a stale mesh — folding in the byte length forces a re-mesh when
  * the bytes change. Bounded to CLASH_MESH_CACHE_MAX entries with LRU eviction.
+ * The frame travels with the meshes: clash bounds are in the mesher's shifted
+ * frame, and BCF export needs it to write world coordinates (#4879).
  */
-const clashMeshCache = new Map<string, MeshData[]>();
+interface ClashMeshes {
+  meshes: MeshData[];
+  coordinateInfo: CoordinateInfo | undefined;
+}
+const clashMeshCache = new Map<string, ClashMeshes>();
 
 function meshCacheKey(m: LoadedPlaygroundModel): string {
   return `${m.id}:${m.fileSize}`;
 }
 
 /** LRU get: a hit refreshes recency so the active model survives eviction. */
-function getCachedMeshes(key: string): MeshData[] | undefined {
+function getCachedMeshes(key: string): ClashMeshes | undefined {
   const hit = clashMeshCache.get(key);
   if (hit) {
     clashMeshCache.delete(key);
@@ -386,8 +393,8 @@ function getCachedMeshes(key: string): MeshData[] | undefined {
 }
 
 /** LRU set: insert then evict the least-recently-used entries past the bound. */
-function setCachedMeshes(key: string, meshes: MeshData[]): void {
-  clashMeshCache.set(key, meshes);
+function setCachedMeshes(key: string, meshed: ClashMeshes): void {
+  clashMeshCache.set(key, meshed);
   while (clashMeshCache.size > CLASH_MESH_CACHE_MAX) {
     const oldest = clashMeshCache.keys().next().value;
     if (oldest === undefined) break;
@@ -398,7 +405,7 @@ function setCachedMeshes(key: string, meshes: MeshData[]): void {
 /** Mesh the whole model once (in-browser, same path as PlaygroundViewer) and
  *  cache it. Throws UNSUPPORTED_OPERATION when the model carries no drawable
  *  geometry — clash needs tessellated solids, not quantity sets. */
-async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
+async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
   const key = meshCacheKey(m);
   const cached = getCachedMeshes(key);
   if (cached) return cached;
@@ -423,8 +430,9 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
         hint: 'Confirm the model carries explicit geometry (not schema/quantity-only data).',
       });
     }
-    setCachedMeshes(key, meshes);
-    return meshes;
+    const meshed = { meshes, coordinateInfo: result.coordinateInfo };
+    setCachedMeshes(key, meshed);
+    return meshed;
   } finally {
     // `result.meshes` is already copied out into plain JS MeshData — nothing
     // downstream (the mesh cache, the clash engine) holds onto the WASM
@@ -441,15 +449,15 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
  * as the mesh cache — keying by `m.id` alone would serve a stale result after an
  * edited re-upload (same filename slug) even though the meshes re-compute.
  */
-const lastClashResult = new Map<string, ClashResult>();
+const lastClashResult = new Map<string, { result: ClashResult; coordinateInfo: CoordinateInfo | undefined }>();
 
 /** Run a rule set against a model's meshes, returning (and caching) the result. */
 async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[]): Promise<ClashResult> {
-  const meshes = await meshForClash(m);
+  const { meshes, coordinateInfo } = await meshForClash(m);
   const { elements, exclusions } = elementsFromStep({ store: m.store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
   const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
-  lastClashResult.set(meshCacheKey(m), result);
+  lastClashResult.set(meshCacheKey(m), { result, coordinateInfo });
   return result;
 }
 
@@ -852,10 +860,10 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
 
     // Reuse the last clash run for this model; if there is none, run a default
     // all-vs-all hard self-clash so the tool works standalone (and caches it).
-    let result = lastClashResult.get(meshCacheKey(m));
-    if (!result) {
-      result = await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }]);
-    }
+    const result = lastClashResult.get(meshCacheKey(m))?.result
+      ?? await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }]);
+    // The frame of the run above, recorded next to its result.
+    const coordinateInfo = lastClashResult.get(meshCacheKey(m))?.coordinateInfo;
     if (result.summary.total === 0) {
       return {
         text: 'No clashes to export — the last clash run found 0. Run clash_check first (omit a and b for every element vs every other).',
@@ -874,6 +882,8 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       projectName: 'Clash report',
       // Resolve the (single) model id to its file name for the BCF Header (#1591).
       modelNameOf: (id) => (id === m.id ? m.name : id),
+      // Clash bounds are in the mesher's shifted frame; BCF is world (#4879).
+      worldOffset: renderFrameWorldOffset(coordinateInfo),
       ...(status ? { status } : {}),
       ...(maxTopics != null ? { maxTopics } : {}),
     });

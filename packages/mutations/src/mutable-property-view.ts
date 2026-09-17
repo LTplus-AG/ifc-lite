@@ -34,7 +34,7 @@ export type { AttributeExtractor } from './effective-changes.js';
 export type PropertyExtractor = (entityId: number) => Array<{
   name: string;
   globalId?: string;
-  properties: Array<{ name: string; type: number; value: unknown; dataType?: string }>;
+  properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; dataType?: string }>;
 }>;
 
 /**
@@ -272,6 +272,9 @@ export class MutablePropertyView extends MutableOverlayState {
           name: prop.name,
           type: prop.type as PropertyValueType,
           value: prop.value as PropertyValue,
+          ...(prop.values ? { values: [...prop.values] } : {}),
+          ...(prop.unit ? { unit: prop.unit } : {}),
+          ...(prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
           dataType: prop.dataType,
         })),
       }));
@@ -321,7 +324,10 @@ export class MutablePropertyView extends MutableOverlayState {
           type: mutation.valueType ?? prop.type,
           value: mutation.value ?? null,
           unit: mutation.unit ?? prop.unit,
-          dataType: prop.dataType,
+          // An edit that names its own unit replaces the explicit scale too;
+          // one that keeps the property's unit keeps its scale.
+          ...((mutation.unit === undefined || mutation.unit === prop.unit) && prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
+          dataType: mutation.dataType ?? prop.dataType,
         }),
         prop => prop,
         (name, mutation) => ({
@@ -329,6 +335,7 @@ export class MutablePropertyView extends MutableOverlayState {
           type: mutation.valueType ?? PropertyValueType.String,
           value: mutation.value ?? null,
           unit: mutation.unit,
+          dataType: mutation.dataType,
         }),
       );
 
@@ -475,7 +482,7 @@ export class MutablePropertyView extends MutableOverlayState {
           name: propName,
           type: valueType,
           value: value,
-          unit: unit,
+          unit, dataType,
         }],
       };
       entityPsets.set(psetName, pset);
@@ -489,14 +496,14 @@ export class MutablePropertyView extends MutableOverlayState {
           name: propName,
           type: valueType,
           value: value,
-          unit: unit,
+          unit, dataType,
         };
       } else {
         pset.properties.push({
           name: propName,
           type: valueType,
           value: value,
-          unit: unit,
+          unit, dataType,
         });
       }
     }

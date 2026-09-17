@@ -22,6 +22,7 @@ import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
 import { PointCloudPanel } from './PointCloudPanel';
+import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { Crosshair } from 'lucide-react';
 
 /**
@@ -189,6 +190,7 @@ export function ViewportOverlays({
   return (
     <>
       <PointCloudPanelMount />
+      <FlySpeedIndicator />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar
           styles carry zoom and Home from the shared camera command list
           (`toolbar/CameraCommands`) — when this guard first narrowed to

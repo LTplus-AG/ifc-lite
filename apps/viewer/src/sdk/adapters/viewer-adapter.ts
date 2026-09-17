@@ -5,7 +5,9 @@
 import type { EntityRef, SectionPlane, CameraState, ViewerBackendMethods } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef } from './model-compat.js';
+import { bcfWorldOffset } from '../../hooks/bcf/viewpoint-world-frame.js';
 import { toGlobalIdForRef } from '../../store/globalId.js';
+import { activeSectionPlane, clearSectionCut, showSectionCut } from '../../store/section-active.js';
 import {
   resolvePresentationColorMap,
   resolvePresentationIds,
@@ -143,32 +145,31 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       state.cameraCallbacks?.frameEntities?.(ids);
       return undefined;
     },
+    // `enabled` means ON SCREEN (#4910): a cut is shown by opening the Section
+    // tool, and `getSection()` reports only the cut the user can see.
     setSection(section: SectionPlane | null) {
-      const state = store.getState();
-      if (section) {
-        state.setSectionPlaneAxis?.(AXIS_TO_STORE[section.axis] ?? 'down');
-        state.setSectionPlanePosition?.(section.position);
-        if (section.flipped !== undefined && state.sectionPlane?.flipped !== section.flipped) {
-          state.flipSectionPlane?.();
-        }
-        if (state.sectionPlane?.enabled !== section.enabled) {
-          state.toggleSectionPlane?.();
-        }
-      } else {
-        if (state.sectionPlane?.enabled) {
-          state.toggleSectionPlane?.();
-        }
+      if (section?.enabled) {
+        const flipped = section.flipped ?? store.getState().sectionPlane.flipped;
+        showSectionCut(store.getState, { axis: AXIS_TO_STORE[section.axis] ?? 'down', position: section.position, flipped });
+        return undefined;
       }
+      if (section) {
+        const state = store.getState();
+        state.setSectionPlaneAxis(AXIS_TO_STORE[section.axis] ?? 'down');
+        state.setSectionPlanePosition(section.position);
+        if (section.flipped !== undefined && store.getState().sectionPlane.flipped !== section.flipped) state.flipSectionPlane();
+      }
+      clearSectionCut(store.getState);
       return undefined;
     },
     getSection() {
-      const state = store.getState();
-      if (!state.sectionPlane?.enabled) return null;
+      const plane = activeSectionPlane(store.getState());
+      if (!plane) return null;
       return {
-        axis: STORE_TO_AXIS[state.sectionPlane.axis] ?? 'y',
-        position: state.sectionPlane.position,
-        enabled: state.sectionPlane.enabled,
-        flipped: state.sectionPlane.flipped,
+        axis: STORE_TO_AXIS[plane.axis] ?? 'y',
+        position: plane.position,
+        enabled: true,
+        flipped: plane.flipped,
       };
     },
     /**
@@ -240,6 +241,17 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
         target: [viewpoint.target.x, viewpoint.target.y, viewpoint.target.z],
         up: [viewpoint.up.x, viewpoint.up.y, viewpoint.up.z],
       };
+    },
+    /**
+     * The camera above is in the render frame (large coordinates shifted
+     * towards the origin). `bim.bcf.createViewpoint()` /
+     * `extractViewpointState()` convert with this, by the same frame rule the
+     * BCF panel uses, so SDK viewpoints are world coordinates too (#4879).
+     */
+    getRenderFrameOffset(): [number, number, number] {
+      const state = store.getState();
+      const offset = bcfWorldOffset(state.models, state.geometryResult);
+      return [offset.x, offset.y, offset.z];
     },
   };
 }

@@ -3,14 +3,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Keep the viewer's IFC Z-up to Y-up RTC conversion in one module. */
+/**
+ * Keep the IFC Z-up to Y-up RTC conversion in one module.
+ *
+ * The implementation lives in `@ifc-lite/geometry` beside `CoordinateInfo`
+ * since #4879, because the CLI, the MCP playground and the SDK need the same
+ * render-frame -> world conversion as the viewer; the scan covers the viewer
+ * and every package source tree for that reason.
+ */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const CANONICAL = 'apps/viewer/src/lib/geo/coordinate-frame.ts';
+export const CANONICAL = 'packages/geometry/src/world-frame.ts';
 
 export const PATTERNS = [
   {
@@ -42,6 +49,24 @@ export const DISTINCT_FRAME_EXPRESSIONS = [
     file: 'apps/viewer/src/hooks/useDrawingGeneration.ts',
     text: 'const shift = ci.wasmRtcOffset ? ifcToViewerAxes(ci.wasmRtcOffset) : ci.originShift;',
   },
+  {
+    // A presence flag for the cache serialiser, not a coordinate read.
+    file: 'packages/cache/src/sections/coordinate-info.ts',
+    text: 'const hasWasmRtc = info.wasmRtcOffset !== undefined;',
+  },
+];
+
+/**
+ * Files that own a DIFFERENT axis contract with the same shape, excused as a
+ * whole. `@ifc-lite/bcf` converts between the BCF file format's Z-up axes and
+ * a viewer camera's Y-up axes; that is a file-format mapping with no RTC
+ * offset in it, and the package deliberately has no dependency on
+ * `@ifc-lite/geometry` (it is used by BCF-only tools). Each entry must still
+ * match something, so an entry whose file stops converting goes stale.
+ */
+export const SEPARATE_AXIS_CONTRACTS = [
+  { file: 'packages/bcf/src/viewpoint.ts', reason: 'BCF file-format axes <-> viewer camera axes' },
+  { file: 'packages/bcf/src/overlay.ts', reason: 'BCF file-format axes -> overlay marker axes' },
 ];
 
 /** Canonical helper calls that acquire the field without reimplementing it. */
@@ -132,7 +157,12 @@ validateProseMentions();
 function candidateFiles() {
   const output = execFileSync(
     'git',
-    ['-C', REPO_ROOT, 'ls-files', '-z', 'apps/viewer/src/**/*.ts', 'apps/viewer/src/**/*.tsx'],
+    [
+      '-C', REPO_ROOT, 'ls-files', '-z',
+      'apps/viewer/src/**/*.ts', 'apps/viewer/src/**/*.tsx',
+      // Plain `*` crosses `/` in a git pathspec, so this reaches every depth.
+      'packages/*/src/*.ts', 'packages/*/src/*.tsx',
+    ],
     { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
   );
   return output.split('\0').filter((file) => file && !/\.test\.tsx?$/.test(file));
@@ -163,14 +193,22 @@ export function scanRepo(
   files = candidateFiles(),
   read = (file) => readFileSync(join(REPO_ROOT, file), 'utf8'),
   exceptions = registered,
+  separateContracts = SEPARATE_AXIS_CONTRACTS,
 ) {
   if (files.length < 100) throw new Error(`refusing suspiciously small RTC scan (${files.length} files)`);
   const used = new Set();
+  const usedContracts = new Set();
   const violations = [];
   for (const file of files) {
     const normalized = file.split(sep).join('/');
     if (normalized === CANONICAL) continue;
-    for (const hit of scanText(normalized, read(file))) {
+    const hits = scanText(normalized, read(file));
+    const contract = separateContracts.findIndex((entry) => entry.file === normalized);
+    if (contract >= 0) {
+      if (hits.length > 0) usedContracts.add(contract);
+      continue;
+    }
+    for (const hit of hits) {
       const index = exceptions.findIndex(
         (entry, entryIndex) =>
           !used.has(entryIndex) && entry.file === hit.file && entry.text === hit.text,
@@ -179,7 +217,10 @@ export function scanRepo(
       else violations.push(hit);
     }
   }
-  const stale = exceptions.filter((_entry, index) => !used.has(index));
+  const stale = [
+    ...exceptions.filter((_entry, index) => !used.has(index)),
+    ...separateContracts.filter((_entry, index) => !usedContracts.has(index)),
+  ];
   return { violations, stale, scanned: files.length };
 }
 
@@ -189,19 +230,19 @@ function main() {
     for (const hit of violations) {
       console.error(
         `${hit.file}:${hit.line}: ${hit.pattern}: ${hit.text}\n` +
-          `  use apps/viewer/src/lib/geo/coordinate-frame.ts instead of copying the conversion`,
+          `  use ${CANONICAL} (via @ifc-lite/geometry) instead of copying the conversion`,
       );
     }
     for (const entry of stale) {
       console.error(
-        `stale RTC-frame registry entry: ${entry.file}: ${entry.text}\n` +
+        `stale RTC-frame registry entry: ${entry.file}: ${entry.text ?? entry.reason}\n` +
           '  remove the obsolete registry entry or restore the approved distinct-frame expression',
       );
     }
     process.exitCode = 1;
     return;
   }
-  console.log(`RTC frame copy gate passed (${scanned} viewer source files)`);
+  console.log(`RTC frame copy gate passed (${scanned} viewer and package source files)`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

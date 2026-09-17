@@ -87,6 +87,24 @@ describe('Scene.removeMeshesForEntity', () => {
     assert.ok(scene['meshDataMap'].get(10));
     assert.ok(scene['meshDataMap'].get(30));
   });
+
+  it('removes an authored mesh whose entityIds name only its own id (#4874)', () => {
+    // addElementMeshes fills entityIds with the element's own id; that mesh is
+    // dedicated, not colour-merged, so removal must drop it like any other.
+    const scene = new Scene();
+    const authored = { ...makeMesh(77), entityIds: new Uint32Array([77, 77]) } as unknown as MeshData;
+    scene.addMeshData(authored);
+    assert.strictEqual(scene.removeMeshesForEntity(77), true);
+    assert.strictEqual(scene['meshDataMap'].get(77), undefined);
+  });
+
+  it('keeps a colour-merged mesh (reports no dedicated removal)', () => {
+    const scene = new Scene();
+    const shared = { ...makeMesh(10), entityIds: new Uint32Array([10, 20]) } as unknown as MeshData;
+    scene.addMeshData(shared);
+    assert.strictEqual(scene.removeMeshesForEntity(10), false);
+    assert.ok(scene['meshDataMap'].get(20));
+  });
 });
 
 describe('Scene.removeMeshesForEntities', () => {

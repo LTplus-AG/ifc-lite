@@ -181,8 +181,10 @@ function makeState() {
     setCameraRotation: rec('setCameraRotation'),
     setSectionPlaneAxis: rec('setSectionPlaneAxis'),
     setSectionPlanePosition: rec('setSectionPlanePosition'),
-    toggleSectionPlane: rec('toggleSectionPlane'),
+    setSectionPlaneEnabled: rec('setSectionPlaneEnabled'),
     flipSectionPlane: rec('flipSectionPlane'),
+    setActiveTool: rec('setActiveTool'),
+    setSuppressNextSection2DPanelAutoOpen: rec('setSuppressNextSection2DPanelAutoOpen'),
     toggleTypeVisibility: rec('toggleTypeVisibility'),
     resolveGlobalIdFromModels: (id: number) =>
       id === 1005 ? { modelId: 'm1', expressId: 5 }
@@ -1111,21 +1113,24 @@ describe('camera and section commands', () => {
     expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
   });
 
-  it('SET_SECTION applies axis and position and toggles only on a real change', async () => {
-    // Fixture: sectionPlane = { enabled: false, flipped: false }.
+  it('SET_SECTION applies axis and position and puts the cut on screen by opening the Section tool (#4910)', async () => {
+    // Fixture: sectionPlane = { enabled: false, flipped: false }, no active tool.
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_SECTION', { axis: 'front', position: 1.5, enabled: true, flipped: false }, 'r1'));
     expect(argsOf(state, 'setSectionPlaneAxis')).toEqual(['front']);
     expect(argsOf(state, 'setSectionPlanePosition')).toEqual([1.5]);
-    expect(called(state, 'toggleSectionPlane')).toBe(true);
+    expect(argsOf(state, 'setSectionPlaneEnabled')).toEqual([true]);
+    expect(argsOf(state, 'setActiveTool')).toEqual(['section']);
     expect(called(state, 'flipSectionPlane')).toBe(false);
   });
 
-  it('SET_SECTION with matching enabled/flipped toggles nothing', async () => {
+  it('SET_SECTION with matching enabled/flipped inside the Section tool changes nothing', async () => {
     state.sectionPlane = { enabled: true, flipped: true };
+    state.activeTool = 'section';
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_SECTION', { enabled: true, flipped: true }, 'r1'));
-    expect(called(state, 'toggleSectionPlane')).toBe(false);
+    expect(called(state, 'setSectionPlaneEnabled')).toBe(false);
+    expect(called(state, 'setActiveTool')).toBe(false);
     expect(called(state, 'flipSectionPlane')).toBe(false);
   });
 
@@ -1143,7 +1148,7 @@ describe('camera and section commands', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_SECTION', { position: 0, enabled: false }, 'r1'));
     expect(argsOf(state, 'setSectionPlanePosition')).toEqual([0]);
-    expect(called(state, 'toggleSectionPlane')).toBe(true);
+    expect(argsOf(state, 'setSectionPlaneEnabled')).toEqual([false]);
   });
 });
 

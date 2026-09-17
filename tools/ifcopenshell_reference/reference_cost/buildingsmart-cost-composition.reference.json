@@ -1,0 +1,372 @@
+{
+  "Currency": "GBP",
+  "HasCostData": true,
+  "Items": {
+    "0JYq7Z8qH3nP9JjM4fLg2B": {
+      "ChildGlobalIds": [],
+      "HasCostQuantities": true,
+      "HasCostValues": true,
+      "Identification": "CI-2",
+      "Name": "Brick wall",
+      "ParentGlobalId": "1JYq7Z8qH3nP9JjM4fLg2C",
+      "PredefinedType": "USERDEFINED",
+      "ProductGlobalIds": 0,
+      "Quantities": [
+        "item:0JYq7Z8qH3nP9JjM4fLg2B/quantity/0"
+      ],
+      "ResolvedTotal": {
+        "Amount": 10.0,
+        "Currency": "GBP"
+      },
+      "ScheduleGlobalIds": [],
+      "TaskGlobalIds": 0,
+      "Values": [
+        "item:0JYq7Z8qH3nP9JjM4fLg2B/value/0",
+        "item:0JYq7Z8qH3nP9JjM4fLg2B/value/1"
+      ]
+    },
+    "1JYq7Z8qH3nP9JjM4fLg2C": {
+      "ChildGlobalIds": [
+        "0JYq7Z8qH3nP9JjM4fLg2B",
+        "3JYq7Z8qH3nP9JjM4fLg2A"
+      ],
+      "HasCostQuantities": false,
+      "HasCostValues": true,
+      "Identification": "CI-3",
+      "Name": "External wall total",
+      "ParentGlobalId": null,
+      "PredefinedType": "USERDEFINED",
+      "ProductGlobalIds": 0,
+      "Quantities": [],
+      "ResolvedTotal": {
+        "Amount": 22.5,
+        "Currency": "GBP"
+      },
+      "ScheduleGlobalIds": [
+        "3JYq7Z8qH3nP9JjM4fLg2E"
+      ],
+      "TaskGlobalIds": 1,
+      "Values": [
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0"
+      ]
+    },
+    "2JYq7Z8qH3nP9JjM4fLg2D": {
+      "ChildGlobalIds": [],
+      "HasCostQuantities": false,
+      "HasCostValues": true,
+      "Identification": "CI-4",
+      "Name": "Shared rate audit",
+      "ParentGlobalId": null,
+      "PredefinedType": "USERDEFINED",
+      "ProductGlobalIds": 0,
+      "Quantities": [],
+      "ResolvedTotal": {
+        "Amount": 5.0,
+        "Currency": "GBP"
+      },
+      "ScheduleGlobalIds": [],
+      "TaskGlobalIds": 0,
+      "Values": [
+        "item:2JYq7Z8qH3nP9JjM4fLg2D/value/0"
+      ]
+    },
+    "3JYq7Z8qH3nP9JjM4fLg2A": {
+      "ChildGlobalIds": [],
+      "HasCostQuantities": true,
+      "HasCostValues": true,
+      "Identification": "CI-1",
+      "Name": "Scaffolding",
+      "ParentGlobalId": "1JYq7Z8qH3nP9JjM4fLg2C",
+      "PredefinedType": "USERDEFINED",
+      "ProductGlobalIds": 1,
+      "Quantities": [
+        "item:3JYq7Z8qH3nP9JjM4fLg2A/quantity/0"
+      ],
+      "ResolvedTotal": {
+        "Amount": 5.0,
+        "Currency": "GBP"
+      },
+      "ScheduleGlobalIds": [],
+      "TaskGlobalIds": 0,
+      "Values": [
+        "item:3JYq7Z8qH3nP9JjM4fLg2A/value/0",
+        "item:3JYq7Z8qH3nP9JjM4fLg2A/value/1"
+      ]
+    },
+    "3JYq7Z8qH3nP9JjM4fLg2L": {
+      "ChildGlobalIds": [],
+      "HasCostQuantities": false,
+      "HasCostValues": true,
+      "Identification": "CI-5",
+      "Name": "Plant and rates",
+      "ParentGlobalId": null,
+      "PredefinedType": "USERDEFINED",
+      "ProductGlobalIds": 0,
+      "Quantities": [],
+      "ResolvedTotal": {
+        "Amount": 7.0,
+        "Currency": "GBP"
+      },
+      "ScheduleGlobalIds": [],
+      "TaskGlobalIds": 0,
+      "Values": [
+        "item:3JYq7Z8qH3nP9JjM4fLg2L/value/0",
+        "item:3JYq7Z8qH3nP9JjM4fLg2L/value/1"
+      ]
+    }
+  },
+  "Nodes": {
+    "item:0JYq7Z8qH3nP9JjM4fLg2B/quantity/0": {
+      "Dimension": "volume",
+      "Kind": "Quantity",
+      "Name": "Brick wall volume",
+      "Type": "IfcQuantityVolume",
+      "Value": 100.0
+    },
+    "item:0JYq7Z8qH3nP9JjM4fLg2B/value/0": {
+      "Applied": {
+        "Kind": "Typed",
+        "Type": "IfcMonetaryMeasure",
+        "Value": 10.0
+      },
+      "ArithmeticOperator": null,
+      "Category": "Material",
+      "Components": null,
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Brick material",
+      "Resolved": 10.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:0JYq7Z8qH3nP9JjM4fLg2B/value/1": {
+      "Applied": {
+        "Kind": "Typed",
+        "Type": "IfcMonetaryMeasure",
+        "Value": 3.0
+      },
+      "ArithmeticOperator": null,
+      "Category": "Labor",
+      "Components": null,
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Brick labour",
+      "Resolved": 3.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0": {
+      "Applied": null,
+      "ArithmeticOperator": "ADD",
+      "Category": null,
+      "Components": [
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0",
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1"
+      ],
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Total",
+      "Resolved": 22.5,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0": {
+      "Applied": null,
+      "ArithmeticOperator": "ADD",
+      "Category": "*",
+      "Components": [
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/0",
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/1",
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/2",
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/3"
+      ],
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Subtotal",
+      "Resolved": 21.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/0": {
+      "Applied": {
+        "Kind": "Typed",
+        "Type": "IfcMonetaryMeasure",
+        "Value": 5.0
+      },
+      "ArithmeticOperator": null,
+      "Category": "Material",
+      "Components": null,
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Scaffolding material",
+      "Resolved": 5.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/1": {
+      "Applied": {
+        "Kind": "Typed",
+        "Type": "IfcMonetaryMeasure",
+        "Value": 3.0
+      },
+      "ArithmeticOperator": null,
+      "Category": "Labor",
+      "Components": null,
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Scaffolding labour",
+      "Resolved": 3.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/2": {
+      "SharedWith": "item:0JYq7Z8qH3nP9JjM4fLg2B/value/0"
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/3": {
+      "SharedWith": "item:0JYq7Z8qH3nP9JjM4fLg2B/value/1"
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1": {
+      "Applied": null,
+      "ArithmeticOperator": "MULTIPLY",
+      "Category": "Tax",
+      "Components": [
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/0",
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/1"
+      ],
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Tax",
+      "Resolved": 1.5,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/0": {
+      "Applied": null,
+      "ArithmeticOperator": "ADD",
+      "Category": "Material",
+      "Components": [
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/0/component/0",
+        "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/0/component/1"
+      ],
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Material subtotal",
+      "Resolved": 15.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/0/component/0": {
+      "SharedWith": "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/0"
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/0/component/1": {
+      "SharedWith": "item:0JYq7Z8qH3nP9JjM4fLg2B/value/0"
+    },
+    "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/1/component/1": {
+      "Applied": {
+        "Kind": "Typed",
+        "Type": "IfcRatioMeasure",
+        "Value": 0.1
+      },
+      "ArithmeticOperator": null,
+      "Category": null,
+      "Components": null,
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Tax rate",
+      "Resolved": 0.1,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:2JYq7Z8qH3nP9JjM4fLg2D/value/0": {
+      "SharedWith": "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/0"
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2A/quantity/0": {
+      "Dimension": "area",
+      "Kind": "Quantity",
+      "Name": "Scaffolding area",
+      "Type": "IfcQuantityArea",
+      "Value": 100.0
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2A/value/0": {
+      "SharedWith": "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/0"
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2A/value/1": {
+      "SharedWith": "item:1JYq7Z8qH3nP9JjM4fLg2C/value/0/component/0/component/1"
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2L/value/0": {
+      "Applied": {
+        "Kind": "Reference",
+        "Node": "item:3JYq7Z8qH3nP9JjM4fLg2L/value/0/ref"
+      },
+      "ArithmeticOperator": null,
+      "Category": "Equipment",
+      "Components": null,
+      "Condition": null,
+      "Kind": "Value",
+      "Name": "Plant hire",
+      "Resolved": 7.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": null
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2L/value/0/ref": {
+      "Kind": "Measure",
+      "Resolved": 7.0,
+      "Type": "IfcMeasureWithUnit",
+      "UnitNode": "item:3JYq7Z8qH3nP9JjM4fLg2L/value/0/ref/unit",
+      "Value": 7.0,
+      "ValueType": "IfcMonetaryMeasure"
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2L/value/0/ref/unit": {
+      "Currency": "GBP",
+      "Dimension": null,
+      "Kind": "Unit",
+      "Symbol": null,
+      "Type": "IfcMonetaryUnit",
+      "UnitType": null
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2L/value/1": {
+      "Applied": {
+        "Kind": "Typed",
+        "Type": "IfcMonetaryMeasure",
+        "Value": 4.0
+      },
+      "ArithmeticOperator": null,
+      "Category": "Labor",
+      "Components": null,
+      "Condition": "Summer rate",
+      "Kind": "Value",
+      "Name": "Scaffold rate",
+      "Resolved": 4.0,
+      "Type": "IfcCostValue",
+      "UnitBasisNode": "item:3JYq7Z8qH3nP9JjM4fLg2L/value/1/unitBasis"
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2L/value/1/unitBasis": {
+      "Kind": "Measure",
+      "Resolved": 2.0,
+      "Type": "IfcMeasureWithUnit",
+      "UnitNode": "item:3JYq7Z8qH3nP9JjM4fLg2L/value/1/unitBasis/unit",
+      "Value": 2.0,
+      "ValueType": "IfcAreaMeasure"
+    },
+    "item:3JYq7Z8qH3nP9JjM4fLg2L/value/1/unitBasis/unit": {
+      "Currency": null,
+      "Dimension": null,
+      "Kind": "Unit",
+      "Symbol": null,
+      "Type": "IfcSIUnit",
+      "UnitType": "AREAUNIT"
+    }
+  },
+  "Schedules": {
+    "3JYq7Z8qH3nP9JjM4fLg2E": {
+      "Identification": "CS-1",
+      "ItemGlobalIds": [
+        "1JYq7Z8qH3nP9JjM4fLg2C"
+      ],
+      "Name": "Canonical budget",
+      "PredefinedType": "BUDGET",
+      "Status": "DRAFT"
+    }
+  },
+  "SchemaVersion": "IFC4"
+}

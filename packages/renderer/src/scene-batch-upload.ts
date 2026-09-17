@@ -7,6 +7,7 @@ import type { RenderPipeline } from './pipeline.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { quantizeInterleaved } from './quantize.js';
+import type { BatchQuantization } from './scene-derived-batches.js';
 import {
   simplifyIndicesByClustering,
   lodCellSizeForBounds,
@@ -23,7 +24,8 @@ export function createSceneBatch(
     id: number;
     colorKey: string;
     origin?: [number, number, number];
-    quantized: boolean;
+    /** See `BatchQuantization`; derived batches pass their source's decision (#4832). */
+    quantized: BatchQuantization;
     lod: boolean;
   },
   bucketKey?: string,
@@ -68,12 +70,22 @@ export function createSceneBatch(
   try {
     let quantized: { min: [number, number, number]; step: number } | undefined;
     let vertexBuffer: GPUBuffer;
-    const quantizedData = options.quantized
+    const quantizedData = options.quantized !== 'off'
       ? quantizeInterleaved(
           merged.vertexData,
           BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
         )
       : null;
+    if (!quantizedData && options.quantized === 'required') {
+      // A subset of a quantized batch always fits its lattice range, so this
+      // cannot happen unless the derived batch was built from pieces outside
+      // its source batch. Say so: the overlay pass (depthCompare 'equal')
+      // would otherwise drop every fragment of this batch with no signal.
+      console.warn(
+        `[Scene] derived batch ${options.colorKey} could not inherit its source batch's quantization; ` +
+        'its overlay/partial depth will not match the base geometry (#4832).',
+      );
+    }
     if (quantizedData) {
       vertexBuffer = createTracked({
         size: Math.max(4, quantizedData.vertexData.byteLength),

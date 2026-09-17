@@ -389,6 +389,17 @@ export interface ViewerBackendMethods {
   getSection(): SectionPlane | null;
   setCamera(state: Partial<CameraState>): void;
   getCamera(): CameraState;
+  /**
+   * Translation from the frame `getCamera()`/`setCamera()` work in to the
+   * IFC world coordinates of the loaded model(s), `[x, y, z]` in IFC Z-up
+   * metres. A viewer shifts large-coordinate (georeferenced) models towards
+   * the origin before drawing them, so its camera is not in world
+   * coordinates; `bim.bcf.createViewpoint()` adds this offset and
+   * `bim.bcf.extractViewpointState()` subtracts it, so BCF viewpoints are in
+   * world coordinates as the BCF standard requires (#4879). Optional: a
+   * backend without a shifted frame omits it, which means no offset.
+   */
+  getRenderFrameOffset?(): [number, number, number];
 }
 
 export interface MutateBackendMethods {

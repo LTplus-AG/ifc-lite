@@ -116,6 +116,46 @@ const state = extractViewpointState(viewpoint);
 // state.coloredGuids - entities with color overrides
 ```
 
+### Coordinate frames
+
+BCF positions (`CameraViewPoint`, clipping-plane and bitmap locations, line
+points) are IFC **world** coordinates, Z-up. IFClite's geometry is not: for a
+georeferenced or otherwise far-from-origin model the mesher subtracts an RTC
+offset and possibly an origin shift, so a renderer camera, a section plane and
+every mesh or clash bound are in that shifted render frame, Y-up. Writing a
+render-frame camera puts it kilometres from the building in BIMcollab, usBIM
+or Solibri.
+
+`@ifc-lite/geometry/world-frame` owns the conversion. `renderFrameWorldOffset` turns a
+`GeometryResult`'s `coordinateInfo` into the render frame -> world translation
+in BCF axes; `translateViewpoint` applies it on export, and
+`viewpointFromWorld` undoes it on import (a viewpoint written by ifc-lite
+before #4806, still in the render frame, is recognised against the model
+bounds and kept as it is). For a federation, `federationFrameInfo` picks the
+earliest-loaded model's frame, which the others are aligned to.
+
+```typescript
+import { createViewpoint, translateViewpoint, viewpointFromWorld } from '@ifc-lite/bcf';
+import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+
+const offset = renderFrameWorldOffset(result.coordinateInfo);
+
+// Export: render-frame camera -> world viewpoint
+const worldViewpoint = translateViewpoint(createViewpoint({ camera: currentCameraState }), offset);
+
+// Import: world viewpoint -> render frame, before extractViewpointState
+const localViewpoint = viewpointFromWorld(worldViewpoint, offset, result.coordinateInfo.shiftedBounds);
+```
+
+The viewer, `ifc-lite clash --bcf`, the MCP playground's `clash_bcf_export`
+and `bim.bcf` in the SDK all do this for you. In the SDK,
+`bim.bcf.createViewpoint({ camera: bim.viewer.getCamera() })` writes world
+coordinates and `bim.bcf.extractViewpointState()` returns a camera for
+`bim.viewer.setCamera()` whenever the host's viewer backend implements the
+optional `getRenderFrameOffset()` (the ifc-lite viewer does); without it no
+offset is applied. The low-level converters (`cameraToPerspective`,
+`sectionPlaneToClippingPlane`, ...) never change frames.
+
 ## GUID Conversion
 
 BCF uses UUID format while IFC uses a compressed 22-character GlobalId (base64). The package re-exports conversion utilities (from `@ifc-lite/encoding`):
@@ -157,12 +197,15 @@ The clash package (`@ifc-lite/clash/bcf`) exports clash detection results as a B
 ```typescript
 import { createBCFFromClashResult, mapBcfToClashes } from '@ifc-lite/clash/bcf';
 import { clashReviewKey } from '@ifc-lite/clash';
+import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 
 const project = await createBCFFromClashResult(clashResult, groups, {
   author: 'clash@ifc-lite',
   projectName: 'Clash report',
   // Optional: map each clash to its review status ('open' | 'resolved' | 'accepted')
   reviewStatusOf: (clash) => myReviews.get(clashReviewKey(clash))?.status ?? 'open',
+  // Clash bounds are in the mesher's render frame; BCF cameras must be world.
+  worldOffset: renderFrameWorldOffset(result.coordinateInfo),
 });
 ```
 

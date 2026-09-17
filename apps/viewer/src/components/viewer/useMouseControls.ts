@@ -22,6 +22,7 @@ import type {
 import type { MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
+import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { useViewerStore } from '@/store';
@@ -36,6 +37,7 @@ import {
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
+import { createFlyController } from './flyControls.js';
 import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
 
 export interface MouseState {
@@ -461,6 +463,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       mouseState.startY = e.clientY;
       mouseState.didDrag = false;
       mouseState.isRectSelecting = false;
+      // Right button held = fly (look + WASD/QE + wheel speed) in every tool; the middle button still pans. A frozen view refuses and falls through.
+      if (e.button === 2 && fly.begin(canvas)) { clearHover(); canvas.style.cursor = 'crosshair'; return; }
 
       // Determine action based on active tool and mouse button
       const tool = activeToolRef.current;
@@ -489,7 +493,11 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Set orbit pivot to the 3D point under the cursor so rotation feels anchored
       // to what the user is looking at. On miss, place pivot at current distance along
       // the cursor ray so orbit always feels connected to where you're pointing.
-      if (willOrbit) {
+      // A focused clash with nothing selected orbits around the clashing pair (#4806).
+      const clashPivot = willOrbit
+        ? focusedClashOrbitPivot(useViewerStore.getState(), selectedEntityIdRef.current) : null;
+      if (clashPivot) camera.setOrbitCenter(clashPivot);
+      else if (willOrbit) {
         const rect = canvas.getBoundingClientRect();
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
@@ -528,45 +536,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
             camera.setOrbitCenter(null);
           }
         } else {
-          // No geometry hit or large model — anchor the pivot to the scene
-          // centre (a stable point on the model) rather than the camera target,
-          // which drifts as you orbit/pan and made repeated rotation feel
-          // untethered (issue #1107, item 3).
-          const anchorBounds = camera.getOrbitAnchorBounds();
-          const bounds = anchorBounds ?? camera.getSceneBounds();
-          const anchor = bounds
-            ? {
-                x: (bounds.min.x + bounds.max.x) / 2,
-                y: (bounds.min.y + bounds.max.y) / 2,
-                z: (bounds.min.z + bounds.max.z) / 2,
-              }
-            : camera.getTarget();
-          let pivot: { x: number; y: number; z: number };
-          if (anchorBounds) {
-            // Outlier model (issue #1394): the geometry is a compact cluster
-            // surrounded by lots of empty space, so the cursor usually misses
-            // it. Projecting the anchor onto the cursor ray (the #1107 path
-            // below) would place the pivot in that empty space *beside* the
-            // model, and orbiting then swings the model out of frame. Orbit
-            // around the robust model centre directly so it stays put.
-            pivot = anchor;
-          } else {
-            // #1107: project the scene centre onto the cursor ray so the pivot
-            // still sits under the pointer, at the scene's depth.
-            const ray = camera.unprojectToRay(cx, cy, canvas.width, canvas.height);
-            const toAnchor = {
-              x: anchor.x - ray.origin.x,
-              y: anchor.y - ray.origin.y,
-              z: anchor.z - ray.origin.z,
-            };
-            const d = Math.max(1, toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z);
-            pivot = {
-              x: ray.origin.x + ray.direction.x * d,
-              y: ray.origin.y + ray.direction.y * d,
-              z: ray.origin.z + ray.direction.z * d,
-            };
-          }
-          camera.setOrbitCenter(pivot);
+          // No geometry hit or large model — anchor the pivot to the scene centre.
+          camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, cx, cy, canvas.width, canvas.height));
         }
       }
 
@@ -622,7 +593,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       // Handle measure tool live preview while dragging
       // IMPORTANT: Check tool first, not activeMeasurement, to prevent orbit conflict
-      if (tool === 'measure' && mouseState.isDragging && activeMeasurementRef.current) {
+      if (tool === 'measure' && mouseState.isDragging && activeMeasurementRef.current && !fly.isActive()) {
         if (handleMeasureDrag(ctx, e, x, y)) return;
       }
 
@@ -657,8 +628,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         return;
       }
 
-      // Handle orbit/pan for other tools (or measure tool with shift+drag or no active measurement)
-      if (mouseState.isDragging && (tool !== 'measure' || !activeMeasurementRef.current)) {
+      // Handle fly, then orbit/pan for other tools (or measure tool with shift+drag or no active measurement)
+      if (mouseState.isDragging && (fly.isActive() || tool !== 'measure' || !activeMeasurementRef.current)) {
         const dx = e.clientX - mouseState.lastX;
         const dy = e.clientY - mouseState.lastY;
 
@@ -670,13 +641,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         }
 
         // Always update camera state immediately (feels responsive)
-        if (mouseState.isPanning || tool === 'pan') {
+        if (fly.isActive()) {
+          fly.look(dx, dy, e.movementX, e.movementY); // pointer-locked: the cursor is pinned, so movement deltas lead
+        } else if (mouseState.isPanning || tool === 'pan') {
           camera.pan(dx, dy, false);
-        } else if (tool === 'walk') {
-          // Walk mode: mouse drag looks around (full orbit)
-          camera.orbit(dx, dy, false);
         } else {
-          camera.orbit(dx, dy, false);
+          camera.orbit(dx, dy, false); // walk mode too: drag looks around (full orbit)
         }
 
         mouseState.lastX = e.clientX;
@@ -689,8 +659,6 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         renderer.requestRender();
         updateCameraRotationRealtime(camera.getRotation());
         calculateScale();
-
-
 
         // Clear hover while dragging
         clearHover();
@@ -726,6 +694,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       const tool = activeToolRef.current;
+      const flyEnd = e.button === 2 ? fly.end() : 'none';
+      if (flyEnd === 'flew') mouseState.didDrag = true; else if (flyEnd === 'menu' && !mouseState.didDrag) void handleContextMenuSelection(ctx, e);
 
       // Rectangle-select finalisation: run pickRect against the
       // dragged rect, replace the current selection with the result,
@@ -761,7 +731,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       // Handle measure tool completion
-      if (tool === 'measure' && activeMeasurementRef.current) {
+      if (tool === 'measure' && activeMeasurementRef.current && e.button !== 2) {
         if (handleMeasureUp(ctx, e)) return;
       }
 
@@ -793,20 +763,14 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       sectionLastFaceKeyRef.current = null;
       sectionLastCastPosRef.current = null;
       setSectionPickPreview(null);
-      // Restore cursor based on active tool
-      if (tool === 'measure' || tool === 'appearance-face') {
-        canvas.style.cursor = 'crosshair';
-      } else if (tool === 'pan') {
-        canvas.style.cursor = 'grab';
-      } else if (tool === 'walk') {
-        canvas.style.cursor = 'crosshair';
-      } else {
-        canvas.style.cursor = 'default';
-      }
+      // Restore cursor based on active tool (same mapping as pointerup)
+      canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default');
       clearHover();
     };
 
     const handleContextMenu = async (e: MouseEvent) => {
+      // macOS/Linux fire this on PRESS, mid-fly; hold it until release (pointerup replays a plain click).
+      if (fly.isActive() || fly.consumeMenuSuppression()) { e.preventDefault(); fly.deferContextMenu(); return; }
       await handleContextMenuSelection(ctx, e);
     };
 
@@ -818,8 +782,20 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // as a wheel event with `ctrlKey: true` and no key ever pressed - see
     // wheelZoom.ts.
     const fineZoomModifier = createFineZoomModifierTracker();
+    const fly = createFlyController({
+      camera,
+      // Fly moves the camera through setters the embed `?controls=` freeze does not gate, so gate it here (#4868).
+      canFly: () => useViewerStore.getState().interactionMode === 'all',
+      onChange: () => {
+        isInteractingRef.current = true; renderer.requestRender(); updateCameraRotationRealtime(camera.getRotation()); calculateScale();
+        clearHover(); // a keys-only flight never reaches the mousemove path that clears it
+      },
+      // Focus or pointer lock lost mid-flight: no pointerup is coming, so end the drag as leaving the canvas does.
+      onCancel: () => { handleMouseLeave(); isInteractingRef.current = false; renderer.requestRender(); },
+    });
 
     const handleWheel = (e: WheelEvent) => {
+      if (fly.isActive()) return fly.wheel(e); // while flying the wheel sets fly speed, not zoom
       // Cancels the browser's own Ctrl+wheel page zoom as well as scrolling;
       // works only because the listener below is registered `passive: false`.
       applyWheelZoom(e, {
@@ -914,6 +890,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       canvas.removeEventListener('click', handleClick);
       canvas.removeEventListener('dblclick', handleDoubleClick);
       fineZoomModifier.dispose();
+      fly.dispose();
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
 
       // Cancel pending raycast requests

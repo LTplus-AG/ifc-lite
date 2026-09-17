@@ -71,7 +71,7 @@ export interface ClashBcfOptions {
   maxMembersPerTopic?: number;
   cameraDistanceFactor?: number;
   snapshotProvider?: (group: ClashGroup) => Promise<Uint8Array | undefined>;
-  /** Shift from the (origin-shifted) clash-bounds frame to IFC world coordinates, IFC Z-up metres (#4806). */
+  /** Clash-bounds (render) frame -> IFC world, Z-up metres: `renderFrameWorldOffset(coordinateInfo)` from `@ifc-lite/geometry/world-frame` (#4806, #4879). */
   worldOffset?: { x: number; y: number; z: number };
 }
 

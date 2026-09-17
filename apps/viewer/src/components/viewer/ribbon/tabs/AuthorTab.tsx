@@ -13,6 +13,7 @@ import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placeme
 import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo, Appearance } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
+import { useTranslation } from '@/i18n';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { BulkPropertyEditor } from '../../BulkPropertyEditor';
 import { DataConnector } from '../../DataConnector';
@@ -30,6 +31,7 @@ import {
 const EDIT_ACTIVE_CLASS = 'bg-purple-600/20 text-foreground ring-1 ring-inset ring-purple-600/50';
 
 export function AuthorTab() {
+  const { t } = useTranslation();
   const { ifcDataStore } = useIfc();
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
@@ -53,13 +55,13 @@ export function AuthorTab() {
 
   return (
     <>
-      <RibbonGroup label="Edit">
+      <RibbonGroup label={t('ribbon.author.editGroup')}>
         <RibbonLargeButton
           icon={EditElement}
-          label="Edit mode"
+          label={t('ribbon.author.editMode')}
           tooltip={canEditInSession
-            ? (editEnabled ? 'Exit edit mode' : 'Enter edit mode')
-            : 'Editing requires editor access in this shared session'}
+            ? (editEnabled ? t('ribbon.author.exitEditTooltip') : t('ribbon.author.enterEditTooltip'))
+            : t('ribbon.author.editLockedTooltip')}
           shortcut="E"
           active={editEnabled}
           activeClassName={EDIT_ACTIVE_CLASS}
@@ -69,14 +71,14 @@ export function AuthorTab() {
         <RibbonSmallStack>
           <RibbonSmallButton
             icon={Undo}
-            label="Undo"
+            label={t('ribbon.author.undo')}
             shortcut="⌘Z"
             disabled={!canUndo}
             onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'undo'); }}
           />
           <RibbonSmallButton
             icon={Redo}
-            label="Redo"
+            label={t('ribbon.author.redo')}
             shortcut="⌘⇧Z"
             disabled={!canRedo}
             onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'redo'); }}
@@ -86,20 +88,20 @@ export function AuthorTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Create">
+      <RibbonGroup label={t('ribbon.author.createGroup')}>
         <RibbonLargeButton
           icon={Appearance}
-          label="Appearance"
+          label={t('ribbon.author.appearance')}
           className="w-20"
-          tooltip="Appearance: apply images across IFC surfaces"
+          tooltip={t('ribbon.author.appearanceTooltip')}
           active={activeWorkspacePanels.has('appearance')}
           activeClassName={EDIT_ACTIVE_CLASS}
           onClick={() => handleToggleRightPanel('appearance')}
         />
         <RibbonLargeButton
           icon={AddElement}
-          label="Add element"
-          tooltip="Add element (opens the drawing panel)"
+          label={t('ribbon.author.addElement')}
+          tooltip={t('ribbon.author.addElementTooltip')}
           active={activeWorkspacePanels.has('addElement')}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
@@ -111,7 +113,7 @@ export function AuthorTab() {
             toolbar) — the ribbon has room for stable geography. */}
         <RibbonLargeButton
           icon={SpaceSketch}
-          label="Space Sketch"
+          label={t('ribbon.author.spaceSketch')}
           active={activeTool === 'spaceSketch'}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
@@ -122,13 +124,13 @@ export function AuthorTab() {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Properties">
+      <RibbonGroup label={t('ribbon.author.propertiesGroup')}>
         <RibbonSmallStack>
           <BulkPropertyEditor
             trigger={
               <RibbonSmallButton
                 icon={EditProperty}
-                label="Bulk property editor"
+                label={t('ribbon.author.bulkPropertyEditor')}
                 disabled={!ifcDataStore}
               />
             }
@@ -137,7 +139,7 @@ export function AuthorTab() {
             trigger={
               <RibbonSmallButton
                 icon={ImportData}
-                label="Import data (CSV)"
+                label={t('ribbon.author.importData')}
                 disabled={!ifcDataStore}
               />
             }
@@ -151,11 +153,11 @@ export function AuthorTab() {
           extensions, personal flavors, permissions. Customization, not
           analysis, so it lives here (mirrors the classic Panels menu,
           which files Extensions under its "Author" section). */}
-      <RibbonGroup label="Customize">
+      <RibbonGroup label={t('ribbon.author.customizeGroup')}>
         <RibbonLargeButton
           icon={Extension}
-          label="Extensions"
-          tooltip="Extensions & flavors"
+          label={t('ribbon.author.extensions')}
+          tooltip={t('ribbon.author.extensionsTooltip')}
           active={activeWorkspacePanels.has('extensions')}
           onClick={() => handleToggleRightPanel('extensions')}
         />

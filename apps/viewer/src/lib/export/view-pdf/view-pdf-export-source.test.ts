@@ -98,6 +98,8 @@ function seedFederated(largeVisible = true): void {
     classFilter: null,
     selectedStoreys: new Set<number>(),
     projectionMode: 'orthographic',
+    // The cut is on screen only while the Section tool draws it (#4910).
+    activeTool: 'section',
     sectionPlane: {
       ...useViewerStore.getState().sectionPlane,
       enabled: true,
@@ -147,6 +149,13 @@ describe('readViewPdfSource (#2042)', () => {
       SMALL_MAX.x,
       'a hidden model must not stretch the range the cut resolves against',
     );
+  });
+
+  it('prints no cut once the user has left the Section tool (#4910)', () => {
+    useViewerStore.getState().setActiveTool('select');
+    const source = readViewPdfSource(useViewerStore.getState());
+    assert.equal(source.section, null, 'BUG: the sheet is cut although the view is not');
+    assert.equal(source.sectionEnabled, false);
   });
 
   it('gathers the visible models geometry and leaves the instanced list empty by construction', () => {

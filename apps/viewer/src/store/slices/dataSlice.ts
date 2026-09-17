@@ -7,7 +7,7 @@ import { retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
-import { DATA_DEFAULTS } from '../constants.js';
+import { appendGeometryBatchPatch } from './dataSlice.appendGeometryBatch.js';
 
 /**
  * Cross-slice state that dataSlice reads/writes via the combined store.
@@ -57,7 +57,13 @@ export interface DataSlice {
   setIfcDataStore: (result: IfcDataStore | null) => void;
   setGeometryResult: (result: GeometryResult | null) => void;
   setBoundedGeometryMode: (enabled: boolean) => void;
-  appendGeometryBatch: (meshes: GeometryResult['meshes'], coordinateInfo?: CoordinateInfo) => void;
+  /**
+   * Append newly created meshes to the geometry of the model that OWNS
+   * them — `modelId` is required and never inferred (#4922). See
+   * `appendGeometryBatchPatch` in `dataSlice.appendGeometryBatch.ts` for the
+   * routing contract.
+   */
+  appendGeometryBatch: (modelId: string, meshes: GeometryResult['meshes'], coordinateInfo?: CoordinateInfo) => void;
   /** Signal that mesh positions/normals have been mutated in place — see
    *  `geometryContentVersion` for why this is separate from setGeometryResult. */
   bumpGeometryContentVersion: () => void;
@@ -152,20 +158,6 @@ export interface DataSlice {
   updateCoordinateInfo: (coordinateInfo: CoordinateInfo) => void;
 }
 
-const getDefaultCoordinateInfo = (): CoordinateInfo => ({
-  // Create fresh copies to avoid shared object references
-  originShift: { x: DATA_DEFAULTS.ORIGIN_SHIFT.x, y: DATA_DEFAULTS.ORIGIN_SHIFT.y, z: DATA_DEFAULTS.ORIGIN_SHIFT.z },
-  originalBounds: {
-    min: { x: DATA_DEFAULTS.ORIGIN_SHIFT.x, y: DATA_DEFAULTS.ORIGIN_SHIFT.y, z: DATA_DEFAULTS.ORIGIN_SHIFT.z },
-    max: { x: DATA_DEFAULTS.ORIGIN_SHIFT.x, y: DATA_DEFAULTS.ORIGIN_SHIFT.y, z: DATA_DEFAULTS.ORIGIN_SHIFT.z },
-  },
-  shiftedBounds: {
-    min: { x: DATA_DEFAULTS.ORIGIN_SHIFT.x, y: DATA_DEFAULTS.ORIGIN_SHIFT.y, z: DATA_DEFAULTS.ORIGIN_SHIFT.z },
-    max: { x: DATA_DEFAULTS.ORIGIN_SHIFT.x, y: DATA_DEFAULTS.ORIGIN_SHIFT.y, z: DATA_DEFAULTS.ORIGIN_SHIFT.z },
-  },
-  hasLargeCoordinates: DATA_DEFAULTS.HAS_LARGE_COORDINATES,
-});
-
 const EMPTY_POSITIONS = new Float32Array(0);
 const EMPTY_NORMALS = new Float32Array(0);
 const EMPTY_INDICES = new Uint32Array(0);
@@ -235,63 +227,9 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
     geometryContentVersion: state.geometryContentVersion + 1,
   })),
 
-  appendGeometryBatch: (meshes, coordinateInfo) => set((state) => {
-    // Incremental totals: O(batch_size) instead of O(total_accumulated) .reduce()
-    let batchTriangles = 0;
-    let batchVertices = 0;
-    for (let i = 0; i < meshes.length; i++) {
-      batchTriangles += meshes[i].indices.length / 3;
-      batchVertices += meshes[i].positions.length / 3;
-    }
-
-    if (!state.geometryResult) {
-      const geometryResult = {
-        meshes: meshes.slice(),
-        totalTriangles: batchTriangles,
-        totalVertices: batchVertices,
-        coordinateInfo: coordinateInfo || getDefaultCoordinateInfo(),
-      };
-      const modelId = state.activeModelId;
-      if (!modelId) {
-        return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-      }
-      const model = state.models.get(modelId);
-      if (!model) {
-        return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-      }
-      const models = new Map(state.models);
-      models.set(modelId, { ...model, geometryResult });
-      return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-
-    // Mutate the existing array in-place (O(batch) per append) instead of
-    // .concat() (O(total) per append) to avoid O(N²) for large files.
-    // The new geometryResult object reference below is sufficient for
-    // Zustand/React change detection — array identity doesn't need to change.
-    const existingMeshes = state.geometryResult.meshes;
-    for (let i = 0; i < meshes.length; i++) {
-      existingMeshes.push(meshes[i]);
-    }
-
-    const geometryResult = {
-      ...state.geometryResult,
-      meshes: existingMeshes,
-      totalTriangles: state.geometryResult.totalTriangles + batchTriangles,
-      totalVertices: state.geometryResult.totalVertices + batchVertices,
-      coordinateInfo: coordinateInfo || state.geometryResult.coordinateInfo,
-    };
-    const modelId = state.activeModelId;
-    if (!modelId) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const model = state.models.get(modelId);
-    if (!model) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-    const models = new Map(state.models);
-    models.set(modelId, { ...model, geometryResult });
-    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
-  }),
+  appendGeometryBatch: (modelId, meshes, coordinateInfo) => set((state) => (
+    appendGeometryBatchPatch(state, modelId, meshes, coordinateInfo)
+  )),
   releaseGeometryMemory: () => set((state) => {
     if (!state.geometryResult || !state.boundedGeometryMode) {
       return {};

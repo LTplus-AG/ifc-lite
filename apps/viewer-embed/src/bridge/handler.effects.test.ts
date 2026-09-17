@@ -98,7 +98,11 @@ function makeRealState() {
   state = {
     ...createDataSlice(set, get, undefined as never),
     ...createCameraSlice(set, get, undefined as never),
-    activeModelId: null,
+    // `appendGeometryBatch` requires an explicit owning modelId and only
+    // mirrors into the top-level `geometryResult` these tests read when that
+    // id matches `activeModelId` (#4922) — this suite isn't exercising
+    // federation routing, so give it a fixed active model to append onto.
+    activeModelId: 'test-model',
     models: new Map(),
     // Stand-in for the renderer-side actuator the Viewport registers
     // (Viewport.tsx -> camera.setRotation). What it does with the angles is
@@ -153,7 +157,7 @@ describe('bridge commands against the real store slices', () => {
 
   describe('RESET_COLORS', () => {
     it('actually restores the color SET_COLORS baked in', () => {
-      store.getState().appendGeometryBatch([mesh(12, [1, 0, 0, 1])] as never);
+      store.getState().appendGeometryBatch('test-model', [mesh(12, [1, 0, 0, 1])] as never);
 
       win.dispatch(cmd('SET_COLORS', { colorMap: { '12': [0, 1, 0, 1] } }));
       expect(store.getState().geometryResult.meshes[0].color).toEqual([0, 1, 0, 1]);
@@ -171,7 +175,7 @@ describe('bridge commands against the real store slices', () => {
       // channel. RESET_COLORS used to clear exactly this and nothing else —
       // wrong in both directions at once: the host's own override survived,
       // and an overlay owner's state was destroyed.
-      store.getState().appendGeometryBatch([mesh(12, [1, 0, 0, 1])] as never);
+      store.getState().appendGeometryBatch('test-model', [mesh(12, [1, 0, 0, 1])] as never);
       store.getState().setPendingColorUpdates(new Map([[12, [1, 1, 0, 1]]]));
 
       win.dispatch(cmd('SET_COLORS', { colorMap: { '12': [0, 1, 0, 1] } }));

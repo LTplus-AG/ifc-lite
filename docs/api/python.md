@@ -253,16 +253,12 @@ row = ents["entities"][step_id]
 #  'CrossSectionArea': '660', 'BarLength': '500',
 #  'PredefinedType': 'NOTDEFINED', 'BarSurface': 'PLAIN'}
 #
-# A bar leaving most of them `# Python API Reference
-
-, which is the common case:
+# A bar leaving most of them `$`, which is the common case:
 # {'NominalDiameter': '29', 'CrossSectionArea': '0',
 #  'PredefinedType': 'NOTDEFINED'}
 ```
 
-**Only what the file sets is returned.** An attribute left `# Python API Reference
-
- is omitted
+**Only what the file sets is returned.** An attribute left `$` is omitted
 rather than reported empty, so the list is usually shorter than the class
 declares, and its length varies between two entities of the same class.
 

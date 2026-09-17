@@ -15,6 +15,7 @@
  * Regions:
  *   package-index (docs/api/typescript.md)  — table of published packages
  *                                             from each package.json
+ *   python-api    (docs/api/python.md)      — the rust/python/README.md body
  *   cli-commands  (docs/guide/cli.md)       — command summary parsed from
  *                                             the CLI HELP text
  *   perf-numbers  (docs/guide/performance.md) — benchmark numbers stamped
@@ -334,7 +335,10 @@ function applyRegion(fileText, name, body) {
       `Markers for region "${name}" not found. Add:\n  ${begin}\n  ${end}\nto the doc first.`,
     );
   }
-  return fileText.replace(re, `$1\n${body}\n$2`);
+  // A replacement CALLBACK, never a replacement string: a generated body is
+  // arbitrary text (python-api stamps the whole rust/python/README.md), and a
+  // string replacement would expand any `$``, `$'`, `$&` or `$1` inside it.
+  return fileText.replace(re, (_match, open, close) => `${open}\n${body}\n${close}`);
 }
 
 let stale = 0;

@@ -7,9 +7,10 @@
  * ordered list of requested BCP 47 tags (URL choice, stored choice, then
  * `navigator.languages`).
  *
- * For each requested tag, in order: an exact match (case-insensitive), then
- * the bare language (`de-CH` → `de`), then a regional sibling (`de-CH` →
- * `de-DE`). The first requested tag with any match wins, so a user whose
+ * For each requested tag, in order: an exact match (canonical,
+ * case-insensitive), then progressively shorter prefixes (`zh-Hant-TW` →
+ * `zh-Hant` → `zh`), then a regional sibling in the same script, then any
+ * regional sibling (`de-CH` → `de-DE`). The first requested tag with any match wins, so a user whose
  * browser lists `fr-CH, de` gets German only when no French catalogue exists.
  * Invalid tags are skipped, never thrown.
  */
@@ -21,6 +22,16 @@ function canonicalize(tag: string): string | null {
   } catch (error) {
     console.warn(`[i18n] Ignoring invalid locale tag "${tag}".`, error);
     return null;
+  }
+}
+
+/** The script a tag implies (`zh-TW` → `Hant`), or '' when unknown. */
+function likelyScript(tag: string): string {
+  try {
+    return new Intl.Locale(tag).maximize().script ?? '';
+  } catch (error) {
+    console.warn(`[i18n] Could not infer the script of "${tag}".`, error);
+    return '';
   }
 }
 
@@ -43,12 +54,19 @@ export function negotiateLocale(
   for (const raw of requested) {
     const tag = raw.trim() === '' ? null : canonicalize(raw.trim());
     if (!tag) continue;
-    const exact = byCanonical.get(tag.toLowerCase());
-    if (exact) return exact;
-    const language = languageOf(tag);
-    const bare = byCanonical.get(language);
-    if (bare) return bare;
-    const sibling = candidates.find(({ canonical }) => languageOf(canonical) === language);
+    // Exact, then progressively truncated: zh-Hant-TW -> zh-Hant -> zh.
+    const subtags = tag.toLowerCase().split('-');
+    for (let length = subtags.length; length > 0; length -= 1) {
+      const match = byCanonical.get(subtags.slice(0, length).join('-'));
+      if (match) return match;
+    }
+    // A regional sibling, preferring one in the same writing system so a
+    // zh-TW reader is not handed zh-Hans because it happened to be listed first.
+    const language = subtags[0];
+    const script = likelyScript(tag);
+    const siblings = candidates.filter(({ canonical }) => languageOf(canonical) === language);
+    const sameScript = siblings.find(({ canonical }) => likelyScript(canonical) === script);
+    const sibling = sameScript ?? siblings[0];
     if (sibling) return sibling.locale;
   }
   return null;

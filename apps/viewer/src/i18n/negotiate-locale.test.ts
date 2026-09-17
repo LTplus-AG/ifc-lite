@@ -32,6 +32,13 @@ describe('negotiateLocale (#4785)', () => {
     assert.equal(negotiateLocale(['zh-TW'], ['en', 'zh-hant-tw']), 'zh-hant-tw');
   });
 
+  it('keeps the writing system: script prefixes first, then a same-script sibling', () => {
+    assert.equal(negotiateLocale(['zh-Hant-TW'], ['en', 'zh-Hans', 'zh-Hant']), 'zh-Hant');
+    assert.equal(negotiateLocale(['zh-TW'], ['en', 'zh-Hans', 'zh-Hant']), 'zh-Hant');
+    assert.equal(negotiateLocale(['zh-CN'], ['en', 'zh-Hant', 'zh-Hans']), 'zh-Hans');
+    assert.equal(negotiateLocale(['sr-Latn-RS'], ['en', 'sr-Cyrl', 'sr-Latn']), 'sr-Latn');
+  });
+
   it('returns null when nothing matches, and skips invalid or blank tags instead of throwing', () => {
     assert.equal(negotiateLocale(['it', 'ja'], available), null);
     const warn = console.warn;

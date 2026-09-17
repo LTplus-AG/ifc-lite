@@ -252,7 +252,10 @@ export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
   position: number;
+  /** The cut is on screen. Only ever true while the Section tool is active (`store/section-active.ts`). */
   enabled: boolean;
+  /** A cut the user left the Section tool with; reopening the tool resumes it (`store/section-active.ts`). */
+  parked?: boolean;
   /** If true, show the opposite side of the cut */
   flipped: boolean;
   /** Whether to render the filled, hatched cap surface at the plane. Defaults to true. */

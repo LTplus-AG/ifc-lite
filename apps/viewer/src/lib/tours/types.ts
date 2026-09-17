@@ -187,6 +187,8 @@ export interface UiSnapshot {
     axis: SectionPlaneAxis;
     position: number;
     enabled: boolean;
+    /** A cut parked outside the Section tool (`store/section-active.ts`). */
+    parked: boolean;
     flipped: boolean;
     /** Face-picked plane params; captured so an abort can restore a
      *  pre-tour custom cut, not just the cardinal fields. */

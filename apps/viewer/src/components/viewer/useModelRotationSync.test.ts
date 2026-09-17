@@ -11,6 +11,7 @@ import { degreesToRadians } from '@/lib/model-placement/rotation';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 import { realignFederationModels } from '@/hooks/ingest/federationRealign';
 import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
+import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import { reconcileModelRotations, subscribeModelRotationSync, withModelRotationsUnbaked } from './useModelRotationSync';
 
 /** 30°, an off-origin pivot, and an asymmetric shape: at 0°, at the origin, or
@@ -143,6 +144,24 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       assert.deepEqual([...snapshot.positions[0], ...(snapshot.origins[0] ?? [])], pristine,
         'the pre-alignment snapshot captured a rotated model');
       assert.deepEqual(vertices(after), rotated, 'the heading was not re-applied exactly once after the re-align');
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('a geometry update to one model leaves every other rotated model where it is', () => {
+    const second = { ...fixtureModel('second'), geometryResult: geometryResult() } as FederatedModel;
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['second', second]]) });
+    const unsubscribe = subscribeModelRotationSync();
+    try {
+      useViewerStore.getState().setModelRotation(['ifc', 'second'], { angle: ANGLE, pivot: [...PIVOT] });
+      const rotated = vertices(live());
+      // A collab peer edit on the other, inactive model: a new geometry for it
+      // and a bump of the store-wide content version (room-model-apply.ts).
+      applyRoomModelData(useViewerStore.getState(), 'second', { geometryResult: geometryResult() });
+      assert.deepEqual(vertices(live()), rotated, 'an untouched model re-applied its heading on another model\'s update');
+      assert.deepEqual(vertices(useViewerStore.getState().models.get('second') as FederatedModel), rotated,
+        'the replaced model did not take its heading exactly once');
     } finally {
       unsubscribe();
     }

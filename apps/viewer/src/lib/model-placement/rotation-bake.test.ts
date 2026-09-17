@@ -35,27 +35,27 @@ describe('ModelRotationBaker', () => {
   it('bakes a declared rotation once and reports the model as moved', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     const before = snapshot(value);
-    assert.deepEqual(baker.reconcile(targets(value, ROTATION), 1), ['m']);
+    assert.deepEqual(baker.reconcile(targets(value, ROTATION)), ['m']);
     const after = snapshot(value);
     assert.notDeepEqual(after, before);
     // Same declared value again: nothing moved, nothing re-baked.
-    assert.deepEqual(baker.reconcile(targets(value, ROTATION), 1), []);
+    assert.deepEqual(baker.reconcile(targets(value, ROTATION)), []);
     assert.deepEqual(snapshot(value), after);
   });
 
   it('spends nothing on an unrotated model', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     const before = snapshot(value);
-    assert.deepEqual(baker.reconcile(targets(value, ZERO_ROTATION), 1), []);
+    assert.deepEqual(baker.reconcile(targets(value, ZERO_ROTATION)), []);
     assert.deepEqual(snapshot(value), before);
   });
 
   it('re-bakes from the pristine baseline when the angle changes, never from the last bake', () => {
     const baker = new ModelRotationBaker(), value = geometry();
-    baker.reconcile(targets(value, ROTATION), 1);
-    baker.reconcile(targets(value, OTHER), 1);
+    baker.reconcile(targets(value, ROTATION));
+    baker.reconcile(targets(value, OTHER));
     const direct = new ModelRotationBaker(), fresh = geometry();
-    direct.reconcile(targets(fresh, OTHER), 1);
+    direct.reconcile(targets(fresh, OTHER));
     for (let i = 0; i < snapshot(value).length; i += 1) {
       assert.ok(Math.abs(snapshot(value)[i] - snapshot(fresh)[i]) < 1e-3,
         `component ${i}: ${snapshot(value)[i]} vs ${snapshot(fresh)[i]} — the second angle compounded`);
@@ -65,52 +65,49 @@ describe('ModelRotationBaker', () => {
   it('restores the pristine geometry when the rotation returns to zero', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     const before = snapshot(value);
-    baker.reconcile(targets(value, ROTATION), 1);
-    assert.deepEqual(baker.reconcile(targets(value, ZERO_ROTATION), 1), ['m']);
+    baker.reconcile(targets(value, ROTATION));
+    assert.deepEqual(baker.reconcile(targets(value, ZERO_ROTATION)), ['m']);
     assert.deepEqual(snapshot(value), before);
   });
 
-  it('treats a content-version bump it did not settle as somebody else rewriting the vertices', () => {
-    const baker = new ModelRotationBaker(), value = geometry();
-    baker.reconcile(targets(value, ROTATION), 1);
-    baker.settle(2);
-    // Settled: the baker caused that bump, so the baked state still stands.
-    assert.deepEqual(baker.reconcile(targets(value, ROTATION), 2), []);
-    // Unsettled: an external rewrite. The contract is that such a rewrite
-    // leaves the geometry un-rotated, so the declared angle is applied again.
-    const external = snapshot(value);
-    assert.deepEqual(baker.reconcile(targets(value, ROTATION), 3), ['m']);
-    assert.notDeepEqual(snapshot(value), external);
+  it('keeps an untouched model\'s baseline when another model\'s geometry is replaced', () => {
+    const baker = new ModelRotationBaker(), kept = geometry(), other = geometry();
+    const both = (second: Geometry) => new Map([['m', { geometry: kept, rotation: ROTATION }],
+      ['n', { geometry: second, rotation: ROTATION }]]);
+    baker.reconcile(both(other));
+    const rotated = snapshot(kept);
+    assert.deepEqual(baker.reconcile(both(geometry())), ['n']);
+    assert.deepEqual(snapshot(kept), rotated, 'the untouched model was turned a second time');
   });
 
   it('drops a baseline when the model hands over a different geometry object', () => {
     const baker = new ModelRotationBaker(), first = geometry();
-    baker.reconcile(targets(first, ROTATION), 1);
+    baker.reconcile(targets(first, ROTATION));
     const replacement = geometry();
     const pristine = snapshot(replacement);
-    assert.deepEqual(baker.reconcile(targets(replacement, ROTATION), 1), ['m']);
+    assert.deepEqual(baker.reconcile(targets(replacement, ROTATION)), ['m']);
     assert.notDeepEqual(snapshot(replacement), pristine);
     // The replacement was rotated from its OWN pristine bytes, not from the
     // first model's baseline.
     const control = new ModelRotationBaker(), fresh = geometry();
-    control.reconcile(targets(fresh, ROTATION), 1);
+    control.reconcile(targets(fresh, ROTATION));
     assert.deepEqual(snapshot(replacement), snapshot(fresh));
   });
 
   it('unbake restores every rotated model and forgets its baselines', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     const pristine = snapshot(value);
-    baker.reconcile(targets(value, ROTATION), 1);
+    baker.reconcile(targets(value, ROTATION));
     assert.deepEqual(baker.unbake(() => value), ['m']);
     assert.deepEqual(snapshot(value), pristine);
     // Forgotten, so the next reconcile captures a fresh baseline from whatever
     // the re-align left behind rather than trusting a stale one.
-    assert.deepEqual(baker.reconcile(targets(value, ROTATION), 1), ['m']);
+    assert.deepEqual(baker.reconcile(targets(value, ROTATION)), ['m']);
   });
 
   it('unbake leaves a model alone once its geometry has been swapped out', () => {
     const baker = new ModelRotationBaker(), value = geometry();
-    baker.reconcile(targets(value, ROTATION), 1);
+    baker.reconcile(targets(value, ROTATION));
     const rotated = snapshot(value);
     assert.deepEqual(baker.unbake(() => geometry()), []);
     assert.deepEqual(snapshot(value), rotated);
@@ -131,37 +128,37 @@ describe('ModelRotationBaker', () => {
 
   it('does not re-rotate the meshes it already baked when a batch is appended in place', () => {
     const baker = new ModelRotationBaker(), value = geometry();
-    baker.reconcile(targets(value, ROTATION), 1);
+    baker.reconcile(targets(value, ROTATION));
     const bakedFirst = meshSnapshot(value, 0);
     // Exactly what `appendGeometryBatch` does: push onto the live array, wrap
     // it in a new object, leave the content version alone.
     value.meshes.push(streamedMesh());
     const appended = { ...value, meshes: value.meshes } as Geometry;
-    assert.deepEqual(baker.reconcile(targets(appended, ROTATION), 1), ['m']);
+    assert.deepEqual(baker.reconcile(targets(appended, ROTATION)), ['m']);
     assert.deepEqual(meshSnapshot(appended, 0), bakedFirst,
       'the already-baked mesh was rotated a second time');
     // …and the mesh that arrived un-rotated is rotated exactly once.
     const control = new ModelRotationBaker();
     const fresh = geometry();
     fresh.meshes.push(streamedMesh());
-    control.reconcile(targets(fresh, ROTATION), 1);
+    control.reconcile(targets(fresh, ROTATION));
     assert.deepEqual(meshSnapshot(appended, 1), meshSnapshot(fresh, 1));
   });
 
   it('keeps a baseline that still describes some of the republished meshes', () => {
     const baker = new ModelRotationBaker(), value = geometry();
     const kept = value.meshes[0];
-    baker.reconcile(targets(value, ROTATION), 1);
+    baker.reconcile(targets(value, ROTATION));
     const bakedKept = meshSnapshot(value, 0);
     // Partial overlap: the baselined mesh object survives into a NEW array
     // beside a mesh this baseline has never seen.
     const partial = { ...value, meshes: [kept, streamedMesh()] } as Geometry;
-    assert.deepEqual(baker.reconcile(targets(partial, ROTATION), 1), ['m']);
+    assert.deepEqual(baker.reconcile(targets(partial, ROTATION)), ['m']);
     assert.deepEqual(meshSnapshot(partial, 0), bakedKept,
       'the surviving mesh was re-rotated instead of restored and re-baked');
     const control = new ModelRotationBaker(), fresh = geometry();
     fresh.meshes.push(streamedMesh());
-    control.reconcile(targets(fresh, ROTATION), 1);
+    control.reconcile(targets(fresh, ROTATION));
     assert.deepEqual(meshSnapshot(partial, 1), meshSnapshot(fresh, 1),
       'the newly arrived mesh was not rotated exactly once');
   });
@@ -172,28 +169,28 @@ describe('ModelRotationBaker', () => {
   it('does not hand a replaced model the vanished model\'s instanced boxes', () => {
     const baker = new ModelRotationBaker(), first = geometry();
     first.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
-    baker.reconcile(targets(first, ROTATION), 1);
+    baker.reconcile(targets(first, ROTATION));
     // A collab replacement: a whole new geometry with no mesh in common, and
     // instanced boxes of its own that the stale baseline must not overwrite.
     const replacement = geometry();
     replacement.instancedGeometryAabbs = instanced([-7.21, 1.13, -3.48], [-2.64, 4.82, 0.97]);
     const control = new ModelRotationBaker(), fresh = geometry();
     fresh.instancedGeometryAabbs = instanced([-7.21, 1.13, -3.48], [-2.64, 4.82, 0.97]);
-    control.reconcile(targets(fresh, ROTATION), 1);
-    assert.deepEqual(baker.reconcile(targets(replacement, ROTATION), 1), ['m']);
+    control.reconcile(targets(fresh, ROTATION));
+    assert.deepEqual(baker.reconcile(targets(replacement, ROTATION)), ['m']);
     assert.deepEqual(replacement.instancedGeometryAabbs, fresh.instancedGeometryAabbs,
       'the replacement inherited the vanished model\'s instanced boxes');
   });
 
   it('does not put back vertices a bounded-mode release has freed', () => {
     const baker = new ModelRotationBaker(), value = geometry();
-    baker.reconcile(targets(value, ROTATION), 1);
+    baker.reconcile(targets(value, ROTATION));
     // `releaseGeometryMemory` swaps every mesh's buffers for empty ones and
     // republishes the geometry, in place and without a version bump.
     value.meshes[0].positions = new Float32Array(0);
     value.meshes[0].normals = new Float32Array(0);
     const released = { ...value, meshes: value.meshes } as Geometry;
-    baker.reconcile(targets(released, OTHER), 1);
+    baker.reconcile(targets(released, OTHER));
     assert.equal(released.meshes[0].positions.length, 0,
       'the bake resurrected buffers the release had freed');
   });
@@ -223,9 +220,9 @@ describe('ModelRotationBaker', () => {
   it('restores a released mesh\'s placement, which the release never freed', () => {
     const baker = new ModelRotationBaker(), value = releasable();
     const pristine = structuredClone(placement(value));
-    baker.reconcile(targets(value, SKEW), 1);
+    baker.reconcile(targets(value, SKEW));
     assert.notDeepEqual(placement(value), pristine, 'the fixture must move under this rotation');
-    assert.deepEqual(baker.reconcile(targets(release(value), ZERO_ROTATION), 1), ['m']);
+    assert.deepEqual(baker.reconcile(targets(release(value), ZERO_ROTATION)), ['m']);
     assert.equal(value.meshes[0].positions.length, 0, 'the bake resurrected freed buffers');
     // The baseline is dropped at zero, so a placement left rotated here is
     // unrecoverable — a silent, permanent error while the UI reports 0°.
@@ -234,11 +231,11 @@ describe('ModelRotationBaker', () => {
 
   it('re-bakes a released mesh from its pristine placement rather than compounding', () => {
     const baker = new ModelRotationBaker(), value = releasable();
-    baker.reconcile(targets(value, SKEW), 1);
-    baker.reconcile(targets(release(value), OTHER), 1);
+    baker.reconcile(targets(value, SKEW));
+    baker.reconcile(targets(release(value), OTHER));
     // Straight to OTHER from pristine is where the released mesh must land.
     const control = new ModelRotationBaker(), fresh = releasable();
-    control.reconcile(targets(fresh, OTHER), 1);
+    control.reconcile(targets(fresh, OTHER));
     assert.deepEqual(placement(value), placement(fresh));
   });
 });

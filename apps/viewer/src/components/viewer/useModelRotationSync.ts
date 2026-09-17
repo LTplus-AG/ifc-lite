@@ -39,13 +39,10 @@ function bake(state: ViewerState): string[] {
   for (const [modelId, model] of state.models) {
     targets.set(modelId, { geometry: (model as FederatedModel).geometryResult, rotation: placementFor(state.modelPlacement, modelId).rotation });
   }
-  const moved = modelRotationBaker.reconcile(targets, state.geometryContentVersion);
+  const moved = modelRotationBaker.reconcile(targets);
   if (moved.length === 0) return moved;
   state.bumpGeometryContentVersion();
   const next = useViewerStore.getState();
-  // Tell the baker this bump was its own, so the next pass does not read it as
-  // an outside rewrite and bake the angle a second time.
-  modelRotationBaker.settle(next.geometryContentVersion);
   for (const modelId of moved) {
     const model = next.models.get(modelId) as FederatedModel | undefined;
     if (model?.ifcDataStore && model.geometryResult) {
@@ -86,9 +83,9 @@ export async function withModelRotationsUnbaked<T>(run: () => Promise<T>): Promi
 export function subscribeModelRotationSync(): () => void {
   reconcileModelRotations(useViewerStore.getState());
   return useViewerStore.subscribe((state, previous) => {
-    if (state.modelPlacement !== previous.modelPlacement
-      || state.models !== previous.models
-      || state.geometryContentVersion !== previous.geometryContentVersion) {
+    // Not on `geometryContentVersion`: a bump alone moves no model and no
+    // heading, and every geometry replacement also republishes `models`.
+    if (state.modelPlacement !== previous.modelPlacement || state.models !== previous.models) {
       reconcileModelRotations(state);
     }
   });

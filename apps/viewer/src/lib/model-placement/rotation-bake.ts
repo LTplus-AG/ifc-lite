@@ -19,11 +19,13 @@
  *     snapshot — a snapshot that contained one would restore *to* a rotated
  *     state and the next bake would compound it.
  *
- *  2. **A bump this baker did not cause invalidates every baseline.** Together
- *     with (1) that is sound: an external rewrite always leaves the geometry
- *     un-rotated, so re-capturing from it and re-applying the declared angle
- *     lands in the right place. Hence {@link ModelRotationBaker.settle}, which
- *     the caller uses to say "this bump was mine".
+ *  2. **A baseline is invalidated per model, by that model's own meshes, and
+ *     never by the store-wide `geometryContentVersion`.** That counter is
+ *     shared: a collab update to ONE model bumps it for all of them, and
+ *     reading every bump as a rewrite of every model would re-capture an
+ *     untouched model's already-rotated vertices as "pristine" and turn it a
+ *     second time. The only in-place rewrite of existing meshes is a re-align,
+ *     which (1) already brackets.
  *
  * Nothing here relies on the identity of the geometry OBJECT. Streaming
  * (`appendGeometryBatch`) pushes meshes onto the live array and republishes it
@@ -57,7 +59,6 @@ interface Entry {
   geometry: Geometry;
   baseline: RotationBaseline;
   applied: ModelRotation;
-  version: number;
 }
 
 export class ModelRotationBaker {
@@ -66,20 +67,18 @@ export class ModelRotationBaker {
   /**
    * Bring every target's geometry to its declared rotation.
    *
-   * @param contentVersion the store's current geometry content version.
    * @returns the ids whose vertices this call actually moved — what the caller
    *   must bump the content version for and re-index.
    */
-  reconcile(targets: ReadonlyMap<string, RotationTarget>, contentVersion: number): string[] {
+  reconcile(targets: ReadonlyMap<string, RotationTarget>): string[] {
     const moved: string[] = [];
     for (const [modelId, target] of targets) {
       const geometry = target.geometry;
       if (!geometry || geometry.meshes.length === 0) continue;
       let entry = this.entries.get(modelId);
-      if (entry && (entry.version !== contentVersion || baselineIsForeign(geometry, entry.baseline))) {
-        // The vertices this baseline described are gone — the model was
-        // replaced, or something outside this baker rewrote them. It can no
-        // longer restore anything, so it must not be used to.
+      if (entry && baselineIsForeign(geometry, entry.baseline)) {
+        // The meshes this baseline described are gone — the model was
+        // replaced. It can no longer restore anything, so it must not be used to.
         this.entries.delete(modelId);
         entry = undefined;
       }
@@ -88,7 +87,7 @@ export class ModelRotationBaker {
         // No baseline is captured for an unrotated model: that is the common
         // case and a baseline is a copy of the whole geometry.
         if (isZeroRotation(target.rotation)) continue;
-        entry = { geometry, baseline: captureRotationBaseline(geometry), applied: ZERO_ROTATION, version: contentVersion };
+        entry = { geometry, baseline: captureRotationBaseline(geometry), applied: ZERO_ROTATION };
         this.entries.set(modelId, entry);
       } else {
         // A streamed batch appends to the SAME mesh array and republishes it as
@@ -107,12 +106,6 @@ export class ModelRotationBaker {
       else entry.applied = { angle: target.rotation.angle, pivot: [...target.rotation.pivot] };
     }
     return moved;
-  }
-
-  /** Record that `version` is the bump this baker's own bake caused, so the
-   * next reconcile does not read it as somebody else's rewrite. */
-  settle(version: number): void {
-    for (const entry of this.entries.values()) entry.version = version;
   }
 
   /**

@@ -14,10 +14,25 @@
  * silently collapsed to `DUPLICATE_FALLBACK_STEP` (1 m on every axis), and the
  * mesh mirror that makes the copy visible found nothing to clone.
  *
- * The fixture makes the two answers unmistakable: the wall is 4 m along IFC X,
- * so a bounds-correct `+X` duplicate lands 4 m away and a fallback one lands
- * 1 m away. The active model carries geometry of its own at a DIFFERENT
- * globalId, exactly as a real federation does.
+ * WHY THE FIXTURE COLLIDES ON A GLOBALID. Every case here puts a mesh under the
+ * wall's OWN globalId in the top-level mirror too, at a deliberately different
+ * size (9 m vs the wall's 4 m). Without that collision a naive "prefer the
+ * model's own meshes, otherwise take the mirror" would pass every assertion,
+ * because the mirror would simply hold nothing under that id — the suite would
+ * pin the bug but not the fix. With it, three answers are distinguishable:
+ * 4 m (the element's own bounds), 9 m (a different model's element read under
+ * the same id), and 1 m (`DUPLICATE_FALLBACK_STEP`, i.e. no bounds at all).
+ * That is what separates `meshesForOwningModel`'s `activeModelId` gate from an
+ * unconditional fallback, and it is the behaviour the yaw-edit and collab-mirror
+ * call sites share.
+ *
+ * These go through `duplicateEntity` rather than importing
+ * `store/owningModelMeshes.ts` directly ON PURPOSE: the revert oracle reverts
+ * this PR's production files, which DELETES that new module, and one changed
+ * test file that cannot load is `REVERT_BROKE_BUILD` for the whole run
+ * (`scripts/lib/revert-oracle-ledger.mjs:104`). Entering through an export that
+ * survives the revert keeps the witness an assertion, and pins the call sites
+ * rather than just the helper.
  */
 
 // FIRST import, before `@/store`: `useViewerStore` is constructed at module
@@ -29,7 +44,7 @@
 // assertion failures under revert as a build failure. Same reason
 // `environmentSlice.test.ts` and eleven other store suites import it here.
 import '@/test/setup-dom.js';
-import { beforeEach, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
@@ -39,16 +54,20 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 
-/** The edited (non-active) model and its id offset. */
+/** The model the edit is made in. */
 const EDITED = 'edited';
 const EDITED_OFFSET = 1000;
-/** The active model, whose geometry the buggy lookup reached for. */
-const ACTIVE = 'active';
+/** A second loaded model, used as the active one. */
+const OTHER = 'other';
 
 const WALL = 50;
 const WALL_GLOBAL = WALL + EDITED_OFFSET;
-/** The wall mesh spans 4 m on X and 3 m on viewer Y; the fallback step is 1 m. */
+/** The wall's own mesh: 4 m along X. Its IFC placement is (2, 1, 0). */
 const WALL_SIZE_X = 4;
+const WALL_ORIGIN_X = 2;
+/** The mirror's decoy mesh under the SAME globalId: a different size. */
+const MIRROR_SIZE_X = 9;
+/** `DUPLICATE_FALLBACK_STEP` — what a bounds-less duplicate steps by. */
 const FALLBACK_STEP = 1;
 
 const FIXTURE = `ISO-10303-21;
@@ -74,54 +93,83 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-function meshFor(expressId: number): MeshData {
+/** One quad, `sizeX` m along X and 3 m along viewer Y, at origin x = 2. */
+function meshFor(expressId: number, sizeX: number): MeshData {
   return {
     expressId,
-    positions: new Float32Array([0, 0, 0, WALL_SIZE_X, 0, 0, WALL_SIZE_X, 3, 0, 0, 3, 0.2]),
+    positions: new Float32Array([0, 0, 0, sizeX, 0, 0, sizeX, 3, 0, 0, 3, 0.2]),
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
     indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
     color: [1, 1, 1, 1],
-    origin: [2, 0, -1],
+    origin: [WALL_ORIGIN_X, 0, -1],
   } as MeshData;
 }
 
-function geometryFor(expressId: number): GeometryResult {
+function geometryOf(meshes: MeshData[]): GeometryResult {
   return {
-    meshes: [meshFor(expressId)],
-    totalTriangles: 2,
-    totalVertices: 4,
+    meshes,
+    totalTriangles: 2 * meshes.length,
+    totalVertices: 4 * meshes.length,
     coordinateInfo: {
       originShift: { x: 0, y: 0, z: 0 },
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
-      shiftedBounds: { min: { x: 2, y: 0, z: -1 }, max: { x: 6, y: 3, z: -0.8 } },
+      shiftedBounds: { min: { x: 2, y: 0, z: -1 }, max: { x: 12, y: 3, z: -0.8 } },
       hasLargeCoordinates: false,
     },
   } as unknown as GeometryResult;
 }
 
-async function seed(): Promise<void> {
+interface Arrangement {
+  /** Which loaded model is the active one — i.e. which one the mirror mirrors. */
+  active: 'edited' | 'other';
+  /** Does the edited model carry its own geometry, with the wall's real mesh? */
+  ownGeometry: boolean;
+  /** Load only the edited model (legacy single-model shape). */
+  singleModel?: boolean;
+}
+
+/**
+ * Seed the store for one arrangement. The top-level `geometryResult` is always
+ * the ACTIVE model's geometry, as every writer in `dataSlice` / `modelSlice`
+ * leaves it, and it always contains the `MIRROR_SIZE_X` decoy under
+ * `WALL_GLOBAL`.
+ */
+async function seed(arrangement: Arrangement): Promise<void> {
   modelRotationBaker.clear();
   const bytes = new TextEncoder().encode(FIXTURE);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, {
     disableWorkerScan: true,
   });
-  const activeGeometry = geometryFor(7);
-  // `fixtureModels` makes its FIRST argument active, so the active model is not
-  // the one being edited — the federated arrangement the bug needs.
-  const active = {
-    ...fixtureModel(ACTIVE),
-    geometryResult: activeGeometry,
-  } as unknown as FederatedModel;
+
+  const decoy = geometryOf([meshFor(WALL_GLOBAL, MIRROR_SIZE_X)]);
   const edited = {
     ...fixtureModel(EDITED, { idOffset: EDITED_OFFSET }),
     ifcDataStore: dataStore,
-    geometryResult: geometryFor(WALL_GLOBAL),
+    geometryResult: arrangement.ownGeometry
+      ? geometryOf([meshFor(WALL_GLOBAL, WALL_SIZE_X)])
+      : null,
     maxExpressId: 100,
   } as unknown as FederatedModel;
+  const other = {
+    ...fixtureModel(OTHER),
+    geometryResult: decoy,
+  } as unknown as FederatedModel;
+
+  // `fixtureModels` makes its FIRST argument active.
+  const federation = arrangement.singleModel
+    ? fixtureModels(edited)
+    : arrangement.active === 'edited'
+      ? fixtureModels(edited, other)
+      : fixtureModels(other, edited);
+
   useViewerStore.setState({
-    ...fixtureModels(active, edited),
-    // The top-level mirror is the ACTIVE model's geometry, as the loader leaves it.
-    geometryResult: activeGeometry,
+    ...federation,
+    // The mirror is the active model's geometry. When the edited model is
+    // active and has none of its own, that is the decoy — which is exactly the
+    // legacy shape the mirror fallback exists for.
+    geometryResult: arrangement.active === 'edited' || arrangement.singleModel
+      ? (edited.geometryResult ?? decoy)
+      : decoy,
     modelPlacement: emptyPlacementState(),
     mutationViews: new Map([
       [EDITED, new MutablePropertyView(dataStore.properties || null, EDITED)],
@@ -131,38 +179,84 @@ async function seed(): Promise<void> {
     redoStacks: new Map(),
     geometryContentVersion: 0,
   });
-  assert.equal(useViewerStore.getState().activeModelId, ACTIVE, 'fixture must edit a non-active model');
+
+  const expectedActive = arrangement.singleModel || arrangement.active === 'edited' ? EDITED : OTHER;
+  assert.equal(useViewerStore.getState().activeModelId, expectedActive, 'fixture arrangement');
 }
 
-describe('duplicateEntity in a non-active federated model (#4929)', () => {
-  beforeEach(seed);
+/**
+ * Duplicate the wall along +X and return the X of the copy's IFC placement.
+ * The source sits at x = 2, so the step is `result - 2`.
+ */
+function duplicateAlongX(): { placementX: number; globalId: number } {
+  const result = useViewerStore.getState().duplicateEntity(EDITED, WALL, '+X');
+  assert.ok(!('error' in result), `duplicate failed: ${'error' in result ? result.error : ''}`);
+  const points = useViewerStore
+    .getState()
+    .mutationViews.get(EDITED)!
+    .getNewEntities()
+    .filter((e) => e.type === 'IfcCartesianPoint')
+    .map((e) => e.attributes[0] as number[]);
+  assert.equal(points.length, 1, `expected one new placement point, got ${points.length}`);
+  return { placementX: points[0][0], globalId: result.globalId };
+}
 
-  it('writes the copy\'s IFC placement one source-length along +X', () => {
-    const result = useViewerStore.getState().duplicateEntity(EDITED, WALL, '+X');
-    assert.ok(!('error' in result), `duplicate failed: ${'error' in result ? result.error : ''}`);
+function assertStep(placementX: number, expectedStep: number, what: string): void {
+  assert.ok(
+    Math.abs(placementX - (WALL_ORIGIN_X + expectedStep)) < 1e-4,
+    `${what}: stepped ${placementX - WALL_ORIGIN_X} m, expected ${expectedStep} m`,
+  );
+}
 
-    // The overlay's new IFCCARTESIANPOINT is the duplicate's placement: the
-    // source sits at (2, 1, 0), so a bounds-correct +X step puts it at 2 + 4.
-    const points = useViewerStore
-      .getState()
-      .mutationViews.get(EDITED)!
-      .getNewEntities()
-      .filter((e) => e.type === 'IfcCartesianPoint')
-      .map((e) => e.attributes[0] as number[]);
-    assert.equal(points.length, 1, `expected one new placement point, got ${points.length}`);
-    assert.ok(
-      Math.abs(points[0][0] - (2 + WALL_SIZE_X)) < 1e-4,
-      `placement X ${points[0][0]}, expected ${2 + WALL_SIZE_X} (${2 + FALLBACK_STEP} means the bounds lookup missed)`,
-    );
+describe('duplicateEntity reads bounds from the element\'s own model (#4929)', () => {
+  it('uses the element\'s own bounds when its model is loaded but not active', async () => {
+    await seed({ active: 'other', ownGeometry: true });
+    const { placementX } = duplicateAlongX();
+    assertStep(placementX, WALL_SIZE_X, 'non-active model with its own geometry');
+    assert.notEqual(placementX, WALL_ORIGIN_X + MIRROR_SIZE_X, 'read the active mirror instead');
+    assert.notEqual(placementX, WALL_ORIGIN_X + FALLBACK_STEP, 'collapsed to the fallback step');
   });
 
-  it('offsets the copy mesh by the source element size, not the fallback step', () => {
-    const result = useViewerStore.getState().duplicateEntity(EDITED, WALL, '+X');
-    assert.ok(!('error' in result), `duplicate failed: ${'error' in result ? result.error : ''}`);
+  // The case an unconditional `own ?? mirror` gets wrong: no own geometry and a
+  // colliding globalId in the mirror means the mirror would answer with a
+  // DIFFERENT element's bounds. No bounds is the only honest answer, and the
+  // fallback step is what the caller does with it.
+  it('refuses the active model\'s mirror for a non-active model with no geometry of its own', async () => {
+    await seed({ active: 'other', ownGeometry: false });
+    const { placementX } = duplicateAlongX();
+    assert.notEqual(
+      placementX,
+      WALL_ORIGIN_X + MIRROR_SIZE_X,
+      'took bounds from the active model\'s element under the same globalId',
+    );
+    assertStep(placementX, FALLBACK_STEP, 'non-active model with no geometry');
+  });
+
+  // The other half of the gate: for the model the mirror ACTUALLY mirrors, the
+  // mirror is the right answer. Legacy and geometry-first stores populate only
+  // the top-level slot, and this is the path that keeps them working.
+  it('falls back to the mirror for the active model when it has no geometry of its own', async () => {
+    await seed({ active: 'edited', ownGeometry: false });
+    const { placementX } = duplicateAlongX();
+    assertStep(placementX, MIRROR_SIZE_X, 'active model via the mirror');
+  });
+
+  it('is unchanged in single-model mode, where the only model is the active one', async () => {
+    await seed({ active: 'edited', ownGeometry: false, singleModel: true });
+    assert.equal(useViewerStore.getState().models.size, 1, 'single-model fixture');
+    const { placementX } = duplicateAlongX();
+    assertStep(placementX, MIRROR_SIZE_X, 'single model via the mirror');
+  });
+});
+
+describe('the duplicate\'s mesh lands in the edited model (#4929)', () => {
+  it('offsets the copy mesh by the source element size, not the fallback step', async () => {
+    await seed({ active: 'other', ownGeometry: true });
+    const { globalId } = duplicateAlongX();
 
     const meshes = useViewerStore.getState().models.get(EDITED)!.geometryResult!.meshes;
     const source = meshes.find((m) => m.expressId === WALL_GLOBAL);
-    const copy = meshes.find((m) => m.expressId === result.globalId);
+    const copy = meshes.find((m) => m.expressId === globalId);
     assert.ok(source, 'source mesh missing from the edited model');
     assert.ok(copy, 'the duplicate got no mesh: its bounds were looked up in the wrong model');
 
@@ -174,12 +268,12 @@ describe('duplicateEntity in a non-active federated model (#4929)', () => {
     );
   });
 
-  it('leaves the active model\'s geometry untouched', () => {
-    const before = useViewerStore.getState().models.get(ACTIVE)!.geometryResult!.meshes.length;
-    const result = useViewerStore.getState().duplicateEntity(EDITED, WALL, '+X');
-    assert.ok(!('error' in result), `duplicate failed: ${'error' in result ? result.error : ''}`);
+  it('leaves the active model\'s geometry untouched', async () => {
+    await seed({ active: 'other', ownGeometry: true });
+    const before = useViewerStore.getState().models.get(OTHER)!.geometryResult!.meshes.length;
+    duplicateAlongX();
     assert.equal(
-      useViewerStore.getState().models.get(ACTIVE)!.geometryResult!.meshes.length,
+      useViewerStore.getState().models.get(OTHER)!.geometryResult!.meshes.length,
       before,
       'the copy landed in the active model instead of the edited one',
     );

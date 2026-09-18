@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { federationFrameInfo, realRtcAnchorOf } from '@ifc-lite/geometry/world-frame';
 import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
 import type { ViewerState } from '@/store';
 import { selectAnchorGeoref } from '@/lib/geo/select-anchor-georef';
@@ -116,7 +116,7 @@ function normalizeRtc(rtc: { x: number; y: number; z: number }): { x: number; y:
  * base change is.
  */
 export function placementFrameKey(state: ViewerState): string {
-  const rtc = placementFrameCoordinateInfo(state)?.wasmRtcOffset;
+  const rtc = realRtcAnchorOf({ loadedAt: 0, geometryResult: { coordinateInfo: placementFrameCoordinateInfo(state) } });
   const base = placementFrameBaseKey(state);
   return rtc ? withPlacementRtc(base, normalizeRtc(rtc)) : base;
 }

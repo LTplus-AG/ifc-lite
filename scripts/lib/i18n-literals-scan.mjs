@@ -108,20 +108,17 @@ function literalStringValue(expr) {
 
 /**
  * Parse `source` as TSX and return every candidate literal: `JsxText`
- * nodes with non-whitespace content, `JsxExpression`s wrapping a string
- * literal (the `{'…'}` spelling of JSX text or an attribute value), and
- * `aria-label`/`title`/`placeholder`/`alt` `JsxAttribute`s set to a
- * string literal (plain or expression-wrapped) — BEFORE allowlist
- * filtering. Exported mainly for the detector's own tests.
+ * nodes with non-whitespace content, a JSX-CHILD-position `JsxExpression`
+ * wrapping a string literal (the `{'…'}` spelling of JSX text — NOT an
+ * attribute/prop value, which is a `JsxExpression` in a different AST
+ * position entirely), and `aria-label`/`title`/`placeholder`/`alt`
+ * `JsxAttribute`s set to a string literal (plain or expression-wrapped) —
+ * BEFORE allowlist filtering. Exported mainly for the detector's own
+ * tests.
  */
 export function findLiterals(source, fileName = 'fixture.tsx') {
   const found = [];
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-
-  /** JsxAttribute nodes are visited once by name below; tracking their
-   *  JsxExpression initializer's node lets the generic JsxExpression visit
-   *  skip it, so an attribute value is never counted twice. */
-  const consumedExpressions = new Set();
 
   function pushIfText(kind, raw) {
     const text = raw.replace(/\s+/g, ' ').trim();
@@ -138,13 +135,23 @@ export function findLiterals(source, fileName = 'fixture.tsx') {
           pushIfText('attr', init.text);
         } else if (ts.isJsxExpression(init) && init.expression) {
           const lit = literalStringValue(init.expression);
-          if (lit !== null) {
-            consumedExpressions.add(init);
-            pushIfText('attr', lit);
-          }
+          if (lit !== null) pushIfText('attr', lit);
         }
       }
-    } else if (ts.isJsxExpression(node) && node.expression && !consumedExpressions.has(node)) {
+    } else if (
+      ts.isJsxExpression(node) &&
+      node.expression &&
+      // A `JsxExpression` is also how EVERY attribute value and EVERY prop
+      // (`className={'flex items'}`, `key={'row'}`, `data-testid={'foo'}`)
+      // is spelled — none of that is UI copy, and only the JsxAttribute
+      // branch above (a NAMED, policed attribute) may count one. This
+      // branch counts a `JsxExpression` only in JSX CHILD position: a
+      // direct child of a `JsxElement`/`JsxFragment`, i.e. the `{'…'}`
+      // spelling of ordinary JSX text (review on #4973: the original
+      // version fired for every expression container without checking
+      // its parent, inflating the baseline with styling/prop values).
+      (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
+    ) {
       const lit = literalStringValue(node.expression);
       if (lit !== null) pushIfText('jsx-expression-string', lit);
     }

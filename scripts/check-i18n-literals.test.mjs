@@ -92,6 +92,23 @@ test('a JSX-expression string literal is caught the same as plain JSX text', () 
   assert.equal(countLiterals(src), 1);
 });
 
+test('a JSX-expression string literal in JSX-child position is still counted (<div>)', () => {
+  assert.equal(countLiterals(`<div>{'Save changes'}</div>`), 1);
+});
+
+test('a JsxExpression is counted ONLY in JSX-child position -- an untargeted attribute/prop value is not copy', () => {
+  // Review, #4973: the first AST version fired for EVERY JsxExpression, so
+  // ordinary styling/prop values inflated the baseline and failed the gate
+  // on changes that add no copy at all.
+  assert.equal(countLiterals(`<div className={'flex items'} />`), 0, 'className is not a policed attribute');
+  assert.equal(
+    countLiterals(`<Button variant={'ghost'} size={'icon-sm'} data-testid={'foo'} />`),
+    0,
+    'none of variant/size/data-testid are policed attributes',
+  );
+  assert.equal(countLiterals(`<Item key={'row'} />`), 0, 'key is React plumbing, not UI copy');
+});
+
 test('an aria-label written as a JSX-expression string literal is caught', () => {
   const src = `<button aria-label={'x'} />`;
   assert.ok(findLiterals(src).some((l) => l.text === 'x'));

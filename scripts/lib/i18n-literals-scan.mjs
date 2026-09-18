@@ -135,12 +135,17 @@ function staticStringValues(expr) {
   if (ts.isConditionalExpression(expr)) {
     return [...staticStringValues(expr.whenTrue), ...staticStringValues(expr.whenFalse)];
   }
-  if (ts.isBinaryExpression(expr) && (
-    expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-    expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
-    expr.operatorToken.kind === ts.SyntaxKind.BarBarToken
-  )) {
-    return staticStringValues(expr.right);
+  if (ts.isBinaryExpression(expr)) {
+    const op = expr.operatorToken.kind;
+    if (op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+      return staticStringValues(expr.right);
+    }
+    // `'Save ' + 'changes'` (and `'Save ' + name`): every static piece is copy.
+    if (op === ts.SyntaxKind.PlusToken) return [...staticStringValues(expr.left), ...staticStringValues(expr.right)];
+  }
+  // `` `View ${path}` ``: the fixed text around the holes is copy; the holes are not.
+  if (ts.isTemplateExpression(expr)) {
+    return [expr.head.text, ...expr.templateSpans.map((span) => span.literal.text)].filter((t) => t.trim().length > 0);
   }
   const lit = literalStringValue(expr);
   return lit === null ? [] : [lit];

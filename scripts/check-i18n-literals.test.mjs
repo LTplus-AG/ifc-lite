@@ -103,6 +103,13 @@ test('both arms of a conditional label are counted, in JSX text and in a policed
   assert.equal(countLiterals(`<div className={on ? 'a' : 'b'} />`), 0);
 });
 
+test('static concatenation and template-literal text are counted as copy (#4973 review)', () => {
+  assert.deepEqual(findLiterals(`<b>{'Save ' + 'changes'}</b>`).map((l) => l.text), ['Save', 'changes']);
+  assert.equal(countLiterals(`<b>{'Count: ' + n}</b>`), 1);
+  assert.equal(countLiterals('<a aria-label={`View ${path}`} />'), 1);
+  assert.equal(countLiterals('<a title={`${a}${b}`} />'), 0);
+});
+
 test('entity spellings in JSX text are decoded before the allowlist runs (#4973 review)', () => {
   assert.equal(countLiterals(`<span>&times;</span>`), 0);
   assert.equal(countLiterals(`<span>&middot; &#215; &#xD7;</span>`), 0);

@@ -35,10 +35,18 @@ import {
   mirrorAttribute,
   mirrorEntityDelete,
   attachRemoteApply,
-  attributeMutationValue,
   type CollabDocApi,
   type RemoteApplyHandlers,
 } from './mutation-bridge.js';
+// Namespace import, not a named one: `attributeMutationValue` is new
+// production code (#4931 collab follow-up). A named `import {
+// attributeMutationValue }` fails to LOAD the whole test file the moment the
+// revert oracle reverts `mutation-bridge.ts` back to a version without it
+// (`does not provide an export named` — a load-failure, not a RED assertion,
+// per the oracle's own REVERT-BROKE-BUILD guard). Reading it off the module
+// namespace instead turns "the export is gone" into `undefined`, so a revert
+// fails the assertions below for the right reason.
+import * as mutationBridge from './mutation-bridge.js';
 import { pathForEntity, pathForGuid, registerEntityMaps, registerEntityPath, registerStoreSlot } from './entity-paths.js';
 
 /**
@@ -662,17 +670,17 @@ describe('mutation-bridge model slots (#4444)', () => {
  */
 describe('attributeMutationValue (#4931 collab null handling)', () => {
   it('maps a CRDT null to the STEP absent marker, not an empty string', () => {
-    assert.strictEqual(attributeMutationValue(null), '$');
+    assert.strictEqual(mutationBridge.attributeMutationValue(null), '$');
   });
 
   it('maps a CRDT empty string to itself — distinct from null', () => {
-    assert.strictEqual(attributeMutationValue(''), '');
+    assert.strictEqual(mutationBridge.attributeMutationValue(''), '');
   });
 
   it('maps a non-null scalar to its string form', () => {
-    assert.strictEqual(attributeMutationValue('Wall-A'), 'Wall-A');
-    assert.strictEqual(attributeMutationValue(42), '42');
-    assert.strictEqual(attributeMutationValue(true), 'true');
+    assert.strictEqual(mutationBridge.attributeMutationValue('Wall-A'), 'Wall-A');
+    assert.strictEqual(mutationBridge.attributeMutationValue(42), '42');
+    assert.strictEqual(mutationBridge.attributeMutationValue(true), 'true');
   });
 
   /** A minimal real IfcDataStore from one STEP entity line (mirrors packages/export's own tests). */
@@ -703,12 +711,12 @@ describe('attributeMutationValue (#4931 collab null handling)', () => {
   }
 
   it('a remote peer explicitly clearing an attribute (CRDT null) exports as $, not present-and-empty', () => {
-    const line = exportedLine(attributeMutationValue(null));
+    const line = exportedLine(mutationBridge.attributeMutationValue(null));
     assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
   });
 
   it('a remote peer editing an attribute to a real empty string exports as \'\', distinct from the null case above', () => {
-    const line = exportedLine(attributeMutationValue(''));
+    const line = exportedLine(mutationBridge.attributeMutationValue(''));
     assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','',$,$,$,$,$);");
   });
 

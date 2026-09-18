@@ -7,10 +7,12 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { endClashScenePresentation } from '@/lib/clash/visibility-ownership';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { createPlacementIndexSync } from '@/lib/model-placement/spatial-index';
+import { modelIndices } from '@/lib/model-placement/model-indices';
 import { placementMoved, staleMeasurementIds } from '@/lib/model-placement/spatial-invalidation';
 import { equalTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
 import { createPreviewAnalysis } from '@/lib/model-placement/preview-analysis';
 import { publishPlacementBounds } from '@/lib/model-placement/bounds-revision';
+import { syncModelRotationsToRenderer } from './useModelRotationSync';
 
 /** The same model index map as mesh/instance upload, never a second allocator. */
 export function syncModelPlacements(renderer: Renderer, state: ViewerState, indices?: ReadonlyMap<string, number>, previous?: ViewerState): void {
@@ -23,6 +25,12 @@ export function syncModelPlacements(renderer: Renderer, state: ViewerState, indi
       renderer.setPointCloudTranslation({ id: model.pointCloudHandleId }, translation);
     }
   }
+  // Only on the INITIAL pass (no `previous`): `useModelRotationSync`'s own
+  // subscription already pushes every heading change from here on, but it can
+  // run before this hook's renderer/indices exist (mount ordering), and that
+  // first push would then silently do nothing — so this hook's own first sync
+  // pushes the declared headings once more, once the renderer is known (#4890).
+  if (!previous) syncModelRotationsToRenderer(renderer, state, indices ?? modelIndices(state.models));
   publishPlacementBounds();
 }
 

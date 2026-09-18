@@ -1,14 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { RefObject } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { emptyPlacementState, placementFor } from '@/lib/model-placement/state';
 import { degreesToRadians, rotateWorkspacePoint } from '@/lib/model-placement/rotation';
-import { addTranslation, type Translation } from '@/lib/model-placement/translation';
+import { addTranslation, toRenderTranslation, type Translation } from '@/lib/model-placement/translation';
 import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 import { realignFederationModels } from '@/hooks/ingest/federationRealign';
@@ -17,6 +19,7 @@ import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
+import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { reconcileModelRotations, subscribeModelRotationSync, withModelRotationsUnbaked } from './useModelRotationSync';
 
 /** 30°, an off-origin pivot, and an asymmetric shape: at 0°, at the origin, or
@@ -151,60 +154,118 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
   });
 
-  // GPU-instanced occurrences are drawn from renderer instance data the bake
-  // never touches, so rotating such a model would turn its flat meshes and
-  // leave the instanced ones behind. Refused until that is supported.
-  const withInstanced = (id: string, how: 'instanced-only' | 'pending-shards' | 'streaming') => {
+  const withInstanced = (id: string) => {
     const model = { ...fixtureModel(id), geometryResult: geometryResult() } as FederatedModel;
-    if (how === 'instanced-only') model.geometryResult!.instancedGeometryHashes = new Map([[77, 1n]]);
-    if (how === 'streaming') model.loadState = 'streaming-geometry';
-    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, [id, model]]),
-      ...(how === 'pending-shards' ? { pendingInstancedShards: [{ modelId: id, bytes: new ArrayBuffer(8) }] } : {}) });
+    model.geometryResult!.instancedGeometryHashes = new Map([[77, 1n]]);
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, [id, model]]) });
   };
 
-  for (const how of ['instanced-only', 'pending-shards'] as const) {
-    it(`refuses to rotate a model with GPU-instanced geometry (${how}), atomically for a mixed selection`, () => {
-      withInstanced('inst', how);
-      assert.throws(() => useViewerStore.getState().setModelRotation(['ifc', 'inst'], { angle: ANGLE, pivot: [...PIVOT] }),
-        /GPU-instanced geometry cannot be rotated/);
-      assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
-      assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'inst').rotation.angle, 0);
-      useViewerStore.setState({ pendingInstancedShards: null });
-    });
-  }
-
-  it('refuses to rotate a model whose geometry is still streaming, before its instancing is known', () => {
-    withInstanced('loading', 'streaming');
-    assert.throws(() => useViewerStore.getState().setModelRotation(['loading'], { angle: ANGLE, pivot: [...PIVOT] }),
-      /finish loading/);
-    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'loading').rotation.angle, 0);
+  it('rotates a model with GPU-instanced geometry, atomically for a mixed selection (#4890)', () => {
+    withInstanced('inst');
+    useViewerStore.getState().setModelRotation(['ifc', 'inst'], { angle: ANGLE, pivot: [...PIVOT] });
+    assert.ok(Math.abs(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle - ANGLE) < 1e-9);
+    assert.ok(Math.abs(placementFor(useViewerStore.getState().modelPlacement, 'inst').rotation.angle - ANGLE) < 1e-9);
   });
 
-  it('refuses a placement manifest that would give an instanced model a heading, and still imports its translation', () => {
-    withInstanced('inst', 'instanced-only');
+  it('imports a placement manifest giving an instanced model a heading (#4890)', () => {
+    withInstanced('inst');
     const state = useViewerStore.getState();
-    const manifest = (rotation?: { angle: number; pivot: [number, number, number] }) => ({ version: 1 as const, units: 'm' as const,
-      axes: 'engineering-z-up' as const, frameKey: placementFrameKey(state),
-      models: [{ instanceId: 'inst', sourceContentHash: null, translation: [2.5, -1.25, 0] as Translation, rotation, locked: false }] });
-    assert.throws(() => state.importModelPlacements(manifest({ angle: ANGLE, pivot: [...PIVOT] }), new Map([['inst', 'inst']])),
-      /GPU-instanced geometry cannot be rotated/);
-    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'inst').translation, [0, 0, 0], 'a refused import must apply nothing');
-    useViewerStore.getState().importModelPlacements(manifest(), new Map([['inst', 'inst']]));
-    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'inst').translation, [2.5, -1.25, 0]);
+    const manifest = { version: 1 as const, units: 'm' as const, axes: 'engineering-z-up' as const, frameKey: placementFrameKey(state),
+      models: [{ instanceId: 'inst', sourceContentHash: null, translation: [2.5, -1.25, 0] as Translation,
+        rotation: { angle: ANGLE, pivot: [...PIVOT] as Translation }, locked: false }] };
+    state.importModelPlacements(manifest, new Map([['inst', 'inst']]));
+    const placed = placementFor(useViewerStore.getState().modelPlacement, 'inst');
+    assert.deepEqual(placed.translation, [2.5, -1.25, 0]);
+    assert.ok(Math.abs(placed.rotation.angle - ANGLE) < 1e-9);
   });
 
-  it('refuses a manifest heading for every model the rotate command refuses, not only instanced ones', () => {
-    const cloud = { ...fixtureModel('scan'), pointCloudHandleId: 7 } as unknown as FederatedModel;
-    withInstanced('loading', 'streaming');
-    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['scan', cloud]]) });
-    const state = useViewerStore.getState();
-    for (const [id, message] of [['scan', /Pointclouds cannot be rotated/], ['loading', /finish loading/]] as const) {
-      const manifest = { version: 1 as const, units: 'm' as const, axes: 'engineering-z-up' as const, frameKey: placementFrameKey(state),
-        models: [{ instanceId: id, sourceContentHash: null, translation: [0, 0, 0] as Translation,
-          rotation: { angle: ANGLE, pivot: [...PIVOT] as Translation }, locked: false }] };
-      assert.throws(() => useViewerStore.getState().importModelPlacements(manifest, new Map([[id, id]])), message, id);
-      assert.equal(placementFor(useViewerStore.getState().modelPlacement, id).rotation.angle, 0, id);
+  describe('the bake pushes the renderer half of a heading and rebuilds the placed index (#4890)', () => {
+    /** The corners of a unit box at `[dx, dx+1] x [0,1] x [0,1]`, in the
+     *  renderer's own (already Y-up) frame — what `Scene.getAllInstancedMeshData`
+     *  returns for one materialized occurrence. */
+    function occurrenceBox(expressId: number, dx: number): MeshData {
+      return {
+        expressId, ifcType: 'IfcDoor',
+        positions: new Float32Array([dx, 0, 0, dx + 1, 0, 0, dx + 1, 1, 0, dx, 1, 0,
+          dx, 0, 1, dx + 1, 0, 1, dx + 1, 1, 1, dx, 1, 1]),
+        normals: new Float32Array(24),
+        indices: new Uint32Array([0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1,
+          1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0]),
+        color: [1, 1, 1, 1],
+      } as unknown as MeshData;
     }
+
+    /** Render-frame yaw about the vertical axis through `(px, *, pz)` — the SAME
+     *  sign `ModelTranslations.placeInstances`/`Scene.rotateMeshesForEntity`
+     *  settle on (PR #4961). Written out independently, so this test's expected
+     *  position is not derived from the code path it exercises. */
+    function rotateRenderPoint(p: readonly [number, number, number], angle: number, px: number, pz: number): [number, number, number] {
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      const dx = p[0] - px, dz = p[2] - pz;
+      return [px + dx * cos + dz * sin, p[1], pz - dx * sin + dz * cos];
+    }
+
+    afterEach(() => setGlobalRendererRef({ current: null } as RefObject<Renderer | null>));
+
+    it('pushes the render-frame pivot to the renderer before the index rebuild, and the rebuilt index answers at the turned occurrence (#4890)', async () => {
+      const doorId = 5;
+      // Far from `ifc`'s own [100..103]x[5]x[-40..-39] flat extent, so a stray
+      // un-rotated hit or a wrong-model index cannot pass by coincidence.
+      const originalDoor = occurrenceBox(doorId, 20);
+      const calls: Array<{ index: number; angle: number; pivot: readonly [number, number, number] }> = [];
+      let currentDoor: MeshData = originalDoor;
+      const scene = { getAllInstancedMeshData: () => [currentDoor] };
+      const fakeRenderer = {
+        getScene: () => scene,
+        // A real `Renderer.setModelRotation` rewrites the instance buffer
+        // `getAllInstancedMeshData` reads SYNCHRONOUSLY, before returning —
+        // this stub does the same, so `currentDoor` is at its turned
+        // position for anything that reads the scene after this call, and at
+        // its ORIGINAL position for anything that reads it before. That is
+        // what lets the assertions below tell "before" from "after" apart.
+        setModelRotation: (index: number, angle: number, pivot: readonly [number, number, number]) => {
+          calls.push({ index, angle, pivot: [...pivot] as [number, number, number] });
+          const rotatedCorners = [0, 1].flatMap((cx) => [0, 1].flatMap((cy) => [0, 1].map((cz) =>
+            rotateRenderPoint([20 + cx, cy, cz], angle, pivot[0], pivot[2]))));
+          currentDoor = { ...originalDoor, positions: new Float32Array(rotatedCorners.flat()) };
+        },
+      } as unknown as Renderer;
+      setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
+
+      const model = { ...fixtureModel('ifc'), geometryResult: geometryResult(), idOffset: 0, maxExpressId: 999 } as FederatedModel;
+      useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState(), geometryContentVersion: 0 });
+
+      useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
+      assert.deepEqual(reconcileModelRotations(useViewerStore.getState()), ['ifc']);
+
+      // The push happened synchronously, inside the same bake that then
+      // rebuilds the index — `currentDoor` is proof either way: if the index
+      // rebuild had read the scene BEFORE the push, the query below (posed at
+      // the rotated position) would find nothing.
+      assert.equal(calls.length, 1, 'setModelRotation must be pushed exactly once per bake');
+      assert.equal(calls[0].index, 0);
+      assert.ok(Math.abs(calls[0].angle - ANGLE) < 1e-9);
+      assert.deepEqual(calls[0].pivot, toRenderTranslation(PIVOT), 'the pushed pivot must be the render-frame conversion, not the workspace point');
+
+      // Independent oracle for the expected rotated position — the door's 8
+      // corners, rotated about the SAME pivot/angle the renderer was told to
+      // use, written out here rather than reused from the stub above.
+      const rotatedCorners = [0, 1].flatMap((cx) => [0, 1].flatMap((cy) => [0, 1].map((cz) =>
+        rotateRenderPoint([20 + cx, cy, cz], calls[0].angle, calls[0].pivot[0], calls[0].pivot[2]))));
+      const min = [0, 1, 2].map((axis) => Math.min(...rotatedCorners.map((c) => c[axis])));
+      const max = [0, 1, 2].map((axis) => Math.max(...rotatedCorners.map((c) => c[axis])));
+
+      let index = useViewerStore.getState().models.get('ifc')!.ifcDataStore!.spatialIndex;
+      for (let i = 0; i < 50 && !index; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        index = useViewerStore.getState().models.get('ifc')!.ifcDataStore!.spatialIndex;
+      }
+      assert.ok(index, 'the placed spatial index must have rebuilt after the bake');
+      const hitRotated = index!.queryAABB({ min: min as [number, number, number], max: max as [number, number, number] });
+      assert.ok(hitRotated.includes(doorId), `the rebuilt index must answer a query at the rotated occurrence; got ${hitRotated}`);
+      const hitOriginal = index!.queryAABB({ min: [20, 0, 0], max: [21, 1, 1] });
+      assert.ok(!hitOriginal.includes(doorId), 'a query at the pre-rotation position must not still hit — the fixture would not test rotation otherwise');
+    });
   });
 
   it('a re-align never snapshots a rotated model, and re-applies each heading exactly once', async () => {

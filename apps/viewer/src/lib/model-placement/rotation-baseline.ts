@@ -308,9 +308,40 @@ export function rebaseBaselineByRtcDelta(baseline: RotationBaseline, delta: Read
 
 /** True when none of `geometry`'s meshes is one this baseline describes — the
  * geometry was wholly replaced rather than appended to, so the baseline can no
- * longer restore anything. */
+ * longer restore anything.
+ *
+ * An instanced-only model has no meshes at all, so there is nothing to check
+ * identity against; such a geometry is never reported foreign; the instanced
+ * boxes' own identity (`bakedInstanced`) is what `captureAppendedMeshBaselines`
+ * uses to detect a replacement on that side (#4890). */
 export function baselineIsForeign(geometry: Geometry, baseline: RotationBaseline): boolean {
+  if (geometry.meshes.length === 0) return false;
   return !geometry.meshes.some((mesh) => baseline.meshes.has(mesh));
+}
+
+/**
+ * Trim a baseline's own pristine copy of a mesh a bounded-mode release just
+ * freed (#4890): once `mesh.positions.length === 0`, the live buffer is gone
+ * for good, `restore` already skips writing a mismatched-length pristine copy
+ * back into it, and there is no future in which this baseline's own (still
+ * full-size) `positions`/`normals` arrays get used — so free them too, the
+ * same memory the release was for. `origin`, `localToWorld`, `geometryAabb`
+ * and the baseline's `shiftedBounds` are left untouched: they carry the yaw's
+ * PLACEMENT effect, are small, and a later zero-angle bake still needs them to
+ * restore the released mesh's un-rotated placement (2def32421).
+ *
+ * Called from `ModelRotationBaker.reconcile` on every pass that touches an
+ * existing baseline, so a release that happens between bakes is picked up the
+ * next time the model is visited rather than only at capture time.
+ */
+export function dropReleasedVertexBaselines(geometry: Geometry, baseline: RotationBaseline): void {
+  for (const mesh of geometry.meshes) {
+    if (mesh.positions.length !== 0) continue;
+    const pristine = baseline.meshes.get(mesh);
+    if (!pristine || pristine.positions.length === 0) continue;
+    pristine.positions = new Float32Array(0);
+    pristine.normals = undefined;
+  }
 }
 
 /** Put `geometry` back to the baseline. Exported for `applyModelRotation`,

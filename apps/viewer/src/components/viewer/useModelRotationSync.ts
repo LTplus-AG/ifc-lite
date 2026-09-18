@@ -2,12 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect } from 'react';
+import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type ViewerState, type FederatedModel } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
 import { modelRotationBaker, type RotationTarget } from '@/lib/model-placement/rotation-bake';
-import { buildSpatialIndexForModel, invalidateSpatialIndex } from '@/utils/loadingUtils';
+import { buildPlacedSpatialIndex } from '@/lib/model-placement/spatial-index';
+import { modelIndices } from '@/lib/model-placement/model-indices';
+import { toRenderTranslation } from '@/lib/model-placement/translation';
+import { invalidateSpatialIndex } from '@/utils/loadingUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { setInstancedModelIndexSource } from '@/lib/model-placement/rotation-refusal';
 
 /**
  * Make each model's geometry agree with the heading its placement declares.
@@ -22,6 +25,30 @@ import { setInstancedModelIndexSource } from '@/lib/model-placement/rotation-ref
 let reconciling = false;
 /** Depth of {@link withModelRotationsUnbaked} passes in flight. */
 let suspended = 0;
+
+/**
+ * Push every model's DECLARED heading to the renderer's GPU-instanced
+ * occurrence transforms (`Renderer.setModelRotation`, #4890) — the instanced
+ * counterpart to the flat-mesh bake this module already does. The pivot is
+ * converted into the SAME render frame the bake's vertices and
+ * `applyModelRotation`'s pivot are in (`toRenderTranslation`), not the
+ * absolute box frame `EntityWorldAabb` uses, so the two halves of one
+ * rotation agree on where the axis sits.
+ *
+ * A model with no GPU-instanced templates is unaffected: `setModelRotation`
+ * only ever rewrites instance transforms the renderer already owns.
+ */
+export function syncModelRotationsToRenderer(
+  renderer: Renderer, state: ViewerState, indices: ReadonlyMap<string, number>,
+): void {
+  for (const modelId of state.models.keys()) {
+    const index = indices.get(modelId);
+    if (index === undefined) continue;
+    const rotation = placementFor(state.modelPlacement, modelId).rotation;
+    const pivot = toRenderTranslation(rotation.pivot);
+    renderer.setModelRotation(index, rotation.angle, pivot);
+  }
+}
 
 export function reconcileModelRotations(state: ViewerState): string[] {
   // The bump below re-enters this through the subscription. The second pass
@@ -42,6 +69,13 @@ function bake(state: ViewerState): string[] {
     targets.set(modelId, { geometry: (model as FederatedModel).geometryResult, rotation: placementFor(state.modelPlacement, modelId).rotation });
   }
   const moved = modelRotationBaker.reconcile(targets);
+  // Instanced occurrences never pass through `modelRotationBaker` — they have
+  // no vertices to bake — so the renderer's own transforms are pushed
+  // separately, every pass, BEFORE the content-version bump and index rebuild
+  // below: the spatial index this function rebuilds has to describe the SAME
+  // heading the renderer is about to draw (#4890).
+  const renderer = getGlobalRenderer();
+  if (renderer) syncModelRotationsToRenderer(renderer, state, modelIndices(state.models));
   if (moved.length === 0) return moved;
   state.bumpGeometryContentVersion();
   const next = useViewerStore.getState();
@@ -51,7 +85,7 @@ function bake(state: ViewerState): string[] {
       // Withdraw the old index now: the rebuild is asynchronous, and until it
       // lands a raycast would be answered from the previous heading's boxes.
       invalidateSpatialIndex(model.ifcDataStore);
-      buildSpatialIndexForModel(model.geometryResult.meshes, modelId, model.ifcDataStore);
+      buildPlacedSpatialIndex(next, modelId);
     }
   }
   return moved;
@@ -100,8 +134,7 @@ export function subscribeModelRotationSync(): () => void {
  * cannot observe the committed heading before the geometry carries it. */
 export function useModelRotationSync(): void {
   useEffect(() => {
-    const unregister = setInstancedModelIndexSource(() => getGlobalRenderer()?.getScene().getInstancedModelIndices() ?? null);
     const unsubscribe = subscribeModelRotationSync();
-    return () => { unsubscribe(); unregister(); };
+    return () => { unsubscribe(); };
   }, []);
 }

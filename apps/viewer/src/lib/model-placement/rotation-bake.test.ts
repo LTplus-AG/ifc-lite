@@ -470,4 +470,86 @@ describe('ModelRotationBaker', () => {
         'the instanced boxes were rotated a second time after the prune');
     });
   });
+
+  /**
+   * #4890: an instanced-only model — every entity GPU-instanced, no flat
+   * meshes at all — has a declared heading like any other model, but nothing
+   * in `geometry.meshes` for `reconcile`'s original `meshes.length === 0`
+   * guard to see. The guard now also looks at `instancedGeometryAabbs`, and
+   * `baselineIsForeign` no longer reports such a model foreign just because
+   * it has no meshes to check identity against.
+   */
+  describe('instanced-only geometry (no flat meshes)', () => {
+    const instancedOnly = (min: number[], max: number[]): Geometry => ({
+      meshes: [],
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        shiftedBounds: { min: { x: min[0], y: min[1], z: min[2] }, max: { x: max[0], y: max[1], z: max[2] } },
+        hasLargeCoordinates: false },
+      instancedGeometryAabbs: instanced(min, max),
+    } as unknown as Geometry);
+
+    it('bakes and restores an instanced-only model\'s boxes', () => {
+      const baker = new ModelRotationBaker(), value = instancedOnly([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+      const pristine = structuredClone(value.instancedGeometryAabbs);
+      assert.deepEqual(baker.reconcile(targets(value, ROTATION)), ['m']);
+      assert.notDeepEqual(value.instancedGeometryAabbs, pristine, 'the fixture must actually turn under this heading');
+      assert.deepEqual(baker.reconcile(targets(value, ZERO_ROTATION)), ['m']);
+      assert.deepEqual(value.instancedGeometryAabbs, pristine);
+    });
+
+    it('does not report an instanced-only geometry foreign, so the baseline survives a republish', () => {
+      const baker = new ModelRotationBaker(), value = instancedOnly([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+      baker.reconcile(targets(value, ROTATION));
+      const rotatedOnce = structuredClone(value.instancedGeometryAabbs);
+      // Streaming completion republishes an instanced-only geometry as a new
+      // object holding the SAME (rotated) box map — nothing for `meshes` to
+      // recognise, but `baselineIsForeign` must not treat this as a wholly
+      // replaced model and drop the baseline.
+      const republished = { ...value } as Geometry;
+      assert.deepEqual(baker.reconcile(targets(republished, ROTATION)), [],
+        'an unchanged heading on a republished instanced-only geometry must not re-bake');
+      assert.deepEqual(republished.instancedGeometryAabbs, rotatedOnce);
+    });
+
+    it('does not compound across repeated reconciles at an unchanged heading', () => {
+      const baker = new ModelRotationBaker(), value = instancedOnly([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+      baker.reconcile(targets(value, ROTATION));
+      const once = structuredClone(value.instancedGeometryAabbs);
+      for (let i = 0; i < 5; i += 1) assert.deepEqual(baker.reconcile(targets(value, ROTATION)), []);
+      assert.deepEqual(value.instancedGeometryAabbs, once);
+    });
+  });
+
+  /**
+   * #4890: `dropReleasedVertexBaselines` frees a baseline's own pristine
+   * `positions`/`normals` copy once a bounded-mode release has freed the
+   * live mesh's buffers — the same memory the release was for — while
+   * leaving `origin`/`localToWorld`/`geometryAabb` alone so a later
+   * zero-angle bake still restores the released mesh's placement (2def32421).
+   */
+  describe('dropReleasedVertexBaselines (bounded-mode release)', () => {
+    it('trims the pristine vertex copy once the live buffers are released', () => {
+      const baker = new ModelRotationBaker(), value = releasable();
+      baker.reconcile(targets(value, SKEW));
+      // Visit the baker again at the SAME angle after a release — the fast
+      // path that skips `applyModelRotation` must still trim the baseline.
+      const releasedGeometry = release(value);
+      assert.deepEqual(baker.reconcile(targets(releasedGeometry, SKEW)), []);
+      const pristine = baker.inModelFrame(value.meshes[0]);
+      assert.equal(pristine.positions.length, 0, 'the baseline kept the released mesh\'s pristine vertices alive');
+    });
+
+    it('still restores a released mesh\'s placement on a zero-angle bake after the trim', () => {
+      const baker = new ModelRotationBaker(), value = releasable();
+      const pristinePlacement = structuredClone(placement(value));
+      baker.reconcile(targets(value, SKEW));
+      const releasedGeometry = release(value);
+      baker.reconcile(targets(releasedGeometry, SKEW)); // trims the baseline at an unchanged angle
+      assert.deepEqual(baker.reconcile(targets(releasedGeometry, ZERO_ROTATION)), ['m']);
+      assert.equal(releasedGeometry.meshes[0].positions.length, 0, 'the bake resurrected buffers the release had freed');
+      assert.deepEqual(placement(releasedGeometry), pristinePlacement,
+        'the trimmed baseline could no longer restore the released mesh\'s placement');
+    });
+  });
 });

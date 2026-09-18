@@ -67,7 +67,7 @@
 import type { GeometryResult, MeshData, Vec3 } from '@ifc-lite/geometry';
 import { applyModelRotation } from './rotation-geometry.js';
 import {
-  baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
+  baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline, dropReleasedVertexBaselines,
   pruneMeshBaselines, rebaseBaselineByRtcDelta, remeasureLiveBounds,
   type MeshPrune, type RotationBaseline,
 } from './rotation-baseline.js';
@@ -100,7 +100,9 @@ export class ModelRotationBaker {
     const moved: string[] = [];
     for (const [modelId, target] of targets) {
       const geometry = target.geometry;
-      if (!geometry || geometry.meshes.length === 0) continue;
+      // An instanced-only model has no meshes but can still carry a declared
+      // heading — its instanced boxes are what a bake turns (#4890).
+      if (!geometry || (geometry.meshes.length === 0 && !geometry.instancedGeometryAabbs?.size)) continue;
       let entry = this.entries.get(modelId);
       if (entry && baselineIsForeign(geometry, entry.baseline)) {
         // The meshes this baseline described are gone — the model was
@@ -123,6 +125,10 @@ export class ModelRotationBaker {
         appended = captureAppendedMeshBaselines(geometry, entry.baseline);
         entry.geometry = geometry;
       }
+      // A bounded-mode release can free a mesh's live buffers between bakes;
+      // trim this baseline's own copy of the same memory whenever it is
+      // visited, whether or not the angle changed this pass.
+      dropReleasedVertexBaselines(geometry, entry.baseline);
       if (!appended && equalRotation(entry.applied, target.rotation)) continue;
       applyModelRotation(geometry, entry.baseline, target.rotation);
       moved.push(modelId);
@@ -149,9 +155,12 @@ export class ModelRotationBaker {
     for (const entry of this.entries.values()) {
       const pristine = entry.baseline.meshes.get(mesh);
       if (!pristine) continue;
-      // A bounded-mode release emptied the live buffers; there is nothing to
-      // clone, and handing back the baseline's vertices would resurrect them.
-      if (mesh.positions.length !== pristine.positions.length) break;
+      // A bounded-mode release emptied the live buffers, and
+      // `dropReleasedVertexBaselines` trims the pristine copy to match — there
+      // is nothing left to clone on either side, so fall through to the raw
+      // (equally empty) copy below rather than hand back the placement fields
+      // as if they were a vertex baseline.
+      if (mesh.positions.length !== pristine.positions.length || pristine.positions.length === 0) break;
       const out: MeshData = { ...mesh, positions: new Float32Array(pristine.positions),
         normals: pristine.normals ? new Float32Array(pristine.normals) : mesh.normals };
       if (pristine.origin) out.origin = [...pristine.origin]; else delete out.origin;

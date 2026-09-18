@@ -208,10 +208,12 @@ plumb is not offered.
   moves, and rides **Undo placement** / **Redo placement** and **Reset
   placement** with them. Locked models refuse to rotate.
 - Models with GPU-instanced geometry (repeated elements the viewer draws as
-  instances) cannot be rotated yet, and neither can pointclouds or a model that
-  is still loading: the panel says why, a selection containing one is refused
-  as a whole, and a placement manifest that would give such a model a heading
-  is not imported.
+  instances, such as doors, windows or columns) rotate too: the instanced
+  occurrences turn about the same axis as the model's flat geometry, from the
+  renderer's own instance data. Only a pointcloud cannot be rotated — it is a
+  renderer handle that carries a translation but no heading — so the panel
+  says why, a selection containing one is refused as a whole, and a placement
+  manifest that would give a pointcloud a heading is not imported.
 
 Unlike a move, a rotation has no drag preview: it rewrites the model's geometry,
 which is what keeps rendering, picking, bounds, spatial queries and graphical

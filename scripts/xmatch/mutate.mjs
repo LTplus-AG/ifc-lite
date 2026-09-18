@@ -49,10 +49,26 @@ import {
   indexModel,
   isListOnlyReferenced,
   moveElement,
+  ownedMappedItem,
+  ownedPropertyValues,
+  ownedRectangleExtrusion,
+  renameElement,
+  representationMapDigest,
+  representationMapsOf,
   reshapeElement,
+  respecifyProperty,
+  shrinkOwnedExtrusion,
+  splitElementLength,
+  swapMappedItem,
+  thickenElement,
   exclusiveSolids,
   PRODUCT_PLACEMENT,
 } from './edits.mjs';
+// The SHIPPED class-family table (issue #4955), imported from the engine's own
+// module rather than copied: `swapped` picks its donor map from an element of
+// the same family because that is the bucket the successor stage searches, and
+// a private copy of the table would drift from the thing being measured.
+import { classFamilyResolver } from '../../packages/diff/dist/class-families.js';
 import { planeAngleFactor, resampleableArcs, retriangulateElement } from './retriangulate.mjs';
 import { parseStepFile, quote, rewriteReferences, serializeStepFile, setArg, splitArgs } from './step-file.mjs';
 
@@ -101,8 +117,23 @@ const DEFAULT_PLAN = {
   /** Whole same-content groups moved at once — the only path to tier 3. */
   movedGroups: 2,
   inserted: 8,
+  /** Re-GUID plus ONE data edit and no geometry change (issue #4955). */
+  respecified: 14,
+  /** Rename plus a 1.25x thickness: the `footprint` successor case. */
+  thickened: 10,
+  /** Rename plus a different type's mapped geometry: the `position` case. */
+  swapped: 6,
+  /** One owned rectangle extrusion becomes two half-length products. */
+  splitLength: 6,
+  /** Of the `deleted`, how many get a small head-only element planted inside
+   *  their box — the successor stage's negative control. */
+  insertedNearby: 5,
   /** Extrusion depth multiplier for `reshaped`. */
   reshapeScale: 1.15,
+  /** Thickness multiplier for `thickened`: old box nests in new, IoU 0.8. */
+  thickenScale: 1.25,
+  /** Per-axis size of the `insertedNearby` element relative to the deleted one. */
+  nearbyFactor: 0.3,
   /** Move distances (metres) cycled through for `moved`, all well inside the
    *  engine's 10 m `maxMoveDistance` and well outside its 2 mm move tolerance. */
   moveDistances: [0.35, 0.8, 1.6, 2.4],
@@ -170,8 +201,19 @@ export function mutateModel(text, options) {
   // the placement it would be moving away from.
   const detached = (test) => (id) =>
     meshed.has(id) && !features.has(id) && !hosts.has(id) && isListOnlyReferenced(index, id) && test(id);
+  // The split and the nearby control need the rarest thing in the corpus: a
+  // detached element that owns one extruded rectangle outright. They pick
+  // first so the broader roles cannot starve them.
+  const ownsRectangle = (id) => ownedRectangleExtrusion(index, id) !== undefined;
+  assign('splitLength', plan.splitLength, detached(ownsRectangle));
+  assign('deletedNearby', plan.insertedNearby, detached(ownsRectangle));
   assign('retriangulated', plan.retriangulated, selfContained((id) => resampleableArcs(index, id).length > 0));
+  // A thickened host only changes its own mesh, like `reshaped`; it picks
+  // before `reshaped`, whose eligible set is a superset of this one.
+  assign('thickened', plan.thickened, selfContained(ownsRectangle));
   assign('reshaped', plan.reshaped, selfContained((id) => exclusiveSolids(index, id).length > 0));
+  const donors = mapDonors(index, population);
+  assign('swapped', plan.swapped, selfContained((id) => donors.has(id)));
   assign('deleted', plan.deleted, detached(() => true));
   assign('duplicated', plan.duplicated, detached(() => true));
   // Whole same-content groups, moved member by member to DIFFERENT places.
@@ -189,6 +231,12 @@ export function mutateModel(text, options) {
     roles,
   );
   assign('moved', plan.moved, detached((id) => hasOwnPlacement(index, id)));
+  // Last, and excluding HOSTS as well as features: a respecified element is
+  // recovered by its world geometry hash alone, and finding F1 (SPEC.md) is
+  // that a host's hash can move with statement order through the opening
+  // CSG. A hash that moved for a reason unrelated to the mutation would score
+  // the engine against a key that promised an unchanged shape.
+  assign('respecified', plan.respecified, selfContained((id) => !hosts.has(id)));
   const insertionSources = pool
     .filter((id) => !taken.has(id) && detached(() => true)(id))
     .slice(0, plan.inserted);
@@ -197,8 +245,25 @@ export function mutateModel(text, options) {
   /** @type {{ base: number, kind: string, class: string, head: number[], detail?: object }[]} */
   const entries = [];
   const insertedHeadIds = [];
-  const applied = { renamed: 0, moved: 0, reshaped: 0, retriangulated: 0, duplicated: 0, deleted: 0, inserted: 0 };
+  const insertedNearbyHeadIds = [];
+  const applied = {
+    renamed: 0,
+    moved: 0,
+    reshaped: 0,
+    retriangulated: 0,
+    duplicated: 0,
+    deleted: 0,
+    inserted: 0,
+    respecified: 0,
+    thickened: 0,
+    swapped: 0,
+    splitLength: 0,
+    insertedNearby: 0,
+  };
   let moveIndex = 0;
+  const ordinals = {};
+  /** A name nothing in the base carries: `${kind}-${seed}-${n}`. */
+  const freshName = (kind) => `${kind}-${seed}-${(ordinals[kind] = (ordinals[kind] ?? 0) + 1)}`;
 
   for (const id of population) {
     const role = roles.get(id);
@@ -255,6 +320,78 @@ export function mutateModel(text, options) {
       deleteElement(file, index, id);
       entries.push({ base: id, kind: 'deleted', class: geometryClass, head: [] });
       applied.deleted++;
+    } else if (role === 'deletedNearby') {
+      // NEGATIVE CONTROL for the successor stage. The element is deleted like
+      // any other, and a head-only element of the SAME class, under a new
+      // name, is planted inside its box at 0.3x its size on every axis. It
+      // is a clone so it is enrolled in the same containment, type and
+      // property lists — a genuinely new small thing in the same storey — and
+      // its shape is shrunk on the chain the deleted element owned outright.
+      // Nothing may claim it as the deleted element's successor.
+      const owned = ownedRectangleExtrusion(index, id);
+      const copy = cloneElement(file, index, id, { name: freshName('nearby') });
+      deleteElement(file, index, id);
+      shrinkOwnedExtrusion(file, index, owned, plan.nearbyFactor);
+      insertedNearbyHeadIds.push(copy);
+      entries.push({
+        base: id,
+        kind: 'deleted',
+        class: geometryClass,
+        head: [],
+        detail: { insertedNearby: copy, factor: plan.nearbyFactor },
+      });
+      applied.deleted++;
+      applied.insertedNearby++;
+    } else if (role === 'respecified') {
+      // One data edit, no geometry edit. A property value the element owns
+      // outright where it has one, the element's own Name otherwise; both
+      // move the data hash and neither touches the property-name multiset the
+      // guards assert identical.
+      const owned = ownedPropertyValues(index, id);
+      const property = owned.find((row) => respecifyProperty(index, row.propertyId));
+      if (!property) renameElement(index, id, freshName('respecified'));
+      entries.push({
+        base: id,
+        kind: 'respecified',
+        class: geometryClass,
+        head: [id],
+        detail: property ? { edit: 'property', property: property.name } : { edit: 'name' },
+      });
+      applied.respecified++;
+    } else if (role === 'thickened') {
+      const ok = thickenElement(file, index, id, plan.thickenScale);
+      if (ok) renameElement(index, id, freshName('thickened'));
+      entries.push({
+        base: id,
+        kind: ok ? 'thickened' : 'renamed',
+        class: geometryClass,
+        head: [id],
+        detail: ok ? { stratum: 'footprint', scale: plan.thickenScale } : undefined,
+      });
+      applied[ok ? 'thickened' : 'renamed']++;
+    } else if (role === 'swapped') {
+      const donor = donors.get(id);
+      const ok = swapMappedItem(index, id, donor);
+      if (ok) renameElement(index, id, freshName('swapped'));
+      entries.push({
+        base: id,
+        kind: ok ? 'swapped' : 'renamed',
+        class: geometryClass,
+        head: [id],
+        detail: ok ? { stratum: 'position', donorMap: donor } : undefined,
+      });
+      applied[ok ? 'swapped' : 'renamed']++;
+    } else if (role === 'splitLength') {
+      const copy = splitElementLength(file, index, id, [freshName('split'), freshName('split')]);
+      const ok = copy !== undefined;
+      entries.push({
+        base: id,
+        kind: ok ? 'splitLength' : 'renamed',
+        class: geometryClass,
+        head: ok ? [id, copy] : [id],
+        detail: ok ? { pieces: 2 } : undefined,
+      });
+      applied[ok ? 'splitLength' : 'renamed']++;
     } else {
       entries.push({ base: id, kind: 'renamed', class: geometryClass, head: [id] });
       applied.renamed++;
@@ -278,7 +415,9 @@ export function mutateModel(text, options) {
 
   const key = {
     generator: 'scripts/xmatch/mutate.mjs',
-    keyVersion: 1,
+    // 2: `respecified` / `thickened` / `swapped` / `splitLength` kinds and
+    // `insertedNearbyHeadIds` (issue #4955).
+    keyVersion: 2,
     seed,
     source: sourcePath,
     sourceSha256: createHash('sha256').update(text).digest('hex'),
@@ -290,11 +429,73 @@ export function mutateModel(text, options) {
     elements: entries.map((entry) => ({
       ...entry,
       head: entry.head.map((id) => permuted(permutation, id)),
+      ...(entry.detail?.insertedNearby !== undefined
+        ? { detail: { ...entry.detail, insertedNearby: permuted(permutation, entry.detail.insertedNearby) } }
+        : {}),
     })),
     insertedHeadIds: insertedHeadIds.map((id) => permuted(permutation, id)),
+    insertedNearbyHeadIds: insertedNearbyHeadIds.map((id) => permuted(permutation, id)),
   };
 
   return { text: serializeStepFile(file), key };
+}
+
+/**
+ * For every element whose body is one owned `IfcMappedItem`, the donor
+ * `IfcRepresentationMap` `swapped` will point it at: a map some OTHER element
+ * of the same `ifcType` uses (a door swapped for a different door type), or
+ * failing that of the same class family — the bucket the successor stage
+ * searches — and whose geometry is structurally DIFFERENT from the element's
+ * own (`representationMapDigest`): a copy of the same shape under another map
+ * id would leave the world geometry hash unchanged, and the engine would
+ * rightly pair that as `respecified`. Elements with no such donor are absent
+ * from the map and are not eligible. Donors are chosen by position in a
+ * sorted list, not by the PRNG, so this draws nothing from the stream the
+ * re-GUID and permutation use.
+ */
+function mapDonors(index, population) {
+  const familyOf = classFamilyResolver();
+  const digests = new Map();
+  const digestOf = (mapId) => {
+    let digest = digests.get(mapId);
+    if (digest === undefined) {
+      digest = representationMapDigest(index, mapId);
+      digests.set(mapId, digest);
+    }
+    return digest;
+  };
+  const usersByType = new Map();
+  const usersByFamily = new Map();
+  for (const id of population) {
+    const statement = index.byId.get(id);
+    for (const mapId of representationMapsOf(index, id)) {
+      for (const [table, key] of [
+        [usersByType, statement.type],
+        [usersByFamily, familyOf(statement.type)],
+      ]) {
+        const set = table.get(key) ?? new Set();
+        set.add(mapId);
+        table.set(key, set);
+      }
+    }
+  }
+  const donors = new Map();
+  let ordinal = 0;
+  for (const id of population) {
+    const owned = ownedMappedItem(index, id);
+    if (!owned) continue;
+    const statement = index.byId.get(id);
+    const own = digestOf(owned.mapId);
+    const candidates = (pool) =>
+      [...(pool ?? [])]
+        .filter((mapId) => mapId !== owned.mapId && digestOf(mapId) !== own)
+        .sort((a, b) => a - b);
+    let choices = candidates(usersByType.get(statement.type));
+    if (choices.length === 0) choices = candidates(usersByFamily.get(familyOf(statement.type)));
+    if (choices.length === 0) continue;
+    donors.set(id, choices[ordinal++ % choices.length]);
+  }
+  return donors;
 }
 
 /**

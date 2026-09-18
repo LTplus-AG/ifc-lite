@@ -111,6 +111,62 @@ export function runGuards(sourceText, headText, base, head, key) {
   let presentHeads = 0;
   for (const ref of keyedHeads) if (headRefs.has(ref)) presentHeads++;
 
+  // The successor stage's `position` profile pairs only inside one container
+  // NAME path, resolved by the same adapter on both sides, so every keyed
+  // counterpart must carry the same path as its base — the re-GUID must not
+  // have touched a storey or space name. One exception is REPORTED rather
+  // than failed: a path containing `#` names an UNNAMED spatial node by its
+  // express id, which no re-export preserves (finding F4 in SPEC.md, Duplex's
+  // building has no Name). That is the engine's own documented weakness, not
+  // the fixture's, and the `position` recall it costs is the measurement.
+  const containerOf = new Map();
+  for (const fingerprint of base.fingerprints) {
+    containerOf.set(`b${fingerprint.ref}`, fingerprint.container);
+  }
+  for (const fingerprint of head.fingerprints) {
+    containerOf.set(`h${fingerprint.ref}`, fingerprint.container);
+  }
+  let containersCompared = 0;
+  let containersAgree = 0;
+  let containersUnstable = 0;
+  for (const element of key.elements) {
+    const basePath = containerOf.get(`b${element.base}`);
+    if (!basePath) continue;
+    for (const headRef of element.head) {
+      const headPath = containerOf.get(`h${headRef}`);
+      containersCompared++;
+      if (headPath === basePath) containersAgree++;
+      else if (basePath.includes('#') && (headPath ?? '').includes('#')) containersUnstable++;
+    }
+  }
+
+  // The `insertedNearby` control is only a control if the planted element
+  // really sits INSIDE the deleted element's box — a construction that put it
+  // next door would pass vacuously. Checked against the geometry pass's own
+  // boxes, with the hash grid as slack.
+  const boxOf = new Map();
+  for (const fingerprint of base.fingerprints) {
+    if (fingerprint.aabb) boxOf.set(`b${fingerprint.ref}`, fingerprint.aabb);
+  }
+  for (const fingerprint of head.fingerprints) {
+    if (fingerprint.aabb) boxOf.set(`h${fingerprint.ref}`, fingerprint.aabb);
+  }
+  let nearbyInside = 0;
+  let nearbyExpected = 0;
+  for (const element of key.elements) {
+    const planted = element.detail?.insertedNearby;
+    if (planted === undefined) continue;
+    nearbyExpected++;
+    const outer = boxOf.get(`b${element.base}`);
+    const inner = boxOf.get(`h${planted}`);
+    if (!outer || !inner) continue;
+    const slack = 1e-3;
+    const inside = [0, 1, 2].every(
+      (axis) => inner.min[axis] >= outer.min[axis] - slack && inner.max[axis] <= outer.max[axis] + slack,
+    );
+    if (inside) nearbyInside++;
+  }
+
   // Keys must not survive: if any GlobalId were shared the key-based pass would
   // match those entities directly and the content pass would never see them.
   const baseKeys = new Set(base.fingerprints.map((fingerprint) => fingerprint.key));
@@ -144,7 +200,13 @@ export function runGuards(sourceText, headText, base, head, key) {
     duplicateKeyHeadIds: duplicates([
       ...key.elements.flatMap((element) => element.head),
       ...key.insertedHeadIds,
+      ...(key.insertedNearbyHeadIds ?? []),
     ]).length,
+    containersCompared,
+    containersAgree,
+    containersUnstable,
+    insertedNearbyExpected: nearbyExpected,
+    insertedNearbyInside: nearbyInside,
     duplicateBaseRefs: duplicates(base.fingerprints.map((f) => f.ref)).length,
     duplicateHeadRefs: duplicates(head.fingerprints.map((f) => f.ref)).length,
     keyedHeadsExpected: keyedHeads.size,
@@ -220,6 +282,18 @@ export function guardFailures(guards) {
   }
   if (!guards.baseHasGeometryHashes || !guards.headHasGeometryHashes) {
     failures.push('a revision carries no geometry hashes: the geometry tiers would abstain');
+  }
+  if (guards.containersAgree + guards.containersUnstable !== guards.containersCompared) {
+    failures.push(
+      `${guards.containersCompared - guards.containersAgree - guards.containersUnstable} keyed ` +
+        'counterparts carry a different NAMED spatial container path from their base',
+    );
+  }
+  if (guards.insertedNearbyInside !== guards.insertedNearbyExpected) {
+    failures.push(
+      `${guards.insertedNearbyExpected - guards.insertedNearbyInside} of ${guards.insertedNearbyExpected} ` +
+        'insertedNearby elements were not planted inside the deleted element\'s box',
+    );
   }
   return failures;
 }

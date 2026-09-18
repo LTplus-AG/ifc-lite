@@ -177,6 +177,41 @@ export function mirrorEntityDelete(
 export type ScalarValue = string | number | boolean | null;
 
 /**
+ * Map an inbound `onAttribute` scalar to the string `MutablePropertyView
+ * .setAttribute` (`@ifc-lite/mutations`) expects — the one place a `null`
+ * from the CRDT is turned into a root-attribute edit.
+ *
+ * A CRDT attribute value of `null` is IFCX's own "removal opinion" (see
+ * `packages/collab/src/snapshot/from-ifcx.ts`'s `decodeNode`): a peer
+ * explicitly writing "this attribute has no value" via `setAttribute(doc,
+ * path, name, null)`, as opposed to `deleteAttribute` (unresolvable —
+ * `attachRemoteApply` drops delete actions outright; see the sibling test
+ * "drops a remote flat attribute DELETE"). `to-ifcx-null-attribute.test.ts`
+ * pins that a doc attribute legitimately holding `null` is a supported state
+ * this bridge must round-trip, not a value that only ever occurs synthetically.
+ *
+ * Before #4931's exporter fix, folding that `null` into `''` happened to
+ * export correctly, because the OLD (buggy) `serializeStringSlot` collapsed
+ * an edited `''` to the STEP null marker `$` anyway. Once that bug was fixed
+ * so an edited `''` writes a real, present empty string, the same `null ->
+ * ''` conversion here would instead export a remote peer's explicitly-unset
+ * attribute as PRESENT and empty — reintroducing the exact absent-vs-empty
+ * confusion #4931 fixed, one layer up.
+ *
+ * The fix is NOT `MutablePropertyView.removeAttributeMutation`: that discards
+ * the pending edit entirely and falls back to whatever value the room model's
+ * last full reconstruct captured, which is a stale PRIOR value, not "absent" —
+ * wrong for an opinion that explicitly removes the value. Writing the literal
+ * `$` token is what `serializeStringSlot` already documents as the caller's
+ * way to mark a STRING-typed attribute absent, so it carries the "unset"
+ * intent all the way through export exactly like a genuinely-`$` source slot
+ * would.
+ */
+export function attributeMutationValue(value: ScalarValue): string {
+  return value === null ? '$' : String(value);
+}
+
+/**
  * Every inbound handler is told WHICH model the edit belongs to: a room holds
  * one model per slot (#4444) and an expressId is meaningless without its
  * model. `modelId` is the viewer model whose store the path resolved against;

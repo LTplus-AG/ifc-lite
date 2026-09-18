@@ -7,6 +7,8 @@ import assert from 'node:assert';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { PropertyValueType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { StepExporter } from '@ifc-lite/export';
 import {
   createCollabDoc,
   createEntity,
@@ -33,6 +35,7 @@ import {
   mirrorAttribute,
   mirrorEntityDelete,
   attachRemoteApply,
+  attributeMutationValue,
   type CollabDocApi,
   type RemoteApplyHandlers,
 } from './mutation-bridge.js';
@@ -644,5 +647,83 @@ describe('mutation-bridge model slots (#4444)', () => {
     });
     teardown();
     assert.deepEqual(handlers.calls, []);
+  });
+});
+
+/**
+ * #4931 (collab follow-up, flagged in review): a remote peer's CRDT `null` —
+ * IFCX's "this attribute has no value" removal opinion — must reach
+ * `MutablePropertyView`/`StepExporter` as the STEP absent marker `$`, not as
+ * an edit to `''`. Before the exporter's own `serializeStringSlot` fix,
+ * `null -> ''` happened to export correctly, because `''` collapsed to `$`
+ * regardless. Once `serializeStringSlot` was fixed so an edited `''` writes a
+ * real, present empty string, the same conversion would instead export a
+ * peer's explicit "no value" as present-and-empty.
+ */
+describe('attributeMutationValue (#4931 collab null handling)', () => {
+  it('maps a CRDT null to the STEP absent marker, not an empty string', () => {
+    assert.strictEqual(attributeMutationValue(null), '$');
+  });
+
+  it('maps a CRDT empty string to itself — distinct from null', () => {
+    assert.strictEqual(attributeMutationValue(''), '');
+  });
+
+  it('maps a non-null scalar to its string form', () => {
+    assert.strictEqual(attributeMutationValue('Wall-A'), 'Wall-A');
+    assert.strictEqual(attributeMutationValue(42), '42');
+    assert.strictEqual(attributeMutationValue(true), 'true');
+  });
+
+  /** A minimal real IfcDataStore from one STEP entity line (mirrors packages/export's own tests). */
+  function buildDataStore(id: number, type: string, text: string): IfcDataStore {
+    const encoded = new TextEncoder().encode(text);
+    return {
+      fileSize: encoded.byteLength,
+      schemaVersion: 'IFC4',
+      entityCount: 1,
+      parseTime: 0,
+      source: encoded,
+      entityIndex: {
+        byId: new Map([[id, { expressId: id, type: type.toUpperCase(), byteOffset: 0, byteLength: encoded.byteLength, lineNumber: 0 }]]),
+        byType: new Map([[type.toUpperCase(), [id]]]),
+      },
+    } as unknown as IfcDataStore;
+  }
+
+  function exportedLine(value: string): string {
+    const dataStore = buildDataStore(1, 'IFCWALL', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
+    const view = new MutablePropertyView(null, 'room-model');
+    view.setAttribute(1, 'Description', value);
+    const result = new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true });
+    const text = new TextDecoder().decode(result.content);
+    const line = text.split('\n').find((l) => l.startsWith('#1='));
+    if (!line) throw new Error('exported #1 entity line not found');
+    return line;
+  }
+
+  it('a remote peer explicitly clearing an attribute (CRDT null) exports as $, not present-and-empty', () => {
+    const line = exportedLine(attributeMutationValue(null));
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
+  });
+
+  it('a remote peer editing an attribute to a real empty string exports as \'\', distinct from the null case above', () => {
+    const line = exportedLine(attributeMutationValue(''));
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','',$,$,$,$,$);");
+  });
+
+  it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for attributeMutationValue', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
+    const store = fakeStore(new Map([[1, '/wallA']]));
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+
+    applyAsRemoteEdit(doc, (remote) => {
+      setAttribute(remote, '/wallA', 'bsi::ifc::prop::Description', null);
+    });
+
+    teardown();
+    assert.deepEqual(handlers.calls, [{ fn: 'onAttribute', args: [MODEL, 1, 'bsi::ifc::prop::Description', null] }]);
   });
 });

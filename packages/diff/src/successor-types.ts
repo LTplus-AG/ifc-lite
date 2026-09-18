@@ -23,7 +23,8 @@ import type { EntityFingerprint } from './types.js';
  *   half the threshold. A thickened wall, a re-specified door in its opening.
  * - `position` — the boxes did NOT overlap enough, but both entities sit in
  *   the same spatial container (`EntityFingerprint.container`, equal and
- *   non-empty on both sides) and each is the other's nearest candidate within
+ *   non-empty on both sides), their boxes are of comparable size (no axis more
+ *   than twice the other's), and each is the other's nearest candidate within
  *   `DiffOptions.successorDistance`, with the runner-up at least twice as far.
  *   A chair swapped for a different family and nudged; a wall redrawn on a
  *   shifted axis. Weaker than `footprint`: it argues from where things sit,

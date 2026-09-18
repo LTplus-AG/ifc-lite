@@ -405,7 +405,7 @@ Because it argues from position alone, it is the weakest stage in the engine, an
 | `confidence` | evidence |
 |---|---|
 | `footprint` | bounding-box intersection over union at or above `successorOverlap` (default 0.6), mutual best on both sides, and no other candidate on either side within half the threshold |
-| `position` | same class family, same `EntityFingerprint.container` (a name path, equal and non-empty on both sides), each the other's nearest within `max(successorDistance, 0.5 × base box diagonal)`, with the runner-up at least twice as far |
+| `position` | same class family, same `EntityFingerprint.container` (a name path, equal and non-empty on both sides), boxes of comparable size (no axis more than twice the other's), each the other's nearest within `max(successorDistance, 0.5 × base box diagonal)`, with the runner-up at least twice as far |
 
 The arithmetic behind the default: a thickening that nests the old box in the new one scores `V_old / V_new`, so a 200 → 250 mm wall is 0.8 whichever face moved; 200 → 350 mm is 0.57 and misses; a 100 mm axis shift at 200 mm is 0.33 and misses. An axis-shifted redraw is exactly the case `footprint` misses and `position` carries. `footprint` ignores the container on purpose — a storey rename changes the path of every element in it, and a heavy box overlap is stronger evidence than a matching name — while `position` requires it, because without it a nearest-neighbour argument between two elements that share nothing else is not evidence at all.
 

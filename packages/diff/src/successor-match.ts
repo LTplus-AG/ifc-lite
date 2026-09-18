@@ -34,7 +34,8 @@
  *
  * **`position`** — same class family, same spatial container (a NAME path both
  * adapters resolve, equal and non-empty on both sides — absent on either side
- * is not evidence and the pair is skipped), centre distance within
+ * is not evidence and the pair is skipped), boxes of comparable size (no axis
+ * more than 2× the other's), centre distance within
  * `max(successorDistance, 0.5 × base box diagonal)`, mutual nearest with the
  * runner-up at least twice as far. `footprint` ignores the container on
  * purpose: a storey rename changes the path of every element in it, and a
@@ -50,6 +51,8 @@ import {
   type GeometryTolerances,
 } from './geometry-compare.js';
 import { mutualNearestPairs } from './mutual-nearest.js';
+import { boxIoU } from './split-merge-geometry.js';
+export { boxIoU } from './split-merge-geometry.js';
 import type {
   DiffEntry,
   DiffOptions,
@@ -70,6 +73,15 @@ export const DEFAULT_SUCCESSOR_DISTANCE = 0.5;
 
 /** The runner-up must be at least this many times further than the nearest. */
 const POSITION_MARGIN_RATIO = 2;
+
+/**
+ * Largest per-axis extent ratio the `position` profile accepts between the
+ * two boxes. A family swap changes a chair's size somewhat; it does not turn a
+ * 6 m covering into a 0.3 m fixture. Without this the profile paired a deleted
+ * element with any same-family thing that happened to sit inside its box
+ * (issue #4955, xmatch finding F6: seven such pairs on one model at IoU 0.03).
+ */
+const POSITION_EXTENT_RATIO = 2;
 
 /**
  * Largest bucket (per side, per family) the stage will look at. Both profiles
@@ -98,25 +110,18 @@ export function resolveSuccessorSettings(options: DiffOptions): SuccessorSetting
   };
 }
 
-function boxVolume(box: EntityAabb): number {
-  return (
-    Math.max(0, box.max[0] - box.min[0]) *
-    Math.max(0, box.max[1] - box.min[1]) *
-    Math.max(0, box.max[2] - box.min[2])
-  );
-}
-
-/** Intersection over union of two boxes, `0..1`; `0` for a degenerate pair. */
-export function boxIoU(a: EntityAabb, b: EntityAabb): number {
-  let intersection = 1;
+/** Per-axis extents within a factor of {@link POSITION_EXTENT_RATIO} of each other. */
+function sizesComparable(a: EntityAabb, b: EntityAabb): boolean {
   for (let axis = 0; axis < 3; axis++) {
-    const lo = Math.max(a.min[axis], b.min[axis]);
-    const hi = Math.min(a.max[axis], b.max[axis]);
-    if (hi <= lo) return 0;
-    intersection *= hi - lo;
+    const ea = a.max[axis] - a.min[axis];
+    const eb = b.max[axis] - b.min[axis];
+    const big = Math.max(ea, eb);
+    const small = Math.min(ea, eb);
+    // Two flat extents agree; one flat against one not does not.
+    if (big <= 0) continue;
+    if (small <= 0 || big / small > POSITION_EXTENT_RATIO) return false;
   }
-  const union = boxVolume(a) + boxVolume(b) - intersection;
-  return union > 0 ? intersection / union : 0;
+  return true;
 }
 
 function boxDiagonal(box: EntityAabb): number {
@@ -236,6 +241,7 @@ function positionClaims<TRef>(
   const baseCentres = bases.map((candidate) => aabbCentre(candidate.aabb));
   const headCentres = heads.map((candidate) => aabbCentre(candidate.aabb));
   const withinReach = (b: number, h: number): boolean => {
+    if (!sizesComparable(bases[b].aabb, heads[h].aabb)) return false;
     const cap = Math.max(settings.distance, 0.5 * boxDiagonal(bases[b].aabb));
     return centreDistance(baseCentres[b], headCentres[h]) <= cap;
   };

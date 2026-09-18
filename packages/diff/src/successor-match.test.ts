@@ -252,6 +252,20 @@ describe('position successors', () => {
     expect(run(base, [chair('NEW', 0.4, 'Chair B', 'Project/Building/Level 3/Room 304')]).successors).toEqual([]);
   });
 
+  it('never pairs a small fixture sitting inside a deleted element of another size (xmatch finding F6)', () => {
+    // A 6 m covering deleted; a 0.3 m same-family element added inside its
+    // box in the same room. Mutual nearest, within reach, and not a
+    // replacement of anything.
+    const base = [entity({ key: 'COVER', ifcType: 'IfcCovering', aabb: box([0, 0, 0], [6, 0.05, 3]), container: ROOM })];
+    const head = [entity({ key: 'BIT', ifcType: 'IfcCovering', aabb: box([2, 0, 1], [2.3, 0.05, 1.3]), container: ROOM })];
+    expect(run(base, head).successors).toEqual([]);
+    // A modest size change (a different chair family) still pairs.
+    const chairs = run([chair('OLD', 0, 'Chair A', ROOM)], [
+      entity({ key: 'NEW', ifcType: 'IfcFurniture', name: 'Chair B', aabb: box([0.3, 0, 0], [1.0, 0.7, 1.1]), container: ROOM }),
+    ]);
+    expect(chairs.successors!.map((c) => c.confidence)).toEqual(['position']);
+  });
+
   it('respects the distance cap', () => {
     const base = [chair('OLD', 0, 'Chair A', ROOM)];
     expect(run(base, [chair('NEW', 0.8, 'Chair B', ROOM)]).successors).toEqual([]);

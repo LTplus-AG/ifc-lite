@@ -373,6 +373,32 @@ describe('ModelRotationBaker', () => {
       assert.deepEqual(restreamed.coordinateInfo.shiftedBounds, fresh.coordinateInfo.shiftedBounds);
     });
 
+    /**
+     * Instanced-only entities have no mesh of their own, so a prune that takes
+     * the model's last MESH does not take them: they are still drawn, still
+     * baked, and their pristine boxes live nowhere but the baseline. Dropping
+     * the entry on an empty mesh map would leave a model that is a wall plus a
+     * few hundred columns — the wall split away — baked with nothing able to
+     * undo it, and the next federation re-align would snapshot the rotated
+     * boxes as if they were pristine.
+     */
+    it('keeps the baseline when instanced-only entities survive a prune that empties the meshes', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      value.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+      const pristineBoxes = structuredClone(value.instancedGeometryAabbs);
+      baker.reconcile(targets(value, SKEW));
+      assert.notDeepEqual(value.instancedGeometryAabbs, pristineBoxes,
+        'the boxes must actually be baked for this to test anything');
+
+      const emptied = { ...withoutIds(value, [1, 2]),
+        instancedGeometryAabbs: new Map(value.instancedGeometryAabbs) } as Geometry;
+      baker.pruneMeshes(drain([1, 2], [[value, emptied]]));
+
+      assert.deepEqual(baker.unbake(() => emptied), ['m'],
+        'the baseline was dropped, so nothing could un-bake the instanced boxes');
+      assert.deepEqual(emptied.instancedGeometryAabbs, pristineBoxes);
+    });
+
     it('follows the model onto the pruned geometry object so unbake still restores it', () => {
       const baker = new ModelRotationBaker(), value = spread();
       const pristine = meshSnapshot(value, 0);

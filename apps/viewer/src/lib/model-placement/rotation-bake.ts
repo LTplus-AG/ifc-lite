@@ -234,15 +234,31 @@ export class ModelRotationBaker {
       // `bakedInstanced` pointing at the map the geometry now carries — that
       // map holds the boxes this baker already baked, and read as pristine
       // (`captureAppendedMeshBaselines`) they would be turned a second time.
+      //
+      // Only when the object actually CHANGED. The store's cache maps a
+      // geometry nothing matched in to itself, and `bakedInstanced` is the only
+      // record that a map on the geometry came from outside this baker
+      // (`captureAppendedMeshBaselines`); overwriting it for an untouched model
+      // would erase a pristine map installed by a streaming completion.
       const replacement = prune.replacements.get(entry.geometry);
-      if (replacement) {
+      if (replacement && replacement !== entry.geometry) {
         entry.geometry = replacement;
         entry.baseline.bakedInstanced = replacement.instancedGeometryAabbs;
       }
       // Nothing left to restore: every mesh this baseline described is gone, so
       // holding it pins an extent that describes an empty model. The next
       // reconcile captures a fresh one from whatever the model still has.
-      if (entry.baseline.meshes.size === 0) this.entries.delete(modelId);
+      //
+      // The INSTANCED boxes keep the baseline alive on their own. They are
+      // drawn entities with no mesh of their own, their pristine copy lives
+      // nowhere else, and `unbake` is what a federation re-align relies on to
+      // un-turn them before it snapshots (contract 1). A model that is all
+      // instanced-only geometry — one wall plus a few hundred columns, the wall
+      // split away — would otherwise be left baked with nothing able to undo
+      // it, and the re-align would snapshot the ROTATED boxes.
+      if (entry.baseline.meshes.size === 0 && !entry.baseline.instancedGeometryAabbs?.size) {
+        this.entries.delete(modelId);
+      }
     }
   }
 

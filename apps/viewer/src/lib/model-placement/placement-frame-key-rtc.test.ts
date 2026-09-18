@@ -371,6 +371,36 @@ describe('restoreWorkspacePlacements falls back to the pre-#4936 (v1.47.0) legac
     assert.deepEqual(restored?.translation, [7, 0, 0], 'a real placement saved under the v1.47.0 key must still be found');
   });
 
+  it('does not fall back once the workspace is pinned by an explicit re-alignment (#4936 round 6 review)', async () => {
+    const a = await georeferencedModel('a', 'LegacyA0000000000000002', 1, 'EPSG:2056', 2600000);
+    useViewerStore.setState({ ...useViewerStore.getState(), ...fixtureModels(a), modelPlacement: emptyPlacementState() });
+    const anchor = { x: 111, y: 222, z: 333 };
+    useViewerStore.setState((s) => {
+      const model = s.models.get('a')!;
+      const models = new Map(s.models);
+      models.set('a', { ...model, geometryResult: { ...model.geometryResult,
+        coordinateInfo: { ...coordInfo(anchor), buildingRotation: 0.5 } } as unknown as GeometryResult });
+      return { models };
+    });
+    const unpinned = useViewerStore.getState();
+    const { rotation, ...rest } = JSON.parse(placementFrameBaseKey(unpinned)) as Record<string, unknown>;
+    const legacyKey = JSON.stringify({ ...rest, rtc: anchor, rotation });
+    const disk = storage();
+    disk.setItem('ifc-lite:placements:v1:' + legacyKey, JSON.stringify(makePlacementManifest(unpinned.models,
+      new Map([['a', { translation: [7, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false }]]), legacyKey)));
+    assert.equal(restoreWorkspacePlacements(disk, unpinned).size, 1, 'sanity: unpinned, the legacy fallback still applies');
+
+    // The user then re-aligned the workspace onto another CRS
+    // (`commitRealignmentFrame` writes this pin). The legacy key is still
+    // derivable from the model's own georef, but its manifest describes the
+    // frame the workspace was re-aligned AWAY from.
+    const pinned = { ...unpinned, modelPlacement: { ...unpinned.modelPlacement,
+      realignedFrameKey: JSON.stringify({ ...rest, crs: { name: 'EPSG:3857', mapUnitScale: 1 }, rotation }) } };
+    assert.notEqual(placementFrameKey(pinned), placementFrameKey(unpinned), 'sanity: the pin changes the current key');
+    assert.equal(restoreWorkspacePlacements(disk, pinned).size, 0,
+      'a pre-fix manifest for the un-pinned georef must not be applied inside the re-aligned frame');
+  });
+
   it('does not fall back for a non-georeferenced (local-engineering) workspace, since that key never disambiguated by rtc', () => {
     const anchor = { x: 1, y: 2, z: 3 };
     const disk = storage();

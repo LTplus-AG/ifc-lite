@@ -233,7 +233,11 @@ export function restoreWorkspacePlacements(storage: Pick<Storage, 'getItem'>, st
   // dropped (see `legacyGeoreferencedFrameKey`). `resolveFrame` is the
   // legacy string itself, matching `manifest.frameKey` as saved, not the
   // current `frame`; the next save writes back under the current key.
-  if (!saved) {
+  // Never behind an explicit re-alignment pin: the legacy key is derived from
+  // the anchor's OWN embedded georef, i.e. the frame the workspace was
+  // re-aligned AWAY from, so a manifest found under it holds pivots for a
+  // different CRS than the pinned one (#4936 round 6 review).
+  if (!saved && !state.modelPlacement.realignedFrameKey) {
     const legacy = legacyGeoreferencedFrameKey(state);
     if (legacy && legacy !== frame) { saved = storage.getItem(PREFIX + legacy); resolveFrame = legacy; }
   }

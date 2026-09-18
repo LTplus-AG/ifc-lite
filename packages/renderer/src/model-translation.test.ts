@@ -417,4 +417,40 @@ describe('ModelTranslations yaw (#4890)', () => {
       assert.ok(Math.abs(after[i] - (beforeEdit[i] + edit[i])) < 1e-3, `axis ${i}: ${after[i]} vs ${beforeEdit[i] + edit[i]}`);
     }
   });
+
+  it('rejects a finite pivot that overflows to Infinity in the f32 instance buffer', () => {
+    const translations = new ModelTranslations(), data = new ArrayBuffer(STRIDE), view = new DataView(data);
+    writeRecord(view, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 2, 3]);
+    translations.placeInstances(data, 0, STRIDE);
+    const pristine = new Float32Array(data.slice(0));
+
+    // 1e100 is a finite JS number but overflows `Math.fround` to Infinity —
+    // `placeInstances` would otherwise write it through `setFloat32` and
+    // poison every occurrence's bounds (`foldOccurrenceWorldBox`).
+    assert.throws(() => translations.setYaw(0, { angle: 0.5, px: 1e100, pz: 0 }), /finite/);
+    assert.throws(() => translations.setYaw(0, { angle: 0.5, px: 0, pz: 1e100 }), /finite/);
+    assert.strictEqual(translations.getYaw(0), null, 'the rejected pivot must not become the stored yaw');
+    translations.placeInstances(data, 0, STRIDE);
+    assert.deepStrictEqual(new Float32Array(data.slice(0)), pristine, 'the buffer is untouched by a rejected pivot');
+  });
+
+  it('returns a copy from getYaw, so mutating it cannot desync change detection', () => {
+    const translations = new ModelTranslations(), data = new ArrayBuffer(STRIDE), view = new DataView(data);
+    writeRecord(view, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0, 0, 0]);
+    translations.placeInstances(data, 0, STRIDE);
+    translations.setYaw(0, { angle: 0.5, px: 1, pz: 2 });
+    translations.placeInstances(data, 0, STRIDE);
+    const written = view.getFloat32(48, true);
+
+    const borrowed = translations.getYaw(0)!;
+    borrowed.angle = 1.5; // a caller mutating the returned object in place
+    assert.strictEqual(translations.getYaw(0)!.angle, 0.5, 'the stored yaw is unaffected');
+
+    // Setting the SAME logical yaw again must still be recognized as a real
+    // change and rewrite the buffer — it must not compare equal to the
+    // caller's mutated (but never stored) copy.
+    assert.strictEqual(translations.setYaw(0, { angle: 1.5, px: 1, pz: 2 }), true);
+    translations.placeInstances(data, 0, STRIDE);
+    assert.notEqual(view.getFloat32(48, true), written);
+  });
 });

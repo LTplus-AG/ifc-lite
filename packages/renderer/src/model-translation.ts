@@ -78,12 +78,25 @@ export class ModelTranslations {
     return true;
   }
 
-  getYaw(modelIndex = 0): ModelYaw | null { return this.yaws.get(modelIndex) ?? null; }
+  /** A copy, never the stored object: `placeInstances` compares this against
+   * its own retained `entry.yaw` by value, so a caller mutating a borrowed
+   * yaw in place would make a later placement wrongly see "unchanged" and
+   * skip rewriting the instance buffer, leaving the render stale. */
+  getYaw(modelIndex = 0): ModelYaw | null {
+    const yaw = this.yaws.get(modelIndex);
+    return yaw ? { ...yaw } : null;
+  }
 
   /** `null` clears the model's rotation; an explicit zero angle is stored the
-   * same way, so both restore the pristine instance transform bit-exactly. */
+   * same way, so both restore the pristine instance transform bit-exactly.
+   * The pivot is validated the same way `assertModelTranslation` validates an
+   * offset: `Math.fround`-representable, not merely finite — `placeInstances`
+   * writes it through `DataView.setFloat32`, so a pivot like `1e100` would
+   * otherwise round to `Infinity` and poison every occurrence's bounds. */
   setYaw(modelIndex: number, yaw: ModelYaw | null): boolean {
-    if (yaw && (!Number.isFinite(yaw.angle) || !Number.isFinite(yaw.px) || !Number.isFinite(yaw.pz))) {
+    if (yaw && (!Number.isFinite(yaw.angle)
+      || !Number.isFinite(yaw.px) || !Number.isFinite(Math.fround(yaw.px))
+      || !Number.isFinite(yaw.pz) || !Number.isFinite(Math.fround(yaw.pz)))) {
       throw new Error('Model rotation requires a finite angle and pivot.');
     }
     const next = yaw && yaw.angle !== 0 ? { angle: yaw.angle, px: yaw.px, pz: yaw.pz } : null;

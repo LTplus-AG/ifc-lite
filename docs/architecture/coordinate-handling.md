@@ -54,7 +54,7 @@ Shifted:   (234.567, -108.766, 0.0)  ← GPU-friendly!
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `LARGE_COORD_THRESHOLD_METERS` | 10,000m (10km) | Triggers RTC shift detection. Rust-side; ask `coord_is_large` rather than comparing against it, so the comparison (strictly greater, any axis, absolute value) stays in one place. One live exception, `ModelBounds::has_large_coordinates`, compares the six scaled bbox extents directly; it uses the same `>` so it agrees today, and routing it through the predicate is the obvious follow-up |
+| `LARGE_COORD_THRESHOLD_METERS` | 1,000m (1km, was 10km before #4934) | Triggers RTC shift detection. Rust-side; ask `coord_is_large` rather than comparing against it, so the comparison (strictly greater, any axis, absolute value) stays in one place. One live exception, `ModelBounds::has_large_coordinates`, compares the six scaled bbox extents directly; it uses the same `>` so it agrees today, and routing it through the predicate is the obvious follow-up |
 | `NORMAL_COORD_THRESHOLD` | 10,000m | Max expected coordinate after RTC |
 | `MAX_REASONABLE_COORD` | 10,000,000m | Reject obviously corrupt values |
 
@@ -139,7 +139,7 @@ impl GeometryRouter {
 `RtcVerdict` (`ifc_lite_core::limits`) carries the decision and the anchor
 together, because the decision is not a property of the anchor: the
 placement-bounds scan decides on the bbox CORNERS and answers with the bbox
-CENTRE, which can be inside 10 km while the coordinates still need re-basing.
+CENTRE, which can be inside the gate while the coordinates still need re-basing.
 `RtcVerdict::offset()` reads the translation to subtract - the anchor when
 `Large`, zero when `Small`.
 
@@ -157,8 +157,8 @@ Detection is sample-based, not first-element-wins:
 1. Scan the FILE for entities whose class carries geometry (`geometry_flags_by_name`, schema-driven, plus a spatial container that exceptionally carries a Representation). This window is the detector's own, never a job list the caller passes in.
 2. Sample each element's placement translation, up to 50 usable samples (elements that abstain, such as origin-placed axis-only representations, do not consume the budget).
 3. Take the per-axis **median** of the samples.
-4. If any median axis exceeds 10 km (`coord_is_large`: strictly greater, any axis, absolute value), the verdict is `RtcVerdict::Large` anchored on that centroid; otherwise it is `RtcVerdict::Small` and the offset reads as `(0, 0, 0)`.
-5. Only when no element gives a usable sample, fall back to the placement-bounds scan (`ModelBounds::rtc_offset`). It decides on the bbox corners: if any corner is past 10 km the verdict is `RtcVerdict::Large` with the bbox centre as the anchor, even when that centre is itself inside 10 km. `MeshFrame::select` honours a `Large` verdict as given; it does not re-judge the anchor's magnitude.
+4. If any median axis exceeds `LARGE_COORD_THRESHOLD_METERS` (1 km, `coord_is_large`: strictly greater, any axis, absolute value), the verdict is `RtcVerdict::Large` anchored on that centroid; otherwise it is `RtcVerdict::Small` and the offset reads as `(0, 0, 0)`.
+5. Only when no element gives a usable sample, fall back to the placement-bounds scan (`ModelBounds::rtc_offset`). It decides on the bbox corners: if any corner is past the gate the verdict is `RtcVerdict::Large` with the bbox centre as the anchor, even when that centre is itself inside the gate. `MeshFrame::select` honours a `Large` verdict as given; it does not re-judge the anchor's magnitude.
 
 Using the median of many samples instead of the first element makes detection robust against a single outlier element parked at a survey point.
 

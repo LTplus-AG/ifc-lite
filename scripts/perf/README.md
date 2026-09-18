@@ -1666,3 +1666,18 @@ The browser harness records mesh/entity counts rather than vertex-payload
 identity; the native ordered fingerprint supplies that separate identity
 control. Explicit-frame-versus-standalone parser microbenchmarks are only
 supplementary mode timings, not full-load evidence.
+
+## Precision-derived RTC gate (#4934)
+
+Lowered `LARGE_COORD_THRESHOLD_METERS` from 10 km to 1 km. Base
+(521e8d8e9) vs branch, native `perf_probe` on AC20-FZK-Haus (best-of-5,
+interleaved): total 15 ms both sides, parse 7 ms / geometry 7 ms both
+sides. Mesh output byte-identical: 285 meshes / 35,940 vertices /
+19,456 triangles on both, and this fixture's coordinates sit well under
+1 km so the gate's `Small` verdict — and therefore the mesh frame — is
+unchanged either side; the lever this PR pulls has no reach into
+AC20-sized files. The lesson: a threshold-only change with no new work
+in the hot path needs no dedicated perf lever, only a byte-identity
+check on a fixture the gate does not touch; the real cost of moving the
+line is paid only by files that cross between the old and new bands
+(1-10 km), which this fixture is not one of.

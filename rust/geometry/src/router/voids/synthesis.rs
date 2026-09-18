@@ -5,6 +5,7 @@
 //! Opening classification, merge/extend, and cutter-mesh synthesis.
 
 mod exit_cap;
+mod exit_cap_far_field;
 mod membrane;
 
 use super::geom::*;

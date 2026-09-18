@@ -231,9 +231,10 @@ fn streaming_partial_stage3_placement_bounds_fallback() {
 
 // A metric model whose only geometry job (#40) has NO representation, so both
 // detect passes abstain and the placement-bounds scan decides. The two
-// placement points put one bbox corner past 10 km (15 km) while the bbox
-// centre (8.5 km) stays inside it, so the fallback answers with a non-zero
-// anchor that is not itself "large". The site placement is identity.
+// placement points put one bbox corner past the 1 km gate (1.5 km) while the
+// bbox centre (850 m) stays inside it, so the fallback answers with a
+// non-zero anchor that is not itself "large". The site placement is
+// identity.
 const IFC_SUB_THRESHOLD_ANCHOR: &str = "\
 ISO-10303-21;
 HEADER;
@@ -245,34 +246,35 @@ DATA;
 #40=IFCWALL('wall',$,$,$,$,#41,$,$,$);
 #41=IFCLOCALPLACEMENT($,#42);
 #42=IFCAXIS2PLACEMENT3D(#43,$,$);
-#43=IFCCARTESIANPOINT((15000.,0.,0.));
+#43=IFCCARTESIANPOINT((1500.,0.,0.));
 #44=IFCAXIS2PLACEMENT3D(#45,$,$);
-#45=IFCCARTESIANPOINT((2000.,0.,0.));
+#45=IFCCARTESIANPOINT((200.,0.,0.));
 ENDSEC;
 END-ISO-10303-21;
 ";
 
-/// #4611, #4643: the browser resolver and the native pipeline choose the same
-/// frame for the same model, and that frame re-bases it. The bounds reach
-/// 15 km, so the model needs a shift; the anchor is the 8.5 km bbox centre.
-/// Main shifted it on native only (the browser gated the centre on 10 km),
-/// and an intermediate version of this PR shifted it on neither, casting
-/// 15 km coordinates straight to f32 (Codex P1 on #4643). Gating the anchor
-/// on its own magnitude again fails the native and the browser assertions.
+/// #4611, #4643 (threshold lowered to 1 km by #4934): the browser resolver
+/// and the native pipeline choose the same frame for the same model, and
+/// that frame re-bases it. The bounds reach 1.5 km, so the model needs a
+/// shift; the anchor is the 850 m bbox centre. Main shifted it on native
+/// only (the browser gated the centre on the same threshold), and an
+/// intermediate version of this PR shifted it on neither, casting far
+/// coordinates straight to f32 (Codex P1 on #4643). Gating the anchor on its
+/// own magnitude again fails the native and the browser assertions.
 #[test]
 fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
     let content = IFC_SUB_THRESHOLD_ANCHOR.as_bytes();
-    let anchor = (8500.0, 0.0, 0.0);
+    let anchor = (850.0, 0.0, 0.0);
     assert_eq!(
         ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0),
         Some(RtcVerdict::Large { anchor }),
         "premise: the bounds are large and anchor on the in-threshold centre"
     );
-    assert!(!coord_is_large(anchor), "premise: the anchor is inside 10 km");
+    assert!(!coord_is_large(anchor), "premise: the anchor is inside 1 km");
 
     let native = crate::process_geometry(IFC_SUB_THRESHOLD_ANCHOR);
     assert_eq!(native.mesh_coordinate_space, crate::MeshCoordinateSpace::ModelRtc);
-    assert_eq!(native.metadata.coordinate_info.origin_shift, [8500.0, 0.0, 0.0]);
+    assert_eq!(native.metadata.coordinate_info.origin_shift, [850.0, 0.0, 0.0]);
 
     for mode in [
         MetaMode::SmallFileSingle,
@@ -296,7 +298,7 @@ fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
 /// from every vertex of a model that sits 12.5 m from the origin.
 #[test]
 fn small_file_single_bounds_fallback_scales_millimetres_before_the_gate() {
-    // 25 m wide in millimetres: raw 25 000 > 10 000, scaled 25 < 10 000.
+    // 25 m wide in millimetres: raw 25 000 > 1 000, scaled 25 < 1 000.
     let mm = IFC_STAGE3.replace(
         "#43=IFCCARTESIANPOINT((80000000.,90000000.,0.));",
         "#43=IFCCARTESIANPOINT((25000.,25000.,0.));",
@@ -334,8 +336,8 @@ fn small_file_single_bounds_fallback_scales_millimetres_before_the_gate() {
     assert_eq!(meta.frame.rtc_offset(), (0.0, 0.0, 0.0));
 }
 
-/// The other direction of the same gate: a KILOMETRE model 5 000 km out
-/// reads `5000 < 10000` raw and was never re-based, while the identical
+/// The other direction of the same gate: a KILOMETRE model 500 000 km out
+/// reads `500 < 1000` raw and was never re-based, while the identical
 /// geometry declared in metres was. The gate must see metres.
 #[test]
 fn small_file_single_bounds_fallback_rebases_a_kilometre_model() {
@@ -346,7 +348,7 @@ fn small_file_single_bounds_fallback_rebases_a_kilometre_model() {
         )
         .replace(
             "#43=IFCCARTESIANPOINT((80000000.,90000000.,0.));",
-            "#43=IFCCARTESIANPOINT((5000.,5000.,0.));",
+            "#43=IFCCARTESIANPOINT((500.,500.,0.));",
         );
     let content = km.as_bytes();
     let full_index = ifc_lite_core::build_entity_index(content);
@@ -366,10 +368,10 @@ fn small_file_single_bounds_fallback_rebases_a_kilometre_model() {
     );
 
     assert!((meta.length_unit_scale - 1000.0).abs() < 1e-9, "km project");
-    assert!(meta.frame.needs_shift(), "5 000 km out must be re-based");
+    assert!(meta.frame.needs_shift(), "500 000 km out must be re-based");
     assert_eq!(
         meta.frame.rtc_offset(),
-        (5_000_000.0, 5_000_000.0, 0.0),
+        (500_000.0, 500_000.0, 0.0),
         "offset in metres"
     );
 }

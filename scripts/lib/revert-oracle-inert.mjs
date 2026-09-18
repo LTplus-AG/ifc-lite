@@ -63,6 +63,7 @@ export function isInertPath(path) {
 const TEST_SUPPORT_EXACT = new Set([
   'scripts/lib/shard-refusal-boundary.mjs',
   'scripts/lib/relocated-gate-source.mjs',
+  'scripts/lib/wasm-rtc-precision-contracts.mjs',
 ]);
 
 export function isTestSupportPath(path) {

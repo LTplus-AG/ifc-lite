@@ -407,7 +407,7 @@ fn transform_point(point: Point3<f64>, matrix: &Matrix4<f64>) -> Point3<f64> {
 
 Two mechanisms keep f32 GPU coordinates precise (details in [Coordinate Handling](coordinate-handling.md)):
 
-- **Model-level RTC offset**: the pre-pass samples placement translations of geometry-bearing elements and, when the per-axis median exceeds 10 km, subtracts that offset from every mesh.
+- **Model-level RTC offset**: the pre-pass samples placement translations of geometry-bearing elements and, when the per-axis median exceeds `LARGE_COORD_THRESHOLD_METERS` (1 km, was 10 km before #4934), subtracts that offset from every mesh.
 - **Per-element local-frame origin**: each `MeshData` carries an f64 `origin`; positions are stored as small f32 values relative to it, so building-scale translations never get baked into f32 vertices.
 
 ```mermaid

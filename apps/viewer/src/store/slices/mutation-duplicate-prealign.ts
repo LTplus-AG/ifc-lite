@@ -2,10 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { EntityWorldAabb } from '@ifc-lite/geometry';
 import type { ViewerState } from '../index.js';
 import { correctPreAlignmentTail, type PreAlignmentMeshBaseline } from './data-mesh-prealign.js';
 
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
+
+/** `box` translated by `offset` — the box travels with the same delta as the
+ *  positions/origin, or a restore would put the clone's spatial index entry
+ *  back at the SOURCE's location instead of the visibly offset duplicate's. */
+function translateBox(
+  box: EntityWorldAabb | undefined,
+  offset: { x: number; y: number; z: number },
+): EntityWorldAabb | undefined {
+  if (!box) return undefined;
+  return {
+    min: [box.min[0] + offset.x, box.min[1] + offset.y, box.min[2] + offset.z],
+    max: [box.max[0] + offset.x, box.max[1] + offset.y, box.max[2] + offset.z],
+  };
+}
 
 /**
  * #4970 correction for `duplicateEntity`. `growPreAlignment` (run inside the
@@ -61,7 +76,7 @@ export function applyDuplicatePreAlignmentBaseline(
           (srcOrigin?.[1] ?? 0) + offset.y,
           (srcOrigin?.[2] ?? 0) + offset.z,
         ],
-        geometryAabb: snap.geometryAabbs[srcIdx],
+        geometryAabb: translateBox(snap.geometryAabbs[srcIdx], offset),
       };
     });
 

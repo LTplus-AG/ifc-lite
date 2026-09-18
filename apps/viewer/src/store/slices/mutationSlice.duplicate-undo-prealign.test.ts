@@ -96,12 +96,14 @@ function geometryOf(meshes: MeshData[]): GeometryResult {
   } as unknown as GeometryResult;
 }
 
+const PRISTINE_BOX = { min: [10, 10, 10] as [number, number, number], max: [14, 13, 10] as [number, number, number] };
+
 function fakeAlignedSnapshot(): FederatedModel['preAlignment'] {
   return {
     positions: [new Float32Array(PRISTINE_POSITIONS)],
     normals: [new Float32Array(12)],
     origins: [PRISTINE_ORIGIN],
-    geometryAabbs: [undefined],
+    geometryAabbs: [PRISTINE_BOX],
     coordinateInfo: {
       originShift: { x: 0, y: 0, z: 0 },
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
@@ -169,6 +171,20 @@ describe('duplicateEntity derives a correct preAlignment baseline on an aligned 
       [...snap.positions[cloneIndex]],
       PRISTINE_POSITIONS,
       'the clone baseline must be the source\'s pristine geometry, verbatim',
+    );
+
+    // The baseline's world box must travel with the same offset as the
+    // positions/origin — a box left at the source's location would point a
+    // later restore's spatial index at the wrong place (review finding on
+    // this same PR, CodeRabbit + Macroscope).
+    const box = snap.geometryAabbs[cloneIndex];
+    assert.ok(box, 'the clone must keep a world box, not lose it');
+    const deltaX = box!.min[0] - PRISTINE_BOX.min[0];
+    assert.notEqual(deltaX, 0, 'the box must move with the duplicate, not stay at the source');
+    assert.deepEqual(
+      [box!.max[0] - box!.min[0], box!.max[1] - box!.min[1], box!.max[2] - box!.min[2]],
+      [PRISTINE_BOX.max[0] - PRISTINE_BOX.min[0], PRISTINE_BOX.max[1] - PRISTINE_BOX.min[1], PRISTINE_BOX.max[2] - PRISTINE_BOX.min[2]],
+      'translating the box must preserve its size',
     );
   });
 });

@@ -1,5 +1,23 @@
 # @ifc-lite/viewer-embed
 
+## 1.15.7
+
+### Patch Changes
+
+- [#4914](https://github.com/LTplus-AG/ifc-lite/pull/4914) [`8ed7798`](https://github.com/LTplus-AG/ifc-lite/commit/8ed77988bff92c696a3351f67c6e2ea013917b17) Thanks [@louistrue](https://github.com/louistrue)! - The section cut state now matches what the 3D view shows. Leaving the Section tool hides the cut, and the viewer no longer reports it as active: `bim.viewer.getSection()` returns `null` and the view PDF export prints no cut. Reopening the Section tool brings the cut back, face-picked planes included. `bim.viewer.setSection({ enabled: true })` and applying a BCF viewpoint with clipping planes open the Section tool so the cut is visible. Applying a viewpoint without clipping planes, or `bim.viewer.clearSection()`, clears the cut, and it stays cleared when the Section tool reopens. The embed `SET_SECTION` command with `enabled: true` now shows the cut too.
+- Updated dependencies [[`cd4ee9e`](https://github.com/LTplus-AG/ifc-lite/commit/cd4ee9e6ddb7089babde6e6e38c3dc0877e95b16), [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`9f34896`](https://github.com/LTplus-AG/ifc-lite/commit/9f34896cc7c8e19ce9a75367aa8b4cfa23877944), [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`ef42c0e`](https://github.com/LTplus-AG/ifc-lite/commit/ef42c0edeb4081e0ad9318c3a0f32301a30e6936), [`8ccfa05`](https://github.com/LTplus-AG/ifc-lite/commit/8ccfa0573331dc2ecc602b74945f8cc54229829b), [`603d987`](https://github.com/LTplus-AG/ifc-lite/commit/603d9872bef5d340cccfc76fe0708f2feaafad49), [`076428b`](https://github.com/LTplus-AG/ifc-lite/commit/076428b45a71292f226462577753085f7d23ba64), [`39153d1`](https://github.com/LTplus-AG/ifc-lite/commit/39153d155e8c0a5620cdc1802837d6e0f9e7619b), [`6a9fc13`](https://github.com/LTplus-AG/ifc-lite/commit/6a9fc132731132bbbec2d9241242ae99e063a27e), [`1606952`](https://github.com/LTplus-AG/ifc-lite/commit/16069523591defe5650b794acebf66e373f4cdb2), [`37a5949`](https://github.com/LTplus-AG/ifc-lite/commit/37a5949b1ed3786b52602b62d04bf1ac451844b3), [`84941dd`](https://github.com/LTplus-AG/ifc-lite/commit/84941dd8413a153040714968dcd684a610334c9a), [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940)]:
+  - @ifc-lite/charts@0.3.0
+  - @ifc-lite/parser@7.1.0
+  - @ifc-lite/sdk@6.3.0
+  - @ifc-lite/export@4.4.0
+  - @ifc-lite/geometry@7.3.0
+  - @ifc-lite/renderer@3.1.0
+  - @ifc-lite/data@4.5.0
+  - @ifc-lite/mutations@2.4.0
+  - @ifc-lite/query@2.4.2
+  - @ifc-lite/ids@1.17.3
+  - @ifc-lite/lists@2.2.4
+
 ## 1.15.6
 
 ### Patch Changes

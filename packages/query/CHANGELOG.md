@@ -1,5 +1,15 @@
 # @ifc-lite/query
 
+## 2.4.2
+
+### Patch Changes
+
+- [#4889](https://github.com/LTplus-AG/ifc-lite/pull/4889) [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940) Thanks [@louistrue](https://github.com/louistrue)! - Let element charts bind to an exact IFC attribute or property, persist the field interpretation, normalize scalar values for aggregation, and report missing sum contributions. Resolve named attributes across every bundled IFC schema so IFC2X3-only and IFC4X3-only classes participate too (`EntityNode.allAttributes()` now consults the store's own schema version). On-demand property extraction reports a property's explicit `Unit` as `unit` plus `unitSiScale`; an unresolvable unit reference is reported as `#<id>` with no scale instead of being dropped.
+- Updated dependencies [[`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`9f34896`](https://github.com/LTplus-AG/ifc-lite/commit/9f34896cc7c8e19ce9a75367aa8b4cfa23877944), [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`ef42c0e`](https://github.com/LTplus-AG/ifc-lite/commit/ef42c0edeb4081e0ad9318c3a0f32301a30e6936), [`8ccfa05`](https://github.com/LTplus-AG/ifc-lite/commit/8ccfa0573331dc2ecc602b74945f8cc54229829b), [`603d987`](https://github.com/LTplus-AG/ifc-lite/commit/603d9872bef5d340cccfc76fe0708f2feaafad49), [`39153d1`](https://github.com/LTplus-AG/ifc-lite/commit/39153d155e8c0a5620cdc1802837d6e0f9e7619b), [`6a9fc13`](https://github.com/LTplus-AG/ifc-lite/commit/6a9fc132731132bbbec2d9241242ae99e063a27e), [`37a5949`](https://github.com/LTplus-AG/ifc-lite/commit/37a5949b1ed3786b52602b62d04bf1ac451844b3), [`84941dd`](https://github.com/LTplus-AG/ifc-lite/commit/84941dd8413a153040714968dcd684a610334c9a), [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940)]:
+  - @ifc-lite/parser@7.1.0
+  - @ifc-lite/geometry@7.3.0
+  - @ifc-lite/data@4.5.0
+
 ## 2.4.1
 
 ### Patch Changes

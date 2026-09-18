@@ -1,5 +1,0 @@
----
-"@ifc-lite/viewer": minor
----
-
-Reposition models can now rotate a model about the workspace vertical axis. Enter an absolute heading in degrees with an optional pivot point (defaulting to the model's bounds centre and shown, not implied); the rotation is applied before the placement offset, joins moves on the same undo stack, survives export/import of the placement manifest, and is baked into the model's geometry so the viewport, picking, bounds, spatial queries and graphical exports all read one set of coordinates. Records saved before rotation existed load as unrotated. Pointclouds are refused rather than half-rotated. Rotating while a large model is still streaming is safe: batches that arrive after the bake are rotated once each, and the already-rendered geometry is left where it is. Bounded-memory mode is safe too: a model whose vertex buffers have been released keeps its per-mesh placement in step with the declared heading, so returning to 0° puts it back where it started rather than leaving it turned.

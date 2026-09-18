@@ -1,5 +1,13 @@
 # @ifc-lite/ids
 
+## 1.17.3
+
+### Patch Changes
+
+- Updated dependencies [[`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`9f34896`](https://github.com/LTplus-AG/ifc-lite/commit/9f34896cc7c8e19ce9a75367aa8b4cfa23877944), [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`ef42c0e`](https://github.com/LTplus-AG/ifc-lite/commit/ef42c0edeb4081e0ad9318c3a0f32301a30e6936), [`39153d1`](https://github.com/LTplus-AG/ifc-lite/commit/39153d155e8c0a5620cdc1802837d6e0f9e7619b), [`37a5949`](https://github.com/LTplus-AG/ifc-lite/commit/37a5949b1ed3786b52602b62d04bf1ac451844b3), [`84941dd`](https://github.com/LTplus-AG/ifc-lite/commit/84941dd8413a153040714968dcd684a610334c9a), [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940)]:
+  - @ifc-lite/parser@7.1.0
+  - @ifc-lite/data@4.5.0
+
 ## 1.17.2
 
 ### Patch Changes

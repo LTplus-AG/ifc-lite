@@ -1,5 +1,20 @@
 # @ifc-lite/cli
 
+## 0.33.1
+
+### Patch Changes
+
+- [#4909](https://github.com/LTplus-AG/ifc-lite/pull/4909) [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - An explicit empty `Category` (`''`) on an `IfcCostValue` with no `AppliedValue` and no `Components` is no longer evaluated as a category total; it reports `MISSING_VALUE` as before. `ifc-lite eval --type` labels an entity whose `Name` is empty by its `GlobalId` ([#4881](https://github.com/LTplus-AG/ifc-lite/issues/4881)).
+- Updated dependencies [[`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`9f34896`](https://github.com/LTplus-AG/ifc-lite/commit/9f34896cc7c8e19ce9a75367aa8b4cfa23877944), [`bbd3a67`](https://github.com/LTplus-AG/ifc-lite/commit/bbd3a675dbccb75e0f7c9df80c2a65a831478adf), [`ef42c0e`](https://github.com/LTplus-AG/ifc-lite/commit/ef42c0edeb4081e0ad9318c3a0f32301a30e6936), [`8ccfa05`](https://github.com/LTplus-AG/ifc-lite/commit/8ccfa0573331dc2ecc602b74945f8cc54229829b), [`603d987`](https://github.com/LTplus-AG/ifc-lite/commit/603d9872bef5d340cccfc76fe0708f2feaafad49), [`39153d1`](https://github.com/LTplus-AG/ifc-lite/commit/39153d155e8c0a5620cdc1802837d6e0f9e7619b), [`6a9fc13`](https://github.com/LTplus-AG/ifc-lite/commit/6a9fc132731132bbbec2d9241242ae99e063a27e), [`37a5949`](https://github.com/LTplus-AG/ifc-lite/commit/37a5949b1ed3786b52602b62d04bf1ac451844b3), [`84941dd`](https://github.com/LTplus-AG/ifc-lite/commit/84941dd8413a153040714968dcd684a610334c9a), [`f24aff9`](https://github.com/LTplus-AG/ifc-lite/commit/f24aff9a7f7685af2cdf0230fe4c712d7dc37940)]:
+  - @ifc-lite/parser@7.1.0
+  - @ifc-lite/sdk@6.3.0
+  - @ifc-lite/export@4.4.0
+  - @ifc-lite/geometry@7.3.0
+  - @ifc-lite/data@4.5.0
+  - @ifc-lite/mutations@2.4.0
+  - @ifc-lite/query@2.4.2
+  - @ifc-lite/ids@1.17.3
+
 ## 0.33.0
 
 ### Minor Changes

@@ -45,6 +45,7 @@ import { EntityExtractor, type MapConversion, type ProjectedCRS } from '@ifc-lit
 import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
+import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import type { TypeViewMode } from '../constants.js';
@@ -1705,8 +1706,7 @@ export const createMutationSlice: StateCreator<
         // Live-rotate the rendered mesh about its bbox centre (IFC yaw about Z
         // = renderer yaw about +Y, same angle).
         const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-        const meshes =
-          get().models.get(modelId)?.geometryResult?.meshes ?? get().geometryResult?.meshes ?? null;
+        const meshes = meshesForOwningModel(get(), modelId);
         const c = getEntityCenter(meshes, globalId);
         if (c) {
           get().setPendingMeshRotations(
@@ -1826,8 +1826,7 @@ export const createMutationSlice: StateCreator<
     // data-only locally today); peers re-hydrate the new blob. No-op off-collab.
     if (Number.isFinite(chain.height) && chain.height > 0) {
       const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-      const meshes =
-        get().models.get(modelId)?.geometryResult?.meshes ?? get().geometryResult?.meshes ?? null;
+      const meshes = meshesForOwningModel(get(), modelId);
       const bounds = getEntityBounds(meshes, globalId);
       const newMesh = buildElementMesh({
         type: 'wall',
@@ -2568,10 +2567,11 @@ export const createMutationSlice: StateCreator<
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { error: 'Failed to create store editor' };
 
-    // Source's bounding box drives the offset magnitude; meshes are keyed by globalId (federation-aware).
+    // Source's bounding box drives the offset magnitude; meshes are keyed by globalId, so they must
+    // come from the EDITED model, not the active model's top-level mirror (#4929).
     // Read in the MODEL frame, not the live baked bytes: the rotation bake turns the appended copy once (#4873).
     const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, sourceExpressId);
-    const meshes = state.geometryResult?.meshes?.filter((m) => m.expressId === sourceGlobalId).map((m) => modelRotationBaker.inModelFrame(m));
+    const meshes = meshesForOwningModel(state, modelId)?.filter((m) => m.expressId === sourceGlobalId).map((m) => modelRotationBaker.inModelFrame(m));
     const sourceBounds = getEntityBounds(meshes ?? null, sourceGlobalId);
     const bbox: ViewerBox = sourceBounds
       ? {

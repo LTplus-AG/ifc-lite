@@ -363,7 +363,7 @@ describe('model repositioning user interactions (#4226)', () => {
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
   });
 
-  it('offers no rotation control for a model with GPU-instanced geometry, and says why (#4869)', () => {
+  it('offers the rotation control for a model with GPU-instanced geometry (#4890)', () => {
     act(() => {
       const models = new Map(useViewerStore.getState().models);
       models.set('ifc', { ...models.get('ifc')!, geometryResult: { meshes: [], instancedGeometryHashes: new Map([[5, 1n]]) } as never });
@@ -371,8 +371,16 @@ describe('model repositioning user interactions (#4226)', () => {
       useViewerStore.getState().openReposition(['ifc']);
     });
     const ui = render(<ToolOverlays />);
-    assert.equal(ui.querySelector('input[aria-label="Rotation angle in degrees"]') === null, true);
-    assert.match(ui.textContent!, /GPU-instanced geometry cannot be rotated/);
+    // Instanced occurrences rotate through the renderer's own transforms now
+    // (#4890), so a model with no flat meshes at all is no longer refused.
+    assert.ok(ui.querySelector('input[aria-label="Rotation angle in degrees"]'), 'rotation control offered for instanced-only geometry');
+    type(input(ui, 'Rotation angle in degrees'), '30');
+    type(input(ui, 'Rotation pivot X'), '10');
+    type(input(ui, 'Rotation pivot Y'), '4');
+    click(button(ui, 'Apply rotation'));
+    const rotated = placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation;
+    assert.ok(Math.abs(rotated.angle - Math.PI / 6) < 1e-9, `angle ${rotated.angle}`);
+    assert.deepEqual([...rotated.pivot], [10, 4, 0]);
   });
 
   it('keeps the shown pivot on the model when the model is moved after rotating (#4869)', () => {

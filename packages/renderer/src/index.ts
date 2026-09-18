@@ -1095,13 +1095,13 @@ export class Renderer {
         this.refreshPlacementBounds();
     }
 
-    /** Absolute workspace yaw, renderer Y-up radians about the render-frame
-     *  pivot `(pivot[0], *, pivot[2])` — turns GPU-instanced occurrences only
-     *  (#4890); no point-cloud leg, mirrors `setModelTranslation` otherwise. */
-    setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): void {
-        this.scene.setModelRotation(modelIndex, angle, pivot);
+    /** Absolute workspace yaw about the render-frame pivot; GPU-instanced only (#4890). Skips invalidation on a no-op (#4890 review). */
+    setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): boolean {
+        const changed = this.scene.setModelRotation(modelIndex, angle, pivot);
+        if (!changed) return false;
         this.clearCaches();
         this.refreshPlacementBounds();
+        return true;
     }
 
     /** Streamed clouds are addressed by durable asset handle. */

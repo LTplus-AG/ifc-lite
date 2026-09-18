@@ -2,12 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect } from 'react';
+import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type ViewerState, type FederatedModel } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
+import { equalRotation } from '@/lib/model-placement/rotation';
 import { modelRotationBaker, type RotationTarget } from '@/lib/model-placement/rotation-bake';
-import { buildSpatialIndexForModel, invalidateSpatialIndex } from '@/utils/loadingUtils';
+import { buildPlacedSpatialIndex } from '@/lib/model-placement/spatial-index';
+import { modelIndices } from '@/lib/model-placement/model-indices';
+import { toRenderTranslation } from '@/lib/model-placement/translation';
+import { invalidateSpatialIndex } from '@/utils/loadingUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { setInstancedModelIndexSource } from '@/lib/model-placement/rotation-refusal';
 
 /**
  * Make each model's geometry agree with the heading its placement declares.
@@ -23,25 +27,78 @@ let reconciling = false;
 /** Depth of {@link withModelRotationsUnbaked} passes in flight. */
 let suspended = 0;
 
-export function reconcileModelRotations(state: ViewerState): string[] {
+/**
+ * Push every model's DECLARED heading to the renderer's GPU-instanced
+ * occurrence transforms (`Renderer.setModelRotation`, #4890) — the instanced
+ * counterpart to the flat-mesh bake this module already does. The pivot is
+ * converted into the SAME render frame the bake's vertices and
+ * `applyModelRotation`'s pivot are in (`toRenderTranslation`), not the
+ * absolute box frame `EntityWorldAabb` uses, so the two halves of one
+ * rotation agree on where the axis sits.
+ *
+ * A model with no GPU-instanced templates is unaffected: `setModelRotation`
+ * only ever rewrites instance transforms the renderer already owns.
+ *
+ * `previous`, when given, skips a model whose DECLARED rotation has not
+ * changed since it — `Scene.setModelRotation` already no-ops on an unchanged
+ * yaw, but every placement-state update (including a translation-only one)
+ * otherwise still walks every model and calls it, which without this is one
+ * `Renderer.setModelRotation` call — and, before that call started skipping
+ * its own invalidation on a no-op, one cache clear — per model per edit.
+ * Omitted on the INITIAL sync (mount, or the reapply after
+ * `withModelRotationsUnbaked`), where there is no prior state to compare
+ * against and every heading must be (re-)pushed regardless.
+ */
+export function syncModelRotationsToRenderer(
+  renderer: Renderer, state: ViewerState, indices: ReadonlyMap<string, number>, previous?: ViewerState,
+): void {
+  for (const modelId of state.models.keys()) {
+    const index = indices.get(modelId);
+    if (index === undefined) continue;
+    const rotation = placementFor(state.modelPlacement, modelId).rotation;
+    if (previous && equalRotation(rotation, placementFor(previous.modelPlacement, modelId).rotation)) continue;
+    const pivot = toRenderTranslation(rotation.pivot);
+    renderer.setModelRotation(index, rotation.angle, pivot);
+  }
+}
+
+/** Push angle 0 (no pivot) to every known model index, clearing the renderer's
+ * GPU-instanced rotation independently of the declared heading (#4890 review).
+ * `withModelRotationsUnbaked` un-bakes flat vertices for the WHOLE duration of
+ * a federation re-align; without this, an instanced model's occurrences would
+ * stay renderer-rotated for that whole window while its flat meshes sat
+ * unrotated underneath them — a visible split, and a pick landing on
+ * whichever half answers first disagreeing with the other. */
+function clearRendererRotations(renderer: Renderer, indices: ReadonlyMap<string, number>): void {
+  for (const index of indices.values()) renderer.setModelRotation(index, 0, [0, 0, 0]);
+}
+
+export function reconcileModelRotations(state: ViewerState, previous?: ViewerState): string[] {
   // The bump below re-enters this through the subscription. The second pass
   // would find nothing to do, but re-entering a geometry rewrite is not a thing
   // to leave to luck.
   if (reconciling || suspended > 0) return [];
   reconciling = true;
   try {
-    return bake(state);
+    return bake(state, previous);
   } finally {
     reconciling = false;
   }
 }
 
-function bake(state: ViewerState): string[] {
+function bake(state: ViewerState, previous?: ViewerState): string[] {
   const targets = new Map<string, RotationTarget>();
   for (const [modelId, model] of state.models) {
     targets.set(modelId, { geometry: (model as FederatedModel).geometryResult, rotation: placementFor(state.modelPlacement, modelId).rotation });
   }
   const moved = modelRotationBaker.reconcile(targets);
+  // Instanced occurrences never pass through `modelRotationBaker` — they have
+  // no vertices to bake — so the renderer's own transforms are pushed
+  // separately, every pass, BEFORE the content-version bump and index rebuild
+  // below: the spatial index this function rebuilds has to describe the SAME
+  // heading the renderer is about to draw (#4890).
+  const renderer = getGlobalRenderer();
+  if (renderer) syncModelRotationsToRenderer(renderer, state, modelIndices(state.models), previous);
   if (moved.length === 0) return moved;
   state.bumpGeometryContentVersion();
   const next = useViewerStore.getState();
@@ -51,7 +108,7 @@ function bake(state: ViewerState): string[] {
       // Withdraw the old index now: the rebuild is asynchronous, and until it
       // lands a raycast would be answered from the previous heading's boxes.
       invalidateSpatialIndex(model.ifcDataStore);
-      buildSpatialIndexForModel(model.geometryResult.meshes, modelId, model.ifcDataStore);
+      buildPlacedSpatialIndex(next, modelId);
     }
   }
   return moved;
@@ -73,6 +130,13 @@ export async function withModelRotationsUnbaked<T>(run: () => Promise<T>): Promi
   try {
     const state = useViewerStore.getState();
     modelRotationBaker.unbake((modelId) => (state.models.get(modelId) as FederatedModel | undefined)?.geometryResult);
+    // Flat vertices are un-baked above for the whole re-align; clear the
+    // renderer's instanced-occurrence rotation too, or an instanced model
+    // stays turned there while its flat meshes sit unrotated underneath —
+    // `reconcileModelRotations` below (on the way out) is what reapplies both
+    // halves together once the operation has finished writing.
+    const renderer = getGlobalRenderer();
+    if (renderer) clearRendererRotations(renderer, modelIndices(state.models));
     return await run();
   } finally {
     suspended -= 1;
@@ -91,7 +155,7 @@ export function subscribeModelRotationSync(): () => void {
     // Not on `geometryContentVersion`: a bump alone moves no model and no
     // heading, and every geometry replacement also republishes `models`.
     if (state.modelPlacement !== previous.modelPlacement || state.models !== previous.models) {
-      reconcileModelRotations(state);
+      reconcileModelRotations(state, previous);
     }
   });
 }
@@ -100,8 +164,7 @@ export function subscribeModelRotationSync(): () => void {
  * cannot observe the committed heading before the geometry carries it. */
 export function useModelRotationSync(): void {
   useEffect(() => {
-    const unregister = setInstancedModelIndexSource(() => getGlobalRenderer()?.getScene().getInstancedModelIndices() ?? null);
     const unsubscribe = subscribeModelRotationSync();
-    return () => { unsubscribe(); unregister(); };
+    return () => { unsubscribe(); };
   }, []);
 }

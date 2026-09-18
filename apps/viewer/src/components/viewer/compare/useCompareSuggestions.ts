@@ -8,11 +8,12 @@
  * rule; the rules themselves live in `lib/compare/suggestions.ts` and
  * `lib/compare/acceptedIdentity.ts`, this is the store glue.
  *
- * Accept writes an identity-map entry into the store. `useCompare`'s
- * reconciliation effect sees the new list, re-diffs from the cached
- * fingerprints with it as `keyAliases`, and the pair leaves the suggestions
- * classified by key. The row is hidden on the click itself (the accepted
- * signature is filtered out of the rows), so it never lingers for a render.
+ * Accept writes an identity-map entry into the store, tagged with the
+ * result's (A, B) model pair. `useCompare`'s reconciliation effect sees the
+ * new list, re-diffs from the cached fingerprints with the pair's entries as
+ * `keyAliases`, and the pair leaves the suggestions classified by key. The
+ * row is hidden on the click itself (the accepted keys are filtered out of
+ * the rows), so it never lingers for a render.
  */
 
 import { useMemo } from 'react';
@@ -21,24 +22,29 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
-import { acceptedSignatures } from '@/lib/compare/acceptedIdentity';
+import { acceptedForPair, rejectedForPair } from '@/lib/compare/acceptedIdentity';
 import { claimDecisionPayload } from '@/lib/compare/runTelemetry';
-import { suggestionRows, type SuggestionRow } from '@/lib/compare/suggestions';
+import { suggestionRows, type SuggestionDecisions, type SuggestionRow } from '@/lib/compare/suggestions';
 import type { SuggestionDecision } from './CompareSuggestions';
+
+const NO_PAIR = { baseModelId: '', headModelId: '' };
 
 export function useCompareSuggestions(
   result: CompareResult | null,
   nameOf: (ref: CompareRef) => string,
 ): {
   suggestions: SuggestionRow[];
-  accepted: ReadonlySet<string>;
-  rejected: ReadonlySet<string>;
+  decisions: SuggestionDecisions;
   accept: (decision: SuggestionDecision) => void;
   reject: (decision: SuggestionDecision) => void;
 } {
-  const acceptedEntries = useViewerStore((s) => s.compareAcceptedIdentity);
-  const rejected = useViewerStore((s) => s.compareRejectedClaims);
-  const accepted = useMemo(() => acceptedSignatures(acceptedEntries), [acceptedEntries]);
+  const acceptedAll = useViewerStore((s) => s.compareAcceptedIdentity);
+  const rejectedAll = useViewerStore((s) => s.compareRejectedClaims);
+  const pair = result ?? NO_PAIR;
+  const decisions = useMemo<SuggestionDecisions>(
+    () => ({ accepted: acceptedForPair(acceptedAll, pair), rejected: rejectedForPair(rejectedAll, pair) }),
+    [acceptedAll, rejectedAll, pair],
+  );
 
   const suggestions = useMemo(
     () =>
@@ -48,8 +54,7 @@ export function useCompareSuggestions(
               successors: result.diff.successors,
               splitMerges: result.diff.splitMerges,
               contentMatches: result.diff.contentMatches,
-              accepted,
-              rejected,
+              ...decisions,
             },
             nameOf,
           )
@@ -57,18 +62,19 @@ export function useCompareSuggestions(
     // `nameOf` is a fresh closure per render over the same `models`; the rows
     // only change with the result or a decision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [result, accepted, rejected],
+    [result, decisions],
   );
 
-  const decision = (d: SuggestionDecision): { kind: 'successor' | 'ambiguous'; reason: string } =>
+  const kindAndReason = (d: SuggestionDecision): { kind: 'successor' | 'ambiguous'; reason: string } =>
     d.row.kind === 'successor'
       ? { kind: 'successor', reason: `${SUCCESSOR_REASON_PREFIX}${d.row.confidence}` }
       : { kind: 'ambiguous', reason: ACCEPTED_AMBIGUOUS_REASON };
 
   const accept = (d: SuggestionDecision) => {
-    const { kind, reason } = decision(d);
+    if (!result) return;
+    const { kind, reason } = kindAndReason(d);
     const store = useViewerStore.getState();
-    const refused = store.acceptCompareIdentity([{ base: d.base, here: d.here, reason }]);
+    const refused = store.acceptCompareIdentity(result, [{ base: d.base, here: d.here, reason }]);
     if (refused.length > 0) {
       store.setCompareError(`${d.base} or ${d.here} is already part of an accepted pair.`);
       return;
@@ -78,12 +84,13 @@ export function useCompareSuggestions(
   };
 
   const reject = (d: SuggestionDecision) => {
-    const { kind, reason } = decision(d);
+    if (!result) return;
+    const { kind, reason } = kindAndReason(d);
     const store = useViewerStore.getState();
-    store.rejectCompareClaim(d.base, d.here);
+    store.rejectCompareClaim(result, d.base, d.here);
     if (store.compareSelectedKey === d.row.key) store.setCompareSelectedKey(null);
     posthog.capture('model_compare_claim_reject', claimDecisionPayload(kind, reason, d.row.confidence));
   };
 
-  return { suggestions, accepted, rejected, accept, reject };
+  return { suggestions, decisions, accept, reject };
 }

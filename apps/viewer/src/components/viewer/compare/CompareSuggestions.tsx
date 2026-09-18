@@ -27,7 +27,7 @@ import { TriangleAlert, MousePointerClick } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { rgbaCss, type RGBA } from '@/lib/compare/overlay';
-import { pairIsOpen, type SuggestionCandidate, type SuggestionRow } from '@/lib/compare/suggestions';
+import { pairIsOpen, type SuggestionCandidate, type SuggestionDecisions, type SuggestionRow } from '@/lib/compare/suggestions';
 import { MAX_ROWS_PER_GROUP } from './changeRow';
 
 /** Amber, matching the panel's existing warning text colour (`#e0af68`). */
@@ -42,8 +42,7 @@ export interface SuggestionDecision {
 interface CompareSuggestionsProps {
   rows: SuggestionRow[];
   selectedKey: string | null;
-  accepted: ReadonlySet<string>;
-  rejected: ReadonlySet<string>;
+  decisions: SuggestionDecisions;
   onFocus: (row: SuggestionRow) => void;
   onFocusGroup: (rows: SuggestionRow[]) => void;
   onAccept: (decision: SuggestionDecision) => void;
@@ -58,15 +57,14 @@ function candidateLabel(c: SuggestionCandidate): string {
  *  a side gets a picker per side; the pair is whatever is picked. */
 function SuggestionActions({
   row,
-  accepted,
-  rejected,
+  decisions,
   onAccept,
   onReject,
-}: Pick<CompareSuggestionsProps, 'accepted' | 'rejected' | 'onAccept' | 'onReject'> & { row: SuggestionRow }) {
+}: Pick<CompareSuggestionsProps, 'decisions' | 'onAccept' | 'onReject'> & { row: SuggestionRow }) {
   const [base, setBase] = useState(row.bases[0]?.key ?? '');
   const [here, setHere] = useState(row.heads[0]?.key ?? '');
   if (row.bases.length === 0 || row.heads.length === 0) return null;
-  const open = pairIsOpen(row, base, here, accepted, rejected);
+  const open = pairIsOpen(row, base, here, decisions);
   const picker = row.bases.length > 1 || row.heads.length > 1;
   return (
     <div className="flex flex-wrap items-center gap-1 px-2 pb-1">
@@ -119,8 +117,7 @@ function SuggestionActions({
 export function CompareSuggestions({
   rows,
   selectedKey,
-  accepted,
-  rejected,
+  decisions,
   onFocus,
   onFocusGroup,
   onAccept,
@@ -163,8 +160,7 @@ export function CompareSuggestions({
             </button>
             <SuggestionActions
               row={row}
-              accepted={accepted}
-              rejected={rejected}
+              decisions={decisions}
               onAccept={onAccept}
               onReject={onReject}
             />

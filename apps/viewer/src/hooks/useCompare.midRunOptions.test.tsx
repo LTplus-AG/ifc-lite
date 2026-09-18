@@ -263,6 +263,8 @@ describe('useCompare - an option changed mid-run wins (#1891 review)', () => {
   });
 });
 
+const AB = { baseModelId: 'A', headModelId: 'B' };
+
 describe('useCompare - accepted identity is replayed as keyAliases (#4955)', () => {
   it('re-diffs with the accepted pair as a key alias, so it classifies by key and leaves add/delete', async () => {
     // Content matching OFF: the re-GUIDed wall is one delete plus one add.
@@ -279,7 +281,7 @@ describe('useCompare - accepted identity is replayed as keyAliases (#4955)', () 
 
     // The user accepts the pair (what the Suggestions section's Accept does).
     await act(async () => {
-      useViewerStore.getState().acceptCompareIdentity([
+      useViewerStore.getState().acceptCompareIdentity(AB, [
         { base: '0aaaaaaaaaaaaaaaaaaaaa', here: '1zzzzzzzzzzzzzzzzzzzzz', reason: 'successor:footprint' },
       ]);
     });
@@ -304,12 +306,33 @@ describe('useCompare - accepted identity is replayed as keyAliases (#4955)', () 
     });
     const pair = { base: '0aaaaaaaaaaaaaaaaaaaaa', here: '1zzzzzzzzzzzzzzzzzzzzz', reason: 'successor:footprint' };
     await act(async () => {
-      useViewerStore.getState().acceptCompareIdentity([pair]);
+      useViewerStore.getState().acceptCompareIdentity(AB, [pair]);
     });
     const seq = useViewerStore.getState().compareRunSeq;
     await act(async () => {
-      useViewerStore.getState().acceptCompareIdentity([pair]);
+      useViewerStore.getState().acceptCompareIdentity(AB, [pair]);
     });
     assert.strictEqual(useViewerStore.getState().compareRunSeq, seq, 'same list reference, no re-publish');
+  });
+
+  it('a pair accepted for another model pair is not replayed onto this one (review find 5)', async () => {
+    useViewerStore.setState({ compareMatchByContent: false, compareAcceptedIdentity: [] });
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = runComparison!();
+    });
+    await act(async () => {
+      await pending;
+    });
+    // The same GlobalIds, accepted for A vs some other file C.
+    await act(async () => {
+      useViewerStore.getState().acceptCompareIdentity({ baseModelId: 'A', headModelId: 'C' }, [
+        { base: '0aaaaaaaaaaaaaaaaaaaaa', here: '1zzzzzzzzzzzzzzzzzzzzz', reason: 'successor:footprint' },
+      ]);
+    });
+    const result = published();
+    assert.strictEqual(result.diff.appliedKeyAliases?.size ?? 0, 0, 'no alias from another pair');
+    assert.strictEqual(result.diff.counts.deleted, 1);
+    assert.strictEqual(result.diff.counts.added, 1);
   });
 });

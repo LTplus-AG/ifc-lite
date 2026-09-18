@@ -18,7 +18,7 @@ import type { CompareResult } from '@/store/slices/compareSlice';
 import { hasReportableChanges, type CompareMatchRow, type CompareRow } from './changeRow';
 import { CompareMatchGroups } from './CompareMatchGroups';
 import { CompareSuggestions, type SuggestionDecision } from './CompareSuggestions';
-import type { SuggestionRow } from '@/lib/compare/suggestions';
+import type { SuggestionDecisions, SuggestionRow } from '@/lib/compare/suggestions';
 
 export interface CompareBucket {
   rows: CompareRow[];
@@ -81,8 +81,7 @@ interface CompareResultsListProps {
   onFocusMatchGroup: (rows: CompareMatchRow[]) => void;
   /** Suggestions (#4955): successor / split-merge claims and unresolved groups. */
   suggestions: SuggestionRow[];
-  acceptedSignatures: ReadonlySet<string>;
-  rejectedSignatures: ReadonlySet<string>;
+  suggestionDecisions: SuggestionDecisions;
   onFocusSuggestion: (row: SuggestionRow) => void;
   onFocusSuggestionGroup: (rows: SuggestionRow[]) => void;
   onAcceptSuggestion: (decision: SuggestionDecision) => void;
@@ -101,8 +100,7 @@ export function CompareResultsList({
   onFocusMatch,
   onFocusMatchGroup,
   suggestions,
-  acceptedSignatures,
-  rejectedSignatures,
+  suggestionDecisions,
   onFocusSuggestion,
   onFocusSuggestionGroup,
   onAcceptSuggestion,
@@ -175,8 +173,7 @@ export function CompareResultsList({
           <CompareSuggestions
             rows={suggestions}
             selectedKey={selectedKey}
-            accepted={acceptedSignatures}
-            rejected={rejectedSignatures}
+            decisions={suggestionDecisions}
             onFocus={onFocusSuggestion}
             onFocusGroup={onFocusSuggestionGroup}
             onAccept={onAcceptSuggestion}

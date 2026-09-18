@@ -27,6 +27,7 @@ import type {
   ContentMatch,
   ContentMatchKind,
   EntityFingerprint,
+  IdentityMapEntry,
   SplitMergeClaim,
   SuccessorClaim,
   SuccessorConfidence,
@@ -46,8 +47,14 @@ export interface SuggestionCandidate {
 }
 
 export interface SuggestionRow {
-  /** `suggest:<source>:<index>`; never collides with a `DiffEntry.key` or a
-   *  `match:` row key, because it shares the panel's single selected-key channel. */
+  /**
+   * `suggest:<kind>:<base keys>><head keys>` - the row's IDENTITY, never its
+   * position. A re-diff after an acceptance drops a row, and a position key
+   * would hand the next row the dropped one's React state (its picked pair,
+   * and with it a stale "decided"). Prefixed so it never collides with a
+   * `DiffEntry.key` or a `match:` row key: it shares the panel's single
+   * selected-key channel.
+   */
   key: string;
   kind: SuggestionKind;
   /** The kind's label plus the numbers it rests on, e.g.
@@ -107,17 +114,36 @@ export function unresolvedEvidence(match: ContentMatch<unknown>): string {
   return parts.join(' · ');
 }
 
-export interface SuggestionRowsInput {
+/**
+ * What the user has already decided for this model pair, in the shape the
+ * openness rule needs: an accepted pair binds BOTH its keys (identity is 1:1,
+ * so `a` accepted as `c` leaves no `(a, d)` to decide), a refusal binds only
+ * that one pair.
+ */
+export interface SuggestionDecisions {
+  /** The accepted identity entries (`acceptedForPair`). */
+  accepted: readonly IdentityMapEntry[];
+  /** Signatures (`claimSignature`) of the refused pairs (`rejectedForPair`). */
+  rejected: ReadonlySet<string>;
+}
+
+/** Is this (base, here) pair still undecided? Not if it was refused, and not
+ *  if either key already has an accepted identity - `acceptCompareIdentity`
+ *  would refuse it, so offering it would be offering a dead click. An
+ *  accepted pair is gone for good once the re-run aliases it, but the row
+ *  must vanish on the click, not one render later. */
+export function pairIsUndecided(base: string, here: string, decisions: SuggestionDecisions): boolean {
+  if (decisions.rejected.has(claimSignature(base, here))) return false;
+  return !decisions.accepted.some((entry) => entry.base === base || entry.here === here);
+}
+
+export interface SuggestionRowsInput extends SuggestionDecisions {
   successors?: readonly SuccessorClaim<CompareRef>[];
   splitMerges?: readonly SplitMergeClaim<CompareRef>[];
   contentMatches?: readonly ContentMatch<CompareRef>[];
-  /** Signatures (`claimSignature`) the user accepted or refused; a successor
-   *  claim with such a signature is not offered again. An accepted one is
-   *  gone for good once the re-run aliases it, but the row must vanish on the
-   *  click, not one render later. */
-  accepted: ReadonlySet<string>;
-  rejected: ReadonlySet<string>;
 }
+
+const keysOf = (side: readonly EntityFingerprint<unknown>[]): string => side.map((f) => f.key).join('+');
 
 /**
  * Build the section's rows. Order: successors, then split / merge claims, then
@@ -135,11 +161,10 @@ export function suggestionRows(
   });
   const rows: SuggestionRow[] = [];
 
-  (input.successors ?? []).forEach((claim, index) => {
-    const signature = claimSignature(claim.base.key, claim.head.key);
-    if (input.accepted.has(signature) || input.rejected.has(signature)) return;
+  for (const claim of input.successors ?? []) {
+    if (!pairIsUndecided(claim.base.key, claim.head.key, input)) continue;
     rows.push({
-      key: `suggest:successor:${index}`,
+      key: `suggest:successor:${claim.base.key}>${claim.head.key}`,
       kind: 'successor',
       evidence: successorEvidence(claim),
       ifcType: claim.head.ifcType || 'IfcProduct',
@@ -150,11 +175,12 @@ export function suggestionRows(
       heads: [candidate(claim.head)],
       confidence: claim.confidence,
     });
-  });
+  }
 
-  (input.splitMerges ?? []).forEach((claim, index) => {
+  for (const claim of input.splitMerges ?? []) {
+    const [bases, heads] = claim.kind === 'split' ? [[claim.whole], claim.pieces] : [claim.pieces, [claim.whole]];
     rows.push({
-      key: `suggest:${claim.kind}:${index}`,
+      key: `suggest:${claim.kind}:${keysOf(bases)}>${keysOf(heads)}`,
       kind: claim.kind,
       evidence: splitMergeEvidence(claim),
       ifcType: claim.whole.ifcType || 'IfcProduct',
@@ -164,23 +190,20 @@ export function suggestionRows(
       bases: [],
       heads: [],
     });
-  });
+  }
 
-  (input.contentMatches ?? []).forEach((match, index) => {
-    if (isRetiringMatch(match.kind)) return;
+  for (const match of input.contentMatches ?? []) {
+    if (isRetiringMatch(match.kind)) continue;
     const sample = match.head[0] ?? match.base[0];
-    if (!sample) return;
+    if (!sample) continue;
     // Pairs the user already decided on are not offered again; a group whose
     // every pair is decided has nothing left to ask.
     const bases = match.base.map(candidate);
     const heads = match.head.map(candidate);
-    const open = bases.some((b) => heads.some((h) => {
-      const signature = claimSignature(b.key, h.key);
-      return !input.accepted.has(signature) && !input.rejected.has(signature);
-    }));
-    if (!open) return;
+    const open = bases.some((b) => heads.some((h) => pairIsUndecided(b.key, h.key, input)));
+    if (!open) continue;
     rows.push({
-      key: `suggest:${match.kind}:${index}`,
+      key: `suggest:${match.kind}:${keysOf(match.base)}>${keysOf(match.head)}`,
       kind: match.kind,
       evidence: unresolvedEvidence(match),
       ifcType: sample.ifcType || 'IfcProduct',
@@ -190,20 +213,18 @@ export function suggestionRows(
       bases,
       heads,
     });
-  });
+  }
 
   return rows;
 }
 
-/** Is this (base, here) pair still open for a decision in the row's group? */
+/** Is this (base, here) pair one of the row's candidates and still undecided? */
 export function pairIsOpen(
   row: SuggestionRow,
   base: string,
   here: string,
-  accepted: ReadonlySet<string>,
-  rejected: ReadonlySet<string>,
+  decisions: SuggestionDecisions,
 ): boolean {
   if (!row.bases.some((b) => b.key === base) || !row.heads.some((h) => h.key === here)) return false;
-  const signature = claimSignature(base, here);
-  return !accepted.has(signature) && !rejected.has(signature);
+  return pairIsUndecided(base, here, decisions);
 }

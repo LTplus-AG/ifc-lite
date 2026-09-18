@@ -312,8 +312,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onFocusMatch={focusMatch}
                 onFocusMatchGroup={focusMatchGroup}
                 suggestions={suggest.suggestions}
-                acceptedSignatures={suggest.accepted}
-                rejectedSignatures={suggest.rejected}
+                suggestionDecisions={suggest.decisions}
                 onFocusSuggestion={(row) => focusRefs(row.refs, row.key)}
                 onFocusSuggestionGroup={(rows) => focusRefs(rows.flatMap((row) => row.refs), null)}
                 onAcceptSuggestion={suggest.accept}

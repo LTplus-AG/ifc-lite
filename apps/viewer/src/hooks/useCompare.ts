@@ -27,7 +27,7 @@ import {
   resolveGeometryChannel,
 } from '@/lib/compare/geometryCapability';
 import { contentMatchingRan } from '@/lib/compare/contentMatches';
-import { keyAliasesFromAccepted } from '@/lib/compare/acceptedIdentity';
+import { acceptedForPair, keyAliasesFromAccepted } from '@/lib/compare/acceptedIdentity';
 import { compareRunPayload } from '@/lib/compare/runTelemetry';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
 
@@ -153,7 +153,7 @@ function publishCompareResult(built: BuiltPair): {
   const scope: CompareResult['scope'] = store.compareScope;
   const excludedTypes = store.compareExcludedTypes;
   const matchByContent = store.compareMatchByContent;
-  const accepted = store.compareAcceptedIdentity;
+  const accepted = acceptedForPair(store.compareAcceptedIdentity, built); // this pair's only
 
   // The strip decision, the warning flag and its placement-only nuance are ONE
   // resolution (`resolveGeometryChannel`), so the panel's warning can never

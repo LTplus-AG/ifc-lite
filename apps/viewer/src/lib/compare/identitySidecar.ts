@@ -20,11 +20,13 @@ import {
   createIdentityMapSidecar,
   createLineageSidecar,
   identityMapSidecarMismatches,
-  lineageFromDiff,
+  lineageOfDiff,
   parseIdentityMapSidecar,
   serializeIdentityMapSidecar,
   serializeLineageSidecar,
+  SUCCESSOR_REASON_PREFIX,
   type IdentityMapEntry,
+  type LineageEntry,
   type ModelIdentity,
 } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
@@ -95,24 +97,47 @@ export function downloadIdentityMapSidecar(
 }
 
 /**
- * Write the lineage as `ifc-lite/lineage` v1: the engine's committed identity
- * entries and split / merge claims, plus the successor claims the user
- * accepted as `replaced`. An accepted pair the re-run has already aliased
- * appears as an `identity` entry carrying its accepted reason
- * (`aliasReasons`), so the artifact reads the same before and after.
+ * The lineage of a comparison as the panel exports it: the engine's committed
+ * identity entries and split / merge claims, the successor claims the user
+ * accepted as `replaced`, and the base keys left deleted with no lineage
+ * (what a rekey orphans).
+ *
+ * An accepted successor is in `diff.successors` only until the re-diff
+ * replays it as a key alias; from then on the engine reports it under
+ * `appliedKeyAliases`, and `lineageOfDiff` carries an applied alias forward
+ * as `identity` with whatever reason `aliasReasons` gives it. The relation
+ * is what a consumer rekeys on, so an alias whose reason says it was an
+ * accepted successor (`successor:<confidence>`) is re-labelled `replaced`
+ * here: the artifact then reads the same before and after the re-diff. A
+ * pair accepted out of an ambiguous group (`accepted:ambiguous`) is an
+ * identity claim and stays one.
  */
-export function downloadLineageSidecar(
+export function lineageForExport(
   result: CompareResult,
-  identities: { base: ModelIdentity; head: ModelIdentity },
   accepted: readonly IdentityMapEntry[],
-): void {
+): { entries: LineageEntry[]; deleted: string[] } {
   const signatures = acceptedSignatures(accepted);
   const acceptedClaims = (result.diff.successors ?? []).filter((claim) =>
     signatures.has(claimSignature(claim.base.key, claim.head.key)),
   );
   const aliasReasons = new Map(accepted.map((entry) => [entry.here, entry.reason]));
-  const entries = lineageFromDiff(result.diff, { accepted: acceptedClaims, aliasReasons });
-  const sidecar = createLineageSidecar({ ...identities, entries, created: new Date().toISOString() });
+  const { entries, deleted } = lineageOfDiff(result.diff, { accepted: acceptedClaims, aliasReasons });
+  for (const entry of entries) {
+    if (entry.relation === 'identity' && entry.reason.startsWith(SUCCESSOR_REASON_PREFIX)) {
+      entry.relation = 'replaced';
+    }
+  }
+  return { entries, deleted };
+}
+
+/** Write the lineage as `ifc-lite/lineage` v1 (see {@link lineageForExport}). */
+export function downloadLineageSidecar(
+  result: CompareResult,
+  identities: { base: ModelIdentity; head: ModelIdentity },
+  accepted: readonly IdentityMapEntry[],
+): void {
+  const { entries, deleted } = lineageForExport(result, accepted);
+  const sidecar = createLineageSidecar({ ...identities, entries, deleted, created: new Date().toISOString() });
   downloadBlob(
     new Blob([serializeLineageSidecar(sidecar)], { type: 'application/json;charset=utf-8;' }),
     sidecarFilename(result, 'lineage'),

@@ -14,12 +14,13 @@
  * the strip, never swallowed.
  */
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
+import { acceptedForPair } from '@/lib/compare/acceptedIdentity';
 import { downloadCompareReport } from '@/lib/compare/exportReport';
 import {
   comparedModelIdentities,
@@ -38,7 +39,9 @@ interface CompareExportBarProps {
 export function CompareExportBar({ result, reportable }: CompareExportBarProps) {
   const models = useViewerStore((s) => s.models);
   const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
-  const accepted = useViewerStore((s) => s.compareAcceptedIdentity);
+  const acceptedAll = useViewerStore((s) => s.compareAcceptedIdentity);
+  // Only this (A, B) pair's decisions go into its sidecars.
+  const accepted = useMemo(() => acceptedForPair(acceptedAll, result), [acceptedAll, result]);
   const [message, setMessage] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -73,7 +76,7 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
       setMessage(read.error);
       return;
     }
-    const refused = useViewerStore.getState().acceptCompareIdentity(read.entries);
+    const refused = useViewerStore.getState().acceptCompareIdentity(result, read.entries);
     setMessage(
       refused.length > 0
         ? `Imported ${read.entries.length - refused.length} of ${read.entries.length} entries; ${refused.length} collide with pairs already accepted.`

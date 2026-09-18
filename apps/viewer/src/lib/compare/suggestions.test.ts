@@ -16,6 +16,7 @@ import type { CompareRef } from './buildFingerprints.js';
 import { claimSignature } from './acceptedIdentity.js';
 import {
   pairIsOpen,
+  pairIsUndecided,
   splitMergeEvidence,
   successorEvidence,
   suggestionRows,
@@ -52,7 +53,9 @@ function split(over: Partial<SplitMergeClaim<CompareRef>> = {}): SplitMergeClaim
 }
 
 const names = (ref: CompareRef) => `name${ref.localId}`;
-const none = new Set<string>();
+const none = { accepted: [], rejected: new Set<string>() };
+const acceptedPair = (base: string, here: string) => ({ accepted: [{ base, here, reason: 'accepted:ambiguous' }], rejected: new Set<string>() });
+const rejectedPair = (base: string, here: string) => ({ accepted: [], rejected: new Set([claimSignature(base, here)]) });
 
 describe('successorEvidence', () => {
   it('names the profile, the overlap, the distance and the agreeing components', () => {
@@ -98,8 +101,7 @@ describe('suggestionRows', () => {
           { kind: 'renamed', dataHash: 'd', base: [fp('R1')], head: [fp('R1b')] },
           { kind: 'ambiguous', dataHash: '', base: [fp('a'), fp('b')], head: [fp('c'), fp('d')] },
         ],
-        accepted: none,
-        rejected: none,
+        ...none,
       },
       names,
     );
@@ -116,32 +118,53 @@ describe('suggestionRows', () => {
   });
 
   it('hides a successor the user accepted or refused', () => {
-    const sig = claimSignature('W1', 'W1b');
-    for (const decided of [{ accepted: new Set([sig]), rejected: none }, { accepted: none, rejected: new Set([sig]) }]) {
+    for (const decided of [acceptedPair('W1', 'W1b'), rejectedPair('W1', 'W1b')]) {
       const rows = suggestionRows({ successors: [successor()], ...decided }, names);
       assert.equal(rows.length, 0);
     }
   });
 
   it('hides an unresolved group once every pair in it is decided, and keeps it while one is open', () => {
-    const match: ContentMatch<CompareRef> = { kind: 'ambiguous', dataHash: '', base: [fp('a')], head: [fp('c'), fp('d')] };
-    const partly = suggestionRows(
-      { contentMatches: [match], accepted: new Set([claimSignature('a', 'c')]), rejected: none },
-      names,
-    );
+    const match: ContentMatch<CompareRef> = { kind: 'ambiguous', dataHash: '', base: [fp('a'), fp('b')], head: [fp('c'), fp('d')] };
+    const partly = suggestionRows({ contentMatches: [match], ...rejectedPair('a', 'c') }, names);
     assert.equal(partly.length, 1);
-    assert.ok(pairIsOpen(partly[0], 'a', 'd', new Set([claimSignature('a', 'c')]), none));
-    assert.ok(!pairIsOpen(partly[0], 'a', 'c', new Set([claimSignature('a', 'c')]), none));
+    assert.ok(pairIsOpen(partly[0], 'a', 'd', rejectedPair('a', 'c')));
+    assert.ok(!pairIsOpen(partly[0], 'a', 'c', rejectedPair('a', 'c')));
     const fully = suggestionRows(
-      { contentMatches: [match], accepted: new Set([claimSignature('a', 'c')]), rejected: new Set([claimSignature('a', 'd')]) },
+      { contentMatches: [match], accepted: [{ base: 'a', here: 'c', reason: 'accepted:ambiguous' }, { base: 'b', here: 'd', reason: 'accepted:ambiguous' }], rejected: new Set() },
       names,
     );
     assert.equal(fully.length, 0);
   });
 
+  it('accepting (a, c) closes (a, d) and (b, c) too: an accepted key is spoken for (review find 4)', () => {
+    // `acceptCompareIdentity` would refuse (a, d) - `a` already has an
+    // identity - so offering it as open would be offering a dead click.
+    const decided = acceptedPair('a', 'c');
+    assert.ok(!pairIsUndecided('a', 'd', decided));
+    assert.ok(!pairIsUndecided('b', 'c', decided));
+    assert.ok(pairIsUndecided('b', 'd', decided));
+    const match: ContentMatch<CompareRef> = { kind: 'ambiguous', dataHash: '', base: [fp('a')], head: [fp('c'), fp('d')] };
+    assert.equal(suggestionRows({ contentMatches: [match], ...decided }, names).length, 0, 'nothing left to decide for a');
+  });
+
+  it('keys a row by its candidates, never by its position (review find 1)', () => {
+    // A re-diff after an acceptance drops the first row; a position key would
+    // hand the second row the first one's React state.
+    const before = suggestionRows({ successors: [successor(), successor({ base: fp('X1'), head: fp('X1b') })], ...none }, names);
+    const after = suggestionRows({ successors: [successor({ base: fp('X1'), head: fp('X1b') })], ...acceptedPair('W1', 'W1b') }, names);
+    assert.equal(after[0].key, before[1].key);
+    assert.notEqual(after[0].key, before[0].key);
+    const groups = suggestionRows(
+      { contentMatches: [{ kind: 'ambiguous', dataHash: '', base: [fp('a'), fp('b')], head: [fp('c')] }], splitMerges: [split()], ...none },
+      names,
+    );
+    assert.deepEqual(groups.map((r) => r.key), ['suggest:split:W2>P1+P2+P3', 'suggest:ambiguous:a+b>c']);
+  });
+
   it('flags a class change on successor and split rows', () => {
     const rows = suggestionRows(
-      { successors: [successor({ crossClass: true })], splitMerges: [split({ crossClass: true })], accepted: none, rejected: none },
+      { successors: [successor({ crossClass: true })], splitMerges: [split({ crossClass: true })], ...none },
       names,
     );
     assert.deepEqual(rows.map((r) => r.crossClass), [true, true]);

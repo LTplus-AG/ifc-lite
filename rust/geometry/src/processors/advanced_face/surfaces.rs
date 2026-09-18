@@ -11,7 +11,7 @@ use nalgebra::Matrix4;
 
 use super::super::helpers::get_axis2_placement_transform_by_id;
 use super::bspline::tessellate_bspline_surface;
-use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_CONTROL_POINTS};
+use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_SAMPLE_WORK};
 use super::bspline_parse::{parse_control_points, parse_knot_vectors};
 use super::edge_loop::{extract_edge_loop_points, extract_edge_loop_points_for_bounds};
 
@@ -157,13 +157,6 @@ pub(crate) fn process_bspline_face(
 
     // Parse control points
     let control_points = parse_control_points(bspline, decoder)?;
-    let total_control_points: usize = control_points.iter().map(Vec::len).sum();
-    if total_control_points > MAX_BSPLINE_SURFACE_CONTROL_POINTS {
-        return Err(Error::geometry(format!(
-            "BSplineSurface control point grid ({total_control_points}) exceeds the \
-             {MAX_BSPLINE_SURFACE_CONTROL_POINTS} bound (#4901)"
-        )));
-    }
 
     // Parse knot vectors
     let (u_knots, v_knots) = parse_knot_vectors(bspline)?;
@@ -175,6 +168,24 @@ pub(crate) fn process_bspline_face(
     } else {
         scale_segments(4, 4, 24, quality)
     };
+
+    // Bound the actual cost driver (#4901): NOT the raw control-point count
+    // (a real fixture legitimately carries a 207x180 = 37,260-point patch,
+    // see bspline_budget.rs) but the total weighted-sum work the sampling
+    // loop below will do: samples * n_u * n_v.
+    let n_u = control_points.len() as u64;
+    let n_v = control_points.iter().map(Vec::len).max().unwrap_or(0) as u64;
+    let estimated_work = (u_segments as u64 + 1)
+        .saturating_mul(v_segments as u64 + 1)
+        .saturating_mul(n_u)
+        .saturating_mul(n_v);
+    if estimated_work > MAX_BSPLINE_SURFACE_SAMPLE_WORK {
+        return Err(Error::geometry(format!(
+            "BSplineSurface sampling work ({estimated_work} = {} samples * {n_u}x{n_v} control points) \
+             exceeds the {MAX_BSPLINE_SURFACE_SAMPLE_WORK} bound (#4901)",
+            (u_segments as u64 + 1) * (v_segments as u64 + 1),
+        )));
+    }
 
     // Tessellate the surface (returns None if knot data is inconsistent)
     match tessellate_bspline_surface(

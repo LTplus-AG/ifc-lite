@@ -32,34 +32,43 @@
 //!   reported (`GeometryRouter::record_unsupported_item`) instead of silently
 //!   clamped to a different (wrong) surface.
 //!
-//! [`MAX_BSPLINE_SURFACE_CONTROL_POINTS`] bounds the OTHER unbounded input:
+//! [`MAX_BSPLINE_SURFACE_SAMPLE_WORK`] bounds the OTHER unbounded input:
 //! `evaluate_bspline_surface`'s weighted sum is `O(n_u * n_v)` per sample
 //! point (it does not exploit local support — nonzero basis functions are
 //! only ever `degree + 1` wide per axis — because doing so would reorder the
 //! floating-point sum and perturb pinned mesh output; that stays a follow-up,
-//! not #4901's scope). A 64x64 grid (4096 control points) is already an
-//! unusually dense authored NURBS patch — real architectural facade / roof
-//! panels in the corpus run to a few hundred at most — so this cap is
-//! generous headroom, not a legitimate-input ceiling.
+//! not #4901's scope), so the real cost driver is `samples * n_u * n_v`, not
+//! `n_u * n_v` alone. A flat control-point-count ceiling was tried first and
+//! calibrated against "a few hundred is already dense" — wrong: the in-tree
+//! `tests/models/issues/472_2222.ifc` fixture (issue #472) carries a real
+//! 207x180 (37,260-point) patch, well past any such guess, and a flat cap
+//! rejected it, changing legitimate output (caught by
+//! `geometry_correctness_harness`'s pinned snapshot). Sample count is already
+//! capped by `scale_segments` (`process_bspline_face`'s `u_segments` /
+//! `v_segments`, ~25-97 per axis), so `MAX_BSPLINE_SURFACE_SAMPLE_WORK` bounds
+//! the PRODUCT instead: `(u_segments+1) * (v_segments+1) * n_u * n_v`. The
+//! #472 fixture's worst surface measures 625 * 37,260 ≈ 23.3M — this cap
+//! gives it over 20x headroom while still bailing well before a genuinely
+//! adversarial grid (millions of control points) could cost more than a
+//! fraction of a second.
 //!
 //! Calibration: `MAX_BSPLINE_DEGREE = 64` is ~5x the "practical NURBS" degree
 //! ceiling of ~12 already documented next to `MAX_KNOT_MULTIPLICITY` in
-//! `bspline.rs`, while `64 * (4096 + 64)` (surface table-build worst case per
-//! sample point) and `64 * 4096` (surface weighted-sum worst case per sample
-//! point) both stay under ten million elementary float ops even at the
-//! densest legal tessellation (`profile_arc_segments` / `scale_segments` cap
-//! sample counts at a few thousand per surface) — comfortably sub-second, and
-//! IDENTICAL on native and wasm because every bound is a count, never a
-//! timer.
+//! `bspline.rs`. `MAX_BSPLINE_SURFACE_SAMPLE_WORK`'s 500M simple float
+//! multiply-adds run in well under a second; both bounds are counts, never
+//! timers, so native and wasm reject the same file identically.
 
 /// Hard ceiling on `IfcBSplineCurveWithKnots.Degree` /
 /// `IfcBSplineSurfaceWithKnots.{U,V}Degree`. See the module doc for the
 /// derivation; any real-world NURBS in the model corpus sits under ~12.
 pub(super) const MAX_BSPLINE_DEGREE: usize = 64;
 
-/// Hard ceiling on the total `ControlPointsList` size (`n_u * n_v`) of an
-/// `IfcBSplineSurfaceWithKnots`. See the module doc.
-pub(super) const MAX_BSPLINE_SURFACE_CONTROL_POINTS: usize = 4096;
+/// Hard ceiling on `(u_segments+1) * (v_segments+1) * n_u * n_v` — the total
+/// number of weighted-sum terms `tessellate_bspline_surface` will evaluate
+/// across the whole surface. See the module doc for why this bounds the
+/// actual cost driver where a flat control-point-count cap does not (and, in
+/// an earlier version of this bound, actively regressed a real fixture).
+pub(super) const MAX_BSPLINE_SURFACE_SAMPLE_WORK: u64 = 500_000_000;
 
 /// Hard ceiling on an `IfcBSplineCurveWithKnots.ControlPointsList` length.
 /// Curves are 1-D (no `n_u * n_v` blow-up), so this exists only to keep the

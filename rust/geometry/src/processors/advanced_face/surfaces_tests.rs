@@ -121,39 +121,55 @@ fn pathological_degree_fails_fast_not_hangs() {
 
 /// #4901: an attacker-sized `ControlPointsList` (well within a legitimate
 /// degree) is a second, independent way to blow up the per-sample weighted
-/// sum (`O(n_u * n_v)`), and must also be rejected loudly and fast.
+/// sum (`O(samples * n_u * n_v)`), and must also be rejected loudly and fast.
+///
+/// A flat control-point-COUNT cap was tried first and reverted: the in-tree
+/// `tests/models/issues/472_2222.ifc` fixture legitimately carries a 207x180
+/// grid, so the bound has to be the actual cost driver (samples * n_u * n_v,
+/// [`MAX_BSPLINE_SURFACE_SAMPLE_WORK`]), not raw point count. A 250x250 grid
+/// (62,500 points, still far short of a real 37,260-point fixture on its
+/// own) combined with `Highest` quality's maxed-out 96-segment-per-axis
+/// tessellation pushes the WORK estimate (9,409 samples * 62,500 points ≈
+/// 588M) just past the 500M bound.
 #[test]
-fn pathological_control_point_grid_fails_fast_not_hangs() {
-    // One row of 5000 control points (> MAX_BSPLINE_SURFACE_CONTROL_POINTS),
-    // degree 2 (legitimate), 5000 + 2 + 1 = 5003 knots via a single
-    // multiplicity-5003 entry.
-    let n = 5000usize;
+fn pathological_sample_work_fails_fast_not_hangs() {
+    let (n_u, n_v) = (250usize, 250usize);
     let mut content = String::new();
-    for i in 1..=n {
-        content.push_str(&format!("#{i}=IFCCARTESIANPOINT(({}.,0.,0.));\n", i));
+    let mut id = 0usize;
+    let mut rows: Vec<String> = Vec::with_capacity(n_u);
+    for _ in 0..n_u {
+        let mut row: Vec<String> = Vec::with_capacity(n_v);
+        for _ in 0..n_v {
+            id += 1;
+            content.push_str(&format!("#{id}=IFCCARTESIANPOINT(({}.,0.,0.));\n", id));
+            row.push(format!("#{id}"));
+        }
+        rows.push(format!("({})", row.join(",")));
     }
-    let row: Vec<String> = (1..=n).map(|i| format!("#{i}")).collect();
-    let surface_id = n + 1;
+    let surface_id = id + 1;
+    // Degree 2 per axis (legitimate): n + degree + 1 knots via one
+    // multiplicity entry covering the whole span.
     content.push_str(&format!(
-        "#{surface_id}=IFCBSPLINESURFACEWITHKNOTS(2,0,(({row})),.UNSPECIFIED.,.F.,.F.,.F.,({knot_count}),(1),(0.),(0.,1.),.UNSPECIFIED.);\n",
-        row = row.join(","),
-        knot_count = n + 3,
+        "#{surface_id}=IFCBSPLINESURFACEWITHKNOTS(2,2,({rows}),.UNSPECIFIED.,.F.,.F.,.F.,({u_knots}),({v_knots}),(0.),(0.),.UNSPECIFIED.);\n",
+        rows = rows.join(","),
+        u_knots = n_u + 3,
+        v_knots = n_v + 3,
     ));
 
     let mut decoder = EntityDecoder::new(&content);
     let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Medium);
+    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Highest);
     let elapsed = start.elapsed();
 
-    let err = result.expect_err("an oversized control-point grid must be a typed failure");
+    let err = result.expect_err("an oversized sample-work estimate must be a typed failure");
     assert!(
-        err.to_string().contains("control point") && err.to_string().contains("4901"),
+        err.to_string().contains("sampling work") && err.to_string().contains("4901"),
         "error should name the cause and cite #4901: {err}"
     );
     assert!(
         elapsed < Duration::from_secs(2),
-        "oversized control-point grid must fail within the deterministic bound, took {elapsed:?}"
+        "oversized sample work must fail within the deterministic bound, took {elapsed:?}"
     );
 }

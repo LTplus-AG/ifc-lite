@@ -11,7 +11,7 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet } from './quantity-collect.js';
@@ -536,8 +536,8 @@ export function extractRelationshipsOnDemand(
         // IFCX stores ingest with an EMPTY entityIndex.byId (no STEP byte
         // spans exist), so when byId misses the EntityTable is the authority
         // for name/type instead of reporting Unknown (#1622 IFCX follow-up).
-        const tableType = store.entities?.getTypeName?.(id);
-        if (!ref && (!tableType || tableType === 'Unknown')) return { type: 'Unknown' };
+        const tableType = store.entities && resolvedTypeName(store.entities, id);
+        if (!ref && !tableType) return { type: 'Unknown' };
         const name = store.entities?.getName(id);
         const type = tableType || ref?.type || 'Unknown';
         return { name: name || undefined, type };
@@ -605,12 +605,12 @@ export function extractGroupMembersOnDemand(
         // Canonical IfcPascalCase (e.g. "IfcSpace") — `ref.type` is the raw STEP
         // token ("IFCSPACE"), which would break case-sensitive class checks in
         // consumers (member-isolation toggles, lens zone matching). (#1075)
-        const tableType = store.entities?.getTypeName(id);
+        const tableType = store.entities && resolvedTypeName(store.entities, id);
         // IFCX stores ingest with an EMPTY entityIndex.byId (no STEP byte spans
         // exist), so existence rides the EntityTable there: keep a member when
         // EITHER source knows the id. STEP stores keep byId as the primary gate
         // and resolve identically to before (#1622 IFCX follow-up).
-        if (!ref && (!tableType || tableType === 'Unknown')) continue;
+        if (!ref && !tableType) continue;
         const name = store.entities?.getName(id);
         const type = tableType || ref?.type || 'Unknown';
         members.push({ id, name: name || undefined, type });

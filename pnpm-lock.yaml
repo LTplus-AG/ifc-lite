@@ -941,6 +941,9 @@ importers:
 
   packages/create:
     dependencies:
+      '@ifc-lite/data':
+        specifier: workspace:^
+        version: link:../data
       '@ifc-lite/encoding':
         specifier: workspace:^
         version: link:../encoding

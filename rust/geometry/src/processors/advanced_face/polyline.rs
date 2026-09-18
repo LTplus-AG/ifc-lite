@@ -7,7 +7,8 @@
 use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
-use super::bspline::{evaluate_bspline_curve, expand_knots};
+use super::bspline::evaluate_bspline_curve;
+use super::bspline_parse::expand_knots;
 use super::conics::{read_axis2_placement_3d, sample_circle_edge_curve};
 use super::curves::sample_bspline_edge_curve;
 

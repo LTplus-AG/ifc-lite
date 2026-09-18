@@ -8,7 +8,9 @@
 use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
-use super::bspline::{evaluate_bspline_curve, expand_knots};
+use super::bspline::evaluate_bspline_curve;
+use super::bspline_budget::{MAX_BSPLINE_CURVE_CONTROL_POINTS, MAX_BSPLINE_DEGREE};
+use super::bspline_parse::expand_knots;
 
 /// Extract a CartesianPoint's coordinates from a VertexPoint entity.
 pub(super) fn extract_vertex_coords(vertex: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Point3<f64>> {
@@ -103,12 +105,26 @@ pub(super) fn sample_bspline_edge_curve_range(
 ) -> Vec<Point3<f64>> {
     // Parse B-spline curve: degree(0), control_points(1), ..., knot_mults(6), knots(7)
     let degree = curve.get_float(0).unwrap_or(3.0) as usize;
+    // Same bound as the surface path (#4901): `evaluate_bspline_curve`'s table
+    // build is safe at any degree (internally clamped too), but a huge
+    // file-supplied degree is never legitimate, so reject it the same way
+    // every other malformed-curve guard in this function does — degrade to
+    // the single start vertex rather than spend the (still-bounded, but
+    // pointless) table-build cost.
+    if degree > MAX_BSPLINE_DEGREE {
+        return vec![*start];
+    }
 
     // Parse control points (attribute 1: LIST of IfcCartesianPoint)
     let cp_list = match curve.get(1).and_then(|a| a.as_list()) {
         Some(list) => list,
         None => return vec![*start],
     };
+    // Bound the point count too (#4901): the table build is `O(degree * (n +
+    // degree))`, so an attacker-sized `n` scales it even at a capped degree.
+    if cp_list.len() > MAX_BSPLINE_CURVE_CONTROL_POINTS {
+        return vec![*start];
+    }
     let control_points: Vec<Point3<f64>> = cp_list
         .iter()
         .filter_map(|ref_val| {
@@ -182,3 +198,7 @@ pub(super) fn sample_bspline_edge_curve_range(
 
     points
 }
+
+#[cfg(test)]
+#[path = "curves_tests.rs"]
+mod tests;

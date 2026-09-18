@@ -12,6 +12,8 @@ use crate::{Error, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 mod bspline;
+mod bspline_budget;
+mod bspline_parse;
 mod conics;
 mod curves;
 mod edge_loop;
@@ -21,7 +23,7 @@ mod surfaces;
 
 // Re-exported so sibling processors that reference
 // `super::advanced_face::{parse_rational_weights, process_bspline_face}` keep resolving.
-pub(super) use bspline::parse_rational_weights;
+pub(super) use bspline_parse::parse_rational_weights;
 pub(super) use surfaces::process_bspline_face;
 
 use revolution::process_surface_of_revolution_face;

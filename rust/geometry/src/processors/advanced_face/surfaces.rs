@@ -10,7 +10,9 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 use super::super::helpers::get_axis2_placement_transform_by_id;
-use super::bspline::{parse_control_points, parse_knot_vectors, tessellate_bspline_surface};
+use super::bspline::tessellate_bspline_surface;
+use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_CONTROL_POINTS};
+use super::bspline_parse::{parse_control_points, parse_knot_vectors};
 use super::edge_loop::{extract_edge_loop_points, extract_edge_loop_points_for_bounds};
 
 /// Process a planar or boundary-represented face.
@@ -139,8 +141,29 @@ pub(crate) fn process_bspline_face(
     let u_degree = bspline.get_float(0).unwrap_or(3.0) as usize;
     let v_degree = bspline.get_float(1).unwrap_or(1.0) as usize;
 
+    // Reject a file-supplied degree far past any practical NURBS (#4901): the
+    // Cox-de Boor evaluation is now memoized (`bspline_basis_table`), but a
+    // huge degree still inflates its table (`O(degree * (n + degree))`) and
+    // the per-sample weighted sum, and nothing legitimate needs it. This
+    // fails LOUDLY (via `GeometryRouter::record_unsupported_item`, through
+    // the `Err` propagated to the caller) instead of silently degrading the
+    // surface, and it is a deterministic COUNT bound, not a timer, so native
+    // and wasm reject the same file identically.
+    if u_degree > MAX_BSPLINE_DEGREE || v_degree > MAX_BSPLINE_DEGREE {
+        return Err(Error::geometry(format!(
+            "BSplineSurface degree ({u_degree}, {v_degree}) exceeds the {MAX_BSPLINE_DEGREE} bound (#4901)"
+        )));
+    }
+
     // Parse control points
     let control_points = parse_control_points(bspline, decoder)?;
+    let total_control_points: usize = control_points.iter().map(Vec::len).sum();
+    if total_control_points > MAX_BSPLINE_SURFACE_CONTROL_POINTS {
+        return Err(Error::geometry(format!(
+            "BSplineSurface control point grid ({total_control_points}) exceeds the \
+             {MAX_BSPLINE_SURFACE_CONTROL_POINTS} bound (#4901)"
+        )));
+    }
 
     // Parse knot vectors
     let (u_knots, v_knots) = parse_knot_vectors(bspline)?;
@@ -326,3 +349,7 @@ pub(super) fn process_cylindrical_face(
 
     Ok((positions, indices))
 }
+
+#[cfg(test)]
+#[path = "surfaces_tests.rs"]
+mod tests;

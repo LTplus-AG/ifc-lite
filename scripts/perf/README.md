@@ -1681,3 +1681,30 @@ in the hot path needs no dedicated perf lever, only a byte-identity
 check on a fixture the gate does not touch; the real cost of moving the
 line is paid only by files that cross between the old and new bands
 (1-10 km), which this fixture is not one of.
+
+## Deterministic B-spline degree/control-point budget, memoized Cox-de Boor (#4901)
+
+Base `0d84727c5` vs branch, native `perf_probe` (best-of-5): AC20-FZK-Haus
+14 ms both sides (285 meshes / 35,940 vertices / 19,456 triangles,
+byte-identical); ISSUE_129 CSG fixture 912 -> 910 ms (within noise), 1,402
+meshes / 219,860 vertices / 135,749 triangles / 41 CSG failures / 6 degenerate
+dropped, identical on both sides. Neither fixture carries a B-spline surface
+or curve, so this is an isolation check (the new code path is untouched by
+either fixture), not a speedup claim.
+
+The lever itself: `bspline_basis` (Cox-de Boor recursion,
+`rust/geometry/src/processors/advanced_face/bspline.rs`) was called once per
+control-point index with no caching between calls, so it re-derived the same
+sub-results `O(control points)` times per sample point on top of being
+`O(2^degree)` unmemoized — a file-supplied `Degree` in the tens already made a
+single face non-terminating in practice, and nothing bounded it. Replaced with
+one bottom-up table build per sample point per axis (`bspline_basis_table`,
+`O(degree * (n + degree))`, mathematically identical, so legitimate output is
+byte-for-bit unchanged — pure caching, not a formula change) plus a
+deterministic (not wall-clock) degree/control-point-count cap
+(`bspline_budget.rs`) so a file that still exceeds it fails loudly via
+`GeometryRouter::record_unsupported_item` instead of hanging. The lesson: an
+unmemoized recursive basis-function evaluator is an easy trap in geometry
+code — it reads as "just math," but its complexity is exponential in a
+file-controlled parameter, so it needs the same file-driven-loop scrutiny as
+an explicit `for` loop over entity references.

@@ -1088,6 +1088,15 @@ in the same Y-up metre frame. It defaults to zero before a placement is set.
 The scene retains occurrence records and bounds after releasing CPU vertices,
 so whole-model movement remains available in GPU-resident mode.
 
+`Renderer.setModelRotation(modelIndex, angle, [px, py, pz])` turns a model's
+GPU-instanced occurrences about the vertical (+Y) axis through the render-frame
+pivot `(px, pz)` (`py` is unused — the axis is always vertical); `angle === 0`
+clears it. It is the instanced-geometry counterpart to `setModelTranslation`
+and composes with it (rotate about the pivot, then translate). It does not
+touch flat, authored, batched or point-cloud geometry — an instanced-only
+model's flat pieces, if any, must be rotated separately (e.g. by the caller's
+own bake).
+
 For a separately streamed scan, call
 `Renderer.setPointCloudTranslation(handle, [x, y, z])`. Its manual translation
 composes after the matrix passed to `setPointCloudTransform`, which accepts

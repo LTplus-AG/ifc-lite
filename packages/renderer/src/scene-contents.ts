@@ -160,6 +160,18 @@ export interface SceneContents {
   rotateMeshesForEntities(
     updates: Map<number, { angle: number; pivot: [number, number, number] }>,
   ): number;
+  /**
+   * Turn `modelIndex`'s GPU-instanced occurrences about the render-frame
+   * pivot `(pivot[0], *, pivot[2])`; `angle === 0` clears the rotation
+   * (#4890). The GPU-instanced counterpart to `Renderer.setModelTranslation`
+   * — flat/authored/batched geometry rotates through the viewer's bake, not
+   * this method.
+   */
+  setModelRotation(
+    modelIndex: number,
+    angle: number,
+    pivot: readonly [number, number, number],
+  ): boolean;
 
   // ─── Colour overrides ────────────────────────────────────────────────
   setColorOverrides(

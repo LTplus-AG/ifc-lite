@@ -1095,6 +1095,15 @@ export class Renderer {
         this.refreshPlacementBounds();
     }
 
+    /** Absolute workspace yaw, renderer Y-up radians about the render-frame
+     *  pivot `(pivot[0], *, pivot[2])` — turns GPU-instanced occurrences only
+     *  (#4890); no point-cloud leg, mirrors `setModelTranslation` otherwise. */
+    setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): void {
+        this.scene.setModelRotation(modelIndex, angle, pivot);
+        this.clearCaches();
+        this.refreshPlacementBounds();
+    }
+
     /** Streamed clouds are addressed by durable asset handle. */
     setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
         this.pointCloudRenderer?.setAssetTranslation(handle, translation);

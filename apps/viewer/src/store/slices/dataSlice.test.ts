@@ -580,6 +580,70 @@ describe('DataSlice', () => {
         modelRotationBaker.clear();
       }
     });
+
+    /**
+     * #4947: split out of #4935 above, which fixed only the IRRECOVERABLE
+     * half of this family — a 0° bake cloning stale pristine bounds onto live
+     * geometry. At an UNCHANGED non-zero rotation, `ModelRotationBaker.reconcile`
+     * takes its `equalRotation` fast path and never re-bakes, so nothing had
+     * re-measured the LIVE `coordinateInfo.shiftedBounds` for the model
+     * `pruneGeometryMeshes` just edited — what fit-to-view and the section
+     * calculations read — until the angle next changed.
+     */
+    it('re-measures the LIVE extent at the SAME rotation after a prune (#4947)', () => {
+      const placed = (expressId: number, x: number, length: number) => ({
+        expressId,
+        positions: new Float32Array([0, 0, 0, length, 0, 0, length, 0, 1]),
+        normals: new Float32Array([1, 0, 0, 1, 0, 0, 1, 0, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        color: [1, 0, 0, 1] as [number, number, number, number],
+        origin: [x, 5, -40],
+      });
+      const coordinateInfo = {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        shiftedBounds: { min: { x: 100, y: 5, z: -40 }, max: { x: 402, y: 5, z: -39 } },
+        hasLargeCoordinates: false,
+      };
+      state.appendGeometryBatch(
+        ACTIVE_MODEL_ID,
+        [placed(1, 100, 3), placed(2, 400, 2)] as unknown as GeometryResult['meshes'],
+        coordinateInfo,
+      );
+      const target = (rotation: ModelRotation) => new Map([[ACTIVE_MODEL_ID,
+        { geometry: state.geometryResult, rotation }]]);
+      modelRotationBaker.clear();
+      try {
+        assert.deepStrictEqual(modelRotationBaker.reconcile(target(ROTATION)), [ACTIVE_MODEL_ID]);
+
+        // The drain behind a wall split (`setPendingMeshRemovals`), same as #4935.
+        state.pruneGeometryMeshes(new Set([2]));
+        assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [1],
+          'the prune has to have removed the mesh (fixture can fail)');
+
+        // SAME angle: reconcile must take the unchanged-angle fast path, so
+        // this is not what fixes the live extent — if it were, this test
+        // would not exercise the bug #4947 reports.
+        assert.deepStrictEqual(modelRotationBaker.reconcile(target(ROTATION)), [],
+          'an unchanged angle must not re-bake (fast-path precondition for this test)');
+
+        // Independent oracle: mesh 1's ROTATION-rotated world box, computed by
+        // hand from its own local vertices/origin (`placed(1, 100, 3)`) and
+        // ROTATION's angle/pivot — applying `rotateMesh`'s yaw formula
+        // (`rotation-geometry.ts`) directly and taking the min/max of the
+        // three rotated corners, WITHOUT calling `ModelRotationBaker`,
+        // `applyModelRotation` or `measureBounds` (what this assertion exists
+        // to catch a regression in). Same fixture and angle as the unit-level
+        // version of this assertion in `rotation-bake.test.ts`, so the number
+        // is the same.
+        assert.deepStrictEqual(state.geometryResult?.coordinateInfo.shiftedBounds, {
+          min: { x: 54.98680654863102, y: 5, z: -85.00787889159332 },
+          max: { x: 57.97742620805485, y: 5, z: -83.18575143015991 },
+        }, 'the live extent still covers the pruned mesh');
+      } finally {
+        modelRotationBaker.clear();
+      }
+    });
   });
 
   describe('updateMeshColors', () => {

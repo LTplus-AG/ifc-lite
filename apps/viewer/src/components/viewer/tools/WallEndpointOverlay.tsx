@@ -62,7 +62,7 @@ const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
  * a wall on a moved or rotated model draws its resize handles ON the
  * wall rather than at its un-repositioned position.
  */
-export function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number, modelId: string): Vec3 {
+function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number, modelId: string): Vec3 {
   const state = useViewerStore.getState();
   const placement = { translation: displayedTranslation(state.modelPlacement, modelId),
     rotation: placementFor(state.modelPlacement, modelId).rotation };

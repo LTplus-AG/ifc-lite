@@ -8,6 +8,8 @@
  * (no React, no store) that the palette component composes.
  */
 
+import type { TranslationKey, TranslationParameters } from '@/i18n';
+
 export type Category =
   | 'Recent'
   | 'File'
@@ -23,12 +25,26 @@ export type Category =
 
 export interface Command {
   id: string;
+  /**
+   * English text used ONLY for search ranking (`rankCommand` below) — never
+   * rendered. Commands with a `labelKey` are DISPLAYED via `t(labelKey, …)`
+   * instead (#4918 slice 3); this stays because search matches by the
+   * literal typed query, independent of the active locale.
+   */
   label: string;
+  /** When set, the row's display text — `t(labelKey, labelKeyParams)`. Data
+   *  rows built from runtime content (recent files, tour titles, extension
+   *  contributions, script templates) have none and render `label` as-is. */
+  labelKey?: TranslationKey;
+  labelKeyParams?: TranslationParameters;
   keywords: string;           // extra search tokens (no UI display)
   category: Exclude<Category, 'Recent'>;
   icon: React.ElementType;
   shortcut?: string;
   detail?: string;            // subtle secondary text (e.g. file size)
+  /** Translated counterpart of `detail` — e.g. a tour's "{minutes} min". */
+  detailKey?: TranslationKey;
+  detailKeyParams?: TranslationParameters;
   action: () => void;
   /**
    * Run the action synchronously in the click handler instead of deferring to the

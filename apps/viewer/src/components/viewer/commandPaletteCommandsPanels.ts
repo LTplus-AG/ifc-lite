@@ -1,0 +1,250 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The Ctrl/Cmd+K command palette's Panels/Schedule/Export/Automation/
+ * Preferences/Learn/Extensions commands (#4918 slice 3) — the second half
+ * of the table split out of `CommandPalette.tsx`; `commandPaletteCommandsCore.ts`
+ * holds File/View/Tools/Visibility, and `commandPaletteCommands.ts` composes
+ * both. See that core file's docblock for why the split exists and the
+ * `labelKey`/`label` convention every row below follows.
+ *
+ * Deliberately NOT catalogued (see `command-palette.en.ts`'s docblock):
+ * script-template rows (`auto:*`, user-authored automation content), tour
+ * titles from `TOUR_REGISTRY` (only the "Tour: " wrapper and "{minutes} min"
+ * detail are catalogued), and extension-contributed rows (`ext:*`,
+ * `payload.title` sourced from the extension registry at runtime).
+ */
+
+import {
+  Play, Box, Cloud, Layout, TreeDeciduous, MessageSquare, ClipboardCheck, FileWarning,
+  FileSpreadsheet, Palette, Puzzle, Camera, Download, FileJson, ShieldQuestion, Sun, Info,
+  CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
+  SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair,
+} from 'lucide-react';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { useViewerStore } from '@/store';
+import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
+import { toast as paletteToast } from '@/components/ui/toast';
+import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
+import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { startTour } from '@/lib/tours/controller';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
+import { exportCsvFromBytes } from '@/lib/export/csv';
+import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
+import { GeometryProcessor } from '@ifc-lite/geometry';
+import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
+import { buildCommandPaletteJsonEntities } from './commandPaletteJsonExport';
+import { bottomPanelCommands } from './commandPaletteBottomPanels';
+import { describeRunCommandError } from '@/services/extensions/runtime-errors';
+import type { Command } from './commandPaletteSearch';
+import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+
+export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
+  const c: Command[] = [];
+
+  // ── Panels ──
+  c.push(
+    ...bottomPanelCommands(p.activateBottomPanel),
+    { id: 'panel:properties', label: 'Information', ...withKey('commandPalette.panel.properties.label'), keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
+      action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
+    { id: 'panel:tree', label: 'Hierarchy', ...withKey('commandPalette.panel.tree.label'), keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
+      action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
+    { id: 'panel:bcf', label: 'BCF Topics', ...withKey('commandPalette.panel.bcf.label'), keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
+      action: () => { p.activateRightPanel('bcf'); } },
+    { id: 'panel:ids', label: 'IDS Validation', ...withKey('commandPalette.panel.ids.label'), keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
+      action: () => { p.activateRightPanel('ids'); } },
+    { id: 'panel:clash', label: 'Clash Detection', ...withKey('commandPalette.panel.clash.label'), keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
+      action: () => { p.activateRightPanel('clash'); } },
+    { id: 'panel:compare', label: 'Compare Models', ...withKey('commandPalette.panel.compare.label'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
+      action: () => { p.activateRightPanel('compare'); } },
+    { id: 'panel:lens', label: 'Lens Rules', ...withKey('commandPalette.panel.lens.label'), keywords: 'color filter highlight', category: 'Panels', icon: Palette,
+      action: () => { p.activateRightPanel('lens'); } },
+    { id: 'panel:layers', label: 'Layer Stack', ...withKey('commandPalette.panel.layers.label'), keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
+      action: () => { p.activateRightPanel('layers'); } },
+    { id: 'panel:sources', label: 'Cloud Sources', ...withKey('commandPalette.panel.sources.label'), keywords: 'cde common data environment connect provider bim360 acc trimble dalux integration remote', category: 'Panels', icon: Cloud,
+      action: () => { p.activateRightPanel('sources'); } },
+    { id: 'panel:zones', label: 'Location Zones', ...withKey('commandPalette.panel.zones.label'), keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
+      action: () => { p.activateRightPanel('zones'); } },
+    { id: 'panel:loadReport', label: 'Load Report', ...withKey('commandPalette.panel.loadReport.label'), keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
+      action: () => { p.activateRightPanel('loadReport'); } },
+    { id: 'panel:appearance', label: 'Appearance', ...withKey('commandPalette.panel.appearance.label'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
+      action: () => { p.activateRightPanel('appearance'); } },
+    ...(isCollabEnabled()
+      ? [{ id: 'panel:collab', label: 'Collaboration Room', ...withKey('commandPalette.panel.collab.label'), keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
+          action: () => { p.activateRightPanel('collab'); } }]
+      : []),
+    { id: 'panel:extensions', label: 'Extensions', ...withKey('commandPalette.panel.extensions.label'), keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
+      action: () => { p.activateRightPanel('extensions'); } },
+    { id: 'extensions:author', label: 'Author an extension…', ...withKey('commandPalette.tool.extensionsAuthor.label'),
+      keywords: 'create new build plan chat ai extension generate',
+      category: 'Tools', icon: Sparkles,
+      action: () => {
+        const s = useViewerStore.getState();
+        p.activateRightPanel('extensions');
+        s.setExtensionsRequestedView('ideas');
+        s.setIdeasOpenEmptyPlan(true);
+      } },
+    { id: 'extensions:flavors', label: 'Manage flavors…', ...withKey('commandPalette.panel.flavors.label'),
+      keywords: 'flavor profile switch export import merge customization',
+      category: 'Panels', icon: Palette,
+      action: () => {
+        useViewerStore.getState().setFlavorDialogRequested(true);
+      } },
+    { id: 'sidebar:toggle', label: 'Toggle Sidebar', ...withKey('commandPalette.sidebar.toggle.label'), keywords: 'sidebar panels show hide off optional workspace', category: 'Panels', icon: PanelRight, shortcut: 'Alt+\\',
+      action: () => { useViewerStore.getState().toggleSidebar(); } },
+    { id: 'sidebar:collapse', label: 'Collapse Sidebar to Icons', ...withKey('commandPalette.sidebar.collapse.label'), keywords: 'sidebar collapse icons rail minimize', category: 'Panels', icon: ChevronsRight,
+      action: () => { useViewerStore.getState().setSidebarMode('collapsed'); } },
+    { id: 'sidebar:customize', label: 'Customize Sidebar…', ...withKey('commandPalette.sidebar.customize.label'), keywords: 'sidebar customize reorder hide show panels edit arrange', category: 'Panels', icon: SlidersHorizontal,
+      action: () => { const s = useViewerStore.getState(); s.setSidebarMode('expanded'); s.setSidebarCustomizing(true); } },
+    { id: 'sidebar:reset', label: 'Reset Sidebar Layout', ...withKey('commandPalette.sidebar.reset.label'), keywords: 'sidebar reset default order width restore', category: 'Panels', icon: RotateCcw,
+      action: () => { useViewerStore.getState().resetSidebarLayout(); } },
+  );
+
+  // ── Schedule / 4D (Tools) ─────────────────────────────
+  c.push(
+    { id: 'schedule:generate', label: 'Generate Schedule from Storeys…', ...withKey('commandPalette.schedule.generate.label'),
+      keywords: '4d ifctask construction sequence storey building create gantt',
+      category: 'Tools', icon: CalendarPlus,
+      action: () => {
+        const s = useViewerStore.getState();
+        if (!s.ganttPanelVisible) p.activateBottomPanel('gantt');
+        useViewerStore.getState().setGenerateScheduleDialogOpen(true);
+      } },
+    { id: 'schedule:toggle-animation', label: 'Toggle 4D Construction Animation', ...withKey('commandPalette.schedule.toggleAnimation.label'),
+      keywords: 'play pause schedule task gantt simulation',
+      category: 'Visibility', icon: Sparkles,
+      action: () => {
+        const s = useViewerStore.getState();
+        s.setAnimationEnabled(!s.animationEnabled);
+      } },
+    { id: 'schedule:reset', label: 'Reset Schedule (Clear 4D Data)', ...withKey('commandPalette.schedule.reset.label'),
+      keywords: 'remove gantt tasks ifctask delete clear',
+      category: 'Tools', icon: Eraser,
+      action: () => {
+        const s = useViewerStore.getState();
+        s.setScheduleData(null);
+        s.setAnimationEnabled(false);
+        s.pauseSchedule();
+      } },
+  );
+
+  // ── Export ──
+  c.push(
+    { id: 'export:screenshot', label: 'Screenshot', ...withKey('commandPalette.export.screenshot.label'), keywords: 'capture png image viewport', category: 'Export', icon: Camera,
+      action: () => {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) return;
+        try { const d = canvas.toDataURL('image/png'); Object.assign(document.createElement('a'), { href: d, download: 'screenshot.png' }).click(); }
+        catch (e) { console.error('Screenshot failed:', e); }
+      } },
+    { id: 'export:glb', label: 'Export GLB', ...withKey('commandPalette.export.glb.label'), keywords: '3d model gltf download', category: 'Export', icon: Download,
+      action: async () => {
+        const gr = useViewerStore.getState().geometryResult; if (!gr) return;
+        try { downloadFile(await exportPlacedModelGlb(gr), 'model.glb', 'model/gltf-binary'); }
+        catch (e) { console.error('GLB export failed:', e); }
+      } },
+    { id: 'export:usd', label: 'Export USD (OpenUSD)', ...withKey('commandPalette.export.usd.label'), keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,
+      action: async () => {
+        const st = useViewerStore.getState();
+        const model = [...st.models.values()].find(isUsdExportableModel);
+        if (!model) return;
+        const gp = new GeometryProcessor();
+        try {
+          const bytes = await resolveUsdExportBytes(model, st.getMutationView);
+          await gp.init();
+          const usd = gp.exportUsd(bytes);
+          if (usd == null) throw new Error('Geometry engine unavailable');
+          downloadFile(usd, buildExportFilename(stripExtension(model.name), 'usda'), 'text/plain');
+        } catch (e) { console.error('USD export failed:', e); }
+        finally { gp.dispose(); }
+      } },
+    { id: 'export:csv-entities', label: 'Export CSV: Entities', ...withKey('commandPalette.export.csvEntities.label'), keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
+      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+    { id: 'export:csv-properties', label: 'Export CSV: Properties', ...withKey('commandPalette.export.csvProperties.label'), keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
+      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+    { id: 'export:csv-quantities', label: 'Export CSV: Quantities', ...withKey('commandPalette.export.csvQuantities.label'), keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
+      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+    { id: 'export:csv-spatial', label: 'Export CSV: Spatial', ...withKey('commandPalette.export.csvSpatial.label'), keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
+      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+    { id: 'export:anonymized', label: 'Export Anonymized Subset…', ...withKey('commandPalette.export.anonymized.label'), keywords: 'anonymize obfuscate isolate scrub redact bug report reproduction privacy scrub-safe', category: 'Export', icon: ShieldQuestion,
+      action: () => { useViewerStore.getState().setAnonymizedExportRequested(true); } },
+    { id: 'export:json', label: 'Export JSON', ...withKey('commandPalette.export.json.label'), keywords: 'data entities all download', category: 'Export', icon: FileJson,
+      action: () => {
+        const d = useViewerStore.getState().ifcDataStore; if (!d) return;
+        try {
+          const out = buildCommandPaletteJsonEntities(d);
+          downloadFile(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
+        } catch (e) { console.error(e); }
+      } },
+  );
+
+  // ── Automation (scripts — last, power-user feature) ──
+  for (const t of SCRIPT_TEMPLATES) {
+    c.push({
+      id: `auto:${t.name}`, label: t.name, keywords: `script run ${t.description}`,
+      category: 'Automation', icon: Play,
+      action: () => { const s = useViewerStore.getState(); s.setListPanelVisible(false); s.setScriptPanelVisible(true); s.setScriptEditorContent(t.code); p.execute(t.code); },
+    });
+  }
+
+  // ── Preferences ──
+  c.push(
+    { id: 'pref:theme', label: 'Theme', ...withKey('commandPalette.pref.theme.label'), keywords: 'dark light mode appearance switch', category: 'Preferences', icon: Sun, shortcut: 'T',
+      action: () => { useViewerStore.getState().toggleTheme(); } },
+    { id: 'pref:tooltips', label: 'Hover Tooltips', ...withKey('commandPalette.pref.tooltips.label'), keywords: 'entity info mouse hover show hide', category: 'Preferences', icon: Info,
+      action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
+  );
+
+  // ── Learn (tours) ──
+  for (const tour of TOUR_REGISTRY) {
+    c.push({
+      id: `tour:${tour.id}`,
+      label: `Tour: ${tour.title}`,
+      ...withKey('commandPalette.tour.label', { title: tour.title }),
+      keywords: `tour walkthrough learn guide tutorial onboarding ${tour.description}`,
+      category: 'Learn',
+      icon: GraduationCap,
+      detail: `${tour.minutes} min`,
+      detailKey: 'commandPalette.tour.minutes',
+      detailKeyParams: { minutes: tour.minutes },
+      action: () => { startTour(tour.id, 'palette'); },
+    });
+  }
+  c.push({
+    id: 'learn:hub',
+    label: 'Open Learn Hub',
+    ...withKey('commandPalette.learn.hub.label'),
+    keywords: 'tour walkthrough learn tutorials help getting started onboarding',
+    category: 'Learn',
+    icon: GraduationCap,
+    action: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'learn' } })); },
+  });
+
+  // ── Extension contributions ──
+  for (const contribution of p.extensionCommands) {
+    const payload = contribution.payload;
+    if (!payload?.id || !payload.title) continue;
+    c.push({
+      id: `ext:${payload.id}`,
+      label: payload.title,
+      keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
+      category: 'Extensions',
+      icon: resolveExtensionIcon(payload.icon),
+      detail: payload.paletteCategory,
+      action: () => {
+        if (!p.extensionHost) return;
+        void p.extensionHost.dispatcher
+          .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
+          .then(() => p.extensionHost?.runCommand(payload.id, contribution.extensionId))
+          .catch((err: unknown) => {
+            paletteToast.error(describeRunCommandError(payload.id, err));
+          });
+      },
+    });
+  }
+
+  return c;
+}

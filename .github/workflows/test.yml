@@ -1023,6 +1023,17 @@ jobs:
       # the Rust twin's pin and no longer gate anything on this side.
       - name: Check module-size ratchet gate regressions
         run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
+      # The #4918 sweep charter's own "what ends it" gate: a grep-based scan
+      # for hardcoded JSX text and aria-label/title/placeholder literals under
+      # apps/viewer/src/components, ratcheted the same shape as the module-size
+      # gate above (a per-file budget in scripts/i18n-literals-baseline.json;
+      # rises fail, falls print a reminder to tighten). Its own tests run
+      # first, same reason as every other gate here: this check's value is
+      # entirely in not passing vacuously.
+      - name: Check i18n-literals gate regressions
+        run: node --test scripts/check-i18n-literals.test.mjs
+      - name: Check for hardcoded viewer UI literals
+        run: node scripts/check-i18n-literals.mjs
       # Five favicon variants sat in apps/viewer/public unreferenced for
       # months (1.885 MiB shipped to every visitor) until a maintainer's own
       # grep found them (#4111, deleted by #4114). Nothing caught them when

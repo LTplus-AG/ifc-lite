@@ -86,10 +86,12 @@ under its module-size budget. Recent-file names, script-template labels,
 tour titles, and extension-contributed labels stay uncatalogued, same
 reasoning as slice 2: each is runtime content, not a literal in this repo.
 
-**The sweep's ending gate:** `scripts/check-i18n-literals.mjs` greps
-`apps/viewer/src/components/**/*.tsx` for hardcoded JSX text and
-`aria-label`/`title`/`placeholder` string literals — skipping IFC EXPRESS
-names, uppercase technical acronyms, and short symbol/unit clusters (`⌘Z`,
-`m²`) — and ratchets a per-file count in `scripts/i18n-literals-baseline.json`
-(wired into `pnpm lint` and CI's node-tests job): a file's count may never
-rise above its baseline row, and a fall prints a reminder to lower it.
+**The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
+TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
+hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and
+`aria-label`/`title`/`placeholder`/`alt` string-literal attributes —
+skipping IFC EXPRESS names, an explicit technical-acronym allowlist, and
+short symbol/unit clusters (`⌘Z`, `m²`) — and ratchets a per-file count in
+`scripts/i18n-literals-baseline.json` (wired into `pnpm lint` and CI's
+node-tests job): a file's count may never rise above its baseline row,
+and a fall prints a reminder to lower it.

@@ -3,67 +3,51 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The detector `check-i18n-literals.mjs` runs: a grep-based scan for
- * hardcoded JSX text and `aria-label`/`title`/`placeholder` string
- * literals, the #4918 charter's "what ends it" gate. Split into its own
- * module so `check-i18n-literals.test.mjs` can assert the DETECTOR (a
- * hardcoded literal caught, an allowlisted `IfcWall` not) independent of
- * the CLI's file-walking and baseline bookkeeping.
+ * The detector `check-i18n-literals.mjs` runs: an AST walk for hardcoded
+ * JSX text and `aria-label`/`title`/`placeholder`/`alt` string literals,
+ * the #4918 charter's "what ends it" gate. Split into its own module so
+ * `check-i18n-literals.test.mjs` can assert the DETECTOR (a hardcoded
+ * literal caught, an allowlisted `IfcWall` not) independent of the CLI's
+ * file-walking and baseline bookkeeping.
  *
- * DELIBERATELY A REGEX, NOT A PARSER: `check-source-text-assertions.mjs`
- * and its Rust twin earn a real lexer because their precision is the whole
- * point of that gate. This one is a RATCHET — the charter asks for
- * "a grep-based gate" — so a good-enough regex that a per-file baseline
- * absorbs today's false positives against is the right shape: the number
- * only needs to go down over time, not be exact on day one. Known
- * over-matches: a generic type parameter (`Array<string>`) or a comparison
- * (`a > b`) can look like JSX text. Known under-matches: a `t()` call, a
- * variable, or a genuine `{expr}`/`{fn()}` expression is correctly ignored
- * (dynamic content is out of scope), and so is a literal built by string
- * concatenation — both stay findable as a bigger count in a specific
- * file's baseline row, rather than fixed on the gate's word alone. A bare
- * quoted string inside `{}` (`{'Save changes'}`, `aria-label={"…"}`) IS
- * caught (`JSX_EXPRESSION_STRING_RE`) — that shape is common enough (any
- * JSX text containing a quote character) that leaving it out would make
- * the ratchet trivially easy to dodge.
+ * A REAL PARSE, NOT A REGEX (review on PR #4973 replaced the original
+ * regex version of this file): a regex pass over `>text<` false-positived
+ * on any ordinary comparison (`if (a > b) return <div />`) and false
+ * -negatived on the `{'…'}` JSX-expression spelling of JSX text
+ * (`<button>{'Save changes'}</button>`, `aria-label={'…'}`) — both wrong
+ * in the direction that matters for a ratchet meant to hold a line. Using
+ * the same `typescript` compiler API `check-wasm-disposal.mjs` and
+ * `check-api-surface.mjs` already load removes both classes of defect by
+ * construction: only real `JsxText`/`JsxExpression`/`JsxAttribute` nodes
+ * are ever visited, so `a > b` produces no `JsxText` at all, and
+ * `{'Save changes'}` is a `JsxExpression` whose expression IS a string
+ * literal, which this walk asks about directly (no guessing from `{}`
+ * balance). A mixed `Hello {name}` counts once — `name` is an
+ * `Identifier`, not a string literal, so only the static `"Hello "`
+ * `JsxText` node is a candidate.
+ *
+ * The parser is intentionally lenient (`createSourceFile` never throws on
+ * malformed input; it recovers and keeps walking), matching this file's
+ * own nature as a RATCHET rather than a hard gate: a syntax error elsewhere
+ * in a file must not blind the walk to the JSX nodes it can still see.
  */
 
-/**
- * JSX text nodes: whatever sits between a `>` and the next `<`, provided it
- * contains a letter (an empty run, or one of just whitespace/punctuation, is
- * layout, not copy). Spans newlines — `<div>\n  No results\n</div>` is a
- * real, common shape in this codebase — so the character class excludes
- * only the delimiters `{}<>`, not `\n`.
- */
-const JSX_TEXT_RE = />([^<>{}]*\p{L}[^<>{}]*)</gu;
+import ts from 'typescript';
 
-/**
- * A JSX EXPRESSION container holding nothing but a single quoted string
- * literal — `{'Save changes'}` or `{"Save changes"}` — the ordinary way to
- * write JSX text that itself contains a quote character. Indistinguishable
- * from `JSX_TEXT_RE`'s exclusion of `{}` unless matched on its own: review
- * caught that the original version missed this shape entirely.
- */
-const JSX_EXPRESSION_STRING_RE = /\{\s*(["'])((?:(?!\1)[^\\]|\\.)*)\1\s*\}/g;
-
-/** `aria-label`/`title`/`placeholder` set to a quoted STRING LITERAL —
- *  either directly (`aria-label="…"`) or as a JSX expression holding only a
- *  string (`aria-label={'…'}`) — never a `{expr}`/`{fn()}` expression, which
- *  is already dynamic (a `t()` call or a variable) and out of this gate's
- *  scope. Whitespace around `=` is tolerated (`aria-label = "…"` parses);
- *  the negative lookbehind keeps `data-title`/`data-placeholder` (ordinary
- *  data attributes, not this gate's business) from matching on their
- *  `-title`/`-placeholder` suffix.
- */
-const ATTR_RE = /(?<![\w-])(?:aria-label|title|placeholder)\s*=\s*(?:(["'])((?:(?!\1)[^\\]|\\.)*)\1|\{\s*(["'])((?:(?!\3)[^\\]|\\.)*)\3\s*\})/g;
+/** Attribute names this gate polices — the charter's `aria-label`/`title`,
+ *  plus `placeholder` (kept from the original version) and `alt` (review:
+ *  an image's accessible text is exactly the same class of hardcoded
+ *  user-facing copy). */
+const TARGET_ATTRS = new Set(['aria-label', 'title', 'placeholder', 'alt']);
 
 /** A single IFC EXPRESS entity/type name, e.g. `IfcWall`, `IfcSpaceType`. */
 const IFC_NAME_RE = /^Ifc[A-Z][A-Za-z0-9]*$/;
 
 /**
  * An explicit technical-acronym allowlist — NOT "any all-caps word": review
- * caught that `^[A-Z][A-Z0-9]*$` also allowlisted real UI copy like `DELETE`
- * or `WELCOME`. Extend this list rather than widening the pattern.
+ * caught that a broader `^[A-Z][A-Z0-9]*$` pattern also allowlisted real UI
+ * copy like `DELETE` or `WELCOME`. Extend this list rather than widening it
+ * into a pattern.
  */
 const ACRONYMS = new Set([
   'PDF', 'CSV', 'GLB', 'BCF', 'IDS', 'JSON', 'USD', 'URL', 'ID', 'IFC',
@@ -72,9 +56,9 @@ const ACRONYMS = new Set([
 ]);
 
 /** Unicode-aware: no LETTER of any script at all — punctuation, digits,
- *  whitespace runs, CJK/Cyrillic/etc. text all still have `\p{L}` code
- *  points, so this only spares genuinely letter-free text, never a
- *  non-Latin word (review: `设置`/`你好` must NOT be allowlisted here). */
+ *  whitespace runs all still have zero `\p{L}` code points, so this only
+ *  spares genuinely letter-free text, never a non-Latin word (`设置`/
+ *  `你好` must NOT be allowlisted here). */
 const NO_LETTERS_RE = /\p{L}/u;
 
 /** Non-ASCII symbol/unit characters: `°`, `²`, `³`, `×`, en/em dashes, curly
@@ -112,42 +96,66 @@ export function isAllowlistedLiteral(raw) {
   return false;
 }
 
+/** The string VALUE of a literal expression, or `null` if `expr` is not
+ *  one — a plain string literal or a no-substitution template literal
+ *  (`` `Save changes` ``, no `${}` inside it). A template literal WITH
+ *  interpolation is correctly left alone: its value isn't static text. */
+function literalStringValue(expr) {
+  if (ts.isStringLiteral(expr)) return expr.text;
+  if (ts.isNoSubstitutionTemplateLiteral(expr)) return expr.text;
+  return null;
+}
+
 /**
- * Every candidate literal in `source`: JSX text runs (plain, and the
- * `{'…'}` expression-wrapped spelling of the same thing) and quoted
- * `aria-label`/`title`/`placeholder` attribute values (plain or
- * expression-wrapped), BEFORE allowlist filtering. Exported mainly for the
- * detector's own tests.
+ * Parse `source` as TSX and return every candidate literal: `JsxText`
+ * nodes with non-whitespace content, `JsxExpression`s wrapping a string
+ * literal (the `{'…'}` spelling of JSX text or an attribute value), and
+ * `aria-label`/`title`/`placeholder`/`alt` `JsxAttribute`s set to a
+ * string literal (plain or expression-wrapped) — BEFORE allowlist
+ * filtering. Exported mainly for the detector's own tests.
  */
-export function findLiterals(source) {
+export function findLiterals(source, fileName = 'fixture.tsx') {
   const found = [];
-  // ATTR_RE runs first and its matched spans are recorded: an
-  // expression-wrapped attribute value (`aria-label={'…'}`) matches BOTH
-  // this pattern and JSX_EXPRESSION_STRING_RE's generic "quoted string
-  // inside `{}`" shape, so the latter must skip any span ATTR_RE already
-  // claimed or the same literal is counted twice (review caught this).
-  const attrSpans = [];
-  for (const m of source.matchAll(ATTR_RE)) {
-    const text = (m[2] ?? m[4] ?? '').replace(/\s+/g, ' ').trim();
-    attrSpans.push([m.index, m.index + m[0].length]);
-    if (text.length > 0) found.push({ kind: 'attr', text });
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+
+  /** JsxAttribute nodes are visited once by name below; tracking their
+   *  JsxExpression initializer's node lets the generic JsxExpression visit
+   *  skip it, so an attribute value is never counted twice. */
+  const consumedExpressions = new Set();
+
+  function pushIfText(kind, raw) {
+    const text = raw.replace(/\s+/g, ' ').trim();
+    if (text.length > 0) found.push({ kind, text });
   }
-  for (const m of source.matchAll(JSX_TEXT_RE)) {
-    const text = m[1].replace(/\s+/g, ' ').trim();
-    if (text.length > 0) found.push({ kind: 'jsx-text', text });
+
+  function visit(node) {
+    if (ts.isJsxText(node)) {
+      pushIfText('jsx-text', node.getText());
+    } else if (ts.isJsxAttribute(node) && TARGET_ATTRS.has(node.name.getText())) {
+      const init = node.initializer;
+      if (init) {
+        if (ts.isStringLiteral(init)) {
+          pushIfText('attr', init.text);
+        } else if (ts.isJsxExpression(init) && init.expression) {
+          const lit = literalStringValue(init.expression);
+          if (lit !== null) {
+            consumedExpressions.add(init);
+            pushIfText('attr', lit);
+          }
+        }
+      }
+    } else if (ts.isJsxExpression(node) && node.expression && !consumedExpressions.has(node)) {
+      const lit = literalStringValue(node.expression);
+      if (lit !== null) pushIfText('jsx-expression-string', lit);
+    }
+    ts.forEachChild(node, visit);
   }
-  for (const m of source.matchAll(JSX_EXPRESSION_STRING_RE)) {
-    const start = m.index;
-    const end = start + m[0].length;
-    if (attrSpans.some(([s, e]) => start < e && end > s)) continue; // already counted via ATTR_RE
-    const text = m[2].replace(/\s+/g, ' ').trim();
-    if (text.length > 0) found.push({ kind: 'jsx-expression-string', text });
-  }
+  visit(sourceFile);
   return found;
 }
 
 /** Count of non-allowlisted literals in `source` — what the per-file
  *  baseline records and the gate compares against. */
-export function countLiterals(source) {
-  return findLiterals(source).filter((lit) => !isAllowlistedLiteral(lit.text)).length;
+export function countLiterals(source, fileName = 'fixture.tsx') {
+  return findLiterals(source, fileName).filter((lit) => !isAllowlistedLiteral(lit.text)).length;
 }

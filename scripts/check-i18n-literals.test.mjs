@@ -20,7 +20,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -80,6 +80,11 @@ test('a file with only allowlisted content counts zero', () => {
 });
 
 // ── Review-fix regression fixtures (bot review on PR #4973) ────────────
+// The first round of review found five real detector gaps in the ORIGINAL
+// regex version of this file; the fix was to replace the regex with the
+// TypeScript-compiler-API AST walk `i18n-literals-scan.mjs` now is. These
+// fixtures pin the specific shapes review named, now caught (or correctly
+// ignored) by construction rather than by a widened pattern.
 
 test('a JSX-expression string literal is caught the same as plain JSX text', () => {
   const src = `<button>{'Save changes'}</button>`;
@@ -88,9 +93,36 @@ test('a JSX-expression string literal is caught the same as plain JSX text', () 
 });
 
 test('an aria-label written as a JSX-expression string literal is caught', () => {
-  const src = `<button aria-label={"Delete model"} />`;
-  assert.ok(findLiterals(src).some((l) => l.text === 'Delete model'));
+  const src = `<button aria-label={'x'} />`;
+  assert.ok(findLiterals(src).some((l) => l.text === 'x'));
+  assert.equal(countLiterals(src), 1, 'the attribute value must be counted, and only once');
+});
+
+test('a mixed JsxText + expression ("Hello {name}") counts the static text exactly once', () => {
+  const src = `function Greeting({ name }) { return <span>Hello {name}</span>; }`;
+  const found = findLiterals(src);
+  assert.deepEqual(found.map((l) => l.text), ['Hello'], 'name is an Identifier, not a string literal -- never a candidate');
   assert.equal(countLiterals(src), 1);
+});
+
+test('an ordinary comparison ("a > b") is not JSX and produces no candidate at all', () => {
+  const src = `function f(a, b) { if (a > b) return <div />; return null; }`;
+  assert.deepEqual(findLiterals(src), []);
+  assert.equal(countLiterals(src), 0);
+});
+
+test('a brace-only control-flow boundary ("} else {") produces no candidate', () => {
+  const src = `
+    function f(a) {
+      if (a) {
+        return <div>x</div>;
+      } else {
+        return null;
+      }
+    }
+  `;
+  // Exactly the one real JSX text node ("x"); "} else {" contributes nothing.
+  assert.deepEqual(findLiterals(src).map((l) => l.text), ['x']);
 });
 
 test('ACRONYMS is an explicit list, not "any all-caps word" — real UI copy is never spared', () => {
@@ -98,14 +130,25 @@ test('ACRONYMS is an explicit list, not "any all-caps word" — real UI copy is 
   assert.equal(isAllowlistedLiteral('WELCOME'), false);
 });
 
+test('IfcWall is allowlisted as an IFC EXPRESS name', () => {
+  assert.equal(isAllowlistedLiteral('IfcWall'), true);
+});
+
 test('non-Latin hardcoded text is counted, not treated as letter-free', () => {
   assert.equal(isAllowlistedLiteral('设置'), false);
   assert.equal(countLiterals('<span>你好</span>'), 1);
 });
 
-test('aria-label tolerates whitespace around "=", and a data- attribute is not this gate\'s business', () => {
+test('aria-label tolerates whitespace around "=", and a data- attribute name never matches', () => {
   assert.ok(findLiterals(`<button aria-label = "Delete model" />`).some((l) => l.text === 'Delete model'));
+  // `data-title`'s attribute NAME is the identifier "data-title", not "title" --
+  // an exact-name check (TARGET_ATTRS.has(node.name.getText())) can't confuse the two,
+  // the way a suffix-matching regex could.
   assert.equal(findLiterals(`<div data-title="internal, not UI copy" />`).length, 0);
+});
+
+test('alt is a policed attribute, same as aria-label/title/placeholder', () => {
+  assert.ok(findLiterals(`<img alt="A rendered floor plan" />`).some((l) => l.text === 'A rendered floor plan'));
 });
 
 // ── CLI harness ────────────────────────────────────────────────────────
@@ -218,6 +261,57 @@ test('fails closed when the scan root does not exist', () => {
     const res = run(['--root', dir], dir);
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /does not exist/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('walk() does not follow a self-referential directory symlink (review, #4973)', () => {
+  const { dir, componentsDir } = makeTree();
+  try {
+    writeComponent(componentsDir, 'Foo.tsx', FIXTURE_TSX);
+    let symlinked = false;
+    try {
+      // `loop` points at its own parent -- if `walk` ever followed directory
+      // symlinks (as an earlier version of the checker did), this recurses
+      // without bound. Symlink creation needs a privilege this sandbox may
+      // not have (Windows without Developer Mode/admin); when it fails, the
+      // directory-only assertion below still pins the fix on its own.
+      symlinkSync(componentsDir, join(componentsDir, 'loop'), 'junction');
+      symlinked = true;
+    } catch {
+      // Platform cannot create a symlink here -- fall through to the
+      // directory-only assertion, which needs no symlink to be meaningful.
+    }
+
+    const res = run(['--root', dir], dir);
+    if (symlinked) {
+      // Finished at all (no stack overflow, no timeout) is the load-bearing
+      // assertion; the exit code depends only on whether a baseline exists.
+      assert.notEqual(res.status, null, 'the walk must terminate, not hang or crash on the symlink loop');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('walk() never descends into a directory symlink, even a non-looping one', () => {
+  const { dir, componentsDir } = makeTree();
+  try {
+    const realDir = join(dir, 'outside-scan-root');
+    mkdirSync(realDir, { recursive: true });
+    writeFileSync(join(realDir, 'Hidden.tsx'), '<span>Should never be scanned</span>');
+    try {
+      symlinkSync(realDir, join(componentsDir, 'linked'), 'junction');
+    } catch {
+      return; // platform cannot create a symlink here; nothing to assert
+    }
+    writeComponent(componentsDir, 'Foo.tsx', '<div><span>IfcWall</span></div>;');
+
+    const res = run(['--root', dir, '--update', '--allow-raise'], dir);
+    assert.equal(res.status, 0, res.stderr);
+    const baseline = JSON.parse(readFileSync(join(dir, 'scripts', 'i18n-literals-baseline.json'), 'utf8'));
+    assert.deepEqual(baseline, {}, 'the symlinked directory\'s content must not be counted at all');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -8,7 +8,11 @@
  * "a grep-based gate that reports no hardcoded JSX text or
  * `aria-label`/`title` literals under `apps/viewer/src/components`, with an
  * explicit allowlist for IFC EXPRESS names and technical identifiers, wired
- * into CI as a ratchet." This is that gate.
+ * into CI as a ratchet." This is that gate — AST-BASED, not grep-based
+ * (review on PR #4973 replaced the original regex detector once it proved
+ * unfit: false positives on `a > b`, false negatives on `{'…'}`); "what
+ * ends it" is a property of the CHARTER's outcome, not of this file's
+ * implementation technique.
  *
  * Same ratchet SHAPE as `scripts/check-module-size.mjs` (a per-file budget,
  * frozen existing debt, no growth allowed) and `scripts/check-unused-locals.mjs`
@@ -21,9 +25,10 @@
  * progress) when a file's count FALLS, so the baseline does not silently
  * carry slack the next regression could spend.
  *
- * The detector itself (a regex scan, deliberately not a parser — see that
- * module's docblock for why) lives in `scripts/lib/i18n-literals-scan.mjs`;
- * `scripts/check-i18n-literals.test.mjs` covers it directly with a fixture.
+ * The detector itself (a TypeScript-compiler-API AST walk — see that
+ * module's docblock for why it replaced a regex) lives in
+ * `scripts/lib/i18n-literals-scan.mjs`; `scripts/check-i18n-literals.test.mjs`
+ * covers it directly with fixtures.
  *
  * Flags:
  *   --root <dir>       scan this tree instead of the repo
@@ -83,9 +88,20 @@ function safeIsDir(path) {
   }
 }
 
-/** Fail closed on an unreadable directory, same reasoning as
- *  `check-module-size.mjs`'s `walk`: a gate that skips what it cannot read
- *  reports success having looked at less than it claims. */
+/**
+ * Fail closed on an unreadable directory, same reasoning as
+ * `check-module-size.mjs`'s `walk`: a gate that skips what it cannot read
+ * reports success having looked at less than it claims.
+ *
+ * Directory SYMLINKS are deliberately NOT followed (review, #4973): a
+ * self-referential link (`loop -> .`) recurses without bound and there is
+ * no visited-set here to catch it, unlike a guarded entity-reference walk
+ * (`check-refwalk-guards.mjs`). `entry.isDirectory()` is false for a
+ * symlink regardless of what it points at, so this walk simply never
+ * descends into one — a real symlinked source directory goes unscanned,
+ * which is the safe direction for a ratchet (a miss lowers a count, it
+ * never raises one).
+ */
 function walk(dir, found) {
   let entries;
   try {
@@ -96,8 +112,7 @@ function walk(dir, found) {
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
-    const isDir = entry.isDirectory() || (entry.isSymbolicLink() && safeIsDir(full));
-    if (isDir) walk(full, found);
+    if (entry.isDirectory()) walk(full, found);
     else if (SOURCE_RE.test(entry.name) && !TEST_RE.test(entry.name)) found.push(full);
   }
   return found;
@@ -116,7 +131,7 @@ if (paths.length === 0) {
 const counts = {};
 for (const path of paths) {
   const rel = relative(args.root, path).split('\\').join('/');
-  const n = countLiterals(readFileSync(path, 'utf8'));
+  const n = countLiterals(readFileSync(path, 'utf8'), path);
   if (n > 0) counts[rel] = n;
 }
 

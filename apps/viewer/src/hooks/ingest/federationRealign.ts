@@ -69,29 +69,31 @@ export interface RealignableModel {
  * this module's header warns about.
  */
 export function capturePreAlignment(geometry: AlignableGeometry): PreAlignmentSnapshot {
-  const empty: PreAlignmentSnapshot = {
-    positions: [],
-    normals: [],
-    origins: [],
-    geometryAabbs: [],
-    // Deep-copied, and by `structuredClone` rather than by hand: the frame is
-    // nested three levels (`originalBounds.min.x`), so neither a spread nor a
-    // spread-plus-one-level-of-bounds reaches the corners, and a hand-written
-    // copy would silently stop covering a field added later. Holding the live
-    // object instead would let anything that edits it in place (useIfcLoader
-    // does exactly that to `wasmRtcOffset` on the streaming path) rewrite the
-    // baseline, which turns the restore into a no-op that cannot be detected,
-    // because the snapshot and the geometry would be one value.
-    coordinateInfo: structuredClone(geometry.coordinateInfo),
-    // The Map is copied so the snapshot owns its own entry set. The boxes
-    // inside stay shared, at the same depth as the per-mesh `geometryAabbs`
-    // below: alignment REPLACES box objects rather than mutating them, which is
-    // pinned by `federationAlign.test.ts`.
-    instancedGeometryAabbs: geometry.instancedGeometryAabbs
-      ? new Map(geometry.instancedGeometryAabbs)
-      : undefined,
-  };
-  return growPreAlignment(empty, geometry.meshes);
+  // Deep-copied, and by `structuredClone` rather than by hand: the frame is
+  // nested three levels (`originalBounds.min.x`), so neither a spread nor a
+  // spread-plus-one-level-of-bounds reaches the corners, and a hand-written
+  // copy would silently stop covering a field added later. Holding the live
+  // object instead would let anything that edits it in place (useIfcLoader
+  // touches this same field on the streaming path) rewrite the baseline,
+  // which turns the restore into a no-op that cannot be detected, because
+  // the snapshot and the geometry would be one value.
+  return growPreAlignment(
+    {
+      positions: [],
+      normals: [],
+      origins: [],
+      geometryAabbs: [],
+      coordinateInfo: structuredClone(geometry.coordinateInfo),
+      // The Map is copied so the snapshot owns its own entry set. The boxes
+      // inside stay shared, at the same depth as the per-mesh `geometryAabbs`
+      // above: alignment REPLACES box objects rather than mutating them,
+      // which is pinned by `federationAlign.test.ts`.
+      instancedGeometryAabbs: geometry.instancedGeometryAabbs
+        ? new Map(geometry.instancedGeometryAabbs)
+        : undefined,
+    },
+    geometry.meshes,
+  );
 }
 
 /**

@@ -321,41 +321,16 @@ test('sectioning follows a real IFC moved above its original extent (#4226)', as
 test('construction projection is invariant when the model and cut move together (#4332)', async ({ page }, info) => {
   test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
   const errors: string[] = [];
-  // `useIfcLoader.ts` delivers the parsed data store in two stages —
-  // `onPartialDataStore` first, then `onFullDataStore` — and only the full
-  // store carries a `spatialHierarchy.byStorey` complete enough for
-  // `canScopeFloor` (useDrawingGeneration.ts) to scope the projection bands
-  // to the current floor. `getActiveModel()?.loadState === 'complete'`
-  // below (added by #4672) was meant to cover this but still raced in CI
-  // (#4332#issuecomment-5654733659, six runs alternating pass/fail on
-  // 2026-09-13, same day and same branch that gate landed on). Capture the
-  // "Data model parsing complete" log `onFullDataStore` itself emits
-  // (useIfcLoader.ts:1384) as an unambiguous, load-path-agnostic signal and
-  // require it before trusting the first ("before") projection snapshot.
-  const dataModelLogs: string[] = [];
-  page.on('console', (message) => {
-    if (message.text().includes('Profile extraction failed')) errors.push(message.text());
-    if (/\[useIfc\] Data model parsing (complete|failed) for /.test(message.text())) dataModelLogs.push(message.text());
-  });
+  page.on('console', (message) => { if (message.text().includes('Profile extraction failed')) errors.push(message.text()); });
   await page.goto('/'); await load(page, IFC, 1);
   // Geometry readiness precedes metadata completion (#4672). Both snapshots
   // need the same completed hierarchy, or the first drawing uses full-extent
   // bands and the post-move drawing switches to storey-scoped projection.
   await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().getActiveModel()?.loadState === 'complete');
-  await expect.poll(() => dataModelLogs.some((log) => log.includes('Data model parsing complete for')), {
-    message: `data model parse did not report complete before the projection snapshot (#4941): ${dataModelLogs.join('\n') || '<no matching console output>'}`,
-  }).toBe(true);
-  if (dataModelLogs.some((log) => log.includes('Data model parsing failed for'))) {
-    throw new Error(`data model parsing failed before the projection snapshot: ${dataModelLogs.join('\n')}`);
-  }
   await page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     s.updateDrawing2DDisplayOptions({ showConstructionProjection: true });
     s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(50); s.setSectionPlaneEnabled(true); s.setActiveTool('section');
-  });
-  await page.waitForFunction(() => {
-    const s = globalThis.__ifc_lite_viewer_store__.getState();
-    return s.drawing2DStatus === 'ready' && s.drawing2D?.lines.some((line) => line.category === 'projection');
   });
   const snapshot = () => page.evaluate(() => {
     const drawing = globalThis.__ifc_lite_viewer_store__.getState().drawing2D!;
@@ -364,16 +339,51 @@ test('construction projection is invariant when the model and cut move together 
     lines.sort((a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; });
     return { position: drawing.config.plane.position, bands: [drawing.config.projectionBelowDepth, drawing.config.projectionAboveDepth], lines };
   });
-  const before = await snapshot();
+  // #4941: `loadState === 'complete'` above (added by #4672) flips at the same
+  // instant `ifcDataStore.spatialHierarchy` becomes the full store (both are
+  // set inside `onFullDataStore`, `useIfcLoader.ts:1371-1387`, before the
+  // promise `finalizeModel` awaits even resolves) — so any wait for a signal
+  // that ALSO only depends on the store being full (an explicit flag, or the
+  // "Data model parsing complete" console line `onFullDataStore` itself
+  // prints) is redundant with the wait above and adds no real synchronization
+  // (confirmed in review; a first attempt at this fix gated on that console
+  // line and did nothing new). The actual dependency is downstream:
+  // `useDrawingGeneration.ts`'s floor scoping runs through an async,
+  // one-at-a-time request queue (`drawingRequestQueue.ts`) — `drawing2DStatus`
+  // passes through `'generating'` and can take hundreds of ms after
+  // `loadState` flips before landing on the storey-scoped result. Measured
+  // locally with a throwaway probe (toggling projection before the full
+  // store, `tests/e2e/scratch/timing-probe.manual.mjs`, not committed):
+  // `status` read 'ready' with full-extent bands while `loadState` was still
+  // `'streaming-geometry'`, then went through a ~660ms `'generating'` window
+  // once the full store landed before settling on the storey-scoped bands.
+  // So instead of trusting the first `'ready'` read, require the SAME
+  // snapshot on two reads a real gap apart — a recompute still in flight
+  // can't pass that.
+  async function waitForStableSnapshot(extraReady: (s: ReturnType<typeof snapshot> extends Promise<infer T> ? T : never) => boolean = () => true) {
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      await page.waitForFunction(() => {
+        const s = globalThis.__ifc_lite_viewer_store__.getState();
+        return s.drawing2DStatus === 'ready' && s.drawing2D?.lines.some((line) => line.category === 'projection');
+      }, undefined, { timeout: Math.max(1000, deadline - Date.now()) });
+      const a = await snapshot();
+      if (extraReady(a)) {
+        await page.waitForTimeout(300);
+        const stillReady = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().drawing2DStatus === 'ready');
+        const b = stillReady ? await snapshot() : null;
+        if (b && JSON.stringify(a) === JSON.stringify(b)) return b;
+      }
+      if (Date.now() > deadline) throw new Error(`drawing2D did not stabilize within 60s (last snapshot: ${JSON.stringify(a)})`);
+    }
+  }
+  const before = await waitForStableSnapshot();
   await page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     s.openReposition([...s.models.keys()]); s.previewModelTranslation([0, 0, 100]); s.applyModelTranslation(); s.closeReposition(); s.setActiveTool('section');
   });
-  await page.waitForFunction((expected) => {
-    const s = globalThis.__ifc_lite_viewer_store__.getState();
-    return s.drawing2DStatus === 'ready' && Math.abs((s.drawing2D?.config.plane.position ?? 0) - expected) < 0.0001;
-  }, before.position + 100);
-  const after = await snapshot();
+  const expectedAfterPosition = before.position + 100;
+  const after = await waitForStableSnapshot((s) => Math.abs(s.position - expectedAfterPosition) < 0.0001);
   await info.attach('Construction projection before and after 100 m move', { body: JSON.stringify({ before, after }), contentType: 'application/json' });
   expect(errors).toEqual([]);
   expect(after.lines).toHaveLength(before.lines.length);

@@ -18,6 +18,7 @@ const ALL_KINDS: ContentMatchKind[] = [
   'renamed',
   'moved',
   'reshaped',
+  'respecified',
   'duplicated',
   'deduplicated',
   'ambiguous',
@@ -45,7 +46,7 @@ describe('isRetiringMatch (#1891)', () => {
     // pinned per kind rather than inferred.
     assert.deepStrictEqual(
       ALL_KINDS.map(isRetiringMatch),
-      [true, true, true, false, false, false],
+      [true, true, true, true, false, false, false],
     );
   });
 });

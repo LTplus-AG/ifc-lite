@@ -145,7 +145,7 @@ describe('buildCompareOverlay', () => {
 });
 
 describe('buildCompareOverlay - content matches (#1891)', () => {
-  for (const kind of ['renamed', 'moved', 'reshaped'] as const) {
+  for (const kind of ['renamed', 'moved', 'reshaped', 'respecified'] as const) {
     it(`hides the A copy and gives the B copy the matched colour (${kind})`, () => {
       const { colorOverrides, hiddenIds } = buildCompareOverlay(
         diffOf([], [match(kind, [5], [1005])]),

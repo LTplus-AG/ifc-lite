@@ -29,7 +29,7 @@
 
 /** Kinds whose {@link ContentMatch} asserts identity and retires the
  *  `added`/`deleted` entries. The rest are reported groups: abstentions. */
-const PAIRING_KINDS = new Set(['renamed', 'moved', 'reshaped']);
+const PAIRING_KINDS = new Set(['renamed', 'moved', 'reshaped', 'respecified']);
 
 /** Expected `ContentMatchKind` for each mutation the generator applies. */
 const EXPECTED_KIND = {

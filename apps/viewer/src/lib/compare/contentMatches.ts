@@ -30,6 +30,7 @@ const RETIRING_KINDS: ReadonlySet<ContentMatchKind> = new Set<ContentMatchKind>(
   'renamed',
   'moved',
   'reshaped',
+  'respecified',
 ]);
 
 /** Did this match retire its entities' `added`/`deleted` entries? */
@@ -62,6 +63,7 @@ export const MATCH_KIND_LABEL: Record<ContentMatchKind, string> = {
   renamed: 'Renamed',
   moved: 'Moved',
   reshaped: 'Reshaped',
+  respecified: 'Respecified',
   duplicated: 'Duplicated',
   deduplicated: 'Deduplicated',
   ambiguous: 'Ambiguous',
@@ -72,6 +74,7 @@ export const MATCH_KIND_HINT: Record<ContentMatchKind, string> = {
   renamed: 'Same content in the same place under a new GlobalId (re-export).',
   moved: 'Same content, different geometry hash - it looks relocated.',
   reshaped: 'Same content, different geometry hash - its shape or tessellation changed.',
+  respecified: 'Same shape in the same place under a new GlobalId, but its data changed (redrawn and renamed).',
   duplicated: 'One element in A matches several in B - it looks copied.',
   deduplicated: 'Several elements in A match one in B - they look merged.',
   ambiguous: 'Several candidates on both sides; no principled pairing.',
@@ -97,6 +100,7 @@ export function contentMatchCounts(
     renamed: 0,
     moved: 0,
     reshaped: 0,
+    respecified: 0,
     duplicated: 0,
     deduplicated: 0,
     ambiguous: 0,

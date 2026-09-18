@@ -313,7 +313,7 @@ function printReport(report: {
     for (const [kind, count] of [...byKind].sort()) {
       out(`    ${kind.padEnd(13)} ${count}`);
     }
-    out('    (renamed / moved / reshaped are resolved; the rest need a human)');
+    out('    (renamed / moved / reshaped / respecified are resolved; the rest need a human)');
   }
 
   if (report.identityIn) {

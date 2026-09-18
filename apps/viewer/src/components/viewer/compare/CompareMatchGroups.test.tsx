@@ -27,7 +27,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MAX_ROWS_PER_GROUP, type CompareMatchRow } from './changeRow.js';
 import { CompareMatchGroups } from './CompareMatchGroups.js';
 
-/** `retiring` picks the section: true -> Matched, false -> Needs review. */
+/** `retiring: true` rows are the Matched section; `false` rows belong to Suggestions. */
 function rows(count: number, retiring: boolean): CompareMatchRow[] {
   return Array.from({ length: count }, (_, i) => ({
     key: `match:${i}`,
@@ -122,22 +122,12 @@ describe('CompareMatchGroups - row cap (#1891 review)', () => {
     assert.strictEqual(selected.length, MAX_ROWS_PER_GROUP + 7);
   });
 
-  it('caps the Needs review section too', () => {
-    // Unresolved groups retire nothing, so they are listed here AND under
-    // Added/Deleted - an uncapped section here doubles the flood.
-    const container = render(rows(MAX_ROWS_PER_GROUP + 4, false));
-    assert.strictEqual(rowButtons(container).length, MAX_ROWS_PER_GROUP);
-    assert.ok(container.textContent?.includes('+4 more not shown'));
-  });
-
-  it('caps the two sections independently', () => {
-    const container = render([
-      ...rows(MAX_ROWS_PER_GROUP + 2, true),
-      ...rows(MAX_ROWS_PER_GROUP + 5, false).map((r) => ({ ...r, key: `${r.key}:review` })),
-    ]);
-    // Two section headers + the capped rows of each.
-    assert.strictEqual(container.querySelectorAll('button').length, 2 + MAX_ROWS_PER_GROUP * 2);
-    assert.ok(container.textContent?.includes('+2 more not shown'));
-    assert.ok(container.textContent?.includes('+5 more not shown'));
+  it('does not list an unresolved group here: those are Suggestions (#4955)', () => {
+    // Unresolved groups retire nothing, so they were listed here AND under
+    // Added/Deleted. Since #4955 they are offered for a decision in the
+    // Suggestions section instead; a second listing here would be the flood
+    // the cap exists to prevent, twice.
+    const container = render(rows(3, false));
+    assert.strictEqual(container.querySelectorAll('button').length, 0);
   });
 });

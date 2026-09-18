@@ -17,6 +17,8 @@ import type { DiffState } from '@ifc-lite/diff';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { hasReportableChanges, type CompareMatchRow, type CompareRow } from './changeRow';
 import { CompareMatchGroups } from './CompareMatchGroups';
+import { CompareSuggestions, type SuggestionDecision } from './CompareSuggestions';
+import type { SuggestionRow } from '@/lib/compare/suggestions';
 
 export interface CompareBucket {
   rows: CompareRow[];
@@ -77,6 +79,14 @@ interface CompareResultsListProps {
   onFocusGroup: (state: DiffState) => void;
   onFocusMatch: (row: CompareMatchRow) => void;
   onFocusMatchGroup: (rows: CompareMatchRow[]) => void;
+  /** Suggestions (#4955): successor / split-merge claims and unresolved groups. */
+  suggestions: SuggestionRow[];
+  acceptedSignatures: ReadonlySet<string>;
+  rejectedSignatures: ReadonlySet<string>;
+  onFocusSuggestion: (row: SuggestionRow) => void;
+  onFocusSuggestionGroup: (rows: SuggestionRow[]) => void;
+  onAcceptSuggestion: (decision: SuggestionDecision) => void;
+  onRejectSuggestion: (decision: SuggestionDecision) => void;
 }
 
 export function CompareResultsList({
@@ -90,6 +100,13 @@ export function CompareResultsList({
   onFocusGroup,
   onFocusMatch,
   onFocusMatchGroup,
+  suggestions,
+  acceptedSignatures,
+  rejectedSignatures,
+  onFocusSuggestion,
+  onFocusSuggestionGroup,
+  onAcceptSuggestion,
+  onRejectSuggestion,
 }: CompareResultsListProps) {
   return (
     <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.compareResults)}>
@@ -154,6 +171,16 @@ export function CompareResultsList({
             selectedKey={selectedKey}
             onFocus={onFocusMatch}
             onFocusGroup={onFocusMatchGroup}
+          />
+          <CompareSuggestions
+            rows={suggestions}
+            selectedKey={selectedKey}
+            accepted={acceptedSignatures}
+            rejected={rejectedSignatures}
+            onFocus={onFocusSuggestion}
+            onFocusGroup={onFocusSuggestionGroup}
+            onAccept={onAcceptSuggestion}
+            onReject={onRejectSuggestion}
           />
           {/* Exact negation of the panel's "Download report" bar, through the
               same predicate - offering a report over "the models match" (or the

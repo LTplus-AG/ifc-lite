@@ -94,7 +94,14 @@ describe('placementFrameKey distinguishes an RTC convergence (#4936)', () => {
 
   it('stays the same across an unrelated re-read of an already-converged frame', () => {
     const offset = { x: 5, y: 6, z: 7 };
-    assert.equal(placementFrameKey(localState(offset)), placementFrameKey(localState(offset)));
+    // A concrete expected string, not two live calls compared to each other
+    // (CodeRabbit, #4936 round 5 review): that would still pass if
+    // `placementFrameKey` returned a constant, or anything else identical on
+    // two calls with identical input. Pins down the actual suffix shape
+    // (`placementFrameKey`'s `:rtc:{...}` append onto the local-engineering
+    // base) so a regression that changes it, not just one that makes it
+    // nondeterministic, fails this test too.
+    assert.equal(placementFrameKey(localState(offset)), 'local-engineering:m:z-up:rtc:{"x":5,"y":6,"z":7}');
   });
 });
 

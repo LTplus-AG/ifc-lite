@@ -291,6 +291,41 @@ export function clusterByProximity(
 }
 
 /** A fingerprint's box, or `undefined` when it has none the engine can use. */
+function boxVolume(box: EntityAabb): number {
+  return (
+    Math.max(0, box.max[0] - box.min[0]) *
+    Math.max(0, box.max[1] - box.min[1]) *
+    Math.max(0, box.max[2] - box.min[2])
+  );
+}
+
+/** Intersection over union of two boxes, `0..1`; `0` for a degenerate pair. */
+export function boxIoU(a: EntityAabb, b: EntityAabb): number {
+  let intersection = 1;
+  for (let axis = 0; axis < 3; axis++) {
+    const lo = Math.max(a.min[axis], b.min[axis]);
+    const hi = Math.min(a.max[axis], b.max[axis]);
+    if (hi <= lo) return 0;
+    intersection *= hi - lo;
+  }
+  const union = boxVolume(a) + boxVolume(b) - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+/**
+ * Whether any two of the boxes largely coincide (IoU at or above `limit`).
+ * The pieces of a split fill DIFFERENT parts of the whole; two pieces sitting
+ * in the same place are copies of something, not a split of anything.
+ */
+export function anyCoincident(boxes: readonly EntityAabb[], limit: number): boolean {
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (boxIoU(boxes[i], boxes[j]) >= limit) return true;
+    }
+  }
+  return false;
+}
+
 export function usableAabbOf(aabb: EntityAabb | undefined): EntityAabb | undefined {
   return isUsableAabb(aabb) ? aabb : undefined;
 }

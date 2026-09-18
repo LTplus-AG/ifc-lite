@@ -357,6 +357,7 @@ No claim ever becomes an identity-map entry, in either direction. Identity is no
 | `splitPaddingMin` | `0.05` | Absolute floor of the containment/coverage slack, caller's units. |
 | `splitPaddingRatio` | `0.01` | Fraction of the container's box diagonal used as slack, floored by the above. |
 | `maxSplitPieces` | `256` | Performance bail, never a semantic rule. Must be a whole number of at least 2; anything else falls back to the default. |
+| `classFamilies` | the schema's `StandardCase`/`ElementedCase` subtypes, `IfcBuildingElementPart` under walls, the furniture classes | Rows of class names bucketed together as candidates. Case-insensitive; an unlisted class is its own family; `[]` restores exact-class bucketing. |
 
 The padding actually applied is `max(splitPaddingMin, splitPaddingRatio * containerBoxDiagonal)`, and it is always the *container's* — the base element of a split, the head element of a merge.
 
@@ -368,8 +369,9 @@ Every option is coerced rather than validated, because `diffModels` has no error
 
 Stated plainly, because each of these is a decision rather than a bug:
 
-- **Splits across classes are invisible.** Candidates are generated per `ifcType`, so an `IfcWall` becoming three `IfcWallStandardCase`s is not seen.
+- **Splits across class *families* are invisible.** Candidates are generated per family (`classFamilies`), so an `IfcWall` becoming three `IfcWallStandardCase`s or three `IfcBuildingElementPart` layers *is* seen and carries `crossClass: true`; an `IfcWall` becoming an `IfcCovering` is not.
 - **Two or more same-class interlopers inside the container are unrepairable.** With two of them the overshoot is their sum, and no single piece explains a sum. The one-exclusion cap is deliberate: allowing two puts the combinatorics, and the non-uniqueness the design refuses, straight back.
+- **Two pieces in the same place are never an `extent` split.** Pieces whose boxes coincide (intersection over union ≥ 0.5) are copies of one thing — typically a `duplicated` group the content pass declined to pair — and the tier refuses them rather than reading them as a volume-less split. A volume-verified claim is not gated this way; the volumes already judged it.
 - **`extent` fires on a redesign in place.** Three new walls filling the footprint of one demolished wall look exactly like a split when no volume is available. It also fires on a perimeter of pieces enclosing an unfilled middle — covering all three axes is not the same as filling the interior, which is why the profile is named for coverage rather than for volume.
 - **`displaced` cannot separate two congruent clusters in a repetitive building.** An identical slab field deleted on floor 3 and added on floor 5 has no distinguishing signature, and the pass abstains rather than pairing them.
 - **A moved split under a rotation that is not a multiple of 90° is missed.** Sorted extents survive an axis permutation and nothing else; an arbitrary rotation changes the axis-aligned extents themselves.

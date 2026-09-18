@@ -86,6 +86,10 @@ for (const claim of diff.splitMerges ?? []) {
 }
 ```
 
+Candidates are bucketed by class *family* (`classFamilies`), so a wall republished
+as `IfcWallStandardCase` pieces or `IfcBuildingElementPart` layers is a split like
+any other, flagged `crossClass: true`.
+
 **Purely additive**: a claim never retires a `DiffEntry` and never touches
 `counts`, because one claim binding `k + 1` entities on a single evidence chain
 must not be able to delete `k + 1` real changes. It also has no non-geometric

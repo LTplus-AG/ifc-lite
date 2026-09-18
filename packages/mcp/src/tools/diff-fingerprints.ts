@@ -225,15 +225,38 @@ export function buildModelFingerprints(
   const extractor = new EntityExtractor(store.source);
   const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale/scaledPropertyValue
   const keySpec = options.keyProperty ? parseAuthoredKeySpec(options.keyProperty) : undefined;
+  // The authored key of one entity AS THE SESSION SEES IT: a queued `Tag` or
+  // property edit wins over the parsed value, exactly as the fingerprint's own
+  // attributes and psets do below. Reading the parsed store alone would let
+  // `model_diff` describe a key the session no longer holds.
+  const authoredKeyOf = (expressId: number): string | undefined => {
+    if (!keySpec) return undefined;
+    if (keySpec.kind === 'tag') {
+      const edited = overlay?.attributes(expressId).get('Tag');
+      if (edited !== undefined) return edited.trim().length > 0 ? edited.trim() : undefined;
+    } else if (overlay) {
+      const set = overlay.propertySets(expressId).find((pset) => pset.name === keySpec.pset);
+      const property = set?.properties.find((p) => p.name === keySpec.property);
+      if (set) {
+        const raw = property?.value;
+        if (raw === null || raw === undefined) return undefined;
+        const value = typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
+        return value.trim().length > 0 ? value.trim() : undefined;
+      }
+    }
+    return authoredKeyValue(store, expressId, keySpec, extractor);
+  };
   // Authored keys are resolved in a first pass so a value two entities share
   // can be refused for both, instead of the diff's first-wins index quietly
-  // keeping one (issue #4955).
+  // keeping one (issue #4955). Tombstoned entities are not owners: a deleted
+  // twin no longer contests the key.
   const authoredOwners = new Map<string, number[]>();
   if (keySpec) {
     for (const [typeKey, ids] of store.entityIndex.byType) {
       if (classifyType(typeKey).role === 'dependent') continue;
       for (const expressId of ids) {
-        const value = authoredKeyValue(store, expressId, keySpec, extractor);
+        if (overlay?.deleted.has(expressId)) continue;
+        const value = authoredKeyOf(expressId);
         if (value === undefined) continue;
         const list = authoredOwners.get(value);
         if (list) list.push(expressId);
@@ -246,7 +269,7 @@ export function buildModelFingerprints(
   }
   const keyOf = (expressId: number, globalId: string): string => {
     if (!keySpec) return globalId;
-    const value = authoredKeyValue(store, expressId, keySpec, extractor);
+    const value = authoredKeyOf(expressId);
     if (value === undefined) return globalId;
     return (authoredOwners.get(value)?.length ?? 0) === 1 ? `${AUTHORED_KEY_PREFIX}${value}` : globalId;
   };
@@ -328,6 +351,11 @@ export function buildModelFingerprints(
  * the created class is an `IfcTypeObject` (issue #2021), matching the stored
  * path exactly. Property sets and quantities never had the asymmetry — both
  * were already read through the overlay.
+ *
+ * An authored key (`key_from`) is not resolved for a created entity either: it
+ * has no store row for `authoredKeyValue` to read, so it is keyed on the
+ * GlobalId the caller gave it. A created entity that duplicates a stored
+ * entity's authored value therefore reads as added rather than as a collision.
  *
  * `predefinedType` and `typeAssignments` are necessarily absent: both are read
  * through the store, which has no row for an entity that exists only in the

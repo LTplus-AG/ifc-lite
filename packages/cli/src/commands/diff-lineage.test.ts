@@ -114,6 +114,7 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     expect(stdoutJson().lineage.out).toEqual({ path: lineagePath, entries: 2 });
     const lineage = JSON.parse(await readFile(lineagePath, 'utf-8'));
     expect(lineage.format).toBe('ifc-lite/lineage');
+    expect(lineage.deleted).toEqual([]);
     expect(lineage.base.hash).toBe(modelIdentityOf(basePath, await readFile(basePath)).hash);
     expect(lineage.entries).toEqual([
       { base: [guid('OLDA')], head: [guid('NEWA')], relation: 'identity', reason: 'content-match:renamed' },
@@ -166,6 +167,16 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     ]);
   });
 
+  it('lists a bare deletion in the lineage so rekey can orphan exactly that row', async () => {
+    // Head without wall B at all: A is renamed by content, B is simply gone.
+    const withoutB = HEAD_MODEL.replace(/#71= IFCWALL[^\n]*\n/, '').replace('(#70,#71)', '(#70)');
+    await writeFile(headPath, withoutB, 'utf-8');
+    await contentDiffCommand({ basePath, headPath, lineageOut: lineagePath, json: true });
+    const lineage = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(lineage.entries.map((e: { base: string[] }) => e.base[0])).toEqual([guid('OLDA')]);
+    expect(lineage.deleted).toEqual([guid('OLDB')]);
+  });
+
   it('refuses --lineage-out onto an input model', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('exit');
@@ -195,6 +206,7 @@ describe('ifc-lite rekey', () => {
       { base: ['w'], head: ['p0', 'p1'], relation: 'split', reason: 'split:verified', shares: [0.7, 0.3] },
       { base: ['r'], head: ['R'], relation: 'replaced', reason: 'successor:footprint' },
     ],
+    deleted: ['x'],
   };
 
   it('parses and serializes CSV with quoting', () => {
@@ -214,20 +226,33 @@ describe('ifc-lite rekey', () => {
     const outPath = join(dir, 'costs-v2.csv');
     const orphansPath = join(dir, 'orphans.csv');
     await writeFile(lineagePath, JSON.stringify(lineage), 'utf-8');
-    await writeFile(tablePath, 'GlobalId,Cost\nw,100\nr,5\nx,9\n', 'utf-8');
+    // `same` is in no lineage entry and not deleted: an unchanged element,
+    // whose row keeps its key (review on #4967). `x` is in the deleted list.
+    await writeFile(tablePath, 'GlobalId,Cost\nw,100\nr,5\nx,9\nsame,1\n', 'utf-8');
 
     await rekeyCommand([tablePath, '--lineage', lineagePath, '--out', outPath, '--orphans', orphansPath, '--json']);
 
     expect(JSON.parse(stdoutSpy.mock.calls.map((c) => String(c[0])).join('')).counts).toEqual({
-      input: 3,
-      rekeyed: 2,
+      input: 4,
+      rekeyed: 3,
       duplicated: 1,
       orphaned: 1,
     });
     expect(await readFile(outPath, 'utf-8')).toBe(
-      'GlobalId,Cost,lineage_relation,lineage_from\np0,100,split,w\np1,100,split,w\nR,5,replaced,r\n',
+      'GlobalId,Cost,lineage_relation,lineage_from\np0,100,split,w\np1,100,split,w\nR,5,replaced,r\nsame,1,unchanged,same\n',
     );
     expect(await readFile(orphansPath, 'utf-8')).toBe('GlobalId,Cost,lineage_relation\nx,9,\n');
+  });
+
+  it('writes orphans to a default file beside the output when --orphans is absent', async () => {
+    const lineagePath = join(dir, 'l.json');
+    const tablePath = join(dir, 'costs.csv');
+    const outPath = join(dir, 'costs-v2.csv');
+    await writeFile(lineagePath, JSON.stringify(lineage), 'utf-8');
+    await writeFile(tablePath, 'GlobalId,Cost\nx,9\n', 'utf-8');
+    await rekeyCommand([tablePath, '--lineage', lineagePath, '--out', outPath, '--json']);
+    expect(JSON.parse(stdoutSpy.mock.calls.map((c) => String(c[0])).join('')).orphans).toBe(join(dir, 'costs-v2.orphans.csv'));
+    expect(await readFile(join(dir, 'costs-v2.orphans.csv'), 'utf-8')).toBe('GlobalId,Cost,lineage_relation\nx,9,\n');
   });
 
   it('follows the largest share under --policy largest-share, on a JSON table with a custom key column', async () => {

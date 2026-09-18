@@ -33,12 +33,21 @@ function pathsOf(hierarchy: SpatialHierarchy): Map<number, string> {
   const cached = PATH_CACHE.get(hierarchy);
   if (cached) return cached;
   const paths = new Map<number, string>();
-  const walk = (node: SpatialNode, prefix: string): void => {
+  // An explicit worklist rather than recursion: the hierarchy is file-supplied
+  // (or transported from a worker), so a very deep chain must not exhaust the
+  // stack and a cycle must not spin. First visit wins, which also means the
+  // first-declared parent names the path for a node reachable twice.
+  const stack: { node: SpatialNode; prefix: string }[] = [{ node: hierarchy.project, prefix: '' }];
+  while (stack.length > 0) {
+    const { node, prefix } = stack.pop()!;
+    if (paths.has(node.expressId)) continue;
     const path = prefix ? `${prefix}/${nodeLabel(node)}` : nodeLabel(node);
     paths.set(node.expressId, path);
-    for (const child of node.children) walk(child, path);
-  };
-  walk(hierarchy.project, '');
+    for (let i = node.children.length - 1; i >= 0; i--) {
+      const child = node.children[i];
+      if (!paths.has(child.expressId)) stack.push({ node: child, prefix: path });
+    }
+  }
   PATH_CACHE.set(hierarchy, paths);
   return paths;
 }

@@ -13,6 +13,12 @@
  * split under `copy-to-all` duplicates the row), or it is orphaned, and the
  * orphans are written to their own file rather than dropped, because a row
  * that has nowhere to go is exactly the one a human needs to look at.
+ * `--orphans` names that file; without it, a non-empty orphan set goes to
+ * `<out>.orphans.<ext>` beside the output — never silently to nowhere.
+ *
+ * A key the lineage does not mention keeps its key (`unchanged`) unless the
+ * lineage's `deleted` list names it: a lineage records changes, and a cost
+ * table is mostly unchanged elements.
  *
  * Nothing about the lineage is re-derived or verified here beyond its own
  * structure: it was pinned to two model digests when it was written, and this
@@ -27,7 +33,7 @@ import { fatal, getFlag, hasFlag, printJson } from '../output.js';
 const USAGE =
   'Usage: ifc-lite rekey <table.csv|table.json> --lineage <lineage.json> --out <file>\n' +
   '                      [--key-column <name>] [--policy copy-to-all|largest-share|orphan-on-split]\n' +
-  '                      [--orphans <file>] [--json]';
+  '                      [--orphans <file>  (default: <out>.orphans.<ext> when any)] [--json]';
 
 const POLICIES: ReadonlySet<string> = new Set<RekeyPolicy>(['copy-to-all', 'largest-share', 'orphan-on-split']);
 
@@ -96,7 +102,7 @@ export interface RekeyOutcome {
  */
 export function rekeyRows(rows: Row[], keyColumn: string, lineage: ReturnType<typeof parseLineageSidecar>, policy: RekeyPolicy): RekeyOutcome {
   const answers = new Map(
-    rekeyByLineage(rows.map((row) => row[keyColumn] ?? ''), lineage.entries, policy).map((r) => [r.key, r]),
+    rekeyByLineage(rows.map((row) => row[keyColumn] ?? ''), lineage, policy).map((r) => [r.key, r]),
   );
   const out: Row[] = [];
   const orphans: Row[] = [];
@@ -132,7 +138,7 @@ export async function rekeyCommand(args: string[]): Promise<void> {
   const policyFlag = getFlag(args, '--policy') ?? 'copy-to-all';
   if (!POLICIES.has(policyFlag)) fatal(`--policy must be one of ${[...POLICIES].join(', ')}`);
   const policy = policyFlag as RekeyPolicy;
-  const orphansPath = getFlag(args, '--orphans');
+  const explicitOrphans = getFlag(args, '--orphans');
 
   let lineage;
   try {
@@ -172,6 +178,10 @@ export async function rekeyCommand(args: string[]): Promise<void> {
   }
 
   const outcome = rekeyRows(rows, keyColumn, lineage, policy);
+  // Orphans are never dropped: no --orphans and a non-empty set means a
+  // default file beside the output.
+  const orphansPath =
+    explicitOrphans ?? (outcome.orphans.length > 0 ? outPath.replace(/(\.[^./\\]+)?$/, '.orphans$1') : undefined);
   const outHeader = [...header, 'lineage_relation', 'lineage_from'];
   await writeFile(
     outPath,

@@ -31,7 +31,7 @@ import {
   identityMapSidecarMismatches,
   keyAliasesFromLineage,
   keyAliasesFromSidecar,
-  lineageFromDiff,
+  lineageOfDiff,
   lineageSidecarMismatches,
   parseIdentityMapSidecar,
   parseLineageSidecar,
@@ -154,11 +154,12 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
 
   let lineageWritten: { path: string; entries: LineageEntry[] } | undefined;
   if (options.lineageOut) {
-    const entries = mergeLineage(incomingLineage, incoming, diff, accepted);
+    const { entries, deleted } = mergeLineage(incomingLineage, incoming, diff, accepted);
     const sidecar = createLineageSidecar({
       base: baseIdentity,
       head: headIdentity,
       entries,
+      deleted,
       created: incomingLineage?.created,
       keyProperty,
     });
@@ -239,7 +240,7 @@ function mergeLineage(
   incomingMap: IdentityMapSidecar | undefined,
   diff: ModelDiff<DiffRef>,
   accepted: IdentityMapSidecar | undefined,
-): LineageEntry[] {
+): { entries: LineageEntry[]; deleted: string[] } {
   const aliasReasons = new Map<string, string>();
   for (const entry of incomingLineage?.entries ?? []) {
     if (entry.head.length === 1 && !aliasReasons.has(entry.head[0])) aliasReasons.set(entry.head[0], entry.reason);
@@ -247,7 +248,7 @@ function mergeLineage(
   for (const entry of incomingMap?.entries ?? []) {
     if (!aliasReasons.has(entry.here)) aliasReasons.set(entry.here, entry.reason);
   }
-  const entries = lineageFromDiff(diff, { aliasReasons });
+  const { entries } = lineageOfDiff(diff, { aliasReasons });
   const taken = new Set<string>();
   for (const entry of entries) for (const key of [...entry.base, ...entry.head]) taken.add(key);
 
@@ -266,7 +267,13 @@ function mergeLineage(
     entries.push(entry);
     for (const key of [...entry.base, ...entry.head]) taken.add(key);
   }
-  return entries;
+  // Deleted with no lineage, computed AFTER the accepted and carried-forward
+  // entries took their keys: what is still a bare deletion in this run.
+  const deleted: string[] = [];
+  for (const entry of diff.entries) {
+    if (entry.state === 'deleted' && !taken.has(entry.key)) deleted.push(entry.key);
+  }
+  return { entries, deleted };
 }
 
 async function readVerifiedLineage(

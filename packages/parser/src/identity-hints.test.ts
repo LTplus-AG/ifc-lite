@@ -59,6 +59,33 @@ describe('spatialContainerPath', () => {
     expect(spatialContainerPath(store, 71)).toBe('Proj/Site/Main/Level 2/Room 204');
   });
 
+  it('survives a cyclic or very deep transported hierarchy', () => {
+    // A hierarchy is file-supplied or transported from a worker; the walk
+    // must neither recurse into a cycle nor overflow on a long chain.
+    const node = (expressId: number, name: string): any => ({ expressId, type: 0, name, children: [], elements: [] });
+    const project = node(1, 'P');
+    const a = node(2, 'A');
+    const b = node(3, 'B');
+    project.children.push(a);
+    a.children.push(b);
+    b.children.push(a); // cycle
+    let deep = b;
+    for (let i = 0; i < 20000; i++) {
+      const next = node(100 + i, `D${i}`);
+      deep.children.push(next);
+      deep = next;
+    }
+    const hierarchy: any = {
+      project,
+      byStorey: new Map(), byBuilding: new Map(), bySite: new Map(), bySpace: new Map(),
+      storeyElevations: new Map(), storeyHeights: new Map(),
+      elementToStorey: new Map([[7, 3], [8, deep.expressId]]),
+    };
+    const store: any = { spatialHierarchy: hierarchy };
+    expect(spatialContainerPath(store, 7)).toBe('P/A/B');
+    expect(spatialContainerPath(store, 8)?.endsWith('/D19999')).toBe(true);
+  });
+
   it('answers undefined for an element contained nowhere', async () => {
     const store = await load();
     expect(spatialContainerPath(store, 72)).toBeUndefined();

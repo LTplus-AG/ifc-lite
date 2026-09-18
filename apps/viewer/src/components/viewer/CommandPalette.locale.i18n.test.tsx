@@ -21,6 +21,15 @@
  * than calling `t()`.
  */
 import '@/test/setup-dom.js';
+// jsdom has no `indexedDB`. Without it, the palette's on-open recent-files
+// cache lookup catches a ReferenceError and warns — accurate, but the
+// warning's captured "ReferenceError: ... is not defined" text is exactly
+// what the revert oracle's output classifier treats as load evidence (by
+// design: see LOAD_ERROR_PATTERNS in scripts/lib/revert-oracle.mjs), so it
+// misread this file's real assertion failure as a load failure. Installing
+// a real (fake) IndexedDB, the same package `recent-files.test.ts` uses,
+// removes the ReferenceError at the source instead of masking it.
+import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -57,22 +66,12 @@ function readableStrings(): Set<string> {
   return out;
 }
 
-// jsdom has no `indexedDB`; the palette's recent-files-cache lookup on open
-// catches that and warns rather than throwing, but the warning's captured
-// `ReferenceError` text is enough to make an unrelated tool (the revert
-// oracle's output classifier) mistake a real assertion failure for a load
-// failure. Silenced here rather than in production — the warning is
-// accurate and unrelated to this file's own assertions.
-const realWarn = console.warn;
-
 beforeEach(() => {
-  console.warn = () => {};
   setLocale('en');
   useViewerStore.setState({ cesiumAvailable: true } as Partial<ReturnType<typeof useViewerStore.getState>>);
 });
 
 afterEach(() => {
-  console.warn = realWarn;
   cleanup();
   setLocale('en');
   useViewerStore.setState({ cesiumAvailable: false } as Partial<ReturnType<typeof useViewerStore.getState>>);

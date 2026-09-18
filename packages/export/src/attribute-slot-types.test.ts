@@ -211,9 +211,17 @@ describe('serializeStringSlot', () => {
   });
 
   it('keeps the null and derived markers', () => {
-    expect(serializeStringSlot('')).toBe('$');
     expect(serializeStringSlot('$')).toBe('$');
     expect(serializeStringSlot('*')).toBe('*');
+  });
+
+  // #4931: an edit to '' used to fold into the `$` (absent) marker, so a
+  // pending edit that explicitly cleared an IfcLabel to empty text collapsed
+  // to unset on export. STEP — and #4881/#4909's read model — distinguish
+  // ''  (present, empty) from $ (absent); only the literal `$` token still
+  // means absent.
+  it('writes an explicit empty string as the STEP empty-string token, not the null marker', () => {
+    expect(serializeStringSlot('')).toBe("''");
   });
 });
 

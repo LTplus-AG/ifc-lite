@@ -45,7 +45,7 @@ import {
   type EphemeralIdentity,
 } from '@/lib/collab/identity';
 import {
-  attachRemoteApply,
+  attachRemoteApply, applyRemoteAttribute,
   mirrorAttribute,
   mirrorEntityDelete,
   mirrorPlacement,
@@ -890,9 +890,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onAttribute: (modelId, entityId, attrName, value) => {
-        const view = roomMutationViewFor(get(), modelId);
-        if (!view) return;
-        view.setAttribute(entityId, attrName, value === null ? '' : String(value));
+        const view = roomMutationViewFor(get(), modelId), store = roomStoreFor(get(), modelId);
+        if (!view || !store) return;
+        applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer moved/rotated an entity: reflect it on the local mesh by

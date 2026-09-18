@@ -48,7 +48,7 @@ const STOREY_ELEVATION = 4;
 
 /** Moved AND rotated — the combination the review asked for. */
 const PLACEMENT: PlacementState = {
-  frameKey: null,
+  realignedFrameKey: null,
   placements: new Map([[MODEL_ID, {
     translation: [10, 5, 3] as Translation,
     rotation: { angle: Math.PI / 2, pivot: [0, 0, 0] as Translation },

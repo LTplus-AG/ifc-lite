@@ -262,3 +262,54 @@ describe('useCompare - an option changed mid-run wins (#1891 review)', () => {
     assert.strictEqual(result.diff.counts.deleted, 1);
   });
 });
+
+describe('useCompare - accepted identity is replayed as keyAliases (#4955)', () => {
+  it('re-diffs with the accepted pair as a key alias, so it classifies by key and leaves add/delete', async () => {
+    // Content matching OFF: the re-GUIDed wall is one delete plus one add.
+    useViewerStore.setState({ compareMatchByContent: false, compareAcceptedIdentity: [] });
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = runComparison!();
+    });
+    await act(async () => {
+      await pending;
+    });
+    assert.strictEqual(published().diff.counts.deleted, 1, 'baseline: the wall is a delete');
+    assert.strictEqual(published().diff.counts.added, 1, 'baseline: and an add');
+
+    // The user accepts the pair (what the Suggestions section's Accept does).
+    await act(async () => {
+      useViewerStore.getState().acceptCompareIdentity([
+        { base: '0aaaaaaaaaaaaaaaaaaaaa', here: '1zzzzzzzzzzzzzzzzzzzzz', reason: 'successor:footprint' },
+      ]);
+    });
+    const result = published();
+    assert.strictEqual(result.diff.appliedKeyAliases?.get('1zzzzzzzzzzzzzzzzzzzzz'), '0aaaaaaaaaaaaaaaaaaaaa');
+    assert.strictEqual(result.diff.counts.deleted, 0);
+    assert.strictEqual(result.diff.counts.added, 0);
+    // One entity under the BASE key; the head keeps its own key on its side.
+    const entry = result.diff.byKey.get('0aaaaaaaaaaaaaaaaaaaaa');
+    assert.ok(entry, 'the pair is one entry keyed by the base key');
+    assert.strictEqual(entry.head?.key, '1zzzzzzzzzzzzzzzzzzzzz');
+  });
+
+  it('a duplicate accept is a no-op and does not re-diff', async () => {
+    useViewerStore.setState({ compareMatchByContent: false, compareAcceptedIdentity: [] });
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = runComparison!();
+    });
+    await act(async () => {
+      await pending;
+    });
+    const pair = { base: '0aaaaaaaaaaaaaaaaaaaaa', here: '1zzzzzzzzzzzzzzzzzzzzz', reason: 'successor:footprint' };
+    await act(async () => {
+      useViewerStore.getState().acceptCompareIdentity([pair]);
+    });
+    const seq = useViewerStore.getState().compareRunSeq;
+    await act(async () => {
+      useViewerStore.getState().acceptCompareIdentity([pair]);
+    });
+    assert.strictEqual(useViewerStore.getState().compareRunSeq, seq, 'same list reference, no re-publish');
+  });
+});

@@ -26,8 +26,9 @@ import {
   geometryVolumesSurviveAlignment,
   resolveGeometryChannel,
 } from '@/lib/compare/geometryCapability';
-import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
-import { productTypeSplit } from '@/lib/compare/productTypeCounts';
+import { contentMatchingRan } from '@/lib/compare/contentMatches';
+import { keyAliasesFromAccepted } from '@/lib/compare/acceptedIdentity';
+import { compareRunPayload } from '@/lib/compare/runTelemetry';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
 
 /** Read the live mesh-content version. A FUNCTION, not a captured number: the
@@ -152,6 +153,7 @@ function publishCompareResult(built: BuiltPair): {
   const scope: CompareResult['scope'] = store.compareScope;
   const excludedTypes = store.compareExcludedTypes;
   const matchByContent = store.compareMatchByContent;
+  const accepted = store.compareAcceptedIdentity;
 
   // The strip decision, the warning flag and its placement-only nuance are ONE
   // resolution (`resolveGeometryChannel`), so the panel's warning can never
@@ -176,6 +178,15 @@ function publishCompareResult(built: BuiltPair): {
     // mismatch reports a real distance; an entity the wasm pass produced no box
     // for still degrades to a bare `moved`, the engine's documented fallback.
     matchUnpairedByContent: matchByContent,
+    // #4955. Suggestions, never decisions: neither stage retires an entry or
+    // touches a count, and both abstain with the content pass when a side has
+    // no geometry. The panel's Suggestions section lists what they found.
+    detectSplitMerge: true,
+    detectSuccessors: true,
+    // The pairs the user accepted (or imported) this session, replayed so
+    // they classify by key and leave the suggestions. Read HERE with the
+    // other options, under the same no-await rule.
+    keyAliases: keyAliasesFromAccepted(accepted),
   });
   const result: CompareResult = {
     baseModelId: built.baseModelId,
@@ -206,6 +217,7 @@ export function useCompare() {
   const scope = useViewerStore((s) => s.compareScope);
   const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
   const matchByContent = useViewerStore((s) => s.compareMatchByContent);
+  const acceptedIdentity = useViewerStore((s) => s.compareAcceptedIdentity);
   const running = useViewerStore((s) => s.compareRunning);
   const result = useViewerStore((s) => s.compareResult);
   const error = useViewerStore((s) => s.compareError);
@@ -377,36 +389,7 @@ export function useCompare() {
       // documented on that function. Nothing here may capture them earlier.
       const { result: payload, matchByContent: ranMatchByContent } = publishCompareResult(built);
 
-      // Per-kind match counts are the default-on rollout's evidence (#1891):
-      // they say how often the pass fires in the field, and how much of what it
-      // finds it resolves versus hands back for review.
-      const matches = contentMatchCounts(payload.diff.contentMatches);
-      // Products vs type objects (headline-count confusion, see
-      // `productTypeCounts.ts`): the field's evidence for how often a run's
-      // engine-wide counts actually include type-object changes.
-      const split = productTypeSplit(payload.diff.entries);
-      posthog.capture('model_compare_run', {
-        scope: payload.scope,
-        changed_entity_count: payload.diff.entries.length,
-        geometry_unavailable: payload.geometryUnavailable,
-        excluded_type_count: payload.diff.excludedTypes.length,
-        content_matching: ranMatchByContent,
-        content_match_count: matches.total,
-        content_matched_elements: matches.matchedElements,
-        content_needs_review_elements: matches.needsReviewElements,
-        content_match_renamed: matches.renamed,
-        content_match_moved: matches.moved,
-        content_match_reshaped: matches.reshaped,
-        content_match_duplicated: matches.duplicated,
-        content_match_deduplicated: matches.deduplicated,
-        content_match_ambiguous: matches.ambiguous,
-        product_added: split.products.added,
-        product_modified: split.products.modified,
-        product_deleted: split.products.deleted,
-        type_object_added: split.typeObjects.added,
-        type_object_modified: split.typeObjects.modified,
-        type_object_deleted: split.typeObjects.deleted,
-      });
+      posthog.capture('model_compare_run', compareRunPayload(payload, ranMatchByContent));
     } catch (err) {
       console.error('[compare] comparison failed', err);
       // Same guard as above: a superseded run's own failure must set an error
@@ -441,6 +424,10 @@ export function useCompare() {
   // remount is not mistaken for a bump; a re-align while this panel is
   // unmounted leaves no cache to reuse, and `runComparison` re-extracts.
   const lastContentVersionRef = useRef(geometryContentVersion);
+  // The accepted list a published result was diffed with. `appliedKeyAliases`
+  // cannot stand in for it: an accepted pair the engine ignored (key not in
+  // the base) leaves no trace there, and the effect would re-publish forever.
+  const lastAcceptedRef = useRef(acceptedIdentity);
   useEffect(() => {
     if (lastContentVersionRef.current === geometryContentVersion) return;
     lastContentVersionRef.current = geometryContentVersion;
@@ -448,11 +435,12 @@ export function useCompare() {
     clearCompare();
   }, [geometryContentVersion, clearCompare]);
 
-  // Scope, blacklist OR content-matching change with an existing result for the
-  // same pair -> re-diff from the cached fingerprints (instant). No-op when
-  // nothing has been compared yet, or when none actually changed (equivalent
-  // array refs). `contentMatches`' PRESENCE is the result's record of the flag
-  // it ran with (see `contentMatchingRan`).
+  // Scope, blacklist, content-matching OR accepted-identity change with an
+  // existing result for the same pair -> re-diff from the cached fingerprints
+  // (instant). No-op when nothing has been compared yet, or when none actually
+  // changed (equivalent array refs). `contentMatches`' PRESENCE is the result's
+  // record of the flag it ran with (see `contentMatchingRan`); the accepted
+  // list is compared by reference, which the slice keeps stable on a no-op.
   //
   // This is only the change DETECTOR - the options it publishes are re-read from
   // the store by `publishCompareResult`, which is what makes the published
@@ -472,11 +460,13 @@ export function useCompare() {
     const sameExcluded =
       excludedSignature(result.diff.excludedTypes) === excludedSignature(excludedTypes);
     const sameMatching = contentMatchingRan(result.diff.contentMatches) === matchByContent;
-    if (sameScope && sameExcluded && sameMatching) return;
+    const sameAccepted = lastAcceptedRef.current === acceptedIdentity;
+    if (sameScope && sameExcluded && sameMatching && sameAccepted) return;
 
+    lastAcceptedRef.current = acceptedIdentity;
     publishCompareResult(built);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, excludedTypes, matchByContent]);
+  }, [scope, excludedTypes, matchByContent, acceptedIdentity]);
 
   return { baseModelId, headModelId, scope, running, result, error, runComparison, clearCompare };
 }

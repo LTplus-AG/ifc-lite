@@ -12,8 +12,13 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { DiffScope, ModelDiff } from '@ifc-lite/diff';
+import type { DiffScope, IdentityMapEntry, ModelDiff } from '@ifc-lite/diff';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
+import {
+  addAcceptedIdentity,
+  rejectClaim,
+  removeAcceptedIdentity,
+} from '@/lib/compare/acceptedIdentity';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /** A completed comparison: the engine result plus the A/B context it ran on. */
@@ -158,6 +163,19 @@ export interface CompareSlice {
   compareError: string | null;
   /** GlobalId of the entry focused in the list (for highlight). */
   compareSelectedKey: string | null;
+  /**
+   * Identity the user accepted this session out of the Suggestions section
+   * or imported from an identity-map sidecar (issue #4955): `{ base, here,
+   * reason }` with reason `successor:<confidence>` or `accepted:ambiguous`.
+   * Replayed as `keyAliases` on every diff, so an accepted pair classifies by
+   * key and leaves the suggestions. Kept 1:1 by `addAcceptedIdentity`.
+   * Survives `clearCompare` (the decisions outlive one run's result) and
+   * dies with the session.
+   */
+  compareAcceptedIdentity: IdentityMapEntry[];
+  /** Signatures (`claimSignature(base, here)`) of suggestions the user marked
+   *  "Not the same", so they are hidden and never re-offered this session. */
+  compareRejectedClaims: ReadonlySet<string>;
 
   setComparePanelVisible: (visible: boolean) => void;
   toggleComparePanel: () => void;
@@ -182,6 +200,13 @@ export interface CompareSlice {
   setCompareSelectedKey: (key: string | null) => void;
   /** Clear the run result + selection; keeps the A/B + scope choices. */
   clearCompare: () => void;
+  /** Accept identity entries; returns the ones refused for colliding with a
+   *  pair already accepted (identity is 1:1). */
+  acceptCompareIdentity: (entries: Iterable<IdentityMapEntry>) => IdentityMapEntry[];
+  /** Withdraw one accepted pair. */
+  removeCompareIdentity: (base: string, here: string) => void;
+  /** Mark a suggested pair "Not the same". */
+  rejectCompareClaim: (base: string, here: string) => void;
 }
 
 /**
@@ -205,13 +230,23 @@ function getClearedCompareState() {
   } as const;
 }
 
+/** A session reset also drops the reviewed identity (#4955): the decisions
+ *  name entities of the outgoing files. `clearCompare` keeps them. */
+function getResetCompareState() {
+  return {
+    ...getClearedCompareState(),
+    compareAcceptedIdentity: [] as IdentityMapEntry[],
+    compareRejectedClaims: new Set<string>() as ReadonlySet<string>,
+  };
+}
+
 export const compareTeardown = defineSliceTeardown(
   'compareSlice',
-  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError'],
-  { 'session-reset': getClearedCompareState, 'model-removed': notApplicable, 'all-models-cleared': notApplicable },
+  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError', 'compareAcceptedIdentity', 'compareRejectedClaims'],
+  { 'session-reset': getResetCompareState, 'model-removed': notApplicable, 'all-models-cleared': notApplicable },
 );
 
-export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice> = (set) => ({
+export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice> = (set, get) => ({
   comparePanelVisible: false,
   compareBaseModelId: null,
   compareHeadModelId: null,
@@ -224,6 +259,8 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   compareRunning: false,
   compareError: null,
   compareSelectedKey: null,
+  compareAcceptedIdentity: [],
+  compareRejectedClaims: new Set<string>(),
 
   setComparePanelVisible: (comparePanelVisible) => set({ comparePanelVisible }),
   toggleComparePanel: () => set((s) => ({ comparePanelVisible: !s.comparePanelVisible })),
@@ -273,4 +310,21 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   setCompareSelectedKey: (compareSelectedKey) => set({ compareSelectedKey }),
 
   clearCompare: () => set(getClearedCompareState()),
+
+  acceptCompareIdentity: (additions) => {
+    const { entries, refused } = addAcceptedIdentity(get().compareAcceptedIdentity, additions);
+    // Same-array-when-unchanged: no subscriber re-renders for a duplicate accept.
+    if (entries !== get().compareAcceptedIdentity) set({ compareAcceptedIdentity: entries });
+    return refused;
+  },
+  removeCompareIdentity: (base, here) =>
+    set((s) => {
+      const compareAcceptedIdentity = removeAcceptedIdentity(s.compareAcceptedIdentity, base, here);
+      return compareAcceptedIdentity === s.compareAcceptedIdentity ? s : { compareAcceptedIdentity };
+    }),
+  rejectCompareClaim: (base, here) =>
+    set((s) => {
+      const compareRejectedClaims = rejectClaim(s.compareRejectedClaims, base, here);
+      return compareRejectedClaims === s.compareRejectedClaims ? s : { compareRejectedClaims };
+    }),
 });

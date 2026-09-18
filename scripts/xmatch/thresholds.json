@@ -47,7 +47,17 @@
     "",
     "Any change to this file is a reviewed diff with its argument in the commit",
     "message. A floor that retreats after a red run, without one, is the thing",
-    "to refuse."
+    "to refuse.",
+    "",
+    "ISSUE #4955 STRATA (respecified / successors / splits) were pre-registered",
+    "in the commit that added them, BEFORE the harness had scored the new",
+    "mutations once: `byTier.geometry-only`, `byKind.respecified`,",
+    "`bySuccessor.footprint` / `.position` (keyed by the EXPECTED profile),",
+    "`bySuccessorConfidence.*` (precision per REPORTED profile), `bySplit`, the",
+    "`successorInsertedNearby` / `neighbourSuccessor` / `respecifiedReportedRenamed`",
+    "ceilings, and the five population floors. Their gating floors start EQUAL",
+    "to their targets and ratchet by the rule above after the first run; the",
+    "commit that ratchets them quotes the measured baseline."
   ],
   "margin": 0.02,
   "perPair": {
@@ -59,15 +69,25 @@
       "precision": {
         "geometry-hash": 0.99,
         "residue-1-1": 0.98,
-        "positional": 0.98
+        "positional": 0.98,
+        "geometry-only": 0.99
       }
     },
     "byKind": {
       "renamed": { "recall": 0.777, "precision": 0.99, "kindAgreement": 0.924 },
       "moved": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.98 },
       "reshaped": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.98 },
-      "retriangulated": { "recall": 0.98, "precision": 0.98 }
+      "retriangulated": { "recall": 0.98, "precision": 0.98 },
+      "respecified": { "recall": 0.9, "precision": 0.98, "kindAgreement": 0.98 }
     },
+    "bySuccessor": {
+      "footprint": { "recall": 0.8, "precision": 0.98, "kindAgreement": 0.9 },
+      "position": { "recall": 0.6, "precision": 0.98, "kindAgreement": 0.8 }
+    },
+    "bySuccessorConfidence": {
+      "precision": { "footprint": 0.98, "position": 0.98 }
+    },
+    "bySplit": { "recall": 0.8, "precision": 0.98, "kindAgreement": 0.9 },
     "byClass": {
       "prismatic": { "recall": 0.85, "precision": 0.98 },
       "curved": { "recall": 0.98, "precision": 0.98 },
@@ -77,7 +97,10 @@
       "deletedBase": 0,
       "insertedHead": 0,
       "wrongPartner": 0,
-      "unkeyed": 0
+      "unkeyed": 0,
+      "successorInsertedNearby": 0,
+      "neighbourSuccessor": 0,
+      "respecifiedReportedRenamed": 0
     },
     "calibration": {
       "matchedByGeometryHash": 0,
@@ -99,12 +122,18 @@
       "duplicated": 12,
       "deleted": 20,
       "inserted": 12,
-      "curved": 20
+      "curved": 20,
+      "respecified": 30,
+      "thickened": 20,
+      "swapped": 10,
+      "splitLength": 10,
+      "insertedNearby": 10
     },
     "tierPairs": {
       "geometry-hash": 100,
       "residue-1-1": 10,
-      "positional": 1
+      "positional": 1,
+      "geometry-only": 25
     },
     "calibration": {
       "recoveredByLowerTiers": 0.98
@@ -118,25 +147,42 @@
   },
   "preRegisteredTargets": {
     "$comment": [
-      "Verbatim from commit 79604caa, written before the first measurement.",
+      "Verbatim from commit 79604caa, written before the first measurement;",
+      "the #4955 entries (geometry-only, respecified, bySuccessor,",
+      "bySuccessorConfidence, bySplit, the three new ceilings) likewise from",
+      "the commit that pre-registered them, before their first measurement.",
       "Reported as gaps, never gating. Do not edit these to match a result -",
       "the gap IS the finding. Raising a gating floor to meet one of these is",
       "the direction of travel; lowering a target to meet a floor is not."
     ],
     "overall": { "precision": 0.98, "recall": 0.8 },
     "byTier": {
-      "precision": { "geometry-hash": 0.99, "residue-1-1": 0.95, "positional": 0.9 }
+      "precision": { "geometry-hash": 0.99, "residue-1-1": 0.95, "positional": 0.9, "geometry-only": 0.99 }
     },
     "byKind": {
       "renamed": { "recall": 0.9, "precision": 0.99, "kindAgreement": 0.98 },
       "moved": { "recall": 0.8, "precision": 0.95, "kindAgreement": 0.9 },
       "reshaped": { "recall": 0.8, "precision": 0.95, "kindAgreement": 0.9 },
-      "retriangulated": { "recall": 0.6, "precision": 0.9 }
+      "retriangulated": { "recall": 0.6, "precision": 0.9 },
+      "respecified": { "recall": 0.9, "precision": 0.98, "kindAgreement": 0.98 }
     },
     "byClass": {
       "prismatic": { "recall": 0.85, "precision": 0.98 },
       "curved": { "recall": 0.75, "precision": 0.98 },
       "none": { "recall": 0.5, "precision": 0.95 }
+    },
+    "bySuccessor": {
+      "footprint": { "recall": 0.8, "precision": 0.98, "kindAgreement": 0.9 },
+      "position": { "recall": 0.6, "precision": 0.98, "kindAgreement": 0.8 }
+    },
+    "bySuccessorConfidence": {
+      "precision": { "footprint": 0.98, "position": 0.98 }
+    },
+    "bySplit": { "recall": 0.8, "precision": 0.98, "kindAgreement": 0.9 },
+    "negativeControls": {
+      "successorInsertedNearby": 0,
+      "neighbourSuccessor": 0,
+      "respecifiedReportedRenamed": 0
     }
   }
 }

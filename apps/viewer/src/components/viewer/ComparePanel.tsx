@@ -10,23 +10,24 @@
  */
 
 import { useEffect, useMemo } from 'react';
-import { GitCompareArrows, X, Trash2, Download, ChevronLeft } from 'lucide-react';
+import { GitCompareArrows, X, Trash2, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
-import { posthog } from '@/lib/analytics';
 import { COMPARE_COLORS } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 import { describeChange, type ChangeDetail } from '@/lib/compare/describeChange';
-import { downloadCompareReport } from '@/lib/compare/exportReport';
 import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
 import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
 import { CompareRunControls } from './compare/CompareRunControls';
+import { CompareExportBar } from './compare/CompareExportBar';
+import { useCompareSuggestions } from './compare/useCompareSuggestions';
+import { focusRefs } from './compare/focusRefs';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
 import { productTypeSplit, typeObjectHint } from '@/lib/compare/productTypeCounts';
@@ -133,6 +134,12 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   );
   const matchCounts = useMemo(() => contentMatchCounts(result?.diff.contentMatches), [result]);
 
+  // Suggestions (#4955): claims the engine reports but will not decide.
+  const suggest = useCompareSuggestions(
+    result,
+    (ref) => models.get(ref.modelId)?.ifcDataStore?.entities.getName(ref.localId) || '',
+  );
+
   const counts = result?.diff.counts;
   const canRun = !!baseModelId && !!headModelId && baseModelId !== headModelId && !running;
 
@@ -166,71 +173,25 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     return null;
   }, [groups, selectedKey]);
 
-  const focusEntry = (row: CompareRow) => {
-    const state = useViewerStore.getState();
-    state.clearEntitySelection();
-    state.setSelectedEntityIds([row.ref.globalId]);
-    state.addEntitiesToSelection([{ modelId: row.ref.modelId, expressId: row.ref.localId }]);
-    state.setCompareSelectedKey(row.key);
-    requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
-  };
-
-  // Select every element in a state bucket at once (section-header click).
-  // Iterates the full diff entries — not the display-capped `groups` rows — so
-  // the selection matches the header count, including "+N more not shown" rows.
+  // Every row kind selects through `focusRefs`. Entry rows keep their key so
+  // the "what changed" detail follows; group headers pass `null` (bulk select
+  // has no single detail). A group iterates the FULL diff entries, not the
+  // display-capped `groups` rows, so the selection matches the header count.
+  const focusEntry = (row: CompareRow) => focusRefs([row.ref], row.key);
   const focusGroup = (groupState: DiffState) => {
     if (!result) return;
     const refs = result.diff.entries
       .filter((e) => e.state === groupState)
       .map(renderRef)
       .filter((r): r is CompareRef => !!r);
-    if (refs.length === 0) return;
-    const state = useViewerStore.getState();
-    state.clearEntitySelection();
-    state.setSelectedEntityIds(refs.map((r) => r.globalId));
-    state.addEntitiesToSelection(refs.map((r) => ({ modelId: r.modelId, expressId: r.localId })));
-    state.setCompareSelectedKey(null); // bulk select → no single-row "what changed" detail
-    requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+    focusRefs(refs, null);
   };
-
-  /** Select the elements a content-match row stands for. Retiring matches
-   *  select their head copies (the base copies are hidden by the overlay);
-   *  review groups select every candidate on both sides. */
-  const focusMatch = (row: CompareMatchRow) => {
-    if (row.refs.length === 0) return;
-    const state = useViewerStore.getState();
-    state.clearEntitySelection();
-    state.setSelectedEntityIds(row.refs.map((r) => r.globalId));
-    state.addEntitiesToSelection(row.refs.map((r) => ({ modelId: r.modelId, expressId: r.localId })));
-    // A content match is not a `DiffEntry`, so it has no "what changed" detail
-    // and no BCF pre-fill yet - the row key still drives the list highlight.
-    state.setCompareSelectedKey(row.key);
-    requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
-  };
-
-  const focusMatchGroup = (rows: CompareMatchRow[]) => {
-    const refs = rows.flatMap((row) => row.refs);
-    if (refs.length === 0) return;
-    const state = useViewerStore.getState();
-    state.clearEntitySelection();
-    state.setSelectedEntityIds(refs.map((r) => r.globalId));
-    state.addEntitiesToSelection(refs.map((r) => ({ modelId: r.modelId, expressId: r.localId })));
-    state.setCompareSelectedKey(null);
-    requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
-  };
-
-  const downloadReport = (format: 'csv' | 'json') => {
-    if (!result) return;
-    // Pass the blacklist in its original IFC casing so the report reads
-    // "IfcOpeningElement", not the engine's uppercase-normalized form (#1470).
-    downloadCompareReport(format, result, models, excludedTypes);
-    const c = result.diff.counts;
-    posthog.capture('model_compare_export', {
-      format,
-      scope: result.scope,
-      row_count: c.added + c.modified + c.deleted,
-    });
-  };
+  // A content match or a suggestion is not a `DiffEntry`, so it has no "what
+  // changed" detail and no BCF pre-fill - the row key still drives the list
+  // highlight. Retiring matches select their head copies (the base copies are
+  // hidden by the overlay); review groups and claims select every candidate.
+  const focusMatch = (row: CompareMatchRow) => focusRefs(row.refs, row.key);
+  const focusMatchGroup = (rows: CompareMatchRow[]) => focusRefs(rows.flatMap((row) => row.refs), null);
 
   // Composing a BCF topic: collapse the diff chrome so the form owns the panel.
   // Gate on the selected row too, so a vanished selection can never leave the
@@ -331,20 +292,11 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 </div>
               )}
 
-              {/* Export the full change report (#1202) — exact negation of the results list's empty state. */}
-              {result && counts && hasReportableChanges(counts, matchRows) && (
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
-                  <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-muted-foreground">Download report</span>
-                  <div className="ml-auto flex items-center gap-1">
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('csv')}>
-                      CSV
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('json')}>
-                      JSON
-                    </Button>
-                  </div>
-                </div>
+              {/* Export the full change report (#1202) — the report bar is the exact
+                  negation of the results list's empty state; the sidecar bar (#4955)
+                  is always offered, an identity map can be imported before any change. */}
+              {result && counts && (
+                <CompareExportBar result={result} reportable={hasReportableChanges(counts, matchRows)} />
               )}
 
               {/* Results list */}
@@ -359,6 +311,13 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onFocusGroup={focusGroup}
                 onFocusMatch={focusMatch}
                 onFocusMatchGroup={focusMatchGroup}
+                suggestions={suggest.suggestions}
+                acceptedSignatures={suggest.accepted}
+                rejectedSignatures={suggest.rejected}
+                onFocusSuggestion={(row) => focusRefs(row.refs, row.key)}
+                onFocusSuggestionGroup={(rows) => focusRefs(rows.flatMap((row) => row.refs), null)}
+                onAcceptSuggestion={suggest.accept}
+                onRejectSuggestion={suggest.reject}
               />
 
               {/* What-changed detail for the selected element */}

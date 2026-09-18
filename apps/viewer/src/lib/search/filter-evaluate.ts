@@ -87,7 +87,6 @@ import {
   materialNamesOf, materialMatchCandidates,
   matchClassificationRule,
   matchParentRule,
-  nameOrUndefined,
   elevationOf,
   type AttrRows,
   type PsetRows,
@@ -505,10 +504,9 @@ function evaluateRule(
       return setOpMatches(rule.op, pt, rule.values);
     }
     case 'name':
-      // `nameOrUndefined` (not `ctx.table.getName`) so an entity with no
-      // Name at all reaches `stringOpMatches` as `undefined` rather than the
-      // coerced `''` `getName` returns for display — see its docstring (#4930).
-      return stringOpMatches(rule.op, nameOrUndefined(ctx.table, expressId), rule.value, rule.valueKind);
+      // getNameOrUndefined, not getName: an absent Name must reach
+      // stringOpMatches as undefined, not the coerced '' (#4930).
+      return stringOpMatches(rule.op, ctx.table.getNameOrUndefined(expressId), rule.value, rule.valueKind);
     case 'globalId':
       return globalIdOpMatches(rule.op, ctx.table.getGlobalId(expressId), rule.values);
     case 'attribute': {
@@ -547,22 +545,15 @@ function evaluateRule(
 }
 
 /**
- * The Name of `expressId`'s RELATING TYPE via `IfcRelDefinesByType` — the
- * `type=` selector dimension (#4094), distinct from `ctx.table.getTypeName`
- * (the element's own IFC class). `null` when the element carries no such
- * relation, which a `type=` rule must never match (an absent relation is
- * not the same as a type with an empty Name) — kept distinct from
- * `undefined`, which now means the relation exists but the related
- * `IfcTypeObject`'s own Name is absent (#4930): `nameOrUndefined`, not
- * `ctx.table.getName`, so that case reaches `stringOpMatches` as a real
- * absent candidate instead of the coerced `''` `getName` returns for
- * display.
+ * The Name of `expressId`'s RELATING TYPE via `IfcRelDefinesByType` (#4094).
+ * `null` = no such relation (must never match). `undefined` = the related
+ * `IfcTypeObject` has no Name (#4930) — distinct from an empty one.
  */
 function relatingTypeNameOf(ctx: EvalContext, expressId: number): string | undefined | null {
   if (!ctx.store.relationships) return null;
   const typeIds = ctx.store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
   if (typeIds.length === 0) return null;
-  return nameOrUndefined(ctx.table, typeIds[0]);
+  return ctx.table.getNameOrUndefined(typeIds[0]);
 }
 
 function buildResult(modelId: string, ctx: EvalContext, expressId: number): FilteredElement {

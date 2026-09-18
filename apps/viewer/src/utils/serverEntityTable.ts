@@ -80,11 +80,9 @@ export function buildEntityTable(
     if (globalIdString) {
       globalIdToExpressId.set(globalIdString, id);
     }
-    // `cols.name` is `(string | null)[]` — the server already carries `null`
-    // distinctly from `''` (an Arrow/JSON column has both), so pass it
-    // through `intern` as-is rather than folding via `|| ''`: that's what
-    // let `getNameOrUndefined` below answer correctly (#4930) without a
-    // second, absent-losing column.
+    // `cols.name` is `(string | null)[]`; pass through as-is rather than
+    // folding `null` into `''`, so `getNameOrUndefined` below can tell
+    // absent apart from empty (#4930).
     nameArr[idx] = strings.intern(cols.name[idx]);
     descriptionArr[idx] = strings.intern(cols.description?.[idx] || '');
     objectTypeArr[idx] = strings.intern(cols.objectType?.[idx] || '');
@@ -116,10 +114,8 @@ export function buildEntityTable(
     return i >= 0 ? strings.get(col[i]) : '';
   };
 
-  // `StringTable.intern(null)` returns `NULL_INDEX` (-1), stored in this
-  // Uint32Array column as its unsigned bit pattern (0xFFFFFFFF) — see
-  // `entity-table.ts`'s `getNameOrUndefined` for the packages/data twin of
-  // this accessor (#4930).
+  // `intern(null)` -> `NULL_INDEX` (-1), stored here as 0xFFFFFFFF — see
+  // `entity-table.ts`'s twin of this accessor (#4930).
   const getNameOrUndefined = (id: number): string | undefined => {
     const i = indexOfId(id);
     if (i < 0) return undefined;

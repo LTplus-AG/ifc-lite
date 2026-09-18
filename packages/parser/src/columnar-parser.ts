@@ -234,12 +234,8 @@ export async function parseColumnarInput(
         const extractor = new EntityExtractor(uint8Buffer);
 
         // Spatial entities: small count, use extractEntity for full accuracy.
-        // `name` is `string | undefined`, not defaulted to '': `extractEntity`
-        // already returns `null` for a STEP `$` (see `parseAttributeValue`)
-        // and a real JS string (possibly `''`) for a quoted attribute, so this
-        // is the one place that distinction survives past the extractor
-        // rather than being thrown away — `undefined` here means the entity
-        // genuinely has no Name, distinct from an explicit `''` (#4930).
+        // `name` stays `undefined` for a STEP `$` rather than defaulting to
+        // '', distinct from an explicit empty string (#4930).
         const parsedEntityData = new Map<number, { globalId: string; name: string | undefined }>();
         for (const ref of spatialRefs) {
             const entity = extractor.extractEntity(ref);

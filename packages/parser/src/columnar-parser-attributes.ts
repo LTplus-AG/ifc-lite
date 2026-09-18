@@ -252,10 +252,8 @@ export async function batchExtractGlobalIdAndName(
     // Phase 1: Scan byte ranges for GlobalId and Name positions (no string allocation)
     const gidRanges: Array<[number, number]> = []; // [start, end) for each entity
     const nameRanges: Array<[number, number]> = [];
-    // `findQuotedAttrRange` returns `null` for a STEP `$` (no quotes at all)
-    // and `[start, start]` for a genuinely empty `''` — both currently
-    // collapse to the SAME zero-length slice once concatenated below, so
-    // that distinction has to be captured here, before it's lost (#4930).
+    // `null` ($) vs `[start, start]` ('') both concatenate to zero bytes
+    // below, so capture the distinction here before it's lost (#4930).
     const nameFound: boolean[] = [];
     const validIndices: number[] = []; // indices into refs for entities with valid ranges
 

@@ -19,7 +19,7 @@ import {
   type ClassificationInfo,
 } from '@ifc-lite/parser';
 import { flattenMaterials } from '@ifc-lite/ids';
-import { collectSpatialAncestors, type EntityTable } from '@ifc-lite/data';
+import { collectSpatialAncestors } from '@ifc-lite/data';
 
 import {
   type PropertyRule,
@@ -290,17 +290,10 @@ export function materialMatchCandidates(info: MaterialInfo | null): string[] {
 
 /**
  * Match a classification rule against an element's classification refs.
- * `system` (when set) scopes to one classification system; value ops
- * match a ref's code (identification) OR name.
- *
- * Pushes `identification`/`name` through even when a ref has neither set
- * (both `undefined` — a real, resolvable `IfcClassificationReference` whose
- * own `Identification`/`Name` attributes are `$`, or an `unresolved` marker
- * from a server-parsed store) rather than dropping the ref from the
- * candidate list on a truthy check. `matchStringAnyNone`/`stringOpMatches`
- * decide the absent-vs-empty semantics explicitly (#4930); filtering here
- * first would silently re-collapse a classified-but-unnamed ref into "not
- * classified at all", making `classification!=""` wrongly miss it.
+ * `system` (when set) scopes to one system; value ops match a ref's code
+ * (identification) OR name. Pushes both through even when `undefined`
+ * (absent) rather than filtering on truthy — `matchStringAnyNone` decides
+ * absent-vs-empty explicitly (#4930).
  */
 export function matchClassificationRule(
   rule: ClassificationRule,
@@ -339,35 +332,17 @@ export function elevationOf(store: IfcDataStore, expressId: number): number | nu
 // ── Parent (spatial ancestor) resolution ──────────────────────────────────────
 
 /**
- * `table.getName(id)` folds an absent Name into `''`, indistinguishable
- * from a genuinely empty one — the right answer for display (61+ call
- * sites), the wrong one for `name=`/`parent=` string matching (#4930).
- * `getNameOrUndefined` is the accessor that keeps the distinction (see its
- * docstring in `packages/data/src/entity-table.ts`); it's optional on the
- * `EntityTable` interface because not every implementation can answer it
- * (a hand-rolled test mock, an older cache format), so this falls back to
- * `getName` — restoring the pre-#4930 (safe, imprecise) result — when it's
- * absent rather than throwing.
- */
-export function nameOrUndefined(table: EntityTable, id: number): string | undefined {
-  return table.getNameOrUndefined ? table.getNameOrUndefined(id) : table.getName(id);
-}
-
-/**
  * `parent=Foo` (#4903) — does ANY ancestor of `expressId`, walking upward
  * through spatial containment and aggregation to any depth via
  * `collectSpatialAncestors` (`@ifc-lite/data`, the single shared resolver),
  * have a Name the rule's op matches? Reuses `matchStringAnyNone`, the same
  * multi-valued convention `material`/`classification` rules use: an element
  * with NO ancestors — or none whose Name matches — satisfies neither a
- * positive nor a negative op, so `parent=` naming nothing in the model reads
- * as an empty result, never "no filter" (the #4659 inversion this codebase
- * keeps guarding against). An ancestor that HAS no Name at all (vs. an
- * explicit `''`) is itself now a real, distinguished candidate — see
- * `nameOrUndefined` and `matchStringAnyNone` (#4930).
+ * positive nor a negative op (#4659). `getNameOrUndefined`, not `getName`,
+ * so an ancestor with no Name at all is a real absent candidate (#4930).
  */
 export function matchParentRule(rule: ParentRule, store: IfcDataStore, expressId: number): boolean {
   const ancestorNames = collectSpatialAncestors(store.relationships, expressId)
-    .map((id) => nameOrUndefined(store.entities, id));
+    .map((id) => store.entities.getNameOrUndefined(id));
   return matchStringAnyNone(rule.op, ancestorNames, rule.value, rule.valueKind);
 }

@@ -39,6 +39,41 @@ describe('op helpers tolerate an undefined candidate (#1195)', () => {
   });
 });
 
+describe('stringOpMatches / matchStringAnyNone — absent vs empty (#4930)', () => {
+  // Unlike the #1195 cast above, `undefined` here is a REAL, typed input:
+  // an entity/material/ancestor/classification ref that genuinely has no
+  // value, as opposed to one whose value IS the string ''.
+  it('a positive op never matches an absent candidate, even against ""', () => {
+    assert.strictEqual(stringOpMatches('eq', undefined, ''), false);
+    assert.strictEqual(stringOpMatches('contains', undefined, ''), false);
+    assert.strictEqual(stringOpMatches('startsWith', undefined, ''), false);
+  });
+  it('a negative op always matches an absent candidate, including against ""', () => {
+    assert.strictEqual(stringOpMatches('ne', undefined, ''), true);
+    assert.strictEqual(stringOpMatches('notContains', undefined, ''), true);
+  });
+  it('a genuinely empty string is not the same as absent', () => {
+    assert.strictEqual(stringOpMatches('eq', '', ''), true);
+    assert.strictEqual(stringOpMatches('ne', '', ''), false);
+    // "" contains "" (trivially true for any real string) but an absent
+    // candidate has no string to contain anything.
+    assert.strictEqual(stringOpMatches('contains', '', ''), true);
+  });
+  it('matchStringAnyNone composes the same rule across a candidate set', () => {
+    assert.strictEqual(matchStringAnyNone('eq', [undefined, undefined], ''), false);
+    assert.strictEqual(matchStringAnyNone('ne', [undefined, undefined], ''), true);
+    assert.strictEqual(matchStringAnyNone('eq', ['', undefined], ''), true, 'the real "" candidate matches eq');
+    assert.strictEqual(matchStringAnyNone('ne', ['', undefined], ''), false, 'the real "" candidate breaks ne');
+  });
+  it('an absent single candidate is distinct from a zero-length candidate list', () => {
+    // Zero candidates ("no materials/ancestors/classifications at all")
+    // never matches, including negative ops — unchanged by this issue.
+    assert.strictEqual(matchStringAnyNone('ne', [], ''), false);
+    // One candidate that exists but has no Name DOES match a negative op.
+    assert.strictEqual(matchStringAnyNone('ne', [undefined], ''), true);
+  });
+});
+
 describe('setOpMatches', () => {
   it('matches case-insensitively for "in"', () => {
     assert.strictEqual(setOpMatches('in', 'IfcWall', ['ifcwall', 'IfcDoor']), true);

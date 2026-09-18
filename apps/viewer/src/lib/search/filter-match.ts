@@ -288,9 +288,20 @@ export function materialMatchCandidates(info: MaterialInfo | null): string[] {
   return [...new Set([...materialNamesOf(info), ...categories])];
 }
 
-/** Match a classification rule against an element's classification refs.
- *  `system` (when set) scopes to one classification system; value ops
- *  match a ref's code (identification) OR name. */
+/**
+ * Match a classification rule against an element's classification refs.
+ * `system` (when set) scopes to one classification system; value ops
+ * match a ref's code (identification) OR name.
+ *
+ * Pushes `identification`/`name` through even when a ref has neither set
+ * (both `undefined` — a real, resolvable `IfcClassificationReference` whose
+ * own `Identification`/`Name` attributes are `$`, or an `unresolved` marker
+ * from a server-parsed store) rather than dropping the ref from the
+ * candidate list on a truthy check. `matchStringAnyNone`/`stringOpMatches`
+ * decide the absent-vs-empty semantics explicitly (#4930); filtering here
+ * first would silently re-collapse a classified-but-unnamed ref into "not
+ * classified at all", making `classification!=""` wrongly miss it.
+ */
 export function matchClassificationRule(
   rule: ClassificationRule,
   refs: readonly ClassificationInfo[],
@@ -304,10 +315,10 @@ export function matchClassificationRule(
   if (rule.op === 'isNotSet') return scoped.length === 0;
 
   // Value ops — match against identification (code) and name of each ref.
-  const candidates: string[] = [];
+  const candidates: (string | undefined)[] = [];
   for (const r of scoped) {
-    if (r.identification) candidates.push(r.identification);
-    if (r.name) candidates.push(r.name);
+    candidates.push(r.identification);
+    candidates.push(r.name);
   }
   // rule.op is now eq | ne | contains | notContains — a StringOp subset.
   return matchStringAnyNone(rule.op, candidates, rule.value, rule.valueKind);

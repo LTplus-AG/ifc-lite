@@ -48,7 +48,8 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
-import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel } from './mutation-mesh-stash.js';
+import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
+import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
@@ -213,7 +214,7 @@ export interface MutationSlice {
    * CREATE_ENTITY, keyed by `${modelId}:${expressId}`. The inverse
    * mutation re-appends them — see `mutation-mesh-stash.ts` (#4925).
    */
-  removedMeshes: Map<string, MeshData[]>;
+  removedMeshes: Map<string, RemovedMeshStash>;
   /** All change sets */
   changeSets: Map<string, ChangeSet>;
   /** Active change set ID */
@@ -2634,6 +2635,8 @@ export const createMutationSlice: StateCreator<
         appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
       };
       cross.appendGeometryBatch?.(modelId, clonedMeshes);
+      // #4970: inModelFrame leaves alignment baked in; correct the slot.
+      applyDuplicatePreAlignmentBaseline(set, modelId, sourceGlobalId, clonedMeshes.length, viewerDelta);
       revealAddedGeometryInModelView(get);
     }
 

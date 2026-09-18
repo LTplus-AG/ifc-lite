@@ -27,6 +27,7 @@ import {
   type RealignableModel,
 } from './federationRealign.js';
 import { appendGeometryBatchPatch } from '../../store/slices/dataSlice.appendGeometryBatch.js';
+import { correctPreAlignmentTail, growPreAlignment } from '../../store/slices/data-mesh-prealign.js';
 
 function coordinateInfo(over?: Partial<CoordinateInfo>): CoordinateInfo {
   return {
@@ -708,5 +709,97 @@ describe('appendGeometryBatch growing the preAlignment snapshot (#4970)', () => 
     const sibling = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
     const restored = x.geometryResult!.meshes.find((m) => m.expressId === 104)!;
     assertClose(restored.positions, sibling.positions, 'undo-restored mesh world position vs sibling');
+  });
+});
+
+/**
+ * #4970 follow-up (flagged in review of this same fix, by both Macroscope and
+ * Codex): `duplicateEntity` and the undo-restore stash do NOT hand
+ * `appendGeometryBatch` a pristine mesh — they read live/`inModelFrame`
+ * bytes, which reverse only the placement-ROTATION bake, never federation
+ * ALIGNMENT. On an already-aligned model, `growPreAlignment`'s "current
+ * bytes are pristine" guess is therefore WRONG for them; both callers now
+ * correct it with `correctPreAlignmentTail` right after appending
+ * (`mutationSlice.ts`'s `duplicateEntity`, `mutation-mesh-stash.ts`'s
+ * `restoreStashedEntityMesh`). This exercises that correction directly
+ * against the real alignment machinery, both with and without it, so the
+ * "would have drifted" half is not just asserted, it is demonstrated.
+ */
+describe('correctPreAlignmentTail undoes the aligned-frame naive guess (#4970)', () => {
+  const theta = Math.PI / 5;
+
+  /** A second re-align target, distinct from A, so the SECOND bake (T3) is a
+   *  genuinely different transform from the first (T2) — see the module
+   *  header on why one bake alone cannot tell a correct baseline from a
+   *  missing one. */
+  function anchorB(): TestModel {
+    return model(
+      [boxMesh(91, [2, 0, 1])],
+      coordinateInfo({ originShift: { x: 40, y: 0, z: -10 } }),
+      georef({ eastings: 1200, northings: -400, xAxisAbscissa: Math.cos(theta), xAxisOrdinate: Math.sin(theta) }),
+    );
+  }
+
+  /**
+   * Round 1 captures X's snapshot and bakes T1 into A. A same-local-geometry
+   * "clone" of X's mesh 12 is then appended using its CURRENT (T1-aligned)
+   * bytes — exactly what `inModelFrame` hands `duplicateEntity`/the stash
+   * restore on an aligned model — and its naive slot is grown. `correct`
+   * decides whether the tail gets fixed up from mesh 12's own baseline
+   * before the two more rounds (T2 into B, T3 back into A) that expose
+   * whether a slot was really right.
+   */
+  async function roundTripAlreadyAlignedClone(correct: boolean): Promise<TestModel> {
+    const { models, x } = federation();
+    models.set('B', anchorB());
+
+    await realign(models, 'A');
+    const sourceIndex = x.geometryResult!.meshes.findIndex((m) => m.expressId === 12);
+    assert.ok(sourceIndex >= 0, 'fixture: mesh 12 must still be present');
+
+    const source = x.geometryResult!.meshes[sourceIndex];
+    const clone: MeshData = {
+      ...source,
+      expressId: 999,
+      positions: new Float32Array(source.positions),
+      normals: new Float32Array(source.normals),
+    };
+    x.geometryResult!.meshes.push(clone);
+    let snapshot = growPreAlignment(x.preAlignment!, [clone]);
+    if (correct) {
+      snapshot = correctPreAlignmentTail(snapshot, 1, [{
+        positions: snapshot.positions[sourceIndex],
+        normals: snapshot.normals[sourceIndex],
+        origin: snapshot.origins[sourceIndex],
+        geometryAabb: snapshot.geometryAabbs[sourceIndex],
+      }]);
+    }
+    x.preAlignment = snapshot;
+
+    await realign(models, 'B');
+    await realign(models, 'A');
+    return x;
+  }
+
+  it('lands the corrected clone exactly where its source landed', async () => {
+    const x = await roundTripAlreadyAlignedClone(true);
+    const finalSource = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
+    const finalClone = x.geometryResult!.meshes.find((m) => m.expressId === 999)!;
+    assertBytesEqual(
+      finalClone.positions,
+      finalSource.positions,
+      'a corrected already-aligned-frame clone must match its source after two more realigns',
+    );
+  });
+
+  it('fixture check: WITHOUT the correction the clone drifts off its source', async () => {
+    const x = await roundTripAlreadyAlignedClone(false);
+    const finalSource = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
+    const finalClone = x.geometryResult!.meshes.find((m) => m.expressId === 999)!;
+    assertBytesDiffer(
+      finalClone.positions,
+      finalSource.positions,
+      'this must actually fail uncorrected, or the corrected case above is not proving anything',
+    );
   });
 });

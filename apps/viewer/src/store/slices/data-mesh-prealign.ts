@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { EntityWorldAabb, GeometryResult } from '@ifc-lite/geometry';
 import type { PreAlignmentSnapshot } from '../types.js';
 
 /**
@@ -16,15 +16,18 @@ import type { PreAlignmentSnapshot } from '../types.js';
  * whatever bake it last received — the double-transform this issue is
  * about).
  *
- * This is sound because of WHERE `appendGeometryBatch`'s meshes come from:
- * every caller (`addWall`/`addSlab`, a split's two halves, `duplicateEntity`,
- * and the undo-restore stash in `mutation-mesh-stash.ts`) produces or stashes
- * vertices in the model's own PRISTINE frame — the same frame `capturePreAlignment`
- * captures existing meshes in — never the anchor-aligned one. So the appended
- * mesh's CURRENT data already IS its pre-alignment baseline; growth just
- * copies it into the snapshot's arrays, the same copy discipline
- * `capturePreAlignment` uses (own arrays, not shared references), so an
- * in-place edit of the live mesh afterward cannot rewrite the baseline.
+ * The naive assumption here — the appended mesh's CURRENT data already IS
+ * its pre-alignment baseline — holds for `addWall`/`addSlab` and a split's
+ * two halves: they build fresh from IFC parameters, in the model's own
+ * pristine frame, never the anchor-aligned one (see rotation-bake.ts's
+ * "COROLLARY FOR AUTHORING"). It does NOT hold for `duplicateEntity` or the
+ * undo-restore stash: both read live/`inModelFrame` bytes, which reverse
+ * only the placement-ROTATION bake, not federation ALIGNMENT — on an
+ * already-aligned model those bytes are still in the aligned frame. Those
+ * two callers grow a slot here like everyone else (so the index invariant
+ * never breaks), then immediately correct it with `correctPreAlignmentTail`
+ * once they can compute the true baseline (`mutationSlice.ts`'s
+ * `duplicateEntity`, `mutation-mesh-stash.ts`'s `restoreStashedEntityMesh`).
  *
  * `instancedGeometryAabbs` is untouched: that channel is keyed by expressId,
  * not by mesh index, so it needs no growth step here — a newly appended
@@ -56,4 +59,46 @@ export function growPreAlignment(
       ...appended.map((mesh) => mesh.geometryAabb),
     ],
   };
+}
+
+/** The true pre-alignment value for one mesh, for a caller that can compute
+ *  it directly instead of relying on `growPreAlignment`'s "current bytes are
+ *  pristine" guess (see the module comment above). */
+export interface PreAlignmentMeshBaseline {
+  positions: Float32Array;
+  normals?: Float32Array;
+  origin?: [number, number, number];
+  geometryAabb?: EntityWorldAabb;
+}
+
+/**
+ * Overwrite the LAST `count` slots of `snapshot` with `known` values — the
+ * born-correct counterpart to `growPreAlignment`'s guess, for a caller that
+ * just grew the snapshot by `count` (via `growPreAlignment`, through
+ * `appendGeometryBatch`) and can now supply the real baseline for some or
+ * all of those slots. `known[i]` corresponds to the mesh at
+ * `snapshot.positions.length - count + i`; an `undefined` entry leaves that
+ * one slot exactly as `growPreAlignment` set it (nothing to correct it
+ * with).
+ */
+export function correctPreAlignmentTail(
+  snapshot: PreAlignmentSnapshot,
+  count: number,
+  known: ReadonlyArray<PreAlignmentMeshBaseline | undefined>,
+): PreAlignmentSnapshot {
+  const start = snapshot.positions.length - count;
+  if (count <= 0 || start < 0) return snapshot;
+  const positions = [...snapshot.positions];
+  const normals = [...snapshot.normals];
+  const origins = [...snapshot.origins];
+  const geometryAabbs = [...snapshot.geometryAabbs];
+  for (let i = 0; i < count; i += 1) {
+    const baseline = known[i];
+    if (!baseline) continue;
+    positions[start + i] = new Float32Array(baseline.positions);
+    normals[start + i] = baseline.normals ? new Float32Array(baseline.normals) : undefined;
+    origins[start + i] = baseline.origin ? [...baseline.origin] : undefined;
+    geometryAabbs[start + i] = baseline.geometryAabb;
+  }
+  return { ...snapshot, positions, normals, origins, geometryAabbs };
 }

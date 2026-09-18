@@ -321,12 +321,33 @@ test('sectioning follows a real IFC moved above its original extent (#4226)', as
 test('construction projection is invariant when the model and cut move together (#4332)', async ({ page }, info) => {
   test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
   const errors: string[] = [];
-  page.on('console', (message) => { if (message.text().includes('Profile extraction failed')) errors.push(message.text()); });
+  // `useIfcLoader.ts` delivers the parsed data store in two stages —
+  // `onPartialDataStore` first, then `onFullDataStore` — and only the full
+  // store carries a `spatialHierarchy.byStorey` complete enough for
+  // `canScopeFloor` (useDrawingGeneration.ts) to scope the projection bands
+  // to the current floor. `getActiveModel()?.loadState === 'complete'`
+  // below (added by #4672) was meant to cover this but still raced in CI
+  // (#4332#issuecomment-5654733659, six runs alternating pass/fail on
+  // 2026-09-13, same day and same branch that gate landed on). Capture the
+  // "Data model parsing complete" log `onFullDataStore` itself emits
+  // (useIfcLoader.ts:1384) as an unambiguous, load-path-agnostic signal and
+  // require it before trusting the first ("before") projection snapshot.
+  const dataModelLogs: string[] = [];
+  page.on('console', (message) => {
+    if (message.text().includes('Profile extraction failed')) errors.push(message.text());
+    if (/\[useIfc\] Data model parsing (complete|failed) for /.test(message.text())) dataModelLogs.push(message.text());
+  });
   await page.goto('/'); await load(page, IFC, 1);
   // Geometry readiness precedes metadata completion (#4672). Both snapshots
   // need the same completed hierarchy, or the first drawing uses full-extent
   // bands and the post-move drawing switches to storey-scoped projection.
   await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().getActiveModel()?.loadState === 'complete');
+  await expect.poll(() => dataModelLogs.some((log) => log.includes('Data model parsing complete for')), {
+    message: `data model parse did not report complete before the projection snapshot (#4941): ${dataModelLogs.join('\n') || '<no matching console output>'}`,
+  }).toBe(true);
+  if (dataModelLogs.some((log) => log.includes('Data model parsing failed for'))) {
+    throw new Error(`data model parsing failed before the projection snapshot: ${dataModelLogs.join('\n')}`);
+  }
   await page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     s.updateDrawing2DDisplayOptions({ showConstructionProjection: true });

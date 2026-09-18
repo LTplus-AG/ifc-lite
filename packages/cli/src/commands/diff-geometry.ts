@@ -21,7 +21,7 @@
 
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
-import type { EntityFingerprint } from '@ifc-lite/diff';
+import type { DiffScope, EntityFingerprint } from '@ifc-lite/diff';
 import type { IfcAPI as WasmIfcAPI } from '@ifc-lite/wasm';
 import type { DiffRef } from './diff-engine.js';
 
@@ -200,5 +200,39 @@ export function attachGeometryFingerprints(
     if (aabb !== undefined) fingerprint.aabb = aabb;
     const volume = geometry.volumes.get(fingerprint.ref);
     if (volume !== undefined) fingerprint.volume = volume;
+  }
+}
+
+/**
+ * The whole `--geometry` opt-in, as one call for `diff-content.ts`: lazily
+ * load the runtime, run the pass over both files, attach it to both sets of
+ * fingerprints, and report the resulting {@link DiffScope}. A missing runtime
+ * is reported through `warn` (a stderr line, not a thrown error) and the
+ * scope falls back to `'data'` — the rest of `--by-content` works fine
+ * without geometry, exactly as it always has.
+ *
+ * Frees the `IfcAPI` handle in `finally`, even if a pass throws (AGENTS.md
+ * "Geometry & WASM").
+ */
+export async function resolveGeometryScope(
+  enabled: boolean,
+  baseBytes: Uint8Array,
+  headBytes: Uint8Array,
+  baseFingerprints: readonly EntityFingerprint<DiffRef>[],
+  headFingerprints: readonly EntityFingerprint<DiffRef>[],
+  warn: (message: string) => void,
+): Promise<DiffScope> {
+  if (!enabled) return 'data';
+  const runtime = await loadWasmRuntime();
+  if (!runtime.ok) {
+    warn(runtime.message);
+    return 'data';
+  }
+  try {
+    attachGeometryFingerprints(baseFingerprints, runGeometryPass(runtime.runtime.api, baseBytes));
+    attachGeometryFingerprints(headFingerprints, runGeometryPass(runtime.runtime.api, headBytes));
+    return 'both';
+  } finally {
+    runtime.runtime.api.free();
   }
 }

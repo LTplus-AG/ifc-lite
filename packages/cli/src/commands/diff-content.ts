@@ -42,7 +42,6 @@ import {
   serializeIdentityMapSidecar,
   serializeLineageSidecar,
   type ContentMatch,
-  type DiffScope,
   type IdentityMapEntry,
   type IdentityMapSidecar,
   type LineageEntry,
@@ -52,11 +51,7 @@ import { parseAuthoredKeySpec } from '@ifc-lite/parser';
 import { loadIfcBytes } from '../loader.js';
 import { fatal, printJson } from '../output.js';
 import { buildFileFingerprints, modelIdentityOf, type DiffRef } from './diff-engine.js';
-import {
-  attachGeometryFingerprints,
-  loadWasmRuntime,
-  runGeometryPass,
-} from './diff-geometry.js';
+import { resolveGeometryScope } from './diff-geometry.js';
 import { mergeAliases, mergeLineage, readVerifiedLineage } from './diff-lineage-io.js';
 import { printReport } from './diff-content-report.js';
 
@@ -136,27 +131,16 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
     incomingLineage ? keyAliasesFromLineage(incomingLineage.entries) : undefined,
   );
 
-  // `--geometry` (issue #4956): a lazily-loaded wasm mesh pass, run only when
-  // asked. A missing runtime is a stderr warning and a fall-back to
-  // `data` scope, never a fatal error — the rest of `--by-content` works fine
-  // without it, exactly as it always has.
-  let scope: DiffScope = 'data';
-  if (options.geometry) {
-    const runtime = await loadWasmRuntime();
-    if (!runtime.ok) {
-      process.stderr.write(`Warning: ${runtime.message}\n`);
-    } else {
-      try {
-        attachGeometryFingerprints(baseFingerprints, runGeometryPass(runtime.runtime.api, baseBytes));
-        attachGeometryFingerprints(headFingerprints, runGeometryPass(runtime.runtime.api, headBytes));
-        scope = 'both';
-      } finally {
-        // Free the IfcAPI handle deterministically, even if a pass throws
-        // (AGENTS.md "Geometry & WASM").
-        runtime.runtime.api.free();
-      }
-    }
-  }
+  // `--geometry` (issue #4956): see `diff-geometry.ts` for the wasm pass and
+  // the graceful fall-back to `scope: 'data'` when the runtime is absent.
+  const scope = await resolveGeometryScope(
+    options.geometry ?? false,
+    baseBytes,
+    headBytes,
+    baseFingerprints,
+    headFingerprints,
+    (message) => process.stderr.write(`Warning: ${message}\n`),
+  );
 
   const diff = diffModels(baseFingerprints, headFingerprints, {
     scope,

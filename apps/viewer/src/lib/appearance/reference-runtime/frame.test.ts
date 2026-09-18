@@ -69,3 +69,18 @@ test('a CRS name containing ":rtc:" cannot collapse two different frames into on
   // And the exact record key survives a round trip when nothing changed at all.
   assert.equal(referenceFrameStatus(inA, state(5000000, 0, 'site:rtc:A')), 'ready');
 });
+
+test('a local-engineering reference survives an RTC-only rebase through the {base, rtc} wrapper (#4936 round 5 review)', () => {
+  // No georeferenced anchor and no pin: `placementFrameKey` wraps the bare
+  // constant as `{"base":"local-engineering:m:z-up","rtc":{...}}` once the
+  // fixture's live `wasmRtcOffset` exists. `engineeringFrame` has to unwrap
+  // that to the bare base (via `placementFrameBase`), not treat the wrapper as
+  // an opaque string, or every RTC convergence would orphan the reference.
+  const local = (rtc: number) => ({ ...state(rtc), modelPlacement: emptyPlacementState() });
+  const wrapped = { cornersIfcWorld: corners, frameKey: JSON.stringify({ base: 'local-engineering:m:z-up', rtc: { x: 5000000, y: 100, z: 10 } }) };
+  const bare = { cornersIfcWorld: corners, frameKey: 'local-engineering:m:z-up' };
+  assert.equal(referenceFrameStatus(wrapped, local(5000000)), 'ready', 'sanity: identical key');
+  assert.equal(referenceFrameStatus(wrapped, local(4999990)), 'ready', 'RTC-only change is not a frame change');
+  assert.equal(referenceFrameStatus(bare, local(4999990)), 'ready', 'registered before any convergence, still the same engineering frame');
+  assert.equal(referenceFrameStatus(wrapped, state(4999990)), 'frame-mismatch', 'a georeferenced live frame is a different frame');
+});

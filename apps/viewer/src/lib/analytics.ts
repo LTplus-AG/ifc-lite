@@ -6,6 +6,7 @@ import posthogClient from 'posthog-js';
 import { scrubEvent } from './analytics-scrub.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
 import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
+import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
 
 // `before_send` gate: drop the noise from an auto-recovered version skew - the
 // tab reloads onto fresh assets, so the captured exception describes a failure
@@ -13,7 +14,9 @@ import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
 // detected differently: the wasm one by the error's own signature
 // (shouldSuppressWasmSkewNoise), the JS/CSS chunk one by the reload we have
 // already committed to (shouldSuppressChunkSkewNoise) - a failed chunk's
-// collateral shares no vocabulary with its cause. Then run the privacy/tagging
+// collateral shares no vocabulary with its cause. A third gate drops what was
+// never ours at all: a throw whose every frame belongs to an injected
+// extension / user script (shouldSuppressForeignScriptNoise). Then run the privacy/tagging
 // scrub on everything that remains. Kept here rather than inside scrubEvent so
 // analytics-scrub.ts stays dependency-free (no @ifc-lite/geometry import) and
 // independently unit-testable.
@@ -25,6 +28,10 @@ export const beforeSend = <
 >(event: T): T | null => {
   if (shouldSuppressWasmSkewNoise(event)) return null;
   if (shouldSuppressChunkSkewNoise(event)) return null;
+  // A third sibling gate, on attribution rather than on a message or a reload:
+  // an injected extension / user script throwing on our `window` is not ours to
+  // fix (#4939). Lives in its own module for the same reason as the other two.
+  if (shouldSuppressForeignScriptNoise(event)) return null;
   return scrubEvent(event);
 };
 

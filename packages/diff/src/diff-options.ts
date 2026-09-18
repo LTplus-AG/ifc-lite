@@ -284,4 +284,37 @@ export interface DiffOptions {
    * furniture classes. Pass `[]` to bucket by exact class as before.
    */
   classFamilies?: readonly (readonly string[])[];
+  /**
+   * Opt-in LAST stage (issue #4955): look for **successors** — one deleted
+   * entity replaced in place by one added entity whose data AND geometry both
+   * changed (a wall with a new buildup, a chair from a different family) —
+   * among what {@link matchUnpairedByContent} and {@link detectSplitMerge} left
+   * unbound. Effective only together with `matchUnpairedByContent`, and only
+   * with geometry (the same abstentions as split/merge; `ModelDiff.successors`
+   * is absent otherwise).
+   *
+   * **Suggestions only.** A claim never retires a `DiffEntry`, never touches
+   * `counts`, and never becomes an identity-map entry unless a caller passes
+   * it to `identityMapFromSuccessors` as ACCEPTED. Two profiles, both
+   * requiring a pairing unique in both directions with a margin: `footprint`
+   * (box overlap at or above {@link successorOverlap}, nothing else on either
+   * side within half of it) and `position` (same class family, same
+   * `EntityFingerprint.container`, mutual nearest within
+   * {@link successorDistance} with the runner-up at least twice as far).
+   * Default `false`.
+   */
+  detectSuccessors?: boolean;
+  /**
+   * Bounding-box intersection-over-union at or above which a `footprint`
+   * successor claim may fire. Default `0.6`: a 200 → 250 mm thickening scores
+   * 0.8 whichever face moved; a 100 mm axis shift at 200 mm scores 0.33 and is
+   * left to `position`. Must be in `(0, 1]`; anything else falls back.
+   */
+  successorOverlap?: number;
+  /**
+   * Absolute floor (caller's units) of the centre displacement the `position`
+   * profile accepts; the cap actually applied to a pair is
+   * `max(successorDistance, 0.5 × base box diagonal)`. Default `0.5`.
+   */
+  successorDistance?: number;
 }

@@ -143,6 +143,18 @@ export interface EntityFingerprint<TRef = unknown> {
    * {@link DiffEntry.changedComponents} reports which components differ.
    */
   components?: Record<string, string>;
+  /**
+   * Optional spatial container of the entity as a stable NAME path — the
+   * names of the spatial structure elements from the project down to the
+   * containing storey or space, joined by `/` (`Project/Building/Level 2/
+   * Room 204`). Never GlobalIds: a from-scratch re-export re-GUIDs the
+   * storeys too. Used only by the successor stage's `position` profile
+   * ({@link DiffOptions.detectSuccessors}), which pairs two entities only when
+   * both carry a non-empty container and they are equal; absent on either side
+   * is not evidence and the pair is skipped. Both revisions must be resolved by
+   * the same adapter so the paths agree.
+   */
+  container?: string;
   /** Adapter handle passed through to the diff entry. */
   ref: TRef;
 }
@@ -189,9 +201,11 @@ export type {
   SplitMergeConfidence,
   SplitMergeKind,
 } from './split-merge-types.js';
+export type { SuccessorClaim, SuccessorConfidence } from './successor-types.js';
 
 import type { ContentMatch } from './content-match-types.js';
 import type { SplitMergeClaim } from './split-merge-types.js';
+import type { SuccessorClaim } from './successor-types.js';
 
 export interface ModelDiff<TRef = unknown> {
   /** The scope the diff was computed with. */
@@ -237,4 +251,16 @@ export interface ModelDiff<TRef = unknown> {
    * would have been with the option off. See {@link SplitMergeClaim}.
    */
   splitMerges?: SplitMergeClaim<TRef>[];
+  /**
+   * Successor claims — one deleted entity replaced in place by one added
+   * entity — found among what content matching and split/merge left unbound
+   * (issue #4955). Only present (possibly empty) when
+   * {@link DiffOptions.detectSuccessors} was `true` AND the run had geometry
+   * to reason with; `undefined` otherwise.
+   *
+   * Purely additive, like {@link splitMerges}: `entries`, `byKey` and `counts`
+   * are unchanged. Never an identity-map entry unattended; see
+   * {@link SuccessorClaim}.
+   */
+  successors?: SuccessorClaim<TRef>[];
 }

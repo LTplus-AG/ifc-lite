@@ -20,8 +20,11 @@ export {
   stableHash,
 } from './fingerprint.js';
 export {
+  ACCEPTED_AMBIGUOUS_REASON,
   CONTENT_MATCH_REASON_PREFIX,
+  SUCCESSOR_REASON_PREFIX,
   identityMapFromContentMatches,
+  identityMapFromSuccessors,
 } from './identity-map.js';
 export type { IdentityMapEntry } from './identity-map.js';
 export {
@@ -53,6 +56,8 @@ export type {
   SplitMergeClaim,
   SplitMergeConfidence,
   SplitMergeKind,
+  SuccessorClaim,
+  SuccessorConfidence,
   ContentMatchTier,
   EntityAabb,
   DiffChangeKind,

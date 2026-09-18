@@ -20,6 +20,15 @@
  * globalId, exactly as a real federation does.
  */
 
+// FIRST import, before `@/store`: `useViewerStore` is constructed at module
+// load, and `createChartSlice` / `createDocumentSlice` read `localStorage`
+// while doing so. Without browser globals that read throws
+// `ReferenceError: localStorage is not defined` into the runner output, which
+// the revert oracle's `LOAD_ERROR_PATTERNS` (correctly, in general) reads as
+// "the module never loaded, so no assertion ran" — masking this suite's real
+// assertion failures under revert as a build failure. Same reason
+// `environmentSlice.test.ts` and eleven other store suites import it here.
+import '@/test/setup-dom.js';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';

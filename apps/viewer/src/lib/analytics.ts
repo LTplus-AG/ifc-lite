@@ -6,6 +6,7 @@ import posthogClient from 'posthog-js';
 import { scrubEvent } from './analytics-scrub.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
 import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
+import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
 
 // `before_send` gate: drop the noise from an auto-recovered version skew - the
 // tab reloads onto fresh assets, so the captured exception describes a failure
@@ -13,18 +14,37 @@ import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
 // detected differently: the wasm one by the error's own signature
 // (shouldSuppressWasmSkewNoise), the JS/CSS chunk one by the reload we have
 // already committed to (shouldSuppressChunkSkewNoise) - a failed chunk's
-// collateral shares no vocabulary with its cause. Then run the privacy/tagging
+// collateral shares no vocabulary with its cause. A third gate drops what was
+// never ours at all: a throw whose every frame belongs to an injected
+// extension / user script (shouldSuppressForeignScriptNoise). Then run the privacy/tagging
 // scrub on everything that remains. Kept here rather than inside scrubEvent so
 // analytics-scrub.ts stays dependency-free (no @ifc-lite/geometry import) and
 // independently unit-testable.
-// Exported for ./analytics.test.ts. Both gates are unit-tested in isolation, but
-// only a test of THIS function can catch the gate being disconnected from the
-// pipeline, which is the failure that would silently restore the noise.
+// Exported for ./analytics.test.ts and ./foreign-script-noise.test.ts. Only a
+// test of THIS function can catch a gate being disconnected from the pipeline,
+// which is the failure that would silently restore the noise.
+//
+// The three gates are NOT tested the same way, and the difference is
+// deliberate. The two skew gates have isolated unit tests of their own
+// (./wasm-skew-noise.test.ts, ./chunk-version-skew.test.ts) plus wiring tests
+// here. The foreign-script gate is observed ONLY through this function, and
+// adding an isolated test that imports ./foreign-script-noise.js directly would
+// break something: `scripts/check-test-revert-oracle.mjs` reverts the
+// production change and requires the changed tests to fail BY ASSERTION, and
+// the #4939 fix ADDS that module - so a test importing it dies with
+// ERR_MODULE_NOT_FOUND under the revert, no assertion runs, and the oracle
+// reports REVERT-BROKE-BUILD. This file is modified rather than added, so under
+// the revert it still loads with the gate absent and the assertions fail
+// properly. Please do not "fix" that test by importing the module.
 export const beforeSend = <
   T extends { event?: string; properties?: Record<string, unknown> } | null,
 >(event: T): T | null => {
   if (shouldSuppressWasmSkewNoise(event)) return null;
   if (shouldSuppressChunkSkewNoise(event)) return null;
+  // A third sibling gate, on attribution rather than on a message or a reload:
+  // an injected extension / user script throwing on our `window` is not ours to
+  // fix (#4939). Lives in its own module for the same reason as the other two.
+  if (shouldSuppressForeignScriptNoise(event)) return null;
   return scrubEvent(event);
 };
 

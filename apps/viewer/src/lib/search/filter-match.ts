@@ -288,9 +288,13 @@ export function materialMatchCandidates(info: MaterialInfo | null): string[] {
   return [...new Set([...materialNamesOf(info), ...categories])];
 }
 
-/** Match a classification rule against an element's classification refs.
- *  `system` (when set) scopes to one classification system; value ops
- *  match a ref's code (identification) OR name. */
+/**
+ * Match a classification rule against an element's classification refs.
+ * `system` (when set) scopes to one system; value ops match a ref's code
+ * (identification) OR name. Pushes both through even when `undefined`
+ * (absent) rather than filtering on truthy — `matchStringAnyNone` decides
+ * absent-vs-empty explicitly (#4930).
+ */
 export function matchClassificationRule(
   rule: ClassificationRule,
   refs: readonly ClassificationInfo[],
@@ -304,10 +308,15 @@ export function matchClassificationRule(
   if (rule.op === 'isNotSet') return scoped.length === 0;
 
   // Value ops — match against identification (code) and name of each ref.
-  const candidates: string[] = [];
+  // `unresolved` (server-parsed, no source bytes — #3948) means UNKNOWN, not
+  // ABSENT: excluded from candidates entirely, same as before #4930, so it
+  // can't flip a negative op false->true. Only a RESOLVED ref's genuinely
+  // `$` identification/name contributes a real `undefined` candidate.
+  const candidates: (string | undefined)[] = [];
   for (const r of scoped) {
-    if (r.identification) candidates.push(r.identification);
-    if (r.name) candidates.push(r.name);
+    if (r.unresolved) continue;
+    candidates.push(r.identification);
+    candidates.push(r.name);
   }
   // rule.op is now eq | ne | contains | notContains — a StringOp subset.
   return matchStringAnyNone(rule.op, candidates, rule.value, rule.valueKind);
@@ -334,12 +343,11 @@ export function elevationOf(store: IfcDataStore, expressId: number): number | nu
  * have a Name the rule's op matches? Reuses `matchStringAnyNone`, the same
  * multi-valued convention `material`/`classification` rules use: an element
  * with NO ancestors — or none whose Name matches — satisfies neither a
- * positive nor a negative op, so `parent=` naming nothing in the model reads
- * as an empty result, never "no filter" (the #4659 inversion this codebase
- * keeps guarding against).
+ * positive nor a negative op (#4659). `getNameOrUndefined`, not `getName`,
+ * so an ancestor with no Name at all is a real absent candidate (#4930).
  */
 export function matchParentRule(rule: ParentRule, store: IfcDataStore, expressId: number): boolean {
   const ancestorNames = collectSpatialAncestors(store.relationships, expressId)
-    .map((id) => store.entities.getName(id));
+    .map((id) => store.entities.getNameOrUndefined(id));
   return matchStringAnyNone(rule.op, ancestorNames, rule.value, rule.valueKind);
 }

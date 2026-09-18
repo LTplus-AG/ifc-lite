@@ -233,15 +233,17 @@ export async function parseColumnarInput(
 
         const extractor = new EntityExtractor(uint8Buffer);
 
-        // Spatial entities: small count, use extractEntity for full accuracy
-        const parsedEntityData = new Map<number, { globalId: string; name: string }>();
+        // Spatial entities: small count, use extractEntity for full accuracy.
+        // `name` stays `undefined` for a STEP `$` rather than defaulting to
+        // '', distinct from an explicit empty string (#4930).
+        const parsedEntityData = new Map<number, { globalId: string; name: string | undefined }>();
         for (const ref of spatialRefs) {
             const entity = extractor.extractEntity(ref);
             if (entity) {
                 const attrs = entity.attributes || [];
                 parsedEntityData.set(ref.expressId, {
                     globalId: typeof attrs[0] === 'string' ? attrs[0] : '',
-                    name: typeof attrs[2] === 'string' ? attrs[2] : '',
+                    name: typeof attrs[2] === 'string' ? attrs[2] : undefined,
                 });
             }
         }
@@ -338,7 +340,7 @@ export async function parseColumnarInput(
                     ref.expressId,
                     ref.type,
                     entityData?.globalId || '',
-                    entityData?.name || '',
+                    entityData?.name,
                     '', // description
                     '', // objectType
                     hasGeometry,
@@ -409,7 +411,7 @@ export async function parseColumnarInput(
                 ref.expressId,
                 ref.type,
                 entityData?.globalId || '',
-                entityData?.name || '',
+                entityData?.name,
                 '', // description
                 '', // objectType
                 hasOwnRepresentationSlot(getTypeUpper(ref.type))
@@ -423,7 +425,7 @@ export async function parseColumnarInput(
                 ref.expressId,
                 ref.type,
                 entityData?.globalId || '',
-                entityData?.name || '',
+                entityData?.name,
                 '', // description
                 '', // objectType
                 hasOwnRepresentationSlot(getTypeUpper(ref.type))
@@ -439,7 +441,7 @@ export async function parseColumnarInput(
                 ref.expressId,
                 ref.type,
                 entityData?.globalId || '',
-                entityData?.name || '',
+                entityData?.name,
                 '', // description
                 '', // objectType
                 hasOwnRepresentationSlot(getTypeUpper(ref.type))
@@ -457,7 +459,7 @@ export async function parseColumnarInput(
                 ref.expressId,
                 ref.type,
                 entityData?.globalId || '',
-                entityData?.name || '',
+                entityData?.name,
                 extra?.description || '',
                 extra?.objectType || '',
                 false,

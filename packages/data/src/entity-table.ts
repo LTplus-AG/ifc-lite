@@ -31,33 +31,28 @@ export interface EntityTable {
   containedInStorey: Int32Array;
   definedByType: Int32Array;
   geometryIndex: Int32Array;
-  /**
-   * Interned-string indices for raw IFC type names (used by `getTypeName`
-   * fallback). Optional because older constructors (server-data hydration,
-   * legacy cache reads) didn't track it; absent means the enum-only name
-   * is the only display string available.
-   */
+  /** Interned raw IFC type names, for the `getTypeName` fallback. Optional:
+   *  absent (older cache reads, server hydration) means enum-only display. */
   rawTypeName?: Uint32Array;
 
   typeRanges: Map<IfcTypeEnum, { start: number; end: number }>;
 
   getGlobalId(expressId: number): string;
   getName(expressId: number): string;
+  /** Like {@link getName}, but `undefined` for a genuinely ABSENT `Name`
+   *  (STEP `$`) instead of folding it into `''`. `getName` keeps doing that
+   *  fold — display callers want it — so selector matching (#4930) uses
+   *  this one instead. */
+  getNameOrUndefined(expressId: number): string | undefined;
   getDescription(expressId: number): string;
   getObjectType(expressId: number): string;
   getTypeName(expressId: number): string;
-  /** The class the file actually declares — what an EXPORT needs, where
-   *  {@link getTypeName} answers what GROUPING needs. `exact-type-name.ts`
-   *  documents the difference and holds the one fallback for table shapes
-   *  that cannot answer (hence optional, as with {@link rawTypeName}); read
-   *  it through `exactTypeName()`, never directly. */
+  /** The class the file actually declares, vs {@link getTypeName}'s GROUPING
+   *  answer. Optional; read via `exactTypeName()` in `exact-type-name.ts`. */
   getExactTypeName?(expressId: number): string;
-  /** Element Tag (IfcElement/IfcTypeProduct layouts), '' when absent. Optional:
-   *  populated by server-parsed stores (issue #1765); the WASM path resolves
-   *  Tag on demand from source instead. */
+  /** Element Tag, '' when absent. Optional: server-parsed stores only (#1765). */
   getTag?(expressId: number): string;
-  /** PredefinedType enum token (dots stripped), '' when absent. Optional —
-   *  same server-path provenance as {@link getTag}. */
+  /** PredefinedType token, '' when absent. Optional, same provenance as {@link getTag}. */
   getPredefinedType?(expressId: number): string;
   hasGeometry(expressId: number): boolean;
   getByType(type: IfcTypeEnum): number[];
@@ -65,12 +60,8 @@ export interface EntityTable {
   /** Get IfcTypeEnum for an expressId using internal index. Returns IfcTypeEnum.Unknown if not found. */
   getTypeEnum(expressId: number): IfcTypeEnum;
 
-  /**
-   * Override the displayed class for an entity (additive — the original
-   * columnar type is left intact). `getTypeName`/`getTypeEnum` return the
-   * override when set, so a UI retype reflects immediately. Pass `null` to
-   * clear. Note: this does NOT re-bucket `getByType`/`typeIndices`.
-   */
+  /** Override the displayed class (additive; original columnar type intact).
+   *  `null` clears it. Does NOT re-bucket `getByType`/`typeIndices`. */
   setTypeOverride(expressId: number, typeName: string | null): void;
 
   /** Get expressId by IFC GlobalId string (22-char GUID). Returns -1 if not found. */
@@ -95,14 +86,8 @@ export class EntityTableBuilder {
   rawTypeName: Uint32Array;
 
   private typeStarts: Map<IfcTypeEnum, number> = new Map();
-  /**
-   * Last row index seen per type. `typeRanges` is a SPAN — [firstRow,
-   * lastRow+1] — not a count: IFC streams interleave types freely, and
-   * `start + rowCount` leaves the type's own later rows outside its range
-   * (rows 0/2/4 of one type gave [0, 3), which excludes row 4). It matches a
-   * span only when a type is contiguous, which is why the divergence from
-   * `entityTableFromColumns`'s derivation stayed invisible.
-   */
+  /** Last row index seen per type. `typeRanges` is a SPAN [firstRow,
+   *  lastRow+1], not a count — IFC streams interleave types freely. */
   private typeEnds: Map<IfcTypeEnum, number> = new Map();
 
   constructor(capacity: number, strings: StringTable) {
@@ -125,7 +110,7 @@ export class EntityTableBuilder {
     expressId: number,
     type: string,
     globalId: string,
-    name: string,
+    name: string | undefined,
     description: string,
     objectType: string,
     hasGeometry: boolean = false,
@@ -314,6 +299,14 @@ export function entityTableFromColumns(
     getName: (id) => {
       const idx = indexOfId(id);
       return idx >= 0 ? strings.get(name[idx]) : '';
+    },
+    // `intern(undefined)` -> `NULL_INDEX` (-1), stored here as 0xFFFFFFFF —
+    // distinct from index 0 (`''`). `getName` folds both; this doesn't (#4930).
+    getNameOrUndefined: (id) => {
+      const idx = indexOfId(id);
+      if (idx < 0) return undefined;
+      const raw = name[idx];
+      return raw === 0xffffffff ? undefined : strings.get(raw);
     },
     getDescription: (id) => {
       const idx = indexOfId(id);

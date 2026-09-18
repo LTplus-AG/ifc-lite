@@ -16,9 +16,12 @@
 import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
 import type { NumericOp, SetOp, StringOp, TextKind, ValueOp } from './filter-rules.js';
 
-/** Lower-case a candidate that may be undefined at runtime (e.g. an untyped
- *  entity's `getTypeName`) — calling `.toLowerCase()` on that crashed filtering
- *  by type/name (#1195). Coercing nullish to '' is a no-op for real strings. */
+/**
+ * Lower-case a candidate that may be undefined at runtime — crash-safety
+ * only (#1195). Does NOT decide what "no value" means to an operator:
+ * `undefined` (absent) vs `''` (explicitly empty) is a real distinction a
+ * caller must resolve before calling this — see `stringOpMatches` (#4930).
+ */
 function lower(s: string | null | undefined): string {
   return (s ?? '').toLowerCase();
 }
@@ -82,12 +85,30 @@ export function globalIdOpMatches(op: SetOp, candidate: string, values: readonly
   return op === 'in' ? hit : !hit;
 }
 
+/**
+ * `candidate: string | undefined` — `undefined` means ABSENT (#4930), a real
+ * input, decided explicitly here: a positive op never matches it, its
+ * negation always does.
+ */
 export function stringOpMatches(
   op: StringOp,
-  candidate: string,
+  candidate: string | undefined,
   value: string,
   valueKind?: TextKind,
 ): boolean {
+  if (candidate === undefined) {
+    switch (op) {
+      case 'eq':
+      case 'contains':
+      case 'startsWith':
+      case 'matches':
+        return false;
+      case 'ne':
+      case 'notContains':
+      case 'notMatches':
+        return true;
+    }
+  }
   const a = lower(candidate);
   const b = lower(value);
   switch (op) {
@@ -102,17 +123,15 @@ export function stringOpMatches(
 }
 
 /**
- * Match a StringOp against a *set* of candidate strings — used for
- * multi-valued dimensions (an element's material names, a classification's
- * code+name pair). Positive ops (eq / contains / startsWith) match if ANY
- * candidate satisfies them; negative ops (ne / notContains) match only if
- * NO candidate violates them. An empty candidate set never matches: an
- * element with no materials/classifications shouldn't satisfy a filter on
- * that dimension (including the negative ops).
+ * Match a StringOp against a *set* of candidates (materials, ancestors,
+ * classification refs). Positive ops match if ANY satisfies them; negative
+ * ops match only if NONE violates them; a `string | undefined` candidate is
+ * handled per-entry by `stringOpMatches` (#4930). An empty LIST stays
+ * distinct: "no candidates at all" never matches, negative ops included.
  */
 export function matchStringAnyNone(
   op: StringOp,
-  candidates: readonly string[],
+  candidates: readonly (string | undefined)[],
   value: string,
   valueKind?: TextKind,
 ): boolean {

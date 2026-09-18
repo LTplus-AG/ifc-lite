@@ -13,6 +13,17 @@ import type { EntityRef } from './types.js';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
 import { opensComment, skipComment, skipTrivia } from './step-lexing.js';
+import { EntityExtractor } from './entity-extractor.js';
+
+/** Does `ref`'s byte range contain a `/*` comment opener? Cheap linear scan,
+ *  only run on a record `findQuotedAttrRange` already failed to read. */
+function hasCommentOpener(buffer: Uint8Array, ref: EntityRef): boolean {
+    const end = ref.byteOffset + ref.byteLength - 1;
+    for (let p = ref.byteOffset; p < end; p++) {
+        if (buffer[p] === 0x2f && buffer[p + 1] === 0x2a) return true;
+    }
+    return false;
+}
 
 /**
  * Find the byte range of a quoted string at a specific attribute position in STEP entity bytes.
@@ -244,14 +255,21 @@ export async function batchExtractGlobalIdAndName(
     buffer: Uint8Array,
     refs: EntityRef[],
     yieldIfNeeded?: () => Promise<void>,
-): Promise<Map<number, { globalId: string; name: string }>> {
-    const result = new Map<number, { globalId: string; name: string }>();
+): Promise<Map<number, { globalId: string; name: string | undefined }>> {
+    const result = new Map<number, { globalId: string; name: string | undefined }>();
     if (refs.length === 0) return result;
     const CHUNK_SIZE = 2048;
 
     // Phase 1: Scan byte ranges for GlobalId and Name positions (no string allocation)
     const gidRanges: Array<[number, number]> = []; // [start, end) for each entity
     const nameRanges: Array<[number, number]> = [];
+    // `null` ($) vs `[start, start]` ('') both concatenate to zero bytes
+    // below, so capture the distinction here before it's lost (#4930).
+    const nameFound: boolean[] = [];
+    // `findQuotedAttrRange` has no `/* … */` trivia skip (pre-existing, both
+    // attrs), so a comment before GlobalId/Name is a false miss here — flag
+    // it for the slow-path re-parse below rather than trusting `null`.
+    const commentSuspect: boolean[] = [];
     const validIndices: number[] = []; // indices into refs for entities with valid ranges
 
     for (let i = 0; i < refs.length; i++) {
@@ -264,6 +282,8 @@ export async function batchExtractGlobalIdAndName(
 
         gidRanges.push(gidRange ?? [0, 0]);
         nameRanges.push(nameRange ?? [0, 0]);
+        nameFound.push(nameRange !== null);
+        commentSuspect.push((gidRange === null || nameRange === null) && hasCommentOpener(buffer, ref));
         validIndices.push(i);
     }
 
@@ -326,7 +346,22 @@ export async function batchExtractGlobalIdAndName(
         // name like `John''s Wall` would render with the literal doubled quote.
         result.set(ref.expressId, {
             globalId: gids[i] || '',
-            name: rawName ? decodeIfcString(rawName.replace(/''/g, "'")) : '',
+            name: nameFound[i]
+                ? (rawName ? decodeIfcString(rawName.replace(/''/g, "'")) : '')
+                : undefined,
+        });
+    }
+
+    // Phase 5: re-parse the (rare) comment-blind misses with the real
+    // tokenizer instead of trusting the fast path's false "absent".
+    let fallback: EntityExtractor | undefined;
+    for (let i = 0; i < validIndices.length; i++) {
+        if (!commentSuspect[i]) continue;
+        const ref = refs[validIndices[i]];
+        const attrs = (fallback ??= new EntityExtractor(buffer)).extractEntity(ref)?.attributes ?? [];
+        result.set(ref.expressId, {
+            globalId: typeof attrs[0] === 'string' ? attrs[0] : '',
+            name: typeof attrs[2] === 'string' ? attrs[2] : undefined,
         });
     }
 

@@ -57,6 +57,47 @@ describe('EntityTable.build()', () => {
   });
 });
 
+describe('getName vs getNameOrUndefined — absent Name vs explicit "" (#4930)', () => {
+  it('an absent Name ($ at parse time) and an explicit "" round-trip to different string-table indices', () => {
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(2, strings);
+    builder.add(1, 'IFCWALL', '0AbsentGid0000000000AA', undefined, '', '', false, false);
+    builder.add(2, 'IFCWALL', '0EmptyGid00000000000AA', '', '', '', false, false);
+    const table = builder.build();
+
+    // `getName`'s contract is unchanged: both fold to '' for display.
+    expect(table.getName(1)).toBe('');
+    expect(table.getName(2)).toBe('');
+
+    // `getNameOrUndefined` is the one accessor that keeps them apart.
+    expect(table.getNameOrUndefined?.(1)).toBeUndefined();
+    expect(table.getNameOrUndefined?.(2)).toBe('');
+
+    // The underlying interned index actually differs: NULL_INDEX (-1) reads
+    // back from the Uint32Array column as its unsigned bit pattern.
+    expect(table.name[0]).toBe(0xffffffff);
+    expect(table.name[1]).toBe(0); // index 0 is the canonical interned ''.
+  });
+
+  it('an unknown expressId is undefined via getNameOrUndefined, same as getName is ""', () => {
+    const { table } = buildSampleTable();
+    expect(table.getName(999999)).toBe('');
+    expect(table.getNameOrUndefined?.(999999)).toBeUndefined();
+  });
+
+  it('the distinction survives the entityTableToColumns / entityTableFromColumns cache round-trip', () => {
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(2, strings);
+    builder.add(1, 'IFCWALL', '', undefined, '', '', false, false);
+    builder.add(2, 'IFCWALL', '', '', '', '', false, false);
+    const table = builder.build();
+    const rebuilt = entityTableFromColumns(entityTableToColumns(table), strings);
+
+    expect(rebuilt.getNameOrUndefined?.(1)).toBeUndefined();
+    expect(rebuilt.getNameOrUndefined?.(2)).toBe('');
+  });
+});
+
 describe('entityTableToColumns / entityTableFromColumns round-trip', () => {
   it('preserves every public lookup', () => {
     const { strings, table } = buildSampleTable();

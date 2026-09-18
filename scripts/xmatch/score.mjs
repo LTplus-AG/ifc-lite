@@ -36,12 +36,36 @@ const EXPECTED_KIND = {
   renamed: 'renamed',
   moved: 'moved',
   reshaped: 'reshaped',
+  // Same world geometry, different data: the geometry-only stage (#4955).
+  // `renamed` here would mean the data hash called two different payloads
+  // equal, which is the one thing that stage must never do.
+  respecified: 'respecified',
   // A re-sampled arc is a genuine shape change to a triangle-multiset hash;
   // both `reshaped` (box shrank by the sagitta) and `moved` (box centre
   // shifted, size within tolerance) are honest answers. `renamed` is not — it
   // would mean the geometry hash called two different meshes identical.
   retriangulated: ['reshaped', 'moved'],
 };
+
+/**
+ * Mutations whose counterpart is NOT a content match but a `SuccessorClaim`
+ * (issue #4955): the stratum each is scored under and the confidences the
+ * harness accepts as agreeing. A thickened wall's old box nests inside its
+ * new one, so only `footprint` agrees. A swapped family shares a container
+ * and a position; its box may or may not still overlap heavily (a door
+ * swapped for one the same size does, a chair for a sofa does not), and the
+ * engine tries the stronger profile first — so `footprint` is an agreeing
+ * answer there too, and the stratum measures whether the pair was found
+ * rather than which profile happened to find it. Recall is credited for a
+ * claim with the right head at ANY confidence.
+ */
+const EXPECTED_SUCCESSOR = {
+  thickened: { stratum: 'footprint', agrees: ['footprint'] },
+  swapped: { stratum: 'position', agrees: ['position', 'footprint'] },
+};
+
+/** Mutations whose counterpart is a `split` claim: whole = base, pieces = heads. */
+const SPLIT_KINDS = new Set(['splitLength']);
 
 /** How far the reported centre displacement may differ from the declared
  *  translation before the engine's `distance` is judged wrong, in metres. */
@@ -57,7 +81,11 @@ function ratio(hits, total) {
  * @param key       the answer key from `mutate.mjs`
  * @param matches   `ContentMatch[]` as reported by the matcher under test
  */
-export function scorePair(key, matches, { typeOf = new Map() } = {}) {
+export function scorePair(
+  key,
+  matches,
+  { typeOf = new Map(), splitMerges = [], successors = [], hasVolume = new Set() } = {},
+) {
   const expected = new Map();
   const kindOf = new Map();
   const classOf = new Map();
@@ -68,7 +96,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
     classOf.set(element.base, element.class);
     if (element.detail) detailOf.set(element.base, element.detail);
   }
-  const insertedHeads = new Set(key.insertedHeadIds);
+  // Both kinds of head-only element: the 5 m-away clone and the small one
+  // planted inside a deleted element's box. A content match onto either is a
+  // pair with something that has no counterpart.
+  const insertedNearby = new Set(key.insertedNearbyHeadIds ?? []);
+  const insertedHeads = new Set([...key.insertedHeadIds, ...insertedNearby]);
 
   const tally = () => ({ claimed: 0, correct: 0, wrong: 0 });
   const byTier = {};
@@ -83,6 +115,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
   const distanceChecked = { checked: 0, agreed: 0 };
   const calibration = { matchedByGeometryHash: [], reportedRenamed: [], recovered: 0, population: 0 };
   const duplicateContainment = { population: 0, contained: 0 };
+  const respecifiedControl = { population: 0, reportedRenamed: [], matchedByGeometryOnly: 0 };
+  // Content-match claims on bases whose counterpart is a successor or split
+  // claim. Not wrong when the head is right — it IS the counterpart — but
+  // not what the key predicted either, so it is counted where it can be seen.
+  let contentMatchedSuccessorKinds = 0;
   let claimedPairs = 0;
   let correctPairs = 0;
 
@@ -147,6 +184,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
       correctPairs++;
       recalled.add(baseRef);
       for (const b of [tierBucket, kindBucket, classBucket]) b.correct++;
+      if (EXPECTED_SUCCESSOR[kindOf.get(baseRef)] !== undefined) contentMatchedSuccessorKinds++;
+      if (kindOf.get(baseRef) === 'respecified') {
+        if (match.kind === 'renamed') respecifiedControl.reportedRenamed.push(baseRef);
+        if (tier === 'geometry-only') respecifiedControl.matchedByGeometryOnly++;
+      }
 
       const wanted = expectedKind === undefined ? [] : [].concat(expectedKind);
       if (wanted.includes(match.kind)) kindAgreed.add(baseRef);
@@ -174,7 +216,19 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
     populations[element.kind] = (populations[element.kind] ?? 0) + 1;
     if (element.kind === 'duplicated') duplicateContainment.population++;
     if (element.kind === 'retriangulated') calibration.population++;
+    if (element.kind === 'respecified') respecifiedControl.population++;
   }
+
+  // Head ref → what the key says it is, for the wrong-claim listings.
+  const headOrigin = new Map();
+  for (const element of key.elements) {
+    for (const ref of element.head) headOrigin.set(ref, `${element.kind}:${element.base}`);
+  }
+  for (const ref of key.insertedHeadIds) headOrigin.set(ref, 'inserted');
+  for (const ref of insertedNearby) headOrigin.set(ref, 'insertedNearby');
+
+  const successorScore = scoreSuccessors(key, successors, { expected, kindOf, insertedNearby });
+  const splitScore = scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin });
 
   const recallable = key.elements.filter((element) => EXPECTED_KIND[element.kind] !== undefined);
   const recallByKind = {};
@@ -281,6 +335,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
       ...duplicateContainment,
       rate: ratio(duplicateContainment.contained, duplicateContainment.population),
     },
+    respecifiedControl,
+    contentMatchedSuccessorKinds,
+    insertedNearby: insertedNearby.size,
+    ...successorScore,
+    ...splitScore,
     moveDistance: {
       ...distanceChecked,
       agreement: ratio(distanceChecked.agreed, distanceChecked.checked),
@@ -288,6 +347,185 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
     missed,
     kindDisagreements: kindDisagreed.slice(0, 20),
     anomalies: problems.slice(0, 20),
+  };
+}
+
+/**
+ * Score the successor stage's claims against the key (issue #4955).
+ *
+ * The stratum keys are the EXPECTED confidence (`bySuccessor.footprint` is the
+ * thickened population, `bySuccessor.position` the swapped one) so that recall
+ * has a fixed denominator per profile, exactly as `byKind` is keyed by the
+ * mutation rather than by the verdict. `bySuccessorConfidence` is the
+ * `byTier` analogue: precision per REPORTED profile, so a profile that starts
+ * guessing is visible even when the other one is carrying the recall.
+ *
+ * Every claim whose head is not the base's true counterpart increments exactly
+ * one of two negative-control counters, both with a zero ceiling:
+ * `insertedNearby` when the head is the small element planted inside a deleted
+ * element's box, `neighbourSuccessor` for any other wrong partner — including
+ * every claim on a `deleted` base, which has no counterpart at all, and a
+ * claim that offers half of a split as the whole's successor.
+ *
+ * A claim on a base the key expected CONTENT matching to recover (a `renamed`
+ * element the content pass abstained on) with the right head is neither: the
+ * partner is right, only the stage is unexpected. Counted as correct for
+ * precision and reported as `recoveredContentKinds`.
+ */
+function scoreSuccessors(key, successors, { expected, kindOf, insertedNearby }) {
+  const want = new Map();
+  for (const element of key.elements) {
+    const expectation = EXPECTED_SUCCESSOR[element.kind];
+    if (expectation === undefined) continue;
+    want.set(element.base, { head: element.head[0], ...expectation });
+  }
+  const row = () => ({ population: 0, recalled: 0, kindAgreed: 0, claimed: 0, correct: 0, wrong: 0 });
+  const bySuccessor = {};
+  for (const { stratum } of Object.values(EXPECTED_SUCCESSOR)) bySuccessor[stratum] = row();
+  for (const { stratum } of want.values()) bySuccessor[stratum].population++;
+  const bySuccessorConfidence = {};
+  const reportedRow = (confidence) =>
+    (bySuccessorConfidence[confidence] ??= { claimed: 0, correct: 0, wrong: 0 });
+  const falseSuccessors = { insertedNearby: 0, neighbourSuccessor: 0 };
+  const recalled = new Set();
+  const wrongClaims = [];
+  let recoveredContentKinds = 0;
+
+  for (const claim of successors) {
+    const baseRef = claim.base.ref;
+    const headRef = claim.head.ref;
+    const reported = reportedRow(claim.confidence ?? 'unknown');
+    reported.claimed++;
+    const expectation = want.get(baseRef);
+    let correct = false;
+    if (expectation) {
+      const stratum = bySuccessor[expectation.stratum];
+      stratum.claimed++;
+      if (expectation.head === headRef) {
+        correct = true;
+        stratum.correct++;
+        if (!recalled.has(baseRef)) {
+          recalled.add(baseRef);
+          stratum.recalled++;
+          if (expectation.agrees.includes(claim.confidence)) stratum.kindAgreed++;
+        }
+      } else stratum.wrong++;
+    } else if (
+      !insertedNearby.has(headRef) &&
+      !SPLIT_KINDS.has(kindOf.get(baseRef)) &&
+      (expected.get(baseRef)?.has(headRef) ?? false)
+    ) {
+      correct = true;
+      recoveredContentKinds++;
+    }
+    if (correct) {
+      reported.correct++;
+      continue;
+    }
+    reported.wrong++;
+    if (insertedNearby.has(headRef)) falseSuccessors.insertedNearby++;
+    else falseSuccessors.neighbourSuccessor++;
+    wrongClaims.push({
+      base: baseRef,
+      baseKind: kindOf.get(baseRef) ?? 'unkeyed',
+      head: headRef,
+      confidence: claim.confidence,
+      overlap: claim.overlap,
+      distance: claim.distance,
+    });
+  }
+
+  const finish = (rows, withRecall) => {
+    const out = {};
+    for (const [name, r] of Object.entries(rows)) {
+      out[name] = {
+        ...r,
+        ...(withRecall
+          ? {
+              recall: ratio(r.recalled, r.population),
+              kindAgreement: ratio(r.kindAgreed, r.recalled),
+            }
+          : {}),
+        precision: ratio(r.correct, r.claimed),
+      };
+    }
+    return out;
+  };
+  return {
+    bySuccessor: finish(bySuccessor, true),
+    bySuccessorConfidence: finish(bySuccessorConfidence, false),
+    falseSuccessors,
+    successorClaims: successors.length,
+    recoveredContentKinds,
+    wrongSuccessors: wrongClaims.slice(0, 20),
+  };
+}
+
+/**
+ * Score the split/merge detector's claims against the key (issue #4955).
+ *
+ * A claim is correct only when it is a `split` whose whole is a `splitLength`
+ * base and whose piece SET is exactly that base's two head products — the
+ * same set-equality rule the N:N content match is scored by. Anything else
+ * is wrong: a split with a piece missing or a stranger added, and every
+ * `merge`, because no mutation in the corpus merges anything.
+ *
+ * `kindAgreement` is about the confidence: `verified` is expected whenever
+ * the whole and both pieces carry a proved volume, `extent` otherwise. The
+ * geometry pass decides which — an open shell has no volume by design — so
+ * the expectation is read off the fingerprints, not assumed.
+ */
+function scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin }) {
+  const want = new Map();
+  for (const element of key.elements) {
+    if (SPLIT_KINDS.has(element.kind)) want.set(element.base, new Set(element.head));
+  }
+  const bySplit = { population: want.size, recalled: 0, kindAgreed: 0, claimed: 0, correct: 0, wrong: 0 };
+  const byConfidence = {};
+  const recalled = new Set();
+  const wrongClaims = [];
+  let mergeClaims = 0;
+
+  for (const claim of splitMerges) {
+    bySplit.claimed++;
+    byConfidence[claim.confidence] = (byConfidence[claim.confidence] ?? 0) + 1;
+    const wholeRef = claim.whole.ref;
+    const pieces = claim.pieces.map((piece) => piece.ref);
+    const truth = claim.kind === 'split' ? want.get(wholeRef) : undefined;
+    if (claim.kind !== 'split') mergeClaims++;
+    const correct =
+      truth !== undefined && truth.size === pieces.length && pieces.every((ref) => truth.has(ref));
+    if (!correct) {
+      bySplit.wrong++;
+      // WHAT was claimed, in the key's terms, so a wrong claim reads as
+      // "the two copies of a duplicated group" rather than as three numbers.
+      wrongClaims.push({
+        kind: claim.kind,
+        confidence: claim.confidence,
+        whole: wholeRef,
+        wholeKind: kindOf.get(wholeRef) ?? headOrigin.get(wholeRef) ?? 'unkeyed',
+        pieces,
+        pieceOrigins: pieces.map((ref) => headOrigin.get(ref) ?? kindOf.get(ref) ?? 'unkeyed'),
+      });
+      continue;
+    }
+    bySplit.correct++;
+    if (recalled.has(wholeRef)) continue;
+    recalled.add(wholeRef);
+    bySplit.recalled++;
+    const proved = hasVolume.has(`b${wholeRef}`) && pieces.every((ref) => hasVolume.has(`h${ref}`));
+    if (claim.confidence === (proved ? 'verified' : 'extent')) bySplit.kindAgreed++;
+  }
+  return {
+    bySplit: {
+      ...bySplit,
+      recall: ratio(bySplit.recalled, bySplit.population),
+      precision: ratio(bySplit.correct, bySplit.claimed),
+      kindAgreement: ratio(bySplit.kindAgreed, bySplit.recalled),
+      byConfidence,
+      mergeClaims,
+    },
+    wrongSplits: wrongClaims.slice(0, 20),
   };
 }
 
@@ -350,11 +588,69 @@ export function checkThresholds(score, thresholds) {
     else if (floors.precision !== undefined) skipped.push(`byClass.${name}.precision (no pairs claimed)`);
   }
 
+  // Successor strata (issue #4955): recall per EXPECTED profile, precision per
+  // expected and per REPORTED profile, confidence agreement. Skips are named
+  // for the same reason as above.
+  for (const [name, floors] of Object.entries(thresholds.bySuccessor ?? {})) {
+    const row = score.bySuccessor?.[name];
+    if (!row || row.population === 0) {
+      skipped.push(`bySuccessor.${name} (population 0)`);
+      continue;
+    }
+    floor(`bySuccessor.${name}.recall`, row.recall, floors.recall);
+    if (row.claimed > 0) floor(`bySuccessor.${name}.precision`, row.precision, floors.precision);
+    else if (floors.precision !== undefined) skipped.push(`bySuccessor.${name}.precision (no claims)`);
+    if (row.recalled > 0) floor(`bySuccessor.${name}.kindAgreement`, row.kindAgreement, floors.kindAgreement);
+    else if (floors.kindAgreement !== undefined) {
+      skipped.push(`bySuccessor.${name}.kindAgreement (nothing recalled)`);
+    }
+  }
+  for (const [name, minimum] of Object.entries(thresholds.bySuccessorConfidence?.precision ?? {})) {
+    const row = score.bySuccessorConfidence?.[name];
+    if (!row || row.claimed === 0) skipped.push(`bySuccessorConfidence.${name}.precision (no claims)`);
+    else floor(`bySuccessorConfidence.${name}.precision`, row.precision, minimum);
+  }
+  if (thresholds.bySplit) {
+    const row = score.bySplit;
+    // A model with no split population can still receive a WRONG claim, and
+    // a per-pair precision floor over one claim would have to be 0 to be
+    // green anywhere. So it is skipped here, NAMED with the claim count, and
+    // `corpus.bySplit.precision` below is what counts that claim.
+    if (!row || row.population === 0) {
+      const note = row?.claimed ? `, ${row.claimed} claim(s) counted by corpus.bySplit.precision` : '';
+      skipped.push(`bySplit (population 0${note})`);
+    } else {
+      floor('bySplit.recall', row.recall, thresholds.bySplit.recall);
+      if (row.claimed > 0) floor('bySplit.precision', row.precision, thresholds.bySplit.precision);
+      else if (thresholds.bySplit.precision !== undefined) skipped.push('bySplit.precision (no claims)');
+      if (row.recalled > 0) {
+        floor('bySplit.kindAgreement', row.kindAgreement, thresholds.bySplit.kindAgreement);
+      } else if (thresholds.bySplit.kindAgreement !== undefined) {
+        skipped.push('bySplit.kindAgreement (nothing recalled)');
+      }
+    }
+  }
+
   const negative = thresholds.negativeControls ?? {};
   ceiling('falsePairs.deletedBase', score.falsePairs.deletedBase, negative.deletedBase);
   ceiling('falsePairs.insertedHead', score.falsePairs.insertedHead, negative.insertedHead);
   ceiling('falsePairs.wrongPartner', score.falsePairs.wrongPartner, negative.wrongPartner);
   ceiling('falsePairs.unkeyed', score.falsePairs.unkeyed, negative.unkeyed);
+  ceiling(
+    'falseSuccessors.insertedNearby',
+    score.falseSuccessors?.insertedNearby ?? 0,
+    negative.successorInsertedNearby,
+  );
+  ceiling(
+    'falseSuccessors.neighbourSuccessor',
+    score.falseSuccessors?.neighbourSuccessor ?? 0,
+    negative.neighbourSuccessor,
+  );
+  ceiling(
+    'respecifiedControl.reportedRenamed',
+    score.respecifiedControl?.reportedRenamed.length ?? 0,
+    negative.respecifiedReportedRenamed,
+  );
 
   const cal = thresholds.calibration ?? {};
   ceiling(
@@ -390,7 +686,9 @@ export function checkCorpusThresholds(scores, thresholds) {
         ? sum((score) => score.byClass.curved?.population)
         : kind === 'inserted'
           ? sum((score) => score.inserted)
-          : sum((score) => score.populations[kind]);
+          : kind === 'insertedNearby'
+            ? sum((score) => score.insertedNearby)
+            : sum((score) => score.populations[kind]);
     if (total < minimum) failures.push(`corpus.populations.${kind}: ${total} < floor ${minimum}`);
   }
   for (const [tier, minimum] of Object.entries(thresholds.tierPairs ?? {})) {
@@ -423,7 +721,103 @@ export function checkCorpusThresholds(scores, thresholds) {
     sum((score) => score.moveDistance.checked),
     thresholds.moveDistance?.agreement,
   );
+  // The claim strata in aggregate (issue #4955). Per-pair floors skip a model
+  // whose population is 0, so a wrong split claim on such a model — AC20's
+  // duplicated stair, finding F5 — is only ever counted here; and the
+  // `position` profile's recall is a corpus question because one model's
+  // unnamed building (F4) switches the profile off there entirely.
+  rate(
+    'corpus.bySplit.precision',
+    sum((score) => score.bySplit?.correct),
+    sum((score) => score.bySplit?.claimed),
+    thresholds.bySplit?.precision,
+  );
+  rate(
+    'corpus.bySplit.recall',
+    sum((score) => score.bySplit?.recalled),
+    sum((score) => score.bySplit?.population),
+    thresholds.bySplit?.recall,
+  );
+  for (const [name, floors] of Object.entries(thresholds.bySuccessor ?? {})) {
+    rate(
+      `corpus.bySuccessor.${name}.recall`,
+      sum((score) => score.bySuccessor?.[name]?.recalled),
+      sum((score) => score.bySuccessor?.[name]?.population),
+      floors.recall,
+    );
+    rate(
+      `corpus.bySuccessor.${name}.precision`,
+      sum((score) => score.bySuccessor?.[name]?.correct),
+      sum((score) => score.bySuccessor?.[name]?.claimed),
+      floors.precision,
+    );
+  }
+  // Corpus-TOTAL ceilings on the successor negative controls: a per-pair
+  // ceiling raised to one model's measured count would let every other
+  // model climb to it unnoticed.
+  const totalCeiling = (label, total, maximum) => {
+    if (maximum === undefined) return;
+    if (total > maximum) failures.push(`${label}: ${total} > ceiling ${maximum}`);
+  };
+  totalCeiling(
+    'corpus.falseSuccessors.insertedNearby',
+    sum((score) => score.falseSuccessors?.insertedNearby),
+    thresholds.falseSuccessors?.insertedNearby,
+  );
+  totalCeiling(
+    'corpus.falseSuccessors.neighbourSuccessor',
+    sum((score) => score.falseSuccessors?.neighbourSuccessor),
+    thresholds.falseSuccessors?.neighbourSuccessor,
+  );
   return failures;
+}
+
+/**
+ * Corpus-level strata measuring BELOW (or, for ceilings, above) their
+ * pre-registered target — reported, never gating, like {@link targetGaps}.
+ */
+export function corpusTargetGaps(scores, targets) {
+  const gaps = [];
+  const sum = (pick) => scores.reduce((total, score) => total + (pick(score) ?? 0), 0);
+  const compare = (label, hits, total, target) => {
+    if (target === undefined || total === 0) return;
+    const value = Number((hits / total).toFixed(6));
+    if (value < target) gaps.push(`${label}: ${value} < target ${target}`);
+  };
+  compare(
+    'corpus.bySplit.precision',
+    sum((score) => score.bySplit?.correct),
+    sum((score) => score.bySplit?.claimed),
+    targets.bySplit?.precision,
+  );
+  compare(
+    'corpus.bySplit.recall',
+    sum((score) => score.bySplit?.recalled),
+    sum((score) => score.bySplit?.population),
+    targets.bySplit?.recall,
+  );
+  for (const [name, wanted] of Object.entries(targets.bySuccessor ?? {})) {
+    compare(
+      `corpus.bySuccessor.${name}.recall`,
+      sum((score) => score.bySuccessor?.[name]?.recalled),
+      sum((score) => score.bySuccessor?.[name]?.population),
+      wanted.recall,
+    );
+  }
+  const exceed = (label, total, target) => {
+    if (target !== undefined && total > target) gaps.push(`${label}: ${total} > target ${target}`);
+  };
+  exceed(
+    'corpus.falseSuccessors.insertedNearby',
+    sum((score) => score.falseSuccessors?.insertedNearby),
+    targets.negativeControls?.successorInsertedNearby,
+  );
+  exceed(
+    'corpus.falseSuccessors.neighbourSuccessor',
+    sum((score) => score.falseSuccessors?.neighbourSuccessor),
+    targets.negativeControls?.neighbourSuccessor,
+  );
+  return gaps;
 }
 
 /**
@@ -463,5 +857,49 @@ export function targetGaps(score, targets) {
     compare(`byClass.${name}.recall`, row.recall, wanted.recall);
     if (row.claimed > 0) compare(`byClass.${name}.precision`, row.precision, wanted.precision);
   }
+  for (const [name, wanted] of Object.entries(targets.bySuccessor ?? {})) {
+    const row = score.bySuccessor?.[name];
+    if (!row || row.population === 0) continue;
+    compare(`bySuccessor.${name}.recall`, row.recall, wanted.recall);
+    if (row.claimed > 0) compare(`bySuccessor.${name}.precision`, row.precision, wanted.precision);
+    if (row.recalled > 0) {
+      compare(`bySuccessor.${name}.kindAgreement`, row.kindAgreement, wanted.kindAgreement);
+    }
+  }
+  for (const [name, target] of Object.entries(targets.bySuccessorConfidence?.precision ?? {})) {
+    const row = score.bySuccessorConfidence?.[name];
+    if (row && row.claimed > 0) compare(`bySuccessorConfidence.${name}.precision`, row.precision, target);
+  }
+  if (targets.bySplit && score.bySplit && score.bySplit.population > 0) {
+    compare('bySplit.recall', score.bySplit.recall, targets.bySplit.recall);
+    if (score.bySplit.claimed > 0) {
+      compare('bySplit.precision', score.bySplit.precision, targets.bySplit.precision);
+    }
+    if (score.bySplit.recalled > 0) {
+      compare('bySplit.kindAgreement', score.bySplit.kindAgreement, targets.bySplit.kindAgreement);
+    }
+  }
+  // Ceilings have targets too: a negative control whose gating ceiling had to
+  // be raised to the measured count still reports the distance to zero.
+  const exceed = (label, value, target) => {
+    if (target === undefined || value === undefined) return;
+    if (value > target) gaps.push(`${label}: ${value} > target ${target}`);
+  };
+  const negative = targets.negativeControls ?? {};
+  exceed(
+    'falseSuccessors.insertedNearby',
+    score.falseSuccessors?.insertedNearby,
+    negative.successorInsertedNearby,
+  );
+  exceed(
+    'falseSuccessors.neighbourSuccessor',
+    score.falseSuccessors?.neighbourSuccessor,
+    negative.neighbourSuccessor,
+  );
+  exceed(
+    'respecifiedControl.reportedRenamed',
+    score.respecifiedControl?.reportedRenamed.length,
+    negative.respecifiedReportedRenamed,
+  );
   return gaps;
 }

@@ -58,6 +58,28 @@ function asNumber(v: IfcAttributeValue | undefined): number | null {
 }
 
 /**
+ * `EntityTable.getTypeName()` answers the literal string `'Unknown'` — not
+ * `null`/`undefined` — for rows it can't resolve a type for (resource-level
+ * entities like `IfcRelDefinesByProperties`/`IfcRelDefinesByType`/etc. that
+ * the columnar parser categorises as property/association rels rather than
+ * retaining as addressable `EntityTable` rows; see
+ * `columnar-parser-root-attributes.ts`'s `extractAllEntityAttributes` for the
+ * same gotcha). A plain `getTypeName(id) || fallback` never falls back:
+ * `'Unknown'` is truthy, so the literal string survives into
+ * `StoreEditor.addEntity('Unknown', ...)`, which throws (#4933) — or worse,
+ * would silently create an entity of that bogus type if the caller ever
+ * relaxed the throw.
+ *
+ * `fallback` is the STEP-parsed raw type (UPPERCASE, e.g. `'IFCWALL'`) —
+ * `StoreEditor.addEntity` accepts either case, so it's always safe to emit
+ * verbatim.
+ */
+function canonicalType(store: IfcDataStore, id: number, fallback: string): string {
+  const tableName = store.entities.getTypeName(id);
+  return tableName && tableName !== 'Unknown' ? tableName : fallback;
+}
+
+/**
  * Resolve everything `duplicateInStore` needs to clone a source
  * IfcRoot product. Throws when the source isn't an IfcProduct
  * (no ObjectPlacement at index 5).
@@ -154,11 +176,20 @@ export function resolveDuplicateSource(
   // sourceLocation. Falls back to 1 (metres) on extraction failure.
   const lengthUnitScale = safeLengthUnitScale(store.source, store.entityIndex, 'resolveDuplicateSource') ?? 1.0;
 
+  // Canonical PascalCase (e.g. "IfcWall") when the entity table resolves
+  // it; the raw STEP type from the extractor (UPPERCASE, e.g. "IFCWALL")
+  // otherwise — never the table's literal 'Unknown' sentinel (#4933). The
+  // raw type always exists for anything `EntityExtractor` parsed at all,
+  // so this refuses only when even that is missing/empty.
+  const type = canonicalType(store, sourceExpressId, sourceEntity.type);
+  if (!type) {
+    throw new Error(
+      `resolveDuplicateSource: #${sourceExpressId} has no resolvable IFC type — cannot duplicate`,
+    );
+  }
+
   return {
-    // Canonical PascalCase (e.g. "IfcWall"); falls back to the raw
-    // extractor type when the entity table doesn't recognise the id
-    // (vendor extensions etc).
-    type: store.entities.getTypeName(sourceExpressId) || sourceEntity.type,
+    type,
     attributes: attrs,
     placementExpressId: placementId,
     parentPlacementId,
@@ -219,9 +250,13 @@ function collectSourceAssociations(
       const description = typeof entity.attributes[3] === 'string' ? entity.attributes[3] : null;
 
       // Use the entity table's canonical name so the duplicate replays
-      // a PascalCase type into the editor (e.g. "IfcRelDefinesByProperties"),
-      // not the byType map's UPPERCASE storage key.
-      const canonicalRelType = store.entities.getTypeName(relId) || relType;
+      // a PascalCase type into the editor (e.g. "IfcRelDefinesByProperties")
+      // when the table has it — property/association rels are usually
+      // categorised out of the `EntityTable` entirely (#4933), in which
+      // case `relType` (the UPPERCASE STEP constant this loop is already
+      // iterating by) is the correct fallback, not the table's literal
+      // 'Unknown'.
+      const canonicalRelType = canonicalType(store, relId, relType);
       out.push({
         relType: canonicalRelType,
         ownerHistoryId,

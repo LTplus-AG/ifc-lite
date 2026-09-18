@@ -38,15 +38,16 @@ import {
   type CollabDocApi,
   type RemoteApplyHandlers,
 } from './mutation-bridge.js';
-// Namespace import, not a named one: `attributeMutationValue` is new
+// Namespace import, not a named one: `applyRemoteAttribute` is new
 // production code (#4931 collab follow-up). A named `import {
-// attributeMutationValue }` fails to LOAD the whole test file the moment the
+// applyRemoteAttribute }` fails to LOAD the whole test file the moment the
 // revert oracle reverts `mutation-bridge.ts` back to a version without it
-// (`does not provide an export named` — a load-failure, not a RED assertion,
+// ("does not provide an export named", a load-failure, not a RED assertion,
 // per the oracle's own REVERT-BROKE-BUILD guard). Reading it off the module
 // namespace instead turns "the export is gone" into `undefined`, so a revert
 // fails the assertions below for the right reason.
 import * as mutationBridge from './mutation-bridge.js';
+const { applyRemoteAttribute } = mutationBridge;
 import { pathForEntity, pathForGuid, registerEntityMaps, registerEntityPath, registerStoreSlot } from './entity-paths.js';
 
 /**
@@ -659,30 +660,18 @@ describe('mutation-bridge model slots (#4444)', () => {
 });
 
 /**
- * #4931 (collab follow-up, flagged in review): a remote peer's CRDT `null` —
- * IFCX's "this attribute has no value" removal opinion — must reach
- * `MutablePropertyView`/`StepExporter` as the STEP absent marker `$`, not as
- * an edit to `''`. Before the exporter's own `serializeStringSlot` fix,
- * `null -> ''` happened to export correctly, because `''` collapsed to `$`
- * regardless. Once `serializeStringSlot` was fixed so an edited `''` writes a
- * real, present empty string, the same conversion would instead export a
- * peer's explicit "no value" as present-and-empty.
+ * #4931 (collab follow-up, flagged in review): a remote peer's CRDT `null`,
+ * IFCX's "this attribute has no value" removal opinion, must clear the
+ * attribute in the export rather than being silently dropped or exporting as
+ * present-and-empty. A first fix wrote the literal `'$'` for every attribute,
+ * which is only correct for STRING-typed slots (`serializeStringSlot`'s own
+ * sentinel) and silently drops the edit for a REAL-typed one, because the
+ * named pipeline feeds a REAL slot through `Number(value.trim())` and
+ * `Number('$')` is `NaN`. `applyRemoteAttribute` is type-agnostic instead: it
+ * routes `null` through `setPositionalAttribute(entityId, index, null)`, the
+ * same clearing mechanism `room-step-export.ts` already uses.
  */
-describe('attributeMutationValue (#4931 collab null handling)', () => {
-  it('maps a CRDT null to the STEP absent marker, not an empty string', () => {
-    assert.strictEqual(mutationBridge.attributeMutationValue(null), '$');
-  });
-
-  it('maps a CRDT empty string to itself — distinct from null', () => {
-    assert.strictEqual(mutationBridge.attributeMutationValue(''), '');
-  });
-
-  it('maps a non-null scalar to its string form', () => {
-    assert.strictEqual(mutationBridge.attributeMutationValue('Wall-A'), 'Wall-A');
-    assert.strictEqual(mutationBridge.attributeMutationValue(42), '42');
-    assert.strictEqual(mutationBridge.attributeMutationValue(true), 'true');
-  });
-
+describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => {
   /** A minimal real IfcDataStore from one STEP entity line (mirrors packages/export's own tests). */
   function buildDataStore(id: number, type: string, text: string): IfcDataStore {
     const encoded = new TextEncoder().encode(text);
@@ -696,13 +685,13 @@ describe('attributeMutationValue (#4931 collab null handling)', () => {
         byId: new Map([[id, { expressId: id, type: type.toUpperCase(), byteOffset: 0, byteLength: encoded.byteLength, lineNumber: 0 }]]),
         byType: new Map([[type.toUpperCase(), [id]]]),
       },
+      entities: { getTypeName: (checkId: number) => (checkId === id ? type : 'Unknown') },
     } as unknown as IfcDataStore;
   }
 
-  function exportedLine(value: string): string {
-    const dataStore = buildDataStore(1, 'IFCWALL', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
+  function exportedLine(dataStore: IfcDataStore, apply: (view: MutablePropertyView) => void): string {
     const view = new MutablePropertyView(null, 'room-model');
-    view.setAttribute(1, 'Description', value);
+    apply(view);
     const result = new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true });
     const text = new TextDecoder().decode(result.content);
     const line = text.split('\n').find((l) => l.startsWith('#1='));
@@ -710,17 +699,52 @@ describe('attributeMutationValue (#4931 collab null handling)', () => {
     return line;
   }
 
-  it('a remote peer explicitly clearing an attribute (CRDT null) exports as $, not present-and-empty', () => {
-    const line = exportedLine(mutationBridge.attributeMutationValue(null));
+  it('a non-null scalar still writes through the named string pipeline, unaffected', () => {
+    const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Description', 'New Description'));
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','New Description',$,$,$,$,$);");
+  });
+
+  it('a remote peer explicitly clearing a STRING-typed attribute (CRDT null) exports as $, not present-and-empty', () => {
+    const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Description', null));
     assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
   });
 
-  it('a remote peer editing an attribute to a real empty string exports as \'\', distinct from the null case above', () => {
-    const line = exportedLine(mutationBridge.attributeMutationValue(''));
+  it('a remote peer editing a STRING-typed attribute to a real empty string exports as \'\', distinct from the null case above', () => {
+    const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Description', ''));
     assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','',$,$,$,$,$);");
   });
 
-  it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for attributeMutationValue', () => {
+  /**
+   * Macroscope finding on the first fix: `IfcMapConversion.Scale` is a
+   * REAL-typed root attribute (slot 7: SourceCRS, TargetCRS, Eastings,
+   * Northings, OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale). The
+   * old literal-`'$'` fix made `serializeNamedAttribute`'s REAL branch treat
+   * `Number('$'.trim())` as `NaN`, so the exporter REJECTED the edit and the
+   * source's `1.5` survived untouched, dropping a remote peer's explicit
+   * clear entirely. `applyRemoteAttribute` must actually clear it to `$`.
+   */
+  it('a remote peer explicitly clearing a REAL-typed attribute (CRDT null) exports as $, not the stale source value', () => {
+    const dataStore = buildDataStore(1, 'IfcMapConversion', '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,1.5);');
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Scale', null));
+    assert.strictEqual(line, '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,$);');
+  });
+
+  it('a remote peer editing a REAL-typed attribute to a real number still writes it', () => {
+    const dataStore = buildDataStore(1, 'IfcMapConversion', '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,1.5);');
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Scale', 2.25));
+    assert.strictEqual(line, '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,2.25);');
+  });
+
+  it('a name that does not resolve to a known root-attribute slot is skipped, not guessed at', () => {
+    const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'bsi::ifc::prop::Description', null));
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);", 'unresolved name: no edit landed, source line unchanged');
+  });
+
+  it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for applyRemoteAttribute', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
@@ -728,10 +752,10 @@ describe('attributeMutationValue (#4931 collab null handling)', () => {
     const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
-      setAttribute(remote, '/wallA', 'bsi::ifc::prop::Description', null);
+      setAttribute(remote, '/wallA', 'Description', null);
     });
 
     teardown();
-    assert.deepEqual(handlers.calls, [{ fn: 'onAttribute', args: [MODEL, 1, 'bsi::ifc::prop::Description', null] }]);
+    assert.deepEqual(handlers.calls, [{ fn: 'onAttribute', args: [MODEL, 1, 'Description', null] }]);
   });
 });

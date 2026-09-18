@@ -25,7 +25,8 @@
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import { entityForPath, pathForEntity } from './entity-paths';
 
@@ -177,38 +178,52 @@ export function mirrorEntityDelete(
 export type ScalarValue = string | number | boolean | null;
 
 /**
- * Map an inbound `onAttribute` scalar to the string `MutablePropertyView
- * .setAttribute` (`@ifc-lite/mutations`) expects — the one place a `null`
- * from the CRDT is turned into a root-attribute edit.
- *
- * A CRDT attribute value of `null` is IFCX's own "removal opinion" (see
- * `packages/collab/src/snapshot/from-ifcx.ts`'s `decodeNode`): a peer
- * explicitly writing "this attribute has no value" via `setAttribute(doc,
- * path, name, null)`, as opposed to `deleteAttribute` (unresolvable —
- * `attachRemoteApply` drops delete actions outright; see the sibling test
+ * Apply an inbound `onAttribute` write to the room model's
+ * `MutablePropertyView` (`@ifc-lite/mutations`), type-aware for `null` — a
+ * CRDT `null` is IFCX's own "removal opinion", a peer explicitly writing
+ * "this attribute has no value" (`setAttribute(doc, path, name, null)`, as
+ * opposed to `deleteAttribute`, which `attachRemoteApply` drops outright; see
  * "drops a remote flat attribute DELETE"). `to-ifcx-null-attribute.test.ts`
- * pins that a doc attribute legitimately holding `null` is a supported state
- * this bridge must round-trip, not a value that only ever occurs synthetically.
+ * pins a doc attribute legitimately holding `null` as a state this bridge
+ * must round-trip.
  *
- * Before #4931's exporter fix, folding that `null` into `''` happened to
- * export correctly, because the OLD (buggy) `serializeStringSlot` collapsed
- * an edited `''` to the STEP null marker `$` anyway. Once that bug was fixed
- * so an edited `''` writes a real, present empty string, the same `null ->
- * ''` conversion here would instead export a remote peer's explicitly-unset
- * attribute as PRESENT and empty — reintroducing the exact absent-vs-empty
- * confusion #4931 fixed, one layer up.
+ * An earlier revision here wrote the literal string `'$'` for every `null`,
+ * which matches `serializeStringSlot`'s own absence sentinel for STRING slots
+ * (#4931) but is wrong for a REAL-typed slot such as `IfcMapConversion
+ * .Scale`: `serializeNamedAttribute` feeds a REAL slot through
+ * `Number(value.trim())`, and `Number('$')` is `NaN`, so the named pipeline
+ * REJECTS the edit and the OLD source value survives untouched. There is no
+ * single string sentinel valid for every declared attribute type.
  *
- * The fix is NOT `MutablePropertyView.removeAttributeMutation`: that discards
- * the pending edit entirely and falls back to whatever value the room model's
- * last full reconstruct captured, which is a stale PRIOR value, not "absent" —
- * wrong for an opinion that explicitly removes the value. Writing the literal
- * `$` token is what `serializeStringSlot` already documents as the caller's
- * way to mark a STRING-typed attribute absent, so it carries the "unset"
- * intent all the way through export exactly like a genuinely-`$` source slot
- * would.
+ * The fix routes `null` through the exporter's type-AGNOSTIC clearing path
+ * instead: `MutablePropertyView.setPositionalAttribute(entityId, index,
+ * null)`, the same mechanism `room-step-export.ts`'s `snapshotView` already
+ * uses to clear a root attribute the room doc no longer carries.
+ * `serializeStepValue` (the positional serializer) returns the STEP null
+ * marker `$` for a JS `null` UNCONDITIONALLY, before any type dispatch — so
+ * it is correct for STRING, REAL, ENUM, SELECT and reference slots alike,
+ * with no per-type branching needed here. `index` is resolved the same way
+ * `room-step-export.ts` resolves it, off the entity's own declared attribute
+ * order (`getAttributeNamesAcrossSchemas`); a name that does not resolve to a
+ * known slot is skipped, matching that file's own `if (index >= 0)` guard.
+ *
+ * Not `MutablePropertyView.removeAttributeMutation`: that discards the
+ * pending edit and falls back to the room model's last full-reconstruct
+ * value, a stale PRIOR value, not "absent".
  */
-export function attributeMutationValue(value: ScalarValue): string {
-  return value === null ? '$' : String(value);
+export function applyRemoteAttribute(
+  view: MutablePropertyView,
+  store: IfcDataStore,
+  entityId: number,
+  attrName: string,
+  value: ScalarValue,
+): void {
+  if (value === null) {
+    const index = getAttributeNamesAcrossSchemas(store.entities.getTypeName(entityId)).indexOf(attrName);
+    if (index >= 0) view.setPositionalAttribute(entityId, index, null);
+    return;
+  }
+  view.setAttribute(entityId, attrName, String(value));
 }
 
 /**

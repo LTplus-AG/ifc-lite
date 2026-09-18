@@ -186,6 +186,7 @@ import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
+import { runGuardedGpuUpload, type GpuUploadOutcome } from './gpu-upload-guard.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -1172,29 +1173,31 @@ export class Renderer {
      *
      * @param geometry - Either a GeometryResult from geometry.process() or an array of MeshData
      */
-    loadGeometry(geometry: import('@ifc-lite/geometry').GeometryResult | import('@ifc-lite/geometry').MeshData[]): void {
-        if (!this.device.isInitialized() || !this.pipeline) {
-            throw new Error('Renderer not initialized. Call init() first.');
-        }
+    loadGeometry(geometry: import('@ifc-lite/geometry').GeometryResult | import('@ifc-lite/geometry').MeshData[]): GpuUploadOutcome<void> {
+        if (this.isDeviceLost()) return { ok: false, reason: 'device-lost' }; // #4885: zombie device stays "initialized"
+        if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer not initialized. Call init() first.');
 
         const meshes = Array.isArray(geometry) ? geometry : geometry.meshes;
 
         if (meshes.length === 0) {
             console.warn('[Renderer] loadGeometry called with empty mesh array');
-            return;
+            return { ok: true, value: undefined };
         }
 
-        // Use batched rendering for optimal performance
-        const device = this.device.getDevice();
-        this.scene.appendToBatches(meshes, device, this.pipeline, false);
+        const pipeline = this.pipeline;
+        return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+            // Use batched rendering for optimal performance
+            const device = this.device.getDevice();
+            this.scene.appendToBatches(meshes, device, pipeline, false);
 
-        // Calculate and store model bounds for fitToView
-        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
+            // Calculate and store model bounds for fitToView
+            this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
 
-        console.log(`[Renderer] Loaded ${meshes.length} meshes`);
+            console.log(`[Renderer] Loaded ${meshes.length} meshes`);
 
-        // Update camera scene bounds for tight orthographic near/far planes
-        this.camera.setSceneBounds(this.modelBounds);
+            // Update camera scene bounds for tight orthographic near/far planes
+            this.camera.setSceneBounds(this.modelBounds);
+        });
     }
 
     /**
@@ -1203,21 +1206,21 @@ export class Renderer {
      * @param meshes - Array of MeshData to add
      * @param isStreaming - If true, throttles batch rebuilding for better streaming performance
      */
-    addMeshes(meshes: import('@ifc-lite/geometry').MeshData[], isStreaming: boolean = false): void {
+    addMeshes(meshes: import('@ifc-lite/geometry').MeshData[], isStreaming: boolean = false): GpuUploadOutcome<void> {
+        if (this.isDeviceLost()) return { ok: false, reason: 'device-lost' };
         if (!this.device.isInitialized() || !this.pipeline) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
 
-        if (meshes.length === 0) return;
+        if (meshes.length === 0) return { ok: true, value: undefined };
 
-        const device = this.device.getDevice();
-        this.scene.appendToBatches(meshes, device, this.pipeline, isStreaming);
-
-        // Update model bounds incrementally
-        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
-
-        // Update camera scene bounds for tight orthographic near/far planes
-        this.camera.setSceneBounds(this.modelBounds);
+        const pipeline = this.pipeline;
+        return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+            const device = this.device.getDevice();
+            this.scene.appendToBatches(meshes, device, pipeline, isStreaming);
+            this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
+            this.camera.setSceneBounds(this.modelBounds);
+        });
     }
 
     /**
@@ -1257,56 +1260,48 @@ export class Renderer {
     /**
      * Add mesh to scene with per-mesh GPU resources for unique colors
      */
-    addMesh(mesh: Mesh): void {
-        if (!this.pipeline) return;
-
-        // Create per-mesh uniform buffer and bind group if not already created
-        if (!mesh.uniformBuffer && this.device.isInitialized()) {
-            const device = this.device.getDevice();
-
-            // Create uniform buffer for this mesh
-            mesh.uniformBuffer = device.createBuffer({
-                size: this.pipeline.getUniformBufferSize(),
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            });
-
-            // Create bind group for this mesh
-            mesh.bindGroup = device.createBindGroup({
-                layout: this.pipeline.getBindGroupLayout(),
-                entries: [
-                    {
-                        binding: 0,
-                        resource: { buffer: mesh.uniformBuffer },
-                    },
-                ],
-            });
-        }
+    addMesh(mesh: Mesh): GpuUploadOutcome<void> {
+        if (!this.pipeline) return { ok: true, value: undefined };
+        const pipeline = this.pipeline;
+        const outcome: GpuUploadOutcome<void> = (!mesh.uniformBuffer && !this.isDeviceLost() && this.device.isInitialized())
+            ? runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+                const device = this.device.getDevice();
+                mesh.uniformBuffer = device.createBuffer({
+                    size: pipeline.getUniformBufferSize(),
+                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                });
+                mesh.bindGroup = device.createBindGroup({
+                    layout: pipeline.getBindGroupLayout(),
+                    entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
+                });
+            })
+            : { ok: true, value: undefined };
 
         this.scene.addMesh(mesh);
+        return outcome;
     }
 
     /**
      * Ensure all meshes have GPU resources (call after adding meshes if pipeline wasn't ready)
      */
-    ensureMeshResources(): void {
-        if (!this.pipeline || !this.device.isInitialized()) return;
-
-        const device = this.device.getDevice();
-        for (const mesh of this.scene.getMeshes()) {
-            if (!mesh.uniformBuffer) {
-                mesh.uniformBuffer = device.createBuffer({
-                    size: this.pipeline.getUniformBufferSize(),
-                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                });
-                mesh.bindGroup = device.createBindGroup({
-                    layout: this.pipeline.getBindGroupLayout(),
-                    entries: [{
-                        binding: 0,
-                        resource: { buffer: mesh.uniformBuffer },
-                    }],
-                });
+    ensureMeshResources(): GpuUploadOutcome<void> {
+        if (!this.pipeline || !this.device.isInitialized()) return { ok: true, value: undefined };
+        const pipeline = this.pipeline;
+        return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+            const device = this.device.getDevice();
+            for (const mesh of this.scene.getMeshes()) {
+                if (!mesh.uniformBuffer) {
+                    mesh.uniformBuffer = device.createBuffer({
+                        size: pipeline.getUniformBufferSize(),
+                        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                    });
+                    mesh.bindGroup = device.createBindGroup({
+                        layout: pipeline.getBindGroupLayout(),
+                        entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
+                    });
+                }
             }
-        }
+        });
     }
 
     /**
@@ -1409,11 +1404,16 @@ export class Renderer {
         }
     }
 
+    /** Guarded entry point (#4885) for the unguarded body below. */
+    createMeshFromData(meshData: MeshData): GpuUploadOutcome<void> {
+        return runGuardedGpuUpload(() => this.isDeviceLost(), () => this.createMeshFromDataUnguarded(meshData));
+    }
+
     /**
      * Create a GPU Mesh from MeshData (lazy creation for selection highlighting)
      * This is called on-demand when a mesh is selected, avoiding 2x buffer creation during streaming
      */
-    createMeshFromData(meshData: MeshData): void {
+    private createMeshFromDataUnguarded(meshData: MeshData): void {
         if (!this.device.isInitialized()) return;
 
         const device = this.device.getDevice();

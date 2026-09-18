@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { runGpuUpload, resetGpuUploadGuardForTests } from './gpu-upload-guard.js';
+import { posthog } from '@/lib/analytics';
 
 // The production failure this contains, verbatim from error tracking.
 const GPU_OOM =
@@ -72,5 +73,49 @@ describe('runGpuUpload', () => {
   it('rethrows nothing even for a non-Error throwable', () => {
     assert.equal(runGpuUpload('site', () => { throw 'a string'; }), undefined);
     assert.equal(runGpuUpload('site', () => { throw null; }), undefined);
+  });
+});
+
+describe('runGpuUpload error-tracking dedupe (#4885)', () => {
+  it('reports once per classified kind per session, not once globally', () => {
+    // Before #4885 a single flag suppressed EVERY later failure once the
+    // first one reported, so a session that hit a GPU_OOM-shaped failure
+    // first would silently swallow a later, unrelated OOM. Keying by
+    // `error_kind` keeps the flood contained per kind, not across kinds.
+    const capture = mock.method(posthog, 'captureException', () => undefined);
+    try {
+      runGpuUpload('site-a', () => { throw new RangeError(GPU_OOM); });
+      runGpuUpload('site-b', () => { throw new RangeError(GPU_OOM); }); // same kind, same session
+      runGpuUpload('site-c', () => { throw new Error('memory access out of bounds'); }); // different kind
+      assert.equal(capture.mock.calls.length, 2);
+    } finally {
+      capture.mock.restore();
+    }
+  });
+
+  it('tags device_lost_at_time on a gpu_alloc_failed capture when the caller reports the device lost', () => {
+    const capture = mock.method(posthog, 'captureException', () => undefined);
+    try {
+      runGpuUpload('setSpaceOverlayMeshes', () => { throw new RangeError(GPU_OOM); }, {
+        isDeviceLost: () => true,
+      });
+      const props = capture.mock.calls[0]?.arguments[1] as Record<string, unknown>;
+      assert.equal(props.error_kind, 'gpu_alloc_failed');
+      assert.equal(props.device_lost_at_time, true);
+    } finally {
+      capture.mock.restore();
+    }
+  });
+
+  it('omits device_lost_at_time when the caller does not pass isDeviceLost', () => {
+    const capture = mock.method(posthog, 'captureException', () => undefined);
+    try {
+      runGpuUpload('site-d', () => { throw new RangeError(GPU_OOM); });
+      const props = capture.mock.calls[0]?.arguments[1] as Record<string, unknown>;
+      assert.equal(props.error_kind, 'gpu_alloc_failed');
+      assert.equal('device_lost_at_time' in props, false);
+    } finally {
+      capture.mock.restore();
+    }
   });
 });

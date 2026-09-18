@@ -12,21 +12,26 @@ type Registration = Pick<RegisteredAppearanceReference, 'cornersIfcWorld' | 'fra
 
 /** Existing placement keys include two renderer rebases which do not change the
  * engineering coordinate frame. Ignore ONLY those two fields; CRS, map conversion,
- * unit scale and rotation still have to match before reusing an absolute point. */
+ * unit scale and rotation still have to match before reusing an absolute point.
+ *
+ * `placementFrameKey` (`lib/model-placement/persistence.ts`) appends the live
+ * RTC anchor as a `:rtc:{...}` suffix outside any base it computes (georeferenced
+ * or local-engineering), never embedded in the base's own JSON, so that suffix
+ * is stripped here FIRST, uniformly, before the base is inspected. */
 function engineeringFrame(key: string): string {
-  if (!key.startsWith('{') || key.length > 8192) return key;
+  const base = key.replace(/:rtc:.*$/, '');
+  if (!base.startsWith('{') || base.length > 8192) return base;
   try {
-    const frame: unknown = JSON.parse(key);
-    if (typeof frame !== 'object' || frame === null || Array.isArray(frame)) return key;
+    const frame: unknown = JSON.parse(base);
+    if (typeof frame !== 'object' || frame === null || Array.isArray(frame)) return base;
     const parsed = { ...frame } as Record<string, unknown>;
-    if (!('crs' in parsed) || !('conversion' in parsed)) return key;
+    if (!('crs' in parsed) || !('conversion' in parsed)) return base;
     delete parsed.originShift;
-    delete parsed.rtc;
     return JSON.stringify(parsed);
   } catch (error) {
     // Imported malformed keys remain opaque mismatches. No coordinates are guessed.
     console.warn('[Appearance references] Invalid coordinate frame metadata:', error instanceof Error ? error.message : 'invalid JSON');
-    return key;
+    return base;
   }
 }
 

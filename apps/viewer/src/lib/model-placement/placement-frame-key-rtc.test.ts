@@ -5,6 +5,7 @@ import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import { IfcParser } from '@ifc-lite/parser';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { saveWorkspacePlacements, restoreWorkspacePlacements, placementFrameKey } from './persistence';
@@ -29,6 +30,32 @@ function localState(rtcOffset?: CoordinateInfo['wasmRtcOffset']) {
   const model = { ...fixtureModel('a'), sourceContentHash: 'source-a', loadedAt: 1,
     geometryResult: { coordinateInfo: coordInfo(rtcOffset) } as unknown as GeometryResult };
   return { ...useViewerStore.getState(), ...fixtureModels(model), modelPlacement: emptyPlacementState() };
+}
+
+/** A REAL parsed `ifcDataStore` with a usable `IfcProjectedCRS`/`IfcMapConversion`,
+ * so `placementAnchor`/`selectAnchorGeoref` (`persistence.ts`) picks it as a
+ * genuine georeferenced anchor, the same path `commitRealignmentFrame` and an
+ * ordinary load both go through. `globalId` must be a distinct 22-char string
+ * or the parser's entity index collides between the two fixture models. */
+async function georeferencedModel(id: string, globalId: string, loadedAt: number, crsName: string, eastings: number) {
+  const source = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('${globalId}',$,'P',$,$,$,$,(#10),#20);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);
+#20=IFCUNITASSIGNMENT((#21));
+#21=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#30=IFCPROJECTEDCRS('${crsName}',$,$,$,$,$,#21);
+#31=IFCMAPCONVERSION(#10,#30,${eastings}.,1200000.,400.,1.,0.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+  const ifcDataStore = await new IfcParser().parseColumnar(
+    new TextEncoder().encode(source).buffer as ArrayBuffer, { disableWorkerScan: true },
+  );
+  return { ...fixtureModel(id), loadedAt, ifcDataStore, sourceContentHash: `source-${id}` };
 }
 
 describe('placementFrameKey distinguishes an RTC convergence (#4936)', () => {
@@ -71,34 +98,45 @@ describe('placementFrameKey distinguishes an RTC convergence (#4936)', () => {
   });
 });
 
-/** `applyModelTranslation`/`setModelRotation` cache the BASE identity into
- * `modelPlacement.frameKey` on every commit (`modelPlacementSlice.ts`), and
- * `placementFrameKey` trusts that cache. Review of the first fix for #4936
- * found the cache was never invalidated: once ANY commit stamped it, a LATER
- * convergence (`convergeFederationRtcFrame`, #4897/#4906) rebased the live
- * pivots correctly but the top-level `modelPlacement.frameKey` never moved,
- * so a save after the convergence used the stale pre-convergence key and a
- * restore in a fresh (converged) session found nothing under it.
+/**
+ * #4936 went through three rounds before landing on this design:
+ *   1. `placementFrameKey` ignored the live RTC anchor for a non-georeferenced
+ *      workspace entirely (a fixed `local-engineering:m:z-up` constant).
+ *   2. Folding the RTC anchor in fixed that, but `applyModelTranslation` and
+ *      `setModelRotation` (`modelPlacementSlice.ts`) each cached the computed
+ *      result into `modelPlacement.frameKey`, so a LATER convergence
+ *      (`convergeFederationRtcFrame`, #4897/#4906) rebased the live pivots
+ *      correctly but the cached key never moved.
+ *   3. A third site, `useModelPlacementPersistence.ts`'s restore effect, had
+ *      the same bug, and a fourth variant surfaced even after all three
+ *      call sites agreed: removing the model the cached key was keyed to
+ *      (e.g. the earliest-loaded anchor) left the STALE key being served,
+ *      because nothing about `modelPlacement.frameKey` was tied to which
+ *      models were actually still loaded.
  *
- * These drive the REAL store actions (`openReposition` / `applyModelTranslation`
- * / `rebasePlacementFrame`), not the pure `state.ts` helpers, because the bug
- * lived specifically in the commit-time caching wired into the store slice:
- * every case above builds `emptyPlacementState()` fresh and never exercises it. */
-describe('placementFrameKey does not serve a cache frozen before a convergence (#4936 review)', () => {
-  /** Loads a fresh single-model workspace, commits a translation (caching
-   * `modelPlacement.frameKey`), then converges: the model's own `CoordinateInfo`
-   * picks up `wasmRtcOffset` (what `convergeGeometryOntoRtcAnchor` writes) and
-   * `rebasePlacementFrame` runs (what `federationRtcRebase.ts` calls after it),
-   * exactly the order production runs them in. Returns the live `placementFrameKey`
-   * read afterward, plus the store `disk` the placement was saved to. */
+ * The fix removes the cache entirely: `placementFrameKey`/`placementFrameBaseKey`
+ * (`persistence.ts`) always recompute from live `state.models` on every call,
+ * except for `modelPlacement.realignedFrameKey`, which is not a cache at all
+ * but a genuine decision `commitRealignmentFrame` records once and nothing
+ * else ever writes. These drive the REAL store actions (`openReposition` /
+ * `applyModelTranslation` / `rebasePlacementFrame` / `updateModel`), not the
+ * pure `state.ts` helpers, since the bug lived in the store wiring around
+ * them, not in `state.ts` itself. */
+describe('placementFrameKey recomputes live and is never cached across a commit (#4936 review)', () => {
+  /** Loads a fresh single-model workspace, commits a translation, then
+   * converges: the model's own `CoordinateInfo` picks up `wasmRtcOffset`
+   * (what `convergeGeometryOntoRtcAnchor` writes) and `rebasePlacementFrame`
+   * runs (what `federationRtcRebase.ts` calls after it), exactly the order
+   * production runs them in. Returns the live `placementFrameKey` read
+   * afterward, plus the store `disk` the placement was saved to. */
   function committedThenConverged(anchor: CoordinateInfo['wasmRtcOffset']) {
     useViewerStore.setState(localState(undefined));
     const store = useViewerStore.getState();
     store.openReposition(['a']);
     store.previewModelTranslation([3, 0, 0]);
     store.applyModelTranslation();
-    assert.equal(useViewerStore.getState().modelPlacement.frameKey, 'local-engineering:m:z-up',
-      'sanity: the commit cached the pre-convergence base');
+    assert.equal(useViewerStore.getState().modelPlacement.realignedFrameKey, null,
+      'sanity: a plain commit never writes a pin');
 
     useViewerStore.setState((s) => {
       const model = s.models.get('a')!;
@@ -117,10 +155,10 @@ describe('placementFrameKey does not serve a cache frozen before a convergence (
     const anchor = { x: 1234567.891, y: -987654.321, z: 42.75 };
     const { disk } = committedThenConverged(anchor);
 
-    // A fresh session (frameKey: null) reloading the same, already-converged
-    // workspace: nothing was committed in it yet, so the cache cannot lie.
-    // `placementFrameKey` recomputes live from the reloaded model's own
-    // (already-anchored) `coordinateInfo`, matching what was actually saved.
+    // A fresh session (no pin) reloading the same, already-converged
+    // workspace: `placementFrameKey` recomputes live from the reloaded
+    // model's own (already-anchored) `coordinateInfo`, matching what was
+    // actually saved.
     const restored = restoreWorkspacePlacements(disk, localState(anchor)).get('a');
     assert.deepEqual(restored?.translation, [3, 0, 0],
       'the pre-convergence commit must not be dropped by a stale save key');
@@ -141,13 +179,10 @@ describe('placementFrameKey does not serve a cache frozen before a convergence (
       'different live anchors after independent pre-convergence commits must not match');
   });
 
-  it('a SECOND commit, made after a convergence has already happened, still caches only the base', () => {
+  it('a SECOND commit, made after a convergence has already happened, still recomputes live', () => {
     const anchorA = { x: 10, y: 20, z: 30 }, anchorB = { x: 40, y: 50, z: 60 };
     committedThenConverged(anchorA);
-    // A second commit while the workspace is already converged onto anchor A:
-    // if the commit cached the FULL `placementFrameKey` (base + live RTC, the
-    // bug this test isolates) instead of just the base, anchor A would be
-    // frozen into `modelPlacement.frameKey` here.
+    // A second commit while the workspace is already converged onto anchor A.
     const store = useViewerStore.getState();
     store.openReposition(['a']);
     store.previewModelTranslation([0, 5, 0]);
@@ -166,6 +201,80 @@ describe('placementFrameKey does not serve a cache frozen before a convergence (
       'sanity: the live anchor is now B, not A');
     assert.equal(placementFrameKey(useViewerStore.getState()), placementFrameKey(localState(anchorB)),
       'a commit made between two convergences must not freeze the FIRST anchor past the SECOND');
+  });
+
+  /** The scenario a second review round found the first architecture missed:
+   * committing does not just risk freezing a stale RTC suffix, the model the
+   * base identity itself was reading `CoordinateInfo` FROM can leave the
+   * federation entirely. `placementFrameCoordinateInfo` (`persistence.ts`)
+   * falls back to "the earliest-loaded model with a `geometryResult`" when
+   * there is no georeferenced anchor, so removing that model must hand the
+   * live key over to whichever model is left, not keep answering with the
+   * removed model's frame. */
+  it('removing the model the live key was reading from hands the key over to what remains', () => {
+    const anchorA = { x: 111, y: 222, z: 333 }, anchorB = { x: 444, y: 555, z: 666 };
+    const modelA = { ...fixtureModel('a'), sourceContentHash: 'source-a', loadedAt: 1,
+      geometryResult: { coordinateInfo: coordInfo(anchorA) } as unknown as GeometryResult };
+    const modelB = { ...fixtureModel('b'), sourceContentHash: 'source-b', loadedAt: 2,
+      geometryResult: { coordinateInfo: coordInfo(anchorB) } as unknown as GeometryResult };
+    useViewerStore.setState({ ...useViewerStore.getState(), ...fixtureModels(modelA, modelB), modelPlacement: emptyPlacementState() });
+
+    // A commits, exactly as the reported scenario describes.
+    const store = useViewerStore.getState();
+    store.openReposition(['a']);
+    store.previewModelTranslation([3, 0, 0]);
+    store.applyModelTranslation();
+
+    const keyWithA = placementFrameKey(useViewerStore.getState());
+    assert.match(keyWithA, /"x":111/, 'sanity: the earliest-loaded model (A) drives the live key');
+
+    // A leaves the federation (e.g. the 'model-removed' teardown's
+    // `retainLoadedPlacements`, which never touches `realignedFrameKey`).
+    useViewerStore.setState((s) => {
+      const models = new Map(s.models);
+      models.delete('a');
+      return { models };
+    });
+
+    const keyAfterRemoval = placementFrameKey(useViewerStore.getState());
+    assert.notEqual(keyAfterRemoval, keyWithA,
+      'the live key must reflect B once A, the model it was keyed to, is gone');
+    assert.match(keyAfterRemoval, /"x":444/, 'the live key now reads B\'s own frame, not a stale one');
+  });
+
+  /** The literal scenario reported: a GEOREFERENCED anchor, selected by
+   * `placementAnchor`/`selectAnchorGeoref` from each model's OWN embedded
+   * CRS (`IfcProjectedCRS`/`IfcMapConversion`), not the RTC/local-engineering
+   * fallback above. Two real parsed models on two different CRS, so this
+   * exercises the exact code path `placementFrameBaseKey` (persistence.ts)
+   * uses for a genuinely georeferenced workspace. */
+  it('removing the georeferenced anchor model hands the key over to the remaining CRS, not a stale one', async () => {
+    const a = await georeferencedModel('a', 'AnchorA0000000000000001', 1, 'EPSG:2056', 2600000);
+    const b = await georeferencedModel('b', 'AnchorB0000000000000001', 2, 'EPSG:4326', 500000);
+    useViewerStore.setState({ ...useViewerStore.getState(), ...fixtureModels(a, b), modelPlacement: emptyPlacementState() });
+
+    // A commits, exactly as the reported scenario describes.
+    const store = useViewerStore.getState();
+    store.openReposition(['a']);
+    store.previewModelTranslation([3, 0, 0]);
+    store.applyModelTranslation();
+    assert.equal(useViewerStore.getState().modelPlacement.realignedFrameKey, null,
+      'sanity: an ordinary commit never writes a pin, so there is nothing frozen to A here');
+
+    const keyWithA = placementFrameKey(useViewerStore.getState());
+    assert.match(keyWithA, /EPSG:2056/, 'sanity: the earliest-loaded model (A) drives the live key');
+
+    // A leaves the federation.
+    useViewerStore.setState((s) => {
+      const models = new Map(s.models);
+      models.delete('a');
+      return { models };
+    });
+
+    const keyAfterRemoval = placementFrameKey(useViewerStore.getState());
+    assert.notEqual(keyAfterRemoval, keyWithA,
+      'the live key must reflect B\'s CRS once A, the model it was keyed to, is gone');
+    assert.match(keyAfterRemoval, /EPSG:4326/, 'the live key now reads B\'s own CRS, not a stale one');
   });
 });
 

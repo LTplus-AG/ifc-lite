@@ -137,7 +137,7 @@ test('explicit source replacement retains both encoded images through Undo and n
 test('foreign-frame Edit previews explicit registration and Discard preserves the old frame until Save and Undo (#4308)', async t => {
   if (!await nativeAvailable(t)) return;
   const { ui, original } = await fixture();
-  act(() => useViewerStore.setState({ modelPlacement: { ...emptyPlacementState(), frameKey: 'other-engineering-frame' } }));
+  act(() => useViewerStore.setState({ modelPlacement: { ...emptyPlacementState(), realignedFrameKey: 'other-engineering-frame' } }));
   await settle();
   click(button(ui, 'Edit Drawing 1')); await settle();
   assert.equal(useViewerStore.getState().appearanceReferences.get('drawing'), original);

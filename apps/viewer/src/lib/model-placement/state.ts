@@ -42,8 +42,23 @@ export interface PlacementCommand {
 }
 
 export interface PlacementState {
-  /** Frame actually used for these positions, independent of a pending anchor choice. */
-  frameKey: string | null;
+  /**
+   * The CRS/conversion an explicit re-align (`commitRealignmentFrame`,
+   * `realignment-frame.ts`) committed this workspace to, or `null` when it
+   * has never been explicitly realigned.
+   *
+   * This is a DECISION, not a cache: `placementAnchor`/`selectAnchorGeoref`
+   * (`persistence.ts`) deliberately reads only each model's OWN embedded
+   * georeference, never a committed re-alignment, so a live recompute from
+   * `state.models` cannot reconstruct "the user re-aligned this workspace to
+   * CRS X" on its own. Set ONLY by `commitRealignmentFrame`. Never stamped by
+   * a plain commit (`applyModelTranslation`, `setModelRotation`) or a restore
+   * (`useModelPlacementPersistence.ts`): those need the frame's base identity
+   * to be recomputed fresh every time, not pinned to whatever it happened to
+   * be at some earlier moment (#4936 rounds 1-3: caching a computed value
+   * here, instead of a genuine decision, went stale under every kind of
+   * anchor change nobody remembered to re-stamp it for). */
+  realignedFrameKey: string | null;
   placements: ReadonlyMap<string, ModelPlacement>;
   preview: PlacementPreview | null;
   undo: readonly PlacementCommand[];
@@ -53,7 +68,7 @@ export interface PlacementState {
 }
 
 export function emptyPlacementState(): PlacementState {
-  return { frameKey: null, placements: new Map(), preview: null, undo: [], redo: [], revision: 0 };
+  return { realignedFrameKey: null, placements: new Map(), preview: null, undo: [], redo: [], revision: 0 };
 }
 
 export function placementFor(state: PlacementState, modelId: string): ModelPlacement {

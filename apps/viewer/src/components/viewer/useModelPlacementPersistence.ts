@@ -4,7 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { restoreWorkspacePlacements, saveWorkspacePlacements, placementFrameBaseKey } from '@/lib/model-placement/persistence';
+import { restoreWorkspacePlacements, saveWorkspacePlacements } from '@/lib/model-placement/persistence';
 import type { ModelPlacement } from '@/lib/model-placement/state';
 
 export function useModelPlacementPersistence(): void {
@@ -44,11 +44,11 @@ export function useModelPlacementPersistence(): void {
         (preview.target && revoked.has(preview.target.modelId)));
       restoring.current = true;
       try {
-        // Cache the BASE identity only, never the live RTC suffix (#4936): a
-        // later convergence must still fold its own live anchor onto this,
-        // not onto whatever anchor happened to be live at restore time.
+        // Does not touch `realignedFrameKey` (#4936): the frame identity is
+        // recomputed fresh from live `state.models` on every
+        // `placementFrameKey` read (`persistence.ts`), never cached here.
         useViewerStore.setState({ modelPlacement: { ...state.modelPlacement,
-          frameKey: placementFrameBaseKey(state), placements, preview: cancelPreview ? null : preview,
+          placements, preview: cancelPreview ? null : preview,
           revision: state.modelPlacement.revision + 1 }, ...(cancelPreview ? { repositionOpen: false } : {}) });
       } finally { restoring.current = false; }
       if (identityCompleted) saveWorkspacePlacements(localStorage, useViewerStore.getState());
@@ -66,7 +66,8 @@ export function useModelPlacementPersistence(): void {
       if (state.modelPlacement.placements.get(id) !== placement) automatic.current.delete(id);
     }
     if (!state.models.size || state.models !== previous.models ||
-      (state.modelPlacement.placements === previous.modelPlacement.placements && state.modelPlacement.frameKey === previous.modelPlacement.frameKey)) return;
+      (state.modelPlacement.placements === previous.modelPlacement.placements &&
+        state.modelPlacement.realignedFrameKey === previous.modelPlacement.realignedFrameKey)) return;
     try { saveWorkspacePlacements(localStorage, state); }
     catch (error) {
       console.warn('[Reposition] Placement persistence failed:', error);

@@ -14,7 +14,7 @@ import { constrainTranslation, finiteTranslation, fromRenderTranslation, subtrac
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
 import type { Vec3 } from '@ifc-lite/geometry';
 import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
-import { placementFrameKey, placementFrameBaseKey } from '../../lib/model-placement/persistence.js';
+import { placementFrameKey } from '../../lib/model-placement/persistence.js';
 
 export interface ModelPlacementSlice {
   modelPlacement: PlacementState;
@@ -91,14 +91,12 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     const checked = previewPlacement(state.modelPlacement, delta);
     return { modelPlacement: { ...checked, preview: { ...next, delta } } };
   }),
-  applyModelTranslation: () => set((state) => {
-    const committed = commitPlacement(state.modelPlacement);
-    // Pins the BASE identity only, never the live RTC anchor, or a later
-    // convergence (#4906/#4897) would be served from this frozen commit
-    // forever instead of on the next `placementFrameKey` read (#4936).
-    return { modelPlacement: committed.placements === state.modelPlacement.placements ? committed
-      : { ...committed, frameKey: placementFrameBaseKey(state) } };
-  }),
+  // Neither this nor `setModelRotation` stamps a frame identity onto
+  // `modelPlacement` (#4936): `placementFrameKey`/`placementFrameBaseKey`
+  // (`persistence.ts`) recompute the frame fresh from live `state.models` on
+  // every read, so there is nothing here to keep warm, and nothing that could
+  // go stale under a later RTC convergence or a model leaving the federation.
+  applyModelTranslation: () => set((state) => ({ modelPlacement: commitPlacement(state.modelPlacement) })),
   undoModelTranslation: () => set((state) => ({ modelPlacement: replayPlacement(state.modelPlacement, 'undo') })),
   redoModelTranslation: () => set((state) => ({ modelPlacement: replayPlacement(state.modelPlacement, 'redo') })),
   resetModelTranslations: (ids) => set((state) => {
@@ -112,11 +110,7 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     // rather than turn part of the selection (see rotation-refusal.ts).
     const refusal = rotationRefusal(state, ids);
     if (refusal) throw new Error(refusal);
-    const rotated = rotatePlacements(state.modelPlacement, ids, rotation);
-    // Same rule as a move: a committed change stamps the BASE frame its
-    // numbers are in (#4936: never the live RTC suffix, see `applyModelTranslation`).
-    return { modelPlacement: rotated.placements === state.modelPlacement.placements ? rotated
-      : { ...rotated, frameKey: placementFrameBaseKey(state) } };
+    return { modelPlacement: rotatePlacements(state.modelPlacement, ids, rotation) };
   }),
   rebasePlacementFrame: (deltas) => set((state) => {
     const workspace = new Map([...deltas].map(([id, delta]) => [id, fromRenderTranslation(delta)] as const));

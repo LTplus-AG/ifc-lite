@@ -12,12 +12,12 @@ import type { ModelPlacement } from './state.js';
  *
  * Deliberately excludes `wasmRtcOffset`: a federation RTC convergence
  * (`convergeFederationRtcFrame`, #4897/#4906) rewrites ONLY that field on an
- * already-loaded model's `CoordinateInfo`. CRS, conversion, `lengthUnitScale`,
- * `originShift` and `buildingRotation` are untouched by it. This key is the
- * part of the frame identity that is safe to pin (`modelPlacement.frameKey`,
- * see `placementFrameBaseKey`) across a commit or a realignment without going
- * stale; the live RTC anchor is folded in separately by {@link placementFrameKey}
- * itself, on every read, so it can never be served from a stale cache (#4936). */
+ * already-loaded model's `CoordinateInfo`; CRS, conversion, `lengthUnitScale`,
+ * `originShift` and `buildingRotation` are untouched by it. Keeping it out of
+ * this pure function means the live RTC anchor never gets baked into a value
+ * that might be pinned (`placementFrameBaseKey`) and later go stale; the
+ * live anchor is instead appended uniformly by `placementFrameKey`, outside
+ * anything that could ever be a decision made once rather than read fresh. */
 export function georeferencedPlacementFrameKey(georef: ModelGeoref): string {
   const crs = georef.projectedCRS, conversion = georef.mapConversion, info = georef.coordinateInfo;
   return JSON.stringify({ crs: crs && { name: crs.name, mapUnitScale: crs.mapUnitScale },
@@ -43,18 +43,27 @@ export function placementFrameCoordinateInfo(state: ViewerState) {
     .find(model => model.geometryResult)?.geometryResult?.coordinateInfo ?? state.geometryResult?.coordinateInfo;
 }
 
-/** The frame identity WITHOUT the live RTC anchor: `modelPlacement.frameKey`
- * once a commit (`applyModelTranslation`, `setModelRotation`) or a
- * realignment (`commitRealignmentFrame`) has stamped one, else computed fresh
- * from the current georeferenced anchor, else the fixed local-engineering
- * string. Safe to cache, since nothing in it moves under an RTC convergence.
+/**
+ * The workspace's frame identity, ALWAYS reconstructed from the live
+ * `state.models` (via `placementAnchor`), except for one case: once
+ * `commitRealignmentFrame` (`realignment-frame.ts`) has recorded an explicit
+ * re-alignment in `modelPlacement.realignedFrameKey`, that decision wins.
+ * `placementAnchor`/`selectAnchorGeoref` deliberately reads only each
+ * model's OWN embedded georeference, never a committed re-alignment (see its
+ * comment), so a live recompute cannot rediscover "the user re-aligned this
+ * workspace to CRS X" on its own; `realignedFrameKey` is the one piece of
+ * this identity that is genuinely decided STATE rather than a derived value.
  *
- * This is what a commit stamps into `modelPlacement.frameKey`, NOT
- * {@link placementFrameKey}'s full return value: caching the full value would
- * freeze the very RTC suffix this split exists to keep live, resurrecting
- * #4936 for every commit made before a later convergence. */
+ * Everything else here is deliberately NOT cached (#4936, rounds 1-3): three
+ * different call sites each tried stamping a computed result into
+ * `modelPlacement` at their own moment (a commit, a restore), and each time
+ * some later anchor change (an RTC convergence, a model removed from the
+ * federation) went unreflected because nothing invalidated the stamp. This
+ * is not a hot path (`state.models` federations are small; this runs from
+ * user actions and effects, never a render loop), so there is nothing to
+ * memoize: every call walks `state.models` fresh. */
 export function placementFrameBaseKey(state: ViewerState): string {
-  if (state.modelPlacement.frameKey) return state.modelPlacement.frameKey;
+  if (state.modelPlacement.realignedFrameKey) return state.modelPlacement.realignedFrameKey;
   const anchor = placementAnchor(state);
   return anchor ? georeferencedPlacementFrameKey({ ...anchor.eff, coordinateInfo: anchor.coordinateInfo }) : 'local-engineering:m:z-up';
 }
@@ -62,34 +71,37 @@ export function placementFrameBaseKey(state: ViewerState): string {
 /** `wasmRtcOffset` normalized so `-0` and `0` serialize identically; real
  * IFC-space RTC anchors are never exactly zero on one axis only, but a
  * collision here would silently merge two distinct frames (#4936 review). */
-function rtcSuffix(rtc: { x: number; y: number; z: number } | null | undefined): string {
-  if (!rtc) return '';
+function normalizeRtc(rtc: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
   const norm = (n: number) => (n === 0 ? 0 : n);
-  return `:rtc:${JSON.stringify({ x: norm(rtc.x), y: norm(rtc.y), z: norm(rtc.z) })}`;
+  return { x: norm(rtc.x), y: norm(rtc.y), z: norm(rtc.z) };
 }
 
 /**
- * The full frame identity a saved placement is keyed against: the pinnable
- * {@link placementFrameBaseKey} plus whatever RTC anchor the federation is
- * CURRENTLY converged onto, read live on every call and never cached.
+ * The full frame identity a saved placement is keyed against: the
+ * {@link placementFrameBaseKey} (pinned decision or live anchor CRS/conversion)
+ * plus whatever RTC anchor the federation is CURRENTLY converged onto,
+ * appended uniformly as a suffix and read live on every call, whether the
+ * base came from a pin or from `placementAnchor`.
  *
  * A rotation pivot is a workspace POINT, only meaningful in the render frame
  * it was captured in, unlike a translation, which is a difference and so is
  * frame-invariant (see the file header). `convergeFederationRtcFrame`
  * (#4906/#4897) shifts every converged model's render-frame origin, and any
- * live placement pivot with it (`rebasePlacementPivots`), by the same delta,
- * but it never touches `modelPlacement.frameKey`, nor should it: the BASE
- * identity did not change, and clearing the pin would also throw away the
- * stability `commitRealignmentFrame` relies on across a renamed/reloaded
- * anchor model. So the RTC anchor is folded in here, outside the cache,
- * instead. A convergence is then reflected on the very next read, whether or
- * not anything was committed (hence cached) before it. Reading it fresh every
- * time also means two independently-converged sessions that reach the SAME
- * live anchor compare equal, and two that reach different ones do not, even
- * when both committed a placement before their respective convergence.
+ * live placement pivot with it (`rebasePlacementPivots`), by the same delta.
+ * Nothing here is ever cached, so a convergence is reflected on the very
+ * next read regardless of what was committed, restored or removed before
+ * it: two independently-converged sessions that reach the SAME live anchor
+ * compare equal, and two that reach different ones do not, even one that
+ * pinned an explicit re-alignment first.
+ *
+ * `lib/appearance/reference-runtime/frame.ts`'s `engineeringFrame` strips
+ * this same `:rtc:` suffix back off before comparing: an appearance
+ * reference stores absolute IFC-world coordinates, so an RTC change alone is
+ * deliberately not a frame mismatch for it, only a genuine base change is.
  */
 export function placementFrameKey(state: ViewerState): string {
-  return placementFrameBaseKey(state) + rtcSuffix(placementFrameCoordinateInfo(state)?.wasmRtcOffset);
+  const rtc = placementFrameCoordinateInfo(state)?.wasmRtcOffset;
+  return rtc ? `${placementFrameBaseKey(state)}:rtc:${JSON.stringify(normalizeRtc(rtc))}` : placementFrameBaseKey(state);
 }
 
 const PREFIX = 'ifc-lite:placements:v1:';

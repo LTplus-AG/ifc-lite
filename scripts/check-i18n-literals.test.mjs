@@ -112,6 +112,12 @@ test('static concatenation and template-literal text are counted as copy (#4973 
   assert.equal(countLiterals('<a title={`' + hole('a') + hole('b') + '`} />'), 0);
 });
 
+test('TypeScript assertion wrappers do not hide copy (#4973 review)', () => {
+  assert.equal(countLiterals(`<b>{'Save changes' as const}</b>`), 1);
+  assert.equal(countLiterals(`<b>{'Save changes' satisfies string}</b>`), 1);
+  assert.equal(countLiterals(`<a aria-label={('Open' as string)!} />`), 1);
+});
+
 test('entity spellings in JSX text are decoded before the allowlist runs (#4973 review)', () => {
   assert.equal(countLiterals(`<span>&times;</span>`), 0);
   assert.equal(countLiterals(`<span>&middot; &#215; &#xD7;</span>`), 0);

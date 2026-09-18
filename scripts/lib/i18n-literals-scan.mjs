@@ -131,7 +131,9 @@ function literalStringValue(expr) {
  *  usual spelling of a toggling label (`{on ? 'Enabled' : 'Disabled'}`) and
  *  must not bypass the gate (review on #4973). */
 function staticStringValues(expr) {
-  if (ts.isParenthesizedExpression(expr)) return staticStringValues(expr.expression);
+  if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isSatisfiesExpression(expr) || ts.isNonNullExpression(expr)) {
+    return staticStringValues(expr.expression);
+  }
   if (ts.isConditionalExpression(expr)) {
     return [...staticStringValues(expr.whenTrue), ...staticStringValues(expr.whenFalse)];
   }

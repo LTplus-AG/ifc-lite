@@ -8,7 +8,16 @@ import { makePlacementManifest, parsePlacementManifest, resolvePlacementManifest
 import type { ModelPlacement } from './state.js';
 
 /** Only coordinate-defining values belong in a frame identity. Descriptions,
- * entity ids and other source metadata do not change the coordinate frame. */
+ * entity ids and other source metadata do not change the coordinate frame.
+ *
+ * Deliberately excludes `wasmRtcOffset`: a federation RTC convergence
+ * (`convergeFederationRtcFrame`, #4897/#4906) rewrites ONLY that field on an
+ * already-loaded model's `CoordinateInfo` — CRS, conversion, `lengthUnitScale`,
+ * `originShift` and `buildingRotation` are untouched by it. This key is the
+ * part of the frame identity that is safe to pin (`modelPlacement.frameKey`,
+ * see `placementFrameBaseKey`) across a commit or a realignment without going
+ * stale; the live RTC anchor is folded in separately by {@link placementFrameKey}
+ * itself, on every read, so it can never be served from a stale cache (#4936). */
 export function georeferencedPlacementFrameKey(georef: ModelGeoref): string {
   const crs = georef.projectedCRS, conversion = georef.mapConversion, info = georef.coordinateInfo;
   return JSON.stringify({ crs: crs && { name: crs.name, mapUnitScale: crs.mapUnitScale },
@@ -16,8 +25,7 @@ export function georeferencedPlacementFrameKey(georef: ModelGeoref): string {
       orthogonalHeight: conversion.orthogonalHeight, xAxisAbscissa: conversion.xAxisAbscissa,
       xAxisOrdinate: conversion.xAxisOrdinate, scale: conversion.scale,
       factorX: conversion.factorX, factorY: conversion.factorY, factorZ: conversion.factorZ },
-    lengthUnitScale: georef.lengthUnitScale, originShift: info?.originShift,
-    rtc: info?.wasmRtcOffset, rotation: info?.buildingRotation });
+    lengthUnitScale: georef.lengthUnitScale, originShift: info?.originShift, rotation: info?.buildingRotation });
 }
 
 function placementAnchor(state: ViewerState) {
@@ -35,20 +43,53 @@ export function placementFrameCoordinateInfo(state: ViewerState) {
     .find(model => model.geometryResult)?.geometryResult?.coordinateInfo ?? state.geometryResult?.coordinateInfo;
 }
 
-export function placementFrameKey(state: ViewerState): string {
+/** The frame identity WITHOUT the live RTC anchor: `modelPlacement.frameKey`
+ * once a commit (`applyModelTranslation`, `setModelRotation`) or a
+ * realignment (`commitRealignmentFrame`) has stamped one, else computed fresh
+ * from the current georeferenced anchor, else the fixed local-engineering
+ * string. Safe to cache — nothing in it moves under an RTC convergence.
+ *
+ * This is what a commit stamps into `modelPlacement.frameKey`, NOT
+ * {@link placementFrameKey}'s full return value: caching the full value would
+ * freeze the very RTC suffix this split exists to keep live, resurrecting
+ * #4936 for every commit made before a later convergence. */
+export function placementFrameBaseKey(state: ViewerState): string {
   if (state.modelPlacement.frameKey) return state.modelPlacement.frameKey;
   const anchor = placementAnchor(state);
-  if (anchor) return georeferencedPlacementFrameKey({ ...anchor.eff, coordinateInfo: anchor.coordinateInfo });
-  // No georeference: the workspace frame is still whatever RTC anchor the
-  // federation converged onto (`convergeFederationRtcFrame`, #4906/#4897). A
-  // rotation pivot is a workspace POINT, only meaningful in the render frame
-  // it was captured in, so a convergence that shifts every model's origin by
-  // the same delta has to be a distinct key here too, or a pivot saved before
-  // it restores unshifted into the moved frame (#4936). `wasmRtcOffset` is the
-  // anchor's own identity (IFC-space), so it changes exactly when convergence
-  // actually moves the anchor, and stays put across an in-place bake/reload.
-  const rtc = placementFrameCoordinateInfo(state)?.wasmRtcOffset;
-  return rtc ? `local-engineering:m:z-up:rtc:${JSON.stringify(rtc)}` : 'local-engineering:m:z-up';
+  return anchor ? georeferencedPlacementFrameKey({ ...anchor.eff, coordinateInfo: anchor.coordinateInfo }) : 'local-engineering:m:z-up';
+}
+
+/** `wasmRtcOffset` normalized so `-0` and `0` serialize identically; real
+ * IFC-space RTC anchors are never exactly zero on one axis only, but a
+ * collision here would silently merge two distinct frames (#4936 review). */
+function rtcSuffix(rtc: { x: number; y: number; z: number } | null | undefined): string {
+  if (!rtc) return '';
+  const norm = (n: number) => (n === 0 ? 0 : n);
+  return `:rtc:${JSON.stringify({ x: norm(rtc.x), y: norm(rtc.y), z: norm(rtc.z) })}`;
+}
+
+/**
+ * The full frame identity a saved placement is keyed against: the pinnable
+ * {@link placementFrameBaseKey} plus whatever RTC anchor the federation is
+ * CURRENTLY converged onto, read live on every call and never cached.
+ *
+ * A rotation pivot is a workspace POINT, only meaningful in the render frame
+ * it was captured in — unlike a translation, which is a difference and so is
+ * frame-invariant (see the file header). `convergeFederationRtcFrame`
+ * (#4906/#4897) shifts every converged model's render-frame origin, and any
+ * live placement pivot with it (`rebasePlacementPivots`), by the same delta,
+ * but it never touches `modelPlacement.frameKey` — nor should it: the BASE
+ * identity did not change, and clearing the pin would also throw away the
+ * stability `commitRealignmentFrame` relies on across a renamed/reloaded
+ * anchor model. So the RTC anchor is folded in here, outside the cache,
+ * instead: a convergence is then reflected on the very next read, whether or
+ * not anything was committed (hence cached) before it. Reading it fresh every
+ * time also means two independently-converged sessions that reach the SAME
+ * live anchor compare equal, and two that reach different ones do not — even
+ * when both committed a placement before their respective convergence.
+ */
+export function placementFrameKey(state: ViewerState): string {
+  return placementFrameBaseKey(state) + rtcSuffix(placementFrameCoordinateInfo(state)?.wasmRtcOffset);
 }
 
 const PREFIX = 'ifc-lite:placements:v1:';

@@ -14,7 +14,7 @@ import { constrainTranslation, finiteTranslation, fromRenderTranslation, subtrac
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
 import type { Vec3 } from '@ifc-lite/geometry';
 import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
-import { placementFrameKey } from '../../lib/model-placement/persistence.js';
+import { placementFrameKey, placementFrameBaseKey } from '../../lib/model-placement/persistence.js';
 
 export interface ModelPlacementSlice {
   modelPlacement: PlacementState;
@@ -93,8 +93,11 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
   }),
   applyModelTranslation: () => set((state) => {
     const committed = commitPlacement(state.modelPlacement);
+    // Pins the BASE identity only — never the live RTC anchor, or a later
+    // convergence (#4906/#4897) would be served from this frozen commit
+    // forever instead of on the next `placementFrameKey` read (#4936).
     return { modelPlacement: committed.placements === state.modelPlacement.placements ? committed
-      : { ...committed, frameKey: placementFrameKey(state) } };
+      : { ...committed, frameKey: placementFrameBaseKey(state) } };
   }),
   undoModelTranslation: () => set((state) => ({ modelPlacement: replayPlacement(state.modelPlacement, 'undo') })),
   redoModelTranslation: () => set((state) => ({ modelPlacement: replayPlacement(state.modelPlacement, 'redo') })),
@@ -110,9 +113,10 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     const refusal = rotationRefusal(state, ids);
     if (refusal) throw new Error(refusal);
     const rotated = rotatePlacements(state.modelPlacement, ids, rotation);
-    // Same rule as a move: a committed change stamps the frame its numbers are in.
+    // Same rule as a move: a committed change stamps the BASE frame its
+    // numbers are in (#4936: never the live RTC suffix — see `applyModelTranslation`).
     return { modelPlacement: rotated.placements === state.modelPlacement.placements ? rotated
-      : { ...rotated, frameKey: placementFrameKey(state) } };
+      : { ...rotated, frameKey: placementFrameBaseKey(state) } };
   }),
   rebasePlacementFrame: (deltas) => set((state) => {
     const workspace = new Map([...deltas].map(([id, delta]) => [id, fromRenderTranslation(delta)] as const));

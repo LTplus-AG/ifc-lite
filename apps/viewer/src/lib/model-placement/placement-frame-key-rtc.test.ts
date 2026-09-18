@@ -70,3 +70,78 @@ describe('placementFrameKey distinguishes an RTC convergence (#4936)', () => {
     assert.equal(placementFrameKey(localState(offset)), placementFrameKey(localState(offset)));
   });
 });
+
+/** `applyModelTranslation`/`setModelRotation` cache the BASE identity into
+ * `modelPlacement.frameKey` on every commit (`modelPlacementSlice.ts`), and
+ * `placementFrameKey` trusts that cache. Review of the first fix for #4936
+ * found the cache was never invalidated: once ANY commit stamped it, a LATER
+ * convergence (`convergeFederationRtcFrame`, #4897/#4906) rebased the live
+ * pivots correctly but the top-level `modelPlacement.frameKey` never moved,
+ * so a save after the convergence used the stale pre-convergence key and a
+ * restore in a fresh (converged) session found nothing under it.
+ *
+ * These drive the REAL store actions (`openReposition` / `applyModelTranslation`
+ * / `rebasePlacementFrame`), not the pure `state.ts` helpers, because the bug
+ * lived specifically in the commit-time caching wired into the store slice —
+ * every case above builds `emptyPlacementState()` fresh and never exercises it. */
+describe('placementFrameKey does not serve a cache frozen before a convergence (#4936 review)', () => {
+  /** Loads a fresh single-model workspace, commits a translation (caching
+   * `modelPlacement.frameKey`), then converges: the model's own `CoordinateInfo`
+   * picks up `wasmRtcOffset` (what `convergeGeometryOntoRtcAnchor` writes) and
+   * `rebasePlacementFrame` runs (what `federationRtcRebase.ts` calls after it),
+   * exactly the order production runs them in. Returns the live `placementFrameKey`
+   * read afterward, plus the store `disk` the placement was saved to. */
+  function committedThenConverged(anchor: CoordinateInfo['wasmRtcOffset']) {
+    useViewerStore.setState(localState(undefined));
+    const store = useViewerStore.getState();
+    store.openReposition(['a']);
+    store.previewModelTranslation([3, 0, 0]);
+    store.applyModelTranslation();
+    assert.equal(useViewerStore.getState().modelPlacement.frameKey, 'local-engineering:m:z-up',
+      'sanity: the commit cached the pre-convergence base');
+
+    useViewerStore.setState((s) => {
+      const model = s.models.get('a')!;
+      const models = new Map(s.models);
+      models.set('a', { ...model, geometryResult: { ...model.geometryResult, coordinateInfo: coordInfo(anchor) } as unknown as GeometryResult });
+      return { models };
+    });
+    useViewerStore.getState().rebasePlacementFrame(new Map([['a', { x: 1, y: 2, z: 3 }]]));
+
+    const disk = storage();
+    saveWorkspacePlacements(disk, useViewerStore.getState());
+    return { disk, key: placementFrameKey(useViewerStore.getState()) };
+  }
+
+  it('a placement committed before a convergence still round-trips through save/restore afterward', () => {
+    const anchor = { x: 1234567.891, y: -987654.321, z: 42.75 };
+    const { disk } = committedThenConverged(anchor);
+
+    // A fresh session (frameKey: null) reloading the same, already-converged
+    // workspace: nothing was committed in it yet, so the cache cannot lie —
+    // `placementFrameKey` recomputes live from the reloaded model's own
+    // (already-anchored) `coordinateInfo`, matching what was actually saved.
+    const restored = restoreWorkspacePlacements(disk, localState(anchor)).get('a');
+    assert.deepEqual(restored?.translation, [3, 0, 0],
+      'the pre-convergence commit must not be dropped by a stale save key');
+  });
+
+  it('does not fall back to restoring under the pre-convergence key either', () => {
+    const anchor = { x: 1234567.891, y: -987654.321, z: 42.75 };
+    const { disk } = committedThenConverged(anchor);
+    assert.equal(savedUnder(disk, 'local-engineering:m:z-up'), null,
+      'nothing was ever saved under the stale pre-convergence key');
+  });
+
+  it('two sessions that each commit before converging match only when they reach the same live anchor', () => {
+    const anchorA = { x: 10, y: 20, z: 30 }, anchorB = { x: 40, y: 50, z: 60 };
+    assert.equal(committedThenConverged(anchorA).key, committedThenConverged(anchorA).key,
+      'same live anchor after independent pre-convergence commits must match');
+    assert.notEqual(committedThenConverged(anchorA).key, committedThenConverged(anchorB).key,
+      'different live anchors after independent pre-convergence commits must not match');
+  });
+});
+
+function savedUnder(disk: ReturnType<typeof storage>, frame: string): string | null {
+  return disk.getItem('ifc-lite:placements:v1:' + frame);
+}

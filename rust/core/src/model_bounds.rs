@@ -75,14 +75,15 @@ impl ModelBounds {
         )
     }
 
-    /// Check if bounds reach more than 10 km (in METRES) from the origin.
+    /// Check if bounds reach more than [`crate::limits::LARGE_COORD_THRESHOLD_METERS`]
+    /// (1 km, in METRES; was 10 km before #4934) from the origin.
     ///
     /// The sampled values are raw `IfcCartesianPoint` coordinates in the
     /// file's length unit, so the caller passes `length_unit_scale` (file
     /// unit to metres, e.g. 0.001 for millimetres, 1000.0 for kilometres)
     /// and the comparison happens in metres. Gating on the raw values against
-    /// a metre-shaped constant let a kilometre-unit model 5 000 km out read
-    /// as "5000 < 10000" and skip the RTC rebase, and the caller's scaling
+    /// a metre-shaped constant let a kilometre-unit model 500 000 km out read
+    /// as "500 < 1000" and skip the RTC rebase, and the caller's scaling
     /// afterwards could not undo a decision already taken.
     #[inline]
     pub fn has_large_coordinates(&self, length_unit_scale: f64) -> bool {

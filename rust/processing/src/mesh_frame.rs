@@ -299,14 +299,14 @@ mod tests {
         }
     }
 
-    /// #4643: a `Large` verdict whose anchor is inside 10 km (the bounds
-    /// fallback's bbox centre for a 2 to 15 km extent) is still subtracted;
-    /// judging the anchor's own magnitude cast 15 km coordinates straight to
-    /// f32. A `Large` verdict anchored at the origin has nothing to subtract.
-    /// Re-gating the anchor arm on `coord_is_large` fails the loop.
+    /// #4643 (gate lowered to 1 km by #4934): a `Large` verdict whose anchor
+    /// is inside the gate (bbox centre for a 200 m to 1.5 km extent) is still
+    /// subtracted; judging the anchor's own magnitude cast 1.5 km straight to
+    /// f32. Origin-anchored `Large` has nothing to subtract; re-gating the
+    /// anchor arm on `coord_is_large` fails the loop.
     #[test]
     fn a_large_verdict_with_a_sub_threshold_anchor_is_subtracted() {
-        for anchor in [(-5_000.0, 0.0, 0.0), (8_500.0, 0.0, 0.0), (0.0, 0.0, 10_000.0)] {
+        for anchor in [(-500.0, 0.0, 0.0), (850.0, 0.0, 0.0), (0.0, 0.0, 1_000.0)] {
             let frame = MeshFrame::select(None, Some(RtcVerdict::Large { anchor }));
             assert_eq!(frame, MeshFrame::ModelRtc { anchor }, "{anchor:?}");
             assert!(frame.needs_shift());

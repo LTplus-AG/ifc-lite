@@ -64,8 +64,9 @@ export class CoordinateHandler {
     // resolved geometry (grids, survey points) into the render frame.
     //
     // `wasmRtcOffset` is the RTC offset (IFC Z-up, metres) the WASM mesh path
-    // actually subtracted — `null` when no shift was applied (model within 10km
-    // of origin). Mirrors the value the viewer captures from the `rtcOffset`
+    // actually subtracted — `null` when no shift was applied (model within
+    // the Rust `LARGE_COORD_THRESHOLD_METERS`, 1km since #4934, was 10km, of
+    // origin). Mirrors the value the viewer captures from the `rtcOffset`
     // streaming event, but populated here so it's present without viewer-side
     // patching. `lengthUnitScale` is the file-units→metres factor.
     private appliedWasmRtcOffset: Vec3 | null = null;

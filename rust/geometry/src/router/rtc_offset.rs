@@ -413,7 +413,9 @@ impl GeometryRouter {
     /// Single shared entry point for the server processing path, the wasm
     /// prepasses and the overlays, so every one of them makes the identical
     /// needs-shift decision: a model whose sampled placements fail to decode
-    /// while raw geometry carries >10 km coordinates must be re-based
+    /// while raw geometry carries coordinates past
+    /// [`crate::LARGE_COORD_THRESHOLD_METERS`] (1 km, was 10 km before
+    /// #4934) must be re-based
     /// identically everywhere (previously the wasm prepasses silently fell
     /// back to (0,0,0) and the browser rendered f32 vertex jitter that the
     /// server never saw).

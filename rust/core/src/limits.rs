@@ -86,7 +86,22 @@ pub const MAX_PLACEMENT_DEPTH: usize = 100;
 ///
 /// Prefer [`coord_is_large`] to comparing against this directly, so the
 /// comparison (strictly greater, any axis, absolute value) also has one home.
-pub const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
+///
+/// ## Why 1 km and not 10 km (#4934)
+///
+/// The line is precision-derived, not distance-derived: it is the point past
+/// which the f32 store the mesh path casts into loses more than a BIM
+/// tolerance. f32 has a 24-bit mantissa, so its ULP near `x` is
+/// `2^(exponent(x) - 23)`; at 1 km that is ~0.061 mm, and at the old 10 km
+/// line it is ~0.5-1 mm — comparable to the flush-face tolerances authoring
+/// tools actually hit, so two faces meant to be coincident round to
+/// *different* f32 lattice nodes and z-fight (#4934's report: 6.3 km survey
+/// coordinates, ~0.26 mm ULP, visible speckle over every join). 1 km keeps
+/// worst-case quantization at a fraction of a millimetre while matching the
+/// existing `NEAR_ORIGIN` band in `rust/geometry/src/router/rtc_offset.rs`,
+/// so a model just inside the line and the detector's own "already near the
+/// origin" judgment agree.
+pub const LARGE_COORD_THRESHOLD_METERS: f64 = 1000.0;
 
 /// True when any component of `point` (metres) lies strictly beyond
 /// [`LARGE_COORD_THRESHOLD_METERS`] from the origin.
@@ -136,18 +151,19 @@ impl RtcVerdict {
 mod tests {
     use super::*;
 
-    /// #4611. The documented contract: 10 km, strictly greater, any axis, sign
-    /// ignored. Pinned here because every former copy compared the same way
-    /// and a predicate that flipped to `>=` or dropped an axis would move the
-    /// needs-shift decision for every consumer at once.
+    /// #4611, lowered by #4934. The documented contract: 1 km, strictly
+    /// greater, any axis, sign ignored. Pinned here because every former copy
+    /// compared the same way and a predicate that flipped to `>=` or dropped
+    /// an axis would move the needs-shift decision for every consumer at
+    /// once.
     #[test]
-    fn large_coord_threshold_is_the_documented_10_km() {
-        assert_eq!(LARGE_COORD_THRESHOLD_METERS, 10_000.0);
-        assert!(!coord_is_large((10_000.0, 0.0, 0.0)));
-        assert!(!coord_is_large((-10_000.0, -10_000.0, -10_000.0)));
-        assert!(coord_is_large((10_000.5, 0.0, 0.0)));
-        assert!(coord_is_large((0.0, -10_000.5, 0.0)));
-        assert!(coord_is_large((0.0, 0.0, 10_000.5)));
+    fn large_coord_threshold_is_the_documented_1_km() {
+        assert_eq!(LARGE_COORD_THRESHOLD_METERS, 1_000.0);
+        assert!(!coord_is_large((1_000.0, 0.0, 0.0)));
+        assert!(!coord_is_large((-1_000.0, -1_000.0, -1_000.0)));
+        assert!(coord_is_large((1_000.5, 0.0, 0.0)));
+        assert!(coord_is_large((0.0, -1_000.5, 0.0)));
+        assert!(coord_is_large((0.0, 0.0, 1_000.5)));
     }
 
     /// The documented contract. This pins the VALUE; the constant being shared

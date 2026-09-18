@@ -161,10 +161,14 @@ fn a_rotated_overlap_9km_out_reports_the_same_volume_as_at_the_origin() {
 // tests compile against production code as it was before this change.
 // ---------------------------------------------------------------------------
 
-/// A site 5-10 km out on every axis, under `LARGE_COORD_THRESHOLD_METERS`
-/// per axis so nothing upstream recentres it, and a multiple of `2^-3` so a
-/// mesh baked through f32 here can be translated back to the origin without
-/// changing a single bit of its relative geometry (see
+/// A site 5-10 km out on every axis. These tests drive `intersection_solid`
+/// / `mesh_signed_volume` directly rather than through the router, so (per
+/// AGENTS.md "Driving `GeometryRouter` directly ... skips the RTC rebase")
+/// nothing recentres it regardless of where `LARGE_COORD_THRESHOLD_METERS`
+/// (1 km since #4934, was 10 km) sits — the magnitude is chosen to exercise
+/// realistic far-site f32 precision loss, not to stay under the gate. Also a
+/// multiple of `2^-3` so a mesh baked through f32 here can be translated back
+/// to the origin without changing a single bit of its relative geometry (see
 /// [`translated_exactly`]).
 const FAR_SITE_M: [f64; 3] = [9000.375, 5000.25, 300.125];
 

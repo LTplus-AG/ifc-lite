@@ -57,6 +57,13 @@ const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
  * we ride on top of the entity bbox path: bbox center already in
  * renderer frame is what selectionHandlers uses; for the endpoints
  * we add the storey elevation explicitly.
+ *
+ * KNOWN GAP, not fixed here: unlike `rendererPointToIfcStoreyLocal` as of
+ * #4932, this direction does not invert the model's reposition placement,
+ * so on a moved or rotated model the handles themselves render off the
+ * actual wall. #4932 is scoped to the pick side (placement/split); this is
+ * the same class of bug on the endpoint-drag display side and wants its own
+ * fix.
  */
 function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number): Vec3 {
   // IFC Z-up storey-local → renderer Y-up world:
@@ -161,7 +168,7 @@ export function WallEndpointOverlay() {
     if (typeof pickFn !== 'function') return null;
     const world = pickFn(clientX, clientY, drag.storeyElevation);
     if (!world) return null;
-    return rendererPointToIfcStoreyLocal(world);
+    return rendererPointToIfcStoreyLocal(world, endpoints.modelId);
   };
 
   const onDragMove = (e: React.PointerEvent<SVGElement>) => {

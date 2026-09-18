@@ -178,7 +178,11 @@ export function bcfTextFromChange(
   // changes:"). The two must not share a value - see the filter comment.
   const lines: (string | null)[] = [
     `Detected in model comparison: ${changeLabel(row)}.`,
-    row.key.startsWith('missing:') ? null : `GlobalId: ${row.key}`,
+    row.key.startsWith('missing:')
+      ? null
+      : row.key.startsWith('prop:')
+        ? `Key: ${row.key.slice('prop:'.length)}`
+        : `GlobalId: ${row.key}`,
   ];
   if (detail?.geometry) {
     if (detail.geometry.movedDistance > 0) lines.push(`Moved ${detail.geometry.movedDistance.toFixed(3)} m.`);

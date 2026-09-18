@@ -47,6 +47,8 @@ import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { diffTools } from './diff.js';
 import { buildModelFingerprints } from './diff-fingerprints.js';
+import type { PendingOverlay } from '../overlay.js';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 
 interface DiffShape {
   entityDiff: { added: string[]; removed: string[]; common: number } | null;
@@ -99,6 +101,7 @@ beforeAll(async () => {
   await load('legacy-head', legacyScheduleModel(guid('NEWM')));
   await load('sched', scheduleModel(guid('OLDT')));
   await load('walls', model(guid('OLDA'), guid('OLDB')));
+  await load('walls-head', model(guid('NEWA'), guid('NEWB')));
   await load('type-tags', typeTagModel());
   await load('rail-types', railTypeModel());
   await load('qty-mm', quantityModel('MILLIMETRE', 2000));
@@ -144,6 +147,55 @@ describe('buildModelFingerprints on an IFC2X3 file', () => {
     expect([...byKey.keys()].sort()).toEqual(
       [guid('PROJ'), guid('STOR'), guid('WALL'), guid('OLDM'), guid('SPGM'), guid('GTTY')].sort(),
     );
+  });
+
+  it('keys on an authored Tag under key_from, so re-GUIDed walls match by key (issue #4955)', async () => {
+    const byContent = await diff({ a: 'walls', b: 'walls-head', by_content: true });
+    expect(byContent.contentDiff?.contentMatchCounts).toEqual({ renamed: 2 });
+
+    const byTag = await diff({ a: 'walls', b: 'walls-head', by_content: true, key_from: 'Tag' });
+    const content = byTag.contentDiff as Record<string, unknown> | null;
+    if (!content) throw new Error('by_content produced no contentDiff');
+    expect(content.keyProperty).toBe('Tag');
+    expect(content.duplicateAuthoredKeys).toEqual([]);
+    expect(content.contentMatchCounts).toEqual({});
+    expect((content.counts as { added: number; deleted: number })).toMatchObject({ added: 0, deleted: 0 });
+  });
+
+  it('reads an authored key through the session overlay, and a tombstoned twin no longer contests it', async () => {
+    // Both walls carry Tag 'tagA' in this model; a session that deletes one and
+    // retags the other must see ONE unique authored key, not a collision.
+    await load('walls-twins', model(guid('OLDA'), guid('OLDB')).replace("'tagB'", "'tagA'"));
+    const before = buildModelFingerprints(store('walls-twins'), null, { keyProperty: 'Tag' });
+    expect(before.filter((f) => f.key.startsWith('prop:'))).toHaveLength(0);
+
+    const overlay = {
+      deleted: new Set([71]),
+      created: [],
+      createdAll: [],
+      pendingMutations: 2,
+      createdEntity: () => null,
+      attributes: (id: number) => new Map(id === 70 ? [['Tag', 'AST-1']] : []),
+      attributesByEntity: () => new Map(),
+      propertySets: (id: number) => extractPropertiesOnDemand(store('walls-twins'), id),
+      quantitySets: (id: number) => extractQuantitiesOnDemand(store('walls-twins'), id),
+      queuedRelations: () => [],
+    } as unknown as PendingOverlay;
+    const duplicateAuthoredKeys = new Map<string, number[]>();
+    const after = new Map(
+      buildModelFingerprints(store('walls-twins'), overlay, { keyProperty: 'Tag', duplicateAuthoredKeys }).map((f) => [f.ref, f.key]),
+    );
+    expect(after.get(70)).toBe('prop:AST-1');
+    expect(after.has(71)).toBe(false);
+    expect(duplicateAuthoredKeys.size).toBe(0);
+  });
+
+  it('refuses a malformed key_from', async () => {
+    const tool = diffTools.find((t) => t.name === 'model_diff');
+    if (!tool) throw new Error('model_diff not registered');
+    await expect(
+      Promise.resolve().then(() => tool.handler({ a: 'walls', b: 'walls-head', by_content: true, key_from: 'AssetId' }, ctx)),
+    ).rejects.toThrow(/key_from/);
   });
 
   it('matches a re-GUIDed IFC2X3 object through the tool surface', async () => {

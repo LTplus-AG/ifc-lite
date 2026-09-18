@@ -146,7 +146,6 @@
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
-   441 apps/viewer/src/lib/compare/buildFingerprints.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts
    501 apps/viewer/src/lib/geo/cesium-bridge.ts
    461 apps/viewer/src/lib/geo/custom-basemap.ts
@@ -278,7 +277,7 @@
    484 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts
    544 packages/mcp/src/server.ts
-   476 packages/mcp/src/tools/diff-fingerprints.ts
+   439 packages/mcp/src/tools/diff-fingerprints.ts
    470 packages/mcp/src/tools/layer-review.ts
    483 packages/mcp/src/tools/mutate.ts
    648 packages/mcp/src/tools/query.ts

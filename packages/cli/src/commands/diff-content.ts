@@ -10,6 +10,14 @@
  * sidecar. On the next run the accepted claims come back in as key aliases, the
  * re-GUIDed elements are matched by key, and they never show up as churn again.
  * See `diff-engine.ts` for why this path is data-scope only.
+ *
+ * Issue #4955 adds three things on the same loop: `--key-from` keys the
+ * comparison on an authored identifier instead of GlobalId; `--lineage-out` /
+ * `--lineage-in` write and replay the 1:k lineage an external table rekeys on;
+ * and `--accept` folds a reviewed identity map (a human's answer to the
+ * suggestions a geometry-capable run produced) into that lineage as
+ * `replaced` entries. The successor and split/merge stages themselves need
+ * geometry and stay off here — see #4956.
  */
 
 import { readFile, stat, writeFile } from 'node:fs/promises';
@@ -17,21 +25,27 @@ import { resolve } from 'node:path';
 import type { Stats } from 'node:fs';
 import {
   createIdentityMapSidecar,
+  createLineageSidecar,
   diffModels,
   identityMapFromContentMatches,
   identityMapSidecarMismatches,
+  keyAliasesFromLineage,
   keyAliasesFromSidecar,
   parseIdentityMapSidecar,
   serializeIdentityMapSidecar,
+  serializeLineageSidecar,
   type ContentMatch,
   type IdentityMapEntry,
   type IdentityMapSidecar,
-  type ModelDiff,
+  type LineageEntry,
   type ModelIdentity,
 } from '@ifc-lite/diff';
+import { parseAuthoredKeySpec } from '@ifc-lite/parser';
 import { loadIfcBytes } from '../loader.js';
 import { fatal, printJson } from '../output.js';
 import { buildFileFingerprints, modelIdentityOf, type DiffRef } from './diff-engine.js';
+import { mergeAliases, mergeLineage, readVerifiedLineage } from './diff-lineage-io.js';
+import { printReport } from './diff-content-report.js';
 
 export interface ContentDiffOptions {
   basePath: string;
@@ -40,11 +54,23 @@ export interface ContentDiffOptions {
   identityIn?: string;
   /** `--identity-out`: where to write the sidecar this run establishes. */
   identityOut?: string;
+  /** `--lineage-in`: a lineage whose 1:1 entries are replayed as key aliases. */
+  lineageIn?: string;
+  /** `--lineage-out`: where to write the lineage this run establishes. */
+  lineageOut?: string;
+  /** `--accept`: a reviewed identity map folded into the lineage as `replaced`. */
+  accept?: string;
+  /** `--key-from`: `Tag` or `Pset.Prop`, the authored key to compare on. */
+  keyFrom?: string;
   json: boolean;
 }
 
 export async function contentDiffCommand(options: ContentDiffOptions): Promise<void> {
   const { basePath, headPath } = options;
+  if (options.keyFrom !== undefined && !parseAuthoredKeySpec(options.keyFrom)) {
+    fatal(`--key-from must be Tag or <PsetName>.<PropertyName>, got "${options.keyFrom}"`);
+  }
+  const keyProperty = options.keyFrom?.trim();
 
   // Before anything is read, and long before anything is written.
   await refuseOverwritingAnInput(options);
@@ -54,24 +80,48 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
   const baseIdentity = modelIdentityOf(basePath, baseBytes);
   const headIdentity = modelIdentityOf(headPath, headBytes);
 
+  const pinned = { base: baseIdentity, head: headIdentity, keyProperty };
   const incoming = options.identityIn
-    ? await readVerifiedSidecar(options.identityIn, baseIdentity, headIdentity)
+    ? await readVerifiedSidecar(options.identityIn, pinned)
     : undefined;
+  const incomingLineage = options.lineageIn
+    ? await readVerifiedLineage(options.lineageIn, pinned)
+    : undefined;
+  const accepted = options.accept ? await readVerifiedSidecar(options.accept, pinned) : undefined;
 
   process.stderr.write('Loading files...\n');
   const baseStore = await loadIfcBytes(baseBytes, basePath);
   const headStore = await loadIfcBytes(headBytes, headPath);
 
-  const diff = diffModels(buildFileFingerprints(baseStore), buildFileFingerprints(headStore), {
+  const duplicateAuthoredKeys = new Map<string, number[]>();
+  const adapter = { keyProperty, duplicateAuthoredKeys };
+  const baseFingerprints = buildFileFingerprints(baseStore, adapter);
+  const headFingerprints = buildFileFingerprints(headStore, adapter);
+  for (const [value, ids] of duplicateAuthoredKeys) {
+    process.stderr.write(
+      `Warning: ${keyProperty} = "${value}" names ${ids.length} entities; they fall back to GlobalId.\n`,
+    );
+  }
+
+  // Both sources of aliases are replayed together. A lineage's 1:1 entries and
+  // an identity map's claims are the same kind of thing under two file formats;
+  // where the two disagree about one head key, neither is applied — that is
+  // `resolveKeyAliases` rule 4, arriving from two files instead of one.
+  const aliases = mergeAliases(
+    incoming ? keyAliasesFromSidecar(incoming) : undefined,
+    incomingLineage ? keyAliasesFromLineage(incomingLineage.entries) : undefined,
+  );
+
+  const diff = diffModels(baseFingerprints, headFingerprints, {
     // No meshes in Node: `data` is the honest description of what this path can
     // compare. See diff-engine.ts.
     scope: 'data',
     matchUnpairedByContent: true,
-    keyAliases: incoming ? keyAliasesFromSidecar(incoming) : undefined,
+    keyAliases: aliases,
   });
 
   const applied = diff.appliedKeyAliases ?? new Map<string, string>();
-  const ignored = incoming ? countClaims(incoming) - applied.size : 0;
+  const ignored = aliases ? aliases.size - applied.size : 0;
 
   let written: { path: string; entries: IdentityMapEntry[] } | undefined;
   if (options.identityOut) {
@@ -93,9 +143,25 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
       // optional, and `git log` dates a reviewed, committed artifact better
       // than a self-reported timestamp does.
       created: incoming?.created,
+      keyProperty,
     });
     await writeFile(options.identityOut, serializeIdentityMapSidecar(sidecar), 'utf-8');
     written = { path: options.identityOut, entries: sidecar.entries };
+  }
+
+  let lineageWritten: { path: string; entries: LineageEntry[] } | undefined;
+  if (options.lineageOut) {
+    const { entries, deleted } = mergeLineage(incomingLineage, incoming, diff, accepted);
+    const sidecar = createLineageSidecar({
+      base: baseIdentity,
+      head: headIdentity,
+      entries,
+      deleted,
+      created: incomingLineage?.created,
+      keyProperty,
+    });
+    await writeFile(options.lineageOut, serializeLineageSidecar(sidecar), 'utf-8');
+    lineageWritten = { path: options.lineageOut, entries: sidecar.entries };
   }
 
   if (options.json) {
@@ -115,6 +181,14 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
           : undefined,
         out: written ? { path: written.path, entries: written.entries.length } : undefined,
       },
+      lineage: {
+        in: options.lineageIn ? { path: options.lineageIn } : undefined,
+        out: lineageWritten
+          ? { path: lineageWritten.path, entries: lineageWritten.entries.length }
+          : undefined,
+      },
+      keyProperty: keyProperty ?? null,
+      duplicateAuthoredKeys: [...duplicateAuthoredKeys.keys()],
     });
     return;
   }
@@ -127,6 +201,9 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
     ignoredCount: ignored,
     identityIn: options.identityIn,
     written,
+    lineageIn: options.lineageIn,
+    lineageWritten,
+    keyProperty,
   });
 }
 
@@ -155,20 +232,23 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
  * (read the accepted claims, write back the ones that still held).
  */
 async function refuseOverwritingAnInput(options: ContentDiffOptions): Promise<void> {
-  const { identityOut } = options;
-  if (identityOut === undefined) return;
-
-  const out = resolve(identityOut);
-  const outStat = await statOrUndefined(identityOut);
-  for (const [label, input] of [
-    ['base model', options.basePath],
-    ['head model', options.headPath],
+  for (const [flag, target] of [
+    ['--identity-out', options.identityOut],
+    ['--lineage-out', options.lineageOut],
   ] as const) {
-    if (resolve(input) !== out && !isSameFile(outStat, await statOrUndefined(input))) continue;
-    fatal(
-      `--identity-out ${identityOut} is the ${label} (${input}). ` +
-        'Writing the identity map there would overwrite the input file.',
-    );
+    if (target === undefined) continue;
+    const out = resolve(target);
+    const outStat = await statOrUndefined(target);
+    for (const [label, input] of [
+      ['base model', options.basePath],
+      ['head model', options.headPath],
+    ] as const) {
+      if (resolve(input) !== out && !isSameFile(outStat, await statOrUndefined(input))) continue;
+      fatal(
+        `${flag} ${target} is the ${label} (${input}). ` +
+          'Writing there would overwrite the input file.',
+      );
+    }
   }
 }
 
@@ -213,8 +293,7 @@ async function readModel(path: string): Promise<Uint8Array> {
  */
 async function readVerifiedSidecar(
   path: string,
-  base: ModelIdentity,
-  head: ModelIdentity,
+  models: { base: ModelIdentity; head: ModelIdentity; keyProperty?: string },
 ): Promise<IdentityMapSidecar> {
   let text: string;
   try {
@@ -228,20 +307,13 @@ async function readVerifiedSidecar(
   } catch (error) {
     return fatal((error as Error).message);
   }
-  const problems = identityMapSidecarMismatches(sidecar, { base, head });
+  const problems = identityMapSidecarMismatches(sidecar, models);
   if (problems.length > 0) {
     return fatal(
       `Identity map ${path} was not verified against these files:\n  ${problems.join('\n  ')}`,
     );
   }
   return sidecar;
-}
-
-/** Distinct head keys a sidecar actually claims (self-claims and repeats are
- *  no-ops the consumer drops, so counting raw entries would overstate what
- *  could have applied). */
-function countClaims(sidecar: IdentityMapSidecar): number {
-  return keyAliasesFromSidecar(sidecar).size;
 }
 
 /**
@@ -275,55 +347,4 @@ function mergeIdentityClaims(
   }
   entries.push(...identityMapFromContentMatches(matches));
   return entries;
-}
-
-function printReport(report: {
-  basePath: string;
-  headPath: string;
-  diff: ModelDiff<DiffRef>;
-  appliedCount: number;
-  ignoredCount: number;
-  identityIn?: string;
-  written?: { path: string; entries: IdentityMapEntry[] };
-}): void {
-  const { diff } = report;
-  const out = (line: string): void => {
-    process.stdout.write(`${line}\n`);
-  };
-
-  out('');
-  out(`  Base: ${report.basePath}`);
-  out(`  Head: ${report.headPath}`);
-  out(`  Scope: data (the CLI has no geometry pipeline)`);
-  out('');
-  out(`  Unchanged: ${diff.counts.unchanged}`);
-  out(`  Modified:  ${diff.counts.modified}`);
-  out(`  Added:     ${diff.counts.added}`);
-  out(`  Deleted:   ${diff.counts.deleted}`);
-
-  const byKind = new Map<string, number>();
-  for (const match of diff.contentMatches ?? []) {
-    byKind.set(match.kind, (byKind.get(match.kind) ?? 0) + 1);
-  }
-  out('');
-  if (byKind.size === 0) {
-    out('  Content matches: none');
-  } else {
-    out('  Content matches:');
-    for (const [kind, count] of [...byKind].sort()) {
-      out(`    ${kind.padEnd(13)} ${count}`);
-    }
-    out('    (renamed / moved / reshaped / respecified are resolved; the rest need a human)');
-  }
-
-  if (report.identityIn) {
-    out('');
-    out(`  Identity map in:  ${report.identityIn}`);
-    out(`    applied: ${report.appliedCount}, ignored: ${report.ignoredCount}`);
-  }
-  if (report.written) {
-    out('');
-    out(`  Identity map out: ${report.written.path} (${report.written.entries.length} claims)`);
-  }
-  out('');
 }

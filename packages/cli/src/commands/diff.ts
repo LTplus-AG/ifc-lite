@@ -25,13 +25,22 @@ import { comparableGlobalIds } from './diff-scope.js';
 
 const USAGE =
   'Usage: ifc-lite diff <file1.ifc> <file2.ifc> [--json] [--by-entity]\n' +
-  '                     [--by-content] [--identity-out <map.json>] [--identity-in <map.json>]';
+  '                     [--by-content] [--identity-out <map.json>] [--identity-in <map.json>]\n' +
+  '                     [--lineage-out <lineage.json>] [--lineage-in <lineage.json>]\n' +
+  '                     [--accept <map.json>] [--key-from Tag|Pset.Prop]';
 
 /** Flags that consume the following argument, so it is never mistaken for a
  *  positional file path. Deliberately only the flags this command owns: the
  *  shared `args.filter(a => !a.startsWith('-'))` idiom would have swallowed
  *  `--identity-out map.json` as a third file. */
-const VALUE_FLAGS = new Set(['--identity-out', '--identity-in']);
+const VALUE_FLAGS = new Set([
+  '--identity-out',
+  '--identity-in',
+  '--lineage-out',
+  '--lineage-in',
+  '--accept',
+  '--key-from',
+]);
 
 export function diffPositionals(args: string[]): string[] {
   const positional: string[] = [];
@@ -71,12 +80,23 @@ export async function diffCommand(args: string[]): Promise<void> {
   // it rather than being silently ignored next to the type-count diff.
   const identityOut = identityPath(args, '--identity-out');
   const identityIn = identityPath(args, '--identity-in');
-  if (hasFlag(args, '--by-content') || identityOut !== undefined || identityIn !== undefined) {
+  const lineageOut = identityPath(args, '--lineage-out');
+  const lineageIn = identityPath(args, '--lineage-in');
+  const accept = identityPath(args, '--accept');
+  const keyFrom = identityPath(args, '--key-from');
+  if (
+    hasFlag(args, '--by-content') ||
+    [identityOut, identityIn, lineageOut, lineageIn, accept, keyFrom].some((v) => v !== undefined)
+  ) {
     await contentDiffCommand({
       basePath: file1,
       headPath: file2,
       identityIn,
       identityOut,
+      lineageIn,
+      lineageOut,
+      accept,
+      keyFrom,
       json: jsonOutput,
     });
     return;

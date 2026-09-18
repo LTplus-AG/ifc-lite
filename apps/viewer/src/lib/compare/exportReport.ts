@@ -26,6 +26,7 @@ import { productTypeSplit, type ProductTypeTally } from './productTypeCounts.js'
 import {
   annotateReviewGroups,
   contentMatchReportRows,
+  exportedAuthoredKey,
   exportedGlobalId,
   type CompareReportRow,
 } from './reportRows.js';
@@ -188,6 +189,7 @@ export function buildCompareReport(
     // The fingerprint key is the GlobalId; synthetic "missing:" keys (entities
     // without a resolvable GlobalId) export blank rather than the placeholder.
     const globalId = exportedGlobalId(reportKey(entry));
+    const key = exportedAuthoredKey(reportKey(entry));
     const modelName = ref.modelId === result.headModelId ? result.headName : result.baseName;
 
     let change: string;
@@ -197,6 +199,7 @@ export function buildCompareReport(
     else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds, baseModel, headModel));
 
     const row: CompareReportRow = { globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName };
+    if (key) row.key = key;
     rows.push(row);
     rowGlobalIds.set(row, ref.globalId);
   }
@@ -262,10 +265,16 @@ function csvField(value: string | number): string {
 
 /** Serialize the report as RFC-4180 CSV (one element per row). */
 export function reportToCsv(report: CompareReport): string {
-  // `Match` / `MatchedGlobalId` are appended, never inserted: an existing
-  // consumer reading the first six columns positionally keeps working (#1891).
+  // `Match` / `MatchedGlobalId` / `Key` are appended, never inserted: an
+  // existing consumer reading the first six columns positionally keeps working
+  // (#1891). `Key` is the authored key a row was compared on and appears ONLY
+  // when the comparison used one (issue #4955), so a GlobalId-keyed report is
+  // byte-identical to before; it is not a GlobalId and never lands in that
+  // column.
+  const withKey = report.rows.some((r) => r.key !== undefined);
   const header = [
     'GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model', 'Match', 'MatchedGlobalId',
+    ...(withKey ? ['Key'] : []),
   ];
   const lines: string[] = [];
   // The row count below totals products AND type objects together (`Change`
@@ -303,6 +312,7 @@ export function reportToCsv(report: CompareReport): string {
       csvField(r.model),
       csvField(r.match ?? ''),
       csvField(r.matchedGlobalId ?? ''),
+      ...(withKey ? [csvField(r.key ?? '')] : []),
     ].join(','));
   }
   return lines.join('\r\n');

@@ -579,6 +579,10 @@ ifc-lite diff model-v1.ifc model-v2.ifc --json
 | `--by-content` | Run the `@ifc-lite/diff` engine with content-keyed matching |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims as key aliases (implies `--by-content`) |
+| `--key-from <Tag\|Pset.Prop>` | Compare on an authored identifier instead of GlobalId (implies `--by-content`) |
+| `--lineage-out <file>` | Write the lineage this run establishes (implies `--by-content`) |
+| `--lineage-in <file>` | Replay a lineage's 1:1 entries as key aliases and carry it forward (implies `--by-content`) |
+| `--accept <map.json>` | Fold a reviewed identity map into the lineage as `replaced` entries |
 | `--json` | JSON output |
 
 Without `--by-entity`, the command reports the schema, entity count, entity-count delta, and the per-type differences (sorted by the size of the delta). With `--by-entity` it adds the count of GlobalIds added, removed, and common between the two files.
@@ -602,6 +606,24 @@ Two things to know about this path:
 - **It compares data only.** The Node CLI has no geometry pipeline, so there is no world geometry hash and no bounding box; it passes `scope: 'data'`, which is the honest description of what it can see. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available. For that, drive the engine with geometry hashes (or use the viewer's Compare mode).
 - **`--identity-in` refuses a sidecar that was verified against different files**, because that is what pinning both digests is for. There is no override flag: the fix is to re-run the comparison that produced the claims, which is one command.
 
+### Authored keys, lineage and `rekey`
+
+GlobalId is the default key because every `IfcRoot` has one, but when the model maintains an identifier on purpose — an asset code in a property set, a `Tag` the authoring tool keeps stable — that identifier survives a delete-and-redraw that a GlobalId does not. `--key-from` keys the comparison on it:
+
+```bash
+# Key on Pset_Asset.AssetId where an element carries one; GlobalId elsewhere.
+ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --lineage-out lineage.json
+
+# Carry a cost table across: split rows are copied to every piece, orphans set aside.
+ifc-lite rekey costs.csv --lineage lineage.json --key-column GlobalId --out costs-v2.csv --orphans orphans.csv
+```
+
+An entity carrying a non-empty, unique value is keyed `prop:<value>`; every other entity keeps its GlobalId. A value two entities share is refused for both (they fall back to GlobalId and the command warns), because a key that names two things is not a key. The identity map and the lineage both record the scheme they were written under (`keyProperty`), and replaying either under a different scheme is refused like a digest mismatch — a GlobalId-keyed map under `--key-from` would otherwise apply nothing, silently.
+
+`--lineage-out` writes the [lineage](#lineage-and-rekeying-external-data) this run established; `--lineage-in` replays its 1:1 entries as aliases and carries the rest forward, so `--lineage-in x --lineage-out x` is a stable round trip. `--accept` takes an identity-map sidecar a human wrote or exported after reviewing the viewer's successor suggestions, and folds each claim whose pair is still an add plus a delete into the lineage as `replaced`. The successor and split/merge stages themselves need geometry and do not run on this path (see #4956).
+
+`ifc-lite rekey` applies a lineage to a CSV or JSON table: each row keyed on an old key is rewritten to its successor(s) under `--policy copy-to-all` (default), `largest-share` or `orphan-on-split`, with `lineage_relation` and `lineage_from` columns recording what happened; rows with nowhere to go are written to `--orphans` rather than dropped.
+
 Passing `--identity-in` and `--identity-out` together rewrites the map with the claims that still held plus anything new, preserving each claim's original `reason`. Claims that no longer hold are dropped — the sidecar records what was verified against these two files, not what someone once hoped.
 
 `--identity-out` is **reproducible**: the same two files and the same claims write byte-identical output, so a checked-in sidecar produces an empty git diff on a rerun. It writes no `created` timestamp of its own, and preserves an incoming one on a rewrite rather than refreshing it — the field dates the claims, not the last time a command was run.
@@ -624,7 +646,7 @@ The [`model_diff` tool](mcp.md) takes the same `by_content` switch, so an agent 
 }
 ```
 
-Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds added / removed / common) exactly as before. With it the result gains a `contentDiff`:
+Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds added / removed / common) exactly as before. `key_from` (`"Tag"` or `"Pset.Prop"`) keys the comparison on an authored identifier the same way the CLI's `--key-from` does, and `contentDiff.keyProperty` / `duplicateAuthoredKeys` echo what applied. With `by_content` the result gains a `contentDiff`:
 
 ```json
 {

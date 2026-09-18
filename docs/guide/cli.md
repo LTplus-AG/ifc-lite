@@ -1403,6 +1403,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `merge` | Merge multiple IFC files |
 | `convert` | Convert between IFC schema versions |
 | `diff` | Compare two IFC files |
+| `rekey` | Carry a table keyed on old element keys across a revision |
 | `validate` | Structural validation checks |
 | `bsdd` | buildingSMART Data Dictionary lookup |
 | `stats` | Auto-calculated model KPIs and health check |

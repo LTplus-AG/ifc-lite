@@ -27,6 +27,9 @@
  *    wrong claim of identity.
  */
 
+import { EXPECTED_SUCCESSOR, scoreSplits, scoreSuccessors } from './score-claims.mjs';
+export { checkCorpusThresholds, checkThresholds, corpusTargetGaps, targetGaps } from './score-thresholds.mjs';
+
 /** Kinds whose {@link ContentMatch} asserts identity and retires the
  *  `added`/`deleted` entries. The rest are reported groups: abstentions. */
 const PAIRING_KINDS = new Set(['renamed', 'moved', 'reshaped', 'respecified']);
@@ -36,6 +39,10 @@ const EXPECTED_KIND = {
   renamed: 'renamed',
   moved: 'moved',
   reshaped: 'reshaped',
+  // Same world geometry, different data: the geometry-only stage (#4955).
+  // `renamed` here would mean the data hash called two different payloads
+  // equal, which is the one thing that stage must never do.
+  respecified: 'respecified',
   // A re-sampled arc is a genuine shape change to a triangle-multiset hash;
   // both `reshaped` (box shrank by the sagitta) and `moved` (box centre
   // shifted, size within tolerance) are honest answers. `renamed` is not — it
@@ -47,7 +54,7 @@ const EXPECTED_KIND = {
  *  translation before the engine's `distance` is judged wrong, in metres. */
 const DISTANCE_TOLERANCE = 0.01;
 
-function ratio(hits, total) {
+export function ratio(hits, total) {
   return total === 0 ? null : Number((hits / total).toFixed(6));
 }
 
@@ -57,7 +64,11 @@ function ratio(hits, total) {
  * @param key       the answer key from `mutate.mjs`
  * @param matches   `ContentMatch[]` as reported by the matcher under test
  */
-export function scorePair(key, matches, { typeOf = new Map() } = {}) {
+export function scorePair(
+  key,
+  matches,
+  { typeOf = new Map(), splitMerges = [], successors = [], hasVolume = new Set() } = {},
+) {
   const expected = new Map();
   const kindOf = new Map();
   const classOf = new Map();
@@ -68,7 +79,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
     classOf.set(element.base, element.class);
     if (element.detail) detailOf.set(element.base, element.detail);
   }
-  const insertedHeads = new Set(key.insertedHeadIds);
+  // Both kinds of head-only element: the 5 m-away clone and the small one
+  // planted inside a deleted element's box. A content match onto either is a
+  // pair with something that has no counterpart.
+  const insertedNearby = new Set(key.insertedNearbyHeadIds ?? []);
+  const insertedHeads = new Set([...key.insertedHeadIds, ...insertedNearby]);
 
   const tally = () => ({ claimed: 0, correct: 0, wrong: 0 });
   const byTier = {};
@@ -83,6 +98,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
   const distanceChecked = { checked: 0, agreed: 0 };
   const calibration = { matchedByGeometryHash: [], reportedRenamed: [], recovered: 0, population: 0 };
   const duplicateContainment = { population: 0, contained: 0 };
+  const respecifiedControl = { population: 0, reportedRenamed: [], matchedByGeometryOnly: 0 };
+  // Content-match claims on bases whose counterpart is a successor or split
+  // claim. Not wrong when the head is right — it IS the counterpart — but
+  // not what the key predicted either, so it is counted where it can be seen.
+  let contentMatchedSuccessorKinds = 0;
   let claimedPairs = 0;
   let correctPairs = 0;
 
@@ -147,6 +167,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
       correctPairs++;
       recalled.add(baseRef);
       for (const b of [tierBucket, kindBucket, classBucket]) b.correct++;
+      if (EXPECTED_SUCCESSOR[kindOf.get(baseRef)] !== undefined) contentMatchedSuccessorKinds++;
+      if (kindOf.get(baseRef) === 'respecified') {
+        if (match.kind === 'renamed') respecifiedControl.reportedRenamed.push(baseRef);
+        if (tier === 'geometry-only') respecifiedControl.matchedByGeometryOnly++;
+      }
 
       const wanted = expectedKind === undefined ? [] : [].concat(expectedKind);
       if (wanted.includes(match.kind)) kindAgreed.add(baseRef);
@@ -174,7 +199,19 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
     populations[element.kind] = (populations[element.kind] ?? 0) + 1;
     if (element.kind === 'duplicated') duplicateContainment.population++;
     if (element.kind === 'retriangulated') calibration.population++;
+    if (element.kind === 'respecified') respecifiedControl.population++;
   }
+
+  // Head ref → what the key says it is, for the wrong-claim listings.
+  const headOrigin = new Map();
+  for (const element of key.elements) {
+    for (const ref of element.head) headOrigin.set(ref, `${element.kind}:${element.base}`);
+  }
+  for (const ref of key.insertedHeadIds) headOrigin.set(ref, 'inserted');
+  for (const ref of insertedNearby) headOrigin.set(ref, 'insertedNearby');
+
+  const successorScore = scoreSuccessors(key, successors, { expected, kindOf, insertedNearby });
+  const splitScore = scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin });
 
   const recallable = key.elements.filter((element) => EXPECTED_KIND[element.kind] !== undefined);
   const recallByKind = {};
@@ -281,6 +318,11 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
       ...duplicateContainment,
       rate: ratio(duplicateContainment.contained, duplicateContainment.population),
     },
+    respecifiedControl,
+    contentMatchedSuccessorKinds,
+    insertedNearby: insertedNearby.size,
+    ...successorScore,
+    ...splitScore,
     moveDistance: {
       ...distanceChecked,
       agreement: ratio(distanceChecked.agreed, distanceChecked.checked),
@@ -289,179 +331,4 @@ export function scorePair(key, matches, { typeOf = new Map() } = {}) {
     kindDisagreements: kindDisagreed.slice(0, 20),
     anomalies: problems.slice(0, 20),
   };
-}
-
-/**
- * Check one pair's scorecard against the PRE-REGISTERED per-pair thresholds.
- *
- * Returns `{ failures, skipped }`. A stratum this model does not populate is
- * SKIPPED rather than failed — one model has no arcs to re-sample, another no
- * geometry-free objects — and the corpus clauses below are what guarantee the
- * stratum exists somewhere and clears its floor in aggregate. Skips are
- * reported, so "everything was skipped" can never read as a pass.
- */
-export function checkThresholds(score, thresholds) {
-  const failures = [];
-  const skipped = [];
-  const floor = (label, value, minimum) => {
-    if (minimum === undefined) return;
-    if (value === null || value === undefined) failures.push(`${label}: no measurement (floor ${minimum})`);
-    else if (value < minimum) failures.push(`${label}: ${value} < floor ${minimum}`);
-  };
-  const ceiling = (label, value, maximum) => {
-    if (maximum === undefined) return;
-    if (value > maximum) failures.push(`${label}: ${value} > ceiling ${maximum}`);
-  };
-
-  floor('overall.precision', score.overall.precision, thresholds.overall?.precision);
-  floor('overall.recall', score.overall.recall, thresholds.overall?.recall);
-
-  for (const [name, minimum] of Object.entries(thresholds.byTier?.precision ?? {})) {
-    const row = score.byTier[name];
-    if (!row || row.claimed === 0) skipped.push(`byTier.${name}.precision (no pairs)`);
-    else floor(`byTier.${name}.precision`, row.precision, minimum);
-  }
-  for (const [name, floors] of Object.entries(thresholds.byKind ?? {})) {
-    const row = score.byKind[name];
-    if (!row || row.population === 0) {
-      skipped.push(`byKind.${name} (population 0)`);
-      continue;
-    }
-    floor(`byKind.${name}.recall`, row.recall, floors.recall);
-    // An unevaluable clause SAYS SO. Silently not running is how seven
-    // precision floors sat inert while thresholds.json read as if they were
-    // enforced; a skip line is the difference between "not applicable here"
-    // and "quietly not checked".
-    if (row.claimed > 0) floor(`byKind.${name}.precision`, row.precision, floors.precision);
-    else if (floors.precision !== undefined) skipped.push(`byKind.${name}.precision (no pairs claimed)`);
-    if (row.recalled > 0) floor(`byKind.${name}.kindAgreement`, row.kindAgreement, floors.kindAgreement);
-    else if (floors.kindAgreement !== undefined) {
-      skipped.push(`byKind.${name}.kindAgreement (nothing recalled)`);
-    }
-  }
-  for (const [name, floors] of Object.entries(thresholds.byClass ?? {})) {
-    const row = score.byClass[name];
-    if (!row || row.population === 0) {
-      skipped.push(`byClass.${name} (population 0)`);
-      continue;
-    }
-    floor(`byClass.${name}.recall`, row.recall, floors.recall);
-    if (row.claimed > 0) floor(`byClass.${name}.precision`, row.precision, floors.precision);
-    else if (floors.precision !== undefined) skipped.push(`byClass.${name}.precision (no pairs claimed)`);
-  }
-
-  const negative = thresholds.negativeControls ?? {};
-  ceiling('falsePairs.deletedBase', score.falsePairs.deletedBase, negative.deletedBase);
-  ceiling('falsePairs.insertedHead', score.falsePairs.insertedHead, negative.insertedHead);
-  ceiling('falsePairs.wrongPartner', score.falsePairs.wrongPartner, negative.wrongPartner);
-  ceiling('falsePairs.unkeyed', score.falsePairs.unkeyed, negative.unkeyed);
-
-  const cal = thresholds.calibration ?? {};
-  ceiling(
-    'calibration.matchedByGeometryHash',
-    score.calibration.matchedByGeometryHash.length,
-    cal.matchedByGeometryHash,
-  );
-  ceiling('calibration.reportedRenamed', score.calibration.reportedRenamed.length, cal.reportedRenamed);
-
-  if (score.anomalies.length > 0) {
-    failures.push(`engine anomalies: ${score.anomalies.join('; ')}`);
-  }
-  return { failures, skipped };
-}
-
-/**
- * Check the corpus as a whole: does the exam ask its questions at all, and do
- * the rates whose stratum a single model may not populate hold in aggregate?
- *
- * The population floors are the anti-vacuity clauses. Without them a mutation
- * that silently stopped being applied — an eligibility predicate that now
- * matches nothing, a model swapped for one without arcs — would show up as a
- * *green* run over a smaller exam, which is exactly the failure mode this
- * whole fixture exists to make impossible.
- */
-export function checkCorpusThresholds(scores, thresholds) {
-  const failures = [];
-  const sum = (pick) => scores.reduce((total, score) => total + (pick(score) ?? 0), 0);
-
-  for (const [kind, minimum] of Object.entries(thresholds.populations ?? {})) {
-    const total =
-      kind === 'curved'
-        ? sum((score) => score.byClass.curved?.population)
-        : kind === 'inserted'
-          ? sum((score) => score.inserted)
-          : sum((score) => score.populations[kind]);
-    if (total < minimum) failures.push(`corpus.populations.${kind}: ${total} < floor ${minimum}`);
-  }
-  for (const [tier, minimum] of Object.entries(thresholds.tierPairs ?? {})) {
-    const total = sum((score) => score.byTier[tier]?.claimed);
-    if (total < minimum) failures.push(`corpus.tierPairs.${tier}: ${total} < floor ${minimum}`);
-  }
-
-  const rate = (label, hits, total, minimum) => {
-    if (minimum === undefined) return;
-    if (total === 0) failures.push(`${label}: nothing measured (floor ${minimum})`);
-    else if (hits / total < minimum) {
-      failures.push(`${label}: ${(hits / total).toFixed(4)} < floor ${minimum}`);
-    }
-  };
-  rate(
-    'corpus.calibration.recoveredByLowerTiers',
-    sum((score) => score.calibration.recovered),
-    sum((score) => score.calibration.population),
-    thresholds.calibration?.recoveredByLowerTiers,
-  );
-  rate(
-    'corpus.duplicateContainment.rate',
-    sum((score) => score.duplicateContainment.contained),
-    sum((score) => score.duplicateContainment.population),
-    thresholds.duplicateContainment?.rate,
-  );
-  rate(
-    'corpus.moveDistance.agreement',
-    sum((score) => score.moveDistance.agreed),
-    sum((score) => score.moveDistance.checked),
-    thresholds.moveDistance?.agreement,
-  );
-  return failures;
-}
-
-/**
- * Strata measuring BELOW their pre-registered target — reported, never gating.
- *
- * The gating floors are a ratchet against regression; these are the original
- * pre-registration, and the difference between them is a standing debt. A
- * fixture that quietly replaced its aspiration with its measurement would be
- * green and would have forgotten what it was for, which is the same failure as
- * a check that cannot fail, one level up.
- */
-export function targetGaps(score, targets) {
-  const gaps = [];
-  const compare = (label, value, target) => {
-    if (target === undefined || value === null || value === undefined) return;
-    if (value < target) gaps.push(`${label}: ${value} < target ${target}`);
-  };
-
-  compare('overall.precision', score.overall.precision, targets.overall?.precision);
-  compare('overall.recall', score.overall.recall, targets.overall?.recall);
-  for (const [name, target] of Object.entries(targets.byTier?.precision ?? {})) {
-    const row = score.byTier[name];
-    if (row && row.claimed > 0) compare(`byTier.${name}.precision`, row.precision, target);
-  }
-  for (const [name, wanted] of Object.entries(targets.byKind ?? {})) {
-    const row = score.byKind[name];
-    if (!row || row.population === 0) continue;
-    compare(`byKind.${name}.recall`, row.recall, wanted.recall);
-    if (row.claimed > 0) compare(`byKind.${name}.precision`, row.precision, wanted.precision);
-    if (row.recalled > 0) {
-      compare(`byKind.${name}.kindAgreement`, row.kindAgreement, wanted.kindAgreement);
-    }
-  }
-  for (const [name, wanted] of Object.entries(targets.byClass ?? {})) {
-    const row = score.byClass[name];
-    if (!row || row.population === 0) continue;
-    compare(`byClass.${name}.recall`, row.recall, wanted.recall);
-    if (row.claimed > 0) compare(`byClass.${name}.precision`, row.precision, wanted.precision);
-  }
-  return gaps;
 }

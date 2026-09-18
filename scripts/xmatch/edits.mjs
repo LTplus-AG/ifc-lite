@@ -16,16 +16,10 @@
  * is referenced exactly once (reshape).
  */
 
-import {
-  quote,
-  real,
-  referencesIn,
-  setArg,
-  splitArgs,
-} from './step-file.mjs';
+import { quote, real, referencesIn, setArg, splitArgs } from './step-file.mjs';
 
 /** IfcProduct attribute slots (IFC2X3 and IFC4 agree on all seven). */
-const PRODUCT_NAME = 2;
+export const PRODUCT_NAME = 2;
 export const PRODUCT_PLACEMENT = 5;
 export const PRODUCT_REPRESENTATION = 6;
 
@@ -70,7 +64,7 @@ export function indexModel(file) {
 }
 
 /** The single `#id` in an attribute, or undefined when it is `$` or a list. */
-function refAt(statement, position) {
+export function refAt(statement, position) {
   const part = splitArgs(statement.args)[position];
   if (part === undefined) return undefined;
   const match = /^#(\d+)$/.exec(part.trim());
@@ -237,7 +231,7 @@ export function featureRoles(index) {
 
 /** Live statements only: an edit routed through a reference into an entity
  *  some earlier deletion already dropped would write to a detached object. */
-function isLive(index, statement) {
+export function isLive(index, statement) {
   return index.byId.get(statement.id) === statement;
 }
 
@@ -285,7 +279,7 @@ export function deleteElement(file, index, id) {
 }
 
 /** Append a statement, keeping the index in step. */
-function emit(file, index, type, args) {
+export function emit(file, index, type, args) {
   const statement = { id: index.nextId++, type, args, raw: '' };
   file.statements.push(statement);
   index.byId.set(statement.id, statement);
@@ -395,4 +389,10 @@ export function cloneElement(file, index, productId, { name, offset } = {}) {
   }
   if (offset) moveElement(file, index, cloneId, offset);
   return cloneId;
+}
+
+/** Set the element's `Name` (attribute 2 of every `IfcProduct`). */
+export function renameElement(index, productId, name) {
+  const product = index.byId.get(productId);
+  product.args = setArg(product, PRODUCT_NAME, quote(name)).args;
 }

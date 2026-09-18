@@ -20,6 +20,14 @@
  * The CLI adapter alone is data-scope (Node has no geometry pipeline), so this
  * module is what a headless run of the VIEWER's compare looks like: real data
  * fingerprints with the real world geometry hash and world box attached.
+ *
+ * Two more fields ride along since issue #4955, both resolved the way the
+ * shipped adapters resolve them: `volume` from `geometryVolumeValues` (a
+ * finite positive number, else absent — the engine's "absent means not
+ * proved" contract), which is what lets a split claim reach `verified`
+ * rather than `extent`; and `container`, the spatial name path from
+ * `spatialContainerPath`, which the successor stage's `position` profile
+ * requires equal and non-empty on both sides.
  */
 
 import { readFileSync } from 'node:fs';
@@ -27,7 +35,7 @@ import { readFileSync } from 'node:fs';
 // @ifc-lite` (pnpm links workspace deps per package), and a script that
 // resolved differently from the package it is measuring would be measuring
 // something else.
-import { IfcParser } from '../../packages/parser/dist/index.js';
+import { IfcParser, spatialContainerPath } from '../../packages/parser/dist/index.js';
 import { buildFileFingerprints } from '../../packages/cli/dist/commands/diff-engine.js';
 
 /** Quantization grid for the geometry hash, in metres. The wasm default
@@ -54,15 +62,19 @@ async function loadStore(bytes) {
 /**
  * Run the wasm geometry pass and collect per-entity world hashes and boxes.
  *
- * Returns `{ hashes, aabbs, unitScale }`, both maps keyed by express id. A box
- * with a non-finite coordinate is DROPPED rather than passed on: the engine
- * treats a present box as usable, and a NaN would classify every comparison it
- * touches as garbage rather than abstaining.
+ * Returns `{ hashes, aabbs, volumes, unitScale }`, the maps keyed by express
+ * id. A box with a non-finite coordinate is DROPPED rather than passed on: the
+ * engine treats a present box as usable, and a NaN would classify every
+ * comparison it touches as garbage rather than abstaining. A volume is kept
+ * only when finite and positive — `NaN` is the wasm's "not proved closed"
+ * sentinel (`MeshCollection.geometryVolumeValues`), resolved at this boundary
+ * exactly as `@ifc-lite/geometry`'s `geometryVolumeAt` resolves it.
  */
 function geometryPass(api, bytes) {
   const pre = api.buildPrePassOnce(bytes);
   const hashes = new Map();
   const aabbs = new Map();
+  const volumes = new Map();
   const unitScale = pre?.unitScale ?? 1;
   const total = pre?.totalJobs ?? 0;
 
@@ -76,7 +88,7 @@ function geometryPass(api, bytes) {
   // matcher regression, in the one place whose whole purpose is to be believed
   // about matcher regressions.
   try {
-    if (!pre || !pre.jobs || total === 0) return { hashes, aabbs, unitScale };
+    if (!pre || !pre.jobs || total === 0) return { hashes, aabbs, volumes, unitScale };
 
     const [rtcX, rtcY, rtcZ] = pre.rtcOffset ? Array.from(pre.rtcOffset) : [0, 0, 0];
     const collection = api.processGeometryBatch(
@@ -97,8 +109,13 @@ function geometryPass(api, bytes) {
       const ids = collection.geometryHashIds;
       const values = collection.geometryHashValues;
       const boxes = collection.geometryAabbValues;
+      // Optional getter: a wasm build that predates it answers `undefined`,
+      // and every split claim then stops at `extent` rather than failing.
+      const volumeValues = collection.geometryVolumeValues;
       for (let i = 0; i < ids.length; i++) {
         hashes.set(ids[i], values[i]);
+        const volume = volumeValues?.[i];
+        if (Number.isFinite(volume) && volume > 0) volumes.set(ids[i], volume);
         const box = Array.from(boxes.slice(6 * i, 6 * i + 6));
         if (box.length === 6 && box.every((value) => Number.isFinite(value))) {
           aabbs.set(ids[i], { min: [box[0], box[1], box[2]], max: [box[3], box[4], box[5]] });
@@ -110,7 +127,7 @@ function geometryPass(api, bytes) {
   } finally {
     if (api.clearPrePassCache) api.clearPrePassCache();
   }
-  return { hashes, aabbs, unitScale };
+  return { hashes, aabbs, volumes, unitScale };
 }
 
 /**
@@ -126,13 +143,19 @@ export async function fingerprintFile(path, api, { stripKeys = false } = {}) {
   const bytes = readFileSync(path);
   const store = await loadStore(bytes);
   const fingerprints = buildFileFingerprints(store);
-  const { hashes, aabbs, unitScale } = geometryPass(api, bytes);
+  const { hashes, aabbs, volumes, unitScale } = geometryPass(api, bytes);
 
   for (const fingerprint of fingerprints) {
     const hash = hashes.get(fingerprint.ref);
     if (hash !== undefined) fingerprint.geometryHash = hash;
     const aabb = aabbs.get(fingerprint.ref);
     if (aabb !== undefined) fingerprint.aabb = aabb;
+    const volume = volumes.get(fingerprint.ref);
+    if (volume !== undefined) fingerprint.volume = volume;
+    // A NAME path (`Project/Building/Level 2/Room 204`), never GlobalIds, so
+    // it survives the re-GUID; both revisions go through this one resolver.
+    const container = spatialContainerPath(store, fingerprint.ref);
+    if (container) fingerprint.container = container;
   }
 
   const originalKeys = new Map();

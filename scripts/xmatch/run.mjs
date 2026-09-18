@@ -26,13 +26,28 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { diffModels } from '../../packages/diff/dist/index.js';
 import { fingerprintFile, GEOMETRY_HASH_TOLERANCE } from './fingerprints.mjs';
 import { mutateModel } from './mutate.mjs';
-import { checkCorpusThresholds, checkThresholds, scorePair, targetGaps } from './score.mjs';
+import {
+  checkCorpusThresholds,
+  checkThresholds,
+  corpusTargetGaps,
+  scorePair,
+  targetGaps,
+} from './score.mjs';
 import { guardFailures, runGuards } from './guards.mjs';
+import { replacer, report } from './run-report.mjs';
+import { realMatcher, sameContentGroups, volumeSet } from './run-matcher.mjs';
 import { checkInvariantTripwires } from './invariants.mjs';
-import { alwaysAbstainMatcher, alwaysMatchMatcher, overEagerMatcher } from './matchers.mjs';
+import {
+  alwaysAbstainMatcher,
+  alwaysMatchMatcher,
+  overEagerMatcher,
+  overlapSuccessorMutant,
+  respecifiedAsRenamedMutant,
+  rotatedClaimsMutant,
+  silentClaimsMutant,
+} from './matchers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -46,41 +61,44 @@ const THRESHOLDS = JSON.parse(readFileSync(join(HERE, 'thresholds.json'), 'utf-8
  * a reviewed diff rather than a knob.
  */
 const CORPUS = [
-  { model: 'tests/models/ara3d/duplex.ifc', seed: 20260803 },
-  { model: 'tests/models/ara3d/AC20-FZK-Haus.ifc', seed: 20260804 },
-  { model: 'tests/models/various/rvt01.ifc', seed: 20260805 },
+  // Nine detached elements own an extruded rectangle outright (the footings
+  // and a few slabs); the split and the nearby control share them.
+  {
+    model: 'tests/models/ara3d/duplex.ifc',
+    seed: 20260803,
+    plan: { splitLength: 4, insertedNearby: 5 },
+  },
+  // 126 keyed elements, of which 17 (annotations, virtual elements) can never
+  // be matched. Every element a new role takes out of `renamed` moves that
+  // stratum's recall towards its floor — 7 is the most the 0.777 floor
+  // allows — so the #4955 roles are sized down here and the corpus-wide
+  // population floors are carried by the two larger models. Its 15
+  // arbitrary-profile extrusions are not rectangles, so `thickened` and
+  // `splitLength` have nothing to take anyway; the one count that costs no
+  // recall is `insertedNearby`, which rides on elements already `deleted`
+  // (and needs a rectangle too, so it is 0 here). `swapped` is 0 because the
+  // only same-type donor maps in the model are the two window maps, and they
+  // are mirror images of one symmetric window: the swap changes the file and
+  // nothing about the world mesh, and the engine correctly pairs the result
+  // as `respecified`. That is not a successor case and would be scored as one.
+  {
+    model: 'tests/models/ara3d/AC20-FZK-Haus.ifc',
+    seed: 20260804,
+    plan: { respecified: 4, thickened: 0, swapped: 0, splitLength: 0, insertedNearby: 0 },
+  },
+  // The large model carries the #4955 population floors: 59 detached
+  // rectangle extrusions, 104 mapped bodies with a donor, 633 owned psets.
+  {
+    model: 'tests/models/various/rvt01.ifc',
+    seed: 20260805,
+    plan: { respecified: 20, thickened: 14, splitLength: 8, insertedNearby: 8 },
+  },
 ];
 
 const args = process.argv.slice(2);
 const SELF_TEST = args.includes('--self-test');
 const WRITE = args.includes('--write');
 const KEEP = args.includes('--keep');
-
-/** The matcher under test: the shipped engine, at viewer scope. */
-function realMatcher(base, head) {
-  const diff = diffModels(base, head, { scope: 'both', matchUnpairedByContent: true });
-  return { matches: diff.contentMatches ?? [], counts: diff.counts };
-}
-
-/**
- * Meshed elements that share an (`ifcType`, `dataHash`) bucket, largest first.
- *
- * A BASE-side fact only — the mutation program uses it to pick which group to
- * move wholesale, and the answer key still records what it did rather than
- * what any hash later says. Passing the head's hashes in here would be the
- * circularity this fixture is built to avoid.
- */
-function sameContentGroups(base) {
-  const groups = new Map();
-  for (const fingerprint of base.fingerprints) {
-    if (!base.meshedIds.has(fingerprint.ref)) continue;
-    const bucket = `${fingerprint.ifcType}\u0000${fingerprint.dataHash}`;
-    const list = groups.get(bucket);
-    if (list) list.push(fingerprint.ref);
-    else groups.set(bucket, [fingerprint.ref]);
-  }
-  return [...groups.values()].filter((list) => list.length >= 3).sort((a, b) => b.length - a.length);
-}
 
 function fail(message) {
   process.stderr.write(`xmatch: ${message}\n`);
@@ -103,6 +121,7 @@ async function buildPair(entry, api) {
     sameContentGroups: sameContentGroups(base),
     unitScale: base.unitScale,
     sourcePath: entry.model,
+    plan: entry.plan,
   });
 
   mkdirSync(OUT_DIR, { recursive: true });
@@ -150,32 +169,69 @@ async function main() {
   // Inheriting that would make the mutation check unreadable exactly when the
   // scored run is red, which is when it matters most.
   let harnessBroken = false;
+  /** Every mutant must have been APPLIED somewhere: one that was "not
+   *  applicable" on every pair was never tested. */
+  const mutantsApplied = new Set();
+  const ALL_MUTANTS = [
+    'always-match',
+    'always-abstain',
+    'over-eager',
+    'overlap-successor',
+    'rotated-claims',
+    'respecified-as-renamed',
+    'silent-claims',
+  ];
 
   for (const entry of CORPUS) {
     const { key, base, head, guards, headPath } = await buildPair(entry, api);
     const fixtureFailures = guardFailures(guards);
-    const { matches } = realMatcher(base.fingerprints, head.fingerprints);
-    const score = scorePair(key, matches, {
+    const real = realMatcher(base.fingerprints, head.fingerprints);
+    const { matches } = real;
+    const scoreOptions = (result) => ({
       typeOf: new Map(base.fingerprints.map((f) => [f.ref, f.ifcType])),
+      splitMerges: result.splitMerges ?? [],
+      successors: result.successors ?? [],
+      hasVolume: volumeSet(base, head),
     });
+    const score = scorePair(key, matches, scoreOptions(real));
     const checked =
       fixtureFailures.length > 0
         ? { failures: [], skipped: [] }
         : checkThresholds(score, THRESHOLDS.perPair);
 
     if (SELF_TEST) {
+      // The content mutants keep the real engine's claim stages, so what
+      // rejects them is content matching; the claim mutants keep the real
+      // content matches and each must be rejected by the clause family it
+      // was written against (`mustFailOn`), not merely by something.
+      const withRealClaims = (result) => ({
+        ...result,
+        splitMerges: real.splitMerges,
+        successors: real.successors,
+      });
       const mutants = [
-        ['always-match', alwaysMatchMatcher(base.fingerprints, head.fingerprints)],
-        ['always-abstain', alwaysAbstainMatcher()],
+        ['always-match', { result: withRealClaims(alwaysMatchMatcher(base.fingerprints, head.fingerprints)) }],
+        ['always-abstain', { result: withRealClaims(alwaysAbstainMatcher()) }],
         // Strictly better recall than the engine, bought with false pairs.
         // If this survives, a recall floor can be met by lowering the bar.
-        ['over-eager', overEagerMatcher(base.fingerprints, head.fingerprints, matches)],
+        [
+          'over-eager',
+          { result: withRealClaims(overEagerMatcher(base.fingerprints, head.fingerprints, matches)) },
+        ],
+        ['overlap-successor', overlapSuccessorMutant(base.fingerprints, head.fingerprints, real)],
+        ['rotated-claims', rotatedClaimsMutant(head.fingerprints, real, key)],
+        ['respecified-as-renamed', respecifiedAsRenamedMutant(real)],
+        ['silent-claims', silentClaimsMutant(real, key)],
       ];
       const survivors = [];
-      for (const [name, result] of mutants) {
-        const mutantScore = scorePair(key, result.matches, {
-          typeOf: new Map(base.fingerprints.map((f) => [f.ref, f.ifcType])),
-        });
+      for (const [name, mutant] of mutants) {
+        if (mutant.applicable === false) {
+          process.stdout.write(`  mutant ${name.padEnd(22)} not applicable on this pair (no material)\n`);
+          continue;
+        }
+        mutantsApplied.add(name);
+        const result = mutant.result;
+        const mutantScore = scorePair(key, result.matches, scoreOptions(result));
         // PER-PAIR clauses ONLY. Feeding one pair to `checkCorpusThresholds`
         // used to add the corpus `populations` clauses, which are derived from
         // `key.elements` and never touch `matches` at all — so on the two
@@ -187,24 +243,31 @@ async function main() {
         // nothing on those two pairs. It now scores mutants exclusively on
         // clauses that are a function of what the matcher returned.
         const mutantFailures = checkThresholds(mutantScore, THRESHOLDS.perPair).failures;
+        const targeted =
+          mutant.mustFailOn === undefined || mutantFailures.some((clause) => mutant.mustFailOn.test(clause));
         if (mutantFailures.length === 0) survivors.push(name);
+        else if (!targeted) survivors.push(`${name} (rejected, but not by ${mutant.mustFailOn})`);
         // Recall and precision are printed next to the verdict so the
         // over-eager mutant's claim is visible rather than asserted: it must
         // show HIGHER recall than the real matcher and lower precision, which
         // is the trade a recall floor alone would reward.
         process.stdout.write(
-          `  mutant ${name.padEnd(15)} recall ${String(mutantScore.overall.recall).padEnd(9)}` +
+          `  mutant ${name.padEnd(22)} recall ${String(mutantScore.overall.recall).padEnd(9)}` +
             ` precision ${String(mutantScore.overall.precision).padEnd(9)} ${
               mutantFailures.length === 0
                 ? 'PASSED (harness is broken)'
-                : `failed on ${mutantFailures.length} clause(s)`
+                : `failed on ${mutantFailures.length} clause(s)${
+                    targeted ? '' : ', NONE in the targeted family'
+                  }`
             }\n`,
         );
         // The negative-control and calibration clauses are printed whatever
         // else fails: an always-match mutant that scored badly on RATES but
         // never tripped "you paired a deleted element" would mean the hard
         // controls are decorative.
-        const named = mutantFailures.filter((clause) => /^(falsePairs|calibration)\./.test(clause));
+        const named = mutantFailures.filter((clause) =>
+          /^(falsePairs|falseSuccessors|calibration|respecifiedControl)\./.test(clause),
+        );
         for (const clause of new Set([...mutantFailures.slice(0, 3), ...named])) {
           process.stdout.write(`      ${clause}\n`);
         }
@@ -238,6 +301,11 @@ async function main() {
   );
   if (corpusFailures.length > 0) failed = true;
 
+  const corpusGaps = corpusTargetGaps(
+    pairs.map((pair) => pair.score),
+    THRESHOLDS.preRegisteredTargets,
+  );
+
   const scorecard = {
     fixture: 'content-matching validation (#1891)',
     spec: 'scripts/xmatch/SPEC.md',
@@ -248,6 +316,7 @@ async function main() {
     geometryHashToleranceMetres: GEOMETRY_HASH_TOLERANCE,
     verdict: failed ? 'FAIL' : 'PASS',
     corpusFailures,
+    corpusTargetGaps: corpusGaps,
     durationSeconds: Number(((Date.now() - started) / 1000).toFixed(1)),
     pairs,
   };
@@ -263,12 +332,15 @@ async function main() {
   // handle from parking the job instead of ending it.
   report(scorecard);
   if (SELF_TEST) {
-    const broken = harnessBroken || pairs.some((pair) => pair.fixtureFailures.length > 0);
+    const neverApplied = ALL_MUTANTS.filter((name) => !mutantsApplied.has(name));
+    for (const name of neverApplied) process.stdout.write(`mutant ${name} was not applicable on ANY pair\n`);
+    const broken =
+      harnessBroken || neverApplied.length > 0 || pairs.some((pair) => pair.fixtureFailures.length > 0);
     process.stdout.write(
       `\nself-test: ${
         broken
           ? 'FAIL — the harness cannot be trusted'
-          : 'PASS — all three mutants rejected on every pair, on per-pair clauses alone'
+          : 'PASS — every mutant rejected wherever applicable, on per-pair clauses alone'
       }\n`,
       () => process.exit(broken ? 1 : 0),
     );
@@ -279,60 +351,6 @@ async function main() {
     process.stdout.write(`\nwrote ${SCORECARD}\n`);
   }
   process.stdout.write('', () => process.exit(failed ? 1 : 0));
-}
-
-/** Durations are wall clock and would churn the committed artifact on every
- *  run; the scorecard keeps the measurements, not the stopwatch. */
-function replacer(key, value) {
-  return key === 'durationSeconds' ? undefined : value;
-}
-
-function report(scorecard) {
-  const line = (text) => process.stdout.write(`${text}\n`);
-  for (const pair of scorecard.pairs) {
-    line('');
-    line(`${pair.model}  (seed ${pair.seed}, ${pair.schema})`);
-    line(`  applied: ${JSON.stringify(pair.applied)}`);
-    const score = pair.score;
-    line(
-      `  overall  precision ${score.overall.precision}  recall ${score.overall.recall}` +
-        `  (${score.overall.correctPairs}/${score.overall.claimedPairs} pairs, ` +
-        `${score.overall.recalled}/${score.overall.recallPopulation} elements, ` +
-        `${score.overall.abstained} abstained)`,
-    );
-    for (const [tier, row] of Object.entries(score.byTier)) {
-      line(`  tier  ${tier.padEnd(14)} claimed ${String(row.claimed).padStart(5)}  precision ${row.precision}`);
-    }
-    for (const [kind, row] of Object.entries(score.byKind)) {
-      line(
-        `  kind  ${kind.padEnd(14)} n=${String(row.population).padStart(4)}  recall ${row.recall}` +
-          `  precision ${row.precision}  kindAgreement ${row.kindAgreement}`,
-      );
-    }
-    for (const [name, row] of Object.entries(score.byClass)) {
-      line(`  class ${name.padEnd(14)} n=${String(row.population).padStart(4)}  recall ${row.recall}  precision ${row.precision}`);
-    }
-    line(
-      `  calibration  population ${score.calibration.population}` +
-        `  matchedByGeometryHash ${score.calibration.matchedByGeometryHash.length}` +
-        `  reportedRenamed ${score.calibration.reportedRenamed.length}` +
-        `  recoveredByLowerTiers ${score.calibration.recoveredByLowerTiers}`,
-    );
-    line(`  negative controls  ${JSON.stringify(score.falsePairs)}`);
-    line(
-      `  missed  abstained ${score.missed.abstained}  silent ${score.missed.silent}` +
-        `  ${JSON.stringify(score.missed.byType)}`,
-    );
-    line(`  duplicates contained ${score.duplicateContainment.contained}/${score.duplicateContainment.population}`);
-    line(`  move distance agreement ${score.moveDistance.agreed}/${score.moveDistance.checked}`);
-    for (const skip of pair.thresholdsSkipped) line(`  skipped: ${skip}`);
-    for (const gap of pair.targetGaps) line(`  BELOW PRE-REGISTERED TARGET: ${gap}`);
-    for (const failure of pair.fixtureFailures) line(`  FIXTURE FAILURE: ${failure}`);
-    for (const failure of pair.thresholdFailures) line(`  THRESHOLD FAILURE: ${failure}`);
-  }
-  line('');
-  for (const failure of scorecard.corpusFailures) line(`CORPUS FAILURE: ${failure}`);
-  line(`verdict: ${scorecard.verdict}`);
 }
 
 main().catch((error) => {

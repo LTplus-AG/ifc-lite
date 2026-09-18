@@ -199,7 +199,10 @@ export interface DiffOptions {
    * — existing callers get byte-identical results.
    *
    * What it cannot see, stated once so it is not discovered in the field: a
-   * split ACROSS classes (candidates are generated per `ifcType`); a container
+   * split across class FAMILIES (candidates are generated per family, see
+   * {@link classFamilies}: a wall becoming `IfcWallStandardCase` pieces or
+   * `IfcBuildingElementPart` layers is seen, a wall becoming a covering is
+   * not); a container
    * polluted by two or more unrelated same-class elements; a moved split under
    * a rotation that is not a multiple of 90°; and a real split that changed
    * more than {@link splitVolumeTolerance} of material while carrying full
@@ -267,4 +270,18 @@ export interface DiffOptions {
    * where a bad value is simply replaced.
    */
   maxSplitPieces?: number;
+  /**
+   * Class families for the split/merge candidate buckets (issue #4955): rows of
+   * IFC class names an authoring tool may swap between while publishing the
+   * same material. Candidates are bucketed by family rather than by exact
+   * `ifcType`, so an `IfcWall` republished as three `IfcWallStandardCase`s,
+   * or as `IfcBuildingElementPart` layers, can be claimed as a split; the claim
+   * then carries `SplitMergeClaim.crossClass`. Matching is case-insensitive
+   * and an unlisted class is its own family.
+   *
+   * Default: `DEFAULT_CLASS_FAMILIES` — the schema's own `StandardCase` /
+   * `ElementedCase` subtypes plus `IfcBuildingElementPart` under walls and the
+   * furniture classes. Pass `[]` to bucket by exact class as before.
+   */
+  classFamilies?: readonly (readonly string[])[];
 }

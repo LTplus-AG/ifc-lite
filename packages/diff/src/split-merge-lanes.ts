@@ -157,6 +157,11 @@ function claimOf<TRef>(
     claim.volumeResidual = volumes.volumeResidual;
   }
   if (excluded) claim.excluded = excluded.fingerprint;
+  // A whole and its pieces from different classes of one family: the claim is
+  // the same, but a reviewer should see that the class changed on the way.
+  if (pieces.some((piece) => piece.fingerprint.ifcType !== whole.fingerprint.ifcType)) {
+    claim.crossClass = true;
+  }
   return claim;
 }
 

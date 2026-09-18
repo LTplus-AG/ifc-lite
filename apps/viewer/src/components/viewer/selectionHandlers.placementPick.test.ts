@@ -147,11 +147,11 @@ describe('placement-tool click: addWall receives model-frame coordinates on a mo
     const clickEvent = { clientX: 0, clientY: 0 } as MouseEvent;
 
     await handleSelectionClick(ctx, clickEvent); // start — latched, no dispatch yet
-    assert.equal(captured, null, 'first click should only latch the start point');
+    assert.equal(captured === null, true, 'first click should only latch the start point');
     await handleSelectionClick(ctx, clickEvent); // end — dispatches addWall
 
-    assert.ok(captured, 'addWall was not called');
-    const { Start, End } = captured!.params as { Start: [number, number, number]; End: [number, number, number] };
+    if (!captured) throw new Error('addWall was not called');
+    const { Start, End } = captured.params as { Start: [number, number, number]; End: [number, number, number] };
     for (let i = 0; i < 2; i++) {
       assert.ok(Math.abs(Start[i] - startModel[i]) < 1e-9, `Start[${i}]: got ${Start[i]}, expected ${startModel[i]}`);
       assert.ok(Math.abs(End[i] - endModel[i]) < 1e-9, `End[${i}]: got ${End[i]}, expected ${endModel[i]}`);

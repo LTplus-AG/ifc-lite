@@ -519,6 +519,43 @@ Entries are sorted and de-duplicated on creation, so the same comparison writes 
 
 `parseIdentityMapSidecar` refuses an unknown `version` or a malformed entry outright rather than applying the readable half, and it refuses one more thing on the same grounds: **two entries claiming different `base` identities for the same `here` key**. Both are about one head entity, and it cannot be two base entities — unlike the mirror-image conflict (two `here`s on one `base`), no pair of files can break the tie, because one of *those* head entities may simply have been deleted since. So the two conflicts are handled in different places: the contradictory document is rejected at parse, while two `here`s on one `base` are left for `resolveKeyAliases` to judge against the actual models. Applying the first of two contradictory claims would be exactly the arbitrary winner this design refuses everywhere else — and worse here, because a `--identity-in x --identity-out x` run writes the winner back out as if it had been reviewed. `keyAliasesFromSidecar` restates the rule for a hand-built object: a contradicted `here` yields no alias at all, and the rest of the map is unaffected.
 
+## Lineage and rekeying external data
+
+An identity map is 1:1 by contract and stays that way: identity is not a relation that survives being split. A downstream system that keyed external data on GlobalIds — cost lines, inspection records, room bookings — needs something wider, because when a wall becomes three walls the data has to go *somewhere*. A **lineage** records the relation the engine (or a reviewer) established and lets the external side pick its own policy:
+
+```ts
+import { diffModels, lineageFromDiff, rekeyByLineage } from '@ifc-lite/diff';
+
+const diff = diffModels(baseFingerprints, headFingerprints, {
+  matchUnpairedByContent: true,
+  detectSplitMerge: true,
+  detectSuccessors: true,
+});
+// Successor claims become lineage ONLY when passed in as accepted.
+const lineage = lineageFromDiff(diff, { accepted: diff.successors });
+
+for (const row of rekeyByLineage(['oldGlobalId'], lineage, 'copy-to-all')) {
+  console.log(row.key, row.relation, row.successors, row.orphan);
+}
+```
+
+Each entry is `{ base: string[], head: string[], relation, reason, shares? }` with one of four relations:
+
+| `relation` | source | arity |
+|---|---|---|
+| `identity` | a content match the engine committed to, or an alias the diff was run with (carried forward so a replayed lineage does not erode) | 1:1 |
+| `split` | `ModelDiff.splitMerges`, reason `split:<confidence>` | 1:k |
+| `merge` | `ModelDiff.splitMerges`, reason `merge:<confidence>` | k:1 |
+| `replaced` | successor claims passed in as **accepted**, reason `successor:<confidence>` | 1:1 |
+
+`shares` — each piece's fraction of the pieces' total volume, in key order — is present only when every piece carried a proved volume (never on an `extent` claim). Every key appears in at most one entry per side; the engine guarantees that by construction, and the sidecar refuses a document where it does not hold.
+
+`rekeyByLineage` is pure and table-agnostic. Merges and replacements rekey under any policy; a split follows the policy: `copy-to-all` (every piece inherits the row), `largest-share` (the piece with the largest share inherits it — without `shares`, or on a tie, the row is orphaned rather than guessed), or `orphan-on-split`. `keyAliasesFromLineage` turns the 1:1 entries into `keyAliases` for the next diff, on exactly the rules `keyAliasesFromSidecar` applies.
+
+### The lineage sidecar
+
+`createLineageSidecar` / `serializeLineageSidecar` / `parseLineageSidecar` define `ifc-lite/lineage` version 1, pinned to both model digests exactly like the identity-map sidecar and checked by `lineageSidecarMismatches` before anything is applied. Both sidecars also record an optional `keyProperty` — the authored key scheme the keys were taken under, absent meaning GlobalId — and report a scheme mismatch like a digest mismatch, because a GlobalId-keyed map replayed under an authored key would otherwise apply nothing, silently.
+
 ## CLI usage
 
 The [`diff` command](cli.md#diff-compare-ifc-files) offers a fast, dependency-light comparison focused on counts, per-type deltas, and GlobalId tracking:

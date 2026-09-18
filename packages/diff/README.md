@@ -156,6 +156,14 @@ different pair. A document claiming two different `base` identities for one
 files say, and applying either claim would pick an arbitrary winner. See the
 [Model Diff guide](https://ifclite.dev/docs/guide/model-diff/#identity-maps).
 
+### Lineage — carrying external data across a split
+
+`lineageFromDiff` turns committed matches, split/merge claims and *accepted*
+successor claims into 1:k `{ base[], head[], relation, reason, shares? }`
+entries; `rekeyByLineage` answers "where does the row keyed on this old key
+go" under a `copy-to-all` / `largest-share` / `orphan-on-split` policy; the
+`ifc-lite/lineage` sidecar pins both model digests like the identity map does.
+
 ### Building a data fingerprint
 
 `buildDataFingerprint` canonicalizes (sorts) property sets, quantity sets, and

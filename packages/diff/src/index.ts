@@ -28,6 +28,28 @@ export {
 } from './identity-map.js';
 export type { IdentityMapEntry } from './identity-map.js';
 export {
+  keyAliasesFromLineage,
+  lineageConflicts,
+  lineageFromDiff,
+  rekeyByLineage,
+  type LineageEntry,
+  type LineageFromDiffOptions,
+  type LineageRelation,
+  type RekeyPolicy,
+  type RekeyResult,
+} from './lineage.js';
+export {
+  LINEAGE_SIDECAR_FORMAT,
+  LINEAGE_SIDECAR_VERSION,
+  createLineageSidecar,
+  lineageSidecarMismatches,
+  parseLineageSidecar,
+  serializeLineageSidecar,
+  validateLineageSidecar,
+  type LineageSidecar,
+  type LineageSidecarInit,
+} from './lineage-sidecar.js';
+export {
   IDENTITY_MAP_SIDECAR_FORMAT,
   IDENTITY_MAP_SIDECAR_VERSION,
   createIdentityMapSidecar,

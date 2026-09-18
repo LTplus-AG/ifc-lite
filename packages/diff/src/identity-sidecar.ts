@@ -25,6 +25,17 @@
  */
 
 import type { IdentityMapEntry } from './identity-map.js';
+import {
+  compareCodeUnits as compare,
+  normalizeModelIdentity,
+  pinnedModelMismatches,
+  validateCreated,
+  validateKeyProperty,
+  validateModelIdentity,
+  type ModelIdentity,
+} from './sidecar-common.js';
+
+export type { ModelIdentity } from './sidecar-common.js';
 
 /** Discriminator so a stray JSON file is rejected rather than misread. */
 export const IDENTITY_MAP_SIDECAR_FORMAT = 'ifc-lite/identity-map';
@@ -35,22 +46,6 @@ export const IDENTITY_MAP_SIDECAR_FORMAT = 'ifc-lite/identity-map';
  * why {@link validateIdentityMapSidecar} pins it exactly.
  */
 export const IDENTITY_MAP_SIDECAR_VERSION = 1;
-
-/**
- * Which model a set of claims was derived from.
- *
- * {@link hash} is the load-bearing field: an opaque `<algorithm>:<hex>` content
- * digest of the model bytes (the CLI writes `sha256:…`). {@link path} is a
- * convenience for humans reading the file and is never compared — paths move,
- * and a comparison on one would reject a valid map for the wrong reason while
- * accepting an edited file at the same path.
- */
-export interface ModelIdentity {
-  /** Content digest of the model bytes, `<algorithm>:<hex>`. */
-  hash: string;
-  /** Path or file name the digest was taken from. Informational only. */
-  path?: string;
-}
 
 /**
  * A reviewed set of identity claims, scoped to the exact pair of revisions it
@@ -65,6 +60,15 @@ export interface IdentityMapSidecar {
   head: ModelIdentity;
   /** ISO 8601 creation timestamp, when the producer supplied one. */
   created?: string;
+  /**
+   * The key scheme the entries' `base`/`here` keys were taken under (issue
+   * #4955): an authored property such as `Pset_Asset.AssetId`, or `Tag`.
+   * Absent means GlobalId, so a version-1 file written before the field
+   * existed is still valid. {@link identityMapSidecarMismatches} reports a
+   * scheme mismatch like a digest mismatch, because a GlobalId-keyed map
+   * replayed under an authored key would otherwise apply nothing, silently.
+   */
+  keyProperty?: string;
   /** The claims, sorted by (`base`, `here`) for a reviewable, stable file. */
   entries: IdentityMapEntry[];
 }
@@ -78,6 +82,8 @@ export interface IdentityMapSidecarInit {
    *  and stamping `Date.now()` by default would make two runs over the same
    *  pair produce different bytes for no reason. */
   created?: string;
+  /** See {@link IdentityMapSidecar.keyProperty}. */
+  keyProperty?: string;
 }
 
 /**
@@ -122,22 +128,13 @@ export function createIdentityMapSidecar(init: IdentityMapSidecarInit): Identity
     entries,
   };
   if (init.created !== undefined) sidecar.created = init.created;
+  if (init.keyProperty !== undefined) sidecar.keyProperty = init.keyProperty;
 
   const errors = validateIdentityMapSidecar(sidecar);
   if (errors.length > 0) {
     throw new Error(`Invalid identity-map sidecar: ${errors.join('; ')}`);
   }
   return sidecar;
-}
-
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-function normalizeModelIdentity(identity: ModelIdentity): ModelIdentity {
-  const normalized: ModelIdentity = { hash: identity.hash };
-  if (identity.path !== undefined) normalized.path = identity.path;
-  return normalized;
 }
 
 /** Serialize to the on-disk form: pretty-printed JSON with a trailing newline,
@@ -186,24 +183,10 @@ export function validateIdentityMapSidecar(value: unknown): string[] {
     errors.push(`version must be ${IDENTITY_MAP_SIDECAR_VERSION}`);
   }
   for (const side of ['base', 'head'] as const) {
-    const identity = sidecar[side];
-    if (typeof identity !== 'object' || identity === null || Array.isArray(identity)) {
-      errors.push(`${side} must be { hash, path? }`);
-      continue;
-    }
-    const record = identity as Record<string, unknown>;
-    if (typeof record.hash !== 'string' || record.hash.length === 0) {
-      errors.push(`${side}.hash must be a non-empty content digest`);
-    }
-    if (record.path !== undefined && typeof record.path !== 'string') {
-      errors.push(`${side}.path must be a string when present`);
-    }
+    errors.push(...validateModelIdentity(sidecar[side], side));
   }
-  if (sidecar.created !== undefined) {
-    if (typeof sidecar.created !== 'string' || Number.isNaN(Date.parse(sidecar.created))) {
-      errors.push('created must be an ISO 8601 timestamp when present');
-    }
-  }
+  errors.push(...validateCreated(sidecar.created));
+  errors.push(...validateKeyProperty(sidecar.keyProperty));
   if (!Array.isArray(sidecar.entries)) {
     errors.push('entries must be an array');
   } else {
@@ -267,23 +250,16 @@ function contradictoryClaims(entries: readonly IdentityMapEntry[]): string[] {
  * Returns a list of problems; empty means the sidecar was verified against
  * exactly these two files.
  *
- * Only {@link ModelIdentity.hash} is compared. A caller that wants to apply a
+ * Only {@link ModelIdentity.hash} and the key scheme ({@link
+ * IdentityMapSidecar.keyProperty}) are compared. A caller that wants to apply a
  * map anyway (a deliberate, logged override) can ignore the result — but it has
  * to do so explicitly, which is the point.
  */
 export function identityMapSidecarMismatches(
   sidecar: IdentityMapSidecar,
-  models: { base: ModelIdentity; head: ModelIdentity },
+  models: { base: ModelIdentity; head: ModelIdentity; keyProperty?: string },
 ): string[] {
-  const problems: string[] = [];
-  for (const side of ['base', 'head'] as const) {
-    if (sidecar[side].hash !== models[side].hash) {
-      problems.push(
-        `${side} model does not match the sidecar (sidecar ${sidecar[side].hash}, got ${models[side].hash})`,
-      );
-    }
-  }
-  return problems;
+  return pinnedModelMismatches(sidecar, models, 'sidecar');
 }
 
 /**

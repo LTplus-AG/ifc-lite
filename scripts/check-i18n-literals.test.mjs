@@ -122,6 +122,8 @@ test('TypeScript assertion wrappers do not hide copy (#4973 review)', () => {
 
 test('entity spellings in JSX text are decoded before the allowlist runs (#4973 review)', () => {
   assert.equal(countLiterals(`<span>&times;</span>`), 0);
+  // Non-Latin letters next to a symbol are copy, not a unit cluster.
+  assert.equal(countLiterals('<span>设置°</span>'), 1);
   assert.equal(countLiterals(`<span>&middot; &#215; &#xD7;</span>`), 0);
   // A decoded entity inside real prose does not hide the prose.
   assert.equal(countLiterals(`<span>Save &amp; close</span>`), 1);

@@ -74,7 +74,7 @@ const SYMBOL_CHAR_RE = /[°²³×‐-―‘-‟′-⁄₠-⃏℀-⯿]/;
  */
 function isSymbolOrUnitCluster(text) {
   if (text.length === 0 || text.length > 4) return false;
-  const letters = text.match(/[A-Za-z]/g) ?? [];
+  const letters = text.match(/\p{L}/gu) ?? [];
   if (letters.length > 1) return false;
   if (SYMBOL_CHAR_RE.test(text)) return true;
   return /^[0-9.,+\-−%]+$/.test(text);

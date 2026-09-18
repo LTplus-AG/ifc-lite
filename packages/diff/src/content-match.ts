@@ -26,6 +26,7 @@ import {
   type Candidate,
 } from './content-tiers.js';
 import type { GeometryTolerances } from './geometry-compare.js';
+import { matchRespecified } from './respecified-match.js';
 import type {
   ContentMatch,
   ContentMatchKind,
@@ -94,6 +95,19 @@ function bucketCandidates<TRef>(
  * geometry-derived `moved` would report a difference the caller either opted out
  * of seeing or that the fingerprints cannot support.
  *
+ * Three phases, in an order that is load-bearing (issue #4955):
+ *
+ * 1. **Tier 1** over every (`ifcType`, `dataHash`) bucket: data AND world
+ *    geometry agree.
+ * 2. **Geometry-only** (`respecified-match.ts`) over the union residue of
+ *    phase 1, across buckets: world geometry agrees, data does not. An entity
+ *    whose data changed sits in a different bucket from its previous revision,
+ *    so this is the only phase that can see it — and it must run before phase
+ *    3, whose positional tier would otherwise pair a stranded same-data
+ *    neighbour on weaker evidence.
+ * 3. **Tiers 2–3** per bucket on what is left: the 1:1 leftover, then mutual
+ *    nearest neighbour.
+ *
  * `DiffState`/`DiffEntry` are never widened by this pass: it only removes
  * entries or leaves them alone, so downstream code that exhaustively switches
  * over `DiffState` needs no changes.
@@ -139,25 +153,49 @@ export function applyContentMatching<TRef>(
     if (distance !== undefined) match.distance = distance;
     contentMatches.push(match);
   };
+  const live = (candidates: readonly Candidate<TRef>[]): Candidate<TRef>[] =>
+    candidates.filter((candidate) => !retired.has(candidate.entry));
 
+  // PHASE 1 — tier 1, per bucket.
+  if (useGeometry) {
+    for (const [bucketKey, headGroup] of addedByBucket) {
+      const baseGroup = deletedByBucket.get(bucketKey);
+      if (!baseGroup || baseGroup.length === 0) continue;
+      const dataHash = headGroup[0]?.fingerprint.dataHash;
+      if (dataHash === undefined) continue;
+      const refined = refineByGeometryHash(baseGroup, headGroup);
+      for (const group of refined.resolved) {
+        retire(group.bases, group.heads, dataHash, 'renamed', 'geometry-hash');
+      }
+    }
+
+    // PHASE 2 — geometry-only, across buckets. Every candidate tier 1 did not
+    // retire is in scope, including those whose bucket had no counterpart at
+    // all: that is exactly the respecified case.
+    const residueBase: Candidate<TRef>[] = [];
+    const residueHead: Candidate<TRef>[] = [];
+    for (const group of deletedByBucket.values()) residueBase.push(...live(group));
+    for (const group of addedByBucket.values()) residueHead.push(...live(group));
+    const respecified = matchRespecified(residueBase, residueHead, tolerances);
+    for (const pair of respecified.pairs) {
+      retired.add(pair.base.entry);
+      retired.add(pair.head.entry);
+      removedDeleted++;
+      removedAdded++;
+      contentMatches.push(pair.match);
+    }
+    contentMatches.push(...respecified.groups);
+  }
+
+  // PHASE 3 — tiers 2–3, per bucket, on what is left.
   for (const [bucketKey, headGroup] of addedByBucket) {
     const baseGroup = deletedByBucket.get(bucketKey);
     if (!baseGroup || baseGroup.length === 0) continue;
     const dataHash = headGroup[0]?.fingerprint.dataHash;
     if (dataHash === undefined) continue;
 
-    let residueBase: readonly Candidate<TRef>[] = baseGroup;
-    let residueHead: readonly Candidate<TRef>[] = headGroup;
-
-    if (useGeometry) {
-      const refined = refineByGeometryHash(baseGroup, headGroup);
-      for (const group of refined.resolved) {
-        retire(group.bases, group.heads, dataHash, 'renamed', 'geometry-hash');
-      }
-      residueBase = refined.residueBase;
-      residueHead = refined.residueHead;
-    }
-
+    const residueBase = live(baseGroup);
+    const residueHead = live(headGroup);
     if (residueBase.length === 0 || residueHead.length === 0) continue;
 
     if (residueBase.length === 1 && residueHead.length === 1) {

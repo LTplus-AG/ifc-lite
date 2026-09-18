@@ -54,7 +54,7 @@ export interface IdentityMapEntry {
  * content-derived identity *fallback*. That is a different claim from this one
  * and recording both as `"derived"` would erase the distinction, so these
  * entries name their evidence: the reason is `content-match:renamed`,
- * `content-match:moved`, or `content-match:reshaped`.
+ * `content-match:moved`, `content-match:reshaped` or `content-match:respecified`.
  */
 export const CONTENT_MATCH_REASON_PREFIX = 'content-match:';
 
@@ -76,6 +76,7 @@ const CLAIMABLE_KINDS: ReadonlySet<ContentMatchKind> = new Set<ContentMatchKind>
   'renamed',
   'moved',
   'reshaped',
+  'respecified',
 ]);
 
 /**

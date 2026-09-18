@@ -71,6 +71,7 @@ const UNRESOLVED_FIRST: ContentMatchKind[] = [
   'deduplicated',
   'moved',
   'reshaped',
+  'respecified',
   'renamed',
 ];
 
@@ -175,7 +176,7 @@ const modelDiff: Tool = {
         description:
           'Run the @ifc-lite/diff engine with content-keyed matching over every IfcObjectDefinition. '
           + 'Adds `contentDiff` with added/modified/deleted/unchanged counts and the content matches '
-          + '(renamed / moved / reshaped are resolved; duplicated / deduplicated / ambiguous are listed '
+          + '(renamed / moved / reshaped / respecified are resolved; duplicated / deduplicated / ambiguous are listed '
           + 'as groups for you to resolve). Data scope only — this server has no geometry pipeline.',
       },
       max_matches: {

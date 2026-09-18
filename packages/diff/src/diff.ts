@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { applyContentMatching } from './content-match.js';
+import { changedComponentKeys } from './content-tiers.js';
 import { geometryEqual, resolveTolerances, resolveUseGeometry } from './geometry-compare.js';
 import { resolveKeyAliases } from './key-aliases.js';
 import { detectSplitMerge } from './split-merge.js';
@@ -38,20 +39,6 @@ function buildExcludeSet(excludeTypes: Iterable<string> | undefined): Set<string
   return set.size > 0 ? set : null;
 }
 
-/** Union of component keys whose sub-hash differs (one-sided keys count). */
-function changedComponentKeys(
-  base: Record<string, string>,
-  head: Record<string, string>,
-): string[] {
-  const changed: string[] = [];
-  for (const key of Object.keys(base)) {
-    if (base[key] !== head[key]) changed.push(key);
-  }
-  for (const key of Object.keys(head)) {
-    if (!(key in base)) changed.push(key);
-  }
-  return changed.sort();
-}
 
 /**
  * Does `side` carry *any* geometry hash among the entities that actually

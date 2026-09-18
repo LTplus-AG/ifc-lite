@@ -122,7 +122,8 @@ second.appliedKeyAliases; // what actually took effect
 ```
 
 Claims come only from matches the engine *committed to* — a 1:1 `renamed`,
-`moved`, or `reshaped`. `ambiguous` / `duplicated` / `deduplicated` groups and
+`moved`, `reshaped`, or `respecified` (same geometry and place, changed data:
+the redrawn-and-renamed element). `ambiguous` / `duplicated` / `deduplicated` groups and
 N:N `renamed` groups mint nothing: they are the engine saying it could not tell,
 and a claim derived from an abstention is a fabrication.
 

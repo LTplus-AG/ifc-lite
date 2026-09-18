@@ -96,6 +96,25 @@ export function isAllowlistedLiteral(raw) {
   return false;
 }
 
+const NAMED_ENTITIES = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', times: '×', middot: '·',
+  hellip: '…', mdash: '—', ndash: '–', rarr: '→', larr: '←', uarr: '↑', darr: '↓', deg: '°',
+  copy: '©', reg: '®', trade: '™', bull: '•', laquo: '«', raquo: '»', ldquo: '“', rdquo: '”',
+  lsquo: '‘', rsquo: '’', thinsp: ' ', ensp: ' ', emsp: ' ',
+};
+
+/** JSX text keeps `&times;` / `&#215;` / `&#xD7;` as written; decode the
+ *  numeric forms and the named entities JSX copy actually uses. */
+function decodeJsxEntities(text) {
+  return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, body) => {
+    if (body[0] === '#') {
+      const code = body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+    }
+    return NAMED_ENTITIES[body] ?? m;
+  });
+}
+
 /** The string VALUE of a literal expression, or `null` if `expr` is not
  *  one — a plain string literal or a no-substitution template literal
  *  (`` `Save changes` ``, no `${}` inside it). A template literal WITH
@@ -104,6 +123,27 @@ function literalStringValue(expr) {
   if (ts.isStringLiteral(expr)) return expr.text;
   if (ts.isNoSubstitutionTemplateLiteral(expr)) return expr.text;
   return null;
+}
+
+/** Every static string an expression can evaluate to: the literal itself,
+ *  both arms of `cond ? 'A' : 'B'`, the right side of `cond && 'A'` /
+ *  `x ?? 'A'`, through parentheses. A conditional with string arms is the
+ *  usual spelling of a toggling label (`{on ? 'Enabled' : 'Disabled'}`) and
+ *  must not bypass the gate (review on #4973). */
+function staticStringValues(expr) {
+  if (ts.isParenthesizedExpression(expr)) return staticStringValues(expr.expression);
+  if (ts.isConditionalExpression(expr)) {
+    return [...staticStringValues(expr.whenTrue), ...staticStringValues(expr.whenFalse)];
+  }
+  if (ts.isBinaryExpression(expr) && (
+    expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+    expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+    expr.operatorToken.kind === ts.SyntaxKind.BarBarToken
+  )) {
+    return staticStringValues(expr.right);
+  }
+  const lit = literalStringValue(expr);
+  return lit === null ? [] : [lit];
 }
 
 /**
@@ -127,15 +167,16 @@ export function findLiterals(source, fileName = 'fixture.tsx') {
 
   function visit(node) {
     if (ts.isJsxText(node)) {
-      pushIfText('jsx-text', node.getText());
+      // TypeScript keeps entity spellings verbatim in JsxText; decode them so
+      // `&times;` / `&middot;` reach the symbol allowlist as `×` / `·`.
+      pushIfText('jsx-text', decodeJsxEntities(node.text));
     } else if (ts.isJsxAttribute(node) && TARGET_ATTRS.has(node.name.getText())) {
       const init = node.initializer;
       if (init) {
         if (ts.isStringLiteral(init)) {
           pushIfText('attr', init.text);
         } else if (ts.isJsxExpression(init) && init.expression) {
-          const lit = literalStringValue(init.expression);
-          if (lit !== null) pushIfText('attr', lit);
+          for (const lit of staticStringValues(init.expression)) pushIfText('attr', lit);
         }
       }
     } else if (
@@ -152,8 +193,7 @@ export function findLiterals(source, fileName = 'fixture.tsx') {
       // its parent, inflating the baseline with styling/prop values).
       (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
     ) {
-      const lit = literalStringValue(node.expression);
-      if (lit !== null) pushIfText('jsx-expression-string', lit);
+      for (const lit of staticStringValues(node.expression)) pushIfText('jsx-expression-string', lit);
     }
     ts.forEachChild(node, visit);
   }

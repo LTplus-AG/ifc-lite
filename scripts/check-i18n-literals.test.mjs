@@ -92,6 +92,24 @@ test('a JSX-expression string literal is caught the same as plain JSX text', () 
   assert.equal(countLiterals(src), 1);
 });
 
+test('both arms of a conditional label are counted, in JSX text and in a policed attribute (#4973 review)', () => {
+  const text = `<span>{on ? 'Enabled' : 'Disabled'}</span>`;
+  assert.deepEqual(findLiterals(text).map((l) => l.text), ['Enabled', 'Disabled']);
+  assert.equal(countLiterals(text), 2);
+  const attr = `<button aria-label={playing ? 'Pause sweep' : 'Play sweep'} />`;
+  assert.equal(countLiterals(attr), 2);
+  assert.equal(countLiterals(`<div>{busy && 'Loading'}</div>`), 1);
+  // A conditional feeding a non-policed prop is still not copy.
+  assert.equal(countLiterals(`<div className={on ? 'a' : 'b'} />`), 0);
+});
+
+test('entity spellings in JSX text are decoded before the allowlist runs (#4973 review)', () => {
+  assert.equal(countLiterals(`<span>&times;</span>`), 0);
+  assert.equal(countLiterals(`<span>&middot; &#215; &#xD7;</span>`), 0);
+  // A decoded entity inside real prose does not hide the prose.
+  assert.equal(countLiterals(`<span>Save &amp; close</span>`), 1);
+});
+
 test('a JSX-expression string literal in JSX-child position is still counted (<div>)', () => {
   assert.equal(countLiterals(`<div>{'Save changes'}</div>`), 1);
 });

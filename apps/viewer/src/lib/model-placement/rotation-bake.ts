@@ -213,11 +213,11 @@ export class ModelRotationBaker {
    * Follow the store's mesh-removal drain: forget the meshes it just pruned out
    * of the live geometry (#4935).
    *
-   * A split or a delete removes a mesh from `geometryResult.meshes`
+   * A wall or slab split removes its source mesh from `geometryResult.meshes`
    * (`pruneGeometryMeshes`), and the baseline is the one place that still holds
    * a pristine COPY of it plus its share of the pristine extent. Left alone, it
    * pins that memory, hands fit-to-view and the section calculations an extent
-   * that still covers deleted geometry, and puts those bounds back on the next
+   * that still covers geometry that is gone, and puts those bounds back on the next
    * zero-angle bake.
    *
    * Applied to EVERY baseline, like the prune itself: the drain carries
@@ -230,7 +230,7 @@ export class ModelRotationBaker {
     for (const [modelId, entry] of this.entries) {
       pruneMeshBaselines(entry.geometry, entry.baseline, prune);
       // The prune republishes the geometry as a NEW object. Following it keeps
-      // `unbake`'s identity check true across a delete, and keeps
+      // `unbake`'s identity check true across a prune, and keeps
       // `bakedInstanced` pointing at the map the geometry now carries — that
       // map holds the boxes this baker already baked, and read as pristine
       // (`captureAppendedMeshBaselines`) they would be turned a second time.

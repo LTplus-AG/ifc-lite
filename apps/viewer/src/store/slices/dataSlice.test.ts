@@ -532,7 +532,7 @@ describe('DataSlice', () => {
      * #4935: on a ROTATED model the baseline (`lib/model-placement/
      * rotation-baseline.ts`) is the only remaining holder of a pruned mesh's
      * pristine copy and of the model's pristine extent. Nothing dropped the
-     * pruned mesh out of it, so the extent kept covering deleted geometry —
+     * pruned mesh out of it, so the extent kept covering geometry that is gone —
      * fit-to-view and the section calculations read it — and the next
      * zero-angle bake wrote those bounds straight back over the live ones.
      */
@@ -565,7 +565,7 @@ describe('DataSlice', () => {
         // while both meshes are still there.
         assert.deepStrictEqual(modelRotationBaker.reconcile(target(ROTATION)), [ACTIVE_MODEL_ID]);
 
-        // The drain behind a delete / a wall split.
+        // The drain behind a wall split (`setPendingMeshRemovals`).
         state.pruneGeometryMeshes(new Set([2]));
         assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [1],
           'the prune has to have removed the mesh (fixture can fail)');
@@ -575,7 +575,7 @@ describe('DataSlice', () => {
         assert.deepStrictEqual(modelRotationBaker.reconcile(target(ZERO_ROTATION)), [ACTIVE_MODEL_ID]);
         assert.deepStrictEqual(state.geometryResult?.coordinateInfo.shiftedBounds, {
           min: { x: 100, y: 5, z: -40 }, max: { x: 103, y: 5, z: -39 },
-        }, 'the restored extent still covers the deleted mesh');
+        }, 'the restored extent still covers the pruned mesh');
       } finally {
         modelRotationBaker.clear();
       }

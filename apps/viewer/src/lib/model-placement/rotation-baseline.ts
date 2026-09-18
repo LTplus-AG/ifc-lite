@@ -178,7 +178,7 @@ export interface MeshPrune {
  * pristine extent from what is left (#4935).
  *
  * Nothing else drops a pruned mesh out of a baseline, so without this a
- * deleted element's pristine buffers stay alive, the pristine `shiftedBounds`
+ * split-away element's pristine buffers stay alive, the pristine `shiftedBounds`
  * keeps covering geometry that is gone — fit-to-view and the section
  * calculations read that extent — and a later zero-angle {@link restore}
  * writes those too-large bounds back over the live ones.

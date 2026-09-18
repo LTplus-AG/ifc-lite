@@ -282,7 +282,7 @@ describe('ModelRotationBaker', () => {
   });
 
   /**
-   * #4935: a split or a delete drops a mesh out of `geometryResult.meshes`
+   * #4935: a wall or slab split drops its source mesh out of `geometryResult.meshes`
    * (`pruneGeometryMeshes` / `store/slices/data-mesh-prune.ts`). The baseline is
    * then the only thing still holding that mesh's pristine copy and its share
    * of the model's pristine extent.
@@ -339,7 +339,7 @@ describe('ModelRotationBaker', () => {
       assert.deepEqual(baker.reconcile(targets(next, ZERO_ROTATION)), ['m']);
       assert.deepEqual(next.coordinateInfo.shiftedBounds,
         { min: { x: 100, y: 5, z: -40 }, max: { x: 103, y: 5, z: -39 } },
-        'the restored extent still covers the deleted mesh');
+        'the restored extent still covers the pruned mesh');
     });
 
     it('keeps a colour-merged mesh the prune itself keeps', () => {

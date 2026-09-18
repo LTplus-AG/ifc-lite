@@ -154,6 +154,23 @@ describe('serialize / parse round trip', () => {
     expect(() => parseIdentityMapSidecar('{"hello":"world"}')).toThrow(/format must be/);
   });
 
+  it('writes version 2 exactly when a keyProperty is present, and refuses the mismatch (review on #4966)', () => {
+    const plain = createIdentityMapSidecar({ base: { hash: 'sha256:a' }, head: { hash: 'sha256:b' }, entries: [] });
+    expect(plain.version).toBe(1);
+    const keyed = createIdentityMapSidecar({
+      base: { hash: 'sha256:a' },
+      head: { hash: 'sha256:b' },
+      entries: [],
+      keyProperty: 'Tag',
+    });
+    expect(keyed.version).toBe(2);
+    expect(parseIdentityMapSidecar(serializeIdentityMapSidecar(keyed))).toEqual(keyed);
+    // A version-1 reader refuses a keyed map outright; and a hand-edited file
+    // cannot carry a scheme under version 1, or claim version 2 without one.
+    expect(() => parseIdentityMapSidecar(JSON.stringify({ ...keyed, version: 1 }))).toThrow(/requires keyProperty/);
+    expect(() => parseIdentityMapSidecar(JSON.stringify({ ...plain, version: 2 }))).toThrow(/requires keyProperty/);
+  });
+
   it('refuses an unknown version rather than guessing the shape', () => {
     const text = JSON.stringify({
       format: IDENTITY_MAP_SIDECAR_FORMAT,
@@ -162,7 +179,7 @@ describe('serialize / parse round trip', () => {
       head: HEAD,
       entries: [],
     });
-    expect(() => parseIdentityMapSidecar(text)).toThrow(/version must be 1/);
+    expect(() => parseIdentityMapSidecar(text)).toThrow(/version must be 1 or 2/);
   });
 
   it('refuses a document with a malformed entry instead of applying the readable half', () => {

@@ -31,7 +31,9 @@ export {
   keyAliasesFromLineage,
   lineageConflicts,
   lineageFromDiff,
+  lineageOfDiff,
   rekeyByLineage,
+  type Lineage,
   type LineageEntry,
   type LineageFromDiffOptions,
   type LineageRelation,
@@ -51,6 +53,7 @@ export {
 } from './lineage-sidecar.js';
 export {
   IDENTITY_MAP_SIDECAR_FORMAT,
+  IDENTITY_MAP_SIDECAR_KEYED_VERSION,
   IDENTITY_MAP_SIDECAR_VERSION,
   createIdentityMapSidecar,
   identityMapSidecarMismatches,

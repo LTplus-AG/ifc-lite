@@ -10,7 +10,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { diffModels } from './diff.js';
-import { keyAliasesFromLineage, lineageConflicts, lineageFromDiff, rekeyByLineage, type LineageEntry } from './lineage.js';
+import {
+  keyAliasesFromLineage,
+  lineageConflicts,
+  lineageFromDiff,
+  lineageOfDiff,
+  rekeyByLineage,
+  type LineageEntry,
+} from './lineage.js';
 import {
   createLineageSidecar,
   lineageSidecarMismatches,
@@ -92,6 +99,17 @@ describe('lineageFromDiff', () => {
     ]);
   });
 
+  it('lists the keys the diff left deleted with no lineage', () => {
+    const diff = diffModels(
+      [entity({ key: 'GONE', aabb: box([50, 0, 0], [51, 0.2, 3]) }), entity({ key: 'W', aabb: WHOLE, volume: 3.6 })],
+      pieces([1.2, 1.2, 1.2]),
+      { matchUnpairedByContent: true, detectSplitMerge: true },
+    );
+    const { entries, deleted } = lineageOfDiff(diff);
+    expect(entries.map((e) => e.relation)).toEqual(['split']);
+    expect(deleted).toEqual(['GONE']);
+  });
+
   it('omits shares on an extent split (a volume was missing)', () => {
     const diff = diffModels([entity({ key: 'W', aabb: WHOLE })], pieces([1.2, 1.2, undefined]), {
       matchUnpairedByContent: true,
@@ -171,12 +189,25 @@ describe('rekeyByLineage', () => {
   });
 
   it('orphan-on-split orphans every split; merges and replacements rekey under any policy', () => {
-    expect(rekeyByLineage(['w', 'm0', 'm1', 'r', 'nobody'], lineage, 'orphan-on-split')).toEqual([
+    expect(rekeyByLineage(['w', 'm0', 'm1', 'r'], lineage, 'orphan-on-split')).toEqual([
       { key: 'w', successors: [], relation: 'split', orphan: true },
       { key: 'm0', successors: ['m'], relation: 'merge', orphan: false },
       { key: 'm1', successors: ['m'], relation: 'merge', orphan: false },
       { key: 'r', successors: ['R'], relation: 'replaced', orphan: false },
-      { key: 'nobody', successors: [], orphan: true },
+    ]);
+  });
+
+  it('passes a key with no lineage through unchanged, unless the deleted list names it (review on #4967)', () => {
+    // A lineage records CHANGES: a cost table full of unchanged GlobalIds must
+    // not be orphaned wholesale. Only the deleted list can single out a row
+    // whose element is gone.
+    expect(rekeyByLineage(['same', 'gone'], { entries: lineage, deleted: ['gone'] })).toEqual([
+      { key: 'same', successors: ['same'], relation: 'unchanged', orphan: false },
+      { key: 'gone', successors: [], orphan: true },
+    ]);
+    // Bare entries (no deleted list): nothing can be told apart, so nothing is lost.
+    expect(rekeyByLineage(['same'], lineage)).toEqual([
+      { key: 'same', successors: ['same'], relation: 'unchanged', orphan: false },
     ]);
   });
 });
@@ -188,11 +219,12 @@ describe('lineage sidecar', () => {
     { base: ['a'], head: ['A'], relation: 'identity', reason: 'content-match:renamed' },
   ];
 
-  it('round-trips, sorted and byte-stable, with the key scheme pinned', () => {
-    const sidecar = createLineageSidecar({ ...models, entries, keyProperty: 'Pset_Asset.AssetId' });
+  it('round-trips, sorted and byte-stable, with the key scheme pinned and the deleted list sorted', () => {
+    const sidecar = createLineageSidecar({ ...models, entries, keyProperty: 'Pset_Asset.AssetId', deleted: ['z', 'y', 'z'] });
     expect(sidecar.entries.map((e) => e.base[0])).toEqual(['a', 'w']);
+    expect(sidecar.deleted).toEqual(['y', 'z']);
     const text = serializeLineageSidecar(sidecar);
-    expect(serializeLineageSidecar(createLineageSidecar({ ...models, entries: [...entries].reverse(), keyProperty: 'Pset_Asset.AssetId' }))).toBe(text);
+    expect(serializeLineageSidecar(createLineageSidecar({ ...models, entries: [...entries].reverse(), keyProperty: 'Pset_Asset.AssetId', deleted: ['y', 'z'] }))).toBe(text);
     expect(parseLineageSidecar(text)).toEqual(sidecar);
     expect(text.endsWith('\n')).toBe(true);
   });
@@ -219,6 +251,7 @@ describe('lineage sidecar', () => {
     expect(() => bad({ base: ['a'], head: ['c', 'd'], relation: 'split', reason: 'x', shares: [1] })).toThrow(/shares/);
     expect(() => bad({ base: ['a'], head: ['c'], relation: 'teleported', reason: 'x' })).toThrow(/relation/);
     expect(() => bad({ base: [], head: ['c'], relation: 'identity', reason: 'x' })).toThrow(/at least one key/);
+    expect(() => createLineageSidecar({ ...models, entries, deleted: ['w'] })).toThrow(/deleted key "w" also appears/);
     expect(() => parseLineageSidecar('{')).toThrow(/not JSON/);
     expect(() => parseLineageSidecar('{"format":"ifc-lite/lineage","version":2}')).toThrow(/version/);
   });

@@ -48,12 +48,24 @@ export const IDENTITY_MAP_SIDECAR_FORMAT = 'ifc-lite/identity-map';
 export const IDENTITY_MAP_SIDECAR_VERSION = 1;
 
 /**
+ * The version a sidecar carrying a {@link IdentityMapSidecar.keyProperty} is
+ * written under (issue #4955). A version-1 consumer ignores unknown fields and
+ * applies the entries under its own GlobalId scheme; for a map whose keys were
+ * taken under an authored property that is precisely the silent misapplication
+ * the key-scheme check exists to prevent, so such a map is stamped a version the
+ * old consumer refuses outright. A map with no `keyProperty` stays version 1,
+ * byte-identical to before.
+ */
+export const IDENTITY_MAP_SIDECAR_KEYED_VERSION = 2;
+
+/**
  * A reviewed set of identity claims, scoped to the exact pair of revisions it
  * was verified against.
  */
 export interface IdentityMapSidecar {
   format: typeof IDENTITY_MAP_SIDECAR_FORMAT;
-  version: typeof IDENTITY_MAP_SIDECAR_VERSION;
+  /** `1`, or `2` when {@link keyProperty} is present. */
+  version: typeof IDENTITY_MAP_SIDECAR_VERSION | typeof IDENTITY_MAP_SIDECAR_KEYED_VERSION;
   /** The base ("old") revision the claims resolve `entries[].base` against. */
   base: ModelIdentity;
   /** The head ("new") revision the claims resolve `entries[].here` against. */
@@ -122,7 +134,8 @@ export function createIdentityMapSidecar(init: IdentityMapSidecarInit): Identity
 
   const sidecar: IdentityMapSidecar = {
     format: IDENTITY_MAP_SIDECAR_FORMAT,
-    version: IDENTITY_MAP_SIDECAR_VERSION,
+    version:
+      init.keyProperty !== undefined ? IDENTITY_MAP_SIDECAR_KEYED_VERSION : IDENTITY_MAP_SIDECAR_VERSION,
     base: normalizeModelIdentity(init.base),
     head: normalizeModelIdentity(init.head),
     entries,
@@ -179,8 +192,12 @@ export function validateIdentityMapSidecar(value: unknown): string[] {
   if (sidecar.format !== IDENTITY_MAP_SIDECAR_FORMAT) {
     errors.push(`format must be "${IDENTITY_MAP_SIDECAR_FORMAT}"`);
   }
-  if (sidecar.version !== IDENTITY_MAP_SIDECAR_VERSION) {
-    errors.push(`version must be ${IDENTITY_MAP_SIDECAR_VERSION}`);
+  if (sidecar.version !== IDENTITY_MAP_SIDECAR_VERSION && sidecar.version !== IDENTITY_MAP_SIDECAR_KEYED_VERSION) {
+    errors.push(`version must be ${IDENTITY_MAP_SIDECAR_VERSION} or ${IDENTITY_MAP_SIDECAR_KEYED_VERSION}`);
+  } else if ((sidecar.keyProperty !== undefined) !== (sidecar.version === IDENTITY_MAP_SIDECAR_KEYED_VERSION)) {
+    // The version IS the statement "these keys are not GlobalIds"; the two
+    // must agree or a hand-edited file could smuggle a scheme past an old reader.
+    errors.push(`version ${IDENTITY_MAP_SIDECAR_KEYED_VERSION} requires keyProperty and version ${IDENTITY_MAP_SIDECAR_VERSION} forbids it`);
   }
   for (const side of ['base', 'head'] as const) {
     errors.push(...validateModelIdentity(sidecar[side], side));

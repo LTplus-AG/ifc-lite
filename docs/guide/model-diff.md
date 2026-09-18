@@ -550,11 +550,13 @@ Each entry is `{ base: string[], head: string[], relation, reason, shares? }` wi
 
 `shares` — each piece's fraction of the pieces' total volume, in key order — is present only when every piece carried a proved volume (never on an `extent` claim). Every key appears in at most one entry per side; the engine guarantees that by construction, and the sidecar refuses a document where it does not hold.
 
+A lineage records *changes*. A key it does not mention was either matched by key (unchanged) or deleted with nothing to carry it forward, and only the sidecar's `deleted` list can tell the two apart: `lineageOfDiff` returns both, `rekeyByLineage` passes an unmentioned key through as `unchanged` unless the list names it, and a lineage handed over without the list loses no row.
+
 `rekeyByLineage` is pure and table-agnostic. Merges and replacements rekey under any policy; a split follows the policy: `copy-to-all` (every piece inherits the row), `largest-share` (the piece with the largest share inherits it — without `shares`, or on a tie, the row is orphaned rather than guessed), or `orphan-on-split`. `keyAliasesFromLineage` turns the 1:1 entries into `keyAliases` for the next diff, on exactly the rules `keyAliasesFromSidecar` applies.
 
 ### The lineage sidecar
 
-`createLineageSidecar` / `serializeLineageSidecar` / `parseLineageSidecar` define `ifc-lite/lineage` version 1, pinned to both model digests exactly like the identity-map sidecar and checked by `lineageSidecarMismatches` before anything is applied. Both sidecars also record an optional `keyProperty` — the authored key scheme the keys were taken under, absent meaning GlobalId — and report a scheme mismatch like a digest mismatch, because a GlobalId-keyed map replayed under an authored key would otherwise apply nothing, silently.
+`createLineageSidecar` / `serializeLineageSidecar` / `parseLineageSidecar` define `ifc-lite/lineage` version 1, pinned to both model digests exactly like the identity-map sidecar and checked by `lineageSidecarMismatches` before anything is applied. Both sidecars also record an optional `keyProperty` — the authored key scheme the keys were taken under, absent meaning GlobalId — and report a scheme mismatch like a digest mismatch, because a GlobalId-keyed map replayed under an authored key would otherwise apply nothing, silently. An identity map carrying a `keyProperty` is written as **version 2**, so a version-1 reader (which ignores unknown fields and would apply the entries under GlobalId) refuses it outright; a map without one stays version 1, byte-identical to before.
 
 ## CLI usage
 

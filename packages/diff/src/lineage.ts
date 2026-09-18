@@ -61,6 +61,18 @@ export interface LineageEntry {
   shares?: number[];
 }
 
+/**
+ * A lineage as {@link rekeyByLineage} consumes it: the entries, plus the
+ * base-revision keys the diff left DELETED with no lineage at all. The two
+ * together let a rekey tell an unchanged key (no entry, not deleted: the row
+ * keeps its key) from a deleted one (orphaned). Without `deleted`, a key with
+ * no entry is passed through unchanged — losing a row is the worse failure.
+ */
+export interface Lineage {
+  entries: readonly LineageEntry[];
+  deleted?: readonly string[];
+}
+
 export interface LineageFromDiffOptions<TRef> {
   /** Successor claims a human accepted; these become `replaced` entries. */
   accepted?: Iterable<SuccessorClaim<TRef>>;
@@ -102,6 +114,34 @@ function compareEntries(a: LineageEntry, b: LineageEntry): number {
 export function lineageFromDiff<TRef>(
   diff: ModelDiff<TRef>,
   options: LineageFromDiffOptions<TRef> = {},
+): LineageEntry[] {
+  return lineageOfDiff(diff, options).entries;
+}
+
+/**
+ * {@link lineageFromDiff} plus the `deleted` list: every base key the diff still
+ * reports as `deleted` and no lineage entry accounts for. This is what a
+ * sidecar should carry, so a rekey can orphan those rows and pass every other
+ * unmatched key through as unchanged.
+ */
+export function lineageOfDiff<TRef>(
+  diff: ModelDiff<TRef>,
+  options: LineageFromDiffOptions<TRef> = {},
+): { entries: LineageEntry[]; deleted: string[] } {
+  const entries = lineageEntriesOf(diff, options);
+  const accounted = new Set<string>();
+  for (const entry of entries) for (const key of entry.base) accounted.add(key);
+  const deleted: string[] = [];
+  for (const entry of diff.entries) {
+    if (entry.state === 'deleted' && !accounted.has(entry.key)) deleted.push(entry.key);
+  }
+  deleted.sort(compareCodeUnits);
+  return { entries, deleted };
+}
+
+function lineageEntriesOf<TRef>(
+  diff: ModelDiff<TRef>,
+  options: LineageFromDiffOptions<TRef>,
 ): LineageEntry[] {
   const entries: LineageEntry[] = [];
 
@@ -198,9 +238,14 @@ export interface RekeyResult {
   key: string;
   /** Head-revision keys the row should now be attached to; empty when orphaned. */
   successors: string[];
-  /** The relation that produced the answer; `undefined` when the key has no lineage. */
-  relation?: LineageRelation;
-  /** `true` when the row has nowhere to go: no lineage, or a split the policy refused. */
+  /**
+   * The relation that produced the answer. `unchanged` means the key has no
+   * lineage entry and is not in the lineage's `deleted` list, so it is
+   * matched by key in the head revision and the row keeps it. `undefined`
+   * means the key is in the `deleted` list.
+   */
+  relation?: LineageRelation | 'unchanged';
+  /** `true` when the row has nowhere to go: deleted, or a split the policy refused. */
   orphan: boolean;
 }
 
@@ -210,18 +255,24 @@ export interface RekeyResult {
  */
 export function rekeyByLineage(
   keys: Iterable<string>,
-  lineage: readonly LineageEntry[],
+  lineage: Lineage | readonly LineageEntry[],
   policy: RekeyPolicy = 'copy-to-all',
 ): RekeyResult[] {
+  const entries = Array.isArray(lineage) ? (lineage as readonly LineageEntry[]) : (lineage as Lineage).entries;
+  const deleted = new Set(Array.isArray(lineage) ? [] : ((lineage as Lineage).deleted ?? []));
   const byBase = new Map<string, LineageEntry>();
-  for (const entry of lineage) {
+  for (const entry of entries) {
     for (const key of entry.base) if (!byBase.has(key)) byBase.set(key, entry);
   }
   const results: RekeyResult[] = [];
   for (const key of keys) {
     const entry = byBase.get(key);
     if (!entry) {
-      results.push({ key, successors: [], orphan: true });
+      // A lineage records CHANGES. A key it does not mention was either
+      // matched by key (the row keeps it) or deleted with nothing to carry it
+      // forward (orphaned); only the `deleted` list can tell the two apart.
+      if (deleted.has(key)) results.push({ key, successors: [], orphan: true });
+      else results.push({ key, successors: [key], relation: 'unchanged', orphan: false });
       continue;
     }
     if (entry.relation !== 'split') {

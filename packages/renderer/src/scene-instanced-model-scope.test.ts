@@ -497,3 +497,82 @@ it('refreshes camera bounds for a moved instance-only model (#4226)', () => {
     min: { x: 100, y: 200, z: 299 }, max: { x: 101, y: 200, z: 300 },
   });
 });
+
+type Box = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+
+/** Rotate a renderer-frame point about the vertical (+Y) axis through
+ *  `(px, *, pz)` — the SAME sign `ModelTranslations.placeInstances` and
+ *  `Scene.rotateMeshesForEntity` use (#4890). The independent oracle every
+ *  `setModelRotation` assertion below is checked against. */
+function rotateYUp(point: readonly [number, number, number], angle: number, px: number, pz: number): [number, number, number] {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const dx = point[0] - px, dz = point[2] - pz;
+  return [px + dx * cos + dz * sin, point[1], pz - dx * sin + dz * cos];
+}
+
+/** Rotate every corner of a world AABB about the pivot and re-union — a
+ *  rotated box need not stay axis-aligned to its pre-rotation self. */
+function rotatedBox(box: Box, angle: number, px: number, pz: number): Box {
+  let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+    const [rx, ry, rz] = rotateYUp([x, y, z], angle, px, pz);
+    minX = Math.min(minX, rx); minY = Math.min(minY, ry); minZ = Math.min(minZ, rz);
+    maxX = Math.max(maxX, rx); maxY = Math.max(maxY, ry); maxZ = Math.max(maxZ, rz);
+  }
+  return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+}
+
+function assertBoxClose(actual: Box | null, expected: Box, eps = 1e-4): void {
+  assert.ok(actual, 'expected a bounding box');
+  for (const edge of ['min', 'max'] as const) for (const axis of ['x', 'y', 'z'] as const) {
+    assert.ok(Math.abs(actual![edge][axis] - expected[edge][axis]) < eps,
+      `${edge}.${axis}: ${actual![edge][axis]} vs ${expected[edge][axis]}`);
+  }
+}
+
+// A shard() / singleOccShard() occurrence at zero translation, before any
+// rotation: the shard is IFC Z-up, so its unit Y edge becomes renderer
+// negative Z (matches the camera-bounds test above).
+const UPRIGHT_UNIT_BOX: Box = { min: { x: 0, y: 0, z: -1 }, max: { x: 1, y: 0, z: 0 } };
+
+describe('Scene.setModelRotation (#4890)', () => {
+  it('turns only the target model\'s occurrences about the pivot', () => {
+    const { scene } = twoModelScene();
+    const before10 = scene.getEntityBoundingBox(10)!;
+    const before20 = scene.getEntityBoundingBox(20)!;
+    const angle = 0.6528, px = 0.5, pz = -0.25; // 37.4 deg, off-origin pivot
+    assert.strictEqual(scene.setModelRotation(7, angle, [px, 0, pz]), true);
+    assertBoxClose(scene.getInstancedEntityBounds(20), rotatedBox(before20, angle, px, pz));
+    assert.deepStrictEqual(scene.getInstancedEntityBounds(10), before10, 'model 3\'s occurrences are untouched');
+  });
+
+  it('lands a shard added AFTER the yaw rotated', () => {
+    const { scene, device } = twoModelScene();
+    const angle = 1.1, px = 2, pz = -1;
+    scene.setModelRotation(7, angle, [px, 0, pz]);
+    scene.addInstancedShard(device, shard(1, [99]), 7);
+    assertBoxClose(scene.getInstancedEntityBounds(99), rotatedBox(UPRIGHT_UNIT_BOX, angle, px, pz));
+  });
+
+  it('still moves bounds after releaseGeometryData()', () => {
+    const { scene } = twoModelScene();
+    scene.releaseGeometryData();
+    const before = scene.getEntityBoundingBox(20)!;
+    const angle = -0.9, px = 1, pz = 1;
+    scene.setModelRotation(7, angle, [px, 0, pz]);
+    assertBoxClose(scene.getInstancedEntityBounds(20), rotatedBox(before, angle, px, pz));
+  });
+
+  it('leaves a model re-added on a new index unrotated', () => {
+    const { scene, device } = twoModelScene();
+    scene.setModelRotation(7, 1.234, [3, 0, 5]);
+    scene.removeInstancedTemplatesForModel(7);
+    scene.addInstancedShard(device, shard(1, [55]), 11);
+    assert.deepStrictEqual(scene.getInstancedEntityBounds(55), UPRIGHT_UNIT_BOX);
+  });
+
+  it('is a no-op that changes nothing when the angle is already zero', () => {
+    const { scene } = twoModelScene();
+    assert.strictEqual(scene.setModelRotation(7, 0, [1, 0, 1]), false);
+  });
+});

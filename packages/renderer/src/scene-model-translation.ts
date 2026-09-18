@@ -4,7 +4,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BatchedMesh, Mesh } from './types.js';
 import type { InstancedTemplateGPU, TexturedMesh } from './scene.js';
-import type { ModelTranslations } from './model-translation.js';
+import type { ModelTranslations, ModelYaw } from './model-translation.js';
 import type { BoundingBox } from './scene-raycaster.js';
 import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { worldAabbFromPieces } from './scene-geometry.js';
@@ -64,6 +64,15 @@ export function translateSceneModel(scene: TranslationScene, modelIndex: number,
   for (const batch of scene.batches) scene.translations.moveDrawable(batch);
   for (const batch of scene.overrides) scene.translations.moveDrawable(batch);
   scene.clearPartial();
+  placeSceneInstances(scene, modelIndex);
+  return true;
+}
+
+/** Rewrite `modelIndex`'s occurrence transforms (`ModelTranslations.placeInstances`,
+ * the current translation + yaw) and refold the affected bounds. Shared by
+ * `translateSceneModel` and `rotateSceneModelInstances` — the two writers of
+ * an instanced occurrence's transform (#4890). */
+export function placeSceneInstances(scene: TranslationScene, modelIndex: number): void {
   for (let i = 0; i < scene.templates.length; i++) {
     const gpu = scene.templates[i], cpu = scene.cpu[i];
     if (!gpu || !cpu || gpu.modelIndex !== modelIndex) continue;
@@ -71,6 +80,10 @@ export function translateSceneModel(scene: TranslationScene, modelIndex: number,
       scene.device?.queue.writeBuffer(gpu.instanceBuffer, 0, cpu.instanceData);
     }
     gpu.bounds = null;
+    // A yaw (unlike a pure translation) changes each occurrence's WORLD-AXIS
+    // extents, so its cached bounding-sphere radius must be re-derived, not
+    // carried over — except a poisoned (Infinity) template, which stays sticky.
+    if (gpu.maxOccRadius !== Infinity) gpu.maxOccRadius = 0;
   }
   // Visit occurrences once, not once per template. Rebuild the full entity union
   // only after all its matrices have moved (a multi-template entity must not lose pieces).
@@ -86,6 +99,15 @@ export function translateSceneModel(scene: TranslationScene, modelIndex: number,
       if (gpu.modelIndex === modelIndex) foldOccurrenceWorldBox(gpu, world);
     }
   }
+}
+
+/** Turn `modelIndex`'s GPU-instanced occurrences about `yaw` (or clear the
+ * rotation with `null`) — the instanced-geometry half of a whole-model
+ * rotation (#4890); flat/authored/batched geometry rotates through the
+ * viewer's bake instead, so nothing else here needs revisiting. */
+export function rotateSceneModelInstances(scene: TranslationScene, modelIndex: number, yaw: ModelYaw | null): boolean {
+  if (!scene.translations.setYaw(modelIndex, yaw)) return false;
+  placeSceneInstances(scene, modelIndex);
   return true;
 }
 

@@ -704,13 +704,23 @@ Two cases still fall back to the engine's bare `moved`: a model restored from th
 
 What you see when a match is found:
 
-| where | retiring match (`renamed` / `moved` / `reshaped`) | unresolved group (`duplicated` / `deduplicated` / `ambiguous`) |
+| where | retiring match (`renamed` / `moved` / `reshaped` / `respecified`) | unresolved group (`duplicated` / `deduplicated` / `ambiguous`) |
 | --- | --- | --- |
 | 3D | the A copy is hidden, the B copy is drawn blue in the match channel | untouched: the entities keep their green/red add and delete colours |
-| results list | a **Matched** group; clicking a row selects the surviving B copies | a **Needs review** group; clicking a row selects every candidate on both sides. The same entities are still listed under Added / Deleted |
+| results list | a **Matched** group; clicking a row selects the surviving B copies | a row in **Suggestions** (below); clicking it selects every candidate on both sides. The same entities are still listed under Added / Deleted |
 | counts | a **Matched** badge next to Added / Deleted, which are lower *because* of it | counted as added/deleted, as they are |
-| report (CSV/JSON) | one row per B element, `Change` = `Renamed` / `Moved` / `Reshaped`, with the counterpart's GlobalId in `MatchedGlobalId` when the match is exactly 1:1 | the existing add/delete rows gain the group kind in the `Match` column — no row is duplicated |
+| report (CSV/JSON) | one row per B element, `Change` = `Renamed` / `Moved` / `Reshaped` / `Respecified`, with the counterpart's GlobalId in `MatchedGlobalId` when the match is exactly 1:1 | the existing add/delete rows gain the group kind in the `Match` column — no row is duplicated |
 
 The report's `counts` gained `matched` and `needsReview` for the same reason the badge exists: a retiring match lowers `added` and `deleted`, and a reader who cannot see why would take the lower numbers at face value. `Match` and `MatchedGlobalId` are appended after `Model`, so a consumer reading the first six CSV columns positionally is unaffected.
+
+### Suggestions and accepting identity
+
+Compare mode also runs `detectSplitMerge` and `detectSuccessors`, and lists what they found under **Suggestions**. Nothing there recolours the scene or changes a count: every participant keeps its add or delete colour, because these are [claims](#split-and-merge-detection) the engine reports and will not decide.
+
+Each row carries the evidence it rests on. A [successor claim](#successor-claims) reads `Replaced · footprint 0.81 · 0.02 m · agrees on Pset_WallCommon` — the profile, the box overlap, the centre displacement and the components whose sub-hash agrees. A split or merge reads `Split into 3 · verified · Δvol −1.2%`, with a *class changed* badge when the pieces are of another class than the whole. An unresolved content group reads its kind and shape, `Ambiguous · 2:3`, with a picker per side to make one 1:1 pair out of it.
+
+A successor row and a picked pair have **Accept** and **Not the same**. Accept writes an identity-map entry into the session — reason `successor:footprint` / `successor:position`, or `accepted:ambiguous` for a pair made out of a group — and re-runs the comparison from the fingerprints already extracted with that entry as a `keyAliases` alias, so the pair now classifies by key under its base GlobalId and leaves the suggestions. *Not the same* hides the suggestion for the session. A split has no Accept: identity is not a relation that survives being split; the lineage carries it instead.
+
+The strip above the results exports and imports the artifacts: **Export map** writes the accepted entries as an [identity-map sidecar](#the-sidecar), **Export lineage** writes the [lineage sidecar](#the-lineage-sidecar) (committed identity, splits, merges, and the accepted replacements), and **Import map** loads an identity-map sidecar into the accepted list. Both are pinned to the two files by the same `sha256:` digest the CLI's `--identity-out` writes, so a map exported here replays under `ifc-lite diff --identity-in` and an import written for other bytes is refused with the mismatch shown. A model restored from the viewer's cache has no bytes to digest and cannot be pinned; Compare says so instead of writing an unpinned file.
 
 For the full API, see the [`@ifc-lite/diff` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/diff).

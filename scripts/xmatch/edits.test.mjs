@@ -11,16 +11,18 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { indexModel } from './edits.mjs';
 import {
-  indexModel,
-  ownedPropertyValues,
   ownedRectangleExtrusion,
-  representationMapDigest,
-  respecifyProperty,
   shrinkOwnedExtrusion,
   splitElementLength,
   thickenElement,
-} from './edits.mjs';
+} from './rectangle-edits.mjs';
+import {
+  ownedPropertyValues,
+  representationMapDigest,
+  respecifyProperty,
+} from './successor-edits.mjs';
 import { parseStepFile, serializeStepFile, splitArgs } from './step-file.mjs';
 
 function stepFile(body) {

@@ -26,7 +26,6 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { diffModels } from '../../packages/diff/dist/index.js';
 import { fingerprintFile, GEOMETRY_HASH_TOLERANCE } from './fingerprints.mjs';
 import { mutateModel } from './mutate.mjs';
 import {
@@ -37,6 +36,8 @@ import {
   targetGaps,
 } from './score.mjs';
 import { guardFailures, runGuards } from './guards.mjs';
+import { replacer, report } from './run-report.mjs';
+import { realMatcher, sameContentGroups, volumeSet } from './run-matcher.mjs';
 import { checkInvariantTripwires } from './invariants.mjs';
 import {
   alwaysAbstainMatcher,
@@ -98,55 +99,6 @@ const args = process.argv.slice(2);
 const SELF_TEST = args.includes('--self-test');
 const WRITE = args.includes('--write');
 const KEEP = args.includes('--keep');
-
-/** The matcher under test: the shipped engine, at viewer scope, with the two
- *  opt-in claim stages of issue #4955 switched on. */
-function realMatcher(base, head) {
-  const diff = diffModels(base, head, {
-    scope: 'both',
-    matchUnpairedByContent: true,
-    detectSplitMerge: true,
-    detectSuccessors: true,
-  });
-  return {
-    matches: diff.contentMatches ?? [],
-    splitMerges: diff.splitMerges ?? [],
-    successors: diff.successors ?? [],
-    counts: diff.counts,
-  };
-}
-
-/** Refs carrying a proved volume, tagged by side: what `verified` needs. */
-function volumeSet(base, head) {
-  const set = new Set();
-  for (const fingerprint of base.fingerprints) {
-    if (fingerprint.volume !== undefined) set.add(`b${fingerprint.ref}`);
-  }
-  for (const fingerprint of head.fingerprints) {
-    if (fingerprint.volume !== undefined) set.add(`h${fingerprint.ref}`);
-  }
-  return set;
-}
-
-/**
- * Meshed elements that share an (`ifcType`, `dataHash`) bucket, largest first.
- *
- * A BASE-side fact only — the mutation program uses it to pick which group to
- * move wholesale, and the answer key still records what it did rather than
- * what any hash later says. Passing the head's hashes in here would be the
- * circularity this fixture is built to avoid.
- */
-function sameContentGroups(base) {
-  const groups = new Map();
-  for (const fingerprint of base.fingerprints) {
-    if (!base.meshedIds.has(fingerprint.ref)) continue;
-    const bucket = `${fingerprint.ifcType}\u0000${fingerprint.dataHash}`;
-    const list = groups.get(bucket);
-    if (list) list.push(fingerprint.ref);
-    else groups.set(bucket, [fingerprint.ref]);
-  }
-  return [...groups.values()].filter((list) => list.length >= 3).sort((a, b) => b.length - a.length);
-}
 
 function fail(message) {
   process.stderr.write(`xmatch: ${message}\n`);
@@ -399,84 +351,6 @@ async function main() {
     process.stdout.write(`\nwrote ${SCORECARD}\n`);
   }
   process.stdout.write('', () => process.exit(failed ? 1 : 0));
-}
-
-/** Durations are wall clock and would churn the committed artifact on every
- *  run; the scorecard keeps the measurements, not the stopwatch. */
-function replacer(key, value) {
-  return key === 'durationSeconds' ? undefined : value;
-}
-
-function report(scorecard) {
-  const line = (text) => process.stdout.write(`${text}\n`);
-  for (const pair of scorecard.pairs) {
-    line('');
-    line(`${pair.model}  (seed ${pair.seed}, ${pair.schema})`);
-    line(`  applied: ${JSON.stringify(pair.applied)}`);
-    const score = pair.score;
-    line(
-      `  overall  precision ${score.overall.precision}  recall ${score.overall.recall}` +
-        `  (${score.overall.correctPairs}/${score.overall.claimedPairs} pairs, ` +
-        `${score.overall.recalled}/${score.overall.recallPopulation} elements, ` +
-        `${score.overall.abstained} abstained)`,
-    );
-    for (const [tier, row] of Object.entries(score.byTier)) {
-      line(`  tier  ${tier.padEnd(14)} claimed ${String(row.claimed).padStart(5)}  precision ${row.precision}`);
-    }
-    for (const [kind, row] of Object.entries(score.byKind)) {
-      line(
-        `  kind  ${kind.padEnd(14)} n=${String(row.population).padStart(4)}  recall ${row.recall}` +
-          `  precision ${row.precision}  kindAgreement ${row.kindAgreement}`,
-      );
-    }
-    for (const [name, row] of Object.entries(score.byClass)) {
-      line(`  class ${name.padEnd(14)} n=${String(row.population).padStart(4)}  recall ${row.recall}  precision ${row.precision}`);
-    }
-    line(
-      `  calibration  population ${score.calibration.population}` +
-        `  matchedByGeometryHash ${score.calibration.matchedByGeometryHash.length}` +
-        `  reportedRenamed ${score.calibration.reportedRenamed.length}` +
-        `  recoveredByLowerTiers ${score.calibration.recoveredByLowerTiers}`,
-    );
-    for (const [name, row] of Object.entries(score.bySuccessor ?? {})) {
-      line(
-        `  successor ${name.padEnd(10)} n=${String(row.population).padStart(4)}  recall ${row.recall}` +
-          `  precision ${row.precision}  kindAgreement ${row.kindAgreement}`,
-      );
-    }
-    for (const [name, row] of Object.entries(score.bySuccessorConfidence ?? {})) {
-      line(
-        `  reported  ${name.padEnd(10)} claimed ${String(row.claimed).padStart(5)}  precision ${row.precision}`,
-      );
-    }
-    if (score.bySplit) {
-      line(
-        `  split     n=${String(score.bySplit.population).padStart(4)}  recall ${score.bySplit.recall}` +
-          `  precision ${score.bySplit.precision}  kindAgreement ${score.bySplit.kindAgreement}` +
-          `  ${JSON.stringify(score.bySplit.byConfidence)}`,
-      );
-    }
-    line(
-      `  respecified  population ${score.respecifiedControl.population}` +
-        `  matchedByGeometryOnly ${score.respecifiedControl.matchedByGeometryOnly}` +
-        `  reportedRenamed ${score.respecifiedControl.reportedRenamed.length}`,
-    );
-    line(`  negative controls  ${JSON.stringify(score.falsePairs)}  ${JSON.stringify(score.falseSuccessors)}`);
-    line(
-      `  missed  abstained ${score.missed.abstained}  silent ${score.missed.silent}` +
-        `  ${JSON.stringify(score.missed.byType)}`,
-    );
-    line(`  duplicates contained ${score.duplicateContainment.contained}/${score.duplicateContainment.population}`);
-    line(`  move distance agreement ${score.moveDistance.agreed}/${score.moveDistance.checked}`);
-    for (const skip of pair.thresholdsSkipped) line(`  skipped: ${skip}`);
-    for (const gap of pair.targetGaps) line(`  BELOW PRE-REGISTERED TARGET: ${gap}`);
-    for (const failure of pair.fixtureFailures) line(`  FIXTURE FAILURE: ${failure}`);
-    for (const failure of pair.thresholdFailures) line(`  THRESHOLD FAILURE: ${failure}`);
-  }
-  line('');
-  for (const gap of scorecard.corpusTargetGaps) line(`BELOW PRE-REGISTERED TARGET (corpus): ${gap}`);
-  for (const failure of scorecard.corpusFailures) line(`CORPUS FAILURE: ${failure}`);
-  line(`verdict: ${scorecard.verdict}`);
 }
 
 main().catch((error) => {

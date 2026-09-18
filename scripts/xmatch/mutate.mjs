@@ -30,7 +30,6 @@
 
 import { createHash } from 'node:crypto';
 // Relative, like `fingerprints.mjs`: the workspace root links no packages.
-import { getInheritanceChainAcrossSchemas } from '../../packages/parser/dist/index.js';
 // The repository's OWN seeded GlobalId generator, not a hand-rolled one.
 // A 22-character IFC GlobalId is a base64 encoding of a 128-bit UUID, so its
 // FIRST character carries only two bits and must be `0`-`3`; drawing it from
@@ -40,7 +39,6 @@ import { getInheritanceChainAcrossSchemas } from '../../packages/parser/dist/ind
 // is what a plausible re-export looks like" would eventually surface as a
 // matcher bug. `generateIfcGuid` goes through `uuidToIfcGuid`, so the
 // constraint is enforced by construction rather than by remembering it here.
-import { generateIfcGuid } from '../../packages/encoding/dist/index.js';
 import {
   cloneElement,
   deleteElement,
@@ -49,73 +47,27 @@ import {
   indexModel,
   isListOnlyReferenced,
   moveElement,
-  ownedMappedItem,
-  ownedPropertyValues,
-  ownedRectangleExtrusion,
-  renameElement,
-  representationMapDigest,
-  representationMapsOf,
   reshapeElement,
-  respecifyProperty,
-  shrinkOwnedExtrusion,
-  splitElementLength,
-  swapMappedItem,
-  thickenElement,
   exclusiveSolids,
-  PRODUCT_PLACEMENT,
 } from './edits.mjs';
+import { ownedRectangleExtrusion } from './rectangle-edits.mjs';
+import { applySuccessorRole, mapDonors } from './successor-mutations.mjs';
+import {
+  axisVector,
+  hasOwnPlacement,
+  isSpatialType,
+  permuteIds,
+  permuted,
+  reguidAll,
+  rng,
+  shuffled,
+} from './mutate-support.mjs';
 // The SHIPPED class-family table (issue #4955), imported from the engine's own
 // module rather than copied: `swapped` picks its donor map from an element of
 // the same family because that is the bucket the successor stage searches, and
 // a private copy of the table would drift from the thing being measured.
-import { classFamilyResolver } from '../../packages/diff/dist/class-families.js';
 import { planeAngleFactor, resampleableArcs, retriangulateElement } from './retriangulate.mjs';
-import { parseStepFile, quote, rewriteReferences, serializeStepFile, setArg, splitArgs } from './step-file.mjs';
-
-/** Deterministic 32-bit PRNG (mulberry32): same seed, same model, same file. */
-function rng(seed) {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function shuffled(items, random) {
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
-/** Does this STEP type inherit from `IfcRoot` in ANY bundled schema? Decided
- *  from the registry, never from what attribute 0 happens to look like. */
-const rootTypes = new Map();
-function isRootType(type) {
-  const cached = rootTypes.get(type);
-  if (cached !== undefined) return cached;
-  const chain = getInheritanceChainAcrossSchemas(type);
-  const isRoot = chain.includes('IfcRoot');
-  rootTypes.set(type, isRoot);
-  return isRoot;
-}
-
-/** Does this STEP type inherit from `IfcSpatialElement` (IFC4) or
- *  `IfcSpatialStructureElement` (IFC2X3) in any bundled schema? */
-const spatialTypes = new Map();
-function isSpatialType(type) {
-  const cached = spatialTypes.get(type);
-  if (cached !== undefined) return cached;
-  const chain = getInheritanceChainAcrossSchemas(type);
-  const spatial = chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement');
-  spatialTypes.set(type, spatial);
-  return spatial;
-}
+import { parseStepFile, serializeStepFile } from './step-file.mjs';
 
 /** The declared mutation set. Counts are targets; a role that cannot be
  *  applied to a given element falls through to the next candidate, and the
@@ -281,6 +233,7 @@ export function mutateModel(text, options) {
   const ordinals = {};
   /** A name nothing in the base carries: `${kind}-${seed}-${n}`. */
   const freshName = (kind) => `${kind}-${seed}-${(ordinals[kind] = (ordinals[kind] ?? 0) + 1)}`;
+  const successorContext = { file, index, plan, freshName, donors, entries, applied, insertedNearbyHeadIds };
 
   for (const id of population) {
     const role = roles.get(id);
@@ -337,78 +290,9 @@ export function mutateModel(text, options) {
       deleteElement(file, index, id);
       entries.push({ base: id, kind: 'deleted', class: geometryClass, head: [] });
       applied.deleted++;
-    } else if (role === 'deletedNearby') {
-      // NEGATIVE CONTROL for the successor stage. The element is deleted like
-      // any other, and a head-only element of the SAME class, under a new
-      // name, is planted inside its box at 0.3x its size on every axis. It
-      // is a clone so it is enrolled in the same containment, type and
-      // property lists — a genuinely new small thing in the same storey — and
-      // its shape is shrunk on the chain the deleted element owned outright.
-      // Nothing may claim it as the deleted element's successor.
-      const owned = ownedRectangleExtrusion(index, id);
-      const copy = cloneElement(file, index, id, { name: freshName('nearby') });
-      deleteElement(file, index, id);
-      shrinkOwnedExtrusion(file, index, owned, plan.nearbyFactor);
-      insertedNearbyHeadIds.push(copy);
-      entries.push({
-        base: id,
-        kind: 'deleted',
-        class: geometryClass,
-        head: [],
-        detail: { insertedNearby: copy, factor: plan.nearbyFactor },
-      });
-      applied.deleted++;
-      applied.insertedNearby++;
-    } else if (role === 'respecified') {
-      // One data edit, no geometry edit. A property value the element owns
-      // outright where it has one, the element's own Name otherwise; both
-      // move the data hash and neither touches the property-name multiset the
-      // guards assert identical.
-      const owned = ownedPropertyValues(index, id);
-      const property = owned.find((row) => respecifyProperty(index, row.propertyId));
-      if (!property) renameElement(index, id, freshName('respecified'));
-      entries.push({
-        base: id,
-        kind: 'respecified',
-        class: geometryClass,
-        head: [id],
-        detail: property ? { edit: 'property', property: property.name } : { edit: 'name' },
-      });
-      applied.respecified++;
-    } else if (role === 'thickened') {
-      const ok = thickenElement(file, index, id, plan.thickenScale);
-      if (ok) renameElement(index, id, freshName('thickened'));
-      entries.push({
-        base: id,
-        kind: ok ? 'thickened' : 'renamed',
-        class: geometryClass,
-        head: [id],
-        detail: ok ? { stratum: 'footprint', scale: plan.thickenScale } : undefined,
-      });
-      applied[ok ? 'thickened' : 'renamed']++;
-    } else if (role === 'swapped') {
-      const donor = donors.get(id);
-      const ok = swapMappedItem(index, id, donor);
-      if (ok) renameElement(index, id, freshName('swapped'));
-      entries.push({
-        base: id,
-        kind: ok ? 'swapped' : 'renamed',
-        class: geometryClass,
-        head: [id],
-        detail: ok ? { stratum: 'position', donorMap: donor } : undefined,
-      });
-      applied[ok ? 'swapped' : 'renamed']++;
-    } else if (role === 'splitLength') {
-      const copy = splitElementLength(file, index, id, [freshName('split'), freshName('split')]);
-      const ok = copy !== undefined;
-      entries.push({
-        base: id,
-        kind: ok ? 'splitLength' : 'renamed',
-        class: geometryClass,
-        head: ok ? [id, copy] : [id],
-        detail: ok ? { pieces: 2 } : undefined,
-      });
-      applied[ok ? 'splitLength' : 'renamed']++;
+    } else if (applySuccessorRole(successorContext, role, id, geometryClass)) {
+      // A #4955 role (deletedNearby / respecified / thickened / swapped /
+      // splitLength), applied in successor-mutations.mjs.
     } else {
       entries.push({ base: id, kind: 'renamed', class: geometryClass, head: [id] });
       applied.renamed++;
@@ -457,68 +341,6 @@ export function mutateModel(text, options) {
   return { text: serializeStepFile(file), key };
 }
 
-/**
- * For every element whose body is one owned `IfcMappedItem`, the donor
- * `IfcRepresentationMap` `swapped` will point it at: a map some OTHER element
- * of the same `ifcType` uses (a door swapped for a different door type), or
- * failing that of the same class family — the bucket the successor stage
- * searches — and whose geometry is structurally DIFFERENT from the element's
- * own (`representationMapDigest`): a copy of the same shape under another map
- * id would leave the world geometry hash unchanged, and the engine would
- * rightly pair that as `respecified`. Elements with no such donor are absent
- * from the map and are not eligible. Donors are chosen by position in a
- * sorted list, not by the PRNG, so this draws nothing from the stream the
- * re-GUID and permutation use.
- */
-function mapDonors(index, population) {
-  const familyOf = classFamilyResolver();
-  const digests = new Map();
-  const digestOf = (mapId) => {
-    let digest = digests.get(mapId);
-    if (digest === undefined) {
-      digest = representationMapDigest(index, mapId);
-      digests.set(mapId, digest);
-    }
-    return digest;
-  };
-  const usersByType = new Map();
-  const usersByFamily = new Map();
-  for (const id of population) {
-    const statement = index.byId.get(id);
-    for (const mapId of representationMapsOf(index, id)) {
-      for (const [table, key] of [
-        [usersByType, statement.type],
-        [usersByFamily, familyOf(statement.type)],
-      ]) {
-        const set = table.get(key) ?? new Set();
-        set.add(mapId);
-        table.set(key, set);
-      }
-    }
-  }
-  const donors = new Map();
-  let ordinal = 0;
-  for (const id of population) {
-    const owned = ownedMappedItem(index, id);
-    if (!owned) continue;
-    const statement = index.byId.get(id);
-    const own = digestOf(owned.mapId);
-    const candidates = (pool) =>
-      [...(pool ?? [])]
-        .filter((mapId) => mapId !== owned.mapId && digestOf(mapId) !== own)
-        .sort((a, b) => a - b);
-    let choices = candidates(usersByType.get(statement.type));
-    if (choices.length === 0) choices = candidates(usersByFamily.get(familyOf(statement.type)));
-    if (choices.length === 0) continue;
-    donors.set(id, choices[ordinal++ % choices.length]);
-  }
-  return donors;
-}
-
-/**
- * Assign every eligible member of the first `count` same-content groups to the
- * `movedGroup` role, returning each member's ordinal within its group.
- */
 function assignGroups(groups, count, eligible, taken, roles) {
   const ordinals = new Map();
   let used = 0;
@@ -534,80 +356,4 @@ function assignGroups(groups, count, eligible, taken, roles) {
     used++;
   }
   return ordinals;
-}
-
-/**
- * The permuted id, or a thrown error.
- *
- * Silently DROPPING an unmapped head id was the dangerous version: the key
- * would still be well-formed, the run would still score, and the element would
- * simply have fewer counterparts than the mutation program actually created —
- * a quietly wrong answer key producing a confidently wrong number. Every id in
- * `entries` came out of `file.statements`, and `permuteIds` maps every
- * statement, so a miss here is an invariant break in this file and must stop
- * the run rather than be tidied away.
- */
-function permuted(permutation, id) {
-  const mapped = permutation.get(id);
-  if (mapped === undefined) {
-    throw new Error(
-      `answer key corrupt: express id ${id} has no permutation entry, so the head ` +
-        'revision does not contain the element the key describes',
-    );
-  }
-  return mapped;
-}
-
-/** A translation along a rotating axis so the moves are not all collinear. */
-function axisVector(ordinal, length) {
-  const axis = ordinal % 3;
-  const vector = [0, 0, 0];
-  vector[axis] = ordinal % 2 === 0 ? length : -length;
-  return vector;
-}
-
-function hasOwnPlacement(index, id) {
-  const statement = index.byId.get(id);
-  const part = splitArgs(statement.args)[PRODUCT_PLACEMENT];
-  if (!/^#\d+$/.test(String(part).trim())) return false;
-  const placement = index.byId.get(Number.parseInt(String(part).trim().slice(1), 10));
-  return placement?.type === 'IFCLOCALPLACEMENT';
-}
-
-/**
- * Give every `IfcRoot` a new GlobalId — attribute 0, by parsed position.
- *
- * This is the anchored rewrite: membership comes from the schema registry and
- * the slot is an attribute index, so a 22-character property-set NAME is never
- * even a candidate.
- */
-function reguidAll(file, random) {
-  let rewritten = 0;
-  for (const statement of file.statements) {
-    if (!isRootType(statement.type)) continue;
-    statement.args = setArg(statement, 0, quote(generateIfcGuid(random))).args;
-    rewritten++;
-  }
-  return rewritten;
-}
-
-/**
- * Permute every express id.
- *
- * Without this, base and head express ids would coincide for untouched
- * elements, and the harness — or a future reader of it — could correlate the
- * two files without going through the answer key at all. The whole point of
- * the key is that it is the ONLY channel linking the revisions, so the obvious
- * accidental channel is closed by construction.
- */
-function permuteIds(file, random) {
-  const ids = file.statements.map((statement) => statement.id);
-  const targets = shuffled(ids, random);
-  const map = new Map(ids.map((id, position) => [id, targets[position]]));
-  for (const statement of file.statements) {
-    statement.args = rewriteReferences(statement.args, map);
-    statement.id = map.get(statement.id);
-  }
-  file.statements.sort((a, b) => a.id - b.id);
-  return map;
 }

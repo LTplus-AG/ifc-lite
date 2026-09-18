@@ -1,5 +1,9 @@
 ---
+"@ifc-lite/data": minor
 "@ifc-lite/create": patch
+"@ifc-lite/parser": patch
+"@ifc-lite/cli": patch
+"@ifc-lite/mcp": patch
 ---
 
-`resolveDuplicateSource` resolved a source element's IFC type (and each of its cloned property/type/material association rels) via `store.entities.getTypeName(id) || fallback`. `getTypeName` answers the literal string `'Unknown'` — not `null`/`undefined` — for entities the columnar `EntityTable` doesn't carry rows for, which notably includes property/association relationship entities. Since `'Unknown'` is truthy, the `||` fallback never fired, so duplicating any imported element with an attached pset, type binding, material, classification, or document produced an association rel typed literally `'Unknown'` and the duplicate flow threw `type "Unknown" is not a recognizable IFC entity name` (#4933). Both lookups now explicitly test for the `'Unknown'` sentinel before falling back to the STEP-parsed raw type, and `resolveDuplicateSource` refuses with a named reason if even that is unresolvable, instead of ever emitting an `'Unknown'`-typed entity.
+`EntityTable.getTypeName()` returns the literal string `'Unknown'`, not `null`/`undefined`, for rows it can't resolve, so `getTypeName(id) || fallback` silently kept `'Unknown'` instead of falling back — breaking element duplication on imported models (#4933) among other call sites. Added `resolvedTypeName()` to `@ifc-lite/data` (returns `undefined` for the sentinel) and switched every affected lookup in `create`/`parser`/`cli`/`mcp` to use it.

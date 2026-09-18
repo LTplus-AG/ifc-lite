@@ -93,7 +93,7 @@ import {
   type DataFingerprintInput,
   type EntityFingerprint,
 } from '@ifc-lite/diff';
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import {
   EntityExtractor,
   extractAllEntityAttributes,
@@ -401,7 +401,7 @@ function buildDataInput(
     .map((typeId: number) => ({
       globalId: store.entities.getGlobalId(typeId) || undefined,
       name: store.entities.getName(typeId) || undefined,
-      type: store.entities.getTypeName(typeId) || undefined,
+      type: resolvedTypeName(store.entities, typeId),
     }));
 
   const classifications = extractClassificationsOnDemand(store, expressId).map(classificationLabel);

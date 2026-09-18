@@ -3,47 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `duplicateEntity` failed with `type "Unknown"` for any imported (parsed)
- * element — reproduced on `main` by loading
- * `apps/viewer/public/samples/hello-wall.ifc` or `building-architecture.ifc`
- * and duplicating any element with an association (a pset, a type binding,
- * a material, ...) attached (#4933).
+ * `duplicateEntity` failed with `type "Unknown"` on any imported element
+ * with an association (pset, type binding, material, ...) attached (#4933).
+ * `getTypeName()` answers the literal string `'Unknown'`, not
+ * `null`/`undefined`, for association rels the `EntityTable` carries no row
+ * for; `getTypeName(id) || fallback` never fell back since `'Unknown'` is
+ * truthy, so `StoreEditor.addEntity('Unknown', ...)` threw.
  *
- * ROOT CAUSE. `resolveDuplicateSource` (packages/create/src/in-store/
- * resolve-source.ts) resolves a source's IFC type via
- * `store.entities.getTypeName(id)`. That accessor answers the literal
- * string `'Unknown'` — not `null`/`undefined` — for rows the columnar
- * `EntityTable` doesn't carry, which notably includes property/association
- * relationship entities (`IfcRelDefinesByProperties`, `IfcRelDefinesByType`,
- * ...): the parser buckets those into `propRel`/`assocRel` during
- * categorisation rather than retaining them as addressable `EntityTable`
- * rows. `collectSourceAssociations` looked up each such rel's canonical
- * type with `store.entities.getTypeName(relId) || relType` — since
- * `'Unknown'` is truthy, the `||` fallback to the known-good `relType`
- * constant never fired, so a wall with so much as one attached pset
- * produced an association rel typed literally `'Unknown'`.
- * `StoreEditor.addEntity('Unknown', ...)` then throws
- * `type "Unknown" is not a recognizable IFC entity name`, which
- * `duplicateEntity` surfaces verbatim as `result.error`. The same `||`
- * pattern existed one line up for the source element's own type, though a
- * *product* (as opposed to a relationship) is normally retained in the
- * table and resolves correctly — the association path is what any
- * association-bearing imported element actually hits.
- *
- * THE FIX. Both lookups now explicitly test for the `'Unknown'` sentinel
- * (`canonicalType()` in `resolve-source.ts`) before falling back to the
- * STEP-parsed raw type, matching the existing pattern in
- * `columnar-parser-root-attributes.ts`'s `extractAllEntityAttributes`. If
- * even the raw type is missing, `resolveDuplicateSource` throws a named
- * reason instead of letting an `'Unknown'`-typed entity through.
- *
- * This test goes through the real parser (`IfcParser.parseColumnar`) on a
- * committed sample fixture — not a hand-built minimal STEP string — because
- * the bug is specifically about what the PARSER's categorisation omits from
- * the `EntityTable`, which a synthetic single-wall-plus-nothing-else fixture
- * (see `mutationSlice.duplicate-federated-bounds.test.ts`) wouldn't
- * reproduce: that fixture's wall carries no property/type/material
- * association at all.
+ * Parses the real `hello-wall.ifc` sample rather than a hand-built fixture:
+ * the bug is specifically about what the parser's categorisation omits from
+ * the `EntityTable`, which a synthetic single-wall STEP string (see
+ * `mutationSlice.duplicate-federated-bounds.test.ts`) doesn't reproduce.
  */
 
 // FIRST import, before `@/store`: `useViewerStore` is constructed at module

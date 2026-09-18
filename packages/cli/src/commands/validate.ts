@@ -18,6 +18,7 @@ import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
 import { expandTypes, getInheritanceChainAcrossSchemas, asSourceBytes, type IfcDataStore, type EntityRef, type IfcSourceBytes } from '@ifc-lite/parser';
+import { resolvedTypeName } from '@ifc-lite/data';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning' | 'info';
@@ -338,7 +339,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   for (const d of dangling.slice(0, DANGLING_REF_ISSUE_CAP)) {
     // Display names render in IFC PascalCase (IfcWall, not IFCWALL); the
     // collector carries the raw STEP token, so resolve through the table.
-    const typeName = store.entities.getTypeName(d.entityId) || d.entityType;
+    const typeName = resolvedTypeName(store.entities, d.entityId) ?? d.entityType;
     issues.push({
       severity: 'error',
       rule: 'reference-integrity',

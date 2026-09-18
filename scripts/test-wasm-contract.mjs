@@ -31,6 +31,7 @@ import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 import { runShardRefusalBoundaryTests } from './lib/shard-refusal-boundary.mjs';
 import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs';
+import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -620,12 +621,9 @@ test('mesh output is metre-normalized (column fits a sane bbox)', () => {
 console.log('\n📋 RTC rebase (>1km)');
 
 // The wasm pre-pass flags `needsShift` when the detected RTC offset exceeds
-// the gate on any axis. Single Rust home (#4934, was 10 km):
-// `LARGE_COORD_THRESHOLD_METERS = 1000.0` in `rust/core/src/limits.rs`,
-// re-exported by `ifc_lite_geometry` and read by every consumer (the median
-// element-translation sampler in `rust/geometry/src/router/rtc_offset.rs`,
-// the placement-bounds fallback in `rust/core/src/model_bounds.rs`) so the
-// browser, server, and CLI paths cannot disagree on where the line is.
+// the gate on any axis. Single Rust home (#4934, was 10 km): `rust/core/src/
+// limits.rs` `LARGE_COORD_THRESHOLD_METERS = 1000.0`, read by every consumer
+// (the median sampler `rtc_offset.rs`, the bounds fallback `model_bounds.rs`).
 const RTC_THRESHOLD_M = 1000.0;
 
 // The column fixture is authored in INCHES (IFCCONVERSIONBASEDUNIT 0.0254 m);
@@ -696,12 +694,9 @@ test('national-grid coordinates (Swiss LV95) should trigger the RTC rebase', () 
 });
 
 test('coordinates just under the 1km threshold should NOT trigger the shift', () => {
-  // needs_shift uses a strict `> 1000.0` comparison on the unit-scaled
-  // median element translation. Plant the site so the COMPOSED column
-  // translation (site + ~10.97m local) lands just under 1_000 m (#4934: the
-  // gate that used to leave this exact 900-1000 m band unshifted, quantizing
-  // it to a ~0.033-0.061 mm f32 lattice, is the bug this threshold lowering
-  // fixes — this test now pins the NEW just-under-gate edge instead).
+  // needs_shift uses a strict `> 1000.0` comparison on the unit-scaled median
+  // element translation. Site + ~10.97m local lands just under 1_000 m —
+  // #4934 lowered the gate from 10 km, pinning the NEW just-under edge.
   const NEAR_X_M = 900; // composed ≈ 910.97 m < 1_000 m
   const NEAR_Y_M = 900; // composed ≈ 907.32 m < 1_000 m
   const moved = withSiteOriginMetres(NEAR_X_M, NEAR_Y_M);
@@ -746,54 +741,7 @@ test('unmodified small-coordinate model keeps needsShift=false', () => {
   collection.free();
 });
 
-test('#4934: a 1-10km survey-grid plant now gets an RTC anchor and sub-mm precision', () => {
-  // The reported bug: a site laid out on a survey grid (here ~(6300, 7700) m,
-  // matching the issue's ~6.3km/7.7km ArchiCAD export) sat inside the OLD
-  // 10km gate, so nothing was subtracted and every vertex was cast straight
-  // to f32 — a ~0.26mm lattice at that magnitude, enough to turn flush faces
-  // into z-fighting speckle. With the gate at 1km this plant must now be
-  // rebased.
-  const PLANT_X_M = 6_300;
-  const PLANT_Y_M = 7_700;
-  const moved = withSiteOriginMetres(PLANT_X_M, PLANT_Y_M);
-  assert.notEqual(moved, columnContent, 'Placement transplant must change the content');
-
-  const collection = parseMeshesViaPrePass(api, moved);
-
-  assert.equal(collection.hasRtcOffset(), true, 'needsShift must be true for a 1-10km plant');
-  assert.ok(
-    Math.abs(collection.rtcOffsetX - (PLANT_X_M + COLUMN_LOCAL_X_M)) < 1000,
-    `rtcOffsetX ${collection.rtcOffsetX} should be within 1km of ${PLANT_X_M}`,
-  );
-  assert.ok(
-    Math.abs(collection.rtcOffsetY - (PLANT_Y_M + COLUMN_LOCAL_Y_M)) < 1000,
-    `rtcOffsetY ${collection.rtcOffsetY} should be within 1km of ${PLANT_Y_M}`,
-  );
-
-  // Every emitted mesh's world position (origin + position, both f64 before
-  // the f32 store) must land within 100 m of the render origin, and the f32
-  // ULP at that magnitude must stay well under a tenth of a millimetre —
-  // the precision guarantee the threshold change exists to restore.
-  assert.ok(collection.length > 0, 'Moved column should still mesh');
-  let maxAbs = 0;
-  for (let i = 0; i < collection.length; i++) {
-    const mesh = collection.get(i);
-    const o = mesh.origin;
-    for (let j = 0; j < mesh.positions.length; j++) {
-      const world = mesh.positions[j] + (o ? o[j % 3] : 0);
-      maxAbs = Math.max(maxAbs, Math.abs(world));
-    }
-    mesh.free();
-  }
-  assert.ok(maxAbs < 100, `rebased positions must stay building-scale, got max |position| = ${maxAbs}`);
-  const ulp = Math.abs(Math.fround(maxAbs + Math.pow(2, -30)) - Math.fround(maxAbs));
-  assert.ok(
-    Math.abs(Math.fround(maxAbs) - maxAbs) < 1e-5,
-    `f32 round-trip of the largest rebased position must lose under 1e-5 m, got ${Math.abs(Math.fround(maxAbs) - maxAbs)} (ulp probe ${ulp})`,
-  );
-
-  collection.free();
-});
+runRtcPrecisionContracts(api, test, columnContent, withSiteOriginMetres, COLUMN_LOCAL_X_M, COLUMN_LOCAL_Y_M);
 
 // ===== scanEntitiesFast =====
 console.log('\n📋 scanEntitiesFast');

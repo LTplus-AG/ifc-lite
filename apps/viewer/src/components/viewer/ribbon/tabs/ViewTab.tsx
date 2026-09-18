@@ -83,8 +83,8 @@ export function ViewTab() {
             <RibbonLargeButton
               key={command.id}
               icon={command.icon}
-              label={command.label}
-              tooltip={command.tooltip}
+              label={t(command.labelKey)}
+              tooltip={t(command.tooltipKey)}
               shortcut={command.shortcut}
               onClick={command.run}
             />
@@ -105,7 +105,7 @@ export function ViewTab() {
                 <RibbonSmallButton
                   key={command.id}
                   icon={command.icon}
-                  label={command.label}
+                  label={t(command.labelKey)}
                   shortcut={command.shortcut}
                   onClick={command.run}
                 />
@@ -120,8 +120,8 @@ export function ViewTab() {
             <RibbonLargeButton
               key={command.id}
               icon={command.icon}
-              label={command.label}
-              tooltip={command.tooltip}
+              label={t(command.labelKey)}
+              tooltip={t(command.tooltipKey)}
               shortcut={command.shortcut}
               onClick={command.run}
             />

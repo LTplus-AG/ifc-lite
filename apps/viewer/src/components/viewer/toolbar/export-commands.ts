@@ -24,6 +24,7 @@
  */
 
 import type React from 'react';
+import type { TranslationKey } from '@/i18n';
 import { ExportDialog } from '../ExportDialog';
 import { AnonymizedExportDialog } from '../anonymized-export/AnonymizedExportDialog';
 import { GLBExportDialog } from '../GLBExportDialog';
@@ -41,12 +42,19 @@ export type ExportDialogComponent = React.ComponentType<{ trigger?: React.ReactN
 interface ExportCommandBase {
   /** Stable id — also the `data-export-command` attribute both styles render. */
   readonly id: string;
-  /** Short label: ribbon buttons, where the icon carries most of the meaning. */
-  readonly label: string;
+  /**
+   * Translation keys, not text — this registry has no React import, so it
+   * cannot call `t()` itself (`shared-commands.en.ts` holds the English).
+   * Renderers call `t(command.labelKey)` etc; see `AXIS_INFO` in
+   * `sectionConstants.ts` for the same pattern.
+   *
+   * Short label: ribbon buttons, where the icon carries most of the meaning.
+   */
+  readonly labelKey: TranslationKey;
   /** Long label: classic dropdown rows, which have only text to go on. */
-  readonly menuLabel: string;
+  readonly menuLabelKey: TranslationKey;
   /** Tooltip / accessible name. */
-  readonly tooltip: string;
+  readonly tooltipKey: TranslationKey;
   /**
    * What has to be loaded first. `model` means any loaded model (federated or
    * legacy single-result); `dataStore` means a parsed entity store.
@@ -83,7 +91,7 @@ export interface ExportTableMenuCommand extends ExportCommandBase {
   readonly kind: 'table-menu';
   readonly items: readonly {
     readonly type: CsvExportType;
-    readonly label: string;
+    readonly labelKey: TranslationKey;
     /** Draw a separator above this row. */
     readonly separatorBefore: boolean;
   }[];
@@ -103,9 +111,9 @@ export const EXPORT_COMMANDS = [
     id: 'ifc',
     kind: 'dialog',
     Dialog: ExportDialog,
-    label: 'IFC',
-    menuLabel: 'Export IFC (with changes)',
-    tooltip: 'Export IFC (with changes)',
+    labelKey: 'exportCommands.ifc.label',
+    menuLabelKey: 'exportCommands.ifc.menuLabel',
+    tooltipKey: 'exportCommands.ifc.tooltip',
     requires: 'model',
     group: 0,
     emphasis: 'large',
@@ -120,9 +128,9 @@ export const EXPORT_COMMANDS = [
     id: 'anonymized',
     kind: 'dialog',
     Dialog: AnonymizedExportDialog,
-    label: 'Anonymized',
-    menuLabel: 'Export anonymized subset (selection)',
-    tooltip: 'Export selected objects as an anonymized IFC',
+    labelKey: 'exportCommands.anonymized.label',
+    menuLabelKey: 'exportCommands.anonymized.menuLabel',
+    tooltipKey: 'exportCommands.anonymized.tooltip',
     requires: 'model',
     group: 0.5,
     emphasis: 'small',
@@ -131,9 +139,9 @@ export const EXPORT_COMMANDS = [
     id: 'glb',
     kind: 'dialog',
     Dialog: GLBExportDialog,
-    label: 'GLB',
-    menuLabel: 'Export GLB (3D Model)',
-    tooltip: 'Export GLB (3D model)',
+    labelKey: 'exportCommands.glb.label',
+    menuLabelKey: 'exportCommands.glb.menuLabel',
+    tooltipKey: 'exportCommands.glb.tooltip',
     requires: 'model',
     group: 1,
     emphasis: 'small',
@@ -142,9 +150,9 @@ export const EXPORT_COMMANDS = [
     id: 'kmz',
     kind: 'dialog',
     Dialog: KmzExportDialog,
-    label: 'KMZ',
-    menuLabel: 'Export KMZ (Google Earth Pro)',
-    tooltip: 'Export KMZ (Google Earth Pro)',
+    labelKey: 'exportCommands.kmz.label',
+    menuLabelKey: 'exportCommands.kmz.menuLabel',
+    tooltipKey: 'exportCommands.kmz.tooltip',
     requires: 'model',
     group: 1,
     emphasis: 'small',
@@ -153,9 +161,9 @@ export const EXPORT_COMMANDS = [
     id: 'usd',
     kind: 'dialog',
     Dialog: UsdExportDialog,
-    label: 'USD',
-    menuLabel: 'Export USD (OpenUSD)',
-    tooltip: 'Export USD (OpenUSD .usda)',
+    labelKey: 'exportCommands.usd.label',
+    menuLabelKey: 'exportCommands.usd.menuLabel',
+    tooltipKey: 'exportCommands.usd.tooltip',
     requires: 'model',
     group: 2,
     emphasis: 'small',
@@ -164,9 +172,9 @@ export const EXPORT_COMMANDS = [
     id: 'energy',
     kind: 'dialog',
     Dialog: EnergyModelExportDialog,
-    label: 'Energy',
-    menuLabel: 'Energy Model (HBJSON / DFJSON)',
-    tooltip: 'Export energy model (HBJSON / DFJSON)',
+    labelKey: 'exportCommands.energy.label',
+    menuLabelKey: 'exportCommands.energy.menuLabel',
+    tooltipKey: 'exportCommands.energy.tooltip',
     requires: 'model',
     group: 2,
     emphasis: 'small',
@@ -174,26 +182,26 @@ export const EXPORT_COMMANDS = [
   {
     id: 'csv',
     kind: 'table-menu',
-    label: 'CSV',
-    menuLabel: 'Export CSV',
-    tooltip: 'Export CSV tables',
+    labelKey: 'exportCommands.csv.label',
+    menuLabelKey: 'exportCommands.csv.menuLabel',
+    tooltipKey: 'exportCommands.csv.tooltip',
     requires: 'dataStore',
     group: 3,
     emphasis: 'small',
     items: [
-      { type: 'entities', label: 'Entities', separatorBefore: false },
-      { type: 'properties', label: 'Properties', separatorBefore: false },
-      { type: 'quantities', label: 'Quantities', separatorBefore: false },
-      { type: 'spatial', label: 'Spatial Hierarchy', separatorBefore: true },
+      { type: 'entities', labelKey: 'exportCommands.csv.item.entities', separatorBefore: false },
+      { type: 'properties', labelKey: 'exportCommands.csv.item.properties', separatorBefore: false },
+      { type: 'quantities', labelKey: 'exportCommands.csv.item.quantities', separatorBefore: false },
+      { type: 'spatial', labelKey: 'exportCommands.csv.item.spatial', separatorBefore: true },
     ],
   },
   {
     id: 'json',
     kind: 'action',
     action: 'json',
-    label: 'JSON',
-    menuLabel: 'Export JSON (All Data)',
-    tooltip: 'Export JSON (all data)',
+    labelKey: 'exportCommands.json.label',
+    menuLabelKey: 'exportCommands.json.menuLabel',
+    tooltipKey: 'exportCommands.json.tooltip',
     requires: 'dataStore',
     group: 3,
     emphasis: 'small',
@@ -202,9 +210,9 @@ export const EXPORT_COMMANDS = [
     id: 'screenshot',
     kind: 'action',
     action: 'screenshot',
-    label: 'Screenshot',
-    menuLabel: 'Screenshot',
-    tooltip: 'Save viewport as PNG',
+    labelKey: 'exportCommands.screenshot.label',
+    menuLabelKey: 'exportCommands.screenshot.menuLabel',
+    tooltipKey: 'exportCommands.screenshot.tooltip',
     requires: 'model',
     group: 3,
     emphasis: 'small',
@@ -215,9 +223,9 @@ export const EXPORT_COMMANDS = [
     id: 'pdf',
     kind: 'dialog',
     Dialog: PdfViewExportDialog,
-    label: 'PDF',
-    menuLabel: 'Export PDF (to-scale 3D view)',
-    tooltip: 'Export PDF (to-scale 3D view)',
+    labelKey: 'exportCommands.pdf.label',
+    menuLabelKey: 'exportCommands.pdf.menuLabel',
+    tooltipKey: 'exportCommands.pdf.tooltip',
     requires: 'model',
     group: 4,
     emphasis: 'small',

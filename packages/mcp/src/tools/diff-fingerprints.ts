@@ -102,9 +102,6 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractRootAttributesFromEntity,
-  authoredKeyValue,
-  getAttributeNamesAcrossSchemas,
-  parseAuthoredKeySpec,
   spatialContainerPath,
   getInheritanceChainAcrossSchemas,
   quantitySiScale,
@@ -112,7 +109,9 @@ import {
   scaledPropertyValue,
   type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
+import { attributeAcrossSchemas, authoredKeyResolver, override, type FingerprintAdapterOptions } from './diff-authored-keys.js';
 import { classificationLabel } from './diff-classification-label.js';
+export { AUTHORED_KEY_PREFIX, type FingerprintAdapterOptions } from './diff-authored-keys.js';
 import type { CreatedEntity, PendingOverlay } from '../overlay.js';
 
 /** Adapter handle threaded through the diff: the entity's express id. */
@@ -203,16 +202,6 @@ function classifyType(typeKey: string): TypeRole {
  * values. Omitting it (the CLI twin has no session to overlay) is the original
  * store-only behaviour exactly.
  */
-/** Adapter options (issue #4955); the CLI's `FingerprintAdapterOptions` restated. */
-export interface FingerprintAdapterOptions {
-  /** `Tag` or `<PsetName>.<PropertyName>`; see the CLI copy for the rules. */
-  keyProperty?: string;
-  duplicateAuthoredKeys?: Map<string, number[]>;
-}
-
-/** Prefix on a fingerprint key taken from an authored property rather than a GlobalId. */
-export const AUTHORED_KEY_PREFIX = 'prop:';
-
 export function buildModelFingerprints(
   store: IfcDataStore,
   overlay?: PendingOverlay | null,
@@ -224,56 +213,7 @@ export function buildModelFingerprints(
   // the (small) set of object types the EntityTable declines to hold.
   const extractor = new EntityExtractor(store.source);
   const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale/scaledPropertyValue
-  const keySpec = options.keyProperty ? parseAuthoredKeySpec(options.keyProperty) : undefined;
-  // The authored key of one entity AS THE SESSION SEES IT: a queued `Tag` or
-  // property edit wins over the parsed value, exactly as the fingerprint's own
-  // attributes and psets do below. Reading the parsed store alone would let
-  // `model_diff` describe a key the session no longer holds.
-  const authoredKeyOf = (expressId: number): string | undefined => {
-    if (!keySpec) return undefined;
-    if (keySpec.kind === 'tag') {
-      const edited = overlay?.attributes(expressId).get('Tag');
-      if (edited !== undefined) return edited.trim().length > 0 ? edited.trim() : undefined;
-    } else if (overlay) {
-      const set = overlay.propertySets(expressId).find((pset) => pset.name === keySpec.pset);
-      const property = set?.properties.find((p) => p.name === keySpec.property);
-      if (set) {
-        const raw = property?.value;
-        if (raw === null || raw === undefined) return undefined;
-        const value = typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
-        return value.trim().length > 0 ? value.trim() : undefined;
-      }
-    }
-    return authoredKeyValue(store, expressId, keySpec, extractor);
-  };
-  // Authored keys are resolved in a first pass so a value two entities share
-  // can be refused for both, instead of the diff's first-wins index quietly
-  // keeping one (issue #4955). Tombstoned entities are not owners: a deleted
-  // twin no longer contests the key.
-  const authoredOwners = new Map<string, number[]>();
-  if (keySpec) {
-    for (const [typeKey, ids] of store.entityIndex.byType) {
-      if (classifyType(typeKey).role === 'dependent') continue;
-      for (const expressId of ids) {
-        if (overlay?.deleted.has(expressId)) continue;
-        const value = authoredKeyOf(expressId);
-        if (value === undefined) continue;
-        const list = authoredOwners.get(value);
-        if (list) list.push(expressId);
-        else authoredOwners.set(value, [expressId]);
-      }
-    }
-    for (const [value, ids] of authoredOwners) {
-      if (ids.length > 1) options.duplicateAuthoredKeys?.set(value, ids);
-    }
-  }
-  const keyOf = (expressId: number, globalId: string): string => {
-    if (!keySpec) return globalId;
-    const value = authoredKeyOf(expressId);
-    if (value === undefined) return globalId;
-    return (authoredOwners.get(value)?.length ?? 0) === 1 ? `${AUTHORED_KEY_PREFIX}${value}` : globalId;
-  };
-
+  const keyOf = authoredKeyResolver(store, overlay, options, extractor, (typeKey) => classifyType(typeKey).role === 'dependent');
   for (const [typeKey, ids] of store.entityIndex.byType) {
     // Classified once per type rather than once per entity — the geometry
     // buckets (IfcCartesianPoint, IfcPolyLoop, …) are the bulk of a real model
@@ -496,52 +436,4 @@ function buildDataInput(
     quantitySets,
     typeAssignments,
   };
-}
-
-
-/**
- * One named attribute, read positionally through the **cross-schema** attribute
- * list (issue #2021). The CLI's twin, and it must stay one.
- *
- * `extractAllEntityAttributes` names attributes through the parser's IFC4
- * codegen pin, which answers an EMPTY list for a class the pin does not carry —
- * so a `.find(name === 'Tag')` over it silently finds nothing on every
- * IFC4X3-only type object (`IfcRailType`, `IfcTrackElementType`,
- * `IfcSignalType`, …) while working perfectly on IFC2X3 and IFC4. That is a
- * no-op nobody would notice: the entity is in scope, its class name is right,
- * `isTypeObject` is right, and only the evidence is missing.
- *
- * This is the same pinned-registry family as the membership defect `#2001`
- * fixed, and it has to be answered from the same place: the inheritance chain
- * decides *whether* to read a `Tag`, so the attribute list that decides *where*
- * it sits must span the same schemas. `getAttributeNamesAcrossSchemas` returns
- * the pinned result unchanged for every class the pin does know, so this is
- * additive — no IFC2X3 or IFC4 entity's hash moves because of it.
- *
- * Reads the raw STEP slot rather than reusing `extractAllEntityAttributes`'
- * display normalization: this value is hashed, not shown, so `$` (absent) is
- * the only case that needs interpreting and it arrives as null.
- */
-function attributeAcrossSchemas(
-  store: IfcDataStore,
-  expressId: number,
-  ifcType: string,
-  attributeName: string,
-): string | undefined {
-  const index = getAttributeNamesAcrossSchemas(ifcType).indexOf(attributeName);
-  if (index < 0) return undefined;
-  const ref = store.entityIndex.byId.get(expressId);
-  if (!ref) return undefined;
-  const raw = new EntityExtractor(store.source).extractEntity(ref)?.attributes?.[index];
-  return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : undefined;
-}
-
-/**
- * An overlay override wins whenever one exists, including when it is empty —
- * `entity_set_attribute` with `''` clears the attribute, and falling back to
- * the stored value there would hash the edit away.
- */
-function override(edited: string | undefined, stored: string | undefined): string | undefined {
-  const value = edited !== undefined ? edited : stored;
-  return value ? value : undefined;
 }

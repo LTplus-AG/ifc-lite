@@ -31,10 +31,7 @@ import {
   identityMapSidecarMismatches,
   keyAliasesFromLineage,
   keyAliasesFromSidecar,
-  lineageOfDiff,
-  lineageSidecarMismatches,
   parseIdentityMapSidecar,
-  parseLineageSidecar,
   serializeIdentityMapSidecar,
   serializeLineageSidecar,
   type ContentMatch,
@@ -49,6 +46,8 @@ import { parseAuthoredKeySpec } from '@ifc-lite/parser';
 import { loadIfcBytes } from '../loader.js';
 import { fatal, printJson } from '../output.js';
 import { buildFileFingerprints, modelIdentityOf, type DiffRef } from './diff-engine.js';
+import { mergeAliases, mergeLineage, readVerifiedLineage } from './diff-lineage-io.js';
+import { printReport } from './diff-content-report.js';
 
 export interface ContentDiffOptions {
   basePath: string;
@@ -210,95 +209,6 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
   });
 }
 
-/** Union of two alias maps; a head key the two disagree about is dropped. */
-function mergeAliases(
-  a: Map<string, string> | undefined,
-  b: Map<string, string> | undefined,
-): Map<string, string> | undefined {
-  if (!a) return b;
-  if (!b) return a;
-  const merged = new Map(a);
-  for (const [here, base] of b) {
-    const existing = merged.get(here);
-    if (existing === undefined) merged.set(here, base);
-    else if (existing !== base) merged.delete(here);
-  }
-  return merged;
-}
-
-/**
- * The lineage the output should carry: every entry this run derived (committed
- * matches, plus `replaced` from the accepted map), with the incoming lineage's
- * own provenance preserved on the aliases that still applied. Split/merge
- * entries an earlier geometry-capable run wrote are carried forward verbatim
- * when every key they name is still absent from this run's 1:1 answers — this
- * data-scope run cannot re-derive or refute them, and dropping them would make
- * a CLI round trip erase what the viewer established.
- */
-function mergeLineage(
-  incomingLineage: LineageSidecar | undefined,
-  incomingMap: IdentityMapSidecar | undefined,
-  diff: ModelDiff<DiffRef>,
-  accepted: IdentityMapSidecar | undefined,
-): { entries: LineageEntry[]; deleted: string[] } {
-  const aliasReasons = new Map<string, string>();
-  for (const entry of incomingLineage?.entries ?? []) {
-    if (entry.head.length === 1 && !aliasReasons.has(entry.head[0])) aliasReasons.set(entry.head[0], entry.reason);
-  }
-  for (const entry of incomingMap?.entries ?? []) {
-    if (!aliasReasons.has(entry.here)) aliasReasons.set(entry.here, entry.reason);
-  }
-  const { entries } = lineageOfDiff(diff, { aliasReasons });
-  const taken = new Set<string>();
-  for (const entry of entries) for (const key of [...entry.base, ...entry.head]) taken.add(key);
-
-  for (const entry of accepted?.entries ?? []) {
-    if (entry.base === entry.here || taken.has(entry.base) || taken.has(entry.here)) continue;
-    // Only a pair this run still sees as add + delete can be a replacement;
-    // a claim about keys not in these files is stale.
-    if (diff.byKey.get(entry.base)?.state !== 'deleted' || diff.byKey.get(entry.here)?.state !== 'added') continue;
-    entries.push({ base: [entry.base], head: [entry.here], relation: 'replaced', reason: entry.reason });
-    taken.add(entry.base);
-    taken.add(entry.here);
-  }
-  for (const entry of incomingLineage?.entries ?? []) {
-    if (entry.relation !== 'split' && entry.relation !== 'merge') continue;
-    if ([...entry.base, ...entry.head].some((key) => taken.has(key))) continue;
-    entries.push(entry);
-    for (const key of [...entry.base, ...entry.head]) taken.add(key);
-  }
-  // Deleted with no lineage, computed AFTER the accepted and carried-forward
-  // entries took their keys: what is still a bare deletion in this run.
-  const deleted: string[] = [];
-  for (const entry of diff.entries) {
-    if (entry.state === 'deleted' && !taken.has(entry.key)) deleted.push(entry.key);
-  }
-  return { entries, deleted };
-}
-
-async function readVerifiedLineage(
-  path: string,
-  models: { base: ModelIdentity; head: ModelIdentity; keyProperty?: string },
-): Promise<LineageSidecar> {
-  let text: string;
-  try {
-    text = await readFile(path, 'utf-8');
-  } catch (error) {
-    return fatal(`Cannot read lineage ${path}: ${(error as Error).message}`);
-  }
-  let sidecar: LineageSidecar;
-  try {
-    sidecar = parseLineageSidecar(text);
-  } catch (error) {
-    return fatal((error as Error).message);
-  }
-  const problems = lineageSidecarMismatches(sidecar, models);
-  if (problems.length > 0) {
-    return fatal(`Lineage ${path} was not verified against these files:\n  ${problems.join('\n  ')}`);
-  }
-  return sidecar;
-}
-
 /**
  * Refuse to run at all if `--identity-out` names one of the two input models.
  *
@@ -439,67 +349,4 @@ function mergeIdentityClaims(
   }
   entries.push(...identityMapFromContentMatches(matches));
   return entries;
-}
-
-function printReport(report: {
-  basePath: string;
-  headPath: string;
-  diff: ModelDiff<DiffRef>;
-  appliedCount: number;
-  ignoredCount: number;
-  identityIn?: string;
-  written?: { path: string; entries: IdentityMapEntry[] };
-  lineageIn?: string;
-  lineageWritten?: { path: string; entries: LineageEntry[] };
-  keyProperty?: string;
-}): void {
-  const { diff } = report;
-  const out = (line: string): void => {
-    process.stdout.write(`${line}\n`);
-  };
-
-  out('');
-  out(`  Base: ${report.basePath}`);
-  out(`  Head: ${report.headPath}`);
-  out(`  Scope: data (the CLI has no geometry pipeline)`);
-  if (report.keyProperty) out(`  Key:   ${report.keyProperty} (GlobalId where absent)`);
-  out('');
-  out(`  Unchanged: ${diff.counts.unchanged}`);
-  out(`  Modified:  ${diff.counts.modified}`);
-  out(`  Added:     ${diff.counts.added}`);
-  out(`  Deleted:   ${diff.counts.deleted}`);
-
-  const byKind = new Map<string, number>();
-  for (const match of diff.contentMatches ?? []) {
-    byKind.set(match.kind, (byKind.get(match.kind) ?? 0) + 1);
-  }
-  out('');
-  if (byKind.size === 0) {
-    out('  Content matches: none');
-  } else {
-    out('  Content matches:');
-    for (const [kind, count] of [...byKind].sort()) {
-      out(`    ${kind.padEnd(13)} ${count}`);
-    }
-    out('    (renamed / moved / reshaped / respecified are resolved; the rest need a human)');
-  }
-
-  if (report.identityIn) {
-    out('');
-    out(`  Identity map in:  ${report.identityIn}`);
-    out(`    applied: ${report.appliedCount}, ignored: ${report.ignoredCount}`);
-  }
-  if (report.written) {
-    out('');
-    out(`  Identity map out: ${report.written.path} (${report.written.entries.length} claims)`);
-  }
-  if (report.lineageIn) {
-    out('');
-    out(`  Lineage in:  ${report.lineageIn}`);
-  }
-  if (report.lineageWritten) {
-    out('');
-    out(`  Lineage out: ${report.lineageWritten.path} (${report.lineageWritten.entries.length} entries)`);
-  }
-  out('');
 }

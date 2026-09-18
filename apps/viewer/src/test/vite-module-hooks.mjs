@@ -41,15 +41,10 @@ import { register } from 'node:module';
 // thread, which cannot import from here.
 register('./vite-module-hooks-impl.mjs', import.meta.url);
 
-// A test that seeds `useViewerStore` trips `chartSlice`/`documentSlice`'s
-// best-effort `localStorage.getItem` persistence load (both already catch and
-// log rather than throw, so this changes no test's observable behaviour —
-// "nothing saved" is their shared empty-state default either way). The noise
-// itself is harmless, but `check-test-revert-oracle.mjs`'s
-// `ReferenceError: .* is not defined` load-failure heuristic cannot tell it
-// apart from a genuinely dead import, and misreads a real assertion RED in a
-// reverted store-backed test as unrunnable (#4925). Stub it on the main
-// thread, once, before any test module loads.
+// `useViewerStore` trips chartSlice/documentSlice's harmless
+// `localStorage.getItem` warning, which check-test-revert-oracle.mjs's load
+// error heuristic misreads as a dead import (#4925). Stub it once, main
+// thread, before any test module loads.
 if (typeof globalThis.localStorage === 'undefined') {
   const backing = new Map();
   globalThis.localStorage = {

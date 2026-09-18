@@ -63,19 +63,37 @@ const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
  * wall rather than at its un-repositioned position.
  */
 function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number, modelId: string): Vec3 {
-  const state = useViewerStore.getState();
-  const placement = { translation: displayedTranslation(state.modelPlacement, modelId),
-    rotation: placementFor(state.modelPlacement, modelId).rotation };
   const modelPoint: Translation = [p[0], p[1], p[2] + storeyElevation];
-  const [x, y, z] = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, placement));
+  const [x, y, z] = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, placementOf(modelId)));
   return { x, y, z };
+}
+
+/** `modelId`'s current displayed placement (translation, including an
+ * in-flight move-preview drag; committed heading — rotation has no
+ * preview stage). Shared by the draw transform above and the drag
+ * floor-plane height below so the two directions cannot drift apart. */
+function placementOf(modelId: string): { translation: Translation; rotation: ReturnType<typeof placementFor>['rotation'] } {
+  const state = useViewerStore.getState();
+  return { translation: displayedTranslation(state.modelPlacement, modelId),
+    rotation: placementFor(state.modelPlacement, modelId).rotation };
 }
 
 interface ActiveDrag {
   end: 'start' | 'end';
   /** Cached counterpart endpoint that stays fixed during the drag. */
   fixedIfc: [number, number, number];
-  storeyElevation: number;
+  /**
+   * Renderer-frame Y of the floor plane the drag unprojects onto — the
+   * model's storey elevation PLUS its placement's vertical translation
+   * (#4932 follow-up), so this matches the height `ifcStoreyLocalToRenderer`
+   * already draws the handles at. Left at the raw, un-placed elevation, a
+   * model moved vertically would have its handles rendered at the correct
+   * (placed) height but its drag plane at the wrong one — under a
+   * non-top-down camera the two disagree, and the raycast lands somewhere
+   * other than under the cursor before `rendererPointToIfcStoreyLocal`
+   * (correctly) inverts the placement on whatever it found.
+   */
+  planeRenderY: number;
 }
 
 export function WallEndpointOverlay() {
@@ -146,10 +164,13 @@ export function WallEndpointOverlay() {
     e.stopPropagation();
     e.preventDefault();
     (e.target as SVGElement).setPointerCapture(e.pointerId);
+    // A yaw about the vertical axis never touches elevation, so only the
+    // translation's Z applies — no need to round-trip through the full
+    // rotate-then-translate transform for a single scalar.
     dragRef.current = {
       end: which,
       fixedIfc: which === 'start' ? endpoints.end : endpoints.start,
-      storeyElevation: endpoints.storeyElevation,
+      planeRenderY: endpoints.storeyElevation + placementOf(endpoints.modelId).translation[2],
     };
   };
 
@@ -164,7 +185,7 @@ export function WallEndpointOverlay() {
     if (!drag) return null;
     const pickFn = useViewerStore.getState().cameraCallbacks.unprojectToFloor;
     if (typeof pickFn !== 'function') return null;
-    const world = pickFn(clientX, clientY, drag.storeyElevation);
+    const world = pickFn(clientX, clientY, drag.planeRenderY);
     if (!world) return null;
     return rendererPointToIfcStoreyLocal(world, endpoints.modelId);
   };

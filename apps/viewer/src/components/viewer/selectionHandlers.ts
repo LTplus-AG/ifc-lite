@@ -199,11 +199,20 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     // Fall through to the slab path: first click latches the
     // anchor, second click (handled above) commits. Anchor lands
     // on the source slab's storey floor (not the global active
-    // storey) — `slabFootprint.storeyElevation` is already the
-    // exact value we need, so pass it through directly.
+    // storey). The RAYCAST plane, unlike the anchor value stored
+    // below, has to be placement-aware (#4932 follow-up): the second
+    // click's plane already goes through `resolveSlabFloorY`, which
+    // adds the model's vertical translation, so this first click used
+    // a DIFFERENT (un-placed) plane than the second — on a vertically
+    // repositioned slab under an oblique camera the two clicks would
+    // raycast against different heights and the anchor would land off
+    // from where the cursor actually was. `resolveSlabFloorY` reads
+    // the same underlying elevation `slabFootprint.storeyElevation`
+    // does, so this is the same value made symmetric, not a new one.
     const slabFootprint = state.readSlabFootprint(targetModelId, targetExpressId);
     if (slabFootprint) {
-      const anchorPoint = raycastStoreyFloor(ctx, x, y, slabFootprint.storeyElevation);
+      const anchorPlaneY = resolveSlabFloorY(targetModelId, targetExpressId) ?? slabFootprint.storeyElevation;
+      const anchorPoint = raycastStoreyFloor(ctx, x, y, anchorPlaneY);
       if (!anchorPoint) {
         toast.error("Couldn't read anchor point");
         return;

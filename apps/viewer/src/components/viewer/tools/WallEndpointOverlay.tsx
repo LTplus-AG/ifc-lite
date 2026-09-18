@@ -106,6 +106,18 @@ export function WallEndpointOverlay() {
   const resizeWall = useViewerStore((s) => s.resizeWall);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models } = useIfc();
+  // Subscribed for the re-render alone, same idiom as `useCameraTickSubscription`
+  // below: `startWorld`/`endWorld`/`startScreen`/`endScreen` are computed fresh
+  // in the render body on every render, not memoized, so nothing here reads
+  // the value. What was missing (Macroscope review on #4953) is a REASON to
+  // re-render at all when a model is repositioned while a wall is selected:
+  // none of the other subscriptions above (`editEnabled`, `activeTool`,
+  // `selectedEntity`, `mutationVersion`, ...) change on a reposition, so
+  // without this the handles stayed at their last-rendered screen position
+  // until some UNRELATED update happened to re-render the component, even
+  // though the wall itself (driven by `useModelPlacementSync`, a separate
+  // subscription) moved immediately.
+  useViewerStore((s) => s.modelPlacement);
 
   const dragRef = useRef<ActiveDrag | null>(null);
 

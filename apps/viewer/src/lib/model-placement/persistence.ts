@@ -148,7 +148,7 @@ function withPlacementRtc(base: string, rtc: { x: number; y: number; z: number }
 
 /** The fields of a frame key with the live `rtc` anchor removed, or
  * `undefined` when the key is not a JSON object (see {@link parseFrameObject}).
- * Also normalizes the v1.47.0 georeferenced shape (`rtc` embedded mid-object,
+ * Also normalizes the pre-fix (viewer 1.47.x) georeferenced shape (`rtc` embedded mid-object,
  * see {@link legacyGeoreferencedFrameKey}) to the same rtc-free fields, since
  * JSON.parse does not care where in the object `rtc` sat. */
 export function placementFrameFields(key: string): Record<string, unknown> | undefined {
@@ -167,7 +167,7 @@ export function placementFrameBase(key: string): string {
   return names.length === 1 && names[0] === 'base' && typeof fields.base === 'string' ? fields.base : JSON.stringify(fields);
 }
 
-/** v1.47.0 shipped `georeferencedPlacementFrameKey` embedding the live RTC
+/** Viewer 1.47.0 and 1.47.1 (pre-fix main) shipped `georeferencedPlacementFrameKey` embedding the live RTC
  * anchor directly in the base JSON's `rtc` field, between `originShift` and
  * `rotation`, before this fix (#4936) moved it out of the pure base function
  * and into the trailing `rtc` field `placementFrameKey` folds in now (see that
@@ -229,7 +229,7 @@ export function restoreWorkspacePlacements(storage: Pick<Storage, 'getItem'>, st
   const frame = placementFrameKey(state);
   let saved = storage.getItem(PREFIX + frame), resolveFrame = frame;
   // Nothing under the current key: try the pre-#4936 georeferenced key
-  // format once, so a real placement saved under v1.47.0 is not silently
+  // format once, so a real placement saved under viewer 1.47.x is not silently
   // dropped (see `legacyGeoreferencedFrameKey`). `resolveFrame` is the
   // legacy string itself, matching `manifest.frameKey` as saved, not the
   // current `frame`; the next save writes back under the current key.

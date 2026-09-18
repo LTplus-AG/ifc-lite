@@ -89,9 +89,14 @@ function normalizeRtc(rtc: { x: number; y: number; z: number }): { x: number; y:
 /**
  * The full frame identity a saved placement is keyed against: the
  * {@link placementFrameBaseKey} (pinned decision or live anchor CRS/conversion)
- * plus whatever RTC anchor the federation is CURRENTLY converged onto,
- * appended uniformly as a suffix and read live on every call, whether the
- * base came from a pin or from `placementAnchor`.
+ * plus whatever RTC anchor the federation is CURRENTLY converged onto, folded
+ * in uniformly by {@link withPlacementRtc} and read live on every call,
+ * whether the base came from a pin or from `placementAnchor`.
+ *
+ * The result is always either the bare base or ONE parseable JSON object
+ * (never a JSON base with a string suffix bolted on, #4936 round 5 review:
+ * a suffix has to be stripped back off by pattern, and any pattern applied to
+ * a string that also contains user-authored CRS names can match inside one).
  *
  * A rotation pivot is a workspace POINT, only meaningful in the render frame
  * it was captured in, unlike a translation, which is a difference and so is
@@ -104,27 +109,80 @@ function normalizeRtc(rtc: { x: number; y: number; z: number }): { x: number; y:
  * compare equal, and two that reach different ones do not, even one that
  * pinned an explicit re-alignment first.
  *
- * `lib/appearance/reference-runtime/frame.ts`'s `engineeringFrame` strips
- * this same `:rtc:` suffix back off before comparing: an appearance
- * reference stores absolute IFC-world coordinates, so an RTC change alone is
- * deliberately not a frame mismatch for it, only a genuine base change is.
+ * `lib/appearance/reference-runtime/frame.ts`'s `engineeringFrame` takes
+ * the same `rtc` back out via {@link placementFrameFields} before comparing:
+ * an appearance reference stores absolute IFC-world coordinates, so an RTC
+ * change alone is deliberately not a frame mismatch for it, only a genuine
+ * base change is.
  */
 export function placementFrameKey(state: ViewerState): string {
   const rtc = placementFrameCoordinateInfo(state)?.wasmRtcOffset;
-  return rtc ? `${placementFrameBaseKey(state)}:rtc:${JSON.stringify(normalizeRtc(rtc))}` : placementFrameBaseKey(state);
+  const base = placementFrameBaseKey(state);
+  return rtc ? withPlacementRtc(base, normalizeRtc(rtc)) : base;
+}
+
+const MAX_FRAME_KEY_LENGTH = 8192;
+
+/** A key's JSON-object fields, if it is one, or `undefined` for a bare base
+ * (`'local-engineering:m:z-up'`), a malformed or oversized key, or JSON that
+ * is not an object. A malformed key is reported, never guessed at: it stays
+ * an opaque string every consumer then compares by strict equality only. */
+function parseFrameObject(key: string): Record<string, unknown> | undefined {
+  if (!key.startsWith('{') || key.length > MAX_FRAME_KEY_LENGTH) return undefined;
+  let parsed: unknown;
+  try { parsed = JSON.parse(key); }
+  catch (error) {
+    console.warn('[Reposition] Invalid coordinate frame key:', error instanceof Error ? error.message : 'invalid JSON');
+    return undefined;
+  }
+  return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? { ...(parsed as Record<string, unknown>) } : undefined;
+}
+
+/** Folds a live RTC anchor into a base as ONE JSON object: the base's own
+ * fields plus `rtc` when the base is JSON (georeferenced, or a pin), or
+ * `{ base, rtc }` when it is a bare constant (local-engineering). Either way
+ * {@link placementFrameBase} recovers the exact base string again. */
+function withPlacementRtc(base: string, rtc: { x: number; y: number; z: number }): string {
+  return JSON.stringify({ ...(parseFrameObject(base) ?? { base }), rtc });
+}
+
+/** The fields of a frame key with the live `rtc` anchor removed, or
+ * `undefined` when the key is not a JSON object (see {@link parseFrameObject}).
+ * Also normalizes the v1.47.0 georeferenced shape (`rtc` embedded mid-object,
+ * see {@link legacyGeoreferencedFrameKey}) to the same rtc-free fields, since
+ * JSON.parse does not care where in the object `rtc` sat. */
+export function placementFrameFields(key: string): Record<string, unknown> | undefined {
+  const fields = parseFrameObject(key);
+  if (fields) delete fields.rtc;
+  return fields;
+}
+
+/** The rtc-free base string a full {@link placementFrameKey} was composed
+ * from: the inverse of {@link withPlacementRtc}. A key without `rtc` is
+ * returned unchanged, so a base compares equal to its own base. */
+export function placementFrameBase(key: string): string {
+  const fields = placementFrameFields(key);
+  if (!fields) return key;
+  const names = Object.keys(fields);
+  return names.length === 1 && names[0] === 'base' && typeof fields.base === 'string' ? fields.base : JSON.stringify(fields);
 }
 
 /** v1.47.0 shipped `georeferencedPlacementFrameKey` embedding the live RTC
- * anchor directly in the base JSON's `rtc` field, before this fix (#4936)
- * moved it to the external `:rtc:{...}` suffix `placementFrameKey` appends
- * now (see that function's own header comment). Reproduces that exact shape
- * so `restoreWorkspacePlacements` can still find placements a real user
- * already saved under it, released and in production localStorage before
- * this round shipped.
+ * anchor directly in the base JSON's `rtc` field, between `originShift` and
+ * `rotation`, before this fix (#4936) moved it out of the pure base function
+ * and into the trailing `rtc` field `placementFrameKey` folds in now (see that
+ * function's own header comment). Reproduces that exact shape, field order
+ * included (JSON.stringify order is the key's identity), so
+ * `restoreWorkspacePlacements` can still find placements a real user already
+ * saved under it, released and in production localStorage before this round
+ * shipped. When the model has no `buildingRotation`, JSON.stringify omits
+ * `rotation` from both and the two strings coincide, so the fallback only
+ * ever fires for a rotated building; `restoreWorkspacePlacements` skips it
+ * when it equals the current key.
  *
  * Only safe for the GEOREFERENCED case: its base already uniquely
- * identifies a CRS/conversion, so moving `rtc` from an embedded field to an
- * external suffix is a lossless rename, nothing new collides. There is
+ * identifies a CRS/conversion, so moving `rtc` from a mid-object field to a
+ * trailing one is a lossless rename, nothing new collides. There is
  * deliberately no equivalent for the LOCAL-ENGINEERING case: its pre-fix key
  * was the bare constant `'local-engineering:m:z-up'` with no `rtc` at all,
  * which is EXACTLY the collision #4936 reports (every anchor collapsed onto

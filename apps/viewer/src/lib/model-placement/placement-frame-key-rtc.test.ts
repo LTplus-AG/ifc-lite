@@ -97,11 +97,53 @@ describe('placementFrameKey distinguishes an RTC convergence (#4936)', () => {
     // A concrete expected string, not two live calls compared to each other
     // (CodeRabbit, #4936 round 5 review): that would still pass if
     // `placementFrameKey` returned a constant, or anything else identical on
-    // two calls with identical input. Pins down the actual suffix shape
-    // (`placementFrameKey`'s `:rtc:{...}` append onto the local-engineering
-    // base) so a regression that changes it, not just one that makes it
-    // nondeterministic, fails this test too.
-    assert.equal(placementFrameKey(localState(offset)), 'local-engineering:m:z-up:rtc:{"x":5,"y":6,"z":7}');
+    // two calls with identical input. Pins down the actual key shape (ONE
+    // JSON object wrapping the local-engineering base plus the live `rtc`,
+    // never a string suffix, #4936 round 5 review) so a regression that
+    // changes it, not just one that makes it nondeterministic, fails too.
+    assert.equal(placementFrameKey(localState(offset)), '{"base":"local-engineering:m:z-up","rtc":{"x":5,"y":6,"z":7}}');
+  });
+
+  it('is one parseable JSON object once an RTC anchor is live, with the base recoverable from it', () => {
+    const offset = { x: 5, y: 6, z: 7 };
+    const parsed: unknown = JSON.parse(placementFrameKey(localState(offset)));
+    assert.deepEqual(parsed, { base: 'local-engineering:m:z-up', rtc: offset });
+  });
+
+  // Codex P1 (#4936 round 5): "a placement committed BEFORE convergence stamps
+  // the local-engineering key onto `modelPlacement`, `rebasePlacementFrame`
+  // preserves it, and persistence compares against that stored key". There is
+  // no such field to stamp (`PlacementState`, state.ts: only the explicit
+  // `realignedFrameKey` pin exists), so this locks that in end to end: commit
+  // a rotation, converge through the REAL store action, and the live key,
+  // the manifest written next and the old manifest's acceptance all advance.
+  it('a rotation committed before convergence does not pin the key: converging advances key and manifest', () => {
+    useViewerStore.setState({ ...localState(undefined), repositionOpen: false });
+    useViewerStore.getState().setModelRotation(['a'], { angle: 0.25, pivot: [3, 0, -2] });
+    const before = useViewerStore.getState();
+    const keyBefore = placementFrameKey(before);
+    assert.equal(keyBefore, 'local-engineering:m:z-up');
+    const disk = storage();
+    saveWorkspacePlacements(disk, before);
+    assert.ok(savedUnder(disk, keyBefore), 'sanity: the pre-convergence commit was saved under the bare base key');
+
+    const anchor = { x: 100, y: 200, z: 300 };
+    useViewerStore.setState((s) => {
+      const model = s.models.get('a')!;
+      const models = new Map(s.models);
+      models.set('a', { ...model, geometryResult: { coordinateInfo: coordInfo(anchor) } as unknown as GeometryResult });
+      return { models };
+    });
+    useViewerStore.getState().rebasePlacementFrame(new Map([['a', { x: 1, y: 2, z: 3 }]]));
+    const after = useViewerStore.getState();
+    assert.equal(after.modelPlacement.realignedFrameKey, null, 'neither the commit nor the rebase may pin a frame');
+    const keyAfter = placementFrameKey(after);
+    assert.equal(keyAfter, '{"base":"local-engineering:m:z-up","rtc":{"x":100,"y":200,"z":300}}');
+    saveWorkspacePlacements(disk, after);
+    assert.ok(savedUnder(disk, keyAfter), 'the next save must write under the converged key, not the pre-convergence one');
+    assert.throws(() => resolvePlacementManifest(
+      makePlacementManifest(before.models, before.modelPlacement.placements, keyBefore), after.models, keyAfter),
+      /coordinate frame differs/, 'the pre-convergence manifest is no longer accepted once converged');
   });
 });
 
@@ -289,9 +331,9 @@ function savedUnder(disk: ReturnType<typeof storage>, frame: string): string | n
   return disk.getItem('ifc-lite:placements:v1:' + frame);
 }
 
-/** v1.47.0, the release before this fix, embedded the live RTC anchor
- * directly in the georeferenced base's `rtc` field instead of appending it
- * as the external `:rtc:{...}` suffix `placementFrameKey` now does
+/** v1.47.0, the release before this fix, embedded the live RTC anchor in the
+ * georeferenced base's `rtc` field BETWEEN `originShift` and `rotation`,
+ * where `placementFrameKey` now folds it in as a trailing field
  * (`legacyGeoreferencedFrameKey`, persistence.ts). Reconstructs that exact
  * shape from `placementFrameBaseKey` (the current, rtc-free base, already
  * exported) rather than duplicating `legacyGeoreferencedFrameKey`'s own
@@ -307,7 +349,11 @@ describe('restoreWorkspacePlacements falls back to the pre-#4936 (v1.47.0) legac
     useViewerStore.setState((s) => {
       const model = s.models.get('a')!;
       const models = new Map(s.models);
-      models.set('a', { ...model, geometryResult: { ...model.geometryResult, coordinateInfo: coordInfo(anchor) } as unknown as GeometryResult });
+      // A building rotation makes the two shapes actually differ: without one,
+      // `rotation` is omitted from both JSON strings and the v1.47.0 key is
+      // byte-identical to the current one (no fallback needed at all).
+      models.set('a', { ...model, geometryResult: { ...model.geometryResult,
+        coordinateInfo: { ...coordInfo(anchor), buildingRotation: 0.5 } } as unknown as GeometryResult });
       return { models };
     });
 

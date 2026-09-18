@@ -4,7 +4,7 @@
 import type { ReferenceCorners } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
-import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
+import { placementFrameKey, placementFrameCoordinateInfo, placementFrameBase, placementFrameFields } from '@/lib/model-placement/persistence';
 import { toRenderTranslation } from '@/lib/model-placement/translation';
 import type { RegisteredAppearanceReference } from '../references/types.js';
 
@@ -14,25 +14,19 @@ type Registration = Pick<RegisteredAppearanceReference, 'cornersIfcWorld' | 'fra
  * engineering coordinate frame. Ignore ONLY those two fields; CRS, map conversion,
  * unit scale and rotation still have to match before reusing an absolute point.
  *
- * `placementFrameKey` (`lib/model-placement/persistence.ts`) appends the live
- * RTC anchor as a `:rtc:{...}` suffix outside any base it computes (georeferenced
- * or local-engineering), never embedded in the base's own JSON, so that suffix
- * is stripped here FIRST, uniformly, before the base is inspected. */
+ * `placementFrameKey` (`lib/model-placement/persistence.ts`) folds the live
+ * RTC anchor into ONE JSON object as its `rtc` field; `placementFrameFields`
+ * is the shared inverse that parses the key and drops `rtc` again. It is a
+ * parse, never a string pattern (#4936 round 5 review): a pattern such as
+ * `/:rtc:.*$/` also matched INSIDE a user-authored CRS name, truncating
+ * `site:rtc:A` and `site:rtc:B` to the same prefix and reporting `ready` for
+ * a reference registered in a different frame. Malformed keys are reported by
+ * that helper and stay opaque mismatches; no coordinates are guessed. */
 function engineeringFrame(key: string): string {
-  const base = key.replace(/:rtc:.*$/, '');
-  if (!base.startsWith('{') || base.length > 8192) return base;
-  try {
-    const frame: unknown = JSON.parse(base);
-    if (typeof frame !== 'object' || frame === null || Array.isArray(frame)) return base;
-    const parsed = { ...frame } as Record<string, unknown>;
-    if (!('crs' in parsed) || !('conversion' in parsed)) return base;
-    delete parsed.originShift;
-    return JSON.stringify(parsed);
-  } catch (error) {
-    // Imported malformed keys remain opaque mismatches. No coordinates are guessed.
-    console.warn('[Appearance references] Invalid coordinate frame metadata:', error instanceof Error ? error.message : 'invalid JSON');
-    return base;
-  }
+  const fields = placementFrameFields(key);
+  if (!fields || !('crs' in fields) || !('conversion' in fields)) return placementFrameBase(key);
+  delete fields.originShift;
+  return JSON.stringify(fields);
 }
 
 export function referenceFrameStatus(record: Registration, state: ViewerState): 'ready' | 'frame-mismatch' {

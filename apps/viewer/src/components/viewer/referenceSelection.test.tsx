@@ -166,17 +166,17 @@ test('locked references and non-Select tools cannot intercept ordinary IFC selec
 
 test('RTC-only frame changes retain normal reference picking (#4308)', async () => {
   const f = await fixture();
-  // `placementFrameKey` (`lib/model-placement/persistence.ts`) appends the
-  // live RTC anchor as an EXTERNAL `:rtc:{...}` suffix, never embedded in the
-  // base's own JSON (#4936); `realignedFrameKey` here stands in for that
-  // full computed value directly, the same shortcut a real pin plus a live
-  // RTC anchor would produce together.
+  // `placementFrameKey` (`lib/model-placement/persistence.ts`) folds the
+  // live RTC anchor into the key as ONE JSON object's trailing `rtc` field
+  // (#4936); `realignedFrameKey` here stands in for that full computed value
+  // directly, the same shortcut a real pin plus a live RTC anchor would
+  // produce together.
   const rest = { crs: { name: 'EPSG:2056' }, conversion: { eastings: 2600000 }, lengthUnitScale: 1, rotation: 0 };
-  const original = `${JSON.stringify({ ...rest, originShift: [10, 0, 0] })}:rtc:${JSON.stringify([1, 0, 0])}`;
+  const original = JSON.stringify({ ...rest, originShift: [10, 0, 0], rtc: [1, 0, 0] });
   useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement, realignedFrameKey: original } }));
   useViewerStore.getState().updateAppearanceReference('drawing:one', { frameKey: original });
   useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement,
-    realignedFrameKey: `${JSON.stringify({ ...rest, originShift: [20, 0, 0] })}:rtc:${JSON.stringify([2, 0, 0])}` } }));
+    realignedFrameKey: JSON.stringify({ ...rest, originShift: [20, 0, 0], rtc: [2, 0, 0] }) } }));
   await handleSelectionClick(f.ctx, clickEvent());
   assert.equal(useViewerStore.getState().selectedAppearanceReferenceId, 'drawing:one');
   assert.equal(f.calls.reference, 1);

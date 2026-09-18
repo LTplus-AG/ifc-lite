@@ -11,17 +11,18 @@ import { referenceFrameStatus, referenceRenderCorners } from './frame.js';
 import type { RegisteredAppearanceReference } from '../references/types.js';
 
 const corners: RegisteredAppearanceReference['cornersIfcWorld'] = [[5000000,100,12],[5000002,100,12],[5000002,100,9],[5000000,100,9]];
-// `placementFrameKey` (`lib/model-placement/persistence.ts`) appends the live
-// RTC anchor as an external `:rtc:{...}` suffix, never embedded in the base
-// (#4936); `baseFrameKey` is what `realignedFrameKey` pins, `liveKey` is what
+// `placementFrameKey` (`lib/model-placement/persistence.ts`) folds the live
+// RTC anchor into the base as ONE JSON object's trailing `rtc` field (#4936);
+// `baseFrameKey` is what `realignedFrameKey` pins, `liveKey` is what
 // `placementFrameKey` actually computes once the fixture's own live
 // `wasmRtcOffset` (below) is folded on.
-const baseFrameKey = (eastings = 0) => JSON.stringify({ crs: { name: 'EPSG:2056' }, conversion: { eastings }, lengthUnitScale: 1, originShift: { x: 2, y: 3, z: 4 } });
-const liveKey = (rtc: number, eastings = 0) => `${baseFrameKey(eastings)}:rtc:${JSON.stringify({ x: rtc, y: 100, z: 10 })}`;
+const baseFrameKey = (eastings = 0, name = 'EPSG:2056') => JSON.stringify({ crs: { name }, conversion: { eastings }, lengthUnitScale: 1, originShift: { x: 2, y: 3, z: 4 } });
+const liveKey = (rtc: number, eastings = 0, name?: string) =>
+  JSON.stringify({ ...JSON.parse(baseFrameKey(eastings, name)) as Record<string, unknown>, rtc: { x: rtc, y: 100, z: 10 } });
 const bounds = { min: { x:0,y:0,z:0 }, max: { x:2,y:3,z:1 } };
-function state(rtc: number, eastings = 0) {
+function state(rtc: number, eastings = 0, name?: string) {
   const base = useViewerStore.getState();
-  return { ...base, models: new Map(), modelPlacement: { ...emptyPlacementState(), realignedFrameKey: baseFrameKey(eastings) },
+  return { ...base, models: new Map(), modelPlacement: { ...emptyPlacementState(), realignedFrameKey: baseFrameKey(eastings, name) },
     geometryResult: { meshes: [], totalTriangles: 0, totalVertices: 0,
       coordinateInfo: { originShift: { x:2,y:3,z:4 }, wasmRtcOffset: { x:rtc,y:100,z:10 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: true } } };
 }
@@ -52,4 +53,19 @@ test('switching active federated model does not move a registered workspace refe
   const a = referenceRenderCorners(record, { ...first, models, activeModelId:'first' });
   const b = referenceRenderCorners(record, { ...second, models, activeModelId:'second' });
   assert.deepEqual(b, a);
+});
+
+test('a CRS name containing ":rtc:" cannot collapse two different frames into one (#4936 round 5 review)', () => {
+  // The previous `engineeringFrame` stripped the live anchor with `/:rtc:.*$/`,
+  // which cut BOTH of these keys at the first `:rtc:` inside the CRS name
+  // (`{"crs":{"name":"site`), so a reference registered in frame A reported
+  // `ready` in frame B and was drawn at absolute coordinates from the wrong CRS.
+  const inA = { cornersIfcWorld: corners, frameKey: liveKey(5000000, 0, 'site:rtc:A') };
+  const inB = { cornersIfcWorld: corners, frameKey: liveKey(5000000, 0, 'site:rtc:B') };
+  const liveB = state(4999990, 0, 'site:rtc:B');
+  assert.equal(referenceFrameStatus(inB, liveB), 'ready', 'sanity: same CRS, RTC-only change, still ready');
+  assert.equal(referenceFrameStatus(inA, liveB), 'frame-mismatch');
+  assert.equal(referenceRenderCorners(inA, liveB), null);
+  // And the exact record key survives a round trip when nothing changed at all.
+  assert.equal(referenceFrameStatus(inA, state(5000000, 0, 'site:rtc:A')), 'ready');
 });

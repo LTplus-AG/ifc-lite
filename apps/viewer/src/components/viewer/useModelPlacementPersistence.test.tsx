@@ -103,7 +103,7 @@ it('a restore made while an RTC anchor is already live never pins the frame, and
   const anchorX = { x: 111, y: 222, z: 333 };
 
   // A PRIOR session already converged onto anchor X and saved under that
-  // live key ("local-engineering:m:z-up:rtc:{X}"), not the plain base key
+  // live key ('{"base":"local-engineering:m:z-up","rtc":X}'), not the plain base key
   // `beforeEach` saved 'saved' under.
   const priorSession = { ...useViewerStore.getState(), ...fixtureModels(modelWithAnchor('first', anchorX)), modelPlacement: emptyPlacementState() };
   priorSession.modelPlacement = importPlacements(priorSession.modelPlacement, new Map([['first', { translation: [7, 0, 0], locked: false }]]));

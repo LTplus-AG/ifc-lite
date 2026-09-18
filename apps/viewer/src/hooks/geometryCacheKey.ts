@@ -5,8 +5,12 @@
 import { FORMAT_VERSION } from '@ifc-lite/cache';
 
 // #4056: pre-revision flat caches have reversed winding after a proper rotation.
+// #4934: a 1-10km model cached under an older revision carries the pre-lowered
+// RTC gate's un-rebased meshes and `needsShift: false` frame; bumping this
+// forces a re-tessellate so the corrected pre-pass output actually runs on
+// reload rather than being served from a cache built against the old gate.
 // Invalidate viewer-generated geometry without changing the public cache format.
-const GEOMETRY_OUTPUT_REVISION = 1;
+const GEOMETRY_OUTPUT_REVISION = 2;
 
 /**
  * Build the persisted geometry cache key for a loaded model.

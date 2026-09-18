@@ -1095,6 +1095,15 @@ export class Renderer {
         this.refreshPlacementBounds();
     }
 
+    /** Absolute workspace yaw about the render-frame pivot; GPU-instanced only (#4890). Skips invalidation on a no-op (#4890 review). */
+    setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): boolean {
+        const changed = this.scene.setModelRotation(modelIndex, angle, pivot);
+        if (!changed) return false;
+        this.clearCaches();
+        this.refreshPlacementBounds();
+        return true;
+    }
+
     /** Streamed clouds are addressed by durable asset handle. */
     setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
         this.pointCloudRenderer?.setAssetTranslation(handle, translation);

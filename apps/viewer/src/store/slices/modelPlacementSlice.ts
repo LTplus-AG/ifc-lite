@@ -91,11 +91,12 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     const checked = previewPlacement(state.modelPlacement, delta);
     return { modelPlacement: { ...checked, preview: { ...next, delta } } };
   }),
-  applyModelTranslation: () => set((state) => {
-    const committed = commitPlacement(state.modelPlacement);
-    return { modelPlacement: committed.placements === state.modelPlacement.placements ? committed
-      : { ...committed, frameKey: placementFrameKey(state) } };
-  }),
+  // Neither this nor `setModelRotation` stamps a frame identity onto
+  // `modelPlacement` (#4936): `placementFrameKey`/`placementFrameBaseKey`
+  // (`persistence.ts`) recompute the frame fresh from live `state.models` on
+  // every read, so there is nothing here to keep warm, and nothing that could
+  // go stale under a later RTC convergence or a model leaving the federation.
+  applyModelTranslation: () => set((state) => ({ modelPlacement: commitPlacement(state.modelPlacement) })),
   undoModelTranslation: () => set((state) => ({ modelPlacement: replayPlacement(state.modelPlacement, 'undo') })),
   redoModelTranslation: () => set((state) => ({ modelPlacement: replayPlacement(state.modelPlacement, 'redo') })),
   resetModelTranslations: (ids) => set((state) => {
@@ -109,10 +110,7 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     // rather than turn part of the selection (see rotation-refusal.ts).
     const refusal = rotationRefusal(state, ids);
     if (refusal) throw new Error(refusal);
-    const rotated = rotatePlacements(state.modelPlacement, ids, rotation);
-    // Same rule as a move: a committed change stamps the frame its numbers are in.
-    return { modelPlacement: rotated.placements === state.modelPlacement.placements ? rotated
-      : { ...rotated, frameKey: placementFrameKey(state) } };
+    return { modelPlacement: rotatePlacements(state.modelPlacement, ids, rotation) };
   }),
   rebasePlacementFrame: (deltas) => set((state) => {
     const workspace = new Map([...deltas].map(([id, delta]) => [id, fromRenderTranslation(delta)] as const));

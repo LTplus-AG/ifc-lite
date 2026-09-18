@@ -199,7 +199,10 @@ export interface DiffOptions {
    * — existing callers get byte-identical results.
    *
    * What it cannot see, stated once so it is not discovered in the field: a
-   * split ACROSS classes (candidates are generated per `ifcType`); a container
+   * split across class FAMILIES (candidates are generated per family, see
+   * {@link classFamilies}: a wall becoming `IfcWallStandardCase` pieces or
+   * `IfcBuildingElementPart` layers is seen, a wall becoming a covering is
+   * not); a container
    * polluted by two or more unrelated same-class elements; a moved split under
    * a rotation that is not a multiple of 90°; and a real split that changed
    * more than {@link splitVolumeTolerance} of material while carrying full
@@ -267,4 +270,51 @@ export interface DiffOptions {
    * where a bad value is simply replaced.
    */
   maxSplitPieces?: number;
+  /**
+   * Class families for the split/merge candidate buckets (issue #4955): rows of
+   * IFC class names an authoring tool may swap between while publishing the
+   * same material. Candidates are bucketed by family rather than by exact
+   * `ifcType`, so an `IfcWall` republished as three `IfcWallStandardCase`s,
+   * or as `IfcBuildingElementPart` layers, can be claimed as a split; the claim
+   * then carries `SplitMergeClaim.crossClass`. Matching is case-insensitive
+   * and an unlisted class is its own family.
+   *
+   * Default: `DEFAULT_CLASS_FAMILIES` — the schema's own `StandardCase` /
+   * `ElementedCase` subtypes plus `IfcBuildingElementPart` under walls and the
+   * furniture classes. Pass `[]` to bucket by exact class as before.
+   */
+  classFamilies?: readonly (readonly string[])[];
+  /**
+   * Opt-in LAST stage (issue #4955): look for **successors** — one deleted
+   * entity replaced in place by one added entity whose data AND geometry both
+   * changed (a wall with a new buildup, a chair from a different family) —
+   * among what {@link matchUnpairedByContent} and {@link detectSplitMerge} left
+   * unbound. Effective only together with `matchUnpairedByContent`, and only
+   * with geometry (the same abstentions as split/merge; `ModelDiff.successors`
+   * is absent otherwise).
+   *
+   * **Suggestions only.** A claim never retires a `DiffEntry`, never touches
+   * `counts`, and never becomes an identity-map entry unless a caller passes
+   * it to `identityMapFromSuccessors` as ACCEPTED. Two profiles, both
+   * requiring a pairing unique in both directions with a margin: `footprint`
+   * (box overlap at or above {@link successorOverlap}, nothing else on either
+   * side within half of it) and `position` (same class family, same
+   * `EntityFingerprint.container`, mutual nearest within
+   * {@link successorDistance} with the runner-up at least twice as far).
+   * Default `false`.
+   */
+  detectSuccessors?: boolean;
+  /**
+   * Bounding-box intersection-over-union at or above which a `footprint`
+   * successor claim may fire. Default `0.6`: a 200 → 250 mm thickening scores
+   * 0.8 whichever face moved; a 100 mm axis shift at 200 mm scores 0.33 and is
+   * left to `position`. Must be in `(0, 1]`; anything else falls back.
+   */
+  successorOverlap?: number;
+  /**
+   * Absolute floor (caller's units) of the centre displacement the `position`
+   * profile accepts; the cap actually applied to a pair is
+   * `max(successorDistance, 0.5 × base box diagonal)`. Default `0.5`.
+   */
+  successorDistance?: number;
 }

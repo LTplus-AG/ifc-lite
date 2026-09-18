@@ -31,6 +31,7 @@ import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 import { runShardRefusalBoundaryTests } from './lib/shard-refusal-boundary.mjs';
 import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs';
+import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -616,17 +617,14 @@ test('mesh output is metre-normalized (column fits a sane bbox)', () => {
   collection.free();
 });
 
-// ===== RTC rebase (>10km national-grid coordinates) =====
-console.log('\n📋 RTC rebase (>10km)');
+// ===== RTC rebase (>1km national-grid coordinates) =====
+console.log('\n📋 RTC rebase (>1km)');
 
 // The wasm pre-pass flags `needsShift` when the detected RTC offset exceeds
-// 10 km on any axis. The threshold constant is `10000.0` (metres, after
-// unit-scaling) in:
-//   - rust/wasm-bindings/src/api/gpu_meshes.rs (`needs_shift = rtc_offset.N.abs() > 10000.0`)
-//   - rust/geometry/src/router/processing.rs (`rtc_offset_from_translations`,
-//     `const THRESHOLD: f64 = 10000.0` — median element translation gate)
-//   - rust/core/src/model_bounds.rs (`has_large_coordinates`, `THRESHOLD = 10000.0`)
-const RTC_THRESHOLD_M = 10000.0;
+// the gate on any axis. Single Rust home (#4934, was 10 km): `rust/core/src/
+// limits.rs` `LARGE_COORD_THRESHOLD_METERS = 1000.0`, read by every consumer
+// (the median sampler `rtc_offset.rs`, the bounds fallback `model_bounds.rs`).
+const RTC_THRESHOLD_M = 1000.0;
 
 // The column fixture is authored in INCHES (IFCCONVERSIONBASEDUNIT 0.0254 m);
 // the RTC offset is detected in unit-scaled METRES, so planted coordinates
@@ -695,18 +693,18 @@ test('national-grid coordinates (Swiss LV95) should trigger the RTC rebase', () 
   collection.free();
 });
 
-test('coordinates just under the 10km threshold should NOT trigger the shift', () => {
-  // needs_shift uses a strict `> 10000.0` comparison on the unit-scaled
-  // median element translation. Plant the site so the COMPOSED column
-  // translation (site + ~10.97m local) lands just under 10_000 m.
-  const NEAR_X_M = 9_950; // composed ≈ 9_960.97 m < 10_000 m
-  const NEAR_Y_M = 9_950; // composed ≈ 9_957.32 m < 10_000 m
+test('coordinates just under the 1km threshold should NOT trigger the shift', () => {
+  // needs_shift uses a strict `> 1000.0` comparison on the unit-scaled median
+  // element translation. Site + ~10.97m local lands just under 1_000 m —
+  // #4934 lowered the gate from 10 km, pinning the NEW just-under edge.
+  const NEAR_X_M = 900; // composed ≈ 910.97 m < 1_000 m
+  const NEAR_Y_M = 900; // composed ≈ 907.32 m < 1_000 m
   const moved = withSiteOriginMetres(NEAR_X_M, NEAR_Y_M);
   assert.notEqual(moved, columnContent, 'Placement transplant must change the content');
 
   const collection = parseMeshesViaPrePass(api, moved);
 
-  assert.equal(collection.hasRtcOffset(), false, 'needsShift must stay false under 10km');
+  assert.equal(collection.hasRtcOffset(), false, 'needsShift must stay false under 1km');
   assert.equal(collection.rtcOffsetX, 0, 'rtcOffset must stay [0,0,0] under threshold');
   assert.equal(collection.rtcOffsetY, 0, 'rtcOffset must stay [0,0,0] under threshold');
   assert.equal(collection.rtcOffsetZ, 0, 'rtcOffset must stay [0,0,0] under threshold');
@@ -727,8 +725,8 @@ test('coordinates just under the 10km threshold should NOT trigger the shift', (
     mesh.free();
   }
   assert.ok(
-    maxAbs > 9000,
-    `Unshifted geometry should stay near its 9.95km placement, got max |world| = ${maxAbs}`,
+    maxAbs > 900,
+    `Unshifted geometry should stay near its 900m placement, got max |world| = ${maxAbs}`,
   );
 
   collection.free();
@@ -742,6 +740,8 @@ test('unmodified small-coordinate model keeps needsShift=false', () => {
   assert.equal(collection.rtcOffsetZ, 0);
   collection.free();
 });
+
+runRtcPrecisionContracts(api, test, columnContent, withSiteOriginMetres, COLUMN_LOCAL_X_M, COLUMN_LOCAL_Y_M);
 
 // ===== scanEntitiesFast =====
 console.log('\n📋 scanEntitiesFast');

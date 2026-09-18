@@ -14,6 +14,7 @@ import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { diffModels, type ContentMatch, type ContentMatchKind } from '@ifc-lite/diff';
 import type { Tool } from './types.js';
 import { okResult, assertModelAccess } from './util.js';
+import { parseAuthoredKeySpec } from '@ifc-lite/parser';
 import { buildModelFingerprints, type DiffRef } from './diff-fingerprints.js';
 import { foldedTypeCounts, pendingMutationsField, pendingOverlay, type PendingOverlay } from '../overlay.js';
 import type { LoadedModel, ToolContext } from '../context.js';
@@ -71,6 +72,7 @@ const UNRESOLVED_FIRST: ContentMatchKind[] = [
   'deduplicated',
   'moved',
   'reshaped',
+  'respecified',
   'renamed',
 ];
 
@@ -89,10 +91,16 @@ function contentDiff(
   overlays: { left: PendingOverlay | null; right: PendingOverlay | null },
   maxMatches: number,
   maxGroupMembers: number,
+  keyProperty?: string,
 ): Record<string, unknown> {
+  // Authored keys (issue #4955): `prop:<value>` where the model maintains one,
+  // GlobalId otherwise; a value two entities share is refused for both and
+  // reported so the agent sees why those two fell back.
+  const duplicateAuthoredKeys = new Map<string, number[]>();
+  const adapter = { keyProperty, duplicateAuthoredKeys };
   const diff = diffModels(
-    buildModelFingerprints(left.store, overlays.left),
-    buildModelFingerprints(right.store, overlays.right),
+    buildModelFingerprints(left.store, overlays.left, adapter),
+    buildModelFingerprints(right.store, overlays.right, adapter),
     { scope: 'data', matchUnpairedByContent: true },
   );
 
@@ -105,6 +113,8 @@ function contentDiff(
 
   return {
     scope: diff.scope,
+    keyProperty: keyProperty ?? null,
+    duplicateAuthoredKeys: [...duplicateAuthoredKeys.keys()].sort(),
     counts: diff.counts,
     // Whole totals, computed before the cap: an agent reading `contentMatches`
     // can always tell whether the list it got is the whole story.
@@ -175,7 +185,7 @@ const modelDiff: Tool = {
         description:
           'Run the @ifc-lite/diff engine with content-keyed matching over every IfcObjectDefinition. '
           + 'Adds `contentDiff` with added/modified/deleted/unchanged counts and the content matches '
-          + '(renamed / moved / reshaped are resolved; duplicated / deduplicated / ambiguous are listed '
+          + '(renamed / moved / reshaped / respecified are resolved; duplicated / deduplicated / ambiguous are listed '
           + 'as groups for you to resolve). Data scope only — this server has no geometry pipeline.',
       },
       max_matches: {
@@ -185,6 +195,14 @@ const modelDiff: Tool = {
         description:
           'Cap on the listed content matches (by_content only). Unresolved groups are listed first and '
           + '`contentMatchCounts` always reports whole per-kind totals.',
+      },
+      key_from: {
+        type: 'string',
+        description:
+          'Compare on an authored identifier instead of GlobalId (by_content only): "Tag", or '
+          + '"<PsetName>.<PropertyName>" such as "Pset_Asset.AssetId". An entity carrying a non-empty, '
+          + 'unique value is keyed on it; the rest keep their GlobalId. Values shared by several entities '
+          + 'are listed in duplicateAuthoredKeys.',
       },
       max_group_members: {
         type: 'integer',
@@ -235,6 +253,13 @@ const modelDiff: Tool = {
     // Opt-in, and deliberately so. An `ambiguous` group has no honest scalar
     // form, so turning this on by default would change what `counts` means
     // under agent scripts that already read this tool.
+    const keyFrom = typeof input.key_from === 'string' && input.key_from.trim() ? input.key_from.trim() : undefined;
+    if (keyFrom !== undefined && !parseAuthoredKeySpec(keyFrom)) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: 'key_from must be "Tag" or "<PsetName>.<PropertyName>", got "' + keyFrom + '"',
+      });
+    }
     const content = (input.by_content as boolean | undefined) ?? false
       ? contentDiff(
         left,
@@ -242,6 +267,7 @@ const modelDiff: Tool = {
         { left: leftOverlay, right: rightOverlay },
         (input.max_matches as number | undefined) ?? DEFAULT_MAX_MATCHES,
         (input.max_group_members as number | undefined) ?? DEFAULT_MAX_GROUP_MEMBERS,
+        keyFrom,
       )
       : null;
 

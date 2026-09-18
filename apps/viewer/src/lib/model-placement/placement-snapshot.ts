@@ -10,11 +10,11 @@ interface SnapshotState { models: ReadonlyMap<string, unknown>; modelPlacement: 
 interface Snapshot { frame: string | null; positions: ReadonlyMap<string, Translation>; rotations: ReadonlyMap<string, ModelRotation>; alignment: boolean | undefined }
 export function placementSnapshot(state: SnapshotState, ids: Iterable<string> = state.models.keys(), includeScanAlignment = true): Snapshot {
   const list = [...ids];
-  return { frame: state.modelPlacement.frameKey, positions: new Map(list.map((id) => [id, displayedTranslation(state.modelPlacement, id)])),
+  return { frame: state.modelPlacement.realignedFrameKey, positions: new Map(list.map((id) => [id, displayedTranslation(state.modelPlacement, id)])),
     rotations: new Map(list.map((id) => [id, placementFor(state.modelPlacement, id).rotation])), alignment: includeScanAlignment ? state.pointCloudAlignmentEnabled : undefined };
 }
 export function placementSnapshotIsCurrent(snapshot: Snapshot, state: SnapshotState): boolean {
-  return snapshot.frame === state.modelPlacement.frameKey && (snapshot.alignment === undefined || snapshot.alignment === state.pointCloudAlignmentEnabled) && [...snapshot.positions].every(([id, position]) =>
+  return snapshot.frame === state.modelPlacement.realignedFrameKey && (snapshot.alignment === undefined || snapshot.alignment === state.pointCloudAlignmentEnabled) && [...snapshot.positions].every(([id, position]) =>
     state.models.has(id) && equalTranslation(position, displayedTranslation(state.modelPlacement, id))
     && equalRotation(snapshot.rotations.get(id)!, placementFor(state.modelPlacement, id).rotation));
 }

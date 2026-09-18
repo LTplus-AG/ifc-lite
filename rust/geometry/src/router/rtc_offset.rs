@@ -58,10 +58,11 @@ impl GeometryRouter {
 
     /// Sample a building element's world-space position for RTC offset detection.
     ///
-    /// First checks the placement transform translation. If placement is near
-    /// the origin (< 100 m), also probes the first geometry vertex — infrastructure
-    /// models (12d Model, Civil 3D) embed large world coordinates directly in
-    /// Brep/tessellated geometry with an identity placement.
+    /// First checks the placement transform translation. If the placement
+    /// alone is not already [`coord_is_large`], also probes the first
+    /// geometry vertex — infrastructure models (12d Model, Civil 3D) embed
+    /// large world coordinates directly in Brep/tessellated geometry with an
+    /// identity placement.
     fn sample_element_translation(
         &self,
         entity: &DecodedEntity,
@@ -82,12 +83,20 @@ impl GeometryRouter {
             return None;
         }
 
-        // If placement is near origin, also check actual geometry vertex coordinates.
-        // Infrastructure models embed world coords (e.g. 280 000, 6 214 000) directly
-        // in geometry vertices with identity placement — placement-only sampling
-        // would miss the large coordinates and fail to detect the need for RTC.
-        const NEAR_ORIGIN: f64 = 1000.0;
-        if tx.abs() < NEAR_ORIGIN && ty.abs() < NEAR_ORIGIN && tz.abs() < NEAR_ORIGIN {
+        // If the placement alone would not already answer "large", also check
+        // actual geometry vertex coordinates. Infrastructure models embed world
+        // coords (e.g. 280 000, 6 214 000) directly in geometry vertices with
+        // identity placement — placement-only sampling would miss the large
+        // coordinates and fail to detect the need for RTC.
+        //
+        // Gated on `!coord_is_large`, the SAME predicate the median vote below
+        // is judged by (not a separate `< NEAR_ORIGIN` cutoff): a placement
+        // exactly AT the threshold used to read as "not near origin" (skip the
+        // probe) under a strict `<` comparison, fall through unprobed, and
+        // then read as "not large" under `coord_is_large`'s strict `>` — one
+        // coordinate, one comparison direction wrong, but disagreeing on
+        // whether the probe should have run at all (#4934 review).
+        if !coord_is_large((tx, ty, tz)) {
             if let Some((vx, vy, vz)) = self.sample_first_geometry_vertex(entity, decoder) {
                 // Transform vertex by placement to get world-space position.
                 // The vertex is in raw file units but the placement transform is
@@ -413,7 +422,9 @@ impl GeometryRouter {
     /// Single shared entry point for the server processing path, the wasm
     /// prepasses and the overlays, so every one of them makes the identical
     /// needs-shift decision: a model whose sampled placements fail to decode
-    /// while raw geometry carries >10 km coordinates must be re-based
+    /// while raw geometry carries coordinates past
+    /// [`crate::LARGE_COORD_THRESHOLD_METERS`] (1 km, was 10 km before
+    /// #4934) must be re-based
     /// identically everywhere (previously the wasm prepasses silently fell
     /// back to (0,0,0) and the browser rendered f32 vertex jitter that the
     /// server never saw).

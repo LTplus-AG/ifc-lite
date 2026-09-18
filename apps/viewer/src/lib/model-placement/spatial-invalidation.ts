@@ -6,7 +6,7 @@ import { displayedTranslation } from './state';
 import { equalTranslation } from './translation';
 
 export function placementMoved(state: ViewerState, previous: ViewerState): boolean {
-  return state.modelPlacement.frameKey !== previous.modelPlacement.frameKey || [...state.models.keys()].some((id) => !equalTranslation(
+  return state.modelPlacement.realignedFrameKey !== previous.modelPlacement.realignedFrameKey || [...state.models.keys()].some((id) => !equalTranslation(
     displayedTranslation(state.modelPlacement, id), displayedTranslation(previous.modelPlacement, id)));
 }
 

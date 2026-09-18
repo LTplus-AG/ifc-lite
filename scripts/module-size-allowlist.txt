@@ -72,7 +72,6 @@
    418 apps/viewer/src/components/viewer/chat/ExecutableCodeBlock.tsx
   1802 apps/viewer/src/components/viewer/ChatPanel.tsx
   1303 apps/viewer/src/components/viewer/ClashPanel.tsx
-   410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
   1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
@@ -133,7 +132,7 @@
    461 apps/viewer/src/hooks/useAnnotation2D.ts
    764 apps/viewer/src/hooks/useBCF.ts
   1358 apps/viewer/src/hooks/useClash.ts
-   482 apps/viewer/src/hooks/useCompare.ts
+   472 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
   1226 apps/viewer/src/hooks/useIDS.ts
@@ -145,7 +144,6 @@
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
-   441 apps/viewer/src/lib/compare/buildFingerprints.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts
    501 apps/viewer/src/lib/geo/cesium-bridge.ts
    461 apps/viewer/src/lib/geo/custom-basemap.ts
@@ -277,7 +275,7 @@
    484 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts
    544 packages/mcp/src/server.ts
-   476 packages/mcp/src/tools/diff-fingerprints.ts
+   439 packages/mcp/src/tools/diff-fingerprints.ts
    470 packages/mcp/src/tools/layer-review.ts
    483 packages/mcp/src/tools/mutate.ts
    648 packages/mcp/src/tools/query.ts
@@ -308,7 +306,7 @@
    529 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3723 packages/renderer/src/index.ts
+  3732 packages/renderer/src/index.ts
    756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    475 packages/renderer/src/pointcloud/point-cloud-renderer.ts
@@ -316,7 +314,7 @@
    467 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4211 packages/renderer/src/scene.ts
+  4234 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts
@@ -375,4 +373,3 @@
    504 scripts/test-geometry-regression.mjs
   2165 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs
-   467 scripts/xmatch/score.mjs

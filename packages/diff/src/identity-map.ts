@@ -22,7 +22,7 @@
  * must not fork.
  */
 
-import type { ContentMatch, ContentMatchKind } from './types.js';
+import type { ContentMatch, ContentMatchKind, SuccessorClaim } from './types.js';
 
 /**
  * One identity claim: "the entity known as {@link base} in the base revision is
@@ -54,7 +54,7 @@ export interface IdentityMapEntry {
  * content-derived identity *fallback*. That is a different claim from this one
  * and recording both as `"derived"` would erase the distinction, so these
  * entries name their evidence: the reason is `content-match:renamed`,
- * `content-match:moved`, or `content-match:reshaped`.
+ * `content-match:moved`, `content-match:reshaped` or `content-match:respecified`.
  */
 export const CONTENT_MATCH_REASON_PREFIX = 'content-match:';
 
@@ -76,6 +76,7 @@ const CLAIMABLE_KINDS: ReadonlySet<ContentMatchKind> = new Set<ContentMatchKind>
   'renamed',
   'moved',
   'reshaped',
+  'respecified',
 ]);
 
 /**
@@ -129,6 +130,64 @@ export function identityMapFromContentMatches<TRef>(
     // identity map is a reviewed artifact that should not carry noise.
     if (base === here) continue;
     entries.push({ base, here, reason: `${CONTENT_MATCH_REASON_PREFIX}${match.kind}` });
+  }
+  return entries;
+}
+
+/**
+ * Prefix on every {@link IdentityMapEntry.reason} minted from an ACCEPTED
+ * successor claim: `successor:footprint` or `successor:position`. Distinct
+ * from {@link CONTENT_MATCH_REASON_PREFIX} so a filter can tell an
+ * engine-committed pairing from a heuristic one a human accepted.
+ */
+export const SUCCESSOR_REASON_PREFIX = 'successor:';
+
+/**
+ * Reason for an entry a human minted out of a group the engine reported as
+ * `ambiguous` / `duplicated` / `deduplicated`. Never `content-match:ambiguous`
+ * — that would record an engine-committed pairing where there was none.
+ */
+export const ACCEPTED_AMBIGUOUS_REASON = 'accepted:ambiguous';
+
+/**
+ * Derive identity-map entries from successor claims a caller ACCEPTED
+ * (issue #4955). The engine never calls this on its own output: a successor
+ * claim is a suggestion, and only a human turns it into identity
+ * (`04-identity.md` §4.5).
+ *
+ * Every claim is 1:1 by construction. A self-claim is dropped. A `here` that
+ * two accepted claims name for different `base`s yields NO entry at all — the
+ * same contradiction the sidecar refuses at parse, refused here so a
+ * `createIdentityMapSidecar` call downstream does not throw on an artifact a
+ * UI assembled from clicks. Two `here`s on one `base` are left in, as the
+ * sidecar leaves them, for `resolveKeyAliases` to judge against the models.
+ */
+export function identityMapFromSuccessors<TRef>(
+  accepted: Iterable<SuccessorClaim<TRef>> | undefined,
+): IdentityMapEntry[] {
+  if (!accepted) return [];
+  const basesByHere = new Map<string, Set<string>>();
+  const claims: SuccessorClaim<TRef>[] = [];
+  for (const claim of accepted) {
+    const base = claim.base.key;
+    const here = claim.head.key;
+    if (base === here) continue;
+    let bases = basesByHere.get(here);
+    if (!bases) basesByHere.set(here, (bases = new Set()));
+    bases.add(base);
+    claims.push(claim);
+  }
+  const entries: IdentityMapEntry[] = [];
+  const seen = new Set<string>();
+  for (const claim of claims) {
+    const base = claim.base.key;
+    const here = claim.head.key;
+    if ((basesByHere.get(here)?.size ?? 0) > 1) continue;
+    // NUL separator, as everywhere else in this package.
+    const signature = base + '\u0000' + here;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    entries.push({ base, here, reason: SUCCESSOR_REASON_PREFIX + claim.confidence });
   }
   return entries;
 }

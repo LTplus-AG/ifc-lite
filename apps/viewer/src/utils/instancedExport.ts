@@ -49,6 +49,19 @@ export interface InstancedModelRange {
   /** `FederatedModel.maxExpressId` — the highest LOCAL id in this model, so the
    *  global-id upper bound is `idOffset + maxExpressId`. */
   maxExpressId: number;
+  /**
+   * This model's OWN renderer model index (`modelIndices(state.models).get(modelId)`),
+   * when known. `getAllInstancedMeshData()`'s pieces each carry the renderer
+   * `modelIndex` of the template they were materialized from (#4890 review):
+   * a collab-joined model and a normally loaded model CAN share an
+   * overlapping global-id range (the comment above already warns of this),
+   * and the id-range filter alone would then leak one model's occurrences
+   * into the other's export/index. Passing this narrows the filter with an
+   * exact-owner check; omitting it leaves the id-range filter as the sole
+   * check, exactly as before — never a behavior change for a caller with no
+   * renderer index to give.
+   */
+  rendererModelIndex?: number;
 }
 
 export function withInstancedMeshes(
@@ -60,7 +73,8 @@ export function withInstancedMeshes(
   const all = scene?.getAllInstancedMeshData() ?? [];
   const instanced = modelRange
     ? all.filter(
-        (m) => m.expressId > modelRange.idOffset && m.expressId <= modelRange.idOffset + modelRange.maxExpressId,
+        (m) => m.expressId > modelRange.idOffset && m.expressId <= modelRange.idOffset + modelRange.maxExpressId
+          && (modelRange.rendererModelIndex === undefined || m.modelIndex === modelRange.rendererModelIndex),
       )
     : all;
   if (instanced.length === 0) return geometryResult;

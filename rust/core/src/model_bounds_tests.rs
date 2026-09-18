@@ -161,27 +161,28 @@ fn test_precision_preserved_with_rtc() {
     assert!(error_rtc < error_direct * 0.1, "RTC must improve precision");
 }
 
-/// The 10 km gate is a METRE threshold applied to FILE-unit samples, so it
-/// must scale before deciding. A kilometre-unit model 5 000 km from the
-/// origin reads `5000 < 10000` on the raw values and skipped the rebase,
-/// while the same geometry declared in metres shifted. Scaling the result
-/// afterwards (what the caller did) cannot undo a gate that already said no.
+/// The 1 km gate (#4934, was 10 km) is a METRE threshold applied to
+/// FILE-unit samples, so it must scale before deciding. A kilometre-unit
+/// model 500 000 km from the origin reads `500 < 1000` on the raw values
+/// and skipped the rebase, while the same geometry declared in metres
+/// shifted. Scaling the result afterwards (what the caller did) cannot undo
+/// a gate that already said no.
 #[test]
 fn large_coordinate_gate_scales_file_units_to_metres_before_deciding() {
     // Identical raw samples; only the declared unit differs.
     let mut bounds = ModelBounds::new();
-    bounds.expand(5000.0, 5000.0, 0.0);
-    bounds.expand(5000.1, 5000.1, 0.01);
+    bounds.expand(500.0, 500.0, 0.0);
+    bounds.expand(500.1, 500.1, 0.01);
 
-    // Metres: 5 km out, under the gate.
+    // Metres: 500 m out, under the gate.
     assert!(!bounds.has_large_coordinates(1.0));
     assert_eq!(bounds.rtc_offset(1.0), Some(RtcVerdict::Small));
 
-    // Kilometres: 5 000 km out, must shift, and the offset is in metres.
+    // Kilometres: 500 000 km out, must shift, and the offset is in metres.
     assert!(bounds.has_large_coordinates(1000.0));
     let (x, y, z) = bounds.rtc_offset(1000.0).expect("bounds contain points").offset();
-    assert!((x - 5_000_050.0).abs() < 1e-6, "x offset in metres, got {x}");
-    assert!((y - 5_000_050.0).abs() < 1e-6, "y offset in metres, got {y}");
+    assert!((x - 500_050.0).abs() < 1e-6, "x offset in metres, got {x}");
+    assert!((y - 500_050.0).abs() < 1e-6, "y offset in metres, got {y}");
     assert!((z - 5.0).abs() < 1e-6, "z offset in metres, got {z}");
 }
 
@@ -231,17 +232,45 @@ END-ISO-10303-21;
     assert_eq!(m.centroid(), u.centroid());
 }
 
-/// #4643: bounds whose corner is past 10 km but whose centre is not still
-/// report `Large` with that centre. Deciding on the centre's own magnitude (as
-/// the selector briefly did) answered "small" here and cast 15 km coordinates
-/// straight to f32.
+/// #4643 (threshold lowered to 1 km by #4934): bounds whose corner is past
+/// the gate but whose centre is not still report `Large` with that centre.
+/// Deciding on the centre's own magnitude (as the selector briefly did)
+/// answered "small" here and cast 1.5 km coordinates straight to f32.
 #[test]
 fn a_large_corner_with_an_in_threshold_centre_is_still_large() {
     let mut bounds = ModelBounds::new();
-    bounds.expand(2_000.0, 0.0, 0.0);
-    bounds.expand(15_000.0, 0.0, 0.0);
+    bounds.expand(200.0, 0.0, 0.0);
+    bounds.expand(1_500.0, 0.0, 0.0);
     assert_eq!(
         bounds.rtc_offset(1.0),
-        Some(RtcVerdict::Large { anchor: (8_500.0, 0.0, 0.0) })
+        Some(RtcVerdict::Large { anchor: (850.0, 0.0, 0.0) })
     );
+}
+
+/// #4934: the reported failure. A survey-grid model whose bbox sits
+/// 6.2-6.33 km out (the issue's coordinates) must get an RTC anchor — at the
+/// old 10 km line this whole band cast straight to f32 with a ~0.26-0.5 mm
+/// ULP, visible as z-fighting at flush joins.
+#[test]
+fn issue_4934_survey_grid_band_gets_an_rtc_anchor() {
+    let mut bounds = ModelBounds::new();
+    bounds.expand(6_200.0, -3.36, -7_788.45);
+    bounds.expand(6_330.0, 27.68, -7_731.68);
+    assert!(bounds.has_large_coordinates(1.0));
+    let (x, y, z) = bounds.rtc_offset(1.0).expect("bounds contain points").offset();
+    assert!((x - 6_265.0).abs() < 1e-9, "x anchor, got {x}");
+    assert!((y - 12.16).abs() < 1e-9, "y anchor, got {y}");
+    assert!((z - -7_760.065).abs() < 1e-9, "z anchor, got {z}");
+}
+
+/// #4934: a millimetre-scale model (25 m footprint) must stay `Small` after
+/// the threshold lowered to 1 km — the fix narrows the untreated band, it
+/// does not start re-basing ordinary building-scale models.
+#[test]
+fn issue_4934_mm_scale_model_still_small() {
+    let mut bounds = ModelBounds::new();
+    bounds.expand(0.0, 0.0, 0.0);
+    bounds.expand(25.0, 25.0, 10.0);
+    assert!(!bounds.has_large_coordinates(1.0));
+    assert_eq!(bounds.rtc_offset(1.0), Some(RtcVerdict::Small));
 }

@@ -5,56 +5,44 @@
 /**
  * Which models a whole-model rotation must refuse, and why.
  *
- * A rotation is baked into `geometryResult.meshes`. Two kinds of geometry never
- * pass through there: a pointcloud (a renderer handle carrying only a
- * translation) and GPU-instanced occurrences (#1912), which the renderer draws
- * from its own instance data. Rotating either would turn part of the model and
- * leave the rest behind, so the command is refused instead of half-applied.
- * Rotating instanced geometry is tracked as a follow-up.
+ * A rotation is baked into `geometryResult.meshes`, and — since #4890 — into
+ * the renderer's GPU-instanced occurrence transforms too
+ * (`Renderer.setModelRotation`, pushed by `useModelRotationSync.ts`'s bake).
+ * A pointcloud never passes through either path — a renderer handle carrying
+ * only a translation — so rotating one would turn part of the selection and
+ * leave the cloud behind, and the command is refused instead of half-applied.
+ *
+ * A model whose KIND is not yet knowable is refused too, for a narrower
+ * reason: a primary LAS/E57 mid-ingest reports `loadState:
+ * 'streaming-geometry'` but has no `pointCloudHandleId` until finalization
+ * (#4890 review) — with no such refusal, a heading committed during that
+ * window is either silently dropped once the pointcloud handle appears, or
+ * lands on a model that can never turn. This must NOT catch an
+ * instanced-but-streaming IFC model: instancing is knowable well before
+ * loading finishes (`instancedGeometryHashes`/`instancedGeometryAabbs`
+ * populate per shard), and refusing it would defeat the point of #4890.
  */
 
 import type { ViewerState } from '@/store';
-import { hasInstancedShards } from '@/store/instancedShardModels';
-import { modelIndices } from './model-indices.js';
 
 export const POINTCLOUD_ROTATION_REFUSAL = 'Pointclouds cannot be rotated. Select only IFC models to rotate.';
-export const INSTANCED_ROTATION_REFUSAL =
-  'Models with GPU-instanced geometry cannot be rotated yet. Select only models without instanced geometry to rotate.';
 export const LOADING_ROTATION_REFUSAL = 'Wait for the model to finish loading before rotating it.';
 
-type RefusalState = Pick<ViewerState, 'models' | 'pendingInstancedShards'>;
+type RefusalState = Pick<ViewerState, 'models'>;
 
-/** The renderer's instanced-template owners, registered by the viewport side.
- * Injected rather than imported: this module is reached from a store slice, and
- * importing the renderer accessor there closes an import cycle back into the
- * store while it is still initialising. */
-let instancedOwners: () => readonly number[] | null = () => null;
-export function setInstancedModelIndexSource(source: () => readonly number[] | null): () => void {
-  instancedOwners = source;
-  return () => { if (instancedOwners === source) instancedOwners = () => null; };
-}
-
-/**
- * True when any of the model's geometry is drawn GPU-instanced. Four signals,
- * because each covers a moment the others miss: the instanced-only entity maps
- * on a finished geometry, shard bytes queued but not yet uploaded, shards
- * already drained into renderer buffers, and the renderer's own templates
- * (which also catch an entity only partly instanced).
- *
- * The drained-shard signal is the SAME register the federation RTC convergence
- * refuses on (`store/instancedShardModels.ts`, #4897). The two must agree: a
- * model the convergence will not move but a rotation will turn would end up
- * carrying a baked heading in a frame the rest of the federation has left.
- */
-export function modelHasInstancedGeometry(state: RefusalState, modelId: string): boolean {
-  const geometry = state.models.get(modelId)?.geometryResult;
-  if ((geometry?.instancedGeometryHashes?.size ?? 0) > 0 || (geometry?.instancedGeometryAabbs?.size ?? 0) > 0) return true;
-  if (state.pendingInstancedShards?.some((shard) => shard.modelId === modelId)) return true;
-  if (hasInstancedShards(modelId)) return true;
-  const owners = instancedOwners();
-  if (!owners || owners.length === 0) return false;
-  const index = modelIndices(state.models).get(modelId);
-  return index !== undefined && owners.includes(index);
+/** True only while NOTHING has yet told us what `modelId` even is: still
+ * streaming (or not started), no pointcloud handle, and no geometry signal
+ * of any kind — no flat mesh, no instanced hash, no instanced box. Any one of
+ * those settles the question and this returns false, streaming or not. */
+function kindUnknown(state: RefusalState, modelId: string): boolean {
+  const model = state.models.get(modelId);
+  if (!model || (model.loadState !== 'pending' && model.loadState !== 'streaming-geometry')) return false;
+  if (model.pointCloudHandleId !== undefined) return false;
+  const geometry = model.geometryResult;
+  if (geometry && (geometry.meshes.length > 0
+    || (geometry.instancedGeometryHashes?.size ?? 0) > 0
+    || (geometry.instancedGeometryAabbs?.size ?? 0) > 0)) return false;
+  return true;
 }
 
 /** The reason rotating `ids` must be refused, or null when it may proceed. One
@@ -62,11 +50,6 @@ export function modelHasInstancedGeometry(state: RefusalState, modelId: string):
 export function rotationRefusal(state: RefusalState, ids: Iterable<string>): string | null {
   const list = [...ids];
   if (list.some((id) => state.models.get(id)?.pointCloudHandleId !== undefined)) return POINTCLOUD_ROTATION_REFUSAL;
-  // Instancing is only known once shards arrive, so a streaming model cannot
-  // yet be shown to be safe.
-  if (list.some((id) => ['pending', 'streaming-geometry'].includes(state.models.get(id)?.loadState ?? ''))) {
-    return LOADING_ROTATION_REFUSAL;
-  }
-  if (list.some((id) => modelHasInstancedGeometry(state, id))) return INSTANCED_ROTATION_REFUSAL;
+  if (list.some((id) => kindUnknown(state, id))) return LOADING_ROTATION_REFUSAL;
   return null;
 }

@@ -12,6 +12,20 @@ type Drawable = { origin?: [number, number, number]; bounds?: Bounds };
 type Bounds = { min: [number, number, number]; max: [number, number, number] };
 const ZERO: Offset = [0, 0, 0];
 
+/** A model's whole-model yaw (#4890): `angle` radians about the renderer
+ * vertical (+Y) axis — the Y-up image of an IFC yaw about +Z, the SAME
+ * convention `Scene.rotateMeshesForEntity` already uses — through the render-
+ * frame pivot `(px, *, pz)` (Y is the rotation axis and unused). `null` means
+ * no rotation; `setYaw` canonicalizes an explicit zero angle to `null` so a
+ * cleared rotation and a never-set one compare equal and restore bit-exact. */
+export interface ModelYaw { angle: number; px: number; pz: number }
+
+function yawEqual(a: ModelYaw | null, b: ModelYaw | null): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.angle === b.angle && a.px === b.px && a.pz === b.pz;
+}
+
 /** Validate before storing an offset, including when no drawables exist yet. */
 export function assertModelTranslation(modelIndex: number, offset: Offset): void {
   if (!Number.isSafeInteger(modelIndex) || modelIndex < 0 || offset.length !== 3 || !offset.every((value) => Number.isFinite(value) && Number.isFinite(Math.fround(value)))) {
@@ -48,9 +62,10 @@ interface BatchPlacement {
 export class ModelTranslations {
   private authored = new WeakMap<Mesh, { base: number[]; written: number[]; offset: Offset; bounds?: Bounds; writtenBounds?: Bounds }>();
   private offsets = new Map<number, Offset>();
+  private yaws = new Map<number, ModelYaw>();
   private meshes = new WeakMap<MeshData, MeshPlacement>();
   private batches = new WeakMap<Drawable, BatchPlacement>();
-  private instances = new WeakMap<ArrayBuffer, { base: Float64Array; written: Float32Array; offset: Offset }>();
+  private instances = new WeakMap<ArrayBuffer, { base: Float64Array; written: Float32Array; offset: Offset; yaw: ModelYaw | null }>();
   private releasedBounds = new WeakMap<BoundingBox, Bounds>();
   private releasedEntities = new Map<number, Map<number, BoundingBox>>();
 
@@ -60,6 +75,33 @@ export class ModelTranslations {
     assertModelTranslation(modelIndex, offset);
     if (this.get(modelIndex).every((value, i) => value === offset[i])) return false;
     this.offsets.set(modelIndex, [...offset]);
+    return true;
+  }
+
+  /** A copy, never the stored object: `placeInstances` compares this against
+   * its own retained `entry.yaw` by value, so a caller mutating a borrowed
+   * yaw in place would make a later placement wrongly see "unchanged" and
+   * skip rewriting the instance buffer, leaving the render stale. */
+  getYaw(modelIndex = 0): ModelYaw | null {
+    const yaw = this.yaws.get(modelIndex);
+    return yaw ? { ...yaw } : null;
+  }
+
+  /** `null` clears the model's rotation; an explicit zero angle is stored the
+   * same way, so both restore the pristine instance transform bit-exactly.
+   * The pivot is validated the same way `assertModelTranslation` validates an
+   * offset: `Math.fround`-representable, not merely finite — `placeInstances`
+   * writes it through `DataView.setFloat32`, so a pivot like `1e100` would
+   * otherwise round to `Infinity` and poison every occurrence's bounds. */
+  setYaw(modelIndex: number, yaw: ModelYaw | null): boolean {
+    if (yaw && (!Number.isFinite(yaw.angle)
+      || !Number.isFinite(yaw.px) || !Number.isFinite(Math.fround(yaw.px))
+      || !Number.isFinite(yaw.pz) || !Number.isFinite(Math.fround(yaw.pz)))) {
+      throw new Error('Model rotation requires a finite angle and pivot.');
+    }
+    const next = yaw && yaw.angle !== 0 ? { angle: yaw.angle, px: yaw.px, pz: yaw.pz } : null;
+    if (yawEqual(this.getYaw(modelIndex), next)) return false;
+    if (next) this.yaws.set(modelIndex, next); else this.yaws.delete(modelIndex);
     return true;
   }
 
@@ -204,34 +246,83 @@ export class ModelTranslations {
   }
 
   /** Only occurrence transforms change; template vertex/index buffers never do.
-   * Keep a double baseline so undo never subtracts a rounded GPU translation. */
+   * Keep a double f64 baseline so undo never subtracts a rounded GPU value.
+   *
+   * The base is the pristine 3x4 (columns 0/1/2 — the linear part — plus the
+   * translation column; the mat4's bottom row is always [0,0,0,1] and is
+   * never touched), captured the first time an occurrence buffer is seen.
+   * Every call writes `R_yaw · base + delta`, never the previous write, so
+   * repeated yaw/translate previews cannot accumulate drift: the linear
+   * columns rotate as directions (`x' = x·cos + z·sin`, `z' = -x·sin + z·cos`,
+   * same sign as `Scene.rotateMeshesForEntity`), the translation column
+   * rotates about the pivot like a point (`t' = pivot + R(t - pivot) + delta`).
+   * An intervening translation-only edit into bytes 48..59 (exploded-storey
+   * lift, `translateInstancedEntity`) is folded back into `base` first, by
+   * undoing the OLD yaw that was in effect when it was written — a
+   * non-translation edit into bytes 0..47 cannot be folded this way and is a
+   * STOP condition (see plan #4890 §5). */
   placeInstances(data: ArrayBuffer, modelIndex: number, stride: number): boolean {
-    const delta = this.get(modelIndex), count = data.byteLength / stride;
+    const delta = this.get(modelIndex), yaw = this.getYaw(modelIndex), count = data.byteLength / stride;
     const view = new DataView(data);
     let entry = this.instances.get(data);
     if (!entry) {
-      const base = new Float64Array(count * 3), written = new Float32Array(count * 3);
-      for (let i = 0; i < count; i++) for (let axis = 0; axis < 3; axis++) {
-        base[i * 3 + axis] = written[i * 3 + axis] = view.getFloat32(i * stride + 48 + axis * 4, true);
+      const base = new Float64Array(count * 12), written = new Float32Array(count * 12);
+      for (let i = 0; i < count; i++) for (let c = 0; c < 4; c++) for (let a = 0; a < 3; a++) {
+        const j = i * 12 + c * 3 + a;
+        base[j] = written[j] = view.getFloat32(i * stride + c * 16 + a * 4, true);
       }
-      entry = { base, written, offset: ZERO };
+      entry = { base, written, offset: ZERO, yaw: null };
       this.instances.set(data, entry);
     }
-    if (entry.offset.every((value, i) => value === delta[i])) return false;
-    for (let i = 0; i < count; i++) for (let axis = 0; axis < 3; axis++) {
-      const j = i * 3 + axis, byte = i * stride + 48 + axis * 4;
-      // Preserve intervening element edits / exploded-storey offsets.
-      entry.base[j] += view.getFloat32(byte, true) - entry.written[j];
-      const value = entry.base[j] + delta[axis];
-      view.setFloat32(byte, value, true);
-      entry.written[j] = value;
+    if (entry.offset.every((value, i) => value === delta[i]) && yawEqual(entry.yaw, yaw)) return false;
+
+    const oldCos = entry.yaw ? Math.cos(entry.yaw.angle) : 1, oldSin = entry.yaw ? Math.sin(entry.yaw.angle) : 0;
+    const newCos = yaw ? Math.cos(yaw.angle) : 1, newSin = yaw ? Math.sin(yaw.angle) : 0;
+    const newPx = yaw?.px ?? 0, newPz = yaw?.pz ?? 0;
+
+    for (let i = 0; i < count; i++) {
+      const b0 = i * 12, tByte = i * stride + 48;
+      // Fold an intervening translation edit: undo the OLD yaw's rotation on
+      // the world-space delta before adding it back into the pristine base.
+      const diffX = view.getFloat32(tByte, true) - entry.written[b0 + 9];
+      const diffY = view.getFloat32(tByte + 4, true) - entry.written[b0 + 10];
+      const diffZ = view.getFloat32(tByte + 8, true) - entry.written[b0 + 11];
+      entry.base[b0 + 9] += diffX * oldCos - diffZ * oldSin;
+      entry.base[b0 + 10] += diffY;
+      entry.base[b0 + 11] += diffX * oldSin + diffZ * oldCos;
+
+      // Linear columns (0, 1, 2): pure directions, rotate about no pivot.
+      for (let c = 0; c < 3; c++) {
+        const j = b0 + c * 3, bx = entry.base[j], by = entry.base[j + 1], bz = entry.base[j + 2];
+        const nx = yaw ? bx * newCos + bz * newSin : bx;
+        const nz = yaw ? -bx * newSin + bz * newCos : bz;
+        const byte = i * stride + c * 16;
+        view.setFloat32(byte, nx, true);
+        view.setFloat32(byte + 4, by, true);
+        view.setFloat32(byte + 8, nz, true);
+        entry.written[j] = nx; entry.written[j + 1] = by; entry.written[j + 2] = nz;
+      }
+      // Translation column: rotate the pristine point about the pivot, then
+      // add the current model offset — order matches `pivotInModelFrame`
+      // (rotate about the pivot, then translate).
+      const btx = entry.base[b0 + 9], bty = entry.base[b0 + 10], btz = entry.base[b0 + 11];
+      const dx = btx - newPx, dz = btz - newPz;
+      const ttx = (yaw ? newPx + dx * newCos + dz * newSin : btx) + delta[0];
+      const tty = bty + delta[1];
+      const ttz = (yaw ? newPz - dx * newSin + dz * newCos : btz) + delta[2];
+      view.setFloat32(tByte, ttx, true);
+      view.setFloat32(tByte + 4, tty, true);
+      view.setFloat32(tByte + 8, ttz, true);
+      entry.written[b0 + 9] = ttx; entry.written[b0 + 10] = tty; entry.written[b0 + 11] = ttz;
     }
     entry.offset = delta;
+    entry.yaw = yaw;
     return true;
   }
 
   clear(): void {
     this.offsets.clear();
+    this.yaws.clear();
     this.authored = new WeakMap();
     this.meshes = new WeakMap();
     this.batches = new WeakMap();

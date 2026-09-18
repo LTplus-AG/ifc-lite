@@ -40,8 +40,8 @@ import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
-import { translateSceneModel, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
-import { ModelTranslations } from './model-translation.js';
+import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
+import { ModelTranslations, type ModelYaw } from './model-translation.js';
 import { extractEntityFromMergedMesh } from './merged-mesh-extract.js';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
@@ -1680,19 +1680,42 @@ export class Scene {
     this.meshes = kept;
   }
 
+  /** Shared `TranslationScene` view for `setModelTranslation`/`setModelRotation`
+   *  (#4890) — the placement helpers in scene-model-translation.ts read scene
+   *  state through this narrow interface instead of the full `Scene`. */
+  private translationScope() {
+    const batches = this.finalizeInProgress ? [...new Set([...this.batchedMeshes,
+      ...[...this.buckets.values()].flatMap((bucket) => bucket.batchedMesh ? [bucket.batchedMesh] : [])])] : this.batchedMeshes;
+    return { translations: this.modelTranslations, pieces: this.meshDataMap,
+      bounds: this.boundingBoxes, batches, meshes: this.meshes, overrides: this.overrideBatches, textured: this.texturedMeshes,
+      templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
+      device: this.instancedDevice, evictHighlight: (id: number) => this.evictHighlightMeshes(id, true),
+      clearPartial: () => this.dropAllPartialCaches(),
+      unionBounds: (id: number, view: DataView, offset: number, min: [number, number, number], max: [number, number, number]) =>
+        this.unionInstancedWorldAabb(id, view, offset, ...min, ...max) };
+  }
+
+  private dropOrphanedSuppressedBounds(): void {
+    for (const id of this.instanceSuppression.suppressedIds()) if (!this.meshDataMap.has(id)) this.boundingBoxes.delete(id);
+  }
+
   /** Absolute workspace translation, renderer Y-up metres (#4226). */
   getModelTranslation(modelIndex: number) { return this.modelTranslations.get(modelIndex); }
   setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): boolean {
-    const batches = this.finalizeInProgress ? [...new Set([...this.batchedMeshes,
-      ...[...this.buckets.values()].flatMap((bucket) => bucket.batchedMesh ? [bucket.batchedMesh] : [])])] : this.batchedMeshes;
-    const changed = translateSceneModel({ translations: this.modelTranslations, pieces: this.meshDataMap,
-      bounds: this.boundingBoxes, batches, meshes: this.meshes, overrides: this.overrideBatches, textured: this.texturedMeshes,
-      templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
-      device: this.instancedDevice, evictHighlight: (id) => this.evictHighlightMeshes(id, true),
-      clearPartial: () => this.dropAllPartialCaches(),
-      unionBounds: (id, view, offset, min, max) => this.unionInstancedWorldAabb(id, view, offset, ...min, ...max),
-    }, modelIndex, translation);
-    for (const id of this.instanceSuppression.suppressedIds()) if (!this.meshDataMap.has(id)) this.boundingBoxes.delete(id);
+    const changed = translateSceneModel(this.translationScope(), modelIndex, translation);
+    this.dropOrphanedSuppressedBounds();
+    return changed;
+  }
+
+  /** Absolute workspace yaw, renderer Y-up radians about the render-frame
+   *  pivot `(pivot[0], *, pivot[2])` — the GPU-instanced half of a whole-model
+   *  rotation (#4890); `angle === 0` clears it. Flat/authored/batched geometry
+   *  is rotated by the viewer's bake, not here. */
+  getModelRotation(modelIndex: number): ModelYaw | null { return this.modelTranslations.getYaw(modelIndex); }
+  setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): boolean {
+    const yaw: ModelYaw | null = angle === 0 ? null : { angle, px: pivot[0], pz: pivot[2] };
+    const changed = rotateSceneModelInstances(this.translationScope(), modelIndex, yaw);
+    this.dropOrphanedSuppressedBounds();
     return changed;
   }
 

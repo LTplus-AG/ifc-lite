@@ -3,9 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { applyContentMatching } from './content-match.js';
+import { changedComponentKeys } from './content-tiers.js';
 import { geometryEqual, resolveTolerances, resolveUseGeometry } from './geometry-compare.js';
 import { resolveKeyAliases } from './key-aliases.js';
 import { detectSplitMerge } from './split-merge.js';
+import { detectSuccessors } from './successor-match.js';
 import type {
   DiffChangeKind,
   DiffCounts,
@@ -38,20 +40,6 @@ function buildExcludeSet(excludeTypes: Iterable<string> | undefined): Set<string
   return set.size > 0 ? set : null;
 }
 
-/** Union of component keys whose sub-hash differs (one-sided keys count). */
-function changedComponentKeys(
-  base: Record<string, string>,
-  head: Record<string, string>,
-): string[] {
-  const changed: string[] = [];
-  for (const key of Object.keys(base)) {
-    if (base[key] !== head[key]) changed.push(key);
-  }
-  for (const key of Object.keys(head)) {
-    if (!(key in base)) changed.push(key);
-  }
-  return changed.sort();
-}
 
 /**
  * Does `side` carry *any* geometry hash among the entities that actually
@@ -210,7 +198,8 @@ export function diffModels<TRef = unknown>(
   // The content pass inherits the same resolved answer rather than re-deriving
   // one, so a mixed-capability comparison cannot abstain in one pass and not
   // the other.
-  const matched = applyContentMatching(entries, counts, useGeometry, resolveTolerances(options));
+  const tolerances = resolveTolerances(options);
+  const matched = applyContentMatching(entries, counts, useGeometry, tolerances);
   const matchedByKey = new Map<string, DiffEntry<TRef>>();
   for (const entry of matched.entries) matchedByKey.set(entry.key, entry);
 
@@ -236,6 +225,18 @@ export function diffModels<TRef = unknown>(
     // detector executed and found nothing.
     const claims = detectSplitMerge(matched.entries, useGeometry, options);
     if (claims) result.splitMerges = claims;
+  }
+  // The LAST stage (issue #4955), on what split/merge did not bind, so the
+  // nearest piece of a split is never offered as the whole's successor. Same
+  // additive contract, same abstention, same absent-not-empty rule.
+  if (options.detectSuccessors) {
+    const bound = new Set<EntityFingerprint<TRef>>();
+    for (const claim of result.splitMerges ?? []) {
+      bound.add(claim.whole);
+      for (const piece of claim.pieces) bound.add(piece);
+    }
+    const claims = detectSuccessors(matched.entries, useGeometry, bound, options, tolerances);
+    if (claims) result.successors = claims;
   }
   return result;
 }

@@ -29,6 +29,7 @@ import {
   type SplitCandidate,
   type SplitMergeSettings,
 } from './split-merge-lanes.js';
+import { classFamilyResolver } from './class-families.js';
 import { usableAabbOf } from './split-merge-geometry.js';
 import type {
   DiffEntry,
@@ -76,6 +77,7 @@ export function detectSplitMerge<TRef>(
 ): SplitMergeClaim<TRef>[] | undefined {
   if (!useGeometry) return undefined;
   const settings = resolveSplitMergeSettings(options);
+  const familyOf = classFamilyResolver(options.classFamilies);
 
   const added = new Map<string, SplitCandidate<TRef>[]>();
   const deleted = new Map<string, SplitCandidate<TRef>[]>();
@@ -88,22 +90,25 @@ export function detectSplitMerge<TRef>(
     const aabb = usableAabbOf(fingerprint.aabb);
     if (!aabb) continue;
     const side = entry.state === 'added' ? added : deleted;
-    const bucket = side.get(fingerprint.ifcType);
+    const family = familyOf(fingerprint.ifcType);
+    const bucket = side.get(family);
     if (bucket) bucket.push({ fingerprint, aabb });
-    else side.set(fingerprint.ifcType, [{ fingerprint, aabb }]);
+    else side.set(family, [{ fingerprint, aabb }]);
   }
 
   const candidates: SplitMergeClaim<TRef>[] = [];
-  // Per `ifcType`, in BOTH directions. A split's whole is the deleted entity, a
-  // merge's is the added one; everything downstream reads `whole` and `pieces`
-  // and never has to know which way round it was found. Cross-class splits are
-  // invisible by construction and named as a limitation rather than papered
-  // over: an `IfcWall` becoming three `IfcWallStandardCase`s is not seen.
-  for (const [ifcType, wholes] of deleted) {
-    collect(candidates, wholes, added.get(ifcType), 'split', settings);
+  // Per class FAMILY (issue #4955), in BOTH directions. A split's whole is the
+  // deleted entity, a merge's is the added one; everything downstream reads
+  // `whole` and `pieces` and never has to know which way round it was found.
+  // Bucketing by family is what lets an `IfcWall` republished as
+  // `IfcWallStandardCase` pieces or `IfcBuildingElementPart` layers be seen;
+  // a split across FAMILIES (a wall becoming a covering) stays invisible by
+  // construction and is named as a limitation rather than papered over.
+  for (const [family, wholes] of deleted) {
+    collect(candidates, wholes, added.get(family), 'split', settings);
   }
-  for (const [ifcType, wholes] of added) {
-    collect(candidates, wholes, deleted.get(ifcType), 'merge', settings);
+  for (const [family, wholes] of added) {
+    collect(candidates, wholes, deleted.get(family), 'merge', settings);
   }
 
   return resolveClaimConflicts(candidates);

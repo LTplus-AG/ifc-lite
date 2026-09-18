@@ -81,6 +81,26 @@ export function componentsAgree<TRef>(entities: readonly EntityFingerprint<TRef>
   return true;
 }
 
+/**
+ * Component keys whose sub-hash differs between two component maps, sorted. A
+ * key present on one side only counts as changed. Shared by the key-based pass
+ * (`DiffEntry.changedComponents`) and the geometry-only stage
+ * (`ContentMatch.changedComponents`) so the two report the same vocabulary.
+ */
+export function changedComponentKeys(
+  base: Record<string, string>,
+  head: Record<string, string>,
+): string[] {
+  const changed: string[] = [];
+  for (const key of Object.keys(base)) {
+    if (base[key] !== head[key]) changed.push(key);
+  }
+  for (const key of Object.keys(head)) {
+    if (!(key in base)) changed.push(key);
+  }
+  return changed.sort();
+}
+
 export function fingerprintsOf<TRef>(
   ...groups: readonly (readonly Candidate<TRef>[])[]
 ): EntityFingerprint<TRef>[] {

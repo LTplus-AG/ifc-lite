@@ -27,6 +27,7 @@
 
 import { positiveOr } from './geometry-compare.js';
 import {
+  anyCoincident,
   boxUnion,
   boxWithin,
   buildBoxGrid,
@@ -35,8 +36,10 @@ import {
   extentCoverage,
   sortedExtents,
 } from './split-merge-geometry.js';
+import { claimOf, type SplitCandidate } from './split-merge-claim.js';
 import { findSingleInterloper, judgeVolumes, usableVolume } from './split-merge-evidence.js';
-import type { EntityAabb, EntityFingerprint, SplitMergeClaim, SplitMergeKind } from './types.js';
+export type { SplitCandidate } from './split-merge-claim.js';
+import type { EntityAabb, SplitMergeClaim, SplitMergeKind } from './types.js';
 
 /** Defaults for {@link SplitMergeSettings}; see `DiffOptions` for the rationale. */
 export const DEFAULT_SPLIT_VOLUME_TOLERANCE = 0.03;
@@ -115,51 +118,6 @@ export function resolveSplitMergeSettings(options: {
   };
 }
 
-/** One residue entity that has a box the engine can use. */
-export interface SplitCandidate<TRef> {
-  fingerprint: EntityFingerprint<TRef>;
-  aabb: EntityAabb;
-}
-
-/** Deterministic piece order inside a claim: by key, then by data hash for the
- *  pathological case of a model repeating a GlobalId. Code-unit comparison, not
- *  `localeCompare` — see #1987, where locale collation made an ordering depend
- *  on the machine's ICU data. */
-function sortPieces<TRef>(pieces: SplitCandidate<TRef>[]): SplitCandidate<TRef>[] {
-  return [...pieces].sort((a, b) => {
-    const ak = a.fingerprint.key;
-    const bk = b.fingerprint.key;
-    if (ak !== bk) return ak < bk ? -1 : 1;
-    const ad = a.fingerprint.dataHash;
-    const bd = b.fingerprint.dataHash;
-    if (ad !== bd) return ad < bd ? -1 : 1;
-    return 0;
-  });
-}
-
-function claimOf<TRef>(
-  kind: SplitMergeKind,
-  confidence: SplitMergeClaim<TRef>['confidence'],
-  whole: SplitCandidate<TRef>,
-  pieces: SplitCandidate<TRef>[],
-  volumes?: { wholeVolume: number; piecesVolume: number; volumeResidual: number },
-  excluded?: SplitCandidate<TRef>,
-): SplitMergeClaim<TRef> {
-  const claim: SplitMergeClaim<TRef> = {
-    kind,
-    confidence,
-    whole: whole.fingerprint,
-    pieces: sortPieces(pieces).map((piece) => piece.fingerprint),
-  };
-  if (volumes) {
-    claim.wholeVolume = volumes.wholeVolume;
-    claim.piecesVolume = volumes.piecesVolume;
-    claim.volumeResidual = volumes.volumeResidual;
-  }
-  if (excluded) claim.excluded = excluded.fingerprint;
-  return claim;
-}
-
 /**
  * LANE 1 — pieces that stayed inside the whole's own extent.
  *
@@ -199,6 +157,9 @@ export function inPlaceClaims<TRef>(
 }
 
 /** The evidence chain for one whole and the full set of pieces inside it. */
+/** Two pieces overlapping by at least this much are one piece twice. */
+const COINCIDENT_PIECE_IOU = 0.5;
+
 function judgeContainmentSet<TRef>(
   kind: SplitMergeKind,
   whole: SplitCandidate<TRef>,
@@ -255,8 +216,16 @@ function judgeContainmentSet<TRef>(
   }
 
   // `unknown`: a volume was missing somewhere and nothing known contradicted
-  // the candidate. Only here may the boxes speak.
-  if (!extentCoverage(whole.aabb, contained.map((piece) => piece.aabb), pad)) return undefined;
+  // the candidate. Only here may the boxes speak — and two pieces whose boxes
+  // coincide are copies of one thing, not a split of anything (issue #4955,
+  // xmatch finding F5: a `duplicated` group the content pass declined to
+  // pair was being re-read here as an `extent` split, with no volume to
+  // refute it). A volume-verified claim has no such gate: two coincident
+  // pieces that really do sum to the whole are a stranger case than a box can
+  // judge, and the volumes already did.
+  const boxes = contained.map((piece) => piece.aabb);
+  if (anyCoincident(boxes, COINCIDENT_PIECE_IOU)) return undefined;
+  if (!extentCoverage(whole.aabb, boxes, pad)) return undefined;
   return claimOf(kind, 'extent', whole, contained);
 }
 

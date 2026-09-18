@@ -40,7 +40,7 @@ const MODEL_ID = 'm-repositioned';
  * a translation AND a heading, matching the issue's "whether a translation
  * … or a heading" wording. */
 const PLACEMENT: PlacementState = {
-  frameKey: null,
+  realignedFrameKey: null,
   placements: new Map([[MODEL_ID, {
     translation: [10, 5, 0] as Translation,
     rotation: { angle: Math.PI / 2, pivot: [0, 0, 0] as Translation },
@@ -82,7 +82,7 @@ describe('placement/split-cut picks undo the model reposition transform (#4932)'
 
   it('an un-repositioned model (identity placement) is unaffected — the axis swap alone', () => {
     useViewerStore.setState({
-      modelPlacement: { frameKey: null, placements: new Map(), preview: null, undo: [], redo: [], revision: 0 },
+      modelPlacement: { realignedFrameKey: null, placements: new Map(), preview: null, undo: [], redo: [], revision: 0 },
     } as Partial<ReturnType<typeof useViewerStore.getState>>);
     const ifc = rendererPointToIfcStoreyLocal({ x: 3, y: 9, z: -4 }, 'unplaced');
     assert.deepEqual(ifc, [3, 4, 0]);

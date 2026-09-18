@@ -1,0 +1,189 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The geometry-only stage of content matching (issue #4955): pair an entity
+ * that was deleted and redrawn IN THE SAME PLACE WITH THE SAME SHAPE, but whose
+ * data changed.
+ *
+ * Tier 1 in `content-tiers.ts` only fires inside a (`ifcType`, `dataHash`)
+ * bucket. Authoring tools auto-name elements on redraw (`Wall-023` becomes
+ * `Wall-041`, a Revit family instance gets a new element id in its name), so
+ * the redrawn wall lands in a different data bucket from its own previous
+ * revision and never meets it. Its world geometry hash, however, is identical:
+ * same surface, same corners, same absolute position on a 1 mm grid.
+ *
+ * So this stage buckets the residue by (`ifcType`, geometry hash) instead and
+ * retires a bucket that holds exactly one entity per side. It runs BETWEEN tier
+ * 1 and tiers 2–3, not after them: tier 3 (data + nearest centre) is weaker
+ * evidence than an exact world-geometry agreement and would otherwise get first
+ * pick — base D1 (data A at P) and D2 (data A, 3 m away); head D1' (data B at P,
+ * the respecified one) and D2' (data A, moved 0.5 m toward P). Bucketed by data,
+ * D2' is D1's unique nearest and tier 3 would retire D1↔D2' as `moved`, leaving
+ * D1' stranded as `added`. With this stage first, D1↔D1' retires here and the
+ * data bucket is left 1:1 for D2↔D2'.
+ *
+ * ## The guard
+ *
+ * A 64-bit hash agreeing 1:1 within a class is stronger evidence than tier 2's
+ * data hash alone (which already retires), but it is the one destructive path
+ * where `componentsAgree` cannot help — the components differ by definition.
+ * Two collision channels are known, and one check closes both: a usable
+ * bounding box on both sides that agrees in size (`reshapeTolerance`) and
+ * centre (`moveTolerance`).
+ *
+ * - The viewer adapter writes a *placement* string into `geometryHash` for a
+ *   geometry-less product (`worldPlacementFingerprint`), with no `aabb`. Two
+ *   placeholder proxies at the origin share that string and always differ in
+ *   data; without the box requirement they would retire as one element on the
+ *   strength of "both at the origin".
+ * - A raw hash collision between two different shapes is astronomically
+ *   unlikely to also produce the same box.
+ *
+ * The guard cannot reject a true match: identical geometry has an identical
+ * box, and the f32 jitter between two meshings of it (~1e-5 m) is far under
+ * the 1e-3 tolerances.
+ *
+ * The bucket key is `ifcType`, deliberately NOT the class family split/merge
+ * uses: under family bucketing a deleted `IfcWall` and an added
+ * `IfcBuildingElementPart` carrying the wall's exact body would retire as one
+ * identity, and they are not one element.
+ *
+ * An N:N bucket with N > 1 (stacked duplicates, which real models contain) is
+ * reported as an `ambiguous` group and retires nothing. Unlike tier 1's N:N
+ * `renamed` group, the members here differ in data, so the bijection is NOT
+ * indistinguishable and picking one would be a guess.
+ */
+
+import {
+  changedComponentKeys,
+  type Candidate,
+} from './content-tiers.js';
+import {
+  aabbCentre,
+  centreDistance,
+  isUsableAabb,
+  sizeAgrees,
+  type GeometryTolerances,
+} from './geometry-compare.js';
+import type { ContentMatch } from './types.js';
+
+/** One retiring 1:1 result of this stage. */
+export interface RespecifiedPair<TRef> {
+  base: Candidate<TRef>;
+  head: Candidate<TRef>;
+  match: ContentMatch<TRef>;
+}
+
+export interface RespecifiedResult<TRef> {
+  /** Retiring pairs, one match record each. */
+  pairs: RespecifiedPair<TRef>[];
+  /** Non-retiring N:N groups, reported as `ambiguous` / `unresolved`. */
+  groups: ContentMatch<TRef>[];
+}
+
+/** NUL separator, as in `content-match.ts`: an IFC class name never contains one. */
+function geometryBucketKey<TRef>(candidate: Candidate<TRef>): string | undefined {
+  const { fingerprint } = candidate;
+  if (fingerprint.geometryHash === undefined) return undefined;
+  // No box, no candidacy — see "The guard" above. Placement-only fingerprints
+  // carry no `aabb`, which is exactly what keeps them out of this stage.
+  if (!isUsableAabb(fingerprint.aabb)) return undefined;
+  return `${fingerprint.ifcType}\u0000${String(fingerprint.geometryHash)}`;
+}
+
+/** Same box on both sides, within the move/reshape tolerances. */
+function boxesAgree<TRef>(
+  base: Candidate<TRef>,
+  head: Candidate<TRef>,
+  tolerances: GeometryTolerances,
+): boolean {
+  const a = base.fingerprint.aabb;
+  const b = head.fingerprint.aabb;
+  if (!isUsableAabb(a) || !isUsableAabb(b)) return false;
+  if (!sizeAgrees(a, b, tolerances.reshapeTolerance)) return false;
+  return centreDistance(aabbCentre(a), aabbCentre(b)) <= tolerances.moveTolerance;
+}
+
+/**
+ * Geometry-only matching over the residue tier 1 left behind.
+ *
+ * Pure: never mutates its inputs. The caller retires the entries of every
+ * returned pair and leaves the group members exactly where they were.
+ */
+export function matchRespecified<TRef>(
+  residueBase: readonly Candidate<TRef>[],
+  residueHead: readonly Candidate<TRef>[],
+  tolerances: GeometryTolerances,
+): RespecifiedResult<TRef> {
+  const buckets = new Map<string, { bases: Candidate<TRef>[]; heads: Candidate<TRef>[] }>();
+  const bucketFor = (key: string) => {
+    const existing = buckets.get(key);
+    if (existing) return existing;
+    const created = { bases: [] as Candidate<TRef>[], heads: [] as Candidate<TRef>[] };
+    buckets.set(key, created);
+    return created;
+  };
+  for (const candidate of residueBase) {
+    const key = geometryBucketKey(candidate);
+    if (key !== undefined) bucketFor(key).bases.push(candidate);
+  }
+  for (const candidate of residueHead) {
+    const key = geometryBucketKey(candidate);
+    if (key !== undefined) bucketFor(key).heads.push(candidate);
+  }
+
+  const pairs: RespecifiedPair<TRef>[] = [];
+  const groups: ContentMatch<TRef>[] = [];
+  for (const group of buckets.values()) {
+    if (group.bases.length === 0 || group.heads.length === 0) continue;
+    const geometryHash = String(group.heads[0].fingerprint.geometryHash);
+
+    if (group.bases.length === 1 && group.heads.length === 1) {
+      const base = group.bases[0];
+      const head = group.heads[0];
+      if (!boxesAgree(base, head, tolerances)) continue;
+      // Equal data hashes here mean tier 1 already saw this pair and REFUSED
+      // it: its component sub-hashes disagreed, which proves the data hash
+      // collided. That is a pair the engine has already declined to judge,
+      // and "same geometry" is not a second chance — abstain, as everywhere.
+      if (base.fingerprint.dataHash === head.fingerprint.dataHash) continue;
+      const match: ContentMatch<TRef> = {
+        kind: 'respecified',
+        tier: 'geometry-only',
+        dataHash: head.fingerprint.dataHash,
+        geometryHash,
+        base: [base.fingerprint],
+        head: [head.fingerprint],
+      };
+      if (base.fingerprint.components && head.fingerprint.components) {
+        match.changedComponents = changedComponentKeys(
+          base.fingerprint.components,
+          head.fingerprint.components,
+        );
+      }
+      pairs.push({ base, head, match });
+      continue;
+    }
+
+    if (group.bases.length === group.heads.length) {
+      // N:N, N > 1. Same shape in the same place N times over on each side,
+      // but different data — the sides are NOT interchangeable, so this is a
+      // reported group, not a retired one. `dataHash` is empty because no data
+      // hash grouped these entities; the geometry hash did.
+      groups.push({
+        kind: 'ambiguous',
+        tier: 'unresolved',
+        dataHash: '',
+        geometryHash,
+        base: group.bases.map((candidate) => candidate.fingerprint),
+        head: group.heads.map((candidate) => candidate.fingerprint),
+      });
+    }
+    // Unequal counts: nothing to say. The data-bucketed tiers may still pair
+    // some of them on their own evidence.
+  }
+
+  return { pairs, groups };
+}

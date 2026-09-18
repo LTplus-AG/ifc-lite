@@ -22,7 +22,7 @@ export function createPreviewAnalysis() {
         model.geometryResult === base.models.get(id)?.geometryResult && model.ifcDataStore === base.models.get(id)?.ifcDataStore) &&
         state.mutationVersion === base.mutationVersion && state.georefMutations === base.georefMutations &&
         state.pointCloudAlignmentEnabled === base.pointCloudAlignmentEnabled &&
-        state.modelPlacement.frameKey === base.modelPlacement.frameKey;
+        state.modelPlacement.realignedFrameKey === base.modelPlacement.realignedFrameKey;
       const committed = [...state.models.keys()].some((id) => !equalTranslation(
         placementFor(state.modelPlacement, id).translation, placementFor(base.modelPlacement, id).translation));
       if (!sameContext || committed) saved = null;

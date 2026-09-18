@@ -44,7 +44,6 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   // The pending move too: the shown pivot has to follow the previewed
   // position, not only a committed one.
   const previewDelta = primary && placement.preview?.before.has(primary) ? placement.preview.delta : null;
-  const pendingInstancedShards = useViewerStore((s) => s.pendingInstancedShards);
   const [degrees, setDegrees] = useState('0');
   const [pivot, setPivot] = useState<[string, string]>(['0', '0']);
 
@@ -71,9 +70,9 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   }, [selected, onError]);
 
   if (selected.length === 0) return null;
-  // Pointclouds and GPU-instanced geometry would be left behind by the bake.
-  // Say so instead of offering a control that can only fail.
-  const refusal = rotationRefusal({ models, pendingInstancedShards }, selected);
+  // A pointcloud is a renderer handle a rotation bake never touches. Say so
+  // instead of offering a control that can only fail.
+  const refusal = rotationRefusal({ models }, selected);
   if (refusal) {
     return <fieldset className="space-y-1 border-t pt-2"><legend className="font-medium">Rotate</legend>
       <p className="text-zinc-500">{refusal}</p></fieldset>;

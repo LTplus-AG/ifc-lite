@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The two MUTANT matchers the harness is checked against.
+ * The MUTANT matchers the harness is checked against.
  *
  * A validation fixture that cannot reject an obviously wrong matcher proves
  * nothing about the right one, so `run.mjs --self-test` runs both of these
@@ -110,4 +110,152 @@ export function overEagerMatcher(base, head, realMatches) {
     }
   }
   return { matches, counts: null };
+}
+
+// ---------------------------------------------------------------------------
+// Mutants for the claim stages (issue #4955): split/merge and successors.
+//
+// The three content mutants above keep the REAL engine's split and successor
+// claims, so their rejection stays a statement about content matching. The
+// four below keep the real content matches and mutate one claim stage each,
+// so their rejection is a statement about the stratum they target — and each
+// declares (`mustFailOn`) which clause family has to reject it. A mutant
+// rejected only by an unrelated clause would prove nothing about the stratum
+// it was written for, which is the vacuity `--self-test` exists to rule out.
+//
+// `applicable` is false when the pair holds no material for the mutation —
+// decided from the KEY's populations, not from what the engine claimed: on a
+// model with no thickened, swapped or split element the claim floors are
+// skipped, so a claim mutant there could only survive vacuously. The run
+// skips it, and requires every mutant to have been applied and rejected on at
+// least one pair.
+// ---------------------------------------------------------------------------
+
+/** Does the key expect any successor or split claim on this pair? */
+function expectsClaims(key) {
+  return key.elements.some((element) =>
+    element.kind === 'thickened' || element.kind === 'swapped' || element.kind === 'splitLength',
+  );
+}
+
+/** Kinds whose content match retires the pair (mirrors `score.mjs`). */
+const RETIRING = new Set(['renamed', 'moved', 'reshaped', 'respecified']);
+
+function boxIoU(a, b) {
+  let intersection = 1;
+  let volumeA = 1;
+  let volumeB = 1;
+  for (let axis = 0; axis < 3; axis++) {
+    const lo = Math.max(a.min[axis], b.min[axis]);
+    const hi = Math.min(a.max[axis], b.max[axis]);
+    if (hi <= lo) return 0;
+    intersection *= hi - lo;
+    volumeA *= a.max[axis] - a.min[axis];
+    volumeB *= b.max[axis] - b.min[axis];
+  }
+  const union = volumeA + volumeB - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+/** The entities the real content pass left unretired, per side. */
+function residue(base, head, real) {
+  const claimedBase = new Set();
+  const claimedHead = new Set();
+  for (const match of real.matches) {
+    if (!RETIRING.has(match.kind)) continue;
+    for (const entity of match.base) claimedBase.add(entity.ref);
+    for (const entity of match.head) claimedHead.add(entity.ref);
+  }
+  return {
+    base: base.filter((entity) => !claimedBase.has(entity.ref) && entity.aabb),
+    head: head.filter((entity) => !claimedHead.has(entity.ref) && entity.aabb),
+  };
+}
+
+/**
+ * MUTANT 4 — `overlap-successor`: every deleted box that touches an added box
+ * is a `footprint` successor. No threshold, no uniqueness, no family. This is
+ * the successor stage with its evidence removed, and the small element the
+ * `insertedNearby` control plants inside a deleted element's box is exactly
+ * what it must be caught pairing.
+ */
+export function overlapSuccessorMutant(base, head, real) {
+  const left = residue(base, head, real);
+  const successors = [];
+  for (const b of left.base) {
+    for (const h of left.head) {
+      const overlap = boxIoU(b.aabb, h.aabb);
+      if (overlap > 0) successors.push({ confidence: 'footprint', base: b, head: h, overlap, distance: 0 });
+    }
+  }
+  return {
+    applicable: successors.length > 0,
+    mustFailOn: /^falseSuccessors\./,
+    result: { matches: real.matches, splitMerges: real.splitMerges, successors },
+  };
+}
+
+/**
+ * MUTANT 5 — `rotated-claims`: the real claims with their partners shuffled
+ * one step. Every successor keeps its base and takes the NEXT claim's head;
+ * every split keeps its whole and takes the next claim's pieces. Same claim
+ * count, same confidences, every partner wrong — the pure precision failure
+ * a recall floor cannot see. A lone claim takes an inserted head (successor)
+ * or loses a piece (split) instead, so one claim is still one wrong claim.
+ */
+export function rotatedClaimsMutant(head, real, key) {
+  const inserted = new Set(key.insertedHeadIds);
+  const spare = head.find((entity) => inserted.has(entity.ref));
+  // The CONFIDENCE is rotated too, to a different valid value: a harness
+  // that stopped scoring `kindAgreement` for claims would otherwise not see
+  // this mutant's confidences at all, and the partner rotation alone would
+  // keep rejecting it for the wrong reason.
+  const otherConfidence = (confidence) => (confidence === 'footprint' ? 'position' : 'footprint');
+  const otherSplitConfidence = (confidence) => (confidence === 'verified' ? 'extent' : 'verified');
+  const successors = real.successors.map((claim, i, all) => ({
+    ...claim,
+    confidence: otherConfidence(claim.confidence),
+    head: all.length > 1 ? all[(i + 1) % all.length].head : (spare ?? claim.head),
+  }));
+  const splitMerges = real.splitMerges.map((claim, i, all) => ({
+    ...claim,
+    confidence: otherSplitConfidence(claim.confidence),
+    pieces: all.length > 1 ? all[(i + 1) % all.length].pieces : claim.pieces.slice(1),
+  }));
+  return {
+    applicable: expectsClaims(key) && (successors.length > 0 || splitMerges.length > 0),
+    mustFailOn: /^(bySuccessor\.\w+\.precision|bySuccessorConfidence\.|falseSuccessors\.|bySplit\.precision)/,
+    result: { matches: real.matches, splitMerges, successors },
+  };
+}
+
+/**
+ * MUTANT 6 — `respecified-as-renamed`: the geometry-only stage's verdicts
+ * relabelled as tier-1 `renamed`. The pairs are still right, so recall and
+ * precision cannot see it; only the kind and the tier can. A harness that
+ * scored `respecified` recall from a `renamed` record would pass this.
+ */
+export function respecifiedAsRenamedMutant(real) {
+  const matches = real.matches.map((match) =>
+    match.kind === 'respecified' ? { ...match, kind: 'renamed', tier: 'geometry-hash' } : match,
+  );
+  return {
+    applicable: real.matches.some((match) => match.kind === 'respecified'),
+    mustFailOn: /^(byKind\.respecified\.kindAgreement|respecifiedControl\.reportedRenamed)/,
+    result: { matches, splitMerges: real.splitMerges, successors: real.successors },
+  };
+}
+
+/**
+ * MUTANT 7 — `silent-claims`: the real content matches and no claim of
+ * either kind. Perfect precision on the claim strata, zero recall; a fixture
+ * that only had ceilings and precision floors for successors and splits would
+ * wave it through.
+ */
+export function silentClaimsMutant(real, key) {
+  return {
+    applicable: expectsClaims(key),
+    mustFailOn: /^(bySuccessor\.\w+\.recall|bySplit\.recall)/,
+    result: { matches: real.matches, splitMerges: [], successors: [] },
+  };
 }

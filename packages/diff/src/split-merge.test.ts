@@ -382,13 +382,14 @@ describe('split/merge — what it runs on, and what it never touches', () => {
     expect(claims(diff)).toEqual([]);
   });
 
-  it('does not see a split across classes', () => {
+  it('does not see a split across class FAMILIES (issue #4955)', () => {
     // Named limitation, pinned so it is a decision rather than a surprise:
-    // candidates are generated per ifcType, so an IfcWall becoming three
-    // IfcWallStandardCases is invisible.
+    // candidates are generated per class family, so an IfcWall becoming three
+    // IfcWallStandardCases IS seen (class-families.test.ts) but an IfcWall
+    // becoming three IfcCoverings is invisible.
     const reclassed = segments([1.2, 1.2, 1.2]).map((piece) => ({
       ...piece,
-      ifcType: 'IfcWallStandardCase',
+      ifcType: 'IfcCovering',
     }));
     expect(claims(run([wholeWall()], reclassed))).toEqual([]);
   });

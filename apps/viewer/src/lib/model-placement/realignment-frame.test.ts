@@ -24,7 +24,7 @@ for (const replacement of [false, true]) it(`refuses the old frame after a pendi
   useViewerStore.setState({ models: replacement ? new Map([['old', fixtureModel('old')]]) : new Map(), modelPlacement: emptyPlacementState() });
   resume();
   assert.equal(await completion, false);
-  assert.equal(useViewerStore.getState().modelPlacement.frameKey, null, 'fresh workspace never adopts the completed old job frame');
+  assert.equal(useViewerStore.getState().modelPlacement.realignedFrameKey, null, 'fresh workspace never adopts the completed old job frame');
 });
 it('accepts status updates on the same federation and preserves explicit model offsets (#4226)', () => {
   useViewerStore.setState({ ...fixtureModels(fixtureModel('m')), modelPlacement: emptyPlacementState() });
@@ -33,20 +33,20 @@ it('accepts status updates on the same federation and preserves explicit model o
   state.openReposition(['m']); state.previewModelTranslation([1, 2, 3]); state.applyModelTranslation();
   useViewerStore.getState().updateModel('m', { federationAlignmentStatus: 'anchor' });
   assert.equal(commitRealignmentFrame(snapshot, georef), true);
-  assert.match(useViewerStore.getState().modelPlacement.frameKey!, /EPSG:2056/);
+  assert.match(useViewerStore.getState().modelPlacement.realignedFrameKey!, /EPSG:2056/);
   assert.deepEqual(useViewerStore.getState().modelPlacement.placements.get('m')?.translation, [1, 2, 3]);
 });
 
 it('keeps the same coordinate frame across renamed or revised anchors (#4226)', () => {
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('old'), sourceFingerprint: 'old.ifc:abc' }), modelPlacement: emptyPlacementState() });
   commitRealignmentFrame(useViewerStore.getState().models, georef);
-  const frame = useViewerStore.getState().modelPlacement.frameKey;
+  const frame = useViewerStore.getState().modelPlacement.realignedFrameKey;
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('new'), sourceFingerprint: 'new.ifc:xyz' }), modelPlacement: emptyPlacementState() });
   commitRealignmentFrame(useViewerStore.getState().models, georef);
-  assert.equal(useViewerStore.getState().modelPlacement.frameKey, frame);
+  assert.equal(useViewerStore.getState().modelPlacement.realignedFrameKey, frame);
   commitRealignmentFrame(useViewerStore.getState().models, { ...georef, lengthUnitScale: 0.001 });
-  assert.notEqual(useViewerStore.getState().modelPlacement.frameKey, frame);
+  assert.notEqual(useViewerStore.getState().modelPlacement.realignedFrameKey, frame);
   // An IfcMapConversionScaled factor changes the frame as much as Scale does (#4615).
   commitRealignmentFrame(useViewerStore.getState().models, { ...georef, mapConversion: { ...georef.mapConversion!, factorZ: 2 } });
-  assert.notEqual(useViewerStore.getState().modelPlacement.frameKey, frame);
+  assert.notEqual(useViewerStore.getState().modelPlacement.realignedFrameKey, frame);
 });

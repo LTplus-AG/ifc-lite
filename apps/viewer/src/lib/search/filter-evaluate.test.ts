@@ -532,6 +532,12 @@ describe('matchClassificationRule', () => {
     assert.strictEqual(__internal.matchClassificationRule(Rule.classification('OmniClass', 'contains', 'Pr_60'), refs), false);
     assert.strictEqual(__internal.matchClassificationRule(Rule.classification('OmniClass', 'contains', '23-13'), refs), true);
   });
+  it('an unresolved ref (server-parsed, no source bytes — #3948) is UNKNOWN, not absent: excluded from candidates entirely, so it never flips a negative op (#4930)', () => {
+    const unresolvedOnly = [{ unresolved: true }];
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'ne', 'X'), unresolvedOnly), false);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'notContains', 'X'), unresolvedOnly), false);
+    assert.strictEqual(__internal.matchClassificationRule(Rule.classification('', 'eq', 'X'), unresolvedOnly), false);
+  });
 });
 
 describe('elevationOf + elevation rule', () => {

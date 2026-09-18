@@ -144,8 +144,9 @@ for (const match of diff.contentMatches ?? []) {
 Unpaired entities are bucketed by (`ifcType`, `dataHash`). Geometry is deliberately **not** part of that key: an element that genuinely moved would then land in a different bucket from its own previous revision and could never be paired at all, so every real move would revert to add+delete noise. Instead each bucket is refined from the inside, which matters because a real model is mostly *repeated* components - three data-identical doors at three different places share one bucket.
 
 1. **World geometry hash.** Entities carrying a `geometryHash` are sub-bucketed by it. One per side, or the same count `N` on both sides, retires as a `renamed` match. `undefined` hashes are excluded: `undefined` agreeing with `undefined` is vacuous, not evidence. Uneven sub-buckets retire nothing and fall through to the next steps.
-2. **The 1:1 leftover.** One base and one head left in the bucket pair as `renamed`, `moved`, or `reshaped`.
-3. **The N:M leftover.** With an `aabb` on every remaining candidate, they are paired by *iterated mutual nearest neighbour*: a base and a head pair only when each is the other's unique nearest and they are no further apart than `maxMoveDistance`. Retiring a confident pair can disambiguate its neighbours, so this repeats to a fixpoint. The collision checks below are part of that pairing test rather than a filter over its result: a pair they reject leaves both candidates in the pool, so the following rounds pair the rest of the group against the real candidate set instead of one the rejected pair had already been removed from. Whatever is still unpaired is reported as a group.
+2. **Same geometry, different data — across buckets.** Before the residue of any bucket is looked at, every entity step 1 did not retire is re-bucketed by (`ifcType`, world geometry hash) regardless of its data hash. A bucket holding exactly one base and one head, whose bounding boxes agree in size and centre, retires as a `respecified` match. This is the element that was deleted and redrawn in the same place and then auto-renamed by the authoring tool: its data changed, so it sits in a different data bucket from its previous revision and no other step can see it. It runs *before* the steps below because those are weaker evidence — a same-data neighbour that moved a little would otherwise be paired to the stranded element by position. See [Respecified elements](#respecified-elements) for the guard.
+3. **The 1:1 leftover.** One base and one head left in the bucket pair as `renamed`, `moved`, or `reshaped`.
+4. **The N:M leftover.** With an `aabb` on every remaining candidate, they are paired by *iterated mutual nearest neighbour*: a base and a head pair only when each is the other's unique nearest and they are no further apart than `maxMoveDistance`. Retiring a confident pair can disambiguate its neighbours, so this repeats to a fixpoint. The collision checks below are part of that pairing test rather than a filter over its result: a pair they reject leaves both candidates in the pool, so the following rounds pair the rest of the group against the real candidate set instead of one the rejected pair had already been removed from. Whatever is still unpaired is reported as a group.
 
 Mutual nearest neighbour is used rather than greedy nearest-centroid (order-dependent, commits to bad chains) or optimal assignment (minimises *total* distance, so it pairs everything it is given, including elements that genuinely appeared). It abstains by construction: a symmetric layout of identical elements that all moved has no unique nearest neighbour anywhere, and "ambiguous" is the correct answer there. Groups larger than 128 per side skip this step and report as ambiguous.
 
@@ -154,6 +155,7 @@ Mutual nearest neighbour is used rather than greedy nearest-centroid (order-depe
 - **`renamed`** - data hash *and* world geometry hash agree; only the key (GlobalId) changed. The `added`/`deleted` entries are removed from `entries`/`byKey`/`counts` in favour of this record. Under `scope: 'data'` geometry is excluded from the comparison, so every 1:1 match is reported as `renamed`. A `renamed` match holds one entity per side, except for a group of `N` per side that agreed on both hashes - there every bijection is identical in every field the engine can see, so the members are reported as a set rather than as a fabricated pairing.
 - **`moved`** - data hash agrees, geometry hash differs, and the bounding boxes are the same size while their centres are further apart than `moveTolerance`. Also what a geometry-hash difference reports when no bounding box is available, since nothing can then tell a move from a reshape. Retiring.
 - **`reshaped`** - data hash agrees, geometry hash differs, and the bounding boxes differ in size beyond `reshapeTolerance` - or agree entirely, which is what a re-tessellation looks like. An axis-aligned box genuinely cannot separate a re-tessellation from a reshape confined to the interior, and this kind does not pretend it can. Retiring.
+- **`respecified`** - world geometry hash and bounding box agree, data hash differs; only the key and some data changed. Same shape, same place, redrawn and renamed. Always one entity per side; an N:N geometry bucket is reported as `ambiguous` because members that differ in data are not interchangeable. `changedComponents` lists the data slices that moved. Retiring.
 - **`duplicated`** - one base entity's content matches several head entities.
 - **`deduplicated`** - several base entities' content matches one head entity.
 - **`ambiguous`** - several candidates remain on both sides with no principled pairing: duplication could not be told from deduplication, positions were too symmetric for a unique nearest neighbour, or the only candidates were further apart than `maxMoveDistance`.
@@ -165,13 +167,14 @@ For `duplicated`/`deduplicated`/`ambiguous` the engine does not guess: the origi
 `match.kind` says *what the pass claims happened*. `match.tier` says *on what evidence*, naming which of the three refinement steps above produced the record:
 
 - **`geometry-hash`** — step 1. The two sides landed in the same world-geometry-hash sub-bucket, `N` per side. The strongest evidence the pass has: data *and* world shape-and-position agree.
-- **`residue-1-1`** — step 2. Exactly one base and one head were left in the bucket after step 1, and they agreed on `ifcType` and on every component sub-hash. This is the pass's only destructive path resting on the data hash alone, and the whole feature's false-positive budget concentrates here.
-- **`positional`** — step 3. An N:M leftover paired by iterated mutual nearest neighbour on bounding-box centres, under `maxMoveDistance`. A geometric argument about where things sit, not about what they are.
+- **`geometry-only`** — step 2. The two sides agreed on `ifcType`, world geometry hash and bounding box, one per side, with different data. The only step that crosses data buckets. Carries the shared hash on `match.geometryHash`.
+- **`residue-1-1`** — step 3. Exactly one base and one head were left in the bucket after step 1, and they agreed on `ifcType` and on every component sub-hash. This is the pass's only destructive path resting on the data hash alone, and the whole feature's false-positive budget concentrates here.
+- **`positional`** — step 4. An N:M leftover paired by iterated mutual nearest neighbour on bounding-box centres, under `maxMoveDistance`. A geometric argument about where things sit, not about what they are.
 - **`unresolved`** — nothing was retired. The record is a reported `duplicated`/`deduplicated`/`ambiguous` group.
 
 The tier is **reported rather than left to be inferred**, because it cannot be inferred. A `renamed` whose two entities carry equal geometry hashes is reachable from step 1 *and* from step 3 — an uneven sub-bucket falls through to the residue, where the positional pass can still pair two entities that happen to share a hash — and those two records are not equally well evidenced. That ambiguity is worst on exactly the models where it matters: a real building is mostly repeated components.
 
-Two uses. A consumer can weigh a match by its tier: auto-accepting `geometry-hash` while routing `residue-1-1` and `positional` to a human is a defensible policy, and one that was impossible to express before. And a validation harness can score the tiers separately — an aggregate precision number hides a tier that has stopped firing behind the tiers that still do, which is why `scripts/xmatch` stratifies by it.
+Two uses. A consumer can weigh a match by its tier: auto-accepting `geometry-hash` and `geometry-only` while routing `residue-1-1` and `positional` to a human is a defensible policy, and one that was impossible to express before. And a validation harness can score the tiers separately — an aggregate precision number hides a tier that has stopped firing behind the tiers that still do, which is why `scripts/xmatch` stratifies by it.
 
 ```ts
 import { diffModels } from '@ifc-lite/diff';
@@ -219,6 +222,31 @@ const fingerprint: EntityFingerprint<number> = {
 The two tolerance defaults are lifted from `MOVE_EPS`/`RESHAPE_EPS` in the viewer's `describeChange.ts`, which encode issue #1197 - a phantom "moved 1.09 m" on a wall that never moved. The engine and the UI draw the move/reshape line in the same place on purpose. `moveTolerance` and `reshapeTolerance` apply wherever a pair is classified.
 
 `maxMoveDistance` does **not**. It is a pairing cap for the mutual-nearest-neighbour stage only, in the caller's units, so `10` is a building-scale relocation for a metre-scale model. Where that stage is doing the pairing, two candidates further apart than the cap are never each other's accepted nearest and stay in the `ambiguous` group rather than being asserted to be the same element. A 1:1 leftover (step 2) is a different situation: there is exactly one candidate on each side of the bucket, nothing to disambiguate, and the pair is classified as `moved` however far it travelled. Set the cap to bound *positional guessing among repeated components*, not to bound how far the engine will believe an element moved.
+
+### Respecified elements
+
+Authoring tools auto-name elements. Delete a wall in Revit or Archicad and redraw it in the same place and the new wall carries a new GlobalId *and* a new name (`Wall-041` for `Wall-023`, a new element id inside a Revit family instance name). Its data hash therefore differs, it lands in a different content bucket from its previous revision, and steps 1, 3 and 4 above never see the pair. Its world geometry hash, however, is identical: same surface, same corners, same absolute position on the 1 mm grid.
+
+Step 2 pairs exactly that. It buckets by (`ifcType`, geometry hash) and retires a bucket holding one entity per side as `respecified`, with `changedComponents` naming the data slices that moved (`attr:core` for a rename, `qset:Qto_WallBaseQuantities` for a re-measured width, and so on):
+
+```ts
+import { diffModels } from '@ifc-lite/diff';
+
+const redrawn = diffModels(baseFingerprints, headFingerprints, { matchUnpairedByContent: true });
+for (const match of redrawn.contentMatches ?? []) {
+  if (match.kind === 'respecified') {
+    console.log(match.base[0].key, '->', match.head[0].key, 'changed:', match.changedComponents);
+  }
+}
+```
+
+Three things keep this honest, because it is a destructive path where the usual `componentsAgree` guard cannot apply (the components differ by definition):
+
+- **Both sides must carry a usable `aabb`, and the boxes must agree** in size (within `reshapeTolerance`) and centre (within `moveTolerance`). Identical geometry has an identical box, so this cannot reject a true match; it excludes a raw 64-bit hash collision between different shapes, and it excludes the placement-only fingerprints the viewer writes for geometry-less products, which carry no box — two placeholder proxies at the origin would otherwise retire as one element.
+- **The bucket key is `ifcType`**, not the class family split/merge detection uses. A deleted `IfcWall` and an added `IfcBuildingElementPart` with the wall's exact body are not one element.
+- **N:N buckets retire nothing.** Two stacked duplicate walls redrawn as two stacked duplicates with new names share a geometry bucket 2:2. Unlike step 1's N:N `renamed` group, the members here differ in data, so the pairing is not indistinguishable and the engine reports an `ambiguous` group (with `dataHash: ''` and `geometryHash` set) rather than guessing.
+
+A `respecified` match mints an identity-map entry with reason `content-match:respecified`, like the other retiring kinds. It inherits every abstention: under `scope: 'data'` or a mixed-capability pair of revisions the step does not run.
 
 ### Capability abstention
 
@@ -329,6 +357,7 @@ No claim ever becomes an identity-map entry, in either direction. Identity is no
 | `splitPaddingMin` | `0.05` | Absolute floor of the containment/coverage slack, caller's units. |
 | `splitPaddingRatio` | `0.01` | Fraction of the container's box diagonal used as slack, floored by the above. |
 | `maxSplitPieces` | `256` | Performance bail, never a semantic rule. Must be a whole number of at least 2; anything else falls back to the default. |
+| `classFamilies` | the schema's `StandardCase`/`ElementedCase` subtypes, `IfcBuildingElementPart` under walls, the furniture classes | Rows of class names bucketed together as candidates. Case-insensitive; an unlisted class is its own family; `[]` restores exact-class bucketing. |
 
 The padding actually applied is `max(splitPaddingMin, splitPaddingRatio * containerBoxDiagonal)`, and it is always the *container's* — the base element of a split, the head element of a merge.
 
@@ -340,12 +369,54 @@ Every option is coerced rather than validated, because `diffModels` has no error
 
 Stated plainly, because each of these is a decision rather than a bug:
 
-- **Splits across classes are invisible.** Candidates are generated per `ifcType`, so an `IfcWall` becoming three `IfcWallStandardCase`s is not seen.
+- **Splits across class *families* are invisible.** Candidates are generated per family (`classFamilies`), so an `IfcWall` becoming three `IfcWallStandardCase`s or three `IfcBuildingElementPart` layers *is* seen and carries `crossClass: true`; an `IfcWall` becoming an `IfcCovering` is not.
 - **Two or more same-class interlopers inside the container are unrepairable.** With two of them the overshoot is their sum, and no single piece explains a sum. The one-exclusion cap is deliberate: allowing two puts the combinatorics, and the non-uniqueness the design refuses, straight back.
+- **Two pieces in the same place are never an `extent` split.** Pieces whose boxes coincide (intersection over union ≥ 0.5) are copies of one thing — typically a `duplicated` group the content pass declined to pair — and the tier refuses them rather than reading them as a volume-less split. A volume-verified claim is not gated this way; the volumes already judged it.
 - **`extent` fires on a redesign in place.** Three new walls filling the footprint of one demolished wall look exactly like a split when no volume is available. It also fires on a perimeter of pieces enclosing an unfilled middle — covering all three axes is not the same as filling the interior, which is why the profile is named for coverage rather than for volume.
 - **`displaced` cannot separate two congruent clusters in a repetitive building.** An identical slab field deleted on floor 3 and added on floor 5 has no distinguishing signature, and the pass abstains rather than pairing them.
 - **A moved split under a rotation that is not a multiple of 90° is missed.** Sorted extents survive an axis permutation and nothing else; an arbitrary rotation changes the axis-aligned extents themselves.
 - **A real split that changed more than `splitVolumeTolerance` of its material, while carrying full volume data, is refused.** That is the direct cost of gating on volume rather than scoring with it.
+
+## Successor claims
+
+A wall whose buildup changed — thicker, a different layer set, re-measured quantities, usually a new auto-generated name — and a chair swapped for a different family agree on nothing a hash can see: the data hash moved and so did the geometry hash. Content matching needs one of the two to agree; split/merge needs volumes to conserve. What the old and new element do share is *where they are*, and `detectSuccessors` argues from that alone:
+
+```ts
+import { diffModels } from '@ifc-lite/diff';
+
+const replaced = diffModels(baseFingerprints, headFingerprints, {
+  matchUnpairedByContent: true,
+  detectSplitMerge: true,
+  detectSuccessors: true,
+});
+for (const claim of replaced.successors ?? []) {
+  console.log(claim.confidence, claim.base.key, '->', claim.head.key, claim.overlap, claim.agreeingComponents);
+}
+```
+
+Because it argues from position alone, it is the weakest stage in the engine, and three rules follow from that:
+
+- **It is a suggestion, never a decision.** A claim retires nothing and touches no count; both entities keep their `deleted`/`added` entries. The engine never mints an identity-map entry from a successor claim on its own — `identityMapFromSuccessors` takes only the claims a caller explicitly accepted, and records the profile as the reason (`successor:footprint`, `successor:position`). `docs/architecture/layer-prs/04-identity.md` §4.5: heuristic matching is a suggestion provider for a review UI, never silent.
+- **It runs last**, on what content matching and split/merge left unbound, so the nearest piece of a split is never offered as the whole's successor. It inherits the geometry abstentions and leaves `successors` absent (not empty) under them.
+- **Every pairing must be unique in both directions, with a margin.** A tie, or a runner-up inside the margin, is an abstention.
+
+### The two profiles
+
+| `confidence` | evidence |
+|---|---|
+| `footprint` | bounding-box intersection over union at or above `successorOverlap` (default 0.6), mutual best on both sides, and no other candidate on either side within half the threshold |
+| `position` | same class family, same `EntityFingerprint.container` (a name path, equal and non-empty on both sides), boxes of comparable size (no axis more than twice the other's), each the other's nearest within `max(successorDistance, 0.5 × base box diagonal)`, with the runner-up at least twice as far |
+
+The arithmetic behind the default: a thickening that nests the old box in the new one scores `V_old / V_new`, so a 200 → 250 mm wall is 0.8 whichever face moved; 200 → 350 mm is 0.57 and misses; a 100 mm axis shift at 200 mm is 0.33 and misses. An axis-shifted redraw is exactly the case `footprint` misses and `position` carries. `footprint` ignores the container on purpose — a storey rename changes the path of every element in it, and a heavy box overlap is stronger evidence than a matching name — while `position` requires it, because without it a nearest-neighbour argument between two elements that share nothing else is not evidence at all.
+
+Every claim carries `overlap`, the centre `distance` (clamped like every other reported distance), `agreeingComponents` when both sides carry component sub-hashes (the wall that kept its `pset:Pset_WallCommon` and changed its `material` reads as a re-specified wall; one that agrees on nothing may be a coincidence of position), and `crossClass` when the two entities carry different classes of one family.
+
+### What it cannot see
+
+- Two new layers each covering half of the old wall abstain (each is a runner-up inside the other's margin) — that is a split, and the split/merge stage is where it is reported.
+- A congruent, symmetric relocation abstains: two chairs whose new placements are equidistant from both old ones have no unique nearest neighbour.
+- An element with no bounding box on either side is not a candidate, and a `position` pair with the container absent on either side is skipped: absence is not evidence.
+- Across class families nothing pairs, by the same rule as split/merge.
 
 ## Identity maps
 
@@ -448,6 +519,45 @@ Entries are sorted and de-duplicated on creation, so the same comparison writes 
 
 `parseIdentityMapSidecar` refuses an unknown `version` or a malformed entry outright rather than applying the readable half, and it refuses one more thing on the same grounds: **two entries claiming different `base` identities for the same `here` key**. Both are about one head entity, and it cannot be two base entities — unlike the mirror-image conflict (two `here`s on one `base`), no pair of files can break the tie, because one of *those* head entities may simply have been deleted since. So the two conflicts are handled in different places: the contradictory document is rejected at parse, while two `here`s on one `base` are left for `resolveKeyAliases` to judge against the actual models. Applying the first of two contradictory claims would be exactly the arbitrary winner this design refuses everywhere else — and worse here, because a `--identity-in x --identity-out x` run writes the winner back out as if it had been reviewed. `keyAliasesFromSidecar` restates the rule for a hand-built object: a contradicted `here` yields no alias at all, and the rest of the map is unaffected.
 
+## Lineage and rekeying external data
+
+An identity map is 1:1 by contract and stays that way: identity is not a relation that survives being split. A downstream system that keyed external data on GlobalIds — cost lines, inspection records, room bookings — needs something wider, because when a wall becomes three walls the data has to go *somewhere*. A **lineage** records the relation the engine (or a reviewer) established and lets the external side pick its own policy:
+
+```ts
+import { diffModels, lineageFromDiff, rekeyByLineage } from '@ifc-lite/diff';
+
+const diff = diffModels(baseFingerprints, headFingerprints, {
+  matchUnpairedByContent: true,
+  detectSplitMerge: true,
+  detectSuccessors: true,
+});
+// Successor claims become lineage ONLY when passed in as accepted.
+const lineage = lineageFromDiff(diff, { accepted: diff.successors });
+
+for (const row of rekeyByLineage(['oldGlobalId'], lineage, 'copy-to-all')) {
+  console.log(row.key, row.relation, row.successors, row.orphan);
+}
+```
+
+Each entry is `{ base: string[], head: string[], relation, reason, shares? }` with one of four relations:
+
+| `relation` | source | arity |
+|---|---|---|
+| `identity` | a content match the engine committed to, or an alias the diff was run with (carried forward so a replayed lineage does not erode) | 1:1 |
+| `split` | `ModelDiff.splitMerges`, reason `split:<confidence>` | 1:k |
+| `merge` | `ModelDiff.splitMerges`, reason `merge:<confidence>` | k:1 |
+| `replaced` | successor claims passed in as **accepted**, reason `successor:<confidence>` | 1:1 |
+
+`shares` — each piece's fraction of the pieces' total volume, in key order — is present only when every piece carried a proved volume (never on an `extent` claim). Every key appears in at most one entry per side; the engine guarantees that by construction, and the sidecar refuses a document where it does not hold.
+
+A lineage records *changes*. A key it does not mention was either matched by key (unchanged) or deleted with nothing to carry it forward, and only the sidecar's `deleted` list can tell the two apart: `lineageOfDiff` returns both, `rekeyByLineage` passes an unmentioned key through as `unchanged` unless the list names it, and a lineage handed over without the list loses no row.
+
+`rekeyByLineage` is pure and table-agnostic. Merges and replacements rekey under any policy; a split follows the policy: `copy-to-all` (every piece inherits the row), `largest-share` (the piece with the largest share inherits it — without `shares`, or on a tie, the row is orphaned rather than guessed), or `orphan-on-split`. `keyAliasesFromLineage` turns the 1:1 entries into `keyAliases` for the next diff, on exactly the rules `keyAliasesFromSidecar` applies.
+
+### The lineage sidecar
+
+`createLineageSidecar` / `serializeLineageSidecar` / `parseLineageSidecar` define `ifc-lite/lineage` version 1, pinned to both model digests exactly like the identity-map sidecar and checked by `lineageSidecarMismatches` before anything is applied. Both sidecars also record an optional `keyProperty` — the authored key scheme the keys were taken under, absent meaning GlobalId — and report a scheme mismatch like a digest mismatch, because a GlobalId-keyed map replayed under an authored key would otherwise apply nothing, silently. An identity map carrying a `keyProperty` is written as **version 2**, so a version-1 reader (which ignores unknown fields and would apply the entries under GlobalId) refuses it outright; a map without one stays version 1, byte-identical to before.
+
 ## CLI usage
 
 The [`diff` command](cli.md#diff-compare-ifc-files) offers a fast, dependency-light comparison focused on counts, per-type deltas, and GlobalId tracking:
@@ -469,6 +579,10 @@ ifc-lite diff model-v1.ifc model-v2.ifc --json
 | `--by-content` | Run the `@ifc-lite/diff` engine with content-keyed matching |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims as key aliases (implies `--by-content`) |
+| `--key-from <Tag\|Pset.Prop>` | Compare on an authored identifier instead of GlobalId (implies `--by-content`) |
+| `--lineage-out <file>` | Write the lineage this run establishes (implies `--by-content`) |
+| `--lineage-in <file>` | Replay a lineage's 1:1 entries as key aliases and carry it forward (implies `--by-content`) |
+| `--accept <map.json>` | Fold a reviewed identity map into the lineage as `replaced` entries |
 | `--json` | JSON output |
 
 Without `--by-entity`, the command reports the schema, entity count, entity-count delta, and the per-type differences (sorted by the size of the delta). With `--by-entity` it adds the count of GlobalIds added, removed, and common between the two files.
@@ -492,6 +606,24 @@ Two things to know about this path:
 - **It compares data only.** The Node CLI has no geometry pipeline, so there is no world geometry hash and no bounding box; it passes `scope: 'data'`, which is the honest description of what it can see. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available. For that, drive the engine with geometry hashes (or use the viewer's Compare mode).
 - **`--identity-in` refuses a sidecar that was verified against different files**, because that is what pinning both digests is for. There is no override flag: the fix is to re-run the comparison that produced the claims, which is one command.
 
+### Authored keys, lineage and `rekey`
+
+GlobalId is the default key because every `IfcRoot` has one, but when the model maintains an identifier on purpose — an asset code in a property set, a `Tag` the authoring tool keeps stable — that identifier survives a delete-and-redraw that a GlobalId does not. `--key-from` keys the comparison on it:
+
+```bash
+# Key on Pset_Asset.AssetId where an element carries one; GlobalId elsewhere.
+ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --lineage-out lineage.json
+
+# Carry a cost table across: split rows are copied to every piece, orphans set aside.
+ifc-lite rekey costs.csv --lineage lineage.json --key-column GlobalId --out costs-v2.csv --orphans orphans.csv
+```
+
+An entity carrying a non-empty, unique value is keyed `prop:<value>`; every other entity keeps its GlobalId. A value two entities share is refused for both (they fall back to GlobalId and the command warns), because a key that names two things is not a key. The identity map and the lineage both record the scheme they were written under (`keyProperty`), and replaying either under a different scheme is refused like a digest mismatch — a GlobalId-keyed map under `--key-from` would otherwise apply nothing, silently.
+
+`--lineage-out` writes the [lineage](#lineage-and-rekeying-external-data) this run established; `--lineage-in` replays its 1:1 entries as aliases and carries the rest forward, so `--lineage-in x --lineage-out x` is a stable round trip. `--accept` takes an identity-map sidecar a human wrote or exported after reviewing the viewer's successor suggestions, and folds each claim whose pair is still an add plus a delete into the lineage as `replaced`. The successor and split/merge stages themselves need geometry and do not run on this path (see #4956).
+
+`ifc-lite rekey` applies a lineage to a CSV or JSON table: each row keyed on an old key is rewritten to its successor(s) under `--policy copy-to-all` (default), `largest-share` or `orphan-on-split`, with `lineage_relation` and `lineage_from` columns recording what happened; rows with nowhere to go are written to `--orphans` rather than dropped.
+
 Passing `--identity-in` and `--identity-out` together rewrites the map with the claims that still held plus anything new, preserving each claim's original `reason`. Claims that no longer hold are dropped — the sidecar records what was verified against these two files, not what someone once hoped.
 
 `--identity-out` is **reproducible**: the same two files and the same claims write byte-identical output, so a checked-in sidecar produces an empty git diff on a rerun. It writes no `created` timestamp of its own, and preserves an incoming one on a rewrite rather than refreshing it — the field dates the claims, not the last time a command was run.
@@ -514,7 +646,7 @@ The [`model_diff` tool](mcp.md) takes the same `by_content` switch, so an agent 
 }
 ```
 
-Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds added / removed / common) exactly as before. With it the result gains a `contentDiff`:
+Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds added / removed / common) exactly as before. `key_from` (`"Tag"` or `"Pset.Prop"`) keys the comparison on an authored identifier the same way the CLI's `--key-from` does, and `contentDiff.keyProperty` / `duplicateAuthoredKeys` echo what applied. With `by_content` the result gains a `contentDiff`:
 
 ```json
 {
@@ -572,13 +704,23 @@ Two cases still fall back to the engine's bare `moved`: a model restored from th
 
 What you see when a match is found:
 
-| where | retiring match (`renamed` / `moved` / `reshaped`) | unresolved group (`duplicated` / `deduplicated` / `ambiguous`) |
+| where | retiring match (`renamed` / `moved` / `reshaped` / `respecified`) | unresolved group (`duplicated` / `deduplicated` / `ambiguous`) |
 | --- | --- | --- |
 | 3D | the A copy is hidden, the B copy is drawn blue in the match channel | untouched: the entities keep their green/red add and delete colours |
-| results list | a **Matched** group; clicking a row selects the surviving B copies | a **Needs review** group; clicking a row selects every candidate on both sides. The same entities are still listed under Added / Deleted |
+| results list | a **Matched** group; clicking a row selects the surviving B copies | a row in **Suggestions** (below); clicking it selects every candidate on both sides. The same entities are still listed under Added / Deleted |
 | counts | a **Matched** badge next to Added / Deleted, which are lower *because* of it | counted as added/deleted, as they are |
-| report (CSV/JSON) | one row per B element, `Change` = `Renamed` / `Moved` / `Reshaped`, with the counterpart's GlobalId in `MatchedGlobalId` when the match is exactly 1:1 | the existing add/delete rows gain the group kind in the `Match` column — no row is duplicated |
+| report (CSV/JSON) | one row per B element, `Change` = `Renamed` / `Moved` / `Reshaped` / `Respecified`, with the counterpart's GlobalId in `MatchedGlobalId` when the match is exactly 1:1 | the existing add/delete rows gain the group kind in the `Match` column — no row is duplicated |
 
 The report's `counts` gained `matched` and `needsReview` for the same reason the badge exists: a retiring match lowers `added` and `deleted`, and a reader who cannot see why would take the lower numbers at face value. `Match` and `MatchedGlobalId` are appended after `Model`, so a consumer reading the first six CSV columns positionally is unaffected.
+
+### Suggestions and accepting identity
+
+Compare mode also runs `detectSplitMerge` and `detectSuccessors`, and lists what they found under **Suggestions**. Nothing there recolours the scene or changes a count: every participant keeps its add or delete colour, because these are [claims](#split-and-merge-detection) the engine reports and will not decide.
+
+Each row carries the evidence it rests on. A [successor claim](#successor-claims) reads `Replaced · footprint 0.81 · 0.02 m · agrees on Pset_WallCommon` — the profile, the box overlap, the centre displacement and the components whose sub-hash agrees. A split or merge reads `Split into 3 · verified · Δvol −1.2%`, with a *class changed* badge when the pieces are of another class than the whole. An unresolved content group reads its kind and shape, `Ambiguous · 2:3`, with a picker per side to make one 1:1 pair out of it.
+
+A successor row and a picked pair have **Accept** and **Not the same**. Accept writes an identity-map entry into the session — reason `successor:footprint` / `successor:position`, or `accepted:ambiguous` for a pair made out of a group — and re-runs the comparison from the fingerprints already extracted with that entry as a `keyAliases` alias, so the pair now classifies by key under its base GlobalId and leaves the suggestions. *Not the same* hides the suggestion for the session. A split has no Accept: identity is not a relation that survives being split; the lineage carries it instead.
+
+The strip above the results exports and imports the artifacts: **Export map** writes the accepted entries as an [identity-map sidecar](#the-sidecar), **Export lineage** writes the [lineage sidecar](#the-lineage-sidecar) (committed identity, splits, merges, and the accepted replacements), and **Import map** loads an identity-map sidecar into the accepted list. Both are pinned to the two files by the same `sha256:` digest the CLI's `--identity-out` writes, so a map exported here replays under `ifc-lite diff --identity-in` and an import written for other bytes is refused with the mismatch shown. A model restored from the viewer's cache has no bytes to digest and cannot be pinned; Compare says so instead of writing an unpinned file.
 
 For the full API, see the [`@ifc-lite/diff` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/diff).

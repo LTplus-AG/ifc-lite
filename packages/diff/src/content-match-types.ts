@@ -36,6 +36,13 @@ import type { EntityFingerprint } from './types.js';
  *   retriangulation-invariant), but a re-tessellation that introduces new
  *   vertices still does, and a bounding box genuinely cannot separate that from
  *   an interior reshape. This kind does not pretend otherwise.
+ * - `respecified`  — one base and one head entity share a world geometry hash
+ *   and a bounding box but NOT a data hash: same shape in the same place, new
+ *   key, changed data (issue #4955). The delete-and-redraw case when the
+ *   authoring tool auto-renamed the element. Always exactly one per side; an
+ *   N:N geometry bucket is reported as `ambiguous` instead, because members
+ *   that differ in data are not interchangeable. `changedComponents` says
+ *   which data slices moved.
  * - `duplicated`   — one base entity's content matches several head entities
  *   (it looks like it was copied).
  * - `deduplicated` — several base entities' content matches one head entity
@@ -50,6 +57,7 @@ export type ContentMatchKind =
   | 'renamed'
   | 'moved'
   | 'reshaped'
+  | 'respecified'
   | 'duplicated'
   | 'deduplicated'
   | 'ambiguous';
@@ -66,6 +74,9 @@ export type ContentMatchKind =
  *   bucket after tier 1, and they agreed on `ifcType` and every component
  *   sub-hash. This is the pass's only destructive path resting on the data
  *   hash alone.
+ * - `geometry-only` — the stage BETWEEN tiers 1 and 2 (issue #4955). The base
+ *   and head entities agreed on `ifcType`, world geometry hash and bounding
+ *   box, 1:1, with different data. The only tier that crosses data buckets.
  * - `positional`    — TIER 3. An N:M leftover paired by iterated mutual
  *   nearest neighbour on bounding-box centres.
  * - `unresolved`    — nothing was retired; the record is a reported group
@@ -76,16 +87,21 @@ export type ContentMatchKind =
  * hides a tier that has stopped firing behind the tiers that still do.
  * `undefined` only where a producer predates this field.
  */
-export type ContentMatchTier = 'geometry-hash' | 'residue-1-1' | 'positional' | 'unresolved';
+export type ContentMatchTier =
+  | 'geometry-hash'
+  | 'geometry-only'
+  | 'residue-1-1'
+  | 'positional'
+  | 'unresolved';
 
 /**
  * A content-hash-based match (or ambiguous match group) among entities the
  * key-based pass classified as `added`/`deleted` (issue #1891).
  *
- * `renamed`, `moved`, and `reshaped` are *retiring* kinds: the corresponding
+ * `renamed`, `moved`, `reshaped` and `respecified` are *retiring* kinds: the corresponding
  * `added`/`deleted` {@link DiffEntry} pairs are removed from
- * {@link ModelDiff.entries} in favour of this record. `moved` and `reshaped`
- * always hold exactly one entity per side; `renamed` holds one per side except
+ * {@link ModelDiff.entries} in favour of this record. `moved`, `reshaped` and
+ * `respecified` always hold exactly one entity per side; `renamed` holds one per side except
  * for the same-data-and-geometry group described in {@link ContentMatchKind},
  * where it holds `N` per side.
  *
@@ -98,8 +114,27 @@ export interface ContentMatch<TRef = unknown> {
   kind: ContentMatchKind;
   /** Which refinement tier produced this record. See {@link ContentMatchTier}. */
   tier?: ContentMatchTier;
-  /** The shared {@link EntityFingerprint.dataHash} that grouped these entities. */
+  /**
+   * The shared {@link EntityFingerprint.dataHash} that grouped these entities.
+   * Empty (`''`) on a record the geometry-only stage produced from an N:N
+   * geometry bucket, where no data hash grouped anything — {@link geometryHash}
+   * did. A `respecified` pair carries the HEAD entity's data hash.
+   */
   dataHash: string;
+  /**
+   * The shared world geometry hash, as a string, on records the geometry-only
+   * stage produced (`tier: 'geometry-only'`, and the `ambiguous` groups it
+   * reports). Absent on every other record.
+   */
+  geometryHash?: string;
+  /**
+   * On a `respecified` match whose two entities both carry
+   * {@link EntityFingerprint.components}: the component keys whose sub-hash
+   * differs, sorted, one-sided keys included — the same vocabulary as
+   * `DiffEntry.changedComponents`. This is what a reviewer reads to see WHAT
+   * changed on an element whose geometry did not.
+   */
+  changedComponents?: string[];
   /** Base-revision entities in this match/group. */
   base: EntityFingerprint<TRef>[];
   /** Head-revision entities in this match/group. */

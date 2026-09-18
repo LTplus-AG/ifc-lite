@@ -93,4 +93,12 @@ export interface SplitMergeClaim<TRef = unknown> {
    * statement about a real entity a reviewer may disagree with.
    */
   excluded?: EntityFingerprint<TRef>;
+  /**
+   * `true` when {@link whole} and at least one of {@link pieces} carry a
+   * different `ifcType` — candidates are bucketed by class FAMILY
+   * (`DiffOptions.classFamilies`, issue #4955), so a wall republished as
+   * `IfcBuildingElementPart` layers is a claim like any other, flagged so a
+   * reviewer sees that the class changed on the way. Absent otherwise.
+   */
+  crossClass?: boolean;
 }

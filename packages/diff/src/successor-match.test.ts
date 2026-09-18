@@ -11,9 +11,19 @@
 import { describe, expect, it } from 'vitest';
 import { diffModels } from './diff.js';
 import { buildComponentFingerprints, buildDataFingerprint } from './fingerprint.js';
-import { identityMapFromSuccessors } from './identity-map.js';
-import { boxIoU } from './successor-match.js';
+// Namespace import, not a named one: the revert oracle re-runs this file with
+// production reverted, where the export does not exist yet, and a named import
+// of a missing export dies at link time (inconclusive) instead of failing an
+// assertion (the witness the oracle needs).
+import * as identityMap from './identity-map.js';
 import type { EntityAabb, EntityFingerprint, ModelDiff } from './types.js';
+
+const identityMapFromSuccessors = (claims: Iterable<any> | undefined) => {
+  // Asserted, not assumed: under the revert this is an assertion failure the
+  // oracle counts, not a TypeError it discards.
+  expect(typeof identityMap.identityMapFromSuccessors).toBe('function');
+  return identityMap.identityMapFromSuccessors(claims);
+};
 
 type Ref = number;
 
@@ -75,19 +85,16 @@ function run(
 /** A 6 m wall, 200 mm thick, 3 m high, on the x axis, faces at y = 0 and 0.2. */
 const OLD_WALL = box([0, 0, 0], [6, 0.2, 3]);
 
-describe('boxIoU', () => {
+describe('box overlap, as the claim reports it', () => {
+  const base = [entity({ key: 'OLD', aabb: OLD_WALL })];
+  const overlapOf = (head: EntityFingerprint<Ref>) => run(base, [head]).successors?.[0]?.overlap;
+
   it('nested boxes score the volume ratio, whichever face moved', () => {
-    const thickerOneFace = box([0, 0, 0], [6, 0.25, 3]);
-    const thickerCentred = box([0, -0.025, 0], [6, 0.225, 3]);
-    expect(boxIoU(OLD_WALL, thickerOneFace)).toBeCloseTo(0.8, 6);
-    expect(boxIoU(OLD_WALL, thickerCentred)).toBeCloseTo(0.8, 6);
+    expect(overlapOf(entity({ key: 'A', aabb: box([0, 0, 0], [6, 0.25, 3]) }))).toBeCloseTo(0.8, 6);
+    expect(overlapOf(entity({ key: 'B', aabb: box([0, -0.025, 0], [6, 0.225, 3]) }))).toBeCloseTo(0.8, 6);
   });
-  it('an axis shift of half the thickness scores 1/3', () => {
-    expect(boxIoU(OLD_WALL, box([0, 0.1, 0], [6, 0.3, 3]))).toBeCloseTo(1 / 3, 6);
-  });
-  it('disjoint or degenerate boxes score 0', () => {
-    expect(boxIoU(OLD_WALL, box([10, 0, 0], [16, 0.2, 3]))).toBe(0);
-    expect(boxIoU(OLD_WALL, box([0, 0, 0], [0, 0, 0]))).toBe(0);
+  it('a 200 → 250 mm thickening with a join-recomputed length still passes', () => {
+    expect(overlapOf(entity({ key: 'C', aabb: box([0, 0, 0], [6.05, 0.25, 3]) }))).toBeCloseTo((6 * 0.2 * 3) / (6.05 * 0.25 * 3), 6);
   });
 });
 

@@ -4,6 +4,7 @@
 import { useViewerStore, type ViewerState } from '@/store';
 import { invalidateSpatialIndex, buildSpatialIndexForModel } from '@/utils/loadingUtils';
 import { withInstancedMeshes } from '@/utils/instancedExport';
+import { modelIndices } from './model-indices';
 import { displayedTranslation } from './state';
 import { equalTranslation } from './translation';
 
@@ -12,11 +13,19 @@ import { equalTranslation } from './translation';
  * and translation (`withInstancedMeshes`), so a raycast or bounds query
  * answers at the model's displayed position rather than its source
  * coordinates. Shared by the debounced placement sync below and the rotation
- * bake (`useModelRotationSync.ts`), the two rebuilders of this index (#4890). */
+ * bake (`useModelRotationSync.ts`), the two rebuilders of this index (#4890).
+ *
+ * Passes the renderer's own model index alongside the id-range bracket
+ * (#4890 review): two federated models CAN have overlapping global-id
+ * ranges (a collab-joined model re-using an id space a normally loaded model
+ * already occupies), and the id-range filter alone would leak one model's
+ * occurrences into the other's index — the renderer index disambiguates
+ * exactly which model's template each materialized occurrence came from. */
 export function buildPlacedSpatialIndex(state: ViewerState, modelId: string): void {
   const model = state.models.get(modelId);
   if (!model?.ifcDataStore || !model.geometryResult) return;
-  const geometry = withInstancedMeshes(model.geometryResult, { modelId, idOffset: model.idOffset, maxExpressId: model.maxExpressId });
+  const geometry = withInstancedMeshes(model.geometryResult, { modelId, idOffset: model.idOffset,
+    maxExpressId: model.maxExpressId, rendererModelIndex: modelIndices(state.models).get(modelId) });
   buildSpatialIndexForModel(geometry.meshes, modelId, model.ifcDataStore, 'placed');
 }
 

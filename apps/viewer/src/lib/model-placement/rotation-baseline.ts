@@ -311,11 +311,18 @@ export function rebaseBaselineByRtcDelta(baseline: RotationBaseline, delta: Read
  * longer restore anything.
  *
  * An instanced-only model has no meshes at all, so there is nothing to check
- * identity against; such a geometry is never reported foreign; the instanced
- * boxes' own identity (`bakedInstanced`) is what `captureAppendedMeshBaselines`
- * uses to detect a replacement on that side (#4890). */
+ * identity against; the instanced boxes' own identity (`bakedInstanced`) is
+ * what `captureAppendedMeshBaselines` uses to detect a replacement on that
+ * side instead (#4890) — but ONLY when the baseline itself has no meshes
+ * either. A baseline that DOES describe meshes and is now handed a geometry
+ * with none is exactly a replacement: flat geometry replaced by an
+ * instanced-only republish (or vice versa) is not appending to the old
+ * baseline, it is a different model's worth of geometry that happens to
+ * share a modelId, and keeping the stale baseline would let a later restore
+ * write the vanished flat mesh's pristine bytes over instanced-only boxes
+ * that were never rotated from it (#4890 review). */
 export function baselineIsForeign(geometry: Geometry, baseline: RotationBaseline): boolean {
-  if (geometry.meshes.length === 0) return false;
+  if (geometry.meshes.length === 0) return baseline.meshes.size !== 0;
   return !geometry.meshes.some((mesh) => baseline.meshes.has(mesh));
 }
 

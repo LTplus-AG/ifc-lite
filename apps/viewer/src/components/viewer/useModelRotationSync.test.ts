@@ -154,6 +154,22 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
   });
 
+  it('refuses to rotate a model whose kind is not yet knowable — still streaming, no geometry, no pointcloud handle (#4890 review)', () => {
+    const loading = { ...fixtureModel('loading'), loadState: 'streaming-geometry' } as FederatedModel;
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['loading', loading]]) });
+    assert.throws(() => useViewerStore.getState().setModelRotation(['loading'], { angle: ANGLE, pivot: [...PIVOT] }),
+      /finish loading/);
+    assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'loading').rotation.angle, 0);
+  });
+
+  it('does not refuse an instanced model just because it is still streaming (#4890 review)', () => {
+    const streaming = { ...fixtureModel('streaming-inst'), loadState: 'streaming-geometry', geometryResult: geometryResult() } as FederatedModel;
+    streaming.geometryResult!.instancedGeometryHashes = new Map([[77, 1n]]);
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, ['streaming-inst', streaming]]) });
+    useViewerStore.getState().setModelRotation(['streaming-inst'], { angle: ANGLE, pivot: [...PIVOT] });
+    assert.ok(Math.abs(placementFor(useViewerStore.getState().modelPlacement, 'streaming-inst').rotation.angle - ANGLE) < 1e-9);
+  });
+
   const withInstanced = (id: string) => {
     const model = { ...fixtureModel(id), geometryResult: geometryResult() } as FederatedModel;
     model.geometryResult!.instancedGeometryHashes = new Map([[77, 1n]]);
@@ -185,7 +201,12 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
      *  returns for one materialized occurrence. */
     function occurrenceBox(expressId: number, dx: number): MeshData {
       return {
-        expressId, ifcType: 'IfcDoor',
+        // `modelIndex: 0` — the real `materializeInstances` stamps the renderer
+        // model index of the owning template onto every piece it returns
+        // (scene-instance-materialization.ts), and `withInstancedMeshes` now
+        // filters on it (#4890 review); 'ifc' is this suite's only model and
+        // always lands on renderer index 0 (`modelIndices`'s first assignment).
+        expressId, modelIndex: 0, ifcType: 'IfcDoor',
         positions: new Float32Array([dx, 0, 0, dx + 1, 0, 0, dx + 1, 1, 0, dx, 1, 0,
           dx, 0, 1, dx + 1, 0, 1, dx + 1, 1, 1, dx, 1, 1]),
         normals: new Float32Array(24),
@@ -265,6 +286,53 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       assert.ok(hitRotated.includes(doorId), `the rebuilt index must answer a query at the rotated occurrence; got ${hitRotated}`);
       const hitOriginal = index!.queryAABB({ min: [20, 0, 0], max: [21, 1, 1] });
       assert.ok(!hitOriginal.includes(doorId), 'a query at the pre-rotation position must not still hit — the fixture would not test rotation otherwise');
+    });
+
+    it('does not push a heading to the renderer on a translation-only placement update (#4890 review)', () => {
+      const calls: number[] = [];
+      const fakeRenderer = {
+        getScene: () => ({ getAllInstancedMeshData: () => [] }),
+        setModelRotation: (index: number) => { calls.push(index); },
+      } as unknown as Renderer;
+      setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
+      const unsubscribe = subscribeModelRotationSync(); // the initial sync pushes once
+      try {
+        calls.length = 0;
+        const state = useViewerStore.getState();
+        state.openReposition(['ifc']);
+        state.previewModelTranslation([1, 0, 0]);
+        state.applyModelTranslation();
+        assert.equal(calls.length, 0, 'a translation-only update (no heading change) must not push any rotation to the renderer');
+      } finally { unsubscribe(); }
+    });
+
+    it('clears the renderer\'s instanced rotation before the re-align callback runs, and restores it after (#4890 review)', async () => {
+      const calls: Array<{ index: number; angle: number }> = [];
+      const fakeRenderer = {
+        getScene: () => ({ getAllInstancedMeshData: () => [] }),
+        setModelRotation: (index: number, angle: number) => { calls.push({ index, angle }); },
+      } as unknown as Renderer;
+      setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
+
+      useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
+      reconcileModelRotations(useViewerStore.getState());
+      calls.length = 0;
+
+      let sawClearedDuringRun = false;
+      await withModelRotationsUnbaked(async () => {
+        // The renderer must already have been told angle 0 for every model
+        // index, BEFORE this callback (standing in for the re-align) runs —
+        // otherwise an instanced model would sit renderer-rotated for the
+        // whole re-align while its flat meshes are un-baked underneath it.
+        sawClearedDuringRun = calls.some((call) => call.index === 0 && call.angle === 0);
+      });
+      assert.ok(sawClearedDuringRun, 'the renderer must see the rotation cleared before the realign callback runs');
+
+      // And restored afterwards, once `withModelRotationsUnbaked` reapplies
+      // the declared headings on the way out.
+      const last = calls[calls.length - 1];
+      assert.equal(last.index, 0);
+      assert.ok(Math.abs(last.angle - ANGLE) < 1e-9, 'the heading must be reapplied once the operation finishes');
     });
   });
 

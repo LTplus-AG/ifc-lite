@@ -525,3 +525,27 @@ describe('ModelTranslations yaw (#4890)', () => {
     assert.ok(distinct, 'sanity: the two conventions must actually disagree here');
   });
 });
+
+describe('Renderer.setModelRotation skips invalidation on a no-op (#4890 review)', () => {
+  function testRenderer(): Renderer {
+    return new Renderer({ width: 256, height: 256, getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
+  }
+
+  it('reports true on a real change and false when nothing changed', () => {
+    const renderer = testRenderer();
+    // A no-op BEFORE anything has ever turned this model: `Scene.setModelRotation`
+    // canonicalizes angle 0 to "no rotation", which is what a never-rotated
+    // model already is.
+    assert.equal(renderer.setModelRotation(3, 0, [1, 2, 3]), false);
+    assert.equal(renderer.setModelRotation(3, 0.5, [1, 0, 2]), true);
+    // The identical call again: the viewer's rotation sync makes this call on
+    // every placement update, including a translation-only one that leaves
+    // every model's declared heading unchanged.
+    assert.equal(renderer.setModelRotation(3, 0.5, [1, 0, 2]), false);
+    // A genuinely different pivot IS a change, even at the same angle.
+    assert.equal(renderer.setModelRotation(3, 0.5, [1, 0, 9]), true);
+    // Clearing a standing rotation is a change; clearing it again is not.
+    assert.equal(renderer.setModelRotation(3, 0, [0, 0, 0]), true);
+    assert.equal(renderer.setModelRotation(3, 0, [0, 0, 0]), false);
+  });
+});

@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type ViewerState, type FederatedModel } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
+import { equalRotation } from '@/lib/model-placement/rotation';
 import { modelRotationBaker, type RotationTarget } from '@/lib/model-placement/rotation-bake';
 import { buildPlacedSpatialIndex } from '@/lib/model-placement/spatial-index';
 import { modelIndices } from '@/lib/model-placement/model-indices';
@@ -37,33 +38,55 @@ let suspended = 0;
  *
  * A model with no GPU-instanced templates is unaffected: `setModelRotation`
  * only ever rewrites instance transforms the renderer already owns.
+ *
+ * `previous`, when given, skips a model whose DECLARED rotation has not
+ * changed since it — `Scene.setModelRotation` already no-ops on an unchanged
+ * yaw, but every placement-state update (including a translation-only one)
+ * otherwise still walks every model and calls it, which without this is one
+ * `Renderer.setModelRotation` call — and, before that call started skipping
+ * its own invalidation on a no-op, one cache clear — per model per edit.
+ * Omitted on the INITIAL sync (mount, or the reapply after
+ * `withModelRotationsUnbaked`), where there is no prior state to compare
+ * against and every heading must be (re-)pushed regardless.
  */
 export function syncModelRotationsToRenderer(
-  renderer: Renderer, state: ViewerState, indices: ReadonlyMap<string, number>,
+  renderer: Renderer, state: ViewerState, indices: ReadonlyMap<string, number>, previous?: ViewerState,
 ): void {
   for (const modelId of state.models.keys()) {
     const index = indices.get(modelId);
     if (index === undefined) continue;
     const rotation = placementFor(state.modelPlacement, modelId).rotation;
+    if (previous && equalRotation(rotation, placementFor(previous.modelPlacement, modelId).rotation)) continue;
     const pivot = toRenderTranslation(rotation.pivot);
     renderer.setModelRotation(index, rotation.angle, pivot);
   }
 }
 
-export function reconcileModelRotations(state: ViewerState): string[] {
+/** Push angle 0 (no pivot) to every known model index, clearing the renderer's
+ * GPU-instanced rotation independently of the declared heading (#4890 review).
+ * `withModelRotationsUnbaked` un-bakes flat vertices for the WHOLE duration of
+ * a federation re-align; without this, an instanced model's occurrences would
+ * stay renderer-rotated for that whole window while its flat meshes sat
+ * unrotated underneath them — a visible split, and a pick landing on
+ * whichever half answers first disagreeing with the other. */
+function clearRendererRotations(renderer: Renderer, indices: ReadonlyMap<string, number>): void {
+  for (const index of indices.values()) renderer.setModelRotation(index, 0, [0, 0, 0]);
+}
+
+export function reconcileModelRotations(state: ViewerState, previous?: ViewerState): string[] {
   // The bump below re-enters this through the subscription. The second pass
   // would find nothing to do, but re-entering a geometry rewrite is not a thing
   // to leave to luck.
   if (reconciling || suspended > 0) return [];
   reconciling = true;
   try {
-    return bake(state);
+    return bake(state, previous);
   } finally {
     reconciling = false;
   }
 }
 
-function bake(state: ViewerState): string[] {
+function bake(state: ViewerState, previous?: ViewerState): string[] {
   const targets = new Map<string, RotationTarget>();
   for (const [modelId, model] of state.models) {
     targets.set(modelId, { geometry: (model as FederatedModel).geometryResult, rotation: placementFor(state.modelPlacement, modelId).rotation });
@@ -75,7 +98,7 @@ function bake(state: ViewerState): string[] {
   // below: the spatial index this function rebuilds has to describe the SAME
   // heading the renderer is about to draw (#4890).
   const renderer = getGlobalRenderer();
-  if (renderer) syncModelRotationsToRenderer(renderer, state, modelIndices(state.models));
+  if (renderer) syncModelRotationsToRenderer(renderer, state, modelIndices(state.models), previous);
   if (moved.length === 0) return moved;
   state.bumpGeometryContentVersion();
   const next = useViewerStore.getState();
@@ -107,6 +130,13 @@ export async function withModelRotationsUnbaked<T>(run: () => Promise<T>): Promi
   try {
     const state = useViewerStore.getState();
     modelRotationBaker.unbake((modelId) => (state.models.get(modelId) as FederatedModel | undefined)?.geometryResult);
+    // Flat vertices are un-baked above for the whole re-align; clear the
+    // renderer's instanced-occurrence rotation too, or an instanced model
+    // stays turned there while its flat meshes sit unrotated underneath —
+    // `reconcileModelRotations` below (on the way out) is what reapplies both
+    // halves together once the operation has finished writing.
+    const renderer = getGlobalRenderer();
+    if (renderer) clearRendererRotations(renderer, modelIndices(state.models));
     return await run();
   } finally {
     suspended -= 1;
@@ -125,7 +155,7 @@ export function subscribeModelRotationSync(): () => void {
     // Not on `geometryContentVersion`: a bump alone moves no model and no
     // heading, and every geometry replacement also republishes `models`.
     if (state.modelPlacement !== previous.modelPlacement || state.models !== previous.models) {
-      reconcileModelRotations(state);
+      reconcileModelRotations(state, previous);
     }
   });
 }

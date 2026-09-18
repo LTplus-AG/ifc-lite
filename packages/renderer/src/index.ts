@@ -1097,11 +1097,19 @@ export class Renderer {
 
     /** Absolute workspace yaw, renderer Y-up radians about the render-frame
      *  pivot `(pivot[0], *, pivot[2])` — turns GPU-instanced occurrences only
-     *  (#4890); no point-cloud leg, mirrors `setModelTranslation` otherwise. */
-    setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): void {
-        this.scene.setModelRotation(modelIndex, angle, pivot);
+     *  (#4890); no point-cloud leg, mirrors `setModelTranslation` otherwise.
+     *  Unlike `setModelTranslation`, this skips the cache clear and bounds
+     *  refresh when `Scene.setModelRotation` reports nothing changed: the
+     *  viewer's rotation sync calls this for EVERY model on every placement
+     *  update (`syncModelRotationsToRenderer`), most of which are a
+     *  translation-only edit that leaves every model's heading untouched, and
+     *  invalidating render caches on a no-op churns them for no reason. */
+    setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): boolean {
+        const changed = this.scene.setModelRotation(modelIndex, angle, pivot);
+        if (!changed) return false;
         this.clearCaches();
         this.refreshPlacementBounds();
+        return true;
     }
 
     /** Streamed clouds are addressed by durable asset handle. */

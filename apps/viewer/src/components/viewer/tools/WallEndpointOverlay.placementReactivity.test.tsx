@@ -44,7 +44,7 @@ const MODEL_ID = 'm-wall-reactivity';
 const EXPRESS_ID = 3;
 
 const IDENTITY_PLACEMENT: PlacementState = {
-  frameKey: null,
+  realignedFrameKey: null,
   placements: new Map(),
   preview: null,
   undo: [],
@@ -55,7 +55,7 @@ const IDENTITY_PLACEMENT: PlacementState = {
 /** Translated +10 workspace X only, no rotation, to keep the expected
  * screen shift simple to assert. */
 const MOVED_PLACEMENT: PlacementState = {
-  frameKey: null,
+  realignedFrameKey: null,
   placements: new Map([[MODEL_ID, {
     translation: [10, 0, 0] as Translation,
     rotation: { angle: 0, pivot: [0, 0, 0] as Translation },

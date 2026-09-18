@@ -188,7 +188,7 @@ test('explicit reference replacement is one reversible image-and-registration co
   useViewerStore.getState().updateAppearanceReference(before.id, { locked: true });
   assert.throws(() => useViewerStore.getState().replaceAppearanceReference(before.id, before), /Unlock/);
   assert.equal(useViewerStore.getState().appearanceReferences.get(before.id)!.assetId, after.assetId);
-  useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement, frameKey: 'new-engineering-frame' } }));
+  useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement, realignedFrameKey: 'new-engineering-frame' } }));
   useViewerStore.getState().updateAppearanceReference(before.id, { locked: false });
   useViewerStore.getState().replaceAppearanceReference(before.id, { ...after, frameKey: 'new-engineering-frame' });
   assert.equal(useViewerStore.getState().appearanceReferences.get(before.id)!.frameKey, 'new-engineering-frame',
@@ -238,7 +238,7 @@ test('clearAllModels for frame reload preserves independent references and lease
   assert.equal(useViewerStore.getState().selectedAppearanceReferenceId, record.id);
   assert.ok(appearanceAssets.get(record.assetId));
   useViewerStore.setState({ models: new Map([['reloaded', fixtureModel('reloaded')]]), activeModelId: 'reloaded',
-    modelPlacement: { ...emptyPlacementState(), frameKey: 'different-engineering-frame' } });
+    modelPlacement: { ...emptyPlacementState(), realignedFrameKey: 'different-engineering-frame' } });
   assert.throws(() => useViewerStore.getState().importAppearanceReferences(registration), /coordinate frame/);
   assert.equal(useViewerStore.getState().appearanceReferences.get(record.id)!.locked, true);
   assert.deepEqual(useViewerStore.getState().appearanceReferences.get(record.id)!.cornersIfcWorld, record.cornersIfcWorld);
@@ -252,7 +252,7 @@ test('clearAllModels for frame reload preserves independent references and lease
 test('cross-frame replacement restores unresolved snapshots without stranding earlier history (#4359)', async () => {
   const record = await reference();
   useViewerStore.getState().addAppearanceReference(record);
-  useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement, frameKey: 'new-frame' } }));
+  useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement, realignedFrameKey: 'new-frame' } }));
   useViewerStore.getState().replaceAppearanceReference(record.id, { ...record, frameKey: 'new-frame' });
   replayWorkspaceHistory(useViewerStore.getState(), 'undo');
   assert.equal(useViewerStore.getState().appearanceReferences.get(record.id)!.frameKey, record.frameKey);

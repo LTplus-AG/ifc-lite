@@ -17,7 +17,7 @@ export function commitRealignmentFrame(
       live.sourceFile !== model.sourceFile || live.sourceFingerprint !== model.sourceFingerprint;
   })) return false;
   useViewerStore.setState({ modelPlacement: { ...current.modelPlacement,
-    frameKey: georeferencedPlacementFrameKey(georef),
+    realignedFrameKey: georeferencedPlacementFrameKey(georef),
     revision: current.modelPlacement.revision + 1 } });
   return true;
 }

@@ -38,7 +38,7 @@ const RAW_ELEVATION = 10;
 /** A model moved vertically ONLY (+5 in Z) — isolates the plane-height bug
  * from the already-covered horizontal translation/rotation inversion. */
 const PLACEMENT: PlacementState = {
-  frameKey: null,
+  realignedFrameKey: null,
   placements: new Map([[MODEL_ID, {
     translation: [0, 0, 5] as Translation,
     rotation: { angle: 0, pivot: [0, 0, 0] as Translation },

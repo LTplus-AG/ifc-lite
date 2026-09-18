@@ -37,7 +37,7 @@ const MODEL_ID = 'm-wall-endpoint';
 /** A model moved +10/+5 (workspace X/Y) and turned 90° CCW about the
  * origin — same fixture shape as `selectionHandlers.placementPick.test.ts`. */
 const PLACEMENT: PlacementState = {
-  frameKey: null,
+  realignedFrameKey: null,
   placements: new Map([[MODEL_ID, {
     translation: [10, 5, 0] as Translation,
     rotation: { angle: Math.PI / 2, pivot: [0, 0, 0] as Translation },

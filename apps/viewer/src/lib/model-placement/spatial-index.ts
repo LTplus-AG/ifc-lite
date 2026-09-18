@@ -35,7 +35,7 @@ export function createPlacementIndexSync() {
     },
     update(state: ViewerState, previous: ViewerState) {
       for (const [id, model] of state.models) {
-        if (!model.ifcDataStore || (state.modelPlacement.frameKey === previous.modelPlacement.frameKey && equalTranslation(
+        if (!model.ifcDataStore || (state.modelPlacement.realignedFrameKey === previous.modelPlacement.realignedFrameKey && equalTranslation(
           displayedTranslation(state.modelPlacement, id), displayedTranslation(previous.modelPlacement, id)))) continue;
         invalidateSpatialIndex(model.ifcDataStore);
         pending.add(id);

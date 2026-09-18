@@ -148,5 +148,15 @@ describe("split-tool anchor and cut clicks raycast the same floor plane (#4932 f
       `cutA=${cutCall!.cutA} cutB=${cutCall!.cutB} disagree — the two clicks raycast different floor planes`);
     assert.ok(Math.abs(cutCall!.cutA[1] - cutCall!.cutB[1]) < 1e-9,
       `cutA=${cutCall!.cutA} cutB=${cutCall!.cutB} disagree — the two clicks raycast different floor planes`);
+
+    // Symmetry alone would also hold if BOTH clicks used the raw, un-placed
+    // elevation (10) instead of the placed one (10 + 5 = 15) — that was
+    // origin/main's actual behaviour before #4932 touched this file at all,
+    // and it is internally consistent, just uniformly wrong. Pin the
+    // absolute value too: with the ray fixture above, x = 0.5 * (100 -
+    // planeY), so the CORRECT placed plane (15) gives 42.5; the un-placed
+    // one (10) would give 45.
+    assert.ok(Math.abs(cutCall!.cutA[0] - 42.5) < 1e-9,
+      `cutA=${cutCall!.cutA} — expected x=42.5 (placed plane), not the un-placed plane's 45`);
   });
 });

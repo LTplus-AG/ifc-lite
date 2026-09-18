@@ -140,6 +140,33 @@ describe('placementFrameKey does not serve a cache frozen before a convergence (
     assert.notEqual(committedThenConverged(anchorA).key, committedThenConverged(anchorB).key,
       'different live anchors after independent pre-convergence commits must not match');
   });
+
+  it('a SECOND commit, made after a convergence has already happened, still caches only the base', () => {
+    const anchorA = { x: 10, y: 20, z: 30 }, anchorB = { x: 40, y: 50, z: 60 };
+    committedThenConverged(anchorA);
+    // A second commit while the workspace is already converged onto anchor A:
+    // if the commit cached the FULL `placementFrameKey` (base + live RTC, the
+    // bug this test isolates) instead of just the base, anchor A would be
+    // frozen into `modelPlacement.frameKey` here.
+    const store = useViewerStore.getState();
+    store.openReposition(['a']);
+    store.previewModelTranslation([0, 5, 0]);
+    store.applyModelTranslation();
+
+    // The federation converges again, this time onto a DIFFERENT anchor.
+    useViewerStore.setState((s) => {
+      const model = s.models.get('a')!;
+      const models = new Map(s.models);
+      models.set('a', { ...model, geometryResult: { ...model.geometryResult, coordinateInfo: coordInfo(anchorB) } as unknown as GeometryResult });
+      return { models };
+    });
+    useViewerStore.getState().rebasePlacementFrame(new Map([['a', { x: 4, y: 5, z: 6 }]]));
+
+    assert.equal(useViewerStore.getState().models.get('a')?.geometryResult?.coordinateInfo.wasmRtcOffset, anchorB,
+      'sanity: the live anchor is now B, not A');
+    assert.equal(placementFrameKey(useViewerStore.getState()), placementFrameKey(localState(anchorB)),
+      'a commit made between two convergences must not freeze the FIRST anchor past the SECOND');
+  });
 });
 
 function savedUnder(disk: ReturnType<typeof storage>, frame: string): string | null {

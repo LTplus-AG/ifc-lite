@@ -4,8 +4,29 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
 import { beforeSend } from './analytics.js';
+
+// Everything here is observed through `beforeSend` — the real `before_send`
+// PostHog is initialised with — and NOT through a direct import of
+// ./foreign-script-noise.js, deliberately.
+//
+// Two reasons, and the second is the load-bearing one:
+//
+//  1. Only a test of the pipeline entry point can catch the gate being
+//     disconnected from it, which is the failure that would silently restore
+//     the noise. (Same rationale as the wasm/chunk skew gates' wiring tests in
+//     ./analytics.test.ts.)
+//  2. `scripts/check-test-revert-oracle.mjs` reverts the production change and
+//     requires these tests to fail BY ASSERTION. The fix for #4939 ADDS a
+//     module, so a test importing it directly dies with ERR_MODULE_NOT_FOUND
+//     under the revert — the file never loads, no assertion runs, and the
+//     oracle cannot tell a real regression test from a vacuous one. `analytics.ts`
+//     is modified rather than added, so it still loads after the revert, with
+//     the gate simply absent: the drop assertions below then fail as assertions,
+//     which is exactly the signal the oracle is asking for.
+//
+// `beforeSend` returns `null` to DROP an event and the (scrubbed) event to keep
+// it, so `null` is the whole observable behaviour under test.
 
 // The two exceptions recorded for issue #4939, transcribed from the PostHog
 // event's `$exception_list` (project 199147, issue
@@ -60,31 +81,24 @@ const appFrame = (fn: string) => ({
   in_app: true,
 });
 
-describe('foreign-script noise gate (#4939)', () => {
+describe('foreign-script noise gate, through before_send (#4939)', () => {
   it("drops the recorded 'tab.id' throw from the masked Safari extension script", () => {
-    // Fails before the fix: the exception carries a real frame, so the
-    // frameCount === 0 gates in analytics-scrub.ts never fire and the event
-    // reaches error tracking, which files it as a viewer bug.
-    assert.equal(shouldSuppressForeignScriptNoise(exceptionEvent([ISSUE_4939_TAB_ID])), true);
+    // Fails by assertion when the gate is absent: the exception carries a real
+    // frame, so the frameCount === 0 arms in analytics-scrub.ts never fire and
+    // `beforeSend` returns the event, which error tracking then files as a
+    // viewer bug.
+    assert.equal(beforeSend(exceptionEvent([ISSUE_4939_TAB_ID])), null);
   });
 
   it("drops the sibling 'response.type' throw from the same session", () => {
-    assert.equal(
-      shouldSuppressForeignScriptNoise(exceptionEvent([ISSUE_4939_RESPONSE_TYPE])),
-      true,
-    );
+    assert.equal(beforeSend(exceptionEvent([ISSUE_4939_RESPONSE_TYPE])), null);
   });
 
-  it('drops a multi-entry event only when every entry is foreign', () => {
-    assert.equal(
-      shouldSuppressForeignScriptNoise(
-        exceptionEvent([ISSUE_4939_TAB_ID, ISSUE_4939_RESPONSE_TYPE]),
-      ),
-      true,
-    );
+  it('drops a multi-entry event when every entry is foreign', () => {
+    assert.equal(beforeSend(exceptionEvent([ISSUE_4939_TAB_ID, ISSUE_4939_RESPONSE_TYPE])), null);
   });
 
-  it('drops the Chromium and Gecko extension schemes too', () => {
+  it('drops the Chromium, Gecko and Safari web-extension schemes too', () => {
     for (const filename of [
       'chrome-extension://abcdefghijklmnopabcdefghijklmnop/content.js',
       'moz-extension://11111111-2222-3333-4444-555555555555/inject.js',
@@ -98,7 +112,7 @@ describe('foreign-script noise gate (#4939)', () => {
           stacktrace: { type: 'raw', frames: [{ ...maskedFrame(10, 1), filename }] },
         },
       ]);
-      assert.equal(shouldSuppressForeignScriptNoise(event), true, filename);
+      assert.equal(beforeSend(event), null, filename);
     }
   });
 
@@ -112,7 +126,9 @@ describe('foreign-script noise gate (#4939)', () => {
         frames: [maskedFrame(21622, 17), appFrame('RibbonToolbar')],
       },
     };
-    assert.equal(shouldSuppressForeignScriptNoise(exceptionEvent([mixed])), false);
+    const kept = beforeSend(exceptionEvent([mixed]));
+    assert.notEqual(kept, null);
+    assert.equal(kept?.event, '$exception');
   });
 
   it('keeps an identical message thrown from our own bundle', () => {
@@ -122,7 +138,9 @@ describe('foreign-script noise gate (#4939)', () => {
       ...ISSUE_4939_TAB_ID,
       stacktrace: { type: 'raw' as const, frames: [appFrame('WidgetRenderer')] },
     };
-    assert.equal(shouldSuppressForeignScriptNoise(exceptionEvent([ours])), false);
+    const kept = beforeSend(exceptionEvent([ours]));
+    assert.notEqual(kept, null);
+    assert.equal(kept?.event, '$exception');
   });
 
   it('keeps a deliberate captureException, whatever its frames say', () => {
@@ -130,48 +148,33 @@ describe('foreign-script noise gate (#4939)', () => {
       ...ISSUE_4939_TAB_ID,
       mechanism: { handled: true, synthetic: false, type: 'generic' as const },
     };
-    assert.equal(shouldSuppressForeignScriptNoise(exceptionEvent([handled])), false);
+    assert.notEqual(beforeSend(exceptionEvent([handled])), null);
   });
 
-  it('keeps a frameless exception — the frameless gates own that case', () => {
-    const frameless = { type: 'TypeError', value: 'Script error.', mechanism: { handled: false } };
-    assert.equal(shouldSuppressForeignScriptNoise(exceptionEvent([frameless])), false);
-    assert.equal(
-      shouldSuppressForeignScriptNoise({
-        event: '$exception',
-        properties: { $exception_list: [] },
-      }),
-      false,
+  it('keeps a frameless exception — the frameless arms in the scrub own that case', () => {
+    // Same #4939 wording with no `stacktrace` at all (the production shape from
+    // #1903). An absent stack is not evidence of a foreign script, so this gate
+    // must not claim it; a bare "Script error." is deliberately NOT used here
+    // because analytics-scrub.ts already drops that one on its own.
+    const frameless = {
+      type: 'TypeError',
+      value: "undefined is not an object (evaluating 'tab.id')",
+      mechanism: { handled: false },
+    };
+    assert.notEqual(beforeSend(exceptionEvent([frameless])), null);
+    assert.notEqual(
+      beforeSend({ event: '$exception', properties: { $exception_list: [] } }),
+      null,
     );
   });
 
-  it('keeps non-exception events and null', () => {
-    assert.equal(
-      shouldSuppressForeignScriptNoise({
+  it('keeps a non-exception event captured while an extension is present', () => {
+    assert.notEqual(
+      beforeSend({
         event: '$pageview',
         properties: { $exception_list: [ISSUE_4939_TAB_ID] },
       }),
-      false,
+      null,
     );
-    assert.equal(shouldSuppressForeignScriptNoise(null), false);
-  });
-});
-
-// Only a test of `beforeSend` itself can catch the gate being disconnected from
-// the pipeline, which is the failure that would silently restore the noise.
-// Same rationale as the wasm/chunk skew gates' wiring tests in analytics.test.ts.
-describe('beforeSend wiring (#4939)', () => {
-  it('returns null for the recorded #4939 event', () => {
-    assert.equal(beforeSend(exceptionEvent([ISSUE_4939_TAB_ID])), null);
-  });
-
-  it('still returns an event for the same message thrown by our bundle', () => {
-    const ours = {
-      ...ISSUE_4939_TAB_ID,
-      stacktrace: { type: 'raw' as const, frames: [appFrame('WidgetRenderer')] },
-    };
-    const result = beforeSend(exceptionEvent([ours]));
-    assert.notEqual(result, null);
-    assert.equal(result?.event, '$exception');
   });
 });

@@ -81,9 +81,13 @@ describe('familyOf', () => {
     expect(resolve('IfcBuildingElementPart')).toBe('IFCBUILDINGELEMENTPART');
   });
 
-  it('skips malformed rows from an untyped caller', () => {
+  it('skips malformed rows from an untyped caller, and falls back on a non-array table', () => {
     const resolve = classFamilyResolver([[], ['', '  '], ['IfcWall', 42 as unknown as string]]);
     expect(resolve('IfcWall')).toBe('IFCWALL');
+    for (const bad of [null, {}, 'IfcWall', 7]) {
+      const fallback = classFamilyResolver(bad as unknown as readonly (readonly string[])[]);
+      expect(fallback('IfcBuildingElementPart')).toBe('IFCWALL');
+    }
   });
 });
 
@@ -107,10 +111,13 @@ describe('split/merge across a class family (issue #4955)', () => {
     expect(diff.splitMerges![0].crossClass).toBe(true);
   });
 
-  it('does not flag crossClass on a same-class split', () => {
+  it('does not flag crossClass on a same-class split, whatever the adapter casing', () => {
     const diff = run([wall()], layers('IfcWall'));
     expect(diff.splitMerges).toHaveLength(1);
     expect(diff.splitMerges![0].crossClass).toBeUndefined();
+    const upper = run([wall()], layers('IFCWALL'));
+    expect(upper.splitMerges).toHaveLength(1);
+    expect(upper.splitMerges![0].crossClass).toBeUndefined();
   });
 
   it('still refuses a split across families (a wall becoming coverings)', () => {

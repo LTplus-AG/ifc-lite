@@ -59,13 +59,15 @@ function normalize(ifcType: string): string {
  * mistake, not a request for a union.
  *
  * Rows that are empty, or whose entries are not non-empty strings, are
- * skipped, because the table can arrive from an untyped JS caller.
+ * skipped, and a table that is not an array at all falls back to the default,
+ * because the table can arrive from an untyped JS caller and `diffModels` has
+ * no error channel for its options.
  */
 export function classFamilyResolver(
   families: readonly (readonly string[])[] = DEFAULT_CLASS_FAMILIES,
 ): ClassFamilyResolver {
   const byClass = new Map<string, string>();
-  for (const row of families) {
+  for (const row of Array.isArray(families) ? families : DEFAULT_CLASS_FAMILIES) {
     if (!Array.isArray(row)) continue;
     const members = row.filter((name) => typeof name === 'string' && name.trim().length > 0);
     if (members.length === 0) continue;
@@ -83,3 +85,9 @@ export function classFamilyResolver(
 
 /** The resolver over {@link DEFAULT_CLASS_FAMILIES}. */
 export const familyOf: ClassFamilyResolver = classFamilyResolver();
+
+/** Case-insensitive class equality, for a `crossClass` flag that must not fire
+ *  on `IFCWALL` versus `IfcWall` from two adapters' spellings. */
+export function sameIfcClass(a: string, b: string): boolean {
+  return normalize(a) === normalize(b);
+}

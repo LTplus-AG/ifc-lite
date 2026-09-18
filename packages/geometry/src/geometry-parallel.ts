@@ -41,6 +41,12 @@ import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
+  armPreWorkerPhaseBound,
+  emptyStylesPrepassEvent,
+  GateTracker,
+  preWorkerPhaseFailureDiagnostics,
+} from './stall-phase.js';
+import {
   SkippedHungElementsCollector,
   startHungJobMonitor,
   WorkerJobLedger,
@@ -301,6 +307,10 @@ export async function* processParallel(
     }
   };
 
+  // Which pre-worker gate is still open (#4902) — see stall-phase.ts.
+  const gateTracker = new GateTracker();
+  if (options?.stallPhaseHandle) options.stallPhaseHandle.getStallPhase = () => gateTracker.getStallPhase();
+
   // Pre-pass worker drives the entire pipeline via streaming events.
   let prepassMeta: PrepassMeta | null = null;
   let prepassJobsTotal = 0;
@@ -346,6 +356,10 @@ export async function* processParallel(
   const shardResults: (ShardColumns | null)[] = [];
   let shardResultsRemaining = 0;
   let shardScanDispatchedAt = -1;
+  // #4902: settles once, normally or via the bounded-wait timeout below.
+  let shardScanSettled = false;
+  let stylesSlicesSettled = false;
+  let finalizeSettled = false;
   // Shard-resolved styled-item slices (see onAllStyleSlicesReceived).
   interface StylesSlice {
     orphanIds: Uint32Array; orphanColors: Float32Array;
@@ -426,6 +440,9 @@ export async function* processParallel(
         return;
       }
       if (msg.type === 'styles-final') {
+        // A late reply after the #4902 finalize bound already drained with
+        // default colours must not reopen that gate.
+        if (finalizeSettled) return;
         // Finalized styles payload from worker 0 — feed it through the SAME
         // prepass styles-event path (gates, logging, distribution) by
         // synthesizing a prepass-stream message. The handler is a plain
@@ -933,6 +950,7 @@ export async function* processParallel(
       }
     }
     entityIndexReceived = true;
+    gateTracker.markEntityIndexReceived();
     drainQueuedChunksIfReady();
   };
 
@@ -945,6 +963,10 @@ export async function* processParallel(
    * the serial pre-pass path — identical to flag-off behaviour.
    */
   const onAllShardsReceived = () => {
+    // A late straggler shard result may land after the #4902 bound already fell back.
+    if (shardScanSettled) return;
+    shardScanSettled = true;
+    gateTracker.markShardScanDone();
     const shards = shardResults as ShardColumns[];
     const stitched = stitchShards(shards);
     if (!stitched) {
@@ -1003,6 +1025,14 @@ export async function* processParallel(
         [slice.buffer],
       );
     }
+    // #4902 bound: a missing slice at the deadline is treated as empty
+    // (`onAllStyleSlicesReceived` already skips a `null` entry) — see stall-phase.ts.
+    armPreWorkerPhaseBound(fileSizeMB, () => stylesSlicesSettled, () => {
+      console.warn(`[stream][shard] ${stylesSlicesRemaining}/${sliceCount} style slice(s) silent — proceeding with the slices that answered (#4902)`);
+      diagnostics = mergeGeometryDiagnostics(diagnostics, preWorkerPhaseFailureDiagnostics('style-slice-timeout'));
+      stylesSlicesRemaining = 0;
+      onAllStyleSlicesReceived();
+    });
 
     // Start the sharded pre-pass with the stitched index columns + classes
     // (stage 2: the pre-pass discovers jobs/spans from the class column and
@@ -1020,6 +1050,9 @@ export async function* processParallel(
    * canonical flatten emits the styles event through the same channel.
    */
   const onAllStyleSlicesReceived = () => {
+    // A late straggler slice may land after the #4902 bound already merged.
+    if (stylesSlicesSettled) return;
+    stylesSlicesSettled = true;
     const orphan = new Map<number, number>(); // id -> base float index (slice,i)
     const geom = new Map<number, number>();
     // First pass: count winners to size the merged columns.
@@ -1079,6 +1112,14 @@ export async function* processParallel(
       [m.orphanIds.buffer, m.orphanColors.buffer, m.geomIds.buffer, m.geomColors.buffer],
     );
     console.log(`[stream][shard] styles finalize dispatched to worker[0] @ ${elapsed()}ms`);
+    // #4902 bound: replay the empty-styles event (stall-phase.ts) so every
+    // held chunk drains with default colours instead of never draining.
+    armPreWorkerPhaseBound(fileSizeMB, () => finalizeSettled, () => {
+      finalizeSettled = true;
+      console.warn('[stream][shard] styles finalize silent — draining with default colours (#4902)');
+      diagnostics = mergeGeometryDiagnostics(diagnostics, preWorkerPhaseFailureDiagnostics('styles-finalize-timeout'));
+      (prepassWorker.onmessage as (e: MessageEvent) => void)({ data: emptyStylesPrepassEvent() } as MessageEvent);
+    });
   };
 
   // SPIKE: kick off the shard scans on the idle workers NOW (before the pre-pass
@@ -1095,6 +1136,7 @@ export async function* processParallel(
     shardResults.length = n;
     shardResultsRemaining = n;
     shardScanDispatchedAt = elapsed();
+    gateTracker.markShardScanStarted();
     console.log(`[stream][shard] dispatching ${n} shard scans over ${(len / (1024 * 1024)).toFixed(1)}MB @ ${shardScanDispatchedAt}ms`);
     for (let i = 0; i < n; i++) {
       const rangeStart = Math.floor((i * len) / n);
@@ -1107,6 +1149,15 @@ export async function* processParallel(
         rangeEnd,
       });
     }
+    // #4902 bound: falls back to the serial pre-pass, same as an unresolved
+    // stitch (`onAllShardsReceived`'s `!stitched` branch) — see stall-phase.ts.
+    armPreWorkerPhaseBound(fileSizeMB, () => shardScanSettled, () => {
+      shardScanSettled = true;
+      gateTracker.markShardScanDone();
+      console.warn(`[stream][shard] ${shardResultsRemaining}/${n} shard scan(s) silent — falling back to the serial pre-pass (#4902)`);
+      diagnostics = mergeGeometryDiagnostics(diagnostics, preWorkerPhaseFailureDiagnostics('shard-scan-timeout'));
+      startPrepass(false);
+    });
   }
 
   const prepassWorker = makePrepassWorker();
@@ -1252,6 +1303,8 @@ export async function* processParallel(
         });
 
         stylesReceived = true;
+        finalizeSettled = true; // reached via the real path — the #4902 bound is moot now
+        gateTracker.markStylesReceived();
         // Drain only when ALL gates are open (entity-index too). The
         // worker's tail-promise serialiser ensures any set-* runs
         // before any subsequent stream-chunk.
@@ -1402,6 +1455,7 @@ export async function* processParallel(
   // After we see the Rust `complete` event we can sendStreamEnd.
   const onPrepassComplete = () => {
     prepassDone = true;
+    gateTracker.markPrepassDone();
     // Only signal stream-end to workers if they actually got
     // stream-start (which gates on `meta`). Zero-geometry files
     // never trigger meta → workers never start → no stream-end

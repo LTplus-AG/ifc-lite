@@ -38,6 +38,7 @@ import {
   type TessellationQuality,
   type GeometryDiagnostics,
   type SkippedHungElements,
+  type StallPhaseHandle,
   DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
@@ -1548,6 +1549,10 @@ export function useIfcLoader() {
 
       // Declare at function scope so the catch block can always reach it.
       let closeGeometryIterator: (() => Promise<void>) | null = null;
+      // #4902: filled in synchronously by the pool with a live getStallPhase()
+      // reader, read in the catch block below if the stream watchdog fires —
+      // a measured phase instead of a guess.
+      const stallPhaseHandle: StallPhaseHandle = {};
       // The background finalize (spatial index / cache for primary; align +
       // addModel for federated). Primary leaves it running in the background
       // for a fast first frame; federated MUST await it so the model is
@@ -1567,6 +1572,7 @@ export function useIfcLoader() {
         const geometryEvents = geometryProcessor.processAdaptive(geometryView, {
               signal: geometryAbort.signal,
               hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // reads skippedHungElements below
+              stallPhaseHandle,
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
               existingSab: sharedSource ?? undefined,
@@ -2050,6 +2056,10 @@ export function useIfcLoader() {
           load_stage: loadStage,
           is_retry: options?.isResourceRetry === true,
           file_size_mb: Math.round(fileSizeMB * 100) / 100,
+          // #4902: which pre-worker gate the pool was still waiting on, so a
+          // "Last rendered meshes: 0" stall is attributed to a measured phase
+          // instead of only ever guessed from `load_stage`.
+          stall_phase: stallPhaseHandle.getStallPhase?.(),
         });
         setLoading(false);
         setGeometryStreamingActive(false);

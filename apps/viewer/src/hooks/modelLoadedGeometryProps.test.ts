@@ -356,6 +356,31 @@ describe('ifc_model_loaded wiring (#2388)', () => {
     assert.ok(abortIdx !== -1 && abortIdx < returnIdx, 'the stream must be aborted before return() is awaited');
   });
 
+  it('wires a stallPhaseHandle into the geometry stream and reports its phase on a stall (#4902)', () => {
+    // `stallPhaseHandle` is created once at function scope (so the catch
+    // block below the try can still reach it — see `closeGeometryIterator`
+    // just above it) and passed to `processAdaptive`.
+    assert.match(src, /const stallPhaseHandle: StallPhaseHandle = \{\};/);
+    const processCallIdx = src.indexOf('geometryProcessor.processAdaptive(geometryView');
+    assert.notEqual(processCallIdx, -1);
+    const stallOptIdx = src.indexOf('stallPhaseHandle,', processCallIdx);
+    assert.ok(
+      stallOptIdx !== -1 && stallOptIdx - processCallIdx < 500,
+      'processAdaptive must receive the stallPhaseHandle option',
+    );
+    // The geometry_processing captureException call reads it back — a stall
+    // watchdog error is captured there, not where the watchdog itself throws.
+    // The anchor is a string literal, so it is looked up in `code` (masked
+    // blanks literal bodies) — same rationale as `captureArgsAround` above.
+    const geometryCatchIdx = loader.code.indexOf("context: 'geometry_processing'");
+    assert.notEqual(geometryCatchIdx, -1);
+    const stallReadIdx = src.indexOf('stall_phase: stallPhaseHandle.getStallPhase?.()', geometryCatchIdx);
+    assert.ok(
+      stallReadIdx !== -1 && stallReadIdx - geometryCatchIdx < 500,
+      'the geometry_processing captureException must report stall_phase from the same handle',
+    );
+  });
+
   it('marks the SERVER fast path\'s capture as a retry when it is one', () => {
     // The third capture site (#2393 self-review). It is reachable on a retry:
     // a first attempt falls through to WASM because the server is momentarily

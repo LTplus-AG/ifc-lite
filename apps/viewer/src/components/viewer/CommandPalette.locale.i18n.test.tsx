@@ -57,12 +57,22 @@ function readableStrings(): Set<string> {
   return out;
 }
 
+// jsdom has no `indexedDB`; the palette's recent-files-cache lookup on open
+// catches that and warns rather than throwing, but the warning's captured
+// `ReferenceError` text is enough to make an unrelated tool (the revert
+// oracle's output classifier) mistake a real assertion failure for a load
+// failure. Silenced here rather than in production — the warning is
+// accurate and unrelated to this file's own assertions.
+const realWarn = console.warn;
+
 beforeEach(() => {
+  console.warn = () => {};
   setLocale('en');
   useViewerStore.setState({ cesiumAvailable: true } as Partial<ReturnType<typeof useViewerStore.getState>>);
 });
 
 afterEach(() => {
+  console.warn = realWarn;
   cleanup();
   setLocale('en');
   useViewerStore.setState({ cesiumAvailable: false } as Partial<ReturnType<typeof useViewerStore.getState>>);

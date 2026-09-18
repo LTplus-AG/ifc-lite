@@ -9,6 +9,9 @@ import { DATA_DEFAULTS } from '../constants.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
 import { capturePreAlignment, restorePreAlignment } from '../../hooks/ingest/federationRealign.js';
+import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
+import { degreesToRadians, ZERO_ROTATION, type ModelRotation } from '../../lib/model-placement/rotation.js';
+import type { Translation } from '../../lib/model-placement/translation.js';
 
 type DataTestState = DataSlice & DataCrossSliceState;
 
@@ -43,6 +46,8 @@ type TestSetState = (
 type TestGetState = () => DataTestState;
 
 const ACTIVE_MODEL_ID = 'active-model';
+/** Off-axis and off-origin: no term of the bake can cancel by symmetry. */
+const ROTATION: ModelRotation = { angle: degreesToRadians(37.4), pivot: [13.7, -4.9, 0] as Translation };
 
 describe('DataSlice', () => {
   let state: DataTestState;
@@ -521,6 +526,59 @@ describe('DataSlice', () => {
     it('is a no-op when there is no geometryResult yet', () => {
       assert.doesNotThrow(() => state.pruneGeometryMeshes(new Set([1])));
       assert.strictEqual(state.geometryResult, null);
+    });
+
+    /**
+     * #4935: on a ROTATED model the baseline (`lib/model-placement/
+     * rotation-baseline.ts`) is the only remaining holder of a pruned mesh's
+     * pristine copy and of the model's pristine extent. Nothing dropped the
+     * pruned mesh out of it, so the extent kept covering deleted geometry —
+     * fit-to-view and the section calculations read it — and the next
+     * zero-angle bake wrote those bounds straight back over the live ones.
+     */
+    it('drops a pruned mesh from the rotation baseline, so a 0° bake cannot restore its bounds (#4935)', () => {
+      const placed = (expressId: number, x: number, length: number) => ({
+        expressId,
+        positions: new Float32Array([0, 0, 0, length, 0, 0, length, 0, 1]),
+        normals: new Float32Array([1, 0, 0, 1, 0, 0, 1, 0, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        color: [1, 0, 0, 1] as [number, number, number, number],
+        origin: [x, 5, -40],
+      });
+      // The loader's own declared extent, spanning both meshes.
+      const coordinateInfo = {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        shiftedBounds: { min: { x: 100, y: 5, z: -40 }, max: { x: 402, y: 5, z: -39 } },
+        hasLargeCoordinates: false,
+      };
+      state.appendGeometryBatch(
+        ACTIVE_MODEL_ID,
+        [placed(1, 100, 3), placed(2, 400, 2)] as unknown as GeometryResult['meshes'],
+        coordinateInfo,
+      );
+      const target = (rotation: ModelRotation) => new Map([[ACTIVE_MODEL_ID,
+        { geometry: state.geometryResult, rotation }]]);
+      modelRotationBaker.clear();
+      try {
+        // Rotated, so a baseline exists at all: the pristine copy is captured
+        // while both meshes are still there.
+        assert.deepStrictEqual(modelRotationBaker.reconcile(target(ROTATION)), [ACTIVE_MODEL_ID]);
+
+        // The drain behind a delete / a wall split.
+        state.pruneGeometryMeshes(new Set([2]));
+        assert.deepStrictEqual(state.geometryResult?.meshes.map((m) => m.expressId), [1],
+          'the prune has to have removed the mesh (fixture can fail)');
+
+        // Back to 0°: the bake writes the PRISTINE extent back verbatim, which
+        // is the one place a stale baseline is unrecoverable.
+        assert.deepStrictEqual(modelRotationBaker.reconcile(target(ZERO_ROTATION)), [ACTIVE_MODEL_ID]);
+        assert.deepStrictEqual(state.geometryResult?.coordinateInfo.shiftedBounds, {
+          min: { x: 100, y: 5, z: -40 }, max: { x: 103, y: 5, z: -39 },
+        }, 'the restored extent still covers the deleted mesh');
+      } finally {
+        modelRotationBaker.clear();
+      }
     });
   });
 

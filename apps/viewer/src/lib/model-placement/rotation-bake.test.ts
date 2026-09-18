@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { ModelRotationBaker, type RotationTarget } from './rotation-bake.js';
+import type { MeshPrune } from './rotation-baseline.js';
 import { degreesToRadians, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 import type { Translation } from './translation.js';
 
@@ -278,5 +279,127 @@ describe('ModelRotationBaker', () => {
     const control = new ModelRotationBaker(), fresh = releasable();
     control.reconcile(targets(fresh, OTHER));
     assert.deepEqual(placement(value), placement(fresh));
+  });
+
+  /**
+   * #4935: a split or a delete drops a mesh out of `geometryResult.meshes`
+   * (`pruneGeometryMeshes` / `store/slices/data-mesh-prune.ts`). The baseline is
+   * then the only thing still holding that mesh's pristine copy and its share
+   * of the model's pristine extent.
+   */
+  describe('pruneMeshes', () => {
+    const placedMesh = (expressId: number, x: number, length: number): MeshData => ({
+      expressId, positions: new Float32Array([0, 0, 0, length, 0, 0, length, 0, 1]),
+      normals: new Float32Array([1, 0, 0, 1, 0, 0, 1, 0, 0]), indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1], origin: [x, 5, -40],
+    } as unknown as MeshData);
+
+    /** Two meshes far apart, under the loader's OWN declared extent spanning
+     * both — the bounds a capture clones, not something re-measured. */
+    const spread = (): Geometry => ({
+      meshes: [placedMesh(1, 100, 3), placedMesh(2, 400, 2)],
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        shiftedBounds: { min: { x: 100, y: 5, z: -40 }, max: { x: 402, y: 5, z: -39 } },
+        hasLargeCoordinates: false },
+    } as unknown as Geometry);
+
+    /** What `pruneMeshesFromGeometry` hands the baker: the ids, its own
+     * removal rule, and the pruned geometry object it published. */
+    const drain = (ids: number[], replacements: Array<[Geometry, Geometry]> = []): MeshPrune => ({
+      ids: new Set(ids), removes: (mesh) => ids.includes(mesh.expressId),
+      replacements: new Map(replacements),
+    });
+    /** The prune republishes the geometry as a NEW object holding the same
+     * surviving mesh objects. */
+    const withoutIds = (value: Geometry, ids: number[]): Geometry => ({ ...value,
+      meshes: value.meshes.filter((mesh) => !ids.includes(mesh.expressId)) } as Geometry);
+
+    it('releases the pruned mesh\'s pristine copy', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      baker.reconcile(targets(value, SKEW));
+      const gone = value.meshes[1];
+      const pristine = [...baker.inModelFrame(gone).positions];
+      assert.notDeepEqual(pristine, [...gone.positions], 'the fixture must actually be baked');
+
+      baker.pruneMeshes(drain([2], [[value, withoutIds(value, [2])]]));
+
+      // Nothing on offer for a mesh that no longer exists: the copy is gone,
+      // and `inModelFrame` falls back to the live bytes.
+      assert.deepEqual([...baker.inModelFrame(gone).positions], [...gone.positions],
+        'the baseline still holds the pruned mesh\'s pristine buffers');
+    });
+
+    it('re-measures the pristine extent, so a 0° bake cannot restore the pruned mesh\'s bounds', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      baker.reconcile(targets(value, SKEW));
+      const next = withoutIds(value, [2]);
+      baker.pruneMeshes(drain([2], [[value, next]]));
+
+      assert.deepEqual(baker.reconcile(targets(next, ZERO_ROTATION)), ['m']);
+      assert.deepEqual(next.coordinateInfo.shiftedBounds,
+        { min: { x: 100, y: 5, z: -40 }, max: { x: 103, y: 5, z: -39 } },
+        'the restored extent still covers the deleted mesh');
+    });
+
+    it('keeps a colour-merged mesh the prune itself keeps', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      baker.reconcile(targets(value, SKEW));
+      const kept = value.meshes[1];
+      const pristine = [...baker.inModelFrame(kept).positions];
+      // The renderer keeps a mesh that hosts OTHER entities, so `removes` says
+      // no for it even though its id is in the drain.
+      baker.pruneMeshes({ ...drain([2]), removes: () => false });
+      assert.deepEqual([...baker.inModelFrame(kept).positions], pristine,
+        'a mesh the prune kept lost its baseline');
+      // Nothing was removed, so the pristine extent is left exactly as declared
+      // rather than re-measured off the vertices.
+      baker.reconcile(targets(value, ZERO_ROTATION));
+      assert.deepEqual(value.coordinateInfo.shiftedBounds,
+        { min: { x: 100, y: 5, z: -40 }, max: { x: 402, y: 5, z: -39 } });
+    });
+
+    it('drops the whole baseline when every mesh it described is pruned', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      baker.reconcile(targets(value, SKEW));
+      const emptied = withoutIds(value, [1, 2]);
+      baker.pruneMeshes(drain([1, 2], [[value, emptied]]));
+      // No baseline left, so a model that streams in again is baked from its
+      // own pristine bytes rather than from an extent-less stale copy.
+      const restreamed = spread();
+      assert.deepEqual(baker.reconcile(targets(restreamed, SKEW)), ['m']);
+      const control = new ModelRotationBaker(), fresh = spread();
+      control.reconcile(targets(fresh, SKEW));
+      assert.deepEqual(restreamed.coordinateInfo.shiftedBounds, fresh.coordinateInfo.shiftedBounds);
+    });
+
+    it('follows the model onto the pruned geometry object so unbake still restores it', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      const pristine = meshSnapshot(value, 0);
+      baker.reconcile(targets(value, SKEW));
+      const next = withoutIds(value, [2]);
+      baker.pruneMeshes(drain([2], [[value, next]]));
+      // The store now holds `next`; an identity check against the pre-prune
+      // object would silently skip the un-bake a re-align depends on.
+      assert.deepEqual(baker.unbake(() => next), ['m']);
+      assert.deepEqual(meshSnapshot(next, 0), pristine);
+    });
+
+    it('does not turn the instanced boxes twice across a prune', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      value.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+      baker.reconcile(targets(value, SKEW));
+      // The prune copies the instanced maps to drop pruned ids; the copy holds
+      // boxes this baker already turned.
+      const next = { ...withoutIds(value, [2]),
+        instancedGeometryAabbs: new Map(value.instancedGeometryAabbs) } as Geometry;
+      baker.pruneMeshes(drain([2], [[value, next]]));
+      baker.reconcile(targets(next, SKEW));
+      const control = new ModelRotationBaker(), fresh = spread();
+      fresh.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);
+      control.reconcile(targets(fresh, SKEW));
+      assert.deepEqual(next.instancedGeometryAabbs, fresh.instancedGeometryAabbs,
+        'the instanced boxes were rotated a second time after the prune');
+    });
   });
 });

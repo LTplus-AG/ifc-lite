@@ -94,7 +94,9 @@ export function captureAppendedMeshBaselines(geometry: Geometry, baseline: Rotat
     // handed an extent the model no longer fits in.
     if (baseline.instancedGeometryAabbs) {
       const offset = totalYupOffset(geometry.coordinateInfo);
-      for (const box of baseline.instancedGeometryAabbs.values()) growPristineBoundsByWorldBox(baseline, box, offset);
+      for (const box of baseline.instancedGeometryAabbs.values()) {
+        growNamedBoundsByWorldBox(baseline.shiftedBounds, box, offset);
+      }
     }
     captured = true;
   }
@@ -110,31 +112,36 @@ export function captureAppendedMeshBaselines(geometry: Geometry, baseline: Rotat
   return captured;
 }
 
-/** Grow the pristine shifted bounds by an ABSOLUTE world box. The boxes carry
- * the RTC offset and the origin shift folded in and the bounds do not, so the
- * box is taken back out of that frame first — the same conversion
- * `growByWorldBox` does for the rotated bounds. */
-function growPristineBoundsByWorldBox(
-  baseline: RotationBaseline, box: EntityWorldAabb, offset: { x: number; y: number; z: number },
+type Offset = { x: number; y: number; z: number };
+/** Axis order of the numeric box arrays, as keys of the named bounds. */
+const AXES = ['x', 'y', 'z'] as const;
+
+/** Grow a named render-frame box by an ABSOLUTE world box. The boxes carry the
+ * RTC offset and the origin shift folded in and the bounds do not, so the box
+ * is taken back out of that frame first — the same conversion `growByWorldBox`
+ * does for the rotated bounds. A non-finite corner grows nothing. */
+function growNamedBoundsByWorldBox(
+  bounds: RotationBaseline['shiftedBounds'], box: EntityWorldAabb, offset: Offset,
 ): void {
-  const bounds = baseline.shiftedBounds;
   if (!bounds) return;
   const o = [offset.x, offset.y, offset.z];
-  const axes = ['x', 'y', 'z'] as const;
   for (let axis = 0; axis < 3; axis += 1) {
     if (!Number.isFinite(box.min[axis] - o[axis]) || !Number.isFinite(box.max[axis] - o[axis])) return;
   }
   for (let axis = 0; axis < 3; axis += 1) {
-    const key = axes[axis];
+    const key = AXES[axis];
     bounds.min[key] = Math.min(bounds.min[key], box.min[axis] - o[axis]);
     bounds.max[key] = Math.max(bounds.max[key], box.max[axis] - o[axis]);
   }
 }
 
-function growPristineBounds(baseline: RotationBaseline, mesh: MeshData): void {
-  const box = baseline.shiftedBounds;
+/** Grow a named render-frame box by a mesh's own vertices, lifted out of the
+ * mesh's local frame by its `origin`. */
+function growBoundsByPositions(
+  box: RotationBaseline['shiftedBounds'], positions: Float32Array,
+  origin: readonly number[] | undefined,
+): void {
   if (!box) return;
-  const origin = mesh.origin, positions = mesh.positions;
   const ox = origin ? origin[0] : 0, oy = origin ? origin[1] : 0, oz = origin ? origin[2] : 0;
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
@@ -143,6 +150,88 @@ function growPristineBounds(baseline: RotationBaseline, mesh: MeshData): void {
     box.min.y = Math.min(box.min.y, y); box.max.y = Math.max(box.max.y, y);
     box.min.z = Math.min(box.min.z, z); box.max.z = Math.max(box.max.z, z);
   }
+}
+
+function growPristineBounds(baseline: RotationBaseline, mesh: MeshData): void {
+  growBoundsByPositions(baseline.shiftedBounds, mesh.positions, mesh.origin);
+}
+
+/** What a mesh-removal drain took out of the live geometry — everything a
+ * baseline needs in order to stop describing meshes that no longer exist. */
+export interface MeshPrune {
+  /** The renderer ids the drain removed: the key space of the instanced-only
+   * maps, which are keyed by id rather than by mesh object. */
+  ids: ReadonlySet<number>;
+  /** Whether this mesh object is one the drain actually removed. The rule is
+   * the prune's own (`removesMesh` in `store/slices/data-mesh-prune.ts`) and is
+   * passed in rather than re-derived here, so the baseline cannot start
+   * disagreeing with it: a colour-merged mesh that still hosts OTHER entities
+   * survives the prune, and has to survive the baseline too. */
+  removes: (mesh: MeshData) => boolean;
+  /** Each pre-prune geometry object mapped to the pruned copy the store put in
+   * its place, so a baseline can follow its model onto the new object. */
+  replacements: ReadonlyMap<Geometry, Geometry>;
+}
+
+/**
+ * Drop everything `prune` removed out of `baseline`, and re-measure the
+ * pristine extent from what is left (#4935).
+ *
+ * Nothing else drops a pruned mesh out of a baseline, so without this a
+ * deleted element's pristine buffers stay alive, the pristine `shiftedBounds`
+ * keeps covering geometry that is gone — fit-to-view and the section
+ * calculations read that extent — and a later zero-angle {@link restore}
+ * writes those too-large bounds back over the live ones.
+ *
+ * The extent is RE-MEASURED rather than shrunk in place: a box cannot be
+ * un-grown by removing a box from it, and re-measuring from the pristine
+ * copies is the same measurement a non-zero bake already makes from the meshes
+ * it turns (`applyModelRotation`). It is a no-op when nothing measurable is
+ * left, so a baseline emptied by the prune reports the extent it last had
+ * rather than an inverted one.
+ *
+ * @returns true when the baseline lost something.
+ */
+export function pruneMeshBaselines(
+  geometry: Geometry, baseline: RotationBaseline, prune: MeshPrune,
+): boolean {
+  let pruned = false;
+  // Deleting the current key during a Map iteration is well defined: the
+  // deleted entry is simply not revisited.
+  for (const mesh of baseline.meshes.keys()) {
+    if (!prune.removes(mesh)) continue;
+    baseline.meshes.delete(mesh);
+    pruned = true;
+  }
+  const instanced = baseline.instancedGeometryAabbs;
+  if (instanced) for (const id of prune.ids) pruned = instanced.delete(id) || pruned;
+  if (!pruned) return false;
+  remeasurePristineBounds(baseline, totalYupOffset(geometry.coordinateInfo));
+  return true;
+}
+
+function remeasurePristineBounds(baseline: RotationBaseline, offset: Offset): void {
+  if (!baseline.shiftedBounds) return;
+  const next = { min: { x: Infinity, y: Infinity, z: Infinity },
+    max: { x: -Infinity, y: -Infinity, z: -Infinity } };
+  for (const pristine of baseline.meshes.values()) {
+    // A mesh whose buffers a bounded-mode release freed has no vertices to
+    // measure, but its entity box still says where it is — the same fallback
+    // `applyModelRotation` makes for the rotated bounds.
+    if (pristine.positions.length === 0) {
+      if (pristine.geometryAabb) growNamedBoundsByWorldBox(next, pristine.geometryAabb, offset);
+      continue;
+    }
+    growBoundsByPositions(next, pristine.positions, pristine.origin);
+  }
+  // Instanced-only entities are drawn, so the extent has to contain them too.
+  if (baseline.instancedGeometryAabbs) {
+    for (const box of baseline.instancedGeometryAabbs.values()) {
+      growNamedBoundsByWorldBox(next, box, offset);
+    }
+  }
+  if (!Number.isFinite(next.min.x)) return;
+  baseline.shiftedBounds = next;
 }
 
 /**

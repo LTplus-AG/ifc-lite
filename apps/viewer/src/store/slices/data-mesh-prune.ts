@@ -5,6 +5,7 @@
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from '@ifc-lite/renderer';
 import { meshGeometryCounts } from '@/lib/released-mesh-provenance';
+import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 import type { FederatedModel, PreAlignmentSnapshot } from '../types.js';
 
 /**
@@ -40,6 +41,12 @@ import type { FederatedModel, PreAlignmentSnapshot } from '../types.js';
  * Bounded mode:`releaseGeometryMemory` empties a mesh's buffers but keeps the
  * mesh and its share of the totals, so counts come from `meshGeometryCounts`,
  * which falls back to the counts retained at release.
+ *
+ * Rotated models: a whole-model yaw is baked into the vertices and the pristine
+ * copy lives in the rotation baseline, which is keyed by MESH OBJECT and holds
+ * the model's pristine extent (`lib/model-placement/rotation-baseline.ts`).
+ * That copy outlives the mesh unless this prune tells the baker about it, so
+ * the drain ends with `ModelRotationBaker.pruneMeshes` (#4935).
  */
 export interface PruneMeshesState {
   geometryResult: GeometryResult | null;
@@ -164,6 +171,14 @@ export function pruneMeshesFromGeometry(
   }
   // Nothing in `ids` matched anywhere: leave the tick alone too.
   if (!patch.geometryResult && !patch.models) return {};
+  // A rotated model's baseline holds a pristine COPY of every mesh plus the
+  // model's pristine extent (`lib/model-placement/rotation-baseline.ts`), and
+  // nothing else drops a pruned mesh out of it (#4935). The baker is told the
+  // same rule this prune used and the old-to-new geometry objects it produced,
+  // so a baseline follows its model instead of describing the vanished one.
+  modelRotationBaker.pruneMeshes({
+    ids, removes: (mesh) => removesMesh(mesh, ids), replacements: pruned,
+  });
   patch.geometryUpdateTick = state.geometryUpdateTick + 1;
   return patch;
 }

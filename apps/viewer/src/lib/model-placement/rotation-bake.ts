@@ -68,7 +68,8 @@ import type { GeometryResult, MeshData, Vec3 } from '@ifc-lite/geometry';
 import { applyModelRotation } from './rotation-geometry.js';
 import {
   baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
-  rebaseBaselineByRtcDelta, type RotationBaseline,
+  pruneMeshBaselines, rebaseBaselineByRtcDelta,
+  type MeshPrune, type RotationBaseline,
 } from './rotation-baseline.js';
 import { equalRotation, isZeroRotation, ZERO_ROTATION, type ModelRotation } from './rotation.js';
 import { fromRenderTranslation, subtractTranslation } from './translation.js';
@@ -206,6 +207,43 @@ export class ModelRotationBaker {
     const workspace = fromRenderTranslation(delta);
     entry.applied = { angle: entry.applied.angle,
       pivot: subtractTranslation(entry.applied.pivot, workspace) };
+  }
+
+  /**
+   * Follow the store's mesh-removal drain: forget the meshes it just pruned out
+   * of the live geometry (#4935).
+   *
+   * A split or a delete removes a mesh from `geometryResult.meshes`
+   * (`pruneGeometryMeshes`), and the baseline is the one place that still holds
+   * a pristine COPY of it plus its share of the pristine extent. Left alone, it
+   * pins that memory, hands fit-to-view and the section calculations an extent
+   * that still covers deleted geometry, and puts those bounds back on the next
+   * zero-angle bake.
+   *
+   * Applied to EVERY baseline, like the prune itself: the drain carries
+   * renderer global ids with no model id, and federated id ranges are disjoint,
+   * so a model that owns none of them loses nothing.
+   *
+   * A no-op for an un-rotated model, which has no baseline at all.
+   */
+  pruneMeshes(prune: MeshPrune): void {
+    for (const [modelId, entry] of this.entries) {
+      pruneMeshBaselines(entry.geometry, entry.baseline, prune);
+      // The prune republishes the geometry as a NEW object. Following it keeps
+      // `unbake`'s identity check true across a delete, and keeps
+      // `bakedInstanced` pointing at the map the geometry now carries — that
+      // map holds the boxes this baker already baked, and read as pristine
+      // (`captureAppendedMeshBaselines`) they would be turned a second time.
+      const replacement = prune.replacements.get(entry.geometry);
+      if (replacement) {
+        entry.geometry = replacement;
+        entry.baseline.bakedInstanced = replacement.instancedGeometryAabbs;
+      }
+      // Nothing left to restore: every mesh this baseline described is gone, so
+      // holding it pins an extent that describes an empty model. The next
+      // reconcile captures a fresh one from whatever the model still has.
+      if (entry.baseline.meshes.size === 0) this.entries.delete(modelId);
+    }
   }
 
   /** Drop one model's baseline without restoring anything — the model and its

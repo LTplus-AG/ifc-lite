@@ -108,6 +108,8 @@ test('entity spellings in JSX text are decoded before the allowlist runs (#4973 
   assert.equal(countLiterals(`<span>&middot; &#215; &#xD7;</span>`), 0);
   // A decoded entity inside real prose does not hide the prose.
   assert.equal(countLiterals(`<span>Save &amp; close</span>`), 1);
+  // An out-of-range numeric entity is left as written, never thrown on.
+  assert.equal(countLiterals(`<span>&#1114112;</span>`), 1);
 });
 
 test('a JSX-expression string literal in JSX-child position is still counted (<div>)', () => {

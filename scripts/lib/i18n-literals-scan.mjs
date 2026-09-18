@@ -109,7 +109,7 @@ function decodeJsxEntities(text) {
   return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, body) => {
     if (body[0] === '#') {
       const code = body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : m;
     }
     return NAMED_ENTITIES[body] ?? m;
   });

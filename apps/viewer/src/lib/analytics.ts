@@ -20,9 +20,22 @@ import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
 // scrub on everything that remains. Kept here rather than inside scrubEvent so
 // analytics-scrub.ts stays dependency-free (no @ifc-lite/geometry import) and
 // independently unit-testable.
-// Exported for ./analytics.test.ts. Both gates are unit-tested in isolation, but
-// only a test of THIS function can catch the gate being disconnected from the
-// pipeline, which is the failure that would silently restore the noise.
+// Exported for ./analytics.test.ts and ./foreign-script-noise.test.ts. Only a
+// test of THIS function can catch a gate being disconnected from the pipeline,
+// which is the failure that would silently restore the noise.
+//
+// The three gates are NOT tested the same way, and the difference is
+// deliberate. The two skew gates have isolated unit tests of their own
+// (./wasm-skew-noise.test.ts, ./chunk-version-skew.test.ts) plus wiring tests
+// here. The foreign-script gate is observed ONLY through this function, and
+// adding an isolated test that imports ./foreign-script-noise.js directly would
+// break something: `scripts/check-test-revert-oracle.mjs` reverts the
+// production change and requires the changed tests to fail BY ASSERTION, and
+// the #4939 fix ADDS that module - so a test importing it dies with
+// ERR_MODULE_NOT_FOUND under the revert, no assertion runs, and the oracle
+// reports REVERT-BROKE-BUILD. This file is modified rather than added, so under
+// the revert it still loads with the gate absent and the assertions fail
+// properly. Please do not "fix" that test by importing the module.
 export const beforeSend = <
   T extends { event?: string; properties?: Record<string, unknown> } | null,
 >(event: T): T | null => {

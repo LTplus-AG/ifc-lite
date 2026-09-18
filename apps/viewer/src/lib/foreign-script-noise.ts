@@ -39,10 +39,26 @@
  * frame-count gate does not fire and the event ships.
  *
  * posthog-js has already made the same judgement about that prefix one step
- * earlier: `@posthog/core`'s `createFrame` sets
- * `in_app: !!filename && !filename.startsWith('webkit-masked-url://') && …`.
- * It knows the frame is not the app's. It just captures it anyway. This gate is
- * that knowledge applied to the whole event.
+ * earlier. In the version this repo installs — `@posthog/core@1.50.5`, the only
+ * copy in the tree, via `posthog-js@^1.426.3` — `createFrame` sets
+ *
+ *   in_app: !!filename && !filename.startsWith(MASKED_URL_PREFIX)
+ *             && filename !== ANONYMOUS_FILENAME
+ *
+ * with `MASKED_URL_PREFIX = 'webkit-masked-url://'` (verified verbatim in
+ * `dist/error-tracking/parsers/base.mjs`). So posthog knows the frame is not
+ * the app's. It just captures the event anyway. This gate is that knowledge
+ * applied to the whole event.
+ *
+ * The gate deliberately does NOT read `in_app`, and must not be "simplified"
+ * to. Two reasons. It is upstream's derived opinion rather than evidence, and
+ * it is not stable across versions: later `@posthog/core` releases replace that
+ * expression with an `isAppFilename()` allowlist of app URL schemes, which
+ * reaches the same verdict for a masked URL by a different route and could
+ * reach a different one for something else. And `in_app: false` is far broader
+ * than "foreign" even in the installed version — an `<anonymous>` frame or a
+ * frame with no filename also gets it. Reading the frame's own URL keeps this
+ * decision ours and keeps it pinned to the evidence in the payload.
  *
  * ## Identity, not wording
  *

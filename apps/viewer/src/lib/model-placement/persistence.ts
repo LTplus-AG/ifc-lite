@@ -38,8 +38,17 @@ export function placementFrameCoordinateInfo(state: ViewerState) {
 export function placementFrameKey(state: ViewerState): string {
   if (state.modelPlacement.frameKey) return state.modelPlacement.frameKey;
   const anchor = placementAnchor(state);
-  if (!anchor) return 'local-engineering:m:z-up';
-  return georeferencedPlacementFrameKey({ ...anchor.eff, coordinateInfo: anchor.coordinateInfo });
+  if (anchor) return georeferencedPlacementFrameKey({ ...anchor.eff, coordinateInfo: anchor.coordinateInfo });
+  // No georeference: the workspace frame is still whatever RTC anchor the
+  // federation converged onto (`convergeFederationRtcFrame`, #4906/#4897). A
+  // rotation pivot is a workspace POINT, only meaningful in the render frame
+  // it was captured in, so a convergence that shifts every model's origin by
+  // the same delta has to be a distinct key here too, or a pivot saved before
+  // it restores unshifted into the moved frame (#4936). `wasmRtcOffset` is the
+  // anchor's own identity (IFC-space), so it changes exactly when convergence
+  // actually moves the anchor, and stays put across an in-place bake/reload.
+  const rtc = placementFrameCoordinateInfo(state)?.wasmRtcOffset;
+  return rtc ? `local-engineering:m:z-up:rtc:${JSON.stringify(rtc)}` : 'local-engineering:m:z-up';
 }
 
 const PREFIX = 'ifc-lite:placements:v1:';

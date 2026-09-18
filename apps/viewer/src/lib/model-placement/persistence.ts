@@ -12,7 +12,7 @@ import type { ModelPlacement } from './state.js';
  *
  * Deliberately excludes `wasmRtcOffset`: a federation RTC convergence
  * (`convergeFederationRtcFrame`, #4897/#4906) rewrites ONLY that field on an
- * already-loaded model's `CoordinateInfo` — CRS, conversion, `lengthUnitScale`,
+ * already-loaded model's `CoordinateInfo`. CRS, conversion, `lengthUnitScale`,
  * `originShift` and `buildingRotation` are untouched by it. This key is the
  * part of the frame identity that is safe to pin (`modelPlacement.frameKey`,
  * see `placementFrameBaseKey`) across a commit or a realignment without going
@@ -47,7 +47,7 @@ export function placementFrameCoordinateInfo(state: ViewerState) {
  * once a commit (`applyModelTranslation`, `setModelRotation`) or a
  * realignment (`commitRealignmentFrame`) has stamped one, else computed fresh
  * from the current georeferenced anchor, else the fixed local-engineering
- * string. Safe to cache — nothing in it moves under an RTC convergence.
+ * string. Safe to cache, since nothing in it moves under an RTC convergence.
  *
  * This is what a commit stamps into `modelPlacement.frameKey`, NOT
  * {@link placementFrameKey}'s full return value: caching the full value would
@@ -74,18 +74,18 @@ function rtcSuffix(rtc: { x: number; y: number; z: number } | null | undefined):
  * CURRENTLY converged onto, read live on every call and never cached.
  *
  * A rotation pivot is a workspace POINT, only meaningful in the render frame
- * it was captured in — unlike a translation, which is a difference and so is
+ * it was captured in, unlike a translation, which is a difference and so is
  * frame-invariant (see the file header). `convergeFederationRtcFrame`
  * (#4906/#4897) shifts every converged model's render-frame origin, and any
  * live placement pivot with it (`rebasePlacementPivots`), by the same delta,
- * but it never touches `modelPlacement.frameKey` — nor should it: the BASE
+ * but it never touches `modelPlacement.frameKey`, nor should it: the BASE
  * identity did not change, and clearing the pin would also throw away the
  * stability `commitRealignmentFrame` relies on across a renamed/reloaded
  * anchor model. So the RTC anchor is folded in here, outside the cache,
- * instead: a convergence is then reflected on the very next read, whether or
+ * instead. A convergence is then reflected on the very next read, whether or
  * not anything was committed (hence cached) before it. Reading it fresh every
  * time also means two independently-converged sessions that reach the SAME
- * live anchor compare equal, and two that reach different ones do not — even
+ * live anchor compare equal, and two that reach different ones do not, even
  * when both committed a placement before their respective convergence.
  */
 export function placementFrameKey(state: ViewerState): string {

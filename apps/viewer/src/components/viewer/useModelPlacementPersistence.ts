@@ -4,7 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { restoreWorkspacePlacements, saveWorkspacePlacements, placementFrameKey } from '@/lib/model-placement/persistence';
+import { restoreWorkspacePlacements, saveWorkspacePlacements, placementFrameBaseKey } from '@/lib/model-placement/persistence';
 import type { ModelPlacement } from '@/lib/model-placement/state';
 
 export function useModelPlacementPersistence(): void {
@@ -44,8 +44,11 @@ export function useModelPlacementPersistence(): void {
         (preview.target && revoked.has(preview.target.modelId)));
       restoring.current = true;
       try {
+        // Cache the BASE identity only, never the live RTC suffix (#4936): a
+        // later convergence must still fold its own live anchor onto this,
+        // not onto whatever anchor happened to be live at restore time.
         useViewerStore.setState({ modelPlacement: { ...state.modelPlacement,
-          frameKey: placementFrameKey(state), placements, preview: cancelPreview ? null : preview,
+          frameKey: placementFrameBaseKey(state), placements, preview: cancelPreview ? null : preview,
           revision: state.modelPlacement.revision + 1 }, ...(cancelPreview ? { repositionOpen: false } : {}) });
       } finally { restoring.current = false; }
       if (identityCompleted) saveWorkspacePlacements(localStorage, useViewerStore.getState());

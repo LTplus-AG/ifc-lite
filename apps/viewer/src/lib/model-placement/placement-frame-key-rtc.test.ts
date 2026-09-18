@@ -82,7 +82,7 @@ describe('placementFrameKey distinguishes an RTC convergence (#4936)', () => {
  *
  * These drive the REAL store actions (`openReposition` / `applyModelTranslation`
  * / `rebasePlacementFrame`), not the pure `state.ts` helpers, because the bug
- * lived specifically in the commit-time caching wired into the store slice —
+ * lived specifically in the commit-time caching wired into the store slice:
  * every case above builds `emptyPlacementState()` fresh and never exercises it. */
 describe('placementFrameKey does not serve a cache frozen before a convergence (#4936 review)', () => {
   /** Loads a fresh single-model workspace, commits a translation (caching
@@ -118,7 +118,7 @@ describe('placementFrameKey does not serve a cache frozen before a convergence (
     const { disk } = committedThenConverged(anchor);
 
     // A fresh session (frameKey: null) reloading the same, already-converged
-    // workspace: nothing was committed in it yet, so the cache cannot lie —
+    // workspace: nothing was committed in it yet, so the cache cannot lie.
     // `placementFrameKey` recomputes live from the reloaded model's own
     // (already-anchored) `coordinateInfo`, matching what was actually saved.
     const restored = restoreWorkspacePlacements(disk, localState(anchor)).get('a');

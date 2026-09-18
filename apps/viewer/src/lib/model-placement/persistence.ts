@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
 import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
 import type { ViewerState } from '@/store';
 import { selectAnchorGeoref } from '@/lib/geo/select-anchor-georef';
@@ -36,11 +37,20 @@ function placementAnchor(state: ViewerState) {
 }
 
 /** The committed workspace anchor, never the currently selected model or an
- * uncommitted georeference edit. Shared by placement identity and references. */
+ * uncommitted georeference edit. Shared by placement identity and references.
+ *
+ * Falls back to `federationFrameInfo` (`@ifc-lite/geometry/world-frame`),
+ * NOT an ad-hoc "earliest model with a `geometryResult`" scan: that rule
+ * reports a near-origin model's raw frame whenever it loaded first, which is
+ * wrong for a raw point cloud in particular (`rtc-rebase.ts`: point clouds
+ * never join the RTC frame, so their own `coordinateInfo` never carries a
+ * `wasmRtcOffset` even once the rest of the federation has converged).
+ * `federationFrameInfo` is the anchor rule #4897 actually settles on:
+ * earliest-loaded model WITH a `wasmRtcOffset`, else earliest with any frame
+ * (#4936 review). */
 export function placementFrameCoordinateInfo(state: ViewerState) {
   const anchor = placementAnchor(state);
-  return anchor?.coordinateInfo ?? [...state.models.values()].sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0))
-    .find(model => model.geometryResult)?.geometryResult?.coordinateInfo ?? state.geometryResult?.coordinateInfo;
+  return anchor?.coordinateInfo ?? federationFrameInfo(state.models.values(), state.geometryResult);
 }
 
 /**

@@ -9,7 +9,7 @@ import { DATA_DEFAULTS } from '../constants.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
 import { capturePreAlignment, restorePreAlignment } from '../../hooks/ingest/federationRealign.js';
-import { ModelRotationBaker, modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
+import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { degreesToRadians, ZERO_ROTATION, type ModelRotation } from '../../lib/model-placement/rotation.js';
 import type { Translation } from '../../lib/model-placement/translation.js';
 
@@ -627,18 +627,19 @@ describe('DataSlice', () => {
         assert.deepStrictEqual(modelRotationBaker.reconcile(target(ROTATION)), [],
           'an unchanged angle must not re-bake (fast-path precondition for this test)');
 
-        // What a fresh model holding only the surviving mesh bakes to at the
-        // same angle: the tight extent the live geometry should now report.
-        const soleSurvivor = {
-          meshes: [placed(1, 100, 3)] as unknown as GeometryResult['meshes'],
-          coordinateInfo,
-        } as unknown as GeometryResult;
-        new ModelRotationBaker().reconcile(new Map([[ACTIVE_MODEL_ID,
-          { geometry: soleSurvivor, rotation: ROTATION }]]));
-
-        assert.deepStrictEqual(state.geometryResult?.coordinateInfo.shiftedBounds,
-          soleSurvivor.coordinateInfo.shiftedBounds,
-          'the live extent still covers the pruned mesh');
+        // Independent oracle: mesh 1's ROTATION-rotated world box, computed by
+        // hand from its own local vertices/origin (`placed(1, 100, 3)`) and
+        // ROTATION's angle/pivot — applying `rotateMesh`'s yaw formula
+        // (`rotation-geometry.ts`) directly and taking the min/max of the
+        // three rotated corners, WITHOUT calling `ModelRotationBaker`,
+        // `applyModelRotation` or `measureBounds` (what this assertion exists
+        // to catch a regression in). Same fixture and angle as the unit-level
+        // version of this assertion in `rotation-bake.test.ts`, so the number
+        // is the same.
+        assert.deepStrictEqual(state.geometryResult?.coordinateInfo.shiftedBounds, {
+          min: { x: 54.98680654863102, y: 5, z: -85.00787889159332 },
+          max: { x: 57.97742620805485, y: 5, z: -83.18575143015991 },
+        }, 'the live extent still covers the pruned mesh');
       } finally {
         modelRotationBaker.clear();
       }

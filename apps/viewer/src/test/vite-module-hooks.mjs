@@ -40,3 +40,19 @@ import { register } from 'node:module';
 // The hooks themselves live in a sibling module because they run on the loader
 // thread, which cannot import from here.
 register('./vite-module-hooks-impl.mjs', import.meta.url);
+
+// `useViewerStore` trips chartSlice/documentSlice's harmless
+// `localStorage.getItem` warning, which check-test-revert-oracle.mjs's load
+// error heuristic misreads as a dead import (#4925). Stub it once, main
+// thread, before any test module loads.
+if (typeof globalThis.localStorage === 'undefined') {
+  const backing = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => (backing.has(key) ? backing.get(key) : null),
+    setItem: (key, value) => { backing.set(key, String(value)); },
+    removeItem: (key) => { backing.delete(key); },
+    clear: () => { backing.clear(); },
+    key: (index) => [...backing.keys()][index] ?? null,
+    get length() { return backing.size; },
+  };
+}

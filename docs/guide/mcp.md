@@ -117,8 +117,10 @@ Tools are grouped by capability. Everything below is registered in the default t
     entities by content. It is opt-in and stays off by default: an ambiguous
     group has no honest scalar form, so turning it on would change what the
     existing numbers mean. Either way the diff reflects any edits the session
-    has queued but not yet saved, and says how many. See [Content diffing over
-    MCP](model-diff.md#mcp-usage).
+    has queued but not yet saved, and says how many. `key_from` (`"Tag"` or
+    `"Pset.Prop"`) keys the comparison on an authored identifier instead of
+    GlobalId, exactly as the CLI's `--key-from` does. See [Content diffing over
+    MCP](model-diff.md#mcp-usage) and [Stable Element Identity](stable-identity.md).
 
 !!! tip "Reading back an edit you just made"
     A `model_id` names a *session*, not a file. `entity_set_property`,

@@ -1,5 +1,10 @@
 # Model Diff
 
+!!! tip "Looking for the workflow?"
+    This page is the engine reference. [Stable Element Identity](stable-identity.md)
+    walks the scenarios — a redrawn wall, a split, a changed buildup, a swapped
+    family, an authored asset code — and which command answers each.
+
 The `@ifc-lite/diff` package compares two revisions of a model and classifies every entity as **added**, **modified**, **deleted**, or **unchanged**. It is a pure, headless, store-agnostic engine: you supply fingerprints, it matches and classifies. The viewer's Compare UI and the [CLI](cli.md) both build on the same core.
 
 ## What the engine does

@@ -17,7 +17,7 @@
  * "what does this property say", which is what a parser is for.
  */
 
-import type { SpatialHierarchy, SpatialNode } from '@ifc-lite/data';
+import { IfcTypeEnumToString, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import { extractPropertiesOnDemand, type IfcDataStore } from './columnar-parser.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
@@ -25,8 +25,20 @@ import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 /** Per-hierarchy cache of node id → full name path, built on first use. */
 const PATH_CACHE = new WeakMap<SpatialHierarchy, Map<number, string>>();
 
+/**
+ * A node's label in the path: its trimmed `Name`, else its `LongName`, else
+ * its IFC class (`IfcBuilding`). Never the express id — that is reassigned on
+ * every export, and Duplex's unnamed IfcBuilding put a `#36` into every path
+ * so no two revisions ever agreed (issue #4955, xmatch finding F4). A class
+ * label is coarse but stable, and two unnamed buildings under one site are
+ * rare enough to accept the tie.
+ */
 function nodeLabel(node: SpatialNode): string {
-  return node.name.trim().length > 0 ? node.name.trim() : `#${node.expressId}`;
+  const name = node.name.trim();
+  if (name.length > 0) return name;
+  const longName = node.longName?.trim() ?? '';
+  if (longName.length > 0) return longName;
+  return IfcTypeEnumToString(node.type);
 }
 
 function pathsOf(hierarchy: SpatialHierarchy): Map<number, string> {
@@ -58,10 +70,9 @@ function pathsOf(hierarchy: SpatialHierarchy): Map<number, string> {
  * contained anywhere the hierarchy knows about. Prefers the finest container
  * (`elementToContainer`: a space or zone) over the storey.
  *
- * An unnamed node contributes its express id, which is NOT stable across
- * exports — a caller comparing two revisions should treat a path containing
- * `#` as weaker evidence. Names are trimmed so trailing whitespace an
- * authoring tool leaves behind does not split one storey into two.
+ * An unnamed node contributes its `LongName`, else its IFC class name, so the
+ * path stays stable across exports. Names are trimmed so trailing whitespace
+ * an authoring tool leaves behind does not split one storey into two.
  */
 export function spatialContainerPath(store: IfcDataStore, expressId: number): string | undefined {
   const hierarchy = store.spatialHierarchy;

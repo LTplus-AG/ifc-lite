@@ -25,8 +25,8 @@ DATA;
 #30= IFCUNITASSIGNMENT((#31));
 #31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #40= IFCLOCALPLACEMENT($,#21);
-#41= IFCSITE('1000000000000000000000',$,'Site',$,$,#40,$,$,.ELEMENT.,$,$,$,$,$);
-#42= IFCBUILDING('2000000000000000000000',$,'Main ',$,$,#40,$,$,.ELEMENT.,$,$,$);
+#41= IFCSITE('1000000000000000000000',$,'Site ',$,$,#40,$,$,.ELEMENT.,$,$,$,$,$);
+#42= IFCBUILDING('2000000000000000000000',$,$,$,$,#40,$,$,.ELEMENT.,$,$,$);
 #43= IFCBUILDINGSTOREY('3000000000000000000000',$,'Level 2',$,$,#40,$,$,.ELEMENT.,0.);
 #44= IFCSPACE('4000000000000000000000',$,'Room 204',$,$,#40,$,$,.ELEMENT.,.INTERNAL.,$);
 #45= IFCRELAGGREGATES('5000000000000000000000',$,$,$,#1,(#41));
@@ -53,10 +53,12 @@ async function load() {
 }
 
 describe('spatialContainerPath', () => {
-  it('names the path from the project to the finest container, trimming names', async () => {
+  it('names the path from the project to the finest container; an unnamed node is its class, never its express id', async () => {
+    // The building carries no Name: an express id there would change on every
+    // export and no two revisions would ever agree (xmatch finding F4).
     const store = await load();
-    expect(spatialContainerPath(store, 70)).toBe('Proj/Site/Main/Level 2');
-    expect(spatialContainerPath(store, 71)).toBe('Proj/Site/Main/Level 2/Room 204');
+    expect(spatialContainerPath(store, 70)).toBe('Proj/Site/IfcBuilding/Level 2');
+    expect(spatialContainerPath(store, 71)).toBe('Proj/Site/IfcBuilding/Level 2/Room 204');
   });
 
   it('survives a cyclic or very deep transported hierarchy', () => {

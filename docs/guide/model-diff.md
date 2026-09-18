@@ -377,6 +377,47 @@ Stated plainly, because each of these is a decision rather than a bug:
 - **A moved split under a rotation that is not a multiple of 90° is missed.** Sorted extents survive an axis permutation and nothing else; an arbitrary rotation changes the axis-aligned extents themselves.
 - **A real split that changed more than `splitVolumeTolerance` of its material, while carrying full volume data, is refused.** That is the direct cost of gating on volume rather than scoring with it.
 
+## Successor claims
+
+A wall whose buildup changed — thicker, a different layer set, re-measured quantities, usually a new auto-generated name — and a chair swapped for a different family agree on nothing a hash can see: the data hash moved and so did the geometry hash. Content matching needs one of the two to agree; split/merge needs volumes to conserve. What the old and new element do share is *where they are*, and `detectSuccessors` argues from that alone:
+
+```ts
+import { diffModels } from '@ifc-lite/diff';
+
+const replaced = diffModels(baseFingerprints, headFingerprints, {
+  matchUnpairedByContent: true,
+  detectSplitMerge: true,
+  detectSuccessors: true,
+});
+for (const claim of replaced.successors ?? []) {
+  console.log(claim.confidence, claim.base.key, '->', claim.head.key, claim.overlap, claim.agreeingComponents);
+}
+```
+
+Because it argues from position alone, it is the weakest stage in the engine, and three rules follow from that:
+
+- **It is a suggestion, never a decision.** A claim retires nothing and touches no count; both entities keep their `deleted`/`added` entries. The engine never mints an identity-map entry from a successor claim on its own — `identityMapFromSuccessors` takes only the claims a caller explicitly accepted, and records the profile as the reason (`successor:footprint`, `successor:position`). `docs/architecture/layer-prs/04-identity.md` §4.5: heuristic matching is a suggestion provider for a review UI, never silent.
+- **It runs last**, on what content matching and split/merge left unbound, so the nearest piece of a split is never offered as the whole's successor. It inherits the geometry abstentions and leaves `successors` absent (not empty) under them.
+- **Every pairing must be unique in both directions, with a margin.** A tie, or a runner-up inside the margin, is an abstention.
+
+### The two profiles
+
+| `confidence` | evidence |
+|---|---|
+| `footprint` | bounding-box intersection over union at or above `successorOverlap` (default 0.6), mutual best on both sides, and no other candidate on either side within half the threshold |
+| `position` | same class family, same `EntityFingerprint.container` (a name path, equal and non-empty on both sides), each the other's nearest within `max(successorDistance, 0.5 × base box diagonal)`, with the runner-up at least twice as far |
+
+The arithmetic behind the default: a thickening that nests the old box in the new one scores `V_old / V_new`, so a 200 → 250 mm wall is 0.8 whichever face moved; 200 → 350 mm is 0.57 and misses; a 100 mm axis shift at 200 mm is 0.33 and misses. An axis-shifted redraw is exactly the case `footprint` misses and `position` carries. `footprint` ignores the container on purpose — a storey rename changes the path of every element in it, and a heavy box overlap is stronger evidence than a matching name — while `position` requires it, because without it a nearest-neighbour argument between two elements that share nothing else is not evidence at all.
+
+Every claim carries `overlap`, the centre `distance` (clamped like every other reported distance), `agreeingComponents` when both sides carry component sub-hashes (the wall that kept its `pset:Pset_WallCommon` and changed its `material` reads as a re-specified wall; one that agrees on nothing may be a coincidence of position), and `crossClass` when the two entities carry different classes of one family.
+
+### What it cannot see
+
+- Two new layers each covering half of the old wall abstain (each is a runner-up inside the other's margin) — that is a split, and the split/merge stage is where it is reported.
+- A congruent, symmetric relocation abstains: two chairs whose new placements are equidistant from both old ones have no unique nearest neighbour.
+- An element with no bounding box on either side is not a candidate, and a `position` pair with the container absent on either side is skipped: absence is not evidence.
+- Across class families nothing pairs, by the same rule as split/merge.
+
 ## Identity maps
 
 Content-keyed matching answers "these two entities look like the same element" for one comparison and then forgets it. An **identity map** is the durable form of that answer: `{ base, here, reason }` triples that a later diff replays as key aliases, so a re-GUIDed element is matched by key and never reaches the content pass again. It is the same vocabulary a published layer carries in its provenance manifest `identity_map` (`docs/architecture/layer-prs/03-provenance.md` §3.1), so an entry derived here can be written into a layer without translation.

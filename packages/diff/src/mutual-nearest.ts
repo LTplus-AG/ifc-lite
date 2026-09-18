@@ -45,12 +45,19 @@ export interface NearestPair {
  *
  * A tie is an abstention, not a coin flip: two candidates equidistant from the
  * same element carry no information about which one it became.
+ *
+ * `marginRatio` widens "tied" into "not clearly nearest": the runner-up must
+ * be at least `marginRatio` times further away, so at the default `1` only an
+ * exact tie abstains (the content pass's contract, unchanged), while the
+ * successor stage passes `2` because it pairs entities whose DATA differs and
+ * needs position to argue harder.
  */
 function uniqueNearest(
   from: readonly Vec3[],
   to: readonly Vec3[],
   retiredFrom: ReadonlySet<number>,
   retiredTo: ReadonlySet<number>,
+  marginRatio: number,
 ): Int32Array {
   const nearest = new Int32Array(from.length).fill(-1);
   for (let i = 0; i < from.length; i++) {
@@ -69,9 +76,10 @@ function uniqueNearest(
         second = distance;
       }
     }
-    // `best < second` strictly: an equidistant runner-up means the nearest
-    // neighbour is not unique, so this element abstains.
-    nearest[i] = bestIndex >= 0 && best < second ? bestIndex : -1;
+    // `best * marginRatio < second` strictly: an equidistant runner-up (or one
+    // inside the margin) means the nearest neighbour is not unique, so this
+    // element abstains.
+    nearest[i] = bestIndex >= 0 && best * marginRatio < second ? bestIndex : -1;
   }
   return nearest;
 }
@@ -106,20 +114,25 @@ function uniqueNearest(
  *
  * Pairs are returned in ascending `base` index order so the result does not
  * depend on iteration order anywhere.
+ *
+ * `marginRatio` (default `1`, an exact tie abstains) is re-evaluated on the
+ * reduced pool every round, intentionally: once a confident pair retires, a
+ * runner-up that was inside the margin may no longer be there.
  */
 export function mutualNearestPairs(
   base: readonly Vec3[],
   head: readonly Vec3[],
   maxDistance: number,
   accept: (baseIndex: number, headIndex: number) => boolean,
+  marginRatio = 1,
 ): NearestPair[] {
   const pairs: NearestPair[] = [];
   const retiredBase = new Set<number>();
   const retiredHead = new Set<number>();
 
   while (retiredBase.size < base.length && retiredHead.size < head.length) {
-    const nearestHead = uniqueNearest(base, head, retiredBase, retiredHead);
-    const nearestBase = uniqueNearest(head, base, retiredHead, retiredBase);
+    const nearestHead = uniqueNearest(base, head, retiredBase, retiredHead, marginRatio);
+    const nearestBase = uniqueNearest(head, base, retiredHead, retiredBase, marginRatio);
 
     // Mutual pairs within one round are necessarily disjoint (each head has at
     // most one unique nearest base), so they can all be accepted together.

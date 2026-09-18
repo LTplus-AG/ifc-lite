@@ -106,6 +106,15 @@ fall back to the weaker tier. See
 [the guide](https://ifclite.dev/docs/guide/model-diff/#split-and-merge-detection)
 for the knobs and for what the pass deliberately cannot see.
 
+### Successor claims
+
+A wall whose buildup changed, or a chair swapped for another family, agrees on
+nothing a hash can see. `detectSuccessors` reports **suggestions** from position
+alone — `footprint` (heavy box overlap, unique both ways) or `position` (same
+family, same container, mutual nearest with a ×2 margin) — on
+`ModelDiff.successors`. A claim retires nothing; `identityMapFromSuccessors`
+mints identity only from the claims you pass it as accepted.
+
 ### Identity maps — remembering an accepted match
 
 Content-keyed matching (`matchUnpairedByContent`) recognises a re-GUIDed element

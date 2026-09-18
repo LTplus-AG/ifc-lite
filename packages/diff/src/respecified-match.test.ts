@@ -130,6 +130,46 @@ describe('respecified: same world geometry, different data (issue #4955)', () =>
     expect(groups[0].base.map((e) => e.key).sort()).toEqual(['OLD-1', 'OLD-2']);
   });
 
+  it('abstains on a pair tier 1 already refused as a data-hash collision', () => {
+    // Same ifcType, same geometry, same box, same dataHash — but the component
+    // sub-hashes disagree, which proves the data hash collided. Tier 1 refuses
+    // that pair; the geometry-only step must not retire it as respecified on
+    // the strength of the geometry alone (PR review on #4963).
+    const base = wall('OLD', 'Wall-023', { geometryHash: 'g', aabb: AT_ORIGIN });
+    const head = wall('NEW', 'Wall-041', { geometryHash: 'g', aabb: AT_ORIGIN });
+    head.dataHash = base.dataHash; // forced collision
+    const diff = diffModels([base], [head], { matchUnpairedByContent: true });
+    expect(diff.counts).toEqual({ added: 1, modified: 0, deleted: 1, unchanged: 0 });
+    expect(diff.contentMatches).toEqual([]);
+  });
+
+  it('does not list a geometry-group member as unresolved once a later tier retired it', () => {
+    // Two stacked walls per side share one geometry bucket 2:2 with distinct
+    // data, so phase 2 reports them as a group. But OLD-2's data also matches
+    // NEW-X, a same-data wall that moved elsewhere, and tier 2 retires that
+    // pair as `moved`. The reported group must then hold OLD-1 against
+    // NEW-1/NEW-2 only (PR review on #4963): an entity is never both resolved
+    // and unresolved.
+    const base = [
+      wall('OLD-1', 'Wall-A', { geometryHash: 'g', aabb: AT_ORIGIN }),
+      wall('OLD-2', 'Wall-B', { geometryHash: 'g', aabb: AT_ORIGIN }),
+    ];
+    const head = [
+      wall('NEW-1', 'Wall-C', { geometryHash: 'g', aabb: AT_ORIGIN }),
+      wall('NEW-2', 'Wall-D', { geometryHash: 'g', aabb: AT_ORIGIN }),
+      wall('NEW-X', 'Wall-B', { geometryHash: 'g@far', aabb: box([20, 0, 1.4]) }),
+    ];
+    const diff = diffModels(base, head, { matchUnpairedByContent: true });
+    const moved = diff.contentMatches!.filter((m) => m.kind === 'moved');
+    expect(moved.map((m) => [m.base[0].key, m.head[0].key])).toEqual([['OLD-2', 'NEW-X']]);
+    const groups = diff.contentMatches!.filter((m) => m.tier === 'unresolved');
+    expect(groups).toHaveLength(1);
+    expect(groups[0].base.map((e) => e.key)).toEqual(['OLD-1']);
+    expect(groups[0].head.map((e) => e.key).sort()).toEqual(['NEW-1', 'NEW-2']);
+    expect(groups[0].kind).toBe('duplicated');
+    expect(diff.counts).toEqual({ added: 2, modified: 0, deleted: 1, unchanged: 0 });
+  });
+
   it('never pairs across IFC classes, even on an identical body', () => {
     // A wall republished as a building-element part with the wall's exact
     // geometry is not the same element.

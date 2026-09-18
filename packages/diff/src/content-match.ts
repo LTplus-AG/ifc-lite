@@ -155,6 +155,17 @@ export function applyContentMatching<TRef>(
   };
   const live = (candidates: readonly Candidate<TRef>[]): Candidate<TRef>[] =>
     candidates.filter((candidate) => !retired.has(candidate.entry));
+  const retiredFingerprints = {
+    has: (entity: EntityFingerprint<TRef>): boolean => {
+      for (const entry of retired) if (entry.base === entity || entry.head === entity) return true;
+      return false;
+    },
+  };
+
+  // Geometry N:N groups are reported only after phase 3 has had its turn, and
+  // only with the members phase 3 did not retire: a member paired by its data
+  // bucket must not also be listed as unresolved.
+  let geometryGroups: ContentMatch<TRef>[] = [];
 
   // PHASE 1 — tier 1, per bucket.
   if (useGeometry) {
@@ -184,7 +195,7 @@ export function applyContentMatching<TRef>(
       removedAdded++;
       contentMatches.push(pair.match);
     }
-    contentMatches.push(...respecified.groups);
+    geometryGroups = respecified.groups;
   }
 
   // PHASE 3 — tiers 2–3, per bucket, on what is left.
@@ -240,6 +251,13 @@ export function applyContentMatching<TRef>(
       base: fingerprintsOf(leftoverBase),
       head: fingerprintsOf(leftoverHead),
     });
+  }
+
+  for (const group of geometryGroups) {
+    const base = group.base.filter((entity) => !retiredFingerprints.has(entity));
+    const head = group.head.filter((entity) => !retiredFingerprints.has(entity));
+    if (base.length === 0 || head.length === 0) continue;
+    contentMatches.push({ ...group, kind: groupKind(base.length, head.length), base, head });
   }
 
   if (retired.size === 0) {

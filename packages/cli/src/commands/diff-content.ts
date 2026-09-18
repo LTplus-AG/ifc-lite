@@ -38,8 +38,6 @@ import {
   type IdentityMapEntry,
   type IdentityMapSidecar,
   type LineageEntry,
-  type LineageSidecar,
-  type ModelDiff,
   type ModelIdentity,
 } from '@ifc-lite/diff';
 import { parseAuthoredKeySpec } from '@ifc-lite/parser';

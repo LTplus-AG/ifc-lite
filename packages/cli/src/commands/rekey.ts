@@ -28,6 +28,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { parseLineageSidecar, rekeyByLineage, type RekeyPolicy } from '@ifc-lite/diff';
+import { escapeCsvCell } from '@ifc-lite/export';
 import { fatal, getFlag, hasFlag, printJson } from '../output.js';
 
 const USAGE =
@@ -79,8 +80,9 @@ export function parseCsv(text: string): { header: string[]; rows: Row[] } {
   return { header, rows };
 }
 
+/** The one canonical escaper: RFC 4180 quoting plus the spreadsheet-formula guard. */
 function csvField(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  return escapeCsvCell(value, { delimiter: ',' });
 }
 
 export function serializeCsv(header: string[], rows: Row[]): string {

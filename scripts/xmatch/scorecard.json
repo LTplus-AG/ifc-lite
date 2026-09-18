@@ -2,14 +2,12 @@
   "fixture": "content-matching validation (#1891)",
   "spec": "scripts/xmatch/SPEC.md",
   "generatedBy": "node scripts/xmatch/run.mjs",
-  "thresholdsSha256": "430ca205e4c9b568e0c715183b1883f50001f781b416f420005e61af5af26274",
+  "thresholdsSha256": "5626c8359109e1b1be0e8c4e593d3df052f6ea68b0863a8ab007b2b81d1fb7e7",
   "geometryHashToleranceMetres": 0.001,
   "verdict": "PASS",
   "corpusFailures": [],
   "corpusTargetGaps": [
-    "corpus.bySplit.precision: 0.5 < target 0.98",
-    "corpus.bySuccessor.position.recall: 0.5 < target 0.6",
-    "corpus.falseSuccessors.insertedNearby: 7 > target 0"
+    "corpus.bySuccessor.position.recall: 0.5 < target 0.6"
   ],
   "pairs": [
     {
@@ -33,8 +31,8 @@
         "duplicateKeyBaseIds": 0,
         "duplicateKeyHeadIds": 0,
         "containersCompared": 234,
-        "containersAgree": 0,
-        "containersUnstable": 234,
+        "containersAgree": 234,
+        "containersUnstable": 0,
         "insertedNearbyExpected": 5,
         "insertedNearbyInside": 5,
         "duplicateBaseRefs": 0,
@@ -46,12 +44,10 @@
       "fixtureFailures": [],
       "thresholdFailures": [],
       "thresholdsSkipped": [
-        "byTier.positional.precision (no pairs)",
-        "bySuccessorConfidence.position.precision (no claims)"
+        "byTier.positional.precision (no pairs)"
       ],
       "targetGaps": [
-        "bySuccessor.position.recall: 0.166667 < target 0.6",
-        "bySplit.precision: 0.363636 < target 0.98"
+        "bySuccessor.position.recall: 0.333333 < target 0.6"
       ],
       "applied": {
         "renamed": 222,
@@ -72,8 +68,8 @@
         "populations": {
           "renamed": 222,
           "reshaped": 18,
-          "respecified": 14,
           "thickened": 10,
+          "respecified": 14,
           "swapped": 6,
           "retriangulated": 10,
           "moved": 24,
@@ -244,12 +240,12 @@
           },
           "position": {
             "population": 6,
-            "recalled": 1,
-            "kindAgreed": 1,
-            "claimed": 1,
-            "correct": 1,
+            "recalled": 2,
+            "kindAgreed": 2,
+            "claimed": 2,
+            "correct": 2,
             "wrong": 0,
-            "recall": 0.166667,
+            "recall": 0.333333,
             "kindAgreement": 1,
             "precision": 1
           }
@@ -260,131 +256,37 @@
             "correct": 11,
             "wrong": 0,
             "precision": 1
+          },
+          "position": {
+            "claimed": 1,
+            "correct": 1,
+            "wrong": 0,
+            "precision": 1
           }
         },
         "falseSuccessors": {
           "insertedNearby": 0,
           "neighbourSuccessor": 0
         },
-        "successorClaims": 11,
+        "successorClaims": 12,
         "recoveredContentKinds": 0,
         "wrongSuccessors": [],
         "bySplit": {
           "population": 4,
           "recalled": 4,
           "kindAgreed": 4,
-          "claimed": 11,
+          "claimed": 4,
           "correct": 4,
-          "wrong": 7,
+          "wrong": 0,
           "recall": 1,
-          "precision": 0.363636,
+          "precision": 1,
           "kindAgreement": 1,
           "byConfidence": {
-            "verified": 4,
-            "extent": 7
+            "verified": 4
           },
           "mergeClaims": 0
         },
-        "wrongSplits": [
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 31400,
-            "wholeKind": "duplicated",
-            "pieces": [
-              32929,
-              17833
-            ],
-            "pieceOrigins": [
-              "duplicated:31400",
-              "duplicated:31400"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 26941,
-            "wholeKind": "duplicated",
-            "pieces": [
-              25209,
-              39810
-            ],
-            "pieceOrigins": [
-              "duplicated:26941",
-              "duplicated:26941"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 29098,
-            "wholeKind": "duplicated",
-            "pieces": [
-              20664,
-              17174
-            ],
-            "pieceOrigins": [
-              "duplicated:29098",
-              "duplicated:29098"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 17716,
-            "wholeKind": "duplicated",
-            "pieces": [
-              14206,
-              32642
-            ],
-            "pieceOrigins": [
-              "duplicated:17716",
-              "duplicated:17716"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 35783,
-            "wholeKind": "duplicated",
-            "pieces": [
-              31375,
-              35774
-            ],
-            "pieceOrigins": [
-              "duplicated:35783",
-              "duplicated:35783"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 35854,
-            "wholeKind": "duplicated",
-            "pieces": [
-              8463,
-              13619
-            ],
-            "pieceOrigins": [
-              "duplicated:35854",
-              "duplicated:35854"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 36151,
-            "wholeKind": "duplicated",
-            "pieces": [
-              36732,
-              35013
-            ],
-            "pieceOrigins": [
-              "duplicated:36151",
-              "duplicated:36151"
-            ]
-          }
-        ],
+        "wrongSplits": [],
         "moveDistance": {
           "checked": 24,
           "agreed": 24,
@@ -455,7 +357,7 @@
         "bySuccessor.position (population 0)",
         "bySuccessorConfidence.footprint.precision (no claims)",
         "bySuccessorConfidence.position.precision (no claims)",
-        "bySplit (population 0, 1 claim(s) counted by corpus.bySplit.precision)"
+        "bySplit (population 0)"
       ],
       "targetGaps": [
         "byKind.renamed.recall: 0.7875 < target 0.9"
@@ -647,33 +549,16 @@
           "population": 0,
           "recalled": 0,
           "kindAgreed": 0,
-          "claimed": 1,
+          "claimed": 0,
           "correct": 0,
-          "wrong": 1,
+          "wrong": 0,
           "recall": null,
-          "precision": 0,
+          "precision": null,
           "kindAgreement": null,
-          "byConfidence": {
-            "extent": 1
-          },
+          "byConfidence": {},
           "mergeClaims": 0
         },
-        "wrongSplits": [
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 14502,
-            "wholeKind": "duplicated",
-            "pieces": [
-              61430,
-              51027
-            ],
-            "pieceOrigins": [
-              "duplicated:14502",
-              "duplicated:14502"
-            ]
-          }
-        ],
+        "wrongSplits": [],
         "moveDistance": {
           "checked": 24,
           "agreed": 24,
@@ -730,10 +615,7 @@
       ],
       "targetGaps": [
         "byKind.renamed.kindAgreement: 0.934124 < target 0.98",
-        "bySuccessor.footprint.kindAgreement: 0.857143 < target 0.9",
-        "bySuccessorConfidence.position.precision: 0.416667 < target 0.98",
-        "bySplit.precision: 0.666667 < target 0.98",
-        "falseSuccessors.insertedNearby: 7 > target 0"
+        "bySuccessor.footprint.kindAgreement: 0.857143 < target 0.9"
       ],
       "applied": {
         "renamed": 805,
@@ -909,170 +791,53 @@
           },
           "position": {
             "population": 6,
-            "recalled": 5,
-            "kindAgreed": 5,
-            "claimed": 5,
-            "correct": 5,
+            "recalled": 4,
+            "kindAgreed": 4,
+            "claimed": 4,
+            "correct": 4,
             "wrong": 0,
-            "recall": 0.833333,
+            "recall": 0.666667,
             "kindAgreement": 1,
             "precision": 1
           }
         },
         "bySuccessorConfidence": {
-          "position": {
-            "claimed": 12,
-            "correct": 5,
-            "wrong": 7,
-            "precision": 0.416667
-          },
           "footprint": {
             "claimed": 14,
             "correct": 14,
             "wrong": 0,
             "precision": 1
+          },
+          "position": {
+            "claimed": 4,
+            "correct": 4,
+            "wrong": 0,
+            "precision": 1
           }
         },
         "falseSuccessors": {
-          "insertedNearby": 7,
+          "insertedNearby": 0,
           "neighbourSuccessor": 0
         },
-        "successorClaims": 26,
+        "successorClaims": 18,
         "recoveredContentKinds": 0,
-        "wrongSuccessors": [
-          {
-            "base": 41674,
-            "baseKind": "deleted",
-            "head": 30312,
-            "confidence": "position",
-            "overlap": 0.027000001236944238,
-            "distance": 0.20991110254882805
-          },
-          {
-            "base": 31976,
-            "baseKind": "deleted",
-            "head": 5379,
-            "confidence": "position",
-            "overlap": 0.027000000662215386,
-            "distance": 0.0350000002688016
-          },
-          {
-            "base": 32032,
-            "baseKind": "deleted",
-            "head": 27961,
-            "confidence": "position",
-            "overlap": 0.027000000662215386,
-            "distance": 0.03500000026880854
-          },
-          {
-            "base": 16956,
-            "baseKind": "deleted",
-            "head": 12921,
-            "confidence": "position",
-            "overlap": 0.027000001724339938,
-            "distance": 1.2775000800645095
-          },
-          {
-            "base": 10483,
-            "baseKind": "deleted",
-            "head": 32194,
-            "confidence": "position",
-            "overlap": 0.027000003387139964,
-            "distance": 1.2075000276124221
-          },
-          {
-            "base": 25893,
-            "baseKind": "deleted",
-            "head": 4043,
-            "confidence": "position",
-            "overlap": 0.027000003124352686,
-            "distance": 0.1224999969162155
-          },
-          {
-            "base": 33490,
-            "baseKind": "deleted",
-            "head": 34560,
-            "confidence": "position",
-            "overlap": 0.02699997796998345,
-            "distance": 0.035000001891946374
-          }
-        ],
+        "wrongSuccessors": [],
         "bySplit": {
           "population": 8,
           "recalled": 8,
           "kindAgreed": 8,
-          "claimed": 12,
+          "claimed": 8,
           "correct": 8,
-          "wrong": 4,
+          "wrong": 0,
           "recall": 1,
-          "precision": 0.666667,
+          "precision": 1,
           "kindAgreement": 1,
           "byConfidence": {
-            "verified": 8,
-            "extent": 4
+            "verified": 8
           },
           "mergeClaims": 0
         },
-        "wrongSplits": [
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 30732,
-            "wholeKind": "duplicated",
-            "pieces": [
-              26285,
-              8876,
-              4153
-            ],
-            "pieceOrigins": [
-              "duplicated:30732",
-              "insertedNearby",
-              "duplicated:30732"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 21918,
-            "wholeKind": "duplicated",
-            "pieces": [
-              16132,
-              41486
-            ],
-            "pieceOrigins": [
-              "duplicated:21918",
-              "duplicated:21918"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 13275,
-            "wholeKind": "duplicated",
-            "pieces": [
-              16836,
-              23364
-            ],
-            "pieceOrigins": [
-              "duplicated:13275",
-              "duplicated:13275"
-            ]
-          },
-          {
-            "kind": "split",
-            "confidence": "extent",
-            "whole": 42086,
-            "wholeKind": "duplicated",
-            "pieces": [
-              28840,
-              2552
-            ],
-            "pieceOrigins": [
-              "duplicated:42086",
-              "duplicated:42086"
-            ]
-          }
-        ],
+        "wrongSplits": [],
         "moveDistance": {
           "checked": 33,
           "agreed": 33,

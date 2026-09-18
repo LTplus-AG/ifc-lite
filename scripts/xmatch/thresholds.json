@@ -57,17 +57,18 @@
     "`successorInsertedNearby` / `neighbourSuccessor` / `respecifiedReportedRenamed`",
     "ceilings, and the five population floors. Their gating floors started",
     "EQUAL to their targets and were ratcheted by the rule above after the",
-    "first measured run (2026-09-18). What that run found, per stratum, with",
-    "the SPEC.md finding each shortfall traces to:",
-    "  bySuccessor.position.recall        0.166667 on duplex   (F4: unnamed building)",
-    "  bySuccessor.footprint.kindAgreement 0.857143 on rvt01   (uniqueness margin)",
-    "  bySuccessorConfidence.position.precision 0.416667 rvt01 (F6: no size check)",
-    "  falseSuccessors.insertedNearby     7 on rvt01           (F6)",
-    "  bySplit.precision                  0.363636 on duplex   (F5: duplicated groups)",
-    "  corpus.bySplit.precision           0.5, corpus.bySuccessor.position.recall 0.5",
-    "Every other new stratum measured 1.0 and its floor sits at the ratchet",
-    "ceiling (0.98 / 0.99). The ceilings that had to rise are the ones on",
-    "insertedNearby (per pair 7, corpus 7); their target stays 0."
+    "first measured run (2026-09-18), then re-measured after the engine fixes",
+    "for findings F4-F6 (SPEC.md) landed. Before -> after, floors risen:",
+    "  bySplit.precision                  0.363636 -> 1        (F5 fixed)",
+    "  bySuccessorConfidence.position.precision 0.416667 -> 1 (F6 fixed)",
+    "  falseSuccessors.insertedNearby     7 -> 0               (F6; ceiling back to 0)",
+    "  bySuccessor.position.recall        0.166667 -> 0.333333 duplex (F4 fixed;",
+    "      the rest is F6's size check refusing a donor of a different size)",
+    "  corpus.bySuccessor.position.recall 0.5 (unchanged: 4 duplex + 2 rvt01",
+    "      swaps onto much larger/smaller donors, correctly refused)",
+    "Still below target: bySuccessor.position.recall (floor 0.313 duplex-bound,",
+    "corpus 0.48 vs 0.6) and bySuccessor.footprint.kindAgreement 0.857143 on",
+    "rvt01 (stacked-finish uniqueness margin). Every other new stratum is 1.0."
   ],
   "margin": 0.02,
   "perPair": {
@@ -92,12 +93,12 @@
     },
     "bySuccessor": {
       "footprint": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.837 },
-      "position": { "recall": 0.146, "precision": 0.98, "kindAgreement": 0.98 }
+      "position": { "recall": 0.313, "precision": 0.98, "kindAgreement": 0.98 }
     },
     "bySuccessorConfidence": {
-      "precision": { "footprint": 0.98, "position": 0.396 }
+      "precision": { "footprint": 0.98, "position": 0.98 }
     },
-    "bySplit": { "recall": 0.98, "precision": 0.343, "kindAgreement": 0.98 },
+    "bySplit": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.98 },
     "byClass": {
       "prismatic": { "recall": 0.85, "precision": 0.98 },
       "curved": { "recall": 0.98, "precision": 0.98 },
@@ -108,7 +109,7 @@
       "insertedHead": 0,
       "wrongPartner": 0,
       "unkeyed": 0,
-      "successorInsertedNearby": 7,
+      "successorInsertedNearby": 0,
       "neighbourSuccessor": 0,
       "respecifiedReportedRenamed": 0
     },
@@ -154,12 +155,12 @@
     "moveDistance": {
       "agreement": 0.98
     },
-    "bySplit": { "precision": 0.48, "recall": 0.98 },
+    "bySplit": { "precision": 0.98, "recall": 0.98 },
     "bySuccessor": {
       "footprint": { "recall": 0.98, "precision": 0.98 },
       "position": { "recall": 0.48, "precision": 0.98 }
     },
-    "falseSuccessors": { "insertedNearby": 7, "neighbourSuccessor": 0 }
+    "falseSuccessors": { "insertedNearby": 0, "neighbourSuccessor": 0 }
   },
   "preRegisteredTargets": {
     "$comment": [

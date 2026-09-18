@@ -550,7 +550,12 @@ was proved closed, so the volume attachment did what it was added for); the
 Four shortfalls, each printed as a gap on every run, each a finding about the
 engine or its adapters rather than the fixture, none tuned around:
 
-**F4 — an unnamed spatial node switches the `position` profile off.**
+All three findings below were **fixed in the engine stack** on the same day
+(F4 in the parser, F5/F6 in `@ifc-lite/diff`) and the harness re-measured
+against the fixed tip. The paragraphs keep the original measurement and the
+repro as regression notes; the "after" numbers follow each.
+
+**F4 (FIXED) — an unnamed spatial node switches the `position` profile off.**
 `spatialContainerPath` spells an unnamed node as `#<expressId>`; Duplex's
 `IfcBuilding` has no Name, so every container path in it reads
 `0001/Default/#36/Level 1`, and no re-export preserves an express id. The
@@ -558,12 +563,21 @@ profile requires the path equal on both sides, so on Duplex it can never fire:
 `bySuccessor.position.recall` 0.166667 there (the one recovered swap was a
 same-size donor caught by `footprint`), 0.833333 on rvt01 where the building
 is named, 0.5 across the corpus against a 0.6 target. The guard for container
-paths reports rather than fails an `#` path for this reason. Suggested fix, in
-the parser: skip an unnamed node (or spell it by type and ordinal) so the path
-is a function of names alone. Repro: `spatialContainerPath(store, id)` on
-`tests/models/ara3d/duplex.ifc` for any contained element.
+paths reports rather than fails an `#` path for this reason. Repro:
+`spatialContainerPath(store, id)` on `tests/models/ara3d/duplex.ifc` for any
+contained element. *Fix:* an unnamed node is labelled by LongName, then by
+class (`0001/Default/IfcBuilding/Level 1`), never by express id. *After:*
+`bySuccessor.position.recall` 0.166667 → **0.333333** on duplex; the four
+swaps still unclaimed there (and two on rvt01) are the harness pointing a
+4.8 m window at a 0.75 m donor, or a stool at a bed, which F6's size check
+now refuses on purpose — a donor-selection limit of the fixture, reported
+as the standing corpus gap 0.5 < 0.6 rather than tuned around. The stable
+paths also exposed a leak in the fixture itself: a `thickened` IfcSpace was
+renamed, moving the container path of everything inside it. No #4955 role
+is taken by a spatial element any more, and the container guard is what
+caught it.
 
-**F5 — a `duplicated` group is claimed as an `extent` split.** The content
+**F5 (FIXED) — a `duplicated` group is claimed as an `extent` split.** The content
 pass reports two stacked copies of one element as a `duplicated` group and
 retires nothing, so the whole and both copies stay in the residue; the split
 stage's in-place lane then finds two same-class boxes inside the whole's box
@@ -577,20 +591,27 @@ split of anything, and the group they came from was already adjudicated.
 Minimal repro: base `A` with box B; heads `A1`, `A2` with the same data hash
 as `A` and the same box B, no volumes → `detectSplitMerge` claims
 `{ kind: 'split', confidence: 'extent', whole: A, pieces: [A1, A2] }`.
+*Fix:* the extent tier refuses any two pieces whose boxes coincide (IoU ≥
+0.5). *After:* `bySplit.precision` 0.363636 / — / 0.666667 → **1 / — / 1**,
+zero wrong claims in the corpus, 12/12 splits still `verified`.
 
-**F6 — the `position` profile has no size check.** A deleted covering and a
+**F6 (FIXED) — the `position` profile has no size check.** A deleted covering and a
 head-only element of the same class at 0.3x its size, inside its box, are
 paired as `position` successors at IoU 0.027: 7 of the 8 `insertedNearby`
 controls on rvt01 (the eighth was bound as a piece of an F5 split claim, and
 the successor stage skips what a split binds). The profile
 argues from centre distance, container and uniqueness alone; a thickened wall
 and a stool where a wall was look the same to it. `falseSuccessors.insertedNearby`
-7 on rvt01 against a target of 0 — the one gating ceiling that had to be
-raised above zero, per pair and as a corpus total, with the target left at 0
-— and `bySuccessorConfidence.position.precision` 0.416667 against 0.98.
+7 on rvt01 against a target of 0 — at the time the one gating ceiling that
+had to be raised above zero, per pair and as a corpus total, with the target
+left at 0 — and `bySuccessorConfidence.position.precision` 0.416667 against 0.98.
 Minimal repro: deleted `D` with box `[0,0,0]..[5,0.2,3]`, added `N` of the
 same class and container with box `[1.75,0.07,0]..[3.25,0.13,0.9]`, no other
-residue → a `position` claim `D → N`.
+residue → a `position` claim `D → N`. *Fix:* the profile requires every axis
+extent within 2x of the other's. *After:* `falseSuccessors.insertedNearby`
+7 → **0** (ceiling back to 0, per pair and corpus), and
+`bySuccessorConfidence.position.precision` 0.416667 → **1** (4/4 on rvt01,
+1/1 on duplex).
 
 **Uniqueness margin, not a defect.** Two of rvt01's 14 thickened coverings
 were recovered by `position` rather than `footprint` (kindAgreement

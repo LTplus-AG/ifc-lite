@@ -105,6 +105,18 @@ function isRootType(type) {
   return isRoot;
 }
 
+/** Does this STEP type inherit from `IfcSpatialElement` (IFC4) or
+ *  `IfcSpatialStructureElement` (IFC2X3) in any bundled schema? */
+const spatialTypes = new Map();
+function isSpatialType(type) {
+  const cached = spatialTypes.get(type);
+  if (cached !== undefined) return cached;
+  const chain = getInheritanceChainAcrossSchemas(type);
+  const spatial = chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement');
+  spatialTypes.set(type, spatial);
+  return spatial;
+}
+
 /** The declared mutation set. Counts are targets; a role that cannot be
  *  applied to a given element falls through to the next candidate, and the
  *  answer key records what was actually applied. */
@@ -204,7 +216,12 @@ export function mutateModel(text, options) {
   // The split and the nearby control need the rarest thing in the corpus: a
   // detached element that owns one extruded rectangle outright. They pick
   // first so the broader roles cannot starve them.
-  const ownsRectangle = (id) => ownedRectangleExtrusion(index, id) !== undefined;
+  // No #4955 role on a SPATIAL element. Each of them renames (or, for the
+  // nearby control, clones under a new name), and a space's Name is part of
+  // the container path of everything inside it — renaming one moves the
+  // path of neighbours the key calls untouched. Decided from the registry.
+  const spatial = (id) => isSpatialType(index.byId.get(id).type);
+  const ownsRectangle = (id) => !spatial(id) && ownedRectangleExtrusion(index, id) !== undefined;
   assign('splitLength', plan.splitLength, detached(ownsRectangle));
   assign('deletedNearby', plan.insertedNearby, detached(ownsRectangle));
   assign('retriangulated', plan.retriangulated, selfContained((id) => resampleableArcs(index, id).length > 0));
@@ -213,7 +230,7 @@ export function mutateModel(text, options) {
   assign('thickened', plan.thickened, selfContained(ownsRectangle));
   assign('reshaped', plan.reshaped, selfContained((id) => exclusiveSolids(index, id).length > 0));
   const donors = mapDonors(index, population);
-  assign('swapped', plan.swapped, selfContained((id) => donors.has(id)));
+  assign('swapped', plan.swapped, selfContained((id) => !spatial(id) && donors.has(id)));
   assign('deleted', plan.deleted, detached(() => true));
   assign('duplicated', plan.duplicated, detached(() => true));
   // Whole same-content groups, moved member by member to DIFFERENT places.
@@ -236,7 +253,7 @@ export function mutateModel(text, options) {
   // that a host's hash can move with statement order through the opening
   // CSG. A hash that moved for a reason unrelated to the mutation would score
   // the engine against a key that promised an unchanged shape.
-  assign('respecified', plan.respecified, selfContained((id) => !hosts.has(id)));
+  assign('respecified', plan.respecified, selfContained((id) => !hosts.has(id) && !spatial(id)));
   const insertionSources = pool
     .filter((id) => !taken.has(id) && detached(() => true)(id))
     .slice(0, plan.inserted);

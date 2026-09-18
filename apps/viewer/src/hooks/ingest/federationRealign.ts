@@ -35,6 +35,7 @@
  */
 
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
+import { growPreAlignment } from '../../store/slices/data-mesh-prealign.js';
 import { alignGeometryToReference, type ModelGeoref } from './federationAlign.js';
 
 type AlignableGeometry = NonNullable<FederatedModel['geometryResult']>;
@@ -59,17 +60,20 @@ export interface RealignableModel {
  * value. Otherwise an in-place edit of the live geometry silently rewrites the
  * baseline, the restore becomes a no-op, and no assertion comparing the two can
  * see it.
+ *
+ * The per-mesh arrays are built by `growPreAlignment` (starting from an empty
+ * snapshot) rather than a second `.map()` here: it is the same operation —
+ * "add one baseline entry per mesh, index-aligned" — that `appendGeometryBatch`
+ * needs when a mesh lands on a model that already has a snapshot (#4970), and
+ * a snapshot built by two different code paths is exactly the kind of drift
+ * this module's header warns about.
  */
 export function capturePreAlignment(geometry: AlignableGeometry): PreAlignmentSnapshot {
-  return {
-    positions: geometry.meshes.map((mesh) => new Float32Array(mesh.positions)),
-    normals: geometry.meshes.map((mesh) => (
-      mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined
-    )),
-    // Copied, not held: alignment replaces the array (`mesh.origin = [0,0,0]`)
-    // today, but a copy costs three numbers and cannot be undone by a future
-    // in-place writer.
-    origins: geometry.meshes.map((mesh) => (mesh.origin ? [...mesh.origin] : undefined)),
+  const empty: PreAlignmentSnapshot = {
+    positions: [],
+    normals: [],
+    origins: [],
+    geometryAabbs: [],
     // Deep-copied, and by `structuredClone` rather than by hand: the frame is
     // nested three levels (`originalBounds.min.x`), so neither a spread nor a
     // spread-plus-one-level-of-bounds reaches the corners, and a hand-written
@@ -79,15 +83,15 @@ export function capturePreAlignment(geometry: AlignableGeometry): PreAlignmentSn
     // baseline, which turns the restore into a no-op that cannot be detected,
     // because the snapshot and the geometry would be one value.
     coordinateInfo: structuredClone(geometry.coordinateInfo),
-    geometryAabbs: geometry.meshes.map((mesh) => mesh.geometryAabb),
     // The Map is copied so the snapshot owns its own entry set. The boxes
     // inside stay shared, at the same depth as the per-mesh `geometryAabbs`
-    // above: alignment REPLACES box objects rather than mutating them, which is
+    // below: alignment REPLACES box objects rather than mutating them, which is
     // pinned by `federationAlign.test.ts`.
     instancedGeometryAabbs: geometry.instancedGeometryAabbs
       ? new Map(geometry.instancedGeometryAabbs)
       : undefined,
   };
+  return growPreAlignment(empty, geometry.meshes);
 }
 
 /**

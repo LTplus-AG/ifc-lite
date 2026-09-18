@@ -511,6 +511,14 @@ export type ModelSourceFile = File;
  * writes has to be in here or the restore is incomplete. Captured and restored
  * by the one pair of functions in `hooks/ingest/federationRealign.ts`.
  */
+/**
+ * Invariant (#4970): whenever a model carries a snapshot, every per-mesh
+ * array here is INDEX-ALIGNED with `geometryResult.meshes`, one entry per
+ * mesh, no exceptions. `data-mesh-prealign.ts`'s `growPreAlignment` /
+ * `data-mesh-prune.ts`'s `prunePreAlignment` are the only writers that may
+ * add or remove entries, and they run wherever meshes are appended/removed —
+ * so the array length can never drift from `meshes.length` between aligns.
+ */
 export interface PreAlignmentSnapshot {
   /** One Float32Array per mesh, in `geometryResult.meshes` order. */
   positions: Float32Array[];

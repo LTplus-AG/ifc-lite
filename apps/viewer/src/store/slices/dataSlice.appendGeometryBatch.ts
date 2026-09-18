@@ -11,6 +11,7 @@
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
 import { DATA_DEFAULTS } from '../constants.js';
+import { growPreAlignment } from './data-mesh-prealign.js';
 
 const getDefaultCoordinateInfo = (): CoordinateInfo => ({
   // Create fresh copies to avoid shared object references
@@ -122,7 +123,17 @@ export function appendGeometryBatchPatch(
   const models = model
     ? (() => {
         const next = new Map(state.models);
-        next.set(modelId, { ...model, geometryResult });
+        // A model that already carries a `preAlignment` snapshot has been
+        // through at least one federation align. `restorePreAlignment` reads
+        // that snapshot BY INDEX (`hooks/ingest/federationRealign.ts`), so a
+        // mesh appended here without a matching slot is silently skipped on
+        // the next restore and then double-transformed by the align that
+        // follows it (#4970) — grow the snapshot in lockstep with the append
+        // rather than leaving it to go stale.
+        const preAlignment = model.preAlignment
+          ? growPreAlignment(model.preAlignment, meshes)
+          : model.preAlignment;
+        next.set(modelId, { ...model, geometryResult, preAlignment });
         return next;
       })()
     : undefined;

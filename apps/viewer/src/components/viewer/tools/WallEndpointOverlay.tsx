@@ -40,6 +40,9 @@ import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
+import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
+import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
+import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -50,27 +53,22 @@ const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
 
 /**
  * Convert an IFC storey-local point (Z-up, metres) into a renderer
- * world-frame point (Y-up). Mirror of `rendererPointToIfcStoreyLocal`.
- * We don't apply storey elevation here — `readWallEndpoints` returns
- * points in storey-local space (Z = 0 for a planar wall) and the
- * storey's own placement carries the elevation. To project to screen
- * we ride on top of the entity bbox path: bbox center already in
- * renderer frame is what selectionHandlers uses; for the endpoints
- * we add the storey elevation explicitly.
- *
- * KNOWN GAP, not fixed here: unlike `rendererPointToIfcStoreyLocal` as of
- * #4932, this direction does not invert the model's reposition placement,
- * so on a moved or rotated model the handles themselves render off the
- * actual wall. #4932 is scoped to the pick side (placement/split); this is
- * the same class of bug on the endpoint-drag display side and wants its own
- * fix.
+ * world-frame point (Y-up). Mirror of `rendererPointToIfcStoreyLocal`,
+ * including its #4932 placement handling: `readWallEndpoints` returns
+ * points in the WALL's model frame (storey-local, Z = 0 for a planar
+ * wall; we add the storey elevation explicitly since it isn't carried
+ * per-point), and forward through `modelId`'s reposition placement
+ * (heading about the pivot, then translation) before the axis swap, so
+ * a wall on a moved or rotated model draws its resize handles ON the
+ * wall rather than at its un-repositioned position.
  */
-function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number): Vec3 {
-  // IFC Z-up storey-local → renderer Y-up world:
-  //   renderer.x =  ifc.x
-  //   renderer.y =  ifc.z + storeyElevation
-  //   renderer.z = -ifc.y
-  return { x: p[0], y: p[2] + storeyElevation, z: -p[1] };
+export function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number, modelId: string): Vec3 {
+  const state = useViewerStore.getState();
+  const placement = { translation: displayedTranslation(state.modelPlacement, modelId),
+    rotation: placementFor(state.modelPlacement, modelId).rotation };
+  const modelPoint: Translation = [p[0], p[1], p[2] + storeyElevation];
+  const [x, y, z] = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, placement));
+  return { x, y, z };
 }
 
 interface ActiveDrag {
@@ -138,8 +136,8 @@ export function WallEndpointOverlay() {
   if (!endpoints || !projectToScreen) return null;
   const project = projectToScreen as Project;
 
-  const startWorld = ifcStoreyLocalToRenderer(endpoints.start, endpoints.storeyElevation);
-  const endWorld = ifcStoreyLocalToRenderer(endpoints.end, endpoints.storeyElevation);
+  const startWorld = ifcStoreyLocalToRenderer(endpoints.start, endpoints.storeyElevation, endpoints.modelId);
+  const endWorld = ifcStoreyLocalToRenderer(endpoints.end, endpoints.storeyElevation, endpoints.modelId);
   const startScreen = project(startWorld);
   const endScreen = project(endWorld);
   if (!startScreen || !endScreen) return null;

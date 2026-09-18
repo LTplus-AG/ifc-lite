@@ -26,6 +26,23 @@ pub(crate) fn parse_rational_weights(bspline: &DecodedEntity) -> Option<Vec<Vec<
     Some(result)
 }
 
+/// Read the `ControlPointsList` grid's `(row_count, max_row_len)` straight
+/// from the raw attribute list — no `CartesianPoint` reference is resolved or
+/// decoded. Callers use this to size-check a surface BEFORE paying for
+/// [`parse_control_points`]'s decode-everything walk (#4901): a hostile file
+/// can declare millions of point references, and decoding all of them before
+/// any cap is checked is itself the unbounded-work hole a downstream cap
+/// closes too late to matter. Returns `(0, 0)` if attribute 2 is missing or
+/// not a list — [`parse_control_points`] still runs and reports that
+/// specific error; this is a fast pre-check, not a replacement.
+pub(super) fn control_point_grid_dims(bspline: &DecodedEntity) -> (usize, usize) {
+    let Some(rows) = bspline.get(2).and_then(|a| a.as_list()) else {
+        return (0, 0);
+    };
+    let max_row_len = rows.iter().filter_map(|row| row.as_list()).map(<[_]>::len).max().unwrap_or(0);
+    (rows.len(), max_row_len)
+}
+
 /// Parse control points from B-spline surface entity
 pub(super) fn parse_control_points(
     bspline: &DecodedEntity,

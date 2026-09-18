@@ -4,6 +4,7 @@
 
 use super::*;
 use ifc_lite_core::EntityDecoder;
+use std::time::{Duration, Instant};
 
 /// A single self-referential entity: `#10`'s `BasisCurve` is `#10`. Enough on
 /// its own to abort the process before the guard (#2866).
@@ -109,4 +110,34 @@ fn a_long_acyclic_basis_chain_terminates() {
     }
     data.push_str(&format!("#{n}=IFCCARTESIANPOINT((0.,0.,0.));\n"));
     assert!(sample(&wrap(&data), 1).is_empty());
+}
+
+/// #4901, caught in review: `sample_curve_polyline` is the standalone
+/// surface-of-revolution generator-profile path (NOT `sample_bspline_edge_curve`,
+/// which is edge-loop-only), and it re-parses the curve's control points and
+/// calls `evaluate_bspline_curve` directly for its endpoint refinement. The
+/// degree/curve-point bound must apply there too, or a curve that
+/// `sample_bspline_edge_curve` correctly bounds still explodes when reached
+/// through this second, independent call site.
+#[test]
+fn pathological_degree_via_standalone_polyline_fails_fast_not_hangs() {
+    let data = "\
+#1=IFCCARTESIANPOINT((0.,0.,0.));\n\
+#2=IFCCARTESIANPOINT((1.,1.,0.));\n\
+#3=IFCCARTESIANPOINT((2.,0.,0.));\n\
+#10=IFCBSPLINECURVEWITHKNOTS(999999,(#1,#2,#3),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.));\n";
+
+    let start = Instant::now();
+    let pts = sample(&wrap(data), 10);
+    let elapsed = start.elapsed();
+
+    assert_eq!(
+        pts.len(),
+        1,
+        "a degree past MAX_BSPLINE_DEGREE must degrade to the single start vertex, got {pts:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "pathological degree via the standalone polyline path must fail within the deterministic bound, took {elapsed:?}"
+    );
 }

@@ -173,3 +173,46 @@ fn pathological_sample_work_fails_fast_not_hangs() {
         "oversized sample work must fail within the deterministic bound, took {elapsed:?}"
     );
 }
+
+/// #4901, caught in review: `weighted_sum_work` (`n_u * n_v`) alone is zero
+/// (or tiny) for a grid of many near-empty rows — a ragged
+/// `ControlPointsList` with 15,000 single-point rows has `n_v = 1`, so the
+/// OLD estimate (`samples * n_u * n_v`) stayed small regardless of how big
+/// `n_u` got, even though `bspline_basis_table`'s U-axis build is still
+/// `O(degree * n_u)` PER SAMPLE POINT, independent of `n_v`. The bound must
+/// include that table-build term or a many-row, thin-column grid bypasses it
+/// entirely (unlike the point-count cap, there is no OTHER cap this falls
+/// back to).
+#[test]
+fn pathological_ragged_row_count_fails_fast_not_hangs() {
+    let n_u = 6_000usize;
+    let degree = 64usize; // within MAX_BSPLINE_DEGREE; isolates the table-build term
+    let mut content = String::new();
+    for i in 1..=n_u {
+        content.push_str(&format!("#{i}=IFCCARTESIANPOINT(({}.,0.,0.));\n", i));
+    }
+    let rows: Vec<String> = (1..=n_u).map(|i| format!("(#{i})")).collect();
+    let surface_id = n_u + 1;
+    content.push_str(&format!(
+        "#{surface_id}=IFCBSPLINESURFACEWITHKNOTS({degree},0,({rows}),.UNSPECIFIED.,.F.,.F.,.F.,({u_knots}),(2),(0.),(0.),.UNSPECIFIED.);\n",
+        rows = rows.join(","),
+        u_knots = n_u + degree + 1,
+    ));
+
+    let mut decoder = EntityDecoder::new(&content);
+    let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
+
+    let start = Instant::now();
+    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Highest);
+    let elapsed = start.elapsed();
+
+    let err = result.expect_err("a many-row, thin-column grid must be a typed failure too");
+    assert!(
+        err.to_string().contains("sampling work") && err.to_string().contains("4901"),
+        "error should name the cause and cite #4901: {err}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "ragged-row grid must fail within the deterministic bound, took {elapsed:?}"
+    );
+}

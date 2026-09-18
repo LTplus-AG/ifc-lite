@@ -155,37 +155,64 @@ pub(crate) fn process_bspline_face(
         )));
     }
 
-    // Parse control points
-    let control_points = parse_control_points(bspline, decoder)?;
-
-    // Parse knot vectors
-    let (u_knots, v_knots) = parse_knot_vectors(bspline)?;
+    // Read the control-point grid's dimensions from the RAW attribute list —
+    // no `CartesianPoint` is resolved or decoded (#4901). Checking the
+    // work bound against THESE, before calling `parse_control_points`,
+    // means a hostile file with millions of point references is rejected
+    // before paying for the decode, not after (a bound enforced only once
+    // everything is already parsed and allocated is not a bound at all).
+    let (raw_n_u, raw_n_v_max) = super::bspline_parse::control_point_grid_dims(bspline);
+    let raw_n_v_first = bspline
+        .get(2)
+        .and_then(|a| a.as_list())
+        .and_then(|rows| rows.first())
+        .and_then(|row| row.as_list())
+        .map(<[_]>::len)
+        .unwrap_or(0);
 
     // Determine tessellation resolution based on surface complexity; scaled by quality.
-    let u_segments = scale_segments(control_points.len() * 3, 8, 24, quality);
-    let v_segments = if !control_points.is_empty() {
-        scale_segments(control_points[0].len() * 3, 4, 24, quality)
+    let u_segments = scale_segments(raw_n_u * 3, 8, 24, quality);
+    let v_segments = if raw_n_u > 0 {
+        scale_segments(raw_n_v_first * 3, 4, 24, quality)
     } else {
         scale_segments(4, 4, 24, quality)
     };
 
     // Bound the actual cost driver (#4901): NOT the raw control-point count
     // (a real fixture legitimately carries a 207x180 = 37,260-point patch,
-    // see bspline_budget.rs) but the total weighted-sum work the sampling
-    // loop below will do: samples * n_u * n_v.
-    let n_u = control_points.len() as u64;
-    let n_v = control_points.iter().map(Vec::len).max().unwrap_or(0) as u64;
-    let estimated_work = (u_segments as u64 + 1)
-        .saturating_mul(v_segments as u64 + 1)
-        .saturating_mul(n_u)
-        .saturating_mul(n_v);
+    // see bspline_budget.rs) but the total work the code below will do:
+    // - the weighted-sum loop (`evaluate_bspline_surface`), `samples * n_u * n_v`;
+    // - PLUS the per-axis basis-table build (`bspline_basis_table`), which
+    //   depends on `n_u` and `n_v` INDEPENDENTLY of each other and of their
+    //   product — a grid of many near-empty rows (`n_u` huge, `n_v` tiny)
+    //   makes the weighted-sum term small while the U-axis table build alone
+    //   is still `O(degree * n_u)` per sample point. Omitting this term let a
+    //   ragged/empty-row grid slip past the bound entirely (caught in review).
+    let samples = (u_segments as u64 + 1).saturating_mul(v_segments as u64 + 1);
+    let n_u = raw_n_u as u64;
+    let n_v = raw_n_v_max as u64;
+    let deg_u = u_degree as u64;
+    let deg_v = v_degree as u64;
+    let weighted_sum_work = n_u.saturating_mul(n_v);
+    let table_build_work = deg_u
+        .saturating_mul(n_u.saturating_add(deg_u))
+        .saturating_add(deg_v.saturating_mul(n_v.saturating_add(deg_v)));
+    let estimated_work =
+        samples.saturating_mul(weighted_sum_work.saturating_add(table_build_work));
     if estimated_work > MAX_BSPLINE_SURFACE_SAMPLE_WORK {
         return Err(Error::geometry(format!(
-            "BSplineSurface sampling work ({estimated_work} = {} samples * {n_u}x{n_v} control points) \
-             exceeds the {MAX_BSPLINE_SURFACE_SAMPLE_WORK} bound (#4901)",
-            (u_segments as u64 + 1) * (v_segments as u64 + 1),
+            "BSplineSurface sampling work ({estimated_work} = {samples} samples * \
+             ({n_u}x{n_v} control points + degree-{u_degree}/{v_degree} basis tables)) \
+             exceeds the {MAX_BSPLINE_SURFACE_SAMPLE_WORK} bound (#4901)"
         )));
     }
+
+    // Parse control points (only now — the work bound above already passed
+    // on the raw, undecoded grid dimensions).
+    let control_points = parse_control_points(bspline, decoder)?;
+
+    // Parse knot vectors
+    let (u_knots, v_knots) = parse_knot_vectors(bspline)?;
 
     // Tessellate the surface (returns None if knot data is inconsistent)
     match tessellate_bspline_surface(

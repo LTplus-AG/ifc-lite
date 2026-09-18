@@ -8,6 +8,7 @@ use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::bspline::evaluate_bspline_curve;
+use super::bspline_budget::{MAX_BSPLINE_CURVE_CONTROL_POINTS, MAX_BSPLINE_DEGREE};
 use super::bspline_parse::expand_knots;
 use super::conics::{read_axis2_placement_3d, sample_circle_edge_curve};
 use super::curves::sample_bspline_edge_curve;
@@ -77,9 +78,16 @@ fn sample_curve_polyline_guarded(
             decoder,
             quality,
         );
-        if !pts.is_empty() {
+        // `sample_bspline_edge_curve`'s capped fallback IS a non-empty
+        // single-point `vec![*start]` (#4901), so `!pts.is_empty()` alone
+        // cannot tell "genuinely sampled" from "degree/point-count rejected"
+        // — re-checking the SAME bounds here before redoing the unbounded
+        // parse + `evaluate_bspline_curve` below closes that gap rather than
+        // trusting the emptiness of the result.
+        let degree = curve.get_float(0).unwrap_or(3.0) as usize;
+        let raw_cp_len = curve.get(1).and_then(|a| a.as_list()).map(<[_]>::len).unwrap_or(0);
+        if !pts.is_empty() && degree <= MAX_BSPLINE_DEGREE && raw_cp_len <= MAX_BSPLINE_CURVE_CONTROL_POINTS {
             // Replace the synthetic start with an explicit evaluation at t_min.
-            let degree = curve.get_float(0).unwrap_or(3.0) as usize;
             if let (Some(cp_list), Some((mults, knot_values))) = (
                 curve.get(1).and_then(|a| a.as_list()),
                 super::curves::parse_curve_knots(curve),

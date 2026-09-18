@@ -77,7 +77,28 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
                     // Advanced face: delegate to shared NURBS/planar/cylindrical handler
                     let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
                         Ok(result) => result,
-                        Err(_) => continue,
+                        Err(_e) => {
+                            // A bounded-out B-spline face (#4901: degree/work
+                            // caps) or any other unsupported-surface error
+                            // drops silently here otherwise — this processor
+                            // has no `GeometryRouter` to call
+                            // `record_unsupported_item` on (it also runs
+                            // standalone, outside the router), so a debug
+                            // trace is the honest floor: observable, not a
+                            // structured `GeometryDiagnostics` count.
+                            crate::diag::diag_debug!(
+                                { face_id = face.id, error = %_e,
+                                  "skipping unsupported advanced face in surface model" }
+                                else {
+                                    #[cfg(debug_assertions)]
+                                    eprintln!(
+                                        "[ifc-lite] Skipping unsupported advanced face #{} in surface model: {}",
+                                        face.id, _e
+                                    );
+                                }
+                            );
+                            continue;
+                        }
                     };
 
                     if !positions.is_empty() {
@@ -250,7 +271,28 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
                     // Advanced face: delegate to shared NURBS/planar/cylindrical handler
                     let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
                         Ok(result) => result,
-                        Err(_) => continue,
+                        Err(_e) => {
+                            // A bounded-out B-spline face (#4901: degree/work
+                            // caps) or any other unsupported-surface error
+                            // drops silently here otherwise — this processor
+                            // has no `GeometryRouter` to call
+                            // `record_unsupported_item` on (it also runs
+                            // standalone, outside the router), so a debug
+                            // trace is the honest floor: observable, not a
+                            // structured `GeometryDiagnostics` count.
+                            crate::diag::diag_debug!(
+                                { face_id = face.id, error = %_e,
+                                  "skipping unsupported advanced face in surface model" }
+                                else {
+                                    #[cfg(debug_assertions)]
+                                    eprintln!(
+                                        "[ifc-lite] Skipping unsupported advanced face #{} in surface model: {}",
+                                        face.id, _e
+                                    );
+                                }
+                            );
+                            continue;
+                        }
                     };
 
                     if !positions.is_empty() {

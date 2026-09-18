@@ -28,6 +28,7 @@
 import { sameIfcClass } from './class-families.js';
 import { positiveOr } from './geometry-compare.js';
 import {
+  anyCoincident,
   boxUnion,
   boxWithin,
   buildBoxGrid,
@@ -205,6 +206,9 @@ export function inPlaceClaims<TRef>(
 }
 
 /** The evidence chain for one whole and the full set of pieces inside it. */
+/** Two pieces overlapping by at least this much are one piece twice. */
+const COINCIDENT_PIECE_IOU = 0.5;
+
 function judgeContainmentSet<TRef>(
   kind: SplitMergeKind,
   whole: SplitCandidate<TRef>,
@@ -261,8 +265,16 @@ function judgeContainmentSet<TRef>(
   }
 
   // `unknown`: a volume was missing somewhere and nothing known contradicted
-  // the candidate. Only here may the boxes speak.
-  if (!extentCoverage(whole.aabb, contained.map((piece) => piece.aabb), pad)) return undefined;
+  // the candidate. Only here may the boxes speak — and two pieces whose boxes
+  // coincide are copies of one thing, not a split of anything (issue #4955,
+  // xmatch finding F5: a `duplicated` group the content pass declined to
+  // pair was being re-read here as an `extent` split, with no volume to
+  // refute it). A volume-verified claim has no such gate: two coincident
+  // pieces that really do sum to the whole are a stranger case than a box can
+  // judge, and the volumes already did.
+  const boxes = contained.map((piece) => piece.aabb);
+  if (anyCoincident(boxes, COINCIDENT_PIECE_IOU)) return undefined;
+  if (!extentCoverage(whole.aabb, boxes, pad)) return undefined;
   return claimOf(kind, 'extent', whole, contained);
 }
 

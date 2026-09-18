@@ -138,6 +138,25 @@ describe('split/merge across a class family (issue #4955)', () => {
     expect(diff.splitMerges![0].crossClass).toBe(true);
   });
 
+  it('never claims two coincident copies as an extent split (xmatch finding F5)', () => {
+    // A duplicated group the content pass declined to pair: base A, heads A1
+    // and A2 with A's exact box and no volumes. Two pieces in the same place
+    // are copies, not a split; with no volume to refute it the extent tier
+    // used to claim one.
+    const base = [entity({ key: 'A', aabb: box([0, 0, 0], [2, 0.5, 1]) })];
+    const head = [
+      entity({ key: 'A1', aabb: box([0, 0, 0], [2, 0.5, 1]) }),
+      entity({ key: 'A2', aabb: box([0, 0, 0], [2, 0.5, 1]) }),
+    ];
+    expect(run(base, head).splitMerges).toEqual([]);
+    // Pieces that fill different parts still claim.
+    const halves = [
+      entity({ key: 'H1', aabb: box([0, 0, 0], [1, 0.5, 1]) }),
+      entity({ key: 'H2', aabb: box([1, 0, 0], [2, 0.5, 1]) }),
+    ];
+    expect(run(base, halves).splitMerges!.map((c) => c.confidence)).toEqual(['extent']);
+  });
+
   it('claims the merge direction across classes too', () => {
     const diff = run(layers('IfcBuildingElementPart'), [wall()]);
     expect(diff.splitMerges).toHaveLength(1);

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { finiteTranslation, subtractTranslation, ZERO_TRANSLATION, type Translation } from './translation.js';
+import { addTranslation, finiteTranslation, subtractTranslation, ZERO_TRANSLATION, type Translation } from './translation.js';
 
 /**
  * A whole-model rotation about the workspace VERTICAL axis only.
@@ -107,4 +107,39 @@ export function rotateWorkspacePoint(point: Translation, rotation: ModelRotation
   const cos = Math.cos(rotation.angle), sin = Math.sin(rotation.angle);
   const dx = point[0] - rotation.pivot[0], dy = point[1] - rotation.pivot[1];
   return [rotation.pivot[0] + dx * cos - dy * sin, rotation.pivot[1] + dx * sin + dy * cos, point[2]];
+}
+
+/** The two workspace-facing numbers a placement is made of, decoupled from
+ * `ModelPlacement`'s `locked` flag so a pick or an overlay projection can be
+ * handed just enough to transform a point. */
+export interface PointPlacement {
+  translation: Translation;
+  rotation: ModelRotation;
+}
+
+/**
+ * A model-frame point through its placement (heading about the pivot, THEN
+ * translation — see {@link pivotInModelFrame}) into the workspace point it
+ * renders at. The forward half of the pair with {@link workspacePointToModelFrame}.
+ */
+export function modelPointToWorkspacePoint(point: Translation, placement: PointPlacement): Translation {
+  return addTranslation(rotateWorkspacePoint(point, placement.rotation), placement.translation);
+}
+
+/**
+ * Undo a model's placement on a WORKSPACE point — translation, then the
+ * inverse heading about the same pivot — to recover the point in the
+ * model's own un-repositioned frame.
+ *
+ * This is the missing half of picking on a repositioned model (#4932): a
+ * raycast hit or an unprojected cursor point is a WORKSPACE point, but every
+ * authoring action fed by a pick (place a new element, cut a wall or slab)
+ * works in the model's own frame — the one its IFC coordinates are in, and
+ * the one {@link modelPointToWorkspacePoint}'s bake ran from. Applying the
+ * placement's translation and rotation in forward order again, instead of
+ * undoing them, would compound the offset rather than remove it.
+ */
+export function workspacePointToModelFrame(point: Translation, placement: PointPlacement): Translation {
+  const untranslated = subtractTranslation(point, placement.translation);
+  return rotateWorkspacePoint(untranslated, { angle: -placement.rotation.angle, pivot: placement.rotation.pivot });
 }

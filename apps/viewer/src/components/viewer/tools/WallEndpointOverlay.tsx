@@ -40,6 +40,9 @@ import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
+import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
+import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
+import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -50,27 +53,47 @@ const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
 
 /**
  * Convert an IFC storey-local point (Z-up, metres) into a renderer
- * world-frame point (Y-up). Mirror of `rendererPointToIfcStoreyLocal`.
- * We don't apply storey elevation here — `readWallEndpoints` returns
- * points in storey-local space (Z = 0 for a planar wall) and the
- * storey's own placement carries the elevation. To project to screen
- * we ride on top of the entity bbox path: bbox center already in
- * renderer frame is what selectionHandlers uses; for the endpoints
- * we add the storey elevation explicitly.
+ * world-frame point (Y-up). Mirror of `rendererPointToIfcStoreyLocal`,
+ * including its #4932 placement handling: `readWallEndpoints` returns
+ * points in the WALL's model frame (storey-local, Z = 0 for a planar
+ * wall; we add the storey elevation explicitly since it isn't carried
+ * per-point), and forward through `modelId`'s reposition placement
+ * (heading about the pivot, then translation) before the axis swap, so
+ * a wall on a moved or rotated model draws its resize handles ON the
+ * wall rather than at its un-repositioned position.
  */
-function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number): Vec3 {
-  // IFC Z-up storey-local → renderer Y-up world:
-  //   renderer.x =  ifc.x
-  //   renderer.y =  ifc.z + storeyElevation
-  //   renderer.z = -ifc.y
-  return { x: p[0], y: p[2] + storeyElevation, z: -p[1] };
+function ifcStoreyLocalToRenderer(p: [number, number, number], storeyElevation: number, modelId: string): Vec3 {
+  const modelPoint: Translation = [p[0], p[1], p[2] + storeyElevation];
+  const [x, y, z] = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, placementOf(modelId)));
+  return { x, y, z };
+}
+
+/** `modelId`'s current displayed placement (translation, including an
+ * in-flight move-preview drag; committed heading — rotation has no
+ * preview stage). Shared by the draw transform above and the drag
+ * floor-plane height below so the two directions cannot drift apart. */
+function placementOf(modelId: string): { translation: Translation; rotation: ReturnType<typeof placementFor>['rotation'] } {
+  const state = useViewerStore.getState();
+  return { translation: displayedTranslation(state.modelPlacement, modelId),
+    rotation: placementFor(state.modelPlacement, modelId).rotation };
 }
 
 interface ActiveDrag {
   end: 'start' | 'end';
   /** Cached counterpart endpoint that stays fixed during the drag. */
   fixedIfc: [number, number, number];
-  storeyElevation: number;
+  /**
+   * Renderer-frame Y of the floor plane the drag unprojects onto — the
+   * model's storey elevation PLUS its placement's vertical translation
+   * (#4932 follow-up), so this matches the height `ifcStoreyLocalToRenderer`
+   * already draws the handles at. Left at the raw, un-placed elevation, a
+   * model moved vertically would have its handles rendered at the correct
+   * (placed) height but its drag plane at the wrong one — under a
+   * non-top-down camera the two disagree, and the raycast lands somewhere
+   * other than under the cursor before `rendererPointToIfcStoreyLocal`
+   * (correctly) inverts the placement on whatever it found.
+   */
+  planeRenderY: number;
 }
 
 export function WallEndpointOverlay() {
@@ -83,6 +106,18 @@ export function WallEndpointOverlay() {
   const resizeWall = useViewerStore((s) => s.resizeWall);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models } = useIfc();
+  // Subscribed for the re-render alone, same idiom as `useCameraTickSubscription`
+  // below: `startWorld`/`endWorld`/`startScreen`/`endScreen` are computed fresh
+  // in the render body on every render, not memoized, so nothing here reads
+  // the value. What was missing (Macroscope review on #4953) is a REASON to
+  // re-render at all when a model is repositioned while a wall is selected:
+  // none of the other subscriptions above (`editEnabled`, `activeTool`,
+  // `selectedEntity`, `mutationVersion`, ...) change on a reposition, so
+  // without this the handles stayed at their last-rendered screen position
+  // until some UNRELATED update happened to re-render the component, even
+  // though the wall itself (driven by `useModelPlacementSync`, a separate
+  // subscription) moved immediately.
+  useViewerStore((s) => s.modelPlacement);
 
   const dragRef = useRef<ActiveDrag | null>(null);
 
@@ -131,8 +166,8 @@ export function WallEndpointOverlay() {
   if (!endpoints || !projectToScreen) return null;
   const project = projectToScreen as Project;
 
-  const startWorld = ifcStoreyLocalToRenderer(endpoints.start, endpoints.storeyElevation);
-  const endWorld = ifcStoreyLocalToRenderer(endpoints.end, endpoints.storeyElevation);
+  const startWorld = ifcStoreyLocalToRenderer(endpoints.start, endpoints.storeyElevation, endpoints.modelId);
+  const endWorld = ifcStoreyLocalToRenderer(endpoints.end, endpoints.storeyElevation, endpoints.modelId);
   const startScreen = project(startWorld);
   const endScreen = project(endWorld);
   if (!startScreen || !endScreen) return null;
@@ -141,10 +176,13 @@ export function WallEndpointOverlay() {
     e.stopPropagation();
     e.preventDefault();
     (e.target as SVGElement).setPointerCapture(e.pointerId);
+    // A yaw about the vertical axis never touches elevation, so only the
+    // translation's Z applies — no need to round-trip through the full
+    // rotate-then-translate transform for a single scalar.
     dragRef.current = {
       end: which,
       fixedIfc: which === 'start' ? endpoints.end : endpoints.start,
-      storeyElevation: endpoints.storeyElevation,
+      planeRenderY: endpoints.storeyElevation + placementOf(endpoints.modelId).translation[2],
     };
   };
 
@@ -159,9 +197,9 @@ export function WallEndpointOverlay() {
     if (!drag) return null;
     const pickFn = useViewerStore.getState().cameraCallbacks.unprojectToFloor;
     if (typeof pickFn !== 'function') return null;
-    const world = pickFn(clientX, clientY, drag.storeyElevation);
+    const world = pickFn(clientX, clientY, drag.planeRenderY);
     if (!world) return null;
-    return rendererPointToIfcStoreyLocal(world);
+    return rendererPointToIfcStoreyLocal(world, endpoints.modelId);
   };
 
   const onDragMove = (e: React.PointerEvent<SVGElement>) => {

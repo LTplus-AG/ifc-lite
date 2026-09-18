@@ -112,7 +112,7 @@
    859 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
   1348 apps/viewer/src/components/viewer/Section2DPanel.tsx
-  1094 apps/viewer/src/components/viewer/selectionHandlers.ts
+  1134 apps/viewer/src/components/viewer/selectionHandlers.ts
    502 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    437 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    581 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx

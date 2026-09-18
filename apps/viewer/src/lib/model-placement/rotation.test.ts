@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { degreesToRadians, equalRotation, finiteRotation, normalizeAngle, parseRotationDegrees,
-  pivotInModelFrame, radiansToDegrees, rotateWorkspacePoint, ZERO_ROTATION } from './rotation.js';
+import { degreesToRadians, equalRotation, finiteRotation, modelPointToWorkspacePoint, normalizeAngle,
+  parseRotationDegrees, pivotInModelFrame, radiansToDegrees, rotateWorkspacePoint,
+  workspacePointToModelFrame, ZERO_ROTATION } from './rotation.js';
 import type { Translation } from './translation.js';
 
 describe('rotation values', () => {
@@ -61,6 +62,23 @@ describe('rotation values', () => {
     assert.ok(equalRotation(ZERO_ROTATION, { angle: 0, pivot: [500, -3, 9] }));
     assert.ok(!equalRotation({ angle: 1, pivot: [0, 0, 0] }, { angle: 1, pivot: [1, 0, 0] }));
     assert.ok(!equalRotation({ angle: 1, pivot: [0, 0, 0] }, { angle: -1, pivot: [0, 0, 0] }));
+  });
+
+  it('undoes a placement (translation and heading) on a workspace point (#4932)', () => {
+    const placement = { translation: [10, 5, 0] as Translation,
+      rotation: { angle: degreesToRadians(90), pivot: [0, 0, 0] as Translation } };
+    const modelPoint: Translation = [2, 3, 0];
+    const workspacePoint = modelPointToWorkspacePoint(modelPoint, placement);
+    // Forward: rotate then translate. [2,3,0] turned 90° CCW about the
+    // origin is [-3,2,0]; translated by [10,5,0] is [7,7,0].
+    assert.ok(Math.abs(workspacePoint[0] - 7) < 1e-9 && Math.abs(workspacePoint[1] - 7) < 1e-9,
+      `got ${workspacePoint}`);
+    const recovered = workspacePointToModelFrame(workspacePoint, placement);
+    assert.ok(Math.abs(recovered[0] - modelPoint[0]) < 1e-9 && Math.abs(recovered[1] - modelPoint[1]) < 1e-9,
+      `round trip: got ${recovered}, expected ${modelPoint}`);
+    // A pick that skips the inversion — the pre-#4932 bug — reads the
+    // workspace point as if it were already model-frame, and disagrees.
+    assert.notDeepEqual(workspacePoint, modelPoint);
   });
 
   it('rejects malformed rotation records', () => {

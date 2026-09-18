@@ -9,6 +9,7 @@ import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
+import { sharedCommandsEn } from './catalogues/shared-commands.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
@@ -19,6 +20,7 @@ export const en = {
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...mainToolbarEn,
+  ...sharedCommandsEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

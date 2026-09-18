@@ -35,6 +35,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { DropdownMenuContent, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { isPreviewTier } from '@/store/constants';
 import { cn } from '@/lib/utils';
@@ -92,6 +93,7 @@ export function useVisibleClassCount(): { visible: number; total: number } {
 }
 
 export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start' | 'end' }) {
+  const { t } = useTranslation();
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
   const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
@@ -125,10 +127,10 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
         <>
           <div className="px-1.5 pb-1 pt-0.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              3D View
+              {t('classVisibility.viewHeading')}
             </span>
           </div>
-          <div className="flex gap-1 px-1.5 pb-1.5" role="radiogroup" aria-label="3D view mode">
+          <div className="flex gap-1 px-1.5 pb-1.5" role="radiogroup" aria-label={t('classVisibility.viewModeAriaLabel')}>
             <button
               type="button"
               role="radio"
@@ -142,7 +144,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
               )}
             >
               <Boxes className="h-3.5 w-3.5 shrink-0" />
-              Model
+              {t('classVisibility.modelMode')}
             </button>
             <button
               type="button"
@@ -157,7 +159,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
               )}
             >
               <Shapes className="h-3.5 w-3.5 shrink-0" />
-              Types
+              {t('classVisibility.typesMode')}
             </button>
           </div>
 
@@ -167,7 +169,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
 
       <div className="flex items-center justify-between gap-2 px-1.5 pb-1 pt-0.5">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Visibility
+          {t('classVisibility.heading')}
         </span>
         <div className="flex items-center gap-1">
           <span className="text-[11px] tabular-nums text-muted-foreground">
@@ -179,57 +181,57 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
             className="h-6 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
             onClick={resetTypeVisibility}
           >
-            Reset
+            {t('classVisibility.reset')}
           </Button>
         </div>
       </div>
 
       <ClassVisibilityRow
         icon={<Box className="h-4 w-4 shrink-0" style={{ color: '#33d9ff' }} />}
-        label="Spaces"
-        description="Room volumes (IfcSpace)"
+        label={t('classVisibility.spaces.label')}
+        description={t('classVisibility.spaces.description')}
         checked={typeVisibility.spaces}
         onChange={() => toggleTypeVisibility('spaces')}
       />
       <ClassVisibilityRow
         icon={<Box className="h-4 w-4 shrink-0" style={{ color: '#b85af2' }} />}
-        label="Spatial Zones"
-        description="Gross-area volumes (IfcSpatialZone)"
+        label={t('classVisibility.spatialZones.label')}
+        description={t('classVisibility.spatialZones.description')}
         checked={typeVisibility.spatialZones}
         onChange={() => toggleTypeVisibility('spatialZones')}
       />
       <ClassVisibilityRow
         icon={<SquareX className="h-4 w-4 shrink-0" style={{ color: '#ff6b4a' }} />}
-        label="Openings"
-        description="Door & window voids"
+        label={t('classVisibility.openings.label')}
+        description={t('classVisibility.openings.description')}
         checked={typeVisibility.openings}
         onChange={() => toggleTypeVisibility('openings')}
       />
       <ClassVisibilityRow
         icon={<BoxSelect className="h-4 w-4 shrink-0" style={{ color: '#9aa0a6' }} />}
-        label="Virtual Elements"
-        description="Non-physical boundaries & clearance volumes"
+        label={t('classVisibility.virtualElements.label')}
+        description={t('classVisibility.virtualElements.description')}
         checked={typeVisibility.virtualElements}
         onChange={() => toggleTypeVisibility('virtualElements')}
       />
       <ClassVisibilityRow
         icon={<Building2 className="h-4 w-4 shrink-0" style={{ color: '#66cc4d' }} />}
-        label="Site"
-        description="Terrain & context"
+        label={t('classVisibility.site.label')}
+        description={t('classVisibility.site.description')}
         checked={typeVisibility.site}
         onChange={() => toggleTypeVisibility('site')}
       />
       <ClassVisibilityRow
         icon={<Pencil className="h-4 w-4 shrink-0" style={{ color: '#e4b400' }} />}
-        label="Annotations"
-        description="Text, dimensions, leaders"
+        label={t('classVisibility.annotations.label')}
+        description={t('classVisibility.annotations.description')}
         checked={typeVisibility.ifcAnnotations}
         onChange={() => toggleTypeVisibility('ifcAnnotations')}
       />
       <ClassVisibilityRow
         icon={<Grid3x3 className="h-4 w-4 shrink-0" style={{ color: '#e4b400' }} />}
-        label="Grids"
-        description="Structural axes"
+        label={t('classVisibility.grids.label')}
+        description={t('classVisibility.grids.description')}
         checked={typeVisibility.ifcGrid}
         onChange={() => toggleTypeVisibility('ifcGrid')}
       />
@@ -245,9 +247,9 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
         <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', !mergeLayers && 'opacity-50')}>
           <Layers2 className="h-4 w-4 shrink-0 text-primary" />
           <span className="grid gap-0.5 min-w-0">
-            <span className="text-sm leading-tight truncate">Merge multilayer walls</span>
+            <span className="text-sm leading-tight truncate">{t('classVisibility.mergeLayers.label')}</span>
             <span className="text-[10px] leading-tight text-muted-foreground truncate">
-              Render walls as one solid · on reload
+              {t('classVisibility.mergeLayers.description')}
             </span>
           </span>
         </span>
@@ -263,11 +265,11 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
         <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', geometryMode !== 'fast' && 'opacity-50')}>
           <Zap className="h-4 w-4 shrink-0 text-primary" />
           <span className="grid gap-0.5 min-w-0">
-            <span className="text-sm leading-tight truncate">Fast geometry</span>
+            <span className="text-sm leading-tight truncate">{t('classVisibility.fastGeometry.label')}</span>
             <span className="text-[10px] leading-tight text-muted-foreground truncate">
               {geometryMode === 'fast'
-                ? 'Skip tiny cuts, auto-detail · on reload'
-                : 'Exact: full cuts + density · on reload'}
+                ? t('classVisibility.fastGeometry.descriptionFast')
+                : t('classVisibility.fastGeometry.descriptionExact')}
             </span>
           </span>
         </span>
@@ -291,11 +293,11 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
           <span className="flex items-center gap-2.5 min-w-0">
             <Gauge className="h-4 w-4 shrink-0 text-primary" />
             <span className="grid gap-0.5 min-w-0">
-              <span className="text-sm leading-tight truncate">Detail pinned: {geomTierOverride}</span>
+              <span className="text-sm leading-tight truncate">{t('classVisibility.pinnedDetail.label', { tier: geomTierOverride })}</span>
               <span className="text-[10px] leading-tight text-muted-foreground truncate">
                 {isPreviewTier(geomTierOverride) && geometryMode !== 'fast'
-                  ? 'Ignored in Exact · from a ?geomTier= link'
-                  : 'Overrides automatic detail · from a ?geomTier= link'}
+                  ? t('classVisibility.pinnedDetail.descriptionIgnored')
+                  : t('classVisibility.pinnedDetail.descriptionOverrides')}
               </span>
             </span>
           </span>
@@ -305,7 +307,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
             className="h-7 shrink-0 px-2 text-[11px] font-semibold uppercase tracking-wider"
             onClick={clearGeomTierOverride}
           >
-            Clear
+            {t('classVisibility.clear')}
           </Button>
         </div>
       )}

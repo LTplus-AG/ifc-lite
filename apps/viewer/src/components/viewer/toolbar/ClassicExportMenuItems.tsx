@@ -17,6 +17,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTranslation } from '@/i18n';
 import { groupExportCommands, type CsvExportType, type ExportIconSet } from './export-commands';
 import { useExportCommands, type ResolvedExportCommand } from './useExportCommands';
 
@@ -40,6 +41,7 @@ interface ClassicExportRowProps extends ResolvedExportCommand {
 }
 
 function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: ClassicExportRowProps) {
+  const { t } = useTranslation();
   const Icon = CLASSIC_EXPORT_ICONS[command.id];
 
   if (command.kind === 'dialog') {
@@ -53,7 +55,7 @@ function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: Class
             onSelect={(e) => e.preventDefault()}
           >
             <Icon className="h-4 w-4 mr-2" />
-            {command.menuLabel}
+            {t(command.menuLabelKey)}
           </DropdownMenuItem>
         }
       />
@@ -65,7 +67,7 @@ function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: Class
       <DropdownMenuSub>
         <DropdownMenuSubTrigger data-export-command={command.id} disabled={disabled}>
           <Icon className="h-4 w-4 mr-2" />
-          {command.menuLabel}
+          {t(command.menuLabelKey)}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
           {command.items.map((item) => (
@@ -73,7 +75,7 @@ function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: Class
               {item.separatorBefore && <DropdownMenuSeparator />}
               <DropdownMenuItem onClick={() => onExportCsv(item.type)}>
                 <Icon className="h-4 w-4 mr-2" />
-                {item.label}
+                {t(item.labelKey)}
               </DropdownMenuItem>
             </React.Fragment>
           ))}
@@ -89,7 +91,7 @@ function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: Class
       onClick={() => onRunAction(command.action)}
     >
       <Icon className="h-4 w-4 mr-2" />
-      {command.menuLabel}
+      {t(command.menuLabelKey)}
     </DropdownMenuItem>
   );
 }

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { PackagePlus, Palette, Puzzle } from 'lucide-react';
 import { DropdownMenuCheckboxItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
+import { useTranslation } from '@/i18n';
 import type { RightPanel } from './useWorkspacePanelControls.js';
 
 export function AuthorPanelMenuItems({ active, canEdit, onToggle }: {
@@ -10,16 +11,17 @@ export function AuthorPanelMenuItems({ active, canEdit, onToggle }: {
   canEdit: boolean;
   onToggle(panel: RightPanel): void;
 }) {
+  const { t } = useTranslation();
   return <>
-    <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Author</DropdownMenuLabel>
+    <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('workspacePanels.authorLabel')}</DropdownMenuLabel>
     <DropdownMenuCheckboxItem checked={active.has('appearance')} onCheckedChange={() => onToggle('appearance')}>
-      <Palette className="h-4 w-4 mr-2" />Appearance
+      <Palette className="h-4 w-4 mr-2" />{t('workspacePanels.author.appearance')}
     </DropdownMenuCheckboxItem>
     <DropdownMenuCheckboxItem checked={active.has('addElement')} disabled={!canEdit} onCheckedChange={() => onToggle('addElement')}>
-      <PackagePlus className="h-4 w-4 mr-2" />Add Element
+      <PackagePlus className="h-4 w-4 mr-2" />{t('workspacePanels.author.addElement')}
     </DropdownMenuCheckboxItem>
     <DropdownMenuCheckboxItem checked={active.has('extensions')} onCheckedChange={() => onToggle('extensions')}>
-      <Puzzle className="h-4 w-4 mr-2" />Extensions
+      <Puzzle className="h-4 w-4 mr-2" />{t('workspacePanels.author.extensions')}
     </DropdownMenuCheckboxItem>
   </>;
 }

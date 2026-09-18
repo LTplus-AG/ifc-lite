@@ -44,11 +44,12 @@ function RibbonExportButton({
   onExportCsv,
   onRunAction,
 }: RibbonExportButtonProps) {
+  const { t } = useTranslation();
   const Button = command.emphasis === 'large' ? RibbonLargeButton : RibbonSmallButton;
   const shared = {
     icon: icons[command.id],
-    label: command.label,
-    tooltip: command.tooltip,
+    label: t(command.labelKey),
+    tooltip: t(command.tooltipKey),
     disabled,
     'data-export-command': command.id,
   };
@@ -71,7 +72,7 @@ function RibbonExportButton({
               {item.separatorBefore && <DropdownMenuSeparator />}
               <DropdownMenuItem onClick={() => onExportCsv(item.type)}>
                 <Icon className="h-4 w-4 mr-2" />
-                {item.label}
+                {t(item.labelKey)}
               </DropdownMenuItem>
             </React.Fragment>
           ))}

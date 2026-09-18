@@ -9,15 +9,22 @@
  * The loop this closes: run it once, review the `renamed` matches, keep the
  * sidecar. On the next run the accepted claims come back in as key aliases, the
  * re-GUIDed elements are matched by key, and they never show up as churn again.
- * See `diff-engine.ts` for why this path is data-scope only.
+ * Data scope by default — see `diff-engine.ts`; `--geometry` below opts into
+ * the wasm mesh pass.
  *
  * Issue #4955 adds three things on the same loop: `--key-from` keys the
  * comparison on an authored identifier instead of GlobalId; `--lineage-out` /
  * `--lineage-in` write and replay the 1:k lineage an external table rekeys on;
  * and `--accept` folds a reviewed identity map (a human's answer to the
  * suggestions a geometry-capable run produced) into that lineage as
- * `replaced` entries. The successor and split/merge stages themselves need
- * geometry and stay off here — see #4956.
+ * `replaced` entries.
+ *
+ * Issue #4956 adds `--geometry`: a lazily-loaded `@ifc-lite/wasm` mesh pass
+ * (`diff-geometry.ts`) that attaches world geometry hashes, bounding boxes and
+ * volumes to both files' fingerprints, promoting the scope from `data` to
+ * `both`. `--split-merge` / `--successors` turn on the two geometry-only
+ * detection stages; both are no-ops without `--geometry` (the engine abstains
+ * exactly as it does for a viewer session whose geometry hashing failed).
  */
 
 import { readFile, stat, writeFile } from 'node:fs/promises';
@@ -35,6 +42,7 @@ import {
   serializeIdentityMapSidecar,
   serializeLineageSidecar,
   type ContentMatch,
+  type DiffScope,
   type IdentityMapEntry,
   type IdentityMapSidecar,
   type LineageEntry,
@@ -44,6 +52,11 @@ import { parseAuthoredKeySpec } from '@ifc-lite/parser';
 import { loadIfcBytes } from '../loader.js';
 import { fatal, printJson } from '../output.js';
 import { buildFileFingerprints, modelIdentityOf, type DiffRef } from './diff-engine.js';
+import {
+  attachGeometryFingerprints,
+  loadWasmRuntime,
+  runGeometryPass,
+} from './diff-geometry.js';
 import { mergeAliases, mergeLineage, readVerifiedLineage } from './diff-lineage-io.js';
 import { printReport } from './diff-content-report.js';
 
@@ -62,6 +75,17 @@ export interface ContentDiffOptions {
   accept?: string;
   /** `--key-from`: `Tag` or `Pset.Prop`, the authored key to compare on. */
   keyFrom?: string;
+  /** `--geometry`: run the wasm mesh pass and attach world geometry hashes,
+   *  boxes and volumes, promoting the comparison from `data` to `both`
+   *  scope (issue #4956). Skips with a stderr warning, not a fatal error,
+   *  when the wasm runtime is not built on this host. */
+  geometry?: boolean;
+  /** `--split-merge`: opt in to the split/merge detector. Only produces
+   *  claims together with `--geometry` (issue #4956). */
+  splitMerge?: boolean;
+  /** `--successors`: opt in to the successor-match detector. Only produces
+   *  claims together with `--geometry` (issue #4956). */
+  successors?: boolean;
   json: boolean;
 }
 
@@ -112,12 +136,37 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
     incomingLineage ? keyAliasesFromLineage(incomingLineage.entries) : undefined,
   );
 
+  // `--geometry` (issue #4956): a lazily-loaded wasm mesh pass, run only when
+  // asked. A missing runtime is a stderr warning and a fall-back to
+  // `data` scope, never a fatal error — the rest of `--by-content` works fine
+  // without it, exactly as it always has.
+  let scope: DiffScope = 'data';
+  if (options.geometry) {
+    const runtime = await loadWasmRuntime();
+    if (!runtime.ok) {
+      process.stderr.write(`Warning: ${runtime.message}\n`);
+    } else {
+      try {
+        attachGeometryFingerprints(baseFingerprints, runGeometryPass(runtime.runtime.api, baseBytes));
+        attachGeometryFingerprints(headFingerprints, runGeometryPass(runtime.runtime.api, headBytes));
+        scope = 'both';
+      } finally {
+        // Free the IfcAPI handle deterministically, even if a pass throws
+        // (AGENTS.md "Geometry & WASM").
+        runtime.runtime.api.free();
+      }
+    }
+  }
+
   const diff = diffModels(baseFingerprints, headFingerprints, {
-    // No meshes in Node: `data` is the honest description of what this path can
-    // compare. See diff-engine.ts.
-    scope: 'data',
+    scope,
     matchUnpairedByContent: true,
     keyAliases: aliases,
+    // Both are geometry-only stages (issue #4956): with no geometry pass run,
+    // the engine abstains and `diff.splitMerges` / `diff.successors` stay
+    // undefined, exactly as a viewer session with failed geometry hashing.
+    detectSplitMerge: options.splitMerge,
+    detectSuccessors: options.successors,
   });
 
   const applied = diff.appliedKeyAliases ?? new Map<string, string>();
@@ -174,6 +223,22 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
         kind: match.kind,
         base: match.base.map((entity) => entity.key),
         head: match.head.map((entity) => entity.key),
+      })),
+      // Absent (not `[]`) exactly when the stage did not run or the geometry
+      // abstention fired — the engine's own "absent means not proved"
+      // contract, preserved rather than flattened to an empty array.
+      splitMerges: diff.splitMerges?.map((claim) => ({
+        kind: claim.kind,
+        confidence: claim.confidence,
+        whole: claim.whole.key,
+        pieces: claim.pieces.map((piece) => piece.key),
+      })),
+      successors: diff.successors?.map((claim) => ({
+        confidence: claim.confidence,
+        base: claim.base.key,
+        head: claim.head.key,
+        overlap: claim.overlap,
+        distance: claim.distance,
       })),
       identityMap: {
         in: options.identityIn

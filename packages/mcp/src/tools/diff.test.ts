@@ -106,6 +106,8 @@ interface ContentDiffShape {
     headTruncated: boolean;
   }>;
   truncatedMatches: number;
+  splitMerges?: Array<{ kind: string; confidence: string; whole: string; pieces: string[] }>;
+  successors?: Array<{ confidence: string; base: string; head: string; overlap: number; distance: number }>;
 }
 
 interface DiffShape {
@@ -358,6 +360,29 @@ ${twinWallsBody(guid('MXE'), guid('MXF'))}`));
     expect(content.contentMatches).toHaveLength(1);
     expect(content.contentMatches[0].kind).toBe('ambiguous');
     expect(content.truncatedMatches).toBe(2);
+  }, 30_000);
+
+  it('split_merge / successors are wired through but produce no claims — this server has no geometry pipeline (issue #4956)', async () => {
+    // Both stages are geometry-only. This server always compares at `scope:
+    // 'data'`, so the engine abstains on both regardless of the flags —
+    // pinning that the params are accepted and threaded to `diffModels`
+    // without throwing, and that the honest "absent, not empty" answer comes
+    // back rather than a fabricated `[]`.
+    const off = await diff({ a: 'base', b: 'head', by_content: true });
+    expect(off.contentDiff?.splitMerges).toBeUndefined();
+    expect(off.contentDiff?.successors).toBeUndefined();
+
+    const on = await diff({
+      a: 'base',
+      b: 'head',
+      by_content: true,
+      split_merge: true,
+      successors: true,
+    });
+    expect(on.contentDiff?.splitMerges).toBeUndefined();
+    expect(on.contentDiff?.successors).toBeUndefined();
+    // The rest of the comparison is unaffected by the two flags.
+    expect(on.contentDiff?.counts).toEqual(off.contentDiff?.counts);
   }, 30_000);
 });
 

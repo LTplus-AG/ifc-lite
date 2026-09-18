@@ -577,6 +577,9 @@ ifc-lite diff model-v1.ifc model-v2.ifc --json
 |------|-------------|
 | `--by-entity` | Compare every `IfcObjectDefinition` by GlobalId (added / removed / common) |
 | `--by-content` | Run the `@ifc-lite/diff` engine with content-keyed matching |
+| `--geometry` | Run the wasm mesh pass and attach world geometry hashes/boxes/volumes (implies `--by-content`) |
+| `--split-merge` | Opt into the split/merge detector (implies `--by-content`; needs `--geometry` to produce claims) |
+| `--successors` | Opt into the successor-match detector (implies `--by-content`; needs `--geometry` to produce claims) |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims as key aliases (implies `--by-content`) |
 | `--key-from <Tag\|Pset.Prop>` | Compare on an authored identifier instead of GlobalId (implies `--by-content`) |
@@ -603,8 +606,22 @@ ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
 
 Two things to know about this path:
 
-- **It compares data only.** The Node CLI has no geometry pipeline, so there is no world geometry hash and no bounding box; it passes `scope: 'data'`, which is the honest description of what it can see. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available. For that, drive the engine with geometry hashes (or use the viewer's Compare mode).
+- **It compares data only by default.** Without `--geometry` there is no world geometry hash and no bounding box; the command passes `scope: 'data'`, which is the honest description of what it can see. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available.
 - **`--identity-in` refuses a sidecar that was verified against different files**, because that is what pinning both digests is for. There is no override flag: the fix is to re-run the comparison that produced the claims, which is one command.
+
+### `--geometry`, `--split-merge`, `--successors`
+
+`--geometry` runs the same wasm mesh pass the viewer's Compare mode uses (`setComputeGeometryHashes`, `geometryHashValues` / `geometryAabbValues` / `geometryVolumeValues`), attaches each entity's world geometry hash, bounding box and volume to its fingerprint, and promotes the comparison from `scope: 'data'` to `scope: 'both'`:
+
+```bash
+ifc-lite diff model-v1.ifc model-v2.ifc --geometry --json
+```
+
+With geometry attached, a content bucket that `--by-content` alone could only report as `ambiguous` (several same-content candidates on each side) can resolve by world geometry hash into individual `renamed` pairs, and a 1:1 match whose geometry actually differs reports `moved` / `reshaped` instead of a bare `renamed`.
+
+`--split-merge` and `--successors` opt into the two geometry-only detection stages documented above (`ModelDiff.splitMerges`, `ModelDiff.successors`); both need `--geometry` to produce anything — without it the engine abstains exactly as it does under `scope: 'data'`, and the two fields stay absent rather than empty.
+
+The wasm runtime is not always present on the host running the CLI (the `.wasm` binary is gitignored and only built with the Rust toolchain, or fetched with `pnpm build:wasm:fetch`). `--geometry` degrades gracefully: on a host without it, the command prints a warning to stderr and falls back to `scope: 'data'` rather than failing the diff.
 
 ### Authored keys, lineage and `rekey`
 
@@ -670,7 +687,7 @@ Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds ad
 Five things to know about this path:
 
 - **It is opt-in and defaults to off.** An `ambiguous` group has no honest scalar representation, so flipping the default would silently change what `counts` means for agent scripts that already call this tool.
-- **It compares data only.** The MCP server has no geometry pipeline, so there is no world geometry hash and no bounding box; it passes `scope: 'data'` and reports it back in `contentDiff.scope`. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available.
+- **It compares data only.** The MCP server has no geometry pipeline, so there is no world geometry hash and no bounding box; it passes `scope: 'data'` and reports it back in `contentDiff.scope`. Every unambiguous 1:1 content match therefore reports as `renamed`, and a `moved`/`reshaped` distinction is not available. `split_merge` and `successors` (booleans, both default off) are accepted and threaded through to the engine, but on this server they currently produce no claims either way — `contentDiff.splitMerges` / `contentDiff.successors` stay absent, the engine's abstention for a geometry-only stage run at `scope: 'data'` (issue #4956). The CLI's `--geometry` flag has no MCP equivalent yet.
 - **Groups are reported as groups.** `duplicated`, `deduplicated`, and `ambiguous` matches list every candidate on each side. Collapsing "we could not tell" into a number is the one thing an unsupervised agent cannot recover from.
 - **Both caps report whole totals.** `max_matches` (default 200) bounds how many matches are listed and `truncatedMatches` says how many were left out; `max_group_members` (default 20) bounds how many GlobalIds each *side of one match* lists, with `baseCount` / `headCount` reporting the whole group size and `baseTruncated` / `headTruncated` saying whether the list was cut. Both are computed before the cap, and `contentMatchCounts` always reports whole per-kind totals — so no truncation can make a model look cleanly matched. Unresolved kinds are listed first, so the cap can never be what drops an ambiguous group.
 - **Queued mutations count.** A `model_id` names a session, not a file: whatever `entity_create`, `entity_delete`, `entity_set_property` and `entity_set_attribute` have queued but not yet saved is folded into all three passes, and `contentDiff.pendingMutations` reports how many are in play on each side (the field is absent when neither model has any). Without this, an agent that had just edited a model and asked what changed was told nothing had.

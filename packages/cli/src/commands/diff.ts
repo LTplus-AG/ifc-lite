@@ -25,7 +25,8 @@ import { comparableGlobalIds } from './diff-scope.js';
 
 const USAGE =
   'Usage: ifc-lite diff <file1.ifc> <file2.ifc> [--json] [--by-entity]\n' +
-  '                     [--by-content] [--identity-out <map.json>] [--identity-in <map.json>]\n' +
+  '                     [--by-content] [--geometry] [--split-merge] [--successors]\n' +
+  '                     [--identity-out <map.json>] [--identity-in <map.json>]\n' +
   '                     [--lineage-out <lineage.json>] [--lineage-in <lineage.json>]\n' +
   '                     [--accept <map.json>] [--key-from Tag|Pset.Prop]';
 
@@ -84,8 +85,17 @@ export async function diffCommand(args: string[]): Promise<void> {
   const lineageIn = identityPath(args, '--lineage-in');
   const accept = identityPath(args, '--accept');
   const keyFrom = identityPath(args, '--key-from');
+  // `--geometry` / `--split-merge` / `--successors` only mean anything on the
+  // engine path too (issue #4956), so they imply `--by-content` the same way
+  // the identity-map flags already do.
+  const geometry = hasFlag(args, '--geometry');
+  const splitMerge = hasFlag(args, '--split-merge');
+  const successors = hasFlag(args, '--successors');
   if (
     hasFlag(args, '--by-content') ||
+    geometry ||
+    splitMerge ||
+    successors ||
     [identityOut, identityIn, lineageOut, lineageIn, accept, keyFrom].some((v) => v !== undefined)
   ) {
     await contentDiffCommand({
@@ -97,6 +107,9 @@ export async function diffCommand(args: string[]): Promise<void> {
       lineageOut,
       accept,
       keyFrom,
+      geometry,
+      splitMerge,
+      successors,
       json: jsonOutput,
     });
     return;

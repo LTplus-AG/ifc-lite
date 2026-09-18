@@ -92,6 +92,15 @@ function contentDiff(
   maxMatches: number,
   maxGroupMembers: number,
   keyProperty?: string,
+  // `split_merge` / `successors` (issue #4956): both are geometry-only
+  // stages. This server has no geometry pipeline (see the module doc), so
+  // `scope` stays `'data'` and the engine abstains — `diff.splitMerges` /
+  // `diff.successors` come back `undefined` regardless of these flags. They
+  // are wired through anyway so the params exist and cost nothing today, and
+  // start producing claims the moment this server gains a geometry pass with
+  // no further plumbing change.
+  splitMerge?: boolean,
+  successors?: boolean,
 ): Record<string, unknown> {
   // Authored keys (issue #4955): `prop:<value>` where the model maintains one,
   // GlobalId otherwise; a value two entities share is refused for both and
@@ -101,7 +110,12 @@ function contentDiff(
   const diff = diffModels(
     buildModelFingerprints(left.store, overlays.left, adapter),
     buildModelFingerprints(right.store, overlays.right, adapter),
-    { scope: 'data', matchUnpairedByContent: true },
+    {
+      scope: 'data',
+      matchUnpairedByContent: true,
+      detectSplitMerge: splitMerge,
+      detectSuccessors: successors,
+    },
   );
 
   const matches = [...(diff.contentMatches ?? [])].sort(
@@ -132,6 +146,23 @@ function contentDiff(
       ...(match.distance !== undefined ? { distance: match.distance } : {}),
     })),
     truncatedMatches: Math.max(0, matches.length - maxMatches),
+    // Absent (not `[]`) exactly when the stage did not run, or ran and the
+    // geometry abstention fired — this server's current state, always, until
+    // it has a geometry pipeline. The engine's "absent means not proved"
+    // contract, preserved rather than flattened.
+    splitMerges: diff.splitMerges?.map((claim) => ({
+      kind: claim.kind,
+      confidence: claim.confidence,
+      whole: claim.whole.key,
+      pieces: claim.pieces.map((piece) => piece.key),
+    })),
+    successors: diff.successors?.map((claim) => ({
+      confidence: claim.confidence,
+      base: claim.base.key,
+      head: claim.head.key,
+      overlap: claim.overlap,
+      distance: claim.distance,
+    })),
     // Uncommitted edits are folded into the comparison; saying how many there
     // are is what separates "the two files differ" from "this session has
     // edits it has not written yet". Absent when neither model has any.
@@ -213,6 +244,23 @@ const modelDiff: Tool = {
           + 'deduplicated / ambiguous group can hold thousands. `baseCount` / `headCount` always report '
           + 'the whole size and `baseTruncated` / `headTruncated` say whether the list was cut.',
       },
+      split_merge: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Opt in to the split/merge detector (by_content only, issue #4956). Geometry-only stage: '
+          + 'this server has no geometry pipeline yet, so `contentDiff.splitMerges` currently stays '
+          + 'absent regardless of this flag — wired through so it starts producing claims the moment '
+          + 'one lands, with no client-side change.',
+      },
+      successors: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Opt in to the successor-match detector: suggestions that one deleted entity was replaced '
+          + 'in place by one added entity (by_content only, issue #4956). Same geometry-only caveat as '
+          + '`split_merge` — `contentDiff.successors` currently stays absent on this server.',
+      },
     },
     required: ['a', 'b'],
     additionalProperties: false,
@@ -268,6 +316,8 @@ const modelDiff: Tool = {
         (input.max_matches as number | undefined) ?? DEFAULT_MAX_MATCHES,
         (input.max_group_members as number | undefined) ?? DEFAULT_MAX_GROUP_MEMBERS,
         keyFrom,
+        (input.split_merge as boolean | undefined) ?? false,
+        (input.successors as boolean | undefined) ?? false,
       )
       : null;
 

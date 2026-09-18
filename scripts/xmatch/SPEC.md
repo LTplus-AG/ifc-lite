@@ -28,21 +28,20 @@ The shipped code, imported and not re-implemented:
 | --- | --- |
 | data fingerprints | `buildFileFingerprints` — `packages/cli/dist/commands/diff-engine.js` |
 | canonical hashing | `buildDataFingerprint` / `buildComponentFingerprints` — `@ifc-lite/diff` |
-| geometry hash + world AABB + volume | the wasm mesh pass with `setComputeGeometryHashes(1e-3)`; `geometryVolumeValues` where the mesh was proved closed |
+| geometry hash + world AABB + volume | `runGeometryPass` — `packages/cli/dist/commands/diff-geometry.js` (issue #4956), the same `ifc-lite diff --by-content --geometry` mesh pass; `geometryVolumeValues` where the mesh was proved closed |
+| assembly (attach the geometry pass onto the data fingerprints) | `attachGeometryFingerprints` — `packages/cli/dist/commands/diff-geometry.js` |
 | spatial container | `spatialContainerPath` — `@ifc-lite/parser`, the name path the successor stage's `position` profile keys on |
 | the matcher | `diffModels(..., { scope: 'both', matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true })` |
 | class families | `classFamilyResolver` — `packages/diff/dist/class-families.js`, the same table the two claim stages bucket by |
 
-The one thing the harness supplies itself is the *pairing* of those two halves
-(attach each entity's world hash, box, proved volume and container path to its
-data fingerprint), which is what
-`apps/viewer/src/lib/compare/buildFingerprints.ts` does in the browser. The
-volume is kept only when finite and positive — the wasm's `NaN` means "not
-proved closed", not zero — exactly as `@ifc-lite/geometry`'s `geometryVolumeAt`
-resolves it; without it a split claim can only ever reach `extent`. That
-viewer module could not be imported from a Node script (its `@ifc-lite/parser`
-import cycles through `@ifc-lite/ifcx` under `tsx`), so the *assembly* is
-duplicated while the *hashing* is not. A known limitation, listed again below.
+`fingerprints.mjs` supplies only the file-level orchestration (parse, call the
+two adapters, resolve `spatialContainerPath`, optionally strip keys); the
+fingerprint assembly itself — data hash, geometry pass, and attaching one onto
+the other — is entirely the CLI's own `--geometry` code (issue #4956, superseding
+the duplicate this file used to carry). The volume is kept only when finite
+and positive — the wasm's `NaN` means "not proved closed", not zero — exactly
+as `@ifc-lite/geometry`'s `geometryVolumeAt` resolves it; without it a split
+claim can only ever reach `extent`.
 
 ## The answer key
 
@@ -648,8 +647,10 @@ Also absent, and worth stating:
 
 * the fixture measures the **matcher**, not the viewer's compare UI or the
   identity-map sidecar;
-* the fingerprint assembly is duplicated from the viewer adapter (see above), so
-  a change to that adapter alone would not be caught here;
+* the fingerprint assembly is the CLI's `--geometry` code, not the viewer's
+  (`apps/viewer/src/lib/compare/buildFingerprints.ts`), so a divergence
+  between those two adapters is out of scope here — only `diff-fingerprints.test.ts`
+  in `@ifc-lite/mcp` cross-checks the CLI adapter against a second copy;
 * the mutation program applies one mutation per element. Compound edits (a
   wall that moved *and* was re-clad) are not covered — `thickened` and
   `swapped` each pair one geometry edit with a rename, which is the minimum a

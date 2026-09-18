@@ -15,6 +15,7 @@
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
+import { resolvedTypeName } from '@ifc-lite/data';
 import type { SourceAttributes, SourceAssociation, Vec3 } from './duplicate.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 
@@ -154,11 +155,16 @@ export function resolveDuplicateSource(
   // sourceLocation. Falls back to 1 (metres) on extraction failure.
   const lengthUnitScale = safeLengthUnitScale(store.source, store.entityIndex, 'resolveDuplicateSource') ?? 1.0;
 
+  // Canonical PascalCase, or the raw STEP type as parsed (#4933).
+  const type = resolvedTypeName(store.entities, sourceExpressId) ?? sourceEntity.type;
+  if (!type) {
+    throw new Error(
+      `resolveDuplicateSource: #${sourceExpressId} has no resolvable IFC type — cannot duplicate`,
+    );
+  }
+
   return {
-    // Canonical PascalCase (e.g. "IfcWall"); falls back to the raw
-    // extractor type when the entity table doesn't recognise the id
-    // (vendor extensions etc).
-    type: store.entities.getTypeName(sourceExpressId) || sourceEntity.type,
+    type,
     attributes: attrs,
     placementExpressId: placementId,
     parentPlacementId,
@@ -218,10 +224,10 @@ function collectSourceAssociations(
       const name = typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null;
       const description = typeof entity.attributes[3] === 'string' ? entity.attributes[3] : null;
 
-      // Use the entity table's canonical name so the duplicate replays
-      // a PascalCase type into the editor (e.g. "IfcRelDefinesByProperties"),
-      // not the byType map's UPPERCASE storage key.
-      const canonicalRelType = store.entities.getTypeName(relId) || relType;
+      // Canonical PascalCase when the table has it; association rels are
+      // usually categorised out of the `EntityTable` entirely, so `relType`
+      // (the constant this loop is already iterating by) is the fallback.
+      const canonicalRelType = resolvedTypeName(store.entities, relId) ?? relType;
       out.push({
         relType: canonicalRelType,
         ownerHistoryId,

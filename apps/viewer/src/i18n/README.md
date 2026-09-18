@@ -52,3 +52,26 @@ strip, group names, button labels, tooltips and aria-labels on all six tabs,
 and the ribbon switch notice. Labels owned by shared registries (camera
 commands, exporters, extension panels), the classic `MainToolbar`, and the
 rest of the viewer's panels and dialogs are not converted yet.
+
+The main-toolbar catalogue (#4918 slice 1) covers the classic single-strip
+`MainToolbar`'s own chrome: file operations, the Panels/Edit-properties/View
+options menus' own labels, tool buttons, the selection action cluster, and
+the meta cluster (theme, info). It deliberately does not cover the shared
+command surfaces the ribbon also renders — camera commands, the export menu,
+workspace-panel toggle lists, and the class-visibility body — those are
+slice 2 of the #4918 sweep.
+
+The shared-commands catalogue (#4918 slice 2) covers the command lists both
+`MainToolbar` and the ribbon render from: the export registry
+(`export-commands.ts`, rendered by `ClassicExportMenuItems` /
+`RibbonExportGroup`), the camera command registry (`camera-commands.ts`,
+rendered by `CameraCommandMenuItems` / `ViewTab`), the bottom-panel and
+author-panel toggle lists (`BottomPanelMenuItems`, `AuthorPanelMenuItems`),
+and the class-visibility dropdown body (`ClassVisibilityMenuContent`). The
+two data-only registries carry a translation key per row rather than calling
+`t()` themselves (no React import), the same pattern `sectionConstants.ts`'s
+`AXIS_INFO` uses; their renderers call `t(row.xKey)`. It deliberately does
+not cover the command palette (`CommandPalette.tsx`, ~745 lines / 84
+literals — sized for its own slice) or extension-contributed labels
+(`extension.label`, sourced from the extension registry, not a literal) —
+those remain for a later slice of the #4918 sweep.

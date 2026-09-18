@@ -48,6 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
+import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel } from './mutation-mesh-stash.js';
 import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
@@ -207,6 +208,12 @@ export interface MutationSlice {
    * the same NewEntity record back into the view.
    */
   removedNewEntities: Map<string, NewEntity>;
+  /**
+   * Meshes pruned from `geometryResult` by DELETE_ENTITY / undoing a
+   * CREATE_ENTITY, keyed by `${modelId}:${expressId}`. The inverse
+   * mutation re-appends them — see `mutation-mesh-stash.ts` (#4925).
+   */
+  removedMeshes: Map<string, MeshData[]>;
   /** All change sets */
   changeSets: Map<string, ChangeSet>;
   /** Active change set ID */
@@ -1085,6 +1092,7 @@ export const createMutationSlice: StateCreator<
   mutationViews: new Map(),
   storeEditors: new Map(),
   removedNewEntities: new Map(),
+  removedMeshes: new Map(),
   changeSets: new Map(),
   activeChangeSetId: null,
   undoStacks: new Map(),
@@ -1171,16 +1179,14 @@ export const createMutationSlice: StateCreator<
       newDirty.delete(modelId);
       // Drop any stashed undo payloads owned by this model so they don't
       // leak into future mutation views with the same id.
-      const newRemoved = new Map(state.removedNewEntities);
-      const prefix = `${modelId}:`;
-      for (const key of newRemoved.keys()) {
-        if (key.startsWith(prefix)) newRemoved.delete(key);
-      }
+      const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
+      const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
       return {
         mutationViews: newViews,
         storeEditors: newEditors,
         dirtyModels: newDirty,
         removedNewEntities: newRemoved,
+        removedMeshes: newRemovedMeshes,
       };
     });
   },
@@ -2001,15 +2007,9 @@ export const createMutationSlice: StateCreator<
       };
     }
 
-    // Drop the source's mesh from the rendered scene. The entity
-    // is tombstoned in the IFC overlay so it won't export; this
-    // also clears its GPU buffers and bounding-box entry so picks
-    // / bounds stop finding it. The two new walls already have
-    // their meshes in the geometry (addWall emits them via
-    // appendGeometryBatch).
-    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
-    state.setPendingMeshRemovals(new Set([sourceGlobalId]));
-
+    // `removeEntity` above already dropped the source's mesh out of the
+    // geometry (stashed for undo) and queued the renderer-side removal.
+    // The two new walls already have their meshes via appendGeometryBatch.
     const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
     const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
 
@@ -2257,14 +2257,9 @@ export const createMutationSlice: StateCreator<
       };
     }
 
-    // Hide source mesh so the user sees the cut take effect; the
-    // two new halves already have meshes via addSlab's
-    // appendGeometryBatch. The source's mesh is dropped from GPU
-    // buffers + bbox map via setPendingMeshRemovals — the
-    // streaming hook drains it on the next frame.
-    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
-    state.setPendingMeshRemovals(new Set([sourceGlobalId]));
-
+    // `removeEntity` above already dropped the source's mesh out of the
+    // geometry (stashed for undo) and queued the renderer-side removal.
+    // The two new halves already have meshes via addSlab's appendGeometryBatch.
     const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
     const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
     return {
@@ -2288,18 +2283,14 @@ export const createMutationSlice: StateCreator<
     const removed = editor.removeEntity(expressId);
     if (!removed) return false;
 
-    // Hide the entity's mesh — the IFC tombstone is what governs
-    // exports; the renderer just needs the visual gone. We use
-    // hideEntities (visibility set) rather than the harder
-    // pendingMeshRemovals path so the undo handler can flip
-    // visibility back without needing to re-materialise GPU
-    // buffers (the mesh data stays in memory + buckets).
-    //
-    // The split-source removal path also flows through here; on
-    // undo of a split, the source's mesh comes back via
-    // `showEntities` in the DELETE_ENTITY undo branch.
+    // Drop the entity's mesh out of `geometryResult` (stashed first so
+    // undo can restore it) rather than only hiding it — #4925: a
+    // hide-only mesh desyncs from a split's separate hard removal.
+    // `hideEntities` is a fallback for entities with no mesh to prune.
     const globalIdForMesh = toGlobalIdFromModels(get().models, modelId, expressId);
-    get().hideEntities([globalIdForMesh]);
+    if (!stashAndPruneEntityMesh(get, set, modelId, expressId)) {
+      get().hideEntities([globalIdForMesh]);
+    }
 
     set((state) => {
       const newRemoved = new Map(state.removedNewEntities);
@@ -2801,6 +2792,8 @@ export const createMutationSlice: StateCreator<
       // The view's `deleteEntity` returns false if it's already gone, which
       // is fine for redo to re-establish.
       view.deleteEntity(mutation.entityId);
+      // Also remove the created mesh from the scene + geometryResult (#4925).
+      stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
     } else if (mutation.type === 'DELETE_ENTITY') {
       // Undo of a delete: restore tombstone for source entity, OR replay
       // the stashed NewEntity record for an overlay-only entity.
@@ -2811,9 +2804,9 @@ export const createMutationSlice: StateCreator<
       } else {
         view.restoreFromTombstone(mutation.entityId);
       }
-      // Also un-hide the rendered mesh — the EntityContextMenu's
-      // delete handler hid it via the visibility system, so undo has
-      // to mirror that to bring the entity back into the scene.
+      // Re-insert the mesh removeEntity stashed when it pruned geometryResult (#4925).
+      restoreStashedEntityMesh(get, set, modelId, mutation.entityId);
+      // Also un-hide — covers the (no-mesh) fallback path in removeEntity.
       const cross = get() as unknown as {
         toGlobalId?: (modelId: string, expressId: number) => number;
         showEntity?: (id: number) => void;
@@ -2979,6 +2972,8 @@ export const createMutationSlice: StateCreator<
         // codebase only ever fires for overlay-added entities. Nothing to
         // do if the stash is empty (means the redo is unreachable).
       }
+      // Bring the mesh back too, inverse of the undo handler's stash (#4925).
+      restoreStashedEntityMesh(get, set, modelId, mutation.entityId);
     } else if (mutation.type === 'DELETE_ENTITY') {
       // Redo of a delete: tombstone again. For overlay-only entities we
       // first stash the NewEntity (it'll be re-fetched for the next undo).
@@ -2991,6 +2986,8 @@ export const createMutationSlice: StateCreator<
         });
       }
       view.deleteEntity(mutation.entityId);
+      // Drop the mesh back out, inverse of the undo handler's restore (#4925).
+      stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
       // Re-hide the mesh — symmetric with the menu's delete handler
       // and with the undo path above.
       const cross = get() as unknown as {
@@ -3206,11 +3203,8 @@ export const createMutationSlice: StateCreator<
       const newGeorefMuts = new Map(state.georefMutations);
       newGeorefMuts.delete(modelId);
 
-      const newRemoved = new Map(state.removedNewEntities);
-      const prefix = `${modelId}:`;
-      for (const key of newRemoved.keys()) {
-        if (key.startsWith(prefix)) newRemoved.delete(key);
-      }
+      const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
+      const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
 
       const newEditors = new Map(state.storeEditors);
       newEditors.delete(modelId);
@@ -3221,6 +3215,7 @@ export const createMutationSlice: StateCreator<
         dirtyModels: newDirty,
         georefMutations: newGeorefMuts,
         removedNewEntities: newRemoved,
+        removedMeshes: newRemovedMeshes,
         storeEditors: newEditors,
         mutationVersion: state.mutationVersion + 1,
       };
@@ -3242,6 +3237,7 @@ export const createMutationSlice: StateCreator<
       dirtyModels: new Set(),
       georefMutations: new Map(),
       removedNewEntities: new Map(),
+      removedMeshes: new Map(),
       storeEditors: new Map(),
       mutationVersion: state.mutationVersion + 1,
     }));

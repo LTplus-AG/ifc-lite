@@ -20,6 +20,7 @@
  * dispatch be asserted in a plain node test.
  */
 
+import type { TranslationKey } from '@/i18n';
 import type { CameraCallbacks } from '@/store/types';
 
 export type CameraCommandId =
@@ -45,10 +46,16 @@ export type CameraCommandGroup = 'camera' | 'preset' | 'rotate';
 
 export interface CameraCommand {
   id: CameraCommandId;
-  /** Short button caption. */
-  label: string;
+  /**
+   * Translation keys, not text — this list has no React import, so it
+   * cannot call `t()` itself (`shared-commands.en.ts` holds the English);
+   * renderers (`CameraCommandMenuItems`, `ViewTab`) call `t(command.xKey)`.
+   *
+   * Short button caption.
+   */
+  labelKey: TranslationKey;
   /** Longer tooltip when the label isn't the whole story. */
-  tooltip: string;
+  tooltipKey: TranslationKey;
   /** Keyboard shortcut, where one exists (see `useKeyboardShortcuts`). */
   shortcut?: string;
   group: CameraCommandGroup;
@@ -71,96 +78,96 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
   return [
     {
       id: 'home',
-      label: 'Isometric',
-      tooltip: 'Home (isometric + reset visibility)',
+      labelKey: 'cameraCommands.home.label',
+      tooltipKey: 'cameraCommands.home.tooltip',
       shortcut: 'H',
       group: 'camera',
       run: () => goHome(),
     },
     {
       id: 'zoomIn',
-      label: 'Zoom in',
-      tooltip: 'Zoom in',
+      labelKey: 'cameraCommands.zoomIn.label',
+      tooltipKey: 'cameraCommands.zoomIn.tooltip',
       group: 'camera',
       repeatable: true,
       run: () => callbacks.zoomIn?.(),
     },
     {
       id: 'zoomOut',
-      label: 'Zoom out',
-      tooltip: 'Zoom out',
+      labelKey: 'cameraCommands.zoomOut.label',
+      tooltipKey: 'cameraCommands.zoomOut.tooltip',
       group: 'camera',
       repeatable: true,
       run: () => callbacks.zoomOut?.(),
     },
     {
       id: 'fitAll',
-      label: 'Fit all',
-      tooltip: 'Fit all in view',
+      labelKey: 'cameraCommands.fitAll.label',
+      tooltipKey: 'cameraCommands.fitAll.tooltip',
       shortcut: 'Z',
       group: 'camera',
       run: () => callbacks.fitAll?.(),
     },
     {
       id: 'viewTop',
-      label: 'Top',
-      tooltip: 'Top view',
+      labelKey: 'cameraCommands.viewTop.label',
+      tooltipKey: 'cameraCommands.viewTop.tooltip',
       shortcut: '1',
       group: 'preset',
       run: () => callbacks.setPresetView?.('top'),
     },
     {
       id: 'viewBottom',
-      label: 'Bottom',
-      tooltip: 'Bottom view',
+      labelKey: 'cameraCommands.viewBottom.label',
+      tooltipKey: 'cameraCommands.viewBottom.tooltip',
       shortcut: '2',
       group: 'preset',
       run: () => callbacks.setPresetView?.('bottom'),
     },
     {
       id: 'viewFront',
-      label: 'Front',
-      tooltip: 'Front view',
+      labelKey: 'cameraCommands.viewFront.label',
+      tooltipKey: 'cameraCommands.viewFront.tooltip',
       shortcut: '3',
       group: 'preset',
       run: () => callbacks.setPresetView?.('front'),
     },
     {
       id: 'viewBack',
-      label: 'Back',
-      tooltip: 'Back view',
+      labelKey: 'cameraCommands.viewBack.label',
+      tooltipKey: 'cameraCommands.viewBack.tooltip',
       shortcut: '4',
       group: 'preset',
       run: () => callbacks.setPresetView?.('back'),
     },
     {
       id: 'viewLeft',
-      label: 'Left',
-      tooltip: 'Left view',
+      labelKey: 'cameraCommands.viewLeft.label',
+      tooltipKey: 'cameraCommands.viewLeft.tooltip',
       shortcut: '5',
       group: 'preset',
       run: () => callbacks.setPresetView?.('left'),
     },
     {
       id: 'viewRight',
-      label: 'Right',
-      tooltip: 'Right view',
+      labelKey: 'cameraCommands.viewRight.label',
+      tooltipKey: 'cameraCommands.viewRight.tooltip',
       shortcut: '6',
       group: 'preset',
       run: () => callbacks.setPresetView?.('right'),
     },
     {
       id: 'rotateLeft',
-      label: 'Rotate left',
-      tooltip: 'Rotate left 90°',
+      labelKey: 'cameraCommands.rotateLeft.label',
+      tooltipKey: 'cameraCommands.rotateLeft.tooltip',
       group: 'rotate',
       repeatable: true,
       run: () => callbacks.rotateLeft?.(),
     },
     {
       id: 'rotateRight',
-      label: 'Rotate right',
-      tooltip: 'Rotate right 90°',
+      labelKey: 'cameraCommands.rotateRight.label',
+      tooltipKey: 'cameraCommands.rotateRight.tooltip',
       group: 'rotate',
       repeatable: true,
       run: () => callbacks.rotateRight?.(),

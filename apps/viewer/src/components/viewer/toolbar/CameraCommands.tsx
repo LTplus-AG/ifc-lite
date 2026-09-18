@@ -18,6 +18,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import {
   TopView,
   BottomView,
@@ -71,10 +72,10 @@ export function useCameraCommands(): RenderableCameraCommand[] {
   );
 }
 
-const GROUP_LABEL: Record<CameraCommandGroup, string> = {
-  camera: 'Camera',
-  preset: 'Preset views',
-  rotate: 'Rotate',
+const GROUP_LABEL_KEY: Record<CameraCommandGroup, TranslationKey> = {
+  camera: 'cameraCommands.group.camera',
+  preset: 'cameraCommands.group.preset',
+  rotate: 'cameraCommands.group.rotate',
 };
 
 /**
@@ -84,6 +85,7 @@ const GROUP_LABEL: Record<CameraCommandGroup, string> = {
  * so zoom and rotate can be pressed several times in one visit.
  */
 export function CameraCommandMenuItems() {
+  const { t } = useTranslation();
   const commands = useCameraCommands();
   const groups = [...new Set(commands.map((command) => command.group))];
   return (
@@ -92,7 +94,7 @@ export function CameraCommandMenuItems() {
         <React.Fragment key={group}>
           {index > 0 && <DropdownMenuSeparator />}
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {GROUP_LABEL[group]}
+            {t(GROUP_LABEL_KEY[group])}
           </DropdownMenuLabel>
           {commands
             .filter((command) => command.group === group)
@@ -106,7 +108,7 @@ export function CameraCommandMenuItems() {
                     command.run();
                   }}
                 >
-                  <Icon className="h-4 w-4 mr-2" /> {command.label}
+                  <Icon className="h-4 w-4 mr-2" /> {t(command.labelKey)}
                   {command.shortcut && (
                     <span className="ml-auto text-xs opacity-60">{command.shortcut}</span>
                   )}

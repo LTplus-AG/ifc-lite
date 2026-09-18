@@ -79,6 +79,35 @@ test('a file with only allowlisted content counts zero', () => {
   assert.equal(countLiterals(clean), 0);
 });
 
+// ── Review-fix regression fixtures (bot review on PR #4973) ────────────
+
+test('a JSX-expression string literal is caught the same as plain JSX text', () => {
+  const src = `<button>{'Save changes'}</button>`;
+  assert.ok(findLiterals(src).some((l) => l.text === 'Save changes'));
+  assert.equal(countLiterals(src), 1);
+});
+
+test('an aria-label written as a JSX-expression string literal is caught', () => {
+  const src = `<button aria-label={"Delete model"} />`;
+  assert.ok(findLiterals(src).some((l) => l.text === 'Delete model'));
+  assert.equal(countLiterals(src), 1);
+});
+
+test('ACRONYMS is an explicit list, not "any all-caps word" — real UI copy is never spared', () => {
+  assert.equal(isAllowlistedLiteral('DELETE'), false);
+  assert.equal(isAllowlistedLiteral('WELCOME'), false);
+});
+
+test('non-Latin hardcoded text is counted, not treated as letter-free', () => {
+  assert.equal(isAllowlistedLiteral('设置'), false);
+  assert.equal(countLiterals('<span>你好</span>'), 1);
+});
+
+test('aria-label tolerates whitespace around "=", and a data- attribute is not this gate\'s business', () => {
+  assert.ok(findLiterals(`<button aria-label = "Delete model" />`).some((l) => l.text === 'Delete model'));
+  assert.equal(findLiterals(`<div data-title="internal, not UI copy" />`).length, 0);
+});
+
 // ── CLI harness ────────────────────────────────────────────────────────
 
 function run(args, cwd) {

@@ -59,7 +59,7 @@ function parseArgs(argv) {
     const flag = argv[i];
     const value = argv[i + 1];
     if (flag === '--root' || flag === '--baseline') {
-      if (value === undefined) fail(`${flag} needs a value`);
+      if (value === undefined) fail(`${flag} needs a value. Pass a path after ${flag}.`);
       out[flag.slice(2)] = value;
       i += 1;
     } else if (flag === '--update') {
@@ -67,7 +67,7 @@ function parseArgs(argv) {
     } else if (flag === '--allow-raise') {
       out.allowRaise = true;
     } else {
-      fail(`unknown argument: ${flag}`);
+      fail(`unknown argument: ${flag}. Supported: --root, --baseline, --update, --allow-raise.`);
     }
   }
   if (out.allowRaise && !out.update) fail('--allow-raise only means something with --update');
@@ -91,7 +91,7 @@ function walk(dir, found) {
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch (err) {
-    fail(`cannot read directory ${dir}: ${err.message}`);
+    fail(`cannot read directory ${dir}: ${err.message}. Fix the permission or path, then re-run.`);
   }
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
@@ -106,7 +106,7 @@ function walk(dir, found) {
 const args = parseArgs(process.argv.slice(2));
 
 const scanRoot = join(args.root, SCAN_ROOT_REL);
-if (!safeIsDir(scanRoot)) fail(`scan root ${scanRoot} does not exist or is not a directory`);
+if (!safeIsDir(scanRoot)) fail(`scan root ${scanRoot} does not exist or is not a directory. Pass --root <repo-root> to point at a real checkout.`);
 
 const paths = walk(scanRoot, []);
 if (paths.length === 0) {
@@ -126,7 +126,7 @@ if (args.update) {
     try {
       baseline = JSON.parse(readFileSync(args.baseline, 'utf8'));
     } catch (err) {
-      fail(`cannot parse existing baseline ${args.baseline}: ${err.message}`);
+      fail(`cannot parse existing baseline ${args.baseline}: ${err.message}. Fix the JSON by hand or delete the file and re-run --update.`);
     }
   }
 
@@ -160,7 +160,7 @@ let baseline;
 try {
   baseline = JSON.parse(readFileSync(args.baseline, 'utf8'));
 } catch (err) {
-  fail(`cannot parse baseline ${args.baseline}: ${err.message}`);
+  fail(`cannot parse baseline ${args.baseline}: ${err.message}. Fix the JSON by hand or regenerate it with --update.`);
 }
 
 const regressions = [];

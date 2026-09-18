@@ -148,7 +148,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
         const ids = s.selectedEntityIds.size > 0 ? Array.from(s.selectedEntityIds) : s.selectedEntityId !== null ? [s.selectedEntityId] : [];
         if (ids.length > 0) { s.hideEntities(ids); s.clearSelection(); }
       } },
-    { id: 'vis:show', label: 'Show All', ...withKey('commandPalette.vis.show.label'), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
+    { id: 'vis:show', label: 'Show All', ...withKey('commandPalette.vis.show.label'), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'A',
       action: () => { resetVisibilityForHomeFromStore(); } },
     { id: 'vis:set-iso', label: 'Set Basket from Selection', ...withKey('commandPalette.vis.setBasket.label'), keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: '=',
       action: () => executeBasketSet() },

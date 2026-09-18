@@ -99,6 +99,8 @@ test('both arms of a conditional label are counted, in JSX text and in a policed
   const attr = `<button aria-label={playing ? 'Pause sweep' : 'Play sweep'} />`;
   assert.equal(countLiterals(attr), 2);
   assert.equal(countLiterals(`<div>{busy && 'Loading'}</div>`), 1);
+  assert.equal(countLiterals(`<div>{'Untitled' || name}</div>`), 1);
+  assert.equal(countLiterals(`<div>{name ?? 'Untitled'}</div>`), 1);
   // A conditional feeding a non-policed prop is still not copy.
   assert.equal(countLiterals(`<div className={on ? 'a' : 'b'} />`), 0);
 });

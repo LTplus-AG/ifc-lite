@@ -139,8 +139,11 @@ function staticStringValues(expr) {
   }
   if (ts.isBinaryExpression(expr)) {
     const op = expr.operatorToken.kind;
-    if (op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
-      return staticStringValues(expr.right);
+    // `cond && 'A'`: only the right side can display. `'A' || b` / `'A' ?? b`:
+    // either side can, so both are candidates.
+    if (op === ts.SyntaxKind.AmpersandAmpersandToken) return staticStringValues(expr.right);
+    if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+      return [...staticStringValues(expr.left), ...staticStringValues(expr.right)];
     }
     // `'Save ' + 'changes'` (and `'Save ' + name`): every static piece is copy.
     if (op === ts.SyntaxKind.PlusToken) return [...staticStringValues(expr.left), ...staticStringValues(expr.right)];

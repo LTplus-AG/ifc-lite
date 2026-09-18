@@ -5,6 +5,7 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
+import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
@@ -17,6 +18,7 @@ export const en = {
   ...sectionToolEn,
   ...costPanelEn,
   ...ribbonToolbarEn,
+  ...mainToolbarEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

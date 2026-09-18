@@ -206,10 +206,38 @@ describe('StepExporter', () => {
       applyMutations: true,
     });
 
+    // Description was edited to '' — a real, present-but-empty IfcLabel
+    // (#4931), not the source's original absent-attribute `$`.
     expect(decode(result.content)).toContain(
-      "#1=IFCCOLUMN('g',$,'Updated Name',$,'CSV Type',$,$,'CSV-TAG',.USERDEFINED.);",
+      "#1=IFCCOLUMN('g',$,'Updated Name','','CSV Type',$,$,'CSV-TAG',.USERDEFINED.);",
     );
     expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  // #4931: a pending edit setting a STRING-typed root attribute to '' used to
+  // serialize as `$` (`serializeStringSlot` folded '' into the same branch as
+  // the null marker), collapsing an explicit empty IfcLabel to absent. STEP —
+  // and the read side fixed in #4881/#4909 — distinguish '' (present, empty)
+  // from $ (absent), so only a literal `$` edit may write the null token.
+  it('writes a pending edit to an empty string as the STEP empty-string token, not $', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCOLUMN', "#1=IFCCOLUMN('g',$,'Old Name','Old Description','Old Type',$,$,'OLD-TAG',.COLUMN.);"],
+    ]);
+    const mutationView = new LiveMutablePropertyView(null, 'model-1');
+    mutationView.setAttribute(1, 'Description', '');
+
+    const exporter = new StepExporter(dataStore, mutationView);
+    const result = exporter.export({ schema: 'IFC4', applyMutations: true });
+
+    expect(decode(result.content)).toContain(
+      "#1=IFCCOLUMN('g',$,'Old Name','','Old Type',$,$,'OLD-TAG',.COLUMN.);",
+    );
+    // A genuinely unset attribute — never edited — still exports as `$`
+    // (ObjectType/BuildingType were never touched here); this fix does not
+    // turn every `$` into `''`, only an explicit edit to an empty string.
+    expect(decode(result.content)).not.toContain(
+      "#1=IFCCOLUMN('g',$,'Old Name',$,'Old Type',$,$,'OLD-TAG',.COLUMN.);",
+    );
   });
 
   // `IfcTask`'s attribute order DIFFERS between IFC2X3 and IFC4: IFC2X3 has

@@ -171,10 +171,11 @@ describe('bim.cost observes pending loaded-model mutations (#4857)', () => {
       view.setAttribute(31, 'Condition', '');
     });
     expect(valueById(cost.data(), 30)?.Category).toBe("Owner's supply");
-    // The exporter writes an empty edit to a string slot as `$` (`serializeStringSlot`),
-    // so the read reports it absent too. Reporting PRESENT-and-empty here would be
-    // a read the exported file contradicts.
-    expect(valueById(cost.data(), 31)?.Condition).toBeUndefined();
+    // #4931: the exporter writes an empty edit to a string slot as `''`
+    // (`serializeStringSlot`), a real-but-empty IfcLabel — not `$` (absent).
+    // Reporting it absent here would be a read the exported file contradicts,
+    // and would silently drop the value the edit explicitly wrote.
+    expect(valueById(cost.data(), 31)?.Condition).toBe('');
     expect(valueById(cost.data(), 31)?.InvalidCondition).toBeUndefined();
     expect(cost.data()).toEqual(await exportedGraph());
   });

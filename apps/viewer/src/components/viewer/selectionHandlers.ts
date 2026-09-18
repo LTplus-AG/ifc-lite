@@ -20,6 +20,9 @@ import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
+import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
+import { fromRenderTranslation, toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
+import { modelPointToWorkspacePoint, workspacePointToModelFrame } from '@/lib/model-placement/rotation.js';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -139,7 +142,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
         toast.error("Couldn't read cut point");
         return;
       }
-      const cursorIfc = rendererPointToIfcStoreyLocal(cutPoint);
+      const cursorIfc = rendererPointToIfcStoreyLocal(cutPoint, targetModelId);
       const result = state.splitSlabByLine(
         targetModelId,
         targetExpressId,
@@ -196,16 +199,25 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     // Fall through to the slab path: first click latches the
     // anchor, second click (handled above) commits. Anchor lands
     // on the source slab's storey floor (not the global active
-    // storey) — `slabFootprint.storeyElevation` is already the
-    // exact value we need, so pass it through directly.
+    // storey). The RAYCAST plane, unlike the anchor value stored
+    // below, has to be placement-aware (#4932 follow-up): the second
+    // click's plane already goes through `resolveSlabFloorY`, which
+    // adds the model's vertical translation, so this first click used
+    // a DIFFERENT (un-placed) plane than the second — on a vertically
+    // repositioned slab under an oblique camera the two clicks would
+    // raycast against different heights and the anchor would land off
+    // from where the cursor actually was. `resolveSlabFloorY` reads
+    // the same underlying elevation `slabFootprint.storeyElevation`
+    // does, so this is the same value made symmetric, not a new one.
     const slabFootprint = state.readSlabFootprint(targetModelId, targetExpressId);
     if (slabFootprint) {
-      const anchorPoint = raycastStoreyFloor(ctx, x, y, slabFootprint.storeyElevation);
+      const anchorPlaneY = resolveSlabFloorY(targetModelId, targetExpressId) ?? slabFootprint.storeyElevation;
+      const anchorPoint = raycastStoreyFloor(ctx, x, y, anchorPlaneY);
       if (!anchorPoint) {
         toast.error("Couldn't read anchor point");
         return;
       }
-      const anchorIfc = rendererPointToIfcStoreyLocal(anchorPoint);
+      const anchorIfc = rendererPointToIfcStoreyLocal(anchorPoint, targetModelId);
       state.setSlabCutAnchor(
         [anchorIfc[0], anchorIfc[1]],
         slabFootprint.footprint,
@@ -355,15 +367,35 @@ function resolveActiveModelId(): string | null {
 }
 
 /**
- * Convert a renderer Y-up world point to IFC Z-up storey-local
- * coordinates with Z forced to the storey floor (0). Mirrors the
- * matrix in `packages/renderer/src/pipeline.ts`. Z is clamped so the
- * click landing on a vertical surface doesn't lift the element above
- * the floor — matches construction-tool placement intuition. Refine
- * via the Raw STEP tab if needed.
+ * `modelId`'s current reposition placement — translation (including an
+ * in-flight move-preview drag, so a pick made mid-drag matches what is on
+ * screen) and heading. The inverse `rendererPointToIfcStoreyLocal` applies
+ * so a pick against a moved/rotated model lands on the point the user
+ * actually clicked, not that point's un-repositioned twin (#4932).
  */
-export function rendererPointToIfcStoreyLocal(point: { x: number; y: number; z: number }): [number, number, number] {
-  return [point.x, -point.z, 0];
+function pickPlacement(modelId: string): { translation: ReturnType<typeof displayedTranslation>; rotation: ReturnType<typeof placementFor>['rotation'] } {
+  const state = useViewerStore.getState();
+  return { translation: displayedTranslation(state.modelPlacement, modelId),
+    rotation: placementFor(state.modelPlacement, modelId).rotation };
+}
+
+/**
+ * Convert a renderer Y-up world point — picked against `modelId`'s
+ * repositioned geometry — into IFC Z-up storey-local coordinates, with Z
+ * forced to the storey floor (0). Inverts `modelId`'s placement (heading
+ * about its pivot, then translation) before the axis swap, so authoring
+ * actions fed by this (`addWall`, `splitWallAtDistance`, …), which all work
+ * in the model's own un-repositioned frame, receive the point the user
+ * actually clicked rather than that point's un-repositioned twin (#4932).
+ * Z is clamped so a click landing on a vertical surface doesn't lift the
+ * element above the floor — matches construction-tool placement intuition.
+ */
+export function rendererPointToIfcStoreyLocal(
+  point: { x: number; y: number; z: number },
+  modelId: string,
+): [number, number, number] {
+  const modelPoint = workspacePointToModelFrame(fromRenderTranslation(point), pickPlacement(modelId));
+  return [modelPoint[0], modelPoint[1], 0];
 }
 
 /**
@@ -415,7 +447,11 @@ function raycastStoreyFloor(
  * Helper: resolve a slab's storey elevation in renderer-frame Y so
  * callers can pass it to `raycastStoreyFloor`. Read from the
  * model's spatialHierarchy (matches the rest of the split flow's
- * elevation lookups). Returns null when the slab isn't contained
+ * elevation lookups), offset by the model's own vertical reposition
+ * (#4932) — a model moved up or down renders its floor there too, and
+ * the fallback plane this drives has to agree with what's on screen.
+ * Rotation is a yaw and never tilts the floor, so only the
+ * translation's Z applies. Returns null when the slab isn't contained
  * in a storey we can resolve.
  */
 function resolveSlabFloorY(modelId: string, expressId: number): number | null {
@@ -425,12 +461,14 @@ function resolveSlabFloorY(modelId: string, expressId: number): number | null {
   const storeyId = ds.spatialHierarchy?.elementToStorey.get(expressId);
   if (storeyId === undefined) return null;
   const elev = ds.spatialHierarchy?.storeyElevations?.get(storeyId);
-  return typeof elev === 'number' ? elev : null;
+  return typeof elev === 'number' ? elev + displayedTranslation(state.modelPlacement, modelId)[2] : null;
 }
 
 /**
  * Resolve the renderer Y of the currently selected (or first
- * available) storey's floor. Falls back to 0 when nothing is loaded.
+ * available) storey's floor, offset by that model's own vertical
+ * reposition (#4932; see {@link resolveSlabFloorY}). Falls back to 0
+ * when nothing is loaded.
  */
 function resolveStoreyFloorY(): number {
   const state = useViewerStore.getState();
@@ -441,7 +479,8 @@ function resolveStoreyFloorY(): number {
   if (!ds) return 0;
   const storeyId = state.addElementStoreyId ?? firstStoreyExpressId(modelId);
   if (storeyId === null) return 0;
-  return ds.spatialHierarchy?.storeyElevations?.get(storeyId) ?? 0;
+  const elev = ds.spatialHierarchy?.storeyElevations?.get(storeyId) ?? 0;
+  return elev + displayedTranslation(state.modelPlacement, modelId)[2];
 }
 
 /**
@@ -562,7 +601,7 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
         if (store.splitMode === 'aiming') store.clearSplitHover();
         return;
       }
-      const cursorIfc = rendererPointToIfcStoreyLocal(worldPoint);
+      const cursorIfc = rendererPointToIfcStoreyLocal(worldPoint, targetModelId);
 
       // Project onto the target. Try wall (1D), then linear (1D),
       // then slab (2D — uses the cursor XY directly as a candidate
@@ -578,7 +617,11 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
             ? model?.ifcDataStore?.spatialHierarchy?.storeyElevations?.get(storeyId)
             : undefined) ?? 0;
         const [px, py, pz] = projection.cutPoint;
-        const cutRendererFrame: [number, number, number] = [px, pz + elevation, -py];
+        // Forward through the target's placement (#4932) so the ghost cut
+        // line the overlay draws lands on the same screen point as the
+        // commit this preview stands in for, on a moved/rotated model too.
+        const modelPoint: Translation = [px, py, pz + elevation];
+        const cutRendererFrame = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, pickPlacement(targetModelId)));
         store.setSplitHover(
           cutRendererFrame,
           projection.distance,
@@ -593,11 +636,8 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
       const slabFootprint = store.readSlabFootprint(targetModelId, targetExpressId);
       if (slabFootprint) {
         const [cx, cy] = cursorIfc;
-        const cursorRendererFrame: [number, number, number] = [
-          cx,
-          slabFootprint.storeyElevation,
-          -cy,
-        ];
+        const modelPoint: Translation = [cx, cy, slabFootprint.storeyElevation];
+        const cursorRendererFrame = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, pickPlacement(targetModelId)));
         store.setSplitHover(cursorRendererFrame, 0, 0, [cx, cy, 0], null);
         return;
       }
@@ -885,7 +925,7 @@ async function handleAddElementDrop(
 
   // Single-click placements: column / door / window all drop on one click.
   if (type === 'column') {
-    const ifc = rendererPointToIfcStoreyLocal(point);
+    const ifc = rendererPointToIfcStoreyLocal(point, modelId);
     const p = state.addElementColumnParams;
     finishAddElement(state.addColumn(modelId, storeyId, {
       Position: ifc, Width: p.Width, Depth: p.Depth, Height: p.Height,
@@ -893,7 +933,7 @@ async function handleAddElementDrop(
     return;
   }
   if (type === 'door') {
-    const ifc = rendererPointToIfcStoreyLocal(point);
+    const ifc = rendererPointToIfcStoreyLocal(point, modelId);
     const p = state.addElementDoorParams;
     finishAddElement(state.addDoor(modelId, storeyId, {
       Position: ifc, Width: p.Width, Height: p.Height, FrameThickness: p.FrameThickness,
@@ -901,7 +941,7 @@ async function handleAddElementDrop(
     return;
   }
   if (type === 'window') {
-    const ifc = rendererPointToIfcStoreyLocal(point);
+    const ifc = rendererPointToIfcStoreyLocal(point, modelId);
     const p = state.addElementWindowParams;
     finishAddElement(state.addWindow(modelId, storeyId, {
       Position: ifc, Width: p.Width, Height: p.Height, FrameThickness: p.FrameThickness,
@@ -917,8 +957,8 @@ async function handleAddElementDrop(
       return;
     }
     // End point — convert both points to IFC at dispatch time.
-    const startIfc = rendererPointToIfcStoreyLocal(pending[0]);
-    const endIfc = rendererPointToIfcStoreyLocal(point);
+    const startIfc = rendererPointToIfcStoreyLocal(pending[0], modelId);
+    const endIfc = rendererPointToIfcStoreyLocal(point, modelId);
     if (type === 'wall') {
       const p = state.addElementWallParams;
       finishAddElement(state.addWall(modelId, storeyId, {
@@ -946,8 +986,8 @@ async function handleAddElementDrop(
         state.appendAddElementPendingPoint({ x: point.x, y: point.y, z: point.z });
         return;
       }
-      const cornerIfc = rendererPointToIfcStoreyLocal(pending[0]);
-      const oppositeIfc = rendererPointToIfcStoreyLocal(point);
+      const cornerIfc = rendererPointToIfcStoreyLocal(pending[0], modelId);
+      const oppositeIfc = rendererPointToIfcStoreyLocal(point, modelId);
       const minX = Math.min(cornerIfc[0], oppositeIfc[0]);
       const minY = Math.min(cornerIfc[1], oppositeIfc[1]);
       const width = Math.abs(oppositeIfc[0] - cornerIfc[0]);
@@ -1030,7 +1070,7 @@ export function commitAddElementSlabPolygon(): void {
   if (!ctx) return;
   const { modelId, storeyId } = ctx;
   const outer = pending.map((pt) => {
-    const ifc = rendererPointToIfcStoreyLocal(pt);
+    const ifc = rendererPointToIfcStoreyLocal(pt, modelId);
     return [ifc[0], ifc[1]] as [number, number];
   });
   // Reject degenerate (zero-area) polygons — repeated or collinear

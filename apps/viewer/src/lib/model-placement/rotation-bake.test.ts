@@ -411,6 +411,48 @@ describe('ModelRotationBaker', () => {
       assert.deepEqual(meshSnapshot(next, 0), pristine);
     });
 
+    /**
+     * #4947: only the PRISTINE baseline was re-measured by #4935. At an
+     * unchanged non-zero rotation `reconcile` takes its `equalRotation` fast
+     * path and never calls `applyModelRotation`, so the LIVE
+     * `coordinateInfo.shiftedBounds` — what fit-to-view and the section
+     * calculations read — kept covering the pruned mesh until the angle next
+     * changed.
+     */
+    it('re-measures the LIVE extent at the SAME rotation, so fit-to-view stops covering the pruned mesh (#4947)', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      assert.deepEqual(baker.reconcile(targets(value, SKEW)), ['m']);
+      const next = withoutIds(value, [2]);
+      baker.pruneMeshes(drain([2], [[value, next]]));
+
+      // The angle has not changed, so this must take the unchanged-angle fast
+      // path — if it re-baked, this test would not be exercising the bug.
+      assert.deepEqual(baker.reconcile(targets(next, SKEW)), [],
+        'an unchanged angle must not re-bake (fast-path precondition for this test)');
+
+      // Independent oracle: mesh 1's SKEW-rotated world box, computed by hand
+      // from its own local vertices/origin (`placedMesh(1, 100, 3)`) and
+      // SKEW's angle/pivot — applying `rotateMesh`'s yaw formula
+      // (`rotation-geometry.ts`) directly and taking the min/max of the three
+      // rotated corners, WITHOUT calling `ModelRotationBaker.reconcile`,
+      // `applyModelRotation` or `measureBounds` (what this assertion exists to
+      // catch a regression in). A regression in any of those would move this
+      // number without moving the literal below.
+      assert.deepEqual(next.coordinateInfo.shiftedBounds, {
+        min: { x: 54.98680654863102, y: 5, z: -85.00787889159332 },
+        max: { x: 57.97742620805485, y: 5, z: -83.18575143015991 },
+      }, 'the live extent still covers the pruned mesh');
+    });
+
+    it('does not touch the live extent when the prune matches nothing in this model', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      baker.reconcile(targets(value, SKEW));
+      const before = structuredClone(value.coordinateInfo.shiftedBounds);
+      // A federated id range this model does not own.
+      baker.pruneMeshes({ ids: new Set([999]), removes: () => false, replacements: new Map() });
+      assert.deepEqual(value.coordinateInfo.shiftedBounds, before);
+    });
+
     it('does not turn the instanced boxes twice across a prune', () => {
       const baker = new ModelRotationBaker(), value = spread();
       value.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);

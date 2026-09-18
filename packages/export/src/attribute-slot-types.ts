@@ -243,12 +243,18 @@ export function serializeEnumToken(value: string): string {
  * only legal tokens are a quoted string and the null/derived markers, so there
  * is nothing to infer.
  *
- * `''`, `$` and `*` keep their existing meaning as those markers — that is
- * unchanged behaviour, and `''` is already the caller's way to clear a value.
+ * `$` and `*` keep their existing meaning as those markers, matching the
+ * source file's own STEP tokens for "unset" and "derived". `''` does NOT fold
+ * into `$`: STEP distinguishes a genuinely empty string (`''`) from an absent
+ * one (`$`), IfcOpenShell preserves that distinction on read, and #4881/#4909
+ * made the read side keep it too. Folding an edited `''` into `$` here made
+ * an explicit empty `IfcLabel`/`IfcText` collapse to absent the moment it was
+ * touched (#4931) — the caller's way to mark an attribute absent is to write
+ * the `$` token itself, not the empty string.
  */
 export function serializeStringSlot(value: string): string {
   const trimmed = value.trim();
-  if (value === '' || trimmed === '$' || trimmed === '*') {
+  if (trimmed === '$' || trimmed === '*') {
     return trimmed === '*' ? '*' : '$';
   }
   return `'${escapeStepString(value)}'`;

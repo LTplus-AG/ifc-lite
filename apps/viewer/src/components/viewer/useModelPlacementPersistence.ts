@@ -4,7 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { restoreWorkspacePlacements, saveWorkspacePlacements } from '@/lib/model-placement/persistence';
+import { restoreWorkspacePlacements, saveWorkspacePlacements, placementFrameKey } from '@/lib/model-placement/persistence';
 import type { ModelPlacement } from '@/lib/model-placement/state';
 
 export function useModelPlacementPersistence(): void {
@@ -13,11 +13,18 @@ export function useModelPlacementPersistence(): void {
   const automatic = useRef(new Map<string, ModelPlacement>());
   const restoring = useRef(false);
   const knownIdentities = useRef(new Map<string, string | undefined>());
+  // The frame identity the last save/restore ran under. Compared against a
+  // fresh `placementFrameKey(state)`, NOT against `placementFrameKey(previous)`:
+  // an RTC convergence (`federationRtcRebase.ts`) rewrites each model's
+  // `geometryResult.coordinateInfo` in place, so the previous store snapshot
+  // already reads the NEW key and the two would never differ.
+  const lastFrameKey = useRef<string | null>(null);
   const models = useViewerStore((state) => state.models);
   const anchor = useViewerStore((state) => state.anchorModelIdOverride);
   useEffect(() => {
     try {
       const state = useViewerStore.getState();
+      lastFrameKey.current = placementFrameKey(state);
       const identityCompleted = [...state.models].some(([id, model]) => model.sourceContentHash &&
         knownIdentities.current.get(id) !== model.sourceContentHash && state.modelPlacement.placements.has(id));
       knownIdentities.current = new Map([...state.models].map(([id, model]) => [id, model.sourceContentHash]));
@@ -65,9 +72,21 @@ export function useModelPlacementPersistence(): void {
     for (const [id, placement] of automatic.current) {
       if (state.modelPlacement.placements.get(id) !== placement) automatic.current.delete(id);
     }
-    if (!state.models.size || state.models !== previous.models ||
-      (state.modelPlacement.placements === previous.modelPlacement.placements &&
-        state.modelPlacement.realignedFrameKey === previous.modelPlacement.realignedFrameKey)) return;
+    if (!state.models.size) return;
+    // A convergence that re-anchors the frame (`rebasePlacementFrame` then
+    // `updateModel`) may leave translation-only `placements` untouched by
+    // identity, and the old key has no restore fallback: save under the new
+    // key whenever the identity moved and there is something to save. The
+    // `models` guard otherwise stays, so a plain model load (no identity
+    // change) does not write until the restore effect has run.
+    const frame = placementFrameKey(state);
+    const frameChanged = frame !== lastFrameKey.current;
+    lastFrameKey.current = frame;
+    if (frameChanged
+      ? !state.modelPlacement.placements.size && state.modelPlacement.realignedFrameKey === previous.modelPlacement.realignedFrameKey
+      : state.models !== previous.models ||
+        (state.modelPlacement.placements === previous.modelPlacement.placements &&
+          state.modelPlacement.realignedFrameKey === previous.modelPlacement.realignedFrameKey)) return;
     try { saveWorkspacePlacements(localStorage, state); }
     catch (error) {
       console.warn('[Reposition] Placement persistence failed:', error);

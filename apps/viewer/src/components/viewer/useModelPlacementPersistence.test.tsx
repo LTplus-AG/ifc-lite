@@ -132,3 +132,39 @@ it('a restore made while an RTC anchor is already live never pins the frame, and
   assert.equal(afterRestoreThenConverge, neverRestored,
     'a restore that ran while an anchor was live must not out-live a later convergence to a different one');
 });
+
+/** Round 6 review: `federationRtcRebase.ts` converges by calling the real
+ * `rebasePlacementFrame` (a no-op by identity for translation-only
+ * placements, `rebasePlacementPivots`) and then `updateModel(id, {})`, which
+ * replaces `state.models` while `placements` keeps its identity. The old
+ * subscription guard returned early on every `models` change, so the save
+ * under the NEW rtc-suffixed key never happened, and the old key has no
+ * restore fallback: the placement was gone on reload. Mirrors the in-place
+ * `coordinateInfo` rewrite the real convergence does (`rtc-rebase.ts`). */
+it('saves a translation-only placement under the new key when a convergence re-anchors the frame (#4936 round 6)', () => {
+  // `geometryResult: null`: the store is a singleton and `federationFrameInfo`
+  // falls back to the workspace-level geometry a previous case left behind.
+  useViewerStore.setState({ ...fixtureModels(modelWithAnchor('first')), geometryResult: null, modelPlacement: emptyPlacementState(), repositionOpen: false });
+  const ui = render(<Harness />);
+  act(() => { const state = useViewerStore.getState(); state.openReposition(['first']); state.previewModelTranslation([5, 0, 0]); state.applyModelTranslation(); });
+  assert.equal(ui.textContent, '5,0,0');
+  const before = placementFrameKey(useViewerStore.getState());
+  const placements = useViewerStore.getState().modelPlacement.placements;
+
+  // Converge exactly as production does: rewrite `coordinateInfo` on the live
+  // geometry object, rebase the pivots, re-wrap the model entry.
+  const anchor = { x: 777, y: 888, z: 999 };
+  act(() => {
+    const live = useViewerStore.getState().models.get('first')!.geometryResult!;
+    (live as { coordinateInfo: CoordinateInfo }).coordinateInfo = coordInfo(anchor);
+    useViewerStore.getState().rebasePlacementFrame(new Map([['first', { x: -anchor.x, y: -anchor.y, z: -anchor.z }]]));
+    useViewerStore.getState().updateModel('first', {});
+  });
+  const after = placementFrameKey(useViewerStore.getState());
+  assert.notEqual(after, before, 'sanity: the convergence changed the frame identity');
+  assert.equal(useViewerStore.getState().modelPlacement.placements, placements, 'sanity: translation-only placements keep their identity');
+
+  const reloaded = { ...useViewerStore.getState(), ...fixtureModels({ ...modelWithAnchor('again', anchor) }), modelPlacement: emptyPlacementState() };
+  assert.deepEqual(restoreWorkspacePlacements(localStorage, reloaded).get('again')?.translation, [5, 0, 0],
+    'the placement must be saved under the post-convergence key, or it is lost on reload');
+});

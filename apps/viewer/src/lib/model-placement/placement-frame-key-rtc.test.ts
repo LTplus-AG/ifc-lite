@@ -8,7 +8,7 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
-import { saveWorkspacePlacements, restoreWorkspacePlacements, placementFrameKey } from './persistence';
+import { saveWorkspacePlacements, restoreWorkspacePlacements, placementFrameKey, placementFrameBaseKey } from './persistence';
 import { emptyPlacementState, importPlacements } from './state';
 import { makePlacementManifest, resolvePlacementManifest } from './manifest';
 
@@ -288,3 +288,54 @@ describe('placementFrameKey recomputes live and is never cached across a commit 
 function savedUnder(disk: ReturnType<typeof storage>, frame: string): string | null {
   return disk.getItem('ifc-lite:placements:v1:' + frame);
 }
+
+/** v1.47.0, the release before this fix, embedded the live RTC anchor
+ * directly in the georeferenced base's `rtc` field instead of appending it
+ * as the external `:rtc:{...}` suffix `placementFrameKey` now does
+ * (`legacyGeoreferencedFrameKey`, persistence.ts). Reconstructs that exact
+ * shape from `placementFrameBaseKey` (the current, rtc-free base, already
+ * exported) rather than duplicating `legacyGeoreferencedFrameKey`'s own
+ * logic, so this checks the real migration path end to end instead of two
+ * copies of the same formula agreeing with each other. */
+describe('restoreWorkspacePlacements falls back to the pre-#4936 (v1.47.0) legacy key (#4936 round 5 review)', () => {
+  it('finds a georeferenced placement saved before this fix under the old embedded-rtc key', async () => {
+    const a = await georeferencedModel('a', 'LegacyA0000000000000001', 1, 'EPSG:2056', 2600000);
+    useViewerStore.setState({ ...useViewerStore.getState(), ...fixtureModels(a), modelPlacement: emptyPlacementState() });
+
+    // Converge onto a live RTC anchor, same as production after federation settles.
+    const anchor = { x: 111, y: 222, z: 333 };
+    useViewerStore.setState((s) => {
+      const model = s.models.get('a')!;
+      const models = new Map(s.models);
+      models.set('a', { ...model, geometryResult: { ...model.geometryResult, coordinateInfo: coordInfo(anchor) } as unknown as GeometryResult });
+      return { models };
+    });
+
+    const state = useViewerStore.getState();
+    const { rotation, ...rest } = JSON.parse(placementFrameBaseKey(state)) as Record<string, unknown>;
+    const legacyKey = JSON.stringify({ ...rest, rtc: anchor, rotation });
+    assert.notEqual(legacyKey, placementFrameKey(state), 'sanity: the legacy shape differs from the current key');
+
+    const legacyManifest = makePlacementManifest(state.models,
+      new Map([['a', { translation: [7, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false }]]), legacyKey);
+    const disk = storage();
+    disk.setItem('ifc-lite:placements:v1:' + legacyKey, JSON.stringify(legacyManifest));
+
+    const restored = restoreWorkspacePlacements(disk, state).get('a');
+    assert.deepEqual(restored?.translation, [7, 0, 0], 'a real placement saved under the v1.47.0 key must still be found');
+  });
+
+  it('does not fall back for a non-georeferenced (local-engineering) workspace, since that key never disambiguated by rtc', () => {
+    const anchor = { x: 1, y: 2, z: 3 };
+    const disk = storage();
+    // The v1.47.0 local-engineering key never included rtc at all: a bare
+    // constant, exactly the collision #4936 reports. Falling back to it
+    // would hand this saved placement to ANY live anchor, wrong data
+    // silently applied under a different RTC convergence.
+    disk.setItem('ifc-lite:placements:v1:local-engineering:m:z-up',
+      JSON.stringify(makePlacementManifest(localState(anchor).models,
+        new Map([['a', { translation: [9, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false }]]), 'local-engineering:m:z-up')));
+    assert.equal(restoreWorkspacePlacements(disk, localState(anchor)).size, 0,
+      'no fallback for the ambiguous local-engineering key: it cannot tell which live anchor the saved data was really for');
+  });
+});

@@ -114,6 +114,38 @@ export function placementFrameKey(state: ViewerState): string {
   return rtc ? `${placementFrameBaseKey(state)}:rtc:${JSON.stringify(normalizeRtc(rtc))}` : placementFrameBaseKey(state);
 }
 
+/** v1.47.0 shipped `georeferencedPlacementFrameKey` embedding the live RTC
+ * anchor directly in the base JSON's `rtc` field, before this fix (#4936)
+ * moved it to the external `:rtc:{...}` suffix `placementFrameKey` appends
+ * now (see that function's own header comment). Reproduces that exact shape
+ * so `restoreWorkspacePlacements` can still find placements a real user
+ * already saved under it, released and in production localStorage before
+ * this round shipped.
+ *
+ * Only safe for the GEOREFERENCED case: its base already uniquely
+ * identifies a CRS/conversion, so moving `rtc` from an embedded field to an
+ * external suffix is a lossless rename, nothing new collides. There is
+ * deliberately no equivalent for the LOCAL-ENGINEERING case: its pre-fix key
+ * was the bare constant `'local-engineering:m:z-up'` with no `rtc` at all,
+ * which is EXACTLY the collision #4936 reports (every anchor collapsed onto
+ * one key). Falling back to that constant here would hand a placement saved
+ * under one anchor to a different, incompatible one, i.e. resurrect the
+ * reported bug in the name of migrating away from it. Placements saved
+ * under that collapsed key stay unreachable; that data was already
+ * unreliable before this fix (#4936 round 5 review). */
+function legacyGeoreferencedFrameKey(state: ViewerState): string | undefined {
+  const anchor = placementAnchor(state);
+  if (!anchor) return undefined;
+  const crs = anchor.eff.projectedCRS, conversion = anchor.eff.mapConversion, info = anchor.coordinateInfo;
+  return JSON.stringify({ crs: crs && { name: crs.name, mapUnitScale: crs.mapUnitScale },
+    conversion: conversion && { eastings: conversion.eastings, northings: conversion.northings,
+      orthogonalHeight: conversion.orthogonalHeight, xAxisAbscissa: conversion.xAxisAbscissa,
+      xAxisOrdinate: conversion.xAxisOrdinate, scale: conversion.scale,
+      factorX: conversion.factorX, factorY: conversion.factorY, factorZ: conversion.factorZ },
+    lengthUnitScale: anchor.eff.lengthUnitScale, originShift: info?.originShift,
+    rtc: info?.wasmRtcOffset, rotation: info?.buildingRotation });
+}
+
 const PREFIX = 'ifc-lite:placements:v1:';
 export function saveWorkspacePlacements(storage: Pick<Storage, 'getItem' | 'setItem'>, state: ViewerState): void {
   const frame = placementFrameKey(state), key = PREFIX + frame;
@@ -136,11 +168,21 @@ export function saveWorkspacePlacements(storage: Pick<Storage, 'getItem' | 'setI
 }
 
 export function restoreWorkspacePlacements(storage: Pick<Storage, 'getItem'>, state: ViewerState): Map<string, ModelPlacement> {
-  const frame = placementFrameKey(state), saved = storage.getItem(PREFIX + frame);
+  const frame = placementFrameKey(state);
+  let saved = storage.getItem(PREFIX + frame), resolveFrame = frame;
+  // Nothing under the current key: try the pre-#4936 georeferenced key
+  // format once, so a real placement saved under v1.47.0 is not silently
+  // dropped (see `legacyGeoreferencedFrameKey`). `resolveFrame` is the
+  // legacy string itself, matching `manifest.frameKey` as saved, not the
+  // current `frame`; the next save writes back under the current key.
+  if (!saved) {
+    const legacy = legacyGeoreferencedFrameKey(state);
+    if (legacy && legacy !== frame) { saved = storage.getItem(PREFIX + legacy); resolveFrame = legacy; }
+  }
   if (!saved) return new Map();
   const manifest = parsePlacementManifest(saved);
   manifest.models = manifest.models.filter((entry) => entry.sourceContentHash !== null &&
     [...state.models].filter(([, model]) => model.sourceContentHash === entry.sourceContentHash).length === 1);
-  const restored = resolvePlacementManifest(manifest, state.models, frame);
+  const restored = resolvePlacementManifest(manifest, state.models, resolveFrame);
   return new Map([...restored].filter(([id]) => !state.modelPlacement.placements.has(id)));
 }

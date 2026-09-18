@@ -76,10 +76,12 @@ function uniqueNearest(
         second = distance;
       }
     }
-    // `best * marginRatio < second` strictly: an equidistant runner-up (or one
-    // inside the margin) means the nearest neighbour is not unique, so this
-    // element abstains.
-    nearest[i] = bestIndex >= 0 && best * marginRatio < second ? bestIndex : -1;
+    // An exact tie always abstains (`best < second` strictly): an equidistant
+    // runner-up means the nearest neighbour is not unique. A widened margin is
+    // then met at its boundary inclusive — "at least twice as far" includes
+    // exactly twice — so `marginRatio = 1` reproduces the strict tie rule and
+    // nothing else.
+    nearest[i] = bestIndex >= 0 && best < second && best * marginRatio <= second ? bestIndex : -1;
   }
   return nearest;
 }

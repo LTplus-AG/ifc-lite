@@ -41,7 +41,7 @@
  * heavy box overlap is stronger evidence than a matching name.
  */
 
-import { classFamilyResolver } from './class-families.js';
+import { classFamilyResolver, sameIfcClass } from './class-families.js';
 import {
   aabbCentre,
   centreDistance,
@@ -158,7 +158,7 @@ function claimOf<TRef>(
       head.fingerprint.components,
     );
   }
-  if (base.fingerprint.ifcType !== head.fingerprint.ifcType) claim.crossClass = true;
+  if (!sameIfcClass(base.fingerprint.ifcType, head.fingerprint.ifcType)) claim.crossClass = true;
   return claim;
 }
 

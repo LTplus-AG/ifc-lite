@@ -160,10 +160,12 @@ describe('footprint successors', () => {
     expect(blocked.successors).toEqual([]);
   });
 
-  it('flags a successor of a different class within the family', () => {
+  it('flags a successor of a different class within the family, but not a casing difference', () => {
     const base = [entity({ key: 'OLD', aabb: OLD_WALL })];
     const head = [entity({ key: 'NEW', ifcType: 'IfcWallStandardCase', aabb: box([0, 0, 0], [6, 0.25, 3]) })];
     expect(run(base, head).successors![0].crossClass).toBe(true);
+    const upper = [entity({ key: 'NEW', ifcType: 'IFCWALL', aabb: box([0, 0, 0], [6, 0.25, 3]) })];
+    expect(run(base, upper).successors![0].crossClass).toBeUndefined();
   });
 
   it('never pairs across families', () => {
@@ -234,10 +236,13 @@ describe('position successors', () => {
     expect(run(base, head).successors).toEqual([]);
   });
 
-  it('abstains when the runner-up is inside the ×2 margin', () => {
+  it('abstains when the runner-up is inside the ×2 margin, and pairs at exactly ×2', () => {
     const base = [chair('OLD', 0, 'Chair A', ROOM)];
     const head = [chair('NEW-1', 0.3, 'Chair B', ROOM), chair('NEW-2', 0.5, 'Chair B', ROOM)];
     expect(run(base, head).successors).toEqual([]);
+    // "At least twice as far" includes exactly twice (review on #4965).
+    const boundary = [chair('NEW-1', 0.2, 'Chair B', ROOM), chair('NEW-2', 0.4, 'Chair B', ROOM)];
+    expect(run(base, boundary).successors!.map((c) => c.head.key)).toEqual(['NEW-1']);
   });
 
   it('skips the profile when the container is absent on either side, or differs', () => {

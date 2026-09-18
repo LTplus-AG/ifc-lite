@@ -136,7 +136,12 @@ export function runGuards(sourceText, headText, base, head, key) {
       const headPath = containerOf.get(`h${headRef}`);
       containersCompared++;
       if (headPath === basePath) containersAgree++;
-      else if (basePath.includes('#') && (headPath ?? '').includes('#')) containersUnstable++;
+      else if (unnamedNodesNormalised(basePath) === unnamedNodesNormalised(headPath ?? '')) {
+        // Only a difference CONFINED to the `#<id>` segments is the documented
+        // instability; a renamed storey next to an unnamed building is still
+        // a leak.
+        containersUnstable++;
+      }
     }
   }
 
@@ -213,6 +218,15 @@ export function runGuards(sourceText, headText, base, head, key) {
     baseHasGeometryHashes: base.fingerprints.some((f) => f.geometryHash !== undefined),
     headHasGeometryHashes: head.fingerprints.some((f) => f.geometryHash !== undefined),
   };
+}
+
+/** A container path with every `#<expressId>` segment replaced by `#`, so
+ *  two spellings of one unnamed node compare equal and nothing else does. */
+export function unnamedNodesNormalised(path) {
+  return path
+    .split('/')
+    .map((segment) => (/^#\d+$/.test(segment) ? '#' : segment))
+    .join('/');
 }
 
 /** Values appearing more than once. */

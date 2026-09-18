@@ -173,8 +173,15 @@ export function scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin })
     const pieces = claim.pieces.map((piece) => piece.ref);
     const truth = claim.kind === 'split' ? want.get(wholeRef) : undefined;
     if (claim.kind !== 'split') mergeClaims++;
+    // SET equality, with the pieces de-duplicated first: `[h1, h1]` against
+    // `{h1, h2}` has the right length and every member in the truth, and is
+    // still not the split the key describes.
+    const distinct = new Set(pieces);
     const correct =
-      truth !== undefined && truth.size === pieces.length && pieces.every((ref) => truth.has(ref));
+      truth !== undefined &&
+      distinct.size === pieces.length &&
+      distinct.size === truth.size &&
+      pieces.every((ref) => truth.has(ref));
     if (!correct) {
       bySplit.wrong++;
       // WHAT was claimed, in the key's terms, so a wrong claim reads as

@@ -206,12 +206,20 @@ export function overlapSuccessorMutant(base, head, real) {
 export function rotatedClaimsMutant(head, real, key) {
   const inserted = new Set(key.insertedHeadIds);
   const spare = head.find((entity) => inserted.has(entity.ref));
+  // The CONFIDENCE is rotated too, to a different valid value: a harness
+  // that stopped scoring `kindAgreement` for claims would otherwise not see
+  // this mutant's confidences at all, and the partner rotation alone would
+  // keep rejecting it for the wrong reason.
+  const otherConfidence = (confidence) => (confidence === 'footprint' ? 'position' : 'footprint');
+  const otherSplitConfidence = (confidence) => (confidence === 'verified' ? 'extent' : 'verified');
   const successors = real.successors.map((claim, i, all) => ({
     ...claim,
+    confidence: otherConfidence(claim.confidence),
     head: all.length > 1 ? all[(i + 1) % all.length].head : (spare ?? claim.head),
   }));
   const splitMerges = real.splitMerges.map((claim, i, all) => ({
     ...claim,
+    confidence: otherSplitConfidence(claim.confidence),
     pieces: all.length > 1 ? all[(i + 1) % all.length].pieces : claim.pieces.slice(1),
   }));
   return {

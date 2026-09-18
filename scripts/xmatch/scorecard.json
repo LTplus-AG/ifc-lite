@@ -2,7 +2,7 @@
   "fixture": "content-matching validation (#1891)",
   "spec": "scripts/xmatch/SPEC.md",
   "generatedBy": "node scripts/xmatch/run.mjs",
-  "thresholdsSha256": "5626c8359109e1b1be0e8c4e593d3df052f6ea68b0863a8ab007b2b81d1fb7e7",
+  "thresholdsSha256": "c7940c9438b631f9aacd965ab19c03d74dc88e70b835cf5c0c5f026658bfdc1c",
   "geometryHashToleranceMetres": 0.001,
   "verdict": "PASS",
   "corpusFailures": [],
@@ -20,24 +20,24 @@
         "propertyNameCount": 6714,
         "propertyNameDrift": [],
         "sharedGlobalIds": 0,
-        "headGlobalIds": 3861,
+        "headGlobalIds": 3879,
         "invalidGlobalIds": 0,
         "lookalikeTokens": 3,
         "lookalikeTokensPreserved": 3,
         "sharedFingerprintKeys": 0,
         "keyedBasePopulation": 333,
         "fingerprintedBasePopulation": 333,
-        "keyedHeadsPresent": 328,
+        "keyedHeadsPresent": 333,
         "duplicateKeyBaseIds": 0,
         "duplicateKeyHeadIds": 0,
-        "containersCompared": 234,
-        "containersAgree": 234,
+        "containersCompared": 239,
+        "containersAgree": 239,
         "containersUnstable": 0,
-        "insertedNearbyExpected": 5,
-        "insertedNearbyInside": 5,
+        "insertedNearbyExpected": 4,
+        "insertedNearbyInside": 4,
         "duplicateBaseRefs": 0,
         "duplicateHeadRefs": 0,
-        "keyedHeadsExpected": 328,
+        "keyedHeadsExpected": 333,
         "baseHasGeometryHashes": true,
         "headHasGeometryHashes": true
       },
@@ -50,40 +50,40 @@
         "bySuccessor.position.recall: 0.333333 < target 0.6"
       ],
       "applied": {
-        "renamed": 222,
+        "renamed": 227,
         "moved": 24,
         "reshaped": 18,
         "retriangulated": 10,
         "duplicated": 8,
-        "deleted": 17,
+        "deleted": 12,
         "inserted": 8,
         "respecified": 14,
         "thickened": 10,
         "swapped": 6,
         "splitLength": 4,
-        "insertedNearby": 5
+        "insertedNearby": 4
       },
       "score": {
         "population": 333,
         "populations": {
-          "renamed": 222,
+          "renamed": 227,
           "reshaped": 18,
           "thickened": 10,
           "respecified": 14,
           "swapped": 6,
           "retriangulated": 10,
           "moved": 24,
-          "deleted": 17,
+          "deleted": 12,
           "duplicated": 8,
           "splitLength": 4
         },
         "inserted": 8,
         "overall": {
-          "claimedPairs": 288,
-          "correctPairs": 288,
+          "claimedPairs": 293,
+          "correctPairs": 293,
           "precision": 1,
-          "recallPopulation": 288,
-          "recalled": 288,
+          "recallPopulation": 293,
+          "recalled": 293,
           "recall": 1,
           "abstained": 8
         },
@@ -95,8 +95,8 @@
         },
         "byTier": {
           "geometry-hash": {
-            "claimed": 173,
-            "correct": 173,
+            "claimed": 179,
+            "correct": 179,
             "wrong": 0,
             "precision": 1
           },
@@ -107,24 +107,24 @@
             "precision": 1
           },
           "residue-1-1": {
-            "claimed": 101,
-            "correct": 101,
+            "claimed": 100,
+            "correct": 100,
             "wrong": 0,
             "precision": 1
           }
         },
         "byKind": {
           "renamed": {
-            "population": 222,
-            "recalled": 222,
+            "population": 227,
+            "recalled": 227,
             "abstained": 0,
-            "kindAgreed": 220,
-            "claimed": 222,
-            "correct": 222,
+            "kindAgreed": 226,
+            "claimed": 227,
+            "correct": 227,
             "wrong": 0,
             "recall": 1,
             "precision": 1,
-            "kindAgreement": 0.990991
+            "kindAgreement": 0.995595
           },
           "reshaped": {
             "population": 18,
@@ -187,11 +187,11 @@
             "precision": 1
           },
           "prismatic": {
-            "population": 213,
-            "recalled": 213,
+            "population": 218,
+            "recalled": 218,
             "abstained": 0,
-            "claimed": 213,
-            "correct": 213,
+            "claimed": 218,
+            "correct": 218,
             "wrong": 0,
             "recall": 1,
             "precision": 1
@@ -225,7 +225,7 @@
           "matchedByGeometryOnly": 14
         },
         "contentMatchedSuccessorKinds": 0,
-        "insertedNearby": 5,
+        "insertedNearby": 4,
         "bySuccessor": {
           "footprint": {
             "population": 10,
@@ -299,14 +299,7 @@
         },
         "kindDisagreements": [
           {
-            "base": 5598,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 5548,
+            "base": 5448,
             "expected": [
               "renamed"
             ],
@@ -586,24 +579,24 @@
         "propertyNameCount": 8663,
         "propertyNameDrift": [],
         "sharedGlobalIds": 0,
-        "headGlobalIds": 8139,
+        "headGlobalIds": 8180,
         "invalidGlobalIds": 0,
         "lookalikeTokens": 0,
         "lookalikeTokensPreserved": 0,
         "sharedFingerprintKeys": 0,
         "keyedBasePopulation": 932,
         "fingerprintedBasePopulation": 932,
-        "keyedHeadsPresent": 928,
+        "keyedHeadsPresent": 936,
         "duplicateKeyBaseIds": 0,
         "duplicateKeyHeadIds": 0,
-        "containersCompared": 628,
-        "containersAgree": 628,
+        "containersCompared": 636,
+        "containersAgree": 636,
         "containersUnstable": 0,
         "insertedNearbyExpected": 8,
         "insertedNearbyInside": 8,
         "duplicateBaseRefs": 0,
         "duplicateHeadRefs": 0,
-        "keyedHeadsExpected": 928,
+        "keyedHeadsExpected": 936,
         "baseHasGeometryHashes": true,
         "headHasGeometryHashes": true
       },
@@ -614,16 +607,15 @@
         "byClass.curved (population 0)"
       ],
       "targetGaps": [
-        "byKind.renamed.kindAgreement: 0.934124 < target 0.98",
-        "bySuccessor.footprint.kindAgreement: 0.857143 < target 0.9"
+        "byKind.renamed.kindAgreement: 0.943864 < target 0.98"
       ],
       "applied": {
-        "renamed": 805,
-        "moved": 33,
+        "renamed": 812,
+        "moved": 34,
         "reshaped": 18,
         "retriangulated": 0,
         "duplicated": 8,
-        "deleted": 20,
+        "deleted": 12,
         "inserted": 8,
         "respecified": 20,
         "thickened": 14,
@@ -634,24 +626,24 @@
       "score": {
         "population": 932,
         "populations": {
-          "renamed": 805,
+          "renamed": 812,
           "reshaped": 18,
           "respecified": 20,
-          "moved": 33,
+          "moved": 34,
           "splitLength": 8,
           "thickened": 14,
-          "deleted": 20,
+          "deleted": 12,
           "duplicated": 8,
           "swapped": 6
         },
         "inserted": 8,
         "overall": {
-          "claimedPairs": 830,
-          "correctPairs": 830,
+          "claimedPairs": 838,
+          "correctPairs": 838,
           "precision": 1,
-          "recallPopulation": 876,
-          "recalled": 830,
-          "recall": 0.947489,
+          "recallPopulation": 884,
+          "recalled": 838,
+          "recall": 0.947964,
           "abstained": 54
         },
         "falsePairs": {
@@ -662,8 +654,8 @@
         },
         "byTier": {
           "geometry-hash": {
-            "claimed": 573,
-            "correct": 573,
+            "claimed": 587,
+            "correct": 587,
             "wrong": 0,
             "precision": 1
           },
@@ -674,30 +666,30 @@
             "precision": 1
           },
           "residue-1-1": {
-            "claimed": 228,
-            "correct": 228,
+            "claimed": 221,
+            "correct": 221,
             "wrong": 0,
             "precision": 1
           },
           "positional": {
-            "claimed": 9,
-            "correct": 9,
+            "claimed": 10,
+            "correct": 10,
             "wrong": 0,
             "precision": 1
           }
         },
         "byKind": {
           "renamed": {
-            "population": 805,
-            "recalled": 759,
+            "population": 812,
+            "recalled": 766,
             "abstained": 46,
-            "kindAgreed": 709,
-            "claimed": 759,
-            "correct": 759,
+            "kindAgreed": 723,
+            "claimed": 766,
+            "correct": 766,
             "wrong": 0,
-            "recall": 0.942857,
+            "recall": 0.94335,
             "precision": 1,
-            "kindAgreement": 0.934124
+            "kindAgreement": 0.943864
           },
           "reshaped": {
             "population": 18,
@@ -724,12 +716,12 @@
             "kindAgreement": 1
           },
           "moved": {
-            "population": 33,
-            "recalled": 33,
+            "population": 34,
+            "recalled": 34,
             "abstained": 0,
-            "kindAgreed": 33,
-            "claimed": 33,
-            "correct": 33,
+            "kindAgreed": 34,
+            "claimed": 34,
+            "correct": 34,
             "wrong": 0,
             "recall": 1,
             "precision": 1,
@@ -748,13 +740,13 @@
             "precision": 1
           },
           "prismatic": {
-            "population": 699,
-            "recalled": 694,
+            "population": 707,
+            "recalled": 702,
             "abstained": 5,
-            "claimed": 694,
-            "correct": 694,
+            "claimed": 702,
+            "correct": 702,
             "wrong": 0,
-            "recall": 0.992847,
+            "recall": 0.992928,
             "precision": 1
           }
         },
@@ -781,12 +773,12 @@
           "footprint": {
             "population": 14,
             "recalled": 14,
-            "kindAgreed": 12,
+            "kindAgreed": 14,
             "claimed": 14,
             "correct": 14,
             "wrong": 0,
             "recall": 1,
-            "kindAgreement": 0.857143,
+            "kindAgreement": 1,
             "precision": 1
           },
           "position": {
@@ -803,14 +795,14 @@
         },
         "bySuccessorConfidence": {
           "footprint": {
-            "claimed": 14,
-            "correct": 14,
+            "claimed": 16,
+            "correct": 16,
             "wrong": 0,
             "precision": 1
           },
           "position": {
-            "claimed": 4,
-            "correct": 4,
+            "claimed": 2,
+            "correct": 2,
             "wrong": 0,
             "precision": 1
           }
@@ -839,8 +831,8 @@
         },
         "wrongSplits": [],
         "moveDistance": {
-          "checked": 33,
-          "agreed": 33,
+          "checked": 34,
+          "agreed": 34,
           "agreement": 1
         },
         "missed": {
@@ -855,49 +847,7 @@
         },
         "kindDisagreements": [
           {
-            "base": 37278,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 11690,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 26610,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 33639,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
             "base": 31577,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 17553,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 30125,
             "expected": [
               "renamed"
             ],
@@ -911,56 +861,7 @@
             "reported": "reshaped"
           },
           {
-            "base": 11477,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 31648,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 31430,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 31083,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 11753,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 26681,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 17615,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 11627,
+            "base": 17985,
             "expected": [
               "renamed"
             ],
@@ -974,6 +875,104 @@
             "reported": "reshaped"
           },
           {
+            "base": 26681,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 30125,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 10191,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 17919,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 11627,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 11477,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 26832,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 31083,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 31648,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 11753,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 11690,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 31323,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 11563,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
+            "base": 11110,
+            "expected": [
+              "renamed"
+            ],
+            "reported": "reshaped"
+          },
+          {
             "base": 30518,
             "expected": [
               "renamed"
@@ -981,14 +980,7 @@
             "reported": "reshaped"
           },
           {
-            "base": 11304,
-            "expected": [
-              "renamed"
-            ],
-            "reported": "reshaped"
-          },
-          {
-            "base": 25694,
+            "base": 17615,
             "expected": [
               "renamed"
             ],

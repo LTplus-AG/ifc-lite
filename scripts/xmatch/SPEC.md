@@ -530,8 +530,10 @@ the correction; the evidence for it on two of three models did not.
 
 The first scored run of the four new mutations, against the thresholds
 pre-registered in commit `2a0da8059`. Populations across the corpus:
-respecified 38, thickened 24, swapped 12, splitLength 12, insertedNearby 13
-(duplex 14/10/6/4/5, AC20 4/0/0/0/0, rvt01 20/14/6/8/8). AC20 is sized down
+respecified 38, thickened 24, swapped 12, splitLength 12, insertedNearby 12
+(duplex 14/10/6/4/4, AC20 4/0/0/0/0, rvt01 20/14/6/8/8). The nearby control
+rides ON the `deleted` population — rectangle-owning deleted elements are
+relabelled — so every model still deletes exactly the 12 the plan declares. AC20 is sized down
 on purpose: it has 126 keyed elements of which 17 can never be matched, so
 every element a new role takes out of `renamed` moves that stratum's recall
 towards its 0.777 floor, and seven is the most it can spare; its extrusions

@@ -94,19 +94,40 @@ export function representationMapsOf(index, productId) {
  * rules those donors out; no hash of the head is consulted.
  */
 export function representationMapDigest(index, mapId) {
+  // An explicit stack, not recursion: the walk follows references the FILE
+  // supplies, and a deep or cyclic subgraph must not be able to blow the
+  // call stack. `order` is the visited set, so every id is expanded once
+  // and the walk is bounded by the number of statements.
   const order = new Map();
   const lines = [];
-  const visit = (id) => {
-    if (order.has(id)) return;
-    order.set(id, order.size);
-    const statement = index.byId.get(id);
-    if (!statement) return;
+  const stack = [{ id: mapId, expanded: false }];
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+    const statement = index.byId.get(frame.id);
+    if (!frame.expanded) {
+      if (order.has(frame.id)) {
+        stack.pop();
+        continue;
+      }
+      order.set(frame.id, order.size);
+      frame.expanded = true;
+      if (!statement) {
+        stack.pop();
+        continue;
+      }
+      // Pushed in reverse so the children are expanded in file order, which
+      // is what the recursive walk did and what keeps the digest stable.
+      const children = referencesIn(statement.args);
+      for (let i = children.length - 1; i >= 0; i--) {
+        if (!order.has(children[i])) stack.push({ id: children[i], expanded: false });
+      }
+      continue;
+    }
+    stack.pop();
     const children = referencesIn(statement.args);
-    for (const child of children) visit(child);
     const map = new Map(children.map((child) => [child, order.get(child) ?? -1]));
     lines.push(`${statement.type}(${rewriteReferences(statement.args, map)})`);
-  };
-  visit(mapId);
+  }
   return lines.join('\n');
 }
 

@@ -175,7 +175,6 @@ export function mutateModel(text, options) {
   const spatial = (id) => isSpatialType(index.byId.get(id).type);
   const ownsRectangle = (id) => !spatial(id) && ownedRectangleExtrusion(index, id) !== undefined;
   assign('splitLength', plan.splitLength, detached(ownsRectangle));
-  assign('deletedNearby', plan.insertedNearby, detached(ownsRectangle));
   assign('retriangulated', plan.retriangulated, selfContained((id) => resampleableArcs(index, id).length > 0));
   // A thickened host only changes its own mesh, like `reshaped`; it picks
   // before `reshaped`, whose eligible set is a superset of this one.
@@ -183,7 +182,21 @@ export function mutateModel(text, options) {
   assign('reshaped', plan.reshaped, selfContained((id) => exclusiveSolids(index, id).length > 0));
   const donors = mapDonors(index, population);
   assign('swapped', plan.swapped, selfContained((id) => !spatial(id) && donors.has(id)));
-  assign('deleted', plan.deleted, detached(() => true));
+  // The nearby control RIDES ON the deleted population rather than adding to
+  // it. `deleted` is drawn in two steps that total `plan.deleted` — rectangle
+  // owners first, up to the control's count, then anything detached — and up
+  // to `plan.insertedNearby` of the rectangle-owning deleted elements are then
+  // relabelled `deletedNearby`. The key deletes exactly `plan.deleted`
+  // elements, so the population floors mean what they say.
+  const nearbyDraw = assign('deleted', Math.min(plan.insertedNearby, plan.deleted), detached(ownsRectangle));
+  assign('deleted', plan.deleted - nearbyDraw, detached(() => true));
+  let relabelled = 0;
+  for (const id of pool) {
+    if (relabelled >= plan.insertedNearby) break;
+    if (roles.get(id) !== 'deleted' || !ownsRectangle(id)) continue;
+    roles.set(id, 'deletedNearby');
+    relabelled++;
+  }
   assign('duplicated', plan.duplicated, detached(() => true));
   // Whole same-content groups, moved member by member to DIFFERENT places.
   // This is the only construction that reaches the positional tier: tier 1

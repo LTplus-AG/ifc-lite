@@ -43,6 +43,20 @@ export interface EntityTable {
 
   getGlobalId(expressId: number): string;
   getName(expressId: number): string;
+  /**
+   * Like {@link getName}, but returns `undefined` when the entity's `Name`
+   * attribute is genuinely ABSENT (STEP `$`) rather than folding that into
+   * `''` the way `getName` always has and must keep doing — 61+ call sites
+   * read `getName` for display, where "no value" and "empty value" render
+   * identically and `''` is the correct, crash-safe answer either way.
+   * Selector matching (#4930) is the one caller that needs to tell them
+   * apart: `name=""` must not match an entity with no Name at all, and
+   * `name!=""` must. Optional because a table built without the StringTable
+   * NULL-index convention (a hand-rolled test mock, an older cache format —
+   * see `packages/cache`) cannot answer it; callers fall back to `getName`
+   * when it's absent, which restores the pre-#4930 (safe, imprecise) result.
+   */
+  getNameOrUndefined?(expressId: number): string | undefined;
   getDescription(expressId: number): string;
   getObjectType(expressId: number): string;
   getTypeName(expressId: number): string;
@@ -125,7 +139,7 @@ export class EntityTableBuilder {
     expressId: number,
     type: string,
     globalId: string,
-    name: string,
+    name: string | undefined,
     description: string,
     objectType: string,
     hasGeometry: boolean = false,
@@ -314,6 +328,16 @@ export function entityTableFromColumns(
     getName: (id) => {
       const idx = indexOfId(id);
       return idx >= 0 ? strings.get(name[idx]) : '';
+    },
+    // `StringTable.intern(undefined)` returns `NULL_INDEX` (-1), which this
+    // Uint32Array column stores as its unsigned bit pattern (0xFFFFFFFF) —
+    // distinct from index 0, the interned `''`. `getName` above folds both
+    // into `''` on purpose; this is the one accessor that doesn't (#4930).
+    getNameOrUndefined: (id) => {
+      const idx = indexOfId(id);
+      if (idx < 0) return undefined;
+      const raw = name[idx];
+      return raw === 0xffffffff ? undefined : strings.get(raw);
     },
     getDescription: (id) => {
       const idx = indexOfId(id);

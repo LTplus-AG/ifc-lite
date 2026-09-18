@@ -19,35 +19,13 @@ import type { NumericOp, SetOp, StringOp, TextKind, ValueOp } from './filter-rul
 /**
  * Lower-case a candidate that may be undefined at runtime (e.g. an untyped
  * entity's `getTypeName`) — calling `.toLowerCase()` on that crashed
- * filtering by type/name (#1195). This function is crash-safety only; it
- * does NOT decide what "no value" means to an operator.
- *
- * `undefined` means ABSENT — the entity has no such attribute at all — and
- * that is a real, distinct case from a candidate that IS a string which
- * happens to be `''` (explicitly set to empty). Coercing both to `''` here
- * would silently merge them, which is exactly what used to happen: `name=""`
- * matched an entity with no Name whatsoever, and `name!=""` failed to match
- * it, because by the time either reached this function they were both just
- * the string `''` (#4930). A candidate that is genuinely absent matches
- * neither `=""` nor `contains`/`startsWith`/`matches` — there is no value to
- * compare — but DOES match `!=""`/`notContains`/`notMatches`: "not equal",
- * "does not contain", "does not match" are all vacuously true of nothing.
- *
- * That decision is made by `stringOpMatches` (per-candidate, before it ever
- * calls this function) and composed by `matchStringAnyNone` across a
- * multi-valued dimension's candidate set — see their docstrings. A ZERO-length
- * candidate LIST (`matchStringAnyNone`'s empty-array short-circuit) is a
- * separate, deliberately distinct case from a single absent candidate: "this
- * element has no materials/ancestors/classifications at all" is not the same
- * question as "this one material/ancestor/classification has no Name", and
- * the two must not be collapsed into each other either.
- *
- * Not every caller can currently produce `undefined` here — several route
- * through `EntityTable.getName`/`getTypeName`, which already coerces an
- * absent attribute to `''` at parse time, well before this module ever sees
- * it (see filter-rules.test.ts and the #4930 PR body for which dimensions
- * that applies to). For those, this function's crash-guard `s ?? ''` is the
- * only behaviour in effect, same as before.
+ * filtering by type/name (#1195). Crash-safety ONLY: it does not decide
+ * what "no value" means to an operator, and never did — `undefined` (ABSENT)
+ * vs `''` (explicitly empty) is a real distinction a caller must resolve
+ * BEFORE calling this, or lose (#4930). See `stringOpMatches`'s docstring
+ * for that decision, and `nameOrUndefined` (`filter-match.ts`) /
+ * `EntityTable.getNameOrUndefined` (`packages/data`) for where the
+ * distinction is sourced from in the first place.
  */
 function lower(s: string | null | undefined): string {
   return (s ?? '').toLowerCase();

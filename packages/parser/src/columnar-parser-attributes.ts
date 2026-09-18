@@ -244,14 +244,19 @@ export async function batchExtractGlobalIdAndName(
     buffer: Uint8Array,
     refs: EntityRef[],
     yieldIfNeeded?: () => Promise<void>,
-): Promise<Map<number, { globalId: string; name: string }>> {
-    const result = new Map<number, { globalId: string; name: string }>();
+): Promise<Map<number, { globalId: string; name: string | undefined }>> {
+    const result = new Map<number, { globalId: string; name: string | undefined }>();
     if (refs.length === 0) return result;
     const CHUNK_SIZE = 2048;
 
     // Phase 1: Scan byte ranges for GlobalId and Name positions (no string allocation)
     const gidRanges: Array<[number, number]> = []; // [start, end) for each entity
     const nameRanges: Array<[number, number]> = [];
+    // `findQuotedAttrRange` returns `null` for a STEP `$` (no quotes at all)
+    // and `[start, start]` for a genuinely empty `''` — both currently
+    // collapse to the SAME zero-length slice once concatenated below, so
+    // that distinction has to be captured here, before it's lost (#4930).
+    const nameFound: boolean[] = [];
     const validIndices: number[] = []; // indices into refs for entities with valid ranges
 
     for (let i = 0; i < refs.length; i++) {
@@ -264,6 +269,7 @@ export async function batchExtractGlobalIdAndName(
 
         gidRanges.push(gidRange ?? [0, 0]);
         nameRanges.push(nameRange ?? [0, 0]);
+        nameFound.push(nameRange !== null);
         validIndices.push(i);
     }
 
@@ -326,7 +332,9 @@ export async function batchExtractGlobalIdAndName(
         // name like `John''s Wall` would render with the literal doubled quote.
         result.set(ref.expressId, {
             globalId: gids[i] || '',
-            name: rawName ? decodeIfcString(rawName.replace(/''/g, "'")) : '',
+            name: nameFound[i]
+                ? (rawName ? decodeIfcString(rawName.replace(/''/g, "'")) : '')
+                : undefined,
         });
     }
 

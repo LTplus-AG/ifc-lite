@@ -19,7 +19,7 @@ import {
   type ClassificationInfo,
 } from '@ifc-lite/parser';
 import { flattenMaterials } from '@ifc-lite/ids';
-import { collectSpatialAncestors } from '@ifc-lite/data';
+import { collectSpatialAncestors, type EntityTable } from '@ifc-lite/data';
 
 import {
   type PropertyRule,
@@ -339,6 +339,21 @@ export function elevationOf(store: IfcDataStore, expressId: number): number | nu
 // ── Parent (spatial ancestor) resolution ──────────────────────────────────────
 
 /**
+ * `table.getName(id)` folds an absent Name into `''`, indistinguishable
+ * from a genuinely empty one — the right answer for display (61+ call
+ * sites), the wrong one for `name=`/`parent=` string matching (#4930).
+ * `getNameOrUndefined` is the accessor that keeps the distinction (see its
+ * docstring in `packages/data/src/entity-table.ts`); it's optional on the
+ * `EntityTable` interface because not every implementation can answer it
+ * (a hand-rolled test mock, an older cache format), so this falls back to
+ * `getName` — restoring the pre-#4930 (safe, imprecise) result — when it's
+ * absent rather than throwing.
+ */
+export function nameOrUndefined(table: EntityTable, id: number): string | undefined {
+  return table.getNameOrUndefined ? table.getNameOrUndefined(id) : table.getName(id);
+}
+
+/**
  * `parent=Foo` (#4903) — does ANY ancestor of `expressId`, walking upward
  * through spatial containment and aggregation to any depth via
  * `collectSpatialAncestors` (`@ifc-lite/data`, the single shared resolver),
@@ -347,10 +362,12 @@ export function elevationOf(store: IfcDataStore, expressId: number): number | nu
  * with NO ancestors — or none whose Name matches — satisfies neither a
  * positive nor a negative op, so `parent=` naming nothing in the model reads
  * as an empty result, never "no filter" (the #4659 inversion this codebase
- * keeps guarding against).
+ * keeps guarding against). An ancestor that HAS no Name at all (vs. an
+ * explicit `''`) is itself now a real, distinguished candidate — see
+ * `nameOrUndefined` and `matchStringAnyNone` (#4930).
  */
 export function matchParentRule(rule: ParentRule, store: IfcDataStore, expressId: number): boolean {
   const ancestorNames = collectSpatialAncestors(store.relationships, expressId)
-    .map((id) => store.entities.getName(id));
+    .map((id) => nameOrUndefined(store.entities, id));
   return matchStringAnyNone(rule.op, ancestorNames, rule.value, rule.valueKind);
 }

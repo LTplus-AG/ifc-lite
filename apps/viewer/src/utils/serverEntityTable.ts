@@ -80,7 +80,12 @@ export function buildEntityTable(
     if (globalIdString) {
       globalIdToExpressId.set(globalIdString, id);
     }
-    nameArr[idx] = strings.intern(cols.name[idx] || '');
+    // `cols.name` is `(string | null)[]` — the server already carries `null`
+    // distinctly from `''` (an Arrow/JSON column has both), so pass it
+    // through `intern` as-is rather than folding via `|| ''`: that's what
+    // let `getNameOrUndefined` below answer correctly (#4930) without a
+    // second, absent-losing column.
+    nameArr[idx] = strings.intern(cols.name[idx]);
     descriptionArr[idx] = strings.intern(cols.description?.[idx] || '');
     objectTypeArr[idx] = strings.intern(cols.objectType?.[idx] || '');
     tagArr[idx] = strings.intern(cols.tag?.[idx] || '');
@@ -111,6 +116,17 @@ export function buildEntityTable(
     return i >= 0 ? strings.get(col[i]) : '';
   };
 
+  // `StringTable.intern(null)` returns `NULL_INDEX` (-1), stored in this
+  // Uint32Array column as its unsigned bit pattern (0xFFFFFFFF) — see
+  // `entity-table.ts`'s `getNameOrUndefined` for the packages/data twin of
+  // this accessor (#4930).
+  const getNameOrUndefined = (id: number): string | undefined => {
+    const i = indexOfId(id);
+    if (i < 0) return undefined;
+    const raw = nameArr[i];
+    return raw === 0xffffffff ? undefined : strings.get(raw);
+  };
+
   const entities: EntityTable = {
     count: entityCount,
     expressId,
@@ -127,6 +143,7 @@ export function buildEntityTable(
     typeRanges: new Map(), // Deprecated - use getByType which uses typeGroups directly
     getGlobalId: strCol(globalIdArr),
     getName: strCol(nameArr),
+    getNameOrUndefined,
     getDescription: strCol(descriptionArr),
     getObjectType: strCol(objectTypeArr),
     getTag: strCol(tagArr),

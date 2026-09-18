@@ -87,6 +87,7 @@ import {
   materialNamesOf, materialMatchCandidates,
   matchClassificationRule,
   matchParentRule,
+  nameOrUndefined,
   elevationOf,
   type AttrRows,
   type PsetRows,
@@ -504,7 +505,10 @@ function evaluateRule(
       return setOpMatches(rule.op, pt, rule.values);
     }
     case 'name':
-      return stringOpMatches(rule.op, ctx.table.getName(expressId), rule.value, rule.valueKind);
+      // `nameOrUndefined` (not `ctx.table.getName`) so an entity with no
+      // Name at all reaches `stringOpMatches` as `undefined` rather than the
+      // coerced `''` `getName` returns for display — see its docstring (#4930).
+      return stringOpMatches(rule.op, nameOrUndefined(ctx.table, expressId), rule.value, rule.valueKind);
     case 'globalId':
       return globalIdOpMatches(rule.op, ctx.table.getGlobalId(expressId), rule.values);
     case 'attribute': {
@@ -547,13 +551,18 @@ function evaluateRule(
  * `type=` selector dimension (#4094), distinct from `ctx.table.getTypeName`
  * (the element's own IFC class). `null` when the element carries no such
  * relation, which a `type=` rule must never match (an absent relation is
- * not the same as a type with an empty Name).
+ * not the same as a type with an empty Name) — kept distinct from
+ * `undefined`, which now means the relation exists but the related
+ * `IfcTypeObject`'s own Name is absent (#4930): `nameOrUndefined`, not
+ * `ctx.table.getName`, so that case reaches `stringOpMatches` as a real
+ * absent candidate instead of the coerced `''` `getName` returns for
+ * display.
  */
-function relatingTypeNameOf(ctx: EvalContext, expressId: number): string | null {
+function relatingTypeNameOf(ctx: EvalContext, expressId: number): string | undefined | null {
   if (!ctx.store.relationships) return null;
   const typeIds = ctx.store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
   if (typeIds.length === 0) return null;
-  return ctx.table.getName(typeIds[0]);
+  return nameOrUndefined(ctx.table, typeIds[0]);
 }
 
 function buildResult(modelId: string, ctx: EvalContext, expressId: number): FilteredElement {

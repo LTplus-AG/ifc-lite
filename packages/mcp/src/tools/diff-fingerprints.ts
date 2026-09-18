@@ -102,7 +102,10 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractRootAttributesFromEntity,
+  authoredKeyValue,
   getAttributeNamesAcrossSchemas,
+  parseAuthoredKeySpec,
+  spatialContainerPath,
   getInheritanceChainAcrossSchemas,
   quantitySiScale,
   roundToScale,
@@ -200,9 +203,20 @@ function classifyType(typeKey: string): TypeRole {
  * values. Omitting it (the CLI twin has no session to overlay) is the original
  * store-only behaviour exactly.
  */
+/** Adapter options (issue #4955); the CLI's `FingerprintAdapterOptions` restated. */
+export interface FingerprintAdapterOptions {
+  /** `Tag` or `<PsetName>.<PropertyName>`; see the CLI copy for the rules. */
+  keyProperty?: string;
+  duplicateAuthoredKeys?: Map<string, number[]>;
+}
+
+/** Prefix on a fingerprint key taken from an authored property rather than a GlobalId. */
+export const AUTHORED_KEY_PREFIX = 'prop:';
+
 export function buildModelFingerprints(
   store: IfcDataStore,
   overlay?: PendingOverlay | null,
+  options: FingerprintAdapterOptions = {},
 ): EntityFingerprint<DiffRef>[] {
   const fingerprints: EntityFingerprint<DiffRef>[] = [];
   const seen = new Set<number>();
@@ -210,6 +224,32 @@ export function buildModelFingerprints(
   // the (small) set of object types the EntityTable declines to hold.
   const extractor = new EntityExtractor(store.source);
   const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale/scaledPropertyValue
+  const keySpec = options.keyProperty ? parseAuthoredKeySpec(options.keyProperty) : undefined;
+  // Authored keys are resolved in a first pass so a value two entities share
+  // can be refused for both, instead of the diff's first-wins index quietly
+  // keeping one (issue #4955).
+  const authoredOwners = new Map<string, number[]>();
+  if (keySpec) {
+    for (const [typeKey, ids] of store.entityIndex.byType) {
+      if (classifyType(typeKey).role === 'dependent') continue;
+      for (const expressId of ids) {
+        const value = authoredKeyValue(store, expressId, keySpec, extractor);
+        if (value === undefined) continue;
+        const list = authoredOwners.get(value);
+        if (list) list.push(expressId);
+        else authoredOwners.set(value, [expressId]);
+      }
+    }
+    for (const [value, ids] of authoredOwners) {
+      if (ids.length > 1) options.duplicateAuthoredKeys?.set(value, ids);
+    }
+  }
+  const keyOf = (expressId: number, globalId: string): string => {
+    if (!keySpec) return globalId;
+    const value = authoredKeyValue(store, expressId, keySpec, extractor);
+    if (value === undefined) return globalId;
+    return (authoredOwners.get(value)?.length ?? 0) === 1 ? `${AUTHORED_KEY_PREFIX}${value}` : globalId;
+  };
 
   for (const [typeKey, ids] of store.entityIndex.byType) {
     // Classified once per type rather than once per entity — the geometry
@@ -244,13 +284,16 @@ export function buildModelFingerprints(
       // on every content match, so 'Unknown' would pair a task with an actor.
       const ifcType = source && (!tableType || tableType === 'Unknown') ? type.name : tableType;
       const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay, units);
-      fingerprints.push({
-        key: globalId,
+      const fingerprint: EntityFingerprint<DiffRef> = {
+        key: keyOf(expressId, globalId),
         ifcType,
         dataHash: buildDataFingerprint(input),
         components: buildComponentFingerprints(input),
         ref: expressId,
-      });
+      };
+      const container = spatialContainerPath(store, expressId);
+      if (container !== undefined) fingerprint.container = container;
+      fingerprints.push(fingerprint);
     }
   }
 

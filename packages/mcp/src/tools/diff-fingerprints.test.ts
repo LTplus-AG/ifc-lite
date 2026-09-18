@@ -99,6 +99,7 @@ beforeAll(async () => {
   await load('legacy-head', legacyScheduleModel(guid('NEWM')));
   await load('sched', scheduleModel(guid('OLDT')));
   await load('walls', model(guid('OLDA'), guid('OLDB')));
+  await load('walls-head', model(guid('NEWA'), guid('NEWB')));
   await load('type-tags', typeTagModel());
   await load('rail-types', railTypeModel());
   await load('qty-mm', quantityModel('MILLIMETRE', 2000));
@@ -144,6 +145,27 @@ describe('buildModelFingerprints on an IFC2X3 file', () => {
     expect([...byKey.keys()].sort()).toEqual(
       [guid('PROJ'), guid('STOR'), guid('WALL'), guid('OLDM'), guid('SPGM'), guid('GTTY')].sort(),
     );
+  });
+
+  it('keys on an authored Tag under key_from, so re-GUIDed walls match by key (issue #4955)', async () => {
+    const byContent = await diff({ a: 'walls', b: 'walls-head', by_content: true });
+    expect(byContent.contentDiff?.contentMatchCounts).toEqual({ renamed: 2 });
+
+    const byTag = await diff({ a: 'walls', b: 'walls-head', by_content: true, key_from: 'Tag' });
+    const content = byTag.contentDiff as Record<string, unknown> | null;
+    if (!content) throw new Error('by_content produced no contentDiff');
+    expect(content.keyProperty).toBe('Tag');
+    expect(content.duplicateAuthoredKeys).toEqual([]);
+    expect(content.contentMatchCounts).toEqual({});
+    expect((content.counts as { added: number; deleted: number })).toMatchObject({ added: 0, deleted: 0 });
+  });
+
+  it('refuses a malformed key_from', async () => {
+    const tool = diffTools.find((t) => t.name === 'model_diff');
+    if (!tool) throw new Error('model_diff not registered');
+    await expect(
+      Promise.resolve().then(() => tool.handler({ a: 'walls', b: 'walls-head', by_content: true, key_from: 'AssetId' }, ctx)),
+    ).rejects.toThrow(/key_from/);
   });
 
   it('matches a re-GUIDed IFC2X3 object through the tool surface', async () => {

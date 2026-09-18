@@ -44,12 +44,24 @@ export interface CompareReportRow {
    *  Blank for a group match: the engine reports the group precisely because
    *  it has no evidence for which member pairs with which. */
   matchedGlobalId?: string;
+  /** The authored key the row was compared on (`--key-from` in the CLI, the
+   *  Compare panel's key option), without its `prop:` prefix; absent when the
+   *  row was keyed on its GlobalId (issue #4955). */
+  key?: string;
 }
 
 /** A GlobalId string for a report row: synthetic `missing:` keys (entities
- *  without a resolvable GlobalId) export blank rather than the placeholder. */
+ *  without a resolvable GlobalId) and authored `prop:` keys (issue #4955 —
+ *  not GlobalIds, they go in their own column via {@link exportedAuthoredKey})
+ *  export blank rather than the placeholder. */
 export function exportedGlobalId(key: string | undefined): string {
-  return !key || key.startsWith('missing:') ? '' : key;
+  return !key || key.startsWith('missing:') || key.startsWith('prop:') ? '' : key;
+}
+
+/** The authored key a row was compared on, without its `prop:` prefix; blank
+ *  when the row was keyed on its GlobalId. */
+export function exportedAuthoredKey(key: string | undefined): string {
+  return key && key.startsWith('prop:') ? key.slice('prop:'.length) : '';
 }
 
 /**
@@ -79,6 +91,7 @@ export function contentMatchReportRows(
       const ref = fingerprint.ref;
       rows.push({
         globalId: exportedGlobalId(fingerprint.key),
+        ...(exportedAuthoredKey(fingerprint.key) ? { key: exportedAuthoredKey(fingerprint.key) } : {}),
         name: models.get(ref.modelId)?.ifcDataStore?.entities.getName(ref.localId) || '',
         ifcType: fingerprint.ifcType,
         state: 'matched',

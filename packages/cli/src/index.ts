@@ -29,6 +29,7 @@ import { schemaCommand } from './commands/schema.js';
 import { mergeCommand } from './commands/merge.js';
 import { convertCommand } from './commands/convert.js';
 import { diffCommand } from './commands/diff.js';
+import { rekeyCommand } from './commands/rekey.js';
 import { validateCommand } from './commands/validate.js';
 import { bsddCommand } from './commands/bsdd.js';
 import { statsCommand } from './commands/stats.js';
@@ -96,6 +97,8 @@ const HELP = `
     convert   <file.ifc> --schema VER --out F     Convert between IFC schema versions
     diff      <f1.ifc> <f2.ifc>                   Compare two IFC files
               [--by-content] [--identity-out F] [--identity-in F]  Match re-GUIDed elements by content; save/replay the identity map
+              [--lineage-out F] [--lineage-in F] [--accept F] [--key-from Tag|Pset.Prop]  Lineage for rekeying external data; authored key
+    rekey     <table.csv|json> --lineage F --out F  Carry a table keyed on old element keys across a revision
     validate  <file.ifc>                          Structural validation checks
     bsdd      <class|search|psets|qsets> <arg>     buildingSMART Data Dictionary lookup
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
@@ -174,6 +177,8 @@ const HELP = `
     ifc-lite diff model-v1.ifc model-v2.ifc --by-entity
     ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
     ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
+    ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --lineage-out lineage.json
+    ifc-lite rekey costs.csv --lineage lineage.json --key-column GlobalId --out costs-v2.csv
     ifc-lite validate model.ifc --json
     ifc-lite bsdd class IfcWall
     ifc-lite bsdd search "concrete wall"
@@ -314,6 +319,9 @@ async function main(): Promise<void> {
       break;
     case 'diff':
       await diffCommand(commandArgs);
+      break;
+    case 'rekey':
+      await rekeyCommand(commandArgs);
       break;
     case 'validate':
       await validateCommand(commandArgs);

@@ -58,7 +58,11 @@ import {
 } from '@ifc-lite/diff';
 import { RelationshipType } from '@ifc-lite/data';
 import {
+  EntityExtractor,
+  authoredKeyValue,
   extractAllEntityAttributes,
+  parseAuthoredKeySpec,
+  spatialContainerPath,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
   extractProjectUnits,
@@ -164,7 +168,19 @@ export interface BuildFingerprintsModel {
   geometryVolumesTrusted?: boolean;
   /** This model's federation id offset (0 for the anchor / single-model load). */
   idOffset: number;
+  /**
+   * An authored key to compare on instead of GlobalId (issue #4955): `Tag` or
+   * `<PsetName>.<PropertyName>`. An entity carrying a non-empty, unique value
+   * is keyed `prop:<value>`; every other entity keeps its GlobalId, and a
+   * value two entities share is refused for both (`duplicateAuthoredKeys`).
+   */
+  keyProperty?: string;
+  /** Receives every authored value more than one entity carried. */
+  duplicateAuthoredKeys?: Map<string, number[]>;
 }
+
+/** Prefix on a fingerprint key taken from an authored property rather than a GlobalId. */
+export const AUTHORED_KEY_PREFIX = 'prop:';
 
 /**
  * Build one {@link EntityFingerprint} per compared entity in a model — every
@@ -296,12 +312,33 @@ export async function buildEntityFingerprints(
     }
   }
 
+  // Authored keys are resolved in a first pass so a value two entities share
+  // can be refused for both, instead of the diff's first-wins index quietly
+  // keeping one (issue #4955).
+  const keySpec = model.keyProperty ? parseAuthoredKeySpec(model.keyProperty) : undefined;
+  const authoredKeys = new Map<number, string>();
+  if (keySpec) {
+    const extractor = new EntityExtractor(store.source);
+    const owners = new Map<string, number[]>();
+    for (const localId of geometryByLocalId.keys()) {
+      const value = authoredKeyValue(store, localId, keySpec, extractor);
+      if (value === undefined) continue;
+      const list = owners.get(value);
+      if (list) list.push(localId);
+      else owners.set(value, [localId]);
+    }
+    for (const [value, ids] of owners) {
+      if (ids.length === 1) authoredKeys.set(ids[0], `${AUTHORED_KEY_PREFIX}${value}`);
+      else model.duplicateAuthoredKeys?.set(value, ids);
+    }
+  }
+
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
   let processed = 0;
   for (const [localId, geometryHash] of geometryByLocalId) {
     const ifcType = store.entities.getTypeName(localId) || 'IfcProduct';
     const globalId = store.entities.getGlobalId(localId);
-    const key = globalId || `missing:${modelId}:${localId}`;
+    const key = authoredKeys.get(localId) ?? (globalId || `missing:${modelId}:${localId}`);
 
     // One extraction, two fingerprints. `components` is the collision guard on
     // content matching's destructive path (#1891): retiring a real add+delete
@@ -321,6 +358,10 @@ export async function buildEntityFingerprints(
     // Same rule for the volume, and the same reason: `NaN` was resolved to
     // absent at the wasm boundary, so a number reaching here is a proved one.
     const volume = volumeByLocalId.get(localId);
+    // Where the element sits, as a name path, for the successor stage's
+    // `position` profile (issue #4955). Absent when the store's hierarchy does
+    // not contain it, which the engine reads as "no evidence", never as "moved".
+    const container = spatialContainerPath(store, localId);
 
     fingerprints.push({
       key,
@@ -330,6 +371,7 @@ export async function buildEntityFingerprints(
       geometryHash,
       ...(aabb ? { aabb } : {}),
       ...(volume !== undefined ? { volume } : {}),
+      ...(container !== undefined ? { container } : {}),
       ref: { modelId, localId, globalId: localId + idOffset, meshed: !geometryless.has(localId) },
     });
 

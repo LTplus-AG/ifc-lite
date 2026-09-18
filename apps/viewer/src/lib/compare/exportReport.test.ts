@@ -452,6 +452,26 @@ describe('buildCompareReport content matches (#1891)', () => {
       'NEW_GUID_BBBBBBBBBBBB,,IfcWall,Renamed,,B,renamed,OLD_GUID_AAAAAAAAAAAA',
     );
   });
+
+  it('adds a Key column only when a row was compared on an authored key, and keeps it out of GlobalId (#4955)', () => {
+    const report = buildCompareReport(
+      resultWith([
+        {
+          kind: 'renamed',
+          dataHash: 'd',
+          base: [fingerprint('a', 'prop:AST-0042', 1)],
+          head: [fingerprint('b', 'prop:AST-0042', 2)],
+        },
+      ]),
+      new Map(),
+    );
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(
+      lines[0],
+      'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId,Key',
+    );
+    assert.strictEqual(lines[1], ',,IfcWall,Renamed,,B,renamed,,AST-0042');
+  });
 });
 
 describe('buildCompareReport - a geometry-less product that moved', () => {

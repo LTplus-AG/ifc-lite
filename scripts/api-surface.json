@@ -6409,6 +6409,7 @@
     "waitForOAuthCallback: function"
   ],
   "@ifc-lite/parser": [
+    "AuthoredKeySpec: interface",
     "AutoParseResult: type",
     "BlockStoreCounters: interface",
     "BlockedPayload: interface",
@@ -7539,6 +7540,7 @@
     "addIfcxOverlay: function",
     "asSourceBytes: function",
     "attachDataStoreAccessors: function",
+    "authoredKeyValue: function",
     "buildCompactEntityIndex: function",
     "buildDropCensus: function",
     "buildMaterialUsageIndex: function",
@@ -7616,6 +7618,7 @@
     "mergeInheritedPropertySets: function",
     "mergeInheritedQuantitySets: function",
     "normalizeIfcTypeName: function",
+    "parseAuthoredKeySpec: function",
     "parseAuto: function",
     "parseFederatedIfcx: function",
     "parseIfcx: function",
@@ -7640,6 +7643,7 @@
     "shouldCompressSource: function",
     "sourceBlockStats: function",
     "sourceBytesFromTransferable: function",
+    "spatialContainerPath: function",
     "toStepLine: function",
     "transformToLocal: function",
     "transformToWorld: function",

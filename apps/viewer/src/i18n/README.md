@@ -52,3 +52,11 @@ strip, group names, button labels, tooltips and aria-labels on all six tabs,
 and the ribbon switch notice. Labels owned by shared registries (camera
 commands, exporters, extension panels), the classic `MainToolbar`, and the
 rest of the viewer's panels and dialogs are not converted yet.
+
+The main-toolbar catalogue (#4918 slice 1) covers the classic single-strip
+`MainToolbar`'s own chrome: file operations, the Panels/Edit-properties/View
+options menus' own labels, tool buttons, the selection action cluster, and
+the meta cluster (theme, info). It deliberately does not cover the shared
+command surfaces the ribbon also renders — camera commands, the export menu,
+workspace-panel toggle lists, and the class-visibility body — those are
+slice 2 of the #4918 sweep.

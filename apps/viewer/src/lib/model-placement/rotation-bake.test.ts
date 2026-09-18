@@ -411,6 +411,45 @@ describe('ModelRotationBaker', () => {
       assert.deepEqual(meshSnapshot(next, 0), pristine);
     });
 
+    /**
+     * #4947: only the PRISTINE baseline was re-measured by #4935. At an
+     * unchanged non-zero rotation `reconcile` takes its `equalRotation` fast
+     * path and never calls `applyModelRotation`, so the LIVE
+     * `coordinateInfo.shiftedBounds` — what fit-to-view and the section
+     * calculations read — kept covering the pruned mesh until the angle next
+     * changed.
+     */
+    it('re-measures the LIVE extent at the SAME rotation, so fit-to-view stops covering the pruned mesh (#4947)', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      assert.deepEqual(baker.reconcile(targets(value, SKEW)), ['m']);
+      const next = withoutIds(value, [2]);
+      baker.pruneMeshes(drain([2], [[value, next]]));
+
+      // The angle has not changed, so this must take the unchanged-angle fast
+      // path — if it re-baked, this test would not be exercising the bug.
+      assert.deepEqual(baker.reconcile(targets(next, SKEW)), [],
+        'an unchanged angle must not re-bake (fast-path precondition for this test)');
+
+      // What a fresh model holding only the surviving mesh bakes to at the
+      // same angle: the tight extent the pruned model's live geometry should
+      // now report.
+      const control = new ModelRotationBaker();
+      const soleSurvivor = { ...spread(), meshes: [placedMesh(1, 100, 3)] } as Geometry;
+      control.reconcile(targets(soleSurvivor, SKEW));
+
+      assert.deepEqual(next.coordinateInfo.shiftedBounds, soleSurvivor.coordinateInfo.shiftedBounds,
+        'the live extent still covers the pruned mesh');
+    });
+
+    it('does not touch the live extent when the prune matches nothing in this model', () => {
+      const baker = new ModelRotationBaker(), value = spread();
+      baker.reconcile(targets(value, SKEW));
+      const before = structuredClone(value.coordinateInfo.shiftedBounds);
+      // A federated id range this model does not own.
+      baker.pruneMeshes({ ids: new Set([999]), removes: () => false, replacements: new Map() });
+      assert.deepEqual(value.coordinateInfo.shiftedBounds, before);
+    });
+
     it('does not turn the instanced boxes twice across a prune', () => {
       const baker = new ModelRotationBaker(), value = spread();
       value.instancedGeometryAabbs = instanced([1.37, 0.24, 2.71], [5.19, 3.46, 9.63]);

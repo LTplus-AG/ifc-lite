@@ -68,7 +68,7 @@ import type { GeometryResult, MeshData, Vec3 } from '@ifc-lite/geometry';
 import { applyModelRotation } from './rotation-geometry.js';
 import {
   baselineIsForeign, captureAppendedMeshBaselines, captureRotationBaseline,
-  pruneMeshBaselines, rebaseBaselineByRtcDelta,
+  pruneMeshBaselines, rebaseBaselineByRtcDelta, remeasureLiveBounds,
   type MeshPrune, type RotationBaseline,
 } from './rotation-baseline.js';
 import { equalRotation, isZeroRotation, ZERO_ROTATION, type ModelRotation } from './rotation.js';
@@ -225,10 +225,18 @@ export class ModelRotationBaker {
    * so a model that owns none of them loses nothing.
    *
    * A no-op for an un-rotated model, which has no baseline at all.
+   *
+   * A SURVIVING baseline's LIVE extent is also re-measured here (#4947): the
+   * angle has not changed, so `reconcile`'s `equalRotation` fast path never
+   * runs {@link applyModelRotation} for this model, and the live
+   * `coordinateInfo.shiftedBounds` — what fit-to-view and the section
+   * calculations read — would otherwise keep covering the pruned mesh until
+   * the next angle change. The remaining meshes are already rotated, so this
+   * only re-measures; it does not re-bake.
    */
   pruneMeshes(prune: MeshPrune): void {
     for (const [modelId, entry] of this.entries) {
-      pruneMeshBaselines(entry.geometry, entry.baseline, prune);
+      const pruned = pruneMeshBaselines(entry.geometry, entry.baseline, prune);
       // The prune republishes the geometry as a NEW object. Following it keeps
       // `unbake`'s identity check true across a prune, and keeps
       // `bakedInstanced` pointing at the map the geometry now carries — that
@@ -258,7 +266,13 @@ export class ModelRotationBaker {
       // it, and the re-align would snapshot the ROTATED boxes.
       if (entry.baseline.meshes.size === 0 && !entry.baseline.instancedGeometryAabbs?.size) {
         this.entries.delete(modelId);
+        continue;
       }
+      // The baseline survived: this model is still rotated (an entry with no
+      // baseline left was just deleted above, and `reconcile` never creates
+      // one for a zero angle), so its LIVE vertices are already at
+      // `entry.applied` and only need re-measuring, not re-baking.
+      if (pruned) remeasureLiveBounds(entry.geometry);
     }
   }
 

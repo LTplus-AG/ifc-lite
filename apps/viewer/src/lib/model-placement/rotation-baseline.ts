@@ -210,28 +210,71 @@ export function pruneMeshBaselines(
   return true;
 }
 
-function remeasurePristineBounds(baseline: RotationBaseline, offset: Offset): void {
-  if (!baseline.shiftedBounds) return;
+/** Anything a bounds measurement can grow by: a mesh's own vertices lifted by
+ * its origin, or — for a buffer a bounded-mode release freed — its last known
+ * world box. Shared by {@link MeshBaseline} (the pristine copy) and `MeshData`
+ * (the live mesh), which agree on this much. */
+interface BoundedMesh {
+  positions: Float32Array;
+  origin?: readonly number[] | undefined;
+  geometryAabb?: EntityWorldAabb | undefined;
+}
+
+/** Measure a fresh render-frame box from `meshes` and `instanced`, the same
+ * way a non-zero bake measures the rotated bounds (`applyModelRotation`) —
+ * just after the fact instead of while rotating. Returns null when nothing
+ * measurable was found, so a caller can leave a stale box alone rather than
+ * write back an inverted one. */
+function measureBounds(
+  meshes: Iterable<BoundedMesh>, instanced: ReadonlyMap<number, EntityWorldAabb> | undefined,
+  offset: Offset,
+): NonNullable<RotationBaseline['shiftedBounds']> | null {
   const next = { min: { x: Infinity, y: Infinity, z: Infinity },
     max: { x: -Infinity, y: -Infinity, z: -Infinity } };
-  for (const pristine of baseline.meshes.values()) {
+  for (const mesh of meshes) {
     // A mesh whose buffers a bounded-mode release freed has no vertices to
     // measure, but its entity box still says where it is — the same fallback
     // `applyModelRotation` makes for the rotated bounds.
-    if (pristine.positions.length === 0) {
-      if (pristine.geometryAabb) growNamedBoundsByWorldBox(next, pristine.geometryAabb, offset);
+    if (mesh.positions.length === 0) {
+      if (mesh.geometryAabb) growNamedBoundsByWorldBox(next, mesh.geometryAabb, offset);
       continue;
     }
-    growBoundsByPositions(next, pristine.positions, pristine.origin);
+    growBoundsByPositions(next, mesh.positions, mesh.origin);
   }
   // Instanced-only entities are drawn, so the extent has to contain them too.
-  if (baseline.instancedGeometryAabbs) {
-    for (const box of baseline.instancedGeometryAabbs.values()) {
-      growNamedBoundsByWorldBox(next, box, offset);
-    }
-  }
-  if (!Number.isFinite(next.min.x)) return;
-  baseline.shiftedBounds = next;
+  if (instanced) for (const box of instanced.values()) growNamedBoundsByWorldBox(next, box, offset);
+  return Number.isFinite(next.min.x) ? next : null;
+}
+
+function remeasurePristineBounds(baseline: RotationBaseline, offset: Offset): void {
+  if (!baseline.shiftedBounds) return;
+  const next = measureBounds(baseline.meshes.values(), baseline.instancedGeometryAabbs, offset);
+  if (next) baseline.shiftedBounds = next;
+}
+
+/**
+ * Re-measure a model's LIVE render-frame extent from what its geometry
+ * currently holds (#4947).
+ *
+ * A prune at an unchanged non-zero rotation removes meshes from the LIVE
+ * array too, but nothing else re-measures `geometry.coordinateInfo.shiftedBounds`
+ * for it: `reconcile` only re-bakes on an angle change
+ * (`ModelRotationBaker.reconcile`'s `equalRotation` fast path), and the meshes
+ * that remain are already rotated, so a fresh {@link applyModelRotation} pass
+ * is not owed, just a re-measurement of what is already there. Left alone, the
+ * live extent keeps covering geometry that is gone — what fit-to-view and the
+ * section calculations read — until the user next changes the angle.
+ *
+ * A no-op when nothing measurable is left, so a model whose last mesh was just
+ * pruned reports the extent it last had rather than an inverted one; the
+ * caller drops such a baseline anyway (`ModelRotationBaker.pruneMeshes`).
+ */
+export function remeasureLiveBounds(geometry: Geometry): void {
+  if (!geometry.coordinateInfo.shiftedBounds) return;
+  const offset = totalYupOffset(geometry.coordinateInfo);
+  const next = measureBounds(geometry.meshes, geometry.instancedGeometryAabbs, offset);
+  if (!next) return;
+  geometry.coordinateInfo = { ...geometry.coordinateInfo, shiftedBounds: next };
 }
 
 /**

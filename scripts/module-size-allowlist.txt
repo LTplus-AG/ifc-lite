@@ -73,7 +73,6 @@
   1802 apps/viewer/src/components/viewer/ChatPanel.tsx
   1303 apps/viewer/src/components/viewer/ClashPanel.tsx
    751 apps/viewer/src/components/viewer/CommandPalette.tsx
-   410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
   1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
@@ -134,7 +133,7 @@
    461 apps/viewer/src/hooks/useAnnotation2D.ts
    764 apps/viewer/src/hooks/useBCF.ts
   1358 apps/viewer/src/hooks/useClash.ts
-   482 apps/viewer/src/hooks/useCompare.ts
+   472 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
   1226 apps/viewer/src/hooks/useIDS.ts

@@ -1,0 +1,165 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The Suggestions section on its own (issue #4955): the row cap it shares
+ * with every other section, and the 1:1 pairing a user makes out of an
+ * unresolved group — the decision must carry the candidates the user PICKED,
+ * not the first of each side.
+ */
+
+import '@/test/setup-dom.js';
+import { afterEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { render, click, cleanup } from '@/test/render.js';
+import type { SuggestionDecisions, SuggestionRow } from '@/lib/compare/suggestions';
+import { MAX_ROWS_PER_GROUP } from './changeRow.js';
+import { CompareSuggestions, type SuggestionDecision } from './CompareSuggestions.js';
+
+function successorRows(count: number): SuggestionRow[] {
+  return Array.from({ length: count }, (_, i) => ({
+    key: `suggest:successor:B${i}>H${i}`,
+    kind: 'successor' as const,
+    evidence: 'Replaced · footprint 0.90 · 0.00 m',
+    ifcType: 'IfcWall',
+    name: `Wall ${i}`,
+    crossClass: false,
+    refs: [{ modelId: 'B', localId: i, globalId: 1000 + i }],
+    bases: [{ key: `B${i}`, name: `Wall ${i}`, ifcType: 'IfcWall', ref: { modelId: 'A', localId: i, globalId: i } }],
+    heads: [{ key: `H${i}`, name: `Wall ${i}`, ifcType: 'IfcWall', ref: { modelId: 'B', localId: i, globalId: 1000 + i } }],
+    confidence: 'footprint' as const,
+  }));
+}
+
+const ambiguous: SuggestionRow = {
+  key: 'suggest:ambiguous:0',
+  kind: 'ambiguous',
+  evidence: 'Ambiguous · 2:2',
+  ifcType: 'IfcDoor',
+  name: 'Door',
+  crossClass: false,
+  refs: [],
+  bases: [
+    { key: 'a1', name: 'Door a1', ifcType: 'IfcDoor', ref: { modelId: 'A', localId: 1, globalId: 1 } },
+    { key: 'a2', name: 'Door a2', ifcType: 'IfcDoor', ref: { modelId: 'A', localId: 2, globalId: 2 } },
+  ],
+  heads: [
+    { key: 'b1', name: 'Door b1', ifcType: 'IfcDoor', ref: { modelId: 'B', localId: 1, globalId: 1001 } },
+    { key: 'b2', name: 'Door b2', ifcType: 'IfcDoor', ref: { modelId: 'B', localId: 2, globalId: 1002 } },
+  ],
+};
+
+const none: SuggestionDecisions = { accepted: [], rejected: new Set<string>() };
+
+function mount(rows: SuggestionRow[], handlers: Partial<{ onAccept: (d: SuggestionDecision) => void; onReject: (d: SuggestionDecision) => void; onFocusGroup: (r: SuggestionRow[]) => void }> = {}, decided: SuggestionDecisions = none) {
+  return render(
+    <CompareSuggestions
+      rows={rows}
+      selectedKey={null}
+      decisions={decided}
+      onFocus={() => {}}
+      onFocusGroup={handlers.onFocusGroup ?? (() => {})}
+      onAccept={handlers.onAccept ?? (() => {})}
+      onReject={handlers.onReject ?? (() => {})}
+    />,
+  );
+}
+
+function buttons(container: HTMLElement, text: string): HTMLButtonElement[] {
+  return [...container.querySelectorAll('button')].filter((b) => b.textContent?.trim() === text) as HTMLButtonElement[];
+}
+
+function select(el: HTMLSelectElement, value: string): void {
+  act(() => {
+    el.value = value;
+    el.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+}
+
+afterEach(cleanup);
+
+describe('CompareSuggestions - row cap', () => {
+  it('caps the rendered rows and reports the remainder, while the header keeps the full count', () => {
+    let selected: SuggestionRow[] = [];
+    const container = mount(successorRows(MAX_ROWS_PER_GROUP + 3), { onFocusGroup: (r) => { selected = r; } });
+    assert.strictEqual(buttons(container, 'Accept').length, MAX_ROWS_PER_GROUP);
+    assert.ok(container.textContent?.includes('+3 more not shown'));
+    const header = container.querySelector('button')!;
+    assert.ok(header.textContent?.includes(`(${MAX_ROWS_PER_GROUP + 3})`), header.textContent ?? '');
+    click(header);
+    assert.strictEqual(selected.length, MAX_ROWS_PER_GROUP + 3);
+  });
+});
+
+describe('CompareSuggestions - pairing out of an unresolved group', () => {
+  it('Accept carries the candidates the user picked, not the first of each side', () => {
+    const decisions: SuggestionDecision[] = [];
+    const container = mount([ambiguous], { onAccept: (d) => decisions.push(d) });
+    const [inA, inB] = [...container.querySelectorAll('select')] as HTMLSelectElement[];
+    assert.ok(inA && inB, 'one picker per side for a 2:2 group');
+    select(inA, 'a2');
+    select(inB, 'b1');
+    click(buttons(container, 'Accept')[0]);
+    assert.deepEqual(decisions.map((d) => [d.base, d.here]), [['a2', 'b1']]);
+  });
+
+  it('Not the same carries the picked pair too, and a decided pair cannot be decided again', () => {
+    const decisions: SuggestionDecision[] = [];
+    const container = mount([ambiguous], { onReject: (d) => decisions.push(d) }, { accepted: [], rejected: new Set(['a1\u0000b1']) });
+    // The default pick (a1, b1) is already refused: both buttons are disabled.
+    assert.ok(buttons(container, 'Accept')[0].disabled);
+    assert.ok(container.textContent?.includes('decided'));
+    const [, inB] = [...container.querySelectorAll('select')] as HTMLSelectElement[];
+    select(inB, 'b2');
+    assert.ok(!buttons(container, 'Accept')[0].disabled, 'an open pair re-enables the actions');
+    click(buttons(container, 'Not the same')[0]);
+    assert.deepEqual(decisions.map((d) => [d.base, d.here]), [['a1', 'b2']]);
+  });
+
+  it('after an acceptance drops a row, the next row keeps its OWN picked pair (review find 1)', () => {
+    // Two successor rows; the user accepts the first, the re-diff drops it and
+    // the list re-renders with the second alone. Under a position key React
+    // would reuse the first row's `SuggestionActions` state for the second:
+    // its picked pair (B0, H0) is the accepted one, `pairIsOpen` says no, and
+    // the second row's Accept / Not the same are dead.
+    const [first, second] = successorRows(2);
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const decisions: SuggestionDecision[] = [];
+    const draw = (rows: SuggestionRow[], decided: SuggestionDecisions) =>
+      act(() => {
+        root.render(
+          <CompareSuggestions
+            rows={rows}
+            selectedKey={null}
+            decisions={decided}
+            onFocus={() => {}}
+            onFocusGroup={() => {}}
+            onAccept={(d) => decisions.push(d)}
+            onReject={() => {}}
+          />,
+        );
+      });
+    try {
+      draw([first, second], none);
+      draw([second], { accepted: [{ base: 'B0', here: 'H0', reason: 'successor:footprint' }], rejected: new Set() });
+      const accept = buttons(container, 'Accept')[0];
+      assert.ok(accept && !accept.disabled, 'the surviving row must still be decidable');
+      click(accept);
+      assert.deepEqual(decisions.map((d) => [d.base, d.here]), [['B1', 'H1']]);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('a successor row has no pickers: it is exactly one pair', () => {
+    const container = mount(successorRows(1));
+    assert.strictEqual(container.querySelectorAll('select').length, 0);
+    assert.strictEqual(buttons(container, 'Accept').length, 1);
+  });
+});

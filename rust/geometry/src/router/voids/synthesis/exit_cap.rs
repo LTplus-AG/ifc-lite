@@ -19,7 +19,15 @@
 
 use super::super::geom::{mesh_point, point_inside_mesh_agreed, project_aabb_in_frame};
 use super::super::{OpeningFrame, NORMALIZE_EPSILON};
-use crate::{coord_is_large, Mesh, Point3, Vector3};
+// Re-exported (not just imported) so `exit_cap::any_vertex_is_large` and
+// `exit_cap::EXIT_CAP_FAR_FIELD_THRESHOLD_METERS` keep resolving for
+// `synthesis_tests.rs`, which reaches this constant through the `exit_cap`
+// path rather than `exit_cap_far_field` directly. The constant itself is
+// test-only from here (production reads it only inside `any_vertex_is_large`).
+pub(in crate::router::voids) use super::exit_cap_far_field::any_vertex_is_large;
+#[cfg(test)]
+pub(in crate::router::voids) use super::exit_cap_far_field::EXIT_CAP_FAR_FIELD_THRESHOLD_METERS;
+use crate::{Mesh, Point3, Vector3};
 
 /// A facet counts as parallel to a cap at |n·d| ≥ this. 0.985 ≈ 10°: absorbs
 /// the ~0.1° facet scatter and a tilted roof's wobble without admitting a
@@ -247,17 +255,6 @@ impl ExitCaps {
     pub fn max_moves(&self) -> bool {
         !matches!(self.max, Cap::Free)
     }
-}
-
-/// True when any stored vertex coordinate of `host` is past the shared
-/// large-coordinate threshold, by the shared comparison. This site compared
-/// against the constant directly, and with `>=`, so exactly 10 000 m was
-/// far-field here and small in the RTC detector, the needs-shift verdict and
-/// the bounds fallback; `coord_is_large` is the one home its own doc names
-/// (#4611). `chunks(3)` pads a ragged tail rather than dropping it.
-pub(super) fn any_vertex_is_large(host: &Mesh) -> bool {
-    let at = |c: &[f32], i: usize| c.get(i).copied().unwrap_or(0.0) as f64;
-    host.positions.chunks(3).any(|c| coord_is_large((at(c, 0), at(c, 1), at(c, 2))))
 }
 
 /// Classify each cap of the cutter against the host.

@@ -820,24 +820,18 @@ DATA;
     }
 }
 
-/// #4611: the exit-cap far-field suppression draws its 10 km line where
-/// `ifc_lite_core::limits::coord_is_large` draws it.
-///
-/// `LARGE_COORD_THRESHOLD_METERS`' own doc says to prefer `coord_is_large`
-/// "so the comparison (strictly greater, any axis, absolute value) also has
-/// one home". This site compared `>=` against the constant directly, so a host
-/// whose farthest vertex sits exactly at 10 000 m was far-field here and small
-/// everywhere else in the tree - the RTC detector, the needs-shift verdict, the
-/// bounds fallback. One coordinate, two answers.
-///
-/// The direction matters for what it costs: far-field SUPPRESSES the exit-cap
-/// veto, so the `>=` side withheld a clearance push on a host the rest of the
-/// codebase calls perfectly representable (f32 spacing at 10 km is about 1 mm,
-/// which is the precision this guard exists to protect and is nowhere near
-/// bitten yet).
+/// #4611 unified this site's far-field cutoff with
+/// `ifc_lite_core::limits::coord_is_large` after finding a `>=`-vs-`>`
+/// mismatch (a host vertex at exactly 10 000 m was far-field here and small
+/// everywhere else). #4934 then lowered that SHARED constant from 10 km to
+/// 1 km for an unrelated reason (closing the RTC re-basing gap on 1-10 km
+/// survey-grid sites) and deliberately did NOT move this cutoff with it: see
+/// `EXIT_CAP_FAR_FIELD_THRESHOLD_METERS`'s doc in `exit_cap.rs` for why the
+/// two must diverge. This module now pins exit_cap's OWN constant, not the
+/// shared one, so it stops moving if the RTC gate moves again.
 mod issue_4611_far_field_threshold {
     use super::*;
-    use ifc_lite_core::limits::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
+    use exit_cap::EXIT_CAP_FAR_FIELD_THRESHOLD_METERS as THRESHOLD;
 
     fn host_with_vertex(p: [f64; 3]) -> Mesh {
         let mut m = Mesh::new();
@@ -850,33 +844,42 @@ mod issue_4611_far_field_threshold {
 
     #[test]
     fn a_vertex_exactly_at_the_threshold_is_not_far_field() {
-        let at = LARGE_COORD_THRESHOLD_METERS;
-        // The premise, so this test cannot pass by the shared predicate moving
-        // instead of this site: the rest of the tree calls this coordinate small.
-        assert!(!coord_is_large((at, 0.0, 0.0)), "premise: 10 km exactly is not large");
         assert!(
-            !exit_cap::any_vertex_is_large(&host_with_vertex([at, 0.0, 0.0])),
-            "a host vertex at exactly {at} m must be judged the way coord_is_large judges it"
+            !exit_cap::any_vertex_is_large(&host_with_vertex([THRESHOLD, 0.0, 0.0])),
+            "a host vertex at exactly {THRESHOLD} m must not be far-field (strict >)"
         );
     }
 
     #[test]
     fn a_vertex_past_the_threshold_is_far_field_on_any_axis_and_either_sign() {
-        let past = LARGE_COORD_THRESHOLD_METERS + 0.5;
+        let past = THRESHOLD + 0.5;
         for v in [[past, 0.0, 0.0], [0.0, -past, 0.0], [0.0, 0.0, past]] {
-            assert!(coord_is_large((v[0], v[1], v[2])), "premise: {v:?} is large");
             assert!(
                 exit_cap::any_vertex_is_large(&host_with_vertex(v)),
-                "{v:?} must suppress the veto, as it does everywhere else"
+                "{v:?} must suppress the veto"
             );
         }
     }
 
     #[test]
     fn a_host_entirely_inside_the_threshold_is_not_far_field() {
-        let inside = LARGE_COORD_THRESHOLD_METERS * 0.5;
+        let inside = THRESHOLD * 0.5;
         assert!(!exit_cap::any_vertex_is_large(&host_with_vertex([
             inside, -inside, inside
         ])));
+    }
+
+    /// #4934 regression guard: a host at 5 km sits PAST the new RTC gate
+    /// (1 km) but under exit_cap's own retained 10 km cutoff, so this must
+    /// classify identically before and after #4934 lowered the RTC gate — a
+    /// 5 km host is a stand-in for the un-rebased multi-building/corridor
+    /// case the review flagged (median translation near the origin, a valid
+    /// host 1-10 km away).
+    #[test]
+    fn a_5km_host_is_unchanged_by_the_lowered_rtc_gate() {
+        assert!(
+            !exit_cap::any_vertex_is_large(&host_with_vertex([5_000.0, 0.0, 0.0])),
+            "5 km must stay under exit_cap's own 10 km cutoff regardless of the RTC gate's value"
+        );
     }
 }

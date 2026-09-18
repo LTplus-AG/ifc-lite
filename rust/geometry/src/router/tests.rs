@@ -543,6 +543,76 @@ END-ISO-10303-21;
         }
     }
 
+    /// #4934 review: a placement exactly AT `LARGE_COORD_THRESHOLD_METERS`
+    /// (1000 m) used to read as "not near origin" under a strict `< 1000`
+    /// gate on the vertex-probe condition, fall through UNPROBED, and then
+    /// read as `Small` under `coord_is_large`'s strict `> 1000` — a one-vote
+    /// blind spot at the exact boundary. The gate now reuses `coord_is_large`
+    /// itself (`!coord_is_large(placement)`), so a placement exactly at the
+    /// threshold still probes its geometry, and a body vertex that pushes the
+    /// world position past the threshold is caught.
+    fn boundary_placement_model_ifc() -> String {
+        r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition[CoordinationView]'),'2;1');
+FILE_NAME('boundary.ifc','2026-09-18T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('3A_FOM1U13fh337NmQeVRd',$,'TestProject','',$,$,$,(#12),#7);
+#7=IFCUNITASSIGNMENT((#8));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#12=IFCGEOMETRICREPRESENTATIONCONTEXT('3D','Model',3,1.E-6,#14,$);
+#13=IFCLOCALPLACEMENT($,#14);
+#14=IFCAXIS2PLACEMENT3D(#15,#16,#17);
+#15=IFCCARTESIANPOINT((1000.,0.,0.));
+#16=IFCDIRECTION((0.,0.,1.));
+#17=IFCDIRECTION((1.,0.,0.));
+#42=IFCBUILDINGELEMENTPROXY('2JJeX0xY93XxwyMxv0upiL',$,'AtBoundary','AtBoundary','AtBoundary',#13,#43,$,.USERDEFINED.);
+#43=IFCPRODUCTDEFINITIONSHAPE($,$,(#44));
+#44=IFCSHAPEREPRESENTATION(#12,'Body','Brep',(#100));
+#100=IFCFACETEDBREP(#101);
+#101=IFCCLOSEDSHELL((#102));
+#102=IFCFACE((#103));
+#103=IFCFACEOUTERBOUND(#104,.T.);
+#104=IFCPOLYLOOP((#110,#111,#112));
+#110=IFCCARTESIANPOINT((500.,0.,0.));
+#111=IFCCARTESIANPOINT((500.,1.,0.));
+#112=IFCCARTESIANPOINT((500.,0.,1.));
+ENDSEC;
+END-ISO-10303-21;
+"#
+        .to_string()
+    }
+
+    #[test]
+    fn a_placement_exactly_at_the_threshold_still_probes_its_geometry() {
+        let content = boundary_placement_model_ifc();
+        let entity_index = ifc_lite_core::build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, entity_index);
+        let router = GeometryRouter::with_units(&content, &mut decoder);
+
+        // Premise: the placement translation alone sits exactly at the
+        // threshold and is judged NOT large by the shared predicate.
+        assert!(
+            !crate::coord_is_large((1000.0, 0.0, 0.0)),
+            "premise: 1000 m exactly is not large"
+        );
+
+        let verdict = router.detect_rtc_offset_for_file(content.as_bytes(), &mut decoder);
+        let Some(ifc_lite_core::RtcVerdict::Large { anchor }) = verdict else {
+            panic!(
+                "a placement exactly at the threshold with a body vertex past it must \
+                 still be detected Large, got {verdict:?}"
+            );
+        };
+        assert!(
+            (anchor.0 - 1500.0).abs() < 1.0,
+            "anchor should read the probed world vertex (~1500 m), got {:.1}",
+            anchor.0
+        );
+    }
+
     /// Two infrastructure models from the same project should produce consistent
     /// RTC offsets that enable correct federation alignment.
     #[test]

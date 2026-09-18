@@ -308,8 +308,13 @@ export function matchClassificationRule(
   if (rule.op === 'isNotSet') return scoped.length === 0;
 
   // Value ops — match against identification (code) and name of each ref.
+  // `unresolved` (server-parsed, no source bytes — #3948) means UNKNOWN, not
+  // ABSENT: excluded from candidates entirely, same as before #4930, so it
+  // can't flip a negative op false->true. Only a RESOLVED ref's genuinely
+  // `$` identification/name contributes a real `undefined` candidate.
   const candidates: (string | undefined)[] = [];
   for (const r of scoped) {
+    if (r.unresolved) continue;
     candidates.push(r.identification);
     candidates.push(r.name);
   }

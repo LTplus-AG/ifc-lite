@@ -42,6 +42,17 @@ const SECRET_PATTERNS = [/sk-ant-[A-Za-z0-9_-]+/g, /sk-or-[A-Za-z0-9_-]+/g];
  * Every env value worth treating as a secret: name matches the secret-name
  * pattern, and the value is non-trivial (a one- or two-character value is
  * never a real credential and would just mangle unrelated short substrings).
+ * The floor is 3 characters, not 6: a short-but-real credential echoed by the
+ * CLI is still a credential, and the old 6-char floor let a 4- or 5-character
+ * secret through unredacted.
+ *
+ * STORED TRIMMED, with the untrimmed original ALSO stored when it differs.
+ * `gh secret set` and friends store a trailing newline, so the value actually
+ * sitting in `process.env` can be the credential PLUS whitespace; searching
+ * only for the trimmed form would miss that exact, untrimmed text if it is
+ * ever echoed verbatim (the trimmed form still catches the common case where
+ * the echo itself has been trimmed).
+ *
  * Sorted longest-first so a value that is a PREFIX of another value already
  * in the list is still fully covered by its own, longer replacement pass.
  */
@@ -49,9 +60,11 @@ export function collectSecretEnvValues(env = process.env) {
   const values = [];
   for (const [name, value] of Object.entries(env ?? {})) {
     if (typeof value !== 'string') continue;
+    if (!SECRET_ENV_NAME_RE.test(name)) continue;
     const trimmed = value.trim();
-    if (trimmed.length < 6) continue;
-    if (SECRET_ENV_NAME_RE.test(name)) values.push(value);
+    if (trimmed.length < 3) continue;
+    values.push(trimmed);
+    if (value !== trimmed) values.push(value);
   }
   return [...new Set(values)].sort((a, b) => b.length - a.length);
 }

@@ -47,14 +47,32 @@ test('redacts sk-ant- and sk-or- shaped tokens by pattern even with no matching 
   assert.equal(out, 'key is [redacted] and [redacted]');
 });
 
-test('collectSecretEnvValues excludes non-string and empty-ish values', () => {
+test('collectSecretEnvValues excludes non-string and 1-2 char values, but not everything short', () => {
   const values = collectSecretEnvValues({
     API_KEY: 'a-real-secret-value',
     EMPTY_TOKEN: '',
-    SHORT_KEY: 'abcd',
+    SHORT_KEY: 'ab',
     NUMERIC_TOKEN: undefined,
   });
   assert.deepEqual(values, ['a-real-secret-value']);
+});
+
+test('a 4-character credential is redacted, no longer excluded by the old 6-char floor', () => {
+  const env = { SHORT_TOKEN: 'a1b2' };
+  assert.deepEqual(collectSecretEnvValues(env), ['a1b2']);
+  assert.equal(redactSecrets('prefix a1b2 suffix', { env }), 'prefix [redacted] suffix');
+});
+
+test('a credential echoed with a trailing newline is redacted both trimmed and untrimmed', () => {
+  const env = { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-real-value\n' };
+  // The trimmed form is stored...
+  assert.ok(collectSecretEnvValues(env).includes('sk-ant-oat01-real-value'));
+  // ...and so is the untrimmed original, since it differs.
+  assert.ok(collectSecretEnvValues(env).includes('sk-ant-oat01-real-value\n'));
+  assert.equal(
+    redactSecrets('trimmed: sk-ant-oat01-real-value untrimmed: sk-ant-oat01-real-value\n end', { env }),
+    'trimmed: [redacted] untrimmed: [redacted] end',
+  );
 });
 
 test('handles null/undefined input without throwing, matching the sanitizers convention of an empty string', () => {

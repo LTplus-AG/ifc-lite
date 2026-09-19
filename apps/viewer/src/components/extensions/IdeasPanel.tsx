@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { PlanCard } from './PlanCard';
 import { toast } from '@/components/ui/toast';
 import { HelpHint } from './HelpHint';
@@ -41,6 +42,7 @@ interface IdeasPanelProps {
 }
 
 export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
+  const { t } = useTranslation();
   const host = useExtensionHost();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -94,7 +96,7 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
           `// Answer the follow-ups and the generated handler will land here.\n`,
       );
     }
-    toast.success(`Sent "${idea.plan.summary}" to chat — answer follow-ups to refine.`);
+    toast.success(t('extensionsPanels.ideasPanel.sentToChatToast', { summary: idea.plan.summary }));
   };
 
   /** Power-user path: open the PlanCard with the starter pre-filled. */
@@ -138,7 +140,7 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
     queueChatPrompt(buildAuthoringPrompt(plan));
     setChatPanelVisible(true);
     setScriptPanelVisible(true);
-    toast.success(`Routing "${plan.summary}" to the AI assistant…`);
+    toast.success(t('extensionsPanels.ideasPanel.routingToChatToast', { summary: plan.summary }));
   };
 
   if (draft) {
@@ -158,34 +160,32 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Lightbulb className="h-4 w-4" />
-          <h2 className="text-sm font-semibold">Ideas</h2>
+          <h2 className="text-sm font-semibold">{t('extensionsPanels.ideasPanel.title')}</h2>
           {event && (
             <span className="text-[11px] text-muted-foreground">
-              {patterns.length} {patterns.length === 1 ? 'suggestion' : 'suggestions'}
-              {' · '}
-              {event.eventCount} events
+              {t('extensionsPanels.ideasPanel.suggestionsSummary', {
+                count: patterns.length,
+                events: event.eventCount,
+              })}
             </span>
           )}
-          <HelpHint label="Ideas">
+          <HelpHint label={t('extensionsPanels.ideasPanel.helpLabel')}>
             <p>
-              <strong>Curated starter ideas</strong> show what
-              one-click tools you can build today.
+              <strong>{t('extensionsPanels.ideasPanel.helpCuratedBold')}</strong>{' '}
+              {t('extensionsPanels.ideasPanel.helpCuratedBody')}
             </p>
             <p>
-              <strong>Recurring suggestions</strong> appear once a
-              workflow shows up repeatedly in your local activity log
-              (model loads, lens applies, exports). Thresholds relax
-              while the log is sparse so something appears early;
-              tightens as data accumulates.
+              <strong>{t('extensionsPanels.ideasPanel.helpRecurringBold')}</strong>{' '}
+              {t('extensionsPanels.ideasPanel.helpRecurringBody')}
             </p>
             <p>
-              Click <strong>Try it</strong> to send the idea to the AI
-              chat assistant — chat opens and you answer follow-ups.
-              Click <strong>Customize plan first…</strong> if you want
-              to prune capabilities or rename the command before chat
-              sees it.
+              {t('extensionsPanels.ideasPanel.helpClickPrefix')}{' '}
+              <strong>{t('extensionsPanels.ideasPanel.tryItButton')}</strong>{' '}
+              {t('extensionsPanels.ideasPanel.helpTryItMid')}{' '}
+              <strong>{t('extensionsPanels.ideasPanel.customizePlanLink')}</strong>{' '}
+              {t('extensionsPanels.ideasPanel.helpCustomizeRest')}
             </p>
-            <p>The action log is local. Nothing here leaves your device.</p>
+            <p>{t('extensionsPanels.ideasPanel.helpPrivacy')}</p>
           </HelpHint>
         </div>
         <Button
@@ -195,15 +195,15 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
             const next = host.miner.fireNow();
             setEvent({ ...next });
           }}
-          aria-label="Re-mine now"
+          aria-label={t('extensionsPanels.ideasPanel.remineAriaLabel')}
         >
           <Sparkles className="mr-1 h-3.5 w-3.5" />
-          Re-mine
+          {t('extensionsPanels.ideasPanel.remineButton')}
         </Button>
       </div>
 
       <div className="border-b px-4 py-2 text-xs text-muted-foreground">
-        Recurring sequences in your local activity log. Nothing here leaves your device.
+        {t('extensionsPanels.ideasPanel.footerPrivacy')}
       </div>
 
       <ScrollArea className="flex-1">
@@ -211,7 +211,7 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
         {patterns.length > 0 && (
           <div>
             <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
-              Recurring in your activity
+              {t('extensionsPanels.ideasPanel.recurringHeading')}
             </div>
             <ul className="divide-y">
               {patterns.map((pattern, i) => (
@@ -231,22 +231,23 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
                         ))}
                       </div>
                       <div className="mt-1 text-[11px] text-muted-foreground">
-                        {pattern.occurrences}× across {pattern.sessionsTouched}{' '}
-                        {pattern.sessionsTouched === 1 ? 'session' : 'sessions'}
-                        {' · last '}
-                        {new Date(pattern.lastSeenAt).toLocaleString()}
-                        {' · score '}
-                        {pattern.score.toFixed(2)}
+                        {t('extensionsPanels.ideasPanel.occurrenceSummary', {
+                          count: pattern.sessionsTouched,
+                          occurrences: pattern.occurrences,
+                          sessions: pattern.sessionsTouched,
+                          date: new Date(pattern.lastSeenAt).toLocaleString(),
+                          score: pattern.score.toFixed(2),
+                        })}
                       </div>
                     </div>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleAcceptMined(pattern)}
-                      aria-label="Author one-click tool from pattern"
+                      aria-label={t('extensionsPanels.ideasPanel.acceptMinedAriaLabel')}
                     >
                       <Wrench className="mr-1 h-3.5 w-3.5" />
-                      Author it
+                      {t('extensionsPanels.ideasPanel.authorItButton')}
                     </Button>
                   </div>
                 </li>
@@ -261,7 +262,9 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
             as personalised suggestions. */}
         <div>
           <div className="px-4 pt-4 pb-1 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
-            {patterns.length === 0 ? 'Try one of these to get started' : 'Examples — common AEC tools'}
+            {patterns.length === 0
+              ? t('extensionsPanels.ideasPanel.gettingStartedEmpty')
+              : t('extensionsPanels.ideasPanel.gettingStartedExamples')}
           </div>
           <ul className="divide-y">
             {STARTER_IDEAS.map((idea) => (
@@ -283,18 +286,18 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
                       onClick={() => handleCustomizeStarter(idea)}
                       className="mt-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
                     >
-                      Customize plan first…
+                      {t('extensionsPanels.ideasPanel.customizePlanLink')}
                     </button>
                   </div>
                   <Button
                     size="sm"
                     onClick={() => handleAcceptStarter(idea)}
-                    aria-label={`Send "${idea.plan.summary}" to chat`}
-                    title="Sends a plan-based prompt to the AI chat assistant. Opens the chat panel."
+                    aria-label={t('extensionsPanels.ideasPanel.sendToChatAriaLabel', { summary: idea.plan.summary })}
+                    title={t('extensionsPanels.ideasPanel.sendToChatTitle')}
                     className="shrink-0"
                   >
                     <MessageSquarePlus className="mr-1 h-3.5 w-3.5" />
-                    Try it
+                    {t('extensionsPanels.ideasPanel.tryItButton')}
                   </Button>
                 </div>
               </li>
@@ -313,11 +316,10 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
             onClick={handleAuthorFromScratch}
           >
             <MessageSquarePlus className="mr-2 h-3.5 w-3.5" />
-            Author an extension from scratch
+            {t('extensionsPanels.ideasPanel.authorFromScratchButton')}
           </Button>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Open an empty plan. Fill in what you want, then approve →
-            chat AI assembles the bundle.
+            {t('extensionsPanels.ideasPanel.authorFromScratchBody')}
           </p>
         </div>
       </ScrollArea>

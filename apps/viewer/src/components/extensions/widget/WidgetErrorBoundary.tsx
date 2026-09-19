@@ -31,6 +31,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 interface WidgetErrorBoundaryProps {
   /** Human-readable identifier used in the fallback (`extensionId` or `commandId`). */
@@ -59,20 +60,31 @@ export class WidgetErrorBoundary extends Component<
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
-    return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs">
-        <div className="flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <div className="font-medium text-destructive">
-              {this.props.label} crashed while rendering
-            </div>
-            <div className="text-muted-foreground mt-0.5 font-mono break-words">
-              {error.message}
-            </div>
+    return <WidgetCrashFallback label={this.props.label} message={error.message} />;
+  }
+}
+
+/**
+ * The fallback UI as its own function component: `WidgetErrorBoundary`
+ * itself must stay a class (React only recognizes class components as
+ * error boundaries), but hooks — `useTranslation` here — only work in
+ * function components. Same split `ChunkErrorBoundary` uses.
+ */
+function WidgetCrashFallback({ label, message }: { label: string; message: string }): ReactNode {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <div className="font-medium text-destructive">
+            {t('extensionsPanels.widgetErrorBoundary.crashed', { label })}
+          </div>
+          <div className="text-muted-foreground mt-0.5 font-mono break-words">
+            {message}
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 }

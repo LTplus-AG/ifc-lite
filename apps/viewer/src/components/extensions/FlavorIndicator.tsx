@@ -17,12 +17,14 @@ import { useEffect, useState } from 'react';
 import { Palette } from 'lucide-react';
 import type { Flavor } from '@ifc-lite/extensions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { useTranslation } from '@/i18n';
 
 interface FlavorIndicatorProps {
   onClick?: () => void;
 }
 
 export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
+  const { t } = useTranslation();
   const host = useOptionalExtensionHost();
   const [flavor, setFlavor] = useState<Flavor | undefined>();
 
@@ -49,7 +51,7 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
 
   if (!host) return null;
 
-  const label = flavor?.name ?? 'Default';
+  const label = flavor?.name ?? t('extensionsFlavors.flavorIndicator.defaultLabel');
   // Slightly more emphasised treatment than the surrounding status
   // bar items so the entry to the flavor system is visible without
   // an animated walkthrough. Bordered chip + foreground text on
@@ -60,13 +62,16 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
       onClick={onClick}
       aria-label={
         flavor
-          ? `Active flavor: ${flavor.name}. Click to manage flavors.`
-          : 'No active flavor. Click to manage flavors.'
+          ? t('extensionsFlavors.flavorIndicator.activeAriaLabel', { name: flavor.name })
+          : t('extensionsFlavors.flavorIndicator.inactiveAriaLabel')
       }
       title={
         flavor
-          ? `Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: ${flavor.name}${flavor.description ? `\n${flavor.description}` : ''}\nClick to switch / export / import / merge.`
-          : 'Flavors — switchable profiles of your extensions, lenses, and settings.\nClick to manage.'
+          ? t('extensionsFlavors.flavorIndicator.activeTitle', {
+              name: flavor.name,
+              description: flavor.description ? `\n${flavor.description}` : '',
+            })
+          : t('extensionsFlavors.flavorIndicator.inactiveTitle')
       }
       className={
         flavor

@@ -1,0 +1,192 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+
+/**
+ * The extensions/flavors surface's own chrome (#4918 sweep):
+ * `FlavorListView`, `ExtensionsPanel`, `FlavorDialog`, `FlavorMergeDialog`,
+ * `FlavorImportPreview`, `FlavorIndicator`, `HelpHint`, `BundlePreview`,
+ * `ExtensionDockHost`, `ExtensionExportSlot`, `ExtensionToolbarSlot`.
+ *
+ * Deliberately NOT covered — runtime/extension-contributed content, not a
+ * literal authored in this repo:
+ *  - `flavor.name` / `flavor.description` (user-authored flavor metadata)
+ *  - installed extension `record.id` / `record.version` / capability ids
+ *  - `contribution.payload.title` / `.name` (extension manifest strings,
+ *    `ExtensionDockHost` tab titles, `ExtensionExportSlot` exporter names,
+ *    `ExtensionToolbarSlot` command titles)
+ *  - bundle file paths / source text (`BundlePreview`)
+ *
+ * Also out of scope: `toast.success/error(...)` and `confirm(...)` calls in
+ * `FlavorDialog.tsx` / `FlavorMergeDialog.tsx` / `ExtensionsPanel.tsx` /
+ * `ExtensionExportSlot.tsx` — imperative strings passed to a function call,
+ * not JSX text/attributes, so outside `check-i18n-literals.mjs`'s AST walk
+ * (JsxText / JsxExpression-in-child-position / the policed attribute set).
+ * A later slice can catalogue those once the gate covers them.
+ *
+ * Multi-paragraph `HelpHint` bodies (`ExtensionsPanel`, `FlavorDialog`) are
+ * flattened to plain sentences rather than kept as `<strong>`-styled
+ * fragments: per the i18n README, a translator gets one complete message
+ * per paragraph instead of assembling bolded words back into a sentence.
+ */
+export const extensionsFlavorsEn = {
+  // ── FlavorListView ──
+  'extensionsFlavors.flavorListView.intro':
+    'Flavors bundle your extensions, lenses, queries, clash rules, and layout. Switch to isolate experiments; export to share or back up.',
+  'extensionsFlavors.flavorListView.saveCurrentAriaLabel': 'Save current setup as a new flavor',
+  'extensionsFlavors.flavorListView.createNewAriaLabel': 'Create a new empty flavor',
+  'extensionsFlavors.flavorListView.saveCurrentLabel': 'Save current as flavor',
+  'extensionsFlavors.flavorListView.newFlavorLabel': 'New flavor',
+  'extensionsFlavors.flavorListView.importButton': 'Import',
+  'extensionsFlavors.flavorListView.resetTitle': 'Recreate the Default baseline flavor',
+  'extensionsFlavors.flavorListView.resetButton': 'Reset',
+  'extensionsFlavors.flavorListView.nameSnapshotLabel': {
+    one: 'Name this flavor (will snapshot {count} lens)',
+    other: 'Name this flavor (will snapshot {count} lenses)',
+  },
+  'extensionsFlavors.flavorListView.nameEmptyLabel': 'Name this new empty flavor',
+  'extensionsFlavors.flavorListView.placeholderSnapshot': 'Cost estimating',
+  'extensionsFlavors.flavorListView.placeholderEmpty': 'Empty workspace',
+  'extensionsFlavors.flavorListView.switchToEmptyTitle': 'Switch to empty flavor',
+  'extensionsFlavors.flavorListView.switchToSnapshotTitle': 'Switch to snapshot of current state',
+  'extensionsFlavors.flavorListView.modeLabelSnapshot': 'snapshot',
+  'extensionsFlavors.flavorListView.modeLabelEmpty': 'empty',
+  'extensionsFlavors.flavorListView.createButton': 'Create',
+  'extensionsFlavors.flavorListView.cancelButton': 'Cancel',
+  'extensionsFlavors.flavorListView.emptyState':
+    'No flavors yet. Click {newFlavor} above, {reset} for the baseline, or {import} a .iflv.',
+  'extensionsFlavors.flavorListView.saveNameAriaLabel': 'Save name',
+  'extensionsFlavors.flavorListView.cancelRenameAriaLabel': 'Cancel rename',
+  'extensionsFlavors.flavorListView.renameAriaLabel': 'Rename {name}',
+  'extensionsFlavors.flavorListView.clickToRenameTitle': 'Click to rename',
+  'extensionsFlavors.flavorListView.activeBadge': 'Active',
+  'extensionsFlavors.flavorListView.uncapturedTitle': {
+    one: '{count} lens in viewer not yet captured',
+    other: '{count} lenses in viewer not yet captured',
+  },
+  'extensionsFlavors.flavorListView.uncapturedBadge': '{count} uncaptured',
+  'extensionsFlavors.flavorListView.statsLine':
+    '{ext} ext · {lens} lens · {qry} qry · {clash} clash · updated {date}',
+  'extensionsFlavors.flavorListView.activateButton': 'Activate',
+  'extensionsFlavors.flavorListView.captureAriaLabel': 'Capture current viewer state into {name}',
+  'extensionsFlavors.flavorListView.captureTitleUncaptured':
+    'Save current viewer state into {name} ({count} new)',
+  'extensionsFlavors.flavorListView.captureTitleSnapshot': 'Snapshot current viewer state into {name}',
+  'extensionsFlavors.flavorListView.renameTitle': 'Rename',
+  'extensionsFlavors.flavorListView.duplicateAriaLabel': 'Duplicate {name}',
+  'extensionsFlavors.flavorListView.duplicateTitle': 'Duplicate',
+  'extensionsFlavors.flavorListView.exportAriaLabel': 'Export {name}',
+  'extensionsFlavors.flavorListView.exportTitle': 'Export as .iflv',
+  'extensionsFlavors.flavorListView.deleteAriaLabel': 'Delete {name}',
+  'extensionsFlavors.flavorListView.deleteTitle': 'Delete',
+
+  // ── ExtensionsPanel ──
+  'extensionsFlavors.extensionsPanel.heading': 'Extensions',
+  'extensionsFlavors.extensionsPanel.activeFlavorTitle': 'Active flavor: {name}. Click to manage.',
+  'extensionsFlavors.extensionsPanel.activeFlavorAriaLabel':
+    'Active flavor: {name}. Click to open the flavor dialog.',
+  'extensionsFlavors.extensionsPanel.helpHint.intro':
+    'Extensions are sandboxed bundles of JavaScript that add buttons, panels, lenses, or exporters to the viewer.',
+  'extensionsFlavors.extensionsPanel.helpHint.tabStripInfo':
+    'The tab strip below jumps to: Ideas (mined patterns + starter suggestions), Repair (SDK-update compatibility check), Audit (lifecycle ledger), Privacy (action-log controls + prompt overlay).',
+  'extensionsFlavors.extensionsPanel.helpHint.gettingStarted':
+    'Get started by describing one in chat, browsing starter ideas, or importing a .iflx bundle.',
+  'extensionsFlavors.extensionsPanel.helpHint.docLinkLabel': 'Read the Extensions guide →',
+  'extensionsFlavors.extensionsPanel.importButton': 'Import',
+  'extensionsFlavors.extensionsPanel.closeAriaLabel': 'Close extensions panel',
+  'extensionsFlavors.extensionsPanel.tabStripAriaLabel': 'Extension surfaces',
+  'extensionsFlavors.extensionsPanel.tab.installed': 'Installed',
+  'extensionsFlavors.extensionsPanel.tab.ideas': 'Ideas',
+  'extensionsFlavors.extensionsPanel.tab.repair': 'Repair',
+  'extensionsFlavors.extensionsPanel.tab.audit': 'Audit',
+  'extensionsFlavors.extensionsPanel.tab.privacy': 'Privacy',
+  'extensionsFlavors.extensionsPanel.emptyState.title': 'No extensions installed',
+  'extensionsFlavors.extensionsPanel.emptyState.description':
+    'Extensions are sandboxed bundles that add commands, lenses, panels, or exporters. You can install one three ways:',
+  'extensionsFlavors.extensionsPanel.emptyState.describeInChat': 'Describe one in chat (AI authors it)',
+  'extensionsFlavors.extensionsPanel.emptyState.browseIdeas': 'Browse starter ideas',
+  'extensionsFlavors.extensionsPanel.emptyState.importFile': 'Import a .iflx file',
+  'extensionsFlavors.extensionsPanel.emptyState.cliHint':
+    'All extensions run in a sandbox with explicit capability grants. Build one from the CLI with ifc-lite ext init.',
+  'extensionsFlavors.extensionsPanel.row.stats': {
+    one: 'v{version} · {count} capability · {date}',
+    other: 'v{version} · {count} capabilities · {date}',
+  },
+  'extensionsFlavors.extensionsPanel.row.forkAriaLabel': 'Fork {id}',
+  'extensionsFlavors.extensionsPanel.row.forkTitle': 'Fork: edit this extension in the chat',
+  'extensionsFlavors.extensionsPanel.row.runTestsAriaLabel': 'Run tests for {id}',
+  'extensionsFlavors.extensionsPanel.row.disableAriaLabel': 'Disable extension',
+  'extensionsFlavors.extensionsPanel.row.enableAriaLabel': 'Enable extension',
+  'extensionsFlavors.extensionsPanel.row.uninstallAriaLabel': 'Uninstall {id}',
+  'extensionsFlavors.extensionsPanel.row.moreCapabilities': '+{count} more',
+
+  // ── FlavorDialog ──
+  'extensionsFlavors.flavorDialog.title': 'Flavors',
+  'extensionsFlavors.flavorDialog.helpHint.p1':
+    'A flavor bundles your installed extensions, lenses, saved queries, layout, settings, and prompt overlay into a switchable profile.',
+  'extensionsFlavors.flavorDialog.helpHint.p2':
+    'New flavor / Save current as flavor creates one (empty or snapshotted from your current viewer state).',
+  'extensionsFlavors.flavorDialog.helpHint.p3':
+    'Per-row: Activate switches to it (lenses restore). Camera captures the current viewer state into THAT flavor (not just the active one). Click the name to rename. Copy duplicates, Download exports a .iflv.',
+  'extensionsFlavors.flavorDialog.helpHint.p4':
+    'Import previews a .iflv then offers replace / save-as-new / three-way merge. Reset restores the empty baseline.',
+
+  // ── FlavorMergeDialog ──
+  'extensionsFlavors.flavorMergeDialog.title': 'Merge flavor',
+  'extensionsFlavors.flavorMergeDialog.noActiveFlavor':
+    'No active flavor — switch to a flavor first, then retry the merge.',
+  'extensionsFlavors.flavorMergeDialog.computing': 'Computing merge…',
+  'extensionsFlavors.flavorMergeDialog.cleanMerge': 'Clean merge — no conflicts between {theirs} and {ours}.',
+  'extensionsFlavors.flavorMergeDialog.cancelButton': 'Cancel',
+  'extensionsFlavors.flavorMergeDialog.saveButton': 'Save merged flavor',
+  'extensionsFlavors.flavorMergeDialog.conflictSummary': {
+    one: '{count} conflict between {theirs} (theirs) and {ours} (ours).',
+    other: '{count} conflicts between {theirs} (theirs) and {ours} (ours).',
+  },
+  'extensionsFlavors.flavorMergeDialog.resolveAriaLabel': 'Resolve {kind} conflict on {key}',
+  'extensionsFlavors.flavorMergeDialog.theirsLabel': 'Theirs',
+  'extensionsFlavors.flavorMergeDialog.oursLabel': 'Ours',
+  'extensionsFlavors.flavorMergeDialog.baseLabel': 'Base',
+  'extensionsFlavors.flavorMergeDialog.pickAriaLabel': 'Pick {label}',
+
+  // ── FlavorImportPreview ──
+  'extensionsFlavors.flavorImportPreview.title': 'Import preview',
+  'extensionsFlavors.flavorImportPreview.nameLabel': 'Name:',
+  'extensionsFlavors.flavorImportPreview.idLabel': 'ID:',
+  'extensionsFlavors.flavorImportPreview.statsLine': '{extensions} extensions · {lenses} lenses · {queries} queries',
+  'extensionsFlavors.flavorImportPreview.cancelButton': 'Cancel',
+  'extensionsFlavors.flavorImportPreview.mergeButton': 'Merge…',
+  'extensionsFlavors.flavorImportPreview.saveAsNewButton': 'Save as new',
+  'extensionsFlavors.flavorImportPreview.replaceButton': 'Replace existing',
+
+  // ── FlavorIndicator ──
+  'extensionsFlavors.flavorIndicator.activeAriaLabel': 'Active flavor: {name}. Click to manage flavors.',
+  'extensionsFlavors.flavorIndicator.inactiveAriaLabel': 'No active flavor. Click to manage flavors.',
+  'extensionsFlavors.flavorIndicator.activeTitle':
+    'Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: {name}{description}\nClick to switch / export / import / merge.',
+  'extensionsFlavors.flavorIndicator.inactiveTitle':
+    'Flavors — switchable profiles of your extensions, lenses, and settings.\nClick to manage.',
+  'extensionsFlavors.flavorIndicator.defaultLabel': 'Default',
+
+  // ── HelpHint ──
+  'extensionsFlavors.helpHint.ariaLabel': 'Help: {label}',
+  'extensionsFlavors.helpHint.learnMoreDefault': 'Learn more →',
+
+  // ── BundlePreview ──
+  'extensionsFlavors.bundlePreview.bundleFilesAriaLabel': 'Bundle files',
+  'extensionsFlavors.bundlePreview.viewFileAriaLabel': 'View {path}',
+  'extensionsFlavors.bundlePreview.copyAriaLabel': 'Copy file contents',
+  'extensionsFlavors.bundlePreview.copyButton': 'Copy',
+
+  // ── ExtensionDockHost ──
+  'extensionsFlavors.extensionDockHost.dockAriaLabel': 'Extension dock ({slot})',
+  'extensionsFlavors.extensionDockHost.loadingWidget': 'Loading widget…',
+
+  // ── ExtensionExportSlot ──
+  'extensionsFlavors.extensionExportSlot.fromExtensionsLabel': 'From extensions',
+
+  // ── ExtensionToolbarSlot ──
+  'extensionsFlavors.extensionToolbarSlot.runAriaLabel': 'Run {title}',
+} as const satisfies Record<string, TranslationValue>;

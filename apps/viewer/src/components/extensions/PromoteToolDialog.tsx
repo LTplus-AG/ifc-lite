@@ -41,6 +41,7 @@ import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 
 interface PromoteToolDialogProps {
   open: boolean;
@@ -56,6 +57,7 @@ interface PromoteToolDialogProps {
 // is the icon that lands in the menubar.
 
 export function PromoteToolDialog({ open, source, initialName, onClose }: PromoteToolDialogProps) {
+  const { t } = useTranslation();
   const host = useExtensionHost();
   const [name, setName] = useState(initialName ?? 'My tool');
   const [hotkey, setHotkey] = useState('');
@@ -78,7 +80,9 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
       });
       setPending({ bytes, summary });
     } catch (err) {
-      toast.error(`Failed to package tool: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('extensionsPanels.promoteToolDialog.packageFailedToast', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
     } finally {
       setBusy(false);
     }
@@ -93,18 +97,22 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
       // synthesised manifest puts the command on `toolbar.right`,
       // so it shows up as an icon button at the top-right of the
       // toolbar. Mention the hotkey too if they set one.
-      const where = hotkey.trim()
-        ? `It's now a button in the toolbar (top-right) — or press ${hotkey.trim()}.`
-        : `It's now a button in the toolbar (top-right).`;
-      toast.success(`Installed "${name}". ${where}`);
+      const message = hotkey.trim()
+        ? t('extensionsPanels.promoteToolDialog.installedWithHotkey', { name, hotkey: hotkey.trim() })
+        : t('extensionsPanels.promoteToolDialog.installedNoHotkey', { name });
+      toast.success(message);
       setPending(null);
       onClose();
       void status;
     } catch (err) {
       if (err instanceof ExtensionInstallError) {
-        toast.error(`Install rejected: ${err.validationErrors[0]?.message ?? err.message}`);
+        toast.error(t('extensionsPanels.promoteToolDialog.installRejectedToast', {
+          message: err.validationErrors[0]?.message ?? err.message,
+        }));
       } else {
-        toast.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(t('extensionsPanels.promoteToolDialog.installFailedToast', {
+          error: err instanceof Error ? err.message : String(err),
+        }));
       }
     } finally {
       setBusy(false);
@@ -128,40 +136,38 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
         <DialogHeader>
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            <DialogTitle>Promote script to a tool</DialogTitle>
+            <DialogTitle>{t('extensionsPanels.promoteToolDialog.title')}</DialogTitle>
           </div>
           <DialogDescription>
-            Turn this saved script into a persistent, sandboxed tool. The tool
-            appears in the command palette and on the toolbar. It runs in the
-            same sandbox as your scripts with only the capabilities you grant.
+            {t('extensionsPanels.promoteToolDialog.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="tool-name">Name</Label>
+            <Label htmlFor="tool-name">{t('extensionsPanels.promoteToolDialog.nameLabel')}</Label>
             <Input
               id="tool-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Fire-rating report"
+              placeholder={t('extensionsPanels.promoteToolDialog.namePlaceholder')}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="tool-hotkey">Hotkey (optional)</Label>
+            <Label htmlFor="tool-hotkey">{t('extensionsPanels.promoteToolDialog.hotkeyLabel')}</Label>
             <Input
               id="tool-hotkey"
               value={hotkey}
               onChange={(e) => setHotkey(e.target.value)}
-              placeholder="Ctrl+Alt+F"
+              placeholder={t('extensionsPanels.promoteToolDialog.hotkeyPlaceholder')}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Icon</Label>
+            <Label>{t('extensionsPanels.promoteToolDialog.iconLabel')}</Label>
             <div
               role="radiogroup"
-              aria-label="Pick a toolbar icon"
+              aria-label={t('extensionsPanels.promoteToolDialog.iconGroupAriaLabel')}
               className="grid grid-cols-10 gap-1.5 p-2 rounded-md border bg-muted/40"
             >
               {ICON_CHOICES.map(({ key, Icon, label }) => {
@@ -190,11 +196,11 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
           </div>
 
           <div className="rounded-md border bg-muted/40 p-3">
-            <div className="text-xs font-semibold mb-2">Inferred capabilities</div>
+            <div className="text-xs font-semibold mb-2">{t('extensionsPanels.promoteToolDialog.inferredCapabilitiesHeading')}</div>
             {inference.capabilities.length === 0 ? (
               <div className="text-xs text-muted-foreground">
-                No `bim.*` calls detected. The tool will request only
-                <code className="font-mono ml-1">model.read</code>.
+                {t('extensionsPanels.promoteToolDialog.noCapabilitiesDetectedPrefix')}
+                <code className="font-mono ml-1">{t('extensionsPanels.promoteToolDialog.modelReadCode')}</code>.
               </div>
             ) : (
               <ul className="space-y-1">
@@ -208,12 +214,12 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
             )}
             {inference.observations.some((o) => o.unknown) && (
               <div className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-                Unknown `bim.*` calls detected — review the source before approving.
+                {t('extensionsPanels.promoteToolDialog.unknownCallsWarning')}
               </div>
             )}
             {inference.parseErrors.length > 0 && (
               <div className="mt-2 text-[11px] text-destructive">
-                Script does not parse cleanly — promotion may fail.
+                {t('extensionsPanels.promoteToolDialog.parseErrorWarning')}
               </div>
             )}
           </div>
@@ -222,11 +228,11 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             <X className="mr-1 h-4 w-4" />
-            Cancel
+            {t('extensionsPanels.promoteToolDialog.cancelButton')}
           </Button>
           <Button onClick={handlePromote} disabled={busy || name.trim().length === 0}>
             <Sparkles className="mr-1 h-4 w-4" />
-            Review & install
+            {t('extensionsPanels.promoteToolDialog.reviewInstallButton')}
           </Button>
         </DialogFooter>
       </DialogContent>

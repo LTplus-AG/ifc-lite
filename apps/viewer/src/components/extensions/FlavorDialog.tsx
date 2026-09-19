@@ -29,6 +29,7 @@ import { FlavorImportPreview } from './FlavorImportPreview';
 import * as toastText from './toast-helpers';
 import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { serializeClashConfig } from '@/lib/clash/persistence.flavor';
 
 /** Snapshot the current clash rule-set + detection settings for a flavor's
@@ -52,6 +53,7 @@ interface FlavorDialogProps {
 }
 
 export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
+  const { t } = useTranslation();
   const host = useExtensionHost();
   const [flavors, setFlavors] = useState<Flavor[]>([]);
   const [activeId, setActiveId] = useState<string | undefined>();
@@ -348,31 +350,12 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
-            Flavors
-            <HelpHint label="Flavors" side="bottom-start">
-              <p>
-                A <strong>flavor</strong> bundles your installed
-                extensions, lenses, saved queries, layout, settings,
-                and prompt overlay into a switchable profile.
-              </p>
-              <p>
-                <strong>New flavor</strong> / <strong>Save current as
-                flavor</strong> creates one (empty or snapshotted from
-                your current viewer state).
-              </p>
-              <p>
-                Per-row: <strong>Activate</strong> switches to it
-                (lenses restore). <strong>Camera</strong> captures the
-                current viewer state into THAT flavor (not just the
-                active one). Click the name to rename.{' '}
-                <strong>Copy</strong> duplicates,{' '}
-                <strong>Download</strong> exports a <code>.iflv</code>.
-              </p>
-              <p>
-                <strong>Import</strong> previews a <code>.iflv</code>{' '}
-                then offers replace / save-as-new / three-way merge.{' '}
-                <strong>Reset</strong> restores the empty baseline.
-              </p>
+            {t('extensionsFlavors.flavorDialog.title')}
+            <HelpHint label={t('extensionsFlavors.flavorDialog.title')} side="bottom-start">
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p1')}</p>
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p2')}</p>
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p3')}</p>
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p4')}</p>
             </HelpHint>
           </DialogTitle>
         </DialogHeader>

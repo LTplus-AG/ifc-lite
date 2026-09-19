@@ -8,6 +8,8 @@ import { chartsEn } from './catalogues/charts.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
+import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
+import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
@@ -47,6 +49,8 @@ export const en = {
   ...documentEn,
   ...documentMenuEn,
   ...compareKeyPropertyEn,
+  ...extensionsFlavorsEn,
+  ...extensionsPanelsEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -15,9 +15,10 @@
 
 import { useEffect, useState } from 'react';
 import { Palette } from 'lucide-react';
-import { DEFAULT_FLAVOR_ID, type Flavor } from '@ifc-lite/extensions';
+import type { Flavor } from '@ifc-lite/extensions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useTranslation } from '@/i18n';
+import { localizedFlavorDescription, localizedFlavorName } from './localized-flavor-metadata';
 
 interface FlavorIndicatorProps {
   onClick?: () => void;
@@ -51,13 +52,8 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
 
   if (!host) return null;
 
-  const isBaseline = flavor?.id === DEFAULT_FLAVOR_ID;
-  const name = isBaseline
-    ? t('extensionsFlavors.flavorIndicator.defaultLabel')
-    : flavor?.name;
-  const description = isBaseline
-    ? t('extensionsFlavors.flavorIndicator.defaultDescription')
-    : flavor?.description;
+  const name = flavor ? localizedFlavorName(flavor, t) : undefined;
+  const description = flavor ? localizedFlavorDescription(flavor, t) : undefined;
   const label = name ?? t('extensionsFlavors.flavorIndicator.defaultLabel');
   // Slightly more emphasised treatment than the surrounding status
   // bar items so the entry to the flavor system is visible without

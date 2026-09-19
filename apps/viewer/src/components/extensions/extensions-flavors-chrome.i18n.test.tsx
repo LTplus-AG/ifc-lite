@@ -25,6 +25,7 @@ import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
 import type { Bundle, BundleFile, Flavor } from '@ifc-lite/extensions';
 import { cleanup, render, click } from '@/test/render.js';
+import { Toaster } from '@/components/ui/toast';
 import { registerLocale, setLocale } from '@/i18n';
 import type { Catalogue, TranslationParameters, TranslationValue, PluralTranslation } from '@/i18n';
 import { resolve } from '@/i18n/registry';
@@ -81,6 +82,14 @@ function readableStrings(): Set<string> {
     if (ownText) out.add(ownText);
   });
   return out;
+}
+
+function latestToast(): string {
+  const stack = [...document.body.querySelectorAll('div')].find((element) =>
+    element.className.includes('z-[9999]'),
+  );
+  assert.ok(stack, 'expected a toast stack');
+  return stack.children[stack.children.length - 1]?.textContent ?? '';
 }
 
 interface Occurrence {
@@ -249,6 +258,79 @@ describe('ExtensionsPanel localization (#4918)', () => {
       { key: 'extensionsFlavors.extensionsPanel.row.moreCapabilities', params: { count: 1 } },
     ]);
   });
+
+  it('translates file, enable/disable, and uninstall interaction feedback', async () => {
+    class HostWithRecord extends StubHost {
+      override async listInstalled() {
+        return [{
+          id: 'ext.demo',
+          version: '1.0.0',
+          enabled: true,
+          installedAt: Date.parse('2026-01-05T00:00:00Z'),
+          grantedCapabilities: [],
+        }] as unknown as Awaited<ReturnType<ExtensionHostService['listInstalled']>>;
+      }
+
+      override setEnabled(): Promise<void> {
+        return Promise.reject(new Error('permission denied'));
+      }
+    }
+    const host = new HostWithRecord();
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <ExtensionsPanel />
+        <Toaster />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(5);
+    act(() => setLocale(PSEUDO_LOCALE));
+
+    const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+    assert.ok(fileInput);
+    Object.defineProperty(fileInput, 'files', {
+      configurable: true,
+      value: [new File(['not a bundle'], 'notes.txt')],
+    });
+    await act(async () => {
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      await tick();
+    });
+    assert.match(latestToast(), new RegExp(r(
+      'extensionsFlavors.extensionsPanel.toast.expectedBundle',
+      { filename: 'notes.txt' },
+    ).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+    const enabledSwitch = document.body.querySelector<HTMLButtonElement>('[role="switch"]');
+    assert.ok(enabledSwitch);
+    await act(async () => {
+      click(enabledSwitch);
+      await tick();
+    });
+    assert.match(latestToast(), /permission denied/);
+    assert.match(latestToast(), new RegExp(r(
+      'extensionsFlavors.extensionsPanel.operation.disable',
+    ).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+    const uninstall = [...document.body.querySelectorAll('button')].find((button) =>
+      button.getAttribute('aria-label') === r(
+        'extensionsFlavors.extensionsPanel.row.uninstallAriaLabel',
+        { id: 'ext.demo' },
+      ),
+    );
+    assert.ok(uninstall);
+    const originalConfirm = globalThis.confirm;
+    let prompt = '';
+    globalThis.confirm = (message) => {
+      prompt = String(message);
+      return false;
+    };
+    try {
+      click(uninstall);
+    } finally {
+      globalThis.confirm = originalConfirm;
+    }
+    assert.equal(prompt, r('extensionsFlavors.extensionsPanel.confirmUninstall', { id: 'ext.demo' }));
+  });
 });
 
 describe('FlavorDialog localization (#4918)', () => {
@@ -309,6 +391,36 @@ describe('FlavorDialog localization (#4918)', () => {
     }
 
     assert.equal(prompt, r('extensionsFlavors.flavorDialog.confirmDelete', { id: removable.id }));
+  });
+
+  it('uses localized canonical metadata when duplicating the baseline flavor', async () => {
+    const host = new StubHost();
+    await host.flavors.resetToDefaults();
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <FlavorDialog open onClose={() => {}} />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(20);
+    act(() => setLocale(PSEUDO_LOCALE));
+
+    const baselineName = r('extensionsFlavors.flavorIndicator.defaultLabel');
+    const duplicateButton = [...document.body.querySelectorAll('button')].find((button) =>
+      button.getAttribute('aria-label') === r(
+        'extensionsFlavors.flavorListView.duplicateAriaLabel',
+        { name: baselineName },
+      ),
+    );
+    assert.ok(duplicateButton, 'baseline duplicate action must use its localized name');
+    click(duplicateButton);
+    await flush(20);
+
+    const clone = (await host.flavors.list()).find((flavor) => flavor.id !== 'flv.default');
+    assert.ok(clone, 'duplicate action must persist a clone');
+    assert.equal(
+      clone.name,
+      r('extensionsFlavors.flavorDialog.duplicateName', { name: baselineName }),
+    );
   });
 });
 
@@ -403,8 +515,7 @@ describe('FlavorMergeDialog localization (#4918)', () => {
         params: { count: 1, theirs: 'Theirs', ours: 'Ours' },
       },
       {
-        key: 'extensionsFlavors.flavorMergeDialog.resolveAriaLabel',
-        params: { kind: 'setting', key: 'demo' },
+        key: 'extensionsFlavors.flavorMergeDialog.conflictKind.setting',
       },
       { key: 'extensionsFlavors.flavorMergeDialog.theirsLabel' },
       { key: 'extensionsFlavors.flavorMergeDialog.oursLabel' },
@@ -412,6 +523,23 @@ describe('FlavorMergeDialog localization (#4918)', () => {
       { key: 'extensionsFlavors.flavorMergeDialog.cancelButton' },
       { key: 'extensionsFlavors.flavorMergeDialog.saveButton' },
     ]);
+
+    const englishKind = r('extensionsFlavors.flavorMergeDialog.conflictKind.setting');
+    assert.ok(readableStrings().has(r('extensionsFlavors.flavorMergeDialog.resolveAriaLabel', {
+      kind: englishKind,
+      key: 'demo',
+    })));
+    act(() => setLocale(PSEUDO_LOCALE));
+    try {
+      const pseudoKind = r('extensionsFlavors.flavorMergeDialog.conflictKind.setting');
+      assert.ok(readableStrings().has(r('extensionsFlavors.flavorMergeDialog.resolveAriaLabel', {
+        kind: pseudoKind,
+        key: 'demo',
+      })));
+      assert.ok(!document.body.textContent?.includes('setting'));
+    } finally {
+      act(() => setLocale(BASELINE_LOCALE));
+    }
 
     // `pickAriaLabel`'s own param is itself a translated word (`theirsLabel`,
     // recomputed by the live-rendered `ResolutionChip` on every locale
@@ -515,7 +643,10 @@ describe('FlavorIndicator localization (#4918)', () => {
     const baseline = await host.flavors.resetToDefaults();
     render(
       <ExtensionHostContext.Provider value={host}>
-        <FlavorIndicator />
+        <div>
+          <FlavorIndicator />
+          <ExtensionsPanel />
+        </div>
       </ExtensionHostContext.Provider>,
     );
     await flush(10);
@@ -527,6 +658,9 @@ describe('FlavorIndicator localization (#4918)', () => {
     const name = r('extensionsFlavors.flavorIndicator.defaultLabel');
     const description = `\n${r('extensionsFlavors.flavorIndicator.defaultDescription')}`;
     assert.ok(readableStrings().has(name));
+    assert.ok(readableStrings().has(
+      r('extensionsFlavors.extensionsPanel.activeFlavorTitle', { name }),
+    ));
     assert.ok(
       readableStrings().has(
         r('extensionsFlavors.flavorIndicator.activeTitle', { name, description }),

@@ -19,13 +19,6 @@ import type { TranslationValue } from '../types';
  *    `ExtensionToolbarSlot` command titles)
  *  - bundle file paths / source text (`BundlePreview`)
  *
- * Also out of scope: `toast.success/error(...)` and `confirm(...)` calls in
- * `FlavorDialog.tsx` / `FlavorMergeDialog.tsx` / `ExtensionsPanel.tsx` /
- * `ExtensionExportSlot.tsx` — imperative strings passed to a function call,
- * not JSX text/attributes, so outside `check-i18n-literals.mjs`'s AST walk
- * (JsxText / JsxExpression-in-child-position / the policed attribute set).
- * A later slice can catalogue those once the gate covers them.
- *
  * Multi-paragraph `HelpHint` bodies (`ExtensionsPanel`, `FlavorDialog`) are
  * flattened to plain sentences rather than kept as `<strong>`-styled
  * fragments: per the i18n README, a translator gets one complete message
@@ -106,6 +99,8 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionsPanel.emptyState.description':
     'Extensions are sandboxed bundles that add commands, lenses, panels, or exporters. You can install one three ways:',
   'extensionsFlavors.extensionsPanel.emptyState.describeInChat': 'Describe one in chat (AI authors it)',
+  'extensionsFlavors.extensionsPanel.emptyState.authoringPrompt':
+    'Author an extension for me. Help me describe it: what should it do?',
   'extensionsFlavors.extensionsPanel.emptyState.browseIdeas': 'Browse starter ideas',
   'extensionsFlavors.extensionsPanel.emptyState.importFile': 'Import a .iflx file',
   'extensionsFlavors.extensionsPanel.emptyState.cliHint':
@@ -121,6 +116,26 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionsPanel.row.enableAriaLabel': 'Enable extension',
   'extensionsFlavors.extensionsPanel.row.uninstallAriaLabel': 'Uninstall {id}',
   'extensionsFlavors.extensionsPanel.row.moreCapabilities': '+{count} more',
+  'extensionsFlavors.extensionsPanel.unknownError': 'unknown error',
+  'extensionsFlavors.extensionsPanel.confirmUninstall': 'Uninstall {id}?',
+  'extensionsFlavors.extensionsPanel.operation.enable': 'Enable',
+  'extensionsFlavors.extensionsPanel.operation.disable': 'Disable',
+  'extensionsFlavors.extensionsPanel.operation.uninstall': 'Uninstall',
+  'extensionsFlavors.extensionsPanel.toast.expectedBundle':
+    'Expected a .iflx extension bundle, got {filename}.',
+  'extensionsFlavors.extensionsPanel.toast.bundleUnpackFailed':
+    'Bundle did not unpack: {error}',
+  'extensionsFlavors.extensionsPanel.toast.readFileFailed': 'Failed to read file: {error}',
+  'extensionsFlavors.extensionsPanel.toast.authoredBundleUnpackFailed':
+    "Authored bundle didn't unpack: {error}",
+  'extensionsFlavors.extensionsPanel.toast.authoredBundlePreviewFailed':
+    'Authored bundle preview failed: {error}',
+  'extensionsFlavors.extensionsPanel.toast.installed': '{id} v{version} installed',
+  'extensionsFlavors.extensionsPanel.toast.storageFull':
+    'Out of browser storage. Uninstall an extension or clear some flavors, then retry.',
+  'extensionsFlavors.extensionsPanel.toast.installRejected': 'Install rejected: {error}',
+  'extensionsFlavors.extensionsPanel.toast.installFailed': 'Install failed: {error}',
+  'extensionsFlavors.extensionsPanel.toast.operationFailed': '{operation} failed — {error}',
 
   // ── FlavorDialog ──
   'extensionsFlavors.flavorDialog.title': 'Flavors',
@@ -173,6 +188,7 @@ export const extensionsFlavorsEn = {
   },
   'extensionsFlavors.flavorDialog.toast.createdEmpty': 'Created "{name}".',
   'extensionsFlavors.flavorDialog.toast.renamed': 'Renamed to "{name}".',
+  'extensionsFlavors.flavorDialog.duplicateName': '{name} (copy)',
   'extensionsFlavors.flavorDialog.toast.duplicated': 'Duplicated as "{name}".',
   'extensionsFlavors.flavorDialog.toast.reset': 'Reset to baseline flavor',
   'extensionsFlavors.flavorDialog.toast.expectedFile': 'Expected a .iflv flavor file, got {filename}.',
@@ -193,10 +209,19 @@ export const extensionsFlavorsEn = {
     other: '{count} conflicts between {theirs} (theirs) and {ours} (ours).',
   },
   'extensionsFlavors.flavorMergeDialog.resolveAriaLabel': 'Resolve {kind} conflict on {key}',
+  'extensionsFlavors.flavorMergeDialog.conflictKind.extensionVersion': 'Extension version',
+  'extensionsFlavors.flavorMergeDialog.conflictKind.extensionCapabilities':
+    'Extension capabilities',
+  'extensionsFlavors.flavorMergeDialog.conflictKind.lens': 'Lens',
+  'extensionsFlavors.flavorMergeDialog.conflictKind.savedQuery': 'Saved query',
+  'extensionsFlavors.flavorMergeDialog.conflictKind.keybinding': 'Keybinding',
+  'extensionsFlavors.flavorMergeDialog.conflictKind.setting': 'Setting',
   'extensionsFlavors.flavorMergeDialog.theirsLabel': 'Theirs',
   'extensionsFlavors.flavorMergeDialog.oursLabel': 'Ours',
   'extensionsFlavors.flavorMergeDialog.baseLabel': 'Base',
   'extensionsFlavors.flavorMergeDialog.pickAriaLabel': 'Pick {label}',
+  'extensionsFlavors.flavorMergeDialog.toast.merged': 'Merged into {id}',
+  'extensionsFlavors.flavorMergeDialog.toast.failed': 'Merge failed: {error}',
 
   // ── FlavorImportPreview ──
   'extensionsFlavors.flavorImportPreview.title': 'Import preview',
@@ -228,6 +253,8 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.bundlePreview.viewFileAriaLabel': 'View {path}',
   'extensionsFlavors.bundlePreview.copyAriaLabel': 'Copy file contents',
   'extensionsFlavors.bundlePreview.copyButton': 'Copy',
+  'extensionsFlavors.bundlePreview.copySuccessToast': 'Copied {path} to clipboard',
+  'extensionsFlavors.bundlePreview.copyFailedToast': 'Copy failed: {error}',
 
   // ── ExtensionDockHost ──
   'extensionsFlavors.extensionDockHost.dockAriaLabel': 'Extension dock ({slot})',
@@ -235,6 +262,8 @@ export const extensionsFlavorsEn = {
 
   // ── ExtensionExportSlot ──
   'extensionsFlavors.extensionExportSlot.fromExtensionsLabel': 'From extensions',
+  'extensionsFlavors.extensionExportSlot.exportedToast': 'Exported with {name}',
+  'extensionsFlavors.extensionExportSlot.failedToast': '"{name}" failed: {error}',
 
   // ── ExtensionToolbarSlot ──
   'extensionsFlavors.extensionToolbarSlot.runAriaLabel': 'Run {title}',

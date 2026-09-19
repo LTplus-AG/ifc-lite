@@ -31,6 +31,7 @@ import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { serializeClashConfig } from '@/lib/clash/persistence.flavor';
+import { localizedFlavorName } from './localized-flavor-metadata';
 
 /** Snapshot the current clash rule-set + detection settings for a flavor's
  *  `settings.clash` blob, so each profile carries its own clash config. */
@@ -191,7 +192,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
-      toast.success(t('extensionsFlavors.flavorDialog.toast.captured', { count: lenses.length, name: target.name }));
+      toast.success(t('extensionsFlavors.flavorDialog.toast.captured', { count: lenses.length, name: localizedFlavorName(target, t) }));
     } catch (err) {
       toast.error(failure(t('extensionsFlavors.flavorDialog.operation.capture'), err));
     } finally {
@@ -283,7 +284,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       const clone: Flavor = {
         ...target,
         id: newId,
-        name: `${target.name} (copy)`,
+        name: t('extensionsFlavors.flavorDialog.duplicateName', { name: localizedFlavorName(target, t) }),
         createdAt: now,
         updatedAt: now,
       };

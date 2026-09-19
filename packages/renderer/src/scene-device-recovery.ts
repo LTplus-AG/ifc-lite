@@ -68,7 +68,6 @@ export interface SceneRecoveryHost {
   colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null;
   appearanceAccessState?: unknown;
   modelTranslations: { registerDrawable<T>(drawable: T, modelIndex: number): T };
-  drainColdTier(): Promise<void>;
   dropAllPartialCaches(): void;
   destroyOverrideBatches(): void;
   releaseTexturedMeshTexture(mesh: Pick<TexturedMesh, 'texture' | 'sharedTextureKey'>): void;
@@ -113,10 +112,9 @@ function recoveryBlocker(host: SceneRecoveryHost): Exclude<SceneDeviceRecoveryPr
 export async function prepareSceneDeviceRecovery(host: SceneRecoveryHost): Promise<SceneDeviceRecoveryPreparation> {
   const initialBlocker = recoveryBlocker(host);
   if (initialBlocker) return initialBlocker;
-  await host.drainColdTier();
-  const lateBlocker = recoveryBlocker(host);
-  if (lateBlocker) return lateBlocker;
-  return host.coldBuckets.size > 0 ? { ok: false, reason: 'cold-restore-failed' } : { ok: true };
+  // Cold buckets already carry GPU-free shells and remain provider-restorable.
+  // Warming them here would defeat the host-residency budget during recovery.
+  return { ok: true };
 }
 
 export function discardSceneGpuResourcesForRecovery(

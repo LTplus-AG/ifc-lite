@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, mock } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
@@ -24,12 +24,6 @@ interface FakeBuffer {
 function buffer(size = 16): FakeBuffer {
   const backing = new ArrayBuffer(size);
   return { size, destroyed: 0, getMappedRange: () => backing, unmap() {}, destroy() { this.destroyed++; } };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
 }
 
 function device() {
@@ -122,41 +116,16 @@ describe('Scene device recovery (#4885)', () => {
     assert.deepStrictEqual(await authored.prepareDeviceRecovery(), { ok: false, reason: 'unsupported-authored-meshes' });
   });
 
-  it('fails instead of silently dropping a cold bucket that cannot be restored', async () => {
+  it('keeps cold buckets lazy during recovery preparation', async () => {
     const scene = new Scene(), shell = batch(3);
+    shell.gpuResident = false;
     shell.bounds = { min: [0, 0, 0], max: [1, 1, 1] };
     scene['buckets'].set('cold', { key: 'cold', meshData: [], batchedMesh: shell, vertexBytes: 0 });
     scene['coldBuckets'].add('cold');
-    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
-    const warning = mock.method(console, 'warn', () => undefined);
-    try {
-      assert.deepStrictEqual(
-        await scene.prepareDeviceRecovery(),
-        { ok: false, reason: 'cold-restore-failed' },
-      );
-      assert.strictEqual(scene['coldBuckets'].has('cold'), true);
-    } finally {
-      warning.mock.restore();
-    }
-  });
-
-  it('rejects an authored mesh added while cold restoration is awaiting I/O', async () => {
-    const scene = new Scene(), gate = deferred<void>(), drainStarted = deferred<void>();
-    scene['drainColdTier'] = async () => {
-      drainStarted.resolve();
-      await gate.promise;
-    };
-
-    const preparation = scene.prepareDeviceRecovery();
-    await drainStarted.promise;
-    scene['meshes'] = [{ hydrated: false } as Mesh];
-    gate.resolve();
-
-    assert.deepStrictEqual(
-      await preparation,
-      { ok: false, reason: 'unsupported-authored-meshes' },
-      'a drawable with no CPU source must not be accepted and then silently discarded',
-    );
+    scene['drainColdTier'] = async () => assert.fail('recovery must not warm the cold tier');
+    assert.deepStrictEqual(await scene.prepareDeviceRecovery(), { ok: true });
+    assert.strictEqual(scene['coldBuckets'].has('cold'), true);
+    assert.strictEqual(scene['buckets'].get('cold')?.batchedMesh, shell);
   });
 
   it('replaces flat GPU batches without losing their CPU pieces', () => {

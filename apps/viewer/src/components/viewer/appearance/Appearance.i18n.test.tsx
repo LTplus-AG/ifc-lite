@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
+import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { AppearancePanelView } from './AppearancePanelView.js';
@@ -42,19 +43,8 @@ import { PdfFidelityReportView } from './PdfFidelityReportView.js';
 import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
-let appearancePanelEn: Catalogue | undefined;
-let appearanceWorkflowsEn: Catalogue | undefined;
-try {
-  ({ appearancePanelEn } = await import('@/i18n/catalogues/appearance-panel.en'));
-  ({ appearanceWorkflowsEn } = await import('@/i18n/catalogues/appearance-workflows.en'));
-} catch (error) {
-  if (!(error instanceof Error) || !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
-}
-const HAS_CATALOGUE = appearancePanelEn !== undefined && appearanceWorkflowsEn !== undefined;
-const MERGED_EN = {
-  ...(appearancePanelEn ?? {}),
-  ...(appearanceWorkflowsEn ?? {}),
-};
+const MERGED_EN: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('appearance.')));
+const HAS_CATALOGUE = Object.keys(MERGED_EN).length > 0;
 type AppearanceKey = keyof typeof MERGED_EN;
 const KEYS = Object.keys(MERGED_EN) as AppearanceKey[];
 const ALL_STATIC_KEYS = KEYS.filter((key) => {

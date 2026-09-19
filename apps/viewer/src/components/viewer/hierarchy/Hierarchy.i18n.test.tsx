@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render, click } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
+import { en } from '@/i18n/en';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
@@ -38,14 +39,8 @@ import { HierarchySortControl } from './HierarchySortControl.js';
 import { StoreyDisplayControls } from './StoreyDisplayControls.js';
 import type { TreeNode } from './types.js';
 
-let hierarchyEn: Catalogue | undefined;
-try {
-  ({ hierarchyEn } = await import('@/i18n/catalogues/hierarchy.en'));
-} catch (error) {
-  if (!(error instanceof Error) || !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
-}
-const HAS_CATALOGUE = hierarchyEn !== undefined;
-const CATALOGUE: Catalogue = hierarchyEn ?? {};
+const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('hierarchy.')));
+const HAS_CATALOGUE = Object.keys(CATALOGUE).length > 0;
 
 type HierarchyKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as HierarchyKey[];

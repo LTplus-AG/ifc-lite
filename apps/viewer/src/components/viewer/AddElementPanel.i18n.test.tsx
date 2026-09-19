@@ -137,5 +137,9 @@ describe('Add Element localization (#4918)', () => {
       'addElement.storeyFallback': 'Replaced storey #{id}',
     }));
     assert.match(ui.textContent ?? '', /Replaced storey #2/);
+
+    registerLocale('ar-EG', {});
+    act(() => setLocale('ar-EG'));
+    assert.match(ui.textContent ?? '', /Storey #٢/);
   });
 });

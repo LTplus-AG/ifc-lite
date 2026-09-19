@@ -46,7 +46,7 @@ interface AddElementPanelProps {
 }
 
 export function AddElementPanel({ onClose }: AddElementPanelProps) {
-  const { t, localeSnapshot } = useTranslation();
+  const { t, locale, localeSnapshot } = useTranslation();
   const { models, ifcDataStore } = useIfc();
 
   const addElementType = useViewerStore((s) => s.addElementType);
@@ -109,11 +109,13 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
     const opts: StoreyOption[] = [];
     for (const expressId of ids) {
       const node = new EntityNode(dataStore, expressId);
-      const name = node.name || t('addElement.storeyFallback', { id: expressId });
+      const name = node.name || t('addElement.storeyFallback', {
+        id: formatLocaleNumber(locale, expressId),
+      });
       opts.push({ expressId, label: name });
     }
     return opts;
-  }, [effectiveModelId, models, ifcDataStore, t, localeSnapshot]);
+  }, [effectiveModelId, models, ifcDataStore, t, locale, localeSnapshot]);
 
   // Auto-pick the first storey when the user hasn't chosen one or
   // the previous choice no longer exists in the active model. Also

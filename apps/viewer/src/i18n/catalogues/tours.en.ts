@@ -19,10 +19,10 @@ export const toursEn = {
   'tours.learnTab.completedAriaLabel': 'Completed',
   'tours.learnTab.replay': 'Replay',
   'tours.learnTab.start': 'Start',
-  'tours.learnTab.minutes': '{n} min',
+  'tours.learnTab.minutes': '{count} min',
 
   'tours.panelTourButton.startAriaLabel': 'Start tour: {title}',
-  'tours.panelTourButton.tooltip': '{title} ({minutes} min tour)',
+  'tours.panelTourButton.tooltip': '{title} ({count} min tour)',
 
   'tours.tourHost.prereqAriaLabel': '{title}: prerequisites',
   'tours.tourHost.prereqLayerStack': 'This tour needs a composed layer stack. Load the demo stack (three tiny layers) to follow along.',

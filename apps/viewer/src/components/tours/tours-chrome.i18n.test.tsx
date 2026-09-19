@@ -101,13 +101,23 @@ describe('LearnTab localization (#4918)', () => {
       'tours.learnTab.start',
     ]);
     const minutes = getTour('welcome')!.minutes;
-    assert.ok(readableStrings(container).has(mark('tours.learnTab.minutes').replace('{n}', String(minutes))));
+    assert.ok(readableStrings(container).has(mark('tours.learnTab.minutes').replace('{count}', String(minutes))));
+  });
+
+  it('selects the singular duration form for the one-minute ribbon tour (#5000 review)', () => {
+    registerLocale('tours-duration-plural', {
+      'tours.learnTab.minutes': { one: 'ONE {count} minute', other: 'OTHER {count} minutes' },
+    });
+    act(() => setLocale('tours-duration-plural'));
+    const container = render(<LearnTab onClose={() => {}} />);
+
+    assert.ok(readableStrings(container).has('ONE 1 minute'));
   });
 });
 
 describe('PanelTourButton localization (#4918)', () => {
   it('translates the launcher aria-label and tooltip', () => {
-    // Both of this component's keys are interpolated ('{title}' / '{minutes}'),
+    // Both of this component's keys are interpolated ('{title}' / '{count}'),
     // so they are excluded from STATIC_KEYS; assert the interpolated marked
     // form directly instead, the same way viewer-shell.i18n.test.tsx does
     // for ChunkErrorBoundary's `{label}` keys.

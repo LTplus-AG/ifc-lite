@@ -963,8 +963,9 @@ function CatalogSection(): ReactNode {
           eyebrow={t('mcp.mcpLanding.catalogEyebrow')}
           title={
             <>
-              <span>{CATALOG.tools.length}</span>{' '}
-              <span style={{ fontStyle: 'italic', color: ACCENT }}>{t('mcp.mcpLanding.catalogTypedTools')}</span>{' '}
+              <span style={{ fontStyle: 'italic', color: ACCENT }}>
+                {t('mcp.mcpLanding.catalogTypedTools', { count: CATALOG.tools.length })}
+              </span>{' '}
               <br className="hidden sm:block" />
               {t('mcp.mcpLanding.catalogEverything')}
             </>

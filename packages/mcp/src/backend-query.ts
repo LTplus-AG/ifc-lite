@@ -25,9 +25,9 @@
  * `bim.decomposes`. A queued `IfcRelContainedInSpatialStructure` is how an agent
  * places something over MCP, so ignoring it was ignoring a write.
  *
- * What is deliberately not folded: `relationships`, whose voids / fills / groups
- * / connections come from a parser-side extractor with no overlay seam, and the
- * geometry the clash and viewer tools read. Those are rebuilt on the next
+ * The exact rows returned by `relationships().relations` are folded through the
+ * same overlay. Its legacy voids / fills / groups / connections projections and
+ * the geometry the clash and viewer tools read are rebuilt on the next
  * `model_load` after a save.
  */
 
@@ -52,6 +52,7 @@ import {
   extractDocumentsOnDemand,
   extractMaterialsOnDemand,
   extractRelationshipsOnDemand,
+  extractExactRelatedIds,
   expandTypes,
   QUERY_REL_TYPE_MAP,
   extractTypePropertiesOnDemand,
@@ -59,9 +60,9 @@ import {
 } from '@ifc-lite/parser';
 import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode, matchesPropertyFilter } from '@ifc-lite/query';
-import { edgeSurvives } from '@ifc-lite/data';
 
 import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
+import { foldRelationshipRows } from './backend-query-relationships.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -417,7 +418,10 @@ export function createQueryAdapter(
       return extractDocumentsOnDemand(store, ref.expressId);
     },
     relationships(ref: EntityRef): EntityRelationshipsData {
-      return extractRelationshipsOnDemand(store, ref.expressId);
+      const result = extractRelationshipsOnDemand(store, ref.expressId);
+      const pending = overlay();
+      if (!pending) return result;
+      return foldRelationshipRows(result, pending, ref, entityData);
     },
     /**
      * Containment, aggregation and typing, with the session's queued edits
@@ -452,7 +456,6 @@ export function createQueryAdapter(
       // A deleted entity relates to nothing. Filtering only the far end left it
       // answering questions about itself (#2014 review).
       if (pending?.deleted.has(ref.expressId)) return [];
-      const half = direction === 'forward' ? store.relationships.forward : store.relationships.inverse;
       const out: number[] = [];
       const seen = new Set<number>();
       const take = (expressId: number): void => {
@@ -460,22 +463,12 @@ export function createQueryAdapter(
         seen.add(expressId);
         out.push(expressId);
       };
-      // Two `IfcRel*` instances can name the same triple; the graph keeps
-      // only one as `relationshipId` and folds the rest into
-      // `shadowedRelationshipIds` (#3760). `edgeSurvives` (shared with the
-      // CLI backend, #3782 review) treats the connection as alive as long
-      // as any one of them still exists.
-      const isDeleted = pending ? (id: number) => pending.deleted.has(id) : () => false;
-      for (const edge of half.getEdges(ref.expressId, relEnum)) {
-        if (edgeSurvives(edge, isDeleted)) take(edge.target);
-      }
-      for (const relation of pending?.queuedRelations(relType) ?? []) {
-        if (direction === 'forward') {
-          if (relation.relating !== ref.expressId) continue;
-          for (const target of relation.related) take(target);
-        } else if (relation.related.includes(ref.expressId)) {
-          take(relation.relating);
-        }
+      const isDeleted = pending
+        ? (id: number) => pending.deleted.has(id) || pending.supersededRelationshipIds.has(id)
+        : () => false;
+      for (const id of extractExactRelatedIds(store, ref.expressId, relType, direction, isDeleted)) take(id);
+      for (const edge of pending?.relationshipEdges(ref.expressId, relType) ?? []) {
+        if (edge.direction === direction) take(edge.targetId);
       }
       return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
     },

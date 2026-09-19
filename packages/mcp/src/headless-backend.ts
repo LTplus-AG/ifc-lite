@@ -164,7 +164,7 @@ export class HeadlessLikeBackend implements BimBackend {
 
   /** This session's queued edits, or null when it has none. */
   pendingOverlay(): PendingOverlay | null {
-    return overlayFromView(this.mutationView);
+    return overlayFromView(this.mutationView, this.dataStore);
   }
 
   private createSelectionAdapter(): SelectionBackendMethods {

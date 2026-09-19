@@ -1,0 +1,112 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { RelationshipType, relationshipTypeName, resolvedTypeName } from '@ifc-lite/data';
+import type { IfcDataStore } from './columnar-parser.js';
+import { normalizeIfcTypeName } from './ifc-schema.js';
+
+/** One exact-class edge touching an entity (#4205). */
+export interface ExactRelationshipEdge {
+    relationshipId: number;
+    relationshipType: string;
+    direction: 'forward' | 'inverse';
+    entity: { id: number; name?: string; type: string };
+}
+
+/** Structured relationship information for one entity. */
+export interface EntityRelationships {
+    voids: Array<{ id: number; name?: string; type: string }>;
+    fills: Array<{ id: number; name?: string; type: string }>;
+    groups: Array<{ id: number; name?: string; type: string }>;
+    connections: Array<{ id: number; name?: string; type: string }>;
+    /** Optional for consumers/backends compiled against the pre-#4205 shape. */
+    relations?: ExactRelationshipEdge[];
+}
+
+/**
+ * Return every graph edge touching `entityId`, preserving the exact IfcRel*
+ * STEP class. Compatibility aliases such as IfcRelNests occupy two enum
+ * buckets, so the result is deduplicated by relationship record and target.
+ */
+export function extractExactRelationshipEdges(
+    store: IfcDataStore,
+    entityId: number,
+): ExactRelationshipEdge[] {
+    const result: ExactRelationshipEdge[] = [];
+    const seen = new Set<string>();
+    const entityInfo = (id: number): ExactRelationshipEdge['entity'] => {
+        const ref = store.entityIndex.byId.get(id);
+        const type = resolvedTypeName(store.entities, id)
+            ?? (ref ? normalizeIfcTypeName(ref.type) : undefined)
+            ?? 'Unknown';
+        const name = store.entities.getName(id);
+        return { id, name: name || undefined, type };
+    };
+    const append = (direction: 'forward' | 'inverse'): void => {
+        const edges = direction === 'forward' ? store.relationships.forward : store.relationships.inverse;
+        const touchingEdges = edges.getEdges(entityId);
+        // Compatibility pairs occupy both a broad traversal bucket and an
+        // exact bucket. Reserve each broad record represented by an exact
+        // bucket before deduplicating by record id. This also covers server
+        // payloads whose entity table omits the IfcRel* row, where the graph
+        // buckets are the only source of the exact class.
+        const aliasRecords = new Map<string, number>();
+        for (const edge of touchingEdges) {
+            const primaryType = edge.type === RelationshipType.Nests
+                ? RelationshipType.Aggregates
+                : edge.type === RelationshipType.AssignsToGroupByFactor
+                    ? RelationshipType.AssignsToGroup
+                    : undefined;
+            if (primaryType === undefined) continue;
+            for (const relationshipId of [edge.relationshipId, ...(edge.shadowedRelationshipIds ?? [])]) {
+                const key = `${edge.target}:${primaryType}:${relationshipId}`;
+                aliasRecords.set(key, (aliasRecords.get(key) ?? 0) + 1);
+            }
+        }
+        for (const edge of touchingEdges) {
+            for (const relationshipId of [edge.relationshipId, ...(edge.shadowedRelationshipIds ?? [])]) {
+                const aliasKey = `${edge.target}:${edge.type}:${relationshipId}`;
+                const aliasesRemaining = aliasRecords.get(aliasKey) ?? 0;
+                if (aliasesRemaining > 0) {
+                    aliasRecords.set(aliasKey, aliasesRemaining - 1);
+                    continue;
+                }
+                if (relationshipId !== 0) {
+                    const key = `${direction}:${relationshipId}:${edge.target}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                }
+                result.push({
+                    relationshipId,
+                    relationshipType: resolvedTypeName(store.entities, relationshipId)
+                        ?? relationshipTypeName(edge.type),
+                    direction,
+                    entity: entityInfo(edge.target),
+                });
+            }
+        }
+    };
+    append('forward');
+    append('inverse');
+    return result;
+}
+
+/** Return unique opposite-end ids for one exact EXPRESS relationship class. */
+export function extractExactRelatedIds(
+    store: IfcDataStore,
+    entityId: number,
+    relationshipType: string,
+    direction: 'forward' | 'inverse',
+    isDeletedRelationship: (relationshipId: number) => boolean = () => false,
+): number[] {
+    const result: number[] = [];
+    const seen = new Set<number>();
+    for (const edge of extractExactRelationshipEdges(store, entityId)) {
+        if (edge.direction !== direction || edge.relationshipType !== relationshipType) continue;
+        if (isDeletedRelationship(edge.relationshipId) || seen.has(edge.entity.id)) continue;
+        seen.add(edge.entity.id);
+        result.push(edge.entity.id);
+    }
+    return result;
+}

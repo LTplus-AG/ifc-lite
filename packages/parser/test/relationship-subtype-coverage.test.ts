@@ -4,8 +4,12 @@
 
 import { describe, it, expect } from 'vitest';
 import { StepTokenizer } from '../src/tokenizer.js';
-import { ColumnarParser } from '../src/columnar-parser.js';
+import { ColumnarParser, extractRelationshipsOnDemand } from '../src/columnar-parser.js';
 import { RelationshipType } from '@ifc-lite/data';
+import { REL_TYPE_MAP, SECONDARY_REL_TYPE_MAP } from '../src/columnar-parser-indexes.js';
+import { QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
+import { normalizeIfcTypeName } from '../src/ifc-schema.js';
+import { getAllConcreteRelationshipTypes, getRelationshipSlotPlan } from '../src/relationship-schema-slots.js';
 
 // Before #4205, IfcRelAssignsToActor, IfcRelDeclares and IfcRelSequence were
 // not in HIERARCHY_REL_TYPES at all: they never reached `extractRelFast`, so
@@ -140,5 +144,75 @@ describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
     // an alias: its graph edge retains its own enum bucket and STEP record.
     expect(store.relationships!.forward.getEdges(12, RelationshipType.ConnectsStructuralMember)).toEqual([]);
     expect(store.relationships!.forward.getEdges(12, RelationshipType.ConnectsWithEccentricity)[0].relationshipId).toBe(32);
+  });
+});
+
+describe('complete schema-derived relationship graph (#4205)', () => {
+  it('indexes and exposes every concrete relationship with a relating/related slot pair', async () => {
+    const cases = [...getAllConcreteRelationshipTypes()]
+      .map((type) => ({ type, plan: getRelationshipSlotPlan(type) }))
+      .filter((entry): entry is { type: string; plan: NonNullable<ReturnType<typeof getRelationshipSlotPlan>> } =>
+        entry.plan !== undefined)
+      .sort((a, b) => a.type.localeCompare(b.type))
+      .map(({ type, plan }, index) => {
+        const relationshipId = 100 + index;
+        const relatingId = 1000 + index * 2;
+        const relatedId = relatingId + 1;
+        const attrs = Array<string>(Math.max(plan.relating.index, plan.related.index) + 1).fill('$');
+        attrs[plan.relating.index] = plan.relating.isList ? `(#${relatingId})` : `#${relatingId}`;
+        attrs[plan.related.index] = plan.related.isList ? `(#${relatedId})` : `#${relatedId}`;
+        return {
+          type,
+          relationshipId,
+          relatingId,
+          relatedId,
+          line: `#${relationshipId}=${type}('rel-${relationshipId}',$,$,$,${attrs.join(',')});`,
+        };
+      });
+
+    // Independent cardinality guard: a truncated schema walk must not make
+    // this generated fixture and its assertions vacuously agree.
+    expect(cases).toHaveLength(54);
+    const source = new TextEncoder().encode(cases.map(entry => entry.line).join('\n'));
+    const refs = Array.from(new StepTokenizer(source).scanEntitiesFast()).map((ref) => ({
+      expressId: ref.expressId,
+      type: ref.type,
+      byteOffset: ref.offset,
+      byteLength: ref.length,
+      lineNumber: ref.line,
+    }));
+    const store = await new ColumnarParser().parseLite(source.buffer.slice(0), refs, {});
+
+    expect(store.dropCensus?.relClassesSeen).toBe(54);
+    expect(store.dropCensus?.relClassesIndexed).toBe(54);
+    expect(store.dropCensus?.unindexedRelClasses).toEqual([]);
+
+    for (const entry of cases) {
+      const relationshipType = REL_TYPE_MAP[entry.type];
+      expect(relationshipType, entry.type).toBeDefined();
+      const exactTypeName = normalizeIfcTypeName(entry.type);
+      const exactRelationshipType = QUERY_REL_TYPE_MAP[exactTypeName];
+      expect(exactRelationshipType, entry.type).toBeDefined();
+      const compatibilityType = entry.type === 'IFCRELNESTS'
+        ? RelationshipType.Aggregates
+        : entry.type === 'IFCRELASSIGNSTOGROUPBYFACTOR'
+          ? RelationshipType.AssignsToGroup
+          : exactRelationshipType;
+      expect(relationshipType, entry.type).toBe(compatibilityType);
+      if (relationshipType !== exactRelationshipType) {
+        expect(SECONDARY_REL_TYPE_MAP[entry.type], entry.type).toBe(exactRelationshipType);
+      }
+      expect(store.relationships.forward.getEdges(entry.relatingId, exactRelationshipType), entry.type)
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ target: entry.relatedId, relationshipId: entry.relationshipId }),
+        ]));
+      expect(extractRelationshipsOnDemand(store, entry.relatingId).relations, entry.type)
+        .toContainEqual(expect.objectContaining({
+          relationshipId: entry.relationshipId,
+          relationshipType: exactTypeName,
+          direction: 'forward',
+          entity: expect.objectContaining({ id: entry.relatedId }),
+        }));
+    }
   });
 });

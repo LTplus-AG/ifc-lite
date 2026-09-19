@@ -10,6 +10,7 @@
  */
 
 import { SCHEMA_REGISTRY, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
+import { getSchemaRegistryForVersion } from './generated/schema-registry-by-version.js';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
 
 // Union map across every bundled IFC schema (2X3 + 4 + 4X3). The parser
@@ -171,6 +172,18 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
     return info ? [...info.attributes] : [];
 }
 
+/** Attribute names in one model schema, falling back to the bundled union. */
+export function getAttributeNamesForSchema(type: string, schema: string | undefined): string[] {
+    const normalized = schema?.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (normalized === 'IFC2X3' || normalized === 'IFC4' || normalized === 'IFC4X3') {
+        const registry = getSchemaRegistryForVersion(normalized);
+        const canonical = Object.keys(registry.entities).find(name => name.toUpperCase() === type.toUpperCase());
+        const attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
+        if (attributes) return attributes.map(attribute => attribute.name);
+    }
+    return getAttributeNamesAcrossSchemas(type);
+}
+
 /**
  * Check if a type is a real IFC entity class in any bundled schema.
  *
@@ -300,4 +313,3 @@ export function isQueryableObjectType(type: string): boolean {
     if (!chain.includes('IfcObjectDefinition')) return false;
     return !chain.includes('IfcTypeObject');
 }
-

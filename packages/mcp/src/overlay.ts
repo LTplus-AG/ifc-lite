@@ -31,12 +31,15 @@
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
 import {
-  getAttributeNamesAcrossSchemas,
   getInheritanceChainAcrossSchemas,
+  getAttributeNamesForSchema,
+  effectiveRelationshipEdges,
+  resolveEffectiveRelationshipOverlay,
+  type EffectiveRelationshipOverlay,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { LoadedModel } from './context.js';
-
+import type { QueuedRelation } from './overlay-relationships.js';
 /** An entity that exists only in the overlay (`entity_create`). */
 export interface CreatedEntity {
   expressId: number;
@@ -51,7 +54,6 @@ export interface CreatedEntity {
   /** The positional STEP attributes exactly as authored. */
   attributes: readonly unknown[];
 }
-
 /**
  * Attribute writes queued for an entity, keyed by IFC attribute name.
  *
@@ -64,24 +66,6 @@ export interface CreatedEntity {
  * the enum grows, the readback carries.
  */
 export type AttributeOverrides = ReadonlyMap<string, string>;
-
-/**
- * One queued `IfcRel…` record, resolved to the entities it links.
- *
- * `entity_create` is the only way an agent can relate anything over MCP, so a
- * queued relationship is how a session says "this new wall is in that storey".
- * Reading it back is what keeps `in_storey` from dropping an entity the same
- * session just placed.
- */
-export interface QueuedRelation {
-  /** expressId of the queued `IfcRel…` record itself. */
-  relationshipId: number;
-  /** The `Relating…` end — the container, whole, or type. */
-  relating: number;
-  /** The `Related…` end(s) — the contents, parts, or occurrences. */
-  related: readonly number[];
-}
-
 /** The overlay's read surface, as every folding tool consumes it. */
 export interface PendingOverlay {
   /** Express ids tombstoned by `entity_delete`. Empty is the common case.
@@ -122,8 +106,9 @@ export interface PendingOverlay {
    *  `'IfcRelContainedInSpatialStructure'`. Empty for a session that created
    *  none, which is the common case. */
   queuedRelations(ifcRelType: string): readonly QueuedRelation[];
+  relationshipEdges(expressId: number, ifcRelType?: string): ReturnType<typeof effectiveRelationshipEdges>;
+  readonly supersededRelationshipIds: ReadonlySet<number>;
 }
-
 /**
  * The model's pending overlay, or `null` when it has none.
  *
@@ -134,7 +119,6 @@ export interface PendingOverlay {
 export function pendingOverlay(model: LoadedModel): PendingOverlay | null {
   return model.backend.pendingOverlay();
 }
-
 /**
  * The same reader, built from the view directly.
  *
@@ -142,11 +126,10 @@ export function pendingOverlay(model: LoadedModel): PendingOverlay | null {
  * query adapter, so it cannot go through `pendingOverlay` — that would need a
  * `LoadedModel`, which is the registry entry wrapped *around* the backend.
  */
-export function overlayFromView(view: MutablePropertyView | null): PendingOverlay | null {
+export function overlayFromView(view: MutablePropertyView | null, store: IfcDataStore): PendingOverlay | null {
   if (!view || !view.hasPendingChanges()) return null;
-  return new ViewOverlay(view);
+  return new ViewOverlay(view, store);
 }
-
 /**
  * **Everything derived is lazy, and the point lookup does not derive at all.**
  *
@@ -167,6 +150,7 @@ export function overlayFromView(view: MutablePropertyView | null): PendingOverla
  */
 class ViewOverlay implements PendingOverlay {
   private readonly view: MutablePropertyView;
+  private readonly store: IfcDataStore;
   private tombstones: ReadonlySet<number> | null = null;
   private all: readonly CreatedEntity[] | null = null;
   private identified: readonly CreatedEntity[] | null = null;
@@ -174,9 +158,11 @@ class ViewOverlay implements PendingOverlay {
   /** Built on first use and never for a session that asks no relationship
    *  question, which is most of them. */
   private relationsByType: Map<string, QueuedRelation[]> | null = null;
+  private effectiveRelations: EffectiveRelationshipOverlay | null = null;
 
-  constructor(view: MutablePropertyView) {
+  constructor(view: MutablePropertyView, store: IfcDataStore) {
     this.view = view;
+    this.store = store;
   }
 
   get deleted(): ReadonlySet<number> {
@@ -185,7 +171,28 @@ class ViewOverlay implements PendingOverlay {
   }
 
   get createdAll(): readonly CreatedEntity[] {
-    if (!this.all) this.all = this.view.getNewEntities().map(toCreatedEntity);
+    if (!this.all) this.all = this.view.getNewEntities().map(entity => {
+      const attributes = [...entity.attributes];
+      const names = getAttributeNamesForSchema(entity.type, this.store.schemaVersion);
+      for (const { name, value } of this.view.getAttributeMutationsForEntity(entity.expressId)) {
+        const index = names.indexOf(name);
+        if (index >= 0) attributes[index] = value;
+      }
+      for (const [index, value] of this.view.getPositionalMutationsForEntity(entity.expressId) ?? []) attributes[index] = value;
+      for (const mutation of this.view.getMutationsForEntity(entity.expressId)) {
+        const key = mutation.attributeName ?? '';
+        if (key.startsWith('@')) {
+          const index = Number(key.slice(1));
+          const value = this.view.getPositionalMutationsForEntity(entity.expressId)?.get(index);
+          if (value !== undefined) attributes[index] = value;
+        } else {
+          const current = this.view.getAttributeMutationsForEntity(entity.expressId).find(attribute => attribute.name === key);
+          const index = names.indexOf(key);
+          if (current && index >= 0) attributes[index] = current.value;
+        }
+      }
+      return toCreatedEntity({ ...entity, attributes });
+    });
     return this.all;
   }
 
@@ -223,8 +230,36 @@ class ViewOverlay implements PendingOverlay {
   }
 
   queuedRelations(ifcRelType: string): readonly QueuedRelation[] {
-    if (!this.relationsByType) this.relationsByType = indexQueuedRelations(this.createdAll);
+    if (!this.relationsByType) {
+      this.relationsByType = new Map();
+      for (const relation of this.relationshipOverlay.relationships) {
+        const key = relation.relationshipType.toUpperCase();
+        const list = this.relationsByType.get(key);
+        if (list) list.push(relation);
+        else this.relationsByType.set(key, [relation]);
+      }
+    }
     return this.relationsByType.get(ifcRelType.toUpperCase()) ?? [];
+  }
+
+  private get relationshipOverlay(): EffectiveRelationshipOverlay {
+    if (!this.effectiveRelations) this.effectiveRelations = resolveEffectiveRelationshipOverlay(this.store, {
+      createdEntities: () => this.view.getNewEntities(),
+      mutatedEntityIds: () => this.view.getMutations().map(mutation => mutation.entityId),
+      namedAttributes: id => this.view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
+      positionalAttributes: id => this.view.getPositionalMutationsForEntity(id) ?? [],
+      attributeWriteOrder: id => this.view.getMutationsForEntity(id).map(mutation => mutation.attributeName ?? ''),
+      isDeleted: id => this.view.isDeleted(id),
+    });
+    return this.effectiveRelations;
+  }
+
+  relationshipEdges(expressId: number, ifcRelType?: string): ReturnType<typeof effectiveRelationshipEdges> {
+    return effectiveRelationshipEdges(this.relationshipOverlay, id => this.view.isDeleted(id), expressId, ifcRelType);
+  }
+
+  get supersededRelationshipIds(): ReadonlySet<number> {
+    return this.relationshipOverlay.supersededSourceIds;
   }
 
   propertySets(expressId: number): PropertySet[] {
@@ -234,61 +269,6 @@ class ViewOverlay implements PendingOverlay {
   quantitySets(expressId: number): QuantitySet[] {
     return this.view.getQuantitiesForEntity(expressId);
   }
-}
-
-/**
- * Group queued `IfcRel…` creates by class, resolved to their two ends.
- *
- * **By attribute name, never by slot.** The two role attributes do sit at slots
- * 4 and 5 for every relationship in the schema, but which of them is the
- * `Relating` end is per-class: `IfcRelAggregates` puts `RelatingObject` at 4,
- * while `IfcRelContainedInSpatialStructure` puts `RelatedElements` there. That
- * is the same hazard as slot 4 being `ObjectType` on an `IfcObject` and
- * `ApplicableOccurrence` on an `IfcTypeObject`, and the same answer:
- * `getAttributeNamesAcrossSchemas` — cross-schema, so a queued IFC2X3 or IFC4X3
- * relationship resolves too (#2003).
- *
- * A relationship whose ends cannot be resolved is skipped rather than guessed —
- * which is also what happens to an IFC2X3 `IfcRelCoversSpaces`, whose slot 4 is
- * `RelatedSpace` where IFC4 has `RelatingSpace`: it has no `Relating…` end under
- * the IFC4 spelling, so it is skipped rather than wired backwards. It is never
- * looked up either, because `queuedRelations` is only ever asked for the five
- * classes in `REL_TYPE_MAP`, and those five carry identical role slots in all
- * three bundled schemas.
- */
-function indexQueuedRelations(created: readonly CreatedEntity[]): Map<string, QueuedRelation[]> {
-  const byType = new Map<string, QueuedRelation[]>();
-  for (const entity of created) {
-    const upper = entity.ifcType.toUpperCase();
-    if (!upper.startsWith('IFCREL')) continue;
-    const names = getAttributeNamesAcrossSchemas(entity.ifcType);
-    if (names.length === 0) continue;
-    let relating: number | undefined;
-    let related: number[] | undefined;
-    for (let i = 0; i < names.length; i++) {
-      // The two prefixes are disjoint — `'Relating'.startsWith('Related')` is
-      // false and so is the reverse — so the order of these two tests carries no
-      // meaning. An earlier comment here claimed it did.
-      if (names[i].startsWith('Related')) related ??= refIds(entity.attributes[i]);
-      else if (names[i].startsWith('Relating')) relating ??= refIds(entity.attributes[i])[0];
-    }
-    if (relating === undefined || related === undefined || related.length === 0) continue;
-    const list = byType.get(upper);
-    const relation: QueuedRelation = { relationshipId: entity.expressId, relating, related };
-    if (list) list.push(relation);
-    else byType.set(upper, [relation]);
-  }
-  return byType;
-}
-
-/** Express ids from an authored `'#42'` reference or a list of them. */
-function refIds(value: unknown): number[] {
-  if (typeof value === 'string') {
-    const id = Number.parseInt(value.trim().slice(1), 10);
-    return value.trim().startsWith('#') && Number.isFinite(id) ? [id] : [];
-  }
-  if (Array.isArray(value)) return value.flatMap((item) => refIds(item));
-  return [];
 }
 
 /**

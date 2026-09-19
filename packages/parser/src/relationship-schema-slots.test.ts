@@ -104,6 +104,18 @@ describe('relationship-schema-slots (#4205)', () => {
     }
   });
 
+  it('maps every concrete relationship whose schema declares a binary edge (#4205)', () => {
+    const resolvable = [...getAllConcreteRelationshipTypes()]
+      .filter(type => getRelationshipSlotPlan(type) !== undefined)
+      .sort();
+    expect(Object.keys(REL_TYPE_MAP).sort()).toEqual(resolvable);
+    // IFC2X3 alone permits instantiating the base IfcRelAssociates, which has
+    // RelatedObjects but no Relating* attribute and therefore is not a binary
+    // graph edge. Keep the exception singular and explicit.
+    expect([...getAllConcreteRelationshipTypes()].filter(type => !getRelationshipSlotPlan(type)))
+      .toEqual(['IFCRELASSOCIATES']);
+  });
+
   it('excludes abstract IfcRelationship supertypes from the GATE', () => {
     const union = getAllConcreteRelationshipTypes();
     // IfcRelAssociates is deliberately excluded from this list: it is

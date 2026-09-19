@@ -107,21 +107,7 @@ interface BimDocument {
   confidentiality?: string;
 }
 
-/**
- * The related OBJECTS of an entity's structural relationships, never the
- * `IfcRel*` entities: `voids` holds the `IfcOpeningElement`s that void this
- * element, `fills` the `IfcOpeningElement` it fills, `groups` the `IfcZone` /
- * `IfcGroup` / `IfcSystem` it belongs to, `connections` the elements it is
- * joined to. The names are not EXPRESS names on purpose — IFC's own names
- * for these traversals are inverse attributes holding the `IfcRel*` entity,
- * which is not what these arrays contain (#2422).
- */
-interface BimRelationships {
-  voids: Array<{ id: number; name?: string; type: string }>;
-  fills: Array<{ id: number; name?: string; type: string }>;
-  groups: Array<{ id: number; name?: string }>;
-  connections: Array<{ id: number; name?: string; type: string }>;
-}
+type BimRelationships = BimSdk.EntityRelationshipsData;
 
 interface BimModelInfo {
   id: string;
@@ -495,6 +481,50 @@ declare namespace BimCost {
     | 'MISSING_VALUE' | 'INVALID_NUMBER' | 'UNSUPPORTED_APPLIED_VALUE' | 'UNSUPPORTED_CONDITION'
     | 'UNSUPPORTED_UNIT' | 'INCOMPATIBLE_UNIT' | 'MISSING_CURRENCY' | 'MIXED_CURRENCY'
     | 'DIVISION_BY_ZERO' | 'PENDING_EDIT_NOT_APPLIED';
+}
+
+// ── SDK relationship types ────────────────────────────────────────────
+//
+// Extracted by the generator from the sources below — these declarations are
+// the engine's own text, not a copy maintained in the generator:
+//   packages/sdk/src/types.ts
+
+declare namespace BimSdk {
+  /**
+   * The related **objects** of an entity's structural relationships — never the
+   * `IfcRel*` entities themselves:
+   *
+   * - `voids` — the `IfcOpeningElement`s that void this element
+   *   (`IfcRelVoidsElement`, host → opening).
+   * - `fills` — the `IfcOpeningElement` this element fills
+   *   (`IfcRelFillsElement`, filler → opening).
+   * - `groups` — the `IfcZone` / `IfcGroup` / `IfcSystem` it is assigned to.
+   * - `connections` — the elements it is joined to.
+   *
+   * The field names are deliberately not EXPRESS names, and #2422 resolved to
+   * keep them. IFC's own names for these traversals (`HasOpenings`, `FillsVoids`,
+   * `HasAssignments`, `ConnectedTo` / `ConnectedFrom`) are INVERSE attributes
+   * holding the `IfcRel*` entity, which is not what these arrays contain — so
+   * "use the exact EXPRESS name" has no name to offer here. Renaming `voids` to
+   * `openings` is not a fix either: `voids` **and** `fills` both hold
+   * `IfcOpeningElement`s, and only the voids/fills pair — buildingSMART's own
+   * vocabulary for the two directions — tells them apart. Pinned by
+   * `packages/parser/test/relationship-field-semantics-2422.test.ts`.
+   */
+  export interface EntityRelationshipsData {
+    voids: Array<{ id: number; name?: string; type: string }>;
+    fills: Array<{ id: number; name?: string; type: string }>;
+    groups: Array<{ id: number; name?: string; type?: string }>;
+    connections: Array<{ id: number; name?: string; type: string }>;
+    /** Every graph edge touching the entity, preserving its exact IfcRel* class.
+     * Optional for third-party backends compiled against the pre-#4205 shape. */
+    relations?: Array<{
+      relationshipId: number;
+      relationshipType: string;
+      direction: 'forward' | 'inverse';
+      entity: { id: number; name?: string; type: string };
+    }>;
+  }
 }
 interface BimStructuralLoad {
   ExpressId: number; Type: string; Name?: string;

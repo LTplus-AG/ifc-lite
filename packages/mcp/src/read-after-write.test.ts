@@ -904,6 +904,55 @@ describe('containment over queued relationships', () => {
     return created.expressId;
   }
 
+  it('rehydrates parsed relationship endpoint metadata from the overlay', async () => {
+    await session();
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+    const wall = { modelId: 'm', expressId: 72 };
+
+    await call('entity_set_attribute', { global_id: guid('STOR'), attribute: 'Name', value: 'Level One' });
+
+    const edge = model.bim.relationships(wall).relations?.find((candidate) =>
+      candidate.relationshipId === 45 && candidate.entity.id === 41);
+    expect(edge?.entity.name).toBe('Level One');
+    expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('Level One');
+  }, 30_000);
+
+  it('reports a queued exact relationship row and removes it after deletion', async () => {
+    await session();
+    const wall = await structured<{ expressId: number }>('entity_create', {
+      type: 'IfcWall',
+      attributes: [`'${guid('WALC')}'`, null, "'Wall C'", null, null, '#40', null, "'tagC'", null],
+    });
+    const relationship = await structured<{ expressId: number }>('entity_create', {
+      type: 'IfcRelContainedInSpatialStructure',
+      attributes: [`'${guid('RELZ')}'`, null, null, null, [`#${wall.expressId}`], '#41'],
+    });
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+
+    expect(model.bim.relationships({ modelId: 'm', expressId: wall.expressId }).relations)
+      .toContainEqual(expect.objectContaining({
+        relationshipId: relationship.expressId,
+        relationshipType: 'IfcRelContainedInSpatialStructure',
+        direction: 'inverse',
+        entity: expect.objectContaining({ id: 41, type: 'IfcBuildingStorey' }),
+      }));
+
+    await call('entity_set_attribute', {
+      global_id: guid('RELZ'), attribute: 'RelatedElements', value: '#73',
+    });
+    expect(model.bim.related({ modelId: 'm', expressId: 73 }, 'IfcRelContainedInSpatialStructure', 'inverse'))
+      .toContainEqual(expect.objectContaining({ ref: { modelId: 'm', expressId: 41 } }));
+    expect(model.bim.related({ modelId: 'm', expressId: wall.expressId }, 'IfcRelContainedInSpatialStructure', 'inverse'))
+      .toEqual([]);
+
+    await call('entity_delete', { global_id: guid('RELZ') });
+    expect(model.bim.relationships({ modelId: 'm', expressId: wall.expressId }).relations?.some(
+      (edge) => edge.relationshipId === relationship.expressId,
+    )).toBe(false);
+  }, 30_000);
+
   it('keeps a session-placed entity in an in_storey query', async () => {
     await session();
     const wallC = await createPlacedWall();

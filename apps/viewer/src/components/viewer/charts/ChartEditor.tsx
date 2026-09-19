@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { CHART_FILTER_NOT_APPLICABLE_SOURCES, elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n/useTranslation';
 import { readChartFilter } from '@/lib/charts/source-filter';
 import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector';
 import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
@@ -68,6 +69,7 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
 }
 
 export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading }: ChartEditorProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<ChartSpec>(spec);
   const schemaVersion = useActiveSchemaVersion();
   const [filterText, setFilterText] = useState(spec.filter?.selector ?? '');
@@ -170,7 +172,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
           <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
         )}
         <label className="col-span-2 flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Source filter (selector)</span>
+          <span className="text-muted-foreground">{t('chartEditor.sourceFilterLabel')}</span>
           {filterApplicable ? (
             <>
               <div className="flex items-center gap-1">
@@ -180,15 +182,15 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
                   onChange={(e) => setFilterText(e.target.value)}
                   onBlur={() => setFilterFeedback(filterReading && !filterReading.ok ? { tone: 'error', lines: [filterReading.message] } : null)}
                   placeholder={FILTER_PLACEHOLDER}
-                  aria-label="Source filter"
+                  aria-label={t('chartEditor.sourceFilterAriaLabel')}
                   spellCheck={false}
                 />
                 <a
                   href={DOCS_URL}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="Selector syntax reference"
-                  title="Selector syntax reference"
+                  aria-label={t('chartEditor.selectorSyntaxReference')}
+                  title={t('chartEditor.selectorSyntaxReference')}
                   className="text-muted-foreground hover:text-foreground shrink-0"
                 >
                   <HelpCircle className="h-3.5 w-3.5" />
@@ -198,7 +200,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             </>
           ) : (
             <span className="text-[11px] text-muted-foreground">
-              Source filter is not applicable to {draft.source === 'bcf' ? 'BCF topics' : 'Model compare'}.
+              {t('chartEditor.sourceFilterNotApplicable', { source: SOURCE_LABELS[draft.source] })}
             </span>
           )}
         </label>

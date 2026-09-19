@@ -235,7 +235,7 @@
   "apps/viewer/src/components/viewer/SearchModal.filter.editors.identity.tsx": 3,
   "apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx": 18,
   "apps/viewer/src/components/viewer/SearchModal.filter.selector.tsx": 5,
-  "apps/viewer/src/components/viewer/SearchModal.filter.tsx": 27,
+  "apps/viewer/src/components/viewer/SearchModal.filter.tsx": 23,
   "apps/viewer/src/components/viewer/SearchModal.text.tsx": 20,
   "apps/viewer/src/components/viewer/SearchModal.tsx": 7,
   "apps/viewer/src/components/viewer/Section2DPanel.tsx": 94,

@@ -15,6 +15,7 @@
 
 import { X } from 'lucide-react';
 import type { FilterRule } from '@/lib/search/filter-rules';
+import { useTranslation } from '@/i18n';
 
 export function GroupTabs({
   groups,
@@ -27,8 +28,9 @@ export function GroupTabs({
   onSelect: (index: number) => void;
   onRemove: (index: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-1 text-[11px]" role="tablist" aria-label="Filter groups">
+    <div className="flex flex-wrap items-center gap-1 text-[11px]" role="tablist" aria-label={t('filterGroups.tabsAriaLabel')}>
       {groups.map((g, i) => (
         <div key={i} className="flex items-center gap-1">
           {i > 0 && <span aria-hidden className="px-0.5 text-muted-foreground">+</span>}
@@ -43,13 +45,13 @@ export function GroupTabs({
                 : 'border-transparent text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800'
             }`}
           >
-            Group {i + 1}
+            {t('filterGroups.groupLabel', { index: i + 1 })}
             <span className="text-[10px] text-muted-foreground">({g.rules.length})</span>
           </button>
           {groups.length > 1 && (
             <button
               type="button"
-              aria-label={`Remove group ${i + 1}`}
+              aria-label={t('filterGroups.removeGroupAriaLabel', { index: i + 1 })}
               onClick={() => onRemove(i)}
               className="rounded p-0.5 text-muted-foreground hover:bg-zinc-100 hover:text-destructive dark:hover:bg-zinc-800"
             >

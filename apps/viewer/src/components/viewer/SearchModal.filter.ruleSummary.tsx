@@ -12,6 +12,8 @@
  * ("N groups (OR)" in place of a single AND/OR badge).
  */
 
+import { useTranslation } from '@/i18n';
+
 export function RuleSummary({
   ruleCount,
   groupCount,
@@ -27,26 +29,23 @@ export function RuleSummary({
   combinator: 'AND' | 'OR';
   limit: number;
 }) {
+  const { t } = useTranslation();
   if (ruleCount === 0) {
     return (
-      <span className="text-muted-foreground italic">No rules — add one to run.</span>
+      <span className="text-muted-foreground italic">{t('filterGroups.noRules')}</span>
     );
   }
   return (
     <span className="text-muted-foreground">
-      <span className="font-mono text-foreground">{ruleCount}</span>{' '}
-      rule{ruleCount === 1 ? '' : 's'}
+      <span className="font-mono text-foreground">{t('filterGroups.ruleCount', { count: ruleCount })}</span>
       <span className="mx-1">·</span>
       {groupCount > 1 ? (
-        <>
-          <span className="font-mono text-foreground">{groupCount}</span> groups{' '}
-          <span className="font-mono">(OR)</span>
-        </>
+        <span className="font-mono text-foreground">{t('filterGroups.groupCountOr', { count: groupCount })}</span>
       ) : (
         <span className="font-mono">{combinator}</span>
       )}
       <span className="mx-1">·</span>
-      limit{' '}
+      {t('filterGroups.limit')}{' '}
       <span className="font-mono text-foreground">
         {limit > 0 ? limit.toLocaleString() : '∞'}
       </span>

@@ -43,8 +43,10 @@ import { RuleRow } from './SearchModal.filter.editors';
 import { SearchModalFilterSelector, useActiveSchemaVersion } from './SearchModal.filter.selector';
 import { readSelector } from '@/lib/search/selector-to-rules';
 import { GroupTabs } from './SearchModal.filter.groupTabs';
+import { useTranslation } from '@/i18n';
 
 export function SearchModalFilterBuilder() {
+  const { t } = useTranslation();
   const {
     filter,
     activeGroupIndex,
@@ -190,9 +192,9 @@ export function SearchModalFilterBuilder() {
             size="sm"
             onClick={addFilterGroup}
             className="h-7 gap-1 text-[11px]"
-            title='Add another OR group — "+" in selector text (#4904)'
+            title={t('filterGroups.addGroupTitle')}
           >
-            <Plus className="h-3 w-3" /> Add group
+            <Plus className="h-3 w-3" /> {t('filterGroups.addGroup')}
           </Button>
 
           <div className="ml-1 flex items-center gap-1">
@@ -289,6 +291,7 @@ function PresetMenu({
   onLoad: (preset: SavedFilterPreset) => void;
   onDelete: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   if (presets.length === 0) {
     return (
       <Button
@@ -328,7 +331,8 @@ function PresetMenu({
               <span className="font-medium">{p.name}</span>
               <span className="text-[10px] text-muted-foreground">
                 {totalRuleCount(p.groups)} rule{totalRuleCount(p.groups) === 1 ? '' : 's'}
-                {p.groups.length > 1 ? ` · ${p.groups.length} groups (OR)` : ` · ${p.combinator}`}
+                {' · '}
+                {p.groups.length > 1 ? t('filterGroups.groupCountOr', { count: p.groups.length }) : p.combinator}
               </span>
             </div>
             <button

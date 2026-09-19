@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { readSelector } from '@/lib/search/selector-to-rules';
 import { groupsToSelectorText } from '@/lib/search/filter-groups';
+import { useTranslation } from '@/i18n';
 
 const DOCS_URL = 'https://ifclite.dev/docs/guide/selector-syntax/';
 const PLACEHOLDER = 'IfcWall, Pset_WallCommon.FireRating=/REI.*/';
@@ -45,6 +46,7 @@ export function SearchModalFilterSelector() {
   const groups = useViewerStore((s) => s.searchFilter.groups);
   const setSearchFilter = useViewerStore((s) => s.setSearchFilter);
   const schemaVersion = useActiveSchemaVersion();
+  const { t } = useTranslation();
   const [text, setText] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -134,7 +136,7 @@ export function SearchModalFilterSelector() {
       {currentAsText.length > 0 && (
         <p
           className="truncate font-mono text-[10px] text-muted-foreground"
-          title="The current filter, as selector text — a second group (Add group, below) shows up here joined with &quot;+&quot;."
+          title={t('filterGroups.readbackTitle')}
         >
           {currentAsText}
         </p>

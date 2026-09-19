@@ -182,7 +182,7 @@ describe('nestCostItemsInStore', () => {
   });
 
   it('appends to an existing target nest instead of creating a second one', async () => {
-    const { editor: ed } = await editor();
+    const { editor: ed, view } = await editor();
     const parent = addCostItemToStore(ed, ANCHOR, { Name: 'Parent' });
     const existingChild = addCostItemToStore(ed, ANCHOR, { Name: 'Existing' });
     const newChild = addCostItemToStore(ed, ANCHOR, { Name: 'New' });
@@ -190,6 +190,7 @@ describe('nestCostItemsInStore', () => {
     const relId = nestCostItemsInStore(ed, ANCHOR, parent, [newChild], new Map(), targetNest);
     expect(relId).toBe(900);
     expect(ed.getNewEntity(900)).toBeNull(); // not overlay-created here (pre-existing source rel, id doesn't exist in overlay)
+    expect(view.getPositionalMutationsForEntity(900)?.get(5)).toEqual([`#${existingChild}`, `#${newChild}`]);
   });
 
   it('reparents: detaches a child from its old nest, tombstoning it when emptied', async () => {

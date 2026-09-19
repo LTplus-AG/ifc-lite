@@ -60,7 +60,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
     [bulk, models, initialIds],
   );
   const [draft, setDraft] = useState('');
-  const [renaming, setRenaming] = useState<{ id: string; name: string; error?: string } | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string; hasError?: boolean } | null>(null);
 
   const tags = useMemo(() => [...modelTags.values()].sort((a, b) => a.name.localeCompare(b.name)), [modelTags]);
   const membershipOf = (tagId: string): Membership => {
@@ -91,7 +91,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
   const commitRename = () => {
     if (!renaming) return;
     if (renameModelTag(renaming.id, renaming.name)) setRenaming(null);
-    else setRenaming({ ...renaming, error: t('hierarchy.modelTagEditor.renameError') });
+    else setRenaming({ ...renaming, hasError: true });
   };
 
   const scopeLabel = bulk
@@ -193,7 +193,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                       className="h-7 text-xs"
                       autoFocus
                     />
-                    {renaming.error && <span role="alert" className="text-[10px] text-red-600">{renaming.error}</span>}
+                    {renaming.hasError && <span role="alert" className="text-[10px] text-red-600">{t('hierarchy.modelTagEditor.renameError')}</span>}
                   </div>
                 ) : (
                   <span className="min-w-0 flex-1"><ModelTagChip tag={tag} /></span>

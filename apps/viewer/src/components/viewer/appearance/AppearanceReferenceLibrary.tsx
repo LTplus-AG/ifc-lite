@@ -10,7 +10,7 @@ import { useViewerStore } from '@/store';
 import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { placementFrameKey } from '@/lib/model-placement/persistence.js';
 import { downloadBlob } from '@/lib/export/download.js';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
 export interface AppearanceReferenceLibraryProps {
   onEdit?: (id: string) => void;
@@ -33,7 +33,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
   const mounted = useRef(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [notice, setNotice] = useState<string>();
+  const [noticeKey, setNoticeKey] = useState<TranslationKey>();
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; pending.current?.abort(); };
@@ -44,17 +44,17 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
   const blocked = disabled || busy;
   function perform(action: () => void): void {
     if (blocked) return;
-    setError(undefined); setNotice(undefined);
+    setError(undefined); setNoticeKey(undefined);
     try { action(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   }
-  async function fileOperation(action: (signal: AbortSignal) => Promise<string>): Promise<void> {
+  async function fileOperation(action: (signal: AbortSignal) => Promise<TranslationKey>): Promise<void> {
     pending.current?.abort();
     const controller = new AbortController(); pending.current = controller;
-    setBusy(true); setError(undefined); setNotice(undefined);
+    setBusy(true); setError(undefined); setNoticeKey(undefined);
     try {
-      const message = await action(controller.signal);
-      if (!controller.signal.aborted && mounted.current) setNotice(message);
+      const notice = await action(controller.signal);
+      if (!controller.signal.aborted && mounted.current) setNoticeKey(notice);
     } catch (failure) {
       if (!controller.signal.aborted && mounted.current) setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
@@ -69,7 +69,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
       if (signal.aborted) throw new DOMException(t('appearance.referenceLibrary.importCancelled'), 'AbortError');
       if (useViewerStore.getState().appearanceReferences !== before) throw new Error(t('appearance.referenceLibrary.changedWhileOpening'));
       useViewerStore.getState().importAppearanceReferences(text);
-      return t('appearance.referenceLibrary.importedNotice');
+      return 'appearance.referenceLibrary.importedNotice';
     });
   }
   function relinkFile(file: File): void {
@@ -77,7 +77,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
     if (!target) return;
     void fileOperation(async signal => {
       await useViewerStore.getState().relinkAppearanceReference(target, file, signal);
-      return t('appearance.referenceLibrary.relinkedNotice');
+      return 'appearance.referenceLibrary.relinkedNotice';
     });
   }
   return <section className="space-y-2" aria-labelledby={`${id}-heading`} aria-busy={busy}>
@@ -89,7 +89,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
         <Button type="button" variant="ghost" size="icon-xs" disabled={blocked || references.size === 0}
           aria-label={t('appearance.referenceLibrary.exportTooltip')} title={t('appearance.referenceLibrary.exportTooltip')} onClick={() => perform(() => {
             downloadBlob(new Blob([useViewerStore.getState().exportAppearanceReferences()], { type: 'application/json' }), 'drawing-registration.json');
-            setNotice(t('appearance.referenceLibrary.exportedNotice'));
+            setNoticeKey('appearance.referenceLibrary.exportedNotice');
           })}><Download aria-hidden="true" /></Button>
       </div>
     </div>
@@ -144,7 +144,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
       <span>{t('appearance.referenceLibrary.openingFile')}</span><Button type="button" variant="ghost" size="sm" onClick={() => { pending.current?.abort(); pending.current = undefined; setBusy(false); }}>{t('appearance.referenceLibrary.cancelFileOperation')}</Button>
     </div>}
     {error && <p role="alert" className="text-[11px] leading-relaxed text-destructive">{error}</p>}
-    {notice && <p role="status" className="text-[11px] leading-relaxed text-muted-foreground">{notice}</p>}
+    {noticeKey && <p role="status" className="text-[11px] leading-relaxed text-muted-foreground">{t(noticeKey)}</p>}
   </section>;
 }
 

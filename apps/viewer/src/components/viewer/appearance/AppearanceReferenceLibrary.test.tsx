@@ -12,6 +12,7 @@ import { emptyPlacementState } from '@/lib/model-placement/state.js';
 import { placementFrameKey } from '@/lib/model-placement/persistence.js';
 import type { RegisteredAppearanceReference } from '@/lib/appearance/references/types.js';
 import { AppearanceReferenceLibrary } from './AppearanceReferenceLibrary.js';
+import { registerLocale, setLocale } from '@/i18n';
 
 const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==', 'base64'));
 const owner = { kind: 'source' as const, id: 'reference-library-fixture' };
@@ -21,7 +22,7 @@ function reset() {
     models: new Map(), activeModelId: null, undoStacks: new Map(), redoStacks: new Map(), selectedEntityId: null });
   appearanceAssets.releaseOwner(owner);
 }
-afterEach(() => { cleanup(); reset(); mock.restoreAll(); });
+afterEach(() => { cleanup(); reset(); setLocale('en'); mock.restoreAll(); });
 async function fixture() {
   const asset = await appearanceAssets.add(png, { owner });
   const record: RegisteredAppearanceReference = { id: 'registered-drawing', sourceId: 'page-source', assetId: asset.id,
@@ -124,4 +125,17 @@ test('invalid import and canceled pending file read never replace existing regis
   await act(async () => { finish(text); await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.equal(useViewerStore.getState().appearanceReferences, before);
   assert.equal(useViewerStore.getState().referenceUndo.length, 1);
+});
+
+test('a retained success notice follows active catalogue replacement (#4918)', async () => {
+  await fixture();
+  mock.method(URL, 'createObjectURL', () => 'blob:registration-locale-test');
+  registerLocale('notice-test', { 'appearance.referenceLibrary.exportedNotice': 'Exported A' });
+  act(() => setLocale('notice-test'));
+  const ui = render(<AppearanceReferenceLibrary />);
+  click(button(ui, 'Export drawing registration'));
+  assert.equal(ui.querySelector('[role="status"]')?.textContent, 'Exported A');
+
+  act(() => registerLocale('notice-test', { 'appearance.referenceLibrary.exportedNotice': 'Exported B' }));
+  assert.equal(ui.querySelector('[role="status"]')?.textContent, 'Exported B');
 });

@@ -297,6 +297,7 @@ afterEach(() => {
 });
 
 const catalogueIt = HAS_CATALOGUE ? it : it.skip;
+const CANONICAL_IFC_ATTRIBUTES = new Set(['Name', 'GlobalId', 'Identification', 'Description', 'Location', 'Purpose', 'IntendedUse', 'Revision']);
 
 describe('Properties panel localization (#4918 slice 4)', () => {
   catalogueIt('translates the property cards and georeferencing chrome', () => {
@@ -312,10 +313,11 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     for (const key of STATIC_KEYS) {
       const text = CATALOGUE[key] as string;
       if (!english.has(text)) continue; // not on screen in this render's state
+      if (CANONICAL_IFC_ATTRIBUTES.has(text)) continue;
       assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
       coveredAny = true;
     }
-    for (const attribute of ['Name', 'Identification', 'Description', 'Location', 'Purpose', 'IntendedUse', 'Revision']) {
+    for (const attribute of CANONICAL_IFC_ATTRIBUTES) {
       assert.ok(after.has(attribute), `canonical IFC ${attribute} field labels must remain literal across locale changes`);
     }
     assert.ok(coveredAny, 'this render must exercise at least one static properties key');
@@ -353,6 +355,22 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.match(container.textContent ?? '', /\[no results A\]/);
     act(() => setLocale('epsg-b'));
     assert.match(container.textContent ?? '', /\[no results B\]/);
+  });
+
+  catalogueIt('resolves a retained projection error after active catalogue replacement', async () => {
+    registerLocale('projection-test', { 'properties.locationMap.projectionUnresolved': '[projection A]' });
+    act(() => setLocale('projection-test'));
+    const container = render(
+      <LocationMap
+        mapConversion={MAP_CONVERSION}
+        projectedCRS={{ ...PROJECTED_CRS, name: 'not-a-coordinate-system', description: undefined, mapZone: undefined, mapProjection: undefined }}
+      />,
+    );
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    assert.match(container.textContent ?? '', /\[projection A\]/);
+
+    act(() => registerLocale('projection-test', { 'properties.locationMap.projectionUnresolved': '[projection B]' }));
+    assert.match(container.textContent ?? '', /\[projection B\]/);
   });
 });
 

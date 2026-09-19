@@ -63,6 +63,16 @@ const textCounts = new Map<string, number>();
 for (const key of ALL_STATIC_KEYS) textCounts.set(MERGED_EN[key] as string, (textCounts.get(MERGED_EN[key] as string) ?? 0) + 1);
 const STATIC_KEYS = ALL_STATIC_KEYS.filter((key) => textCounts.get(MERGED_EN[key] as string) === 1);
 
+/** A translated occurrence must not be masked by another key with the same
+ * English copy. The per-key marker checks below prove the unique-key wiring;
+ * this negative oracle proves every rendered occurrence left English. */
+function assertNoEnglishCatalogueChrome(english: ReadonlySet<string>, translated: ReadonlySet<string>, context: string): void {
+  const renderedEnglish = new Set(ALL_STATIC_KEYS.map((key) => MERGED_EN[key] as string).filter((text) => english.has(text)));
+  for (const text of renderedEnglish) {
+    assert.equal(translated.has(text), false, `${context}: rendered catalogue text remained untranslated: "${text}"`);
+  }
+}
+
 function addReadable(root: ParentNode, out: Set<string>): void {
   root.querySelectorAll('*').forEach((element) => {
     for (const attr of ['aria-label', 'title', 'placeholder']) {
@@ -162,6 +172,7 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
     registerLocale('pseudo', PSEUDO);
     act(() => setLocale('pseudo'));
     const after = chromeStrings(container);
+    assertNoEnglishCatalogueChrome(english, after, 'apply-intent panel');
 
     let coveredAny = false;
     for (const key of STATIC_KEYS) {
@@ -180,6 +191,7 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
     registerLocale('pseudob', PSEUDO);
     act(() => setLocale('pseudob'));
     const after = chromeStrings(container);
+    assertNoEnglishCatalogueChrome(english, after, 'reference-intent panel');
 
     let coveredAny = false;
     for (const key of STATIC_KEYS) {
@@ -198,6 +210,7 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
     registerLocale('pseudoc', PSEUDO);
     act(() => setLocale('pseudoc'));
     const after = chromeStrings(container);
+    assertNoEnglishCatalogueChrome(english, after, 'capture/scan panels');
 
     let coveredAny = false;
     for (const key of STATIC_KEYS) {

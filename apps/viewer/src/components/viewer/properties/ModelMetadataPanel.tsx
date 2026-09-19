@@ -30,7 +30,7 @@ import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUn
 import { useViewerStore } from '@/store';
 import { computeModelStats } from './modelMetadataStats';
 import { useTranslation } from '@/i18n';
-import { EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
@@ -238,7 +238,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
               {projectData.description && (
                 <div className="flex items-start gap-3 px-3 py-2">
                   <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-zinc-500 shrink-0">{t('properties.field.description')}</span>
+                  <span className="text-xs text-zinc-500 shrink-0">{EXPRESS_DESCRIPTION_ATTRIBUTE}</span>
                   <span className="text-xs text-zinc-900 dark:text-zinc-100 ml-auto text-right max-w-[60%]">
                     {projectData.description}
                   </span>
@@ -247,7 +247,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
               {projectData.globalId && (
                 <div className="flex items-center gap-3 px-3 py-2">
                   <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                  <span className="text-xs text-zinc-500">{t('properties.modelMetadata.globalIdLabel')}</span>
+                  <span className="text-xs text-zinc-500">{EXPRESS_GLOBAL_ID_ATTRIBUTE}</span>
                   <code className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400 ml-auto truncate max-w-[60%]">
                     {projectData.globalId}
                   </code>

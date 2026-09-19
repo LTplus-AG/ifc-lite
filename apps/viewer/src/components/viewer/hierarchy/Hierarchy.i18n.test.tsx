@@ -25,7 +25,7 @@ installLayout();
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render, click } from '@/test/render.js';
+import { cleanup, render, click, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { federationRegistry } from '@ifc-lite/renderer';
@@ -37,6 +37,7 @@ import { ModelRowTags } from './ModelRowTags.js';
 import { ModelsSectionHeader } from './ModelsSectionHeader.js';
 import { HierarchySortControl } from './HierarchySortControl.js';
 import { StoreyDisplayControls } from './StoreyDisplayControls.js';
+import { ModelTagEditor } from './ModelTagEditor.js';
 import type { TreeNode } from './types.js';
 
 const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('hierarchy.')));
@@ -322,6 +323,24 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
     const groupRow = container.querySelector('[data-model-tag-group]');
     const groupCount = groupRow?.querySelector('[title]');
     assert.equal(groupCount?.getAttribute('title'), '[2 many]', 'member count interpolates and pluralizes');
+  });
+
+  catalogueIt('resolves a retained tag-rename error after active catalogue replacement', () => {
+    const structure = useViewerStore.getState().createModelTag('Structure');
+    const architecture = useViewerStore.getState().createModelTag('Architecture');
+    assert.ok(structure && architecture);
+    render(<ModelTagEditor modelIds={['A']} modelName="A.ifc" onClose={() => {}} />);
+    click([...document.body.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === 'Rename tag Architecture')!);
+    const input = document.body.querySelector<HTMLInputElement>(`[data-tag-row="${architecture}"] input`);
+    assert.ok(input);
+    type(input, 'Structure');
+    click([...document.body.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === 'Save name for Architecture')!);
+
+    registerLocale('rename-test', { 'hierarchy.modelTagEditor.renameError': '[rename A]' });
+    act(() => setLocale('rename-test'));
+    assert.match(document.body.textContent ?? '', /\[rename A\]/);
+    act(() => registerLocale('rename-test', { 'hierarchy.modelTagEditor.renameError': '[rename B]' }));
+    assert.match(document.body.textContent ?? '', /\[rename B\]/);
   });
 });
 

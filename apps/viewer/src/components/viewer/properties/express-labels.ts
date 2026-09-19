@@ -4,6 +4,7 @@
 
 /** Canonical IFC EXPRESS attribute spelling; schema names are never localized. */
 export const EXPRESS_NAME_ATTRIBUTE = 'Name';
+export const EXPRESS_GLOBAL_ID_ATTRIBUTE = 'GlobalId';
 export const EXPRESS_IDENTIFICATION_ATTRIBUTE = 'Identification';
 export const EXPRESS_DESCRIPTION_ATTRIBUTE = 'Description';
 export const EXPRESS_LOCATION_ATTRIBUTE = 'Location';

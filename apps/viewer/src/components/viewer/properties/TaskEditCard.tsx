@@ -32,7 +32,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
-import { EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 
 /** IfcTaskTypeEnum values — same list as the Generate dialog. */
 const TASK_TYPES: readonly string[] = [
@@ -356,7 +356,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-[11px]">{t('properties.taskEdit.globalIdLabel')}</Label>
+                <Label className="text-[11px]">{EXPRESS_GLOBAL_ID_ATTRIBUTE}</Label>
                 <div className="text-[10px] font-mono text-muted-foreground truncate" title={task.globalId}>
                   {task.globalId}
                 </div>

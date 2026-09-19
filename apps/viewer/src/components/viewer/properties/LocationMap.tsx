@@ -28,7 +28,7 @@ import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeF
 import { buildKmzForResolvedGeoref } from '@/lib/geo/kmz-export';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter';
 import type { InstancedModelRange } from '@/utils/instancedExport';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import {
   probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
   getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
@@ -102,7 +102,7 @@ export function LocationMap({
   lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
   instancedModelRange = null,
 }: LocationMapProps) {
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<InstanceType<typeof import('maplibre-gl').Map> | null>(null);
   const markerRef = useRef<InstanceType<typeof import('maplibre-gl').Marker> | null>(null);
@@ -127,7 +127,7 @@ export function LocationMap({
 
   const [mapState, setMapState] = useState<MapState>('idle');
   const [latLon, setLatLon] = useState<LatLon | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
 
   // Seeded from the session latch, so a remount on a device already known to
   // refuse WebGL paints the fallback immediately — no probe, no construction,
@@ -234,13 +234,13 @@ export function LocationMap({
   useEffect(() => {
     if (!mapConversion || !projectedCRS) {
       setLatLon(null);
-      setError(null);
+      setErrorKey(null);
       return;
     }
 
     let cancelled = false;
     setMapState('loading');
-    setError(null);
+    setErrorKey(null);
 
     reprojectToLatLon(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale).then(result => {
       if (cancelled) return;
@@ -249,13 +249,13 @@ export function LocationMap({
         setMapState('ready');
       } else {
         setLatLon(null);
-        setError(t('properties.locationMap.projectionUnresolved'));
+        setErrorKey('properties.locationMap.projectionUnresolved');
         setMapState('error');
       }
     });
 
     return () => { cancelled = true; };
-  }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, t, locale]);
+  }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
 
   // When a picked position changes, reverse-project and query elevation
   useEffect(() => {
@@ -718,7 +718,7 @@ export function LocationMap({
       {mapState === 'error' && (
         <div className="flex items-center justify-center h-[60px] bg-zinc-50 dark:bg-zinc-900/50 gap-2 px-3">
           <MapPinOff className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-          <span className="text-[10px] text-zinc-400">{error}</span>
+          <span className="text-[10px] text-zinc-400">{errorKey && t(errorKey)}</span>
         </div>
       )}
 

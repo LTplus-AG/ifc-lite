@@ -506,11 +506,11 @@ export type ModelSourceFile = File;
 /** Complete model container for federation */
 /**
  * A federated model's geometry as it stood before alignment re-baked it.
- *
  * The whole set of channels `federationAlign.ts` overwrites — anything it
- * writes has to be in here or the restore is incomplete. Captured and restored
- * by the one pair of functions in `hooks/ingest/federationRealign.ts`.
- */
+ * writes has to be in here or the restore is incomplete. Captured/restored
+ * by the pair in `hooks/ingest/federationRealign.ts`. Invariant (#4970):
+ * every array below is INDEX-ALIGNED with `geometryResult.meshes`; only
+ * `growPreAlignment`/`prunePreAlignment` may change its length. */
 export interface PreAlignmentSnapshot {
   /** One Float32Array per mesh, in `geometryResult.meshes` order. */
   positions: Float32Array[];

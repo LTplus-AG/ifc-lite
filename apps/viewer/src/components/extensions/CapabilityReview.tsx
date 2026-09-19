@@ -50,6 +50,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { ExtensionInstallSummary } from '@/services/extensions/host.js';
+import { localizeCapabilityRisk } from './localized-capability-risk';
 
 interface CapabilityReviewProps {
   open: boolean;
@@ -271,7 +272,9 @@ export function CapabilityReview({
                     <RiskBadge tier={row.risk?.tier ?? 'red'} />
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {row.risk?.description ?? t('extensionsPanels.capabilityReview.unknownCapabilityDescription')}
+                    {row.risk
+                      ? localizeCapabilityRisk(row.risk, t)
+                      : t('extensionsPanels.capabilityReview.unknownCapabilityDescription')}
                   </p>
                 </div>
               </li>

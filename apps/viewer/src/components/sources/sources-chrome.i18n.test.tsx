@@ -868,4 +868,20 @@ describe('SourcesPanel chrome localization', () => {
     const emphasized = container.querySelector('.font-medium');
     assert.equal(emphasized?.textContent, 'my-provider');
   });
+
+  it('emphasizes every repeated provider placeholder in a valid locale', () => {
+    registerLocale('sources-failure-repeated-provider', {
+      'sources.sourcesPanel.failedToRegister': '{provider} failed; contact {provider}: {reason}',
+    });
+    act(() => setLocale('sources-failure-repeated-provider'));
+    const container = render(
+      <RegistrationFailureMessage provider="my-provider" reason="bad api version" />,
+    );
+
+    assert.equal(container.textContent, 'my-provider failed; contact my-provider: bad api version');
+    assert.deepEqual(
+      [...container.querySelectorAll('.font-medium')].map((element) => element.textContent),
+      ['my-provider', 'my-provider'],
+    );
+  });
 });

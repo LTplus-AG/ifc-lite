@@ -29,15 +29,11 @@ export function RegistrationFailureMessage({ provider, reason }: { provider: str
   const { t } = useTranslation();
   const marker = '\uE000provider\uE001';
   const message = t('sources.sourcesPanel.failedToRegister', { provider: marker, reason });
-  const markerIndex = message.indexOf(marker);
-  if (markerIndex === -1) return message;
-  return (
-    <>
-      {message.slice(0, markerIndex)}
-      <span className="font-medium">{provider}</span>
-      {message.slice(markerIndex + marker.length)}
-    </>
-  );
+  const segments = message.split(marker);
+  if (segments.length === 1) return message;
+  return segments.flatMap((segment, index) => index === segments.length - 1
+    ? [segment]
+    : [segment, <span key={index} className="font-medium">{provider}</span>]);
 }
 
 interface SourceDownloadSelection {

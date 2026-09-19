@@ -52,7 +52,7 @@ const SCHEMA_SRC = `
 
 const schema = parseExpressSchema(SCHEMA_SRC);
 const rust = generateRust(schema);
-const cratePrivateRust = generateRust(schema, { cratePrivate: true });
+const cratePrivateRust = generateRust(schema, true);
 
 describe('generateRust — type_ids.rs', () => {
   it('emits SCREAMING_CASE constants, not the PascalCase entity name', () => {

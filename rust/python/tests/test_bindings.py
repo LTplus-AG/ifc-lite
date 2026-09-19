@@ -353,7 +353,7 @@ def test_type_specific_attributes_are_returned():
         ("CrossSectionArea", "0", "IFCREAL"),
         # An enumeration, NOT a boolean: a consumer keying off value_type would
         # otherwise try to parse NOTDEFINED as true/false.
-        ("PredefinedType", "NOTDEFINED", "IFCENUM"),
+        ("BarRole", "NOTDEFINED", "IFCENUM"),
     ]
 
     # Not duplicated from the row's own fields.

@@ -40,9 +40,12 @@ interface CompareKeyPropertyProps {
    *  `null`. Translated into text here, not upstream — see
    *  `duplicateAuthoredKeyInfo`'s doc comment. */
   duplicateInfo: DuplicateAuthoredKeyInfo | null;
+  /** A run snapshots this scheme for extraction; do not let it change until
+   * that run has either published or retired. */
+  disabled?: boolean;
 }
 
-export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateInfo }: CompareKeyPropertyProps) {
+export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateInfo, disabled = false }: CompareKeyPropertyProps) {
   const { t } = useTranslation();
   const [text, setText] = useState(keyProperty ?? '');
   // What WE last committed to the store, so an external change (session
@@ -92,6 +95,7 @@ export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateInfo }
         <span className="shrink-0">{t('compareKeyProperty.label')}</span>
         <input
           type="text"
+          disabled={disabled}
           value={text}
           onChange={(e) => handleChange(e.target.value)}
           onBlur={(e) => commit(e.target.value)}

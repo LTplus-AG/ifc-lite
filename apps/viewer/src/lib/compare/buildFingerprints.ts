@@ -58,7 +58,7 @@ import {
 import { extractProjectUnits, spatialContainerPath, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { comparableProductIds } from './compareScope.js';
-import { resolveAuthoredKeys } from './authoredKeys.js';
+import { resolveAuthoredKeys, type ExtractedPropertySets } from './authoredKeys.js';
 import { buildDataInput } from './buildDataInput.js';
 export { AUTHORED_KEY_PREFIX } from './authoredKeys.js';
 import { worldPlacementFingerprint, type PlacementComposeCache } from './worldPlacement.js';
@@ -292,7 +292,16 @@ export async function buildEntityFingerprints(
     }
   }
 
-  const authoredKeys = resolveAuthoredKeys(store, geometryByLocalId.keys(), model.keyProperty, model.duplicateAuthoredKeys);
+  // A Pset.Property key uses the same extraction as the data fingerprint.
+  // Cache that pre-pass so large models do not parse every property set twice.
+  const propertySetsById = new Map<number, ExtractedPropertySets>();
+  const authoredKeys = await resolveAuthoredKeys(
+    store,
+    geometryByLocalId.keys(),
+    model.keyProperty,
+    model.duplicateAuthoredKeys,
+    propertySetsById,
+  );
 
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
   let processed = 0;
@@ -308,7 +317,7 @@ export async function buildEntityFingerprints(
     // the 64-bit data hash cannot. Both are computed from the SAME input
     // object - a sub-hash over a different projection would stop being a
     // collision guard and start rejecting genuine re-export matches.
-    const dataInput = buildDataInput(store, localId, ifcType, units);
+    const dataInput = buildDataInput(store, localId, ifcType, units, propertySetsById.get(localId));
 
     // The box goes on ONLY when the pass produced one: the engine's contract is
     // that a missing box is `undefined`, and a NaN-bearing object would pass

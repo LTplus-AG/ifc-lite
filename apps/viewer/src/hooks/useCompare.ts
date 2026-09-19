@@ -22,6 +22,7 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
+import { fallbackPairDuplicateAuthoredKeys } from '@/lib/compare/authoredKeys';
 import {
   geometryVolumesSurviveAlignment,
   resolveGeometryChannel,
@@ -274,7 +275,9 @@ export function useCompare() {
     const stillWanted = (): boolean => {
       if (epochRef.current !== myEpoch) return false;
       const live = useViewerStore.getState();
-      return live.compareBaseModelId === baseId && live.compareHeadModelId === headId;
+      return live.compareBaseModelId === baseId
+        && live.compareHeadModelId === headId
+        && live.compareKeyProperty === keyProperty;
     };
 
     store.setCompareError(null);
@@ -295,11 +298,42 @@ export function useCompare() {
         cached: builtRef.current,
         isCurrent: (candidate, version) => isCurrentFor(candidate, baseId, headId, version, keyProperty),
         extract: async (contentVersion) => {
-          // ONE map for both sides (#4989): a value duplicated between the
-          // base and head model (not just within one) must still fall back
-          // to GlobalId on both, and a single shared map is how
-          // `resolveAuthoredKeys` sees that across the two calls.
+          // ONE collision map for both sides (#4989): if either revision
+          // duplicates a value, the pair-level fallback below retires that
+          // authored key from both revisions before diffing.
           const duplicateAuthoredKeys = new Map<string, number[]>();
+          const base = await buildEntityFingerprints({
+            modelId: baseId,
+            store: baseStore,
+            meshes: baseGeometry.meshes,
+            instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
+            instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
+            instancedGeometryVolumes: baseGeometry.instancedGeometryVolumes,
+            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+              baseModel.federationAlignmentStatus,
+            ),
+            idOffset: baseModel.idOffset,
+            keyProperty,
+            duplicateAuthoredKeys,
+          });
+          const head = await buildEntityFingerprints({
+            modelId: headId,
+            store: headStore,
+            meshes: headGeometry.meshes,
+            instancedGeometryHashes: headGeometry.instancedGeometryHashes,
+            instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
+            instancedGeometryVolumes: headGeometry.instancedGeometryVolumes,
+            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+              headModel.federationAlignmentStatus,
+            ),
+            idOffset: headModel.idOffset,
+            keyProperty,
+            duplicateAuthoredKeys,
+          });
+          fallbackPairDuplicateAuthoredKeys([
+            { fingerprints: base, store: baseStore },
+            { fingerprints: head, store: headStore },
+          ], duplicateAuthoredKeys);
           return {
             baseModelId: baseId,
             headModelId: headId,
@@ -308,36 +342,8 @@ export function useCompare() {
             duplicateAuthoredKeys,
             baseName: baseModel.name,
             headName: headModel.name,
-            base: await buildEntityFingerprints({
-              modelId: baseId,
-              store: baseStore,
-              meshes: baseGeometry.meshes,
-              instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
-              instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
-              instancedGeometryVolumes: baseGeometry.instancedGeometryVolumes,
-              // #1993: a re-baked model's volumes describe a size that is no
-              // longer on screen, and nothing on this side can re-measure them.
-              geometryVolumesTrusted: geometryVolumesSurviveAlignment(
-                baseModel.federationAlignmentStatus,
-              ),
-              idOffset: baseModel.idOffset,
-              keyProperty,
-              duplicateAuthoredKeys,
-            }),
-            head: await buildEntityFingerprints({
-              modelId: headId,
-              store: headStore,
-              meshes: headGeometry.meshes,
-              instancedGeometryHashes: headGeometry.instancedGeometryHashes,
-              instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
-              instancedGeometryVolumes: headGeometry.instancedGeometryVolumes,
-              geometryVolumesTrusted: geometryVolumesSurviveAlignment(
-                headModel.federationAlignmentStatus,
-              ),
-              idOffset: headModel.idOffset,
-              keyProperty,
-              duplicateAuthoredKeys,
-            }),
+            base,
+            head,
           };
         },
       });

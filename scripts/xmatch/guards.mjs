@@ -240,13 +240,17 @@ export function unnamedNodesNormalised(path) {
  *  row always carries one), so this only ever catches more than two, which
  *  would mean a donor got reused across pairs and its base-side row lies
  *  about the pair it names. Returns the count of head ids that fail this. */
-function mergedHeadFanInWrong(key) {
+export function mergedHeadFanInWrong(key) {
   const counts = new Map();
   for (const element of key.elements) {
-    if (element.kind !== 'merged') continue;
-    for (const ref of element.head) counts.set(ref, (counts.get(ref) ?? 0) + 1);
+    for (const ref of element.head) {
+      const count = counts.get(ref) ?? { total: 0, merged: 0 };
+      count.total++;
+      if (element.kind === 'merged') count.merged++;
+      counts.set(ref, count);
+    }
   }
-  return [...counts.values()].filter((count) => count !== 2).length;
+  return [...counts.values()].filter(({ total, merged }) => merged > 0 && (total !== 2 || merged !== 2)).length;
 }
 
 /** Values appearing more than once. */
@@ -315,7 +319,7 @@ export function guardFailures(guards) {
     if (count > 0) failures.push(`${count} duplicate ${what}: the key does not describe this pair`);
   }
   if (guards.mergedHeadFanInWrong > 0) {
-    failures.push(`${guards.mergedHeadFanInWrong} merged head id(s) not claimed by exactly two base rows`);
+    failures.push(`${guards.mergedHeadFanInWrong} merged head id(s) not claimed by exactly two merged base rows`);
   }
   if (!guards.baseHasGeometryHashes || !guards.headHasGeometryHashes) {
     failures.push('a revision carries no geometry hashes: the geometry tiers would abstain');
@@ -334,4 +338,3 @@ export function guardFailures(guards) {
   }
   return failures;
 }
-

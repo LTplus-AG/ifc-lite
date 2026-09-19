@@ -11,6 +11,7 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createLineageSidecar, serializeLineageSidecar } from '@ifc-lite/diff';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { diffPositionals } from './diff.js';
 import { contentDiffCommand } from './diff-content.js';
@@ -198,6 +199,27 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     expect(await readFile(lineagePath, 'utf-8')).toBe(before);
     const second = JSON.parse(await readFile(lineagePath, 'utf-8'));
     expect(second.entries).toEqual(first.entries);
+  });
+
+  it('preserves a valid v1 lineage relation instead of re-inferring it from a free-form reason (#5005 review)', async () => {
+    await writeFile(headPath, HEAD_MODEL.replace("'Wall B'", "'Wall B (rebuilt)'"), 'utf-8');
+    const baseBytes = await readFile(basePath);
+    const headBytes = await readFile(headPath);
+    const sidecar = createLineageSidecar({
+      base: modelIdentityOf(basePath, baseBytes),
+      head: modelIdentityOf(headPath, headBytes),
+      entries: [{
+        base: [guid('OLDB')],
+        head: [guid('NEWB')],
+        relation: 'identity',
+        reason: 'successor:free-form-but-explicitly-identity',
+      }],
+    });
+    await writeFile(lineagePath, serializeLineageSidecar(sidecar), 'utf-8');
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: lineagePath, json: true });
+
+    const replayed = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(replayed.entries).toContainEqual(sidecar.entries[0]);
   });
 
   it('folds an accepted map replayed through --identity-in into the lineage as replaced, not identity', async () => {

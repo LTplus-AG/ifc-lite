@@ -170,6 +170,22 @@ describe('lineageFromDiff', () => {
     ]);
   });
 
+  it('preserves an incoming lineage relation even when its free-form reason suggests the opposite (#5005 review)', () => {
+    const diff = diffModels(
+      [entity({ key: 'OLD', aabb: WHOLE })],
+      [entity({ key: 'NEW', aabb: WHOLE })],
+      { keyAliases: new Map([['NEW', 'OLD']]) },
+    );
+    expect(lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'successor:hand-written']]),
+      aliasRelations: new Map([['NEW', 'identity']]),
+    })[0]).toMatchObject({ relation: 'identity', reason: 'successor:hand-written' });
+    expect(lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'reviewed replacement']]),
+      aliasRelations: new Map([['NEW', 'replaced']]),
+    })[0]).toMatchObject({ relation: 'replaced', reason: 'reviewed replacement' });
+  });
+
   it('round-trips a replaced entry through keyAliasesFromLineage -> diffModels -> lineageOfDiff, byte-identical', () => {
     const base = [entity({ key: 'OLD', aabb: WHOLE })];
     const head = [entity({ key: 'NEW', aabb: WHOLE })];
@@ -258,11 +274,16 @@ describe('lineage sidecar', () => {
 
   it('round-trips, sorted and byte-stable, with the key scheme pinned and the deleted list sorted', () => {
     const sidecar = createLineageSidecar({ ...models, entries, keyProperty: 'Pset_Asset.AssetId', deleted: ['z', 'y', 'z'] });
+    expect(sidecar.version).toBe(2);
     expect(sidecar.entries.map((e) => e.base[0])).toEqual(['a', 'w']);
     expect(sidecar.deleted).toEqual(['y', 'z']);
     const text = serializeLineageSidecar(sidecar);
     expect(serializeLineageSidecar(createLineageSidecar({ ...models, entries: [...entries].reverse(), keyProperty: 'Pset_Asset.AssetId', deleted: ['y', 'z'] }))).toBe(text);
     expect(parseLineageSidecar(text)).toEqual(sidecar);
+    expect(() => parseLineageSidecar(text.replace('"version": 2', '"version": 1'))).toThrow(/requires keyProperty/);
+    const plain = createLineageSidecar({ ...models, entries });
+    expect(plain.version).toBe(1);
+    expect(() => parseLineageSidecar(serializeLineageSidecar(plain).replace('"version": 1', '"version": 2'))).toThrow(/requires keyProperty/);
     expect(text.endsWith('\n')).toBe(true);
   });
 

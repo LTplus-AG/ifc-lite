@@ -50,9 +50,9 @@ export interface CompareResult {
    */
   keyProperty?: string;
   /**
-   * Authored values more than one entity carried this run, across BOTH
-   * models — resolved to GlobalId instead of `prop:<value>` for every owner
-   * (`resolveAuthoredKeys`). Present only when non-empty.
+   * Authored values more than one entity carried within either revision —
+   * resolved to GlobalId instead of `prop:<value>` for every owner on both
+   * revisions. Present only when non-empty.
    */
   duplicateAuthoredKeys?: ReadonlyMap<string, number[]>;
   /** `geometryUnavailable` with placement fingerprints still in play (both
@@ -340,7 +340,11 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
     set({ compareMatchByContent });
   },
 
-  setCompareKeyProperty: (compareKeyProperty) => set({ compareKeyProperty }),
+  setCompareKeyProperty: (compareKeyProperty) => set((state) => (
+    state.compareKeyProperty === compareKeyProperty
+      ? state
+      : { ...getClearedCompareState(), compareKeyProperty }
+  )),
 
   setCompareShowUnchanged: (compareShowUnchanged) => set({ compareShowUnchanged }),
   setCompareResult: (compareResult) => set({ compareResult }),

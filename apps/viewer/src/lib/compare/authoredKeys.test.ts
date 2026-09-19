@@ -49,3 +49,30 @@ describe('duplicateAuthoredKeyInfo (#4989)', () => {
     assert.deepEqual(info, { count: 7, shown: ['V1', 'V2', 'V3', 'V4', 'V5'], truncated: true });
   });
 });
+
+describe('fallbackPairDuplicateAuthoredKeys (#5005 review)', () => {
+  it('falls back on both revisions when either side found the collision', () => {
+    assert.equal(typeof authoredKeys.fallbackPairDuplicateAuthoredKeys, 'function');
+    const fingerprint = (modelId: string, localId: number, key: string) => ({
+      key,
+      ifcType: 'IfcWall',
+      dataHash: 'data',
+      ref: { modelId, localId, globalId: localId },
+    });
+    const base = [fingerprint('A', 1, 'prop:DUP'), fingerprint('A', 2, 'prop:UNIQUE')];
+    const head = [fingerprint('B', 3, 'prop:DUP')];
+    const store = (prefix: string) => ({
+      entities: { getGlobalId: (id: number) => `${prefix}-${id}` },
+    });
+
+    const sides = [
+      { fingerprints: base, store: store('A') },
+      { fingerprints: head, store: store('B') },
+    ] as unknown as Parameters<typeof authoredKeys.fallbackPairDuplicateAuthoredKeys>[0];
+    authoredKeys.fallbackPairDuplicateAuthoredKeys(sides, new Map([['DUP', [1, 2]]]));
+
+    assert.equal(base[0].key, 'A-1');
+    assert.equal(head[0].key, 'B-3');
+    assert.equal(base[1].key, 'prop:UNIQUE');
+  });
+});

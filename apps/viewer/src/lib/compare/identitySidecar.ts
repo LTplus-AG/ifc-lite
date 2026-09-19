@@ -108,13 +108,10 @@ export function downloadIdentityMapSidecar(
  * An accepted successor is in `diff.successors` only until the re-diff
  * replays it as a key alias; from then on the engine reports it under
  * `appliedKeyAliases`, and `lineageOfDiff` carries an applied alias forward
- * with whatever reason `aliasReasons` gives it. The relation is decided by
- * the engine from the reason prefix (see {@link LineageEntry.reason}): an
- * alias whose reason says it was an accepted successor (`successor:
- * <confidence>`) comes back as `replaced` already, so the artifact reads the
- * same before and after the re-diff without any re-labelling here. A pair
- * accepted out of an ambiguous group (`accepted:ambiguous`) is an identity
- * claim and stays one.
+ * with whatever reason `aliasReasons` gives it. This path is replaying an
+ * identity map (which has no relation field), so the engine derives
+ * `successor:<confidence>` as `replaced`; `accepted:ambiguous` stays
+ * `identity`. An incoming lineage instead preserves its explicit relation.
  */
 export function lineageForExport(
   result: CompareResult,
@@ -128,7 +125,8 @@ export function lineageForExport(
   return lineageOfDiff(result.diff, { accepted: acceptedClaims, aliasReasons });
 }
 
-/** Write the lineage as `ifc-lite/lineage` v1 (see {@link lineageForExport}). */
+/** Write an `ifc-lite/lineage` sidecar: v1 for GlobalId, v2 for an authored
+ * key so old readers refuse keys they would otherwise mistake for GlobalIds. */
 export function downloadLineageSidecar(
   result: CompareResult,
   identities: { base: ModelIdentity; head: ModelIdentity },

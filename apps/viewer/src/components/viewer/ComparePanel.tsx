@@ -249,7 +249,9 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 keyProperty={keyProperty}
                 onKeyProperty={setKeyProperty}
                 duplicateInfo={
-                  result?.duplicateAuthoredKeys ? duplicateAuthoredKeyInfo(result.duplicateAuthoredKeys) : null
+                  result && result.keyProperty === keyProperty && result.duplicateAuthoredKeys
+                    ? duplicateAuthoredKeyInfo(result.duplicateAuthoredKeys)
+                    : null
                 }
                 canRun={canRun}
                 running={running}

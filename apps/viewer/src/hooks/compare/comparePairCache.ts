@@ -40,11 +40,10 @@ export interface BuiltPair {
    */
   keyProperty: string | undefined;
   /**
-   * Authored values more than one entity carried, ACROSS BOTH `base` and
-   * `head` (one shared `Map`, so a value duplicated on one side and unique
-   * on the other still reports once). Populated by `resolveAuthoredKeys` via
-   * `buildEntityFingerprints`; empty when `keyProperty` is `undefined` or no
-   * value collided.
+   * Authored values more than one entity carried within either revision.
+   * One shared map records both scans, so a value duplicated on one side and
+   * unique on the other still falls back everywhere. Empty when
+   * `keyProperty` is `undefined` or no value collided.
    */
   duplicateAuthoredKeys: Map<string, number[]>;
   /**

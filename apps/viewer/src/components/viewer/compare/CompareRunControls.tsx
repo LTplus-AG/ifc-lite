@@ -171,6 +171,7 @@ export function CompareRunControls({
         keyProperty={keyProperty}
         onKeyProperty={onKeyProperty}
         duplicateInfo={duplicateInfo}
+        disabled={running}
       />
 
       <Button

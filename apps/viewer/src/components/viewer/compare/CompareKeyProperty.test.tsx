@@ -26,6 +26,13 @@ function input(container: HTMLElement): HTMLInputElement {
 }
 
 describe('CompareKeyProperty (#4989)', () => {
+  it('is disabled while a run owns the snapshotted scheme (#5005 review)', () => {
+    const container = render(
+      <CompareKeyProperty keyProperty="Tag" onKeyProperty={() => {}} duplicateInfo={null} disabled />,
+    );
+    assert.equal(input(container).disabled, true);
+  });
+
   it('does not commit per keystroke; commits once on Enter with the full value', () => {
     // A commit invalidates the fingerprint cache for the next Run, so
     // typing `Pset_Asset.AssetId` character by character (valid from

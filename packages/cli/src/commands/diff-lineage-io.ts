@@ -56,13 +56,19 @@ export function mergeLineage(
   accepted: IdentityMapSidecar | undefined,
 ): { entries: LineageEntry[]; deleted: string[] } {
   const aliasReasons = new Map<string, string>();
+  const aliasRelations = new Map<string, 'identity' | 'replaced'>();
   for (const entry of incomingLineage?.entries ?? []) {
-    if (entry.head.length === 1 && !aliasReasons.has(entry.head[0])) aliasReasons.set(entry.head[0], entry.reason);
+    if (entry.head.length === 1 && !aliasReasons.has(entry.head[0])) {
+      aliasReasons.set(entry.head[0], entry.reason);
+      if (entry.relation === 'identity' || entry.relation === 'replaced') {
+        aliasRelations.set(entry.head[0], entry.relation);
+      }
+    }
   }
   for (const entry of incomingMap?.entries ?? []) {
     if (!aliasReasons.has(entry.here)) aliasReasons.set(entry.here, entry.reason);
   }
-  const { entries } = lineageOfDiff(diff, { aliasReasons });
+  const { entries } = lineageOfDiff(diff, { aliasReasons, aliasRelations });
   const taken = new Set<string>();
   for (const entry of entries) for (const key of [...entry.base, ...entry.head]) taken.add(key);
 

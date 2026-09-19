@@ -54,7 +54,7 @@ deriving a correspondence from any hash or comparison.
 The key carries two digests (issue #4989 review): `sourceSha256` is always
 the PRISTINE file's digest — the bytes `sourcePath` names on disk, whether or
 not anything in this run touched them — and `baseSha256` is the digest of the
-text `run.mjs` actually fingerprints as "base". The two are byte-identical
+text `build-pair.mjs` actually fingerprints as "base". The two are byte-identical
 for every model with no `merged` role; they diverge exactly when `merged`
 produced a mutated base text (see below), and a reader comparing the key
 against what was actually scored must use `baseSha256`.
@@ -110,7 +110,7 @@ the engine. That construction, `mergePairs`/`mergeElementLength`, is
 deleted; there is exactly one construction now.
 
 The base revision is normally fingerprinted straight off the real file on
-disk (`fingerprintFile(modelPath, …)` in `run.mjs`), untouched by the
+disk (`fingerprintFile(modelPath, …)` in `build-pair.mjs`), untouched by the
 generator — which is exactly why a "pick two real neighbours" approach
 seemed necessary. But nothing stops the generator from producing a SECOND,
 separately-mutated base text for the one role that needs it: `mutate.mjs`
@@ -125,7 +125,7 @@ kept) and a new clone (own express id, a freshly minted GlobalId — this base
 file never goes through `mutate.mjs`'s `reguidAll`, so `splitBaseForMerge`
 mints the clone's itself, off a PRNG stream derived from the seed but never
 `random`, so it draws nothing from the streams `swapped`'s donor choice is
-already documented as immune to). `run.mjs` fingerprints that base text
+already documented as immune to). `build-pair.mjs` fingerprints that base text
 instead of the pristine file whenever it differs. Both real base-side halves
 then tile the HEAD survivor's UNEDITED, full-length shape EXACTLY — the
 engine's verified merge case (containment plus an exact volume sum), the

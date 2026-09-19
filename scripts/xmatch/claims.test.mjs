@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { indexModel } from './edits.mjs';
-import { unnamedNodesNormalised } from './guards.mjs';
+import { mergedHeadFanInWrong, unnamedNodesNormalised } from './guards.mjs';
 import * as scoreClaims from './score-claims.mjs';
 import { scoreSplits } from './score-claims.mjs';
 import { scorePair } from './score.mjs';
@@ -83,6 +83,18 @@ test('scoreMerges (#4989): the piece set must equal the key\'s {a, b} exactly', 
   const splitOnly = scoreMerges(key, [claim(1, [21], 'split')], options).byMerge;
   assert.equal(splitOnly.claimed, 0);
   assert.equal(splitOnly.splitClaims, 1);
+});
+
+test('a merged head shared with any non-merged row fails the answer-key guard (#4989 review)', () => {
+  assert.equal(mergedHeadFanInWrong({ elements: [
+    { base: 1, kind: 'merged', head: [21] },
+    { base: 2, kind: 'merged', head: [21] },
+  ] }), 0);
+  assert.equal(mergedHeadFanInWrong({ elements: [
+    { base: 1, kind: 'merged', head: [21] },
+    { base: 2, kind: 'merged', head: [21] },
+    { base: 3, kind: 'renamed', head: [21] },
+  ] }), 1);
 });
 
 test('a 1:1 content match onto a `merged` base is wrongPartner, never correct (#4989 review)', () => {

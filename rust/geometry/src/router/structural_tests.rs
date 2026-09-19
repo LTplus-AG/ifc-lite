@@ -2,12 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Unit tests for #4206 layer 4: `IfcStructuralCurveMember` edge geometry.
-//! The fixture-level integration test (real coordinates from a real IFC
-//! file) is `rust/processing/tests/issue_4206_structural_curve_member_geometry.rs`;
-//! these synthetic-entity tests cover the guards that test can't isolate:
-//! the `structural::accepts` predicate itself, the zero-length degenerate
-//! check, and the "edge parallel to up" fallback perpendicular branch.
+//! Unit tests for #4206 structural reference geometry. Fixture-level tests in
+//! `rust/processing/tests/issue_4206_structural_*_geometry.rs` cover exported
+//! files; these synthetic entities isolate routing guards, face winding and
+//! holes, plus edge degeneracy and perpendicular fallback behavior.
 
 use super::GeometryRouter;
 use ifc_lite_core::{EntityDecoder, IfcType};
@@ -21,6 +19,42 @@ fn member(edge_start: &str, edge_end: &str, rep_type: &str) -> String {
          #7=IFCPRODUCTDEFINITIONSHAPE($,$,(#6));\
          #8=IFCSTRUCTURALCURVEMEMBER('0000000000000000000000',$,'Member',$,$,$,#7,.RIGID_JOINED_MEMBER.,$);"
     )
+}
+
+fn surface_member(same_sense: bool, with_hole: bool) -> String {
+    let inner = if with_hole {
+        "#7=IFCCARTESIANPOINT((4.,4.,0.));#8=IFCCARTESIANPOINT((6.,4.,0.));\
+         #9=IFCCARTESIANPOINT((6.,6.,0.));#10=IFCCARTESIANPOINT((4.,6.,0.));\
+         #11=IFCPOLYLOOP((#7,#8,#9,#10));#12=IFCFACEBOUND(#11,.T.);"
+    } else {
+        ""
+    };
+    let bounds = if with_hole { "(#6,#12)" } else { "(#6)" };
+    let sense = if same_sense { ".T." } else { ".F." };
+    format!(
+        "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((10.,0.,0.));\
+         #3=IFCCARTESIANPOINT((10.,10.,0.));#4=IFCCARTESIANPOINT((0.,10.,0.));\
+         #5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);{inner}\
+         #13=IFCAXIS2PLACEMENT3D(#1,$,$);#14=IFCPLANE(#13);\
+         #15=IFCFACESURFACE({bounds},#14,{sense});\
+         #16=IFCTOPOLOGYREPRESENTATION($,'Reference','Face',(#15));\
+         #17=IFCPRODUCTDEFINITIONSHAPE($,$,(#16));\
+         #18=IFCSTRUCTURALSURFACEMEMBER('0000000000000000000000',$,'Surface',$,$,$,#17,.SHELL.,0.2);"
+    )
+}
+
+fn signed_xy_area(mesh: &crate::Mesh) -> f64 {
+    mesh.indices
+        .chunks_exact(3)
+        .map(|triangle| {
+            let point = |index: u32| {
+                let base = index as usize * 3;
+                [mesh.positions[base] as f64, mesh.positions[base + 1] as f64]
+            };
+            let [a, b, c] = [point(triangle[0]), point(triangle[1]), point(triangle[2])];
+            ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2.0
+        })
+        .sum()
 }
 
 fn midpoints(mesh: &crate::Mesh) -> ([f64; 3], [f64; 3]) {
@@ -97,6 +131,50 @@ fn rejects_non_structural_element_type() {
     let entity = decoder.decode_by_id(8).unwrap();
     assert_eq!(entity.ifc_type, IfcType::IfcBuildingElementProxy);
     assert!(!super::structural::accepts(&entity, "Edge"));
+    assert!(!super::structural::accepts(&entity, "Face"));
+}
+
+#[test]
+fn accepts_structural_surface_face_representation_only() {
+    let source = surface_member(true, false);
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(18).unwrap();
+    assert!(super::structural::accepts(&entity, "Face"));
+    assert!(!super::structural::accepts(&entity, "Edge"));
+
+    let curve_source = member("(0.,0.,0.)", "(10.,0.,0.)", "Face");
+    let mut curve_decoder = EntityDecoder::new(&curve_source);
+    let curve = curve_decoder.decode_by_id(8).unwrap();
+    assert!(!super::structural::accepts(&curve, "Face"));
+}
+
+#[test]
+fn structural_surface_polyloop_preserves_hole_and_same_sense() {
+    let source = surface_member(true, true);
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(18).unwrap();
+    let mesh = GeometryRouter::new()
+        .process_element(&entity, &mut decoder)
+        .unwrap();
+    assert!(
+        !mesh.is_empty(),
+        "IfcFaceSurface must route to the standalone face processor"
+    );
+    assert!(
+        (signed_xy_area(&mesh) - 96.0).abs() < 1e-5,
+        "10x10 face with a 2x2 hole must retain 96 square units"
+    );
+
+    let reversed_source = surface_member(false, true);
+    let mut reversed_decoder = EntityDecoder::new(&reversed_source);
+    let reversed = reversed_decoder.decode_by_id(18).unwrap();
+    let reversed_mesh = GeometryRouter::new()
+        .process_element(&reversed, &mut reversed_decoder)
+        .unwrap();
+    assert!(
+        (signed_xy_area(&reversed_mesh) + 96.0).abs() < 1e-5,
+        "IfcFaceSurface.SameSense=.F. must reverse the emitted winding"
+    );
 }
 
 #[test]

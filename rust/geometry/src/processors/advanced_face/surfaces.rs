@@ -10,10 +10,11 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 use super::super::helpers::get_axis2_placement_transform_by_id;
+use super::bounds::extract_face_bounds;
 use super::bspline::tessellate_bspline_surface;
 use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_SAMPLE_WORK};
 use super::bspline_parse::{parse_control_points, parse_knot_vectors};
-use super::edge_loop::{extract_edge_loop_points, extract_edge_loop_points_for_bounds};
+use super::edge_loop::extract_edge_loop_points_for_bounds;
 
 /// Process a planar or boundary-represented face.
 ///
@@ -36,65 +37,11 @@ pub(super) fn process_planar_face(
     quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     use crate::triangulation::{project_to_2d_with_basis, triangulate_polygon_with_holes};
-    use ifc_lite_core::IfcType;
-
-    let bounds_attr = face
-        .get(0)
-        .ok_or_else(|| Error::geometry("AdvancedFace missing Bounds".to_string()))?;
-    let bounds = bounds_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected bounds list".to_string()))?;
-
-    // Collect (points, is_outer, orientation) per bound. Orientation is
-    // attribute 1 of IfcFaceBound; when .F., the loop must be reversed.
-    let mut outer_points: Option<Vec<Point3<f64>>> = None;
-    let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
-
-    for bound in bounds {
-        let Some(bound_id) = bound.as_entity_ref() else {
-            continue;
-        };
-        let bound_entity = decoder.decode_by_id(bound_id)?;
-
-        let loop_attr = bound_entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("FaceBound missing Bound".to_string()))?;
-        let loop_entity = decoder
-            .resolve_ref(loop_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve loop".to_string()))?;
-        if !loop_entity.ifc_type.as_str().eq_ignore_ascii_case("IFCEDGELOOP") {
-            continue;
-        }
-
-        let mut points = extract_edge_loop_points(&loop_entity, decoder, quality);
-        if points.len() < 3 {
-            continue;
-        }
-        let orientation = bound_entity
-            .get(1)
-            .and_then(|a| a.as_enum())
-            .map(|e| e == "T" || e == "TRUE")
-            .unwrap_or(true);
-        if !orientation {
-            points.reverse();
-        }
-
-        let is_outer = bound_entity.ifc_type == IfcType::IfcFaceOuterBound;
-        if is_outer || outer_points.is_none() {
-            if is_outer {
-                if let Some(prev_outer) = outer_points.take() {
-                    hole_points.push(prev_outer);
-                }
-            }
-            outer_points = Some(points);
-        } else {
-            hole_points.push(points);
-        }
-    }
-
-    let Some(outer) = outer_points else {
+    let bounds = extract_face_bounds(face, decoder, quality)?;
+    let Some(outer) = bounds.outer else {
         return Ok((Vec::new(), Vec::new()));
     };
+    let hole_points = bounds.holes;
 
     let normal = calculate_polygon_normal(&outer);
     let (outer_2d, u_axis, v_axis, origin) = project_to_2d(&outer, &normal);

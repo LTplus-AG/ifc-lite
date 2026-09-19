@@ -4,13 +4,14 @@
 
 //! Shared advanced face processing logic.
 //!
-//! Handles IfcAdvancedFace with B-spline, planar, and cylindrical surface types.
-//! Used by both AdvancedBrepProcessor and ShellBasedSurfaceModelProcessor/FaceBasedSurfaceModelProcessor
-//! when shells contain IfcAdvancedFace entities (common in CATIA exports).
+//! Handles `IfcAdvancedFace` and `IfcFaceSurface` with B-spline, planar, and
+//! cylindrical surface types. Used by B-rep processors and structural
+//! reference topology.
 
 use crate::{Error, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
+pub(super) mod bounds;
 mod bspline;
 mod bspline_budget;
 mod bspline_parse;
@@ -34,8 +35,8 @@ pub(crate) use bspline_budget::take_curve_capped;
 use revolution::process_surface_of_revolution_face;
 use surfaces::{process_cylindrical_face, process_planar_face};
 
-/// Process a single IfcAdvancedFace entity, dispatching to the appropriate
-/// surface handler based on FaceSurface type.
+/// Process a single `IfcAdvancedFace` or `IfcFaceSurface`, dispatching to the
+/// appropriate surface handler based on `FaceSurface` type.
 ///
 /// Returns (positions, indices) for the tessellated face.
 pub(super) fn process_advanced_face(
@@ -43,14 +44,14 @@ pub(super) fn process_advanced_face(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
-    // IfcAdvancedFace has:
+    // IfcAdvancedFace and IfcFaceSurface have:
     // 0: Bounds (list of FaceBound)
     // 1: FaceSurface (IfcSurface - Plane, BSplineSurface, CylindricalSurface, etc.)
     // 2: SameSense (boolean)
 
     let surface_attr = face
         .get(1)
-        .ok_or_else(|| Error::geometry("AdvancedFace missing FaceSurface".to_string()))?;
+        .ok_or_else(|| Error::geometry("FaceSurface missing FaceSurface".to_string()))?;
 
     let surface = decoder
         .resolve_ref(surface_attr)?

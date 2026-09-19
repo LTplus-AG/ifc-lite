@@ -7,9 +7,10 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { generateFromSchema } from '../src/generator.js';
 
 describe('generateFromSchema — CRLF line endings (#4220)', () => {
@@ -99,13 +100,24 @@ describe('generateFromSchema — crate-private Rust output (#4203)', () => {
     outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-private-rust-'));
     generateFromSchema('SCHEMA TEST; ENTITY IfcWall; END_ENTITY; END_SCHEMA;', outputDir, {
       rust: true,
+      rustDir: 'generated',
       rustCratePrivate: true,
       skipCollisionCheck: true,
     });
 
-    const module = readFileSync(join(outputDir, 'rust', 'mod.rs'), 'utf8');
-    expect(module).toContain('pub(crate) use type_ids::*;');
-    expect(module).toContain('pub(crate) use schema::*;');
-    expect(module).not.toContain('pub use type_ids::*;');
+    const crateRoot = join(outputDir, 'lib.rs');
+    writeFileSync(crateRoot, [
+      'mod generated;',
+      'mod sibling {',
+      '    pub fn wall_type_id() -> u32 { super::generated::IFCWALL }',
+      '}',
+      'pub fn generated_wall_type_id() -> u32 { sibling::wall_type_id() }',
+    ].join('\n'));
+    const compilation = spawnSync('rustc', [
+      '--edition=2021', '--crate-type=lib', crateRoot,
+      '-o', join(outputDir, 'libgenerated_schema_test.rlib'),
+    ], { encoding: 'utf8' });
+
+    expect(compilation.status, compilation.stderr || compilation.error?.message).toBe(0);
   });
 });

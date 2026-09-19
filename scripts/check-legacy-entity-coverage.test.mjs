@@ -230,6 +230,21 @@ test('the canonical catalog excludes supplemental exact-name variants', () => {
   assert.ok(generatedNames(schema).has('IFCPROXY'));
   assert.ok(!canonicalGeneratedNames(schema).has('IFCPROXY'));
   assert.ok(canonicalGeneratedNames(schema).has('IFCWALL'));
+  // rustfmt wraps long match arms in a block; the extractor must still see
+  // both the full generated universe and its canonical subset.
+  assert.ok(generatedNames(schema).has('IFCMOBILETELECOMMUNICATIONSAPPLIANCETYPE'));
+  assert.ok(canonicalGeneratedNames(schema).has('IFCMOBILETELECOMMUNICATIONSAPPLIANCETYPE'));
+});
+
+test('an arm for a canonical name is rejected while supplemental arms remain valid', () => {
+  const anchor = '"IFCPRESENTATIONSTYLEASSIGNMENT"';
+  assert.ok(real.get(LEGACY_REL).includes(anchor), 'mutation anchor drifted');
+  const { status, out } = runOn({
+    [LEGACY_REL]: real.get(LEGACY_REL).replaceAll(anchor, '"IFCWALL"'),
+  });
+  assert.equal(status, 1, out);
+  assert.match(out, /arm for canonical name "IFCWALL".*shadow its exact generated type/);
+  assert.doesNotMatch(out, /NO REMEDY MATCHED/);
 });
 
 test('a dead key gets the respell remedy, NOT the add-an-arm one', () => {

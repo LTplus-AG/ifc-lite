@@ -33,6 +33,7 @@ import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { parseRotationDegrees } from '@/lib/model-placement/rotation';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 
 // ── Field-specific assistance data ─────────────────────────────────────
@@ -262,9 +263,13 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
 
   const commitEdit = useCallback(() => {
     if (!onAngleChange) return;
-    const deg = parseFloat(editValue.trim());
-    if (!Number.isFinite(deg)) return;
-    const rad = deg * (Math.PI / 180);
+    let rad: number;
+    try {
+      rad = parseRotationDegrees(editValue);
+    } catch (error) {
+      if (error instanceof Error) return;
+      throw error;
+    }
     onAngleChange(Math.cos(rad), Math.sin(rad));
     setEditing(false);
   }, [editValue, onAngleChange]);

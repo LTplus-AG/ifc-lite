@@ -293,11 +293,11 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
   });
 
   catalogueIt('interpolates the storey elevation badge and the model-tag member count', () => {
-    registerLocale('pseudothree', {
+    registerLocale('de-DE', {
       'hierarchy.node.elevationBadge': '[{sign}{value}]',
       'hierarchy.modelTagGroup.memberCount': { one: '[{count} one]', other: '[{count} many]' },
     });
-    act(() => setLocale('pseudothree'));
+    act(() => setLocale('de-DE'));
 
     const container = render(
       <div>
@@ -319,10 +319,25 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
       </div>,
     );
 
-    assert.ok(container.textContent?.includes('[-1.25]'), 'elevation badge interpolates sign+value');
+    assert.ok(container.textContent?.includes('[-1,25]'), 'elevation badge uses the active locale');
     const groupRow = container.querySelector('[data-model-tag-group]');
     const groupCount = groupRow?.querySelector('[title]');
     assert.equal(groupCount?.getAttribute('title'), '[2 many]', 'member count interpolates and pluralizes');
+  });
+
+  catalogueIt('uses complete messages for tag assignment and removal actions', () => {
+    const tagId = useViewerStore.getState().createModelTag('Structure');
+    assert.ok(tagId);
+    registerLocale('tag-actions', {
+      'hierarchy.modelTagEditor.assignTagAriaLabel': '[Structure assigned action]',
+      'hierarchy.modelTagEditor.removeTagAriaLabel': '[Structure removed action]',
+    });
+    act(() => setLocale('tag-actions'));
+    render(<ModelTagEditor modelIds={['A']} modelName="A.ifc" onClose={() => {}} />);
+    const toggle = document.body.querySelector<HTMLButtonElement>(`[data-tag-row="${tagId}"] [role="checkbox"]`);
+    assert.equal(toggle?.getAttribute('aria-label'), '[Structure assigned action]');
+    click(toggle!);
+    assert.equal(toggle?.getAttribute('aria-label'), '[Structure removed action]');
   });
 
   catalogueIt('resolves a retained tag-rename error after active catalogue replacement', () => {

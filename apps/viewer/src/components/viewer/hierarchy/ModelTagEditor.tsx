@@ -166,11 +166,10 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                   type="button"
                   role="checkbox"
                   aria-checked={membership === 'all' ? 'true' : membership === 'some' ? 'mixed' : 'false'}
-                  aria-label={t('hierarchy.modelTagEditor.toggleAriaLabel', {
-                    action:
-                      membership === 'all'
-                        ? t('hierarchy.modelTagEditor.toggleActionRemove')
-                        : t('hierarchy.modelTagEditor.toggleActionAssign'),
+                  aria-label={t(
+                    membership === 'all'
+                      ? 'hierarchy.modelTagEditor.removeTagAriaLabel'
+                      : 'hierarchy.modelTagEditor.assignTagAriaLabel', {
                     name: tag.name,
                   })}
                   onClick={() => toggle(tag)}

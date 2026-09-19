@@ -46,7 +46,7 @@ interface AddElementPanelProps {
 }
 
 export function AddElementPanel({ onClose }: AddElementPanelProps) {
-  const { t, locale, localeSnapshot } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const { models, ifcDataStore } = useIfc();
 
   const addElementType = useViewerStore((s) => s.addElementType);
@@ -115,7 +115,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
       opts.push({ expressId, label: name });
     }
     return opts;
-  }, [effectiveModelId, models, ifcDataStore, t, locale, localeSnapshot]);
+  }, [effectiveModelId, models, ifcDataStore, t, locale, revision]);
 
   // Auto-pick the first storey when the user hasn't chosen one or
   // the previous choice no longer exists in the active model. Also

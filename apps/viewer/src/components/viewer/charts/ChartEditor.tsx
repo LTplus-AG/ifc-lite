@@ -180,7 +180,12 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
                 <input
                   className={`${field} flex-1 font-mono`}
                   value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
+                  onChange={(e) => {
+                    setFilterText(e.target.value);
+                    // A blur error describes the previous reading. Do not leave it
+                    // visible while the user has already corrected the selector.
+                    setFilterFeedback(null);
+                  }}
                   onBlur={() => setFilterFeedback(filterReading && !filterReading.ok ? { tone: 'error', lines: [filterReading.message] } : null)}
                   placeholder={FILTER_PLACEHOLDER}
                   aria-label={t('chartEditor.sourceFilterAriaLabel')}

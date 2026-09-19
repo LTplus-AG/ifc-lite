@@ -181,7 +181,11 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
           <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-muted-foreground" data-chart-empty>
             {filterSelector && filterState?.status !== 'ok'
               ? subtitle
-              : filteredDataset.rows.length === 0 ? EMPTY_HINTS[spec.source] : 'Nothing to bucket — every row is without a value for this dimension.'}
+              : filteredDataset.rows.length === 0
+                ? filterSelector
+                  ? 'No rows match this source filter.'
+                  : EMPTY_HINTS[spec.source]
+                : 'Nothing to bucket — every row is without a value for this dimension.'}
           </div>
         )}
       </div>

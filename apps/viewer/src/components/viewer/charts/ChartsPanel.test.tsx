@@ -1660,6 +1660,37 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(save.disabled, true, 'Save stays disabled while the filter reading errs');
   });
 
+  it('clears stale selector feedback as the author corrects the source filter (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await settle();
+    const filterInput = ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!;
+    type(filterInput, 'Name=/unterminated');
+    await act(async () => { filterInput.focus(); filterInput.blur(); });
+    await settle();
+    assert.ok(ui.querySelector('[role="alert"]'));
+    type(filterInput, 'IfcWall');
+    await settle();
+    assert.equal(ui.querySelector('[role="alert"]'), null, 'the prior invalid-reading error must not describe corrected input');
+  });
+
+  it('distinguishes a zero-match source filter from a source with no data (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await settle();
+    const filterInput = ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!;
+    type(filterInput, 'IfcSlab');
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    assert.equal(ui.querySelector('[data-chart-empty]')?.textContent, 'No rows match this source filter.');
+  });
+
   it('a source filter field is disabled with a note for the bcf and compare sources (#4946)', async () => {
     const { renderer } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);

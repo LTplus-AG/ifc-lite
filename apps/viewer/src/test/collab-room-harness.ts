@@ -98,6 +98,7 @@ export type RoomTestState = ModelSlice &
     collabRoomId: string | null;
     collabRoomModels: ReadonlyMap<string, ModelSlotRef>;
     mutationViews: Map<string, MutablePropertyView>;
+    clearMutationView: (modelId: string) => void;
   };
 
 /** A recipient's store: the real model + data slices, nothing loaded. */
@@ -127,6 +128,11 @@ export function recipientState(roomId: string): { get: () => RoomTestState; stat
     collabRoomId: roomId,
     collabRoomModels: new Map(),
     mutationViews: new Map(),
+    clearMutationView: (modelId: string) => {
+      const next = new Map(state.mutationViews);
+      next.delete(modelId);
+      state = { ...state, mutationViews: next };
+    },
     selectedEntityId: null,
     selectedEntityIds: new Set(),
     selectedStoreys: new Set(),

@@ -26,6 +26,7 @@ import * as collab from '@ifc-lite/collab';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { readGeometrySeedMarker } from './geometry-seed-signal.js';
 import type { CollabSeedInput } from './owner-seed.js';
 import { roomSlotRef } from './model-slot-ref.js';
@@ -212,6 +213,28 @@ describe('room seed + reconstruct: two copies of one file (#4444)', () => {
     assert.equal(bStore.getEntity(bWall)?.attributes[tagIndex], 'peer-tag', 'generic attributes survive reconstruction');
     const a = s.models.get('room:r1:m0')!;
     assert.equal(a.ifcDataStore?.entities.getName(localIdOf(a, `/m0/${WALL_GUID}`)), 'Wall-A', 'copy A is untouched');
+    reconstructor.teardown();
+  });
+
+  it('discards the old numeric-id mutation view before a dense id is reassigned (#5008)', async () => {
+    const { reconstructor, store } = joiner(doc, blobStore, 'r1');
+    await reconstructor.reconstruct();
+    const modelId = 'room:r1:m0';
+    const before = store.state().models.get(modelId)!;
+    const oldStoreyId = localIdOf(before, `/m0/${STOREY_GUID}`);
+    const oldWallId = localIdOf(before, `/m0/${WALL_GUID}`);
+    assert.notEqual(oldStoreyId, oldWallId);
+
+    const staleView = new MutablePropertyView(before.ifcDataStore!.properties, modelId);
+    staleView.setPositionalAttribute(oldWallId, 2, 'stale-wall-name');
+    store.get().mutationViews.set(modelId, staleView);
+    assert.equal(collab.deleteEntity(doc, `/m0/${WALL_GUID}`), true);
+
+    await reconstructor.reconstruct();
+    const after = store.state().models.get(modelId)!;
+    assert.equal(localIdOf(after, `/m0/${STOREY_GUID}`), oldWallId, 'the survivor takes the deleted dense id');
+    assert.equal(store.state().mutationViews.has(modelId), false, 'the old id-keyed overlay cannot follow it');
+    assert.notEqual(after.ifcDataStore!.getEntity(oldWallId)?.attributes[2], 'stale-wall-name');
     reconstructor.teardown();
   });
 });

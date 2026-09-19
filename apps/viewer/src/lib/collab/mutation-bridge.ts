@@ -255,7 +255,7 @@ export interface RemoteApplyHandlers {
    */
   onPlacement?(modelId: string, entityId: number, placement: LocalPlacement): void;
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
-  onEntityDelete?(modelId: string, entityId: number, entityPath: string): void;
+  onEntityDelete?(modelId: string, entityId: number): void;
   onEntityCreate?(target: RoomEntityTarget, entityPath: string, ifcClass: string,
     attributes: Readonly<Record<string, unknown>>): void;
   /** The whole Pset vanished. Property names are unavailable by design: Yjs
@@ -316,7 +316,7 @@ export function attachRemoteApply(
           }
           if (change.action !== 'delete' || !handlers.onEntityDelete) continue;
           const id = entityForPath(hit.store, entityPath);
-          if (id !== null) handlers.onEntityDelete(hit.modelId, id, entityPath);
+          if (id !== null) handlers.onEntityDelete(hit.modelId, id);
         }
         continue;
       }

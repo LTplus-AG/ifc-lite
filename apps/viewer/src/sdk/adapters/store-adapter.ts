@@ -99,6 +99,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     expressId: number,
     dataStore: IfcDataStore,
   ): void {
+    if (!isSharedRoomModel(modelId)) return;
     const entity = editor.getNewEntity(expressId);
     if (!entity) return;
     const names = attributeNamesForStore(dataStore, entity.type);
@@ -155,12 +156,12 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
         ? def.attributes[0]
         : null;
       if (globalId) assertAvailableGlobalId('addEntity', modelId, editor, dataStore, -1, globalId);
-      const referenceSlots = referenceAttributeSlotsForStore(dataStore, def.type);
-      const referenced = new Set<number>();
-      def.attributes.forEach((value, index) => referencedExpressIds(
-        value, referenceSlots[index] ?? false, referenced,
-      ));
       if (isSharedRoomModel(modelId)) {
+        const referenceSlots = referenceAttributeSlotsForStore(dataStore, def.type);
+        const referenced = new Set<number>();
+        def.attributes.forEach((value, index) => referencedExpressIds(
+          value, referenceSlots[index] ?? false, referenced,
+        ));
         ensureSourceRoomEntities(store, modelId, editor, referenced, dataStore);
       }
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
@@ -176,7 +177,16 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const shared = isSharedRoomModel(ref.modelId);
       const roomEntityReady = !shared
         || ensureSourceRoomEntities(store, ref.modelId, editor, [ref.expressId], dataStore);
-      const removed = editor.removeEntity(ref.expressId);
+      // StoreEditor deliberately validates STEP membership through
+      // entityIndex.byId, which is empty for reconstructed IFCX stores.
+      // Those base entities are real and deletable through getEntity().
+      const view = getMutationViewForModel(store, ref.modelId);
+      const removed = view !== null
+        && !view.isDeleted(ref.expressId)
+        && editor.getNewEntity(ref.expressId) === null
+        && dataStore.getEntity?.(ref.expressId) != null
+        ? view.deleteEntity(ref.expressId)
+        : editor.removeEntity(ref.expressId);
       if (removed && roomEntityReady) {
         store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
       }

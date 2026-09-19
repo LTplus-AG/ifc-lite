@@ -1182,12 +1182,30 @@ export const createMutationSlice: StateCreator<
       // leak into future mutation views with the same id.
       const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
       const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
+      const discardedMutations = new Set([
+        ...(state.undoStacks.get(modelId) ?? []),
+        ...(state.redoStacks.get(modelId) ?? []),
+      ].map((mutation) => mutation.id));
+      const newUndoStacks = new Map(state.undoStacks);
+      newUndoStacks.delete(modelId);
+      const newRedoStacks = new Map(state.redoStacks);
+      newRedoStacks.delete(modelId);
+      const newBatchTags = new Map(state.mutationBatchTags);
+      const newMeshTranslations = new Map(state.mutationMeshTranslations);
+      for (const mutationId of discardedMutations) {
+        newBatchTags.delete(mutationId);
+        newMeshTranslations.delete(mutationId);
+      }
       return {
         mutationViews: newViews,
         storeEditors: newEditors,
         dirtyModels: newDirty,
         removedNewEntities: newRemoved,
         removedMeshes: newRemovedMeshes,
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        mutationBatchTags: newBatchTags,
+        mutationMeshTranslations: newMeshTranslations,
       };
     });
   },

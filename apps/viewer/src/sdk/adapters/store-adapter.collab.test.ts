@@ -205,6 +205,19 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.equal(view.getMutations().length, count);
   });
 
+  it('removes a reconstructed IFCX base entity whose STEP index is empty', () => {
+    registerEntityMaps(
+      actualIfcxStore,
+      new Map([[1, '/m0/0room000000000000000000']]),
+      new Map([['/m0/0room000000000000000000', 1]]),
+    );
+    const { adapter, calls, view } = fixture(true, actualIfcxStore);
+
+    assert.equal(adapter.removeEntity({ modelId: MODEL, expressId: 1 }), true);
+    assert.equal(view.isDeleted(1), true);
+    assert.deepEqual(calls.at(-1), { kind: 'remove', args: [MODEL, 1] });
+  });
+
   it('rejects GlobalId edits because room identity is path-keyed', () => {
     const { adapter, view } = fixture();
     const first = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes: [
@@ -217,12 +230,23 @@ describe('bim.store collaboration mirroring (#5008)', () => {
 
   for (const scope of ['single', 'private'] as const) {
     it(`keeps GlobalId mutable for a ${scope}-user model outside the shared room`, () => {
-      const { adapter, view, calls } = fixture(true, dataStore, undefined, scope);
+      const { adapter, view } = fixture(true, dataStore, undefined, scope);
       adapter.setPositionalAttribute({ modelId: MODEL, expressId: 2 }, 0, `0${scope}00000000000000000`);
       assert.equal(
         view.getPositionalMutationsForEntity(2)?.get(0),
         `0${scope}00000000000000000`,
       );
+    });
+
+    it(`skips room reference traversal when adding to a ${scope}-user model`, () => {
+      const references = Array.from({ length: 5_000 }, () => '#4');
+      const { adapter, calls } = fixture(true, dataStore, undefined, scope);
+
+      assert.doesNotThrow(() => adapter.addEntity(MODEL, {
+        type: 'IFCBOOLEANRESULT',
+        attributes: ['.UNION.', references, references],
+      }));
+      assert.equal(calls.length, 0, 'a non-room create must not traverse or encode room references');
     });
   }
 

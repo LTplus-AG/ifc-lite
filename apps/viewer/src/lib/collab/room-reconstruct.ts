@@ -42,7 +42,7 @@ export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'),
 /** The store actions and reads the reconstruct goes through (a narrow view of `ViewerState`). */
 export type RoomReconstructState = Pick<
   ViewerState,
-  'collabRoomId' | 'models' | 'upsertModel' | 'updateModel' | 'removeModel' | 'registerModelOffset'
+  'collabRoomId' | 'models' | 'upsertModel' | 'updateModel' | 'removeModel' | 'registerModelOffset' | 'clearMutationView'
 > &
   Parameters<typeof applyRoomModelData>[0];
 export interface RoomReconstructDeps {
@@ -66,8 +66,6 @@ export interface RoomReconstructDeps {
   };
   /** The slice's live reconciler — moves one entity's mesh to `placement`. */
   reconcile: (modelId: string, store: IfcDataStore, entityId: number, placement: LocalPlacement) => void;
-  /** Reconcile path-keyed remote tombstones after a store is replaced. */
-  reconcileRemoteDeletes?: (modelId: string, pathToId: ReadonlyMap<string, number> | undefined) => void;
 }
 export interface RoomReconstructor {
   /** Re-derive every slot from the doc (no-op while a run is in flight). */
@@ -240,7 +238,12 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       const model = deps.get().models.get(modelId);
       const raised = model ? raisedMaxExpressId(model.maxExpressId, payload.idToPath) : null;
       if (raised !== null) deps.get().updateModel(modelId, { maxExpressId: raised });
-      deps.reconcileRemoteDeletes?.(modelId, payload.pathToId);
+      // Every overlay map is keyed by the previous snapshot's dense numeric
+      // ids. The room document already contains both local and remote edits,
+      // so the replacement snapshot is the new base and retaining ANY old
+      // view state (properties, positional attrs, types, creates, tombstones)
+      // can apply it to an unrelated path after ids shift.
+      deps.get().clearMutationView(modelId);
     }
 
     if (geometryChanged || firstBuild) {

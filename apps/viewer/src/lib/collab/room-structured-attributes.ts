@@ -26,7 +26,14 @@ export function hydrateStructuredEntityAttributes(
     const structured = structuredForPath(path);
     if (!base || !structured?.attributes) continue;
     const names = attributeNamesForStore(store, base.type);
-    const values: IfcAttributeValue[] = Array.from({ length: names.length }, () => null);
+    // A STEP-backed room payload may already have positional values attached
+    // by `attachRoomStepSource` (including GlobalId and relationship slots).
+    // CRDT structure is intentionally sparse, so hydrate it as an overlay;
+    // starting from all-null silently erased every omitted parsed value.
+    const values: IfcAttributeValue[] = Array.from(
+      { length: Math.max(names.length, base.attributes.length) },
+      (_, index) => index < base.attributes.length ? base.attributes[index] : null,
+    );
     for (const [key, value] of Object.entries(structured.attributes)) {
       if (!key.startsWith('bsi::ifc::prop::')) continue;
       const name = key.slice('bsi::ifc::prop::'.length);

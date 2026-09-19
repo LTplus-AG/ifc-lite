@@ -843,7 +843,7 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
       'AppliedValue',
       { typed: { type: 'IfcMonetaryMeasure', value: 42 } },
     ));
-    assert.strictEqual(line, "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(42),$,$,$,$,$,$,$);");
+    assert.strictEqual(line, "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(42.),$,$,$,$,$,$,$);");
   });
 
   it('resolves the canonical IFCX-qualified name before positional schema lookup (#4857 review)', () => {

@@ -37,7 +37,6 @@ import type {
   WebSocketStatus,
 } from '@ifc-lite/collab';
 import type { PropertyValueType } from '@ifc-lite/data';
-import { StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import { collabServerUrl } from '@/lib/collab/config';
 import {
@@ -54,7 +53,8 @@ import {
   mirrorPropertyDelete,
   type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
-import { entityForPath, pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
+import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
+import { createRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
@@ -850,17 +850,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
     // Remote → local apply (plan §7.5): replay peers' property/attribute edits
     // into the ROOM model's MutablePropertyView (no undo tracking, no echo).
-    //
-    // Resolved per event BY PATH off `collabRoomModels` — the path's slot
-    // names the model (#4444) — never off `activeModelId` and never captured
-    // once. A peer's edit carries an expressId in ONE room model's id space,
-    // so it is only meaningful against that model's own store and view.
-    // Targeting the active model wrote it into the user's own file instead.
-    // Not into `undoStacks` / `dirtyModels` — the handlers below call the view
-    // directly, which is what "no undo tracking" above means — but into that
-    // view's overlay and append-only `mutationHistory`, which the exporter and
-    // `getModifiedEntityCount` read, so it survived a reload and shipped in
-    // their exported IFC.
+    // Resolved per event BY PATH off `collabRoomModels`; the path's slot names
+    // the model (#4444), never `activeModelId`.
     // `roomEntityTargetForPath` returns null until the room model is
     // registered, and every handler drops the event rather than falling back
     // to another model; the next reconstruct rebuilds the whole model from
@@ -869,12 +860,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // handler cannot be handed one model and write another.
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
       onEntityCreate: ({ modelId, store }, entityPath, ifcClass) => {
-        if (entityForPath(store, entityPath) !== null) return;
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
-        const created = new StoreEditor(store, view).addEntity(ifcClass, []);
-        registerEntityPath(store, created.expressId, entityPath);
-        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        if (createRemoteOverlayEntity(store, view, entityPath, ifcClass)) {
+          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        }
       },
       onProperty: (modelId, entityId, pset, prop, value, type) => {
         const view = roomMutationViewFor(get(), modelId);

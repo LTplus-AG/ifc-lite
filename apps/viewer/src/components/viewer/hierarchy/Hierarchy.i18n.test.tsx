@@ -249,8 +249,10 @@ afterEach(() => {
   federationRegistry.clear();
 });
 
-describe('Hierarchy localization (#4918 slice 4)', { skip: !HAS_CATALOGUE && 'hierarchy catalogue absent during the revert-oracle probe' }, () => {
-  it('translates the hierarchy tree, Models section, sort control and storey controls chrome', () => {
+const catalogueIt = HAS_CATALOGUE ? it : it.skip;
+
+describe('Hierarchy localization (#4918 slice 4)', () => {
+  catalogueIt('translates the hierarchy tree, Models section, sort control and storey controls chrome', () => {
     const container = mountAll();
     const english = chromeStrings(container);
 
@@ -268,7 +270,7 @@ describe('Hierarchy localization (#4918 slice 4)', { skip: !HAS_CATALOGUE && 'hi
     assert.ok(coveredAny, 'this render must exercise at least one static hierarchy key');
   });
 
-  it('translates the tag-editor dialog and the sort-control menu it owns', () => {
+  catalogueIt('translates the tag-editor dialog and the sort-control menu it owns', () => {
     const container = mountAll();
     openPortaledSurfaces(container);
     const english = new Set<string>();
@@ -289,7 +291,7 @@ describe('Hierarchy localization (#4918 slice 4)', { skip: !HAS_CATALOGUE && 'hi
     assert.ok(coveredAny, 'the dialog/menu pass must exercise at least one static hierarchy key');
   });
 
-  it('interpolates the storey elevation badge and the model-tag member count', () => {
+  catalogueIt('interpolates the storey elevation badge and the model-tag member count', () => {
     registerLocale('pseudothree', {
       'hierarchy.node.elevationBadge': '[{sign}{value}]',
       'hierarchy.modelTagGroup.memberCount': { one: '[{count} one]', other: '[{count} many]' },

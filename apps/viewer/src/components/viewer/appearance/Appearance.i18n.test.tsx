@@ -150,8 +150,10 @@ afterEach(() => {
   setLocale('en');
 });
 
-describe('Appearance panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE && 'appearance catalogues absent during the revert-oracle probe' }, () => {
-  it('translates the apply-intent panel chrome (source, PDF, scope, mapping, calibration, assignments)', () => {
+const catalogueIt = HAS_CATALOGUE ? it : it.skip;
+
+describe('Appearance panel localization (#4918 slice 4)', () => {
+  catalogueIt('translates the apply-intent panel chrome (source, PDF, scope, mapping, calibration, assignments)', () => {
     const container = render(<AppearancePanelView {...panelViewProps({
       renderAssignments: (formValid) => <AssignmentsHarness formValid={formValid} />,
     })} />);
@@ -171,7 +173,7 @@ describe('Appearance panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE
     assert.ok(coveredAny, 'the apply-intent panel must exercise at least one static appearance key');
   });
 
-  it('translates the reference-intent panel chrome (reference library, annotation fields)', () => {
+  catalogueIt('translates the reference-intent panel chrome (reference library, annotation fields)', () => {
     const container = render(<AppearancePanelView {...panelViewProps({ intent: 'reference', onIntentChange() {}, calibration: undefined, pdf: undefined })} />);
     const english = chromeStrings(container);
 
@@ -189,7 +191,7 @@ describe('Appearance panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE
     assert.ok(coveredAny, 'the reference-intent panel must exercise at least one static appearance key');
   });
 
-  it('translates the capture panel and the scan-alignment panel (which mounts ScanTransferFields)', () => {
+  catalogueIt('translates the capture panel and the scan-alignment panel (which mounts ScanTransferFields)', () => {
     const container = render(<div><AppearanceCapturePanel /><AppearanceScanPanel /></div>);
     const english = chromeStrings(container);
 
@@ -207,7 +209,7 @@ describe('Appearance panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE
     assert.ok(coveredAny, 'the capture/scan panels must exercise at least one static appearance key');
   });
 
-  it('translates PdfFidelityReportView across its exact and raster-only verdicts, and interpolates the exact-conversion plural', () => {
+  catalogueIt('translates PdfFidelityReportView across its exact and raster-only verdicts, and interpolates the exact-conversion plural', () => {
     registerLocale('pseudod', {
       'appearance.pdfFidelity.rasterOnlyNotice': '[raster only]',
       'appearance.pdfFidelity.exactSummary': { one: '[{count} exact one]', other: '[{count} exact many]' },
@@ -227,7 +229,7 @@ describe('Appearance panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE
     assert.match(rasterOnly.textContent ?? '', /\[raster only\]/);
   });
 
-  it('interpolates a plural (face-mask member count style) and a named-param message', () => {
+  catalogueIt('interpolates a plural (face-mask member count style) and a named-param message', () => {
     registerLocale('pseudo-interp', {
       'appearance.scopeFields.affectedCount': { one: '[{count} one]', other: '[{count} many]' },
       'appearance.assignments.queryFilter': '[Filter is {name}]',

@@ -287,8 +287,10 @@ afterEach(() => {
   setLocale('en');
 });
 
-describe('Properties panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE && 'properties catalogue absent during the revert-oracle probe' }, () => {
-  it('translates the property cards and georeferencing chrome', () => {
+const catalogueIt = HAS_CATALOGUE ? it : it.skip;
+
+describe('Properties panel localization (#4918 slice 4)', () => {
+  catalogueIt('translates the property cards and georeferencing chrome', () => {
     const container = mountAll();
     openCollapsibles(container);
     const english = chromeStrings(container);
@@ -307,7 +309,7 @@ describe('Properties panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE
     assert.ok(coveredAny, 'this render must exercise at least one static properties key');
   });
 
-  it('interpolates a plural (relationships), a member-count style value and the georef easting/northing summary', () => {
+  catalogueIt('interpolates a plural (relationships), a member-count style value and the georef easting/northing summary', () => {
     registerLocale('pseudo-interp', {
       'properties.relationships.openings': '[{count} opening-one]',
       'properties.materialTotals.fallbackName': '[Material #{id}]',

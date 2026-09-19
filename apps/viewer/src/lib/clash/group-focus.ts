@@ -258,7 +258,18 @@ export function focusClashGroup(
   const aPresentationKeys = new Set(presentationARefs.map(ref => `${ref.modelId}:${ref.expressId}`));
   const presentationBRefs = expandedAggregateRefs(state, b)
     .filter(ref => !aPresentationKeys.has(`${ref.modelId}:${ref.expressId}`));
-  const hiddenParticipatingModelIds = [...new Set(refs.map(ref => ref.modelId))]
+  const initialColorByGuid = new Map<string, RGBA>();
+  for (const ref of presentationARefs) {
+    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    if (guid) initialColorByGuid.set(guid, CLASH_COLOR_A);
+  }
+  for (const ref of presentationBRefs) {
+    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    if (guid && !initialColorByGuid.has(guid)) initialColorByGuid.set(guid, CLASH_COLOR_B);
+  }
+  const loadedOccurrences = loadedGuidOccurrences(state, initialColorByGuid.keys());
+  const participatingModelIds = new Set([...refs.map(ref => ref.modelId), ...loadedOccurrences.modelIds]);
+  const hiddenParticipatingModelIds = [...participatingModelIds]
     .filter(modelId => state.models.get(modelId)?.visible === false);
   // A storey filter or exploded offsets would render only a transformed
   // subset of the group, but BCF cannot serialize either presentation. Use
@@ -315,15 +326,7 @@ export function focusClashGroup(
   // BCF colors are keyed only by IFC GlobalId. If two loaded revisions expose
   // the same GlobalId on opposite sides, paint every occurrence amber (A wins)
   // instead of showing a split that the exported viewpoint cannot reproduce.
-  const colorByGuid = new Map<string, RGBA>();
-  for (const ref of presentationARefs) {
-    const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
-    if (guid) colorByGuid.set(guid, CLASH_COLOR_A);
-  }
-  for (const ref of presentationBRefs) {
-    const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
-    if (guid && !colorByGuid.has(guid)) colorByGuid.set(guid, CLASH_COLOR_B);
-  }
+  const colorByGuid = initialColorByGuid;
   const clashColors = new Map<number, RGBA>();
   for (const ref of presentationARefs) {
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
@@ -338,17 +341,11 @@ export function focusClashGroup(
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     setClashColor(clashColors, globalId, guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_B) : CLASH_COLOR_B);
   }
-  const occurrences = loadedGuidOccurrences(presentationState, colorByGuid.keys());
+  const occurrences = loadedOccurrences.rendererIdsByGuid;
   for (const ref of [...presentationARefs, ...presentationBRefs]) {
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     if (!guid) continue;
     occurrences.get(guid)?.add(toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId));
-  }
-  for (const rendererIds of occurrences.values()) {
-    for (const rendererId of resolvePresentationIds(
-      presentationState.cameraCallbacks.resolveHighlightIds,
-      [...rendererIds],
-    )) rendererIds.add(rendererId);
   }
   reconcileGuidOccurrenceColors(colorByGuid, occurrences, clashColors);
   const presentationClashColors = resolvePresentationColorMap(

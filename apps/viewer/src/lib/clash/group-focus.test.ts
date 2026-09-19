@@ -208,6 +208,46 @@ describe('manual clash group focus (#4921)', () => {
     assert.deepEqual(focused.bGuids, []);
   });
 
+  it('expands a hidden model-qualified GUID occurrence before reconciling colors', () => {
+    const crossModel = clash('hidden-occurrence-aggregate', 30, 20);
+    crossModel.b.model = 'revision-b';
+    const entities = (guid: string, expressId: number) => ({
+      getGlobalId: () => guid,
+      getExpressIdByGlobalId: (candidate: string) => candidate === guid ? expressId : -1,
+    });
+    const relationships = {
+      getRelated: (id: number, _type: unknown, direction: string) =>
+        id === 10 && direction === 'forward' ? [30] : [],
+    };
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, visible: true, ifcDataStore: { entities: entities('GUID-A', 30) } }],
+        ['revision-b', { idOffset: 1000, visible: true, ifcDataStore: { entities: entities('GUID-B', 20) } }],
+        ['hidden-b', {
+          idOffset: 0, visible: false,
+          ifcDataStore: { entities: entities('GUID-B', 10), relationships },
+        }],
+      ]) as unknown as ViewerState['models'],
+      cameraCallbacks: { resolveHighlightIds: ids => ids },
+    });
+
+    const focused = focusClashGroup(
+      [crossModel],
+      element => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+
+    assert.ok(focused);
+    assert.equal(useViewerStore.getState().models.get('hidden-b')?.visible, true,
+      'every model whose shared GUID will be serialized must appear in the snapshot');
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [30, CLASH_COLOR_A], [1020, CLASH_COLOR_A], [10, CLASH_COLOR_A],
+    ]));
+    assert.deepEqual(focused.aGuids, ['GUID-A', 'GUID-B']);
+    assert.deepEqual(focused.bGuids, []);
+  });
+
   it('promotes a B aggregate GUID when its expanded part collides with expanded A', () => {
     const entities = {
       getGlobalId: (id: number) => id === 10 ? 'GUID-A' : id === 20 ? 'GUID-B' : null,

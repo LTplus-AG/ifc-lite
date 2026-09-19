@@ -87,9 +87,14 @@ export function resolveEntityRefGlobalIdFromState(
   const dataStore = entityRef.modelId === 'legacy'
     ? state.ifcDataStore
     : state.models.get(entityRef.modelId)?.ifcDataStore;
+  const mutationView = state.mutationViews.get(entityRef.modelId);
+  const globalIdMutation = mutationView?.getAttributeMutationsForEntity(entityRef.expressId)
+    .find(mutation => mutation.name === 'GlobalId');
+  if (globalIdMutation) return globalIdMutation.value.length > 0 ? globalIdMutation.value : null;
+
   const resolvedGlobalId = dataStore?.entities.getGlobalId(entityRef.expressId);
   if (resolvedGlobalId) return resolvedGlobalId;
 
-  const overlayGlobalId = state.mutationViews.get(entityRef.modelId)?.getNewEntity(entityRef.expressId)?.attributes[0];
+  const overlayGlobalId = mutationView?.getNewEntity(entityRef.expressId)?.attributes[0];
   return typeof overlayGlobalId === 'string' && overlayGlobalId.length > 0 ? overlayGlobalId : null;
 }

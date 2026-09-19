@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from './index.js';
 import { resolveEntityRefGlobalIdFromState, resolveGlobalId } from './resolveEntityRef.js';
 
@@ -53,5 +54,24 @@ describe('resolveGlobalId compatibility', () => {
 
     assert.equal(resolveGlobalId(7), null,
       'a missing GUID in a hydrated model must not resolve to another model’s entity');
+  });
+
+  it('resolves an edited GlobalId before the immutable entity table (#4921)', () => {
+    const baseStore = {
+      entities: { getGlobalId: () => 'ORIGINAL-GUID' },
+    } as unknown as IfcDataStore;
+    const overlay = new MutablePropertyView(null, 'edited');
+    overlay.setAttribute(7, 'GlobalId', 'EDITED-GUID', 'ORIGINAL-GUID');
+    useViewerStore.setState({
+      models: new Map([['edited', {
+        id: 'edited', idOffset: 0, maxExpressId: 100, ifcDataStore: baseStore,
+      }]]) as unknown as ViewerState['models'],
+      mutationViews: new Map([['edited', overlay]]),
+    });
+
+    assert.equal(
+      resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: 'edited', expressId: 7 }),
+      'EDITED-GUID',
+    );
   });
 });

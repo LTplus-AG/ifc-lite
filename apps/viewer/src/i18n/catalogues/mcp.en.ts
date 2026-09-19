@@ -76,7 +76,7 @@ export const mcpEn = {
 
   // ── McpLanding: catalog ──
   'mcp.mcpLanding.catalogEyebrow': 'Catalog',
-  'mcp.mcpLanding.catalogTypedTools': 'typed tools.',
+  'mcp.mcpLanding.catalogTypedTools': '{count} typed tools.',
   'mcp.mcpLanding.catalogEverything': 'Everything an agent needs.',
   'mcp.mcpLanding.signature': 'Signature',
   'mcp.mcpLanding.parametersCount': 'Parameters · {count}',

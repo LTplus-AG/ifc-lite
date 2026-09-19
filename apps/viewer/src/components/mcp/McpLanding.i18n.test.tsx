@@ -39,6 +39,7 @@ import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { mcpEn } from '@/i18n/catalogues/mcp.en';
 import { McpLanding } from './McpLanding.js';
+import { CATALOG } from './data.js';
 
 type McpKey = keyof typeof mcpEn;
 const KEYS = Object.keys(mcpEn) as McpKey[];
@@ -157,5 +158,16 @@ describe('McpLanding localization (#4918)', () => {
       paragraph.textContent?.includes('no arguments'),
     );
     assert.equal(sentence?.textContent?.trim(), '{} ONLY — no arguments');
+  });
+
+  it('keeps the catalogue tool count inside the translated heading (#5000 review)', () => {
+    registerLocale('mcp-landing-reordered-count', {
+      'mcp.mcpLanding.catalogTypedTools': 'tools typed: {count}',
+    });
+    act(() => setLocale('mcp-landing-reordered-count'));
+    const container = render(<McpLanding />);
+    const heading = container.querySelector('#tools h2');
+
+    assert.ok(heading?.textContent?.includes(`tools typed: ${CATALOG.tools.length}`));
   });
 });

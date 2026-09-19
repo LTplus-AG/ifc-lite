@@ -37,7 +37,7 @@ export function PanelTourButton({ panelId }: { panelId: WorkspacePanelId }) {
           <GraduationCap className="h-3.5 w-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">{t('tours.panelTourButton.tooltip', { title: tour.title, minutes: tour.minutes })}</TooltipContent>
+      <TooltipContent side="bottom">{t('tours.panelTourButton.tooltip', { title: tour.title, count: tour.minutes })}</TooltipContent>
     </Tooltip>
   );
 }

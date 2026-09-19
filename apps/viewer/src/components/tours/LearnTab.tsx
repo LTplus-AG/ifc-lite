@@ -41,7 +41,7 @@ export function LearnTab({ onClose }: { onClose: () => void }) {
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">{tour.description}</div>
               </div>
               <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                {t('tours.learnTab.minutes', { n: tour.minutes })}
+                {t('tours.learnTab.minutes', { count: tour.minutes })}
               </span>
               <Button variant={done ? 'ghost' : 'outline'} size="sm" className="shrink-0" onClick={() => begin(tour.id)}>
                 {done ? t('tours.learnTab.replay') : t('tours.learnTab.start')}

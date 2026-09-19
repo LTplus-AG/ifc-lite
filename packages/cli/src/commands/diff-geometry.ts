@@ -247,7 +247,8 @@ export function runGeometryPass(api: WasmIfcAPI, bytes: Uint8Array): GeometryPas
           if (volume !== undefined && Number.isFinite(volume) && volume > 0) {
             volumes.set(ids[i], volume);
           }
-          const box = Array.from(boxes.slice(6 * i, 6 * i + 6));
+          // Same optional-getter rule as volumes: no boxes, keep the hashes.
+          const box = boxes ? Array.from(boxes.slice(6 * i, 6 * i + 6)) : [];
           if (box.length === 6 && box.every((value) => Number.isFinite(value))) {
             aabbs.set(ids[i], {
               min: [box[0], box[1], box[2]],

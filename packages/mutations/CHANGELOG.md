@@ -1,5 +1,16 @@
 # @ifc-lite/mutations
 
+## 2.5.0
+
+### Minor Changes
+
+- [#4984](https://github.com/LTplus-AG/ifc-lite/pull/4984) [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077) Thanks [@louistrue](https://github.com/louistrue)! - Expose `MutablePropertyView.isPropertySetDeleted` for consumers that merge immutable property sets with mutable overlays.
+
+### Patch Changes
+
+- Updated dependencies [[`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/data@5.0.0
+
 ## 2.4.0
 
 ### Minor Changes

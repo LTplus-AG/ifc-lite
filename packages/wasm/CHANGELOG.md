@@ -1,5 +1,19 @@
 # @ifc-lite/wasm
 
+## 9.1.1
+
+### Patch Changes
+
+- [#4980](https://github.com/LTplus-AG/ifc-lite/pull/4980) [`faadbb4`](https://github.com/LTplus-AG/ifc-lite/commit/faadbb409bc67bb5ace32757db050dd0ed83814f) Thanks [@louistrue](https://github.com/louistrue)! - Bound `IfcBSplineCurveWithKnots` / `IfcBSplineSurfaceWithKnots` degree and control-point count so a file-supplied value that was previously unbounded can no longer hang the geometry kernel ([#4901](https://github.com/LTplus-AG/ifc-lite/issues/4901)). The Cox-de Boor basis-function evaluation is also now memoized instead of naively recursive, which is exponential in the degree, so legitimate B-spline curves and surfaces tessellate identically but faster; a file that still exceeds the (generous) bound now fails loudly per-element instead of stalling the whole load.
+
+- [#4988](https://github.com/LTplus-AG/ifc-lite/pull/4988) [`dce19f5`](https://github.com/LTplus-AG/ifc-lite/commit/dce19f57399b9e75901fa5c4283adf781681301e) Thanks [@louistrue](https://github.com/louistrue)! - Fixed a consolidation-only mesh tear ([#3914](https://github.com/LTplus-AG/ifc-lite/issues/3914)): `consolidate_coplanar`'s plane-bucketing step re-derived each triangle's supporting plane from its f32-rounded vertices, which could straddle the `POS_QUANT` rounding boundary for a rotated/tilted face and split one physical kernel plane into two adjacent buckets that the cross-bucket seam-conform pass (tangential-only) could not stitch back together. `kernel::mesh_bridge::tris_to_mesh` (the kernel boolean's sole `Mesh` producer) now tags every output triangle with its f64 supporting plane, computed before the f32 cast; `consolidate_coplanar` merges exactly the adjacent-bucket-pair case those tags identify as one kernel plane, leaving every other bucket (the overwhelming majority) untouched. A mesh without tags (anything that went through a weld/merge/transform since, or a synthetic/test mesh) is byte-identical to before.
+
+- [#4962](https://github.com/LTplus-AG/ifc-lite/pull/4962) [`bab4e30`](https://github.com/LTplus-AG/ifc-lite/commit/bab4e30f438ac0bb585ea00a62a1a98a8221bede) Thanks [@louistrue](https://github.com/louistrue)! - Lowered the Rust `LARGE_COORD_THRESHOLD_METERS` gate (the single home every crate reads to decide whether a model needs an RTC re-base before its geometry is cast to f32) from 10 km to 1 km. A model whose coordinates sit in the 1-10 km band — a common survey-grid site layout — previously got no RTC shift and had its vertices quantized to a ~0.26-0.5 mm f32 lattice, visible as z-fighting speckle at flush joins ([#4934](https://github.com/LTplus-AG/ifc-lite/issues/4934)). Models already past 10 km are unaffected; models in the 1-10 km band get a new RTC anchor and, as a one-time consequence, a new `placementFrameKey` on first load after upgrading.
+  
+  The viewer's `apps/viewer/src/hooks/geometryCacheKey.ts` `GEOMETRY_OUTPUT_REVISION` was bumped alongside this (2, was 1) so a 1-10 km model already cached under the old gate is a cache miss and re-tessellates with the corrected pre-pass output on the next load, rather than serving the old un-rebased meshes indefinitely.
+
+- [#5019](https://github.com/LTplus-AG/ifc-lite/pull/5019) [`24b2416`](https://github.com/LTplus-AG/ifc-lite/commit/24b24167e7213ed8f8c8d92211ec38c7221b9a11) Thanks [@louistrue](https://github.com/louistrue)! - Fixed opening cuts that could lose wall geometry after an intermediate boolean difference inherited union-specific plane consolidation tags. Difference and intersection output now use the established geometric plane derivation; precise kernel plane tags remain enabled for unions.
+
 ## 9.1.0
 
 ### Minor Changes

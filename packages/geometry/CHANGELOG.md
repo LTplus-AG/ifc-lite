@@ -1,5 +1,17 @@
 # @ifc-lite/geometry
 
+## 7.4.0
+
+### Minor Changes
+
+- [#4979](https://github.com/LTplus-AG/ifc-lite/pull/4979) [`e2ca87d`](https://github.com/LTplus-AG/ifc-lite/commit/e2ca87d9b8f25be2ffeabd5843cbadc4154471c0) Thanks [@louistrue](https://github.com/louistrue)! - Every pre-worker geometry phase that could wait on a single worker's reply forever now has a bound. `GeometryProcessor.processParallel` accepts a new opt-in `stallPhaseHandle` (`StallPhaseHandle`, `{}`), filled in synchronously with a `getStallPhase(): StallPhase` reader over the pool's own gate state (`'prepass' | 'shard-scan' | 'styles-gate' | 'entity-index-gate' | 'workers'`) — pass it to know which phase a "Geometry stream stalled" watchdog was actually waiting on, instead of guessing. `GeometryProcessor.processAdaptive` forwards the handle only when it selects that parallel worker-pool path; small-file and no-worker serial paths leave it unset. A silent `scan-shard` reply now falls back to the serial pre-pass; a silent `resolve-styles-shard` slice is treated as empty and the load proceeds with the slices that answered; a silent `finalize-styles` reply drains every held chunk with default colours. Each bound scales with file size and records a typed `failuresByReason` entry (`shard-scan-timeout` / `style-slice-timeout` / `styles-finalize-timeout`) in `GeometryDiagnostics` — the happy path where nothing hangs is byte-identical and emits none of them ([#4902](https://github.com/LTplus-AG/ifc-lite/issues/4902)).
+
+### Patch Changes
+
+- Updated dependencies [[`faadbb4`](https://github.com/LTplus-AG/ifc-lite/commit/faadbb409bc67bb5ace32757db050dd0ed83814f), [`dce19f5`](https://github.com/LTplus-AG/ifc-lite/commit/dce19f57399b9e75901fa5c4283adf781681301e), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`bab4e30`](https://github.com/LTplus-AG/ifc-lite/commit/bab4e30f438ac0bb585ea00a62a1a98a8221bede), [`24b2416`](https://github.com/LTplus-AG/ifc-lite/commit/24b24167e7213ed8f8c8d92211ec38c7221b9a11), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/wasm@9.1.1
+  - @ifc-lite/data@5.0.0
+
 ## 7.3.0
 
 ### Minor Changes

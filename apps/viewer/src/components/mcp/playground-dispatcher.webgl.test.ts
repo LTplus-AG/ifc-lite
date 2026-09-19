@@ -162,6 +162,21 @@ describe('viewer tools on a device that refuses WebGL (#2412)', () => {
     assert.equal(opened, 0, 'must not re-open a panel that can only paint its fallback');
   });
 
+  it('returns the active-locale WebGL refusal to the chat agent', async () => {
+    latchNoWebgl();
+    const translated = 'TRANSLATED terminal WebGL refusal';
+    const ctx: DispatchContext = {
+      viewer: fakeViewer({ loaded: false, webglUnavailable: true }),
+      translate: (key) => key === 'mcp.playgroundDispatcher.webglUnavailable'
+        ? translated
+        : `translated:${key}`,
+    };
+
+    const result = await dispatch(model, 'viewer_open', {}, ctx);
+
+    assert.equal(result.text, translated);
+  });
+
   it('answers viewer_status terminally instead of "mounted but no geometry yet"', async () => {
     latchNoWebgl();
     const ctx: DispatchContext = { viewer: fakeViewer({ loaded: false, webglUnavailable: true }) };

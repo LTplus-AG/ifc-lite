@@ -105,6 +105,10 @@ export const mcpEn = {
   'mcp.playgroundViewer.webglUnavailableTitle': '3D preview unavailable on this device',
   'mcp.playgroundViewer.webglUnavailableBody':
     'Your browser could not provide graphics for the viewer. Loading, queries and every other tool still work.',
+  'mcp.playgroundDispatcher.webglUnavailable':
+    'This device cannot provide a WebGL context, so the inline 3D viewer never mounts. Every viewer_* tool is unavailable for the rest of this session. Parsing, queries, validation, BCF and export are unaffected.',
+  'mcp.playgroundDispatcher.webglUnavailableHint':
+    'Answer with the non-viewer tools; no 3D tool can succeed on this device.',
   'mcp.playgroundViewer.meshCount': {
     one: '{count} mesh',
     other: '{count} meshes',

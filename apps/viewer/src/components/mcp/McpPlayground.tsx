@@ -92,9 +92,9 @@ export function McpPlayground(): ReactNode {
   const getDispatchContext = useCallback<() => DispatchContext>(
     () => ({
       viewer: viewerRef.current ?? null,
-      openViewerPanel: () => setViewerOpen(true),
+      openViewerPanel: () => setViewerOpen(true), translate: t,
     }),
-    [],
+    [t],
   );
 
   const loadFromUrl = useCallback(async (entry: SampleEntry) => {

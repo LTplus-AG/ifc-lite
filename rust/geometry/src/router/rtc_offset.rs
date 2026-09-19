@@ -134,12 +134,12 @@ impl GeometryRouter {
         Some((tx, ty, tz))
     }
 
-    /// True when the element carries at least one RTC-votable body shape
-    /// representation (see [`is_rtc_votable_representation`]), as opposed to
-    /// only curve/axis/footprint reps (e.g. an IfcAlignmentSegment) OR a
-    /// `Surface3D` rep whose coordinates the vertex probe cannot read. Used to
-    /// decide whether an origin-placed element with no cheaply-samplable vertex
-    /// may still cast a "no shift" (0,0,0) vote during RTC detection.
+    /// True when the element carries at least one RTC-votable body shape or
+    /// structural Face topology representation, as opposed to only
+    /// curve/axis/footprint reps (e.g. an IfcAlignmentSegment) OR a `Surface3D`
+    /// rep whose coordinates the vertex probe cannot read. Used to decide
+    /// whether an origin-placed element with no cheaply-samplable vertex may
+    /// still cast a "no shift" (0,0,0) vote during RTC detection.
     ///
     /// NOTE: this uses [`is_rtc_votable_representation`], NOT
     /// [`is_body_representation`](super::is_body_representation) — the two
@@ -169,10 +169,13 @@ impl GeometryRouter {
             return false;
         };
         reps.iter().any(|sr| {
-            sr.ifc_type == IfcType::IfcShapeRepresentation
-                && super::effective_element_rep_type(entity, sr)
-                    .map(is_rtc_votable_representation)
-                    .unwrap_or(false)
+            super::effective_element_rep_type(entity, sr).is_some_and(|rep_type| {
+                (sr.ifc_type == IfcType::IfcShapeRepresentation
+                    && is_rtc_votable_representation(rep_type))
+                    || (sr.ifc_type == IfcType::IfcTopologyRepresentation
+                        && rep_type == "Face"
+                        && super::structural::accepts(entity, rep_type))
+            })
         })
     }
 
@@ -206,10 +209,7 @@ impl GeometryRouter {
         let reps_attr = rep.get(2)?;
         let reps = decoder.resolve_ref_list(reps_attr).ok()?;
 
-        for shape_rep in &reps {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
+        for shape_rep in super::meshed_representations(entity, &reps) {
             // attr 3 = Items (list of geometry items)
             let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
                 Some(list) => list,
@@ -269,6 +269,13 @@ impl GeometryRouter {
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // ── Structural topology path ──
+                    IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
+                        if let Some(pt) = self.face_first_vertex(&item, decoder) {
+                            return Some(pt);
                         }
                     }
 

@@ -109,9 +109,17 @@ impl GeometryRouter {
 
             // Process each representation item
             for item in items {
-                let mesh = if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                let mesh = if element.ifc_type == IfcType::IfcAnnotation
+                    && item.ifc_type == IfcType::IfcAnnotationFillArea
+                {
                     self.process_annotation_fill(&item, decoder)?
-                } else { self.process_representation_item(&item, decoder)? };
+                } else if let Some(mesh) =
+                    self.process_raw_face_for_element(&item, element, decoder)?
+                {
+                    mesh
+                } else {
+                    self.process_representation_item(&item, decoder)?
+                };
                 if instancing_enabled() && !mesh.positions.is_empty() {
                     instanceable_item_count += 1;
                     single_instance_meta = if instanceable_item_count == 1 {
@@ -229,8 +237,16 @@ impl GeometryRouter {
 
             // Process each representation item, preserving geometry IDs
             for item in items {
-                if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                if element.ifc_type == IfcType::IfcAnnotation
+                    && item.ifc_type == IfcType::IfcAnnotationFillArea
+                {
                     sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
+                    continue;
+                }
+                if let Some(mesh) = self.process_raw_face_for_element(&item, element, decoder)? {
+                    if !mesh.is_empty() {
+                        sub_meshes.add(item.id, mesh);
+                    }
                     continue;
                 }
                 self.collect_submeshes_from_item(
@@ -601,6 +617,50 @@ impl GeometryRouter {
             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
         }
         result
+    }
+
+    /// Tessellate a direct structural face in an element-local RTC frame.
+    ///
+    /// The face bounds are still f64 here, so this is the last point where a
+    /// national-grid coordinate can be rebased without first collapsing to
+    /// f32. RTC is world-space; subtracting it directly from object-space
+    /// bounds is only correct for an identity placement. Pull the RTC vector
+    /// through the placement's inverse linear transform so the later placement
+    /// produces `M(p) - rtc` for rotated/scaled structural members as well.
+    fn process_raw_face_for_element(
+        &self,
+        item: &DecodedEntity,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Mesh>> {
+        if !matches!(
+            item.ifc_type,
+            IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace
+        ) || !self.has_rtc_offset()
+            || !self.representation_item_uses_raw_large_coordinates(item, decoder)
+        {
+            return Ok(None);
+        }
+
+        let mut placement = self.get_placement_transform_from_element(element, decoder)?;
+        self.scale_transform(&mut placement);
+        let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
+        let Some(inverse) = linear.try_inverse() else {
+            return Ok(None);
+        };
+        let rtc_object_meters = inverse
+            * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
+        let rtc_file_units = (
+            rtc_object_meters.x / self.unit_scale,
+            rtc_object_meters.y / self.unit_scale,
+            rtc_object_meters.z / self.unit_scale,
+        );
+        let processor = crate::processors::IfcFaceSurfaceProcessor::new();
+        let mut mesh =
+            processor.process_with_rtc(item, decoder, self.tessellation_quality, rtc_file_units)?;
+        mesh.validate_indices();
+        self.scale_mesh(&mut mesh);
+        Ok(Some(mesh))
     }
 
     fn process_representation_item_body(

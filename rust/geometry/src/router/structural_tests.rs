@@ -284,6 +284,62 @@ fn structural_edge_loop_surface_rebases_before_f32_conversion() {
 }
 
 #[test]
+fn structural_topology_participates_in_mixed_rtc_sampling() {
+    let near_body = "#100=IFCCARTESIANPOINT((0.,0.,0.));#101=IFCPOLYLOOP((#100,#100,#100));\
+         #102=IFCFACEOUTERBOUND(#101,.T.);#103=IFCFACE((#102));\
+         #104=IFCCLOSEDSHELL((#103));#105=IFCFACETEDBREP(#104);\
+         #106=IFCSHAPEREPRESENTATION($,'Body','Brep',(#105));\
+         #107=IFCPRODUCTDEFINITIONSHAPE($,$,(#106));\
+         #108=IFCBUILDINGELEMENTPROXY('1111111111111111111111',$,'Near',$,$,$,#107,$);";
+    let source = format!("{near_body}{}", edge_loop_surface_member());
+    let mut decoder = EntityDecoder::new(&source);
+    let anchor = GeometryRouter::new().detect_rtc_anchor_for_file(source.as_bytes(), &mut decoder);
+
+    assert_eq!(anchor, Some((5_000_000.0, 5_000_000.0, 0.0)));
+}
+
+#[test]
+fn rotated_structural_surface_rebases_in_world_frame() {
+    let source = format!(
+        "{}{}",
+        surface_member(true, false)
+            .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+            .replace("(10.,0.,0.)", "(5000000.125,5000000.,0.)")
+            .replace("(10.,10.,0.)", "(5000000.125,5000000.125,0.)")
+            .replace("(0.,10.,0.)", "(5000000.,5000000.125,0.)")
+            .replace("$,$,#17", "$,#33,#17"),
+        "#30=IFCCARTESIANPOINT((0.,0.,0.));#31=IFCDIRECTION((0.,0.,1.));\
+         #32=IFCDIRECTION((0.,1.,0.));#34=IFCAXIS2PLACEMENT3D(#30,#31,#32);\
+         #33=IFCLOCALPLACEMENT($,#34);"
+    );
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(18).unwrap();
+    let mut router = GeometryRouter::new();
+    router.set_rtc_offset((-5_000_000.0, 5_000_000.0, 0.0));
+    let mesh = router.process_element(&entity, &mut decoder).unwrap();
+
+    let (min_x, max_x, min_y, max_y) = mesh.positions.chunks_exact(3).fold(
+        (
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+        ),
+        |(min_x, max_x, min_y, max_y), point| {
+            (
+                min_x.min(point[0]),
+                max_x.max(point[0]),
+                min_y.min(point[1]),
+                max_y.max(point[1]),
+            )
+        },
+    );
+    assert_eq!((min_x, max_x), (-0.125, 0.0));
+    assert_eq!((min_y, max_y), (0.0, 0.125));
+    assert!((signed_xy_area(&mesh) - 0.015625).abs() < 1e-9);
+}
+
+#[test]
 fn structural_surface_rejects_non_planar_faces_until_bounds_are_clipped() {
     let source = bspline_surface_member_with_hole();
     let mut decoder = EntityDecoder::new(&source);

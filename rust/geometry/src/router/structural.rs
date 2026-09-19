@@ -6,9 +6,9 @@
 //! not folded into [`super::rep_filter::is_body_representation`]: an
 //! `IfcStructuralCurveMember`'s `'Edge'` and an `IfcStructuralSurfaceMember`'s
 //! `'Face'` representation are reference topology, not body geometry, and
-//! must not become eligible for RTC-offset sampling, void probing, or
-//! material-layer slicing (see that function's
-//! doc comment for why those three share one gate). Mirrors
+//! must not become eligible for void probing or material-layer slicing.
+//! RTC detection handles structural Face topology explicitly because its
+//! boundary coordinates can themselves carry the model's georeference. Mirrors
 //! `super::annotation::accepts`, the same OR-escape-hatch pattern used for
 //! `IfcAnnotation` fills.
 

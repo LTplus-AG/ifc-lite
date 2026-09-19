@@ -22,6 +22,8 @@
 import type { StateCreator } from 'zustand';
 import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
 import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
+import { resolveActiveCalendar, skipToNextWorkingInstant } from '@/components/viewer/schedule/work-calendar';
+import type { ScheduleExtraction } from '@ifc-lite/parser';
 import type { ScheduleTimeRange } from './scheduleSlice.js';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
@@ -42,6 +44,17 @@ export interface PlaybackSlice {
    * behaviour; `phased` lights up the type-colour lifecycle.
    */
   animationSettings: AnimationSettings;
+  /**
+   * When true (default) AND the active schedule assigns an `IfcWorkCalendar`
+   * (see `resolveActiveCalendar`), auto-play jumps forward over non-working
+   * days instead of animating through them — #4830. Off keeps the previous
+   * behaviour: the clock advances uniformly regardless of any calendar.
+   * A separate flag from `animationSettings` on purpose: it's a playback
+   * *pacing* concern, not a colour/visibility one, and `AnimationSettings`
+   * lives in `schedule-animator.ts`, which is already at this repo's
+   * module-size ratchet ceiling.
+   */
+  respectWorkCalendar: boolean;
 
   setAnimationEnabled: (enabled: boolean) => void;
   /** Replace the full animation-settings object. */
@@ -56,6 +69,7 @@ export interface PlaybackSlice {
   seekSchedule: (time: number) => void;
   setPlaybackSpeed: (speed: number) => void;
   setPlaybackLoop: (loop: boolean) => void;
+  setRespectWorkCalendar: (respect: boolean) => void;
   advancePlaybackBy: (deltaMs: number) => void;
 }
 
@@ -67,6 +81,8 @@ export interface PlaybackSlice {
  */
 interface PlaybackCrossSliceReads {
   scheduleRange?: ScheduleTimeRange | null;
+  scheduleData?: ScheduleExtraction | null;
+  activeWorkScheduleId?: string;
 }
 
 export const createPlaybackSlice: StateCreator<
@@ -81,6 +97,7 @@ export const createPlaybackSlice: StateCreator<
   playbackSpeed: 7, // 7 simulated days per real second by default
   playbackLoop: true,
   animationSettings: DEFAULT_ANIMATION_SETTINGS,
+  respectWorkCalendar: true,
 
   setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
   setAnimationSettings: (animationSettings) => set({ animationSettings }),
@@ -100,6 +117,7 @@ export const createPlaybackSlice: StateCreator<
   seekSchedule: (time) => set({ playbackTime: time }),
   setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
   setPlaybackLoop: (playbackLoop) => set({ playbackLoop }),
+  setRespectWorkCalendar: (respectWorkCalendar) => set({ respectWorkCalendar }),
 
   advancePlaybackBy: (deltaMs) => {
     const s = get();
@@ -122,6 +140,56 @@ export const createPlaybackSlice: StateCreator<
       } else {
         set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
         return;
+      }
+    }
+    // Synthetic ranges (`ScheduleTimeRange.synthetic`, `scheduleSlice.ts`)
+    // are day-0-relative placeholders for schedules with no real dates
+    // (day 0 .. sum-of-durations) — NOT calendar dates. A real
+    // `IfcWorkCalendar`'s WEEKLY pattern and start/finish bounds are
+    // written against real years, so evaluating one against 1970-epoch
+    // instants makes every entry's `withinBounds` check fail: every
+    // simulated day reads as non-working and playback stops dead (#4982
+    // review). Calendar-aware skipping only makes sense once the schedule
+    // has a real calendar basis.
+    if (s.respectWorkCalendar && !s.scheduleRange.synthetic) {
+      const calendar = resolveActiveCalendar(s.scheduleData, s.activeWorkScheduleId);
+      if (calendar) {
+        // Bound the search at the range end — `skipToNextWorkingInstant`
+        // returns `null` rather than `next` unchanged when nothing working
+        // remains before that bound (e.g. a shutdown running to the very
+        // end of the schedule), so "ran out of working days" and "ran out
+        // of range" are handled identically below rather than the caller
+        // mistaking a stale `next` for an already-working instant.
+        const skipped = skipToNextWorkingInstant(calendar, next, s.scheduleRange.end);
+        if (skipped === null) {
+          if (s.playbackLoop) {
+            // Loop back to the start — but the start itself can open on a
+            // non-working day (a schedule that begins mid-shutdown), so
+            // resolve THAT too rather than landing playback on a
+            // non-working instant until the next tick fixes it (#4982
+            // review). Search the whole range again: the wrap is a fresh
+            // start, not a continuation of the forward search that just
+            // ran out.
+            const loopedStart = skipToNextWorkingInstant(calendar, s.scheduleRange.start, s.scheduleRange.end);
+            if (loopedStart === null) {
+              // The calendar has no working day ANYWHERE in the range —
+              // there is nothing to animate. Stop rather than landing on
+              // `scheduleRange.start` still "playing": with `playbackLoop`
+              // true that would re-run this exact same two-search dead end
+              // on every rAF tick forever (#4982 review). Position lands at
+              // the range start (the natural loop target), matching the
+              // non-looping branch's symmetric pause-at-range-end below.
+              set({ playbackTime: s.scheduleRange.start, playbackIsPlaying: false });
+              return;
+            }
+            next = loopedStart;
+          } else {
+            set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
+            return;
+          }
+        } else {
+          next = skipped;
+        }
       }
     }
     set({ playbackTime: next });

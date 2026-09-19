@@ -211,7 +211,11 @@ test('alt is a policed attribute, same as aria-label/title/placeholder', () => {
 // ── CLI harness ────────────────────────────────────────────────────────
 
 function run(args, cwd) {
-  return spawnSync(process.execPath, [CHECKER, ...args], { cwd, encoding: 'utf8' });
+  // A bounded wait: if `walk()` ever regressed into a symlink loop the child
+  // would never return and the assertion could not run.
+  const r = spawnSync(process.execPath, [CHECKER, ...args], { cwd, encoding: 'utf8', timeout: 30_000 });
+  if (r.error && r.error.code === 'ETIMEDOUT') throw new Error('checker subprocess timed out');
+  return r;
 }
 
 function makeTree() {
@@ -276,7 +280,7 @@ test('check mode passes against a baseline that matches, and fails once a file R
   }
 });
 
-test('check mode does NOT fail when a file improves, but reminds to lower the baseline', () => {
+test('check mode fails when a file improves until --update tightens the baseline (ratchet both ways, #4973 review)', () => {
   const { dir, componentsDir } = makeTree();
   try {
     writeComponent(componentsDir, 'Foo.tsx', FIXTURE_TSX);
@@ -286,8 +290,14 @@ test('check mode does NOT fail when a file improves, but reminds to lower the ba
     // Convert the file down to zero hardcoded literals.
     writeComponent(componentsDir, 'Foo.tsx', '<div><span>IfcWall</span></div>;');
     res = run(['--root', dir], dir);
-    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.status, 1, res.stdout);
     assert.match(res.stdout, /note:.*Foo\.tsx/);
+    assert.match(res.stderr, /--update/);
+    // After re-recording, the tightened baseline passes and the slack is gone.
+    res = run(['--root', dir, '--update'], dir);
+    assert.equal(res.status, 0, res.stderr);
+    res = run(['--root', dir], dir);
+    assert.equal(res.status, 0, res.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

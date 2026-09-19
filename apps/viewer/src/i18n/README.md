@@ -94,4 +94,4 @@ skipping IFC EXPRESS names, an explicit technical-acronym allowlist, and
 short symbol/unit clusters (`⌘Z`, `m²`) — and ratchets a per-file count in
 `scripts/i18n-literals-baseline.json` (wired into `pnpm lint` and CI's
 node-tests job): a file's count may never rise above its baseline row,
-and a fall prints a reminder to lower it.
+and a fall also fails until `node scripts/check-i18n-literals.mjs --update` re-records it (a ratchet in both directions).

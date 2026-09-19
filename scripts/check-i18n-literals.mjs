@@ -19,11 +19,10 @@
  * (a committed JSON baseline, `--update` regenerates it): a per-file baseline
  * (`scripts/i18n-literals-baseline.json`) records TODAY's hardcoded-literal
  * count for every `.tsx` file under `apps/viewer/src/components`; the gate
- * fails when a file's count RISES above its row, and prints a reminder
- * (not a failure — converting a file is this sweep's whole point, and a
- * hard-fail-on-improvement rule would make every slice's PR fail on its own
- * progress) when a file's count FALLS, so the baseline does not silently
- * carry slack the next regression could spend.
+ * fails when a file's count RISES above its row, and ALSO fails when a
+ * file's count FALLS until `--update` re-records it (a ratchet in both
+ * directions, like check-unused-locals): slack left in the baseline is
+ * exactly what the next regression would spend unnoticed.
  *
  * The detector itself (a TypeScript-compiler-API AST walk — see that
  * module's docblock for why it replaced a regex) lives in
@@ -206,7 +205,7 @@ for (const rel of vanished) {
   console.log(`note: ${rel}: no longer has any hardcoded literals (baseline ${baseline[rel]}); delete its row`);
 }
 if (improvements.length > 0 || vanished.length > 0) {
-  console.log('check-i18n-literals: run `node scripts/check-i18n-literals.mjs --update` and commit to tighten the ratchet.');
+  fail('baseline carries slack; run `node scripts/check-i18n-literals.mjs --update` and commit to tighten the ratchet.');
 }
 
 const totalNow = Object.values(counts).reduce((a, b) => a + b, 0);

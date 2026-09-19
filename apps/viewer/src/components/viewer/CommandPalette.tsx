@@ -130,7 +130,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     if (query) {
       // ── Searching: flat ranked list, no categories ──
       const scored = commands
-        .map(cmd => ({ cmd, s: rankCommand(cmd, query) }))
+        .map(cmd => ({ cmd, s: rankCommand(cmd, query, cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : undefined) }))
         .filter(x => x.s > 0);
       scored.sort((a, b) => b.s - a.s);
 
@@ -168,7 +168,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     }
 
     return { grouped: groups, flatItems: flat };
-  }, [commands, query, recentIds]);
+  }, [commands, query, recentIds, t]);
 
   useEffect(() => { setSelectedIndex(0); }, [query, open]);
 

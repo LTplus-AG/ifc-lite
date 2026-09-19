@@ -109,9 +109,10 @@ export function score(query: string, text: string): number {
   return Math.max(1, 25 - Math.round(avgGap * 3));
 }
 
-/** Rank a command against the search query. Label dominates. */
-export function rankCommand(cmd: Command, query: string): number {
-  const l = score(query, cmd.label);
+/** Rank a command against the search query. Label dominates. `displayLabel`
+ *  is the rendered (translated) text, so a localized name matches too. */
+export function rankCommand(cmd: Command, query: string, displayLabel?: string): number {
+  const l = Math.max(score(query, cmd.label), displayLabel ? score(query, displayLabel) : 0);
   const k = score(query, cmd.keywords) * 0.9;
   const c = score(query, cmd.category) * 0.5;
   return Math.max(l, k, c);

@@ -87,6 +87,27 @@ function verdictsRunFromPrompt() {
   return JSON.stringify({ end: 'ifc-lite-judge-v1', verdicts: [{ index: 0, keep: true, file: 'packages/a/f0.ts', line: 10 }] });
 }
 
+test('#finding-4: NO Claude token at all still reaches the provider chain, instead of failing before trying it', () => {
+  // Before the fix, `tokens: []` (no CLAUDE_CODE_OAUTH_TOKEN configured) threw
+  // AUTH_MISSING inside `runReviewerWithFailover` before the provider loop ever
+  // ran, so a lane with OpenRouter configured but no Claude credential judged
+  // NOTHING -- it looked identical to "the judge is entirely unconfigured" in
+  // the logs, even though a usable provider was sitting right there.
+  const seen = [];
+  const result = judge({
+    judgeRubricPath: RUBRIC,
+    findings: [finding(0)],
+    tokens: [],
+    spawn: () => { throw new Error('the Claude CLI must never be spawned with no token'); },
+    providerFallback: [
+      { label: 'openrouter-fallback', run: (p) => { seen.push('openrouter-fallback'); return verdictsRunFromPrompt(p); } },
+    ],
+  });
+  assert.deepEqual(seen, ['openrouter-fallback']);
+  assert.equal(result.ran, true);
+  assert.equal(result.kept.length, 1);
+});
+
 test('resolveProviderFallbacks builds the judge-specific env-var names and default model chain', () => {
   const providers = resolveProviderFallbacks(
     { OPENROUTER_API_KEY: 'k' },
@@ -528,4 +549,18 @@ test('#3862 an input with NO class-pass field is normalised to false, never left
   const { written } = run(docOf(1), spawnSaying(verdicts([{ index: 0, keep: true }])));
   assert.equal(written.classPass, false);
   assert.equal(Object.hasOwn(written, 'classPass'), true, 'the field must be PRESENT, not merely falsy');
+});
+
+test('#finding-3: the judge asks for a SHORTER OpenRouter timeout default than the reviewer', () => {
+  // Source-checked rather than behaviourally, the same way the workflow env
+  // wiring above is: `resolveProviderFallbacks`'s real spawn is `spawnSync`,
+  // which this suite must not invoke. The judge is an optional precision
+  // filter that fails soft (see `judge`'s own doc comment), so it must give up
+  // on a stalled OpenRouter model well before the reviewer's own 300000ms
+  // default would, rather than sitting on the job's clock for a filter nobody
+  // required.
+  const src = readFileSync(join(HERE, 'run-judge.mjs'), 'utf8');
+  const call = src.split('resolveProviderFallbacks(env, {')[1];
+  assert.ok(call, 'the judge must call resolveProviderFallbacks');
+  assert.match(call.split('});')[0], /openRouterTimeoutMsDefault:\s*120_000/);
 });

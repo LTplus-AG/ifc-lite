@@ -235,6 +235,12 @@ export function main(argv, {
     openRouterModelsEnvVar: 'OPENROUTER_JUDGE_MODELS',
     openRouterModelEnvVar: 'OPENROUTER_JUDGE_MODEL',
     openRouterDefaultModels: OPENROUTER_JUDGE_MODELS_DEFAULT,
+    // SHORTER than the reviewer's 300000ms default: the judge is an optional
+    // precision filter (see `judge`'s doc comment -- it can only remove, and
+    // must fail soft), not the primary review path, so it should give up on a
+    // stalled model and fall back to "keep everything unjudged" well before
+    // burning the reviewer's own timeout budget on a filter nobody required.
+    openRouterTimeoutMsDefault: 120_000,
   });
   log(describeProviderFallbacks(providers));
 

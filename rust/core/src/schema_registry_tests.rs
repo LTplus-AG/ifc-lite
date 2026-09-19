@@ -28,14 +28,24 @@ fn registry_accepts_ifc4x3_release_labels_but_not_unknown_families() {
         Some(SchemaVersion::Ifc4)
     );
     assert_eq!(
-        SchemaVersion::from_file_schema("IFC4X1"),
-        Some(SchemaVersion::Ifc4)
-    );
-    assert_eq!(
         SchemaVersion::from_file_schema("IFC2X3_TC1"),
         Some(SchemaVersion::Ifc2x3)
     );
-    assert_eq!(SchemaVersion::from_file_schema("IFC5"), None);
+    for unknown in [
+        "IFC4X1",
+        "IFC4X4",
+        "IFC4X30",
+        "IFC4VENDOR",
+        "IFC4_ADD",
+        "IFC4_ADD2_VENDOR",
+        "IFC5",
+    ] {
+        assert_eq!(
+            SchemaVersion::from_file_schema(unknown),
+            None,
+            "must not guess a registry for {unknown}"
+        );
+    }
     assert_eq!(attribute_names_for_schema("IFC5", "IFCWALL"), None);
 }
 

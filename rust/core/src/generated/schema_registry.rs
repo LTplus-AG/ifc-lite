@@ -27,11 +27,11 @@ impl SchemaVersion {
     /// incorrectly.
     pub fn from_file_schema(label: &str) -> Option<Self> {
         let upper = label.trim().to_ascii_uppercase();
-        if upper.starts_with("IFC4X3") {
+        if is_schema_family(&upper, "IFC4X3") {
             Some(Self::Ifc4x3)
-        } else if upper.starts_with("IFC4") {
+        } else if is_schema_family(&upper, "IFC4") {
             Some(Self::Ifc4)
-        } else if upper.starts_with("IFC2X3") {
+        } else if is_schema_family(&upper, "IFC2X3") {
             Some(Self::Ifc2x3)
         } else {
             None
@@ -48,6 +48,27 @@ impl SchemaVersion {
             Self::Ifc4x3 => attribute_names_ifc4x3(entity_name),
         }
     }
+}
+
+/// Exact family name, optionally followed by standard revision components
+/// such as `_ADD2`, `_TC1`, or `_RC4`.
+fn is_schema_family(label: &str, family: &str) -> bool {
+    let Some(suffix) = label.strip_prefix(family) else {
+        return false;
+    };
+    if suffix.is_empty() {
+        return true;
+    }
+    let Some(revision) = suffix.strip_prefix('_') else {
+        return false;
+    };
+    revision.split('_').all(|component| {
+        ["ADD", "TC", "RC"].iter().any(|prefix| {
+            component.strip_prefix(prefix).is_some_and(|number| {
+                !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())
+            })
+        })
+    })
 }
 
 fn attribute_names_ifc2x3(name: &str) -> Option<&'static [&'static str]> {

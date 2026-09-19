@@ -39,13 +39,13 @@ import { useViewerStore } from '@/store';
 import * as toastText from './toast-helpers';
 import { HelpHint } from './HelpHint';
 import { useTranslation } from '@/i18n';
-
+import { formatExtensionDate } from './localized-date';
 interface ExtensionsPanelProps {
   onClose?: () => void;
 }
 
 export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const installed = useInstalledExtensions();
   const handleFork = useForkExtension();
@@ -380,7 +380,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                       {t('extensionsFlavors.extensionsPanel.row.stats', {
                         version: record.version,
                         count: record.grantedCapabilities.length,
-                        date: new Date(record.installedAt).toLocaleDateString(),
+                        date: formatExtensionDate(record.installedAt, locale, true),
                       })}
                     </div>
                   </div>

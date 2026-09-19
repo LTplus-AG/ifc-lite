@@ -45,6 +45,7 @@ import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { AuditLogPanel } from './AuditLogPanel.js';
 import { CapabilityReview } from './CapabilityReview.js';
 import { IdeasPanel } from './IdeasPanel.js';
+import { formatExtensionDate } from './localized-date.js';
 import { PlanCard } from './PlanCard.js';
 import { PromoteToolDialog } from './PromoteToolDialog.js';
 import { RepairQueuePanel } from './RepairQueuePanel.js';
@@ -282,9 +283,6 @@ const NOT_RENDERED_IN_THIS_STATE: ExtKey[] = [
   // empty states are the other branches of this fixture's populated,
   // known-SDK render.
   'extensionsPanels.repairQueuePanel.noInstalledExtensions',
-  'extensionsPanels.repairQueuePanel.sdkUnknownPrefix',
-  'extensionsPanels.repairQueuePanel.appVersionCode',
-  'extensionsPanels.repairQueuePanel.sdkUnknownSuffix',
   'extensionsPanels.repairQueuePanel.noCheckRun',
 ];
 
@@ -461,6 +459,35 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     );
 
     assert.match(document.body.textContent ?? '', /v1\.2\.0 de com\.example\.fire-rating installer\?/);
+  });
+
+  it('formats extension dates with the active locale', () => {
+    const date = new Date('2026-01-02T13:45:00Z');
+
+    assert.equal(formatExtensionDate(date, 'de-CH', true), date.toLocaleDateString('de-CH'));
+    assert.equal(formatExtensionDate(date, 'de-CH'), date.toLocaleString('de-CH'));
+  });
+
+  it('lets a locale reorder complete repair help and unknown-SDK messages', async () => {
+    registerLocale('repair-help-reordered', {
+      'extensionsPanels.repairQueuePanel.helpIntro': '{engineRange} INTRO',
+      'extensionsPanels.repairQueuePanel.helpActions': '{repair} BEFORE {runCheck}',
+      'extensionsPanels.repairQueuePanel.sdkUnknown': '{appVersion} UNKNOWN',
+    } as Catalogue);
+    setLocale('repair-help-reordered');
+
+    const host = new StubExtensionHost();
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <RepairQueuePanel sdkVersion="" />
+      </ExtensionHostContext.Provider>,
+    );
+    openAllHelpHints(container);
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /engines\.ifcLiteSdk INTRO/);
+    assert.match(text, /Repair BEFORE Run check/);
+    assert.match(text, /__APP_VERSION__ UNKNOWN/);
   });
 
   it('shows and accepts the same fixed high-risk confirmation token in every locale', () => {

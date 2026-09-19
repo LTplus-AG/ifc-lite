@@ -25,6 +25,10 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { HelpHint } from './HelpHint';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+
+const ENGINE_RANGE_CODE = 'engines.ifcLiteSdk';
+const APP_VERSION_CODE = '__APP_VERSION__';
 
 interface RepairQueuePanelProps {
   /** SDK version to revalidate against. Defaults to APP_VERSION. */
@@ -91,15 +95,15 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
           )}
           <HelpHint label={t('extensionsPanels.repairQueuePanel.helpLabel')}>
             <p>
-              {t('extensionsPanels.repairQueuePanel.helpIntroPrefix')}
-              <code> {t('extensionsPanels.repairQueuePanel.engineRangeCode')}</code>{' '}
-              {t('extensionsPanels.repairQueuePanel.helpIntroRest')}
+              {styleInterpolatedValues(t, 'extensionsPanels.repairQueuePanel.helpIntro', [
+                ['engineRange', <code key="engine-range">{ENGINE_RANGE_CODE}</code>],
+              ])}
             </p>
             <p>
-              <strong>{t('extensionsPanels.repairQueuePanel.runCheckLabel')}</strong>{' '}
-              {t('extensionsPanels.repairQueuePanel.helpRunCheckRest')}{' '}
-              <strong>{t('extensionsPanels.repairQueuePanel.repairLabel')}</strong>{' '}
-              {t('extensionsPanels.repairQueuePanel.helpRepairRest')}
+              {styleInterpolatedValues(t, 'extensionsPanels.repairQueuePanel.helpActions', [
+                ['runCheck', <strong key="run-check">{t('extensionsPanels.repairQueuePanel.runCheckLabel')}</strong>],
+                ['repair', <strong key="repair">{t('extensionsPanels.repairQueuePanel.repairLabel')}</strong>],
+              ])}
             </p>
             <p>
               {t('extensionsPanels.repairQueuePanel.helpNoAuto')}
@@ -122,9 +126,9 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
       <ScrollArea className="flex-1">
         {!version ? (
           <div className="px-6 py-12 text-center text-sm text-rose-600 dark:text-rose-400">
-            {t('extensionsPanels.repairQueuePanel.sdkUnknownPrefix')}{' '}
-            <code className="font-mono">{t('extensionsPanels.repairQueuePanel.appVersionCode')}</code>{' '}
-            {t('extensionsPanels.repairQueuePanel.sdkUnknownSuffix')}
+            {styleInterpolatedValues(t, 'extensionsPanels.repairQueuePanel.sdkUnknown', [
+              ['appVersion', <code key="app-version" className="font-mono">{APP_VERSION_CODE}</code>],
+            ])}
           </div>
         ) : !summary ? (
           <div className="px-6 py-12 text-center text-sm text-muted-foreground space-y-3">

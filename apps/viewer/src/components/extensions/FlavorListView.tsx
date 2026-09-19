@@ -28,6 +28,7 @@ import type { Flavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
+import { formatExtensionDate } from './localized-date';
 
 /** Number of clash rules (customs + modified built-ins) stored in a flavor's
  *  `settings.clash` blob. 0 when the flavor carries no clash config. */
@@ -76,7 +77,7 @@ export function FlavorListView({
   onDuplicate,
   onCreate,
 }: FlavorListViewProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [creating, setCreating] = useState<Creating>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -290,7 +291,7 @@ export function FlavorListView({
                       lens: flavor.lenses.length,
                       qry: flavor.savedQueries.length,
                       clash: clashRuleCount(flavor),
-                      date: new Date(flavor.updatedAt).toLocaleDateString(),
+                      date: formatExtensionDate(flavor.updatedAt, locale, true),
                     })}
                   </div>
                 </div>

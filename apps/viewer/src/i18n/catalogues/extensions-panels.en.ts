@@ -263,21 +263,16 @@ export const extensionsPanelsEn = {
     other: 'SDK {sdk} · {count} need fixing',
   },
   'extensionsPanels.repairQueuePanel.helpLabel': 'Repair queue',
-  'extensionsPanels.repairQueuePanel.helpIntroPrefix': 'When the viewer SDK bumps, extensions whose declared',
-  'extensionsPanels.repairQueuePanel.engineRangeCode': 'engines.ifcLiteSdk',
-  'extensionsPanels.repairQueuePanel.helpIntroRest': 'range no longer matches are flagged here.',
+  'extensionsPanels.repairQueuePanel.helpIntro':
+    'When the viewer SDK bumps, extensions whose declared {engineRange} range no longer matches are flagged here.',
   'extensionsPanels.repairQueuePanel.runCheckLabel': 'Run check',
-  'extensionsPanels.repairQueuePanel.helpRunCheckRest':
-    'spins up a sandbox for each outdated extension and runs its manifest tests against the new SDK. Failing tests get a',
   'extensionsPanels.repairQueuePanel.repairLabel': 'Repair',
-  'extensionsPanels.repairQueuePanel.helpRepairRest':
-    'button that seeds chat with a fix prompt — the AI authoring loop produces the patched bundle.',
+  'extensionsPanels.repairQueuePanel.helpActions':
+    '{runCheck} spins up a sandbox for each outdated extension and runs its manifest tests against the new SDK. Failing tests get a {repair} button that seeds chat with a fix prompt — the AI authoring loop produces the patched bundle.',
   'extensionsPanels.repairQueuePanel.helpNoAuto': "Doesn't run automatically (each check spawns sandboxes).",
   'extensionsPanels.repairQueuePanel.rerunButton': 'Re-run',
   'extensionsPanels.repairQueuePanel.closeAriaLabel': 'Close',
-  'extensionsPanels.repairQueuePanel.sdkUnknownPrefix': 'SDK version unknown — cannot revalidate. Set',
-  'extensionsPanels.repairQueuePanel.appVersionCode': '__APP_VERSION__',
-  'extensionsPanels.repairQueuePanel.sdkUnknownSuffix': 'via Vite define.',
+  'extensionsPanels.repairQueuePanel.sdkUnknown': 'SDK version unknown — cannot revalidate. Set {appVersion} via Vite define.',
   'extensionsPanels.repairQueuePanel.noCheckRun': 'No compatibility check has run for this session.',
   'extensionsPanels.repairQueuePanel.noInstalledExtensions': 'No installed extensions',
   'extensionsPanels.repairQueuePanel.rangeLabel': 'Range',

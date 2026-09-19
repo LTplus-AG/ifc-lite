@@ -35,6 +35,7 @@ import { useTranslation } from '@/i18n';
 import { PlanCard } from './PlanCard';
 import { toast } from '@/components/ui/toast';
 import { HelpHint } from './HelpHint';
+import { formatExtensionDate } from './localized-date';
 
 interface IdeasPanelProps {
   /** Optional override for the approve action. Defaults to seeding the chat panel. */
@@ -42,7 +43,7 @@ interface IdeasPanelProps {
 }
 
 export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -235,7 +236,7 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
                           count: pattern.sessionsTouched,
                           occurrences: pattern.occurrences,
                           sessions: pattern.sessionsTouched,
-                          date: new Date(pattern.lastSeenAt).toLocaleString(),
+                          date: formatExtensionDate(pattern.lastSeenAt, locale),
                           score: pattern.score.toFixed(2),
                         })}
                       </div>

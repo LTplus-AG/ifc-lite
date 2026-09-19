@@ -27,6 +27,7 @@ import { classificationLabel } from '../lens-classification-labels.js';
 import { lensMaterialNames } from '../lens-material-names.js';
 import { isGeometricDataName } from './geometricData.js';
 import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
+import type { ExtractedPropertySets } from './authoredKeys.js';
 
 /**
  * Assemble the canonical {@link DataFingerprintInput} for one entity from the
@@ -40,6 +41,7 @@ export function buildDataInput(
   localId: number,
   ifcType: string,
   units: ProjectUnits, // scales Qto_ quantities and measure properties to base SI
+  preExtractedPropertySets?: ExtractedPropertySets,
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, localId).find(
     (attribute) => attribute.name === 'PredefinedType',
@@ -60,7 +62,7 @@ export function buildDataInput(
   // is owned by the geometry hash, so strip it from the data fingerprint — a
   // pure move must read as a geometry change only, never "data · geometry"
   // (see geometricData.ts).
-  const propertySets = extractPropertiesOnDemand(store, localId)
+  const propertySets = (preExtractedPropertySets ?? extractPropertiesOnDemand(store, localId))
     .filter((set) => !isGeometricDataName(set.name))
     .map((set) => ({
       name: set.name,
@@ -121,4 +123,3 @@ export function buildDataInput(
     classifications,
   };
 }
-

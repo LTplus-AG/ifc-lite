@@ -21,6 +21,7 @@
 
 import { diffModels, type ContentMatch, type ContentMatchKind } from '@ifc-lite/diff';
 import { buildModelFingerprints, type DiffRef } from './diff-fingerprints.js';
+import { fallbackPairDuplicateAuthoredKeys } from './diff-authored-keys.js';
 import { pendingMutationsField, type PendingOverlay } from '../overlay.js';
 import type { LoadedModel } from '../context.js';
 
@@ -80,9 +81,18 @@ export function contentDiff(
   // reported so the agent sees why those two fell back.
   const duplicateAuthoredKeys = new Map<string, number[]>();
   const adapter = { keyProperty, duplicateAuthoredKeys };
+  const baseFingerprints = buildModelFingerprints(left.store, overlays.left, adapter);
+  const headFingerprints = buildModelFingerprints(right.store, overlays.right, adapter);
+  fallbackPairDuplicateAuthoredKeys(
+    [
+      { fingerprints: baseFingerprints, store: left.store },
+      { fingerprints: headFingerprints, store: right.store },
+    ],
+    duplicateAuthoredKeys,
+  );
   const diff = diffModels(
-    buildModelFingerprints(left.store, overlays.left, adapter),
-    buildModelFingerprints(right.store, overlays.right, adapter),
+    baseFingerprints,
+    headFingerprints,
     {
       scope: 'data',
       matchUnpairedByContent: true,

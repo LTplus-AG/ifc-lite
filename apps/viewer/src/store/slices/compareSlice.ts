@@ -39,6 +39,22 @@ export interface CompareResult {
   /** True when a compared model carries no geometry hashes (loaded outside the
    *  WASM mesh path), so geometry-scope changes can't be detected. */
   geometryUnavailable: boolean;
+  /**
+   * The authored key scheme this comparison ran under (issue #4989):
+   * `Tag` or `<PsetName>.<PropertyName>`, or `undefined` for GlobalId. Fixed
+   * at extraction time (`useCompare`'s `BuiltPair`), so it always agrees with
+   * the fingerprint keys the diff below was actually computed on. Decisions
+   * (`AcceptedIdentity` / `RejectedClaim`) are scoped to a pair carrying this
+   * same value — a GlobalId a user accepted must not replay under a
+   * different scheme, and vice versa.
+   */
+  keyProperty?: string;
+  /**
+   * Authored values more than one entity carried within either revision —
+   * resolved to GlobalId instead of `prop:<value>` for every owner on both
+   * revisions. Present only when non-empty.
+   */
+  duplicateAuthoredKeys?: ReadonlyMap<string, number[]>;
   /** `geometryUnavailable` with placement fingerprints still in play (both
    *  sides mesh-less, placements kept): the geometry channel still reports
    *  placement-driven moves, only reshapes are invisible — the warning must
@@ -149,6 +165,14 @@ export interface CompareSlice {
    * same way as {@link compareExcludedTypes} so an opt-out survives a reload.
    */
   compareMatchByContent: boolean;
+  /**
+   * An authored key to compare on instead of GlobalId (issue #4989): `Tag`
+   * or `<PsetName>.<PropertyName>`, validated with `parseAuthoredKeySpec`
+   * before it ever lands here — an invalid spec is never applied, so this
+   * field is always `undefined` or a parseable spec. `undefined` means
+   * GlobalId, the pre-#4989 default.
+   */
+  compareKeyProperty?: string;
   /** Whether unchanged elements are drawn (ghosted) or hidden. */
   compareShowUnchanged: boolean;
   /** Last comparison result (null when idle / not yet run). */
@@ -198,6 +222,9 @@ export interface CompareSlice {
   clearCompareExcludedTypes: () => void;
   /** Turn the content-matching pass on/off (persisted). */
   setCompareMatchByContent: (enabled: boolean) => void;
+  /** Set the authored-key scheme (`undefined` for GlobalId). Callers must
+   *  validate with `parseAuthoredKeySpec` first — the slice does not. */
+  setCompareKeyProperty: (keyProperty: string | undefined) => void;
   setCompareShowUnchanged: (show: boolean) => void;
   setCompareResult: (result: CompareResult | null) => void;
   bumpCompareRunSeq: () => void;
@@ -243,12 +270,16 @@ function getResetCompareState() {
     ...getClearedCompareState(),
     compareAcceptedIdentity: [] as AcceptedIdentity[],
     compareRejectedClaims: [] as RejectedClaim[],
+    // A session reset drops the key scheme with the decisions it gates
+    // (#4989): both name entities/claims of the outgoing files' authored
+    // properties, which mean nothing once those files are gone.
+    compareKeyProperty: undefined as string | undefined,
   };
 }
 
 export const compareTeardown = defineSliceTeardown(
   'compareSlice',
-  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError', 'compareAcceptedIdentity', 'compareRejectedClaims'],
+  ['compareResult', 'compareSelectedKey', 'compareRunning', 'compareError', 'compareAcceptedIdentity', 'compareRejectedClaims', 'compareKeyProperty'],
   { 'session-reset': getResetCompareState, 'model-removed': notApplicable, 'all-models-cleared': notApplicable },
 );
 
@@ -259,6 +290,7 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   compareScope: 'both',
   compareExcludedTypes: loadPersistedExcludedTypes(),
   compareMatchByContent: loadPersistedMatchByContent(),
+  compareKeyProperty: undefined,
   compareShowUnchanged: false,
   compareResult: null,
   compareRunSeq: 0,
@@ -307,6 +339,12 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
     persistMatchByContent(compareMatchByContent);
     set({ compareMatchByContent });
   },
+
+  setCompareKeyProperty: (compareKeyProperty) => set((state) => (
+    state.compareKeyProperty === compareKeyProperty
+      ? state
+      : { ...getClearedCompareState(), compareKeyProperty }
+  )),
 
   setCompareShowUnchanged: (compareShowUnchanged) => set({ compareShowUnchanged }),
   setCompareResult: (compareResult) => set({ compareResult }),

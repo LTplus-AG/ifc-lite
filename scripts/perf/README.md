@@ -27,6 +27,17 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Full supported-schema `IfcType` parsing (#4203)
+
+Extending the generated `IfcType::from_str` match from the canonical IFC4X3
+catalog to the distinct names in every supported schema showed no parse or
+end-to-end load regression on AC20-FZK-Haus in an interleaved native A/B probe.
+The ordered mesh fingerprint and mesh, vertex, and triangle counts were
+identical. This qualifies the ordinary IFC4 load path, not the cost of parsing
+a legacy-only entity mix. The lesson is that generated exact-name match arms
+can preserve the hot parser's performance, but a larger enum still needs an
+end-to-end parser probe rather than an assumption based on lookup complexity.
+
 ## Bounded quick-metadata tree and reachable placement (#4689, #4743)
 
 Measured exact merge-base `74ba2f24e664b37b96e871620fbfdbab653042f3`

@@ -15,6 +15,7 @@ import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox } from '@/lib/export/report/compose';
+import { documentChartSizing } from '@/lib/document/compose';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
 
@@ -104,7 +105,7 @@ function PreviewImage({ dataUrl, alt, height, contentWidth }: { dataUrl: string;
   }} />;
 }
 
-function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth, scale }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number; scale: number }) {
+function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth, scale, pageHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number; scale: number; pageHeight: number }) {
   switch (block.kind) {
     case 'text':
       return <div className={TEXT_CLASS[block.style]} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>(empty)</span>}</div>;
@@ -122,7 +123,14 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
       );
     }
     case 'chart': {
-      const height = (block.height ?? CHART_BLOCK_HEIGHT_DEFAULT) * scale;
+      const { height: chartHeight } = documentChartSizing({
+        requestedHeight: block.height ?? CHART_BLOCK_HEIGHT_DEFAULT,
+        pageHeight,
+        boxWidth: contentWidth / scale,
+        snapshot: block.snapshot,
+        hasData: Boolean(aggregation && aggregation.categories.length > 0),
+      });
+      const height = chartHeight * scale;
       // Computed once, not repeated as a JSX-expression literal in both the visible text and its
       // `title` tooltip (i18n literal-count gate: a duplicated inline ternary counts twice).
       const chartSubtitle = chartMessage ?? (aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data');
@@ -185,7 +193,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
                 onClick={() => onSelectBlock(block.id)}
                 data-preview-block={block.id}
               >
-                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} />
+                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
               </div>
             );
             return Array.isArray(group)

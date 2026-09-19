@@ -23,6 +23,27 @@ const CHART_HEIGHT = CHART_BLOCK_HEIGHT_DEFAULT;
 const SNAPSHOT_HEIGHT = 180;
 const TOPIC_SNAPSHOT_HEIGHT = 160;
 
+export interface DocumentChartSizingInput {
+  requestedHeight: number;
+  pageHeight: number;
+  boxWidth: number;
+  snapshot: boolean;
+  hasData: boolean;
+}
+
+/** One chart-height rule shared by PDF composition and the browser preview (#4940). */
+export function documentChartSizing(input: DocumentChartSizingInput): { height: number; sideBySide: boolean; stacked: boolean } {
+  const sideBySide = input.snapshot && input.hasData && input.boxWidth >= 640;
+  const stacked = input.snapshot && input.hasData && !sideBySide;
+  const overhead = 18 + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
+  const printableHeight = input.pageHeight - (REPORT_MARGIN + HEADER_HEIGHT) - (REPORT_MARGIN + FOOTER_HEIGHT);
+  return {
+    height: Math.max(40, Math.min(input.requestedHeight, printableHeight - overhead)),
+    sideBySide,
+    stacked,
+  };
+}
+
 export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boolean; lineHeight: number; gapBefore: number; gray: number }> = {
   title: { size: 20, bold: true, lineHeight: 1.3, gapBefore: 6, gray: 0 },
   heading: { size: 13, bold: true, lineHeight: 1.35, gapBefore: 8, gray: 0 },
@@ -175,12 +196,15 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   };
 
   const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number): { height: number; draw: (y: number) => DrawnItem[] } => {
-    const sideBySide = block.snapshot && block.hasData && boxW >= 640;
-    const stacked = block.snapshot && block.hasData && !sideBySide;
     // The configured height (up to CHART_BLOCK_HEIGHT_MAX, 600pt) must still fit a single page next to its
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
-    const overhead = 18 + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
-    const chartHeight = Math.max(40, Math.min(block.height ?? CHART_HEIGHT, bottom - top - overhead));
+    const { height: chartHeight, sideBySide, stacked } = documentChartSizing({
+      requestedHeight: block.height ?? CHART_HEIGHT,
+      pageHeight: size.h,
+      boxWidth: boxW,
+      snapshot: block.snapshot,
+      hasData: block.hasData,
+    });
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
     const totalH = 18 + (sideBySide ? Math.max(chartHeight, SNAPSHOT_HEIGHT) : chartHeight + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0));
     return {

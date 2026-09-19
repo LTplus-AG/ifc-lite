@@ -7,7 +7,9 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { aggregate } from '@ifc-lite/charts';
 import { DocumentPreview } from './DocumentPreview.js';
+import { pageBox } from '@/lib/export/report/compose.js';
 import type { DocumentSpec } from '@/lib/document/types.js';
 
 let root: Root | undefined;
@@ -47,6 +49,7 @@ function render(dataUrl: string): HTMLImageElement {
       document={{ ...baseDocument, blocks: [{ ...imageBlock, dataUrl }] }}
       bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }}
       aggregations={new Map()}
+      chartMessages={new Map()}
       topics={new Map()}
       selectedBlockId={null}
       onSelectBlock={() => {}}
@@ -70,4 +73,38 @@ it('resets an image preview intrinsic aspect when its data URL changes (#4983)',
   const second = render('data:image/png;base64,second');
   assert.notStrictEqual(second, first, 'a new data URL remounts the intrinsic-size state');
   assert.equal(second.style.height, requestedHeight, 'the old image aspect cannot constrain the replacement before it loads');
+});
+
+it('clamps a tall chart to the same printable-page height as PDF composition (#4983 review)', () => {
+  const chart = { id: 'chart', title: 'Tall chart', source: 'elements', type: 'bar', dimension: 'type', measure: { agg: 'count' } } as const;
+  const aggregation = aggregate(chart, {
+    source: 'elements',
+    columns: [{ id: 'type', label: 'Type', kind: 'category' }],
+    rows: [{ ids: [1], values: ['IfcWall'] }],
+    fingerprint: 'preview-height',
+  });
+  const page = { size: 'A4', orientation: 'landscape' } as const;
+  const document: DocumentSpec = {
+    version: 2,
+    id: 'chart-document',
+    name: 'Chart preview',
+    page,
+    blocks: [{ id: 'chart-block', kind: 'chart', chart, snapshot: true, height: 600 }],
+  };
+  container = window.document.createElement('div');
+  window.document.body.appendChild(container);
+  root = createRoot(container);
+  act(() => root?.render(
+    <DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map([['chart-block', aggregation]])} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />,
+  ));
+
+  const svg = container.querySelector('[data-chart-svg] svg');
+  assert.ok(svg, 'the populated chart renders an SVG');
+  const size = pageBox(page);
+  const scale = 560 / size.w;
+  // Independent page-frame invariant: 40pt margins, 30pt header, 24pt footer,
+  // and the 18pt chart title strip. Landscape is wide enough for the snapshot
+  // to sit beside the chart, so it consumes no additional vertical space.
+  const expected = (size.h - 40 - 30 - 40 - 24 - 18) * scale;
+  assert.ok(Math.abs(Number(svg.getAttribute('height')) - expected) < 0.01, `preview SVG height ${svg.getAttribute('height')} matches the PDF clamp ${expected}`);
 });

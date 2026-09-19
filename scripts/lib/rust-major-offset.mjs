@@ -251,7 +251,9 @@ export function readMajorOffset(rootDir) {
       `${OFFSET_FILE_NAME} must set "majorOffset" to a non-negative integer, got ${JSON.stringify(majorOffset)}`
     );
   }
-  const reason = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+  const reasonHistory = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+  const latestBreak = typeof parsed.latestBreak === 'string' ? parsed.latestBreak.trim() : '';
+  const reason = [reasonHistory, latestBreak].filter(Boolean).join(' ');
   const refs = Array.isArray(parsed.refs) ? parsed.refs.filter((r) => typeof r === 'string' && r.trim()) : [];
   if (majorOffset > 0) {
     if (reason.length < 20) {

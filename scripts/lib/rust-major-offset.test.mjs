@@ -110,6 +110,21 @@ test('a non-zero offset must carry a reason and at least one ref', (t) => {
   );
 });
 
+test('the latest break is part of the validated and propagated reason', (t) => {
+  const root = makeTree(t, {
+    offsetFile: JSON.stringify({
+      majorOffset: 2,
+      reason: 'The first published Rust-only break is retained as history.',
+      latestBreak: 'The second published break adds a field to a constructible struct.',
+      refs: ['#1', '#2'],
+    }),
+  });
+  assert.equal(
+    readMajorOffset(root).reason,
+    'The first published Rust-only break is retained as history. The second published break adds a field to a constructible struct.',
+  );
+});
+
 test('offset 0 needs no reason — there is nothing to justify', (t) => {
   const root = makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 0 }) });
   assert.equal(readMajorOffset(root).majorOffset, 0);

@@ -20,7 +20,13 @@ export const DASHBOARD_GRID_COLUMNS = 12;
 
 const SOURCES: ReadonlySet<string> = new Set<ChartSource>(['elements', 'clash', 'bcf', 'schedule', 'ids', 'compare']);
 const TYPES: ReadonlySet<string> = new Set<ChartType>(['bar', 'stackedBar', 'pie', 'treemap', 'histogram', 'timeline']);
-const SCOPES: ReadonlySet<string> = new Set(['all', 'visible', 'basket', 'list']);
+const SCOPES: ReadonlySet<string> = new Set(['all', 'visible', 'basket']);
+/** Sources whose rows do not stand for one matchable element (#4946): a BCF
+ *  row is a topic (its "elements" are a viewpoint's component GUIDs, often
+ *  none loaded) and a compare row straddles two revisions, so a selector
+ *  filter has nothing well-defined to narrow. Exported so the chart editor
+ *  disables the same field the validator would otherwise reject. */
+export const CHART_FILTER_NOT_APPLICABLE_SOURCES: ReadonlySet<ChartSource> = new Set<ChartSource>(['bcf', 'compare']);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -87,6 +93,24 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       }
     }
   }
+  if (chart.filter !== undefined) {
+    const filterPath = `${path}.filter`;
+    if (!isRecord(chart.filter)) {
+      errors.push({ path: filterPath, message: 'expected { selector: string }' });
+    } else {
+      str(errors, chart.filter, 'selector', filterPath);
+      // `str` only rejects an empty string; a whitespace-only one ("   ")
+      // would otherwise pass validation and then resolve to "no filter" at
+      // every consumer (they all trim), stranding the chart on "Resolving
+      // filter…" forever with no matching entry to look up (review finding).
+      if (typeof chart.filter.selector === 'string' && chart.filter.selector.length > 0 && chart.filter.selector.trim().length === 0) {
+        errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector' });
+      }
+      if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {
+        errors.push({ path: filterPath, message: 'a source filter is not applicable to bcf or compare' });
+      }
+    }
+  }
   str(errors, chart, 'dimension', path);
   str(errors, chart, 'stackBy', path, true);
   if (chart.type === 'stackedBar' && typeof chart.stackBy !== 'string') errors.push({ path: `${path}.stackBy`, message: 'a stackedBar needs stackBy' });
@@ -106,14 +130,12 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
 export function validateDashboardSpec(spec: unknown): DashboardValidationError[] {
   const errors: DashboardValidationError[] = [];
   if (!isRecord(spec)) return [{ path: '', message: 'expected a dashboard object' }];
-  if (spec.version !== 1) errors.push({ path: '.version', message: 'expected version 1' });
+  if (spec.version !== 2) errors.push({ path: '.version', message: 'expected version 2' });
   str(errors, spec, 'id', '');
   str(errors, spec, 'name', '');
   const scope = spec.scope;
   if (!isRecord(scope) || typeof scope.kind !== 'string' || !SCOPES.has(scope.kind)) {
     errors.push({ path: '.scope', message: `expected { kind: ${[...SCOPES].join(' | ')} }` });
-  } else if (scope.kind === 'list') {
-    str(errors, scope, 'listId', '.scope');
   }
   if (!Array.isArray(spec.charts)) {
     errors.push({ path: '.charts', message: 'expected an array of charts' });

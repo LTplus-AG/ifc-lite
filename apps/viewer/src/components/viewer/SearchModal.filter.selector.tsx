@@ -14,21 +14,16 @@
 
 import { useCallback, useState } from 'react';
 import { HelpCircle, Wand2 } from 'lucide-react';
-import type { SelectorParseError } from '@ifc-lite/query';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { readSelector } from '@/lib/search/selector-to-rules';
 import { groupsToSelectorText } from '@/lib/search/filter-groups';
 import { useTranslation } from '@/i18n';
+import { describeSelectorParseError, SelectorFeedbackList, type SelectorFeedback } from './SearchModal.filter.feedback';
 
-const DOCS_URL = 'https://ifclite.dev/docs/guide/selector-syntax/';
+export const DOCS_URL = 'https://ifclite.dev/docs/guide/selector-syntax/';
 const PLACEHOLDER = 'IfcWall, Pset_WallCommon.FireRating=/REI.*/';
-
-interface Feedback {
-  tone: 'error' | 'warning';
-  lines: string[];
-}
 
 /**
  * The active model's IFC schema version, which is what decides how far a class
@@ -48,7 +43,7 @@ export function SearchModalFilterSelector() {
   const schemaVersion = useActiveSchemaVersion();
   const { t } = useTranslation();
   const [text, setText] = useState('');
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [feedback, setFeedback] = useState<SelectorFeedback | null>(null);
 
   const apply = useCallback(() => {
     const query = text.trim();
@@ -56,7 +51,7 @@ export function SearchModalFilterSelector() {
 
     const reading = readSelector(query, { schemaVersion });
     if (!reading.ok) {
-      setFeedback({ tone: 'error', lines: [describeParseError(query, reading.error)] });
+      setFeedback({ tone: 'error', lines: [describeSelectorParseError(query, reading.error)] });
       return;
     }
 
@@ -120,18 +115,7 @@ export function SearchModalFilterSelector() {
         </a>
       </div>
 
-      {feedback && (
-        <ul
-          role="alert"
-          className={`flex flex-col gap-0.5 text-[11px] ${
-            feedback.tone === 'error' ? 'text-destructive' : 'text-amber-600 dark:text-amber-500'
-          }`}
-        >
-          {feedback.lines.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      )}
+      {feedback && <SelectorFeedbackList feedback={feedback} />}
 
       {currentAsText.length > 0 && (
         <p
@@ -143,11 +127,4 @@ export function SearchModalFilterSelector() {
       )}
     </div>
   );
-}
-
-/** "…at character 7: …" plus the offending tail, so the caret is findable. */
-function describeParseError(query: string, error: SelectorParseError): string {
-  const tail = query.slice(error.offset, error.offset + 24);
-  const at = tail.length > 0 ? ` (at ${JSON.stringify(tail)})` : ' (at the end)';
-  return `Character ${error.offset + 1}${at}: ${error.message}`;
 }

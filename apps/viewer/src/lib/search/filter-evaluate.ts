@@ -36,17 +36,17 @@
 
 import {
   extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   extractTypePropertiesOnDemand,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
-  extractAllEntityAttributes,
   mergeInheritedPropertySets,
   type IfcDataStore,
   type ClassificationInfo,
 } from '@ifc-lite/parser';
+import { ownPropertySetsFor, typePropertySetsFor, quantitySetsFor, attributesFor, mutatedAttributeValue } from './filter-evaluate-mutations.js';
 
 import { RelationshipType } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 
 import {
   combineRuleResults,
@@ -214,7 +214,7 @@ export interface EvaluatorModel {
   id: string;
   filterIdentity?: string;
   tagIds?: ReadonlySet<string>;
-  store: IfcDataStore | null;
+  store: IfcDataStore | null; mutationView?: MutablePropertyView; // #4946
 }
 
 export async function evaluateFilterRulesFederated(
@@ -237,7 +237,7 @@ export async function evaluateFilterRulesFederated(
   interface Plan {
     modelId: string;
     scope: ModelScope;
-    store: IfcDataStore;
+    store: IfcDataStore; mutationView: MutablePropertyView | undefined; // #4946
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
   }
@@ -261,7 +261,7 @@ export async function evaluateFilterRulesFederated(
     plans.push({
       modelId: m.id,
       scope,
-      store: m.store,
+      store: m.store, mutationView: m.mutationView,
       iter: arr ?? source,
       total: arr ? arr.length : -1,
     });
@@ -277,7 +277,7 @@ export async function evaluateFilterRulesFederated(
     const ctx: EvalContext = {
       store: plan.store,
       modelId: plan.modelId,
-      scope: plan.scope,
+      scope: plan.scope, mutationView: plan.mutationView,
       table: plan.store.entities,
       options,
       hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -344,7 +344,7 @@ interface EvalContext {
   /** Scopes a `StoreyRule.refs` exact match to this store's own model. */
   modelId: string;
   /** What the model-scoped rules (`model`, `modelTag`) read. */
-  scope: ModelScope;
+  scope: ModelScope; mutationView?: MutablePropertyView; // #4946
   table: IfcDataStore['entities'];
   options: EvaluateOptions;
   hasPropertyRule: boolean;
@@ -378,7 +378,7 @@ function evaluateOneEntity(
   let attrCache: AttrRows | null = null;
   const psetsFor = (): PsetRows => {
     if (!psetCache) {
-      const ownSets = extractPropertiesOnDemand(ctx.store, expressId);
+      const ownSets = ownPropertySetsFor(ctx.store, expressId, ctx.mutationView); // #4946, mutation-aware
       const typeSets = getInheritedTypePsets(ctx, expressId);
       // IFC inheritance is per-PROPERTY, not per-set, and the occurrence's
       // own value wins on a name collision — same rule the IDS bridge
@@ -391,7 +391,7 @@ function evaluateOneEntity(
     return psetCache;
   };
   const qtysFor = (): QtyRows => {
-    if (!qtyCache) qtyCache = flattenQtys(extractQuantitiesOnDemand(ctx.store, expressId));
+    if (!qtyCache) qtyCache = flattenQtys(quantitySetsFor(ctx.store, expressId, ctx.mutationView));
     return qtyCache;
   };
   const matNamesFor = (): string[] => {
@@ -411,7 +411,7 @@ function evaluateOneEntity(
     return classCache;
   };
   const attrsFor = (): AttrRows => {
-    if (!attrCache) attrCache = extractAllEntityAttributes(ctx.store, expressId);
+    if (!attrCache) attrCache = attributesFor(ctx.store, expressId, ctx.mutationView);
     return attrCache;
   };
 
@@ -456,17 +456,18 @@ function getInheritedTypePsets(ctx: EvalContext, expressId: number): TypePsetLis
   if (typeIds.length === 0) return [];
   const typeId = typeIds[0];
 
-  const cached = ctx.typePsetCache.get(typeId);
-  if (cached !== undefined) return cached;
-
-  let resolved: TypePsetList;
-  if (ctx.store.source && ctx.store.source.length > 0) {
-    resolved = extractTypePropertiesOnDemand(ctx.store, expressId)?.properties ?? [];
-  } else {
-    resolved = (ctx.store.properties?.getForEntity?.(typeId) ?? []) as unknown as TypePsetList;
+  // Only the BASE read is cached per type (review finding: `mutationView` is
+  // live/mutable, edited possibly mid-run between chunk yields — caching the
+  // mutation-APPLIED result by typeId would keep answering pre-edit psets).
+  // The overlay is cheap and applied fresh on every call.
+  let base = ctx.typePsetCache.get(typeId);
+  if (base === undefined) {
+    base = ctx.store.source && ctx.store.source.length > 0
+      ? extractTypePropertiesOnDemand(ctx.store, expressId)?.properties ?? []
+      : (ctx.store.properties?.getForEntity?.(typeId) ?? []) as unknown as TypePsetList;
+    ctx.typePsetCache.set(typeId, base);
   }
-  ctx.typePsetCache.set(typeId, resolved);
-  return resolved;
+  return typePropertySetsFor(base, typeId, ctx.mutationView); // #4946, mutation-aware
 }
 
 function evaluateRule(
@@ -494,19 +495,18 @@ function evaluateRule(
     case 'ifcType':
       return setOpMatches(rule.op, ctx.table.getTypeName(expressId), rule.values);
     case 'predefinedType': {
-      // No columnar PredefinedType accessor - resolve from the source buffer
-      // against THIS model's store (the federated options object is shared, so
-      // a per-store fallback is what makes federated runs correct). The optional
-      // `predefinedTypeOf` override still wins when a caller supplies one. (#1462)
-      const pt = ctx.options.predefinedTypeOf?.(expressId)
+      // No columnar accessor - resolve from the source buffer, per-store (#1462). A live edit (#4946) wins.
+      const pt = mutatedAttributeValue(ctx.mutationView, expressId, 'PredefinedType')
+        ?? ctx.options.predefinedTypeOf?.(expressId)
         ?? resolveEntityPredefinedType(ctx.store, expressId)
         ?? '';
       return setOpMatches(rule.op, pt, rule.values);
     }
-    case 'name':
-      // getNameOrUndefined, not getName: an absent Name must reach
-      // stringOpMatches as undefined, not the coerced '' (#4930).
-      return stringOpMatches(rule.op, ctx.table.getNameOrUndefined(expressId), rule.value, rule.valueKind);
+    case 'name': {
+      // getNameOrUndefined: absent must reach as undefined, not '' (#4930). A live edit (#4946) wins.
+      const name = mutatedAttributeValue(ctx.mutationView, expressId, 'Name') ?? ctx.table.getNameOrUndefined(expressId);
+      return stringOpMatches(rule.op, name, rule.value, rule.valueKind);
+    }
     case 'globalId':
       return globalIdOpMatches(rule.op, ctx.table.getGlobalId(expressId), rule.values);
     case 'attribute': {

@@ -9,16 +9,24 @@
  * so what is on screen is what prints.
  */
 import { useMemo } from 'react';
-import { aggregate, type Aggregation } from '@ifc-lite/charts';
+import { trimSelectorWhitespace } from '@ifc-lite/query';
+import { aggregate, type Aggregation, type ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
+import { applyChartFilter } from '@/lib/charts/source-filter';
 import { useChartDatasets } from '../charts/useChartDatasets';
+import { useChartSourceFilters } from '../charts/useChartSourceFilters';
 
 export interface DocumentData {
   bindings: BindingContext;
   aggregations: Map<string, Aggregation | null>;
+  /** Set for a chart block whose `filter` is still resolving or was refused
+   *  (#4946): the preview and the PDF export must tell that apart from a
+   *  selector that legitimately matched nothing — both print an empty
+   *  `Aggregation`, so the message is the only thing that distinguishes them. */
+  chartMessages: Map<string, string>;
   topics: Map<string, BCFTopic>;
 }
 
@@ -29,6 +37,11 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const bcfProject = useViewerStore((s) => s.bcfProject);
   const datasets = useChartDatasets(ALL_SCOPE);
+  // Same resolution hook the Charts panel uses (#4946), so a document chart
+  // block prints the SAME filtered numbers the dashboard card shows — never
+  // a second, possibly-stale reading of the same selector.
+  const charts = useMemo<ChartSpec[]>(() => (document?.blocks ?? []).flatMap((b) => (b.kind === 'chart' ? [b.chart] : [])), [document]);
+  const sourceFilters = useChartSourceFilters(charts);
 
   const bindings = useMemo<BindingContext>(() => {
     const bound: Array<BindingContext['models'][number]> = [];
@@ -36,21 +49,41 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
     return { models: bound, activeModelId, today: new Date() };
   }, [models, activeModelId]);
 
-  const aggregations = useMemo(() => {
-    const out = new Map<string, Aggregation | null>();
+  const { aggregations, chartMessages } = useMemo(() => {
+    const aggs = new Map<string, Aggregation | null>();
+    const messages = new Map<string, string>();
     for (const block of document?.blocks ?? []) {
       if (block.kind !== 'chart') continue;
+      const spec = block.chart;
       try {
-        out.set(block.id, aggregate(block.chart, datasets[block.chart.source]));
+        // Trimmed-empty is no filter, consistent with ChartCard (review finding).
+        const filterText = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
+        const filterState = filterText ? sourceFilters.get(filterText) : undefined;
+        const baseDataset = datasets[spec.source];
+        // Never the unfiltered rows under a filter (#4946): resolving/erred
+        // prints an EMPTY dataset, same as the dashboard card — but unlike
+        // the card (which reads the status straight off the hook) the
+        // preview/PDF only ever see an `Aggregation`, so the REASON has to
+        // travel separately or a broken filter prints identically to one
+        // that legitimately matched nothing (review finding on PR #4984).
+        let dataset = baseDataset;
+        if (filterText) {
+          if (filterState?.status === 'ok') dataset = applyChartFilter(baseDataset, filterState.ids);
+          else {
+            dataset = { ...baseDataset, rows: [] };
+            messages.set(block.id, filterState?.status === 'error' ? filterState.message : 'Resolving filter…');
+          }
+        }
+        aggs.set(block.id, aggregate(spec, dataset));
       } catch (err) {
         console.warn(`[Documents] chart "${block.chart.title}" cannot aggregate`, err);
-        out.set(block.id, null);
+        aggs.set(block.id, null);
       }
     }
-    return out;
-  }, [document, datasets]);
+    return { aggregations: aggs, chartMessages: messages };
+  }, [document, datasets, sourceFilters]);
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
 
-  return { bindings, aggregations, topics };
+  return { bindings, aggregations, chartMessages, topics };
 }

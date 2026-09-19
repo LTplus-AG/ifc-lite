@@ -15,6 +15,7 @@
  * immune to re-tagging while it is in flight.
  */
 
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '../../store/types.js';
 import type { ModelTagAssignments } from '../../store/slices/modelTagsSlice.js';
 import type { EvaluatorModel } from '../search/filter-evaluate.js';
@@ -25,6 +26,12 @@ export interface ModelTagState {
   models: ReadonlyMap<string, Pick<FederatedModel, 'id' | 'sourceFingerprint' | 'ifcDataStore'>>;
   modelTags: ReadonlyMap<string, ModelTag>;
   modelTagAssignments: ModelTagAssignments;
+  /** Live per-model property/quantity/attribute edits (#4946 review finding):
+   *  folded into the evaluator's reads so a selector rule matches the
+   *  EDITED value, not only the value the file loaded with. Optional so a
+   *  narrow test fixture with no mutation slice keeps working — omitting it
+   *  is exactly today's base-store-only behaviour, never a silent widen. */
+  mutationViews?: ReadonlyMap<string, MutablePropertyView>;
 }
 
 /** Every loaded model with a store, as evaluator input, in federation order. */
@@ -36,6 +43,7 @@ export function evaluatorModelsFromState(state: ModelTagState): EvaluatorModel[]
       filterIdentity: m.sourceFingerprint,
       tagIds: state.modelTagAssignments.get(id),
       store: m.ifcDataStore,
+      mutationView: state.mutationViews?.get(id),
     });
   }
   return out;

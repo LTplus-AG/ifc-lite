@@ -22,6 +22,9 @@ export interface DocumentPreviewProps {
   document: DocumentSpec;
   bindings: BindingContext;
   aggregations: Map<string, Aggregation | null>;
+  /** A chart block's filter-resolution message (#4946), when its filter is
+   *  still resolving or was refused — shown instead of "No data". */
+  chartMessages: Map<string, string>;
   topics: Map<string, BCFTopic>;
   selectedBlockId: string | null;
   onSelectBlock: (id: string) => void;
@@ -57,16 +60,22 @@ function ResolvedText({ text, bindings }: { text: string; bindings: BindingConte
   );
 }
 
-function ChartSvg({ aggregation, width }: { aggregation: Aggregation | null; width: number }) {
+function ChartSvg({ aggregation, message, width }: { aggregation: Aggregation | null; message: string | undefined; width: number }) {
   const svg = useMemo(() => (aggregation && aggregation.categories.length > 0
     ? renderChartSvg({ aggregation, width, height: 220, theme: REPORT_THEME, showTitle: false })
     : null), [aggregation, width]);
-  if (!svg) return <div className="flex h-24 items-center justify-center rounded border border-dashed border-neutral-300 text-xs text-neutral-500">No data for this chart.</div>;
+  if (!svg) {
+    return (
+      <div className="flex h-24 items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-center text-xs text-neutral-500" data-chart-empty>
+        {message ?? 'No data for this chart.'}
+      </div>
+    );
+  }
   // The SVG string is ECharts' own output over data we aggregated; nothing user-authored is in it.
   return <div className="w-full overflow-hidden" dangerouslySetInnerHTML={{ __html: svg }} data-chart-svg />;
 }
 
-function Block({ block, bindings, aggregation, topic, contentWidth }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; topic: BCFTopic | undefined; contentWidth: number }) {
+function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number }) {
   switch (block.kind) {
     case 'text':
       return <div className={TEXT_CLASS[block.style]} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>(empty)</span>}</div>;
@@ -83,13 +92,15 @@ function Block({ block, bindings, aggregation, topic, contentWidth }: { block: D
         </figure>
       );
     }
-    case 'chart':
+    case 'chart': {
+      const subtitle = chartMessage ?? (aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data');
       return (
         <div>
-          <div className="text-sm font-semibold">{block.chart.title} <span className="text-[10px] font-normal text-neutral-500">{aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data'}{block.snapshot ? ' · 3D snapshot in the PDF' : ''}</span></div>
-          <ChartSvg aggregation={aggregation} width={contentWidth} />
+          <div className="text-sm font-semibold">{block.chart.title} <span className="text-[10px] font-normal text-neutral-500">{subtitle}{block.snapshot ? ' · 3D snapshot in the PDF' : ''}</span></div>
+          <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} />
         </div>
       );
+    }
     case 'topic': {
       if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>BCF topic {block.guid} is not among the loaded topics.</div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;
@@ -106,7 +117,7 @@ function Block({ block, bindings, aggregation, topic, contentWidth }: { block: D
   }
 }
 
-export function DocumentPreview({ document, bindings, aggregations, topics, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {
+export function DocumentPreview({ document, bindings, aggregations, chartMessages, topics, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {
   const size = pageBox(document.page);
   // The sheet scales to the panel; block content is laid out at this width.
   const width = 560;
@@ -126,7 +137,7 @@ export function DocumentPreview({ document, bindings, aggregations, topics, sele
               onClick={() => onSelectBlock(block.id)}
               data-preview-block={block.id}
             >
-              <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={contentWidth} />
+              <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={contentWidth} />
             </div>
           ))}
           {document.blocks.length === 0 && <div className={`text-xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>An empty page — add a block on the left.</div>}

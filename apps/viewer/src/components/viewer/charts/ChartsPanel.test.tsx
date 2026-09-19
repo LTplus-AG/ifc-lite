@@ -1616,6 +1616,118 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.chartSlice, null);
     assert.equal(s.chartVisibilityOwned, null);
   });
+
+  // #4946 — a chart's own source filter, authored through the editor and
+  // resolved by `useChartSourceFilters`.
+  it('a source filter typed in the editor narrows the saved card to the matched elements (#4946)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    const unfilteredSubtitle = ui.querySelector('[data-chart-subtitle]')!.textContent!;
+    assert.match(unfilteredSubtitle, /5 elements/);
+
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const filterInput = ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!;
+    type(filterInput, 'IfcWall');
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+
+    const subtitle = ui.querySelector('[data-chart-subtitle]')!.textContent!;
+    assert.match(subtitle, /3 elements/, subtitle);
+    assert.match(subtitle, /filter: IfcWall/, subtitle);
+    const lastOption = charts[0].options.at(-1)!;
+    assert.deepEqual(barData(lastOption).map(([name, count]) => [name, count]), [['IfcWall', 3]]);
+  });
+
+  it('a refused selector (no filterable rule) blocks Save and shows the alert instead of narrowing on the readable part (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const filterInput = ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!;
+    type(filterInput, 'Name=/unterminated');
+    await act(async () => { filterInput.focus(); filterInput.blur(); });
+    await settle();
+    const alert = ui.querySelector('[role="alert"]');
+    assert.ok(alert, 'an unparseable selector shows the feedback list');
+    const save = [...ui.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Save chart')!;
+    assert.equal(save.disabled, true, 'Save stays disabled while the filter reading errs');
+  });
+
+  it('clears stale selector feedback as the author corrects the source filter (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await settle();
+    const filterInput = ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!;
+    type(filterInput, 'Name=/unterminated');
+    await act(async () => { filterInput.focus(); filterInput.blur(); });
+    await settle();
+    assert.ok(ui.querySelector('[role="alert"]'));
+    type(filterInput, 'IfcWall');
+    await settle();
+    assert.equal(ui.querySelector('[role="alert"]'), null, 'the prior invalid-reading error must not describe corrected input');
+  });
+
+  it('distinguishes a zero-match source filter from a source with no data (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await settle();
+    const filterInput = ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!;
+    type(filterInput, 'IfcSlab');
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    assert.equal(ui.querySelector('[data-chart-empty]')?.textContent, 'No rows match this source filter.');
+  });
+
+  it('a source filter field is disabled with a note for the bcf and compare sources (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Add chart'))!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const chartSource = ui.querySelector<HTMLSelectElement>('select[aria-label="Source"]')!;
+    await act(async () => {
+      chartSource.value = 'bcf';
+      chartSource.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.equal(ui.querySelector('input[aria-label="Source filter"]'), null, 'the field is replaced by the not-applicable note');
+    assert.match(ui.textContent ?? '', /not applicable to BCF topics/);
+  });
+
+  it('a saved filter with incidental whitespace still resolves and narrows the card (review finding on PR #4984)', async () => {
+    // `validateDashboardSpec` only requires a non-empty string, so an
+    // imported/hand-edited dashboard can carry `" IfcWall "`. The resolver
+    // used to key its result map by the TRIMMED text while every lookup site
+    // read the RAW `spec.filter.selector` — the two never matched, so the
+    // card sat on "Resolving filter…" forever.
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{ ...dashboard.charts[0], filter: { selector: ' IfcWall ' } }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id });
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const subtitle = ui.querySelector('[data-chart-subtitle]')!.textContent!;
+    assert.match(subtitle, /3 elements/, subtitle);
+    assert.doesNotMatch(subtitle, /Resolving filter/, subtitle);
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([name, count]) => [name, count]), [['IfcWall', 3]]);
+  });
 });
 
 describe('overlapping chart bucket paint (#4832)', () => {

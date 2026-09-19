@@ -978,20 +978,6 @@ export class MutablePropertyView extends MutableOverlayState {
     });
   }
 
-  /**
-   * Has this entity's quantity set been DELETED this session?
-   *
-   * `getQuantitiesForEntity` cannot answer it: a deleted set and a set that
-   * never existed both come back absent. The exporter needs the difference,
-   * because it withholds a source `IfcElementQuantity` when it is writing a
-   * REPLACEMENT for it, and a deletion has no replacement to recognise it by.
-   * Without this, `deleteQuantitySet` masked a base set in the panel while the
-   * exported file still carried it.
-   */
-  isQuantitySetDeleted(entityId: number, qsetName: string): boolean {
-    return this.deletedQsets.has(`${entityId}:${qsetName}`);
-  }
-
   // ---------------------------------------------------------------------------
   // Attribute mutations
   // ---------------------------------------------------------------------------

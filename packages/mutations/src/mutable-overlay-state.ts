@@ -104,6 +104,16 @@ export class MutableOverlayState {
   protected nextAllocatedId: number = 0;
   protected mutationHistory: Mutation[] = [];
 
+  /** Whether a base property set is masked by a whole-set deletion. */
+  isPropertySetDeleted(entityId: number, psetName: string): boolean {
+    return this.deletedPsets.has(`${entityId}:${psetName}`);
+  }
+
+  /** Whether a base quantity set is masked by a whole-set deletion. */
+  isQuantitySetDeleted(entityId: number, qsetName: string): boolean {
+    return this.deletedQsets.has(`${entityId}:${qsetName}`);
+  }
+
   /** Borrowed only for synchronous comparison; never returned to callers. */
   protected overlayState() {
     return {

@@ -85,12 +85,23 @@ export type ElementFieldBinding =
   /** Name of the containing spatial element at one level (`IfcRelContainedInSpatialStructure` / `IfcRelAggregates`). */
   | (ElementFieldCategoryBindingBase & { kind: 'spatial'; level: ElementFieldSpatialLevel });
 
+/** A chart's own source filter (#4946): IfcOpenShell selector text, read the
+ *  same way the Filter tab reads it (`readSelector`) and run through the
+ *  same evaluator (`evaluateFilterRulesFederated`) — never a second matcher.
+ *  Not applicable to `bcf` or `compare` (see `validate.ts`), because their
+ *  rows do not stand for one element the selector can match against. */
+export interface ChartSourceFilter {
+  selector: string;
+}
+
 export interface ChartSpec {
   id: string;
   title: string;
   source: ChartSource;
   /** One exact IFC attribute/property materialized beside the built-in element columns. */
   elementField?: ElementFieldBinding;
+  /** Narrows this chart's rows to those touching the matched elements, on top of the dashboard scope. */
+  filter?: ChartSourceFilter;
   type: ChartType;
   /** Column id to bucket by. A `date` column for `timeline`, a `number` column for `histogram`. */
   dimension: string;
@@ -105,12 +116,14 @@ export interface ChartSpec {
   bins?: number;
 }
 
-/** What a dashboard aggregates over; resolved by the host into a dataset scope. */
+/** What a dashboard aggregates over; resolved by the host into a dataset
+ *  scope. `list` (a saved-list scope) was removed in version 2 (#4946): the
+ *  per-chart `ChartSpec.filter` supersedes it, and a saved list is already
+ *  reachable as a selector (`lib/search/saved-filters.ts`). */
 export type ChartScope =
   | { kind: 'all' }
   | { kind: 'visible' }
-  | { kind: 'basket' }
-  | { kind: 'list'; listId: string };
+  | { kind: 'basket' };
 
 export interface DashboardLayoutItem {
   chartId: string;
@@ -121,7 +134,9 @@ export interface DashboardLayoutItem {
 }
 
 export interface DashboardSpec {
-  version: 1;
+  /** 2 (#4946): adds `ChartSpec.filter`, drops the `list` scope kind. A
+   *  version-1 file is migrated on load (`migrate.ts`), never read as-is. */
+  version: 2;
   id: string;
   name: string;
   scope: ChartScope;

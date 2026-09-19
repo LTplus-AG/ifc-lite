@@ -176,6 +176,7 @@
     "Bucket: interface",
     "BucketSeries: interface",
     "BuildOptionArgs: interface",
+    "CHART_FILTER_NOT_APPLICABLE_SOURCES: const",
     "CellValue: type",
     "ChartAggregate: type",
     "ChartDataset: interface",
@@ -185,6 +186,7 @@
     "ChartMeasure: interface",
     "ChartScope: type",
     "ChartSource: type",
+    "ChartSourceFilter: interface",
     "ChartSpec: interface",
     "ChartTheme: interface",
     "ChartType: type",
@@ -224,6 +226,7 @@
     "isReportSpec: function",
     "isoWeekKey: function",
     "itemsForIds: function",
+    "migrateDashboardSpec: function",
     "normalizeElementFieldValue: function",
     "paletteColor: function",
     "registerEChartsModules: function",
@@ -7779,7 +7782,8 @@
     "matchesPropertyFilter: function",
     "normalizeBooleanValue: function",
     "parseSelector: function",
-    "selectorToQueryDescriptor: function"
+    "selectorToQueryDescriptor: function",
+    "trimSelectorWhitespace: function"
   ],
   "@ifc-lite/regex-guard": [
     "MAX_GUARDED_REGEX_PATTERN_LENGTH: const",

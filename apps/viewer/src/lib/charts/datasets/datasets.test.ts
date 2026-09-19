@@ -27,6 +27,9 @@ import { buildCompareDataset, COMPARE_COLUMNS } from './compare.js';
 import { buildElementsDataset } from './elements.js';
 import { DASHBOARD_PRESETS } from '../presets.js';
 import { createElementFieldReader } from '../element-field-reader.js';
+import { applyChartFilter, resolveChartFilter } from '../source-filter.js';
+import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models.js';
+import { toGlobalIdFromModels } from '@/store/globalId.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -549,5 +552,125 @@ END-ISO-10303-21;`;
         if (chart.type === 'histogram') assert.equal(dim.kind, 'number', chart.title);
       }
     }
+  });
+
+  // #4946 — a chart's own source filter: the SAME matching path the search
+  // Filter tab uses (`readSelector` -> `evaluateFilterRulesFederated`), then
+  // ONE post-filter (`applyChartFilter`) shared by every source.
+  it('source filter: resolveChartFilter + applyChartFilter narrow an elements row set, and keep a clash row on an any-match', async () => {
+    const state = useViewerStore.getState();
+    const models = evaluatorModelsFromState(state);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(state.models, modelId, expressId);
+
+    const ids = await resolveChartFilter(models, { selector: 'IfcWall' }, toGlobalId, { limit: 1_000 });
+    assert.ok(ids);
+    assert.deepEqual([...(ids as Set<number>)], [GID(41)], 'IfcWall matches only the one wall in the fixture');
+
+    const elementsDs = buildElementsDataset({ kind: 'all' }, state);
+    assert.equal(elementsDs.rows.length, 3, 'unfiltered: wall + beam + door');
+    const filteredElements = applyChartFilter(elementsDs, ids as Set<number>);
+    assert.equal(filteredElements.rows.length, 1, 'filtered: the wall row only');
+    assert.notEqual(filteredElements.fingerprint, elementsDs.fingerprint, 'a filtered dataset never reuses the unfiltered fingerprint');
+
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [box('0Wall00000000000000041', GID(41), 'IfcWall', [0, 0, 0], [1, 1, 1]), box('0Beam00000000000000042', GID(42), 'IfcBeam', [0.5, 0, 0], [1.5, 1, 1])],
+      [{ id: 'str', name: 'STR', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }],
+    );
+    useViewerStore.setState({ clashResult: result, clashGroups: null, clashReviews: new Map(), clashRunSeq: 8 });
+    const clashDs = buildClashDataset(useViewerStore.getState());
+    assert.equal(clashDs.rows.length, 1);
+    const filteredClash = applyChartFilter(clashDs, ids as Set<number>);
+    assert.equal(filteredClash.rows.length, 1, 'the clash keeps its row: ids [wall, beam] any-matches the filtered wall');
+  });
+
+  it('source filter: a refused reading (no rule, unsupported syntax, or a parse error) THROWS instead of narrowing on the readable part', async () => {
+    const state = useViewerStore.getState();
+    const models = evaluatorModelsFromState(state);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(state.models, modelId, expressId);
+
+    // No filterable class/attribute at all — reads as plain text, zero rules.
+    await assert.rejects(() => resolveChartFilter(models, { selector: 'NotARealIfcClass' }, toGlobalId));
+    // A parse error (unterminated regex).
+    await assert.rejects(() => resolveChartFilter(models, { selector: 'Name=/unterminated' }, toGlobalId));
+    // A rule exists (the property clause) but the class+GlobalId combination
+    // in the same group is unsupported (#4904/#4987 — a class and a GlobalId
+    // both ADD elements rather than narrow, so an AND cannot express it) —
+    // still refused rather than run on the readable property rule alone.
+    await assert.rejects(() => resolveChartFilter(models, { selector: 'IfcWall, 0MoO$xC5PB9uNyzGgqhL9B, Probe.Tag=Special' }, toGlobalId));
+
+    // No filter at all resolves to `null`, never an error.
+    assert.equal(await resolveChartFilter(models, undefined, toGlobalId), null);
+    assert.equal(await resolveChartFilter(models, { selector: '   ' }, toGlobalId), null);
+  });
+
+  // #4904/#4987 landed on main while this PR was open: a `+`-separated
+  // selector is now a real OR-of-AND-groups query, not a refusal. Route the
+  // chart filter through the same groups-aware evaluator
+  // (`evaluateFilterGroupsFederated`) so a chart's own filter supports `+`
+  // exactly as the search Filter tab does — never a second matching path.
+  it('source filter: a "+" union resolves as the OR of both groups (#4904/#4987 groups-aware evaluator)', async () => {
+    const state = useViewerStore.getState();
+    const models = evaluatorModelsFromState(state);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(state.models, modelId, expressId);
+    const ids = await resolveChartFilter(models, { selector: 'IfcWall + IfcDoor' }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(ids as Set<number>)].sort((a, b) => a - b), [GID(41), GID(43)], 'the wall and the door — the union of both groups, not just the first');
+
+    const mixedIds = await resolveChartFilter(
+      models,
+      { selector: 'IfcWall, Name="Beam B" + IfcDoor, Name="Door C"' },
+      toGlobalId,
+      { limit: 1_000 },
+    );
+    assert.deepEqual([...(mixedIds as Set<number>)], [GID(43)], 'each union branch keeps its own AND terms');
+  });
+
+  // #4946 review (PR #4984): a chart filter used to match only the ON-DISK
+  // property value — `evaluatorModelsFromState` never carried a model's
+  // live `MutablePropertyView` into the evaluator (`filter-evaluate.ts`'s
+  // `psetsFor`/`qtysFor`/`attrsFor` read the base store only). Editing a
+  // property a selector rule reads must change what the rule matches in the
+  // SAME session, without a reload — same live-edit awareness
+  // `element-field-reader.ts` already gives the Elements chart's own field
+  // column, now shared by the filter evaluator every chart source (and
+  // search, and clash set filters) runs its selector through.
+  it('source filter: editing a property changes what the selector matches — filtered count drops (mutation-aware evaluator, review finding)', async () => {
+    const before = useViewerStore.getState();
+    const beforeModels = evaluatorModelsFromState(before);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(before.models, modelId, expressId);
+    const selector = 'Probe.Tag="Special"';
+    const beforeIds = await resolveChartFilter(beforeModels, { selector }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(beforeIds as Set<number>)], [], 'nothing has the property yet — no rows in the base file');
+
+    const overlay = new MutablePropertyView(store.properties, 'm1');
+    overlay.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    overlay.setProperty(41, 'Probe', 'Tag', 'Special');
+    useViewerStore.setState({ mutationViews: new Map([['m1', overlay]]), mutationVersion: 1 });
+
+    const after = useViewerStore.getState();
+    const afterModels = evaluatorModelsFromState(after);
+    const afterIds = await resolveChartFilter(afterModels, { selector }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(afterIds as Set<number>)], [GID(41)], 'the wall now matches: the evaluator read the live edit, not the on-disk file');
+
+    // The inverse case the review asked for: edit a matching element so it
+    // STOPS matching — the filtered count drops.
+    const overlay2 = new MutablePropertyView(store.properties, 'm1');
+    overlay2.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    overlay2.setProperty(41, 'Probe', 'Tag', 'Special');
+    overlay2.setProperty(41, 'Probe', 'Tag', 'Different');
+    useViewerStore.setState({ mutationViews: new Map([['m1', overlay2]]), mutationVersion: 2 });
+    const cleared = useViewerStore.getState();
+    const clearedModels = evaluatorModelsFromState(cleared);
+    const clearedIds = await resolveChartFilter(clearedModels, { selector }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(clearedIds as Set<number>)], [], 'edited away from the matching value: the wall no longer matches, count drops to 0');
+  });
+
+  it('applyChartFilter: two different same-size id sets never fingerprint alike (review finding on PR #4984)', () => {
+    const state = useViewerStore.getState();
+    const dataset = buildElementsDataset({ kind: 'all' }, state);
+    const a = applyChartFilter(dataset, new Set([GID(41)]));
+    const b = applyChartFilter(dataset, new Set([GID(42)]));
+    assert.notEqual(a.fingerprint, b.fingerprint, 'ids.size alone would have collided {wall} and {beam}');
+    assert.equal(applyChartFilter(dataset, new Set([GID(41)])).fingerprint, a.fingerprint, 'the same id set fingerprints the same');
   });
 });

@@ -8,7 +8,7 @@
  * the panel; and the `.ifclite-dashboard.json` file a dashboard is shared as
  * (#3944).
  */
-import { validateDashboardSpec, type DashboardSpec } from '@ifc-lite/charts';
+import { migrateDashboardSpec, validateDashboardSpec, type DashboardSpec } from '@ifc-lite/charts';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
 const STORAGE_KEY = 'ifc-lite-dashboards';
@@ -21,8 +21,9 @@ export function loadDashboards(): DashboardSpec[] {
     if (!Array.isArray(parsed)) return [];
     const kept: DashboardSpec[] = [];
     for (const entry of parsed) {
-      const errors = validateDashboardSpec(entry);
-      if (errors.length === 0) kept.push(entry as DashboardSpec);
+      const migrated = migrateDashboardSpec(entry);
+      const errors = validateDashboardSpec(migrated);
+      if (errors.length === 0) kept.push(migrated as DashboardSpec);
       else console.warn('[Charts] Dropping an invalid saved dashboard', errors);
     }
     return kept;
@@ -54,7 +55,7 @@ export function exportDashboard(dashboard: DashboardSpec): void {
  * the layout too, so the positions survive.
  */
 export function parseDashboardFile(text: string): DashboardSpec {
-  const parsed: unknown = JSON.parse(text);
+  const parsed: unknown = migrateDashboardSpec(JSON.parse(text));
   const errors = validateDashboardSpec(parsed);
   if (errors.length > 0) {
     throw new Error(`Not a dashboard file: ${errors.slice(0, 3).map((e) => `${e.path || '/'} ${e.message}`).join('; ')}`);

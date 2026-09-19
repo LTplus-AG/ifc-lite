@@ -14,6 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { buildStepSeedSource } from './step-seed.js';
+import { isPortableReferenceRootType } from './portable-reference-entities.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 
 function makeFakeStore(): IfcDataStore {
@@ -260,6 +261,14 @@ describe('collab step-seed spatial hierarchy (buildChildrenByPath)', () => {
 });
 
 describe('collab step-seed portable cost references (#4857 review)', () => {
+  it('recognizes every relationship consumed by the cost graph', () => {
+    for (const type of [
+      'IfcRelAssignsToControl', 'IfcRelAssignsToProduct', 'IfcRelAssignsToProcess',
+      'IfcRelNests', 'IfcRelDeclares', 'IfcRelAssociatesAppliedValue',
+      'IfcRelSchedulesCostItems', 'IfcAppliedValueRelationship',
+    ]) assert.equal(isPortableReferenceRootType(type), true, type);
+  });
+
   it('seeds deterministic paths for referenced non-root rows', async () => {
     const step = [
       'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
@@ -268,7 +277,10 @@ describe('collab step-seed portable cost references (#4857 review)', () => {
       "#1=IFCCOSTITEM('0item00000000000000000',$,'Item',$,$,$,.NOTDEFINED.,(#2),$);",
       "#2=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),#3,$,$,$,$,$,$);",
       '#3=IFCMEASUREWITHUNIT(IFCREAL(1.),#4);',
-      '#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+      "#4=IFCCONVERSIONBASEDUNIT(#5,.LENGTHUNIT.,'FOOT',#6);",
+      '#5=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);',
+      '#6=IFCMEASUREWITHUNIT(IFCREAL(0.3048),#7);',
+      '#7=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
       'ENDSEC;', 'END-ISO-10303-21;',
     ].join('\n');
     const bytes = new TextEncoder().encode(step);
@@ -280,9 +292,13 @@ describe('collab step-seed portable cost references (#4857 review)', () => {
     const item = entities.find(entity => entity.guid === '0item00000000000000000');
     const value = entities.find(entity => entity.guid === 'ifc-lite-ref-2');
     const basis = entities.find(entity => entity.guid === 'ifc-lite-ref-3');
-    assert.ok(item && value && basis, 'the root and its non-root reference graph are seeded');
+    const conversion = entities.find(entity => entity.guid === 'ifc-lite-ref-4');
+    const factor = entities.find(entity => entity.guid === 'ifc-lite-ref-6');
+    assert.ok(item && value && basis && conversion && factor,
+      'the root and its schema-typed non-root reference graph are seeded');
     assert.deepEqual(item.attributes?.['bsi::ifc::prop::CostValues'], ['/ifc-lite-ref-2']);
     assert.equal(value.attributes?.['bsi::ifc::prop::UnitBasis'], '/ifc-lite-ref-3');
+    assert.equal(conversion.attributes?.['bsi::ifc::prop::ConversionFactor'], '/ifc-lite-ref-6');
   });
 
   it('keeps the complete transitive quantity closure', async () => {

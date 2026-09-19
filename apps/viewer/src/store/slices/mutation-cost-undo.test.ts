@@ -15,7 +15,13 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pushCreateEntityUndo, markCostRelationshipMutation } from './mutation-cost-undo.js';
+import type { NewEntity } from '@ifc-lite/mutations';
+import {
+  pushCreateEntityUndo,
+  markCostRelationshipMutation,
+  mirrorCreateEntityRedo,
+  rememberCostEntityRoomKey,
+} from './mutation-cost-undo.js';
 
 type PushFn = typeof pushCreateEntityUndo;
 type SetArg = Parameters<PushFn>[0];
@@ -76,5 +82,18 @@ describe('markCostRelationshipMutation', () => {
     assert.deepEqual(state.redoStacks.get('m1'), []);
     assert.equal(state.dirtyModels.has('m1'), true);
     assert.equal(state.mutationVersion, 2);
+  });
+});
+
+describe('cost entity collaboration redo identity', () => {
+  it('reuses the original collision-safe room key for a GUID-less entity', () => {
+    const entity = { expressId: 42, type: 'IFCCOSTVALUE', attributes: ['Rate'] } as NewEntity;
+    rememberCostEntityRoomKey(entity, 'ifc-lite-cost-stable-key');
+    const creates: unknown[][] = [];
+    mirrorCreateEntityRedo({
+      mirrorEntityCreate: (...args: unknown[]) => { creates.push(args); },
+      mirrorAttributeEdit: () => {},
+    } as unknown as import('../index.js').ViewerState, 'm1', entity);
+    assert.equal(creates[0]?.[3], 'ifc-lite-cost-stable-key');
   });
 });

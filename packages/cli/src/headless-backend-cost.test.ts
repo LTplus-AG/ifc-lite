@@ -68,4 +68,14 @@ describe('#4857 CLI headless backend: bim.store.addEntity and bim.cost agree', (
     expect(() => bim.store.addCostItem('', { Name: 'Wrong model' })).toThrow(/Unknown modelId/);
     expect(bim.cost.data().CostItems).toHaveLength(0);
   });
+
+  it('preserves an accepted filename alias in authored cost refs', async () => {
+    const bytes = new TextEncoder().encode(STEP);
+    const store = await new IfcParser().parseColumnar(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    const bim = createBimContext({ backend: new HeadlessBackend(store, 'tower.ifc') });
+    expect(bim.store.addCostItem('tower.ifc', { Name: 'Aliased' }).modelId).toBe('tower.ifc');
+  });
 });

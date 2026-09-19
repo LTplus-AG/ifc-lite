@@ -2,7 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import {
+  getAttributeNamesAcrossSchemas,
+  getSchemaRegistryForVersion,
+  type IfcDataStore,
+  type SchemaRegistry,
+  type SchemaVersionWithRegistry,
+} from '@ifc-lite/parser';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import { roomSlotPath } from './model-slot-ref';
 
@@ -13,17 +19,18 @@ const REFERENCE_LIST_ATTRIBUTES = new Set([
 const REFERENCE_SCALAR_ATTRIBUTES = new Set([
   'AppliedValue', 'ComponentOfTotal', 'DataValue', 'Dimensions', 'RelatingAppliedValue',
   'RelatingConstraint', 'Unit', 'UnitBasis', 'UnitComponent', 'RelatingActor', 'RelatingControl',
-  'RelatingGroup', 'RelatingObject', 'RelatingProcess', 'RelatingProduct', 'RelatingResource',
+  'RelatingContext', 'RelatingGroup', 'RelatingObject', 'RelatingProcess', 'RelatingProduct', 'RelatingResource',
 ]);
 // Only these root-level slots introduce a GUID-less portable subgraph. Once
 // inside that graph we inspect every reference-shaped value, so the closure is
 // complete without parsing every relationship in a large model up front.
-const PORTABLE_GRAPH_ENTRY_ATTRIBUTES = new Set(['CostQuantities', 'CostValues', 'RelatingConstraint']);
 const PORTABLE_ROOT_TYPES = new Set([
-  'IFCCOSTITEM', 'IFCRELASSIGNSTOCONTROL', 'IFCRELASSOCIATESAPPLIEDVALUE',
-  'IFCRELASSOCIATESCONSTRAINT', 'IFCRELNESTS',
+  'IFCCOSTITEM', 'IFCAPPLIEDVALUERELATIONSHIP', 'IFCRELASSIGNSTOCONTROL',
+  'IFCRELASSIGNSTOPROCESS', 'IFCRELASSIGNSTOPRODUCT', 'IFCRELASSOCIATESAPPLIEDVALUE',
+  'IFCRELASSOCIATESCONSTRAINT', 'IFCRELDECLARES', 'IFCRELNESTS', 'IFCRELSCHEDULESCOSTITEMS',
 ]);
 const referenceIdsCache = new WeakMap<IfcDataStore, ReadonlySet<number>>();
+const registryEntitiesCache = new WeakMap<SchemaRegistry, ReadonlyMap<string, SchemaRegistry['entities'][string]>>();
 
 export function plainAttributeName(name: string): string {
   return name.split('::').at(-1) ?? name;
@@ -53,6 +60,43 @@ export function explicitReferenceId(value: unknown): number | null {
   return localReferenceId(value);
 }
 
+function schemaVersion(store: IfcDataStore): SchemaVersionWithRegistry {
+  if (store.schemaVersion === 'IFC2X3') return 'IFC2X3';
+  if (store.schemaVersion.startsWith('IFC4X3')) return 'IFC4X3';
+  return 'IFC4';
+}
+
+function registryEntity(registry: SchemaRegistry, type: string) {
+  let entities = registryEntitiesCache.get(registry);
+  if (!entities) {
+    entities = new Map(Object.values(registry.entities).map(entity => [entity.name.toUpperCase(), entity]));
+    registryEntitiesCache.set(registry, entities);
+  }
+  return entities.get(type.toUpperCase());
+}
+
+function onlyEntityChoices(registry: SchemaRegistry, type: string, seen = new Set<string>()): boolean {
+  if (seen.has(type)) return false;
+  seen.add(type);
+  if (registryEntity(registry, type)) return true;
+  const choices = registry.selects[type];
+  if (choices) return choices.length > 0
+    && choices.every(choice => onlyEntityChoices(registry, choice, new Set(seen)));
+  const underlying = registry.types[type];
+  return underlying ? onlyEntityChoices(registry, underlying, seen) : false;
+}
+
+/** Numeric parser values are references only when the EXPRESS slot cannot also hold a measure. */
+export function isUnambiguousReferenceAttribute(
+  store: IfcDataStore,
+  entityType: string,
+  index: number,
+): boolean {
+  const registry = getSchemaRegistryForVersion(schemaVersion(store));
+  const attribute = registryEntity(registry, entityType)?.allAttributes?.[index];
+  return attribute ? onlyEntityChoices(registry, attribute.type) : false;
+}
+
 function referencedIds(store: IfcDataStore, entityId: number, inspectAll: boolean): number[] {
   const entity = store.getEntity(entityId);
   if (!entity) return [];
@@ -61,13 +105,16 @@ function referencedIds(store: IfcDataStore, entityId: number, inspectAll: boolea
   entity.attributes.forEach((value, index) => {
     const name = names[index];
     if (!name) return;
+    const referenceId = isUnambiguousReferenceAttribute(store, entity.type, index)
+      ? explicitReferenceId
+      : localReferenceId;
     if ((inspectAll || isPortableReferenceList(name)) && Array.isArray(value)) {
       for (const member of value) {
-        const id = isPortableReferenceList(name) ? explicitReferenceId(member) : localReferenceId(member);
+        const id = referenceId(member);
         if (id !== null) ids.push(id);
       }
     } else if (inspectAll || isPortableReferenceScalar(name)) {
-      const id = isPortableReferenceScalar(name) ? explicitReferenceId(value) : localReferenceId(value);
+      const id = referenceId(value);
       if (id !== null) ids.push(id);
     }
   });
@@ -82,9 +129,13 @@ export function portableReferenceEntityIds(store: IfcDataStore): ReadonlySet<num
   const queue: number[] = [];
   for (const [type, ids] of store.entityIndex?.byType ?? []) {
     if (!isPortableReferenceRootType(type)) continue;
-    const names = getAttributeNamesAcrossSchemas(type);
-    if (!names.some(name => PORTABLE_GRAPH_ENTRY_ATTRIBUTES.has(plainAttributeName(name)))) continue;
+    if (!registryEntity(getSchemaRegistryForVersion(schemaVersion(store)), type)?.allAttributes?.some(
+      attribute => isPortableReferenceList(attribute.name) || isPortableReferenceScalar(attribute.name),
+    )) continue;
     queue.push(...ids);
+    for (const id of ids) {
+      if (!store.entities.getGlobalId(id)) result.add(id);
+    }
   }
   const scanned = new Set<number>();
   while (queue.length > 0) {

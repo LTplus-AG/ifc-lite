@@ -31,6 +31,7 @@ import type { ModelSlotRef, StepSeedEntity, StepSeedSource } from '@ifc-lite/col
 import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
 import {
   explicitReferenceId,
+  isUnambiguousReferenceAttribute,
   isPortableReferenceList,
   isPortableReferenceRootType,
   isPortableReferenceScalar,
@@ -165,22 +166,21 @@ export function buildStepSeedSource(
         sourceEntity.attributes.forEach((value, index) => {
           const name = names[index];
           if (!name || value === undefined) return;
+          const referenceId = isUnambiguousReferenceAttribute(store, sourceEntity.type, index)
+            ? explicitReferenceId
+            : localReferenceId;
           let wireValue: unknown = value;
           if ((includeOrdinary || isPortableReferenceList(name)) && Array.isArray(value)) {
             const paths: unknown[] = [];
             for (const member of value) {
-              const id = isPortableReferenceList(name)
-                ? explicitReferenceId(member)
-                : localReferenceId(member);
+              const id = referenceId(member);
               const path = id === null ? null : portableEntityPath(store, id, slot);
               if (path) paths.push(path);
               else if (includeOrdinary) paths.push(member);
             }
             wireValue = paths;
           } else if (includeOrdinary || isPortableReferenceScalar(name)) {
-            const id = isPortableReferenceScalar(name)
-              ? explicitReferenceId(value)
-              : localReferenceId(value);
+            const id = referenceId(value);
             const path = id === null ? null : portableEntityPath(store, id, slot);
             if (path) wireValue = path;
           } else if (!includeOrdinary) {

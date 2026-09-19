@@ -53,6 +53,7 @@ import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 import { createCostAdapter } from './cost-adapter.js';
+import { rememberCostEntityRoomKey } from '@/store/slices/mutation-cost-undo.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -332,6 +333,7 @@ function mirrorCostOverlayDelta(
       // reuse a local express id: two peers can concurrently allocate the
       // same id for distinct cost values/quantities.
       : `ifc-lite-cost-${crypto.randomUUID()}`;
+    rememberCostEntityRoomKey(entity, globalId);
     state.mirrorEntityCreate(modelId, entity.expressId, entity.type, globalId, null);
     entity.attributes.forEach((value, index) => {
       const name = names[index];

@@ -23,6 +23,12 @@ import type { ViewerState } from '../index.js';
 import { normalizeMutationModelId } from '../../sdk/adapters/mutation-view.js';
 
 type SetState = (partial: Partial<ViewerState> | ((state: ViewerState) => Partial<ViewerState>)) => void;
+const costEntityRoomKeys = new WeakMap<NewEntity, string>();
+
+/** Retain the collision-safe room identity on the exact entity object stashed for redo. */
+export function rememberCostEntityRoomKey(entity: NewEntity, roomKey: string): void {
+  costEntityRoomKeys.set(entity, roomKey);
+}
 
 export function mirrorCreateEntityRedo(
   state: ViewerState,
@@ -32,7 +38,7 @@ export function mirrorCreateEntityRedo(
   const names = getAttributeNamesAcrossSchemas(entity.type);
   const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
     ? entity.attributes[0]
-    : null;
+    : costEntityRoomKeys.get(entity) ?? null;
   state.mirrorEntityCreate(modelId, entity.expressId, entity.type, guid, null);
   entity.attributes.forEach((value, index) => {
     const name = names[index];

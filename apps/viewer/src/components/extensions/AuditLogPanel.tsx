@@ -208,9 +208,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
                 <div className="flex-1 min-w-0">
                   <div className="font-mono text-[11px] break-all">{event.extensionId}</div>
                   <div className="text-[10px] text-muted-foreground">
-                    {formatExtensionDate(event.ts, locale)}
-                    {event.version ? t('extensionsPanels.auditLogPanel.versionSuffix', { version: event.version }) : ''}
-                    {extraDetail(event, t)}
+                    {auditMetadata(event, t, locale)}
                   </div>
                 </div>
               </li>
@@ -236,6 +234,17 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
       {label}
     </button>
   );
+}
+
+function auditMetadata(event: AuditEvent, t: UseTranslationResult['t'], locale: string): string {
+  const date = formatExtensionDate(event.ts, locale);
+  const detail = extraDetail(event, t);
+  if (event.version && detail) {
+    return t('extensionsPanels.auditLogPanel.metadataVersionDetail', { date, version: event.version, detail });
+  }
+  if (event.version) return t('extensionsPanels.auditLogPanel.metadataVersion', { date, version: event.version });
+  if (detail) return t('extensionsPanels.auditLogPanel.metadataDetail', { date, detail });
+  return t('extensionsPanels.auditLogPanel.metadataDate', { date });
 }
 
 function extraDetail(event: AuditEvent, t: UseTranslationResult['t']): string {

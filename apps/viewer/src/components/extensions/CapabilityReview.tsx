@@ -48,6 +48,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { cn } from '@/lib/utils';
 import type { ExtensionInstallSummary } from '@/services/extensions/host.js';
 import { localizeCapabilityRisk, localizeRiskTier } from './localized-capability-risk';
@@ -158,10 +159,12 @@ export function CapabilityReview({
                 {t('extensionsPanels.capabilityReview.signatureVerifiedTitle')}
               </div>
               <div className="text-muted-foreground mt-0.5">
-                {t('extensionsPanels.capabilityReview.signedByLabel', {
-                  fingerprint: `${summary.signature.fingerprint.slice(0, 23)}…`,
-                  date: formatExtensionDate(summary.signature.signedAt, locale),
-                })}
+                {styleInterpolatedValues(t, 'extensionsPanels.capabilityReview.signedByLabel', [[
+                  'fingerprint',
+                  <code key="fingerprint" className="font-mono text-[10px]" title={summary.signature.fingerprint}>
+                    {summary.signature.fingerprint.slice(0, 23)}…
+                  </code>,
+                ]], { date: formatExtensionDate(summary.signature.signedAt, locale) })}
               </div>
             </div>
           </div>

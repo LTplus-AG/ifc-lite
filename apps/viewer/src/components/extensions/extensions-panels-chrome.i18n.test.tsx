@@ -483,10 +483,10 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
         one: '{filtered} sur {total} événement (fr)',
         other: '{filtered} sur {total} événements (fr)',
       },
-      'extensionsPanels.auditLogPanel.versionSuffix': ' · v{version} (fr)',
+      'extensionsPanels.auditLogPanel.metadataVersionDetail': '{date} · v{version} (fr) · {detail}',
       'extensionsPanels.auditLogPanel.capabilityGrants': {
-        one: ' · {count} capacité accordée (fr)',
-        other: ' · {count} capacités accordées (fr)',
+        one: '{count} capacité accordée (fr)',
+        other: '{count} capacités accordées (fr)',
       },
       'extensionsPanels.ideasPanel.suggestionsSummary': {
         one: '{count} suggestion (fr) · {events} événements',
@@ -617,6 +617,32 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(
       document.body.textContent ?? '',
       new RegExp(`${formatExtensionDate(signedAt, 'signature-reordered')} SIGNED 00:11:22:33:44:55:66:77…`),
+    );
+    assert.equal(document.body.querySelector('code[title]')?.getAttribute('title'), fingerprint);
+  });
+
+  it('lets locales reorder complete audit metadata', () => {
+    registerLocale('audit-metadata-reordered', {
+      'extensionsPanels.auditLogPanel.metadataVersionDetail': '{detail} THEN v{version} THEN {date}',
+    } as Catalogue);
+    setLocale('audit-metadata-reordered');
+    const host = new StubExtensionHost();
+    host.audit.append({
+      kind: 'install',
+      extensionId: 'com.example.audit',
+      version: '1.2.3',
+      grantedCapabilities: ['model.read'],
+    });
+    const [event] = host.audit.list();
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <AuditLogPanel />
+      </ExtensionHostContext.Provider>,
+    );
+
+    assert.match(
+      document.body.textContent ?? '',
+      new RegExp(`1 capability grant THEN v1\\.2\\.3 THEN ${formatExtensionDate(event.ts, 'audit-metadata-reordered')}`),
     );
   });
 

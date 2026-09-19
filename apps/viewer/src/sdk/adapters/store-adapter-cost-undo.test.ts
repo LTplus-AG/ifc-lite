@@ -25,7 +25,7 @@ const STEP = [
   'ENDSEC;', 'END-ISO-10303-21;',
 ].join('\n');
 
-async function makeStore(): Promise<{
+async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
   store: StoreApi;
   undoCalls: Array<{ modelId: string; entityId: number; ifcType: string }>;
   relationshipMutationCalls: string[];
@@ -49,6 +49,7 @@ async function makeStore(): Promise<{
       undoCalls.push({ modelId, entityId, ifcType });
     },
     markCostRelationshipMutation: (modelId: string) => { relationshipMutationCalls.push(modelId); },
+    canCollabEdit,
   };
   const store = { getState: () => state, subscribe: () => () => {} } as unknown as StoreApi;
   return { store, undoCalls, relationshipMutationCalls };
@@ -88,5 +89,13 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
     adapter.removeCostEntity('m', value.expressId, { detach: true });
 
     assert.deepEqual(relationshipMutationCalls, ['m', 'm', 'm', 'm', 'm']);
+  });
+
+  it('refuses every cost-authoring call when canCollabEdit() is false (viewer/commenter role in a shared session)', async () => {
+    const { store } = await makeStore(() => false);
+    const adapter = createStoreAdapter(store);
+    assert.throws(() => adapter.addCostItem('m', { Name: 'I' }), /Editing is disabled for your role/);
+    assert.throws(() => adapter.nestCostItems('m', 1, [2]), /Editing is disabled for your role/);
+    assert.throws(() => adapter.removeCostEntity('m', 1), /Editing is disabled for your role/);
   });
 });

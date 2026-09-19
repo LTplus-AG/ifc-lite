@@ -70,7 +70,7 @@ async function session() {
     const reparsed = await parse(new TextDecoder().decode(exported.content));
     return createCostBackend(() => ({ modelId: 'm', store: reparsed })).data();
   };
-  return { store, view, cost, storeCost, exportedGraph };
+  return { store, view, editor, cost, storeCost, exportedGraph };
 }
 
 describe('bim.store cost authoring round-trips through bim.cost and StepExporter (#4857)', () => {
@@ -227,6 +227,18 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(graph.CostItems.some(i => i.ref.expressId === item)).toBe(false);
     expect(graph.Relationships.some(r => r.ref.expressId === declares)).toBe(false);
     expect(graph.Relationships.some(r => r.ref.expressId === assignsToProduct)).toBe(false);
+  });
+
+  it('refuses to author cost entities into an IFC5 model, the same as IFC2X3', async () => {
+    const { store, editor, cost } = await session();
+    // `CostAnchor['schema']` only admits IFC2X3/IFC4/IFC4X3 — a real but
+    // unsupported schema previously got cast straight through, silently
+    // writing entities extractCostOnDemand would then report
+    // UNSUPPORTED_SCHEMA for and never read back.
+    const ifc5Store = { ...store, schemaVersion: 'IFC5' as unknown as typeof store.schemaVersion };
+    const resolution: CostStoreModelResolution = { modelId: 'm', store: ifc5Store, editor, ownerHistoryId: null };
+    const ifc5StoreCost = createCostStoreBackend(() => resolution, cost);
+    expect(() => ifc5StoreCost.addCostItem('m', { Name: 'I' })).toThrow(/schema 'IFC5' is not supported/);
   });
 
   it('refuses to remove a non-cost entity (a wall) through removeCostEntity', async () => {

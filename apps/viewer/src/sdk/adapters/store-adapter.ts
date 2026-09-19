@@ -238,9 +238,21 @@ function withCostMutationTracking(
   methods: ReturnType<typeof createCostStoreBackend>,
   store: StoreApi,
 ): ReturnType<typeof createCostStoreBackend> {
+  // Collab role gate BEFORE the local commit — the same `canCollabEdit()`
+  // check `runInStoreElementBuilder`/`setProperty`/etc. all make before
+  // touching the overlay: without it, a viewer/commenter-role session in a
+  // shared room could create or tombstone cost records purely locally (the
+  // gate exists once here rather than per method precisely so no ninth cost
+  // method can be added later without it).
+  const assertCanEdit = (): void => {
+    if (!store.getState().canCollabEdit()) {
+      throw new Error('Editing is disabled for your role in this shared session');
+    }
+  };
   const wrapCreate = <A extends unknown[]>(
     ifcType: string, fn: (...args: A) => EntityRef,
   ) => (...args: A): EntityRef => {
+    assertCanEdit();
     const ref = fn(...args);
     store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, ifcType);
     return ref;
@@ -249,6 +261,7 @@ function withCostMutationTracking(
   const wrapRelationshipMutation = <A extends [string, ...unknown[]], R>(
     fn: (...args: A) => R,
   ) => (...args: A): R => {
+    assertCanEdit();
     const result = fn(...args);
     store.getState().markCostRelationshipMutation(args[0]);
     return result;

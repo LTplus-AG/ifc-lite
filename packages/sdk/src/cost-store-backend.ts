@@ -43,8 +43,20 @@ export type CostStoreModelResolver = (modelId?: string) => CostStoreModelResolut
 
 function ref(modelId: string, expressId: number): EntityRef { return { modelId, expressId }; }
 
+const SUPPORTED_COST_SCHEMAS: ReadonlySet<string> = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
+
 function anchorOf(resolved: CostStoreModelResolution): CostAnchor {
-  return { ownerHistoryId: resolved.ownerHistoryId, schema: (resolved.store.schemaVersion as CostAnchor['schema']) ?? 'IFC4' };
+  const raw = resolved.store.schemaVersion;
+  // `CostAnchor['schema']` only admits IFC2X3/IFC4/IFC4X3 — casting a real
+  // but unsupported schema (IFC5) straight through that type would silently
+  // let `assertCostSchema` (which only refuses IFC2X3) wave it past, and
+  // every builder would then write entities `extractCostOnDemand` reports as
+  // UNSUPPORTED_SCHEMA and cannot read back. Refuse it here, loudly, the
+  // same way IFC2X3 is refused.
+  if (raw !== undefined && !SUPPORTED_COST_SCHEMAS.has(raw)) {
+    throw new Error(`bim.store cost authoring: schema '${raw}' is not supported; use IFC4 or IFC4X3 (IFC2X3 is refused separately).`);
+  }
+  return { ownerHistoryId: resolved.ownerHistoryId, schema: (raw as CostAnchor['schema']) ?? 'IFC4' };
 }
 
 /**

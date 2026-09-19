@@ -135,7 +135,7 @@ fi
 # touching task hashes. Set VERCEL_NODE_MAX_OLD_SPACE_MB in the project env to
 # override; an explicit --max-old-space-size already in NODE_OPTIONS wins.
 case " ${NODE_OPTIONS:-} " in
-  *--max-old-space-size*)
+  *--max[-_]old[-_]space[-_]size*)
     echo "🧠 Node heap: NODE_OPTIONS already sets --max-old-space-size (${NODE_OPTIONS})"
     ;;
   *)

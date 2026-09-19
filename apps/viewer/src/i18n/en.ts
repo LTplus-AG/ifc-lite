@@ -12,6 +12,7 @@ import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
+import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
@@ -34,6 +35,7 @@ export const en = {
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
   ...chartsEn,
+  ...listsEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,

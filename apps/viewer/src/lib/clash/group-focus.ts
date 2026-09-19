@@ -6,6 +6,7 @@ import { useViewerStore } from '@/store';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 
 interface SelectionRef {
   modelId: string;
@@ -16,7 +17,19 @@ export interface FocusedClashGroup {
   selectedRefs: SelectionRef[];
   aRefs: SelectionRef[];
   bRefs: SelectionRef[];
+  selectedGuids: string[];
+  aGuids: string[];
+  bGuids: string[];
   modelIds: string[];
+}
+
+function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: Iterable<SelectionRef>): string[] {
+  const guids = new Set<string>();
+  for (const ref of refs) {
+    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    if (guid) guids.add(guid);
+  }
+  return [...guids];
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -56,10 +69,14 @@ export function focusClashGroup(
   requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
   // An object on both sides gets one deterministic color, never two.
   for (const key of aRefs.keys()) bRefs.delete(key);
+  const a = [...aRefs.values()], b = [...bRefs.values()];
   return {
     selectedRefs: refs,
-    aRefs: [...aRefs.values()],
-    bRefs: [...bRefs.values()],
+    aRefs: a,
+    bRefs: b,
+    selectedGuids: resolvedGuids(state, refs),
+    aGuids: resolvedGuids(state, a),
+    bGuids: resolvedGuids(state, b),
     modelIds: [...new Set(refs.map(ref => ref.modelId))],
   };
 }

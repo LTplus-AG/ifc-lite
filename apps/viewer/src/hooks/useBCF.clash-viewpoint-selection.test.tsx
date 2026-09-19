@@ -406,20 +406,37 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
       additionalColoredRefs: [{ color: 'FFFF8000', refs: [exactRef] }],
     });
     await Promise.resolve();
-    let viewpoint: BCFViewpoint | null = null;
+    const viewpoints: (BCFViewpoint | null)[] = [];
     await act(async () => {
       useViewerStore.setState({
         models: new Map([['ordinary', model(newGuid)]]) as unknown as ViewerState['models'],
       });
       finishSnapshot();
-      viewpoint = await capture;
+      viewpoints.push(await capture);
     });
+    const viewpoint = viewpoints[0];
 
     assert.deepEqual(viewpoint?.components?.selection?.map((component) => component.ifcGuid), [oldGuid]);
     assert.deepEqual(
       viewpoint?.components?.coloring?.[0]?.components.map((component) => component.ifcGuid),
       [oldGuid],
       'BUG: the old ref was retargeted to a replacement model while snapshot capture awaited the GPU',
+    );
+  });
+
+  it('serializes caller-bound group GUIDs without consulting a replacement model (#4921)', async () => {
+    const boundGuid = 'FOCUSEDREVISION00000001';
+    const viewpoint = await api!.createViewpointFromState({
+      includeSnapshot: false,
+      includeSelection: false,
+      additionalSelectedGuids: [boundGuid],
+      additionalColoredGuids: [{ color: 'FFFF8000', guids: [boundGuid] }],
+    });
+
+    assert.deepEqual(viewpoint?.components?.selection?.map((component) => component.ifcGuid), [boundGuid]);
+    assert.deepEqual(
+      viewpoint?.components?.coloring?.[0]?.components.map((component) => component.ifcGuid),
+      [boundGuid],
     );
   });
 });

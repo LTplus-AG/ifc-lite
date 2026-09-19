@@ -72,12 +72,16 @@ interface CreateViewpointOptions {
    * `<Selection>` at all (#4806).
    */
   additionalSelectedRefs?: ComponentRef[];
+  /** IFC GlobalIds already bound to a validated model revision by the caller. */
+  additionalSelectedGuids?: string[];
   /**
    * Federated entity refs to record as BCF `<Coloring>`, grouped by an ARGB
    * hex colour (e.g. `'FFFF8000'`, matching `BCFColoring.color`). Defaults
    * like `additionalSelectedRefs`, to the focused clash's on-screen tint.
    */
   additionalColoredRefs?: { color: string; refs: ComponentRef[] }[];
+  /** Coloring already bound to a validated model revision by the caller. */
+  additionalColoredGuids?: { color: string; guids: string[] }[];
 }
 interface UseBCFResult {
   /** Create a viewpoint from current viewer state */
@@ -362,12 +366,18 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       }
       selectedRefs.push(...(additionalSelectedRefs ?? []));
       const selectedGuids = resolveUniqueGlobalIds(selectedRefs, resolveCapturedRef);
+      for (const guid of opts.additionalSelectedGuids ?? []) {
+        if (!selectedGuids.includes(guid)) selectedGuids.push(guid);
+      }
       const emittedColoredGuids = new Set<string>();
-      const coloredGuids = additionalColoredRefs
-        ?.map(({ color, refs }) => ({
+      const coloredGuids = [
+        ...(additionalColoredRefs ?? []).map(({ color, refs }) => ({
           color, guids: resolveUniqueGlobalIds(refs, resolveCapturedRef, emittedColoredGuids),
-        }))
-        .filter((entry) => entry.guids.length > 0);
+        })),
+        ...(opts.additionalColoredGuids ?? []).map(({ color, guids }) => ({
+          color, guids: resolveUniqueGlobalIds(guids, (guid) => guid, emittedColoredGuids),
+        })),
+      ].filter((entry) => entry.guids.length > 0);
       // Capture visibility in the same pre-await state as the drawing buffer.
       // GPU completion below can yield long enough for another UI action to
       // mutate the store; mixing that newer state with the older PNG makes a

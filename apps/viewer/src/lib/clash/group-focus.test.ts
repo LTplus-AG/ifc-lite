@@ -41,6 +41,7 @@ describe('manual clash group focus (#4921)', () => {
         ],
         aRefs: [{ modelId: 'model', expressId: 110 }, { modelId: 'model', expressId: 120 }],
         bRefs: [{ modelId: 'model', expressId: 130 }],
+        selectedGuids: [], aGuids: [], bGuids: [],
         modelIds: ['model'],
       },
     );
@@ -70,14 +71,26 @@ describe('manual clash group focus (#4921)', () => {
     second.a.model = 'room:r:m0';
     useViewerStore.setState({
       models: new Map([
-        ['model', { idOffset: 0 }],
-        ['room:r:m0', { idOffset: 0 }],
-      ]) as ViewerState['models'],
+        ['model', {
+          idOffset: 0,
+          ifcDataStore: { entities: { getGlobalId: (id: number) => `MODEL-${id}` } },
+        }],
+        ['room:r:m0', {
+          idOffset: 0,
+          ifcDataStore: { entities: { getGlobalId: (id: number) => `ROOM-${id}` } },
+        }],
+      ]) as unknown as ViewerState['models'],
     });
     const applyFocusMode = mock.fn();
     const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
 
-    assert.deepEqual(focusClashGroup([first, second], resolve, applyFocusMode, 'highlight'), {
+    const focused = focusClashGroup([first, second], resolve, applyFocusMode, 'highlight');
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, ifcDataStore: { entities: { getGlobalId: () => 'REPLACED' } } }],
+      ]) as unknown as ViewerState['models'],
+    });
+    assert.deepEqual(focused, {
       selectedRefs: [
         { modelId: 'model', expressId: 10 },
         { modelId: 'model', expressId: 20 },
@@ -86,6 +99,9 @@ describe('manual clash group focus (#4921)', () => {
       ],
       aRefs: [{ modelId: 'model', expressId: 10 }, { modelId: 'room:r:m0', expressId: 10 }],
       bRefs: [{ modelId: 'model', expressId: 20 }, { modelId: 'model', expressId: 30 }],
+      selectedGuids: ['MODEL-10', 'MODEL-20', 'ROOM-10', 'MODEL-30'],
+      aGuids: ['MODEL-10', 'ROOM-10'],
+      bGuids: ['MODEL-20', 'MODEL-30'],
       modelIds: ['model', 'room:r:m0'],
     });
 
@@ -107,6 +123,7 @@ describe('manual clash group focus (#4921)', () => {
       selectedRefs: [{ modelId: 'model', expressId: 10 }, { modelId: 'model', expressId: 20 }],
       aRefs: [{ modelId: 'model', expressId: 10 }],
       bRefs: [{ modelId: 'model', expressId: 20 }],
+      selectedGuids: [], aGuids: [], bGuids: [],
       modelIds: ['model'],
     });
   });

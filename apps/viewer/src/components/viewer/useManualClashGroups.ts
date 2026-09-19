@@ -168,9 +168,6 @@ export function useManualClashGroups({
         toast.error('None of this group’s objects are available in the loaded models.');
         return;
       }
-      // FRAME-WAIT-ALLOW(#2385): capture only after the group focus has painted.
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
       const topic = createBCFTopic({
         title: group.definition.name,
         description: `${group.members.length} manually grouped clash${group.members.length === 1 ? '' : 'es'}.`,
@@ -178,18 +175,20 @@ export function useManualClashGroups({
         topicType: 'Clash',
         topicStatus: 'Open',
       });
-      const { selectedRefs, aRefs, bRefs } = focused;
+      const header = headerFilesForViewpoints([], topic.creationDate, focused.modelIds);
+      // FRAME-WAIT-ALLOW(#2385): capture only after the group focus has painted.
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
       const viewpoint = await createViewpointFromState({
         includeSnapshot: true,
-        includeSelection: true,
+        includeSelection: false,
         includeHidden: true,
-        additionalSelectedRefs: selectedRefs,
-        additionalColoredRefs: [
-          { color: clashColorToBcfArgb(CLASH_COLOR_A), refs: aRefs },
-          { color: clashColorToBcfArgb(CLASH_COLOR_B), refs: bRefs },
-        ].filter((entry) => entry.refs.length > 0),
+        additionalSelectedGuids: focused.selectedGuids,
+        additionalColoredGuids: [
+          { color: clashColorToBcfArgb(CLASH_COLOR_A), guids: focused.aGuids },
+          { color: clashColorToBcfArgb(CLASH_COLOR_B), guids: focused.bGuids },
+        ].filter((entry) => entry.guids.length > 0),
       });
-      const header = headerFilesForViewpoints(viewpoint ? [viewpoint] : [], topic.creationDate, focused.modelIds);
       if (header.length > 0) topic.header = header;
       addTopic(topic);
       if (viewpoint) addViewpoint(topic.guid, viewpoint);

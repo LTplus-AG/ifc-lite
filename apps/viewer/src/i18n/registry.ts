@@ -108,3 +108,12 @@ export function resolve(key: TranslationKey, params: TranslationParameters = {})
   const template = typeof resolved === 'string' ? resolved : pluralForm(resolved, params, value !== undefined ? activeLocale : 'en');
   return interpolate(template, params);
 }
+
+/** Resolve directly from the canonical English catalogue, bypassing an active
+ * partial locale. Use when the caller has already determined that a compound
+ * message must fall back as one English unit rather than key-by-key. */
+export function resolveEnglish(key: TranslationKey, params: TranslationParameters = {}): string {
+  const value = en[key];
+  const template = typeof value === 'string' ? value : pluralForm(value, params, 'en');
+  return interpolate(template, params);
+}

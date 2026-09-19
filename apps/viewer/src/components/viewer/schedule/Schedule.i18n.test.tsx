@@ -23,7 +23,7 @@ import { advance, cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { PluralTranslation, TranslationValue } from '@/i18n';
 import { en } from '@/i18n/en';
-import type { scheduleEn as ScheduleEnType } from '@/i18n/catalogues/schedule.en';
+import { scheduleEn } from '@/i18n/catalogues/schedule.en';
 import { resolve } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import type { IfcDataStore, ScheduleTaskInfo, WorkScheduleInfo } from '@ifc-lite/parser';
@@ -40,23 +40,10 @@ import { GenerateScheduleDialog } from './GenerateScheduleDialog.js';
 import { ScheduleSummaryLine } from './ScheduleSummaryLine.js';
 import type { FlattenedTask } from './schedule-utils.js';
 
-// Guarded dynamic import (#4918 revert-oracle): a static `import { scheduleEn }
-// from '...'` would fail this file's whole LOAD once `check-test-revert-oracle.mjs`
-// reverts the production hunks (a brand-new module reverts to a deletion),
-// which the oracle reports as INCONCLUSIVE rather than a red assertion. A
-// guarded dynamic import turns a missing catalogue into a clean
-// `describe.skip` instead — the real coverage for a revert lives in the
-// pre-existing GanttEmptyState.test.ts / GanttPanel.work-plan.test.tsx /
-// GanttWorkPlanSummary.test.tsx, none of which import this catalogue.
-let scheduleEn: typeof ScheduleEnType | undefined;
-try {
-  ({ scheduleEn } = await import('@/i18n/catalogues/schedule.en'));
-} catch (error) {
-  if (error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND') scheduleEn = undefined;
-  else throw error;
-}
-const HAS_CATALOGUE = scheduleEn !== undefined;
-const CATALOGUE: typeof ScheduleEnType = scheduleEn ?? ({} as typeof ScheduleEnType);
+// Static import is deliberate: a missing catalogue or one with a broken import
+// must fail this test file's load instead of turning localization coverage into
+// skipped green suites.
+const CATALOGUE = scheduleEn;
 
 type ScheduleKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as ScheduleKey[];
@@ -206,7 +193,7 @@ afterEach(() => {
   setLocale('en');
 });
 
-describe('GanttDragTooltip localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('GanttDragTooltip localization (#4918)', () => {
   it('translates the drag readout, including interpolated start/finish/duration', () => {
     const container = render(
       <GanttDragTooltip
@@ -255,7 +242,7 @@ describe('GanttDragTooltip localization (#4918)', { skip: !HAS_CATALOGUE && 'sch
   });
 });
 
-describe('GanttWorkPlanSummary localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('GanttWorkPlanSummary localization (#4918)', () => {
   function plan(globalId: string, name: string, childScheduleGlobalIds: string[]): WorkScheduleInfo {
     return { expressId: 0, globalId, kind: 'WorkPlan', name, taskGlobalIds: [], childScheduleGlobalIds };
   }
@@ -302,7 +289,7 @@ describe('GanttWorkPlanSummary localization (#4918)', { skip: !HAS_CATALOGUE && 
   });
 });
 
-describe('GanttTaskTree localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('GanttTaskTree localization (#4918)', () => {
   function task(globalId: string, name: string, calendarGlobalIds?: string[]): ScheduleTaskInfo {
     return { expressId: 0, globalId, name, isMilestone: false, calendarGlobalIds, childGlobalIds: [], productExpressIds: [], productGlobalIds: [], controllingScheduleGlobalIds: [] };
   }
@@ -345,7 +332,7 @@ describe('GanttTaskTree localization (#4918)', { skip: !HAS_CATALOGUE && 'schedu
   });
 });
 
-describe('HeightStrategyPanel localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('HeightStrategyPanel localization (#4918)', () => {
   function renderPanel(elementZSubgroup: 'none' | 'class' | 'type' | 'name') {
     return render(
       <HeightStrategyPanel
@@ -386,7 +373,7 @@ describe('HeightStrategyPanel localization (#4918)', { skip: !HAS_CATALOGUE && '
   }
 });
 
-describe('GenerateAdvancedPanel localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('GenerateAdvancedPanel localization (#4918)', () => {
   function renderPanel(strategy: 'IfcElement' | 'IfcBuildingStorey') {
     return render(
       <GenerateAdvancedPanel
@@ -428,7 +415,7 @@ describe('GenerateAdvancedPanel localization (#4918)', { skip: !HAS_CATALOGUE &&
   });
 });
 
-describe('GanttEmptyState localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('GanttEmptyState localization (#4918)', () => {
   it('translates the "load a model" and helper-text states', () => {
     const container = render(
       <GanttEmptyState loading={false} hasModel={false} canGenerate onImport={() => {}} onClose={() => {}} />,
@@ -518,7 +505,7 @@ describe('GanttEmptyState localization (#4918)', { skip: !HAS_CATALOGUE && 'sche
   });
 });
 
-describe('AnimationSettingsPopover localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('AnimationSettingsPopover localization (#4918)', () => {
   it('formats the look-ahead value with the active locale numerals', () => {
     const settings = useViewerStore.getState().animationSettings;
     useViewerStore.setState({ animationSettings: { ...settings, preparationDays: 12, showPreparationGhost: true } });
@@ -585,7 +572,7 @@ describe('AnimationSettingsPopover localization (#4918)', { skip: !HAS_CATALOGUE
   });
 });
 
-describe('GanttToolbar localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('GanttToolbar localization (#4918)', () => {
   function makeScheduleData() {
     const tasks: ScheduleTaskInfo[] = [
       { expressId: 5, globalId: 't1', name: 'Task 1', isMilestone: false, childGlobalIds: [], productExpressIds: [], productGlobalIds: [], controllingScheduleGlobalIds: [] },
@@ -707,9 +694,21 @@ describe('ScheduleSummaryLine localization (#4918)', () => {
     const container = render(<ScheduleSummaryLine groupCount={21} productCount={2} date="2030-01-02" />);
     assert.match(container.textContent ?? '', /^21 tasks · 2 products · finishes/);
   });
+
+  it('cannot let a different partial-locale key claim the English group fallback', () => {
+    registerLocale('ru', {
+      'schedule.generateDialog.summaryLineGroupsOther': {
+        one: 'НЕВЕРНО {groups} · {products} · {date}',
+        other: 'НЕВЕРНО {groups} · {products} · {date}',
+      },
+    });
+    act(() => setLocale('ru'));
+    const container = render(<ScheduleSummaryLine groupCount={21} productCount={2} date="2030-01-02" />);
+    assert.match(container.textContent ?? '', /^21 tasks · 2 products · finishes/);
+  });
 });
 
-describe('GenerateScheduleDialog localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('GenerateScheduleDialog localization (#4918)', () => {
   function buildMockStore(): IfcDataStore {
     const entities = new Map<number, { name: string; globalId: string }>([
       [100, { name: 'Ground', globalId: 'storey-0000' }],
@@ -799,7 +798,7 @@ describe('GenerateScheduleDialog localization (#4918)', { skip: !HAS_CATALOGUE &
   });
 });
 
-describe('schedule.en interpolation and plural forms', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('schedule.en interpolation and plural forms', () => {
   it('interpolates every {param} key with the substituted value visible', () => {
     registerLocale('interp-pseudo', PSEUDO);
     act(() => setLocale('interp-pseudo'));
@@ -829,7 +828,7 @@ describe('schedule.en interpolation and plural forms', { skip: !HAS_CATALOGUE &&
   });
 });
 
-describe('schedule.en catalogue coverage (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('schedule.en catalogue coverage (#4918)', () => {
   it('accounts for every static key across the suite above or a documented reason', () => {
     const notRenderedKeys = new Set(NOT_RENDERED.map(([key]) => key));
     const unaccounted = STATIC_KEYS.filter(key => !covered.has(key) && !notRenderedKeys.has(key));

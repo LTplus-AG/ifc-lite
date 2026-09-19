@@ -8,6 +8,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
+import { Toaster } from '@/components/ui/toast.js';
 import { registerLocale, setLocale } from '@/i18n';
 import type { DocumentSpec } from '@/lib/document/types';
 import { DocumentMenu } from './DocumentMenu.js';
@@ -47,5 +48,22 @@ describe('DocumentMenu localization (#4918)', () => {
     assert.match(menuText, /Duplizieren/);
     assert.match(menuText, /Delete/, 'an untranslated key falls back to its English catalogue value');
     assert.doesNotMatch(menuText, /Rename|Duplicate/, 'translated actions do not leak their English source copy');
+  });
+
+  it('wraps an import parser error in localized copy instead of exposing only English', async () => {
+    registerLocale('document-menu-error-test', {
+      'documentMenu.importFailedWithReason': 'Import fehlgeschlagen: {reason}',
+    });
+    setLocale('document-menu-error-test');
+    const container = render(<><DocumentMenu document={DOCUMENT} onUpsert={() => {}} onDelete={() => {}} onActivate={() => {}} /><Toaster /></>);
+    const input = container.querySelector<HTMLInputElement>('[data-document-import]');
+    assert.ok(input);
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['not json'], 'broken.json', { type: 'application/json' })] });
+    await act(async () => {
+      input.dispatchEvent(new window.Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    assert.match(container.textContent ?? '', /Import fehlgeschlagen:/);
+    assert.doesNotMatch(container.textContent ?? '', /^Unexpected token/);
   });
 });

@@ -9,6 +9,7 @@ export const documentMenuEn = {
   'documentMenu.copySuffix': '{name} (copy)',
   'documentMenu.imported': 'Imported document "{name}"',
   'documentMenu.importFailed': 'Failed to import the document',
+  'documentMenu.importFailedWithReason': 'Failed to import the document: {reason}',
   'documentMenu.actions': 'Document actions',
   'documentMenu.actionsTitle': 'Rename, duplicate, delete, export or import a document',
   'documentMenu.rename': 'Rename',

@@ -46,7 +46,9 @@ export function DocumentMenu({ document, onUpsert, onDelete, onActivate }: Docum
       onActivate(imported.id);
       toast.success(t('documentMenu.imported', { name: imported.name }));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('documentMenu.importFailed'));
+      toast.error(err instanceof Error
+        ? t('documentMenu.importFailedWithReason', { reason: err.message })
+        : t('documentMenu.importFailed'));
     }
   };
 

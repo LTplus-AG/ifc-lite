@@ -331,7 +331,7 @@ export interface CollabSlice {
     entityId: number,
     ifcType: string,
     guid: string | null,
-    mesh: MeshData | null,
+    mesh: MeshData | null, initialAttributes?: Record<string, unknown>,
   ) => void;
   /**
    * Mirror a geometry-shape change (resize) by replacing the entity's room
@@ -1206,7 +1206,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     placementAppliedYaw?.delete(globalId);
   },
 
-  mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh) => {
+  mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh, initialAttributes) => {
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
@@ -1227,7 +1227,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     session.transact(() => {
       api.createEntity(session.doc, path, {
         ifcClass,
-        attributes: { 'bsi::ifc::class': { code: ifcClass } },
+        attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
       });
     });
     // The mesh blob is baked at the element's world position → identity baseline

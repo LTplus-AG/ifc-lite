@@ -10,7 +10,12 @@
  */
 
 import { StoreEditor } from '@ifc-lite/mutations';
-import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+import {
+  getAttributeNamesAcrossSchemas,
+  getSchemaRegistryForVersion,
+  type IfcDataStore,
+  type SchemaVersionWithRegistry,
+} from '@ifc-lite/parser';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -56,6 +61,33 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
+  const createdGlobalIds = new WeakMap<IfcDataStore, Set<string>>();
+
+  function attributeNames(dataStore: IfcDataStore, type: string): string[] {
+    if (dataStore.schemaVersion === 'IFC5') return getAttributeNamesAcrossSchemas(type);
+    const registry = getSchemaRegistryForVersion(dataStore.schemaVersion as SchemaVersionWithRegistry);
+    const upper = type.toUpperCase();
+    const entity = Object.values(registry.entities).find(candidate => candidate.name.toUpperCase() === upper);
+    return entity?.allAttributes?.map(attribute => attribute.name) ?? getAttributeNamesAcrossSchemas(type);
+  }
+
+  function toRoomValue(value: unknown): unknown {
+    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return value;
+    }
+    return Array.isArray(value) ? JSON.stringify(value) : String(value);
+  }
+
+  function initialRoomAttributes(names: string[], values: unknown[]): Record<string, unknown> {
+    const attributes: Record<string, unknown> = {};
+    values.forEach((value, index) => {
+      const name = names[index];
+      if (name && name !== 'GlobalId' && value !== undefined) {
+        attributes[`bsi::ifc::prop::${name}`] = toRoomValue(value);
+      }
+    });
+    return attributes;
+  }
 
   function resolveDataStore(modelId: string) {
     const state = store.getState();
@@ -84,19 +116,27 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }
   }
 
-  function mirrorCreatedEntity(modelId: string, editor: StoreEditor, expressId: number): void {
+  function mirrorCreatedEntity(
+    modelId: string,
+    editor: StoreEditor,
+    expressId: number,
+    dataStore: IfcDataStore,
+  ): void {
     const entity = editor.getNewEntity(expressId);
     if (!entity) return;
-    const names = getAttributeNamesAcrossSchemas(entity.type);
+    const names = attributeNames(dataStore, entity.type);
     const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
       ? entity.attributes[0]
       : `ifc-lite-store-${crypto.randomUUID()}`;
     const state = store.getState();
-    state.mirrorEntityCreate(modelId, expressId, entity.type, guid, null);
-    entity.attributes.forEach((value, index) => {
-      const name = names[index];
-      if (name) state.mirrorAttributeEdit(modelId, expressId, name, value);
-    });
+    state.mirrorEntityCreate(
+      modelId,
+      expressId,
+      entity.type,
+      guid,
+      null,
+      initialRoomAttributes(names, entity.attributes),
+    );
   }
 
   return {
@@ -107,8 +147,22 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       if (!editor) {
         throw new Error(`bim.store.addEntity: no model loaded for id "${modelId}"`);
       }
+      const dataStore = resolveDataStore(modelId);
+      if (!dataStore) {
+        throw new Error(`bim.store.addEntity: no model loaded for id "${modelId}"`);
+      }
+      const names = attributeNames(dataStore, def.type);
+      const globalId = names[0] === 'GlobalId' && typeof def.attributes[0] === 'string'
+        ? def.attributes[0]
+        : null;
+      const claimed = createdGlobalIds.get(dataStore) ?? new Set<string>();
+      createdGlobalIds.set(dataStore, claimed);
+      if (globalId && (dataStore.entities.getExpressIdByGlobalId(globalId) >= 0 || claimed.has(globalId))) {
+        throw new Error(`bim.store.addEntity: GlobalId "${globalId}" already exists in model "${modelId}"`);
+      }
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-      mirrorCreatedEntity(modelId, editor, ref.expressId);
+      if (globalId) claimed.add(globalId);
+      mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
       return { modelId: normalizedId, expressId: ref.expressId };
     },
     removeEntity(ref: EntityRef): boolean {
@@ -129,8 +183,15 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const dataStore = resolveDataStore(ref.modelId);
       const type = editor.getNewEntity(ref.expressId)?.type
         ?? dataStore?.entities.getTypeName(ref.expressId);
-      const name = type ? getAttributeNamesAcrossSchemas(type)[index] : undefined;
-      if (name) store.getState().mirrorAttributeEdit(ref.modelId, ref.expressId, name, value);
+      const name = type && dataStore ? attributeNames(dataStore, type)[index] : undefined;
+      if (name && value !== undefined) {
+        store.getState().mirrorAttributeEdit(
+          ref.modelId,
+          ref.expressId,
+          `bsi::ifc::prop::${name}`,
+          value,
+        );
+      }
     },
     addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
       const editor = getEditor(modelId);

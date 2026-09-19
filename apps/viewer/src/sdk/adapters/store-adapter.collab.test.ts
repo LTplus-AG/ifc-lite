@@ -12,6 +12,7 @@ import type { StoreApi } from './types.js';
 
 const MODEL = 'model';
 let dataStore: IfcDataStore;
+let ifc2x3Store: IfcDataStore;
 
 before(async () => {
   const step = [
@@ -24,15 +25,18 @@ before(async () => {
   ].join('\n');
   const bytes = new TextEncoder().encode(step);
   dataStore = await new IfcParser().parseColumnar(bytes.slice().buffer);
+  const ifc2x3 = step.replace("FILE_SCHEMA(('IFC4'));", "FILE_SCHEMA(('IFC2X3'));");
+  const ifc2x3Bytes = new TextEncoder().encode(ifc2x3);
+  ifc2x3Store = await new IfcParser().parseColumnar(ifc2x3Bytes.slice().buffer);
 });
 
 type MirrorCall = { kind: 'create' | 'remove' | 'attribute'; args: unknown[] };
 
-function fixture(canEdit = true) {
-  const view = new MutablePropertyView(dataStore.properties, MODEL);
+function fixture(canEdit = true, modelStore = dataStore) {
+  const view = new MutablePropertyView(modelStore.properties, MODEL);
   const calls: MirrorCall[] = [];
   const state = {
-    models: new Map([[MODEL, { id: MODEL, ifcDataStore: dataStore }]]),
+    models: new Map([[MODEL, { id: MODEL, ifcDataStore: modelStore }]]),
     getMutationView: (modelId: string) => modelId === MODEL ? view : null,
     canCollabEdit: () => canEdit,
     mirrorEntityCreate: (...args: unknown[]) => calls.push({ kind: 'create', args }),
@@ -56,10 +60,14 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.deepEqual(calls.find(call => call.kind === 'create')?.args.slice(0, 4), [
       MODEL, created.expressId, 'IFCWALL', '0created000000000000000',
     ]);
+    assert.equal(
+      (calls.find(call => call.kind === 'create')?.args[5] as Record<string, unknown>)['bsi::ifc::prop::Name'],
+      'Created',
+    );
     assert.ok(calls.some(call => call.kind === 'attribute'
-      && call.args[1] === created.expressId && call.args[2] === 'Name' && call.args[3] === 'Created'));
-    assert.ok(calls.some(call => call.kind === 'attribute'
-      && call.args[1] === created.expressId && call.args[2] === 'Name' && call.args[3] === 'Renamed'));
+      && call.args[1] === created.expressId
+      && call.args[2] === 'bsi::ifc::prop::Name'
+      && call.args[3] === 'Renamed'));
     assert.deepEqual(calls.at(-1), { kind: 'remove', args: [MODEL, created.expressId] });
   });
 
@@ -81,8 +89,45 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.match(String(roomKey), /^ifc-lite-store-[0-9a-f-]{36}$/);
     assert.match(String(peerRoomKey), /^ifc-lite-store-[0-9a-f-]{36}$/);
     assert.notEqual(roomKey, peerRoomKey);
-    assert.ok(calls.some(call => call.kind === 'attribute'
-      && call.args[1] === created.expressId && call.args[2] === 'AppliedValue' && call.args[3] === 12.5));
+    assert.equal(
+      (calls[0]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::AppliedValue'],
+      12.5,
+    );
+  });
+
+  it('rejects an existing or locally claimed GlobalId before mutating the overlay', () => {
+    const { adapter, calls, view } = fixture();
+    const attributes = ['0created000000000000000', null, 'Created', null, null, null, null, null, '.NOTDEFINED.'];
+    adapter.addEntity(MODEL, { type: 'IFCWALL', attributes });
+    const count = view.getMutations().length;
+
+    assert.throws(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes }), /already exists/);
+    assert.throws(() => adapter.addEntity(MODEL, {
+      type: 'IFCWALL',
+      attributes: ['0wall000000000000000000', null, 'Duplicate source', null, null, null, null, null, '.NOTDEFINED.'],
+    }), /already exists/);
+    assert.equal(view.getMutations().length, count);
+    assert.equal(calls.filter(call => call.kind === 'create').length, 1);
+  });
+
+  it('uses IFC2X3 positional names and does not mirror undefined as a string', () => {
+    const { adapter, calls } = fixture(true, ifc2x3Store);
+    const created = adapter.addEntity(MODEL, {
+      type: 'IFCAPPROVALRELATIONSHIP',
+      attributes: ['#1', '#2'],
+    });
+
+    assert.deepEqual(calls[0]?.args[5], {
+      'bsi::ifc::prop::RelatedApproval': '#1',
+      'bsi::ifc::prop::RelatingApproval': '#2',
+    });
+    adapter.setPositionalAttribute(created, 0, '#2');
+    adapter.setPositionalAttribute(created, 0, undefined);
+    const edits = calls.filter(call => call.kind === 'attribute');
+    assert.deepEqual(edits, [{
+      kind: 'attribute',
+      args: [MODEL, created.expressId, 'bsi::ifc::prop::RelatedApproval', '#2'],
+    }]);
   });
 
   it('rejects read-only room writes before touching the local overlay', () => {

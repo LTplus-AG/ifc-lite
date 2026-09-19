@@ -432,6 +432,38 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.doesNotMatch(container.textContent ?? '', /1234\.5 m/);
   });
 
+  catalogueIt('formats spatial and schedule values with the active locale', () => {
+    registerLocale('ar-EG', {});
+    act(() => setLocale('ar-EG'));
+    const tasks = [1, 2].map((id) => ({
+      expressId: id,
+      globalId: `task${id}`,
+      name: `Task ${id}`,
+      isMilestone: false,
+      childGlobalIds: [],
+      productGlobalIds: ['g1'],
+      productExpressIds: [1],
+      controllingScheduleGlobalIds: [],
+      taskTime: { scheduleStart: '2024-01-02T00:00:00Z', scheduleFinish: '2024-02-03T00:00:00Z' },
+    }));
+    const container = render(
+      <div>
+        <SpatialLocationBadge spatialInfo={{ storeyName: 'Level 1', elevation: 1234.5, height: 12.5 }} />
+        <ScheduleCard
+          scheduleData={{ tasks, workSchedules: [], sequences: [], hasSchedule: true }}
+          selectedExpressId={1}
+          selectedGlobalId="g1"
+          isGenerated={false}
+        />
+      </div>,
+    );
+    const text = container.textContent ?? '';
+    assert.match(text, /١٬٢٣٤٫٥٠/);
+    assert.match(text, /٢ tasks/);
+    assert.match(text, /٢ يناير ٢٠٢٤/);
+    assert.doesNotMatch(text, /1234\.50|Jan 2, 2024/);
+  });
+
   catalogueIt('resolves a retained EPSG search error in the current locale', () => {
     registerLocale('epsg-a', { 'properties.epsgLookup.noResults': '[no results A]' });
     registerLocale('epsg-b', { 'properties.epsgLookup.noResults': '[no results B]' });

@@ -843,7 +843,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                     <strong>{t('properties.georef.scaleAttributeInconsistent', { attribute: scaleMismatch.attribute })}</strong>{' '}
                     {t('properties.georef.scaleCompensatedNote', {
                       attribute: scaleMismatch.attribute,
-                      authoredValue: scaleMismatch.authoredValue,
+                      authoredValue: formatLocaleNumber(locale, scaleMismatch.authoredValue, { maximumSignificantDigits: 4 }),
                       expectedValue: formatLocaleNumber(locale, scaleMismatch.expectedValue, { maximumSignificantDigits: 4 }),
                     })}{' '}
                     {scaleMismatch.compensated

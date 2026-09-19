@@ -333,7 +333,7 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
     );
 
     assert.ok(container.textContent?.includes('[-1,25]'), 'elevation badge uses the active locale');
-    assert.equal((container.textContent?.match(/1\.234/g) ?? []).length, 2, 'ordinary and model-header counts use the active locale');
+    assert.equal((container.textContent?.match(/1\.234/g) ?? []).length, 3, 'ordinary, model-header, and tag-group counts use the active locale');
     const groupRow = container.querySelector('[data-model-tag-group]');
     const groupCount = groupRow?.querySelector('[title]');
     assert.equal(groupCount?.getAttribute('title'), '[1.234 many]', 'member count formats and pluralizes with the active locale');

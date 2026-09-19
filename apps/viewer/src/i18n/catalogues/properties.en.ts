@@ -188,7 +188,7 @@ export const propertiesEn = {
   'properties.schedule.heading': 'Construction Schedule',
   'properties.schedule.pendingTooltip': 'Pending schedule edits — included on IFC export',
   'properties.schedule.pendingBadge': 'Pending',
-  'properties.schedule.taskCount': { one: '{count} task', other: '{count} tasks' },
+  'properties.schedule.taskCount': { one: '{countDisplay} task', other: '{countDisplay} tasks' },
   'properties.schedule.generatedLocallyNote': 'Generated locally — will be spliced into the next IFC export.',
   'properties.schedule.start': 'Start',
   'properties.schedule.finish': 'Finish',

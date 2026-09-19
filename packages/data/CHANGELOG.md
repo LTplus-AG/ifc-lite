@@ -1,5 +1,17 @@
 # @ifc-lite/data
 
+## 5.0.0
+
+### Major Changes
+
+- [#4958](https://github.com/LTplus-AG/ifc-lite/pull/4958) [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157) Thanks [@louistrue](https://github.com/louistrue)! - `EntityTable` gains `getNameOrUndefined(expressId)`, a display-neutral sibling of `getName` that returns `undefined` for an entity whose `Name` attribute is genuinely absent (STEP `$`) instead of folding it into `''` the way `getName` still does for every existing display caller. **Major, not minor**: `getNameOrUndefined` is a REQUIRED interface member (not optional), so any downstream implementation of `EntityTable` (a typed mock, a third-party table) that doesn't already provide it fails to compile — a source-breaking change, not an additive one. `EntityTableBuilder.add`'s `name` parameter now accepts `string | undefined` so a builder can record that distinction in the first place, and the columnar parser (`@ifc-lite/parser`) now passes a real `undefined` through for an absent `Name` instead of coercing it to `''` before the entity table ever sees it ([#4930](https://github.com/LTplus-AG/ifc-lite/issues/4930)).
+
+### Minor Changes
+
+- [#4957](https://github.com/LTplus-AG/ifc-lite/pull/4957) [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77) Thanks [@louistrue](https://github.com/louistrue)! - `EntityTable.getTypeName()` returns the literal string `'Unknown'`, not `null`/`undefined`, for rows it can't resolve, so `getTypeName(id) || fallback` silently kept `'Unknown'` instead of falling back — breaking element duplication on imported models ([#4933](https://github.com/LTplus-AG/ifc-lite/issues/4933)) among other call sites. Added `resolvedTypeName()` to `@ifc-lite/data` (returns `undefined` for the sentinel) and switched every affected lookup in `create`/`parser`/`cli`/`mcp` to use it.
+
+- [#4991](https://github.com/LTplus-AG/ifc-lite/pull/4991) [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c) Thanks [@louistrue](https://github.com/louistrue)! - Add distinct relationship graph edge types for IFC structural activity, member, eccentricity, and IFC2X3 structural-element connections.
+
 ## 4.5.0
 
 ### Minor Changes

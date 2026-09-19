@@ -1,5 +1,18 @@
 # @ifc-lite/export
 
+## 4.4.1
+
+### Patch Changes
+
+- [#4949](https://github.com/LTplus-AG/ifc-lite/pull/4949) [`9c41278`](https://github.com/LTplus-AG/ifc-lite/commit/9c412786c4fa21f4ace497e7408bad7d742bdf24) Thanks [@louistrue](https://github.com/louistrue)! - A pending edit that set a STRING-typed root attribute (`Name`, `Description`, and other `IfcLabel`/`IfcText` slots) to `''` used to export as `$`, collapsing an explicit empty string to absent. `serializeStringSlot` now keeps STEP's distinction between `''` (present, empty) and `$` (not set): only the literal `$` (or `*`, the derived-value marker) still serializes as the null marker, matching IfcOpenShell and the read-model fix in [#4881](https://github.com/LTplus-AG/ifc-lite/issues/4881)/[#4909](https://github.com/LTplus-AG/ifc-lite/issues/4909) ([#4931](https://github.com/LTplus-AG/ifc-lite/issues/4931)).
+- Updated dependencies [[`e2ca87d`](https://github.com/LTplus-AG/ifc-lite/commit/e2ca87d9b8f25be2ffeabd5843cbadc4154471c0), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`794986e`](https://github.com/LTplus-AG/ifc-lite/commit/794986e8fa5acec057429b49302274ac8046eefe), [`65ea107`](https://github.com/LTplus-AG/ifc-lite/commit/65ea107b83e3d543b410721c74195562ca50bcca), [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`ec114fe`](https://github.com/LTplus-AG/ifc-lite/commit/ec114fefabfd1b3a23d6a25545610652db6c5342), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/geometry@7.4.0
+  - @ifc-lite/data@5.0.0
+  - @ifc-lite/parser@8.0.0
+  - @ifc-lite/mutations@2.5.0
+  - @ifc-lite/codegen@1.17.1
+  - @ifc-lite/ifcx@4.1.2
+
 ## 4.4.0
 
 ### Minor Changes

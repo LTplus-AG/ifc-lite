@@ -1,5 +1,19 @@
 # @ifc-lite/renderer
 
+## 3.2.0
+
+### Minor Changes
+
+- [#4978](https://github.com/LTplus-AG/ifc-lite/pull/4978) [`1e2e444`](https://github.com/LTplus-AG/ifc-lite/commit/1e2e444a4991b16a448355ac6b494da42339ffd0) Thanks [@louistrue](https://github.com/louistrue)! - Every GPU upload path outside `render()`'s own device-loss containment — `Renderer.addMeshes`, `loadGeometry`, `addMesh`, `ensureMeshResources`, `createMeshFromData` — now gates on `isDeviceLost()` through one guarded helper before touching the device, and classifies a mapped-`createBuffer` `RangeError` caught mid-call as device-loss fallout (not host memory pressure) when the loss latched during that call; a synchronous Safari-style `DOMException` caught this way now also latches `isDeviceLost()` itself, the same as a throw inside `render()` already does. **Minor, not patch**: `addMeshes`, `loadGeometry`, `addMesh`, `ensureMeshResources` and `createMeshFromData` now return the newly-exported `GpuUploadOutcome<void>` instead of `void` — source-compatible for every caller that ignored the return value, but a real return-type change for any caller that typed against `void`. The viewer's `setSpaceOverlayMeshes` (Space Sketch draft ghosts) is now routed through the same containment the streaming path already had, and a `createBuffer failed` load error gets its own `gpu_alloc_failed` bucket (tagged `device_lost_at_time` when known) instead of being folded into `out_of_memory` ([#4885](https://github.com/LTplus-AG/ifc-lite/issues/4885)).
+
+- [#4961](https://github.com/LTplus-AG/ifc-lite/pull/4961) [`bd1e3f1`](https://github.com/LTplus-AG/ifc-lite/commit/bd1e3f109c403e0a072f8c5cb561f8bab54cb1d7) Thanks [@louistrue](https://github.com/louistrue)! - Add `Renderer.setModelRotation(modelIndex, angle, pivot)` / `Scene.setModelRotation`, the GPU-instanced counterpart to `setModelTranslation`: it turns a model's instanced occurrences about a render-frame pivot on the vertical (+Y) axis, from a pristine per-instance baseline, so a whole-model rotation can reach instanced geometry ([#4890](https://github.com/LTplus-AG/ifc-lite/issues/4890)). Flat/authored/batched geometry is unaffected — that half is rotated by the caller's own bake. Part of [#4890](https://github.com/LTplus-AG/ifc-lite/issues/4890); the viewer wiring that calls this from the reposition panel ships separately.
+
+### Patch Changes
+
+- [#4969](https://github.com/LTplus-AG/ifc-lite/pull/4969) [`6e28171`](https://github.com/LTplus-AG/ifc-lite/commit/6e28171ea15c1b9863e617b729921a38ac6c55d9) Thanks [@louistrue](https://github.com/louistrue)! - `Renderer.setModelRotation` now returns a `boolean` (`Scene.setModelRotation`'s own "did anything change" result) and skips its cache clear / placement-bounds refresh when the call was a no-op — an unchanged angle/pivot, or a translation-only viewer update that pushes every model's UNCHANGED heading on every placement edit ([#4890](https://github.com/LTplus-AG/ifc-lite/issues/4890) review). No caller had to change: the return value is additive.
+- Updated dependencies [[`e2ca87d`](https://github.com/LTplus-AG/ifc-lite/commit/e2ca87d9b8f25be2ffeabd5843cbadc4154471c0)]:
+  - @ifc-lite/geometry@7.4.0
+
 ## 3.1.0
 
 ### Minor Changes

@@ -43,6 +43,13 @@ fn surface_member(same_sense: bool, with_hole: bool) -> String {
     )
 }
 
+fn bspline_surface_member_with_hole() -> String {
+    surface_member(true, true).replace(
+        "#14=IFCPLANE(#13);",
+        "#14=IFCBSPLINESURFACEWITHKNOTS(1,1,((#1,#2),(#4,#3)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);",
+    )
+}
+
 fn signed_xy_area(mesh: &crate::Mesh) -> f64 {
     mesh.indices
         .chunks_exact(3)
@@ -174,6 +181,21 @@ fn structural_surface_polyloop_preserves_hole_and_same_sense() {
     assert!(
         (signed_xy_area(&reversed_mesh) + 96.0).abs() < 1e-5,
         "IfcFaceSurface.SameSense=.F. must reverse the emitted winding"
+    );
+}
+
+#[test]
+fn structural_surface_rejects_non_planar_faces_until_bounds_are_clipped() {
+    let source = bspline_surface_member_with_hole();
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(18).unwrap();
+    let mesh = GeometryRouter::new()
+        .process_element(&entity, &mut decoder)
+        .unwrap();
+
+    assert!(
+        mesh.is_empty(),
+        "an unclipped B-spline domain must not fill or extend past IfcFaceSurface bounds"
     );
 }
 

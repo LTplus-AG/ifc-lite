@@ -2,10 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Standalone `IfcFaceSurface` processing for structural surface topology.
+//! Standalone planar `IfcFaceSurface` processing for structural surface topology.
 
 use crate::router::GeometryProcessor;
-use crate::{Mesh, Result, TessellationQuality};
+use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use super::advanced_face::process_advanced_face;
@@ -32,6 +32,21 @@ impl GeometryProcessor for IfcFaceSurfaceProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
+        let surface_attribute = entity
+            .get(1)
+            .ok_or_else(|| Error::geometry("FaceSurface missing FaceSurface"))?;
+        let surface = decoder
+            .resolve_ref(surface_attribute)?
+            .ok_or_else(|| Error::geometry("Failed to resolve FaceSurface"))?;
+        if surface.ifc_type != IfcType::IfcPlane {
+            // The shared advanced-face handlers do not yet clip B-spline
+            // domains or analytic surfaces to arbitrary IfcFaceSurface bounds.
+            // Emitting their unbounded/full-domain mesh is worse than omitting
+            // a surface: it closes authored openings and extends geometry past
+            // the structural member. Keep this independently shippable slice
+            // to the planar topology whose outer and inner loops are preserved.
+            return Ok(Mesh::new());
+        }
         let (positions, indices) = process_advanced_face(entity, decoder, quality)?;
         Ok(Mesh {
             positions,

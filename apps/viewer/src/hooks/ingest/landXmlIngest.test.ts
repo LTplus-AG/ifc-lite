@@ -133,6 +133,23 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     );
   });
 
+  it('requires the exact LandXML 1.2 namespace', () => {
+    assert.throws(
+      () => parseLandXmlTin(LANDXML.replace(
+        'http://www.landxml.org/schema/LandXML-1.2',
+        'urn:vendor:LandXML-1.2',
+      )),
+      /Unsupported LandXML namespace/,
+    );
+    assert.throws(
+      () => parseLandXmlTin(LANDXML.replace(
+        ' xmlns="http://www.landxml.org/schema/LandXML-1.2"',
+        '',
+      )),
+      /Unsupported LandXML namespace: missing/,
+    );
+  });
+
   it('parses without the window-only DOMParser global used by the browser main thread', () => {
     assert.equal(globalThis.DOMParser, undefined);
     assert.equal(parseLandXmlTin(LANDXML).surfaces[0].name, 'Existing Ground');

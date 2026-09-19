@@ -34,8 +34,7 @@
  *    to be `null` while its dialog is still open (the dialog only renders
  *    when a provider IS set), and the second needs a registered provider
  *    with no `testConnection` — all three real providers implement it.
- *  - `sourcesPanel.revisionChangedModels` / `.revisionDeletedFiles` /
- *    `.revisionSyncPrompt` / `.downloadFailedWithMessage` /
+ *  - the `sourcesPanel.revision*` messages / `.downloadFailedWithMessage` /
  *    `.downloadFailedGeneric`: reachable only through a background
  *    revision-watch effect and a real multi-file download loop, both deep
  *    async integrations with the source-tag/watch machinery that are out

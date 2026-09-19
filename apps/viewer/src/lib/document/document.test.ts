@@ -19,7 +19,7 @@ import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
-import { validateDocumentSpec, type DocumentSpec } from './types.js';
+import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 
 const ifc = (project: string, wallName: string, fireRating: string): string => `ISO-10303-21;
@@ -146,9 +146,34 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 2 })), /Not a document file: version expected version 1/);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 3 })), /Not a document file: version expected version 2/);
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
+  });
+
+  it('migrates a version 1 file to version 2 and validates the new fields (#4940)', () => {
+    const v1 = { ...coverSheetDocument(), version: 1 };
+    assert.deepEqual(migrateDocumentSpec(v1), { ...v1, version: 2 });
+    const imported = parseDocumentFile(JSON.stringify(v1));
+    assert.equal(imported.version, 2);
+    // Anything not a recognizable v1 document (e.g. already at a later version, or malformed) passes through unchanged.
+    assert.deepEqual(migrateDocumentSpec({ ...v1, version: 2 }), { ...v1, version: 2 });
+    assert.equal(migrateDocumentSpec(null), null);
+
+    const spacer = { kind: 'spacer', id: 's', height: 20 };
+    const halfChart = { kind: 'chart', id: 'c1', chart: coverSheetDocument().blocks.find((b) => b.kind === 'chart')!.chart, snapshot: false, height: 300, width: 'half' };
+    const halfImage = { kind: 'image', id: 'i1', dataUrl: `data:image/png;base64,${btoa('x')}`, height: 60, align: 'left', width: 'half' };
+    const caption = { kind: 'text', id: 't1', style: 'caption', text: 'a caption' };
+    const v2 = { version: 2, id: 'd2', name: 'V2', page: { size: 'A4', orientation: 'portrait' }, blocks: [caption, halfChart, halfImage, spacer] };
+    assert.deepEqual(validateDocumentSpec(v2), []);
+
+    // half only valid on chart/image; a text block rejects it (structural: `width` is not a text field).
+    const textWithWidth = { ...v2, blocks: [{ kind: 'text', id: 't2', style: 'body', text: 'x', width: 'half' }] };
+    assert.deepEqual(validateDocumentSpec(textWithWidth), []); // an unknown extra property on a text block is not itself a validation error
+    const badChartHeight = { ...v2, blocks: [{ ...halfChart, height: 10 }] };
+    assert.deepEqual(validateDocumentSpec(badChartHeight).map((e) => e.path), ['blocks[0].height']);
+    const badWidth = { ...v2, blocks: [{ ...halfImage, width: 'third' }] };
+    assert.deepEqual(validateDocumentSpec(badWidth).map((e) => e.path), ['blocks[0].width']);
   });
 });
 
@@ -196,6 +221,50 @@ describe('compose', () => {
     assert.equal(layout.pages.flatMap((p) => p.items).filter((i) => i.kind === 'text').length, 91, 'title + every line drawn once');
   });
 
+  it('a chart block height override sizes its box, a caption prints small and gray, and a spacer advances y by its height (#4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'text', id: 'cap', style: 'caption', text: 'A caption' },
+        { kind: 'spacer', id: 'sp', height: 40 },
+        { kind: 'chart', id: 'c', title: 'Chart', subtitle: '1 bucket', hasData: true, snapshot: false, height: 300 },
+      ],
+    });
+    const page = layout.pages[0];
+    const texts = page.items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
+    const captionText = texts.find((i) => i.text === 'A caption')!;
+    assert.equal(captionText.size, 8);
+    assert.equal(captionText.gray, 130);
+    const chart = page.items.find((i) => i.kind === 'chart')!;
+    assert.equal(chart.h, 300, 'the chart box honours the override, not the 220pt default');
+    const chartTitle = texts.find((i) => i.text === 'Chart')!;
+    assert.ok(chartTitle.y > captionText.y + 40, 'the 40pt spacer pushed the chart title down by its height');
+  });
+
+  it('two half-width charts share one row at the same y, each at roughly half the content width (#4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'landscape' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'chart', id: 'a', title: 'A', subtitle: '', hasData: false, snapshot: false, width: 'half' },
+        { kind: 'chart', id: 'b', title: 'B', subtitle: '', hasData: false, snapshot: false, width: 'half' },
+        { kind: 'text', id: 't', style: 'body', text: 'after' },
+      ],
+    });
+    const charts = layout.pages[0].items.filter((i) => i.kind === 'chart');
+    assert.equal(charts.length, 2);
+    assert.equal(charts[0].y, charts[1].y, 'both columns start at the same y');
+    assert.ok(charts[1].x > charts[0].x + charts[0].w, 'the second column starts after the first, with a gap between');
+    assert.ok(charts[0].w < layout.size.w / 2, 'each column is roughly half the content width, not the full width');
+    // A lone `half` chart (no pairable next block) still prints — full width, not clipped to a column.
+    const solo = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'chart', id: 'solo', title: 'Solo', subtitle: '', hasData: false, snapshot: false, width: 'half' }],
+    });
+    const soloChart = solo.pages[0].items.find((i) => i.kind === 'chart')!;
+    const contentW = solo.size.w - 80;
+    assert.equal(soloChart.w, contentW, 'unpaired half prints full width');
+  });
+
   it('the snapshot frames the bucket with the largest value, whatever the display order (review finding)', () => {
     const agg = { categories: [{ label: 'a', value: 1, ids: new Set([1]) }, { label: 'b', value: 5, ids: new Set([2, 3]) }, { label: 'c', value: 2, ids: new Set([4]) }] } as unknown as Aggregation;
     assert.deepEqual(largestBucketIds(agg), [2, 3]);
@@ -237,7 +306,7 @@ describe('generateDocumentPdf', () => {
     const agg: Aggregation = aggregate(chart.chart, dataset);
     const topic: BCFTopic = { guid: 'topic-1', title: 'Clash at grid B', topicStatus: 'Open', priority: 'High', creationDate: '2026-09-01T00:00:00Z', creationAuthor: 'Ada', comments: [], viewpoints: [{ guid: 'vp', snapshot: `data:image/png;base64,${btoa('png')}` }] };
     const doc: DocumentSpec = {
-      version: 1, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
+      version: 2, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
       blocks: [
         { kind: 'text', id: 't1', style: 'title', text: '{IfcProject.Name} — {Today}' },
         { kind: 'text', id: 't2', style: 'body', text: 'Roof: {IfcBuildingStorey["Roof"].Name}' },

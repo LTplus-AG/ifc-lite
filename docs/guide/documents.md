@@ -6,12 +6,15 @@ The **Document** panel is a page over the model: text whose fields read the load
 
 | Block | What it holds | In the PDF |
 |-------|---------------|------------|
-| **Text with fields** | Title, heading or body text; `{path}` placeholders resolve against the model (below). *Insert field* drops one at the caret: project, site, storeys, the selected element's attributes and property values. | Wrapped, paginated; a heading never sits alone at the bottom of a page |
-| **Image / logo** | A PNG or JPEG (≤ 1 MB, stored in the document so the file travels), height in points, alignment, caption | At its aspect ratio |
-| **Chart** | A copy of a chart from one of your dashboards (see [Charts](./charts.md)), optionally with a 3D snapshot of its largest bucket | The same vector chart the coordination report prints |
+| **Text with fields** | `title`, `heading`, `subheading`, `body`, `small` or `caption` text; `{path}` placeholders resolve against the model (below). *Insert field* drops one at the caret: project, site, storeys, the selected element's attributes and property values. | Wrapped, paginated; a heading never sits alone at the bottom of a page |
+| **Image / logo** | A PNG or JPEG (≤ 1 MB, stored in the document so the file travels), height in points, alignment, caption, width (`Full` or `Half`) | At its aspect ratio |
+| **Chart** | A copy of a chart from one of your dashboards (see [Charts](./charts.md)), optionally with a 3D snapshot of its largest bucket, height in points (120-600, default 220), width (`Full` or `Half`) | The same vector chart the coordination report prints, with a legend that wraps and truncates instead of clipping |
 | **BCF topic** | A topic by GUID — status, type, priority, assignee, dates, description — optionally with its first viewpoint snapshot | Text and image side by side |
+| **Spacer** | Blank vertical space, height in points | Advances the page by its height; no other content |
 
-The preview on the right is the page resolved against the loaded model; click a block on either side to select it. What the preview shows is what prints.
+A chart or image block set to `Half` width prints two-up with the block right after it, if that one is also a chart or image at `Half` width — same row, same height, each at roughly half the content width. An unpaired `Half` block (no matching neighbor) prints full width. Text and BCF topic blocks are always full width.
+
+The preview on the right is the page resolved against the loaded model; click a block on either side to select it. What the preview shows is what prints — the same SSR chart rendering, including the legend wrapping.
 
 ## Bindings
 
@@ -32,3 +35,5 @@ A binding the model cannot answer is never printed as an empty string: the previ
 ## Templates
 
 Documents persist in the browser like dashboards. The **⋯** menu renames, duplicates, deletes, exports the document as an `.ifclite-document.json` file or imports one; an imported document gets fresh ids and keeps its bindings — that is the template. *New from preset* adds a **Blank page** (a title reading `{IfcProject.Name}`) or a **Cover sheet** (project, site, building, storey and element counts, an elements-by-type chart, the date). Page size and orientation are part of the document.
+
+The file is `version: 2` (#4940: chart height, the `Half` width and the spacer block). A `version: 1` file opens and re-saves as `version: 2` automatically — nothing to do; an older ifc-lite build refuses a `version: 2` file loudly rather than silently misreading it. Out of scope for now: text in columns or more than two columns per row, arbitrary font family/size/colour, a per-chart legend position, page margins, and drag-resize.

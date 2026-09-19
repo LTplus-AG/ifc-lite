@@ -30,7 +30,8 @@ import type { TranslationValue } from '../types';
  *    column/tab titles, …) rendered by `WidgetRenderer` — these come from
  *    an extension's widget DSL payload at runtime, not this file.
  *  - `RevalidationItem`/manifest data in `RepairQueuePanel` (extension ids,
- *    declared engine ranges, test names/errors) and the synthesised
+ *    declared engine ranges, test names/errors; compatibility explanations
+ *    are catalogue-backed) and the synthesised
  *    manifest's own `description`/`name` fields in `PromoteToolDialog` —
  *    generated/stored content, not UI copy.
  *  - `ICON_CHOICES` labels (`./icon-registry`) — a separate module outside
@@ -111,6 +112,46 @@ export const extensionsPanelsEn = {
   'extensionsPanels.capabilityReview.grantAriaLabel': 'Grant capability {raw}',
   'extensionsPanels.capabilityReview.unknownCapabilityDescription':
     'Unknown capability — treated as high-risk.',
+  'extensionsPanels.capabilityReview.capability.modelRead':
+    'Read entities, properties, and geometry from loaded models.',
+  'extensionsPanels.capabilityReview.capability.modelMutate':
+    'Modify properties matching the listed pattern.',
+  'extensionsPanels.capabilityReview.capability.modelCreate':
+    'Create new entities in loaded models.',
+  'extensionsPanels.capabilityReview.capability.modelDelete':
+    'Delete entities from loaded models.',
+  'extensionsPanels.capabilityReview.capability.viewerRead':
+    'Read selection, camera, and current section state.',
+  'extensionsPanels.capabilityReview.capability.viewerColorize':
+    'Apply colors / lens results to the viewport.',
+  'extensionsPanels.capabilityReview.capability.viewerIsolate':
+    'Hide and show entities in the viewport.',
+  'extensionsPanels.capabilityReview.capability.viewerFly': 'Move the viewport camera.',
+  'extensionsPanels.capabilityReview.capability.viewerSection': 'Modify section planes.',
+  'extensionsPanels.capabilityReview.capability.exportCreate':
+    'Produce a downloadable file in the named format.',
+  'extensionsPanels.capabilityReview.capability.storageLocal':
+    'Read and write per-extension local storage.',
+  'extensionsPanels.capabilityReview.capability.networkFetch':
+    'Fetch from URLs matching the listed host pattern.',
+  'extensionsPanels.capabilityReview.capability.commandInvoke':
+    "Invoke other extensions' commands matching the listed id pattern.",
+  'extensionsPanels.capabilityReview.capability.uiDock': 'Contribute panels to the dock slots.',
+  'extensionsPanels.capabilityReview.capability.uiToolbar':
+    'Contribute buttons to the toolbar.',
+  'extensionsPanels.capabilityReview.capability.uiContextMenu':
+    'Contribute items to context menus.',
+  'extensionsPanels.capabilityReview.capability.uiStatusBar':
+    'Contribute items to the status bar.',
+  'extensionsPanels.capabilityReview.risk.unknownCapability':
+    'Unknown capability "{raw}". Treated as high-risk because it is not in the catalogue.',
+  'extensionsPanels.capabilityReview.risk.target': '{description} Target: `{target}`.',
+  'extensionsPanels.capabilityReview.risk.missingRequiredTarget':
+    '{description} (Missing required target — treated as universal.)',
+  'extensionsPanels.capabilityReview.risk.universalWildcardTarget':
+    '{description} Target: `{target}`. Universal wildcard target — unrestricted scope.',
+  'extensionsPanels.capabilityReview.risk.hostPatternWildcard':
+    '{description} Target: `{target}`. Host pattern contains a wildcard.',
   'extensionsPanels.capabilityReview.highRiskTitle': 'High-risk capability requested',
   'extensionsPanels.capabilityReview.confirmInstruction': 'Type {phrase} below to confirm.',
   'extensionsPanels.capabilityReview.confirmAriaLabel': 'Type {phrase} to confirm',
@@ -271,6 +312,14 @@ export const extensionsPanelsEn = {
   'extensionsPanels.repairQueuePanel.noCheckRun': 'No compatibility check has run for this session.',
   'extensionsPanels.repairQueuePanel.noInstalledExtensions': 'No installed extensions',
   'extensionsPanels.repairQueuePanel.rangeLabel': 'Range',
+  'extensionsPanels.repairQueuePanel.compatibility.invalidSdkVersion':
+    'Could not parse SDK version "{sdk}".',
+  'extensionsPanels.repairQueuePanel.compatibility.unsupportedRange':
+    'Range too loose to evaluate — re-run tests to confirm.',
+  'extensionsPanels.repairQueuePanel.compatibility.rangeMismatch':
+    'Range "{declared}" no longer matches SDK {sdk}.',
+  'extensionsPanels.repairQueuePanel.compatibility.rangeMatch':
+    'Range "{declared}" still matches SDK {sdk}.',
   'extensionsPanels.repairQueuePanel.testsFailed': {
     one: '{count} test failed:',
     other: '{count} tests failed:',

@@ -17,13 +17,17 @@
 import { useCallback, useState } from 'react';
 import { CheckCircle2, RefreshCcw, ShieldAlert, Wrench, X } from 'lucide-react';
 import { needsSdkRepair } from '@ifc-lite/extensions';
-import type { RevalidationItem, RevalidationSummary } from '@ifc-lite/extensions';
+import type {
+  CompatibilityResult,
+  RevalidationItem,
+  RevalidationSummary,
+} from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type UseTranslationResult } from '@/i18n';
 import { HelpHint } from './HelpHint';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 
@@ -186,7 +190,8 @@ function RepairRow({
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
             {t('extensionsPanels.repairQueuePanel.rangeLabel')}{' '}
-            <code className="font-mono">{item.compatibility.declared}</code> · {item.compatibility.reason}
+            <code className="font-mono">{item.compatibility.declared}</code> ·{' '}
+            {localizeCompatibilityReason(item.compatibility, t)}
           </div>
           {item.tests && item.tests.failed > 0 && (
             <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
@@ -205,6 +210,34 @@ function RepairRow({
       </div>
     </li>
   );
+}
+
+function localizeCompatibilityReason(
+  compatibility: CompatibilityResult,
+  t: UseTranslationResult['t'],
+): string {
+  switch (compatibility.reasonCode) {
+    case 'invalid-sdk-version':
+      return t('extensionsPanels.repairQueuePanel.compatibility.invalidSdkVersion', {
+        sdk: compatibility.sdk,
+      });
+    case 'unsupported-range':
+      return t('extensionsPanels.repairQueuePanel.compatibility.unsupportedRange');
+    case 'range-mismatch':
+      return t('extensionsPanels.repairQueuePanel.compatibility.rangeMismatch', {
+        declared: compatibility.declared,
+        sdk: compatibility.sdk,
+      });
+    case 'range-match':
+      return t('extensionsPanels.repairQueuePanel.compatibility.rangeMatch', {
+        declared: compatibility.declared,
+        sdk: compatibility.sdk,
+      });
+    default: {
+      const exhaustive: never = compatibility.reasonCode;
+      return exhaustive;
+    }
+  }
 }
 
 function buildRepairPrompt(item: RevalidationItem, sdk: string): string {

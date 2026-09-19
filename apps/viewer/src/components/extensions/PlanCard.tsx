@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { localizeCapabilityRisk } from './localized-capability-risk';
 
 interface PlanCardProps {
   /** The plan to show. Editable copy is stored in component state. */
@@ -156,7 +157,7 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
                     <RiskBadge tier={risk.tier} />
                   </div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground">
-                    {risk.description}
+                    {localizeCapabilityRisk(risk, t)}
                   </div>
                 </div>
               </li>

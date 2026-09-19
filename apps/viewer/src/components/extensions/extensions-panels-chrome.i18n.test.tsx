@@ -109,9 +109,16 @@ const COVERED_PREFIXES = [
   'extensionsPanels.repairQueuePanel.',
 ];
 const SCOPE_KEYS = ALL_KEYS.filter((key) => COVERED_PREFIXES.some((p) => key.startsWith(p)));
+const DATA_DRIVEN_COPY_PREFIXES = [
+  'extensionsPanels.capabilityReview.capability.',
+  'extensionsPanels.capabilityReview.risk.',
+  'extensionsPanels.repairQueuePanel.compatibility.',
+];
 const STATIC_KEYS = SCOPE_KEYS.filter((key) => {
   const value = extensionsPanelsEn[key];
-  return typeof value === 'string' && !value.includes('{');
+  return typeof value === 'string'
+    && !value.includes('{')
+    && !DATA_DRIVEN_COPY_PREFIXES.some((prefix) => key.startsWith(prefix));
 });
 
 /** Key-specific pseudo translation; keeps every `{placeholder}` of the English text. */
@@ -231,6 +238,7 @@ function repairItem(): RevalidationItem {
       declared: '^1.0.0',
       sdk: SDK,
       status: 'outdated',
+      reasonCode: 'range-mismatch',
       reason: 'outdated range',
     },
   };
@@ -381,6 +389,59 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
       (key) => seen.includes(key) && !key.endsWith('Toast') && !key.endsWith('Confirm'),
     );
     assert.deepEqual(stale, [], 'key listed as not-rendered but is actually on screen in this render');
+  });
+
+  it('localizes package capability and compatibility diagnostics from stable identifiers', async () => {
+    registerLocale('extensions-diagnostics-de', {
+      'extensionsPanels.capabilityReview.capability.modelRead': 'MODELLE LESEN',
+      'extensionsPanels.capabilityReview.capability.networkFetch': 'NETZWERK ABRUFEN',
+      'extensionsPanels.capabilityReview.risk.universalWildcardTarget':
+        '{description} ZIEL `{target}` IST GLOBAL',
+      'extensionsPanels.capabilityReview.risk.unknownCapability':
+        'UNBEKANNTE FÄHIGKEIT {raw}',
+      'extensionsPanels.repairQueuePanel.compatibility.rangeMismatch':
+        'BEREICH {declared} PASST NICHT ZU SDK {sdk}',
+    } as Catalogue);
+    setLocale('extensions-diagnostics-de');
+
+    const host = new StubExtensionHost();
+    const item = repairItem();
+    host.revalidateSummary = { sdk: SDK, items: [item], needsRepair: [item] };
+    const summary = {
+      ...capabilitySummary(),
+      capabilities: ['model.read', 'network.fetch:*', 'model.unlisted'],
+    };
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <div>
+          <CapabilityReview
+            open
+            summary={summary}
+            onApprove={() => {}}
+            onCancel={() => {}}
+          />
+          <PlanCard plan={planFixture()} onApprove={() => {}} onCancel={() => {}} />
+          <RepairQueuePanel sdkVersion={SDK} />
+        </div>
+      </ExtensionHostContext.Provider>,
+    );
+    const runCheckButton = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Run check'),
+    );
+    assert.ok(runCheckButton);
+    await act(async () => {
+      runCheckButton.click();
+      await Promise.resolve();
+    });
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /MODELLE LESEN/);
+    assert.match(text, /NETZWERK ABRUFEN ZIEL `\*` IST GLOBAL/);
+    assert.match(text, /UNBEKANNTE FÄHIGKEIT model\.unlisted/);
+    assert.match(text, /BEREICH \^1\.0\.0 PASST NICHT ZU SDK 2\.0\.0/);
+    assert.doesNotMatch(text, /Read entities, properties, and geometry/);
+    assert.doesNotMatch(text, /Fetch from URLs matching/);
+    assert.doesNotMatch(text, /outdated range/);
   });
 
   it('pluralizes and interpolates a representative sample under a live locale switch', async () => {

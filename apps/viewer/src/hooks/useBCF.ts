@@ -82,6 +82,8 @@ interface CreateViewpointOptions {
   additionalColoredRefs?: { color: string; refs: ComponentRef[] }[];
   /** Coloring already bound to a validated model revision by the caller. */
   additionalColoredGuids?: { color: string; guids: string[] }[];
+  /** Abort when caller-owned scene identity changes while snapshot capture yields. */
+  isCaptureStillValid?: () => boolean;
 }
 interface UseBCFResult {
   /** Create a viewpoint from current viewer state */
@@ -346,6 +348,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         includeHidden = true,
       } = opts;
       const componentState = useViewerStore.getState();
+      if (opts.isCaptureStillValid && !opts.isCaptureStillValid()) return null;
       // Default the found objects to the focused clash, whichever panel is capturing (#4806).
       const focusedClash = includeSelection
         ? focusedClashComponents(componentState.clashHighlightColors)
@@ -394,6 +397,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       let snapshot: string | undefined = snapshotOverride;
       if (!snapshot && includeSnapshot) {
         const captured = await captureSnapshot();
+        if (opts.isCaptureStillValid && !opts.isCaptureStillValid()) return null;
         if (captured) {
           snapshot = captured;
         }

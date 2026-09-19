@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { summarizeClashes, type Clash, type ClashResult } from '@ifc-lite/clash';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { MANUAL_CLASH_GROUPS_KEY } from '@/lib/clash/manual-groups';
 import { ClashPanel } from './ClashPanel.js';
@@ -102,6 +103,15 @@ describe('ClashPanel manual groups (#4921)', () => {
     assert.equal(stored.groups[0].name, 'Riser coordination');
     assert.equal(stored.groups[0].members.length, 2);
 
+    await act(async () => {
+      useViewerStore.setState({
+        ifcDataStore: {
+          entities: { getGlobalId: (id: number) => id === 99 ? 'HIDDEN0000000000000001' : undefined },
+        } as unknown as IfcDataStore,
+        hiddenEntities: new Set([99]),
+      });
+    });
+
     const createBcf = container!.querySelector('button[title="Create one BCF topic from this group"]');
     assert.ok(createBcf instanceof HTMLButtonElement);
     await act(async () => {
@@ -111,6 +121,11 @@ describe('ClashPanel manual groups (#4921)', () => {
     const topics = useViewerStore.getState().bcfProject?.topics;
     assert.equal(topics?.size, 1, 'one group action creates exactly one BCF topic');
     assert.equal([...topics!.values()][0].title, 'Riser coordination');
+    assert.deepEqual(
+      [...topics!.values()][0].header?.map((file) => file.filename),
+      ['model.ifc'],
+      'a pre-existing hidden component from another source must remain in the topic header',
+    );
 
     const rename = container!.querySelector('button[title="Rename this group"]');
     assert.ok(rename instanceof HTMLButtonElement);

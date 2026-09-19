@@ -21,6 +21,8 @@ export interface FocusedClashGroup {
   aGuids: string[];
   bGuids: string[];
   modelIds: string[];
+  visibilityModelIds: string[];
+  modelRevisions: ReadonlyMap<string, object>;
 }
 
 function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: Iterable<SelectionRef>): string[] {
@@ -30,6 +32,27 @@ function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: 
     if (guid) guids.add(guid);
   }
   return [...guids];
+}
+
+function visibilityModelIds(state: ReturnType<typeof useViewerStore.getState>): string[] {
+  const modelIds = new Set<string>();
+  const ids = state.isolatedEntities ?? state.hiddenEntities;
+  for (const globalId of ids) {
+    const ref = state.resolveGlobalIdFromModels(globalId)
+      ?? (state.models.size === 0 ? { modelId: 'legacy', expressId: globalId } : undefined);
+    if (ref && resolveEntityRefGlobalIdFromState(state, ref)) modelIds.add(ref.modelId);
+  }
+  return [...modelIds];
+}
+
+/** True while every model visible when the group was focused is still the same loaded revision. */
+export function focusedModelRevisionsAreCurrent(focused: FocusedClashGroup): boolean {
+  const models = useViewerStore.getState().models;
+  if (models.size !== focused.modelRevisions.size) return false;
+  for (const [modelId, revision] of focused.modelRevisions) {
+    if (models.get(modelId) !== revision) return false;
+  }
+  return true;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -70,6 +93,7 @@ export function focusClashGroup(
   // An object on both sides gets one deterministic color, never two.
   for (const key of aRefs.keys()) bRefs.delete(key);
   const a = [...aRefs.values()], b = [...bRefs.values()];
+  const focusedState = useViewerStore.getState();
   return {
     selectedRefs: refs,
     aRefs: a,
@@ -78,5 +102,7 @@ export function focusClashGroup(
     aGuids: resolvedGuids(state, a),
     bGuids: resolvedGuids(state, b),
     modelIds: [...new Set(refs.map(ref => ref.modelId))],
+    visibilityModelIds: visibilityModelIds(focusedState),
+    modelRevisions: new Map(focusedState.models),
   };
 }

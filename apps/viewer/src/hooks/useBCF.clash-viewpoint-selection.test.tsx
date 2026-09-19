@@ -439,4 +439,27 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
       [boundGuid],
     );
   });
+
+  it('aborts when the bound scene revision changes during snapshot capture (#4921)', async () => {
+    let finishSnapshot!: () => void;
+    let valid = true;
+    submittedWork = new Promise<void>((resolve) => { finishSnapshot = resolve; });
+    const capture = api!.createViewpointFromState({
+      includeSnapshot: true,
+      includeSelection: false,
+      additionalSelectedGuids: [CLASH_A_GUID],
+      isCaptureStillValid: () => valid,
+    });
+    await Promise.resolve();
+
+    const viewpoints: (BCFViewpoint | null)[] = [];
+    await act(async () => {
+      valid = false;
+      finishSnapshot();
+      viewpoints.push(await capture);
+    });
+
+    assert.equal(viewpoints[0], null,
+      'a snapshot painted from another model revision must not be paired with the old component GUIDs');
+  });
 });

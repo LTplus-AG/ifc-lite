@@ -16,7 +16,7 @@ import {
   saveManualClashGroups,
   type ManualClashGroup,
 } from '@/lib/clash/manual-groups';
-import type { FocusedClashGroup } from '@/lib/clash/group-focus';
+import { focusedModelRevisionsAreCurrent, type FocusedClashGroup } from '@/lib/clash/group-focus';
 import { CLASH_COLOR_A, CLASH_COLOR_B, clashColorToBcfArgb } from '@/lib/clash/clash-colors';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { sortClashes, type Clash, type ClashSeverity, type ClashSortBy } from '@ifc-lite/clash';
@@ -175,20 +175,33 @@ export function useManualClashGroups({
         topicType: 'Clash',
         topicStatus: 'Open',
       });
-      const header = headerFilesForViewpoints([], topic.creationDate, focused.modelIds);
       // FRAME-WAIT-ALLOW(#2385): capture only after the group focus has painted.
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
+      if (!focusedModelRevisionsAreCurrent(focused)) {
+        toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
+        return;
+      }
       const viewpoint = await createViewpointFromState({
         includeSnapshot: true,
         includeSelection: false,
         includeHidden: true,
+        isCaptureStillValid: () => focusedModelRevisionsAreCurrent(focused),
         additionalSelectedGuids: focused.selectedGuids,
         additionalColoredGuids: [
           { color: clashColorToBcfArgb(CLASH_COLOR_A), guids: focused.aGuids },
           { color: clashColorToBcfArgb(CLASH_COLOR_B), guids: focused.bGuids },
         ].filter((entry) => entry.guids.length > 0),
       });
+      if (!focusedModelRevisionsAreCurrent(focused)) {
+        toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
+        return;
+      }
+      if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
+      const header = headerFilesForViewpoints(
+        viewpoint ? [viewpoint] : [],
+        topic.creationDate,
+        [...focused.modelIds, ...focused.visibilityModelIds],
+      );
       if (header.length > 0) topic.header = header;
       addTopic(topic);
       if (viewpoint) addViewpoint(topic.guid, viewpoint);

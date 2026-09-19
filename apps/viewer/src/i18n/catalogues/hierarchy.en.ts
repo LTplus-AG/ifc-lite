@@ -42,7 +42,7 @@ export const hierarchyEn = {
   'hierarchy.countBadge.spacesNotCounted': { one: '{formatted} space (not counted)', other: '{formatted} spaces (not counted)' },
 
   // ModelTagGroupRow
-  'hierarchy.modelTagGroup.memberCount': { one: '{count} model', other: '{count} models' },
+  'hierarchy.modelTagGroup.memberCount': { one: '{formatted} model', other: '{formatted} models' },
   'hierarchy.modelTagGroup.hideAriaLabel': 'Hide models tagged {name}',
   'hierarchy.modelTagGroup.showAriaLabel': 'Show models tagged {name}',
   'hierarchy.modelTagGroup.hideTooltip': 'Hide these models',

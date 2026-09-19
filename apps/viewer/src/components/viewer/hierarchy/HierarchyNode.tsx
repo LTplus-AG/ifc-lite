@@ -282,7 +282,7 @@ export function HierarchyNode({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-none">
-                {node.elementCount.toLocaleString()}
+                {formatLocaleNumber(locale, node.elementCount)}
               </span>
             </TooltipTrigger>
             <TooltipContent>

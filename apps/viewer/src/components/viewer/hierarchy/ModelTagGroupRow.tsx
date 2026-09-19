@@ -18,11 +18,12 @@ import { useViewerStore } from '@/store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { UNTAGGED_GROUP_ID } from './modelTagView';
 import type { TreeNode } from './types';
 
 export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtualRow: { size: number; start: number } }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { models, setModelsVisibility, tag } = useViewerStore(
     useShallow((s) => ({
       models: s.models,
@@ -51,9 +52,9 @@ export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtual
         <span className={cn('flex-1 truncate text-xs font-semibold', isUntagged && 'italic')}>{node.name}</span>
         <span
           className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400"
-          title={t('hierarchy.modelTagGroup.memberCount', { count: members.length })}
+          title={t('hierarchy.modelTagGroup.memberCount', { count: members.length, formatted: formatLocaleNumber(locale, members.length) })}
         >
-          {members.length}
+          {formatLocaleNumber(locale, members.length)}
         </span>
         {members.length > 0 && (
           <Tooltip>

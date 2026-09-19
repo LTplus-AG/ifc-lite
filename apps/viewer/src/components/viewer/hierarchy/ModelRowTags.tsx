@@ -17,6 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
 import { ModelTagChip } from './ModelTagChip';
 import { ModelTagEditor } from './ModelTagEditor';
@@ -58,7 +59,7 @@ export function useModelRowSize(nodes: readonly TreeNode[], remeasure: () => voi
 const STRIP_CLASS = 'absolute bottom-1 left-[54px] right-2 flex min-w-0 items-center gap-1 overflow-hidden';
 
 export function ModelRowTags({ modelId, modelName }: { modelId: string; modelName: string }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { modelTags, assigned } = useViewerStore(
     useShallow((s) => ({ modelTags: s.modelTags, assigned: s.modelTagAssignments.get(modelId) })),
   );
@@ -77,7 +78,7 @@ export function ModelRowTags({ modelId, modelName }: { modelId: string; modelNam
           onClick={(e) => e.stopPropagation()}
         >
           {inline.map((id) => <ModelTagChip key={id} tag={modelTags.get(id)} className="min-w-0 shrink" />)}
-          {overflow > 0 && <span className="shrink-0 text-[10px] text-zinc-500">+{overflow}</span>}
+          {overflow > 0 && <span className="shrink-0 text-[10px] text-zinc-500">+{formatLocaleNumber(locale, overflow)}</span>}
         </span>
       )}
       <Tooltip>

@@ -32,6 +32,7 @@ import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { HierarchyNode } from './HierarchyNode.js';
+import { ModelHeaderRow } from './ModelHeaderRow.js';
 import { ModelTagGroupRow } from './ModelTagGroupRow.js';
 import { ModelRowTags } from './ModelRowTags.js';
 import { ModelsSectionHeader } from './ModelsSectionHeader.js';
@@ -295,14 +296,14 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
   catalogueIt('interpolates the storey elevation badge and the model-tag member count', () => {
     registerLocale('de-DE', {
       'hierarchy.node.elevationBadge': '[{sign}{value}]',
-      'hierarchy.modelTagGroup.memberCount': { one: '[{count} one]', other: '[{count} many]' },
+      'hierarchy.modelTagGroup.memberCount': { one: '[{formatted} one]', other: '[{formatted} many]' },
     });
     act(() => setLocale('de-DE'));
 
     const container = render(
       <div>
         <HierarchyNode
-          node={elementNode({ storeyDisplayElevation: -1.25 })}
+          node={elementNode({ storeyDisplayElevation: -1.25, elementCount: 1234 })}
           virtualRow={virtualRow}
           isSelected={false}
           nodeHidden={false}
@@ -315,14 +316,27 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
           onRemoveModel={() => {}}
           onModelHeaderClick={() => {}}
         />
-        <ModelTagGroupRow node={tagGroupNode()} virtualRow={virtualRow} />
+        <ModelHeaderRow
+          node={modelHeaderNode('A', { elementCount: 1234 })}
+          virtualRow={virtualRow}
+          modelsCount={1}
+          modelVisible
+          onModelVisibilityToggle={() => {}}
+          onRemoveModel={() => {}}
+          onModelHeaderClick={() => {}}
+        />
+        <ModelTagGroupRow
+          node={{ ...tagGroupNode(), modelIds: Array.from({ length: 1234 }, (_, index) => `model-${index}`) }}
+          virtualRow={virtualRow}
+        />
       </div>,
     );
 
     assert.ok(container.textContent?.includes('[-1,25]'), 'elevation badge uses the active locale');
+    assert.equal((container.textContent?.match(/1\.234/g) ?? []).length, 2, 'ordinary and model-header counts use the active locale');
     const groupRow = container.querySelector('[data-model-tag-group]');
     const groupCount = groupRow?.querySelector('[title]');
-    assert.equal(groupCount?.getAttribute('title'), '[2 many]', 'member count interpolates and pluralizes');
+    assert.equal(groupCount?.getAttribute('title'), '[1.234 many]', 'member count formats and pluralizes with the active locale');
   });
 
   catalogueIt('uses complete messages for tag assignment and removal actions', () => {

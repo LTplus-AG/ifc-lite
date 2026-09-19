@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
 import { ModelRowTags } from './ModelRowTags';
 
@@ -43,7 +44,7 @@ export function ModelHeaderRow({
   sourceBacked = false,
   sourceSyncing = false,
 }: ModelHeaderRowProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const modelId = node.modelIds[0];
 
   return (
@@ -87,7 +88,7 @@ export function ModelHeaderRow({
 
         {node.elementCount !== undefined && (
           <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400 rounded-none">
-            {node.elementCount.toLocaleString()}
+            {formatLocaleNumber(locale, node.elementCount)}
           </span>
         )}
         <ModelRowTags modelId={modelId} modelName={node.name} />

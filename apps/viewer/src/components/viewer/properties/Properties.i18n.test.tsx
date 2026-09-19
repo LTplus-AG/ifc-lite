@@ -408,6 +408,30 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.doesNotMatch(container.textContent ?? '', /12\.345678/);
   });
 
+  catalogueIt('formats coordinate and terrain measurements with the active locale', () => {
+    registerLocale('de-DE', {});
+    act(() => {
+      setLocale('de-DE');
+      useViewerStore.setState({
+        cesiumEnabled: true,
+        cesiumSourceModelId: 'A',
+        cesiumTerrainHeight: 1234.5,
+        cesiumTerrainSaveHeight: 1234.5,
+      });
+    });
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    assert.match(container.textContent ?? '', /311\.988.*5\.996\.149/);
+    assert.match(container.textContent ?? '', /1\.234,5 m/);
+    assert.doesNotMatch(container.textContent ?? '', /1234\.5 m/);
+  });
+
   catalogueIt('resolves a retained EPSG search error in the current locale', () => {
     registerLocale('epsg-a', { 'properties.epsgLookup.noResults': '[no results A]' });
     registerLocale('epsg-b', { 'properties.epsgLookup.noResults': '[no results B]' });

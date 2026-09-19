@@ -92,7 +92,7 @@ interface GeorefRowProps {
 }
 
 function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMutated, fieldEntity, fieldName, onSave, children }: GeorefRowProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
 
@@ -138,7 +138,7 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
     setEditing(false);
   }, [onSave, isNumber]);
 
-  const displayValue = value != null ? String(value) : '-';
+  const displayValue = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12 }) : value ?? '-';
 
   return (
     <div
@@ -729,8 +729,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             <span className="leading-snug">
               <strong>{t('properties.georef.doubleGeorefHeading')}</strong>{' '}
               {t('properties.georef.doubleGeorefBody', {
-                eastingValue: doubleGeoref.worldCenter.x.toFixed(0),
-                northingValue: doubleGeoref.worldCenter.y.toFixed(0),
+                eastingValue: formatLocaleNumber(locale, doubleGeoref.worldCenter.x, { maximumFractionDigits: 0 }),
+                northingValue: formatLocaleNumber(locale, doubleGeoref.worldCenter.y, { maximumFractionDigits: 0 }),
                 displacement: localizedApproxDistance(t, locale, doubleGeoref.displacement),
               })}
               {/* The fingerprint matches on TRANSLATION, so when the file authors
@@ -816,7 +816,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             )}
             {!conversionOpen && (
               <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60">
-                {t('properties.georef.eastingNorthingSummary', { easting: mergedConversion.eastings.toFixed(0), northing: mergedConversion.northings.toFixed(0) })}
+                {t('properties.georef.eastingNorthingSummary', { easting: formatLocaleNumber(locale, mergedConversion.eastings, { maximumFractionDigits: 0 }), northing: formatLocaleNumber(locale, mergedConversion.northings, { maximumFractionDigits: 0 }) })}
               </span>
             )}
           </button>
@@ -844,12 +844,12 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                     {t('properties.georef.scaleCompensatedNote', {
                       attribute: scaleMismatch.attribute,
                       authoredValue: scaleMismatch.authoredValue,
-                      expectedValue: scaleMismatch.expectedValue.toPrecision(4),
+                      expectedValue: formatLocaleNumber(locale, scaleMismatch.expectedValue, { maximumSignificantDigits: 4 }),
                     })}{' '}
                     {scaleMismatch.compensated
-                      ? t('properties.georef.scaleCompensatedDetail', { specEffectiveScale: scaleMismatch.specEffectiveScale.toPrecision(4) })
+                      ? t('properties.georef.scaleCompensatedDetail', { specEffectiveScale: formatLocaleNumber(locale, scaleMismatch.specEffectiveScale, { maximumSignificantDigits: 4 }) })
                       : t('properties.georef.scaleUncompensatedDetail', {
-                          effectiveScale: scaleMismatch.effectiveScale.toPrecision(4),
+                          effectiveScale: formatLocaleNumber(locale, scaleMismatch.effectiveScale, { maximumSignificantDigits: 4 }),
                           fixAttribute: scaleMismatch.attribute === 'Scale' ? t('properties.georef.scaleFixAttributeScale') : scaleMismatch.attribute,
                         })}
                   </span>
@@ -881,7 +881,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             <span className="text-[10px] text-zinc-600 dark:text-zinc-400 flex-1">{t('properties.georef.visibleSurfaceHeight')}</span>
             {cesiumTerrainHeight !== null ? (
               <span className="text-[9px] font-mono text-teal-500" title={cesiumTerrainSource ?? undefined}>
-                {t('properties.georef.heightMeters', { value: cesiumTerrainHeight.toFixed(1) })}
+                {t('properties.georef.heightMeters', { value: formatLocaleNumber(locale, cesiumTerrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
               </span>
             ) : (
               <span className="text-[9px] font-mono text-zinc-400">{t('properties.georef.queryingEllipsis')}</span>
@@ -899,7 +899,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                 className="text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
               >
                 <Mountain className="h-2.5 w-2.5" />
-                {t('properties.georef.setOrthogonalHeightButton', { value: cesiumTerrainHeight.toFixed(1) })}
+                {t('properties.georef.setOrthogonalHeightButton', { value: formatLocaleNumber(locale, cesiumTerrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
               </button>
             </div>
           )}
@@ -948,7 +948,7 @@ function TerrainHeightButton({ modelId, editable, onApply }: {
   editable?: boolean;
   onApply: (height: number) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const cesiumEnabled = useViewerStore(s => s.cesiumEnabled);
   const terrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
   // Geoid-inverted snap target (#1456); display still uses terrainHeight.
@@ -972,13 +972,13 @@ function TerrainHeightButton({ modelId, editable, onApply }: {
           className="flex items-center gap-0.5 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors mt-0.5"
         >
           <Mountain className="h-2.5 w-2.5" />
-          <span>{t('properties.georef.heightMeters', { value: terrainHeight.toFixed(1) })}</span>
+          <span>{t('properties.georef.heightMeters', { value: formatLocaleNumber(locale, terrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</span>
         </button>
       </TooltipTrigger>
       <TooltipContent>
         {terrainSource
-          ? t('properties.georef.setOrthogonalHeightTooltipViaSource', { value: terrainHeight.toFixed(1), source: terrainSource })
-          : t('properties.georef.setOrthogonalHeightTooltip', { value: terrainHeight.toFixed(1) })}
+          ? t('properties.georef.setOrthogonalHeightTooltipViaSource', { value: formatLocaleNumber(locale, terrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), source: terrainSource })
+          : t('properties.georef.setOrthogonalHeightTooltip', { value: formatLocaleNumber(locale, terrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
       </TooltipContent>
     </Tooltip>
   );

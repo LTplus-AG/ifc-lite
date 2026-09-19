@@ -252,6 +252,13 @@ export function readMajorOffset(rootDir) {
     );
   }
   const reasonHistory = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+  if (Object.hasOwn(parsed, 'latestBreak')
+    && (typeof parsed.latestBreak !== 'string' || parsed.latestBreak.trim().length < 20)) {
+    throw offsetError(
+      'BAD_LATEST_BREAK',
+      `${OFFSET_FILE_NAME} must set "latestBreak" to substantive text when the field is present, got ${JSON.stringify(parsed.latestBreak)}`
+    );
+  }
   const latestBreak = typeof parsed.latestBreak === 'string' ? parsed.latestBreak.trim() : '';
   const reason = [reasonHistory, latestBreak].filter(Boolean).join(' ');
   const refs = Array.isArray(parsed.refs) ? parsed.refs.filter((r) => typeof r === 'string' && r.trim()) : [];

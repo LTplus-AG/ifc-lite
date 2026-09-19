@@ -67,20 +67,20 @@ const rootDir = rootArgIndex === -1 ? join(__dirname, '..') : process.argv[rootA
  * caught by this. A member is skipped unless its manifest actually inherits
  * `version.workspace = true`: one pinning its own version means to hold it.
  */
-function syncCargoLock(version) {
-  const cargoLockPath = join(rootDir, 'Cargo.lock');
+function syncCargoLock(version, relativePath) {
+  const cargoLockPath = join(rootDir, relativePath);
   let lock;
   try {
     lock = readFileSync(cargoLockPath, 'utf8');
   } catch {
-    console.log('ℹ️  No Cargo.lock to sync');
+    console.log(`ℹ️  No ${relativePath} to sync`);
     return;
   }
 
   const rootToml = readFileSync(join(rootDir, 'Cargo.toml'), 'utf8');
   const membersMatch = rootToml.match(/^members\s*=\s*\[([^\]]*)\]/m);
   if (!membersMatch) {
-    console.log('ℹ️  No [workspace] members found; leaving Cargo.lock alone');
+    console.log(`ℹ️  No [workspace] members found; leaving ${relativePath} alone`);
     return;
   }
   const memberDirs = [...membersMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
@@ -124,11 +124,11 @@ function syncCargoLock(version) {
   }
 
   if (updated.length === 0) {
-    console.log('✅ Cargo.lock member versions already in sync');
+    console.log(`✅ ${relativePath} member versions already in sync`);
     return;
   }
   writeFileSync(cargoLockPath, parts.join('[[package]]'));
-  console.log(`✅ Updated Cargo.lock member versions to ${version} (${updated.join(', ')})`);
+  console.log(`✅ Updated ${relativePath} member versions to ${version} (${updated.join(', ')})`);
 }
 
 function syncVersions() {
@@ -202,7 +202,12 @@ function syncVersions() {
 
   // The lock records the MEMBERS' own versions, which are the crate versions —
   // not the npm one.
-  syncCargoLock(crateVersion);
+  syncCargoLock(crateVersion, 'Cargo.lock');
+  // The excluded PyO3 crate is its own workspace and therefore has its own
+  // lock, but that lock resolves the same path crates from the root workspace.
+  // Keep those no-source entries synchronized too; otherwise the wheel lane's
+  // `cargo metadata --locked` fails immediately after every release bump.
+  syncCargoLock(crateVersion, 'rust/python/Cargo.lock');
 
   // Update root package.json. This is the npm/tag side, so it takes the npm
   // version: the major offset moves the crates, never the packages.

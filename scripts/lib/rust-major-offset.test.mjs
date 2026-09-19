@@ -92,6 +92,20 @@ test('readMajorOffset rejects an offset that is not a non-negative integer', (t)
   }
 });
 
+test('readMajorOffset rejects a present latestBreak that is not substantive text', (t) => {
+  for (const latestBreak of [null, 7, '', 'too short']) {
+    assert.throws(
+      () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({
+        majorOffset: 1,
+        reason: 'A sufficiently detailed historical reason for the break.',
+        latestBreak,
+        refs: ['#1'],
+      }) })),
+      (err) => err.code === 'BAD_LATEST_BREAK',
+    );
+  }
+});
+
 test('a non-zero offset must carry a reason and at least one ref', (t) => {
   assert.throws(
     () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 1, refs: ['#1'] }) })),

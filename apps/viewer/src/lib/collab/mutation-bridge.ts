@@ -29,6 +29,7 @@ import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/par
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import { entityForPath, pathForEntity } from './entity-paths';
+import { remoteEntityDefinition } from './remote-entity-definition';
 
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
@@ -255,6 +256,8 @@ export interface RemoteApplyHandlers {
   onPlacement?(modelId: string, entityId: number, placement: LocalPlacement): void;
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(modelId: string, entityId: number): void;
+  onEntityCreate?(target: RoomEntityTarget, entityPath: string, ifcClass: string,
+    attributes: Readonly<Record<string, unknown>>): void;
   /** The whole Pset vanished. Property names are unavailable by design: Yjs
    *  detaches the map before the event is observed, so `forEach` yields 0
    *  entries. The consumer drops the entire set for (entityId, pset). */
@@ -303,11 +306,15 @@ export function attachRemoteApply(
       // We only act on deletes here; additions are picked up by the recipient's
       // full reconstruct. `entityForPath` resolves the removed path's expressId.
       if (path.length === 0) {
-        if (!handlers.onEntityDelete) continue;
         for (const [entityPath, change] of ev.changes.keys) {
-          if (change.action !== 'delete') continue;
           const hit = resolve(entityPath);
           if (!hit) continue;
+          if (change.action === 'add' && handlers.onEntityCreate) {
+            const definition = remoteEntityDefinition(entities.get(entityPath));
+            if (definition) handlers.onEntityCreate(hit, entityPath, definition.ifcClass, definition.attributes);
+            continue;
+          }
+          if (change.action !== 'delete' || !handlers.onEntityDelete) continue;
           const id = entityForPath(hit.store, entityPath);
           if (id !== null) handlers.onEntityDelete(hit.modelId, id);
         }

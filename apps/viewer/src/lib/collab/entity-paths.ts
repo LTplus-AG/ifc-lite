@@ -125,3 +125,10 @@ export function registerEntityPath(store: IfcDataStore, expressId: number, path:
   maps.toPath.set(expressId, path);
   maps.toExpressId.set(path, expressId);
 }
+
+export function unregisterEntityPath(store: IfcDataStore, expressId: number): void {
+  const maps = entityMaps(store);
+  const path = maps.toPath.get(expressId);
+  maps.toPath.delete(expressId);
+  if (path) maps.toExpressId.delete(path);
+}

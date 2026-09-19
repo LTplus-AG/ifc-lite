@@ -315,11 +315,29 @@ function recordingHandlers(): RemoteApplyHandlers & {
     onAttribute: (...args) => calls.push({ fn: 'onAttribute', args }),
     onPlacement: (...args) => calls.push({ fn: 'onPlacement', args }),
     onEntityDelete: (...args) => calls.push({ fn: 'onEntityDelete', args }),
+    onEntityCreate: (target, path, ifcClass, attributes) => calls.push({
+      fn: 'onEntityCreate', args: [target.modelId, path, ifcClass, attributes],
+    }),
     onPsetDelete: (...args) => calls.push({ fn: 'onPsetDelete', args }),
   };
 }
 
 describe('mutation-bridge attachRemoteApply (inbound)', () => {
+  it('dispatches a remote entity add with its structured initial attributes', () => {
+    const doc = createCollabDoc();
+    const store = fakeStore(new Map());
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+    applyAsRemoteEdit(doc, (remote) => createEntity(remote, '/point', {
+      ifcClass: 'IfcCartesianPoint',
+      attributes: { 'bsi::ifc::prop::Coordinates': [1, 2, 3] },
+    }));
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onEntityCreate',
+      args: [MODEL, '/point', 'IfcCartesianPoint', { 'bsi::ifc::prop::Coordinates': [1, 2, 3] }],
+    }]);
+  });
   it('dispatches a remote pset property write to onProperty (pset already exists)', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });

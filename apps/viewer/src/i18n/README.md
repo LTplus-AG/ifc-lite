@@ -137,6 +137,19 @@ house rule's exact schema spelling and stay out of the catalogue, same as
 property/pset/material/classification/schedule NAMES and VALUES, which are
 model content.
 
+The appearance-panel catalogue (#4918 slice 4, split across
+`appearance-panel.en.ts`, `appearance-workflows.en.ts`, and
+`appearance-pickers.en.ts` purely to stay under the module-size budget;
+all share the same `appearance.*` key namespace) covers the rest of the
+Appearance panel: the panel-level view (source-action switch, status line,
+apply/discard footer), the source/scope/mapping/calibration/annotation field
+groups, the PDF page/crop/fidelity-report/password surfaces, the drawing
+reference library and multi-scope assignments (and their membership-review
+flow), the mesh/point capture previews and face-mask picker, and the scan
+capture/alignment/transfer workflows. It is a sibling to
+`appearance-assignment-list.en.ts` / `appearance-assignment-members.en.ts`,
+which cover `AppearanceAssignmentList`/`AppearanceAssignmentMembers`.
+
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
 `GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,

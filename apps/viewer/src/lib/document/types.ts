@@ -13,14 +13,17 @@
  */
 import type { ChartSpec, ReportPageSetup } from '@ifc-lite/charts';
 
-export const DOCUMENT_VERSION = 1;
+export const DOCUMENT_VERSION = 2;
+
+/** A block that can sit two-up in a row (#4940): `'half'` only takes effect when the block right after it is also a chart/image at `'half'`; unpaired, it prints full width. */
+export type BlockWidth = 'full' | 'half';
 
 export interface TextBlock {
   kind: 'text';
   id: string;
   /** Template text; `{path}` placeholders resolve against the model (see `bindings.ts`). */
   text: string;
-  style: 'title' | 'heading' | 'body';
+  style: 'title' | 'heading' | 'subheading' | 'body' | 'small' | 'caption';
 }
 
 export interface ImageBlock {
@@ -32,6 +35,8 @@ export interface ImageBlock {
   height: number;
   align: 'left' | 'center' | 'right';
   caption?: string;
+  /** `'half'` pairs this block with the next half chart/image into one row (#4940). Default `'full'`. */
+  width?: BlockWidth;
 }
 
 export interface ChartBlock {
@@ -41,6 +46,10 @@ export interface ChartBlock {
   chart: ChartSpec;
   /** Print a 3D snapshot of the chart's largest bucket next to it. */
   snapshot: boolean;
+  /** Printed height in points, 120-600 (#4940). Default 220. */
+  height?: number;
+  /** `'half'` pairs this block with the next half chart/image into one row (#4940). Default `'full'`. */
+  width?: BlockWidth;
 }
 
 export interface TopicBlock {
@@ -52,8 +61,19 @@ export interface TopicBlock {
   snapshot: boolean;
 }
 
-export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock;
+/** Blank vertical space between blocks, in points (#4940). Reuses the move/remove block UI; no other content. */
+export interface SpacerBlock {
+  kind: 'spacer';
+  id: string;
+  height: number;
+}
+
+export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock;
 export type DocumentBlockKind = DocumentBlock['kind'];
+
+export const CHART_BLOCK_HEIGHT_MIN = 120;
+export const CHART_BLOCK_HEIGHT_MAX = 600;
+export const CHART_BLOCK_HEIGHT_DEFAULT = 220;
 
 export interface DocumentSpec {
   version: typeof DOCUMENT_VERSION;
@@ -61,6 +81,24 @@ export interface DocumentSpec {
   name: string;
   page: ReportPageSetup;
   blocks: DocumentBlock[];
+}
+
+/** `true` when `block` may pair with an adjacent `'half'` block into one row — chart and image only (#4940). */
+export function isHalfPairable(block: DocumentBlock): block is (ChartBlock | ImageBlock) & { width: 'half' } {
+  return (block.kind === 'chart' || block.kind === 'image') && block.width === 'half';
+}
+
+/**
+ * `.ifclite-document.json` version 1 -> 2 (#4940): the shape did not change
+ * for existing blocks (`width`/`height` on chart/image are new optional
+ * fields, the new text styles and the spacer block are additive), so a v1
+ * document is a v2 document with the version number bumped. Anything that
+ * is not a recognizable v1 document passes through unchanged so
+ * `validateDocumentSpec` reports the real problem.
+ */
+export function migrateDocumentSpec(raw: unknown): unknown {
+  if (!isRecord(raw) || raw.version !== 1) return raw;
+  return { ...raw, version: DOCUMENT_VERSION };
 }
 
 export interface DocumentValidationError {
@@ -87,6 +125,10 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
     return errors;
   }
   const ids = new Set<string>();
+  const TEXT_STYLE_NAMES = ['title', 'heading', 'subheading', 'body', 'small', 'caption'];
+  const checkWidth = (block: Record<string, unknown>, at: string): void => {
+    if (block.width !== undefined && block.width !== 'full' && block.width !== 'half') errors.push({ path: `${at}.width`, message: 'expected full | half' });
+  };
   input.blocks.forEach((block: unknown, i) => {
     const at = `blocks[${i}]`;
     if (!isRecord(block)) {
@@ -99,24 +141,32 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
     switch (block.kind) {
       case 'text':
         if (!isString(block.text)) errors.push({ path: `${at}.text`, message: 'expected a string' });
-        if (block.style !== 'title' && block.style !== 'heading' && block.style !== 'body') errors.push({ path: `${at}.style`, message: 'expected title | heading | body' });
+        if (!TEXT_STYLE_NAMES.includes(block.style as string)) errors.push({ path: `${at}.style`, message: `expected ${TEXT_STYLE_NAMES.join(' | ')}` });
         break;
       case 'image':
         if (!isString(block.dataUrl) || !/^data:image\/(png|jpeg);base64,/.test(block.dataUrl)) errors.push({ path: `${at}.dataUrl`, message: 'expected a PNG or JPEG data URL' });
         if (typeof block.height !== 'number' || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
         if (block.align !== 'left' && block.align !== 'center' && block.align !== 'right') errors.push({ path: `${at}.align`, message: 'expected left | center | right' });
         if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
+        checkWidth(block, at);
         break;
       case 'chart':
         if (!isRecord(block.chart) || !isString(block.chart.id) || !isString(block.chart.title)) errors.push({ path: `${at}.chart`, message: 'expected a chart spec' });
         if (typeof block.snapshot !== 'boolean') errors.push({ path: `${at}.snapshot`, message: 'expected a boolean' });
+        if (block.height !== undefined && (typeof block.height !== 'number' || block.height < CHART_BLOCK_HEIGHT_MIN || block.height > CHART_BLOCK_HEIGHT_MAX)) {
+          errors.push({ path: `${at}.height`, message: `expected a number between ${CHART_BLOCK_HEIGHT_MIN} and ${CHART_BLOCK_HEIGHT_MAX}` });
+        }
+        checkWidth(block, at);
         break;
       case 'topic':
         if (!isString(block.guid) || block.guid.length === 0) errors.push({ path: `${at}.guid`, message: 'expected a topic GUID' });
         if (typeof block.snapshot !== 'boolean') errors.push({ path: `${at}.snapshot`, message: 'expected a boolean' });
         break;
+      case 'spacer':
+        if (typeof block.height !== 'number' || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
+        break;
       default:
-        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic' });
+        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer' });
     }
   });
   return errors;

@@ -31,11 +31,12 @@
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
 import {
-  getAttributeNamesAcrossSchemas,
   getInheritanceChainAcrossSchemas,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { LoadedModel } from './context.js';
+import { indexQueuedRelations, type QueuedRelation } from './overlay-relationships.js';
+export { queuedRelationshipEdges } from './overlay-relationships.js';
 
 /** An entity that exists only in the overlay (`entity_create`). */
 export interface CreatedEntity {
@@ -64,65 +65,6 @@ export interface CreatedEntity {
  * the enum grows, the readback carries.
  */
 export type AttributeOverrides = ReadonlyMap<string, string>;
-
-/**
- * One queued `IfcRel…` record, resolved to the entities it links.
- *
- * `entity_create` is the only way an agent can relate anything over MCP, so a
- * queued relationship is how a session says "this new wall is in that storey".
- * Reading it back is what keeps `in_storey` from dropping an entity the same
- * session just placed.
- */
-export interface QueuedRelation {
-  /** expressId of the queued `IfcRel…` record itself. */
-  relationshipId: number;
-  /** Exact IfcRel* class as authored. */
-  relationshipType: string;
-  /** The `Relating…` end — the container, whole, or type. */
-  relating: number;
-  /** The `Related…` end(s) — the contents, parts, or occurrences. */
-  related: readonly number[];
-}
-
-export interface QueuedRelationshipEdge {
-  relationshipId: number;
-  relationshipType: string;
-  direction: 'forward' | 'inverse';
-  targetId: number;
-}
-
-/** Exact graph rows contributed by queued relationship records touching an entity. */
-export function queuedRelationshipEdges(
-  created: readonly CreatedEntity[],
-  deleted: ReadonlySet<number>,
-  expressId: number,
-): QueuedRelationshipEdge[] {
-  const out: QueuedRelationshipEdge[] = [];
-  for (const relations of indexQueuedRelations(created).values()) {
-    for (const relation of relations) {
-      if (deleted.has(relation.relationshipId)) continue;
-      if (relation.relating === expressId) {
-        for (const targetId of relation.related) {
-          if (!deleted.has(targetId)) out.push({
-            relationshipId: relation.relationshipId,
-            relationshipType: relation.relationshipType,
-            direction: 'forward',
-            targetId,
-          });
-        }
-      }
-      if (relation.related.includes(expressId) && !deleted.has(relation.relating)) {
-        out.push({
-          relationshipId: relation.relationshipId,
-          relationshipType: relation.relationshipType,
-          direction: 'inverse',
-          targetId: relation.relating,
-        });
-      }
-    }
-  }
-  return out;
-}
 
 /** The overlay's read surface, as every folding tool consumes it. */
 export interface PendingOverlay {
@@ -276,66 +218,6 @@ class ViewOverlay implements PendingOverlay {
   quantitySets(expressId: number): QuantitySet[] {
     return this.view.getQuantitiesForEntity(expressId);
   }
-}
-
-/**
- * Group queued `IfcRel…` creates by class, resolved to their two ends.
- *
- * **By attribute name, never by slot.** The two role attributes do sit at slots
- * 4 and 5 for every relationship in the schema, but which of them is the
- * `Relating` end is per-class: `IfcRelAggregates` puts `RelatingObject` at 4,
- * while `IfcRelContainedInSpatialStructure` puts `RelatedElements` there. That
- * is the same hazard as slot 4 being `ObjectType` on an `IfcObject` and
- * `ApplicableOccurrence` on an `IfcTypeObject`, and the same answer:
- * `getAttributeNamesAcrossSchemas` — cross-schema, so a queued IFC2X3 or IFC4X3
- * relationship resolves too (#2003).
- *
- * A relationship whose ends cannot be resolved is skipped rather than guessed —
- * which is also what happens to an IFC2X3 `IfcRelCoversSpaces`, whose slot 4 is
- * `RelatedSpace` where IFC4 has `RelatingSpace`: it has no `Relating…` end under
- * the IFC4 spelling, so it is skipped rather than wired backwards. It is never
- * looked up either, because `queuedRelations` is only ever asked for the five
- * classes in `REL_TYPE_MAP`, and those five carry identical role slots in all
- * three bundled schemas.
- */
-function indexQueuedRelations(created: readonly CreatedEntity[]): Map<string, QueuedRelation[]> {
-  const byType = new Map<string, QueuedRelation[]>();
-  for (const entity of created) {
-    const upper = entity.ifcType.toUpperCase();
-    if (!upper.startsWith('IFCREL')) continue;
-    const names = getAttributeNamesAcrossSchemas(entity.ifcType);
-    if (names.length === 0) continue;
-    let relating: number | undefined;
-    let related: number[] | undefined;
-    for (let i = 0; i < names.length; i++) {
-      // The two prefixes are disjoint — `'Relating'.startsWith('Related')` is
-      // false and so is the reverse — so the order of these two tests carries no
-      // meaning. An earlier comment here claimed it did.
-      if (names[i].startsWith('Related')) related ??= refIds(entity.attributes[i]);
-      else if (names[i].startsWith('Relating')) relating ??= refIds(entity.attributes[i])[0];
-    }
-    if (relating === undefined || related === undefined || related.length === 0) continue;
-    const list = byType.get(upper);
-    const relation: QueuedRelation = {
-      relationshipId: entity.expressId,
-      relationshipType: entity.ifcType,
-      relating,
-      related,
-    };
-    if (list) list.push(relation);
-    else byType.set(upper, [relation]);
-  }
-  return byType;
-}
-
-/** Express ids from an authored `'#42'` reference or a list of them. */
-function refIds(value: unknown): number[] {
-  if (typeof value === 'string') {
-    const id = Number.parseInt(value.trim().slice(1), 10);
-    return value.trim().startsWith('#') && Number.isFinite(id) ? [id] : [];
-  }
-  if (Array.isArray(value)) return value.flatMap((item) => refIds(item));
-  return [];
 }
 
 /**

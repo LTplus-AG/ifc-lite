@@ -904,6 +904,20 @@ describe('containment over queued relationships', () => {
     return created.expressId;
   }
 
+  it('rehydrates parsed relationship endpoint metadata from the overlay', async () => {
+    await session();
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+    const wall = { modelId: 'm', expressId: 72 };
+
+    await call('entity_set_attribute', { global_id: guid('STOR'), attribute: 'Name', value: 'Level One' });
+
+    const edge = model.bim.relationships(wall).relations?.find((candidate) =>
+      candidate.relationshipId === 45 && candidate.entity.id === 41);
+    expect(edge?.entity.name).toBe('Level One');
+    expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('Level One');
+  }, 30_000);
+
   it('reports a queued exact relationship row and removes it after deletion', async () => {
     await session();
     const wall = await structured<{ expressId: number }>('entity_create', {

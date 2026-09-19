@@ -60,18 +60,27 @@ function refIds(value: unknown): number[] {
  * or IFC4X3 relationship resolves too, mirroring the MCP overlay this is
  * ported from.
  */
-function indexQueuedRelations(created: readonly NewEntity[]): Map<string, QueuedRelation[]> {
+type PositionalOverrides = (
+  expressId: number,
+) => ReadonlyMap<number, NewEntity['attributes'][number]> | null;
+
+function indexQueuedRelations(
+  created: readonly NewEntity[],
+  positionalOverrides?: PositionalOverrides,
+): Map<string, QueuedRelation[]> {
   const byType = new Map<string, QueuedRelation[]>();
   for (const entity of created) {
     const upper = entity.type.toUpperCase();
     if (!upper.startsWith('IFCREL')) continue;
     const names = getAttributeNamesAcrossSchemas(entity.type);
     if (names.length === 0) continue;
+    const attributes = [...entity.attributes];
+    for (const [index, value] of positionalOverrides?.(entity.expressId) ?? []) attributes[index] = value;
     let relating: number | undefined;
     let related: number[] | undefined;
     for (let i = 0; i < names.length; i++) {
-      if (names[i].startsWith('Related')) related ??= refIds(entity.attributes[i]);
-      else if (names[i].startsWith('Relating')) relating ??= refIds(entity.attributes[i])[0];
+      if (names[i].startsWith('Related')) related ??= refIds(attributes[i]);
+      else if (names[i].startsWith('Relating')) relating ??= refIds(attributes[i])[0];
     }
     if (relating === undefined || related === undefined || related.length === 0) continue;
     const relation: QueuedRelation = {
@@ -92,9 +101,10 @@ export function foldQueuedRelationshipEdges(
   newEntities: readonly NewEntity[],
   isDeleted: (expressId: number) => boolean,
   expressId: number,
+  positionalOverrides?: PositionalOverrides,
 ): QueuedRelationshipEdge[] {
   const out: QueuedRelationshipEdge[] = [];
-  for (const relations of indexQueuedRelations(newEntities).values()) {
+  for (const relations of indexQueuedRelations(newEntities, positionalOverrides).values()) {
     for (const relation of relations) {
       if (isDeleted(relation.relationshipId)) continue;
       if (relation.relating === expressId) {
@@ -134,8 +144,9 @@ export function foldQueuedRelated(
   relType: string,
   direction: 'forward' | 'inverse',
   expressId: number,
+  positionalOverrides?: PositionalOverrides,
 ): number[] {
-  const byType = indexQueuedRelations(newEntities);
+  const byType = indexQueuedRelations(newEntities, positionalOverrides);
   const relations = byType.get(relType.toUpperCase()) ?? [];
   const out: number[] = [];
   for (const relation of relations) {

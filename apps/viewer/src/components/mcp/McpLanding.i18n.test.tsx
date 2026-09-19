@@ -181,4 +181,20 @@ describe('McpLanding localization (#4918)', () => {
 
     assert.equal(statistic?.textContent?.trim(), `tools BEFORE ${CATALOG.tools.length}`);
   });
+
+  it('lets translators reorder complete install badges and tool share labels', () => {
+    registerLocale('en-x-mcp-metadata', {
+      'mcp.mcpLanding.oneClickBadge': 'ONE CLICK BEFORE {index}',
+      'mcp.mcpLanding.pasteConfigBadge': 'PASTE BEFORE {index}',
+      'mcp.mcpLanding.toolShareLink': 'SHARE BEFORE {name}',
+    });
+    act(() => setLocale('en-x-mcp-metadata'));
+    const container = render(<McpLanding />);
+    openInteractiveChrome(container);
+    const text = container.textContent ?? '';
+
+    assert.match(text, /ONE CLICK BEFORE 02/);
+    assert.match(text, /PASTE BEFORE 01/);
+    assert.match(text, /SHARE BEFORE viewer_ask/);
+  });
 });

@@ -655,7 +655,9 @@ function BigClientCard({
       />
       <div className="flex items-baseline justify-between">
         <span style={{ ...mono, color: ACCENT }} className="text-[10px] uppercase tracking-[0.22em]">
-          0{index + 1} / {client.deepLinkPrefix ? t('mcp.mcpLanding.oneClick') : t('mcp.mcpLanding.pasteConfig')}
+          {t(client.deepLinkPrefix ? 'mcp.mcpLanding.oneClickBadge' : 'mcp.mcpLanding.pasteConfigBadge', {
+            index: String(index + 1).padStart(2, '0'),
+          })}
         </span>
         <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px]">
           {client.deepLinkPrefix ?? t('mcp.mcpLanding.manual')}
@@ -1182,7 +1184,7 @@ function CatalogToolDetail({
             void navigator.clipboard?.writeText(url.toString()).catch(() => undefined);
           }}
         >
-          # {tool.name} {t('mcp.mcpLanding.shareLink')}
+          {t('mcp.mcpLanding.toolShareLink', { name: tool.name })}
         </a>
         <a
           href={`/mcp/playground?prompt=${encodeURIComponent(`Call ${tool.name} with ${JSON.stringify(EXAMPLES[tool.name] ?? {})}`)}`}

@@ -56,8 +56,8 @@ export const mcpEn = {
   'mcp.mcpLanding.installSectionTitle': 'Pick your client. We brought a snippet.',
   'mcp.mcpLanding.alsoLabel': 'also',
   'mcp.mcpLanding.installInstructionsSr': 'Install instructions',
-  'mcp.mcpLanding.oneClick': 'one-click',
-  'mcp.mcpLanding.pasteConfig': 'paste config',
+  'mcp.mcpLanding.oneClickBadge': '{index} / one-click',
+  'mcp.mcpLanding.pasteConfigBadge': '{index} / paste config',
   'mcp.mcpLanding.manual': 'manual',
   'mcp.mcpLanding.installSlash': 'install / {name}',
   'mcp.mcpLanding.oneClickOrCopy': 'One click. Or copy.',
@@ -87,7 +87,7 @@ export const mcpEn = {
   'mcp.mcpLanding.colDescription': 'description',
   'mcp.mcpLanding.yes': 'yes',
   'mcp.mcpLanding.exampleCall': 'Example call',
-  'mcp.mcpLanding.shareLink': '· share link',
+  'mcp.mcpLanding.toolShareLink': '# {name} · share link',
 
   // ── McpLanding: footer ──
   'mcp.mcpLanding.bringYourModel': 'Bring your model.',

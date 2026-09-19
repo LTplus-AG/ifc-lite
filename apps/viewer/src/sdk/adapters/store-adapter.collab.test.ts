@@ -214,6 +214,32 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.deepEqual(calls.at(-1), { kind: 'remove', args: [MODEL, 3] });
   });
 
+  it('registers every cyclic source path before publishing reference attributes', () => {
+    const cyclicStore = Object.create(dataStore) as IfcDataStore;
+    Object.defineProperty(cyclicStore, 'getEntity', {
+      value: (expressId: number) => expressId === 3
+        ? { expressId, type: 'IfcBooleanResult', attributes: ['.UNION.', '#4', '#4'] }
+        : expressId === 4
+          ? { expressId, type: 'IfcBooleanResult', attributes: ['.UNION.', '#3', '#3'] }
+          : undefined,
+    });
+    const { adapter, calls } = fixture(true, cyclicStore, () => true);
+
+    adapter.setPositionalAttribute({ modelId: MODEL, expressId: 3 }, 1, '#4');
+
+    const creates = calls.filter(call => call.kind === 'create');
+    assert.equal(creates.length, 4);
+    assert.deepEqual(creates.slice(0, 2).map(call => call.args[5]), [{}, {}]);
+    assert.deepEqual(
+      (creates[2]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::FirstOperand'],
+      { 'ifc-lite::entityPath': '/ifc-lite-ref-4' },
+    );
+    assert.deepEqual(
+      (creates[3]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::FirstOperand'],
+      { 'ifc-lite::entityPath': '/ifc-lite-ref-3' },
+    );
+  });
+
   it('retries source mirroring after collaboration is initially unavailable', () => {
     let available = false;
     const { adapter, calls } = fixture(true, ifc2x3Store, () => available);
@@ -224,9 +250,10 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     adapter.setPositionalAttribute(point, 0, [7, 8, 9]);
 
     const creates = calls.filter(call => call.kind === 'create');
-    assert.equal(creates.length, 2);
+    assert.equal(creates.length, 3);
     assert.deepEqual(creates[0]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
     assert.deepEqual(creates[1]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
+    assert.deepEqual(creates[2]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
   });
 
   it('uses IFC2X3 positional names and mirrors undefined as an explicit clear', () => {
@@ -278,10 +305,27 @@ describe('bim.store collaboration mirroring (#5008)', () => {
       attributes: ['Rate', null, '#3', null, null, null, null, null, null, null],
     });
     const appliedValue = calls.at(-1);
+    assert.ok(appliedValue);
     assert.deepEqual(
-      (appliedValue?.args[5] as Record<string, unknown>)['bsi::ifc::prop::AppliedValue'],
+      (appliedValue.args[5] as Record<string, unknown>)['bsi::ifc::prop::AppliedValue'],
       { 'ifc-lite::entityPath': '/ifc-lite-ref-3' },
     );
+  });
+
+  it('preserves scalar typed branches of mixed SELECT attributes', () => {
+    const { adapter, calls } = fixture(true, dataStore, () => true);
+    const scalar = { typed: { type: 'IfcLabel', value: '#3' } };
+    adapter.addEntity(MODEL, {
+      type: 'IFCAPPLIEDVALUE',
+      attributes: ['Rate', null, scalar, null, null, null, null, null, null, null],
+    });
+    const appliedValue = calls.at(-1);
+    assert.ok(appliedValue);
+    assert.deepEqual(
+      (appliedValue.args[5] as Record<string, unknown>)['bsi::ifc::prop::AppliedValue'],
+      scalar,
+    );
+    assert.equal(calls.filter(call => call.kind === 'create').length, 1);
   });
 
   it('uses cross-schema reference metadata for IFC5 collaboration stores', () => {

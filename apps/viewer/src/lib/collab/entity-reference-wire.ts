@@ -2,27 +2,61 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { isInstantiable, type IfcDataStore } from '@ifc-lite/parser';
 import { entityForPath, pathForEntity } from './entity-paths';
 
 const PATH_KEY = 'ifc-lite::entityPath';
 const STEP_REFERENCE = /^#([1-9]\d*)$/;
+const MAX_VALUE_NODES = 10_000;
+const MAX_VALUE_DEPTH = 256;
+
+function scalarTypedMarker(value: object): boolean {
+  if (Array.isArray(value)) return false;
+  const typed = (value as { typed?: unknown }).typed;
+  if (!typed || typeof typed !== 'object' || Array.isArray(typed)) return false;
+  const marker = typed as Record<string, unknown>;
+  return typeof marker.type === 'string' && 'value' in marker && !isInstantiable(marker.type);
+}
+
+function assertValueBudget(nodes: number, depth: number): void {
+  if (nodes > MAX_VALUE_NODES) {
+    throw new Error(`collaboration attribute value exceeds ${MAX_VALUE_NODES} nodes`);
+  }
+  if (depth > MAX_VALUE_DEPTH) {
+    throw new Error(`collaboration attribute value exceeds depth ${MAX_VALUE_DEPTH}`);
+  }
+}
 
 export function referencedExpressIds(value: unknown, allowReferences: boolean, ids = new Set<number>()): Set<number> {
   if (!allowReferences) return ids;
-  const pending: unknown[] = [value];
+  const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
   const visited = new Set<object>();
+  let nodes = 0;
   while (pending.length > 0) {
-    const item = pending.pop();
+    const { value: item, depth } = pending.pop()!;
+    assertValueBudget(++nodes, depth);
     if (typeof item === 'string') {
       const match = STEP_REFERENCE.exec(item);
       if (match) ids.add(Number(match[1]));
     } else if (item && typeof item === 'object' && !visited.has(item)) {
       visited.add(item);
-      pending.push(...(Array.isArray(item) ? item : Object.values(item)));
+      if (scalarTypedMarker(item)) continue;
+      for (const child of Array.isArray(item) ? item : Object.values(item)) {
+        pending.push({ value: child, depth: depth + 1 });
+      }
     }
   }
   return ids;
+}
+
+interface TransformFrame {
+  value: unknown;
+  depth: number;
+  assign(value: unknown): void;
+}
+
+function setOwn(target: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
 }
 
 /** Replace sender-local STEP references with stable room paths. */
@@ -33,46 +67,75 @@ export function encodeRoomAttributeValue(
   resolvePath: (expressId: number) => string | null = expressId => pathForEntity(store, expressId),
 ): unknown {
   if (!allowReferences) return value;
-  if (typeof value === 'string') {
-    const match = STEP_REFERENCE.exec(value);
-    if (!match) return value;
-    const path = resolvePath(Number(match[1]));
-    return path ? { [PATH_KEY]: path } : value;
+  let encoded: unknown;
+  const pending: TransformFrame[] = [{ value, depth: 0, assign: next => { encoded = next; } }];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const frame = pending.pop()!;
+    assertValueBudget(++nodes, frame.depth);
+    const item = frame.value;
+    if (typeof item === 'string') {
+      const match = STEP_REFERENCE.exec(item);
+      const path = match ? resolvePath(Number(match[1])) : null;
+      frame.assign(path ? { [PATH_KEY]: path } : item);
+    } else if (Array.isArray(item)) {
+      const output = new Array<unknown>(item.length);
+      frame.assign(output);
+      for (let index = item.length - 1; index >= 0; index -= 1) {
+        pending.push({ value: item[index], depth: frame.depth + 1, assign: next => { output[index] = next; } });
+      }
+    } else if (item && typeof item === 'object' && !scalarTypedMarker(item)) {
+      const output: Record<string, unknown> = {};
+      frame.assign(output);
+      const entries = Object.entries(item);
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const [key, child] = entries[index];
+        pending.push({ value: child, depth: frame.depth + 1, assign: next => setOwn(output, key, next) });
+      }
+    } else {
+      frame.assign(item);
+    }
   }
-  if (Array.isArray(value)) return value.map(item => encodeRoomAttributeValue(store, item, true, resolvePath));
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(
-      ([key, item]) => [key, encodeRoomAttributeValue(store, item, true, resolvePath)],
-    ));
-  }
-  return value;
+  return encoded;
 }
 
 /** Resolve stable room paths into this recipient's local STEP ID space. */
-export function decodeRoomAttributeValue(store: IfcDataStore, value: unknown): { ok: true; value: unknown } | { ok: false } {
-  if (Array.isArray(value)) {
-    const decoded: unknown[] = [];
-    for (const item of value) {
-      const result = decodeRoomAttributeValue(store, item);
-      if (!result.ok) return result;
-      decoded.push(result.value);
+export function decodeRoomAttributeValue(store: IfcDataStore, value: unknown):
+  { ok: true; value: unknown } | { ok: false; reason: string } {
+  let decoded: unknown;
+  const pending: TransformFrame[] = [{ value, depth: 0, assign: next => { decoded = next; } }];
+  let nodes = 0;
+  try {
+    while (pending.length > 0) {
+      const frame = pending.pop()!;
+      assertValueBudget(++nodes, frame.depth);
+      const item = frame.value;
+      if (Array.isArray(item)) {
+        const output = new Array<unknown>(item.length);
+        frame.assign(output);
+        for (let index = item.length - 1; index >= 0; index -= 1) {
+          pending.push({ value: item[index], depth: frame.depth + 1, assign: next => { output[index] = next; } });
+        }
+      } else if (item && typeof item === 'object' && Object.keys(item).length === 1 && PATH_KEY in item) {
+        const path = (item as Record<string, unknown>)[PATH_KEY];
+        if (typeof path !== 'string') return { ok: false, reason: 'invalid room reference' };
+        const id = entityForPath(store, path);
+        if (id === null) return { ok: false, reason: `unresolved room reference: ${path}` };
+        frame.assign(`#${id}`);
+      } else if (item && typeof item === 'object' && !scalarTypedMarker(item)) {
+        const output: Record<string, unknown> = {};
+        frame.assign(output);
+        const entries = Object.entries(item);
+        for (let index = entries.length - 1; index >= 0; index -= 1) {
+          const [key, child] = entries[index];
+          pending.push({ value: child, depth: frame.depth + 1, assign: next => setOwn(output, key, next) });
+        }
+      } else {
+        frame.assign(item);
+      }
     }
-    return { ok: true, value: decoded };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }
-  if (value && typeof value === 'object' && Object.keys(value).length === 1 && PATH_KEY in value) {
-    const path = (value as Record<string, unknown>)[PATH_KEY];
-    if (typeof path !== 'string') return { ok: false };
-    const id = entityForPath(store, path);
-    return id === null ? { ok: false } : { ok: true, value: `#${id}` };
-  }
-  if (value && typeof value === 'object') {
-    const decoded: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) {
-      const result = decodeRoomAttributeValue(store, item);
-      if (!result.ok) return result;
-      decoded[key] = result.value;
-    }
-    return { ok: true, value: decoded };
-  }
-  return { ok: true, value };
+  return { ok: true, value: decoded };
 }

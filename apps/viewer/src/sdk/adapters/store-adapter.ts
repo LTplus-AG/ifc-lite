@@ -53,7 +53,7 @@ import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
-import { entityForPath, pathForEntity, pathForGuid } from '@/lib/collab/entity-paths.js';
+import { entityForPath, pathForEntity, pathForGuid, unregisterEntityPath } from '@/lib/collab/entity-paths.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   const MAX_SOURCE_REFERENCE_ENTITIES = 10_000;
@@ -165,7 +165,25 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       });
     }
     const resolvePath = (expressId: number) => candidates.get(expressId) ?? pathForEntity(dataStore, expressId);
-    for (const entry of entries.reverse()) {
+    // A cyclic graph has no topological creation order. Publish every path
+    // before any reference-bearing attribute so recipients can resolve all
+    // edges when the attribute events arrive.
+    const registered: number[] = [];
+    for (const entry of entries) {
+      store.getState().mirrorEntityCreate(
+        modelId, entry.expressId, entry.type, entry.roomKey, null, {},
+      );
+      if (pathForEntity(dataStore, entry.expressId) === candidates.get(entry.expressId)) {
+        registered.push(entry.expressId);
+      }
+    }
+    if (registered.length !== entries.length) {
+      // Collaboration can be unavailable while the local edit is accepted.
+      // Forget partial registrations so the complete idempotent batch retries.
+      for (const expressId of registered) unregisterEntityPath(dataStore, expressId);
+      return;
+    }
+    for (const entry of entries) {
       store.getState().mirrorEntityCreate(
         modelId, entry.expressId, entry.type, entry.roomKey, null,
         initialRoomAttributes(dataStore, entry.type, entry.names, entry.values, resolvePath),

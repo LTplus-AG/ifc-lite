@@ -22,5 +22,33 @@ test('structured room references resolve in the recipient ID space (#5008)', () 
   assert.deepEqual(decodeRoomAttributeValue(recipient, encoded), {
     ok: true, value: ['#91', { typed: { type: 'IfcReference', value: '#91' } }],
   });
-  assert.deepEqual(decodeRoomAttributeValue(recipient, { 'ifc-lite::entityPath': '/m0/missing' }), { ok: false });
+  assert.deepEqual(decodeRoomAttributeValue(recipient, { 'ifc-lite::entityPath': '/m0/missing' }), {
+    ok: false, reason: 'unresolved room reference: /m0/missing',
+  });
+});
+
+test('mixed SELECT scalar markers preserve reference-shaped text (#5008)', () => {
+  const sender = {} as IfcDataStore;
+  registerEntityMaps(sender, new Map([[4, '/m0/target']]), new Map([['/m0/target', 4]]));
+  const scalar = { typed: { type: 'IfcLabel', value: '#4' } };
+  assert.deepEqual(encodeRoomAttributeValue(sender, scalar, true), scalar);
+});
+
+test('structured room transforms reject excessive nesting without recursion (#5008)', () => {
+  const sender = {} as IfcDataStore;
+  let deep: unknown = '#4';
+  for (let index = 0; index < 300; index += 1) deep = [deep];
+  assert.throws(() => encodeRoomAttributeValue(sender, deep, true), /exceeds depth 256/);
+  assert.deepEqual(decodeRoomAttributeValue(sender, deep), {
+    ok: false, reason: 'collaboration attribute value exceeds depth 256',
+  });
+});
+
+test('structured room transforms enforce a bounded work budget (#5008)', () => {
+  const sender = {} as IfcDataStore;
+  const wide = new Array<unknown>(10_001).fill(null);
+  assert.throws(() => encodeRoomAttributeValue(sender, wide, true), /exceeds 10000 nodes/);
+  assert.deepEqual(decodeRoomAttributeValue(sender, wide), {
+    ok: false, reason: 'collaboration attribute value exceeds 10000 nodes',
+  });
 });

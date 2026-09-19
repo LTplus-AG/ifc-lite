@@ -930,16 +930,33 @@ fn attribute_export_preserves_transitional_ifc4_metadata() {
             ifc_lite_core::AttributeValue::String("alignment-tag".to_string()),
         ],
     );
-    let attributes = render_attributes(
-        &entity,
-        "IFCALIGNMENTCURVE",
-        "IFC4X1",
-        entity.ifc_type,
-    );
+    let attributes = render_attributes(&entity, "IFCALIGNMENTCURVE", "IFC4X1");
 
     assert_eq!(attributes.len(), 1);
     assert_eq!(attributes[0].name, "Tag");
     assert_eq!(attributes[0].value, "alignment-tag");
+}
+
+/// #4203: when a known canonical IFC4X3 entity is absent from the declared
+/// older schema, its canonical names must not label that older record's slots.
+#[test]
+fn attribute_export_does_not_borrow_names_from_a_newer_schema() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCALIGNMENT('alignment-guid',$,'Alignment',$,$,$,$,.ROAD.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(
+        ifc,
+        &ModelOptions::default().with_attributes(true),
+    );
+
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].attributes.is_empty());
 }
 
 /// A lowercase STEP keyword must resolve the same legacy attribute names as

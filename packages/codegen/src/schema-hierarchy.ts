@@ -21,61 +21,6 @@
  * or both.
  */
 
-import type { IfcEntityInfo } from '@ifc-lite/data';
-import type { EntityDefinition, ExpressSchema } from './express-parser.js';
-
-/**
- * Adapt class-shaped IFC catalog rows into a name-only EXPRESS supplement.
- * The catalog also carries defined types, enums, and selects for IDS audits;
- * require entity shape and subtract the authoritative type list so those rows
- * cannot become `IfcType` variants.
- */
-export function entityCatalogSchema(
-  name: string,
-  catalog: readonly IfcEntityInfo[],
-  excludedTypes: readonly { readonly name: string }[],
-): ExpressSchema {
-  const excludedNames = new Set(excludedTypes.map((type) => type.name.toUpperCase()));
-  const entities: EntityDefinition[] = catalog
-    .filter(
-      (entity) =>
-        !excludedNames.has(entity.name.toUpperCase()) &&
-        (entity.parent !== undefined || entity.abstract || entity.attributes.length > 0),
-    )
-    .map((entity) => ({
-      name: entity.name,
-      isAbstract: entity.abstract,
-      supertype: entity.parent,
-      attributes: [],
-    }));
-  return { name, entities, types: [], enums: [], selects: [] };
-}
-
-/**
- * Merge exact entity names while preserving the canonical schema's positional
- * metadata. Supplemental entities deliberately carry no borrowed attributes.
- */
-export function mergeTypeUniverse(
-  canonical: ExpressSchema,
-  supplemental: readonly ExpressSchema[],
-): ExpressSchema {
-  const entities = [...canonical.entities];
-  const names = new Set(entities.map((entity) => entity.name.toUpperCase()));
-  for (const schema of supplemental) {
-    for (const entity of schema.entities) {
-      if (!names.has(entity.name.toUpperCase())) {
-        entities.push(entity);
-        names.add(entity.name.toUpperCase());
-      }
-    }
-  }
-  return {
-    ...canonical,
-    name: [canonical, ...supplemental].map((item) => item.name).join(' + '),
-    entities,
-  };
-}
-
 /** The minimal shape this module reads off a generated bundle's entity metadata. */
 export interface HierarchyEntity {
   inheritanceChain?: string[];

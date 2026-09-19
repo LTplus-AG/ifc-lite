@@ -12,7 +12,7 @@ import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
 import { AppearanceBuckets } from './scene-appearance-buckets.js';
-import { prepareSceneAuthoredOwner } from './scene-authored-owner.js';
+import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-authored-owner.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
@@ -197,10 +197,10 @@ export class Scene {
   private sharedTextures = new Map<number, { texture: GPUTexture; refs: number }>();
   private rgbaTexturePool = new RgbaTexturePool();
   private appearanceController?: ReturnType<typeof createSceneAppearancePreview>;
-
   private appearanceBuckets?: AppearanceBuckets;
   private appearanceAccessState?: SceneAppearanceAccess;
   private authoredGeneration = 0;
+  private authoredPreparations = new AuthoredPreparationRegistry();
   private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
     return {
       meshes: () => this.texturedMeshes, data: this.meshDataMap,
@@ -238,7 +238,6 @@ export class Scene {
   }
 
   private bindAppearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess { return this.appearanceAccessState = rebindSceneAppearanceAccess(this.appearanceAccessState, this.appearanceAccess(device, pipeline)); }
-
   private sharedAppearanceBuckets(access: SceneAppearanceAccess) {
     return this.appearanceBuckets ??= new AppearanceBuckets(access.buckets, id => this.meshDataMap.get(id));
   }
@@ -246,7 +245,8 @@ export class Scene {
     const access = this.bindAppearanceAccess(device, pipeline);
     return this.appearanceController ??= createSceneAppearancePreview(access, this.sharedAppearanceBuckets(access));
   }
-
+  private resetAppearanceBatchCohorts(): void { this.appearanceBuckets?.forget(); }
+  private invalidateAuthoredPreparationsForRecovery(): void { this.authoredGeneration++; this.authoredPreparations.invalidate(); }
   /** Place canonical native appearance source geometry in this model's live frame. */
   placeAppearanceSource(mesh: MeshData): MeshData { return this.modelTranslations.placeMesh(mesh); }
   /** Retain model-local source coordinates when publishing a placed appearance mesh. */
@@ -255,9 +255,9 @@ export class Scene {
   /** Stage one new IFC owner with all its coloured or textured geometry parts. */
   prepareAuthoredOwner(parts: readonly MeshData[], device: GPUDevice, pipeline: RenderPipeline) {
     const access = this.bindAppearanceAccess(device, pipeline), generation = this.authoredGeneration;
-    return prepareSceneAuthoredOwner(access, this.sharedAppearanceBuckets(access), parts, () => {
+    return this.authoredPreparations.track(prepareSceneAuthoredOwner(access, this.sharedAppearanceBuckets(access), parts, () => {
       if (generation !== this.authoredGeneration) throw new Error('The scene changed while preparing the object.');
-    });
+    }));
   }
   /** Compatibility entry point for an image-backed single-part owner. */
   prepareTexturedOwner(mesh: MeshData, device: GPUDevice, pipeline: RenderPipeline) {

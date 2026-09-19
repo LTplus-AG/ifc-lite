@@ -178,6 +178,51 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene['buckets'].get('flat')?.batchedMesh, replacement);
   });
 
+  it('repartitions flat buckets for a replacement device with a smaller buffer limit', () => {
+    const scene = new Scene(), first = triangle(21), second = triangle(22), old = batch(1);
+    const bucketState = { key: 'flat', meshData: [first, second], batchedMesh: old, vertexBytes: 168 };
+    scene['buckets'].set('flat', bucketState);
+    scene['meshDataBucket'].set(first, bucketState);
+    scene['meshDataBucket'].set(second, bucketState);
+    scene['batchedMeshes'] = [old];
+    scene.discardGpuResourcesForRecovery();
+
+    const uploads: Array<{ parts: MeshData[]; key: string | undefined }> = [];
+    scene['createBatchedMesh'] = (parts, _color, _device, _pipeline, key) => {
+      uploads.push({ parts, key });
+      const replacement = batch(10 + uploads.length);
+      replacement.colorKey = key ?? 'missing';
+      return replacement;
+    };
+    const smaller = { limits: { maxBufferSize: 120 } } as unknown as GPUDevice;
+    scene.restoreGpuResourcesAfterRecovery(smaller, {} as RenderPipeline);
+
+    assert.deepStrictEqual(uploads.map(({ parts }) => parts), [[first], [second]]);
+    assert.strictEqual(scene.getBatchedMeshes().length, 2);
+    assert.strictEqual(scene['buckets'].size, 2);
+    assert.notStrictEqual(uploads[0].key, uploads[1].key);
+    assert.strictEqual(scene['meshDataBucket'].get(first)?.meshData[0], first);
+    assert.strictEqual(scene['meshDataBucket'].get(second)?.meshData[0], second);
+  });
+
+  it('invalidates and releases a detached authored transaction before recovery', () => {
+    const scene = new Scene(), first = device();
+    const pipeline = {
+      getUniformBufferSize: () => 256,
+      getBindGroupLayout: () => ({}),
+    } as unknown as RenderPipeline;
+    const prepared = scene.prepareAuthoredOwner([triangle(23)], first.gpu, pipeline);
+    assert.ok(first.created.length > 0);
+    assert.deepStrictEqual(first.created.map(value => value.destroyed), first.created.map(() => 0));
+
+    scene.discardGpuResourcesForRecovery();
+    assert.deepStrictEqual(first.created.map(value => value.destroyed), first.created.map(() => 1));
+    assert.throws(() => prepared.commit(), /released/);
+    assert.strictEqual(scene.getMeshData(23), undefined);
+    prepared.dispose();
+    assert.deepStrictEqual(first.created.map(value => value.destroyed), first.created.map(() => 1));
+  });
+
   it('preserves evicted residency shells instead of eagerly re-uploading them', () => {
     const scene = new Scene(), source = triangle(10), shell = batch(1), replacement = batch(2);
     shell.colorKey = 'flat';
@@ -224,12 +269,16 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(capturedPipeline, replacementPipeline);
   });
 
-  it('recreates slot-stable instances and reapplies selection, hide, and colour state', () => {
+  it('recreates slot-stable instances and reapplies selection and visibility with global colour overrides', () => {
     const scene = new Scene(), first = device();
     scene.addInstancedShard(first.gpu, shard(), 9);
     scene.setInstancedSelection(new Set([42]));
     scene.setInstancedVisibility(new Set([42]), null);
-    scene.setInstancedColorOverrides(new Map([[42, [1, 0, 0, 0.5] as const]]));
+    scene.setColorOverrides(
+      new Map([[42, [1, 0, 0, 0.5] as [number, number, number, number]]]),
+      first.gpu,
+      {} as RenderPipeline,
+    );
     const old = scene.getInstancedTemplates()[0].vertexBuffer as unknown as FakeBuffer;
 
     scene.discardGpuResourcesForRecovery();
@@ -241,7 +290,10 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene.getInstancedTemplates()[0].modelIndex, 9);
     assert.strictEqual(scene.getInstancedTemplates()[0].selectedCount, 1);
     assert.deepStrictEqual([...scene.getInstancedEntityIds()], [42]);
-    assert.ok(second.writes.length >= 2, 'flags and override colour must be re-applied to the new instance buffer');
+    const flags = second.writes
+      .filter(write => write.offset % 88 === 84)
+      .map(write => new DataView(write.data.buffer, write.data.byteOffset, write.data.byteLength).getUint32(0, true));
+    assert.deepStrictEqual(flags, [3], 'selected and hidden flags must survive the global override rebuild');
   });
 
   it('preserves distinct occurrence colours for a shared express ID', () => {

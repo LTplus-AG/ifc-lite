@@ -507,6 +507,34 @@ describe('removeCostEntityInStore', () => {
     expect(ed.hasEntity(value)).toBe(false);
   });
 
+  it('retains optional-list owners and nulls an emptied list when detaching', async () => {
+    const { editor: ed, view } = await editor();
+    const value = addCostValueToStore(ed, ANCHOR, { Name: 'Removed value' });
+    const surviving = addCostValueToStore(ed, ANCHOR, { Name: 'Surviving value' });
+    const soleOwner = ed.addEntity('IfcConstructionResource', [
+      'soleResource00000000000', null, 'Sole', null, null, null, null, null,
+      [`#${value}`], null,
+    ]).expressId;
+    const sharedOwner = ed.addEntity('IfcConstructionResource', [
+      'sharedResource000000000', null, 'Shared', null, null, null, null, null,
+      [`#${value}`, `#${surviving}`], null,
+    ]).expressId;
+    const referrers = { optionalListReferrers: [
+      { entityId: soleOwner, attributeIndex: 8, referencedIds: [value] },
+      { entityId: sharedOwner, attributeIndex: 8, referencedIds: [value, surviving] },
+    ] };
+
+    expect(() => removeCostEntityInStore(ed, ANCHOR, value, referrers))
+      .toThrow(new RegExp(`entity #${soleOwner} attribute 8`));
+    removeCostEntityInStore(ed, ANCHOR, value, referrers, { detach: true });
+
+    expect(view.getPositionalMutationsForEntity(soleOwner)?.get(8)).toBeNull();
+    expect(view.getPositionalMutationsForEntity(sharedOwner)?.get(8)).toEqual([`#${surviving}`]);
+    expect(ed.hasEntity(soleOwner)).toBe(true);
+    expect(ed.hasEntity(sharedOwner)).toBe(true);
+    expect(ed.hasEntity(value)).toBe(false);
+  });
+
   it('detaches from IfcRelNests and IfcRelAssignsToControl, tombstoning an emptied rel', async () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });

@@ -33,6 +33,12 @@ export interface CostRemovalReferrers {
     entityId: number;
     attributeIndex: number;
   }[];
+  /** Non-relationship entities whose optional list attribute contains the target. */
+  optionalListReferrers?: readonly {
+    entityId: number;
+    attributeIndex: number;
+    referencedIds: readonly number[];
+  }[];
 }
 
 /**
@@ -65,6 +71,11 @@ export function removeCostEntityInStore(
   for (const ref of referrers.optionalScalarReferrers ?? []) {
     blockers.push(`entity #${ref.entityId} attribute ${ref.attributeIndex}`);
   }
+  for (const ref of referrers.optionalListReferrers ?? []) {
+    if (ref.referencedIds.includes(expressId)) {
+      blockers.push(`entity #${ref.entityId} attribute ${ref.attributeIndex}`);
+    }
+  }
   if (blockers.length > 0 && !options.detach) {
     throw new Error(
       `removeCostEntity: #${expressId} is still referenced by ${blockers.join(', ')}. `
@@ -96,6 +107,15 @@ export function removeCostEntityInStore(
     for (const relId of referrers.otherRelationships ?? []) editor.removeEntity(relId);
     for (const ref of referrers.optionalScalarReferrers ?? []) {
       editor.setPositionalAttribute(ref.entityId, ref.attributeIndex, null);
+    }
+    for (const ref of referrers.optionalListReferrers ?? []) {
+      if (!ref.referencedIds.includes(expressId)) continue;
+      const remaining = ref.referencedIds.filter(id => id !== expressId);
+      editor.setPositionalAttribute(
+        ref.entityId,
+        ref.attributeIndex,
+        remaining.length === 0 ? null : remaining.map(id => `#${id}`),
+      );
     }
   }
   for (const [relId, related] of referrers.nestRelatedObjects ?? []) {

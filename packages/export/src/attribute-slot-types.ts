@@ -253,9 +253,6 @@ export function serializeEnumToken(value: string): string {
  * the `$` token itself, not the empty string.
  */
 export function serializeStringSlot(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed === '$' || trimmed === '*') {
-    return trimmed === '*' ? '*' : '$';
-  }
+  if (value === '$' || value === '*') return value;
   return `'${escapeStepString(value)}'`;
 }

@@ -74,6 +74,7 @@ const OFFSET_0 = JSON.stringify({ majorOffset: 0 });
 const OFFSET_1 = JSON.stringify({
   majorOffset: 1,
   reason: 'ifc-lite-geometry and ifc-lite-processing carry breaking Rust changes from #3210 under an npm minor bump.',
+  latestBreak: 'The newest break changes the public geometry and processing API contracts.',
   refs: ['#3210', '#3216'],
 });
 

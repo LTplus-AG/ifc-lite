@@ -222,10 +222,10 @@ export function applyMajorOffset(version, majorOffset) {
  * accident, so treating a missing one as "offset 0" would quietly restore the
  * behaviour this exists to replace.
  *
- * A NON-ZERO offset must additionally carry a `reason` and at least one
- * `refs` entry. An offset is a permanent major-version claim about published
- * crates; the one thing a reader will want six months later is what broke,
- * and prose that is required is prose that exists.
+ * A NON-ZERO offset must additionally carry a `reason`, a `latestBreak`, and
+ * at least one `refs` entry. An offset is a permanent major-version claim
+ * about published crates; the one thing a reader will want six months later
+ * is what broke, and prose that is required is prose that exists.
  */
 export function readMajorOffset(rootDir) {
   const path = join(rootDir, OFFSET_FILE_NAME);
@@ -251,13 +251,28 @@ export function readMajorOffset(rootDir) {
       `${OFFSET_FILE_NAME} must set "majorOffset" to a non-negative integer, got ${JSON.stringify(majorOffset)}`
     );
   }
-  const reason = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+  const reasonHistory = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+  if (Object.hasOwn(parsed, 'latestBreak')
+    && (typeof parsed.latestBreak !== 'string' || parsed.latestBreak.trim().length < 20)) {
+    throw offsetError(
+      'BAD_LATEST_BREAK',
+      `${OFFSET_FILE_NAME} must set "latestBreak" to substantive text when the field is present, got ${JSON.stringify(parsed.latestBreak)}`
+    );
+  }
+  const latestBreak = typeof parsed.latestBreak === 'string' ? parsed.latestBreak.trim() : '';
+  const reason = [reasonHistory, latestBreak].filter(Boolean).join(' ');
   const refs = Array.isArray(parsed.refs) ? parsed.refs.filter((r) => typeof r === 'string' && r.trim()) : [];
   if (majorOffset > 0) {
-    if (reason.length < 20) {
+    if (reasonHistory.length < 20) {
       throw offsetError(
         'NO_REASON',
         `${OFFSET_FILE_NAME} claims majorOffset ${majorOffset} but gives no "reason". A Rust-only major is a permanent claim about a published crate; say which crate's public API broke.`
+      );
+    }
+    if (latestBreak.length < 20) {
+      throw offsetError(
+        'BAD_LATEST_BREAK',
+        `${OFFSET_FILE_NAME} claims majorOffset ${majorOffset} but gives no substantive "latestBreak". Name the newest Rust-only public API break that spent this major.`
       );
     }
     if (refs.length === 0) {

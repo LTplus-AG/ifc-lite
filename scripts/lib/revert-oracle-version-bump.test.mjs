@@ -7,25 +7,25 @@ import assert from 'node:assert/strict';
 
 import { isVersionOnlyManifestDiff } from './revert-oracle-version-bump.mjs';
 
-function offsetText({ offset = 5, reason = 'Existing reason.', refs = ['#4685'], extra = {} } = {}) {
-  return JSON.stringify({
+function offsetText({ offset = 5, reason = 'Existing reason.', latestBreak = offset > 5 ? 'New break.' : undefined, refs = ['#4685'], extra = {} } = {}) {
+  const value = {
     $comment: 'Crate major offset policy.',
     majorOffset: offset,
     reason,
-    refs,
-    ...extra,
-  }, null, 2) + '\n';
+  };
+  if (latestBreak !== undefined) value.latestBreak = latestBreak;
+  value.refs = refs;
+  return JSON.stringify({ ...value, ...extra }, null, 2) + '\n';
 }
 
 function offsetDiff() {
   return [
     '--- a/rust-major-offset.json',
     '+++ b/rust-major-offset.json',
-    '@@ -3,2 +3,2 @@',
+    '@@ -3 +3,2 @@',
     '-  "majorOffset": 5,',
-    '-  "reason": "Existing reason.",',
     '+  "majorOffset": 6,',
-    '+  "reason": "Existing reason. Appended \\"evidence\\".",',
+    '+  "latestBreak": "New break.",',
     '@@ -6 +6,2 @@',
     '-    "#4685"',
     '+    "#4685",',
@@ -172,8 +172,19 @@ test('rust offset: the real trailing-comma shape is version-only by decoded stru
   const before = offsetText();
   const after = offsetText({
     offset: 6,
-    reason: 'Existing reason. Appended "evidence".',
+    latestBreak: 'New measured break.',
     refs: ['#4685', '#4791'],
+  });
+  assert.equal(classifyOffset(before, after), true);
+});
+
+test('rust offset: a subsequent increment archives latestBreak before replacing it', () => {
+  const before = offsetText({ offset: 6, latestBreak: 'Previous break.', refs: ['#4685', '#4791'] });
+  const after = offsetText({
+    offset: 7,
+    reason: 'Existing reason. Previous break.',
+    latestBreak: 'Next break.',
+    refs: ['#4685', '#4791', '#4988'],
   });
   assert.equal(classifyOffset(before, after), true);
 });
@@ -184,7 +195,7 @@ test('rust offset: complete contents are required even when changed lines look v
 
 test('rust offset: malformed or non-canonical JSON is rejected, including duplicate keys', () => {
   const before = offsetText();
-  const validAfter = offsetText({ offset: 6, reason: 'Existing reason. More.', refs: ['#4685', '#4791'] });
+  const validAfter = offsetText({ offset: 6, latestBreak: 'New break.', refs: ['#4685', '#4791'] });
   assert.equal(classifyOffset(before, '{'), false);
   assert.equal(classifyOffset(before, validAfter.trim()), false);
   assert.equal(classifyOffset(before, validAfter.replace('  "majorOffset": 6,', '  "majorOffset": 6,\n  "majorOffset": 6,')), false);
@@ -193,30 +204,46 @@ test('rust offset: malformed or non-canonical JSON is rejected, including duplic
 test('rust offset: only an exact one-step nonnegative safe-integer increment qualifies', () => {
   const before = offsetText();
   for (const offset of [4, 5, 7, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-    const after = offsetText({ offset, reason: 'Existing reason. More.', refs: ['#4685', '#4791'] });
+    const after = offsetText({ offset, latestBreak: 'New break.', refs: ['#4685', '#4791'] });
     assert.equal(classifyOffset(before, after), false, `offset ${offset}`);
   }
 });
 
-test('rust offset: reason must strictly append and cannot change without the increment', () => {
+test('rust offset: a first increment preserves history and later increments append exactly the outgoing break', () => {
   const before = offsetText();
-  for (const [offset, reason] of [[6, 'Replacement.'], [6, 'Existing'], [6, 'Existing reason.'], [5, 'Existing reason. More.']]) {
-    const after = offsetText({ offset, reason, refs: ['#4685', '#4791'] });
+  for (const [offset, reason] of [[6, 'Replacement.'], [6, 'Existing'], [6, 'Existing reason. More.'], [5, 'Existing reason.']]) {
+    const after = offsetText({ offset, reason, latestBreak: 'New break.', refs: ['#4685', '#4791'] });
     assert.equal(classifyOffset(before, after), false, `${offset}: ${reason}`);
   }
+
+  const currentBefore = offsetText({ offset: 6, latestBreak: 'Current break.', refs: ['#4685', '#4791'] });
+  for (const reason of ['Existing reason.', 'Current break.', 'Existing reason. Altered break.']) {
+    const after = offsetText({ offset: 7, reason, latestBreak: 'Next break.', refs: ['#4685', '#4791', '#4988'] });
+    assert.equal(classifyOffset(currentBefore, after), false, reason);
+  }
+});
+
+test('rust offset: latestBreak is non-empty and changes on subsequent increments', () => {
+  const legacyBefore = offsetText();
+  for (const latestBreak of ['', '   ']) {
+    assert.equal(classifyOffset(legacyBefore, offsetText({ offset: 6, latestBreak, refs: ['#4685', '#4791'] })), false);
+  }
+  const currentBefore = offsetText({ offset: 6, latestBreak: 'Current break.', refs: ['#4685', '#4791'] });
+  assert.equal(classifyOffset(currentBefore, offsetText({ offset: 7, latestBreak: 'Current break.', refs: ['#4685', '#4791', '#4988'] })), false);
+  assert.equal(classifyOffset(currentBefore, offsetText({ offset: 7, latestBreak: '  Current break.  ', refs: ['#4685', '#4791', '#4988'] })), false);
 });
 
 test('rust offset: existing refs remain an ordered prefix and new refs are issue numbers', () => {
   const before = offsetText({ refs: ['#1', '#2'] });
   for (const refs of [['#1'], ['#2', '#1', '#3'], ['#1', '#9', '#3'], ['#1', '#2'], ['#1', '#2', '4791']]) {
-    const after = offsetText({ offset: 6, reason: 'Existing reason. More.', refs });
+    const after = offsetText({ offset: 6, latestBreak: 'New break.', refs });
     assert.equal(classifyOffset(before, after), false, JSON.stringify(refs));
   }
 });
 
 test('rust offset: schema, comment, path, and an empty textual diff fail closed', () => {
   const before = offsetText();
-  const fields = { offset: 6, reason: 'Existing reason. More.', refs: ['#4685', '#4791'] };
+  const fields = { offset: 6, reason: 'Existing reason.', latestBreak: 'New break.', refs: ['#4685', '#4791'] };
   assert.equal(classifyOffset(before, offsetText({ ...fields, extra: { unexpected: true } })), false);
   assert.equal(classifyOffset(before, offsetText(fields).replace('Crate major offset policy.', 'Changed policy.')), false);
   assert.equal(classifyOffset(before, offsetText(fields), 'nested/rust-major-offset.json'), false);

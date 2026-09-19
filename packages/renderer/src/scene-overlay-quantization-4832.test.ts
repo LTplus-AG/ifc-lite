@@ -73,6 +73,18 @@ function triangle(expressId: number, origin: [number, number, number], color = G
   };
 }
 
+/** A valid triangle whose area is nonzero but below Number.EPSILON². */
+function tinyTriangle(expressId: number, origin: [number, number, number]): MeshData {
+  return {
+    expressId,
+    positions: new Float32Array([0, 0, 0, 1e-9, 0, 0, 0, 1e-9, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: GREY,
+    origin,
+  };
+}
+
 /** A single off-lattice element longer than the u16 lattice range along X. */
 function longWall(expressId: number, origin: [number, number, number]): MeshData {
   const len = MAX_QUANT_EXTENT + 6.0003;
@@ -159,6 +171,44 @@ function quantizedChunkedScene(): Scene {
 }
 
 describe('overlay batches stay depth-coincident with their base batches (#4832)', () => {
+  it('keeps distant survey chunks in precision-local GPU frames (#4937)', () => {
+    const scene = new Scene();
+    scene.setSpatialChunking({ cellSize: 32 });
+    const { device, bytes } = fakeDevice();
+    const nearby = triangle(1, [2_600_005, 101, -5_000_005]);
+    const distant = triangle(2, [800_000_000.5, 700_000_000, -900_000_000.5]);
+    const distantBatchmate = triangle(3, [800_000_005.5, 700_000_000, -900_000_000.5]);
+    scene.appendToBatches([nearby, distant, distantBatchmate], device, fakePipeline);
+
+    const nearBatch = baseBatchFor(scene, 1);
+    const distantBatch = baseBatchFor(scene, 2);
+    assert.notDeepStrictEqual(distantBatch.origin, nearBatch.origin,
+      'an unsafe model-wide origin must not collapse the distant chunk');
+    assert.deepStrictEqual(scene.getSharedFrameOrigin(distant.modelIndex, distant), distantBatch.origin,
+      'selection/picking uploads must inherit the base batch frame');
+    const positions = gpuPositionsByEntity(distantBatch, bytes).get(2);
+    assert.ok(positions);
+    assert.strictEqual(new Set(positions).size, 3, 'the production GPU upload retains all triangle vertices');
+    scene.setColorOverrides(new Map([[2, RED]]), device, fakePipeline);
+    assertCoincidentWithBase(scene, scene.getOverrideBatches()[0], bytes);
+  });
+
+  it('protects every nonzero source triangle when choosing a shared frame (#4937)', () => {
+    const scene = new Scene();
+    scene.setSpatialChunking({ cellSize: 32 });
+    const { device, bytes } = fakeDevice();
+    const nearby = triangle(1, [0, 0, 0]);
+    const distantTiny = tinyTriangle(2, [800_000_000, 0, 0]);
+    scene.appendToBatches([nearby, distantTiny], device, fakePipeline);
+
+    const tinyBatch = baseBatchFor(scene, 2);
+    assert.notDeepStrictEqual(tinyBatch.origin, baseBatchFor(scene, 1).origin,
+      'a shared origin that collapses a nonzero tiny triangle must be rejected');
+    const positions = gpuPositionsByEntity(tinyBatch, bytes).get(2);
+    assert.ok(positions);
+    assert.strictEqual(new Set(positions).size, 3, 'all tiny triangle vertices survive GPU upload');
+  });
+
   it('overrides on entities >64 m apart (base batches quantized) render bit-identical to base', () => {
     const scene = quantizedChunkedScene();
     const { device, bytes } = fakeDevice();

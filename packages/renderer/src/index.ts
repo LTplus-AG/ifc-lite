@@ -1414,7 +1414,7 @@ export class Renderer {
         // We compute the same `world` here. When there's no shared origin yet
         // (legacy / pre-batch), fall back to a plain f64 fold (local + origin).
         const o = meshData.origin;
-        const so = this.scene.getSharedFrameOrigin(meshData.modelIndex);
+        const so = this.scene.getSharedFrameOrigin(meshData.modelIndex, meshData);
         const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
         const fr = Math.fround;
         const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;

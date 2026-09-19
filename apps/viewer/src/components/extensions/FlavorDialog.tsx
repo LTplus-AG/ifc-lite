@@ -54,7 +54,7 @@ interface FlavorDialogProps {
 }
 
 export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const [flavors, setFlavors] = useState<Flavor[]>([]);
   const [activeId, setActiveId] = useState<string | undefined>();
@@ -126,7 +126,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       // `toast.error`, not `info`: something the user asked for did not
       // happen, and the longer dwell is what gets the reason read. (#3002)
       if (outcome.unapplied.length > 0) {
-        toast.error(flavorSwitchPartial(t, id, outcome.unapplied));
+        toast.error(flavorSwitchPartial(t, locale, id, outcome.unapplied));
       } else {
         toast.success(t('extensionsFlavors.flavorDialog.toast.switched', { id }));
       }

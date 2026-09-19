@@ -37,6 +37,7 @@ import { toast } from '@/components/ui/toast';
 import { HelpHint } from './HelpHint';
 import { formatExtensionDate } from './localized-date';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface IdeasPanelProps {
   /** Optional override for the approve action. Defaults to seeding the chat panel. */
@@ -236,10 +237,13 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
                       <div className="mt-1 text-[11px] text-muted-foreground">
                         {t('extensionsPanels.ideasPanel.occurrenceSummary', {
                           count: pattern.sessionsTouched,
-                          occurrences: pattern.occurrences,
-                          sessions: pattern.sessionsTouched,
+                          occurrences: formatLocaleNumber(locale, pattern.occurrences),
+                          sessions: formatLocaleNumber(locale, pattern.sessionsTouched),
                           date: formatExtensionDate(pattern.lastSeenAt, locale),
-                          score: pattern.score.toFixed(2),
+                          score: formatLocaleNumber(locale, pattern.score, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }),
                         })}
                       </div>
                     </div>

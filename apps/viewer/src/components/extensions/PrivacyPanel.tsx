@@ -38,13 +38,14 @@ import { useTranslation } from '@/i18n';
 import { HelpHint } from './HelpHint';
 import { localizedFlavorName } from './localized-flavor-metadata';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface PrivacyPanelProps {
   onClose?: () => void;
 }
 
 export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const [logSize, setLogSize] = useState({ events: 0, bytes: 0 });
   const [activeFlavor, setActiveFlavor] = useState<Flavor | undefined>();
@@ -197,8 +198,11 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
             <div className="rounded border bg-muted/30 px-3 py-2">
               <div>
                 {t('extensionsPanels.privacyPanel.actionLogStats', {
-                  events: logSize.events,
-                  kib: (logSize.bytes / 1024).toFixed(1),
+                  events: formatLocaleNumber(locale, logSize.events),
+                  kib: formatLocaleNumber(locale, logSize.bytes / 1024, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  }),
                 })}
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">

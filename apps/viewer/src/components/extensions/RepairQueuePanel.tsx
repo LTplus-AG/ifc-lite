@@ -196,9 +196,10 @@ function RepairRow({
           </div>
           {item.tests && item.tests.failed > 0 && (
             <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
-              {t('extensionsPanels.repairQueuePanel.testsFailed', { count: item.tests.failed })}
-              {' '}
-              {item.tests.results.find((r) => !r.passed)?.error}
+              {t('extensionsPanels.repairQueuePanel.testsFailed', {
+                count: item.tests.failed,
+                error: item.tests.results.find((r) => !r.passed)?.error ?? '',
+              })}
             </div>
           )}
         </div>

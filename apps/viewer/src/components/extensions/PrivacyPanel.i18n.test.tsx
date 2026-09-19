@@ -24,7 +24,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { InMemoryFlavorStorage, type Flavor, type MemoryProposal } from '@ifc-lite/extensions';
+import { InMemoryFlavorStorage, type Flavor } from '@ifc-lite/extensions';
 import { createBimContext } from '@ifc-lite/sdk';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
@@ -312,20 +312,21 @@ describe('PrivacyPanel localization (#4918)', () => {
   });
 
   it('pluralizes and interpolates a representative sample under a live locale switch', async () => {
-    registerLocale('privacy-panel-fr', {
+    registerLocale('fr-FR', {
       'extensionsPanels.privacyPanel.actionLogStats': '{events} événements · {kib} Kio (fr)',
       'extensionsPanels.privacyPanel.candidatePreferenceCount': {
         one: '{count} préférence candidate (fr)',
         other: '{count} préférences candidates (fr)',
       },
     } as Catalogue);
-    setLocale('privacy-panel-fr');
+    setLocale('fr-FR');
 
     const host = new StubExtensionHost();
+    host.actionLog.append({ intent: 'model.load', params: { schema: 'IFC4' } });
     const container = await mountActiveFlavorFixture(host);
     await revealProposals(container);
 
-    assert.match(container.textContent ?? '', /0 événements · 0\.0 Kio \(fr\)/);
+    assert.match(container.textContent ?? '', /1 événements · \d+,\d Kio \(fr\)/);
     assert.match(container.textContent ?? '', /1 préférence candidate \(fr\)/);
   });
 });

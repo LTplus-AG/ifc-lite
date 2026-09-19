@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TranslationKey, UseTranslationResult } from '@/i18n';
+import { formatLocaleList } from '@/i18n/intlFormat';
 import type { UnappliedFlavorPart } from '@/services/extensions/host';
 
 type Translate = UseTranslationResult['t'];
@@ -16,6 +17,7 @@ export function flavorFailure(t: Translate, operation: string, err: unknown): st
 
 export function flavorSwitchPartial(
   t: Translate,
+  locale: string,
   id: string,
   unapplied: readonly UnappliedFlavorPart[],
 ): string {
@@ -24,7 +26,7 @@ export function flavorSwitchPartial(
     clash: t('extensionsFlavors.flavorDialog.part.clash'),
     layout: t('extensionsFlavors.flavorDialog.part.layout'),
   };
-  const parts = unapplied.map(({ part }) => labels[part] ?? part).join(', ');
+  const parts = formatLocaleList(locale, unapplied.map(({ part }) => labels[part] ?? part));
   const reasonKeys: Partial<Record<NonNullable<UnappliedFlavorPart['reason']>, TranslationKey>> = {
     quota: 'extensionsFlavors.flavorDialog.reason.storageQuota',
     unavailable: 'extensionsFlavors.flavorDialog.reason.storageUnavailable',
@@ -36,6 +38,10 @@ export function flavorSwitchPartial(
   const reasons = [...new Set(unapplied.map(({ reason, message }) => {
     const key = reason ? reasonKeys[reason] : undefined;
     return key ? t(key) : message;
-  }))].join(' ');
-  return t('extensionsFlavors.flavorDialog.toast.switchedPartially', { id, parts, reasons });
+  }))];
+  return t('extensionsFlavors.flavorDialog.toast.switchedPartially', {
+    id,
+    parts,
+    reasons: formatLocaleList(locale, reasons),
+  });
 }

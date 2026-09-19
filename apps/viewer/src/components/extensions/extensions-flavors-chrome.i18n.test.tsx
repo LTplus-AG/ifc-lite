@@ -439,7 +439,7 @@ describe('flavor switch feedback localization (#4918)', () => {
     });
     setLocale('flavor-refusal-reasons');
 
-    const message = flavorSwitchPartial(r, 'flv.example', [
+    const message = flavorSwitchPartial(r, 'de-DE', 'flv.example', [
       {
         part: 'lenses',
         reason: 'unavailable',
@@ -450,7 +450,7 @@ describe('flavor switch feedback localization (#4918)', () => {
 
     assert.equal(
       message,
-      'flv.example: LENTILLES, DISPOSITION — STOCKAGE INDISPONIBLE. Unexpected layout failure.',
+      'flv.example: LENTILLES und DISPOSITION — STOCKAGE INDISPONIBLE. und Unexpected layout failure.',
     );
     assert.doesNotMatch(message, /lens changes were not saved/);
   });

@@ -478,7 +478,7 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     });
     host.revalidateSummary = { sdk: SDK, items: [repairItem()], needsRepair: [repairItem()] };
 
-    registerLocale('extensions-panels-fr', {
+    registerLocale('fr-FR', {
       'extensionsPanels.auditLogPanel.eventCount': {
         one: '{filtered} sur {total} événement (fr)',
         other: '{filtered} sur {total} événements (fr)',
@@ -492,16 +492,20 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
         one: '{count} suggestion (fr) · {events} événements',
         other: '{count} suggestions (fr) · {events} événements',
       },
+      'extensionsPanels.ideasPanel.occurrenceSummary': {
+        one: '{occurrences} occurrence · {sessions} session · {date} · {score}',
+        other: '{occurrences} occurrences · {sessions} sessions · {date} · {score}',
+      },
       'extensionsPanels.repairQueuePanel.testsFailed': {
-        one: '{count} test échoué (fr) :',
-        other: '{count} tests échoués (fr) :',
+        one: 'ERREUR {error} — {count} test échoué (fr)',
+        other: 'ERREUR {error} — {count} tests échoués (fr)',
       },
       'extensionsPanels.repairQueuePanel.summaryLine': {
         one: 'SDK {sdk} · {count} à réparer (fr)',
         other: 'SDK {sdk} · {count} à réparer (fr)',
       },
     } as Catalogue);
-    setLocale('extensions-panels-fr');
+    setLocale('fr-FR');
 
     const container = render(
       <ExtensionHostContext.Provider value={host}>
@@ -524,7 +528,8 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(container.textContent ?? '', /1 sur 1 événement \(fr\)/);
     assert.match(container.textContent ?? '', /· 1 capacité accordée \(fr\)/);
     assert.match(container.textContent ?? '', /1 suggestion \(fr\) · 17 événements/);
-    assert.match(container.textContent ?? '', /1 test échoué \(fr\) :/);
+    assert.match(container.textContent ?? '', /ERREUR command not found — 1 test échoué \(fr\)/);
+    assert.match(container.textContent ?? '', /4 occurrences · 2 sessions · .* · 0,82/);
     assert.match(container.textContent ?? '', /SDK 2\.0\.0 · 1 à réparer \(fr\)/);
   });
 

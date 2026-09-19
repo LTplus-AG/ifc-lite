@@ -335,8 +335,8 @@ export const extensionsPanelsEn = {
   'extensionsPanels.repairQueuePanel.compatibility.rangeMatch':
     'Range "{declared}" still matches SDK {sdk}.',
   'extensionsPanels.repairQueuePanel.testsFailed': {
-    one: '{count} test failed:',
-    other: '{count} tests failed:',
+    one: '{count} test failed: {error}',
+    other: '{count} tests failed: {error}',
   },
   'extensionsPanels.repairQueuePanel.routingRepairToast': 'Routing repair for {extensionId}…',
   'extensionsPanels.repairQueuePanel.revalidationFailedToast': 'Revalidation failed: {error}',

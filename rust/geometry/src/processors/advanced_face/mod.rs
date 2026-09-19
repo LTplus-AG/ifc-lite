@@ -26,6 +26,11 @@ mod surfaces;
 pub(super) use bspline_parse::parse_rational_weights;
 pub(super) use surfaces::process_bspline_face;
 
+// Re-exported crate-wide: the router (a sibling top-level module, not a
+// descendant of `processors`) drains this once per representation item to
+// report a capped B-spline curve edge (#4901); see `bspline_budget.rs`.
+pub(crate) use bspline_budget::take_curve_capped;
+
 use revolution::process_surface_of_revolution_face;
 use surfaces::{process_cylindrical_face, process_planar_face};
 

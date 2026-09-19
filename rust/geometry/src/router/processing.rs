@@ -623,7 +623,17 @@ impl GeometryRouter {
                 .map(|p| p.bool_failure_count())
         });
 
-        let mesh = self.process_representation_item_uncached(item, decoder)?;
+        let mesh_result = self.process_representation_item_uncached(item, decoder);
+        // A capped B-spline curve edge (#4901) degrades silently inside the
+        // edge-loop walk — no `Result` reaches here to carry it — so drain
+        // the thread-local flag `curves.rs`/`polyline.rs` set on rejection
+        // and report it under the curve's OWN type, regardless of whether
+        // the containing item still produced a mesh (a degraded edge is a
+        // reportable defect even when the rest of the face tessellates).
+        if crate::processors::take_curve_capped() {
+            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+        }
+        let mesh = mesh_result?;
 
         // If this call's processor recorded anything new, decide whether THIS
         // router keeps it: the item-dedup cache's `diagnostic_claimed` set

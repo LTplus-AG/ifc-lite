@@ -75,3 +75,42 @@ pub(super) const MAX_BSPLINE_SURFACE_SAMPLE_WORK: u64 = 500_000_000;
 /// per-sample table build (`O(degree * (n + degree))`) from scaling with an
 /// attacker-chosen point count; real edge/profile curves run to low hundreds.
 pub(super) const MAX_BSPLINE_CURVE_CONTROL_POINTS: usize = 8192;
+
+// ───────────────────────── curve-cap diagnostic relay ─────────────────────
+//
+// The curve-sampling entry points (`curves.rs`, `polyline.rs`) return a plain
+// `Vec<Point3<f64>>`, not a `Result` — they sit deep under `edge_loop.rs`,
+// called from every advanced-face edge in a loop, and a face tolerates one
+// bad edge by degrading (an EXISTING contract: a too-short knot vector, too
+// few control points, etc. all already return the single start vertex with
+// no error). Threading `Result` through that whole call graph to report ONE
+// more malformed-curve case would touch far more than #4901's scope and risk
+// changing how every OTHER already-tolerated malformed-curve case surfaces.
+//
+// Reusing `kernel::budget`'s shape instead: a thread-local flag, set at the
+// point the degree/control-point bound trips, drained once per top-level
+// representation item by the two callers that can report it — the router
+// (`GeometryRouter::record_unsupported_item`, typed under
+// `IfcType::IfcBSplineCurveWithKnots`) and the standalone surface-model
+// processors that run without a router (a `diag_debug!` trace, the same
+// floor already used there for the analogous capped-surface case, #4901
+// review). Thread-local, not global: each rayon worker's element is
+// independent, matching every other per-thread counter in this crate
+// (`kernel::budget::COUNT`, `cdt::RECOVERY_EXHAUSTED`).
+thread_local! {
+    static CURVE_CAPPED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Record that a curve's degree or control-point count tripped its bound
+/// (#4901) and was rejected rather than sampled. Call at the point of
+/// rejection, before returning the degraded (single-vertex) result.
+pub(super) fn note_curve_capped() {
+    CURVE_CAPPED.with(|c| c.set(true));
+}
+
+/// Drain the flag: `true` if any curve capped since the last drain on this
+/// thread. Callers drain once per top-level item so one capped edge among
+/// many on the same face is reported once, not once per edge.
+pub(crate) fn take_curve_capped() -> bool {
+    CURVE_CAPPED.with(|c| c.replace(false))
+}

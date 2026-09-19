@@ -55,3 +55,48 @@ fn pathological_curve_degree_fails_fast_not_hangs() {
         "pathological curve degree must fail within the deterministic bound, took {elapsed:?}"
     );
 }
+
+/// #4901 review: degree exactly ONE past the bound (65, `MAX_BSPLINE_DEGREE`
+/// is 64) must reject too, not just an absurd degree — pins the boundary,
+/// not just "some huge number works".
+#[test]
+fn degree_one_past_the_bound_is_rejected() {
+    let content = curve_content(65);
+    let mut decoder = EntityDecoder::new(&content);
+    let curve = decoder.decode_by_id(10).unwrap();
+    let start = Point3::new(0.0, 0.0, 0.0);
+
+    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium);
+    assert_eq!(pts, vec![start], "degree 65 (MAX_BSPLINE_DEGREE + 1) must be rejected");
+}
+
+/// #4901 review: a `ControlPointsList` naming ONE MILLION points must be
+/// rejected before any of them is decoded — none of the referenced entities
+/// exist in this file at all, so a version of this check that ran AFTER
+/// decoding (or that decoded even one of them) would hit an unresolved-
+/// reference error instead of the typed degree/point-count rejection,
+/// proving the raw (undecoded) list length is what trips it.
+#[test]
+fn one_million_control_points_rejected_before_decode() {
+    let refs: String = (1..=1_000_000).map(|i| format!("#{i}")).collect::<Vec<_>>().join(",");
+    let content = format!(
+        "#10=IFCBSPLINECURVEWITHKNOTS(2,({refs}),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.));\n"
+    );
+    let mut decoder = EntityDecoder::new(&content);
+    let curve = decoder.decode_by_id(10).unwrap();
+    let start = Point3::new(0.0, 0.0, 0.0);
+
+    let begin = Instant::now();
+    let pts = sample_bspline_edge_curve(&curve, &start, true, &mut decoder, TessellationQuality::Medium);
+    let elapsed = begin.elapsed();
+
+    assert_eq!(
+        pts,
+        vec![start],
+        "a control-point list past MAX_BSPLINE_CURVE_CONTROL_POINTS must be rejected"
+    );
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "a million-reference list must be rejected fast (before any decode attempt), took {elapsed:?}"
+    );
+}

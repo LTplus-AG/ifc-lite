@@ -112,6 +112,7 @@ pub(super) fn sample_bspline_edge_curve_range(
     // the single start vertex rather than spend the (still-bounded, but
     // pointless) table-build cost.
     if degree > MAX_BSPLINE_DEGREE {
+        super::bspline_budget::note_curve_capped();
         return vec![*start];
     }
 
@@ -123,6 +124,7 @@ pub(super) fn sample_bspline_edge_curve_range(
     // Bound the point count too (#4901): the table build is `O(degree * (n +
     // degree))`, so an attacker-sized `n` scales it even at a capped degree.
     if cp_list.len() > MAX_BSPLINE_CURVE_CONTROL_POINTS {
+        super::bspline_budget::note_curve_capped();
         return vec![*start];
     }
     let control_points: Vec<Point3<f64>> = cp_list

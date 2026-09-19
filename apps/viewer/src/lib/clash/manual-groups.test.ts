@@ -132,6 +132,21 @@ describe('manual clash groups (#4921)', () => {
     );
   });
 
+  it('removes stale same-review claims when deleting the exact occurrence (#4921 review)', () => {
+    const stale = clash('stale');
+    const exact = clash('exact');
+    exact.a = { ...stale.a, model: 'exact-a' };
+    exact.b = { ...stale.b, model: 'exact-b' };
+    const definitions = [{ id: 'manual-1', name: 'Copies', members: [
+      manualClashMember(stale), manualClashMember(exact),
+    ] }];
+    const resolved = resolveManualClashGroups(definitions, [exact]);
+    assert.deepEqual(resolved[0].members.map((member) => member.id), ['exact']);
+
+    assert.deepEqual(removeResolvedManualClashMember(definitions, resolved, 'manual-1', exact), [],
+      'the stale claim must not make the deleted exact occurrence reappear');
+  });
+
   it('repairs overlapping/corrupt storage into disjoint named groups', () => {
     assert.deepEqual(normalizeManualClashGroups({ groups: [
       { id: 'g1', name: ' First ', clashKeys: ['c1', 'c1', 'c2', 7] },

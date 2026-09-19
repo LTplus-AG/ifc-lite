@@ -200,7 +200,7 @@ export function removeResolvedManualClashMember(
     const members = persisted
       ? group.members.filter((member) => usedFallback
         ? member.reviewKey !== persisted.reviewKey || exactMembers.has(member)
-        : member !== persisted)
+        : member !== persisted && (member.reviewKey !== persisted.reviewKey || exactMembers.has(member)))
       : group.members;
     return members.length > 0 ? [{ ...group, members }] : [];
   });

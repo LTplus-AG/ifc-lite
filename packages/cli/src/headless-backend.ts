@@ -86,7 +86,7 @@ import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } fro
 import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createScheduleAdapter } from './headless-backend-schedule.js';
 import { exportHbjson, exportDfjson } from './energy-export.js';
-import { foldQueuedRelated } from './query-overlay-relations.js';
+import { foldQueuedRelated, foldQueuedRelationshipEdges } from './query-overlay-relations.js';
 import { overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
@@ -445,7 +445,37 @@ export class HeadlessBackend implements BimBackend {
         return extractDocumentsOnDemand(store, ref.expressId);
       },
       relationships(ref: EntityRef): EntityRelationshipsData {
-        return extractRelationshipsOnDemand(store, ref.expressId);
+        const result = extractRelationshipsOnDemand(store, ref.expressId);
+        const view = getMutationView();
+        if (!view) return result;
+        if (view.isDeleted(ref.expressId)) return { ...result, relations: [] };
+
+        const seen = new Set<string>();
+        const relations = (result.relations ?? []).filter((edge) => {
+          if (view.isDeleted(edge.relationshipId) || view.isDeleted(edge.entity.id)) return false;
+          const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        for (const edge of foldQueuedRelationshipEdges(
+          view.getNewEntities(),
+          (id) => view.isDeleted(id),
+          ref.expressId,
+        )) {
+          const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
+          if (seen.has(key)) continue;
+          const target = getEntityData({ modelId: ref.modelId, expressId: edge.targetId });
+          if (!target) continue;
+          seen.add(key);
+          relations.push({
+            relationshipId: edge.relationshipId,
+            relationshipType: edge.relationshipType,
+            direction: edge.direction,
+            entity: { id: edge.targetId, name: target.name || undefined, type: target.type },
+          });
+        }
+        return { ...result, relations };
       },
       // Folds queued `IfcRel…` creates in (query-overlay-relations.ts, mirrors #2014).
       related(ref: EntityRef, relType: string, direction: 'forward' | 'inverse'): EntityRef[] {

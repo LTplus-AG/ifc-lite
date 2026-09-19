@@ -25,9 +25,9 @@
  * `bim.decomposes`. A queued `IfcRelContainedInSpatialStructure` is how an agent
  * places something over MCP, so ignoring it was ignoring a write.
  *
- * What is deliberately not folded: `relationships`, whose voids / fills / groups
- * / connections come from a parser-side extractor with no overlay seam, and the
- * geometry the clash and viewer tools read. Those are rebuilt on the next
+ * The exact rows returned by `relationships().relations` are folded through the
+ * same overlay. Its legacy voids / fills / groups / connections projections and
+ * the geometry the clash and viewer tools read are rebuilt on the next
  * `model_load` after a save.
  */
 
@@ -61,7 +61,7 @@ import {
 import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode, matchesPropertyFilter } from '@ifc-lite/query';
 
-import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
+import { queuedRelationshipEdges, stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -417,7 +417,33 @@ export function createQueryAdapter(
       return extractDocumentsOnDemand(store, ref.expressId);
     },
     relationships(ref: EntityRef): EntityRelationshipsData {
-      return extractRelationshipsOnDemand(store, ref.expressId);
+      const result = extractRelationshipsOnDemand(store, ref.expressId);
+      const pending = overlay();
+      if (!pending) return result;
+      if (pending.deleted.has(ref.expressId)) return { ...result, relations: [] };
+
+      const seen = new Set<string>();
+      const relations = (result.relations ?? []).filter((edge) => {
+        if (pending.deleted.has(edge.relationshipId) || pending.deleted.has(edge.entity.id)) return false;
+        const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      for (const edge of queuedRelationshipEdges(pending.createdAll, pending.deleted, ref.expressId)) {
+        const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
+        if (seen.has(key)) continue;
+        const target = entityData({ modelId: ref.modelId, expressId: edge.targetId });
+        if (!target) continue;
+        seen.add(key);
+        relations.push({
+          relationshipId: edge.relationshipId,
+          relationshipType: edge.relationshipType,
+          direction: edge.direction,
+          entity: { id: edge.targetId, name: target.name || undefined, type: target.type },
+        });
+      }
+      return { ...result, relations };
     },
     /**
      * Containment, aggregation and typing, with the session's queued edits

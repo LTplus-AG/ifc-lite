@@ -26,8 +26,16 @@ import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 
 interface QueuedRelation {
   relationshipId: number;
+  relationshipType: string;
   relating: number;
   related: readonly number[];
+}
+
+export interface QueuedRelationshipEdge {
+  relationshipId: number;
+  relationshipType: string;
+  direction: 'forward' | 'inverse';
+  targetId: number;
 }
 
 /** Express ids from an authored `'#42'` reference or a list of them. */
@@ -66,12 +74,50 @@ function indexQueuedRelations(created: readonly NewEntity[]): Map<string, Queued
       else if (names[i].startsWith('Relating')) relating ??= refIds(entity.attributes[i])[0];
     }
     if (relating === undefined || related === undefined || related.length === 0) continue;
-    const relation: QueuedRelation = { relationshipId: entity.expressId, relating, related };
+    const relation: QueuedRelation = {
+      relationshipId: entity.expressId,
+      relationshipType: entity.type,
+      relating,
+      related,
+    };
     const list = byType.get(upper);
     if (list) list.push(relation);
     else byType.set(upper, [relation]);
   }
   return byType;
+}
+
+/** Exact graph rows contributed by queued relationship records touching an entity. */
+export function foldQueuedRelationshipEdges(
+  newEntities: readonly NewEntity[],
+  isDeleted: (expressId: number) => boolean,
+  expressId: number,
+): QueuedRelationshipEdge[] {
+  const out: QueuedRelationshipEdge[] = [];
+  for (const relations of indexQueuedRelations(newEntities).values()) {
+    for (const relation of relations) {
+      if (isDeleted(relation.relationshipId)) continue;
+      if (relation.relating === expressId) {
+        for (const targetId of relation.related) {
+          if (!isDeleted(targetId)) out.push({
+            relationshipId: relation.relationshipId,
+            relationshipType: relation.relationshipType,
+            direction: 'forward',
+            targetId,
+          });
+        }
+      }
+      if (relation.related.includes(expressId) && !isDeleted(relation.relating)) {
+        out.push({
+          relationshipId: relation.relationshipId,
+          relationshipType: relation.relationshipType,
+          direction: 'inverse',
+          targetId: relation.relating,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /**

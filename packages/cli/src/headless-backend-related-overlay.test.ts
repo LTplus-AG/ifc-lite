@@ -49,7 +49,7 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward')).toEqual([]);
     expect(backend.query.related(child.ref, 'IfcRelAggregates', 'inverse')).toEqual([]);
 
-    backend.store.addEntity('default', {
+    const relationship = backend.store.addEntity('default', {
       type: 'IfcRelAggregates',
       attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${parent.ref.expressId}`, [`#${child.ref.expressId}`]],
     });
@@ -61,6 +61,25 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     // inverse: the child's queued parent resolves back to the parent.
     const inverse = backend.query.related(child.ref, 'IfcRelAggregates', 'inverse');
     expect(inverse.some((r) => r.expressId === parent.ref.expressId)).toBe(true);
+
+    // The detailed relationship surface must describe the same effective graph.
+    expect(backend.query.relationships(parent.ref).relations).toContainEqual(expect.objectContaining({
+      relationshipId: relationship.expressId,
+      relationshipType: 'IfcRelAggregates',
+      direction: 'forward',
+      entity: expect.objectContaining({ id: child.ref.expressId, type: 'IfcWall' }),
+    }));
+    expect(backend.query.relationships(child.ref).relations).toContainEqual(expect.objectContaining({
+      relationshipId: relationship.expressId,
+      relationshipType: 'IfcRelAggregates',
+      direction: 'inverse',
+      entity: expect.objectContaining({ id: parent.ref.expressId, type: 'IfcWall' }),
+    }));
+
+    backend.store.removeEntity(relationship);
+    expect(backend.query.relationships(parent.ref).relations?.some(
+      (edge) => edge.relationshipId === relationship.expressId,
+    )).toBe(false);
   });
 
   it('a deleted entity relates to nothing, even via a queued relationship', async () => {

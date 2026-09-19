@@ -77,6 +77,30 @@ describe('addAcceptedIdentity (#4955)', () => {
   });
 });
 
+describe('key scheme scopes a decision like the model pair does (#4989)', () => {
+  const ABTag = { ...AB, keyProperty: 'Tag' };
+
+  it('an acceptance under GlobalId is not replayed under an authored scheme', () => {
+    const { entries } = addAcceptedIdentity([], AB, [wall]);
+    assert.deepEqual(acceptedForPair(entries, AB), [wall], 'still applies under GlobalId');
+    assert.deepEqual(acceptedForPair(entries, ABTag), [], 'must not replay under Tag');
+  });
+
+  it('the same base/here pair can be accepted under both schemes independently', () => {
+    const afterGlobalId = addAcceptedIdentity([], AB, [wall]).entries;
+    const { entries, refused } = addAcceptedIdentity(afterGlobalId, ABTag, [wall]);
+    assert.deepEqual(refused, [], 'the 1:1 rule is per scheme, not just per pair');
+    assert.equal(entries.length, 2);
+    assert.deepEqual(acceptedForPair(entries, AB), [wall]);
+    assert.deepEqual(acceptedForPair(entries, ABTag), [wall]);
+  });
+
+  it('omits `keyProperty` entirely for the GlobalId scheme (byte-identical to pre-#4989 entries)', () => {
+    const { entries } = addAcceptedIdentity([], AB, [wall]);
+    assert.ok(!('keyProperty' in entries[0]), 'no stray keyProperty: undefined key');
+  });
+});
+
 describe('removeAcceptedIdentity / rejectClaim', () => {
   it('removes exactly the named pair', () => {
     const next = removeAcceptedIdentity([wallAB, doorAB], AB, 'W1', 'W1b');

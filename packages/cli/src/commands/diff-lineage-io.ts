@@ -14,6 +14,7 @@ import {
   lineageOfDiff,
   lineageSidecarMismatches,
   parseLineageSidecar,
+  SUCCESSOR_REASON_PREFIX,
   type IdentityMapSidecar,
   type LineageEntry,
   type LineageSidecar,
@@ -55,13 +56,25 @@ export function mergeLineage(
   accepted: IdentityMapSidecar | undefined,
 ): { entries: LineageEntry[]; deleted: string[] } {
   const aliasReasons = new Map<string, string>();
+  const aliasRelations = new Map<string, 'identity' | 'replaced'>();
   for (const entry of incomingLineage?.entries ?? []) {
-    if (entry.head.length === 1 && !aliasReasons.has(entry.head[0])) aliasReasons.set(entry.head[0], entry.reason);
+    // Exactly the entries keyAliasesFromLineage can replay may supply alias
+    // provenance. A merge also has one head key, but it supplies no alias;
+    // reserving that key here can steal the reason from an identity-map alias
+    // that actually applied and then make a successor look like an identity.
+    if (
+      (entry.relation === 'identity' || entry.relation === 'replaced') &&
+      entry.head.length === 1 &&
+      !aliasReasons.has(entry.head[0])
+    ) {
+      aliasReasons.set(entry.head[0], entry.reason);
+      aliasRelations.set(entry.head[0], entry.relation);
+    }
   }
   for (const entry of incomingMap?.entries ?? []) {
     if (!aliasReasons.has(entry.here)) aliasReasons.set(entry.here, entry.reason);
   }
-  const { entries } = lineageOfDiff(diff, { aliasReasons });
+  const { entries } = lineageOfDiff(diff, { aliasReasons, aliasRelations });
   const taken = new Set<string>();
   for (const entry of entries) for (const key of [...entry.base, ...entry.head]) taken.add(key);
 
@@ -70,7 +83,14 @@ export function mergeLineage(
     // Only a pair this run still sees as add + delete can be a replacement;
     // a claim about keys not in these files is stale.
     if (diff.byKey.get(entry.base)?.state !== 'deleted' || diff.byKey.get(entry.here)?.state !== 'added') continue;
-    entries.push({ base: [entry.base], head: [entry.here], relation: 'replaced', reason: entry.reason });
+    // Same contract as `lineage.ts`'s own accepted-successor fold (issue
+    // #4989 review): only a HAND-WRITTEN `successor:*` reason is a
+    // replacement claim; a viewer-exported `accepted:ambiguous` entry is a
+    // plain identity decision, and writing it `replaced` here meant the
+    // next `--lineage-in l --lineage-out l` round trip (which reads THIS
+    // file's own `relation` back, not the reason) silently flipped it.
+    const relation = entry.reason.startsWith(SUCCESSOR_REASON_PREFIX) ? 'replaced' : 'identity';
+    entries.push({ base: [entry.base], head: [entry.here], relation, reason: entry.reason });
     taken.add(entry.base);
     taken.add(entry.here);
   }

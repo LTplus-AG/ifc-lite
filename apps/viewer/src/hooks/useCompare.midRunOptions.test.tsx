@@ -65,6 +65,18 @@ function wall(guid: string, psetGuid: string, relGuid: string): string {
   ].join('\n');
 }
 
+/** Same wall, tagged identically on both revisions (issue #4989) — the
+ *  authored-key population `keyProperty: 'Tag'` is meant to pair even though
+ *  the GlobalId was re-minted. */
+function taggedWall(guid: string, psetGuid: string, relGuid: string, tag: string): string {
+  return [
+    `#1=IFCWALL('${guid}',$,'Wall A',$,$,$,$,'${tag}',.STANDARD.);`,
+    `#2=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('60'),$);`,
+    `#3=IFCPROPERTYSET('${psetGuid}',$,'Pset_WallCommon',$,(#2));`,
+    `#4=IFCRELDEFINESBYPROPERTIES('${relGuid}',$,$,$,(#1),#3);`,
+  ].join('\n');
+}
+
 async function parse(body: string): Promise<IfcDataStore> {
   const bytes = new TextEncoder().encode(ifc4(body));
   // disableWorkerScan keeps the scan in-process (no Worker under node:test).
@@ -334,5 +346,83 @@ describe('useCompare - accepted identity is replayed as keyAliases (#4955)', () 
     assert.strictEqual(result.diff.appliedKeyAliases?.size ?? 0, 0, 'no alias from another pair');
     assert.strictEqual(result.diff.counts.deleted, 1);
     assert.strictEqual(result.diff.counts.added, 1);
+  });
+});
+
+describe('useCompare - authored key scheme (#4989)', () => {
+  it('keys tagged elements as prop:<value> and pairs them without content matching', async () => {
+    const [a, b] = await Promise.all([
+      parse(taggedWall('0aaaaaaaaaaaaaaaaaaaaa', '0bbbbbbbbbbbbbbbbbbbbb', '0ccccccccccccccccccccc', 'TAG-100')),
+      parse(taggedWall('1zzzzzzzzzzzzzzzzzzzzz', '1yyyyyyyyyyyyyyyyyyyyy', '1xxxxxxxxxxxxxxxxxxxxx', 'TAG-100')),
+    ]);
+    useViewerStore.setState({
+      models: new Map([['A', model('A', a, 0)], ['B', model('B', b, 1000)]]),
+      compareBaseModelId: 'A',
+      compareHeadModelId: 'B',
+      compareScope: 'both',
+      compareExcludedTypes: [],
+      compareMatchByContent: false, // the tag pairs them; content matching is not needed
+      compareKeyProperty: 'Tag',
+      compareResult: null,
+      compareError: null,
+      compareRunning: false,
+    });
+
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = runComparison!();
+    });
+    await act(async () => {
+      await pending;
+    });
+
+    const result = published();
+    assert.strictEqual(result.keyProperty, 'Tag');
+    const entry = result.diff.byKey.get('prop:TAG-100');
+    assert.ok(entry, 'the tagged wall must be keyed prop:TAG-100, not by GlobalId');
+    // Same tag both sides -> unchanged, not one delete plus one add, even
+    // though the GlobalId was re-minted and content matching is off.
+    assert.strictEqual(result.diff.counts.deleted, 0);
+    assert.strictEqual(result.diff.counts.added, 0);
+  });
+
+  it('re-extracts under the new scheme on the next run, so a stale GlobalId-keyed build is not reused', async () => {
+    const [a, b] = await Promise.all([
+      parse(taggedWall('0aaaaaaaaaaaaaaaaaaaaa', '0bbbbbbbbbbbbbbbbbbbbb', '0ccccccccccccccccccccc', 'TAG-200')),
+      parse(taggedWall('1zzzzzzzzzzzzzzzzzzzzz', '1yyyyyyyyyyyyyyyyyyyyy', '1xxxxxxxxxxxxxxxxxxxzz', 'TAG-200')),
+    ]);
+    useViewerStore.setState({
+      models: new Map([['A', model('A', a, 0)], ['B', model('B', b, 1000)]]),
+      compareBaseModelId: 'A',
+      compareHeadModelId: 'B',
+      compareScope: 'both',
+      compareExcludedTypes: [],
+      compareMatchByContent: false,
+      compareKeyProperty: undefined,
+      compareResult: null,
+      compareError: null,
+      compareRunning: false,
+    });
+
+    // First run, GlobalId scheme: the re-minted GlobalId reads as delete+add.
+    let pending: Promise<void> | undefined;
+    await act(async () => { pending = runComparison!(); });
+    await act(async () => { await pending; });
+    assert.strictEqual(published().diff.counts.deleted, 1);
+    assert.strictEqual(published().diff.counts.added, 1);
+
+    // Switch to Tag and run again: the cache must not be reused across the
+    // scheme change (`isCurrentFor`), so this is a real re-extraction.
+    await act(async () => {
+      useViewerStore.getState().setCompareKeyProperty('Tag');
+    });
+    await act(async () => { pending = runComparison!(); });
+    await act(async () => { await pending; });
+
+    const result = published();
+    assert.strictEqual(result.keyProperty, 'Tag');
+    assert.ok(result.diff.byKey.get('prop:TAG-200'));
+    assert.strictEqual(result.diff.counts.deleted, 0);
+    assert.strictEqual(result.diff.counts.added, 0);
   });
 });

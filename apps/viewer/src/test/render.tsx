@@ -86,6 +86,21 @@ export function press(target: EventTarget, key: string, init: KeyboardEventInit 
 }
 
 /**
+ * Dispatch the event that arrives at React's `onBlur`. `blur` itself does
+ * not bubble (DOM spec), so React delegates it from the ROOT via the
+ * bubbling `focusout` instead — dispatching `blur` here would bubble
+ * nowhere and never reach React's listener at all. Wrapped in `act()` for
+ * the same reason `press` is: a blur-driven commit into a store
+ * re-renders subscribers, and an unwrapped dispatch reads their state from
+ * before React flushed it.
+ */
+export function blur(element: Element): void {
+  act(() => {
+    element.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true }));
+  });
+}
+
+/**
  * Type into a controlled input or textarea the way a user does.
  *
  * Assigning `.value` directly leaves React's internal value tracker believing

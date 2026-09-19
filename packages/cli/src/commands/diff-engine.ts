@@ -169,6 +169,33 @@ export function buildFileFingerprints(
   return fingerprints;
 }
 
+/** A collision discovered in either file invalidates that authored value in
+ * both files, including fingerprints already built for the first side. */
+export function fallbackPairDuplicateAuthoredKeys(
+  sides: readonly {
+    fingerprints: EntityFingerprint<DiffRef>[];
+    store: IfcDataStore;
+  }[],
+  duplicates: ReadonlyMap<string, number[]>,
+): void {
+  if (duplicates.size === 0) return;
+  for (const { fingerprints, store } of sides) {
+    const globalIds = new Map(
+      [...comparableEntities(store)].map((entity) => [entity.expressId, entity.globalId]),
+    );
+    for (const fingerprint of fingerprints) {
+      if (!fingerprint.key.startsWith(AUTHORED_KEY_PREFIX)) continue;
+      const value = fingerprint.key.slice(AUTHORED_KEY_PREFIX.length);
+      if (!duplicates.has(value)) continue;
+      const globalId = globalIds.get(fingerprint.ref);
+      if (!globalId) {
+        throw new Error(`Cannot restore GlobalId for authored-key collision on #${fingerprint.ref}`);
+      }
+      fingerprint.key = globalId;
+    }
+  }
+}
+
 /**
  * Assemble the canonical {@link DataFingerprintInput} for one entity.
  *

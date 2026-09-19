@@ -230,10 +230,10 @@ pub fn legacy_attribute_names(entity_name: &str) -> Option<&'static [&'static st
     // relabelling its own attribute values under the base type's names
     // instead of just dropping them (#4203 follow-up).
     let entity_name = crate::schema_helpers::normalise_uppercase(entity_name);
-    // Linear scan, not `binary_search`: the table is sorted by the
-    // generator's JS `localeCompare`, which this crate has no obligation to
-    // match byte-for-byte, and a 285-row scan is not on any hot path (it
-    // fires once per legacy entity occurrence, not per attribute).
+    // Keep this compatibility table until all of its public lookup contract is
+    // reproducible from the pinned EXPRESS inputs. In particular, the data
+    // tables still contain IFC4.1 transitional alignment entities absent from
+    // the bundled IFC4 ADD2 and IFC4X3 EXPRESS files.
     LEGACY_ATTRIBUTE_NAMES
         .iter()
         .find(|(k, _)| *k == entity_name.as_ref())

@@ -52,6 +52,7 @@ const SCHEMA_SRC = `
 
 const schema = parseExpressSchema(SCHEMA_SRC);
 const rust = generateRust(schema);
+const cratePrivateRust = generateRust(schema, { cratePrivate: true });
 
 describe('generateRust — type_ids.rs', () => {
   it('emits SCREAMING_CASE constants, not the PascalCase entity name', () => {
@@ -118,6 +119,19 @@ describe('generateRust — schema.rs IfcType enum', () => {
 
   it('records the entity count in the doc comment', () => {
     expect(rust.schema).toContain(`All ${schema.entities.length} entity types`);
+  });
+});
+
+describe('generateRust — crate-private registries', () => {
+  it('keeps the generated enum and universe inside the consuming crate', () => {
+    expect(cratePrivateRust.schema).toContain('pub(crate) enum IfcType');
+    expect(cratePrivateRust.schema).toContain('pub(crate) static ALL: &[IfcType]');
+  });
+
+  it('documents why unused full-universe helpers are allowed', () => {
+    expect(cratePrivateRust.schema).toContain(
+      '#![allow(dead_code, clippy::enum_variant_names)] // Full EXPRESS names are required; registry consumers currently use only name lookup and attribute slots.',
+    );
   });
 });
 

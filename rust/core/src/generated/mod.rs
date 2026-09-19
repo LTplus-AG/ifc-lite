@@ -9,8 +9,11 @@
 //! Note: The IfcType enum is renamed to FullIfcType to avoid conflicts
 //! with the main schema::IfcType enum.
 
+mod ifc2x3;
+mod ifc4;
 pub mod legacy_attribute_names;
 mod schema;
+pub(crate) mod schema_registry;
 mod type_ids;
 
 // Re-export type IDs (these are just constants, no conflict)
@@ -18,3 +21,4 @@ pub use type_ids::*;
 
 // Re-export the generated IfcType directly (this is now the canonical schema)
 pub use schema::{IfcType, ALL as IFC_TYPES};
+pub use schema_registry::attribute_names_for_schema;

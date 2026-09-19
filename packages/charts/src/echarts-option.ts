@@ -46,6 +46,8 @@ export interface BuildOptionArgs {
   showTitle?: boolean;
   /** Width available to the chart in px; sizes the category labels so none is dropped. */
   width?: number;
+  /** Height available to the chart in px; print mode uses it to keep a pie's legend from overflowing a short chart. */
+  height?: number;
   /**
    * SSR (PDF / preview) rendering, not the interactive canvas (#4940): the
    * pie legend's `type: 'scroll'` has nothing to scroll in a static SVG and
@@ -57,6 +59,10 @@ export interface BuildOptionArgs {
 
 /** Fallback width when the host has not measured yet. */
 const DEFAULT_WIDTH = 600;
+/** Fallback height when the host has not measured yet. */
+const DEFAULT_HEIGHT = 320;
+/** Print mode caps the pie's legend to this many rows; extra categories still slice the pie, just without a name in the legend (#4940 review: an unbounded legend overflowed a short chart with many categories). */
+const PRINT_LEGEND_MAX_ROWS = 4;
 
 /** A plain-object ECharts option; typed loosely so this module needs no ECharts import. */
 export type EChartsOptionObject = Record<string, unknown>;
@@ -130,18 +136,46 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   };
 
   if (spec.type === 'pie') {
-    const legend = args.print
-      // No scrollbar in a static SVG: a fixed, wrapped legend under a smaller pie instead of a clipped scroll list.
-      ? { type: 'plain', orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: theme.mutedText, fontSize: 10 }, formatter: truncateLegendLabel, tooltip: { show: true } }
-      : { type: 'scroll', orient: 'vertical', right: 0, top: 'middle', textStyle: { color: theme.mutedText }, formatter: truncateLegendLabel, tooltip: { show: true } };
+    let legend: Record<string, unknown>;
+    let radius: [string, string] = ['35%', '70%'];
+    let center: [string, string] = ['40%', '50%'];
+    if (args.print) {
+      // No scrollbar in a static SVG: a fixed, wrapped `plain` legend under the pie instead of a
+      // clipped scroll list. A FIXED radius/center overflowed a short chart (e.g. 120pt) with many
+      // categories, because nothing reserved room for however tall the wrapped legend grew — size
+      // and position the pie from the room actually left after capping the legend to
+      // PRINT_LEGEND_MAX_ROWS rows (categories beyond the cap still slice the pie; they just have
+      // no legend entry, the same trade-off label truncation already makes for long names).
+      const width = args.width ?? DEFAULT_WIDTH;
+      const height = args.height ?? DEFAULT_HEIGHT;
+      const itemsPerRow = Math.max(1, Math.floor(width / 90));
+      const shownItems = Math.min(categories.length, itemsPerRow * PRINT_LEGEND_MAX_ROWS);
+      const legendRows = Math.min(PRINT_LEGEND_MAX_ROWS, Math.ceil(categories.length / itemsPerRow));
+      const legendH = categories.length > 0 ? legendRows * 14 + 6 : 0;
+      const pieAreaH = Math.max(40, height - legendH - 8);
+      const pieDiameter = Math.min(width * 0.7, pieAreaH) * 0.92;
+      const box = Math.min(width, height);
+      const outerPct = Math.max(14, Math.min(45, (pieDiameter / 2 / (box / 2)) * 100));
+      const centerYPct = Math.max(20, Math.min(48, ((pieAreaH / 2 + 8) / height) * 100));
+      radius = [`${(outerPct * 0.55).toFixed(0)}%`, `${outerPct.toFixed(0)}%`];
+      center = ['50%', `${centerYPct.toFixed(0)}%`];
+      legend = {
+        type: 'plain', orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10,
+        textStyle: { color: theme.mutedText, fontSize: 10 }, formatter: truncateLegendLabel, tooltip: { show: true },
+        // Fewer legend entries than categories: cap `data` so the wrapped legend cannot grow past its reserved rows.
+        ...(shownItems < categories.length ? { data: categories.slice(0, shownItems).map((c) => c.label) } : {}),
+      };
+    } else {
+      legend = { type: 'scroll', orient: 'vertical', right: 0, top: 'middle', textStyle: { color: theme.mutedText }, formatter: truncateLegendLabel, tooltip: { show: true } };
+    }
     return {
       ...base,
       legend,
       series: [{
         type: 'pie',
         name: measureLabel(aggregation),
-        radius: args.print ? ['28%', '52%'] : ['35%', '70%'],
-        center: args.print ? ['50%', '42%'] : ['40%', '50%'],
+        radius,
+        center,
         // An empty dataset shows the host's message, not a grey placeholder ring.
         showEmptyCircle: false,
         data: itemData(categories, flags),

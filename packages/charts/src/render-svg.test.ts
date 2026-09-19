@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { aggregate } from './aggregate.js';
-import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption } from './echarts-option.js';
+import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption, type EChartsOptionObject } from './echarts-option.js';
 import { renderChartSvg } from './render-svg.js';
 import { validateDashboardSpec } from './validate.js';
 import { migrateDashboardSpec } from './migrate.js';
@@ -56,6 +56,30 @@ describe('buildEChartsOption', () => {
     expect(flags).toEqual([[false, false], [true, false]]);
     expect((buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'pie' }, ds) }).series as Array<{ type: string }>)[0].type).toBe('pie');
     expect((buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'treemap' }, ds) }).series as Array<{ type: string }>)[0].type).toBe('treemap');
+  });
+
+  it('caps a print-mode pie legend to a bounded number of rows, keeps every slice in the data, and shrinks the pie to fit whatever height is left (#4940 review: a fixed radius/center overflowed a short chart with many categories)', () => {
+    const many: ChartDataset = { ...ds, rows: Array.from({ length: 20 }, (_, i) => ({ ids: [300 + i], values: [`Type ${i}`, 'L1'] })) };
+    const agg = aggregate({ ...bar, type: 'pie' }, many);
+    const legendData = (o: EChartsOptionObject) => (o.legend as { data?: string[] }).data;
+    const sliceCount = (o: EChartsOptionObject) => (o.series as Array<{ data: unknown[] }>)[0].data.length;
+    const outerPct = (o: EChartsOptionObject) => Number((o.series as Array<{ radius: [string, string] }>)[0].radius[1].replace('%', ''));
+
+    // Narrow width: 20 categories cannot fit within PRINT_LEGEND_MAX_ROWS rows, so the legend is
+    // capped below 20 — but the pie itself still carries all 20 slices; only the legend is capped.
+    const narrow = buildEChartsOption({ aggregation: agg, width: 150, height: 400, print: true });
+    expect(legendData(narrow)!.length).toBeGreaterThan(0);
+    expect(legendData(narrow)!.length).toBeLessThan(20);
+    expect(sliceCount(narrow)).toBe(20);
+
+    // Wide enough that every category fits its legend rows regardless of height: no explicit `data` cap.
+    const tall = buildEChartsOption({ aggregation: agg, width: 600, height: 600, print: true });
+    const short = buildEChartsOption({ aggregation: agg, width: 600, height: 120, print: true });
+    expect(legendData(tall)).toBeUndefined();
+    expect(legendData(short)).toBeUndefined();
+    // The short chart's pie is smaller (as a fraction of its own box) than the tall one's — it leaves
+    // room below it for the legend rows instead of a fixed center/radius ignoring them.
+    expect(outerPct(short)).toBeLessThan(outerPct(tall));
   });
 });
 

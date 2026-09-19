@@ -9,9 +9,11 @@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { FileText } from 'lucide-react';
 import type { DocumentInfo } from '@ifc-lite/parser';
+import { useTranslation } from '@/i18n';
 
 export function DocumentCard({ document }: { document: DocumentInfo }) {
-  const displayName = document.name || document.identification || 'Document';
+  const { t } = useTranslation();
+  const displayName = document.name || document.identification || t('properties.document.heading');
   const isUrl = document.location?.startsWith('http://') || document.location?.startsWith('https://');
 
   return (
@@ -31,25 +33,25 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
         <div className="border-t-2 border-sky-200 dark:border-sky-800 divide-y divide-sky-100 dark:divide-sky-900/30">
           {document.identification && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Identification</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.identification')}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.identification}</span>
             </div>
           )}
           {document.name && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Name</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.name')}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.name}</span>
             </div>
           )}
           {document.description && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Description</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.description')}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.description}</span>
             </div>
           )}
           {document.location && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Location</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.location')}</span>
               {isUrl ? (
                 <a
                   href={document.location}
@@ -66,19 +68,19 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
           )}
           {document.purpose && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Purpose</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.purpose')}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.purpose}</span>
             </div>
           )}
           {document.intendedUse && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Intended Use</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.intendedUse')}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.intendedUse}</span>
             </div>
           )}
           {document.revision && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Revision</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.revision')}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.revision}</span>
             </div>
           )}

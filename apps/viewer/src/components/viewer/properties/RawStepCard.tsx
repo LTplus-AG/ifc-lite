@@ -24,6 +24,7 @@ import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { RawStepRow } from './RawStepRow';
 import { extractRawStepTokens, serializeStepToken } from './raw-step-format';
+import { useTranslation } from '@/i18n';
 
 /** Max wrappers to skip when auto-following a `#N` click. Caps the
  *  loop in case of cyclic STEP graphs (shouldn't happen in valid
@@ -104,6 +105,7 @@ export function RawStepCard({
   dataStore,
   enableEditing,
 }: RawStepCardProps) {
+  const { t } = useTranslation();
   // Subscribe to the mutation version so overlay overrides re-render
   // here exactly when they would in the Properties tab.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
@@ -219,8 +221,8 @@ export function RawStepCard({
         <FileBox className="h-5 w-5 mx-auto mb-2 text-zinc-400" />
         <p className="text-xs font-mono text-zinc-500 dark:text-zinc-500">
           {dataStore
-            ? `Entity #${currentId} has no positional STEP arguments`
-            : 'Raw STEP is unavailable for this model'}
+            ? t('properties.rawStep.noPositionalArgs', { id: currentId })
+            : t('properties.rawStep.unavailable')}
         </p>
         {!isAtRoot && (
           <button
@@ -228,7 +230,7 @@ export function RawStepCard({
             onClick={handleResetToRoot}
             className="mt-3 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 hover:underline"
           >
-            ← Back to {entityType} #{entityId}
+            {t('properties.rawStep.backToRoot', { type: entityType, id: entityId })}
           </button>
         )}
       </div>
@@ -244,16 +246,16 @@ export function RawStepCard({
             type="button"
             onClick={handleBack}
             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400"
-            title="Back one step"
+            title={t('properties.rawStep.backOneStepTooltip')}
           >
             <ArrowLeft className="h-3 w-3" />
-            <span>back</span>
+            <span>{t('properties.rawStep.back')}</span>
           </button>
           <button
             type="button"
             onClick={handleResetToRoot}
             className="px-1 py-0.5 rounded text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 truncate"
-            title={`Back to selected entity ${entityType} #${entityId}`}
+            title={t('properties.rawStep.backToSelectedTooltip', { type: entityType, id: entityId })}
           >
             {entityType} #{entityId}
           </button>
@@ -287,10 +289,10 @@ export function RawStepCard({
         {isOverlayOnly && (
           <span
             className="inline-flex items-center gap-1 rounded-sm border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-300"
-            title="This entity was added through the overlay (bim.store.addEntity / addColumn)."
+            title={t('properties.rawStep.overlayAddedTooltip')}
           >
             <Sparkles className="h-2.5 w-2.5" />
-            New
+            {t('properties.rawStep.newBadge')}
           </span>
         )}
       </div>
@@ -300,7 +302,7 @@ export function RawStepCard({
         {tokens.map((token, idx) => {
           // Fallback name uses the 1-based position so it stays aligned with
           // the bracketed index shown in each row (which is also 1-based).
-          const name = attributeNames[idx] || `Arg ${idx + 1}`;
+          const name = attributeNames[idx] || t('properties.rawStep.argN', { n: idx + 1 });
           return (
             <RawStepRow
               key={idx}
@@ -321,12 +323,7 @@ export function RawStepCard({
       <div className="flex items-start gap-2 px-3 py-2 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/30">
         <Info className="h-3 w-3 mt-0.5 text-zinc-400 dark:text-zinc-500 shrink-0" />
         <p className="text-[10.5px] font-mono leading-relaxed text-zinc-500 dark:text-zinc-500">
-          STEP literals: numbers, <code className="px-0.5 rounded bg-zinc-200/60 dark:bg-zinc-800/60">$</code> for null,{' '}
-          <code className="px-0.5 rounded bg-zinc-200/60 dark:bg-zinc-800/60">.T.</code>/
-          <code className="px-0.5 rounded bg-zinc-200/60 dark:bg-zinc-800/60">.F.</code> for booleans,{' '}
-          <code className="px-0.5 rounded bg-zinc-200/60 dark:bg-zinc-800/60">#42</code> for refs (click to drill),{' '}
-          <code className="px-0.5 rounded bg-zinc-200/60 dark:bg-zinc-800/60">.AREA.</code> for enums. Edits
-          land on the export overlay — undo/redo via the toolbar.
+          {t('properties.rawStep.footerHelp')}
         </p>
       </div>
     </div>

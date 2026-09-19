@@ -16,6 +16,7 @@ import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
+import { propertiesEn } from './catalogues/properties.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
@@ -43,6 +44,7 @@ export const en = {
   ...documentEn,
   ...documentMenuEn,
   ...hierarchyEn,
+  ...propertiesEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

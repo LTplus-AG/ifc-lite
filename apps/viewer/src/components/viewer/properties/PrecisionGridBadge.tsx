@@ -21,6 +21,7 @@ import {
   hasFailedPrecisionGrid,
   hasLoadedPrecisionGrid,
 } from '@/lib/geo/precision-grids';
+import { useTranslation } from '@/i18n';
 
 interface PrecisionGridBadgeProps {
   crsName: string | undefined;
@@ -35,6 +36,7 @@ function extractEpsgCode(crsName: string | undefined): string | null {
 type BadgeState = 'loading' | 'loaded' | 'failed';
 
 export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
+  const { t } = useTranslation();
   const code = extractEpsgCode(crsName);
   const spec = code ? PRECISION_GRIDS[code] : undefined;
   const [state, setState] = useState<BadgeState>(() => {
@@ -71,14 +73,13 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
         <TooltipTrigger asChild>
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shrink-0">
             <CheckCircle2 className="h-2.5 w-2.5" />
-            grid
+            {t('properties.precisionGrid.loadedBadge')}
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs max-w-xs">
-          <div>Precision NTv2/GeoTIFF grid loaded for {spec.region}.</div>
+          <div>{t('properties.precisionGrid.loadedTooltip', { region: spec.region })}</div>
           <div className="mt-1 text-[10px] opacity-80">
-            Sub-decimeter datum-shift accuracy via{' '}
-            <code className="font-mono">{spec.filename}</code>.
+            {t('properties.precisionGrid.loadedDetail', { filename: spec.filename })}
           </div>
         </TooltipContent>
       </Tooltip>
@@ -91,14 +92,13 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
         <TooltipTrigger asChild>
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-red-300/60 dark:border-red-700/60 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 shrink-0">
             <AlertTriangle className="h-2.5 w-2.5" />
-            grid failed
+            {t('properties.precisionGrid.failedBadge')}
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs max-w-xs">
-          <div>Precision grid fetch failed for {spec.region}.</div>
+          <div>{t('properties.precisionGrid.failedTooltip', { region: spec.region })}</div>
           <div className="mt-1 text-[10px] opacity-80">
-            Falling back to +towgs84 approximation. Check network access to{' '}
-            <code className="font-mono">cdn.proj.org</code>.
+            {t('properties.precisionGrid.failedDetail', { host: 'cdn.proj.org' })}
           </div>
         </TooltipContent>
       </Tooltip>
@@ -110,14 +110,13 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
       <TooltipTrigger asChild>
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-amber-300/60 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 shrink-0">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          loading grid
+          {t('properties.precisionGrid.loadingBadge')}
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="text-xs max-w-xs">
-        <div>Fetching precision grid for {spec.region}…</div>
+        <div>{t('properties.precisionGrid.loadingTooltip', { region: spec.region })}</div>
         <div className="mt-1 text-[10px] opacity-80">
-          Until it arrives, placement uses the +towgs84 approximation (off by
-          up to ~120 m for this CRS).
+          {t('properties.precisionGrid.loadingDetail')}
         </div>
       </TooltipContent>
     </Tooltip>

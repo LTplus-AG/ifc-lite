@@ -25,6 +25,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useTranslation } from '@/i18n';
 
 export interface EpsgResult {
   code: string;
@@ -209,6 +210,7 @@ interface EpsgLookupDialogProps {
 }
 
 export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<EpsgResult[]>([]);
@@ -232,12 +234,10 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     setError(null);
   }, []);
 
-  const localIndex = useMemo(() => {
-    return COMMON_CRS.map(crs => ({
-      ...crs,
-      _s: `${crs.code} ${crs.name} ${crs.area} ${crs.datum ?? ''} ${crs.projection ?? ''}`.toLowerCase(),
-    }));
-  }, []);
+  const localIndex = useMemo(
+    () => COMMON_CRS.map(crs => ({ ...crs, _s: `${crs.code} ${crs.name} ${crs.area} ${crs.datum ?? ''} ${crs.projection ?? ''}`.toLowerCase() })),
+    [],
+  );
 
   const search = useCallback(async (searchQuery: string) => {
     const trimmed = searchQuery.trim();
@@ -287,18 +287,18 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
         setError(null);
       } else if (localMatches.length === 0) {
         setResults([]);
-        setError('No coordinate reference systems found');
+        setError(t('properties.epsgLookup.noResults'));
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('[EPSG Lookup] Local search failed', err);
       if (localMatches.length === 0) {
-        setError('Search unavailable');
+        setError(t('properties.epsgLookup.searchUnavailable'));
       }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [localIndex]);
+  }, [localIndex, t]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -358,7 +358,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
             className="flex items-center gap-1 text-[10px] font-mono text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50"
           >
             <Search className="h-2.5 w-2.5" />
-            EPSG
+            {t('properties.epsgLookup.triggerButton')}
           </button>
         )}
       </DialogTrigger>
@@ -366,16 +366,16 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
         <DialogHeader className="px-4 pt-4 pb-3">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Globe className="h-4 w-4 text-teal-500" />
-            EPSG Lookup
+            {t('properties.epsgLookup.title')}
           </DialogTitle>
           <DialogDescription className="text-[11px] text-muted-foreground">
-            Search by code, name, country, or datum
+            {t('properties.epsgLookup.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="px-4 pb-3">
           <Input
-            placeholder="e.g. 2056, UTM, Switzerland, Tokyo..."
+            placeholder={t('properties.epsgLookup.searchPlaceholder')}
             value={query}
             onChange={handleInputChange}
             leftIcon={loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}

@@ -118,6 +118,19 @@ same way `camera-commands.ts` does), and the Building Storeys display
 controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
 model content, not literals, and stay out of the catalogue.
 
+The properties catalogue (#4918 slice 4) covers the Properties panel's own
+chrome: the entity header actions, the assembly/spatial-location badges,
+the small info cards (property sets, quantity sets, materials,
+classification, documents, relationships, schedule, structural, raw STEP,
+bSDD, model metadata, unit display), the georeferencing panel and its
+EPSG lookup / federation-alignment / precision-grid / location-map
+surfaces, and the Gantt task edit card. IFC EXPRESS attribute names
+(`GeodeticDatum`, `MapProjection`, `MapZone`, `MapUnit`, `Name`,
+`Description`, …) rendered as `GeorefRow`/`MaterialRow` labels keep the
+house rule's exact schema spelling and stay out of the catalogue, same as
+property/pset/material/classification/schedule NAMES and VALUES, which are
+model content.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

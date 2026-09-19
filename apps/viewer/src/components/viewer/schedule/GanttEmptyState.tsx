@@ -84,8 +84,7 @@ export function GanttEmptyState({
         <>
           <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.loadModelTitle')}</h3>
           <p className="text-xs max-w-sm">
-            {t('schedule.emptyState.loadModelPre')} <span className="font-mono">IfcTask</span> {t('schedule.emptyState.conjunctionOr')}
-            <span className="font-mono"> IfcWorkSchedule</span> {t('schedule.emptyState.loadModelPost')}
+            {t('schedule.emptyState.loadModelMessage', { task: 'IfcTask', schedule: 'IfcWorkSchedule' })}
           </p>
         </>
       ) : loading ? (
@@ -119,14 +118,17 @@ export function GanttEmptyState({
         <>
           <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.noTasksInScheduleTitle')}</h3>
           <p className="text-xs max-w-md">
-            {t('schedule.emptyState.noTasksInSchedulePre')} <span className="font-medium text-foreground">{t('schedule.toolbar.allTasks')}</span> {t('schedule.emptyState.noTasksInSchedulePost')} <span className="font-mono">IfcTask</span> {t('schedule.emptyState.recordsSuffix')}
+            {t('schedule.emptyState.noTasksInScheduleMessage', {
+              allTasks: t('schedule.toolbar.allTasks'),
+              task: 'IfcTask',
+            })}
           </p>
         </>
       ) : hasWorkPlans ? (
         <>
           <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.noScheduledTasksTitle')}</h3>
           <p className="text-xs max-w-md">
-            {t('schedule.emptyState.noScheduledTasksPre')} <span className="font-mono">IfcWorkPlan</span> {t('schedule.emptyState.noScheduledTasksMid')} <span className="font-mono">IfcTask</span> {t('schedule.emptyState.noScheduledTasksPost')}
+            {t('schedule.emptyState.noScheduledTasksMessage', { workPlan: 'IfcWorkPlan', task: 'IfcTask' })}
           </p>
           {(canGenerate && onGenerate) || onImport ? (
             <div className="flex flex-col items-center gap-2 pt-2">
@@ -154,10 +156,12 @@ export function GanttEmptyState({
         <>
           <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.noScheduleFoundTitle')}</h3>
           <p className="text-xs max-w-md">
-            {t('schedule.emptyState.noScheduleFoundPre')} <span className="font-mono">IfcTask</span>,
-            <span className="font-mono"> IfcWorkSchedule</span>, {t('schedule.emptyState.conjunctionOr')}
-            <span className="font-mono"> IfcRelSequence</span> {t('schedule.emptyState.noScheduleFoundPost')}
-            <span className="font-mono"> IfcRelAssignsToProcess</span>.
+            {t('schedule.emptyState.noScheduleFoundMessage', {
+              task: 'IfcTask',
+              schedule: 'IfcWorkSchedule',
+              sequence: 'IfcRelSequence',
+              assigns: 'IfcRelAssignsToProcess',
+            })}
           </p>
           {(canGenerate && onGenerate) || onImport ? (
             <div className="flex flex-col items-center gap-2 pt-2">

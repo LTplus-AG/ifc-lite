@@ -158,27 +158,23 @@ export const scheduleEn = {
   // ── Empty state (GanttEmptyState.tsx) ───────────────────────────────
   'schedule.emptyState.closeAriaLabel': 'Close',
   'schedule.emptyState.loadModelTitle': 'Load a model with IfcTasks',
-  'schedule.emptyState.loadModelPre': 'Open an IFC file containing',
-  'schedule.emptyState.conjunctionOr': 'or',
-  'schedule.emptyState.loadModelPost': 'entities to see the construction schedule here.',
+  'schedule.emptyState.loadModelMessage':
+    'Open an IFC file containing {task} or {schedule} entities to see the construction schedule here.',
   'schedule.emptyState.extracting': 'Extracting schedule…',
   'schedule.emptyState.extractionFailedTitle': 'Schedule extraction failed',
   'schedule.emptyState.extractionFailedHint': 'Re-open the model or inspect the browser console for details.',
   'schedule.emptyState.generateInstead': 'Generate a schedule instead',
   'schedule.emptyState.importEllipsis': 'Import schedule…',
   'schedule.emptyState.noTasksInScheduleTitle': 'No tasks in selected schedule',
-  'schedule.emptyState.noTasksInSchedulePre': 'Choose',
-  'schedule.emptyState.noTasksInSchedulePost': "or another schedule to see the model's other",
-  'schedule.emptyState.recordsSuffix': 'records.',
+  'schedule.emptyState.noTasksInScheduleMessage':
+    "Choose {allTasks} or another schedule to see the model's other {task} records.",
   'schedule.emptyState.noScheduledTasksTitle': 'No scheduled tasks',
-  'schedule.emptyState.noScheduledTasksPre': 'The loaded',
-  'schedule.emptyState.noScheduledTasksMid': 'data is shown above, but it has no',
-  'schedule.emptyState.noScheduledTasksPost': 'records to draw on the Gantt timeline.',
+  'schedule.emptyState.noScheduledTasksMessage':
+    'The loaded {workPlan} data is shown above, but it has no {task} records to draw on the Gantt timeline.',
   'schedule.emptyState.generateScheduleButton': 'Generate schedule',
   'schedule.emptyState.noScheduleFoundTitle': 'No schedule found',
-  'schedule.emptyState.noScheduleFoundPre': "This model doesn't define any",
-  'schedule.emptyState.noScheduleFoundPost':
-    'entities. The Gantt panel powers itself from those entities and the products they control via',
+  'schedule.emptyState.noScheduleFoundMessage':
+    "This model doesn't define any {task}, {schedule}, or {sequence} entities. The Gantt panel powers itself from those entities and the products they control via {assigns}.",
   'schedule.emptyState.generateHelp': 'Build a schedule by storey, building, or element-Z height slice',
   'schedule.emptyState.importHelp': 'import one from MS Project (MSPDI XML) or a Gantt CSV export',
   'schedule.emptyState.helperBoth': '{generate}, or {import}.',

@@ -12,6 +12,7 @@
  * - Rust types and type IDs
  */
 
+import { ENTITIES_IFC4, IFC_DATA_TYPES } from '@ifc-lite/data';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import { parseExpressSchema, type ExpressSchema } from './express-parser.js';
@@ -20,6 +21,7 @@ import { generateTypeIds } from './type-ids-generator.js';
 import { generateSerializers } from './serialization-generator.js';
 import { generateRust, type RustGeneratedCode } from './rust-generator.js';
 import { findCollisions } from './crc32.js';
+import { entityCatalogSchema } from './rust-type-universe.js';
 
 export interface FullGeneratedCode extends GeneratedCode {
   typeIds: string;
@@ -69,9 +71,12 @@ export function generateFromSchema(
   console.log('📖 Parsing EXPRESS schema...');
   const schema = parseExpressSchema(schemaContent);
   const rustSupplementalSchemas = options.rust
-    ? (options.rustSupplementalSchemaPaths ?? []).map((path) =>
-        parseExpressSchema(readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n'))
-      )
+    ? [
+        ...(options.rustSupplementalSchemaPaths ?? []).map((path) =>
+          parseExpressSchema(readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n'))
+        ),
+        entityCatalogSchema('IFC4_FAMILY', ENTITIES_IFC4, IFC_DATA_TYPES),
+      ]
     : [];
 
   console.log(`✓ Parsed ${schema.name}`);

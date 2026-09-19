@@ -12,7 +12,7 @@ use std::fmt;
 
 /// IFC Entity Types
 ///
-/// All 1006 entity types from the supported schema universe.
+/// All 1021 entity types from the supported schema universe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IfcType {
     // Spatial Structure
@@ -373,6 +373,12 @@ pub enum IfcType {
     IfcLinearDimension,
     IfcRationalBezierCurve,
     IfcStructuralLinearActionVarying,
+    /// Abstract entity
+    IfcCurveSegment2D,
+    IfcLineSegment2D,
+    IfcTransitionCurveSegment2D,
+    IfcAlignment2DVerSegLine,
+    IfcAlignmentCurve,
 
     // Surfaces
     /// Abstract entity
@@ -1189,6 +1195,18 @@ pub enum IfcType {
     IfcTwoDirectionRepeatFactor,
     IfcVertexBasedTextureMap,
     IfcWaterProperties,
+    IfcCircularArcSegment2D,
+    IfcDistanceExpression,
+    IfcOrientationExpression,
+    IfcAlignment2DHorizontal,
+    IfcAlignment2DHorizontalSegment,
+    /// Abstract entity
+    IfcAlignment2DSegment,
+    IfcAlignment2DVerSegCircularArc,
+    /// Abstract entity
+    IfcAlignment2DVerticalSegment,
+    IfcAlignment2DVerSegParabolicArc,
+    IfcAlignment2DVertical,
 
     /// Unknown/unrecognized IFC type (stores CRC32 hash)
     Unknown(u32),
@@ -2234,6 +2252,21 @@ impl IfcType {
             "IFCTWODIRECTIONREPEATFACTOR" => Self::IfcTwoDirectionRepeatFactor,
             "IFCVERTEXBASEDTEXTUREMAP" => Self::IfcVertexBasedTextureMap,
             "IFCWATERPROPERTIES" => Self::IfcWaterProperties,
+            "IFCCIRCULARARCSEGMENT2D" => Self::IfcCircularArcSegment2D,
+            "IFCCURVESEGMENT2D" => Self::IfcCurveSegment2D,
+            "IFCDISTANCEEXPRESSION" => Self::IfcDistanceExpression,
+            "IFCLINESEGMENT2D" => Self::IfcLineSegment2D,
+            "IFCORIENTATIONEXPRESSION" => Self::IfcOrientationExpression,
+            "IFCTRANSITIONCURVESEGMENT2D" => Self::IfcTransitionCurveSegment2D,
+            "IFCALIGNMENT2DHORIZONTAL" => Self::IfcAlignment2DHorizontal,
+            "IFCALIGNMENT2DHORIZONTALSEGMENT" => Self::IfcAlignment2DHorizontalSegment,
+            "IFCALIGNMENT2DSEGMENT" => Self::IfcAlignment2DSegment,
+            "IFCALIGNMENT2DVERSEGCIRCULARARC" => Self::IfcAlignment2DVerSegCircularArc,
+            "IFCALIGNMENT2DVERTICALSEGMENT" => Self::IfcAlignment2DVerticalSegment,
+            "IFCALIGNMENT2DVERSEGLINE" => Self::IfcAlignment2DVerSegLine,
+            "IFCALIGNMENT2DVERSEGPARABOLICARC" => Self::IfcAlignment2DVerSegParabolicArc,
+            "IFCALIGNMENT2DVERTICAL" => Self::IfcAlignment2DVertical,
+            "IFCALIGNMENTCURVE" => Self::IfcAlignmentCurve,
             _ => return None,
         })
     }
@@ -3247,6 +3280,21 @@ impl IfcType {
             1345879162 => Self::IfcTwoDirectionRepeatFactor,
             3304826586 => Self::IfcVertexBasedTextureMap,
             1065908215 => Self::IfcWaterProperties,
+            1062206242 => Self::IfcCircularArcSegment2D,
+            1186437898 => Self::IfcCurveSegment2D,
+            1945343521 => Self::IfcDistanceExpression,
+            3092502836 => Self::IfcLineSegment2D,
+            643959842 => Self::IfcOrientationExpression,
+            2595432518 => Self::IfcTransitionCurveSegment2D,
+            749761778 => Self::IfcAlignment2DHorizontal,
+            3199563722 => Self::IfcAlignment2DHorizontalSegment,
+            2483840362 => Self::IfcAlignment2DSegment,
+            3379348081 => Self::IfcAlignment2DVerSegCircularArc,
+            2029264950 => Self::IfcAlignment2DVerticalSegment,
+            3239324667 => Self::IfcAlignment2DVerSegLine,
+            4263986512 => Self::IfcAlignment2DVerSegParabolicArc,
+            53199957 => Self::IfcAlignment2DVertical,
+            3512275521 => Self::IfcAlignmentCurve,
             _ => Self::Unknown(id),
         }
     }
@@ -4260,6 +4308,21 @@ impl IfcType {
             Self::IfcTwoDirectionRepeatFactor => 1345879162,
             Self::IfcVertexBasedTextureMap => 3304826586,
             Self::IfcWaterProperties => 1065908215,
+            Self::IfcCircularArcSegment2D => 1062206242,
+            Self::IfcCurveSegment2D => 1186437898,
+            Self::IfcDistanceExpression => 1945343521,
+            Self::IfcLineSegment2D => 3092502836,
+            Self::IfcOrientationExpression => 643959842,
+            Self::IfcTransitionCurveSegment2D => 2595432518,
+            Self::IfcAlignment2DHorizontal => 749761778,
+            Self::IfcAlignment2DHorizontalSegment => 3199563722,
+            Self::IfcAlignment2DSegment => 2483840362,
+            Self::IfcAlignment2DVerSegCircularArc => 3379348081,
+            Self::IfcAlignment2DVerticalSegment => 2029264950,
+            Self::IfcAlignment2DVerSegLine => 3239324667,
+            Self::IfcAlignment2DVerSegParabolicArc => 4263986512,
+            Self::IfcAlignment2DVertical => 53199957,
+            Self::IfcAlignmentCurve => 3512275521,
             Self::Unknown(id) => *id,
         }
     }
@@ -5289,6 +5352,21 @@ impl IfcType {
             Self::IfcTwoDirectionRepeatFactor => "IFCTWODIRECTIONREPEATFACTOR",
             Self::IfcVertexBasedTextureMap => "IFCVERTEXBASEDTEXTUREMAP",
             Self::IfcWaterProperties => "IFCWATERPROPERTIES",
+            Self::IfcCircularArcSegment2D => "IFCCIRCULARARCSEGMENT2D",
+            Self::IfcCurveSegment2D => "IFCCURVESEGMENT2D",
+            Self::IfcDistanceExpression => "IFCDISTANCEEXPRESSION",
+            Self::IfcLineSegment2D => "IFCLINESEGMENT2D",
+            Self::IfcOrientationExpression => "IFCORIENTATIONEXPRESSION",
+            Self::IfcTransitionCurveSegment2D => "IFCTRANSITIONCURVESEGMENT2D",
+            Self::IfcAlignment2DHorizontal => "IFCALIGNMENT2DHORIZONTAL",
+            Self::IfcAlignment2DHorizontalSegment => "IFCALIGNMENT2DHORIZONTALSEGMENT",
+            Self::IfcAlignment2DSegment => "IFCALIGNMENT2DSEGMENT",
+            Self::IfcAlignment2DVerSegCircularArc => "IFCALIGNMENT2DVERSEGCIRCULARARC",
+            Self::IfcAlignment2DVerticalSegment => "IFCALIGNMENT2DVERTICALSEGMENT",
+            Self::IfcAlignment2DVerSegLine => "IFCALIGNMENT2DVERSEGLINE",
+            Self::IfcAlignment2DVerSegParabolicArc => "IFCALIGNMENT2DVERSEGPARABOLICARC",
+            Self::IfcAlignment2DVertical => "IFCALIGNMENT2DVERTICAL",
+            Self::IfcAlignmentCurve => "IFCALIGNMENTCURVE",
             Self::Unknown(_) => "UNKNOWN",
         }
     }
@@ -6318,6 +6396,21 @@ impl IfcType {
             Self::IfcTwoDirectionRepeatFactor => "IfcTwoDirectionRepeatFactor",
             Self::IfcVertexBasedTextureMap => "IfcVertexBasedTextureMap",
             Self::IfcWaterProperties => "IfcWaterProperties",
+            Self::IfcCircularArcSegment2D => "IfcCircularArcSegment2D",
+            Self::IfcCurveSegment2D => "IfcCurveSegment2D",
+            Self::IfcDistanceExpression => "IfcDistanceExpression",
+            Self::IfcLineSegment2D => "IfcLineSegment2D",
+            Self::IfcOrientationExpression => "IfcOrientationExpression",
+            Self::IfcTransitionCurveSegment2D => "IfcTransitionCurveSegment2D",
+            Self::IfcAlignment2DHorizontal => "IfcAlignment2DHorizontal",
+            Self::IfcAlignment2DHorizontalSegment => "IfcAlignment2DHorizontalSegment",
+            Self::IfcAlignment2DSegment => "IfcAlignment2DSegment",
+            Self::IfcAlignment2DVerSegCircularArc => "IfcAlignment2DVerSegCircularArc",
+            Self::IfcAlignment2DVerticalSegment => "IfcAlignment2DVerticalSegment",
+            Self::IfcAlignment2DVerSegLine => "IfcAlignment2DVerSegLine",
+            Self::IfcAlignment2DVerSegParabolicArc => "IfcAlignment2DVerSegParabolicArc",
+            Self::IfcAlignment2DVertical => "IfcAlignment2DVertical",
+            Self::IfcAlignmentCurve => "IfcAlignmentCurve",
             Self::Unknown(_) => "Unknown",
         }
     }
@@ -7267,6 +7360,21 @@ impl IfcType {
             Self::IfcTimeSeriesSchedule => Some(Self::IfcControl),
             Self::IfcTwoDirectionRepeatFactor => Some(Self::IfcOneDirectionRepeatFactor),
             Self::IfcWaterProperties => Some(Self::IfcMaterialProperties),
+            Self::IfcCircularArcSegment2D => Some(Self::IfcCurveSegment2D),
+            Self::IfcCurveSegment2D => Some(Self::IfcBoundedCurve),
+            Self::IfcDistanceExpression => Some(Self::IfcGeometricRepresentationItem),
+            Self::IfcLineSegment2D => Some(Self::IfcCurveSegment2D),
+            Self::IfcOrientationExpression => Some(Self::IfcGeometricRepresentationItem),
+            Self::IfcTransitionCurveSegment2D => Some(Self::IfcCurveSegment2D),
+            Self::IfcAlignment2DHorizontal => Some(Self::IfcGeometricRepresentationItem),
+            Self::IfcAlignment2DHorizontalSegment => Some(Self::IfcAlignment2DSegment),
+            Self::IfcAlignment2DSegment => Some(Self::IfcGeometricRepresentationItem),
+            Self::IfcAlignment2DVerSegCircularArc => Some(Self::IfcAlignment2DVerticalSegment),
+            Self::IfcAlignment2DVerticalSegment => Some(Self::IfcAlignment2DSegment),
+            Self::IfcAlignment2DVerSegLine => Some(Self::IfcAlignment2DVerticalSegment),
+            Self::IfcAlignment2DVerSegParabolicArc => Some(Self::IfcAlignment2DVerticalSegment),
+            Self::IfcAlignment2DVertical => Some(Self::IfcGeometricRepresentationItem),
+            Self::IfcAlignmentCurve => Some(Self::IfcBoundedCurve),
             _ => None,
         }
     }
@@ -7426,6 +7534,9 @@ impl IfcType {
             Self::IfcBuildingElementComponent => true,
             Self::IfcEdgeFeature => true,
             Self::IfcPreDefinedSymbol => true,
+            Self::IfcCurveSegment2D => true,
+            Self::IfcAlignment2DSegment => true,
+            Self::IfcAlignment2DVerticalSegment => true,
             _ => false,
         }
     }
@@ -14463,6 +14574,21 @@ impl IfcType {
             Self::IfcTwoDirectionRepeatFactor => &[],
             Self::IfcVertexBasedTextureMap => &[],
             Self::IfcWaterProperties => &[],
+            Self::IfcCircularArcSegment2D => &[],
+            Self::IfcCurveSegment2D => &[],
+            Self::IfcDistanceExpression => &[],
+            Self::IfcLineSegment2D => &[],
+            Self::IfcOrientationExpression => &[],
+            Self::IfcTransitionCurveSegment2D => &[],
+            Self::IfcAlignment2DHorizontal => &[],
+            Self::IfcAlignment2DHorizontalSegment => &[],
+            Self::IfcAlignment2DSegment => &[],
+            Self::IfcAlignment2DVerSegCircularArc => &[],
+            Self::IfcAlignment2DVerticalSegment => &[],
+            Self::IfcAlignment2DVerSegLine => &[],
+            Self::IfcAlignment2DVerSegParabolicArc => &[],
+            Self::IfcAlignment2DVertical => &[],
+            Self::IfcAlignmentCurve => &[],
             Self::Unknown(_) => &[],
         }
     }

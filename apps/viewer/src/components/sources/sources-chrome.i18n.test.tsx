@@ -58,6 +58,7 @@ import type {
 } from '@ifc-lite/plugin-api';
 import { render, cleanup } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
+import { resolve } from '@/i18n/registry';
 import type { PluralTranslation, TranslationValue } from '@/i18n/types';
 import { sourcesEn } from '@/i18n/catalogues/sources.en';
 import { SourceHost } from '@/services/sources/source-host';
@@ -821,5 +822,36 @@ describe('SourcesPanel chrome localization', () => {
       ['sources.sourcesPanel.title'],
       ['sources.sourcesPanel.closeAria'],
     ]);
+  });
+
+  it('composes the whole provider-failure sentence as one translatable message, not fixed fragments (#4918 slice 5b review)', () => {
+    // A real registration failure (`SourcesPanel`'s `registrationFailures`
+    // come from `SourceHost.getRegistrationFailures()`) needs a provider
+    // whose manifest collides with one of `SourceHostProvider`'s own three
+    // built-in providers — it exposes no injection point for a fixture
+    // host (see the file header), so this proves the CATALOGUE CONTRACT
+    // directly instead: `sources.sourcesPanel.failedToRegister` is one
+    // whole sentence with both `{provider}` and `{reason}` as parameters,
+    // so a locale can reorder them — not `{provider}` fixed in JSX before a
+    // translated middle phrase before a fixed `{reason}` after, which no
+    // locale could ever reorder.
+    const key = 'sources.sourcesPanel.failedToRegister' as const;
+    assert.equal(
+      resolve(key, { provider: 'my-provider', reason: 'bad api version' }),
+      'my-provider failed to register: bad api version',
+    );
+
+    // A locale is free to move both placeholders anywhere in the sentence —
+    // proof it is one whole message a translator edits, not two fixed
+    // fragments around an untranslatable JSX span.
+    registerLocale('sources-failed-to-register-reordered', {
+      [key]: '{reason} — {provider} konnte nicht registriert werden',
+    });
+    setLocale('sources-failed-to-register-reordered');
+    assert.equal(
+      resolve(key, { provider: 'my-provider', reason: 'bad api version' }),
+      'bad api version — my-provider konnte nicht registriert werden',
+    );
+    setLocale('en');
   });
 });

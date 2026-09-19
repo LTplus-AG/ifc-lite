@@ -28,7 +28,8 @@ import {
 } from 'react';
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import { cn } from '@/lib/utils';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
+import { resolveLiveMessage, type LiveTranslationMessage } from './live-translation-message.js';
 import { useThreeScene } from './useThreeScene';
 import { createScene } from './playground-scene';
 import type { SceneHandle, ViewerController } from './playground-viewer-types';
@@ -42,21 +43,12 @@ const BG_COLOR = '#0e0e12';
 //    THREE.WebGLRenderer, which needs a real WebGL context happy-dom can't
 //    provide) ──────────────────────────────────────────────────────────────
 
-/**
- * A phase message is either a catalogue key (re-translated live on every
- * render, so a mid-load locale switch retranslates it) or raw text (an
- * exception's own `.message`, which is not UI copy and is never a
- * translation key — same distinction `ChunkErrorBoundary`'s `chunk`
- * discriminant makes between a catalogued label and passthrough content).
- */
-export type PhaseMessage = { key: TranslationKey; params?: Record<string, string | number> } | { text: string };
-
 interface GeometryLoadCallbacks {
   /** Read fresh each await boundary — the caller's effect-cleanup flips this
    *  when the model changes or the component unmounts mid-flight. */
   isCancelled: () => boolean;
   setPhase: (phase: 'processing' | 'ready' | 'error') => void;
-  setPhaseMsg: (msg: PhaseMessage) => void;
+  setPhaseMsg: (msg: LiveTranslationMessage) => void;
   /** Fired once with the non-empty mesh list on the success path. */
   onMeshes: (meshes: MeshData[]) => void;
   onReady?: () => void;
@@ -149,11 +141,8 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
     createScene,
   );
   const [phase, setPhase] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
-  const [phaseMsg, setPhaseMsg] = useState<PhaseMessage | null>(null);
-  // Re-resolved on every render (never cached as a string), so a locale
-  // switch mid-load or a startup locale that activates after this call
-  // both retranslate immediately (#4918 slice 5b review).
-  const phaseMsgText = phaseMsg ? ('key' in phaseMsg ? t(phaseMsg.key, phaseMsg.params) : phaseMsg.text) : '';
+  const [phaseMsg, setPhaseMsg] = useState<LiveTranslationMessage | null>(null);
+  const phaseMsgText = resolveLiveMessage(t, phaseMsg);
   const [meshCount, setMeshCount] = useState(0);
 
   useImperativeHandle(

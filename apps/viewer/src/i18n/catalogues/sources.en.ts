@@ -118,7 +118,7 @@ export const sourcesEn = {
   'sources.sourcesPanel.closeAria': 'Close',
   'sources.sourcesPanel.noProviders': 'No source providers configured',
   'sources.sourcesPanel.unavailableProviders': 'Unavailable providers',
-  'sources.sourcesPanel.failedToRegister': 'failed to register:',
+  'sources.sourcesPanel.failedToRegister': '{provider} failed to register: {reason}',
   'sources.sourcesPanel.noProviderMessage': 'No provider',
   'sources.sourcesPanel.connectionTestUnsupported': 'Provider does not support connection testing',
   'sources.sourcesPanel.revisionChangedModels': {

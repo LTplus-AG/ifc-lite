@@ -32,7 +32,6 @@ export interface FocusedClashGroup {
     isolatedEntitiesByModel: ReadonlyMap<string, ReadonlySet<number>>;
     selectionRevision: number;
     clashHighlightColors: ViewerState['clashHighlightColors'];
-    pendingColorUpdates: ViewerState['pendingColorUpdates'];
   };
 }
 
@@ -60,8 +59,7 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && state.hiddenEntitiesByModel === revision.hiddenEntitiesByModel
     && state.isolatedEntitiesByModel === revision.isolatedEntitiesByModel
     && state.selectionRevision === revision.selectionRevision
-    && state.clashHighlightColors === revision.clashHighlightColors
-    && state.pendingColorUpdates === revision.pendingColorUpdates;
+    && state.clashHighlightColors === revision.clashHighlightColors;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -131,7 +129,6 @@ export function focusClashGroup(
       isolatedEntitiesByModel: focusedState.isolatedEntitiesByModel,
       selectionRevision: focusedState.selectionRevision,
       clashHighlightColors: focusedState.clashHighlightColors,
-      pendingColorUpdates: focusedState.pendingColorUpdates,
     },
   };
 }

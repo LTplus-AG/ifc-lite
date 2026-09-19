@@ -168,7 +168,13 @@ describe('manual clash group focus (#4921)', () => {
 
     const beforePresentation = focusClashGroup([clash('presentation', 10, 20)], resolve, mock.fn(), 'highlight');
     assert.ok(beforePresentation);
-    useViewerStore.getState().setPendingColorUpdates(new Map([[99, CLASH_COLOR_A]]));
+    useViewerStore.getState().setClashHighlightColors(new Map([[99, CLASH_COLOR_A]]));
     assert.equal(focusedSceneRevisionIsCurrent(beforePresentation), false);
+
+    const beforePaintFlush = focusClashGroup([clash('paint-flush', 10, 20)], resolve, mock.fn(), 'highlight');
+    assert.ok(beforePaintFlush);
+    useViewerStore.getState().clearPendingColorUpdates();
+    assert.equal(focusedSceneRevisionIsCurrent(beforePaintFlush), true,
+      'flushing the one-shot GPU paint signal is part of a normal capture frame');
   });
 });

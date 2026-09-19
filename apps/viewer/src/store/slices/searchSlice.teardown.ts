@@ -48,6 +48,7 @@ export const searchTeardown = defineSliceTeardown(
     'searchFilterRunning',
     'searchFilterError',
     'searchFilter',
+    'searchFilterActiveGroup',
     'searchFilterSchema',
   ],
   {
@@ -75,6 +76,7 @@ export const searchTeardown = defineSliceTeardown(
       // discovered in the outgoing model, so they go back to the slice's
       // own empty state rather than being re-pointed at the new file.
       searchFilter: emptyFilterState(),
+      searchFilterActiveGroup: 0,
       // Per-model chip-dropdown schema cache, keyed by modelId.
       searchFilterSchema: new Map(),
     }),

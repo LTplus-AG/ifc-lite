@@ -5,10 +5,12 @@
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
 mod conform;
+mod plane_merge;
 mod ring_ops;
 
 use super::ClippingProcessor;
 use conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans, PlanBucket, PlanRegion};
+use plane_merge::{merge_rounding_split_buckets, tag_for, PlaneTri};
 use ring_ops::{clean_ring, floor_pow2};
 #[cfg(test)]
 use ring_ops::{ring_is_noise, weld_near_coincident_2d};
@@ -166,12 +168,10 @@ impl ClippingProcessor {
         let qnorm = |n: f64| (n * NORMAL_QUANT).round() as i64;
 
         // Step 1 — group input triangles by plane.
-        struct PlaneTri {
-            v: [Point3<f64>; 3],
-            normal: Vector3<f64>,
-        }
         let positions = &mesh.positions;
         let vertex_count = positions.len() / 3;
+        let triangle_count = mesh.indices.len() / 3;
+        let plane_tags = mesh.plane_tags.as_deref();
         // BTreeMap, NOT FxHashMap: step 2 emits the output mesh in bucket
         // iteration order, and FxHasher mixes usize-wide chunks, so its
         // iteration order differs between 64-bit native and 32-bit wasm32 -
@@ -180,9 +180,13 @@ impl ClippingProcessor {
         // determinism manifest. Ord-keyed iteration is target-independent
         // (same pattern as facet_weld's normal_buckets); bucket counts per
         // cut are small, so the tree overhead is noise.
+        //
+        // Bucketing itself is UNCHANGED (today's geometric re-derivation):
+        // #3914's fix is a separate merge pass below, not a different key
+        // here — see that pass for why.
         let mut buckets: std::collections::BTreeMap<(i64, i64, i64, i64), Vec<PlaneTri>> =
             std::collections::BTreeMap::new();
-        for chunk in mesh.indices.chunks_exact(3) {
+        for (tri_idx, chunk) in mesh.indices.chunks_exact(3).enumerate() {
             let (i0, i1, i2) = (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize);
             if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
                 continue;
@@ -217,11 +221,21 @@ impl ClippingProcessor {
                 qnorm(normal.z),
                 qpos(offset),
             );
+            let tri_v = [v0, v1, v2];
+            let tag = tag_for(plane_tags, triangle_count, tri_idx, &tri_v);
             buckets.entry(key).or_default().push(PlaneTri {
-                v: [v0, v1, v2],
+                v: tri_v,
                 normal,
+                tag,
             });
         }
+
+        // Issue #3914 fix: stitch a `POS_QUANT`-rounding bucket split
+        // back together using the kernel's own f64 plane tags — see
+        // `plane_merge::merge_rounding_split_buckets` for the mechanism,
+        // why it is a narrow adjacent-pair merge rather than a global
+        // re-key, and the scale-relative/-capped tolerances involved.
+        let merged_bucket_keys = merge_rounding_split_buckets(&mut buckets);
 
         // Step 2 — three phases over the SAME bucket map.
         //
@@ -244,14 +258,25 @@ impl ClippingProcessor {
         let mut plans: Vec<PlanBucket> = Vec::with_capacity(buckets.len());
 
         // Phase A.
-        for (bid, tris) in buckets.values().enumerate() {
+        for (bid, (bucket_key, tris)) in buckets.iter().enumerate() {
             if tris.is_empty() {
                 continue;
             }
             let bid = bid as u32;
             // Use the FIRST triangle's normal/anchor for a stable 2D basis;
-            // all tris in this bucket share the plane by construction.
-            let normal = tris[0].normal;
+            // all tris in this bucket share the plane by construction. EXCEPT
+            // (#3914): a bucket the merge pass above just folded a straddling
+            // neighbour into — `tris[0]`'s own recomputed cross-product
+            // normal is one specific member's noise, not the shared plane
+            // both original buckets' tags agreed on; use that tag's normal
+            // instead. An ordinary, non-merged bucket (the overwhelming
+            // majority) is untouched: this is `tris[0].normal` exactly as
+            // before the fix.
+            let normal = if merged_bucket_keys.contains(bucket_key) {
+                tris[0].tag.map(|(n, _)| n).unwrap_or(tris[0].normal)
+            } else {
+                tris[0].normal
+            };
             let origin = tris[0].v[0];
             let abs = (normal.x.abs(), normal.y.abs(), normal.z.abs());
             let reference = if abs.0 <= abs.1 && abs.0 <= abs.2 {

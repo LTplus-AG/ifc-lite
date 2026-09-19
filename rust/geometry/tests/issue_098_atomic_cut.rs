@@ -41,6 +41,7 @@ fn parse_mesh(json: &str) -> Mesh {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     }
 }
 

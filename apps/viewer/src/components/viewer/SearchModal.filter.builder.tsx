@@ -29,6 +29,7 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
+import { totalRuleCount } from '@/lib/search/filter-groups';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import {
@@ -41,10 +42,14 @@ import { toast } from '@/components/ui/toast';
 import { RuleRow } from './SearchModal.filter.editors';
 import { SearchModalFilterSelector, useActiveSchemaVersion } from './SearchModal.filter.selector';
 import { readSelector } from '@/lib/search/selector-to-rules';
+import { GroupTabs } from './SearchModal.filter.groupTabs';
+import { useTranslation } from '@/i18n';
 
 export function SearchModalFilterBuilder() {
+  const { t } = useTranslation();
   const {
     filter,
+    activeGroupIndex,
     searchQuery,
     setFilterCombinator,
     setFilterLimit,
@@ -52,10 +57,14 @@ export function SearchModalFilterBuilder() {
     updateFilterRule,
     removeFilterRule,
     clearFilterRules,
+    addFilterGroup,
+    removeFilterGroup,
+    setActiveFilterGroup,
     setSearchFilter,
   } = useViewerStore(
     useShallow((s) => ({
       filter: s.searchFilter,
+      activeGroupIndex: s.searchFilterActiveGroup,
       searchQuery: s.searchQuery,
       setFilterCombinator: s.setFilterCombinator,
       setFilterLimit: s.setFilterLimit,
@@ -63,6 +72,9 @@ export function SearchModalFilterBuilder() {
       updateFilterRule: s.updateFilterRule,
       removeFilterRule: s.removeFilterRule,
       clearFilterRules: s.clearFilterRules,
+      addFilterGroup: s.addFilterGroup,
+      removeFilterGroup: s.removeFilterGroup,
+      setActiveFilterGroup: s.setActiveFilterGroup,
       setSearchFilter: s.setSearchFilter,
     })),
   );
@@ -70,7 +82,12 @@ export function SearchModalFilterBuilder() {
 
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>(() => loadSavedFilters());
 
-  const ruleOptions = useFilterRuleOptions(filter.rules);
+  // The active group — rule edits (add/update/remove, AND/OR toggle) target
+  // only this one; `+ Add group` / the group tabs below switch it (#4904).
+  const activeGroup = filter.groups[activeGroupIndex] ?? filter.groups[0];
+  const activeRules = activeGroup?.rules ?? [];
+  const ruleOptions = useFilterRuleOptions(activeRules);
+  const totalRules = totalRuleCount(filter.groups);
 
   // ── Rule construction ─────────────────────────────────────────────
 
@@ -110,6 +127,20 @@ export function SearchModalFilterBuilder() {
       toast.error(`Nothing in that selector maps to a filter rule yet: ${reading.unsupported.join('; ')}`);
       return;
     }
+    // A `+` union is refused here rather than silently promoting only
+    // `groups[0]` — review (PR #4987): this button predates groups and adds
+    // into the single ACTIVE one, so a naive promote of "IfcWall + IfcDoor"
+    // would add the IfcWall rule and drop the IfcDoor branch with nothing
+    // to read, the exact #4091 defect class this whole adapter exists to
+    // avoid. The Selector field above (which DOES carry the full union) is
+    // where `+` text is meant to go.
+    if (reading.groups.length > 1) {
+      toast.error(
+        `"${q}" unions ${reading.groups.length} groups with "+" — use the Selector field above ` +
+          'to apply the whole union; this button only ever adds into one group.',
+      );
+      return;
+    }
     for (const rule of reading.rules) addFilterRule(rule);
     if (reading.unsupported.length > 0) {
       toast.info(`Added without these parts: ${reading.unsupported.join('; ')}`);
@@ -119,23 +150,22 @@ export function SearchModalFilterBuilder() {
   // ── Preset handlers ─────────────────────────────────────────────────
 
   const handleSavePreset = useCallback(() => {
-    if (filter.rules.length === 0) return;
+    if (totalRules === 0) return;
     // eslint-disable-next-line no-alert
     const name = window.prompt('Save filter as…', '');
     if (!name) return;
-    const result = saveFilter(name, filter.combinator, filter.rules);
+    const result = saveFilter(name, filter.groups);
     setSavedPresets(result.presets);
     // A refused write used to return the in-memory catalog as though saved —
     // the user saw the filter and lost it next session (#2089).
     if (!result.persisted) {
       toast.error('Filter could not be saved — browser storage is unavailable or full.');
     }
-  }, [filter.combinator, filter.rules]);
+  }, [filter.groups, totalRules]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
     setSearchFilter({
-      rules: preset.rules.map((r) => ({ ...r }) as FilterRule),
-      combinator: preset.combinator,
+      groups: preset.groups.map((g) => ({ rules: g.rules.map((r) => ({ ...r }) as FilterRule), combinator: g.combinator })),
       limit: filter.limit,
     });
   }, [filter.limit, setSearchFilter]);
@@ -152,9 +182,30 @@ export function SearchModalFilterBuilder() {
     <div className="flex flex-col">
       <SearchModalFilterSelector />
       <div className="flex flex-col gap-3 p-4">
+        {/* ── Group tabs: which group "+ Add rule" etc. below targets (#4904) ── */}
+        {filter.groups.length > 1 && (
+          <GroupTabs
+            groups={filter.groups}
+            activeIndex={activeGroupIndex}
+            onSelect={setActiveFilterGroup}
+            onRemove={removeFilterGroup}
+          />
+        )}
+
         {/* ── Toolbar: AND/OR · Limit · promote-query · Presets · Save · Reset ── */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <CombinatorToggle value={filter.combinator} onChange={setFilterCombinator} />
+          <CombinatorToggle value={activeGroup?.combinator ?? 'AND'} onChange={setFilterCombinator} />
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={addFilterGroup}
+            className="h-7 gap-1 text-[11px]"
+            title={t('filterGroups.addGroupTitle')}
+          >
+            <Plus className="h-3 w-3" /> {t('filterGroups.addGroup')}
+          </Button>
 
           <div className="ml-1 flex items-center gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -195,13 +246,13 @@ export function SearchModalFilterBuilder() {
               variant="ghost"
               size="sm"
               onClick={handleSavePreset}
-              disabled={filter.rules.length === 0}
+              disabled={totalRules === 0}
               className="h-7 gap-1 text-[11px]"
               title="Save the current rules as a named preset"
             >
               <Save className="h-3 w-3" /> Save
             </Button>
-            {filter.rules.length > 0 && (
+            {activeRules.length > 0 && (
               <Button
                 type="button"
                 variant="ghost"
@@ -215,15 +266,15 @@ export function SearchModalFilterBuilder() {
           </div>
         </div>
 
-        {/* ── Rules list ──────────────────────────────────────────────────── */}
+        {/* ── Rules list (active group) ──────────────────────────────────── */}
         <div className="flex flex-col gap-2">
-          {filter.rules.length === 0 && (
+          {activeRules.length === 0 && (
             <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
               Add a rule to start filtering — pick by model, storey, IFC type, name,
               property, quantity, material, classification, or elevation.
             </p>
           )}
-          {filter.rules.map((rule, i) => (
+          {activeRules.map((rule, i) => (
             <RuleRow
               key={i}
               rule={rule}
@@ -250,6 +301,7 @@ function PresetMenu({
   onLoad: (preset: SavedFilterPreset) => void;
   onDelete: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   if (presets.length === 0) {
     return (
       <Button
@@ -288,7 +340,9 @@ function PresetMenu({
             <div className="flex flex-col">
               <span className="font-medium">{p.name}</span>
               <span className="text-[10px] text-muted-foreground">
-                {p.rules.length} rule{p.rules.length === 1 ? '' : 's'} · {p.combinator}
+                {totalRuleCount(p.groups)} rule{totalRuleCount(p.groups) === 1 ? '' : 's'}
+                {' · '}
+                {p.groups.length > 1 ? t('filterGroups.groupCountOr', { count: p.groups.length }) : p.combinator}
               </span>
             </div>
             <button

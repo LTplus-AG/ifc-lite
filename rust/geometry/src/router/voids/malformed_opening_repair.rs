@@ -340,5 +340,6 @@ pub(super) fn translate_cutter_mesh(mesh: &Mesh, host_origin: [f64; 3]) -> Mesh 
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     }
 }

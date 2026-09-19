@@ -63,9 +63,9 @@ it('evaluates all bounded candidates without Search result truncation or federat
   await assert.rejects(resolveAppearanceScope(snapshot, [], scope(), abort.signal), { name: 'AbortError' });
 });
 it('never broadens a saved AND query by dropping malformed predicates and owns its copied definition (#4404)', () => {
-  saveFilter('Chosen', 'AND', [Rule.name('eq', 'Chosen')]);
+  saveFilter('Chosen', [{ rules: [Rule.name('eq', 'Chosen')], combinator: 'AND' }]);
   const captured = ownAppearanceQuery(loadSavedFilters(ownAppearanceQuery)[0]);
-  saveFilter('Chosen', 'AND', [Rule.name('ne', 'Impossible')]);
+  saveFilter('Chosen', [{ rules: [Rule.name('ne', 'Impossible')], combinator: 'AND' }]);
   assert.deepEqual(captured.rules, [Rule.name('eq', 'Chosen')]);
   for (const invalid of [{ kind: 'unknown' }, { kind: 'name', op: 'invalid', value: 'x' }, Rule.name('notMatches', '['),
     Rule.storey(['Level'], 'in', [{ modelId: 'old-session', expressId: 10 }])]) {

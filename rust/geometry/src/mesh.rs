@@ -29,6 +29,24 @@ pub struct InstanceMeta {
     pub instanceable: bool,
 }
 
+/// The kernel's f64 supporting plane for one output triangle, carried forward
+/// from `kernel::mesh_bridge::tris_to_mesh` (issue #3914). `consolidate_coplanar`
+/// buckets triangles into coplanar groups by re-deriving a plane from each
+/// triangle's f32-ROUNDED vertices; on a rotated/tilted face this can straddle
+/// the bucket's quantization boundary and split one physical plane into two
+/// adjacent buckets that its cross-bucket seam-conform pass (tangential-only)
+/// cannot stitch back together, tearing the mesh. The kernel already computes
+/// each output triangle's plane in f64, BEFORE that f32 cast — carrying it
+/// forward gives `consolidate_coplanar` the same plane identity for both
+/// triangles without inventing a new tolerance or clustering pass.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlaneTag {
+    /// Unit plane normal (f64), oriented to match the triangle's winding.
+    pub n: [f64; 3],
+    /// Plane offset: `n . v` for any vertex `v` of the triangle.
+    pub d: f64,
+}
+
 /// Triangle mesh
 #[derive(Debug, Clone)]
 pub struct Mesh {
@@ -68,6 +86,16 @@ pub struct Mesh {
     /// (its only setters; `rebuilt_like` clears it like `instance_meta`). The
     /// real "already welded?" answer `build_mesh_data` today INFERS (#4122).
     pub welded_in_object_frame: bool,
+    /// Per-triangle kernel-f64 supporting planes (issue #3914), 1:1 with
+    /// `indices.chunks_exact(3)` when `Some`. Set only by
+    /// `kernel::mesh_bridge::tris_to_mesh`, the boolean kernel's direct
+    /// output. Every constructor/weld/merge/transform that changes triangle
+    /// count, order, or position — i.e. everything but `tris_to_mesh` itself —
+    /// MUST leave this `None` (mirrors `instance_meta`'s "no longer canonical"
+    /// contract): a stale tag pointing at the wrong post-edit triangle would
+    /// silently mis-bucket `consolidate_coplanar`. `None` is always safe;
+    /// callers fall back to today's geometric re-derivation.
+    pub plane_tags: Option<Vec<PlaneTag>>,
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -207,6 +235,7 @@ impl Mesh {
             local_bounds: None,
             local_to_world: None,
             welded_in_object_frame: false,
+            plane_tags: None,
         }
     }
 
@@ -222,6 +251,7 @@ impl Mesh {
             local_bounds: None,
             local_to_world: None,
             welded_in_object_frame: false,
+            plane_tags: None,
         }
     }
 
@@ -269,6 +299,7 @@ impl Mesh {
             local_bounds: self.local_bounds,
             local_to_world: self.local_to_world,
             welded_in_object_frame: false,
+            plane_tags: None,
         }
     }
 

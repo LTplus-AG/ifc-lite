@@ -209,6 +209,7 @@ pub fn split_mesh_by_indexed_colour(
                 local_bounds,
                 local_to_world,
                 welded_in_object_frame: false,
+                plane_tags: None,
             };
             Some((map.colours[palette], mesh))
         })
@@ -239,6 +240,7 @@ mod tests {
             local_bounds: None,
             local_to_world: None,
             welded_in_object_frame: false,
+            plane_tags: None,
         };
         let map = FullIndexedColourMap {
             geometry_id: 1,

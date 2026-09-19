@@ -31,7 +31,8 @@ import {
   QUERY_REL_TYPE_MAP,
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, mergeAttributeMutations } from './mutation-view.js';
-import { evaluateFilterRules } from '../../lib/search/filter-evaluate.js';
+import { evaluateFilterGroups } from '../../lib/search/filter-evaluate-groups.js';
+import { totalRuleCount } from '../../lib/search/filter-groups.js';
 import { definedModelTagIdsOf } from '../../lib/model-tags/evaluator-models.js';
 
 /**
@@ -293,7 +294,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
    * scripted exports (e.g. the CSV quantity take-off) honour the current
    * filtered view instead of always exporting everything (issue #1107, item 11).
    *
-   * Re-evaluates `searchFilter.rules` per model with the synchronous evaluator —
+   * Re-evaluates `searchFilter.groups` (OR-of-AND, #4904) per model with the synchronous evaluator —
    * the same logic that backs the modal — with no row cap, so the export covers
    * the full filtered set rather than the modal's display limit. Hidden/isolated
    * visibility is intentionally NOT consulted: the chosen semantics are
@@ -302,16 +303,15 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
   function entitiesMatchingActiveFilter(): EntityData[] | null {
     const state = store.getState();
     const filter = state.searchFilter;
-    if (!filter || filter.rules.length === 0) return null;
+    if (!filter || totalRuleCount(filter.groups) === 0) return null;
 
     const results: EntityData[] = [];
     for (const [modelId, model] of getAllModelEntries(state)) {
       if (!model?.ifcDataStore) continue;
-      const matched = evaluateFilterRules(
+      const matched = evaluateFilterGroups(
         modelId,
         model.ifcDataStore,
-        filter.rules,
-        filter.combinator,
+        filter.groups,
         {
           limit: Number.MAX_SAFE_INTEGER,
           modelTagIds: state.modelTagAssignments.get(modelId),

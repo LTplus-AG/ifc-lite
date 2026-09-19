@@ -9,20 +9,25 @@
  * The loop this closes: run it once, review the `renamed` matches, keep the
  * sidecar. On the next run the accepted claims come back in as key aliases, the
  * re-GUIDed elements are matched by key, and they never show up as churn again.
- * See `diff-engine.ts` for why this path is data-scope only.
+ * Data scope by default — see `diff-engine.ts`; `--geometry` below opts into
+ * the wasm mesh pass.
  *
  * Issue #4955 adds three things on the same loop: `--key-from` keys the
  * comparison on an authored identifier instead of GlobalId; `--lineage-out` /
  * `--lineage-in` write and replay the 1:k lineage an external table rekeys on;
  * and `--accept` folds a reviewed identity map (a human's answer to the
  * suggestions a geometry-capable run produced) into that lineage as
- * `replaced` entries. The successor and split/merge stages themselves need
- * geometry and stay off here — see #4956.
+ * `replaced` entries.
+ *
+ * Issue #4956 adds `--geometry`: a lazily-loaded `@ifc-lite/wasm` mesh pass
+ * (`diff-geometry.ts`) that attaches world geometry hashes, bounding boxes and
+ * volumes to both files' fingerprints, promoting the scope from `data` to
+ * `both`. `--split-merge` / `--successors` turn on the two geometry-only
+ * detection stages; both are no-ops without `--geometry` (the engine abstains
+ * exactly as it does for a viewer session whose geometry hashing failed).
  */
 
-import { readFile, stat, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import type { Stats } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import {
   createIdentityMapSidecar,
   createLineageSidecar,
@@ -44,6 +49,8 @@ import { parseAuthoredKeySpec } from '@ifc-lite/parser';
 import { loadIfcBytes } from '../loader.js';
 import { fatal, printJson } from '../output.js';
 import { buildFileFingerprints, modelIdentityOf, type DiffRef } from './diff-engine.js';
+import { readModel, refuseOverwritingAnInput, unwrapModel } from './diff-content-io.js';
+import { resolveGeometryScope } from './diff-geometry.js';
 import { mergeAliases, mergeLineage, readVerifiedLineage } from './diff-lineage-io.js';
 import { printReport } from './diff-content-report.js';
 
@@ -62,6 +69,17 @@ export interface ContentDiffOptions {
   accept?: string;
   /** `--key-from`: `Tag` or `Pset.Prop`, the authored key to compare on. */
   keyFrom?: string;
+  /** `--geometry`: run the wasm mesh pass and attach world geometry hashes,
+   *  boxes and volumes, promoting the comparison from `data` to `both`
+   *  scope (issue #4956). Skips with a stderr warning, not a fatal error,
+   *  when the wasm runtime is not built on this host. */
+  geometry?: boolean;
+  /** `--split-merge`: opt in to the split/merge detector. Only produces
+   *  claims together with `--geometry` (issue #4956). */
+  splitMerge?: boolean;
+  /** `--successors`: opt in to the successor-match detector. Only produces
+   *  claims together with `--geometry` (issue #4956). */
+  successors?: boolean;
   json: boolean;
 }
 
@@ -77,6 +95,9 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
 
   const baseBytes = await readModel(basePath);
   const headBytes = await readModel(headPath);
+  // The identity hash is over the file AS IT SITS ON DISK, before any
+  // `.ifcZIP` unwrapping (see `modelIdentityOf`) — so it is taken from the raw
+  // bytes, and the unwrap below is a separate step, not folded into this read.
   const baseIdentity = modelIdentityOf(basePath, baseBytes);
   const headIdentity = modelIdentityOf(headPath, headBytes);
 
@@ -89,9 +110,16 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
     : undefined;
   const accepted = options.accept ? await readVerifiedSidecar(options.accept, pinned) : undefined;
 
+  // Unwrapped ONCE and reused by both the parser and (if `--geometry` runs)
+  // the wasm mesh pass — `unwrapIfcZipView` is a cheap magic-byte no-op for an
+  // ordinary `.ifc` file, so a `--geometry` run over a `.ifcZIP` still sees the
+  // real STEP bytes rather than the zip container (issue #4956 review).
+  const baseUnwrapped = await unwrapModel(baseBytes, basePath);
+  const headUnwrapped = await unwrapModel(headBytes, headPath);
+
   process.stderr.write('Loading files...\n');
-  const baseStore = await loadIfcBytes(baseBytes, basePath);
-  const headStore = await loadIfcBytes(headBytes, headPath);
+  const baseStore = await loadIfcBytes(baseUnwrapped, basePath);
+  const headStore = await loadIfcBytes(headUnwrapped, headPath);
 
   const duplicateAuthoredKeys = new Map<string, number[]>();
   const adapter = { keyProperty, duplicateAuthoredKeys };
@@ -112,12 +140,26 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
     incomingLineage ? keyAliasesFromLineage(incomingLineage.entries) : undefined,
   );
 
+  // `--geometry` (issue #4956): see `diff-geometry.ts` for the wasm pass and
+  // the graceful fall-back to `scope: 'data'` when the runtime is absent.
+  const scope = await resolveGeometryScope(
+    options.geometry ?? false,
+    baseUnwrapped,
+    headUnwrapped,
+    baseFingerprints,
+    headFingerprints,
+    (message) => process.stderr.write(`Warning: ${message}\n`),
+  );
+
   const diff = diffModels(baseFingerprints, headFingerprints, {
-    // No meshes in Node: `data` is the honest description of what this path can
-    // compare. See diff-engine.ts.
-    scope: 'data',
+    scope,
     matchUnpairedByContent: true,
     keyAliases: aliases,
+    // Both are geometry-only stages (issue #4956): with no geometry pass run,
+    // the engine abstains and `diff.splitMerges` / `diff.successors` stay
+    // undefined, exactly as a viewer session with failed geometry hashing.
+    detectSplitMerge: options.splitMerge,
+    detectSuccessors: options.successors,
   });
 
   const applied = diff.appliedKeyAliases ?? new Map<string, string>();
@@ -175,6 +217,22 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
         base: match.base.map((entity) => entity.key),
         head: match.head.map((entity) => entity.key),
       })),
+      // Absent (not `[]`) exactly when the stage did not run or the geometry
+      // abstention fired — the engine's own "absent means not proved"
+      // contract, preserved rather than flattened to an empty array.
+      splitMerges: diff.splitMerges?.map((claim) => ({
+        kind: claim.kind,
+        confidence: claim.confidence,
+        whole: claim.whole.key,
+        pieces: claim.pieces.map((piece) => piece.key),
+      })),
+      successors: diff.successors?.map((claim) => ({
+        confidence: claim.confidence,
+        base: claim.base.key,
+        head: claim.head.key,
+        overlap: claim.overlap,
+        distance: claim.distance,
+      })),
       identityMap: {
         in: options.identityIn
           ? { path: options.identityIn, applied: applied.size, ignored }
@@ -205,79 +263,6 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
     lineageWritten,
     keyProperty,
   });
-}
-
-/**
- * Refuse to run at all if `--identity-out` names one of the two input models.
- *
- * The sidecar is a JSON document. Writing it over an IFC file destroys the
- * user's model, and a mistyped or shell-completed path is all it takes — the
- * two arguments right before it are IFC paths. So this is checked first, and
- * the command exits without reading, comparing, or writing anything.
- *
- * Two independent tests, because a path string is not a file:
- *
- * 1. Resolved paths are equal. Catches `./v1.ifc` vs `v1.ifc` vs `sub/../v1.ifc`
- *    with no filesystem access, and is the whole answer on a platform where
- *    `stat` reports no usable inode.
- * 2. The output already exists AND is the same file as an input, by device +
- *    inode. This is the exhaustive test: it catches a symlink, a hard link, a
- *    bind mount, and `V1.IFC` on a case-insensitive filesystem — every way two
- *    different strings can name one file. It is also sufficient on its own for
- *    the destructive case, because a path that does not resolve to an existing
- *    file cannot be overwriting an input: the inputs must exist to be read.
- *
- * `--identity-in` and `--identity-out` naming the SAME sidecar is not checked
- * here, because that is the carry-forward workflow this feature is built around
- * (read the accepted claims, write back the ones that still held).
- */
-async function refuseOverwritingAnInput(options: ContentDiffOptions): Promise<void> {
-  for (const [flag, target] of [
-    ['--identity-out', options.identityOut],
-    ['--lineage-out', options.lineageOut],
-  ] as const) {
-    if (target === undefined) continue;
-    const out = resolve(target);
-    const outStat = await statOrUndefined(target);
-    for (const [label, input] of [
-      ['base model', options.basePath],
-      ['head model', options.headPath],
-    ] as const) {
-      if (resolve(input) !== out && !isSameFile(outStat, await statOrUndefined(input))) continue;
-      fatal(
-        `${flag} ${target} is the ${label} (${input}). ` +
-          'Writing there would overwrite the input file.',
-      );
-    }
-  }
-}
-
-async function statOrUndefined(path: string): Promise<Stats | undefined> {
-  // A missing or unreadable path cannot be an input file being overwritten;
-  // reading the models is what reports it, with its own message.
-  try {
-    return await stat(path);
-  } catch {
-    return undefined;
-  }
-}
-
-function isSameFile(a: Stats | undefined, b: Stats | undefined): boolean {
-  return a !== undefined && b !== undefined && a.dev === b.dev && a.ino === b.ino;
-}
-
-/**
- * Read one of the two input models, reporting a missing or unreadable path the
- * way the rest of the command reports problems rather than throwing a raw
- * `ENOENT` stack at the user — the same treatment `readVerifiedSidecar` already
- * gives the sidecar.
- */
-async function readModel(path: string): Promise<Uint8Array> {
-  try {
-    return await readFile(path);
-  } catch (error) {
-    return fatal(`Cannot read ${path}: ${(error as Error).message}`);
-  }
 }
 
 /**

@@ -74,7 +74,20 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `type=WT01` | ✅ | matches the relating type's Name; `=`, `!=`, `*=`, `!*=` and `/regex/`, like `Name=` — no `>`, `>=`, `<`, `<=` |
 | `parent=Foo` | ✅ | any ancestor's Name, walking containment **and** aggregation to any depth — see below |
 | `query:` | ❌ | **deliberately** out of scope — see below, not "not supported yet" |
-| `+` unions of groups | ❌ | the first group is applied, the rest reported |
+| `+` unions of groups | ✅ | real OR-of-AND groups — see below |
+
+### `+` unions
+
+`IfcSlab, material=concrete + IfcDoor` becomes two filter groups, OR'd
+together — every slab whose material is concrete, plus every door — the
+same as two separate filters would match, unioned. Each `+`-separated
+clause is its own AND group internally; only `+` combines groups.
+
+An unsupported construct anywhere in a union refuses the **whole** query
+rather than applying the readable groups: a dropped OR branch would
+silently narrow what the union matches, with nothing shown to say so. A
+selector with no `+` at all keeps applying what it can and naming the
+rest, as it always has.
 
 ### Which quantities a selector can reach
 

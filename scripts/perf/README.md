@@ -1681,3 +1681,77 @@ in the hot path needs no dedicated perf lever, only a byte-identity
 check on a fixture the gate does not touch; the real cost of moving the
 line is paid only by files that cross between the old and new bands
 (1-10 km), which this fixture is not one of.
+
+## Kernel-plane tags for consolidate's rounding-split fix (#3914)
+
+`kernel::mesh_bridge::tris_to_mesh` now tags every output triangle with its
+f64 supporting plane (`Mesh::plane_tags`) and `consolidate_coplanar` validates
+each tag (a per-triangle supporting-plane check) and cross-checks adjacent
+`POS_QUANT`-bucket pairs against it before merging any of them. On
+AC20-FZK-Haus (no CSG cuts in this fixture) output was byte-identical
+(285 meshes / 35,940 vertices / 19,456 triangles both sides) and total time
+was noise-dominated at this file's scale — nothing in the hot path runs
+differently when a mesh carries no tags or a bucket has no rounding-split
+neighbour, which is the overwhelming majority case. On the CSG-heavy
+ISSUE_129 fixture the new merge pass legitimately fires: output triangle/
+vertex counts drop slightly (fewer, correctly-merged coplanar triangles
+where a physical plane used to be torn across two buckets), confirmed
+non-regressive by the full `triangulation_invariance` census/golden suite
+passing (previously two hosts in that suite — `issue_129_mixed_bool2d_
+residual_preserves_established_topology` and `issue_4627_candidate_
+failures_preserve_prior_analytic_cuts` — caught two earlier, broader
+variants of this fix that keyed EVERY bucket by the kernel tag instead of
+only merging validated adjacent pairs). Lesson: for a per-triangle
+provenance tag meant to correct a narrow rounding edge case, do not let it
+become the primary bucketing key everywhere it validates — real models
+carry legitimately distinct near-coplanar faces (the #3913 sweep's
+deliberate `SNAP_GRID` controls) that a blanket re-key cannot tell apart
+from a genuine rounding split; gate the tag's effect to the specific
+adjacent-bucket-pair mechanism the defect actually is, with a tolerance
+tight against the true-positive margin (~1e-10) and far below the
+legitimate-distinct-plane separation (~1.5e-5).
+
+## Deterministic B-spline degree/control-point budget, memoized Cox-de Boor (#4901)
+
+Base `0d84727c5` vs branch, native `perf_probe` (best-of-5): AC20-FZK-Haus
+14 ms both sides (285 meshes / 35,940 vertices / 19,456 triangles,
+byte-identical); ISSUE_129 CSG fixture 912 -> 910 ms (within noise), 1,402
+meshes / 219,860 vertices / 135,749 triangles / 41 CSG failures / 6 degenerate
+dropped, identical on both sides. Neither fixture carries a B-spline surface
+or curve, so this is an isolation check, not a speedup claim. The fixture that
+DOES (`tests/models/issues/472_2222.ifc`, issue #472, 145 B-spline surfaces /
+503 B-spline curves) is covered by `geometry_correctness_harness`'s pinned
+snapshot instead of a timing probe: 53,479 triangles / 33,069 vertices,
+byte-identical base vs branch.
+
+The lever itself: `bspline_basis` (Cox-de Boor recursion,
+`rust/geometry/src/processors/advanced_face/bspline.rs`) was called once per
+control-point index with no caching between calls, so it re-derived the same
+sub-results `O(control points)` times per sample point on top of being
+`O(2^degree)` unmemoized — a file-supplied `Degree` in the tens already made a
+single face non-terminating in practice, and nothing bounded it. Replaced with
+one bottom-up table build per sample point per axis (`bspline_basis_table`,
+`O(degree * (n + degree))`, mathematically identical, so legitimate output is
+byte-for-bit unchanged — pure caching, not a formula change) plus a
+deterministic (not wall-clock) degree cap (`bspline_budget.rs`) so a file that
+still exceeds it fails loudly via `GeometryRouter::record_unsupported_item`
+instead of hanging.
+
+**Dead end, caught before merge, worth recording:** the first cut also capped
+raw `ControlPointsList` size (a flat `n_u * n_v` ceiling calibrated by guessing
+"a few hundred is already a dense patch"). `geometry_correctness_harness`'s
+pinned snapshot for the #472 fixture caught it immediately — that fixture's
+worst surface is a REAL 207x180 (37,260-point) patch, and the flat cap
+silently dropped it, losing exactly one tessellated face's 1,152 triangles
+(53,479 -> 52,327). Replaced with a bound on the actual cost driver instead:
+`(u_segments+1) * (v_segments+1) * n_u * n_v` (`MAX_BSPLINE_SURFACE_SAMPLE_WORK`,
+since `evaluate_bspline_surface`'s weighted sum is `O(n_u * n_v)` PER SAMPLE
+POINT, not once) — the #472 fixture's worst surface measures ~23.3M against a
+500M bound. The lesson, twice over: an unmemoized recursive basis-function
+evaluator is an easy trap in geometry code — it reads as "just math," but its
+complexity is exponential in a file-controlled parameter, so it needs the same
+file-driven-loop scrutiny as an explicit `for` loop over entity references —
+AND a breadth cap must bound the same quantity the hot loop actually multiplies
+out to (samples x grid, not grid alone), or a real fixture proves the guess
+wrong. Always run the correctness harness against a fixture that exercises the
+lever before trusting a calibrated constant.

@@ -142,7 +142,7 @@
     "MaterialLayerFlat": "struct { axis: Vec<u32>; direction_sense: Vec<f64>; element_ids: Vec<u32>; layer_counts: Vec<u32>; layer_material_ids: Vec<u32>; layer_thicknesses: Vec<f64>; offset: Vec<f64> }",
     "MaterialLayerIndex": "struct {  }",
     "Matrix4": "external re-export",
-    "Mesh": "struct { indices: Vec<u32>; instance_meta: Option<InstanceMeta>; local_bounds: Option<[f32; 6]>; local_to_world: Option<[f64; 16]>; normals: Vec<f32>; origin: [f64; 3]; positions: Vec<f32>; rtc_applied: bool; welded_in_object_frame: bool }",
+    "Mesh": "struct { indices: Vec<u32>; instance_meta: Option<InstanceMeta>; local_bounds: Option<[f32; 6]>; local_to_world: Option<[f64; 16]>; normals: Vec<f32>; origin: [f64; 3]; plane_tags: Option<Vec<PlaneTag>>; positions: Vec<f32>; rtc_applied: bool; welded_in_object_frame: bool }",
     "MeshTexture": "struct { height: u32; repeat_s: bool; repeat_t: bool; rgba: std::sync::Arc<Vec<u8>>; width: u32 }",
     "OpeningDiagnostic": "struct { kind: OpeningKindDiag; opening_id: u32; vertex_count: usize }",
     "OpeningKindDiag": "enum { Diagonal; NonRectangular; Rectangular }",

@@ -129,6 +129,7 @@ export type {
     PointCloudNode,
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
+export type { GpuUploadOutcome } from './gpu-upload-guard.js';
 
 import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
@@ -186,46 +187,10 @@ import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
+import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
-
-/**
- * Is this throw the GPU device telling us it is gone?
- *
- * The discriminator is the exception TYPE, not its message, because WebGPU
- * draws exactly that line:
- *  - a call on a dead / invalid-state device throws a `DOMException`
- *    (`InvalidStateError` in Safari 26.5 — the whole of issue #2229);
- *  - a buffer allocation the host cannot back throws a plain `RangeError`
- *    ("createBuffer failed, size (…) is too large … when mappedAtCreation ==
- *    true"), which `gpu-upload-guard` documents happening on a HEALTHY device
- *    under memory pressure.
- *
- * Treating the second as a device loss is a false positive that costs the whole
- * session, so only the first latches; everything else degrades one frame.
- *
- * There is deliberately NO consecutive-failure threshold as a middle ground.
- * Not because failures necessarily arrive back-to-back — between two BCF / IDS
- * capture frames the awaited `camera.frameBounds` normally does let an ordinary
- * rAF frame through, which would reset a counter — but because those ordinary
- * frames are not guaranteed to SUCCEED: they allocate too (`ensureMeshResources`
- * creates a buffer per unresourced mesh, and the queued-mesh flush allocates),
- * so under sustained host memory pressure any finite budget is still reachable.
- * A latch whose safety depends on incidental animation timing is the wrong
- * shape of guarantee for "never kill the viewport by mistake".
- *
- * Real losses on browsers that do not throw are still caught by the async
- * `device.lost` promise — which the WebGPU spec makes the sole loss channel
- * anyway (on a conformant engine, calls against a lost device are no-ops, not
- * throws; Safari 26.5's synchronous throw is the deviation being handled here).
- *
- * `typeof` guarded because non-DOM hosts (Node before 17, some workers) have no
- * `DOMException` global; there, no throw can be a WebGPU device signal anyway.
- */
-function isDeviceLossThrow(error: unknown): boolean {
-    return typeof DOMException !== 'undefined' && error instanceof DOMException;
-}
 
 /**
  * The reason `whenReady()` rejects when the renderer is destroyed.
@@ -838,6 +803,21 @@ export class Renderer {
         return this.deviceLost;
     }
 
+    /**
+     * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):
+     * a synchronous Safari-style `DOMException` (issue #2229) caught OUTSIDE
+     * `render()` never otherwise reaches `handleDeviceLost` — only the async
+     * `device.lost` promise and `render()`'s own catch do — so without this,
+     * `isDeviceLost()` would keep answering false and every later upload on
+     * this path would keep failing against the same dead device.
+     */
+    private reportUploadLoss(error: unknown): void {
+        this.handleDeviceLost({
+            message: error instanceof Error ? error.message : String(error),
+            reason: 'gpu-upload-exception',
+        });
+    }
+
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
@@ -1172,29 +1152,31 @@ export class Renderer {
      *
      * @param geometry - Either a GeometryResult from geometry.process() or an array of MeshData
      */
-    loadGeometry(geometry: import('@ifc-lite/geometry').GeometryResult | import('@ifc-lite/geometry').MeshData[]): void {
-        if (!this.device.isInitialized() || !this.pipeline) {
-            throw new Error('Renderer not initialized. Call init() first.');
-        }
+    loadGeometry(geometry: import('@ifc-lite/geometry').GeometryResult | import('@ifc-lite/geometry').MeshData[]): GpuUploadOutcome<void> {
+        if (this.isDeviceLost()) return { ok: false, reason: 'device-lost' }; // #4885: zombie device stays "initialized"
+        if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer not initialized. Call init() first.');
 
         const meshes = Array.isArray(geometry) ? geometry : geometry.meshes;
 
         if (meshes.length === 0) {
             console.warn('[Renderer] loadGeometry called with empty mesh array');
-            return;
+            return { ok: true, value: undefined };
         }
 
-        // Use batched rendering for optimal performance
-        const device = this.device.getDevice();
-        this.scene.appendToBatches(meshes, device, this.pipeline, false);
+        const pipeline = this.pipeline;
+        return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+            // Use batched rendering for optimal performance
+            const device = this.device.getDevice();
+            this.scene.appendToBatches(meshes, device, pipeline, false);
 
-        // Calculate and store model bounds for fitToView
-        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
+            // Calculate and store model bounds for fitToView
+            this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
 
-        console.log(`[Renderer] Loaded ${meshes.length} meshes`);
+            console.log(`[Renderer] Loaded ${meshes.length} meshes`);
 
-        // Update camera scene bounds for tight orthographic near/far planes
-        this.camera.setSceneBounds(this.modelBounds);
+            // Update camera scene bounds for tight orthographic near/far planes
+            this.camera.setSceneBounds(this.modelBounds);
+        }, (error) => this.reportUploadLoss(error));
     }
 
     /**
@@ -1203,21 +1185,21 @@ export class Renderer {
      * @param meshes - Array of MeshData to add
      * @param isStreaming - If true, throttles batch rebuilding for better streaming performance
      */
-    addMeshes(meshes: import('@ifc-lite/geometry').MeshData[], isStreaming: boolean = false): void {
+    addMeshes(meshes: import('@ifc-lite/geometry').MeshData[], isStreaming: boolean = false): GpuUploadOutcome<void> {
+        if (this.isDeviceLost()) return { ok: false, reason: 'device-lost' };
         if (!this.device.isInitialized() || !this.pipeline) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
 
-        if (meshes.length === 0) return;
+        if (meshes.length === 0) return { ok: true, value: undefined };
 
-        const device = this.device.getDevice();
-        this.scene.appendToBatches(meshes, device, this.pipeline, isStreaming);
-
-        // Update model bounds incrementally
-        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
-
-        // Update camera scene bounds for tight orthographic near/far planes
-        this.camera.setSceneBounds(this.modelBounds);
+        const pipeline = this.pipeline;
+        return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+            const device = this.device.getDevice();
+            this.scene.appendToBatches(meshes, device, pipeline, isStreaming);
+            this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
+            this.camera.setSceneBounds(this.modelBounds);
+        }, (error) => this.reportUploadLoss(error));
     }
 
     /**
@@ -1257,56 +1239,48 @@ export class Renderer {
     /**
      * Add mesh to scene with per-mesh GPU resources for unique colors
      */
-    addMesh(mesh: Mesh): void {
-        if (!this.pipeline) return;
-
-        // Create per-mesh uniform buffer and bind group if not already created
-        if (!mesh.uniformBuffer && this.device.isInitialized()) {
-            const device = this.device.getDevice();
-
-            // Create uniform buffer for this mesh
-            mesh.uniformBuffer = device.createBuffer({
-                size: this.pipeline.getUniformBufferSize(),
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            });
-
-            // Create bind group for this mesh
-            mesh.bindGroup = device.createBindGroup({
-                layout: this.pipeline.getBindGroupLayout(),
-                entries: [
-                    {
-                        binding: 0,
-                        resource: { buffer: mesh.uniformBuffer },
-                    },
-                ],
-            });
-        }
+    addMesh(mesh: Mesh): GpuUploadOutcome<void> {
+        if (!this.pipeline) return { ok: true, value: undefined };
+        const pipeline = this.pipeline;
+        const outcome: GpuUploadOutcome<void> = (!mesh.uniformBuffer && !this.isDeviceLost() && this.device.isInitialized())
+            ? runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+                const device = this.device.getDevice();
+                mesh.uniformBuffer = device.createBuffer({
+                    size: pipeline.getUniformBufferSize(),
+                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                });
+                mesh.bindGroup = device.createBindGroup({
+                    layout: pipeline.getBindGroupLayout(),
+                    entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
+                });
+            }, (error) => this.reportUploadLoss(error))
+            : { ok: true, value: undefined };
 
         this.scene.addMesh(mesh);
+        return outcome;
     }
 
     /**
      * Ensure all meshes have GPU resources (call after adding meshes if pipeline wasn't ready)
      */
-    ensureMeshResources(): void {
-        if (!this.pipeline || !this.device.isInitialized()) return;
-
-        const device = this.device.getDevice();
-        for (const mesh of this.scene.getMeshes()) {
-            if (!mesh.uniformBuffer) {
-                mesh.uniformBuffer = device.createBuffer({
-                    size: this.pipeline.getUniformBufferSize(),
-                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                });
-                mesh.bindGroup = device.createBindGroup({
-                    layout: this.pipeline.getBindGroupLayout(),
-                    entries: [{
-                        binding: 0,
-                        resource: { buffer: mesh.uniformBuffer },
-                    }],
-                });
+    ensureMeshResources(): GpuUploadOutcome<void> {
+        if (!this.pipeline || !this.device.isInitialized()) return { ok: true, value: undefined };
+        const pipeline = this.pipeline;
+        return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
+            const device = this.device.getDevice();
+            for (const mesh of this.scene.getMeshes()) {
+                if (!mesh.uniformBuffer) {
+                    mesh.uniformBuffer = device.createBuffer({
+                        size: pipeline.getUniformBufferSize(),
+                        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                    });
+                    mesh.bindGroup = device.createBindGroup({
+                        layout: pipeline.getBindGroupLayout(),
+                        entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
+                    });
+                }
             }
-        }
+        }, (error) => this.reportUploadLoss(error));
     }
 
     /**
@@ -1409,11 +1383,20 @@ export class Renderer {
         }
     }
 
+    /** Guarded entry point (#4885) for the unguarded body below. */
+    createMeshFromData(meshData: MeshData): GpuUploadOutcome<void> {
+        return runGuardedGpuUpload(
+            () => this.isDeviceLost(),
+            () => this.createMeshFromDataUnguarded(meshData),
+            (error) => this.reportUploadLoss(error),
+        );
+    }
+
     /**
      * Create a GPU Mesh from MeshData (lazy creation for selection highlighting)
      * This is called on-demand when a mesh is selected, avoiding 2x buffer creation during streaming
      */
-    createMeshFromData(meshData: MeshData): void {
+    private createMeshFromDataUnguarded(meshData: MeshData): void {
         if (!this.device.isInitialized()) return;
 
         const device = this.device.getDevice();

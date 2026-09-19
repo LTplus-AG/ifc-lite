@@ -205,12 +205,24 @@ impl GeometryRouter {
                 continue;
             }
             match self.processors.get(&sub_item.ifc_type, self.schema) {
-                Some(processor) => match processor.process(
-                    &sub_item,
-                    decoder,
-                    self.schema,
-                    self.tessellation_quality,
-                ) {
+                Some(processor) => {
+                    let processed = processor.process(
+                        &sub_item,
+                        decoder,
+                        self.schema,
+                        self.tessellation_quality,
+                    );
+                    // A capped B-spline curve edge (#4901) can trip HERE: a
+                    // mapped source's items are meshed by calling the
+                    // processor directly, not through
+                    // `process_representation_item`, so its drain never sees
+                    // this path (Macroscope review) — without this, the
+                    // flag stayed set and a LATER, unrelated top-level item
+                    // on the same thread absorbed the report instead.
+                    if crate::processors::take_curve_capped() {
+                        self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+                    }
+                    match processed {
                     Ok(mut sub_mesh) => {
                         sub_mesh.validate_indices();
                         self.scale_mesh(&mut sub_mesh);
@@ -230,7 +242,8 @@ impl GeometryRouter {
                             }
                         );
                     }
-                },
+                    }
+                }
                 None => {
                     self.record_unsupported_item(sub_item.ifc_type);
                     crate::diag::diag_debug!(

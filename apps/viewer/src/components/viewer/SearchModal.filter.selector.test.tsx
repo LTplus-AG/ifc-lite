@@ -10,6 +10,11 @@
  * the text that appears — never on the component merely being mounted. A field
  * wired to a handler nothing reaches renders identically, and #4091 is exactly
  * a case of something looking like it worked while doing nothing.
+ *
+ * `+` union cases (#4904): a `+`-separated selector now produces real
+ * `groups: FilterGroup[]` (OR across groups) instead of the pre-#4904 refusal
+ * message — see `selector-to-rules.test.ts` for the adapter-level coverage
+ * and `filter-evaluate.groups.test.ts` for the fixture-backed count check.
  */
 
 import '@/test/setup-dom.js';
@@ -20,6 +25,7 @@ import { render, cleanup, click, type, press } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { Rule } from '@/lib/search/filter-rules';
+import { emptyFilterState } from '@/store/slices/searchSlice';
 import { SearchModalFilterSelector } from './SearchModal.filter.selector.js';
 
 const WALLS = ['IfcWall', 'IfcWallElementedCase', 'IfcWallStandardCase'];
@@ -27,7 +33,7 @@ const WALLS = ['IfcWall', 'IfcWallElementedCase', 'IfcWallStandardCase'];
 function mount(): HTMLElement {
   useViewerStore.setState({
     ...fixtureModels({ ...fixtureModel('m1'), schemaVersion: 'IFC4' }),
-    searchFilter: { rules: [], combinator: 'AND', limit: 500 },
+    searchFilter: emptyFilterState(),
   });
   return render(<SearchModalFilterSelector />);
 }
@@ -44,12 +50,13 @@ function applyButton(container: HTMLElement): Element {
   return el;
 }
 
-const rulesInStore = () => useViewerStore.getState().searchFilter.rules;
+const groupsInStore = () => useViewerStore.getState().searchFilter.groups;
+const rulesInStore = () => groupsInStore()[0]?.rules ?? [];
 const alertText = (container: HTMLElement) => container.querySelector('[role="alert"]')?.textContent ?? '';
 
 describe('SearchModalFilterSelector', () => {
   beforeEach(() => {
-    useViewerStore.setState({ searchFilter: { rules: [], combinator: 'AND', limit: 500 } });
+    useViewerStore.setState({ searchFilter: emptyFilterState() });
   });
   afterEach(cleanup);
 
@@ -58,8 +65,9 @@ describe('SearchModalFilterSelector', () => {
     type(field(container), 'IfcWall, Name=/W.*/');
     click(applyButton(container));
 
+    assert.strictEqual(groupsInStore().length, 1);
     assert.deepEqual(rulesInStore(), [Rule.ifcType(WALLS, 'in'), Rule.name('matches', 'W.*', 'regex')]);
-    assert.equal(useViewerStore.getState().searchFilter.combinator, 'AND');
+    assert.equal(groupsInStore()[0].combinator, 'AND');
     assert.equal(alertText(container), '');
   });
 
@@ -118,8 +126,45 @@ describe('SearchModalFilterSelector', () => {
 
   it('an empty field does nothing at all', () => {
     const container = mount();
-    useViewerStore.setState({ searchFilter: { rules: [Rule.name('eq', 'keep me')], combinator: 'OR', limit: 500 } });
+    useViewerStore.setState({
+      searchFilter: { groups: [{ rules: [Rule.name('eq', 'keep me')], combinator: 'OR' }], limit: 500 },
+    });
     press(field(container), 'Enter');
     assert.deepEqual(rulesInStore(), [Rule.name('eq', 'keep me')]);
+  });
+
+  // ── `+` group unions (#4904) ────────────────────────────────────────────
+
+  it('a `+` union applies TWO groups, OR-ing across them', () => {
+    const container = mount();
+    type(field(container), 'IfcWall + IfcDoor');
+    click(applyButton(container));
+
+    const groups = groupsInStore();
+    assert.strictEqual(groups.length, 2);
+    assert.deepEqual(groups[0].rules, [Rule.ifcType(WALLS, 'in')]);
+    assert.deepEqual(groups[1].rules, [Rule.ifcType(['IfcDoor', 'IfcDoorStandardCase'], 'in')]);
+    assert.equal(alertText(container), '');
+  });
+
+  it('a `+` union refuses the WHOLE query when any group has an unsupported construct', () => {
+    const container = mount();
+    // group 2 is entirely unsupported (`query:` is refused permanently) —
+    // the readable group 1 (`IfcWall`) must NOT be applied on its own,
+    // since that would silently narrow what the union matches.
+    type(field(container), 'IfcWall + query:types.count=0');
+    click(applyButton(container));
+
+    assert.deepEqual(rulesInStore(), []);
+    assert.match(alertText(container), /group 2 of 2/);
+    assert.match(alertText(container), /query:types\.count=0/);
+  });
+
+  it('the readback echoes the applied groups joined by "+"', () => {
+    const container = mount();
+    type(field(container), 'IfcWall + IfcDoor');
+    click(applyButton(container));
+
+    assert.match(container.textContent ?? '', /IfcWall.*\+.*IfcDoor/);
   });
 });

@@ -81,7 +81,7 @@ export function SearchInline() {
     setSearchModalOpen,
     setSearchModalTab,
     activeRuleCount,
-    clearFilterRules,
+    clearAllFilterGroups,
     models,
     setSelectedEntity,
     setSelectedEntityId,
@@ -104,8 +104,8 @@ export function SearchInline() {
       stepVimCycle: s.stepVimCycle,
       setSearchModalOpen: s.setSearchModalOpen,
       setSearchModalTab: s.setSearchModalTab,
-      activeRuleCount: s.searchFilter.rules.length,
-      clearFilterRules: s.clearFilterRules,
+      activeRuleCount: s.searchFilter.groups.reduce((n, g) => n + g.rules.length, 0),
+      clearAllFilterGroups: s.clearAllFilterGroups,
       models: s.models,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
@@ -474,7 +474,7 @@ export function SearchInline() {
             title="Clear filters"
             onMouseDown={(e) => {
               e.preventDefault();
-              clearFilterRules();
+              clearAllFilterGroups();
             }}
             className="rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
           >

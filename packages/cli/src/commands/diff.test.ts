@@ -93,6 +93,13 @@ describe('diffCommand', () => {
         headPath: 'b.ifc',
         identityIn: undefined,
         identityOut: undefined,
+        lineageIn: undefined,
+        lineageOut: undefined,
+        accept: undefined,
+        keyFrom: undefined,
+        geometry: false,
+        splitMerge: false,
+        successors: false,
         json: false,
       });
     });
@@ -113,6 +120,13 @@ describe('diffCommand', () => {
         headPath: 'b.ifc',
         identityIn: 'in.json',
         identityOut: 'out.json',
+        lineageIn: undefined,
+        lineageOut: undefined,
+        accept: undefined,
+        keyFrom: undefined,
+        geometry: false,
+        splitMerge: false,
+        successors: false,
         json: true,
       });
     });
@@ -130,6 +144,24 @@ describe('diffCommand', () => {
       await diffCommand(['a.ifc', 'b.ifc', '--identity-out', 'out.json']);
       expect(contentDiffCommand).toHaveBeenCalledWith(
         expect.objectContaining({ identityOut: 'out.json' }),
+      );
+    });
+
+    it('implies the engine path from --geometry alone and forwards it', async () => {
+      await diffCommand(['a.ifc', 'b.ifc', '--geometry']);
+      expect(contentDiffCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ geometry: true, splitMerge: false, successors: false }),
+      );
+    });
+
+    it('implies the engine path from --split-merge / --successors alone', async () => {
+      await diffCommand(['a.ifc', 'b.ifc', '--split-merge']);
+      expect(contentDiffCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ splitMerge: true }),
+      );
+      await diffCommand(['a.ifc', 'b.ifc', '--successors']);
+      expect(contentDiffCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ successors: true }),
       );
     });
   });

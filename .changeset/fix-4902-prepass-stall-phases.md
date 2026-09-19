@@ -1,0 +1,5 @@
+---
+"@ifc-lite/geometry": minor
+---
+
+Every pre-worker geometry phase that could wait on a single worker's reply forever now has a bound. `processParallel`/`GeometryProcessor.processAdaptive`/`processParallel` accept a new opt-in `stallPhaseHandle` (`StallPhaseHandle`, `{}`), filled in synchronously with a `getStallPhase(): StallPhase` reader over the pool's own gate state (`'prepass' | 'shard-scan' | 'styles-gate' | 'entity-index-gate' | 'workers'`) — pass it to know which phase a "Geometry stream stalled" watchdog was actually waiting on, instead of guessing. A silent `scan-shard` reply now falls back to the serial pre-pass; a silent `resolve-styles-shard` slice is treated as empty and the load proceeds with the slices that answered; a silent `finalize-styles` reply drains every held chunk with default colours. Each bound scales with file size and records a typed `failuresByReason` entry (`shard-scan-timeout` / `style-slice-timeout` / `styles-finalize-timeout`) in `GeometryDiagnostics` — the happy path where nothing hangs is byte-identical and emits none of them (#4902).

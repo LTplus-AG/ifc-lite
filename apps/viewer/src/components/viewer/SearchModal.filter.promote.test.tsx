@@ -22,13 +22,14 @@ import { Toaster } from '@/components/ui/toast';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { Rule } from '@/lib/search/filter-rules';
+import { emptyFilterState } from '@/store/slices/searchSlice';
 import { SearchModalFilterBuilder } from './SearchModal.filter.builder.js';
 
 function mountWithQuery(searchQuery: string): HTMLElement {
   useViewerStore.setState({
     ...fixtureModels({ ...fixtureModel('m1'), schemaVersion: 'IFC4' }),
     searchQuery,
-    searchFilter: { rules: [], combinator: 'AND', limit: 500 },
+    searchFilter: emptyFilterState(),
   });
   return render(
     <>
@@ -46,7 +47,7 @@ function promote(container: HTMLElement): void {
   click(button);
 }
 
-const rules = () => useViewerStore.getState().searchFilter.rules;
+const rules = () => useViewerStore.getState().searchFilter.groups[0]?.rules ?? [];
 
 /**
  * The most recent toast's text, scoped to the toast region rather than read off

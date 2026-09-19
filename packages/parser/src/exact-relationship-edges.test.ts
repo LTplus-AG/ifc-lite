@@ -80,4 +80,27 @@ describe('exact relationship edge display data (#4205)', () => {
     expect(extractExactRelatedIds(store, 10, 'IfcRelNests', 'forward')).toEqual([30]);
     expect(extractExactRelatedIds(store, 10, 'IfcRelNests', 'forward', (id) => id === 102)).toEqual([]);
   });
+
+  it('infers exact aliases when a server payload omits relationship entity rows', () => {
+    const graph = new RelationshipGraphBuilder();
+    graph.addEdge(10, 20, RelationshipType.Aggregates, 101);
+    graph.addEdge(10, 30, RelationshipType.Aggregates, 102);
+    graph.addEdge(10, 30, RelationshipType.Nests, 102);
+    graph.addEdge(10, 40, RelationshipType.AssignsToGroup, 103);
+    graph.addEdge(10, 40, RelationshipType.AssignsToGroupByFactor, 103);
+    const store = {
+      entities: new EntityTableBuilder(0, new StringTable()).build(),
+      entityIndex: { byId: new Map(), byType: new Map() },
+      relationships: graph.build(),
+    } as unknown as IfcDataStore;
+
+    expect(extractExactRelationshipEdges(store, 10).map((edge) => edge.relationshipType)).toEqual([
+      'IfcRelAggregates',
+      'IfcRelNests',
+      'IfcRelAssignsToGroupByFactor',
+    ]);
+    expect(extractExactRelatedIds(store, 10, 'IfcRelAggregates', 'forward')).toEqual([20]);
+    expect(extractExactRelatedIds(store, 10, 'IfcRelNests', 'forward')).toEqual([30]);
+    expect(extractExactRelatedIds(store, 10, 'IfcRelAssignsToGroupByFactor', 'forward')).toEqual([40]);
+  });
 });

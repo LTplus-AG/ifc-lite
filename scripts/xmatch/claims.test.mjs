@@ -18,6 +18,7 @@ import { scoreSplits } from './score-claims.mjs';
 import { scorePair } from './score.mjs';
 import { parseStepFile } from './step-file.mjs';
 import { representationMapDigest } from './successor-edits.mjs';
+import { mergeDropsAPieceMutant } from './matchers.mjs';
 
 // `scoreMerges` is a NEW export (issue #4989): checked INSIDE a `test()`, not
 // at module top level — a top-level `assert` that throws crashes the whole
@@ -115,6 +116,28 @@ test('a 1:1 content match onto a `merged` base is wrongPartner, never correct (#
   assert.equal(score.overall.correctPairs, 0, 'a whole-vs-half self-pair must not be credited');
   assert.equal(score.falsePairs.wrongPartner, 1);
   assert.equal(score.overall.claimedPairs, 1);
+});
+
+test('a merged base cannot receive fallback successor credit for one piece', () => {
+  const key = { elements: [{ base: 1, kind: 'merged', head: [21] }] };
+  const result = scoreClaims.scoreSuccessors(key, [{ base: fp(1), head: fp(21), confidence: 'position' }], {
+    expected: new Map([[1, new Set([21])]]),
+    kindOf: new Map([[1, 'merged']]),
+    insertedNearby: new Set(),
+  });
+  assert.equal(result.recoveredContentKinds, 0);
+  assert.equal(result.falseSuccessors.neighbourSuccessor, 1);
+});
+
+test('merge-drops-a-piece applies only when it can actually drop a piece', () => {
+  const key = { elements: [{ base: 1, kind: 'merged', head: [21] }] };
+  const real = {
+    matches: [], successors: [],
+    splitMerges: [{ kind: 'merge', whole: fp(21), pieces: [fp(1)] }],
+  };
+  assert.equal(mergeDropsAPieceMutant(real, key).applicable, false);
+  real.splitMerges[0].pieces.push(fp(2));
+  assert.equal(mergeDropsAPieceMutant(real, key).applicable, true);
 });
 
 test('the map digest walks a cyclic, deep subgraph without recursion', () => {

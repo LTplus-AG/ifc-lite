@@ -260,7 +260,7 @@ export function mergeDropsAPieceMutant(real, key) {
   return {
     applicable:
       key.elements.some((element) => element.kind === 'merged')
-      && real.splitMerges.some((claim) => claim.kind === 'merge'),
+      && real.splitMerges.some((claim) => claim.kind === 'merge' && claim.pieces.length > 1),
     mustFailOn: /^byMerge\.(precision|recall)/,
     result: { matches: real.matches, splitMerges, successors: real.successors },
   };

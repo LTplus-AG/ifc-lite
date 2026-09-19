@@ -57,9 +57,9 @@ export function rectangleOfCurve(index, curveId) {
     if (parts[1] !== '$') {
       if (/IFCARCINDEX/.test(parts[1])) return undefined;
       const walk = (parts[1].match(/\d+/g) ?? []).map(Number);
-      const expected = [];
-      for (let i = 1; i <= points.length; i++) expected.push(i, i === points.length ? 1 : i + 1);
-      const open = expected.slice(0, -2);
+      const expected = Array.from({ length: points.length }, (_, i) => i + 1);
+      expected.push(1);
+      const open = expected.slice(0, -1);
       if (walk.join(',') !== expected.join(',') && walk.join(',') !== open.join(',')) {
         return undefined;
       }

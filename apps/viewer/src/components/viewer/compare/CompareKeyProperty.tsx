@@ -74,10 +74,11 @@ export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateInfo, 
       onKeyProperty(undefined);
       return;
     }
-    if (value === appliedRef.current) return; // no-op: already applied
-    if (parseAuthoredKeySpec(value)) {
-      appliedRef.current = value;
-      onKeyProperty(value);
+    const canonicalValue = value.toLowerCase() === 'tag' ? 'Tag' : value;
+    if (canonicalValue === appliedRef.current) return; // no-op: already applied
+    if (parseAuthoredKeySpec(canonicalValue)) {
+      appliedRef.current = canonicalValue;
+      onKeyProperty(canonicalValue);
     }
   };
 

@@ -97,6 +97,7 @@ export function scoreSuccessors(key, successors, { expected, kindOf, insertedNea
     } else if (
       !insertedNearby.has(headRef) &&
       !SPLIT_KINDS.has(kindOf.get(baseRef)) &&
+      kindOf.get(baseRef) !== MERGE_KIND &&
       (expected.get(baseRef)?.has(headRef) ?? false)
     ) {
       correct = true;

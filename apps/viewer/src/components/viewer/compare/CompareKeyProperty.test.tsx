@@ -64,6 +64,17 @@ describe('CompareKeyProperty (#4989)', () => {
     assert.deepEqual(applied, ['Tag']);
   });
 
+  it('canonicalizes Tag case before persisting the authored-key scheme', () => {
+    const applied: (string | undefined)[] = [];
+    const container = render(
+      <CompareKeyProperty keyProperty={undefined} onKeyProperty={(v) => applied.push(v)} duplicateInfo={null} />,
+    );
+    const el = input(container);
+    typeInto(el, 'tag');
+    blur(el);
+    assert.deepEqual(applied, ['Tag']);
+  });
+
   it('clears any invalid note once the committed value is valid', () => {
     const container = render(
       <CompareKeyProperty keyProperty={undefined} onKeyProperty={() => {}} duplicateInfo={null} />,

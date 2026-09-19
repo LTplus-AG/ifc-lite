@@ -10,7 +10,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Tag } from 'lucide-react';
 import type { ClassificationInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
-import { EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import {
+  EXPRESS_DESCRIPTION_ATTRIBUTE,
+  EXPRESS_IDENTIFICATION_ATTRIBUTE,
+  EXPRESS_LOCATION_ATTRIBUTE,
+  EXPRESS_NAME_ATTRIBUTE,
+} from './express-labels';
 
 export function ClassificationCard({ classification }: { classification: ClassificationInfo }) {
   const { t } = useTranslation();
@@ -49,7 +54,7 @@ export function ClassificationCard({ classification }: { classification: Classif
         <div className="border-t-2 border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900/30">
           {classification.identification && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.identification')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</span>
               <span className="font-mono text-emerald-700 dark:text-emerald-400 select-all break-words">{classification.identification}</span>
             </div>
           )}
@@ -67,7 +72,7 @@ export function ClassificationCard({ classification }: { classification: Classif
           )}
           {classification.location && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.location')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_LOCATION_ATTRIBUTE}</span>
               <span className="font-mono text-emerald-700 dark:text-emerald-400 select-all break-words">{classification.location}</span>
             </div>
           )}
@@ -79,7 +84,7 @@ export function ClassificationCard({ classification }: { classification: Classif
           )}
           {classification.description && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.description')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_DESCRIPTION_ATTRIBUTE}</span>
               <span className="font-mono text-emerald-700 dark:text-emerald-400 select-all break-words">{classification.description}</span>
             </div>
           )}

@@ -52,6 +52,7 @@ import { GeoreferencingPanel } from './GeoreferencingPanel.js';
 import { LocationMap } from './LocationMap.js';
 import { FederationAlignmentControls } from './FederationAlignmentControls.js';
 import { EpsgLookupDialog } from './EpsgLookupDialog.js';
+import { EpsgLookupError } from './EpsgLookupError.js';
 import { TaskEditCard } from './TaskEditCard.js';
 
 const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('properties.')));
@@ -59,9 +60,17 @@ const HAS_CATALOGUE = 'properties.assemblyBadge.label' in en;
 
 type PropertiesKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as PropertiesKey[];
+const EXPRESS_FIELD_KEYS = new Set<PropertiesKey>([
+  'properties.field.identification',
+  'properties.field.description',
+  'properties.field.location',
+  'properties.field.purpose',
+  'properties.field.intendedUse',
+  'properties.field.revision',
+]);
 const STATIC_KEYS = KEYS.filter((key) => {
   const value = CATALOGUE[key];
-  return typeof value === 'string' && !value.includes('{');
+  return !EXPRESS_FIELD_KEYS.has(key) && typeof value === 'string' && !value.includes('{');
 });
 
 function addReadable(root: ParentNode, out: Set<string>): void {
@@ -306,7 +315,9 @@ describe('Properties panel localization (#4918 slice 4)', () => {
       assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
       coveredAny = true;
     }
-    assert.ok(after.has('Name'), 'canonical IFC Name field labels must remain literal across locale changes');
+    for (const attribute of ['Name', 'Identification', 'Description', 'Location', 'Purpose', 'IntendedUse', 'Revision']) {
+      assert.ok(after.has(attribute), `canonical IFC ${attribute} field labels must remain literal across locale changes`);
+    }
     assert.ok(coveredAny, 'this render must exercise at least one static properties key');
   });
 
@@ -332,6 +343,16 @@ describe('Properties panel localization (#4918 slice 4)', () => {
       />,
     );
     assert.ok(container.textContent?.includes('[2 opening-one]'), 'relationships count interpolates');
+  });
+
+  catalogueIt('resolves a retained EPSG search error in the current locale', () => {
+    registerLocale('epsg-a', { 'properties.epsgLookup.noResults': '[no results A]' });
+    registerLocale('epsg-b', { 'properties.epsgLookup.noResults': '[no results B]' });
+    act(() => setLocale('epsg-a'));
+    const container = render(<EpsgLookupError errorKey="properties.epsgLookup.noResults" />);
+    assert.match(container.textContent ?? '', /\[no results A\]/);
+    act(() => setLocale('epsg-b'));
+    assert.match(container.textContent ?? '', /\[no results B\]/);
   });
 });
 

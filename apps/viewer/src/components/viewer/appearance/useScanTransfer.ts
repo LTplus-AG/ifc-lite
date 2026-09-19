@@ -13,13 +13,15 @@ import { AppearancePreviewSession, bindAppearancePreview, type AppearancePreview
 import { commitAppearance } from '@/lib/appearance/command';
 import { prepareMeshTransfer, type ScanTransferSettings } from '@/lib/appearance/scan/prepare-transfer';
 import type { MeshTransferPlan } from '@/lib/appearance/scan/transfer-types';
-import type { useScanWorkbench } from './useScanWorkbench';
+import type { ScanWorkflowMessage, useScanWorkbench } from './useScanWorkbench';
 
 interface Draft {
   output: Awaited<ReturnType<typeof prepareMeshTransfer>>; owner: AppearanceAssetOwner;
   groups: AppearancePreviewParts[]; preview: AppearancePreviewSession | null;
 }
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
+const translated = (key: Extract<ScanWorkflowMessage, { kind: 'translated' }>['key']): ScanWorkflowMessage => ({ kind: 'translated', key });
+const raw = (text: string): ScanWorkflowMessage => ({ kind: 'raw', text });
 type ScanTransferWorkbench = Pick<ReturnType<typeof useScanWorkbench>, 'targetId' | 'session' | 'result' | 'stale' | 'busy' | 'applyAppearance'>;
 export function useScanTransfer(work: ScanTransferWorkbench) {
   const [productIds, setProductIds] = useState<number[]>([]);
@@ -29,7 +31,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     neighborhoodRadiusMetres: 0.03, minNeighbors: 4, maxNeighbors: 32, surfaceBandMetres: 0.003 });
   const [coverage, setCoverage] = useState<MeshTransferPlan['transfer'] | null>(null);
   const [busy, setBusy] = useState(false), [ready, setReady] = useState(false), [original, setOriginal] = useState(false);
-  const [status, setStatus] = useState('Choose the IFC objects that should receive scan appearance.'), [error, setError] = useState(false);
+  const [status, setStatus] = useState<ScanWorkflowMessage>(() => translated('appearance.scanTransfer.status.chooseObjects')), [error, setError] = useState(false);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
   const operation = useRef<AbortController | null>(null), draft = useRef<Draft | null>(null), mounted = useRef(true);
   const selected = useViewerStore(state => state.selectedEntityIds), scalar = useViewerStore(state => state.selectedEntityId);
@@ -56,14 +58,14 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     if (!work.session || !work.result || work.stale || work.busy || !planner.current || busy) return;
     release(); const controller = new AbortController(); operation.current = controller;
     const owner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() };
-    let adopted = false; setBusy(true); setReady(false); setError(false); setStatus('Sampling scan appearance and measuring coverage…');
+    let adopted = false; setBusy(true); setReady(false); setError(false); setStatus(translated('appearance.scanTransfer.status.sampling'));
     try {
       const session = work.session, renderer = getGlobalRenderer();
       if (!renderer) throw new Error('Wait for the 3D view to be ready.');
       const output = await prepareMeshTransfer(session, work.result, productIds, settings, planner.current, owner, controller.signal);
       controller.signal.throwIfAborted(); session.validate();
       setCoverage(output.transfer);
-      if (!output.plan || !output.transfer.applicable || !(output.transfer.coverage.observedRasterInteriorTexels > 0)) { setStatus(output.transfer.diagnostics.join(' ') || 'No observed surface can be transferred.'); return; }
+      if (!output.plan || !output.transfer.applicable || !(output.transfer.coverage.observedRasterInteriorTexels > 0)) { setStatus(output.transfer.diagnostics.length ? raw(output.transfer.diagnostics.join(' ')) : translated('appearance.scanTransfer.status.noSurface')); return; }
       if (output.transfer.exclusions.length) throw new Error('Some chosen objects are unsupported. Review the exclusions and explicitly choose a supported scope.');
       const first = output.itemImages.values().next().value;
       if (!first) throw new Error('Transfer produced no retained surface image.');
@@ -71,8 +73,8 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
         first.bitmap, first.imageUri, false, false, expandAppearanceCorners, output.itemImages);
       const staged = new AppearancePreviewSession(renderer); staged.stage(groups);
       draft.current = { output, owner, groups, preview: staged }; adopted = true;
-      setReady(true); setOriginal(false); setStatus('Review observed and unknown coverage. Unknown samples retain the previous IFC appearance.');
-    } catch (failure) { if (!controller.signal.aborted && mounted.current) { setError(true); setStatus(describe(failure)); } }
+      setReady(true); setOriginal(false); setStatus(translated('appearance.scanTransfer.status.reviewCoverage'));
+    } catch (failure) { if (!controller.signal.aborted && mounted.current) { setError(true); setStatus(raw(describe(failure))); } }
     finally { if (!adopted) appearanceAssets.releaseOwner(owner); if (operation.current === controller) { operation.current = null; if (mounted.current) setBusy(false); } }
   }
   function compare() {
@@ -82,7 +84,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
       work.session?.validate();
       if (current.preview) { current.preview.cancel(); current.preview = null; setOriginal(true); }
       else { const next = new AppearancePreviewSession(renderer); next.stage(current.groups); current.preview = next; setOriginal(false); }
-    } catch (failure) { setError(true); setStatus(describe(failure)); setReady(false); }
+    } catch (failure) { setError(true); setStatus(raw(describe(failure))); setReady(false); }
   }
   async function apply() {
     const current = draft.current, session = work.session, renderer = getGlobalRenderer();
@@ -98,7 +100,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
   }
   return { productIds, setProductIds, targets, selectedCount, settings, setSettings, coverage, busy, ready, original, status, error, preview, compare, apply,
     pointSource: work.session?.source.kind === 'points',
-    chooseSelection() { setProductIds(appearanceOwners(useViewerStore.getState(), work.targetId).selectedProductIds); setStatus('Target objects pinned. Review alignment and preview transfer.'); },
-    discard() { operation.current?.abort(); planner.current?.cancel(); release(); setBusy(false); setReady(false); setOriginal(false); setCoverage(null); setStatus('Transfer preview discarded.'); },
+    chooseSelection() { setProductIds(appearanceOwners(useViewerStore.getState(), work.targetId).selectedProductIds); setStatus(translated('appearance.scanTransfer.status.targetsPinned')); },
+    discard() { operation.current?.abort(); planner.current?.cancel(); release(); setBusy(false); setReady(false); setOriginal(false); setCoverage(null); setStatus(translated('appearance.scanTransfer.status.discarded')); },
   };
 }

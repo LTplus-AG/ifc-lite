@@ -64,14 +64,14 @@ for (const reason of ['cancel', 'settings', 'stale', 'removed'] as const) test(`
     const exists = useViewerStore(state => state.models.has('target'));
     const transfer = useScanTransfer({ targetId: 'target', session: f.session, result: f.result, stale: stale || !exists, busy: false, applyAppearance: async () => { throw new Error('No Apply is permitted in this pending-operation test'); } });
     read = transfer;
-    return <><button onClick={() => { transfer.setProductIds([10]); transfer.setSettings(s => ({ ...s, reviewed: true })); }}>Choose</button><button onClick={() => void transfer.preview()}>Preview</button><button onClick={transfer.discard}>Cancel</button><button onClick={() => transfer.setSettings(s => ({ ...s, texelsPerMetre: s.texelsPerMetre + 1 }))}>Settings</button><button onClick={() => setStale(true)}>Stale</button><output>{transfer.status}</output></>;
+    return <><button onClick={() => { transfer.setProductIds([10]); transfer.setSettings(s => ({ ...s, reviewed: true })); }}>Choose</button><button onClick={() => void transfer.preview()}>Preview</button><button onClick={transfer.discard}>Cancel</button><button onClick={() => transfer.setSettings(s => ({ ...s, texelsPerMetre: s.texelsPerMetre + 1 }))}>Settings</button><button onClick={() => setStale(true)}>Stale</button><output>{JSON.stringify(transfer.status)}</output></>;
   }
   try {
     const ui = render(<Harness />), button = (name: string) => [...ui.querySelectorAll('button')].find(b => b.textContent === name)!;
     click(button('Choose')); click(button('Preview'));
     for (let i = 0; i < 100 && !workers.some(w => w.message); i++) await advance(5);
     const worker = workers.find(w => w.message);
-    assert.ok(worker?.message?.type === 'mesh-transfer', `real IFC snapshot, image readback and request preparation reached the worker: ${read?.status}`);
+    assert.ok(worker?.message?.type === 'mesh-transfer', `real IFC snapshot, image readback and request preparation reached the worker: ${JSON.stringify(read?.status)}`);
     appearanceAssets.release(f.assetId, { kind: 'source', id: 'fixture' });
     assert.ok(appearanceAssets.get(f.assetId), 'pending draft retains source pixels after source owner releases');
     if (reason === 'removed') act(() => useViewerStore.setState({ models: new Map() }));

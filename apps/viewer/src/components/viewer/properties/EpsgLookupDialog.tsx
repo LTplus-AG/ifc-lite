@@ -25,7 +25,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
+import { EpsgLookupError } from './EpsgLookupError';
 
 export interface EpsgResult {
   code: string;
@@ -215,7 +216,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<EpsgResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -231,7 +232,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     setQuery('');
     setResults([]);
     setLoading(false);
-    setError(null);
+    setErrorKey(null);
   }, []);
 
   const localIndex = useMemo(
@@ -243,7 +244,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     const trimmed = searchQuery.trim();
     if (!trimmed) {
       setResults([]);
-      setError(null);
+      setErrorKey(null);
       return;
     }
 
@@ -261,7 +262,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
-    setError(null);
+    setErrorKey(null);
 
     try {
       const resolved = isCode
@@ -284,21 +285,21 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
 
       if (dedupedResults.length > 0) {
         setResults(dedupedResults);
-        setError(null);
+        setErrorKey(null);
       } else if (localMatches.length === 0) {
         setResults([]);
-        setError(t('properties.epsgLookup.noResults'));
+        setErrorKey('properties.epsgLookup.noResults');
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('[EPSG Lookup] Local search failed', err);
       if (localMatches.length === 0) {
-        setError(t('properties.epsgLookup.searchUnavailable'));
+        setErrorKey('properties.epsgLookup.searchUnavailable');
       }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [localIndex, t]);
+  }, [localIndex]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -323,12 +324,12 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
       .then(starterResults => {
         if (cancelled) return;
         setResults(starterResults);
-        setError(null);
+        setErrorKey(null);
       })
       .catch(() => {
         if (cancelled) return;
         setResults(COMMON_CRS.slice(0, MAX_STARTER_RESULTS));
-        setError(null);
+        setErrorKey(null);
       });
 
     return () => {
@@ -384,9 +385,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
           />
         </div>
 
-        {error && (
-          <p className="text-[11px] text-muted-foreground px-4 pb-2">{error}</p>
-        )}
+        <EpsgLookupError errorKey={errorKey} />
 
         {results.length > 0 && (
           <div className="border-t overflow-y-auto max-h-[280px]">

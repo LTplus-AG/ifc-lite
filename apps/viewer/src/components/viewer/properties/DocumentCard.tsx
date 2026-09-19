@@ -10,7 +10,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { FileText } from 'lucide-react';
 import type { DocumentInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
-import { EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import {
+  EXPRESS_DESCRIPTION_ATTRIBUTE,
+  EXPRESS_IDENTIFICATION_ATTRIBUTE,
+  EXPRESS_INTENDED_USE_ATTRIBUTE,
+  EXPRESS_LOCATION_ATTRIBUTE,
+  EXPRESS_NAME_ATTRIBUTE,
+  EXPRESS_PURPOSE_ATTRIBUTE,
+  EXPRESS_REVISION_ATTRIBUTE,
+} from './express-labels';
 
 export function DocumentCard({ document }: { document: DocumentInfo }) {
   const { t } = useTranslation();
@@ -34,7 +42,7 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
         <div className="border-t-2 border-sky-200 dark:border-sky-800 divide-y divide-sky-100 dark:divide-sky-900/30">
           {document.identification && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.identification')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.identification}</span>
             </div>
           )}
@@ -46,13 +54,13 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
           )}
           {document.description && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.description')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_DESCRIPTION_ATTRIBUTE}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.description}</span>
             </div>
           )}
           {document.location && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.location')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_LOCATION_ATTRIBUTE}</span>
               {isUrl ? (
                 <a
                   href={document.location}
@@ -69,19 +77,19 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
           )}
           {document.purpose && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.purpose')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_PURPOSE_ATTRIBUTE}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.purpose}</span>
             </div>
           )}
           {document.intendedUse && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.intendedUse')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_INTENDED_USE_ATTRIBUTE}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.intendedUse}</span>
             </div>
           )}
           {document.revision && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.revision')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_REVISION_ATTRIBUTE}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.revision}</span>
             </div>
           )}

@@ -51,7 +51,7 @@ import type {
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
-import { attributeNamesForStore } from '@/lib/collab/schema-attribute-names.js';
+import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
 import { entityForPath, pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths.js';
 
@@ -59,14 +59,13 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
-  const claimedGlobalIds = new WeakMap<IfcDataStore, Map<number, string>>();
-
-  function initialRoomAttributes(dataStore: IfcDataStore, names: string[], values: unknown[]): Record<string, unknown> {
+  function initialRoomAttributes(dataStore: IfcDataStore, type: string, names: string[], values: unknown[]): Record<string, unknown> {
     const attributes: Record<string, unknown> = {};
+    const referenceSlots = referenceAttributeSlotsForStore(dataStore, type);
     values.forEach((value, index) => {
       const name = names[index];
       if (name && name !== 'GlobalId' && value !== undefined) {
-        attributes[`bsi::ifc::prop::${name}`] = encodeRoomAttributeValue(dataStore, value);
+        attributes[`bsi::ifc::prop::${name}`] = encodeRoomAttributeValue(dataStore, value, referenceSlots[index] ?? false);
       }
     });
     return attributes;
@@ -118,7 +117,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       entity.type,
       guid,
       null,
-      initialRoomAttributes(dataStore, names, entity.attributes),
+      initialRoomAttributes(dataStore, entity.type, names, entity.attributes),
     );
   }
 
@@ -138,28 +137,33 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       roomKey = `ifc-lite-ref-${expressId}-${++suffix}`;
     }
     registerEntityPath(dataStore, expressId, pathForGuid(dataStore, roomKey));
-    for (const value of entity.attributes) ensureReferencedRoomEntities(modelId, editor, dataStore, value);
+    const referenceSlots = referenceAttributeSlotsForStore(dataStore, entity.type);
+    entity.attributes.forEach((value, index) => ensureReferencedRoomEntities(
+      modelId, editor, dataStore, value, referenceSlots[index] ?? false,
+    ));
     store.getState().mirrorEntityCreate(
       modelId, expressId, entity.type, roomKey, null,
-      initialRoomAttributes(dataStore, names, entity.attributes),
+      initialRoomAttributes(dataStore, entity.type, names, entity.attributes),
     );
   }
 
   function ensureReferencedRoomEntities(
-    modelId: string, editor: StoreEditor, dataStore: IfcDataStore, value: unknown,
+    modelId: string, editor: StoreEditor, dataStore: IfcDataStore, value: unknown, allowReferences: boolean,
   ): void {
-    for (const expressId of referencedExpressIds(value)) {
+    for (const expressId of referencedExpressIds(value, allowReferences)) {
       ensureSourceRoomEntity(modelId, editor, expressId, dataStore);
     }
   }
 
   function assertAvailableGlobalId(
-    operation: string, modelId: string, dataStore: IfcDataStore, expressId: number, globalId: string,
+    operation: string, modelId: string, editor: StoreEditor, dataStore: IfcDataStore, expressId: number, globalId: string,
   ): void {
     const sourceOwner = dataStore.entities.getExpressIdByGlobalId(globalId);
     const roomOwner = entityForPath(dataStore, pathForGuid(dataStore, globalId));
-    const localOwner = [...(claimedGlobalIds.get(dataStore)?.entries() ?? [])]
-      .find(([, claimed]) => claimed === globalId)?.[0];
+    const localOwner = editor.getNewEntities().find((entity) => {
+      const names = attributeNamesForStore(dataStore, entity.type);
+      return names[0] === 'GlobalId' && entity.attributes[0] === globalId;
+    })?.expressId;
     if ((sourceOwner >= 0 && sourceOwner !== expressId)
       || (roomOwner !== null && roomOwner !== expressId)
       || (localOwner !== undefined && localOwner !== expressId)) {
@@ -183,13 +187,12 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const globalId = names[0] === 'GlobalId' && typeof def.attributes[0] === 'string'
         ? def.attributes[0]
         : null;
-      if (globalId) assertAvailableGlobalId('addEntity', modelId, dataStore, -1, globalId);
-      for (const value of def.attributes) ensureReferencedRoomEntities(modelId, editor, dataStore, value);
+      if (globalId) assertAvailableGlobalId('addEntity', modelId, editor, dataStore, -1, globalId);
+      const referenceSlots = referenceAttributeSlotsForStore(dataStore, def.type);
+      def.attributes.forEach((value, index) => ensureReferencedRoomEntities(
+        modelId, editor, dataStore, value, referenceSlots[index] ?? false,
+      ));
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-      if (globalId) {
-        const claims = claimedGlobalIds.get(dataStore) ?? new Map<number, string>();
-        claims.set(ref.expressId, globalId); claimedGlobalIds.set(dataStore, claims);
-      }
       mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
       return { modelId: normalizedId, expressId: ref.expressId };
     },
@@ -202,7 +205,6 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
       const removed = editor.removeEntity(ref.expressId);
       if (removed) {
-        claimedGlobalIds.get(dataStore)?.delete(ref.expressId);
         store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
       }
       return removed;
@@ -223,7 +225,10 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       }
       if (dataStore) {
         ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
-        ensureReferencedRoomEntities(ref.modelId, editor, dataStore, value);
+        ensureReferencedRoomEntities(
+          ref.modelId, editor, dataStore, value,
+          type ? (referenceAttributeSlotsForStore(dataStore, type)[index] ?? false) : false,
+        );
       }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
       if (name) {
@@ -231,7 +236,10 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
           ref.modelId,
           ref.expressId,
           `bsi::ifc::prop::${name}`,
-          dataStore ? encodeRoomAttributeValue(dataStore, value ?? null) : value ?? null,
+          dataStore ? encodeRoomAttributeValue(
+            dataStore, value ?? null,
+            type ? (referenceAttributeSlotsForStore(dataStore, type)[index] ?? false) : false,
+          ) : value ?? null,
         );
       }
     },

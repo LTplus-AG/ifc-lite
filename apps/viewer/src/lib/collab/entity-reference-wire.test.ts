@@ -13,7 +13,8 @@ test('structured room references resolve in the recipient ID space (#5008)', () 
   registerEntityMaps(sender, new Map([[4, '/m0/target']]), new Map([['/m0/target', 4]]));
   registerEntityMaps(recipient, new Map([[91, '/m0/target']]), new Map([['/m0/target', 91]]));
 
-  const encoded = encodeRoomAttributeValue(sender, ['#4', { typed: { type: 'IfcReference', value: '#4' } }]);
+  assert.equal(encodeRoomAttributeValue(sender, '#4', false), '#4', 'reference-shaped text stays text');
+  const encoded = encodeRoomAttributeValue(sender, ['#4', { typed: { type: 'IfcReference', value: '#4' } }], true);
   assert.deepEqual(encoded, [
     { 'ifc-lite::entityPath': '/m0/target' },
     { typed: { type: 'IfcReference', value: { 'ifc-lite::entityPath': '/m0/target' } } },

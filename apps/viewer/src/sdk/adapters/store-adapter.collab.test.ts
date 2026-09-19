@@ -8,6 +8,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import { registerEntityMaps, registerStoreSlot } from '@/lib/collab/entity-paths.js';
+import { deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-delete.js';
 import { createStoreAdapter } from './store-adapter.js';
 import type { StoreApi } from './types.js';
 
@@ -128,6 +129,14 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.doesNotThrow(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes }));
   });
 
+  it('allows GlobalId reuse after a peer removes the overlay entity', () => {
+    const { adapter, view } = fixture();
+    const attributes = ['0remote00000000000000000', null, 'First', null, null, null, null, null, '.NOTDEFINED.'];
+    const first = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes });
+    assert.equal(deleteRemoteOverlayEntity(dataStore, view, first.expressId), true);
+    assert.doesNotThrow(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes }));
+  });
+
   it('rejects a GlobalId already claimed by a reconstructed room path', () => {
     const { adapter, view } = fixture(true, reconstructedStore);
     const count = view.getMutations().length;
@@ -215,6 +224,16 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.deepEqual(attributes['bsi::ifc::prop::RelatedObjects'], [{
       'ifc-lite::entityPath': '/0wall000000000000000000',
     }]);
+  });
+
+  it('preserves reference-shaped strings in text-typed slots', () => {
+    const { adapter, calls } = fixture();
+    adapter.addEntity(MODEL, {
+      type: 'IFCWALL',
+      attributes: ['0text000000000000000000', null, '#2', null, null, null, null, null, '.NOTDEFINED.'],
+    });
+    const attributes = calls.find(call => call.kind === 'create')?.args[5] as Record<string, unknown>;
+    assert.equal(attributes['bsi::ifc::prop::Name'], '#2');
   });
 
   it('rejects read-only room writes before touching the local overlay', () => {

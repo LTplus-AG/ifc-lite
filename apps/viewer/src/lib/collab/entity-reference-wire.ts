@@ -8,29 +8,31 @@ import { entityForPath, pathForEntity } from './entity-paths';
 const PATH_KEY = 'ifc-lite::entityPath';
 const STEP_REFERENCE = /^#([1-9]\d*)$/;
 
-export function referencedExpressIds(value: unknown, ids = new Set<number>()): Set<number> {
+export function referencedExpressIds(value: unknown, allowReferences: boolean, ids = new Set<number>()): Set<number> {
+  if (!allowReferences) return ids;
   if (typeof value === 'string') {
     const match = STEP_REFERENCE.exec(value);
     if (match) ids.add(Number(match[1]));
   } else if (Array.isArray(value)) {
-    for (const item of value) referencedExpressIds(item, ids);
+    for (const item of value) referencedExpressIds(item, true, ids);
   } else if (value && typeof value === 'object') {
-    for (const item of Object.values(value)) referencedExpressIds(item, ids);
+    for (const item of Object.values(value)) referencedExpressIds(item, true, ids);
   }
   return ids;
 }
 
 /** Replace sender-local STEP references with stable room paths. */
-export function encodeRoomAttributeValue(store: IfcDataStore, value: unknown): unknown {
+export function encodeRoomAttributeValue(store: IfcDataStore, value: unknown, allowReferences: boolean): unknown {
+  if (!allowReferences) return value;
   if (typeof value === 'string') {
     const match = STEP_REFERENCE.exec(value);
     if (!match) return value;
     const path = pathForEntity(store, Number(match[1]));
     return path ? { [PATH_KEY]: path } : value;
   }
-  if (Array.isArray(value)) return value.map(item => encodeRoomAttributeValue(store, item));
+  if (Array.isArray(value)) return value.map(item => encodeRoomAttributeValue(store, item, true));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, encodeRoomAttributeValue(store, item)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, encodeRoomAttributeValue(store, item, true)]));
   }
   return value;
 }

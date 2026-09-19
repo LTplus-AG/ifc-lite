@@ -502,15 +502,13 @@ test('each drop reason fires on its own, and the same finding passes once fixed'
     // is what separates this case from the one above -- a quote that fails the
     // floor and the patch at once cannot tell you which check did the work.
     ['quote below the floor', { quote: '}' }, /under 3 characters/],
-    ['line outside every added range', { line: 15 }, /not inside an added range/],
-    ['line below the first range', { line: 1 }, /not inside an added range/],
-    ['line not an integer', { line: '11' }, /not inside an added range/],
-    ['line fractional', { line: 11.5 }, /not inside an added range/],
-    // #3658: THE COUPLING CHECK. A REAL quote, in the added-line-range, but
-    // anchored to a DIFFERENT added line than the one it actually is. The old
-    // independent checks both passed this; the message must name the line the
-    // quote actually sits on so the drop is diagnosable.
-    ['quote real, but anchored to the wrong added line', { line: 4, quote: PROOF_LINE }, /it IS the text of added line\(s\) 2 instead/],
+    // The line-shape drops are paired with a quote that matches NO added line:
+    // with PROOF_LINE (unique in PATCH_A) they would be RE-ANCHORED instead,
+    // which the RE-ANCHOR tests below pin.
+    ['line outside every added range', { line: 15, quote: 'const invented = 1;' }, /not inside an added range/],
+    ['line below the first range', { line: 1, quote: 'const invented = 1;' }, /not inside an added range/],
+    ['line not an integer', { line: '11', quote: 'const invented = 1;' }, /not inside an added range/],
+    ['line fractional', { line: 11.5, quote: 'const invented = 1;' }, /not inside an added range/],
     ['empty body', { body: '   ' }, /says nothing/],
     ['not an object', null, /not an object/],
   ];
@@ -523,6 +521,26 @@ test('each drop reason fires on its own, and the same finding passes once fixed'
     assert.equal(r.doc.findings.length, 1, `${name} should have been dropped: ${r.out}`);
     assert.match(r.out, why, name);
   }
+});
+
+// ============================= unique-quote re-anchor: kept and moved, loudly
+
+test('RE-ANCHOR: a real quote that is the text of exactly ONE added line is kept at that line, whatever `line` said', () => {
+  for (const line of [4, 15, 1, '11', 11.5]) {
+    const r = run(response({ verdict: 'findings', findings: [finding({ line, quote: PROOF_LINE })] }));
+    assert.equal(r.code, 0, `line ${JSON.stringify(line)}: ${r.out}`);
+    assert.equal(r.doc.findings.length, 1);
+    assert.equal(r.doc.findings[0].line, 2, 'moved to the only added line whose text is the quote');
+    assert.match(r.out, /REANCHORED findings\[0\]/);
+    assert.ok(r.out.includes(`\`line\` ${JSON.stringify(line)} of`), 'the original line is named in the log');
+  }
+});
+
+test('RE-ANCHOR: a finding whose line already matches its quote is untouched and logs nothing', () => {
+  const r = run(response({ verdict: 'findings', findings: [finding()] }));
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /REANCHORED/);
+  assert.equal(r.doc.findings[0].line, 2);
 });
 
 // ==================================== #3658: the quote/line coupling, on its own
@@ -625,7 +643,7 @@ test('FAIL: a findings verdict where NOTHING survives is VALIDATION_EMPTY', () =
   // not passed through empty, which would leave the marker claiming findings that
   // do not exist.
   const r = run(
-    response({ verdict: 'findings', findings: [finding({ path: 'packages/x/never-sent.ts' }), finding({ line: 99 })] }),
+    response({ verdict: 'findings', findings: [finding({ path: 'packages/x/never-sent.ts' }), finding({ line: 99, quote: 'const invented = 1;' })] }),
   );
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /VALIDATION_EMPTY/);

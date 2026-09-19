@@ -20,7 +20,7 @@ import { checkClassPass } from './defect-classes.mjs';
 import { isUnread } from '../build-review-input.mjs';
 // One spelling of the drop warning, shared with the sink that prefixes it and the
 // CLI that reads it back out of the log.
-import { DROPPED_LABEL } from './dropped-warning.mjs';
+import { DROPPED_LABEL, REANCHORED_LABEL } from './dropped-warning.mjs';
 
 /** @param {unknown} v */
 const isNonEmptyString = (v) => typeof v === 'string' && v.trim() !== '';
@@ -50,8 +50,15 @@ export const MAX_FINDINGS = 12;
 /** Sibling budget to `MIN_PROOF_QUOTE_CHARS` in ./finding-proof-of-work.mjs -- see that file's comment for why the two differ. */
 const MIN_FINDING_QUOTE_CHARS = 3;
 
-/** The top-level shape. An individual finding is validated -- and dropped -- later. */
-function checkSchema(response) {
+/**
+ * The top-level shape. An individual finding is validated -- and dropped --
+ * later. EXPORTED (was private) so `ensemble-reviewer.mjs`'s `poolFindings`
+ * can reuse this SAME check to decide which of several parallel model answers
+ * is schema-valid enough to source the pooled envelope's `files_reviewed`/
+ * `riskiest_change`, rather than growing its own copy of "what a valid
+ * top-level response looks like" that could silently drift from this one.
+ */
+export function checkSchema(response) {
   const fail = (msg) => {
     throw new ValidateFindingsError('SCHEMA_INVALID', `${msg} REMEDY: fix the prompt's output contract.`);
   };
@@ -103,7 +110,7 @@ function checkSchema(response) {
 
 function validateFindings({ response, input, warn }) {
   const kept = [];
-  for (const [i, f] of response.findings.entries()) {
+  for (let [i, f] of response.findings.entries()) {
     const drop = (why) => {
       warn(`${DROPPED_LABEL} findings[${i}]: ${why}`);
       return true;
@@ -133,6 +140,24 @@ function validateFindings({ response, input, warn }) {
       );
       continue;
     }
+    // THE COUPLING CHECK (#3658), with ONE re-anchor. `quote` and `line` used
+    // to be validated independently, so a real quote anchored at the wrong
+    // added line passed both checks and posted on the wrong line. Requiring
+    // the quote to BE the text at that line closes it. When the quote is the
+    // text of EXACTLY ONE added line, that line is the finding's real anchor
+    // and the model's `line` was a counting slip (cheap ensemble models make
+    // this slip constantly, and a real defect that names its evidence
+    // verbatim should not be lost to it): the finding is moved there, LOUDLY,
+    // with the original line in the log. An ambiguous quote (several added
+    // lines carry it) or an absent one is still dropped, never guessed at.
+    const matches = addedLinesMatching(file.patch, f.quote);
+    if (matches.length === 1 && f.line !== matches[0]) {
+      warn(
+        `${REANCHORED_LABEL} findings[${i}]: \`line\` ${JSON.stringify(f.line)} of \`${sanitizePath(f.path)}\` moved to ` +
+          `${matches[0]}, the only added line whose text is the quote.`,
+      );
+      f = { ...f, line: matches[0], reanchoredFrom: f.line };
+    }
     if (!lineIsAdded(f.line, file.addedLineRanges)) {
       drop(
         `\`line\` ${JSON.stringify(f.line)} is not inside an added range of \`${sanitizePath(f.path)}\` ` +
@@ -141,14 +166,8 @@ function validateFindings({ response, input, warn }) {
       );
       continue;
     }
-    // THE COUPLING CHECK (#3658). `quote` and `line` used to be validated
-    // independently, so a real quote anchored at the wrong added line passed
-    // both checks and posted on the wrong line. Requiring the quote to BE the
-    // text at that exact line closes it. On a mismatch, name where the quote
-    // WAS found (if anywhere) so the drop is diagnosable rather than a bare
-    // refusal -- this is the loud failure direction: the finding is dropped,
-    // never silently re-anchored to a line the model did not name.
-    const matches = addedLinesMatching(file.patch, f.quote);
+    // On a mismatch the unique re-anchor above could not settle, name where
+    // the quote WAS found (if anywhere) so the drop is diagnosable.
     if (!matches.includes(f.line)) {
       drop(
         matches.length > 0
@@ -307,6 +326,13 @@ export function validate({ response, input, onWarn = null }) {
           },
         }
       : {}),
+    // CARRIED THROUGH, OPTIONALLY. `source` is not part of the model-facing
+    // schema -- no prompt ever asks for it -- it is stamped by
+    // ensemble-reviewer.mjs onto a finding it pooled from one of several
+    // parallel reviewers, so run-judge.mjs's prompt can tell the judge these
+    // findings may overlap across models. A single-reviewer run never sets it,
+    // and `undefined` is dropped by the spread rather than written as a key.
+    ...(isNonEmptyString(f.source) ? { source: sanitizeLabel(f.source) } : {}),
   }));
 
   // A finding whose body sanitises to nothing is DROPPED here rather than

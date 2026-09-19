@@ -29,6 +29,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fenceUntrusted, resolveTokens, runReviewerWithFailover } from './run-reviewer.mjs';
+import { resolveProviderFallbacks, describeProviderFallbacks } from './provider-fallbacks.mjs';
+import { OPENROUTER_JUDGE_MODELS_DEFAULT } from './openrouter-reviewer.mjs';
 import { stripFence } from './validate-findings.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -50,6 +52,11 @@ export function buildJudgePrompt(judgeRubric, findings) {
           ? `verified sibling: ${JSON.stringify(String(f.sibling.path))}:${f.sibling.line} ${JSON.stringify(String(f.sibling.quote ?? ''))}`
           : 'verified sibling: none',
         `class: ${JSON.stringify(String(f.class ?? 'unknown'))}`,
+        // ONLY PRESENT ON A POOLED ENSEMBLE RUN (ensemble-reviewer.mjs stamps
+        // it; a single-reviewer run never sets it). Told to the judge so it can
+        // recognise two findings from different models about the SAME line as
+        // duplicates to merge, rather than two independent defects.
+        ...(f.source ? [`source reviewer: ${JSON.stringify(String(f.source))}`] : []),
         // JSON.stringify'd like every other field. It was the ONE raw
         // interpolation, and the record delimiter above is a fixed, guessable
         // constant -- so a body containing a newline and `--- FINDING 0` wrote a
@@ -181,11 +188,11 @@ export function applyVerdicts(findings, raw) {
  * would have left the reviewer working on the fallback while the judge quietly
  * stopped judging every PR.
  */
-export function judge({ judgeRubricPath, findings, tokens, model = 'haiku', spawn }) {
+export function judge({ judgeRubricPath, findings, tokens, model = 'haiku', spawn, providerFallback = null }) {
   if (findings.length === 0) return { kept: [], dropped: [], note: 'nothing to judge', ran: true };
   const rubric = readFileSync(judgeRubricPath, 'utf8');
   const prompt = buildJudgePrompt(rubric, findings);
-  const { text } = runReviewerWithFailover({ prompt, model, tokens, spawn });
+  const { text } = runReviewerWithFailover({ prompt, model, tokens, spawn, providerFallback });
   return applyVerdicts(findings, text);
 }
 
@@ -224,6 +231,19 @@ export function main(argv, {
   const doc = JSON.parse(readFile(findingsPath, 'utf8'));
   const before = Array.isArray(doc.findings) ? doc.findings : [];
 
+  const providers = resolveProviderFallbacks(env, {
+    openRouterModelsEnvVar: 'OPENROUTER_JUDGE_MODELS',
+    openRouterModelEnvVar: 'OPENROUTER_JUDGE_MODEL',
+    openRouterDefaultModels: OPENROUTER_JUDGE_MODELS_DEFAULT,
+    // SHORTER than the reviewer's 300000ms default: the judge is an optional
+    // precision filter (see `judge`'s doc comment -- it can only remove, and
+    // must fail soft), not the primary review path, so it should give up on a
+    // stalled model and fall back to "keep everything unjudged" well before
+    // burning the reviewer's own timeout budget on a filter nobody required.
+    openRouterTimeoutMsDefault: 120_000,
+  });
+  log(describeProviderFallbacks(providers));
+
   let result;
   try {
     result = judge({
@@ -232,6 +252,7 @@ export function main(argv, {
       tokens: resolveTokens(env),
       model: arg('model') ?? 'haiku',
       spawn,
+      providerFallback: providers.length > 0 ? providers : null,
     });
   } catch (err) {
     // The soft failure. Not a warning to be skimmed past: it names what did not

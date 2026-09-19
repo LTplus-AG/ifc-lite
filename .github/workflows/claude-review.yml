@@ -278,7 +278,7 @@ jobs:
       # whose precision measurements mean nothing.
       - name: Install the reviewer CLI
         if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
-        run: npm install -g @anthropic-ai/claude-code@2.0.76
+        run: npm install -g @anthropic-ai/claude-code@2.1.278
 
       # The model runs here, as a pure function: no tools, no shell, no MCP, no
       # repository access, empty cwd. Any failure -- including a drained
@@ -295,6 +295,19 @@ jobs:
           # which it is on every run rather than leaving a single-credential setup
           # looking like a redundant one.
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          # THE INDEPENDENT PROVIDER CHAIN. OpenRouter is tried first (itself a
+          # chain of models, OPENROUTER_REVIEW_MODELS, so one model's outage does
+          # not take the fallback down); direct OpenAI stays wired as a last
+          # resort. Both are optional in the same way as the second Claude
+          # token: an unset secret is an empty string, which `resolveProviderFallbacks`
+          # treats as absent.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_REVIEW_MODELS: ${{ vars.OPENROUTER_REVIEW_MODELS }}
+          # THE PARALLEL CHEAP ENSEMBLE. Unset (the default until this variable
+          # is deliberately set) means run-reviewer.mjs's ensemble step is a
+          # no-op and this step behaves exactly as it did before it existed.
+          REVIEW_ENSEMBLE_MODELS: ${{ vars.REVIEW_ENSEMBLE_MODELS }}
+          REVIEW_ENSEMBLE_STRONG_ON_RISK: ${{ vars.REVIEW_ENSEMBLE_STRONG_ON_RISK }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
@@ -373,6 +386,12 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          # The retry below re-invokes run-reviewer.mjs, so it needs the same
+          # provider chain -- ensemble included -- as the first attempt.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_REVIEW_MODELS: ${{ vars.OPENROUTER_REVIEW_MODELS }}
+          REVIEW_ENSEMBLE_MODELS: ${{ vars.REVIEW_ENSEMBLE_MODELS }}
+          REVIEW_ENSEMBLE_STRONG_ON_RISK: ${{ vars.REVIEW_ENSEMBLE_STRONG_ON_RISK }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e
@@ -460,6 +479,12 @@ jobs:
           # credential leaves the reviewer working on the fallback while the judge
           # silently stops judging every PR -- fail-soft, warning-only, invisible.
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          # The judge's OWN provider chain and model list, so a Claude outage
+          # does not silently drop it to unjudged (still fail-soft if these are
+          # unset too, and if the independent providers also fail).
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_JUDGE_MODELS: ${{ vars.OPENROUTER_JUDGE_MODELS }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           # The backstop is at the SHELL layer because the one inside run-judge.mjs
           # cannot cover its own crash. Without it a judge that died would leave

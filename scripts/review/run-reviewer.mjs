@@ -77,15 +77,14 @@ import { randomBytes } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { renderSiblingRow } from './sibling-row.mjs';
 import { buildRetrySection } from './retry-prompt.mjs';
-import { runOpenAiFallback } from './openai-reviewer.mjs';
+import { resolveProviderFallbacks, describeProviderFallbacks } from './provider-fallbacks.mjs';
 import { applicableClassesFromRaw, renderApplicableForPrompt } from './lib/class-applicability.mjs';
+import { RunReviewerError } from './lib/run-reviewer-error.mjs';
+import { checkToken, resolveTokens } from './lib/credentials.mjs';
+import { maybeRunEnsemble } from './ensemble-reviewer.mjs';
+import { redactSecrets } from './lib/redact-secrets.mjs';
 
-export class RunReviewerError extends Error {
-  constructor(reason, message) {
-    super(message);
-    this.reason = reason;
-  }
-}
+export { RunReviewerError, checkToken, resolveTokens };
 
 /**
  * A DENY-LIST, and it cannot promise completeness -- an earlier comment here
@@ -303,51 +302,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
  *   Injected so every branch is reachable in tests without a model, a token, or
  *   a network. The shipped caller passes a real spawnSync wrapper.
  */
-/**
- * Check the credential's SHAPE without ever printing it, and hand back a trimmed
- * copy.
- *
- * A repository secret cannot be read back through the API, by design, so a
- * malformed one is invisible until it fails at run time -- and the most common
- * way to malform it is invisible in a terminal too: `echo token | gh secret set`
- * stores a TRAILING NEWLINE. That produces an auth rejection whose message says
- * nothing about whitespace, which is a long debugging session for a one-character
- * problem.
- *
- * So: trim first, so the whole whitespace class simply cannot bite, and then
- * report the shape so a genuinely wrong value says so on the first run instead of
- * looking like a quota problem. Nothing here logs the value, and the reported
- * length is a property of the credential, not the credential.
- *
- * @returns {{ token: string, note: string }}
- */
-export function checkToken(raw) {
-  if (raw === undefined || raw === null || String(raw) === '') {
-    throw new RunReviewerError(
-      'AUTH_MISSING',
-      'CLAUDE_CODE_OAUTH_TOKEN is unset or empty. REMEDY: `claude setup-token`, then ' +
-        '`gh secret set CLAUDE_CODE_OAUTH_TOKEN`. The lane cannot run without it, and it fails ' +
-        'here rather than posting a clean verdict it never earned.',
-    );
-  }
-  const token = String(raw).trim();
-  if (token === '') {
-    throw new RunReviewerError('AUTH_MALFORMED', 'CLAUDE_CODE_OAUTH_TOKEN is only whitespace.');
-  }
-  if (/\s/.test(token)) {
-    throw new RunReviewerError(
-      'AUTH_MALFORMED',
-      `CLAUDE_CODE_OAUTH_TOKEN contains whitespace INSIDE it (length ${token.length}). A trailing ` +
-        'newline is trimmed automatically; whitespace in the middle means the value was pasted ' +
-        'wrapped or truncated. REMEDY: re-set it with `printf %s "$TOKEN" | gh secret set ...`.',
-    );
-  }
-  const wrapped = String(raw) !== token;
-  return {
-    token,
-    note: `credential present, ${token.length} chars${wrapped ? ' (surrounding whitespace trimmed)' : ''}`,
-  };
-}
+/** `checkToken`/`resolveTokens` moved to ./lib/credentials.mjs (module-size budget); re-exported above. */
 
 /**
  * How this lane actually invokes the CLI. It lived as an anonymous lambda inside
@@ -403,9 +358,17 @@ export function runReviewer({ prompt, model, spawn = realSpawn, token = null }) 
       : stderr.trim() === ''
         ? 'CLI_SILENT_EXIT'
         : 'MODEL_ERROR';
+    // CLI_SILENT_EXIT carries the CLI's own stdout excerpt on top of the
+    // remedy: with stderr empty there is otherwise nothing to diagnose from,
+    // and run 33802488121's opaque envelope is exactly the shape this is for.
+    // Capped at 1500 chars, read from `r.stdout` alone, and `redactSecrets`-ed
+    // as a backstop should a future CLI version echo its own env into stdout.
+    const rawStdout = redactSecrets(String(r.stdout ?? '').slice(0, 1500).trim());
+    const stdoutNote = reason === 'CLI_SILENT_EXIT' ? `\n--- stdout ---\n${rawStdout || '(empty)'}` : '';
     throw new RunReviewerError(
       reason,
-      `The reviewer CLI exited ${r.status}. ${remedyFor(reason)}\n--- stderr ---\n${stderr.trim() || '(empty)'}`,
+      `The reviewer CLI exited ${r.status}. ${remedyFor(reason)}\n--- stderr ---\n${stderr.trim() || '(empty)'}${stdoutNote}`,
+      { stdoutExcerpt: reason === 'CLI_SILENT_EXIT' ? rawStdout : null },
     );
   }
 
@@ -458,14 +421,26 @@ function remedyFor(reason) {
 /**
  * Retry only credential-specific failures: first across independent Claude
  * accounts, then across providers. Request/model/output failures stay failed.
+ *
+ * `providerFallback` accepts EITHER shape, for backward compatibility with
+ * every existing caller and test that passes a single function:
+ *   - a plain `(prompt) => text` function, treated as one provider labelled
+ *     `'openai-fallback'` (the label existing tests and logs already assert);
+ *   - an array of `{ label, run }`, tried IN ORDER. The first to succeed wins;
+ *     if every one throws, the final error names all of their messages so a
+ *     misconfigured second provider is never hidden behind a first failure.
  */
 export function runReviewerWithFailover({ prompt, model, tokens, spawn, providerFallback = null }) {
-  if (!Array.isArray(tokens) || tokens.length === 0) {
-    throw new RunReviewerError('AUTH_MISSING', 'No usable credential was resolved.');
-  }
+  const hasTokens = Array.isArray(tokens) && tokens.length > 0;
+  const noCredential = new RunReviewerError('AUTH_MISSING', 'No usable credential was resolved.');
+  // A CLAUDE-FREE, PROVIDER-ONLY RUN IS VALID: only "nothing at all configured"
+  // is immediate. `last` starts as this same error so a token-less run falls
+  // straight through to `providerFallback` below with a truthful `last.reason`,
+  // instead of the old unconditional throw that made the chain unreachable.
+  if (!hasTokens && !providerFallback) throw noCredential;
   const RETRYABLE = new Set(['AUTH_FAILED', 'QUOTA_DRAINED', 'CLI_SILENT_EXIT']);
-  let last;
-  for (const [i, t] of tokens.entries()) {
+  let last = noCredential;
+  for (const [i, t] of hasTokens ? tokens.entries() : []) {
     try {
       const r = runReviewer({ prompt, model, token: t.token, spawn });
       if (i > 0) console.log(`auth: succeeded on ${t.label} after ${tokens[0].label} failed.`);
@@ -474,58 +449,49 @@ export function runReviewerWithFailover({ prompt, model, tokens, spawn, provider
       last = err;
       const more = i + 1 < tokens.length;
       if (!(err instanceof RunReviewerError) || !RETRYABLE.has(err.reason)) throw err;
+      // PRINTED HERE, before the next slot is tried: `last` is never re-thrown
+      // (and never logged) once a later credential or provider succeeds, so
+      // this diagnosis would otherwise vanish the moment the fallback answers.
+      if (err.reason === 'CLI_SILENT_EXIT' && err.stdoutExcerpt !== null) {
+        console.log(`auth: ${t.label} CLI_SILENT_EXIT stdout (first 800 chars): ${err.stdoutExcerpt.slice(0, 800) || '(empty)'}`);
+      }
       if (!more) break;
       console.log(`auth: ${t.label} failed with ${err.reason}; trying ${tokens[i + 1].label}.`);
     }
   }
   if (providerFallback) {
-    console.log(`auth: Claude failed with ${last.reason}; trying the independent provider fallback.`);
-    try {
-      return { text: providerFallback(prompt), envelope: { provider: 'openai-fallback' } };
-    } catch (error) {
+    const providers = Array.isArray(providerFallback)
+      ? providerFallback
+      : [{ label: 'openai-fallback', run: providerFallback }];
+    const failures = [];
+    for (const provider of providers) {
+      console.log(`auth: Claude failed with ${last.reason}; trying ${provider.label}.`);
+      try {
+        // A provider may answer with a bare string (openai-fallback, one
+        // fixed model) or `{ text, model }` when it tried more than one model
+        // (openrouter-fallback) -- the envelope names which model actually
+        // answered only when the provider reports one.
+        const outcome = provider.run(prompt);
+        const text = typeof outcome === 'string' ? outcome : outcome.text;
+        const model = typeof outcome === 'string' ? undefined : outcome.model;
+        console.log(`auth: ${provider.label} succeeded${model ? ` (model=${model})` : ''}.`);
+        return { text, envelope: { provider: provider.label, ...(model ? { model } : {}) } };
+      } catch (error) {
+        console.log(`auth: ${provider.label} failed: ${error.message}`);
+        failures.push(`${provider.label}: ${error.message}`);
+      }
+    }
+    if (failures.length > 0) {
       throw new RunReviewerError(
         'FALLBACK_ERROR',
-        `Claude failed with ${last.reason}, and the independent provider failed: ${error.message}`,
+        `Claude failed with ${last.reason}, and every independent provider failed:\n${failures.join('\n')}`,
       );
     }
   }
   throw last;
 }
 
-/**
- * Every credential this run may use, in order, with a LABEL that is safe to
- * print. The value is never logged -- only which slot it came from -- because a
- * secret in a log is a leaked secret and this repository is public.
- */
-export function resolveTokens(env) {
-  const out = [];
-  const seen = new Set();
-  for (const [name, label] of [
-    ['CLAUDE_CODE_OAUTH_TOKEN', 'the primary credential'],
-    ['CLAUDE_CODE_OAUTH_TOKEN_2', 'the fallback credential'],
-  ]) {
-    const raw = env[name];
-    if (raw === undefined || String(raw).trim() === '') continue;
-    const { token, note } = checkToken(raw);
-    // THE SAME SECRET IN BOTH SLOTS IS NOT REDUNDANCY, and it is an easy mistake
-    // to make while wiring the second one up. Refused rather than retried,
-    // because a fallback that shares the primary's pool fails at exactly the
-    // moment it is needed while looking like insurance.
-    if (seen.has(token)) {
-      throw new RunReviewerError(
-        'DUPLICATE_CREDENTIAL',
-        `\`${name}\` holds the same value as an earlier slot. Two copies of one credential share ` +
-          'one quota pool and one expiry, so this is not a fallback. REMEDY: set a token from a ' +
-          'different account, or unset it.',
-      );
-    }
-    seen.add(token);
-    out.push({ token, label, note, name });
-  }
-  return out;
-}
-
-function main() {
+async function main() {
   const args = { rubric: null, input: null, out: null, model: 'sonnet', retryNote: null, retryReason: null };
   const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model'], ['--retry-note', 'retryNote'], ['--retry-reason', 'retryReason']]); // optional: retry-prompt.mjs
   const argv = process.argv.slice(2);
@@ -544,28 +510,30 @@ function main() {
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
   const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null, retryReason: args.retryReason ?? 'PROOF_OF_WORK_FAILED' }); // default: #3652 wording for an older caller with no --retry-reason
 
-  const tokens = resolveTokens(process.env);
-  if (tokens.length === 0) {
-    // Unchanged message: `checkToken` owns this diagnosis, and it is the one a
-    // reader has already seen in the logs.
-    checkToken(process.env.CLAUDE_CODE_OAUTH_TOKEN);
-  }
-  console.log(
-    `auth: ${tokens[0].note}` +
-      (tokens.length > 1
-        ? `, plus ${tokens.length - 1} fallback credential(s)`
-        : ', NO fallback configured (set CLAUDE_CODE_OAUTH_TOKEN_2 from a second account)'),
-  );
+  // THE PARALLEL CHEAP ENSEMBLE RUNS FIRST, before the Claude CLI -- see
+  // ensemble-reviewer.mjs, which owns the design and this feature's module-size
+  // budget. Unset/empty `REVIEW_ENSEMBLE_MODELS` is the unchanged path: `false`
+  // means every line below behaves exactly as it did before this existed.
+  if (await maybeRunEnsemble({ env: process.env, input, prompt, outPath: args.out })) return;
 
-  const openAiKey = String(process.env.OPENAI_API_KEY ?? '').trim();
-  console.log(openAiKey ? 'provider fallback: configured.' : 'provider fallback: NOT configured (set OPENAI_API_KEY).');
+  const tokens = resolveTokens(process.env);
+  const providers = resolveProviderFallbacks(process.env);
+  // Only reached with NEITHER a Claude credential NOR a provider configured --
+  // a provider-only run must reach the failover below instead of failing here.
+  if (tokens.length === 0 && providers.length === 0) checkToken(process.env.CLAUDE_CODE_OAUTH_TOKEN);
+  console.log(tokens.length === 0
+    ? 'auth: no Claude credential configured; relying on the provider chain.'
+    : `auth: ${tokens[0].note}` + (tokens.length > 1
+      ? `, plus ${tokens.length - 1} fallback credential(s)`
+      : ', NO fallback configured (set CLAUDE_CODE_OAUTH_TOKEN_2 from a second account)'));
+  console.log(describeProviderFallbacks(providers));
 
   const { text, envelope } = runReviewerWithFailover({
     prompt,
     model: args.model,
     tokens,
     spawn: realSpawn,
-    providerFallback: openAiKey ? (reviewPrompt) => runOpenAiFallback({ prompt: reviewPrompt, apiKey: openAiKey }) : null,
+    providerFallback: providers.length > 0 ? providers : null,
   });
 
   writeFileSync(args.out, text);
@@ -577,7 +545,7 @@ function main() {
 
 if (isMainEntry(import.meta.url)) {
   try {
-    main();
+    await main();
   } catch (err) {
     if (err instanceof RunReviewerError) {
       console.error(`❌ ${err.reason}: ${err.message}`);

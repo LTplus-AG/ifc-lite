@@ -77,13 +77,19 @@ export const CLASS_VERDICTS = ['clear', 'not-applicable'];
  * sentence: it excludes `ok`, `n/a`, `-` and `none` without demanding prose the
  * model would pad to reach.
  */
-const MIN_WHY_CHARS = 12;
+// EXPORTED so `ensemble-reviewer.mjs`'s `mergeClassPass` can enforce the SAME
+// floor and the SAME distinctness rule this file checks, rather than growing
+// its own copy that could silently accept a merged row this file then refuses
+// (#4981 finding-5: a merge that under-filters produces class_pass rows
+// checkClassPass rejects, which is a schema-valid pool that CLASS_PASS_INCOMPLETEs
+// downstream).
+export const MIN_WHY_CHARS = 12;
 
 /** @param {unknown} v */
 const isNonEmptyString = (v) => typeof v === 'string' && v.trim() !== '';
 
 /** Compare `why` values the way a reader would, so casing and spacing cannot forge distinctness. */
-const normaliseWhy = (v) => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
+export const normaliseWhy = (v) => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
 
 /**
  * REFUSE A CLEAN VERDICT THAT DID NOT SHOW ITS PER-CLASS PASS.

@@ -165,8 +165,26 @@ test('THE CANARY RUNS THE LANE\'S REAL PIPELINE, not a shortcut past it', () => 
 test('#3808: the live canary passes every review fallback credential', () => {
   const workflow = readFileSync(join(HERE, '..', '..', '.github/workflows/review-lane-canary.yml'), 'utf8');
   const step = workflow.split('- name: Ask the reviewer for a known answer')[1]?.split('- name: Raise or update')[0] ?? '';
-  for (const secret of ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN_2', 'OPENAI_API_KEY']) {
+  for (const secret of ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN_2', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY']) {
     assert.match(step, new RegExp(`${secret}:\\s*\\$\\{\\{\\s*secrets\\.${secret}\\s*\\}\\}`));
+  }
+  assert.match(step, /OPENROUTER_REVIEW_MODELS:\s*\$\{\{\s*vars\.OPENROUTER_REVIEW_MODELS\s*\}\}/);
+});
+
+test('the live canary passes the ensemble variables too, so it exercises that path when configured', () => {
+  const workflow = readFileSync(join(HERE, '..', '..', '.github/workflows/review-lane-canary.yml'), 'utf8');
+  const step = workflow.split('- name: Ask the reviewer for a known answer')[1]?.split('- name: Raise or update')[0] ?? '';
+  assert.match(step, /REVIEW_ENSEMBLE_MODELS:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_MODELS\s*\}\}/);
+  assert.match(step, /REVIEW_ENSEMBLE_STRONG_ON_RISK:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_STRONG_ON_RISK\s*\}\}/);
+});
+
+test('the reviewer and retry steps in the real workflow both pass the ensemble variables', () => {
+  const workflow = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const reviewerStep = workflow.split('- name: Run the reviewer')[1]?.split('- name: Validate the findings')[0] ?? '';
+  const validateStep = workflow.split('- name: Validate the findings')[1]?.split('- name: Judge the findings')[0] ?? '';
+  for (const step of [reviewerStep, validateStep]) {
+    assert.match(step, /REVIEW_ENSEMBLE_MODELS:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_MODELS\s*\}\}/);
+    assert.match(step, /REVIEW_ENSEMBLE_STRONG_ON_RISK:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_STRONG_ON_RISK\s*\}\}/);
   }
 });
 

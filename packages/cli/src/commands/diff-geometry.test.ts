@@ -22,7 +22,6 @@
  */
 
 import { existsSync } from 'node:fs';
-import { crc32 } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -77,6 +76,25 @@ const BASE_TWINS = twinWallsModel(guid('OLDA'), guid('OLDB'));
 const HEAD_TWINS = twinWallsModel(guid('NEWA'), guid('NEWB'));
 
 /**
+ * Bitwise CRC32 (IEEE 802.3 / zlib polynomial `0xEDB88320`) — the checksum a
+ * zip local/central file header carries per entry. `node:zlib`'s `crc32`
+ * export needs Node >=20.15/22.2 (`@ifc-lite/cli`'s own `engines` floor is
+ * Node >=18, see `package.json`), so this is a small local implementation
+ * rather than a version-gated import. No lookup table: the fixture bytes are
+ * a few hundred bytes, so the 8-bit-at-a-time cost is irrelevant here.
+ */
+function crc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buf) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/**
  * Minimal single-entry, STORE-method (uncompressed) `.ifcZIP` container, built
  * by hand rather than pulling in a zip-writer dependency this package does not
  * otherwise need. `unwrapIfcZipView` (`@ifc-lite/parser`) only needs a
@@ -86,7 +104,7 @@ const HEAD_TWINS = twinWallsModel(guid('NEWA'), guid('NEWB'));
  */
 function makeStoredIfcZip(entryName: string, content: string): Buffer {
   const data = Buffer.from(content, 'utf-8');
-  const crc = crc32(data) >>> 0;
+  const crc = crc32(data);
   const name = Buffer.from(entryName, 'utf-8');
 
   const localHeader = Buffer.alloc(30);
@@ -166,6 +184,19 @@ describe.runIf(WASM_AVAILABLE)('ifc-lite diff --by-content --geometry', () => {
     return JSON.parse(stdoutSpy.mock.calls.map((c) => String(c[0])).join(''));
   }
 
+  /** Every `renamed` match's (single) base key -> (single) head key, sorted by
+   *  base key — the exact pairing, not just which four keys appeared. */
+  function exactRenamedPairs(matches: { kind: string; base: string[]; head: string[] }[]): [string, string][] {
+    return matches
+      .map((match): [string, string] => {
+        expect(match.kind).toBe('renamed');
+        expect(match.base).toHaveLength(1);
+        expect(match.head).toHaveLength(1);
+        return [match.base[0], match.head[0]];
+      })
+      .sort(([a], [b]) => a.localeCompare(b));
+  }
+
   it('cannot tell the twins apart without geometry: no renamed pair', async () => {
     await contentDiffCommand({ basePath, headPath, json: true });
     const result = stdoutJson();
@@ -188,11 +219,14 @@ describe.runIf(WASM_AVAILABLE)('ifc-lite diff --by-content --geometry', () => {
 
     expect(result.scope).toBe('both');
     expect(result.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 2 });
-    expect(result.contentMatches.map((m) => m.kind)).toEqual(['renamed', 'renamed']);
-    const pairedKeys = new Set(result.contentMatches.flatMap((m) => [...m.base, ...m.head]));
-    expect(pairedKeys).toEqual(
-      new Set([guid('OLDA'), guid('OLDB'), guid('NEWA'), guid('NEWB')]),
-    );
+    // Not just "these four keys appeared somewhere" — OLDA and OLDB carry
+    // DIFFERENT cross-sections (0.2 m / 0.35 m), and each head wall keeps its
+    // base's cross-section, so the world geometry hash must pair each wall
+    // with its OWN counterpart, not the other one.
+    expect(exactRenamedPairs(result.contentMatches)).toEqual([
+      [guid('OLDA'), guid('NEWA')],
+      [guid('OLDB'), guid('NEWB')],
+    ]);
   }, 30_000);
 
   it('--geometry over `.ifcZIP` inputs sees the unwrapped STEP bytes, not the zip container', async () => {
@@ -216,11 +250,10 @@ describe.runIf(WASM_AVAILABLE)('ifc-lite diff --by-content --geometry', () => {
     const result = stdoutJson();
 
     expect(result.scope).toBe('both');
-    expect(result.contentMatches.map((m) => m.kind)).toEqual(['renamed', 'renamed']);
-    const pairedKeys = new Set(result.contentMatches.flatMap((m) => [...m.base, ...m.head]));
-    expect(pairedKeys).toEqual(
-      new Set([guid('OLDA'), guid('OLDB'), guid('NEWA'), guid('NEWB')]),
-    );
+    expect(exactRenamedPairs(result.contentMatches)).toEqual([
+      [guid('OLDA'), guid('NEWA')],
+      [guid('OLDB'), guid('NEWB')],
+    ]);
   }, 30_000);
 });
 

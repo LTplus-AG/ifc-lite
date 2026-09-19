@@ -165,12 +165,28 @@ const JOB_STRIDE = 3;
  * guards: `buildPrePassOnce` can itself throw (a malformed file), and a throw
  * before the `try` would skip `clearPrePassCache()`, carrying whatever partial
  * state it left behind into the next file processed through this `api`.
+ *
+ * **Installs the source once, rather than passing `bytes` to every chunk's
+ * `processGeometryBatch` call.** The legacy call takes `data` positionally and
+ * copies it into wasm linear memory on every invocation — fine for one call,
+ * but `JOBS_PER_BATCH`-chunking turns that into hundreds of copies of the
+ * whole file for a large model (issue #4956 review). `setSourceBytes` +
+ * `processGeometryBatchFromSource` is the same lever the browser worker's
+ * cold-load path uses (`geometry.worker.ts`'s `applySourceBytesToApi` /
+ * `batchFromSourceFn`): install the file ONCE, then every chunk reads it off
+ * the wasm heap. Feature-detected — a wasm build that predates the `*FromSource`
+ * pair falls back to the legacy per-call `bytes` argument.
  */
 export function runGeometryPass(api: WasmIfcAPI, bytes: Uint8Array): GeometryPassResult {
   const hashes = new Map<DiffRef, bigint>();
   const aabbs = new Map<DiffRef, GeometryAabb>();
   const volumes = new Map<DiffRef, number>();
   let unitScale = 1;
+
+  const useSource =
+    typeof api.setSourceBytes === 'function' &&
+    typeof api.processGeometryBatchFromSource === 'function';
+  if (useSource) api.setSourceBytes(bytes);
 
   try {
     const pre = api.buildPrePassOnce(bytes) as PrePassResult | undefined;
@@ -189,20 +205,34 @@ export function runGeometryPass(api: WasmIfcAPI, bytes: Uint8Array): GeometryPas
     for (let startJob = 0; startJob < total; startJob += JOBS_PER_BATCH) {
       const endJob = Math.min(startJob + JOBS_PER_BATCH, total);
       const jobSlice = pre.jobs.slice(startJob * JOB_STRIDE, endJob * JOB_STRIDE);
-      const collection = api.processGeometryBatch(
-        bytes,
-        jobSlice,
-        pre.unitScale ?? 1,
-        rtcX,
-        rtcY,
-        rtcZ,
-        pre.needsShift ?? false,
-        voidKeys,
-        voidCounts,
-        voidValues,
-        styleIds,
-        styleColors,
-      );
+      const collection = useSource
+        ? api.processGeometryBatchFromSource(
+            jobSlice,
+            pre.unitScale ?? 1,
+            rtcX,
+            rtcY,
+            rtcZ,
+            pre.needsShift ?? false,
+            voidKeys,
+            voidCounts,
+            voidValues,
+            styleIds,
+            styleColors,
+          )
+        : api.processGeometryBatch(
+            bytes,
+            jobSlice,
+            pre.unitScale ?? 1,
+            rtcX,
+            rtcY,
+            rtcZ,
+            pre.needsShift ?? false,
+            voidKeys,
+            voidCounts,
+            voidValues,
+            styleIds,
+            styleColors,
+          );
       try {
         const ids = collection.geometryHashIds;
         const values = collection.geometryHashValues;
@@ -234,6 +264,11 @@ export function runGeometryPass(api: WasmIfcAPI, bytes: Uint8Array): GeometryPas
     }
   } finally {
     if (api.clearPrePassCache) api.clearPrePassCache();
+    // `setSourceBytes` "REPLACES the previous file wholesale" (its own doc
+    // comment) — there is no dedicated release call, so installing an empty
+    // buffer is how this drops its reference to a possibly large file instead
+    // of leaving it resident on the wasm heap for the rest of the process.
+    if (useSource) api.setSourceBytes(new Uint8Array(0));
   }
   return { hashes, aabbs, volumes, unitScale };
 }
@@ -266,7 +301,14 @@ export function attachGeometryFingerprints(
  * without geometry, exactly as it always has.
  *
  * Frees the `IfcAPI` handle in `finally`, even if a pass throws (AGENTS.md
- * "Geometry & WASM").
+ * "Geometry & WASM"). A pass that throws — a malformed or truncated model,
+ * or an internal wasm panic surfaced as a JS error — degrades to `'data'`
+ * scope with a warning rather than aborting the whole `--by-content` command
+ * (issue #4956 review): `--geometry` is opt-in extra evidence, and the
+ * data-only comparison underneath it is still a useful answer. Any
+ * `geometryHash`/`aabb`/`volume` a partial pass DID manage to attach before
+ * throwing is harmless left attached — `scope: 'data'` takes geometry out of
+ * the comparison regardless of what individual fingerprints carry.
  */
 export async function resolveGeometryScope(
   enabled: boolean,
@@ -286,6 +328,9 @@ export async function resolveGeometryScope(
     attachGeometryFingerprints(baseFingerprints, runGeometryPass(runtime.runtime.api, baseBytes));
     attachGeometryFingerprints(headFingerprints, runGeometryPass(runtime.runtime.api, headBytes));
     return 'both';
+  } catch (error) {
+    warn(`--geometry failed (${(error as Error).message}); continuing with data scope.`);
+    return 'data';
   } finally {
     runtime.runtime.api.free();
   }

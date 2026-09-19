@@ -8,7 +8,11 @@ export function generatedNames(schemaSource) {
   if (start === -1) return new Set();
   const next = schemaSource.indexOf('pub fn ', start + 'pub fn from_str'.length);
   const body = schemaSource.slice(start, next === -1 ? undefined : next);
-  return new Set([...body.matchAll(/^\s+"(IFC[A-Z0-9]+)" => Self::/gm)].map((match) => match[1]));
+  return new Set(
+    [...body.matchAll(/^\s+"(IFC[A-Z0-9]+)"\s*=>\s*(?:\{\s*)?Self::/gm)].map(
+      (match) => match[1],
+    ),
+  );
 }
 
 /** Names in the canonical schema catalog, excluding supplemental variants. */
@@ -23,7 +27,11 @@ export function canonicalGeneratedNames(schemaSource) {
     ),
   );
   return new Set(
-    [...schemaSource.matchAll(/"(IFC[A-Z0-9]+)"\s*=>\s*Self::(Ifc[A-Za-z0-9]+)/g)]
+    [
+      ...schemaSource.matchAll(
+        /"(IFC[A-Z0-9]+)"\s*=>\s*(?:\{\s*)?Self::(Ifc[A-Za-z0-9]+)/g,
+      ),
+    ]
       .filter((match) => variants.has(match[2]))
       .map((match) => match[1]),
   );

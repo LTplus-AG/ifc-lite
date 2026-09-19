@@ -237,6 +237,16 @@ export function checkCoverage({
       );
   }
 
+  // Supplemental variants deliberately keep their legacy classification arm,
+  // but an arm for a canonical IFC4X3 name would shadow that exact generated
+  // type in legacy_aware_ifc_type. Reject only the canonical overlap.
+  for (const key of [...keys].sort()) {
+    if (!known.has(key)) continue;
+    failures.push(
+      `${LEGACY_REL} has an arm for canonical name "${key}", which would shadow its exact generated type`,
+    );
+  }
+
   for (const key of [...keys].sort()) {
     if (allTableNames.has(key)) continue;
     if (KEYS_ABSENT_FROM_EVERY_BUNDLED_TABLE.has(key)) continue;
@@ -309,16 +319,15 @@ before editing either.
 `,
       },
       {
-        keys: ['from_str already resolves'],
+        keys: ['arm for canonical name'],
         text: `
-An arm whose key the generated enum already resolves is not a coverage gap, it
-is a conflict. legacy_aware_ifc_type_from_record short-circuits whenever the
-decoded type is not Unknown, so that arm's remap is skipped on the wasm path
-while the native path still applies it -- the divergence #3179 was filed for.
+An arm for a canonical IFC4X3 name is not a coverage gap, it shadows the exact
+generated type in legacy_aware_ifc_type. Supplemental IFC2X3/IFC4-only names
+still need these arms to preserve their established geometry classification;
+canonical names do not.
 
-REMOVE the arm: a name from_str resolves needs no legacy mapping. If the remap
-is still wanted, the short-circuit in rust/core/src/schema_helpers.rs has to go
-first, and that costs a record scan on every entity.
+REMOVE the canonical arm. If a remap is actually required, change the
+classification contract explicitly and cover both native and wasm callers.
 `,
       },
       {

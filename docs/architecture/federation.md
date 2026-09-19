@@ -34,7 +34,8 @@ The `FederationRegistry` (singleton in `@ifc-lite/renderer`) assigns each model 
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Each model's range is `offset + 1 … offset + maxExpressId`. The next offset is
+The registry accepts the range `offset … offset + maxExpressId` (express id 0 is
+valid at the registry boundary, although normal STEP entities start at 1). The next offset is
 `offset + maxExpressId + 1 + OVERLAY_ID_HEADROOM` (H = 1,000,000): the headroom is
 reserved so ids the mutation overlay allocates into a loaded model after load
 (added walls, spaces, …) can never collide with the next model's real entities.

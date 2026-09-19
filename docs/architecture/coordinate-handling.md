@@ -488,7 +488,8 @@ if (pre.needsShift && pre.rtcOffset) {
 // In TypeScript path
 const info = handler.getCurrentCoordinateInfo();
 console.log('[RTC] Handler info:', {
-    wasmDetected: handler.wasmRtcApplied,
+    wasmApplied: info?.wasmRtcFrame?.needsShift,
+    wasmRtcOffset: info?.wasmRtcOffset,
     originShift: info?.originShift,
     hasLargeCoordinates: info?.hasLargeCoordinates
 });

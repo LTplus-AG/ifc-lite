@@ -289,15 +289,20 @@ cd ifc-lite
 # Install dependencies
 pnpm install
 
-# Build all packages (uses pre-built WASM)
+# Build all packages (rebuilds WASM when wasm-pack is installed)
 pnpm build
 
 # Start the viewer
 pnpm dev
 ```
 
-!!! tip "No Rust Required for Development"
-    WASM binaries are pre-built and committed to the repository. You only need Rust if you're modifying the core parsing/geometry code.
+!!! tip "Type-checking without Rust"
+    The generated WASM type declarations are committed, so type-checking does
+    not require Rust. The WASM runtime itself is gitignored: a fresh checkout
+    must either build it with the pinned Rust toolchain and `wasm-pack` or run
+    `pnpm build:wasm:fetch` to download the published bundle before the viewer
+    can run or bundle. `pnpm build` rebuilds the runtime automatically when the
+    Rust tools are installed.
 
 ### Rebuilding WASM
 

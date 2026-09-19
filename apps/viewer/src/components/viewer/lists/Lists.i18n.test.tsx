@@ -58,10 +58,6 @@ const KEYS = Object.keys(CATALOGUE) as ListsKey[];
 /** Only this file's own prefixes — the sibling test files own the rest. */
 const OWNED_PREFIXES = ['lists.panel.', 'lists.library.', 'lists.modelTagScope.', 'lists.errorBox.'];
 const OWNED_KEYS = KEYS.filter((k) => OWNED_PREFIXES.some((p) => k.startsWith(p)));
-const STATIC_KEYS = OWNED_KEYS.filter((key) => {
-  const v = CATALOGUE[key];
-  return typeof v === 'string' && !v.includes('{');
-});
 
 const englishOf = (key: ListsKey): string => {
   const v = CATALOGUE[key];

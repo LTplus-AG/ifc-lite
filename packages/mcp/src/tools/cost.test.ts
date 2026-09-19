@@ -47,7 +47,14 @@ describe('#4855 MCP cost tools', () => {
     expect(evaluated.structuredContent).toMatchObject({
       source: 'loaded-source', evaluation: { Amount: '2250', Currency: 'GBP' },
     });
+    // #4857: MCP's headless backend now threads its MutablePropertyView into
+    // createCostBackend (parity with the CLI/SDK), so bim.cost observes the
+    // pending edit by default — the same guarantee #4916 established
+    // elsewhere. includeMutations:false is the escape hatch back to the
+    // on-disk graph this test pinned before that wiring landed.
     expect(model.bim.cost.items('cost-model').find(item => item.ref.expressId === 42)?.Name)
+      .toBe('Overlay-only name');
+    expect(model.bim.cost.items('cost-model', { includeMutations: false }).find(item => item.ref.expressId === 42)?.Name)
       .toBe('External wall total');
   });
 

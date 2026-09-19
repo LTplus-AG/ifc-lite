@@ -103,7 +103,7 @@ export function focusClashGroup(
   const frameReady = new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
       try {
-        Promise.resolve(useViewerStore.getState().cameraCallbacks.frameSelection?.(1)).then(() => resolve(), (error) => {
+        Promise.resolve(useViewerStore.getState().cameraCallbacks.frameSelection?.(0)).then(() => resolve(), (error) => {
           console.error('[clash] Could not finish framing the manual clash group:', error);
           resolve();
         });

@@ -350,6 +350,39 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
     );
   });
 
+  it('keeps exact isolation GUIDs when the first numeric owner has no GUID (#4921)', async () => {
+    const roomGuid = 'ROOMMODEL0000000000001';
+    const model = (id: string, guid: string | undefined) => ({
+      id, name: id, idOffset: 0, maxExpressId: CLASH_A_ID,
+      ifcDataStore: {
+        entities: { getGlobalId: (expressId: number) => expressId === CLASH_A_ID ? guid : undefined },
+      },
+      geometryResult: null, loadedAt: 0,
+    });
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([
+          ['ordinary', model('ordinary', undefined)],
+          ['room:r:m0', model('room:r:m0', roomGuid)],
+        ]) as unknown as ViewerState['models'],
+        ifcDataStore: null,
+        isolatedEntities: new Set([CLASH_A_ID]),
+      });
+    });
+
+    const viewpoint = await api!.createViewpointFromState({
+      includeSnapshot: false,
+      includeSelection: false,
+      additionalVisibleGuids: [roomGuid],
+    });
+
+    assert.deepEqual(
+      viewpoint?.components?.visibility?.exceptions?.map((component) => component.ifcGuid),
+      [roomGuid],
+      'an exact model-bound GUID makes a numerically unnameable isolation recordable',
+    );
+  });
+
   it('includes a StoreEditor-created clash member in selection, coloring, and isolation (#4921)', async () => {
     const overlayId = 900;
     const overlayGuid = 'AUTHORED00000000000001';

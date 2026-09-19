@@ -433,15 +433,19 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           isEntityPending,
         );
         ({ visibleGuids, hiddenGuids } = capture);
-        if (visibleGuids && opts.additionalVisibleGuids) {
-          visibleGuids = [...new Set([...visibleGuids, ...opts.additionalVisibleGuids])];
+        let notice = capture.notice;
+        if (visibilityState.isolatedEntities !== null
+          && opts.additionalVisibleGuids?.length
+          && !notice?.pending) {
+          visibleGuids = [...new Set([...(visibleGuids ?? []), ...opts.additionalVisibleGuids])];
+          if (notice && visibleGuids.length > 0) notice = { ...notice, omitted: false };
         }
-        if (capture.notice) {
-          const { unnameable, total, kind, omitted, pending, ids } = capture.notice;
+        if (notice) {
+          const { unnameable, total, kind, omitted, pending, ids } = notice;
           console.warn(
             `[useBCF] ${unnameable} of ${total} ${kind} entities have no resolvable IFC GlobalId${pending ? ' (model metadata still loading)' : ''}; ${omitted ? 'omitting the viewpoint visibility component' : 'recording the rest'}. Global ids: ${ids.join(', ')}`,
           );
-          const message = describeVisibilityNotice(capture.notice);
+          const message = describeVisibilityNotice(notice);
           if (message) toast.info(message);
         }
       }

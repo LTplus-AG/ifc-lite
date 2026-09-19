@@ -15,4 +15,5 @@ export const chartsEn = {
   'chartEditor.sourceFilterAriaLabel': 'Source filter',
   'chartEditor.selectorSyntaxReference': 'Selector syntax reference',
   'chartEditor.sourceFilterNotApplicable': 'Source filter is not applicable to {source}.',
+  'chartCard.noSourceFilterMatches': 'No rows match this source filter.',
 } as const satisfies Record<string, TranslationValue>;

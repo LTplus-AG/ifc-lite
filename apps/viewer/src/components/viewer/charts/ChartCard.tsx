@@ -13,6 +13,7 @@ import { Crosshair, Pencil, X } from 'lucide-react';
 import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { applyChartFilter } from '@/lib/charts/source-filter';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
@@ -75,6 +76,7 @@ export const EMPTY_HINTS: Record<ChartSource, string> = {
 };
 
 export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, onRemove, onAggregation }: ChartCardProps) {
+  const { t } = useTranslation();
   const chartSlice = useViewerStore((s) => s.chartSlice);
   const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
   const chartSliceBuckets = useViewerStore((s) => s.chartSliceBuckets);
@@ -183,7 +185,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
               ? subtitle
               : filteredDataset.rows.length === 0
                 ? filterSelector
-                  ? 'No rows match this source filter.'
+                  ? t('chartCard.noSourceFilterMatches')
                   : EMPTY_HINTS[spec.source]
                 : 'Nothing to bucket — every row is without a value for this dimension.'}
           </div>

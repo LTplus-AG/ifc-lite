@@ -200,7 +200,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const result = addMemberToStore(editor, anchor, params as MemberInStoreParams);
       return { modelId: normalizedModelId, expressId: result.memberId };
     },
-    ...createCostStoreBackend((modelId: string | undefined) => {
+    ...withCostMutationNotifications(createCostStoreBackend((modelId: string | undefined) => {
       const requested = modelId ?? '';
       const editor = getEditor(requested);
       const dataStore = resolveDataStore(requested);
@@ -210,6 +210,37 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const mutationView = store.getState().getMutationView(normalized);
       if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
       return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
-    }, costAdapter),
+    }, costAdapter, modelId => markCostModelDirty(store, modelId)), store),
   };
+}
+
+/**
+ * Relationship methods notify through `createCostStoreBackend` only when they
+ * actually changed the overlay. The four create methods always change it, so
+ * wrap those here as well. Bumping the viewer's existing mutation revision is
+ * what makes an already-open Cost panel re-read the mutation-aware graph.
+ */
+function withCostMutationNotifications(
+  methods: ReturnType<typeof createCostStoreBackend>,
+  store: StoreApi,
+): ReturnType<typeof createCostStoreBackend> {
+  const notifyAfter = <Args extends unknown[]>(
+    method: (...args: Args) => EntityRef,
+  ) => (...args: Args): EntityRef => {
+    const result = method(...args);
+    markCostModelDirty(store, result.modelId);
+    return result;
+  };
+  return {
+    ...methods,
+    addCostSchedule: notifyAfter(methods.addCostSchedule),
+    addCostItem: notifyAfter(methods.addCostItem),
+    addCostValue: notifyAfter(methods.addCostValue),
+    addCostQuantity: notifyAfter(methods.addCostQuantity),
+  };
+}
+
+function markCostModelDirty(store: StoreApi, modelId: string): void {
+  const state = store.getState();
+  state.markModelsDirty([normalizeMutationModelId(state, modelId)]);
 }

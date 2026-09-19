@@ -11,7 +11,14 @@ export const BIM_DERIVED_TYPE_GROUPS = [
   },
   {
     title: 'Cost SDK types', namespace: 'BimCost',
-    sources: ['packages/sdk/src/cost-types.ts', 'packages/sdk/src/types.ts'],
-    roots: ['CostGraphData', 'CostScheduleData', 'CostItemData', 'CostValueData', 'CostEvaluationOptions', 'CostEvaluationData'],
+    sources: [
+      'packages/sdk/src/cost-types.ts', 'packages/sdk/src/types.ts',
+      'packages/create/src/types-cost.ts',
+    ],
+    roots: [
+      'CostGraphData', 'CostScheduleData', 'CostItemData', 'CostValueData',
+      'CostEvaluationOptions', 'CostEvaluationData', 'CostScheduleParams',
+      'CostItemParams', 'CostValueParams', 'CostQuantityParams',
+    ],
   },
 ];

@@ -177,13 +177,28 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
       otherRelationships.push(rel.ref.expressId);
       continue;
     }
-    const list = rel.Type === 'IfcRelDeclares'
-      ? { attributeIndex: 5, relatedIds: (rel.RelatedDefinitions ?? []).map(r => r.expressId) }
-      : rel.Type === 'IfcAppliedValueRelationship'
-        ? { attributeIndex: 1, relatedIds: (rel.Components ?? []).map(r => r.expressId) }
-        : { attributeIndex: 4, relatedIds: related };
-    if (list.relatedIds.includes(expressId)) {
-      otherRelationshipLists.push({ relId: rel.ref.expressId, ...list });
+    // Every list-shaped reference field this reader exposes on ANY cost
+    // relationship type, checked independently by (entity, attribute) — not
+    // gated by `rel.Type` alone. The three fields correspond to different
+    // EXPRESS attribute positions across the relationship types this reader
+    // enumerates (`RelatedDefinitions` at slot 5 for IfcRelDeclares,
+    // `Components` at slot 1 for IfcAppliedValueRelationship, `RelatedObjects`
+    // at slot 4 for the rest); a well-formed record only ever populates ONE
+    // of them. If a record somehow references the target through MORE than
+    // one — an unsupported/unexpected shape this reader's flat type can't
+    // rule out — a single precise per-slot rewrite would silently leave the
+    // OTHER field's reference dangling. Refuse the whole relationship
+    // (`otherRelationships`, tombstoned wholesale) instead of guessing which
+    // one to trust.
+    const listFieldMatches = [
+      { attributeIndex: 5, relatedIds: (rel.RelatedDefinitions ?? []).map(r => r.expressId) },
+      { attributeIndex: 1, relatedIds: (rel.Components ?? []).map(r => r.expressId) },
+      { attributeIndex: 4, relatedIds: related },
+    ].filter(candidate => candidate.relatedIds.includes(expressId));
+    if (listFieldMatches.length > 1) {
+      otherRelationships.push(rel.ref.expressId);
+    } else if (listFieldMatches.length === 1) {
+      otherRelationshipLists.push({ relId: rel.ref.expressId, ...listFieldMatches[0] });
     }
   }
   return {
@@ -332,8 +347,13 @@ export function createCostStoreBackend(
       const resolved = resolve(modelId);
       const current = graphOf(resolved.modelId).CostItems.find(item => item.ref.expressId === itemExpressId);
       const currentIds = (current?.CostValues ?? []).map(value => value.expressId);
-      if (current && currentIds.length === valueExpressIds.length
-        && currentIds.every((id, index) => id === valueExpressIds[index])) return;
+      // Compare against the SAME de-duplicated list attachCostValuesToItemInStore
+      // actually writes (setCostItemValues([v, v]) writes just [v]) — comparing
+      // against the raw, possibly-duplicated argument here would either miss a
+      // genuine no-op or falsely report a change that the write itself collapses.
+      const uniqueIds = [...new Set(valueExpressIds)];
+      if (current && currentIds.length === uniqueIds.length
+        && currentIds.every((id, index) => id === uniqueIds[index])) return;
       attachCostValuesToItemInStore(resolved.editor, itemExpressId, valueExpressIds);
       onRelationshipMutation?.(resolved.modelId);
     },

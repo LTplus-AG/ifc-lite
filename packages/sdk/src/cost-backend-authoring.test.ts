@@ -190,6 +190,17 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(cost.data('m').Relationships.some(r => r.ref.expressId === secondRel && r.RelatedObjects?.some(o => o.expressId === itemC))).toBe(true);
   });
 
+  // #4985 review: setCostItemValues([v, v]) must not write a duplicate
+  // reference into CostValues — the evaluator sums over the list, so a
+  // duplicate would double-count that value's AppliedValue.
+  it('de-duplicates valueExpressIds, and a repeat call naming the same (already-deduped) set is a no-op', async () => {
+    const { storeCost, cost } = await session();
+    const value = storeCost.addCostValue('m', { Name: 'V', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 1 } }).expressId;
+    storeCost.setCostItemValues('m', 41, [value, value]);
+    const item = cost.data('m').CostItems.find(i => i.ref.expressId === 41)!;
+    expect(item.CostValues?.map(r => r.expressId)).toEqual([value]);
+  });
+
   it('refuses to delete a value still referenced by an item, and detach:true rewrites CostValues to $ first', async () => {
     const { storeCost, cost, exportedGraph } = await session();
     const value = storeCost.addCostValue('m', { Name: 'V', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 1 } }).expressId;
@@ -234,6 +245,47 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
       .toEqual([{ modelId: 'm', expressId: survivingItem }]);
     expect(graph.Relationships.find(r => r.ref.expressId === assignsToProduct)?.RelatedObjects)
       .toEqual([{ modelId: 'm', expressId: survivingItem }]);
+  });
+
+  // #4985 review (codex): a relationship record that references the target
+  // through MORE THAN ONE reference-bearing field at once — an "unsupported"
+  // shape this reader's flat CostRelationshipData type can't structurally
+  // rule out, even though no real STEP file the actual per-type reader
+  // extracts from can currently produce it — must be refused/tombstoned
+  // wholesale (like a required scalar endpoint), not partially detached by
+  // rewriting only ONE of the two fields and leaving the other dangling.
+  // Exercised via a hand-built CostGraphData (bypassing the real reader,
+  // which never populates two list fields on one record) to pin the
+  // defensive (entity, attribute) classification directly.
+  it('refuses (whole-rel tombstone) a relationship record with the target in TWO reference fields at once, not a partial per-field rewrite', async () => {
+    const { store, editor, view, storeCost } = await session();
+    const item = storeCost.addCostItem('m', { Name: 'Ambiguous target' }).expressId;
+    const survivor = 1; // #1 is IFCWALL in the fixture — any live id works as a filler member.
+    const ambiguousRelId = view.createEntity('IfcRelAssignsToProduct', [
+      '0amb000000000000000001', null, null, null, [`#${item}`, `#${survivor}`], null, '#1',
+    ]).expressId;
+    const fakeGraph = {
+      modelId: 'm', source: 'loaded-source' as const, SchemaVersion: 'IFC4' as const,
+      CostSchedules: [], CostItems: [{ ref: { modelId: 'm', expressId: item }, Name: 'Ambiguous target' }],
+      CostValues: [], CostQuantities: [], Units: [], MeasuresWithUnit: [], ProjectUnits: {},
+      Relationships: [{
+        ref: { modelId: 'm', expressId: ambiguousRelId }, Type: 'IfcRelAssignsToProduct' as const,
+        // Both fields reference `item` — a shape the real per-type reader
+        // never produces, but the flat CostRelationshipData type permits.
+        RelatedObjects: [{ modelId: 'm', expressId: item }, { modelId: 'm', expressId: survivor }],
+        Components: [{ modelId: 'm', expressId: item }],
+      }],
+      Diagnostics: [], HasCostData: true,
+    };
+    const resolution: CostStoreModelResolution = { modelId: 'm', store, editor, mutationView: view, ownerHistoryId: null };
+    const ambiguousStoreCost = createCostStoreBackend(() => resolution, { data: () => fakeGraph });
+
+    expect(() => ambiguousStoreCost.removeCostEntity('m', item))
+      .toThrow(new RegExp(`still referenced by relationship #${ambiguousRelId}`));
+    ambiguousStoreCost.removeCostEntity('m', item, { detach: true });
+    // Whole-rel tombstone, not a rewrite that keeps the relationship alive
+    // with only ONE of its two references to `item` removed.
+    expect(editor.hasEntity(ambiguousRelId)).toBe(false);
   });
 
   it('refuses to author cost entities into an IFC5 model, the same as IFC2X3', async () => {

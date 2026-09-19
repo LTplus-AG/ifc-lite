@@ -48,7 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
-import { pushCreateEntityUndo as pushCreateEntityUndoImpl, markCostRelationshipMutation as markCostRelationshipMutationImpl } from './mutation-cost-undo.js';
+import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import type { TypeViewMode } from '../constants.js';
@@ -198,7 +198,7 @@ export interface GeorefMutationData {
   mapConversion?: Partial<MapConversion>;
 }
 
-export interface MutationSlice {
+export interface MutationSlice extends CostUndoMethods {
   // State
   /** Mutation views per model */
   mutationViews: Map<string, MutablePropertyView>;
@@ -646,23 +646,8 @@ export interface MutationSlice {
     storeyExpressId: number,
     params: MemberInStoreParams
   ) => { expressId: number } | { error: string };
-  /**
-   * Push the same CREATE_ENTITY undo/redo/dirty/version-bump `addColumn`/etc.
-   * push, for a `bim.store.addCost*` entity authored outside this slice (via
-   * `createCostStoreBackend`, `store-adapter.ts`) — a cost entity has no
-   * geometry/storey, so none of `addColumn`'s mesh/spatial-hierarchy work
-   * applies, only this tail does. See `mutation-cost-undo.ts`.
-   */
-  pushCreateEntityUndo: (modelId: string, entityId: number, ifcType: string) => void;
-  /** Same file's sibling, for a cost write that rewrites/removes EXISTING
-   *  relationships rather than creating one entity — see `mutation-cost-undo.ts`. */
-  markCostRelationshipMutation: (modelId: string) => void;
-  /**
-   * Auto-generate IfcSpace volumes for every enclosed area formed by
-   * the storey's walls (existing + overlay). When `dryRun: true` the
-   * detection runs but no IfcSpace is emitted — useful for live UI
-   * previews.
-   */
+  /** Auto-generate IfcSpace volumes for every enclosed area formed by the storey's walls
+   *  (existing + overlay). `dryRun: true` detects without emitting — for live UI previews. */
   generateSpacesFromWalls: (
     modelId: string,
     storeyExpressId: number,
@@ -1116,8 +1101,7 @@ export const createMutationSlice: StateCreator<
   mutationVersion: 0,
   georefMutations: new Map(),
 
-  pushCreateEntityUndo: (modelId, entityId, ifcType) => pushCreateEntityUndoImpl(set, modelId, entityId, ifcType),
-  markCostRelationshipMutation: (modelId) => markCostRelationshipMutationImpl(set, modelId),
+  ...createCostUndoMutations(set),
 
   // Georeferencing Mutations
   setGeorefField: (modelId, entity, field, value, oldValue) => {

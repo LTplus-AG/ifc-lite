@@ -352,6 +352,17 @@ describe('attachCostValuesToItemInStore', () => {
     expect(() => attachCostValuesToItemInStore(ed, 100, [value])).toThrow(/itemId #100 must be an IfcCostItem, got IFCWALL/);
     expect(() => attachCostValuesToItemInStore(ed, item, [100])).toThrow(/CostValues #100 must be an IfcCostValue, got IFCWALL/);
   });
+
+  // #4985 review: setCostItemValues([v, v]) must not write a duplicate
+  // reference — the evaluator sums CostValues, so a duplicate would double-count.
+  it('de-duplicates valueIds (SET semantics), like every other list writer here', async () => {
+    const { editor: ed, view } = await editor();
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    const v1 = addCostValueToStore(ed, ANCHOR, { Name: 'V1' });
+    const v2 = addCostValueToStore(ed, ANCHOR, { Name: 'V2' });
+    attachCostValuesToItemInStore(ed, item, [v1, v2, v1]);
+    expect(view.getPositionalMutationsForEntity(item)?.get(7)).toEqual([`#${v1}`, `#${v2}`]);
+  });
 });
 
 describe('removeCostEntityInStore', () => {

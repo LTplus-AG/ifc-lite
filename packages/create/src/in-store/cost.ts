@@ -377,5 +377,11 @@ export function attachCostValuesToItemInStore(editor: StoreEditor, itemId: numbe
     requireRef(id, 'CostValues', 'setCostItemValues');
     requireEntityType(editor, id, 'IfcCostValue', 'CostValues', 'setCostItemValues');
   }
-  editor.setPositionalAttribute(itemId, 7, valueIds.length === 0 ? null : valueIds.map(id => `#${id}`));
+  // De-duplicated (SET semantics, first occurrence kept), like every other
+  // list writer here (nestCostItemsInStore's childIds, assignToControlInStore's
+  // relatedObjectIds, …) — a repeated id must not write a repeated #N into a
+  // list the evaluator sums over (setCostItemValues([v, v]) would otherwise
+  // double-count that value).
+  const uniqueValueIds = [...new Set(valueIds)];
+  editor.setPositionalAttribute(itemId, 7, uniqueValueIds.length === 0 ? null : uniqueValueIds.map(id => `#${id}`));
 }

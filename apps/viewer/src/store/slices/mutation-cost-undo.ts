@@ -104,3 +104,20 @@ export function markCostRelationshipMutation(set: SetState, modelId: string): vo
     };
   });
 }
+
+/** The two methods above, as `MutationSlice`'s public surface for them — kept
+ *  here (not declared inline in `mutationSlice.ts`) via `interface X extends
+ *  CostUndoMethods`, so a module at its own recorded size budget never has to
+ *  grow to expose this pair. */
+export interface CostUndoMethods {
+  pushCreateEntityUndo: (modelId: string, entityId: number, ifcType: string) => void;
+  markCostRelationshipMutation: (modelId: string) => void;
+}
+
+/** Bind both methods to one `set`, for a single `...createCostUndoMutations(set)` spread. */
+export function createCostUndoMutations(set: SetState): CostUndoMethods {
+  return {
+    pushCreateEntityUndo: (modelId, entityId, ifcType) => pushCreateEntityUndo(set, modelId, entityId, ifcType),
+    markCostRelationshipMutation: (modelId) => markCostRelationshipMutation(set, modelId),
+  };
+}

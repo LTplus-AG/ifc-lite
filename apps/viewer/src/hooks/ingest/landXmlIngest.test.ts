@@ -97,6 +97,22 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
   });
 
+  it('excludes distant points referenced only by a rejected degenerate face', () => {
+    const withDegenerateOutlier = LANDXML
+      .replace(
+        '</Pnts>',
+        `<P id="50">900000000 800000000 700000000</P>
+         <P id="51">900000001 800000001 700000001</P>
+         <P id="52">900000002 800000002 700000002</P></Pnts>`,
+      )
+      .replace('</Faces>', '<F>50 51 52</F></Faces>');
+    const result = parseLandXmlViewerModel(bytes(withDegenerateOutlier));
+    assert.equal(result.geometryResult.totalVertices, 3);
+    assert.equal(result.geometryResult.totalTriangles, 1);
+    assert.deepEqual(result.geometryResult.meshes[0].origin, [2_600_005, 101, -5_000_005]);
+    assert.ok(result.warnings.some((warning) => /Skipped 1 degenerate face/.test(warning)));
+  });
+
   it('decodes XML-required UTF-16 input before parsing', () => {
     const utf16 = LANDXML.replace('encoding="UTF-8"', 'encoding="UTF-16"');
     const result = parseLandXmlViewerModel(utf16LeBytes(utf16));

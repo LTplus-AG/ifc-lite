@@ -8,7 +8,7 @@
  * selected element's attributes and properties — and the bindings resolve
  * live in the preview. Image, chart and topic blocks pick their source.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
@@ -46,6 +46,44 @@ function WidthEditor({ width, onChange }: { width: BlockWidth | undefined; onCha
         <option value="full">{t('document.block.widthFull')}</option><option value="half">{t('document.block.widthHalf')}</option>
       </select>
     </label>
+  );
+}
+
+/**
+ * A number input that clamps on blur/Enter, not on every keystroke (#4940 review): clamping
+ * immediately rewrites the field as each digit lands (typing "300" clamped to 120 after the "3",
+ * then the "0" landed on "120" making "1200"), so a typed value like 300 could never be reached.
+ * The raw text is kept in local state; `onCommit` only fires the clamped number once editing ends.
+ */
+function ClampedHeightInput({ value, min, max, placeholder, ariaLabel, allowUndefined, onCommit }: { value: number | undefined; min: number; max: number; placeholder?: string; ariaLabel: string; allowUndefined?: boolean; onCommit: (value: number | undefined) => void }) {
+  const [text, setText] = useState(value === undefined ? '' : String(value));
+  useEffect(() => { setText(value === undefined ? '' : String(value)); }, [value]);
+  const commit = (): void => {
+    const trimmed = text.trim();
+    if (trimmed === '') {
+      const next = allowUndefined ? undefined : min;
+      setText(next === undefined ? '' : String(next));
+      onCommit(next);
+      return;
+    }
+    const raw = Number(trimmed);
+    const clamped = Number.isFinite(raw) ? Math.min(max, Math.max(min, raw)) : (value ?? min);
+    setText(String(clamped));
+    onCommit(clamped);
+  };
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      className={`${field} w-16`}
+      value={text}
+      placeholder={placeholder}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      aria-label={ariaLabel}
+    />
   );
 }
 
@@ -186,19 +224,14 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
             <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> 3D snapshot
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
-            <input
-              type="number"
+            <ClampedHeightInput
+              value={block.height}
               min={CHART_BLOCK_HEIGHT_MIN}
               max={CHART_BLOCK_HEIGHT_MAX}
-              className={`${field} w-16`}
-              value={block.height ?? ''}
               placeholder="220"
-              onChange={(e) => {
-                const raw = Number(e.target.value);
-                const height = e.target.value === '' || !Number.isFinite(raw) ? undefined : Math.min(CHART_BLOCK_HEIGHT_MAX, Math.max(CHART_BLOCK_HEIGHT_MIN, raw));
-                onChange({ ...block, height });
-              }}
-              aria-label={t('document.block.chartHeightAriaLabel')}
+              allowUndefined
+              ariaLabel={t('document.block.chartHeightAriaLabel')}
+              onCommit={(height) => onChange({ ...block, height })}
             />
           </label>
           <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
@@ -207,7 +240,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
 
       {block.kind === 'spacer' && (
         <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
-          <input type="number" min={4} max={400} className={`${field} w-16`} value={block.height} onChange={(e) => onChange({ ...block, height: Math.max(4, Number(e.target.value) || 4) })} aria-label={t('document.block.spacerHeightAriaLabel')} />
+          <ClampedHeightInput value={block.height} min={4} max={400} ariaLabel={t('document.block.spacerHeightAriaLabel')} onCommit={(height) => onChange({ ...block, height: height ?? 4 })} />
         </label>
       )}
 

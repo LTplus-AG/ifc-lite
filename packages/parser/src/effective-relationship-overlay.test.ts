@@ -18,6 +18,24 @@ DATA;
 #5=IFCRELAGGREGATES('0000000000000000000005',$,$,$,#2,(#3));
 ENDSEC;END-ISO-10303-21;`;
 
+const IFC2X3_COVERS = `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC2X3'));ENDSEC;
+DATA;
+#2=IFCSPACE('0000000000000000000002',$,'Space',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
+#3=IFCCOVERING('0000000000000000000003',$,'Covering',$,$,$,$,$,$,.FLOORING.);
+#5=IFCRELCOVERSSPACES('0000000000000000000005',$,$,$,#2,(#3));
+ENDSEC;END-ISO-10303-21;`;
+
+const IFC_PROPERTY_SET = `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#3=IFCWALL('0000000000000000000003',$,'Old',$,$,$,$,$,$);
+#4=IFCWALL('0000000000000000000004',$,'New',$,$,$,$,$,$);
+#20=IFCPROPERTYSET('0000000000000000000020',$,'First',$,());
+#21=IFCPROPERTYSET('0000000000000000000021',$,'Second',$,());
+#30=IFCRELDEFINESBYPROPERTIES('0000000000000000000030',$,$,$,(#3),(#20,#21));
+ENDSEC;END-ISO-10303-21;`;
+
 describe('effective relationship overlay (#5009)', () => {
   it('uses the model schema instead of a cross-schema attribute spelling', () => {
     expect(getAttributeNamesForSchema('IfcRelCoversSpaces', 'IFC2X3')[4]).toBe('RelatedSpace');
@@ -41,5 +59,40 @@ describe('effective relationship overlay (#5009)', () => {
       direction: 'forward',
       targetId: 4,
     }]);
+  });
+
+  it('uses the IFC2X3 schema slots when both endpoints start with Related', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC2X3_COVERS).buffer as ArrayBuffer);
+    const overlay = resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => [],
+      mutatedEntityIds: () => [5],
+      namedAttributes: () => [['RelatedCoverings', ['#3']]],
+      positionalAttributes: () => [] as Array<readonly [number, IfcAttributeValue]>,
+      isDeleted: () => false,
+    });
+    expect(effectiveRelationshipEdges(overlay, () => false, 2, 'IfcRelCoversSpaces')).toEqual([{
+      relationshipId: 5,
+      relationshipType: 'IFCRELCOVERSSPACES',
+      direction: 'forward',
+      targetId: 3,
+    }]);
+  });
+
+  it('retains every relating definition in an aggregate select', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC_PROPERTY_SET).buffer as ArrayBuffer);
+    const overlay = resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => [],
+      mutatedEntityIds: () => [30],
+      namedAttributes: () => [['RelatedObjects', ['#4']]],
+      positionalAttributes: () => [] as Array<readonly [number, IfcAttributeValue]>,
+      isDeleted: () => false,
+    });
+    expect(effectiveRelationshipEdges(overlay, () => false, 4, 'IfcRelDefinesByProperties')).toEqual([
+      { relationshipId: 30, relationshipType: 'IFCRELDEFINESBYPROPERTIES', direction: 'inverse', targetId: 20 },
+      { relationshipId: 30, relationshipType: 'IFCRELDEFINESBYPROPERTIES', direction: 'inverse', targetId: 21 },
+    ]);
+    expect(effectiveRelationshipEdges(overlay, () => false, 21, 'IfcRelDefinesByProperties')).toEqual([
+      { relationshipId: 30, relationshipType: 'IFCRELDEFINESBYPROPERTIES', direction: 'forward', targetId: 4 },
+    ]);
   });
 });

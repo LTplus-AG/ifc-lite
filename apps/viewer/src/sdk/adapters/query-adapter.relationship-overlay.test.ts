@@ -25,6 +25,8 @@ DATA;
 #7=IFCOPENINGELEMENT('0000000000000000000007',$,'Opening',$,$,$,$,$,$);
 #8=IFCWALL('0000000000000000000008',$,'Host',$,$,$,$,$,$);
 #9=IFCRELVOIDSELEMENT('0000000000000000000009',$,$,$,#8,#7);
+#10=IFCGROUP('0000000000000000000010',$,'Factor group',$,$);
+#11=IFCRELASSIGNSTOGROUPBYFACTOR('0000000000000000000011',$,$,$,(#3),$,#10,0.5);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -53,6 +55,10 @@ test('viewer exact relationship queries fold authored records and endpoint overr
     type: 'IfcRelAggregates',
     attributes: ["'0000000000000000000005'", null, null, null, '#2', ['#3']],
   });
+
+  assert.deepEqual(query.relationships({ modelId: 'default', expressId: 3 }).groups, [
+    { id: 10, name: 'Factor group', type: 'IfcGroup' },
+  ]);
 
   assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [{ modelId: 'default', expressId: 3 }]);
   assert.equal(query.relationships(building).relations?.some((edge) =>

@@ -150,4 +150,20 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
       voids: [], fills: [], groups: [], connections: [], relations: [],
     });
   });
+
+  it('keeps factor-weighted assignments in the legacy groups projection', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [member, group] = backend.query.entities({ types: ['IfcWall'] });
+    backend.store.addEntity('default', {
+      type: 'IfcRelAssignsToGroupByFactor',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzy'", null, null, null,
+        [`#${member.ref.expressId}`], null, `#${group.ref.expressId}`, 0.5],
+    });
+
+    expect(backend.query.relationships(member.ref).groups).toContainEqual({
+      id: group.ref.expressId,
+      name: group.name,
+    });
+  });
 });

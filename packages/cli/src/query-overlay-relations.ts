@@ -58,14 +58,16 @@ export function foldQueuedRelationshipData(
       entity: { id: edge.targetId, name: target.name || undefined, type: target.type },
     });
   }
-  const entities = (type: string, directions: readonly ('forward' | 'inverse')[]) => relations
-    .filter(edge => edge.relationshipType.toUpperCase() === type && directions.includes(edge.direction))
+  const entities = (types: readonly string[], directions: readonly ('forward' | 'inverse')[]) => relations
+    .filter(edge => types.includes(edge.relationshipType.toUpperCase()) && directions.includes(edge.direction))
     .map(edge => edge.entity);
   return {
-    voids: entities('IFCRELVOIDSELEMENT', ['forward']),
-    fills: entities('IFCRELFILLSELEMENT', ['inverse']),
-    groups: entities('IFCRELASSIGNSTOGROUP', ['inverse']).map(({ id, name }) => ({ id, name })),
-    connections: entities('IFCRELCONNECTSPATHELEMENTS', ['forward', 'inverse'])
+    voids: entities(['IFCRELVOIDSELEMENT'], ['forward']),
+    fills: entities(['IFCRELFILLSELEMENT'], ['inverse']),
+    groups: entities(['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR'], ['inverse'])
+      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index)
+      .map(({ id, name }) => ({ id, name })),
+    connections: entities(['IFCRELCONNECTSPATHELEMENTS'], ['forward', 'inverse'])
       .filter((entity, index, all) => entity.id !== ref.expressId
         && all.findIndex(other => other.id === entity.id) === index),
     relations,

@@ -5,11 +5,12 @@
 import type { IfcAttributeValue, IfcEntity } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getAttributeNamesForSchema } from './ifc-schema.js';
+import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
 
 export interface EffectiveRelationship {
   relationshipId: number;
   relationshipType: string;
-  relating: number;
+  relating: readonly number[];
   related: readonly number[];
 }
 
@@ -69,13 +70,11 @@ function resolveRelationship(
   for (const [index, value] of positional) attributes[index] = value;
   for (const key of overlay.attributeWriteOrder?.(entity.expressId) ?? []) apply(key);
 
-  let relating: number | undefined;
-  let related: number[] | undefined;
-  for (let index = 0; index < names.length; index++) {
-    if (names[index].startsWith('Related')) related ??= refIds(attributes[index]);
-    else if (names[index].startsWith('Relating')) relating ??= refIds(attributes[index])[0];
-  }
-  if (relating === undefined || !related?.length) return null;
+  const plan = getRelationshipSlotPlan(entity.type.toUpperCase(), store.schemaVersion);
+  if (!plan) return null;
+  const relating = refIds(attributes[4 + plan.relating.index]);
+  const related = refIds(attributes[4 + plan.related.index]);
+  if (!relating.length || !related.length) return null;
   return {
     relationshipId: entity.expressId,
     relationshipType: entity.type,
@@ -118,7 +117,7 @@ export function effectiveRelationshipEdges(
   const out: Array<{ relationshipId: number; relationshipType: string; direction: 'forward' | 'inverse'; targetId: number }> = [];
   for (const relation of overlay.relationships) {
     if (upper && relation.relationshipType.toUpperCase() !== upper) continue;
-    if (relation.relating === expressId) {
+    if (relation.relating.includes(expressId)) {
       for (const targetId of relation.related) if (!isDeleted(targetId)) out.push({
         relationshipId: relation.relationshipId,
         relationshipType: relation.relationshipType,
@@ -126,12 +125,14 @@ export function effectiveRelationshipEdges(
         targetId,
       });
     }
-    if (relation.related.includes(expressId) && !isDeleted(relation.relating)) out.push({
-      relationshipId: relation.relationshipId,
-      relationshipType: relation.relationshipType,
-      direction: 'inverse',
-      targetId: relation.relating,
-    });
+    if (relation.related.includes(expressId)) {
+      for (const targetId of relation.relating) if (!isDeleted(targetId)) out.push({
+        relationshipId: relation.relationshipId,
+        relationshipType: relation.relationshipType,
+        direction: 'inverse',
+        targetId,
+      });
+    }
   }
   return out;
 }

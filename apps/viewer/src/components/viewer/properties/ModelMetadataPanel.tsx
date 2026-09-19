@@ -33,7 +33,7 @@ import { useTranslation } from '@/i18n';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const dataStore = model.ifcDataStore;
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
@@ -114,7 +114,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     else if (Math.abs(scale - 0.0254) < 0.001) unitName = t('properties.modelMetadata.unit.inches');
     else if (Math.abs(scale - 0.3048) < 0.01) unitName = t('properties.modelMetadata.unit.feet');
     return { scale, unitName };
-  }, [dataStore, t]);
+  }, [dataStore, t, locale]);
 
   // The file's declared units, for rendering unit suffixes on project
   // property values (issue #1573).

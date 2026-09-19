@@ -22,7 +22,7 @@ const MAX_CAPTURE_ROWS = 200_000;
 const CAPTURE_ACCEPT = '.glb,.gltf,.bin,.png,.jpg,.jpeg,.ifc,.ifczip';
 
 export function AppearanceCapturePanel() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const models = useViewerStore(state => state.models), selected = useViewerStore(state => state.selectedEntityId);
   const room = useViewerStore(state => state.collabRoomId);
   const placement = useViewerStore(state => state.modelPlacement);
@@ -30,7 +30,7 @@ export function AppearanceCapturePanel() {
   const target = useIfcAuthoringTarget();
   const candidates = useMemo(() => [...models.values()].flatMap(model => (model.geometryResult?.meshes ?? [])
     .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
-      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: index + 1, triangleCount: (mesh.indices.length / 3).toLocaleString() }) }] : [])), [models, t]);
+      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: index + 1, triangleCount: (mesh.indices.length / 3).toLocaleString() }) }] : [])), [models, t, locale]);
   const excludedSurfaces = useMemo(() => [...models.values()].reduce((count, model) => count
     + (model.geometryResult?.meshes ?? []).filter(mesh => !mesh.textureRef).length, 0), [models]);
   const [chosen, setChosen] = useState('');
@@ -79,7 +79,7 @@ export function AppearanceCapturePanel() {
       void decoding.then(() => { if (live) setImagesSettled(count => count + 1); });
       return () => { live = false; };
     }
-  }, [candidate?.modelId, candidate?.mesh, imagesSettled, t]);
+  }, [candidate?.modelId, candidate?.mesh, imagesSettled, t, locale]);
   useEffect(() => { setCreated(false); }, [candidate?.mesh, triangles]);
   useEffect(() => {
     if (operation.current || created) return;
@@ -90,7 +90,7 @@ export function AppearanceCapturePanel() {
       ? t('appearance.capture.overLimitNotice')
       : t('appearance.capture.reviewRegion')); }
     catch (failure) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
-  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placeholder, placement, created, t]);
+  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placeholder, placement, created, t, locale]);
   async function createDestination() {
     if (loading || busy) return;
     setMessage(t('appearance.capture.creatingDestination')); setError(false);
@@ -127,7 +127,7 @@ export function AppearanceCapturePanel() {
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
     {!candidate && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.formatsNote')}</p>}
-    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', { count: excludedSurfaces.toLocaleString() })}</p>}
+    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', { count: excludedSurfaces })}</p>}
     {candidate && assetId && <AppearanceMeshPreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy || loading}
       onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setMessage(t('appearance.capture.regionTooLarge')); return; } setPlaceholder(false); setTriangles(ids); }}
       onReady={value => { setReady(value); if (value && !message) { setError(false); setMessage(t('appearance.capture.reviewRegion')); } }} onError={text => { setReady(false); setError(true); setMessage(text); }} />}

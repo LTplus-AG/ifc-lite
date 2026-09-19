@@ -178,7 +178,7 @@ function formatTotal(
 }
 
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { ifcDataStore, models } = useIfc();
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
@@ -203,7 +203,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
   const display = useMemo(() => {
     if (!selectedStore) return { name: t('properties.materialTotals.fallbackName', { id: materialId }), type: 'IfcMaterial' };
     return getMaterialDisplay(selectedStore, materialId);
-  }, [selectedStore, materialId, t]);
+  }, [selectedStore, materialId, t, locale]);
 
   // The material's own property sets (Pset_Material*).
   const psetGroups = useMemo(() => {

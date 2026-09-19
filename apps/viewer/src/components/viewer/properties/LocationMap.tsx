@@ -102,7 +102,7 @@ export function LocationMap({
   lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
   instancedModelRange = null,
 }: LocationMapProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<InstanceType<typeof import('maplibre-gl').Map> | null>(null);
   const markerRef = useRef<InstanceType<typeof import('maplibre-gl').Marker> | null>(null);
@@ -255,7 +255,7 @@ export function LocationMap({
     });
 
     return () => { cancelled = true; };
-  }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, t]);
+  }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, t, locale]);
 
   // When a picked position changes, reverse-project and query elevation
   useEffect(() => {

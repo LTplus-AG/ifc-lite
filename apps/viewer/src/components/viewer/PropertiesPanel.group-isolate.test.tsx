@@ -172,6 +172,32 @@ describe('Properties panel -- "Isolate this group\'s members in 3D"', () => {
     assert.ok(!text.includes('No property sets'), `exact relationship must suppress the empty state: ${text}`);
   });
 
+  it('selects and frames an exact relationship endpoint in renderer-global id space (#4205)', async () => {
+    let framed = 0;
+    await seed(20, {
+      selectedEntitiesSet: new Set([`${MODEL_ID}:43`]),
+      cameraCallbacks: {
+        resolveHighlightIds,
+        frameSelection: () => { framed += 1; },
+      },
+    });
+    const container = render(<PropertiesPanel />);
+    const wallEdge = [...container.querySelectorAll<HTMLElement>('button')]
+      .find((button) => button.title === '#21 IfcRelAssignsToGroup'
+        && button.textContent?.includes('Wall A'));
+    assert.ok(wallEdge, 'expected the exact relationship row for Wall A');
+
+    click(wallEdge);
+
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.selectedEntityIds, new Set([WALL_A]));
+    assert.equal(state.selectedEntityId, WALL_A);
+    assert.deepEqual(state.selectedEntity, { modelId: MODEL_ID, expressId: 42 });
+    assert.equal(state.selectedEntitiesSet.size, 0, 'stale model-aware multi-selection must be cleared');
+    await advance(60);
+    assert.equal(framed, 1, 'frameSelection must observe the populated global selection');
+  });
+
   it('isolates a geometry-less assembly member as its geometry-bearing parts, not its bare id', async () => {
     // Zone A's only member is the assembly. Before this fix the isolation set
     // was exactly {assembly} -- an id the renderer owns no mesh for, so the

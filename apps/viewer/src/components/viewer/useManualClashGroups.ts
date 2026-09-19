@@ -16,7 +16,11 @@ import {
   saveManualClashGroups,
   type ManualClashGroup,
 } from '@/lib/clash/manual-groups';
-import { focusedSceneRevisionIsCurrent, type FocusedClashGroup } from '@/lib/clash/group-focus';
+import {
+  focusedCameraViewpointIsCurrent,
+  focusedSceneRevisionIsCurrent,
+  type FocusedClashGroup,
+} from '@/lib/clash/group-focus';
 import { CLASH_COLOR_A, CLASH_COLOR_B, clashColorToBcfArgb } from '@/lib/clash/clash-colors';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { sortClashes, type Clash, type ClashSeverity, type ClashSortBy } from '@ifc-lite/clash';
@@ -174,10 +178,12 @@ export function useManualClashGroups({
         topicType: 'Clash',
         topicStatus: 'Open',
       });
-      await focused.frameReady;
+      const framedCamera = await focused.frameReady;
       // FRAME-WAIT-ALLOW(#2385): paint the final animated camera pose before capture.
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      if (!focusedSceneRevisionIsCurrent(focused)) {
+      const captureIsCurrent = (): boolean => focusedSceneRevisionIsCurrent(focused)
+        && focusedCameraViewpointIsCurrent(framedCamera);
+      if (!captureIsCurrent()) {
         toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
         return;
       }
@@ -186,7 +192,7 @@ export function useManualClashGroups({
         includeSnapshot: true,
         includeSelection: false,
         includeHidden: true,
-        isCaptureStillValid: () => focusedSceneRevisionIsCurrent(focused),
+        isCaptureStillValid: captureIsCurrent,
         onVisibilityModelIdsCaptured: (modelIds) => { visibilityModelIds = modelIds; },
         additionalSelectedGuids: focused.selectedGuids,
         additionalColoredGuids: [
@@ -195,7 +201,7 @@ export function useManualClashGroups({
         ].filter((entry) => entry.guids.length > 0),
         additionalVisibleGuids: focusMode === 'isolate' ? focused.selectedGuids : undefined,
       });
-      if (!focusedSceneRevisionIsCurrent(focused)) {
+      if (!captureIsCurrent()) {
         toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
         return;
       }

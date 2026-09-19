@@ -8,7 +8,12 @@ import assert from 'node:assert/strict';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import { useViewerStore, type ViewerState } from '@/store';
 import { CLASH_COLOR_A, CLASH_COLOR_B } from './clash-colors.js';
-import { focusClashGroup, focusedSceneRevisionIsCurrent, type FocusedClashGroup } from './group-focus.js';
+import {
+  focusClashGroup,
+  focusedCameraViewpointIsCurrent,
+  focusedSceneRevisionIsCurrent,
+  type FocusedClashGroup,
+} from './group-focus.js';
 
 function clash(id: string, a: number, b: number): Clash {
   return {
@@ -242,5 +247,22 @@ describe('manual clash group focus (#4921)', () => {
     finishFraming();
     await focused.frameReady;
     assert.equal(frameReady, true);
+  });
+
+  it('invalidates a capture when navigation changes the framed camera pose (#4921)', () => {
+    const viewpoint = (x: number) => ({
+      position: { x, y: 2, z: 3 },
+      target: { x: 4, y: 5, z: 6 },
+      up: { x: 0, y: 1, z: 0 },
+      fov: 45,
+      projectionMode: 'perspective' as const,
+    });
+    let current = viewpoint(1);
+    useViewerStore.setState({ cameraCallbacks: { getViewpoint: () => current } });
+    const framed = current;
+    assert.equal(focusedCameraViewpointIsCurrent(framed), true);
+    current = viewpoint(7);
+    assert.equal(focusedCameraViewpointIsCurrent(framed), false,
+      'camera navigation during the paint/snapshot wait must invalidate the authored viewpoint');
   });
 });

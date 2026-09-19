@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useViewerStore, type ViewerState } from '@/store';
+import { useViewerStore, type CameraViewpoint, type ViewerState } from '@/store';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -15,8 +15,8 @@ interface SelectionRef {
 }
 
 export interface FocusedClashGroup {
-  /** Completes after the selected group has reached its final framed camera pose. */
-  frameReady: Promise<void>;
+  /** Completes after framing and returns the exact camera pose that must be captured. */
+  frameReady: Promise<CameraViewpoint | null>;
   selectedRefs: SelectionRef[];
   aRefs: SelectionRef[];
   bRefs: SelectionRef[];
@@ -36,6 +36,35 @@ export interface FocusedClashGroup {
     clashHighlightColors: ViewerState['clashHighlightColors'];
     colorPresentationRevision: number;
   };
+}
+
+function currentCameraViewpoint(): CameraViewpoint | null {
+  try {
+    return useViewerStore.getState().cameraCallbacks.getViewpoint?.() ?? null;
+  } catch (error) {
+    console.error('[clash] Could not read the framed camera viewpoint:', error);
+    return null;
+  }
+}
+
+/** True while no competing navigation has changed the camera selected for capture. */
+export function focusedCameraViewpointIsCurrent(expected: CameraViewpoint | null): boolean {
+  const canReadCurrent = useViewerStore.getState().cameraCallbacks.getViewpoint !== undefined;
+  if (!expected && !canReadCurrent) return true;
+  const current = currentCameraViewpoint();
+  if (!expected || !current) return false;
+  return current.position.x === expected.position.x
+    && current.position.y === expected.position.y
+    && current.position.z === expected.position.z
+    && current.target.x === expected.target.x
+    && current.target.y === expected.target.y
+    && current.target.z === expected.target.z
+    && current.up.x === expected.up.x
+    && current.up.y === expected.up.y
+    && current.up.z === expected.up.z
+    && current.fov === expected.fov
+    && current.projectionMode === expected.projectionMode
+    && current.orthoSize === expected.orthoSize;
 }
 
 function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: Iterable<SelectionRef>): string[] {
@@ -100,16 +129,18 @@ export function focusClashGroup(
   state.setSelectedEntityIds([...globalIds]);
   state.addEntitiesToSelection(refs);
   applyFocusMode([...globalIds], mode);
-  const frameReady = new Promise<void>((resolve) => {
+  const frameReady = new Promise<CameraViewpoint | null>((resolve) => {
     requestAnimationFrame(() => {
       try {
-        Promise.resolve(useViewerStore.getState().cameraCallbacks.frameSelection?.(0)).then(() => resolve(), (error) => {
+        Promise.resolve(useViewerStore.getState().cameraCallbacks.frameSelection?.(0)).then(() => {
+          resolve(currentCameraViewpoint());
+        }, (error) => {
           console.error('[clash] Could not finish framing the manual clash group:', error);
-          resolve();
+          resolve(null);
         });
       } catch (error) {
         console.error('[clash] Could not frame the manual clash group:', error);
-        resolve();
+        resolve(null);
       }
     });
   });

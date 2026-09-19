@@ -23,6 +23,42 @@ interface WorldPoint {
   z: number;
 }
 
+function connectedFaceComponents(
+  faces: LandXmlTinSurface['faces'],
+): Array<LandXmlTinSurface['faces']> {
+  const faceIndexesByPoint = new Map<string, number[]>();
+  faces.forEach((face, faceIndex) => {
+    for (const pointId of face) {
+      const indexes = faceIndexesByPoint.get(pointId) ?? [];
+      indexes.push(faceIndex);
+      faceIndexesByPoint.set(pointId, indexes);
+    }
+  });
+
+  const visited = new Uint8Array(faces.length);
+  const components: Array<LandXmlTinSurface['faces']> = [];
+  for (let start = 0; start < faces.length; start++) {
+    if (visited[start]) continue;
+    const component: LandXmlTinSurface['faces'] = [];
+    const pending = [start];
+    visited[start] = 1;
+    while (pending.length > 0) {
+      const faceIndex = pending.pop()!;
+      const face = faces[faceIndex];
+      component.push(face);
+      for (const pointId of face) {
+        for (const neighbour of faceIndexesByPoint.get(pointId) ?? []) {
+          if (visited[neighbour]) continue;
+          visited[neighbour] = 1;
+          pending.push(neighbour);
+        }
+      }
+    }
+    components.push(component);
+  }
+  return components;
+}
+
 function xmlEncoding(bytes: Uint8Array): string {
   if (bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be';
   if (bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le';
@@ -213,29 +249,36 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
   const surfaceNames: string[] = [];
   const bounds = createEmptyBounds();
   for (const surface of parsed.surfaces) {
-    const result = buildSurfaceMesh(
-      surface,
-      meshes.length + 1,
-      parsed.units.linearScaleToMeters,
-      parsed.units.elevationScaleToMeters,
-    );
-    if (result.degenerateFaces > 0) {
-      warnings.push(`Skipped ${result.degenerateFaces} degenerate face(s) in surface "${surface.name}"`);
+    let renderedComponents = 0;
+    let degenerateFaces = 0;
+    for (const faces of connectedFaceComponents(surface.faces)) {
+      const result = buildSurfaceMesh(
+        { ...surface, faces },
+        meshes.length + 1,
+        parsed.units.linearScaleToMeters,
+        parsed.units.elevationScaleToMeters,
+      );
+      degenerateFaces += result.degenerateFaces;
+      if (!result.mesh) continue;
+      renderedComponents++;
+      meshes.push(result.mesh);
+      if (result.bounds) {
+        bounds.min.x = Math.min(bounds.min.x, result.bounds.min.x);
+        bounds.min.y = Math.min(bounds.min.y, result.bounds.min.y);
+        bounds.min.z = Math.min(bounds.min.z, result.bounds.min.z);
+        bounds.max.x = Math.max(bounds.max.x, result.bounds.max.x);
+        bounds.max.y = Math.max(bounds.max.y, result.bounds.max.y);
+        bounds.max.z = Math.max(bounds.max.z, result.bounds.max.z);
+      }
     }
-    if (!result.mesh) {
+    if (degenerateFaces > 0) {
+      warnings.push(`Skipped ${degenerateFaces} degenerate face(s) in surface "${surface.name}"`);
+    }
+    if (renderedComponents === 0) {
       warnings.push(`Skipped surface "${surface.name}" because it has no non-degenerate faces`);
       continue;
     }
-    meshes.push(result.mesh);
     surfaceNames.push(surface.name);
-    if (result.bounds) {
-      bounds.min.x = Math.min(bounds.min.x, result.bounds.min.x);
-      bounds.min.y = Math.min(bounds.min.y, result.bounds.min.y);
-      bounds.min.z = Math.min(bounds.min.z, result.bounds.min.z);
-      bounds.max.x = Math.max(bounds.max.x, result.bounds.max.x);
-      bounds.max.y = Math.max(bounds.max.y, result.bounds.max.y);
-      bounds.max.z = Math.max(bounds.max.z, result.bounds.max.z);
-    }
   }
   if (meshes.length === 0) throw new Error('LandXML document contains no non-degenerate TIN faces');
 

@@ -169,7 +169,8 @@ function parseSurface(surface: XmlElement): LandXmlTinSurface | null {
   const faces: Array<readonly [string, string, string]> = [];
   for (const facesElement of namedChildren(definition, 'Faces')) {
     for (const face of namedChildren(facesElement, 'F')) {
-      if (face.getAttribute('i') === '1') continue;
+      const invisible = face.getAttribute('i')?.trim();
+      if (invisible === '1' || invisible === 'true') continue;
       const rawIds = (face.textContent ?? '').trim().split(/\s+/).filter(Boolean);
       if (rawIds.length !== 3) {
         throw new Error(`LandXML TIN surface "${name}" face must reference exactly 3 points`);

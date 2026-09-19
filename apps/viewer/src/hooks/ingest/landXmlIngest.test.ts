@@ -24,7 +24,7 @@ const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
         </Pnts>
         <Faces>
           <F>10 20 30</F>
-          <F i="1">20 40 30</F>
+          <F i="true">20 40 30</F>
         </Faces>
       </Definition>
     </Surface>
@@ -121,7 +121,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Number.isFinite(result.geometryResult.coordinateInfo.shiftedBounds.max.x));
   });
 
-  it('recompacts vertices after a face collapses in float32', () => {
+  it('preserves distant disconnected components with separate local origins', () => {
     const withDistantSmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -131,10 +131,13 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
     const result = parseLandXmlViewerModel(bytes(withDistantSmallFace));
-    assert.equal(result.geometryResult.totalVertices, 3);
-    assert.equal(result.geometryResult.totalTriangles, 1);
+    assert.equal(result.geometryResult.meshes.length, 2);
+    assert.equal(result.geometryResult.totalVertices, 6);
+    assert.equal(result.geometryResult.totalTriangles, 2);
     assert.deepEqual(result.geometryResult.meshes[0].origin, [2_600_005, 101, -5_000_005]);
-    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
+    assert.deepEqual(result.geometryResult.meshes[1].origin, [800_000_000.5, 700_000_000, -900_000_000.5]);
+    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 800_000_001);
+    assert.equal(result.warnings.some((warning) => /degenerate face/.test(warning)), false);
   });
 
   it('decodes XML-required UTF-16 input before parsing', () => {

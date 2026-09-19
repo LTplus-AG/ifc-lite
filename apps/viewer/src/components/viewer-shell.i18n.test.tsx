@@ -59,7 +59,9 @@ describe('ChunkErrorBoundary localization (#4918)', () => {
     act(() => setLocale('chunk-error-pseudo'));
     const after = bodyText();
     assert.ok(
-      after.includes('⟦viewerShell.chunkError.loadFailed|Layers panel could not be loaded⟧'),
+      after.includes(
+        '⟦viewerShell.chunkError.loadFailed|⟦viewerShell.chunkLabel.layersPanel|Layers panel⟧ could not be loaded⟧',
+      ),
       'expected the marked+interpolated loadFailed text',
     );
     assert.ok(after.includes('viewerShell.chunkError.loadFailedDetail'));
@@ -79,7 +81,9 @@ describe('ChunkErrorBoundary localization (#4918)', () => {
     registerLocale('chunk-error-generic-pseudo', PSEUDO);
     act(() => setLocale('chunk-error-generic-pseudo'));
     const after = bodyText();
-    assert.ok(after.includes('⟦viewerShell.chunkError.crashed|MCP playground stopped working⟧'));
+    assert.ok(after.includes(
+      '⟦viewerShell.chunkError.crashed|⟦viewerShell.chunkLabel.mcpPlayground|MCP playground⟧ stopped working⟧',
+    ));
     assert.ok(after.includes('viewerShell.chunkError.crashedDetail'));
   });
 });

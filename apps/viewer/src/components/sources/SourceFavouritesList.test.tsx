@@ -227,20 +227,20 @@ describe('SourceFavouritesList — what is shown', () => {
       'sources.sourceFavouritesList.removeFavouriteAria': 'MARKED-REMOVE {name}',
     });
     act(() => setLocale('source-favourites-list-pseudo'));
-
-    const host = new SourceHost();
-    host.register(new FakeProvider(manifest()));
-    saveFavourites('fixture-provider', [
-      favourite({ containerId: 'folder-1', containerName: 'Models', addedAt: 2 }),
-    ]);
-    renderList(host);
-
-    assert.ok(
-      document.body.querySelector('button[aria-label="MARKED-REMOVE Models"]'),
-      'the remove button aria-label must come from the active locale catalogue, not a hardcoded string',
-    );
-
-    setLocale('en');
+    try {
+      const host = new SourceHost();
+      host.register(new FakeProvider(manifest()));
+      saveFavourites('fixture-provider', [
+        favourite({ containerId: 'folder-1', containerName: 'Models', addedAt: 2 }),
+      ]);
+      renderList(host);
+      assert.ok(
+        document.body.querySelector('button[aria-label="MARKED-REMOVE Models"]'),
+        'the remove button aria-label must come from the active locale catalogue, not a hardcoded string',
+      );
+    } finally {
+      act(() => setLocale('en'));
+    }
   });
 });
 

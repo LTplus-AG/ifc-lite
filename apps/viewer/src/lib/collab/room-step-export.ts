@@ -11,7 +11,7 @@ import { propertyValueTypeFor } from './mutation-bridge';
 import { asExpressIdRef, readAttributes, resolvePlacementChain, resolveRotationState } from '@/lib/placement-core';
 import '@/lib/placement-edit.boot';
 import {
-  isPortableReferenceList, isPortableReferenceScalar, localReferenceId, portableEntityKey,
+  explicitReferenceId, isPortableReferenceList, isPortableReferenceScalar, localReferenceId, portableEntityKey,
 } from './portable-reference-entities';
 import { pathForEntity } from './entity-paths';
 
@@ -49,8 +49,9 @@ function structuredValueEqual(left: unknown, right: unknown): boolean {
 function sourceReference(
   value: unknown,
   sourceIdByRoomId: ReadonlyMap<number, number>,
+  allowNumeric = false,
 ): string | null {
-  const roomId = localReferenceId(value);
+  const roomId = allowNumeric ? explicitReferenceId(value) : localReferenceId(value);
   if (roomId === null) return null;
   const sourceId = sourceIdByRoomId.get(roomId);
   if (sourceId === undefined) {
@@ -98,7 +99,7 @@ function toSourceMutation(
   let oldValue = mutation.oldValue;
   if (attributeName && isPortableReferenceList(attributeName)) {
     const remap = (value: typeof newValue): typeof newValue => Array.isArray(value)
-      ? value.map(member => sourceReference(member, sourceIdByRoomId) ?? member)
+      ? value.map(member => sourceReference(member, sourceIdByRoomId, true) ?? member)
       : value;
     newValue = remap(newValue);
     oldValue = remap(oldValue);

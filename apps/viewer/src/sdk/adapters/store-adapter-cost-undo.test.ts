@@ -25,7 +25,7 @@ const STEP = [
   'ENDSEC;', 'END-ISO-10303-21;',
 ].join('\n');
 
-async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
+async function makeStore(canCollabEdit: () => boolean = () => true, legacy = false): Promise<{
   store: StoreApi;
   undoCalls: Array<{ modelId: string; entityId: number; ifcType: string }>;
   relationshipMutationCalls: string[];
@@ -42,9 +42,9 @@ async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
   const mirrorCalls: Array<{ kind: string; entityId: number; detail?: string; roomKey?: string }> = [];
   const model = { id: 'm', name: 't.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 100 };
   const state = {
-    activeModelId: 'm',
-    ifcDataStore: null,
-    models: new Map([['m', model]]),
+    activeModelId: legacy ? null : 'm',
+    ifcDataStore: legacy ? dataStore : null,
+    models: legacy ? new Map() : new Map([['m', model]]),
     getMutationView: (id: string) => mutationViews.get(id) ?? null,
     registerMutationView: (id: string, view: MutablePropertyView) => { mutationViews.set(id, view); },
     pushCreateEntityUndo: (modelId: string, entityId: number, ifcType: string) => {
@@ -95,6 +95,15 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
     assert.ok(mirrorCalls.some(call => call.kind === 'create' && call.entityId === value.expressId));
     assert.ok(mirrorCalls.some(call => call.kind === 'attribute' && call.entityId === item.expressId && call.detail === 'CostValues'));
     assert.ok(mirrorCalls.some(call => call.kind === 'remove' && call.entityId === value.expressId));
+  });
+
+  it('mirrors cost creation from the legacy public model id (#5018 review)', async () => {
+    const { store, mirrorCalls } = await makeStore(() => true, true);
+    const item = createStoreAdapter(store).addCostItem('legacy', { Name: 'Legacy item' });
+    assert.equal(item.modelId, 'legacy');
+    assert.ok(mirrorCalls.some(call => call.kind === 'create' && call.entityId === item.expressId));
+    assert.ok(mirrorCalls.some(call => call.kind === 'attribute'
+      && call.entityId === item.expressId && call.detail === 'Name'));
   });
 
   it('gives concurrent non-root cost entities unique room identities (#4857)', async () => {

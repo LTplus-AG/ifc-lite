@@ -127,10 +127,8 @@ export function registerEntityPath(store: IfcDataStore, expressId: number, path:
   maps.toExpressId.set(path, expressId);
 }
 
-/** Drop the bidirectional room identity of an entity deleted by a peer. */
+/** Drop outbound identity while retaining the path's stable id for a remote undo/re-add. */
 export function unregisterEntityPath(store: IfcDataStore, expressId: number): void {
   const maps = entityMaps(store);
-  const path = maps.toPath.get(expressId);
   maps.toPath.delete(expressId);
-  if (path) maps.toExpressId.delete(path);
 }

@@ -15,7 +15,20 @@ export function createRemoteOverlayEntity(
   ifcClass: string,
   attributes: Readonly<Record<string, unknown>> = {},
 ): boolean {
-  if (entityForPath(store, entityPath) !== null) return false;
+  const existingId = entityForPath(store, entityPath);
+  if (existingId !== null) {
+    if (!view.isDeleted(existingId)) return false;
+    if (store.entityIndex.byId.has(existingId)) {
+      view.restoreFromTombstone(existingId);
+    } else {
+      view.restoreNewEntity({ expressId: existingId, type: ifcClass, attributes: [] });
+    }
+    registerEntityPath(store, existingId, entityPath);
+    for (const [name, value] of Object.entries(attributes)) {
+      applyRemoteAttribute(view, store, existingId, name, value);
+    }
+    return true;
+  }
   const created = new StoreEditor(store, view).addEntity(ifcClass, []);
   registerEntityPath(store, created.expressId, entityPath);
   for (const [name, value] of Object.entries(attributes)) {

@@ -321,7 +321,7 @@ function mirrorCostOverlayDelta(
   beforePositions: ReadonlyMap<number, string>,
 ): void {
   const state = store.getState();
-  const view = state.getMutationView(modelId);
+  const view = state.getMutationView(normalizeMutationModelId(state, modelId));
   if (!view) return;
   const model = getModelForRef(state, modelId === 'legacy' ? LEGACY_MODEL_ID : modelId);
   const dataStore = model?.ifcDataStore;

@@ -90,7 +90,10 @@ describe('portable room STEP source (#4604)', () => {
     assert.doesNotMatch(peerText, /#2=IFCCOSTVALUE\([^\n]*,#\d+/,
       'a numeric AppliedValue must never collide with a reconstructed room entity id');
     const view = new MutablePropertyView(model.ifcDataStore.properties, model.id);
-    view.setPositionalAttribute(itemId, 7, [`#${valueId}`]);
+    // StoreEditor/public SDK reference-list writes use numeric ids. Those are
+    // room-local in a reconstructed model and must be translated just like
+    // their `#id` string counterparts before replaying onto the STEP source.
+    view.setPositionalAttribute(itemId, 7, [valueId]);
     const portable = roomStepExportSource(model.ifcDataStore, view, model.id);
     assert.ok(portable);
     const output = new StepExporter(portable.dataStore, portable.mutationView)

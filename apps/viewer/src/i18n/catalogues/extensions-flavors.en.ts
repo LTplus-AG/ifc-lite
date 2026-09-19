@@ -152,6 +152,13 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorDialog.part.lenses': 'saved lenses',
   'extensionsFlavors.flavorDialog.part.clash': 'clash settings',
   'extensionsFlavors.flavorDialog.part.layout': 'panel layout',
+  'extensionsFlavors.flavorDialog.reason.storageQuota': 'Browser storage is full.',
+  'extensionsFlavors.flavorDialog.reason.storageUnavailable': 'Browser storage is unavailable.',
+  'extensionsFlavors.flavorDialog.reason.serialization': 'Saved data could not be serialized.',
+  'extensionsFlavors.flavorDialog.reason.tooManyClashRules': 'There are too many saved clash rules.',
+  'extensionsFlavors.flavorDialog.reason.clashDataUnreadable': 'Saved clash data could not be read.',
+  'extensionsFlavors.flavorDialog.reason.clashRollbackFailed':
+    'Saved clash data may no longer match what is shown.',
   'extensionsFlavors.flavorDialog.toast.switchedPartially':
     'Switched to {id}, but its {parts} could not be applied — {reasons}',
   'extensionsFlavors.flavorDialog.toast.deleted': 'Deleted {id}',
@@ -209,6 +216,8 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorIndicator.inactiveTitle':
     'Flavors — switchable profiles of your extensions, lenses, and settings.\nClick to manage.',
   'extensionsFlavors.flavorIndicator.defaultLabel': 'Default',
+  'extensionsFlavors.flavorIndicator.defaultDescription':
+    'Baseline flavor — no extensions, no overrides.',
 
   // ── HelpHint ──
   'extensionsFlavors.helpHint.ariaLabel': 'Help: {label}',

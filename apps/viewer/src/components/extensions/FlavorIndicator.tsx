@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { Palette } from 'lucide-react';
-import type { Flavor } from '@ifc-lite/extensions';
+import { DEFAULT_FLAVOR_ID, type Flavor } from '@ifc-lite/extensions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useTranslation } from '@/i18n';
 
@@ -51,7 +51,14 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
 
   if (!host) return null;
 
-  const label = flavor?.name ?? t('extensionsFlavors.flavorIndicator.defaultLabel');
+  const isBaseline = flavor?.id === DEFAULT_FLAVOR_ID;
+  const name = isBaseline
+    ? t('extensionsFlavors.flavorIndicator.defaultLabel')
+    : flavor?.name;
+  const description = isBaseline
+    ? t('extensionsFlavors.flavorIndicator.defaultDescription')
+    : flavor?.description;
+  const label = name ?? t('extensionsFlavors.flavorIndicator.defaultLabel');
   // Slightly more emphasised treatment than the surrounding status
   // bar items so the entry to the flavor system is visible without
   // an animated walkthrough. Bordered chip + foreground text on
@@ -62,14 +69,14 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
       onClick={onClick}
       aria-label={
         flavor
-          ? t('extensionsFlavors.flavorIndicator.activeAriaLabel', { name: flavor.name })
+          ? t('extensionsFlavors.flavorIndicator.activeAriaLabel', { name: name ?? flavor.name })
           : t('extensionsFlavors.flavorIndicator.inactiveAriaLabel')
       }
       title={
         flavor
           ? t('extensionsFlavors.flavorIndicator.activeTitle', {
-              name: flavor.name,
-              description: flavor.description ? `\n${flavor.description}` : '',
+              name: name ?? flavor.name,
+              description: description ? `\n${description}` : '',
             })
           : t('extensionsFlavors.flavorIndicator.inactiveTitle')
       }

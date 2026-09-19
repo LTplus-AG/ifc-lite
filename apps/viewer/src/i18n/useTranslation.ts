@@ -15,9 +15,10 @@ import type { TranslationParameters } from './types';
 export interface UseTranslationResult {
   t: (key: TranslationKey, params?: TranslationParameters) => string;
   locale: string;
+  localeSnapshot: string;
 }
 
 export function useTranslation(): UseTranslationResult {
-  useSyncExternalStore(subscribeLocale, getLocaleSnapshot, getLocaleSnapshot);
-  return { t: resolve, locale: getLocale() };
+  const localeSnapshot = useSyncExternalStore(subscribeLocale, getLocaleSnapshot, getLocaleSnapshot);
+  return { t: resolve, locale: getLocale(), localeSnapshot };
 }

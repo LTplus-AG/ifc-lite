@@ -84,7 +84,7 @@ describe('Add Element localization (#4918)', () => {
 
     const text = ui.textContent ?? '';
     assert.match(text, /⟦Auto Spaces \(from walls\)⟧/);
-    assert.match(text, /⟦Name pattern⟧/);
+    assert.match(text, /⟦Name pattern \(\{n\} = index\)⟧/);
     assert.match(text, /⟦Preview⟧/);
     assert.match(text, /⟦Generate⟧/);
     assert.match(text, /⟦Authoring is disabled until a model with a building storey is loaded\.⟧/);
@@ -94,6 +94,7 @@ describe('Add Element localization (#4918)', () => {
     const model = fixtureModel('model.ifc', {
       entities: [{ expressId: 2, type: 'IfcBuildingStorey' }],
     });
+    assert.ok(model.ifcDataStore);
     Object.assign(model.ifcDataStore, { getEntity: () => null });
     useViewerStore.setState(fixtureModels(model));
     const ui = render(<AddElementPanel onClose={() => undefined} />);
@@ -104,5 +105,11 @@ describe('Add Element localization (#4918)', () => {
     act(() => setLocale('add-element-storey-pseudo'));
     assert.match(ui.textContent ?? '', /⟦Storey #2⟧/);
     assert.match(ui.textContent ?? '', /⟦Thickness \(m\)⟧/);
+
+    act(() => registerLocale('add-element-storey-pseudo', {
+      ...pseudoLocale(),
+      'addElement.storeyFallback': 'Replaced storey #{id}',
+    }));
+    assert.match(ui.textContent ?? '', /Replaced storey #2/);
   });
 });

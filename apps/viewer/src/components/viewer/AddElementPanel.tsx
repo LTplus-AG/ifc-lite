@@ -44,7 +44,7 @@ interface AddElementPanelProps {
 }
 
 export function AddElementPanel({ onClose }: AddElementPanelProps) {
-  const { t, locale } = useTranslation();
+  const { t, localeSnapshot } = useTranslation();
   const { models, ifcDataStore } = useIfc();
 
   const addElementType = useViewerStore((s) => s.addElementType);
@@ -111,7 +111,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
       opts.push({ expressId, label: name });
     }
     return opts;
-  }, [effectiveModelId, models, ifcDataStore, t, locale]);
+  }, [effectiveModelId, models, ifcDataStore, t, localeSnapshot]);
 
   // Auto-pick the first storey when the user hasn't chosen one or
   // the previous choice no longer exists in the active model. Also
@@ -629,7 +629,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
 
       <div className="space-y-1">
         <Label htmlFor="auto-space-name" className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
-          {t('addElement.auto.namePattern')} <span className="text-zinc-400 dark:text-zinc-600 ml-1">({t('addElement.auto.indexHelp')})</span>
+          {t('addElement.auto.namePatternLabel', { indexToken: '{n}' })}
         </Label>
         <Input
           id="auto-space-name"

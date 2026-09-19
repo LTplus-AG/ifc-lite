@@ -34,6 +34,7 @@ import {
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
+import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -1140,8 +1141,7 @@ export function Viewport({
             }
           }
           if (min && max) {
-            calculateScale();
-            return camera.frameBounds(min, max, durationMs);
+            calculateScale(); return frameSelectionBounds(camera, renderer, min, max, durationMs);
           } else {
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }

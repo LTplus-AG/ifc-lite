@@ -93,7 +93,7 @@ test('resolveModelChain: plural wins, singular becomes a one-element chain, else
 
 test('the default chains are the three/two verified models, sonnet and haiku first', () => {
   assert.deepEqual(OPENROUTER_REVIEW_MODELS_DEFAULT, ['anthropic/claude-sonnet-5', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-luna']);
-  assert.deepEqual(OPENROUTER_JUDGE_MODELS_DEFAULT, ['anthropic/claude-haiku-4.5', 'openai/gpt-5.4-mini']);
+  assert.deepEqual(OPENROUTER_JUDGE_MODELS_DEFAULT, ['openai/gpt-5.4-nano', 'anthropic/claude-haiku-4.5']);
   assert.equal(OPENROUTER_REVIEW_MODEL, OPENROUTER_REVIEW_MODELS_DEFAULT[0]);
 });
 
@@ -150,4 +150,29 @@ test('a non-zero fallback exit surfaces stderr', () => {
     () => runOpenRouterFallback({ prompt: 'p', apiKey: 'k', spawn: () => ({ status: 1, stdout: '', stderr: 'boom' }) }),
     /OpenRouter fallback exited 1: boom/,
   );
+});
+
+test('every non-MODEL_USED child stderr line is forwarded to the parent log, even on success', () => {
+  // The child's own per-model chain failures (requestOpenRouterReviewChain's
+  // "provider openrouter: X failed: ...; trying Y") used to be readable only
+  // from result.stderr, which this function discarded once MODEL_USED was
+  // extracted. A chain that failed over from model 1 to model 2 then printed
+  // nothing at all about model 1's failure in the parent job log.
+  const logged = [];
+  const origLog = console.log;
+  console.log = (...args) => logged.push(args.join(' '));
+  try {
+    runOpenRouterFallback({
+      prompt: 'p', apiKey: 'k', models: ['a/one', 'b/two'],
+      spawn: () => ({
+        status: 0,
+        stdout: 'the answer',
+        stderr: 'provider openrouter: a/one failed: HTTP 429; trying b/two\nMODEL_USED:b/two\n',
+      }),
+    });
+  } finally {
+    console.log = origLog;
+  }
+  assert.ok(logged.some((l) => l.includes('a/one failed: HTTP 429')), 'the per-model failure must reach the parent log');
+  assert.ok(!logged.some((l) => l.includes('MODEL_USED')), 'the MODEL_USED line is still stripped, not forwarded');
 });

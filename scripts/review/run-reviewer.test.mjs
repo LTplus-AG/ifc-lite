@@ -445,6 +445,50 @@ test('#3803: model errors never switch providers', () => {
   assert.equal(fallbackCalls, 0);
 });
 
+test('a CLI_SILENT_EXIT on the primary credential logs its stdout excerpt before the fallback answers', () => {
+  // PR #4981 run 35424837640: a silent primary CLI exit followed by a
+  // succeeding independent provider left NO trace in the parent log of why the
+  // primary was skipped, because the diagnosis lived only in `err.message` on
+  // an error that was caught and never re-thrown. `stdoutExcerpt` must be
+  // logged the moment this credential fails, not reconstructed later.
+  const logged = [];
+  const origLog = console.log;
+  console.log = (...args) => logged.push(args.join(' '));
+  try {
+    const result = runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+      spawn: () => ({ status: 1, stdout: '{"type":"result","subtype":"error","marker":"UNIQUE_STDOUT_MARKER"}', stderr: '' }),
+      providerFallback: () => '{"verdict":"clean"}',
+    });
+    assert.equal(result.text, '{"verdict":"clean"}');
+  } finally {
+    console.log = origLog;
+  }
+  const line = logged.find((l) => l.includes('CLI_SILENT_EXIT stdout'));
+  assert.ok(line, 'the CLI_SILENT_EXIT stdout excerpt must be logged even though the fallback went on to succeed');
+  assert.match(line, /UNIQUE_STDOUT_MARKER/);
+});
+
+test('the stdout excerpt is capped at 800 chars in the log line, independent of the 1500-char message cap', () => {
+  const opaque = `{"type":"result","padding":"${'y'.repeat(2000)}"}`;
+  const logged = [];
+  const origLog = console.log;
+  console.log = (...args) => logged.push(args.join(' '));
+  try {
+    runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+      spawn: () => ({ status: 1, stdout: opaque, stderr: '' }),
+      providerFallback: () => '{"verdict":"clean"}',
+    });
+  } finally {
+    console.log = origLog;
+  }
+  const line = logged.find((l) => l.includes('CLI_SILENT_EXIT stdout'));
+  assert.ok(line);
+  const excerpt = line.split('first 800 chars): ')[1];
+  assert.equal(excerpt.length, 800);
+});
+
 test('resolveTokens: the same secret in both slots is REFUSED, not treated as a fallback', () => {
   // An easy mistake while wiring the second one up, and a fallback that shares
   // the primary's pool and expiry fails at exactly the moment it is needed while

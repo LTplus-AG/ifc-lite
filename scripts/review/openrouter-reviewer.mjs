@@ -16,7 +16,11 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
  * on OpenRouter's /models list at the time this was written.
  */
 export const OPENROUTER_REVIEW_MODELS_DEFAULT = ['anthropic/claude-sonnet-5', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-luna'];
-export const OPENROUTER_JUDGE_MODELS_DEFAULT = ['anthropic/claude-haiku-4.5', 'openai/gpt-5.4-mini'];
+// gpt-5.4-nano FIRST: the cheapest model in the pricing table
+// (ensemble-reviewer.mjs's MODEL_PRICES_PER_MTOK) that the judge -- a
+// keep/drop-only, no-tools, one-turn pass over already-validated findings --
+// needs no more capability than. Haiku stays as the failover.
+export const OPENROUTER_JUDGE_MODELS_DEFAULT = ['openai/gpt-5.4-nano', 'anthropic/claude-haiku-4.5'];
 
 /** Kept as a plain single-model constant: the first of the review chain. */
 export const OPENROUTER_REVIEW_MODEL = OPENROUTER_REVIEW_MODELS_DEFAULT[0];
@@ -35,7 +39,14 @@ export function responseText(message) {
   return '';
 }
 
-export async function requestOpenRouterReview({ prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch }) {
+/**
+ * The one call site that actually hits the network. Returns `usage` alongside
+ * `text` because the parallel ensemble (ensemble-reviewer.mjs) needs OpenRouter's
+ * own token counts to print a per-run cost hint; `requestOpenRouterReview` below
+ * is the pre-existing, text-only contract every other caller and test already
+ * depends on, so it stays a thin wrapper rather than changing shape.
+ */
+export async function requestOpenRouterReviewWithUsage({ prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch }) {
   const response = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -60,6 +71,11 @@ export async function requestOpenRouterReview({ prompt, apiKey, model = OPENROUT
   }
   const text = responseText(parsed?.choices?.[0]?.message);
   if (!text) throw new Error('OpenRouter response completed without output text.');
+  return { text, usage: parsed?.usage ?? null };
+}
+
+export async function requestOpenRouterReview(opts) {
+  const { text } = await requestOpenRouterReviewWithUsage(opts);
   return text;
 }
 
@@ -121,6 +137,17 @@ export async function requestOpenRouterReviewChain({ prompt, apiKey, models, fet
  * synchronous. The chosen model cannot travel back to the parent through
  * stdout -- that channel is the review text itself -- so it rides a single
  * `MODEL_USED:` line on stderr instead, which the parent strips out below.
+ *
+ * EVERY OTHER STDERR LINE IS FORWARDED TO THE PARENT LOG, unconditionally, on
+ * both success and failure. `requestOpenRouterReviewChain` inside the child
+ * already logs each model's own failure with `console.error` -- that is where
+ * "provider openrouter: anthropic/claude-sonnet-5 failed: ..." was written --
+ * but it stayed trapped in `result.stderr`, which this function used to read
+ * only for the `MODEL_USED` line and otherwise discard. A run that failed over
+ * from the first chain model to the second therefore printed only "succeeded
+ * (model=...)" with no trace of why the first one was skipped (PR #4981, run
+ * 35424837640). Forwarding here, not filtering to failures only, means a
+ * partial chain success is diagnosable from the parent job log alone.
  */
 export function runOpenRouterFallback({ prompt, apiKey, models = OPENROUTER_REVIEW_MODELS_DEFAULT, spawn = spawnSync }) {
   const result = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
@@ -131,6 +158,9 @@ export function runOpenRouterFallback({ prompt, apiKey, models = OPENROUTER_REVI
   });
   if (result.error) throw new Error(`Could not spawn OpenRouter fallback: ${result.error.message}`);
   const stderr = String(result.stderr ?? '');
+  for (const line of stderr.split('\n')) {
+    if (line && !/^MODEL_USED:/.test(line)) console.log(`openrouter-fallback (child): ${line}`);
+  }
   if (result.status !== 0) {
     throw new Error(`OpenRouter fallback exited ${result.status}: ${stderr.trim() || '(empty)'}`);
   }

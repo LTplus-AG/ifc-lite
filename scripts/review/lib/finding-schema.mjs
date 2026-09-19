@@ -50,8 +50,15 @@ export const MAX_FINDINGS = 12;
 /** Sibling budget to `MIN_PROOF_QUOTE_CHARS` in ./finding-proof-of-work.mjs -- see that file's comment for why the two differ. */
 const MIN_FINDING_QUOTE_CHARS = 3;
 
-/** The top-level shape. An individual finding is validated -- and dropped -- later. */
-function checkSchema(response) {
+/**
+ * The top-level shape. An individual finding is validated -- and dropped --
+ * later. EXPORTED (was private) so `ensemble-reviewer.mjs`'s `poolFindings`
+ * can reuse this SAME check to decide which of several parallel model answers
+ * is schema-valid enough to source the pooled envelope's `files_reviewed`/
+ * `riskiest_change`, rather than growing its own copy of "what a valid
+ * top-level response looks like" that could silently drift from this one.
+ */
+export function checkSchema(response) {
   const fail = (msg) => {
     throw new ValidateFindingsError('SCHEMA_INVALID', `${msg} REMEDY: fix the prompt's output contract.`);
   };

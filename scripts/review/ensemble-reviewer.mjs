@@ -46,7 +46,13 @@
 import { writeFileSync } from 'node:fs';
 import { requestOpenRouterReviewWithUsage, parseModelChain } from './openrouter-reviewer.mjs';
 import { stripFence } from './validate-findings.mjs';
-import { SENTINEL } from './lib/finding-schema.mjs';
+// `checkSchema` is the REAL validator's own top-level shape check (SCHEMA_INVALID/
+// FINDINGS_INVALID/VERDICT_CONTRADICTS_FINDINGS), reused rather than duplicated: see
+// `poolFindings` below for why a syntactically-valid-but-schema-invalid model answer
+// must never source the pooled envelope's metadata.
+import { SENTINEL, checkSchema } from './lib/finding-schema.mjs';
+import { ValidateFindingsError } from './lib/validate-findings-error.mjs';
+import { DEFECT_CLASSES, CLASS_VERDICTS } from './lib/defect-classes.mjs';
 import { classify as classifyPrRisk } from './classify-pr-risk.mjs';
 
 /** Reference chain for docs/PR description only -- see `resolveEnsembleModels` for why this is NOT a runtime fallback. */
@@ -155,26 +161,101 @@ export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, conc
 }
 
 /**
- * Parse every model's JSON answer, tag its findings with `source`, and pool
- * into ONE combined raw-review envelope. Returns `null` when nothing usable
- * parsed, so the caller can fall through to the CLI/failover chain exactly as
- * if the ensemble had never run.
+ * `class_pass` MERGE ACROSS MODELS (finding behind #4981's CLASS_PASS_INCOMPLETE
+ * loop). `checkClassPass` in defect-classes.mjs only ever runs against ONE
+ * model's answer, so it has no merge semantics of its own to reuse; this is the
+ * ensemble-specific rule the PR description states: a class counts as passed
+ * in the POOLED answer only when EVERY schema-valid contributing model shows a
+ * valid row for it (present, a real `CLASS_VERDICTS` value, a non-empty `why`)
+ * -- one model silently skipping a class is not covered up by the others having
+ * covered it, because `checkClassPass` downstream is what actually decides
+ * whether the resulting row set is complete enough to accept, and this must not
+ * fabricate coverage that lets a class through it. A class no contributing
+ * model shows validly is simply OMITTED from the merge (not invented), so
+ * `checkClassPass` sees the true gap and fails exactly the way a single-model
+ * run with that gap would.
+ *
+ * The merged verdict for a class prefers `clear`: if any contributing model
+ * says a class is `clear`, that model is claiming it looked at real code for
+ * that class and it held up, which is stronger evidence than another model's
+ * `not-applicable`. Only when every contributing model says `not-applicable`
+ * does the merged row stay `not-applicable`.
+ *
+ * @param {{model: string, obj: object}[]} parsed schema-valid answers only
+ * @returns {object[]|undefined} a `class_pass` array, or `undefined` when no
+ *   contributing model supplied one at all (an all-`findings` ensemble, where
+ *   `class_pass` is never asked for and `validate()` never reads this field).
+ */
+function mergeClassPass(parsed) {
+  const withClassPass = parsed.filter((p) => Array.isArray(p.obj?.class_pass));
+  if (withClassPass.length === 0) return undefined;
+
+  const rowFor = (obj, cls) => {
+    const row = obj.class_pass.find((r) => r && typeof r === 'object' && r.class === cls);
+    if (!row || !CLASS_VERDICTS.includes(row.verdict) || typeof row.why !== 'string' || row.why.trim() === '') {
+      return null;
+    }
+    return row;
+  };
+
+  const merged = [];
+  for (const cls of DEFECT_CLASSES) {
+    const rows = withClassPass.map(({ obj }) => rowFor(obj, cls));
+    if (rows.some((r) => r === null)) continue; // not every contributing model passed this class
+    const verdict = rows.some((r) => r.verdict === 'clear') ? 'clear' : 'not-applicable';
+    const why = rows.find((r) => r.verdict === verdict)?.why.trim() ?? rows[0].why.trim();
+    merged.push({ class: cls, verdict, why });
+  }
+  return merged;
+}
+
+/**
+ * Parse every model's JSON answer, KEEP ONLY THE SCHEMA-VALID ONES, tag each
+ * survivor's findings with `source`, and pool into ONE combined raw-review
+ * envelope. Returns `null` when nothing usable survives, so the caller can
+ * fall through to the CLI/failover chain exactly as if the ensemble had never
+ * run.
+ *
+ * SCHEMA VALIDATION HAPPENS HERE, not only downstream in `validate-findings.mjs`,
+ * because a syntactically valid but SCHEMA-invalid answer (`files_reviewed: []`,
+ * a missing `riskiest_change`, `findings` not an array, a `clean` verdict with
+ * findings attached) used to become the metadata SOURCE below purely by being
+ * `parsed[0]` -- one badly-shaped cheap model corrupted every other model's
+ * otherwise-good pooled result. `checkSchema` is the real validator's own
+ * top-level check, reused rather than duplicated, so "what counts as
+ * schema-valid" cannot drift between this file and the one that enforces it for
+ * real.
  *
  * `files_reviewed` and `riskiest_change` are taken from the FIRST model whose
- * answer parses -- every model was sent the identical roster and prompt, so
- * a compliant answer names the same set regardless of which one supplies it,
- * and mechanical validation downstream still checks that set against the diff
- * we actually sent, not against anything asserted here.
+ * answer is schema-valid -- every model was sent the identical roster and
+ * prompt, so a compliant answer names the same set regardless of which one
+ * supplies it, and mechanical validation downstream still checks that set
+ * against the diff we actually sent, not against anything asserted here.
  */
 export function poolFindings(results) {
   const parsed = [];
   for (const r of results) {
+    let obj;
     try {
-      const obj = JSON.parse(stripFence(r.text).trim());
-      parsed.push({ model: r.model, obj });
+      obj = JSON.parse(stripFence(r.text).trim());
     } catch (error) {
       console.log(`ensemble: ${r.model} answer was not parseable JSON: ${error.message}`);
+      continue;
     }
+    try {
+      checkSchema(obj);
+    } catch (error) {
+      // ANY OF checkSchema'S THREE FATAL REASONS (SCHEMA_INVALID,
+      // FINDINGS_INVALID, VERDICT_CONTRADICTS_FINDINGS) DISQUALIFIES this
+      // model from the pool, the same way it would disqualify a single-model
+      // run: a model that emits `verdict: "clean"` alongside findings, or
+      // omits `riskiest_change`, is not a source of truth for anything else
+      // it said either.
+      const reason = error instanceof ValidateFindingsError ? error.reason : 'UNKNOWN';
+      console.log(`ensemble: ${r.model} answer failed schema validation (${reason}): ${error.message}`);
+      continue;
+    }
+    parsed.push({ model: r.model, obj });
   }
   if (parsed.length === 0) return null;
 
@@ -186,16 +267,21 @@ export function poolFindings(results) {
       }
     }
   }
-  // CLEAN ONLY WHEN EVERY PARSEABLE MODEL SAID CLEAN. A model that reported
+  // CLEAN ONLY WHEN EVERY SCHEMA-VALID MODEL SAID CLEAN. A model that reported
   // findings is not outvoted by two that reported clean: a real defect one
   // cheap model caught is not erased by two that missed it.
   const allClean = parsed.every((p) => p.obj?.verdict === 'clean');
   const first = parsed[0].obj ?? {};
+  const classPass = mergeClassPass(parsed);
   return {
     verdict: findings.length > 0 || !allClean ? 'findings' : 'clean',
     files_reviewed: Array.isArray(first.files_reviewed) ? first.files_reviewed : [],
     riskiest_change: first.riskiest_change ?? null,
     findings,
+    // OMITTED, not written as `undefined`, when no contributing model supplied
+    // one: `JSON.stringify` drops an `undefined`-valued key on its own, but
+    // being explicit here is what `mergeClassPass`'s own doc comment promises.
+    ...(classPass !== undefined ? { class_pass: classPass } : {}),
     end: SENTINEL,
   };
 }

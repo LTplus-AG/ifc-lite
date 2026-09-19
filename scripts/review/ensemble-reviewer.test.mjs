@@ -4,6 +4,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   runEnsemble,
   poolFindings,
@@ -15,6 +20,8 @@ import {
   MODEL_PRICES_PER_MTOK,
   REVIEW_ENSEMBLE_STRONG_MODEL,
 } from './ensemble-reviewer.mjs';
+import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
+import { addedLineRanges } from './build-review-input.mjs';
 
 const SENTINEL = 'ifc-lite-review-v1';
 const reply = (body) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
@@ -118,6 +125,170 @@ test('an unparseable model answer is skipped, not fatal to pooling', () => {
 
 test('poolFindings returns null when nothing parsed', () => {
   assert.equal(poolFindings([{ model: 'a/one', text: 'garbage' }]), null);
+});
+
+// ==================================================== finding-6/7/8: schema and class_pass
+
+/**
+ * A DOCS-ONLY diff (mirrors validate-findings.test.mjs's own DOCS_PATCH), so
+ * every one of `DEFECT_CLASSES` is legitimately `not-applicable` and a real
+ * `class_pass` array can be built without needing `class-applicability.mjs`'s
+ * predicates to fire on anything.
+ */
+const DOCS_PATCH = ['@@ -1,2 +1,4 @@', ' # Title', '+Some prose about the project.', '+More prose here.'].join('\n');
+const DOCS_PATH = 'docs/readme.md';
+const DOCS_QUOTE = 'Some prose about the project.';
+
+const allNotApplicableClassPass = () =>
+  DEFECT_CLASSES.map((c) => ({ class: c, verdict: 'not-applicable', why: `neither hunk can carry ${c}, docs-only diff` }));
+
+const cleanDocsAnswer = () => ({
+  verdict: 'clean',
+  files_reviewed: [DOCS_PATH],
+  riskiest_change: { path: DOCS_PATH, quoted_line: DOCS_QUOTE },
+  findings: [],
+  class_pass: allNotApplicableClassPass(),
+  end: SENTINEL,
+});
+
+test('finding-6: a schema-invalid model (empty files_reviewed, no riskiest_change) is excluded from the pool', () => {
+  const results = [
+    { model: 'good/one', text: JSON.stringify(cleanDocsAnswer()) },
+    { model: 'good/two', text: JSON.stringify(cleanDocsAnswer()) },
+    // Syntactically valid JSON, schema-invalid: `files_reviewed: []` and no
+    // `riskiest_change` at all -- exactly the shape the finding names.
+    { model: 'bad/schema', text: JSON.stringify({ verdict: 'clean', files_reviewed: [], findings: [], end: SENTINEL }) },
+  ];
+  const logged = [];
+  const origLog = console.log;
+  console.log = (...args) => logged.push(args.join(' '));
+  let pooled;
+  try {
+    pooled = poolFindings(results);
+  } finally {
+    console.log = origLog;
+  }
+  assert.equal(pooled.files_reviewed.length, 1, 'the bad model must never source files_reviewed');
+  assert.deepEqual(pooled.files_reviewed, [DOCS_PATH]);
+  assert.equal(pooled.verdict, 'clean');
+  assert.ok(
+    logged.some((l) => l.includes('bad/schema') && l.includes('schema validation') && l.includes('SCHEMA_INVALID')),
+    'the exclusion must be logged and named by reason',
+  );
+});
+
+test('finding-6: a pool where ONLY a schema-invalid model answered returns null, same as no parseable answer at all', () => {
+  const results = [
+    { model: 'bad/schema', text: JSON.stringify({ verdict: 'clean', files_reviewed: [], findings: [], end: SENTINEL }) },
+  ];
+  assert.equal(poolFindings(results), null);
+});
+
+test('finding-7: an all-clean ensemble carries a MERGED class_pass, not an omitted one', () => {
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(cleanDocsAnswer()) },
+    { model: 'b/two', text: JSON.stringify(cleanDocsAnswer()) },
+  ]);
+  assert.equal(pooled.verdict, 'clean');
+  assert.ok(Array.isArray(pooled.class_pass), 'class_pass must be carried through, not dropped');
+  assert.equal(pooled.class_pass.length, DEFECT_CLASSES.length);
+  for (const cls of DEFECT_CLASSES) {
+    assert.ok(pooled.class_pass.some((r) => r.class === cls), `${cls} must survive the merge`);
+  }
+});
+
+test('finding-7: a class only ONE model covers validly is omitted from the merge, not fabricated', () => {
+  const complete = cleanDocsAnswer();
+  const partial = cleanDocsAnswer();
+  // b/two never mentions the first class at all.
+  partial.class_pass = partial.class_pass.filter((r) => r.class !== DEFECT_CLASSES[0]);
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(complete) },
+    { model: 'b/two', text: JSON.stringify(partial) },
+  ]);
+  assert.ok(!pooled.class_pass.some((r) => r.class === DEFECT_CLASSES[0]), 'a class not every model passed must not appear');
+  assert.equal(pooled.class_pass.length, DEFECT_CLASSES.length - 1);
+});
+
+test('finding-7: the merge prefers "clear" over "not-applicable" when models disagree', () => {
+  const cls = DEFECT_CLASSES[0];
+  const a = cleanDocsAnswer();
+  const b = cleanDocsAnswer();
+  a.class_pass = a.class_pass.map((r) => (r.class === cls ? { ...r, verdict: 'clear', why: `walked ${cls} at docs/readme.md:2, genuinely clear` } : r));
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(a) },
+    { model: 'b/two', text: JSON.stringify(b) },
+  ]);
+  const row = pooled.class_pass.find((r) => r.class === cls);
+  assert.equal(row.verdict, 'clear');
+});
+
+// ------------------------------------------------- finding-8: the REAL validator, end to end
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const VALIDATE_SCRIPT = join(HERE, 'validate-findings.mjs');
+const TMP = mkdtempSync(join(tmpdir(), 'ensemble-pool-validate-'));
+let seq = 0;
+
+/** Runs the pooled envelope through the REAL, unmodified validate-findings.mjs CLI. */
+function runRealValidator(pooled, input) {
+  const n = (seq += 1);
+  const rawPath = join(TMP, `raw-${n}.txt`);
+  const inputPath = join(TMP, `input-${n}.json`);
+  const outPath = join(TMP, `findings-${n}.json`);
+  writeFileSync(rawPath, JSON.stringify(pooled));
+  writeFileSync(inputPath, JSON.stringify(input));
+  const r = spawnSync(process.execPath, [VALIDATE_SCRIPT, '--raw', rawPath, '--input', inputPath, '--out', outPath], { encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout}${r.stderr}`, doc: r.status === 0 ? JSON.parse(readFileSync(outPath, 'utf8')) : null };
+}
+
+const DOCS_INPUT = {
+  headSha: 'a'.repeat(40),
+  files: [{ path: DOCS_PATH, patch: DOCS_PATCH, addedLineRanges: addedLineRanges(DOCS_PATCH) }],
+  unreviewable: [],
+};
+
+test('finding-8: the pooled envelope for an ALL-CLEAN ensemble passes the real validator', () => {
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(cleanDocsAnswer()) },
+    { model: 'b/two', text: JSON.stringify(cleanDocsAnswer()) },
+  ]);
+  const r = runRealValidator(pooled, DOCS_INPUT);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
+  assert.equal(r.doc.classPass, true, 'the merged class_pass must satisfy checkClassPass, not trip CLASS_PASS_INCOMPLETE');
+});
+
+test('finding-8: the pooled envelope for a MIXED ensemble (one clean, one with a real finding) passes the real validator', () => {
+  const withFindingDocs = {
+    verdict: 'findings',
+    files_reviewed: [DOCS_PATH],
+    riskiest_change: { path: DOCS_PATH, quoted_line: DOCS_QUOTE },
+    findings: [{ path: DOCS_PATH, line: 2, quote: DOCS_QUOTE, body: 'this prose overstates what the code actually does', class: 'description-mismatch' }],
+    end: SENTINEL,
+  };
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(cleanDocsAnswer()) },
+    { model: 'b/two', text: JSON.stringify(withFindingDocs) },
+  ]);
+  assert.equal(pooled.verdict, 'findings');
+  const r = runRealValidator(pooled, DOCS_INPUT);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'findings');
+  assert.equal(r.doc.findings.length, 1);
+  assert.equal(r.doc.findings[0].source, 'b/two');
+});
+
+test('finding-8: a schema-invalid model in the mix never reaches the real validator\'s input at all', () => {
+  const badSchema = { verdict: 'clean', files_reviewed: [], findings: [], end: SENTINEL };
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(cleanDocsAnswer()) },
+    { model: 'bad/schema', text: JSON.stringify(badSchema) },
+  ]);
+  const r = runRealValidator(pooled, DOCS_INPUT);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
+  assert.equal(r.doc.classPass, true);
 });
 
 // ========================================================= runEnsembleReview

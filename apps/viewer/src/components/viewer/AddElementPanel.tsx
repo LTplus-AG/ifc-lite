@@ -33,6 +33,7 @@ import { EntityNode } from '@ifc-lite/query';
 import type { AddElementType } from '@/store/slices/addElementSlice';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { ELEMENT_OPTIONS, SPACE_PREDEFINED_TYPES } from './add-element-options';
+import { formatWallSkipReasons } from './add-element-wall-skip-i18n';
 
 interface StoreyOption {
   expressId: number;
@@ -494,7 +495,7 @@ interface AutoSpacesSectionProps {
  * emitting; Generate commits each candidate as an IfcSpace.
  */
 function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const params = useViewerStore((s) => s.addElementAutoSpaceParams);
   const setParams = useViewerStore((s) => s.setAddElementAutoSpaceParams);
   const preview = useViewerStore((s) => s.addElementAutoSpacePreview);
@@ -699,9 +700,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
           {preview.diagnostics && Object.keys(preview.diagnostics.skipReasons).length > 0 && (
             <div className="opacity-80">
               {t('addElement.auto.skippedWalls', {
-                reasons: Object.entries(preview.diagnostics.skipReasons)
-                  .map(([reason, count]) => `${count}× ${reason}`)
-                  .join(', '),
+                reasons: formatWallSkipReasons(t, locale, preview.diagnostics.skipReasons),
               })}
             </div>
           )}

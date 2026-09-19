@@ -77,7 +77,25 @@ describe('Add Element localization (#4918)', () => {
   });
 
   it('uses the active locale throughout the Auto Spaces branch', () => {
-    useViewerStore.setState({ addElementType: 'space' });
+    useViewerStore.setState({
+      addElementType: 'space',
+      addElementAutoSpacePreview: {
+        storeyExpressId: 1,
+        outlines: [],
+        regions: [],
+        wallsConsidered: 2,
+        wallsContributing: 0,
+        diagnostics: {
+          vertices: 0,
+          edgesAfterSplit: 0,
+          facesTotal: 0,
+          outerFacesDropped: 0,
+          belowMinAreaDropped: 0,
+          largestArea: 0,
+          skipReasons: { 'no-placement': 1, 'placement-not-resolvable': 1 },
+        },
+      },
+    });
     const ui = render(<AddElementPanel onClose={() => undefined} />);
     registerLocale('add-element-auto-pseudo', pseudoLocale());
     act(() => setLocale('add-element-auto-pseudo'));
@@ -88,6 +106,9 @@ describe('Add Element localization (#4918)', () => {
     assert.match(text, /⟦Preview⟧/);
     assert.match(text, /⟦Generate⟧/);
     assert.match(text, /⟦Authoring is disabled until a model with a building storey is loaded\.⟧/);
+    assert.match(text, /⟦placement missing⟧/);
+    assert.match(text, /⟦placement could not be resolved⟧/);
+    assert.doesNotMatch(text, /no-placement|placement-not-resolvable/);
   });
 
   it('recomputes unnamed-storey fallbacks and complete unit labels on a live locale change', () => {

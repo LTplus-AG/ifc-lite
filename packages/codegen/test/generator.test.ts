@@ -99,6 +99,7 @@ describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
     expect(names.has('IfcAlignmentCurve')).toBe(true);
     expect(names.has('IfcLengthMeasure')).toBe(false);
     expect(names.has('IfcBinary')).toBe(false);
+    expect(names.has('IfcPropertySetDefinitionSet')).toBe(false);
   });
 
   it('does not read Rust-only supplemental paths for a TypeScript-only generation', () => {
@@ -130,6 +131,7 @@ describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
       expect(schema).toContain('Self::IfcAlignmentCurve => &[],');
       expect(schema).not.toContain('    IfcLengthMeasure,');
       expect(schema).not.toContain('    IfcBinary,');
+      expect(schema).not.toContain('    IfcPropertySetDefinitionSet,');
     } finally {
       rmSync(outputDir, { recursive: true, force: true });
     }

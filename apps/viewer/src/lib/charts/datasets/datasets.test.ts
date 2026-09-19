@@ -601,4 +601,44 @@ END-ISO-10303-21;`;
     assert.equal(await resolveChartFilter(models, undefined, toGlobalId), null);
     assert.equal(await resolveChartFilter(models, { selector: '   ' }, toGlobalId), null);
   });
+
+  // #4946 review (PR #4984): a chart filter used to match only the ON-DISK
+  // property value — `evaluatorModelsFromState` never carried a model's
+  // live `MutablePropertyView` into the evaluator (`filter-evaluate.ts`'s
+  // `psetsFor`/`qtysFor`/`attrsFor` read the base store only). Editing a
+  // property a selector rule reads must change what the rule matches in the
+  // SAME session, without a reload — same live-edit awareness
+  // `element-field-reader.ts` already gives the Elements chart's own field
+  // column, now shared by the filter evaluator every chart source (and
+  // search, and clash set filters) runs its selector through.
+  it('source filter: editing a property changes what the selector matches — filtered count drops (mutation-aware evaluator, review finding)', async () => {
+    const before = useViewerStore.getState();
+    const beforeModels = evaluatorModelsFromState(before);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(before.models, modelId, expressId);
+    const selector = 'Probe.Tag="Special"';
+    const beforeIds = await resolveChartFilter(beforeModels, { selector }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(beforeIds as Set<number>)], [], 'nothing has the property yet — no rows in the base file');
+
+    const overlay = new MutablePropertyView(store.properties, 'm1');
+    overlay.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    overlay.setProperty(41, 'Probe', 'Tag', 'Special');
+    useViewerStore.setState({ mutationViews: new Map([['m1', overlay]]), mutationVersion: 1 });
+
+    const after = useViewerStore.getState();
+    const afterModels = evaluatorModelsFromState(after);
+    const afterIds = await resolveChartFilter(afterModels, { selector }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(afterIds as Set<number>)], [GID(41)], 'the wall now matches: the evaluator read the live edit, not the on-disk file');
+
+    // The inverse case the review asked for: edit a matching element so it
+    // STOPS matching — the filtered count drops.
+    const overlay2 = new MutablePropertyView(store.properties, 'm1');
+    overlay2.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    overlay2.setProperty(41, 'Probe', 'Tag', 'Special');
+    overlay2.setProperty(41, 'Probe', 'Tag', 'Different');
+    useViewerStore.setState({ mutationViews: new Map([['m1', overlay2]]), mutationVersion: 2 });
+    const cleared = useViewerStore.getState();
+    const clearedModels = evaluatorModelsFromState(cleared);
+    const clearedIds = await resolveChartFilter(clearedModels, { selector }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(clearedIds as Set<number>)], [], 'edited away from the matching value: the wall no longer matches, count drops to 0');
+  });
 });

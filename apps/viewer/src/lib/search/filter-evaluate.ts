@@ -47,6 +47,7 @@ import {
 } from '@ifc-lite/parser';
 
 import { RelationshipType } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 
 import {
   combineRuleResults,
@@ -215,6 +216,12 @@ export interface EvaluatorModel {
   filterIdentity?: string;
   tagIds?: ReadonlySet<string>;
   store: IfcDataStore | null;
+  /** Live property/quantity/attribute edits for this model (#4946 review
+   *  finding), folded into `evaluateOneEntity`'s reads when present so a
+   *  rule matches the EDITED value. A snapshot as of the call, same as
+   *  `tagIds` — a mutation committed while a run is in flight does not
+   *  change what that run matches. */
+  mutationView?: MutablePropertyView;
 }
 
 export async function evaluateFilterRulesFederated(
@@ -238,6 +245,7 @@ export async function evaluateFilterRulesFederated(
     modelId: string;
     scope: ModelScope;
     store: IfcDataStore;
+    mutationView: MutablePropertyView | undefined;
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
   }
@@ -262,6 +270,7 @@ export async function evaluateFilterRulesFederated(
       modelId: m.id,
       scope,
       store: m.store,
+      mutationView: m.mutationView,
       iter: arr ?? source,
       total: arr ? arr.length : -1,
     });
@@ -278,6 +287,7 @@ export async function evaluateFilterRulesFederated(
       store: plan.store,
       modelId: plan.modelId,
       scope: plan.scope,
+      mutationView: plan.mutationView,
       table: plan.store.entities,
       options,
       hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -345,6 +355,10 @@ interface EvalContext {
   modelId: string;
   /** What the model-scoped rules (`model`, `modelTag`) read. */
   scope: ModelScope;
+  /** Live edits for this model (#4946 review finding); `undefined` for the
+   *  sync entry (`evaluateFilterRules`, tests) and for a federated caller
+   *  that has no mutation slice (the SDK's headless adapter). */
+  mutationView?: MutablePropertyView;
   table: IfcDataStore['entities'];
   options: EvaluateOptions;
   hasPropertyRule: boolean;
@@ -378,7 +392,13 @@ function evaluateOneEntity(
   let attrCache: AttrRows | null = null;
   const psetsFor = (): PsetRows => {
     if (!psetCache) {
-      const ownSets = extractPropertiesOnDemand(ctx.store, expressId);
+      // A live edit wins over the on-disk value (#4946 review finding):
+      // `mutationView.getForEntity` returns the occurrence's property sets
+      // WITH mutations applied, the same call `element-field-reader.ts`'s
+      // `setsFor` makes for the Elements chart field. Type-level psets are
+      // still read from the base store only — a mutation on the TYPE
+      // object (rather than the occurrence) is not yet reflected here.
+      const ownSets = ctx.mutationView ? ctx.mutationView.getForEntity(expressId) : extractPropertiesOnDemand(ctx.store, expressId);
       const typeSets = getInheritedTypePsets(ctx, expressId);
       // IFC inheritance is per-PROPERTY, not per-set, and the occurrence's
       // own value wins on a name collision — same rule the IDS bridge
@@ -391,7 +411,10 @@ function evaluateOneEntity(
     return psetCache;
   };
   const qtysFor = (): QtyRows => {
-    if (!qtyCache) qtyCache = flattenQtys(extractQuantitiesOnDemand(ctx.store, expressId));
+    if (!qtyCache) {
+      const sets = ctx.mutationView ? ctx.mutationView.getQuantitiesForEntity(expressId) : extractQuantitiesOnDemand(ctx.store, expressId);
+      qtyCache = flattenQtys(sets);
+    }
     return qtyCache;
   };
   const matNamesFor = (): string[] => {
@@ -411,7 +434,20 @@ function evaluateOneEntity(
     return classCache;
   };
   const attrsFor = (): AttrRows => {
-    if (!attrCache) attrCache = extractAllEntityAttributes(ctx.store, expressId);
+    if (!attrCache) {
+      const base = extractAllEntityAttributes(ctx.store, expressId);
+      const edits = ctx.mutationView?.getAttributeMutationsForEntity(expressId);
+      if (edits && edits.length > 0) {
+        // Same merge `element-field-reader.ts`'s `attrsFor` does: an edited
+        // attribute overrides its base value by name, order otherwise kept.
+        const merged = new Map<string, AttrRows[number]>();
+        for (const a of base) merged.set(a.name, a);
+        for (const e of edits) merged.set(e.name, e);
+        attrCache = [...merged.values()];
+      } else {
+        attrCache = base;
+      }
+    }
     return attrCache;
   };
 

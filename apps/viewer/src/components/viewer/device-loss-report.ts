@@ -69,8 +69,9 @@ function deviceLostFingerprint(reason: string): string {
   return `ifc-lite:device_lost:${bucket}`;
 }
 
-// Session-scoped latch. Module state is deliberate: the loss is a property of
-// the device, not of a component instance, so a remount must not re-toast.
+// Loss-episode latch. Module state is deliberate: a component remount must not
+// re-toast the same lost device. Successful recovery re-arms it because the
+// replacement device can independently be lost later in the same session.
 let reported = false;
 // The same, for the neighbouring "degraded and never recovered" signal. A
 // separate latch: the two are different failures and one must not mute the
@@ -84,8 +85,8 @@ export function resetDeviceLossReportForTests(): void {
 }
 
 /**
- * Report a GPU device loss to the user and to error tracking, once per
- * session. Never throws: it runs from a renderer callback whose other
+ * Report a GPU device loss to the user and to error tracking, once per loss
+ * episode. Never throws: it runs from a renderer callback whose other
  * listeners must still fire.
  */
 export function reportDeviceLost(
@@ -292,7 +293,14 @@ export function modelsWithoutOmittedPointCloudHandles(
 
 function reportDeviceRecovery(result: DeviceRecoveryResult): void {
   const models = modelsWithoutOmittedPointCloudHandles(result, useViewerStore.getState().models);
-  if (models) useViewerStore.setState({ models });
+  const pointCloudsOmitted = result.ok && result.omissions.includes('point-clouds');
+  if (models || pointCloudsOmitted) {
+    useViewerStore.setState({ ...(models ? { models } : {}), pointCloudDeviationComputed: false });
+  }
+  // A successful replacement owns a new loss lifecycle. Re-arm the report so
+  // a later replacement-device loss is visible instead of being hidden by the
+  // original device's once-per-episode latch.
+  if (result.ok) reported = false;
   try {
     posthog.capture(result.ok ? 'device_loss_recovered' : 'device_loss_recovery_failed', result.ok
       ? { omissions: [...result.omissions] }

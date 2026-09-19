@@ -130,6 +130,34 @@ describe('Renderer.recoverDevice (#4885)', () => {
     assert.strictEqual(sceneEnabled, true);
   });
 
+  it('fences authored-owner staging while quantized recovery yields (#4885)', async () => {
+    const renderer = lostRenderer();
+    const compiling = deferred<void>(), started = deferred<void>();
+    renderer['recovery'].quantizedBatchesRequested = true;
+    renderer['initOnce'] = async () => {
+      const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
+      device.device = {} as GPUDevice;
+      device.context = {} as GPUCanvasContext;
+      renderer['pipeline'] = {
+        ensureQuantizedPipelines: async () => {
+          started.resolve();
+          await compiling.promise;
+          return true;
+        },
+      } as never;
+    };
+
+    const recovery = renderer.recoverDevice();
+    await started.promise;
+    assert.throws(
+      () => renderer.prepareAuthoredOwner([]),
+      { name: 'RendererDeviceLostError' },
+      'replacement-device resources must stay private until recovery publishes readiness',
+    );
+    compiling.resolve();
+    assert.deepStrictEqual(await recovery, { ok: true, omissions: [] });
+  });
+
   it('stays lost after replacement-device failure and can be retried', async () => {
     const renderer = lostRenderer();
     renderer['initOnce'] = async () => { throw new Error('adapter unavailable'); };

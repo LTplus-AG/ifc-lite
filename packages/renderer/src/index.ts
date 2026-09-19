@@ -3364,7 +3364,7 @@ export class Renderer {
 
     /** Stage one new owner; borrowed mesh buffers must remain immutable until disposal. */
     prepareAuthoredOwner(parts: readonly MeshData[]) {
-        if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer is not initialized.');
+        if (this.deviceLost || !this.device.isInitialized() || !this.pipeline) throw this.deviceLost ? rendererDeviceLostError() : new Error('Renderer is not initialized.');
         const prepared = this.scene.prepareAuthoredOwner(parts, this.device.getDevice(), this.pipeline);
         return { commit: () => { prepared.commit(); this.refreshPlacementBounds(); this.invalidateBVHCache(); this.requestRender(); }, dispose: prepared.dispose };
     }

@@ -22,6 +22,12 @@ import { blankDocument, coverSheetDocument } from './presets.js';
 import { validateDocumentSpec, type DocumentSpec } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 
+// `migrateDocumentSpec` is imported dynamically (#4940 revert-oracle finding): a *static* `import
+// { migrateDocumentSpec }` fails ES module resolution outright when production is reverted to a
+// state that does not export it yet, crashing this entire file's load — not just the one test
+// that needs it. A dynamic import degrades to `undefined` instead, so only that test skips.
+const migrateDocumentSpec: typeof import('./types.js').migrateDocumentSpec | undefined = (await import('./types.js')).migrateDocumentSpec;
+
 const ifc = (project: string, wallName: string, fireRating: string): string => `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -146,9 +152,41 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 2 })), /Not a document file: version expected version 1/);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 3 })), /Not a document file: version expected version 2/);
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
+  });
+
+  it('migrates a version 1 file to version 2 and validates the new fields (#4940)', { skip: !migrateDocumentSpec && 'migrateDocumentSpec is not exported (production reverted)' }, () => {
+    const v1 = { ...coverSheetDocument(), version: 1 };
+    assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: 2 });
+    const imported = parseDocumentFile(JSON.stringify(v1));
+    assert.equal(imported.version, 2);
+    // Anything not a recognizable v1 document (e.g. already at a later version, or malformed) passes through unchanged.
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: 2 });
+    assert.equal(migrateDocumentSpec!(null), null);
+
+    const spacer = { kind: 'spacer', id: 's', height: 20 };
+    const halfChart = { kind: 'chart', id: 'c1', chart: coverSheetDocument().blocks.find((b) => b.kind === 'chart')!.chart, snapshot: false, height: 300, width: 'half' };
+    const halfImage = { kind: 'image', id: 'i1', dataUrl: `data:image/png;base64,${btoa('x')}`, height: 60, align: 'left', width: 'half' };
+    const caption = { kind: 'text', id: 't1', style: 'caption', text: 'a caption' };
+    const v2 = { version: 2, id: 'd2', name: 'V2', page: { size: 'A4', orientation: 'portrait' }, blocks: [caption, halfChart, halfImage, spacer] };
+    assert.deepEqual(validateDocumentSpec(v2), []);
+
+    // half only valid on chart/image; a text block rejects it (structural: `width` is not a text field).
+    const textWithWidth = { ...v2, blocks: [{ kind: 'text', id: 't2', style: 'body', text: 'x', width: 'half' }] };
+    assert.deepEqual(validateDocumentSpec(textWithWidth), []); // an unknown extra property on a text block is not itself a validation error
+    const badChartHeight = { ...v2, blocks: [{ ...halfChart, height: 10 }] };
+    assert.deepEqual(validateDocumentSpec(badChartHeight).map((e) => e.path), ['blocks[0].height']);
+    const nonFiniteChartHeight = { ...v2, blocks: [{ ...halfChart, height: Number.NaN }] };
+    assert.deepEqual(validateDocumentSpec(nonFiniteChartHeight).map((e) => e.path), ['blocks[0].height']);
+    const badWidth = { ...v2, blocks: [{ ...halfImage, width: 'third' }] };
+    assert.deepEqual(validateDocumentSpec(badWidth).map((e) => e.path), ['blocks[0].width']);
+    // Infinity ("a positive number") must not slip past validation into a CSS height (review finding).
+    const infiniteSpacer = { ...v2, blocks: [{ kind: 'spacer', id: 's2', height: Infinity }] };
+    assert.deepEqual(validateDocumentSpec(infiniteSpacer).map((e) => e.path), ['blocks[0].height']);
+    const nanSpacer = { ...v2, blocks: [{ kind: 'spacer', id: 's3', height: Number.NaN }] };
+    assert.deepEqual(validateDocumentSpec(nanSpacer).map((e) => e.path), ['blocks[0].height']);
   });
 });
 
@@ -196,6 +234,144 @@ describe('compose', () => {
     assert.equal(layout.pages.flatMap((p) => p.items).filter((i) => i.kind === 'text').length, 91, 'title + every line drawn once');
   });
 
+  it('a chart block height override sizes its box, a caption prints small and gray, and a spacer advances y by its height (#4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'text', id: 'cap', style: 'caption', text: 'A caption' },
+        { kind: 'spacer', id: 'sp', height: 40 },
+        { kind: 'chart', id: 'c', title: 'Chart', subtitle: '1 bucket', hasData: true, snapshot: false, height: 300 },
+      ],
+    });
+    const page = layout.pages[0];
+    const texts = page.items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
+    const captionText = texts.find((i) => i.text === 'A caption')!;
+    assert.equal(captionText.size, 8);
+    assert.equal(captionText.gray, 130);
+    const chart = page.items.find((i) => i.kind === 'chart')!;
+    assert.equal(chart.h, 300, 'the chart box honours the override, not the 220pt default');
+    const chartTitle = texts.find((i) => i.text === 'Chart')!;
+    assert.ok(chartTitle.y > captionText.y + 40, 'the 40pt spacer pushed the chart title down by its height');
+  });
+
+  it('two half-width charts share one row at the same y, each at roughly half the content width (#4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'landscape' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'chart', id: 'a', title: 'A', subtitle: '', hasData: false, snapshot: false, width: 'half' },
+        { kind: 'chart', id: 'b', title: 'B', subtitle: '', hasData: false, snapshot: false, width: 'half' },
+        { kind: 'text', id: 't', style: 'body', text: 'after' },
+      ],
+    });
+    const charts = layout.pages[0].items.filter((i) => i.kind === 'chart');
+    assert.equal(charts.length, 2);
+    assert.equal(charts[0].y, charts[1].y, 'both columns start at the same y');
+    assert.ok(charts[1].x > charts[0].x + charts[0].w, 'the second column starts after the first, with a gap between');
+    assert.ok(charts[0].w < layout.size.w / 2, 'each column is roughly half the content width, not the full width');
+    // A lone `half` chart (no pairable next block) still prints — full width, not clipped to a column.
+    const solo = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'chart', id: 'solo', title: 'Solo', subtitle: '', hasData: false, snapshot: false, width: 'half' }],
+    });
+    const soloChart = solo.pages[0].items.find((i) => i.kind === 'chart')!;
+    const contentW = solo.size.w - 80;
+    assert.equal(soloChart.w, contentW, 'unpaired half prints full width');
+  });
+
+  it('a chart height + snapshot that would not fit a single page is clamped, never drawn past the footer (review finding, #4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'chart', id: 'c', title: 'Chart', subtitle: '', hasData: true, snapshot: true, height: 600 }],
+    });
+    const page = layout.pages[0];
+    const chart = page.items.find((i) => i.kind === 'chart')!;
+    const snapshot = page.items.find((i) => i.kind === 'snapshot')!;
+    const bottom = layout.size.h - 40 - 24; // REPORT_MARGIN + FOOTER_HEIGHT
+    assert.ok(chart.h < 600, 'the 600pt request is reduced to leave room for the stacked snapshot');
+    assert.ok(snapshot.y + snapshot.h <= bottom, `snapshot bottom ${snapshot.y + snapshot.h} must stay above the footer at ${bottom}`);
+  });
+
+  it('a spacer taller than the printable page is clamped instead of pushing later content off the page (review finding, #4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'sp', height: 5000 },
+        { kind: 'text', id: 't', style: 'body', text: 'after the spacer' },
+      ],
+    });
+    const bottom = layout.size.h - 40 - 24;
+    for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= bottom, `${item.kind} at y=${item.y} must stay above the footer at ${bottom}`);
+    const after = layout.pages.flatMap((p) => p.items).find((i) => i.kind === 'text' && i.text === 'after the spacer');
+    assert.ok(after, 'the text after the oversized spacer is still drawn somewhere, not lost past the page bounds');
+  });
+
+  it('a leading full-page spacer does not strand the next chart at the footer on an otherwise-empty page (review finding, #4940)', () => {
+    // A spacer clamped to the full printable height leaves y === bottom with the page still empty;
+    // `ensure` used to refuse a page break in that case (unlike the per-line text path), so the
+    // block right after it drew starting at the footer instead of a fresh page.
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'sp', height: 5000 },
+        { kind: 'chart', id: 'c', title: 'Chart', subtitle: '', hasData: false, snapshot: false },
+      ],
+    });
+    const bottom = layout.size.h - 40 - 24;
+    const chart = layout.pages.flatMap((p) => p.items).find((i) => i.kind === 'chart')!;
+    assert.ok(chart.y + chart.h <= bottom, `chart bottom ${chart.y + chart.h} must stay above the footer at ${bottom}, not start at it`);
+    assert.equal(layout.pages.length, 2, 'the spacer fills page 1 entirely; the chart starts a fresh page 2');
+  });
+
+  it('a spacer that only partially fills a page still counts the page as occupied for the block after it (review finding, #4940)', () => {
+    // A 400pt spacer on A4 portrait (printable height ~708pt) leaves the page well short of
+    // `bottom`, so `page.items.length > 0` alone (spacers draw no items) refused to start a fresh
+    // page for a 400pt chart that no longer fits — it drew through the footer instead.
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'sp', height: 400 },
+        { kind: 'chart', id: 'c', title: 'Chart', subtitle: '', hasData: true, snapshot: false, height: 400 },
+      ],
+    });
+    const bottom = layout.size.h - 40 - 24;
+    const chart = layout.pages.flatMap((p) => p.items).find((i) => i.kind === 'chart')!;
+    assert.ok(chart.y + chart.h <= bottom, `chart bottom ${chart.y + chart.h} must stay above the footer at ${bottom}, not run through it`);
+    assert.equal(layout.pages.length, 2, 'the chart moves to a fresh page 2 instead of overflowing page 1');
+  });
+
+  it('a long chart title in a half-width column is truncated, not left to overrun into the next column (review finding, #4940)', () => {
+    const longTitle = 'A Very Long Chart Title That Would Otherwise Run Into The Next Column';
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'landscape' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'chart', id: 'a', title: longTitle, subtitle: 'a subtitle that is also fairly long for its column', hasData: false, snapshot: false, width: 'half' },
+        { kind: 'chart', id: 'b', title: 'B', subtitle: '', hasData: false, snapshot: false, width: 'half' },
+      ],
+    });
+    const texts = layout.pages[0].items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
+    assert.ok(!texts.some((t) => t.text === longTitle), 'the full title never appears untruncated');
+    assert.ok(texts.some((t) => t.text.endsWith('…')), 'the truncated title carries an ellipsis');
+    // The title is capped to the same width the subtitle reserves for itself, so the two never overlap (review finding).
+    const chartA = layout.pages[0].items.find((i) => i.kind === 'chart' && i.blockId === 'a')!;
+    const title = texts.find((t) => t.x === chartA.x && t.y === chartA.y - 7)!; // chartY = titleY + 7 (18 - 11)
+    const subtitle = texts.find((t) => t.y === title.y && t.x > title.x)!;
+    assert.ok(subtitle.x >= title.x + estimateTextWidth(title.text, 11, true), `subtitle x=${subtitle.x} must not sit under the title text ending at ${title.x + estimateTextWidth(title.text, 11, true)}`);
+  });
+
+  it('a long half-width image caption is truncated so it stays inside its own column (review finding, #4940)', () => {
+    const longCaption = 'A very long caption that would otherwise cross the gap into the next column and keep running well past the page edge';
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'image', id: 'a', height: 60, align: 'left', aspect: 3, caption: longCaption, width: 'half' },
+        { kind: 'image', id: 'b', height: 60, align: 'left', aspect: 3, width: 'half' },
+      ],
+    });
+    const texts = layout.pages[0].items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
+    assert.ok(!texts.some((t) => t.text === longCaption), 'the full caption never appears untruncated');
+    assert.ok(texts.some((t) => t.text.endsWith('…')), 'the truncated caption carries an ellipsis');
+  });
+
   it('the snapshot frames the bucket with the largest value, whatever the display order (review finding)', () => {
     const agg = { categories: [{ label: 'a', value: 1, ids: new Set([1]) }, { label: 'b', value: 5, ids: new Set([2, 3]) }, { label: 'c', value: 2, ids: new Set([4]) }] } as unknown as Aggregation;
     assert.deepEqual(largestBucketIds(agg), [2, 3]);
@@ -237,7 +413,7 @@ describe('generateDocumentPdf', () => {
     const agg: Aggregation = aggregate(chart.chart, dataset);
     const topic: BCFTopic = { guid: 'topic-1', title: 'Clash at grid B', topicStatus: 'Open', priority: 'High', creationDate: '2026-09-01T00:00:00Z', creationAuthor: 'Ada', comments: [], viewpoints: [{ guid: 'vp', snapshot: `data:image/png;base64,${btoa('png')}` }] };
     const doc: DocumentSpec = {
-      version: 1, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
+      version: 2, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
       blocks: [
         { kind: 'text', id: 't1', style: 'title', text: '{IfcProject.Name} — {Today}' },
         { kind: 'text', id: 't2', style: 'body', text: 'Roof: {IfcBuildingStorey["Roof"].Name}' },

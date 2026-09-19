@@ -29,7 +29,7 @@ function classContaining(markup: string, token: string): string {
 
 function renderDocumentPreview(): string {
   return renderToStaticMarkup(createElement(DocumentPreview, {
-    document: { version: 1, id: 'contrast', name: 'Contrast preview', page: { size: 'A4', orientation: 'portrait' }, blocks: [] },
+    document: { version: 2, id: 'contrast', name: 'Contrast preview', page: { size: 'A4', orientation: 'portrait' }, blocks: [] },
     bindings: { models: [], activeModelId: null, today: new Date('2026-01-01') },
     aggregations: new Map(),
     chartMessages: new Map(),

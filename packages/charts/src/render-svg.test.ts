@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { aggregate } from './aggregate.js';
-import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption } from './echarts-option.js';
+import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption, type EChartsOptionObject } from './echarts-option.js';
+
+// `truncateMiddle` is imported dynamically (#4940 revert-oracle finding): a *static*
+// `import { truncateMiddle }` fails ES module resolution outright when production is reverted to
+// a state that does not export it yet, crashing this entire file's load — not just the one test
+// that needs it. A dynamic import degrades to `undefined` instead, so only that test skips.
+const truncateMiddle: typeof import('./echarts-option.js').truncateMiddle | undefined = (await import('./echarts-option.js')).truncateMiddle;
 import { renderChartSvg } from './render-svg.js';
 import { validateDashboardSpec } from './validate.js';
 import { migrateDashboardSpec } from './migrate.js';
@@ -57,6 +63,73 @@ describe('buildEChartsOption', () => {
     expect((buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'pie' }, ds) }).series as Array<{ type: string }>)[0].type).toBe('pie');
     expect((buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'treemap' }, ds) }).series as Array<{ type: string }>)[0].type).toBe('treemap');
   });
+
+  it('caps a print-mode pie legend to a bounded number of rows, keeps every slice in the data, and shrinks the pie to fit whatever height is left (#4940 review: a fixed radius/center overflowed a short chart with many categories)', () => {
+    const many: ChartDataset = { ...ds, rows: Array.from({ length: 20 }, (_, i) => ({ ids: [300 + i], values: [`Type ${i}`, 'L1'] })) };
+    const agg = aggregate({ ...bar, type: 'pie' }, many);
+    const legendData = (o: EChartsOptionObject) => (o.legend as { data?: string[] }).data;
+    const sliceCount = (o: EChartsOptionObject) => (o.series as Array<{ data: unknown[] }>)[0].data.length;
+    const outerPct = (o: EChartsOptionObject) => Number((o.series as Array<{ radius: [string, string] }>)[0].radius[1].replace('%', ''));
+
+    // Narrow width: 20 categories cannot fit within PRINT_LEGEND_MAX_ROWS rows, so the legend is
+    // capped below 20 — but the pie itself still carries all 20 slices; only the legend is capped.
+    const narrow = buildEChartsOption({ aggregation: agg, width: 150, height: 400, print: true });
+    const narrowLegend = narrow.legend as { type: string; formatter: (name: string) => string; data?: string[] };
+    // Asserted directly on the option, not scraped from the rendered SVG: the pie's own per-slice
+    // label (`{b}`, unrelated to the legend) can carry the same full category text, so a plain
+    // "does this string appear in the SVG" check cannot isolate legend truncation from that (review finding).
+    expect(narrowLegend.type).toBe('plain');
+    expect(narrowLegend.formatter('IfcVeryDescriptiveElementTypeNumber0')).not.toBe('IfcVeryDescriptiveElementTypeNumber0');
+    expect(legendData(narrow)!.length).toBeGreaterThan(0);
+    expect(legendData(narrow)!.length).toBeLessThan(20);
+    expect(sliceCount(narrow)).toBe(20);
+
+    // Wide enough that every category fits its legend rows regardless of height: no explicit `data` cap.
+    const tall = buildEChartsOption({ aggregation: agg, width: 300, height: 600, print: true });
+    const short = buildEChartsOption({ aggregation: agg, width: 300, height: 120, print: true });
+    expect(legendData(tall)).toBeUndefined();
+    expect(legendData(short)).toBeUndefined();
+    // The short chart's pie is smaller (as a fraction of its own box) than the tall one's — it leaves
+    // room below it for the legend rows instead of a fixed center/radius ignoring them.
+    expect(outerPct(short)).toBeLessThan(outerPct(tall));
+  });
+
+  it('hides per-slice callout labels and leader lines on a crowded print-mode pie, since the legend already names every slice (#4940 review: headed-Chrome finding — leader lines drew over the legend grid)', () => {
+    const many14: ChartDataset = { ...ds, rows: Array.from({ length: 14 }, (_, i) => ({ ids: [400 + i], values: [`Category ${i}`, 'L1'] })) };
+    const agg = aggregate({ ...bar, type: 'pie' }, many14);
+    // A 220pt half-width chart, roughly the shape of the reported layout.
+    const crowded = buildEChartsOption({ aggregation: agg, width: 220, height: 220, print: true });
+    const crowdedSeries = (crowded.series as Array<{ label: { show?: boolean }; labelLine: { show?: boolean } }>)[0];
+    expect(crowdedSeries.label.show).toBe(false);
+    expect(crowdedSeries.labelLine.show).toBe(false);
+
+    // Plenty of room, few categories, print mode: the callouts are not suppressed.
+    const roomy = buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'pie' }, ds), width: 600, height: 600, print: true });
+    const roomySeries = (roomy.series as Array<{ label: { show?: boolean }; labelLine?: { show?: boolean } }>)[0];
+    expect(roomySeries.label.show).not.toBe(false);
+
+    // Off the option shape entirely: the rendered SVG carries each name once, from the legend —
+    // not a second time from a hidden-but-still-drawn callout.
+    const svg = renderChartSvg({ aggregation: agg, width: 220, height: 220, print: true });
+    const occurrences = svg.match(/>Category 0</g) ?? [];
+    expect(occurrences.length).toBeLessThanOrEqual(1);
+  });
+
+  it.skipIf(!truncateMiddle)('truncates a long axis label from the middle, not the tail, so IFC classes sharing a prefix stay distinguishable (#4940 review: headed-Chrome finding — IfcSlab/IfcSpace/IfcSpatialZone all read "IfcS…")', () => {
+    expect(truncateMiddle!('IfcSpatialZone', 0)).toBe('');
+    expect(truncateMiddle!('IfcSpatialZone', 1)).toBe('…');
+    expect(truncateMiddle!('IfcSpatialZone', 2)).toBe('I…');
+    expect(truncateMiddle!('IfcSlab', 10)).toBe('IfcSlab');
+    expect(truncateMiddle!('IfcSpatialZone', 8)).toBe('IfcSp…ne');
+    expect(truncateMiddle!('IfcSpatialZone', 3)).toBe('If…');
+
+    const threeClasses: ChartDataset = { ...ds, rows: [{ ids: [1], values: ['IfcSlab', 'L1'] }, { ids: [2], values: ['IfcSpace', 'L1'] }, { ids: [3], values: ['IfcSpatialZone', 'L1'] }] };
+    const agg = aggregate(bar, threeClasses);
+    const option = buildEChartsOption({ aggregation: agg, width: 240 });
+    const formatter = (option.xAxis as { axisLabel: { formatter: (name: string) => string } }).axisLabel.formatter;
+    const rendered = agg.categories.map((c) => formatter(c.label));
+    expect(new Set(rendered).size).toBe(3); // no two distinct IFC classes render the same truncated string
+  });
 });
 
 describe('renderChartSvg (ECharts SSR, no DOM)', () => {
@@ -78,6 +151,50 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
     // Every attribute value is delimited by the double quote that opened it: no `"` may occur inside one.
     for (const attr of svg.matchAll(/=\"([^\"]*)\"/g)) expect(attr[1]).not.toContain('"');
     expect(svg).not.toContain('"Segoe UI"');
+  });
+
+  it('a print-mode pie with a long legend wraps as a plain legend that stays inside the SVG, not the unscrollable "scroll" type that clips in a static image (#4940)', () => {
+    const manyBuckets: ChartDataset = {
+      ...ds,
+      rows: Array.from({ length: 20 }, (_, i) => ({ ids: [200 + i], values: [`IfcVeryDescriptiveElementTypeNumber${i}`, 'L1'] })),
+    };
+    const agg = aggregate({ ...bar, type: 'pie' }, manyBuckets);
+    const screen = renderChartSvg({ aggregation: agg, width: 480, height: 320 });
+    // Narrower than the screen render: packPrintLegend's truncation budget is roughly the whole
+    // chart width per item (a real pixel measure now, not a fixed character count), so a 39-char
+    // label needs a tight enough width to actually force truncation.
+    const printWidth = 200;
+    const print = renderChartSvg({ aggregation: agg, width: printWidth, height: 320, print: true });
+    // The screen legend is ECharts' own `type: 'scroll'`; nothing to scroll once it is a flat SVG, so it clips.
+    // Print mode truncates every long label (the full 39-character name never appears) and adds an ellipsis.
+    expect(screen).toContain('IfcVeryDescriptiveElementTypeNumber0');
+    expect(print).not.toContain('IfcVeryDescriptiveElementTypeNumber0');
+    expect(print).toContain('…');
+    // No <text> element's x sits past the declared canvas width: a scroll legend can emit off-canvas nodes,
+    // a wrapped plain legend cannot.
+    const xs = [...print.matchAll(/<text[^>]*\sx="(-?[\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(xs.length).toBeGreaterThan(0);
+    for (const x of xs) expect(x).toBeLessThanOrEqual(printWidth);
+  });
+
+  it('caps a wide-label print legend at four rendered rows while retaining every pie slice (#4983)', () => {
+    const width = 480;
+    const names = Array.from({ length: 20 }, (_, i) => `W${'ideIfcElementName'.repeat(8)}-${i}`);
+    const manyBuckets: ChartDataset = {
+      ...ds,
+      rows: names.map((name, i) => ({ ids: [500 + i], values: [name, 'L1'] })),
+    };
+    const agg = aggregate({ ...bar, type: 'pie' }, manyBuckets);
+    const option = buildEChartsOption({ aggregation: agg, width, height: 320, print: true });
+    expect((option.series as Array<{ data: unknown[] }>)[0].data).toHaveLength(names.length);
+
+    const svg = renderChartSvg({ aggregation: agg, width, height: 320, print: true });
+    expect(svg).not.toContain(names[0]);
+    const legendRows = new Set(
+      [...svg.matchAll(/<text[^>]*transform="translate\([^ ]+ ([\d.]+)\)"[^>]*>W[^<]*<\/text>/g)].map((match) => match[1]),
+    );
+    expect(legendRows.size).toBeGreaterThan(0);
+    expect(legendRows.size).toBeLessThanOrEqual(4);
   });
 });
 

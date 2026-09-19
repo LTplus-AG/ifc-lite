@@ -8,7 +8,7 @@
  * is shared as — the template you re-open on the next revision of the model.
  */
 import { downloadFile, sanitizeFilename } from '../export/download.js';
-import { validateDocumentSpec, type DocumentSpec } from './types.js';
+import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
 
 const STORAGE_KEY = 'ifc-lite-documents';
 
@@ -19,7 +19,8 @@ export function loadDocuments(): DocumentSpec[] {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const kept: DocumentSpec[] = [];
-    for (const entry of parsed) {
+    for (const rawEntry of parsed) {
+      const entry = migrateDocumentSpec(rawEntry);
       const errors = validateDocumentSpec(entry);
       if (errors.length === 0) kept.push(entry as DocumentSpec);
       else console.warn('[Documents] Dropping an invalid saved document', errors);
@@ -58,7 +59,7 @@ export const freshBlockId = (): string => `block-${crypto.randomUUID()}`;
  * as written — that is the point of a template.
  */
 export function parseDocumentFile(text: string): DocumentSpec {
-  const parsed: unknown = JSON.parse(text);
+  const parsed = migrateDocumentSpec(JSON.parse(text));
   const errors = validateDocumentSpec(parsed);
   if (errors.length > 0) {
     throw new Error(`Not a document file: ${errors.slice(0, 3).map((e) => `${e.path || '/'} ${e.message}`).join('; ')}`);

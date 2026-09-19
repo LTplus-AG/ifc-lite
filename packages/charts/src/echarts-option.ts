@@ -16,6 +16,7 @@
  * from ECharts' own palette, so the legend, the 3D overlay and the printed
  * report agree.
  */
+import { format } from 'echarts/core';
 import type { Aggregation, Bucket, ChartItem } from './types.js';
 
 /** The tokens a host reads off its stylesheet; ECharts has no CSS variables. */
@@ -46,10 +47,23 @@ export interface BuildOptionArgs {
   showTitle?: boolean;
   /** Width available to the chart in px; sizes the category labels so none is dropped. */
   width?: number;
+  /** Height available to the chart in px; print mode uses it to keep a pie's legend from overflowing a short chart. */
+  height?: number;
+  /**
+   * SSR (PDF / preview) rendering, not the interactive canvas (#4940): the
+   * pie legend's `type: 'scroll'` has nothing to scroll in a static SVG and
+   * clips instead, so print mode wraps it as a fixed plain legend under a
+   * shrunk pie. Screen and print both truncate long labels.
+   */
+  print?: boolean;
 }
 
 /** Fallback width when the host has not measured yet. */
 const DEFAULT_WIDTH = 600;
+/** Fallback height when the host has not measured yet. */
+const DEFAULT_HEIGHT = 320;
+/** Print mode caps the pie's legend to this many rows; extra categories still slice the pie, just without a name in the legend (#4940 review: an unbounded legend overflowed a short chart with many categories). */
+const PRINT_LEGEND_MAX_ROWS = 4;
 
 /** A plain-object ECharts option; typed loosely so this module needs no ECharts import. */
 export type EChartsOptionObject = Record<string, unknown>;
@@ -57,6 +71,70 @@ export type EChartsOptionObject = Record<string, unknown>;
 function formatValue(value: number, unit?: string): string {
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2);
   return unit ? `${text} ${unit}` : text;
+}
+
+/** A screen legend label past this many characters is truncated with an ellipsis; the full name is in the tooltip. */
+const LEGEND_LABEL_MAX_CHARS = 24;
+const truncateLegendLabel = (name: string): string => (name.length > LEGEND_LABEL_MAX_CHARS ? `${name.slice(0, LEGEND_LABEL_MAX_CHARS - 1)}…` : name);
+
+const PRINT_LEGEND_SYMBOL_WIDTH = 10;
+const PRINT_LEGEND_SYMBOL_TEXT_GAP = 5;
+const PRINT_LEGEND_ITEM_GAP = 6;
+
+/**
+ * Middle-ellipsis truncation for axis labels (#4940 review): `IfcSlab`, `IfcSpace` and
+ * `IfcSpatialZone` share the "Ifc" + a capital prefix, so tail-only truncation (ECharts'
+ * `overflow: 'truncate'`, and the legend's own `truncateLegendLabel`) collapses all three to
+ * "IfcS…" — indistinguishable on the axis, where there is no tooltip to recover the full name.
+ * Keeping a short head and a short tail instead survives the common-prefix case far more often.
+ */
+export function truncateMiddle(text: string, maxChars: number): string {
+  if (maxChars <= 0) return '';
+  if (text.length <= maxChars) return text;
+  if (maxChars === 1) return '…';
+  if (maxChars < 4) return `${text.slice(0, maxChars - 1)}…`;
+  const keep = maxChars - 1;
+  const head = Math.ceil(keep * 0.6);
+  const tail = keep - head;
+  return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
+}
+
+/**
+ * Pack the fixed print legend using the same public ECharts text metrics as
+ * the SVG renderer. The 10px font must be included in both truncation and
+ * measurement: measuring a full label and rendering an ellipsis is what let
+ * a single wide label miscount its row in the first place.
+ */
+function packPrintLegend(labels: readonly string[], width: number, font: string): {
+  shownItems: number;
+  rows: number;
+  legendH: number;
+  formatter: (name: string) => string;
+} {
+  const maxTextWidth = Math.max(0, width - PRINT_LEGEND_SYMBOL_WIDTH - PRINT_LEGEND_SYMBOL_TEXT_GAP - PRINT_LEGEND_ITEM_GAP);
+  const formatter = (name: string) => format.truncateText(name, maxTextWidth, font, '…');
+  const rowHeight = Math.max(PRINT_LEGEND_SYMBOL_WIDTH, format.getTextRect('M', font).height);
+  let rows = labels.length > 0 ? 1 : 0;
+  let rowWidth = 0;
+  let shownItems = 0;
+  for (const label of labels) {
+    const text = formatter(label);
+    const itemWidth = PRINT_LEGEND_SYMBOL_WIDTH + PRINT_LEGEND_SYMBOL_TEXT_GAP + format.getTextRect(text, font).width;
+    const nextWidth = rowWidth === 0 ? itemWidth : rowWidth + PRINT_LEGEND_ITEM_GAP + itemWidth;
+    if (nextWidth > width && rowWidth > 0) {
+      rows += 1;
+      rowWidth = 0;
+    }
+    if (rows > PRINT_LEGEND_MAX_ROWS) break;
+    rowWidth = rowWidth === 0 ? itemWidth : nextWidth;
+    shownItems += 1;
+  }
+  return {
+    shownItems,
+    rows,
+    legendH: rows > 0 ? rows * rowHeight + (rows - 1) * PRINT_LEGEND_ITEM_GAP : 0,
+    formatter,
+  };
 }
 
 function measureLabel(aggregation: Aggregation): string {
@@ -119,21 +197,66 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   };
 
   if (spec.type === 'pie') {
+    let legend: Record<string, unknown>;
+    let radius: [string, string] = ['35%', '70%'];
+    let center: [string, string] = ['40%', '50%'];
+    // Per-slice callout labels (with leader lines) drawn over a legend that already carries every
+    // name (#4940 review, headed-Chrome finding): a narrow/short pie with many categories had no
+    // room for both, so the leader lines and their text landed on top of the legend grid below —
+    // unreadable in both the preview and the PDF. `crowded` suppresses the callouts in that case;
+    // the legend is what names the slice.
+    let crowded = false;
+    if (args.print) {
+      // No scrollbar in a static SVG: a fixed, wrapped `plain` legend under the pie instead of a
+      // clipped scroll list. A FIXED radius/center overflowed a short chart (e.g. 120pt) with many
+      // categories, because nothing reserved room for however tall the wrapped legend grew — size
+      // and position the pie from the room actually left after capping the legend to
+      // PRINT_LEGEND_MAX_ROWS rows (categories beyond the cap still slice the pie; they just have
+      // no legend entry, the same trade-off label truncation already makes for long names).
+      // A non-finite or non-positive measurement (0, NaN, Infinity — a host mid-measure, or a bad
+      // value round-tripped through JSON) must fall back too, not just `undefined` (review finding):
+      // it would otherwise divide/multiply its way into a NaN or Infinity radius percentage.
+      const width = typeof args.width === 'number' && Number.isFinite(args.width) && args.width > 0 ? args.width : DEFAULT_WIDTH;
+      const height = typeof args.height === 'number' && Number.isFinite(args.height) && args.height > 0 ? args.height : DEFAULT_HEIGHT;
+      const printLegendFont = `10px ${theme.fontFamily}`;
+      const { shownItems, legendH, formatter } = packPrintLegend(categories.map((category) => category.label), width, printLegendFont);
+      const pieAreaH = Math.max(40, height - legendH - 8);
+      const pieDiameter = Math.min(width * 0.7, pieAreaH) * 0.92;
+      const box = Math.min(width, height);
+      const outerPct = Math.max(14, Math.min(45, (pieDiameter / 2 / (box / 2)) * 100));
+      const centerYPct = Math.max(20, Math.min(48, ((pieAreaH / 2 + 8) / height) * 100));
+      radius = [`${(outerPct * 0.55).toFixed(0)}%`, `${outerPct.toFixed(0)}%`];
+      center = ['50%', `${centerYPct.toFixed(0)}%`];
+      // The same room-left math that sizes the pie says whether a callout has anywhere to go:
+      // a small pie (little radius to anchor a leader line) or more than a handful of slices
+      // (leader lines fan out and cross each other, let alone the legend) is crowded.
+      crowded = pieDiameter < 200 || categories.length > 8;
+      legend = {
+        type: 'plain', orient: 'horizontal', left: 'center', bottom: 0,
+        itemWidth: PRINT_LEGEND_SYMBOL_WIDTH, itemHeight: PRINT_LEGEND_SYMBOL_WIDTH, itemGap: PRINT_LEGEND_ITEM_GAP,
+        padding: 0, textStyle: { color: theme.mutedText, fontSize: 10, fontFamily: theme.fontFamily }, formatter, tooltip: { show: true },
+        // Fewer legend entries than categories: cap `data` so the wrapped legend cannot grow past its reserved rows.
+        ...(shownItems < categories.length ? { data: categories.slice(0, shownItems).map((c) => c.label) } : {}),
+      };
+    } else {
+      legend = { type: 'scroll', orient: 'vertical', right: 0, top: 'middle', textStyle: { color: theme.mutedText }, formatter: truncateLegendLabel, tooltip: { show: true } };
+    }
     return {
       ...base,
-      legend: { type: 'scroll', orient: 'vertical', right: 0, top: 'middle', textStyle: { color: theme.mutedText } },
+      legend,
       series: [{
         type: 'pie',
         name: measureLabel(aggregation),
-        radius: ['35%', '70%'],
-        center: ['40%', '50%'],
+        radius,
+        center,
         // An empty dataset shows the host's message, not a grey placeholder ring.
         showEmptyCircle: false,
         data: itemData(categories, flags),
         selectedMode: 'multiple',
         selectedOffset: 6,
         emphasis: { focus: 'self' },
-        label: { color: theme.mutedText, formatter: '{b}' },
+        label: crowded ? { show: false } : { color: theme.mutedText, formatter: '{b}' },
+        labelLine: crowded ? { show: false } : {},
       }],
     };
   }
@@ -174,12 +297,17 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
     // ECharts 6 keeps axis labels inside the grid's outer bounds by default
     // (`containLabel` is the removed v5 way of saying the same).
     grid: { left: 8, right: 8, top: stacked ? 32 : yName ? 28 : 12, bottom: 8 },
-    ...(stacked ? { legend: { top: 0, textStyle: { color: theme.mutedText } } } : {}),
+    ...(stacked ? { legend: { top: 0, textStyle: { color: theme.mutedText }, formatter: truncateLegendLabel, tooltip: { show: true } } } : {}),
     xAxis: {
       type: 'category',
       data: labels,
       axisLine: { lineStyle: { color: theme.axis } },
-      axisLabel: { color: theme.mutedText, interval: 0, rotate, width: labelWidth, overflow: 'truncate', hideOverlap: true },
+      // A character-count estimate (no DOM/canvas measure available here), same order as the
+      // other size-based heuristics in this module; `overflow: 'truncate'` stays as a backstop if
+      // the estimate runs long. Middle-ellipsis, not ECharts' own tail truncation (#4940 review,
+      // headed-Chrome finding): `IfcSlab`/`IfcSpace`/`IfcSpatialZone` share a prefix and all
+      // truncated to the same "IfcS…" on a narrow half-width chart.
+      axisLabel: { color: theme.mutedText, interval: 0, rotate, width: labelWidth, overflow: 'truncate', hideOverlap: true, formatter: (name: string) => truncateMiddle(name, Math.max(4, Math.floor(labelWidth / 6.5))) },
     },
     yAxis: {
       type: 'value',

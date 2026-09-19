@@ -9,6 +9,8 @@ import { commandPaletteEn } from './catalogues/command-palette.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
+import { documentEn } from './catalogues/document.en';
+import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
@@ -35,6 +37,8 @@ export const en = {
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,
+  ...documentEn,
+  ...documentMenuEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -139,27 +139,10 @@ fn plan_rotated_mitred_wall_tip_strip_is_closed_3977() {
         ),
         angle,
     );
-    let (sin, cos) = angle.sin_cos();
-    let frame = OpeningFrame {
-        depth: Vector3::new(0.0, 0.0, 1.0),
-        cross_a: Vector3::new(cos, sin, 0.0),
-        cross_b: Vector3::new(-sin, cos, 0.0),
-        depth_is_authored: true,
-    };
+    let authored_vertical = Vector3::new(0.0, 0.0, 1.0);
+    let frame = infer_opening_frame(&cutter, Some(&authored_vertical))
+        .expect("the rectangular cutter must expose its authored frame");
     let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
-    assert!(
-        vertical_depth_wall_frame(&host, &openings).is_some(),
-        "the authored vertical cutter and thin, tall host must qualify"
-    );
-    let mut inferred = openings.clone();
-    let OpeningType::DiagonalRectangular(_, inferred_frame) = &mut inferred[0] else {
-        unreachable!()
-    };
-    inferred_frame.depth_is_authored = false;
-    assert!(
-        vertical_depth_wall_frame(&host, &inferred).is_none(),
-        "an inferred vertical direction must not opt a host into the new path"
-    );
     let host_volume = mesh_signed_volume(&host).abs();
     let context = VoidContext {
         merged_openings: openings.clone(),
@@ -178,4 +161,103 @@ fn plan_rotated_mitred_wall_tip_strip_is_closed_3977() {
         mesh_signed_volume(&output).abs() < host_volume - 1.0e-5,
         "the closed result must retain the actual tip cut"
     );
+}
+
+#[test]
+fn vertical_partial_thickness_slot_keeps_its_authored_axis_3977() {
+    let angle = 3.0_f64.to_radians();
+    let host = issue_3977_rotate(
+        &issue_3977_prism(
+            &[(0.0, -0.05), (4.0, -0.05), (4.0, 0.05), (0.0, 0.05)],
+            0.0,
+            3.0,
+        ),
+        angle,
+    );
+    // One metre of wall length, 40 mm of its 100 mm thickness, and the full
+    // 3 m height: the authored vertical axis may extend the height, but must
+    // never extend the slot through the remaining 60 mm of wall thickness.
+    let cutter = issue_3977_rotate(
+        &issue_3977_prism(
+            &[(1.0, -0.02), (2.0, -0.02), (2.0, 0.02), (1.0, 0.02)],
+            0.0,
+            3.0,
+        ),
+        angle,
+    );
+    let authored_vertical = Vector3::new(0.0, 0.0, 1.0);
+    let frame = infer_opening_frame(&cutter, Some(&authored_vertical))
+        .expect("the rectangular cutter must expose its authored frame");
+    let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
+    let context = VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let bounds = world_host_bounds(&host);
+    let host_volume = mesh_signed_volume(&host).abs();
+    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let removed = host_volume - mesh_signed_volume(&output).abs();
+    assert!(
+        mesh_is_closed_exact(&output),
+        "an internal vertical slot must leave a closed cavity"
+    );
+    assert!(
+        (removed - 0.12).abs() < 1.0e-4,
+        "the 1.0 x 0.04 x 3.0 m slot must remove 0.12 m^3, not be extended through the wall; removed {removed}"
+    );
+}
+
+#[test]
+fn inferred_vertical_axis_does_not_enable_wall_local_cut_3977() {
+    let angle = 3.0_f64.to_radians();
+    let host = issue_3977_rotate(
+        &issue_3977_prism(
+            &[(0.0, -0.05), (4.0, -0.05), (4.0, 0.05), (0.0, 0.05)],
+            0.0,
+            3.0,
+        ),
+        angle,
+    );
+    // With no authored extrusion direction, frame inference chooses this
+    // shallow slab's shortest (vertical) axis. That geometric guess is not
+    // permission to extend or reframe the cutter as an authored vertical
+    // extrusion.
+    let cutter = issue_3977_rotate(
+        &issue_3977_prism(
+            &[(1.0, -0.05), (2.0, -0.05), (2.0, 0.05), (1.0, 0.05)],
+            1.0,
+            1.01,
+        ),
+        angle,
+    );
+    let frame = infer_opening_frame(&cutter, None)
+        .expect("the shallow rectangular cutter must expose an inferred frame");
+    assert!(
+        frame.depth.z.abs() >= 0.98,
+        "premise: the inferred shortest axis is vertical"
+    );
+    let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
+    let context = VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let bounds = world_host_bounds(&host);
+    let world_only = GeometryRouter::new().apply_void_context_inner(
+        host.clone(),
+        &context,
+        3977,
+        bounds,
+        false,
+    );
+    let guarded =
+        GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    assert_eq!(
+        guarded.positions, world_only.positions,
+        "an inferred vertical axis must remain on the established world-frame path"
+    );
+    assert_eq!(guarded.indices, world_only.indices);
 }

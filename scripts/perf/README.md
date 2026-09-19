@@ -1771,6 +1771,17 @@ AC20 285 meshes / 35,940 vertices / 19,456 triangles / 0 failures, ISSUE_129
 1,402 / 219,848 / 135,737 / 41, and Holter 109,514 / 4,502,946 / 2,882,383 /
 0. Verdict: no material full-load regression and no performance claim.
 
+The source-matched browser worker-pool control compared the same base with
+`cb7557caa` in five interleaved fresh-Chromium-process pairs per fixture. The
+observed metadata-plus-render median was 479 -> 483 ms on AC20 (+0.8%, below
+the base's 7% spread), 1,862 -> 1,860 ms on ISSUE_129 (-0.1%, below 5%), and
+5,114 -> 5,084 ms on Holter (-0.6%, below 17%). First geometry, first visible,
+stream completion, spatial readiness, metadata completion, and the legacy app
+total likewise stayed inside their respective noise floors. Every round kept
+the same total mesh count between revisions. This qualifies the actual browser
+worker path as well as the native phase split; it does not qualify search,
+cache-tail memory, properties, picking, or Firefox.
+
 The lesson is to scope authored-depth preservation to the vertical-depth
 selector itself. Applying it to the established horizontal-depth route changed
 real heavy-model cuts even though small synthetic cases remained green; the

@@ -2,25 +2,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `IfcEdge` processor (#4206 layer 4) — renders a structural curve member's
-//! topological edge as a thin triangulated ribbon, the same shape as
-//! [`crate::processors::alignment::IfcAlignmentProcessor`] but without curve
-//! sampling: an `IfcEdge` is just two vertex points, so the ribbon is a
-//! single quad (two triangles).
-//!
-//! Only plain `IfcEdge` is handled. `IfcOrientedEdge` (whose `EdgeStart`/
-//! `EdgeEnd` are `$` and whose underlying edge is reached via its
-//! `EdgeElement` attribute) and `IfcEdgeCurve` (which can carry a curved
-//! `EdgeGeometry` instead of implying a straight line between its vertices)
-//! are deliberately unhandled — the fixture backing this processor
-//! (`tests/models/ifcopenshell/structural_analysis_curve.ifc`) only emits
-//! plain `IfcEdge`, and half-implementing either untested would be worse
-//! than an explicit gap.
+//! Topological edge processor (#4206 layer 4) — renders a structural curve
+//! member's `IfcEdge`, `IfcEdgeCurve`, or `IfcOrientedEdge` as a thin
+//! triangulated ribbon. Curved edges reuse the advanced-face sampler so circle,
+//! ellipse, B-spline, trimmed, composite, and polyline sense handling cannot
+//! drift.
 
 use crate::router::GeometryProcessor;
 use crate::{Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::{Point3, Vector3};
+use std::collections::HashSet;
+
+use super::advanced_face::edge_loop::sample_edge_curve_points;
 
 /// Half-width of the rendered ribbon, in file length units. Matches the
 /// convention documented at `alignment::RIBBON_HALF_WIDTH_FILE_UNITS`
@@ -36,6 +30,10 @@ const RIBBON_HALF_WIDTH_FILE_UNITS: f64 = 0.1;
 /// (the sine of the angle between them), not a tolerance that must be
 /// re-checked against coordinate magnitude.
 const PARALLEL_EPSILON: f64 = 1e-9;
+
+/// Invalid IFC can chain `IfcOrientedEdge.EdgeElement` cyclically. Bound and
+/// cycle-check that file-authored reference walk rather than recursing forever.
+const MAX_EDGE_REFERENCE_DEPTH: usize = 64;
 
 pub struct IfcEdgeProcessor;
 
@@ -57,56 +55,116 @@ impl GeometryProcessor for IfcEdgeProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
-        _quality: crate::TessellationQuality,
+        quality: crate::TessellationQuality,
     ) -> Result<Mesh> {
-        let start = resolve_vertex_point(entity, 0, decoder)?;
-        let end = resolve_vertex_point(entity, 1, decoder)?;
+        let points = resolve_edge_points(entity, decoder, quality, 0, &mut HashSet::new())?;
+        Ok(ribbon_mesh(&points))
+    }
 
-        let dir = end - start;
-        // Exact-zero check, not a magnitude-scaled epsilon: two identical
-        // `IfcCartesianPoint`s subtract to bit-exact zero regardless of
-        // coordinate magnitude, so there is no tolerance to get wrong at a
-        // tiny or a huge scale. A genuinely tiny but nonzero edge is legitimate
-        // geometry and must not be rejected.
-        let length = dir.norm();
-        if length == 0.0 {
-            return Ok(Mesh::new());
+    fn supported_types(&self) -> Vec<IfcType> {
+        vec![
+            IfcType::IfcEdge,
+            IfcType::IfcEdgeCurve,
+            IfcType::IfcOrientedEdge,
+        ]
+    }
+}
+
+fn resolve_edge_points(
+    edge: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: crate::TessellationQuality,
+    depth: usize,
+    visited: &mut HashSet<u32>,
+) -> Result<Vec<Point3<f64>>> {
+    if depth >= MAX_EDGE_REFERENCE_DEPTH {
+        return Err(crate::Error::geometry(format!(
+            "Ifc edge reference walk exceeded {MAX_EDGE_REFERENCE_DEPTH} levels at #{}",
+            edge.id
+        )));
+    }
+    if !visited.insert(edge.id) {
+        return Err(crate::Error::geometry(format!(
+            "Ifc edge reference cycle at #{}",
+            edge.id
+        )));
+    }
+    match edge.ifc_type {
+        IfcType::IfcEdgeCurve => {
+            sample_edge_curve_points(edge, true, decoder, quality).ok_or_else(|| {
+                crate::Error::geometry(format!(
+                    "IfcEdgeCurve #{} has no resolvable endpoints",
+                    edge.id
+                ))
+            })
         }
-        let dir = dir / length;
+        IfcType::IfcOrientedEdge => {
+            let edge_id = edge.get_ref(2).ok_or_else(|| {
+                crate::Error::geometry(format!("IfcOrientedEdge #{} missing EdgeElement", edge.id))
+            })?;
+            let underlying = decoder.decode_by_id(edge_id)?;
+            if !underlying.ifc_type.is_subtype_of(IfcType::IfcEdge) {
+                return Err(crate::Error::geometry(format!(
+                    "IfcOrientedEdge #{} EdgeElement #{} is {}, expected IfcEdge",
+                    edge.id, edge_id, underlying.ifc_type
+                )));
+            }
+            let mut points =
+                resolve_edge_points(&underlying, decoder, quality, depth + 1, visited)?;
+            let orientation = edge
+                .get(3)
+                .and_then(|a| a.as_enum())
+                .map(|value| value == "T" || value == "TRUE")
+                .unwrap_or(true);
+            if !orientation {
+                points.reverse();
+            }
+            Ok(points)
+        }
+        _ if edge.ifc_type.is_subtype_of(IfcType::IfcEdge) => Ok(vec![
+            resolve_vertex_point(edge, 0, decoder)?,
+            resolve_vertex_point(edge, 1, decoder)?,
+        ]),
+        _ => Err(crate::Error::geometry(format!(
+            "Expected IfcEdge, got {} #{}",
+            edge.ifc_type, edge.id
+        ))),
+    }
+}
 
-        let up_z = Vector3::new(0.0, 0.0, 1.0);
-        let cross_z = dir.cross(&up_z);
+fn ribbon_mesh(points: &[Point3<f64>]) -> Mesh {
+    let mut mesh = Mesh::with_capacity(
+        points.len().saturating_sub(1) * 4,
+        points.len().saturating_sub(1) * 6,
+    );
+    for pair in points.windows(2) {
+        let start = pair[0];
+        let end = pair[1];
+        let direction = end - start;
+        let length = direction.norm();
+        // Exact-zero check: identical authored points subtract to bit-exact
+        // zero at every coordinate scale; genuinely tiny edges remain valid.
+        if length == 0.0 {
+            continue;
+        }
+        let direction = direction / length;
+        let cross_z = direction.cross(&Vector3::new(0.0, 0.0, 1.0));
         let right = if cross_z.norm() > PARALLEL_EPSILON {
             cross_z.normalize()
         } else {
-            // Edge runs parallel to Z: fall back to a different axis so the
-            // cross product doesn't collapse to zero.
-            dir.cross(&Vector3::new(1.0, 0.0, 0.0)).normalize()
+            direction.cross(&Vector3::new(1.0, 0.0, 0.0)).normalize()
         };
-
         let offset = right * RIBBON_HALF_WIDTH_FILE_UNITS;
-        // The emitted winding is (start-left, start-right, end-right), whose
-        // geometric face normal is right × direction.  This is +Z for the
-        // usual horizontal ribbon, but it must rotate with vertical and sloped
-        // edges instead of leaving a lighting normal tangent to the face.
-        let normal = right.cross(&dir);
-
-        let mut mesh = Mesh::with_capacity(4, 6);
+        let normal = right.cross(&direction);
+        let base = (mesh.positions.len() / 3) as u32;
         mesh.add_vertex(start - offset, normal);
         mesh.add_vertex(start + offset, normal);
         mesh.add_vertex(end - offset, normal);
         mesh.add_vertex(end + offset, normal);
-
-        // Two triangles per quad, matching the alignment ribbon's winding.
-        mesh.add_triangle(0, 1, 3);
-        mesh.add_triangle(0, 3, 2);
-
-        Ok(mesh)
+        mesh.add_triangle(base, base + 1, base + 3);
+        mesh.add_triangle(base, base + 3, base + 2);
     }
-
-    fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcEdge]
-    }
+    mesh
 }
 
 /// Resolve `IfcEdge`'s `EdgeStart` (attribute 0) or `EdgeEnd` (attribute 1)

@@ -10,11 +10,11 @@ import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { Toaster } from '@/components/ui/toast.js';
 import { registerLocale, setLocale } from '@/i18n';
-import type { DocumentSpec } from '@/lib/document/types';
+import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { DocumentMenu } from './DocumentMenu.js';
 
 const DOCUMENT: DocumentSpec = {
-  version: 1,
+  version: DOCUMENT_VERSION,
   id: 'document-1',
   name: 'Coordination report',
   page: { size: 'A4', orientation: 'portrait' },

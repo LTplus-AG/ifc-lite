@@ -96,7 +96,7 @@ export const extensionsPanelsEn = {
   'extensionsPanels.capabilityReview.description':
     'Review the capabilities this extension is requesting. Uncheck any you do not want to grant. Extensions that rely on a denied capability will surface a clear error at runtime instead of running silently with broader scope.',
   'extensionsPanels.capabilityReview.signatureVerifiedTitle': 'Signature verified',
-  'extensionsPanels.capabilityReview.signedByLabel': 'Signed by',
+  'extensionsPanels.capabilityReview.signedByLabel': 'Signed by {fingerprint} · {date}',
   'extensionsPanels.capabilityReview.unsignedTitle': 'Unsigned bundle',
   'extensionsPanels.capabilityReview.unsignedBody':
     'This bundle has no signature. We cannot verify it came from a specific publisher — install only if you trust the source.',
@@ -319,7 +319,7 @@ export const extensionsPanelsEn = {
   'extensionsPanels.repairQueuePanel.sdkUnknown': 'SDK version unknown — cannot revalidate. Set {appVersion} via Vite define.',
   'extensionsPanels.repairQueuePanel.noCheckRun': 'No compatibility check has run for this session.',
   'extensionsPanels.repairQueuePanel.noInstalledExtensions': 'No installed extensions',
-  'extensionsPanels.repairQueuePanel.rangeLabel': 'Range',
+  'extensionsPanels.repairQueuePanel.rangeLabel': 'Range {range} · {reason}',
   'extensionsPanels.repairQueuePanel.outcome.pass': 'Pass',
   'extensionsPanels.repairQueuePanel.outcome.fail': 'Fail',
   'extensionsPanels.repairQueuePanel.outcome.skipped': 'Skipped',
@@ -347,5 +347,5 @@ export const extensionsPanelsEn = {
   'extensionsPanels.widgetRenderer.chartVariant.pie': 'Pie',
   'extensionsPanels.widgetRenderer.retryButton': 'Retry',
   'extensionsPanels.widgetRenderer.noEntities': 'No entities',
-  'extensionsPanels.widgetRenderer.unknownNodeLabel': 'Unknown widget node:',
+  'extensionsPanels.widgetRenderer.unknownNodeLabel': 'Unknown widget node: {type}',
 } as const satisfies Record<string, TranslationValue>;

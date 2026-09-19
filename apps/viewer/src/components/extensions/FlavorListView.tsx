@@ -82,14 +82,18 @@ export function FlavorListView({
   const [creating, setCreating] = useState<Creating>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [initialRenameValue, setInitialRenameValue] = useState('');
 
   const startRename = (flavor: Flavor) => {
     setRenamingId(flavor.id);
-    setRenameValue(localizedFlavorName(flavor, t));
+    const displayName = localizedFlavorName(flavor, t);
+    setRenameValue(displayName);
+    setInitialRenameValue(displayName);
   };
   const commitRename = () => {
-    if (renamingId && renameValue.trim().length > 0) {
-      onRename(renamingId, renameValue.trim());
+    const trimmedName = renameValue.trim();
+    if (renamingId && trimmedName.length > 0 && trimmedName !== initialRenameValue) {
+      onRename(renamingId, trimmedName);
     }
     setRenamingId(null);
   };

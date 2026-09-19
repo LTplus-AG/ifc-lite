@@ -307,7 +307,7 @@ export function UnknownNode({ node }: { node: { type?: string } }) {
   const { t } = useTranslation();
   return (
     <div className="text-xs text-destructive italic px-2 py-1">
-      {t('extensionsPanels.widgetRenderer.unknownNodeLabel')} <code>{String(node.type ?? '?')}</code>
+      {t('extensionsPanels.widgetRenderer.unknownNodeLabel', { type: String(node.type ?? '?') })}
     </div>
   );
 }

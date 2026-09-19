@@ -150,4 +150,15 @@ describe('Widget DSL renderer localization (#4918)', () => {
     assert.doesNotMatch(readableText(container), /graphique line/);
     assert.match(readableText(container), /ext-b\/widget-b a planté \(fr\)/);
   });
+
+  it('lets a locale place an unknown node type before its explanation', () => {
+    registerLocale('widget-node-reordered', {
+      'extensionsPanels.widgetRenderer.unknownNodeLabel': '{type} est inconnu',
+    } as Catalogue);
+    setLocale('widget-node-reordered');
+    const container = render(
+      <WidgetRenderer node={{ type: 'Bogus' } as unknown as WidgetNode} ctx={CTX} />,
+    );
+    assert.match(readableText(container), /Bogus est inconnu/);
+  });
 });

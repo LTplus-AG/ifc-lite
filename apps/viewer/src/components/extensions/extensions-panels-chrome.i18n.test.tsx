@@ -588,6 +588,38 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(document.body.textContent ?? '', new RegExp(formatExtensionDate(signedAt, 'de-CH').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   });
 
+  it('lets locales reorder complete signature metadata', () => {
+    registerLocale('signature-reordered', {
+      'extensionsPanels.capabilityReview.signedByLabel': '{date} SIGNED {fingerprint}',
+    } as Catalogue);
+    setLocale('signature-reordered');
+    const signedAt = '2026-01-02T13:45:00Z';
+    const fingerprint = '00:11:22:33:44:55:66:77:88:99:aa:bb';
+    render(
+      <CapabilityReview
+        open
+        summary={{
+          ...capabilitySummary(),
+          signed: true,
+          signature: {
+            algorithm: 'ed25519',
+            publicKeyBytes: new Uint8Array(32),
+            fingerprint,
+            contentHash: 'a'.repeat(64),
+            signedAt,
+          },
+        }}
+        onApprove={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+
+    assert.match(
+      document.body.textContent ?? '',
+      new RegExp(`${formatExtensionDate(signedAt, 'signature-reordered')} SIGNED 00:11:22:33:44:55:66:77…`),
+    );
+  });
+
   it('lets a locale reorder complete repair help and unknown-SDK messages', async () => {
     registerLocale('repair-help-reordered', {
       'extensionsPanels.repairQueuePanel.helpIntro': '{engineRange} INTRO',

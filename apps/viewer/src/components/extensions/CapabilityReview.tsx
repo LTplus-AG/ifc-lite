@@ -158,12 +158,10 @@ export function CapabilityReview({
                 {t('extensionsPanels.capabilityReview.signatureVerifiedTitle')}
               </div>
               <div className="text-muted-foreground mt-0.5">
-                {t('extensionsPanels.capabilityReview.signedByLabel')}{' '}
-                <code className="font-mono text-[10px]" title={summary.signature.fingerprint}>
-                  {summary.signature.fingerprint.slice(0, 23)}…
-                </code>
-                {' · '}
-                {formatExtensionDate(summary.signature.signedAt, locale)}
+                {t('extensionsPanels.capabilityReview.signedByLabel', {
+                  fingerprint: `${summary.signature.fingerprint.slice(0, 23)}…`,
+                  date: formatExtensionDate(summary.signature.signedAt, locale),
+                })}
               </div>
             </div>
           </div>

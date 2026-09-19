@@ -189,9 +189,10 @@ function RepairRow({
             </span>
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
-            {t('extensionsPanels.repairQueuePanel.rangeLabel')}{' '}
-            <code className="font-mono">{item.compatibility.declared}</code> ·{' '}
-            {localizeCompatibilityReason(item.compatibility, t)}
+            {t('extensionsPanels.repairQueuePanel.rangeLabel', {
+              range: item.compatibility.declared,
+              reason: localizeCompatibilityReason(item.compatibility, t),
+            })}
           </div>
           {item.tests && item.tests.failed > 0 && (
             <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">

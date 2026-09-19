@@ -332,6 +332,36 @@ describe('FlavorListView localization (#4918)', () => {
     assertAllTranslate(occurrences, englishDom, afterDom);
   });
 
+  it('does not persist an untouched localized canonical name', () => {
+    const baseline = makeFlavor({
+      id: DEFAULT_FLAVOR_ID,
+      name: DEFAULT_FLAVOR_NAME,
+      description: DEFAULT_FLAVOR_DESCRIPTION,
+    });
+    let renameCalls = 0;
+    const container = render(
+      <FlavorListView
+        {...baseProps()}
+        flavors={[baseline]}
+        onRename={() => { renameCalls += 1; }}
+      />,
+    );
+    act(() => setLocale(PSEUDO_LOCALE));
+
+    const localizedName = r('extensionsFlavors.flavorIndicator.defaultLabel');
+    const renameButton = [...container.querySelectorAll('button')].find(
+      (button) => button.getAttribute('aria-label')
+        === r('extensionsFlavors.flavorListView.renameAriaLabel', { name: localizedName }),
+    );
+    assert.ok(renameButton);
+    click(renameButton);
+    const input = container.querySelector<HTMLInputElement>('input');
+    assert.ok(input);
+    assert.equal(input.value, localizedName);
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    assert.equal(renameCalls, 0);
+  });
+
   it('translates the "New flavor" (no live lenses) and empty-list states', () => {
     // liveLensCount = 0: the header trigger switches to "New flavor" / "Create a new empty flavor".
     const withLenses = render(

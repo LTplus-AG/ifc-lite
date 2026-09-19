@@ -5,18 +5,62 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from 'zustand/vanilla';
+import type { ScheduleExtraction, WorkCalendarInfo } from '@ifc-lite/parser';
 import { createPlaybackSlice, type PlaybackSlice } from './playbackSlice.js';
 import type { ScheduleTimeRange } from './scheduleSlice.js';
+import { utcDayStart } from '@/components/viewer/schedule/work-calendar.js';
 
-type TestStore = PlaybackSlice & { scheduleRange: ScheduleTimeRange | null };
+type TestStore = PlaybackSlice & {
+  scheduleRange: ScheduleTimeRange | null;
+  scheduleData?: ScheduleExtraction | null;
+  activeWorkScheduleId?: string;
+};
 
-const makeStore = (range: ScheduleTimeRange | null) =>
+const makeStore = (
+  range: ScheduleTimeRange | null,
+  scheduleData?: ScheduleExtraction | null,
+  activeWorkScheduleId?: string,
+) =>
   createStore<TestStore>((set, get, api) => ({
     ...createPlaybackSlice(set as never, get as never, api as never),
     scheduleRange: range,
+    scheduleData,
+    activeWorkScheduleId,
   }));
 
 const DAY = 86_400_000;
+
+function d(iso: string): number {
+  return utcDayStart(Date.parse(`${iso}T00:00:00Z`));
+}
+
+/** Mon-Fri weekly calendar, same shape as `work-calendar.test.ts` (#4830). */
+const MON_FRI_CALENDAR: WorkCalendarInfo = {
+  expressId: 64,
+  globalId: 'cal-gid',
+  name: 'Site calendar',
+  workingTimes: [{
+    name: 'Weekdays',
+    recurrencePattern: {
+      recurrenceType: 'WEEKLY',
+      dayComponent: [],
+      weekdayComponent: [1, 2, 3, 4, 5],
+      monthComponent: [],
+      timePeriods: [],
+    },
+  }],
+  exceptionTimes: [],
+};
+
+function scheduleWithCalendar(): ScheduleExtraction {
+  return {
+    hasSchedule: true,
+    workCalendars: [MON_FRI_CALENDAR],
+    workSchedules: [],
+    tasks: [],
+    sequences: [],
+  };
+}
 
 describe('playbackSlice', () => {
   it('advancePlaybackBy does nothing when not playing', () => {
@@ -113,5 +157,65 @@ describe('playbackSlice', () => {
       if (key === 'colorizeByTaskType' || key === 'paletteIntensity') continue;
       assert.deepStrictEqual(after[key], before[key]);
     }
+  });
+
+  describe('respectWorkCalendar (#4830)', () => {
+    it('defaults to true and can be toggled', () => {
+      const s = makeStore(null);
+      assert.strictEqual(s.getState().respectWorkCalendar, true);
+      s.getState().setRespectWorkCalendar(false);
+      assert.strictEqual(s.getState().respectWorkCalendar, false);
+    });
+
+    // A max-clamped (100ms) tick at 7 days/sec simulates 16.8h
+    // (100 * 7 * 86_400 ms) — enough to carry Friday noon into early
+    // Saturday, but never far enough to reach Monday on its own. Any
+    // Monday landing therefore proves the calendar skip fired, not that
+    // the raw simulated-time step happened to land there.
+    const FRIDAY_NOON = d('2024-06-07') + 12 * 3_600_000;
+    const RAW_TICK_SIMULATED_MS = 100 * 7 * 86_400;
+
+    it('skips a landing instant inside a non-working day forward to the next working day', () => {
+      const start = d('2024-06-03'); // Monday
+      const end = d('2024-06-14'); // next Friday
+      const s = makeStore({ start, end, synthetic: false }, scheduleWithCalendar());
+      s.getState().setPlaybackSpeed(7);
+      s.getState().setPlaybackLoop(false);
+      s.getState().seekSchedule(FRIDAY_NOON);
+      s.getState().playSchedule();
+      s.getState().advancePlaybackBy(1000); // clamped to 100ms -> lands ~Sat 04:48
+      assert.strictEqual(s.getState().playbackTime, d('2024-06-10')); // Monday
+    });
+
+    it('does not skip when respectWorkCalendar is off', () => {
+      const start = d('2024-06-03');
+      const end = d('2024-06-14');
+      const s = makeStore({ start, end, synthetic: false }, scheduleWithCalendar());
+      s.getState().setRespectWorkCalendar(false);
+      s.getState().setPlaybackSpeed(7);
+      s.getState().setPlaybackLoop(false);
+      s.getState().seekSchedule(FRIDAY_NOON);
+      s.getState().playSchedule();
+      s.getState().advancePlaybackBy(1000);
+      const expected = FRIDAY_NOON + RAW_TICK_SIMULATED_MS;
+      assert.strictEqual(s.getState().playbackTime, expected);
+      // Sanity: the un-skipped landing really is inside the weekend, so
+      // the skip in the previous test is doing real work, not a no-op.
+      assert.ok(expected > d('2024-06-08') && expected < d('2024-06-10'));
+    });
+
+    it('has no effect when the file has no calendars', () => {
+      const start = d('2024-06-03');
+      const end = d('2024-06-14');
+      const s = makeStore({ start, end, synthetic: false }, {
+        hasSchedule: false, workCalendars: [], workSchedules: [], tasks: [], sequences: [],
+      });
+      s.getState().setPlaybackSpeed(7);
+      s.getState().setPlaybackLoop(false);
+      s.getState().seekSchedule(FRIDAY_NOON);
+      s.getState().playSchedule();
+      s.getState().advancePlaybackBy(1000);
+      assert.strictEqual(s.getState().playbackTime, FRIDAY_NOON + RAW_TICK_SIMULATED_MS);
+    });
   });
 });

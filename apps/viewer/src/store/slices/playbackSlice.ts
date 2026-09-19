@@ -22,6 +22,8 @@
 import type { StateCreator } from 'zustand';
 import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
 import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
+import { resolveActiveCalendar, skipToNextWorkingInstant } from '@/components/viewer/schedule/work-calendar';
+import type { ScheduleExtraction } from '@ifc-lite/parser';
 import type { ScheduleTimeRange } from './scheduleSlice.js';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
@@ -42,6 +44,17 @@ export interface PlaybackSlice {
    * behaviour; `phased` lights up the type-colour lifecycle.
    */
   animationSettings: AnimationSettings;
+  /**
+   * When true (default) AND the active schedule assigns an `IfcWorkCalendar`
+   * (see `resolveActiveCalendar`), auto-play jumps forward over non-working
+   * days instead of animating through them — #4830. Off keeps the previous
+   * behaviour: the clock advances uniformly regardless of any calendar.
+   * A separate flag from `animationSettings` on purpose: it's a playback
+   * *pacing* concern, not a colour/visibility one, and `AnimationSettings`
+   * lives in `schedule-animator.ts`, which is already at this repo's
+   * module-size ratchet ceiling.
+   */
+  respectWorkCalendar: boolean;
 
   setAnimationEnabled: (enabled: boolean) => void;
   /** Replace the full animation-settings object. */
@@ -56,6 +69,7 @@ export interface PlaybackSlice {
   seekSchedule: (time: number) => void;
   setPlaybackSpeed: (speed: number) => void;
   setPlaybackLoop: (loop: boolean) => void;
+  setRespectWorkCalendar: (respect: boolean) => void;
   advancePlaybackBy: (deltaMs: number) => void;
 }
 
@@ -67,6 +81,8 @@ export interface PlaybackSlice {
  */
 interface PlaybackCrossSliceReads {
   scheduleRange?: ScheduleTimeRange | null;
+  scheduleData?: ScheduleExtraction | null;
+  activeWorkScheduleId?: string;
 }
 
 export const createPlaybackSlice: StateCreator<
@@ -81,6 +97,7 @@ export const createPlaybackSlice: StateCreator<
   playbackSpeed: 7, // 7 simulated days per real second by default
   playbackLoop: true,
   animationSettings: DEFAULT_ANIMATION_SETTINGS,
+  respectWorkCalendar: true,
 
   setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
   setAnimationSettings: (animationSettings) => set({ animationSettings }),
@@ -100,6 +117,7 @@ export const createPlaybackSlice: StateCreator<
   seekSchedule: (time) => set({ playbackTime: time }),
   setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
   setPlaybackLoop: (playbackLoop) => set({ playbackLoop }),
+  setRespectWorkCalendar: (respectWorkCalendar) => set({ respectWorkCalendar }),
 
   advancePlaybackBy: (deltaMs) => {
     const s = get();
@@ -122,6 +140,23 @@ export const createPlaybackSlice: StateCreator<
       } else {
         set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
         return;
+      }
+    }
+    if (s.respectWorkCalendar) {
+      const calendar = resolveActiveCalendar(s.scheduleData, s.activeWorkScheduleId);
+      if (calendar) {
+        const skipped = skipToNextWorkingInstant(calendar, next);
+        // Skipping forward can itself cross the range end (e.g. the last
+        // working day ends the range, the calendar's non-working tail
+        // doesn't). Re-apply the same end-of-range handling rather than
+        // emitting a `playbackTime` past `scheduleRange.end`.
+        next = skipped > s.scheduleRange.end
+          ? (s.playbackLoop ? s.scheduleRange.start : s.scheduleRange.end)
+          : skipped;
+        if (!s.playbackLoop && skipped > s.scheduleRange.end) {
+          set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
+          return;
+        }
       }
     }
     set({ playbackTime: next });

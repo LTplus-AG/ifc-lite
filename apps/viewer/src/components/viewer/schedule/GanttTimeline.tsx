@@ -8,10 +8,13 @@
  */
 
 import { memo, useMemo, useCallback, useRef, useLayoutEffect, useState } from 'react';
+import { CalendarOff } from 'lucide-react';
 import type { ScheduleExtraction } from '@ifc-lite/parser';
 import { cn } from '@/lib/utils';
-import { taskStartEpoch, taskFinishEpoch } from '@/store';
+import { useViewerStore, taskStartEpoch, taskFinishEpoch } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { FlattenedTask } from './schedule-utils';
 import {
   computeTicks,
@@ -23,6 +26,7 @@ import { useGanttBarDrag } from './useGanttBarDrag';
 import { GanttTaskBar } from './GanttTaskBar';
 import { GanttDependencyArrows } from './GanttDependencyArrows';
 import { GanttDragTooltip } from './GanttDragTooltip';
+import { resolveActiveCalendar, getNonWorkingDayStarts, MS_PER_DAY } from './work-calendar';
 
 // Alias kept for local readability; binds to the shared constant so the
 // timeline header and the task-tree header stay the same height.
@@ -111,6 +115,25 @@ export const GanttTimeline = memo(function GanttTimeline({
     [range, scale],
   );
 
+  // Non-working-day shading (#4830). `respectWorkCalendar` is the same flag
+  // the playback clock (`advancePlaybackBy`, `playbackSlice.ts`) uses to
+  // skip these days during auto-play — one flag, two consumers, so toggling
+  // it off both stops the clock-skip AND clears the shading in one action.
+  const respectWorkCalendar = useViewerStore(s => s.respectWorkCalendar);
+  const setRespectWorkCalendar = useViewerStore(s => s.setRespectWorkCalendar);
+  const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
+  const activeCalendar = useMemo(
+    () => resolveActiveCalendar(data, activeWorkScheduleId),
+    [data, activeWorkScheduleId],
+  );
+  // Day-granularity shading only reads cleanly at day/week zoom — at
+  // month/year scale a 1-day rect is sub-pixel and just adds SVG nodes.
+  const dayShadingScale = scale === 'day' || scale === 'week';
+  const nonWorkingDayStarts = useMemo(() => {
+    if (!respectWorkCalendar || !dayShadingScale || !activeCalendar) return [];
+    return getNonWorkingDayStarts(activeCalendar, range.start, range.end);
+  }, [respectWorkCalendar, dayShadingScale, activeCalendar, range.start, range.end]);
+
   const rowsHeight = rows.length * GANTT_ROW_HEIGHT;
 
   /** Pre-compute per-task y-row lookup for sequence arrows. */
@@ -180,6 +203,27 @@ export const GanttTimeline = memo(function GanttTimeline({
         className="sticky top-0 z-10 bg-card/90 backdrop-blur-sm border-b"
         style={{ height: HEADER_HEIGHT }}
       >
+        {(data.workCalendars?.length ?? 0) > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={respectWorkCalendar ? 'secondary' : 'ghost'}
+                size="icon"
+                className="absolute right-1 top-0.5 h-5 w-5 z-20"
+                aria-pressed={respectWorkCalendar}
+                aria-label="Respect work calendar"
+                onClick={() => setRespectWorkCalendar(!respectWorkCalendar)}
+              >
+                <CalendarOff className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {respectWorkCalendar
+                ? 'Non-working days shaded, animation skips them — click to ignore the work calendar'
+                : 'Work calendar ignored — click to shade non-working days and skip them during playback'}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <svg width={pixelWidth} height={HEADER_HEIGHT} className="block">
           {ticks.map((t, i) => {
             const x = timeToX(t, range.start, range.end, pixelWidth);
@@ -206,6 +250,26 @@ export const GanttTimeline = memo(function GanttTimeline({
         className="block cursor-crosshair"
         onClick={handleTimelineClick}
       >
+        {/* Non-working-day shading (#4830) — painted first so grid lines,
+            row highlights and bars all draw on top of it. */}
+        {nonWorkingDayStarts.map((dayStart) => {
+          const x0 = timeToX(dayStart, range.start, range.end, pixelWidth);
+          const x1 = timeToX(dayStart + MS_PER_DAY, range.start, range.end, pixelWidth);
+          return (
+            <rect
+              key={`nwd-${dayStart}`}
+              x={x0}
+              y={0}
+              width={Math.max(0, x1 - x0)}
+              height={rowsHeight}
+              fill="currentColor"
+              fillOpacity={0.05}
+              className="text-foreground pointer-events-none"
+              data-testid="gantt-non-working-day"
+            />
+          );
+        })}
+
         {/* Vertical grid */}
         {ticks.map((t, i) => {
           const x = timeToX(t, range.start, range.end, pixelWidth);

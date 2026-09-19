@@ -33,6 +33,7 @@ describe('manual clash group focus (#4921)', () => {
       hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
       hiddenEntitiesByModel: new Map(), isolatedEntitiesByModel: new Map(), mutationVersion: 0,
       colorPresentationRevision: 0,
+      selectedStoreys: new Set(), levelDisplayMode: 'stacked',
     });
   });
 
@@ -213,6 +214,27 @@ describe('manual clash group focus (#4921)', () => {
     }));
     assert.equal(focusedSceneRevisionIsCurrent(beforeSectionChange), false,
       'the serialized cut must come from the same rendered frame as the snapshot');
+  });
+
+  it('clears storey isolation canonically and invalidates a later level-display change', () => {
+    useViewerStore.setState({
+      selectedStoreys: new Set([44]),
+      levelDisplayMode: 'solo',
+    });
+    const focused = focusClashGroup(
+      [clash('storey', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'isolate',
+    );
+    assert.ok(focused);
+    assert.equal(useViewerStore.getState().levelDisplayMode, 'stacked');
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set(),
+      'manual-group framing must not inherit an unserializable storey filter');
+
+    useViewerStore.getState().setStoreysSelection([55]);
+    assert.equal(focusedSceneRevisionIsCurrent(focused), false,
+      'a storey isolation enabled during snapshot capture must invalidate the frame');
   });
 
   it('invalidates capture when another selection or presentation replaces the focused group', () => {

@@ -8,6 +8,7 @@ import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { activeSectionPlane } from '@/store/section-active';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { CLASH_COLOR_A, CLASH_COLOR_B, type RGBA } from './clash-colors';
 
 interface SelectionRef {
@@ -41,6 +42,8 @@ export interface FocusedClashGroup {
     clashHighlightColors: ViewerState['clashHighlightColors'];
     colorPresentationRevision: number;
     sectionPlane: ViewerState['sectionPlane'] | null;
+    selectedStoreys: ViewerState['selectedStoreys'];
+    levelDisplayMode: ViewerState['levelDisplayMode'];
   };
 }
 
@@ -101,7 +104,9 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && state.selectionRevision === revision.selectionRevision
     && state.clashHighlightColors === revision.clashHighlightColors
     && state.colorPresentationRevision === revision.colorPresentationRevision
-    && activeSectionPlane(state) === revision.sectionPlane;
+    && activeSectionPlane(state) === revision.sectionPlane
+    && state.selectedStoreys === revision.selectedStoreys
+    && state.levelDisplayMode === revision.levelDisplayMode;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -132,6 +137,12 @@ export function focusClashGroup(
     }
   }
   if (refs.length === 0) return null;
+  // A storey filter or exploded offsets would render only a transformed
+  // subset of the group, but BCF cannot serialize either presentation. Use
+  // the one canonical level-display transition before framing the group.
+  if (state.selectedStoreys.size > 0 || state.levelDisplayMode !== 'stacked') {
+    applyLevelDisplayMode('stacked');
+  }
   state.clearEntitySelection();
   state.clearClashFocus();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
@@ -206,6 +217,8 @@ export function focusClashGroup(
       clashHighlightColors: focusedState.clashHighlightColors,
       colorPresentationRevision: focusedState.colorPresentationRevision,
       sectionPlane: activeSectionPlane(focusedState),
+      selectedStoreys: focusedState.selectedStoreys,
+      levelDisplayMode: focusedState.levelDisplayMode,
     },
   };
 }

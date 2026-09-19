@@ -328,7 +328,10 @@ function mirrorCostOverlayDelta(
     const names = getAttributeNamesAcrossSchemas(entity.type);
     const globalId = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
       ? entity.attributes[0]
-      : `ifc-lite-cost-${entity.expressId}`;
+      // Non-IfcRoot entities have no IFC GUID. Their room identity must not
+      // reuse a local express id: two peers can concurrently allocate the
+      // same id for distinct cost values/quantities.
+      : `ifc-lite-cost-${crypto.randomUUID()}`;
     state.mirrorEntityCreate(modelId, entity.expressId, entity.type, globalId, null);
     entity.attributes.forEach((value, index) => {
       const name = names[index];

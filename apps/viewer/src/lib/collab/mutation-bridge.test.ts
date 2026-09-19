@@ -253,6 +253,18 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), '["a","b",3]');
   });
 
+  it('mirrors cost reference lists as peer-resolvable room paths (#4857)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/item', { ifcClass: 'IfcCostItem' });
+    createEntity(doc, '/value-a', { ifcClass: 'IfcCostValue' });
+    createEntity(doc, '/value-b', { ifcClass: 'IfcCostValue' });
+    const store = fakeStore(new Map([[1, '/item'], [2, '/value-a'], [3, '/value-b']]));
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'CostValues', [2, 3]);
+
+    assert.deepEqual(getAttribute(doc, '/item', 'CostValues'), ['/value-a', '/value-b']);
+  });
+
   it('mirrorAttribute no-ops when the entity is not in the doc', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
@@ -505,6 +517,24 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
       fn: 'onAttribute',
       args: [MODEL, 1, 'bsi::ifc::prop::Name', 'Wall-A'],
     });
+  });
+
+  it('delivers structured cost reference paths without scalar stringification (#4857)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/item', { ifcClass: 'IfcCostItem' });
+    const store = fakeStore(new Map([[1, '/item'], [20, '/peer-value']]));
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+
+    applyAsRemoteEdit(doc, (remote) => {
+      setAttribute(remote, '/item', 'CostValues', ['/peer-value']);
+    });
+
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onAttribute',
+      args: [MODEL, 1, 'CostValues', ['/peer-value']],
+    }]);
   });
 
   it('drops a remote flat attribute DELETE — no onAttribute call, and no delete handler exists to call instead', () => {

@@ -23,13 +23,12 @@
  * injected (the module the caller already lazy-loaded) so this file pulls no
  * collab code eagerly.
  */
-
 import { PropertyValueType } from '@ifc-lite/data';
 import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import { entityForPath, pathForEntity } from './entity-paths';
-
+import { isReferenceListAttribute, referenceListFromPaths, referenceListToPaths } from './attribute-reference-lists';
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
   hasEntity(doc: CollabSession['doc'], path: string): boolean;
@@ -58,9 +57,7 @@ export interface CollabDocApi {
   placementFromXformOp(value: unknown): LocalPlacement | null;
   PROPERTY_TYPE_NAMES: Record<number, string>;
 }
-
 // ── value conversion ─────────────────────────────────────────────────────────
-
 function toScalar(value: unknown): string | number | boolean | null {
   if (value === null) return null;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -134,8 +131,13 @@ export function mirrorAttribute(
 ): void {
   const path = pathForEntity(store, entityId);
   if (!path || !api.hasEntity(session.doc, path)) return;
+  const referencePaths = referenceListToPaths(store, attrName, value);
+  const wireValue = referencePaths === undefined ? toScalar(value) : referencePaths;
+  // Never broadcast local express ids: they are model-instance-specific and
+  // can silently bind to different entities on a peer.
+  if (referencePaths === null) return;
   session.transact(() => {
-    api.setAttribute(session.doc, path, attrName, toScalar(value));
+    api.setAttribute(session.doc, path, attrName, wireValue);
   });
 }
 
@@ -216,8 +218,15 @@ export function applyRemoteAttribute(
   store: IfcDataStore,
   entityId: number,
   attrName: string,
-  value: ScalarValue,
+  value: ScalarValue | unknown[],
 ): void {
+  const refs = referenceListFromPaths(store, attrName, value);
+  if (refs !== undefined) {
+    if (refs === null) return;
+    const index = getAttributeNamesAcrossSchemas(store.entities.getTypeName(entityId)).indexOf(attrName);
+    if (index >= 0) view.setPositionalAttribute(entityId, index, refs);
+    return;
+  }
   if (value === null) {
     const index = getAttributeNamesAcrossSchemas(store.entities.getTypeName(entityId)).indexOf(attrName);
     if (index >= 0) view.setPositionalAttribute(entityId, index, null);
@@ -238,7 +247,7 @@ export interface RemoteApplyHandlers {
   /** Apply a remote property deletion. */
   onPropertyDelete(modelId: string, entityId: number, pset: string, prop: string): void;
   /** Apply a remote attribute write. */
-  onAttribute(modelId: string, entityId: number, attrName: string, value: ScalarValue): void;
+  onAttribute(modelId: string, entityId: number, attrName: string, value: ScalarValue | unknown[]): void;
   /**
    * Apply a remote placement (move / rotate) write. Receives the entity's full
    * new local placement decoded from `usd::xformop`; the handler reconciles it
@@ -326,7 +335,13 @@ export function attachRemoteApply(
             if (placement && handlers.onPlacement) handlers.onPlacement(modelId, entityId, placement);
             continue;
           }
-          handlers.onAttribute(modelId, entityId, attrName, toScalar(target.get(attrName)));
+          const raw = target.get(attrName);
+          handlers.onAttribute(
+            modelId,
+            entityId,
+            attrName,
+            isReferenceListAttribute(attrName) && Array.isArray(raw) ? raw : toScalar(raw),
+          );
         }
       } else if (path[1] === 'psets' && path.length === 3 && typeof path[2] === 'string') {
         const psetName = path[2];

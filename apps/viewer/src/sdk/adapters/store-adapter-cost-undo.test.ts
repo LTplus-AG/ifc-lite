@@ -29,7 +29,7 @@ async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
   store: StoreApi;
   undoCalls: Array<{ modelId: string; entityId: number; ifcType: string }>;
   relationshipMutationCalls: string[];
-  mirrorCalls: Array<{ kind: string; entityId: number; detail?: string }>;
+  mirrorCalls: Array<{ kind: string; entityId: number; detail?: string; roomKey?: string }>;
 }> {
   const bytes = new TextEncoder().encode(STEP);
   const dataStore = await new IfcParser().parseColumnar(
@@ -39,7 +39,7 @@ async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
   const mutationViews = new Map<string, MutablePropertyView>();
   const undoCalls: Array<{ modelId: string; entityId: number; ifcType: string }> = [];
   const relationshipMutationCalls: string[] = [];
-  const mirrorCalls: Array<{ kind: string; entityId: number; detail?: string }> = [];
+  const mirrorCalls: Array<{ kind: string; entityId: number; detail?: string; roomKey?: string }> = [];
   const model = { id: 'm', name: 't.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 100 };
   const state = {
     activeModelId: 'm',
@@ -52,8 +52,8 @@ async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
     },
     markCostRelationshipMutation: (modelId: string) => { relationshipMutationCalls.push(modelId); },
     canCollabEdit,
-    mirrorEntityCreate: (_modelId: string, entityId: number, ifcType: string) => {
-      mirrorCalls.push({ kind: 'create', entityId, detail: ifcType });
+    mirrorEntityCreate: (_modelId: string, entityId: number, ifcType: string, roomKey: string) => {
+      mirrorCalls.push({ kind: 'create', entityId, detail: ifcType, roomKey });
     },
     mirrorAttributeEdit: (_modelId: string, entityId: number, name: string) => {
       mirrorCalls.push({ kind: 'attribute', entityId, detail: name });
@@ -95,6 +95,19 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
     assert.ok(mirrorCalls.some(call => call.kind === 'create' && call.entityId === value.expressId));
     assert.ok(mirrorCalls.some(call => call.kind === 'attribute' && call.entityId === item.expressId && call.detail === 'CostValues'));
     assert.ok(mirrorCalls.some(call => call.kind === 'remove' && call.entityId === value.expressId));
+  });
+
+  it('gives concurrent non-root cost entities unique room identities (#4857)', async () => {
+    const first = await makeStore();
+    const second = await makeStore();
+    const firstRef = createStoreAdapter(first.store).addCostValue('m', { Name: 'A' });
+    const secondRef = createStoreAdapter(second.store).addCostValue('m', { Name: 'B' });
+    assert.equal(firstRef.expressId, secondRef.expressId, 'independent peers allocate the same local id');
+    const firstKey = first.mirrorCalls.find(call => call.kind === 'create')?.roomKey;
+    const secondKey = second.mirrorCalls.find(call => call.kind === 'create')?.roomKey;
+    assert.match(firstKey ?? '', /^ifc-lite-cost-/);
+    assert.match(secondKey ?? '', /^ifc-lite-cost-/);
+    assert.notEqual(firstKey, secondKey, 'room identity must not derive from the colliding local id');
   });
 
   it('nestCostItems / assign* / setCostItemValues / removeCostEntity mark the model dirty via markCostRelationshipMutation', async () => {

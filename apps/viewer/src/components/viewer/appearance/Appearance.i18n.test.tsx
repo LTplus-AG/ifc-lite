@@ -243,6 +243,7 @@ describe('Appearance localization revert-oracle witness (#4918)', () => {
     registerLocale('appearance-revert-witness', { 'appearance.panelView.applyToIfc': 'translated apply witness' });
     act(() => setLocale('appearance-revert-witness'));
     const container = render(<AppearancePanelView {...panelViewProps({ onIntentChange() {} })} />);
-    assert.match(container.textContent ?? '', /translated apply witness/);
+    const applyButton = [...container.querySelectorAll('button')].find((element) => element.textContent === 'translated apply witness');
+    assert.equal(applyButton?.textContent, 'translated apply witness');
   });
 });

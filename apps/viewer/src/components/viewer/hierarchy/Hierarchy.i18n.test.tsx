@@ -328,6 +328,7 @@ describe('Hierarchy localization revert-oracle witness (#4918)', () => {
     registerLocale('hierarchy-revert-witness', { 'hierarchy.modelsSection.title': 'translated models witness' });
     act(() => setLocale('hierarchy-revert-witness'));
     const container = mountAll();
-    assert.match(container.textContent ?? '', /translated models witness/);
+    const title = [...container.querySelectorAll('span')].find((element) => element.textContent === 'translated models witness');
+    assert.equal(title?.textContent, 'translated models witness');
   });
 });

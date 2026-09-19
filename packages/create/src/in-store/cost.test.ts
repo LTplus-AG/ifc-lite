@@ -167,6 +167,20 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
     expect(() => addCostValueToStore(ed, ANCHOR, { ArithmeticOperator: 'BOGUS' as never }))
       .toThrow(/ArithmeticOperator/);
   });
+
+  it('accepts MODULO only for IFC4X3 cost values', async () => {
+    const { editor: ifc4x3 } = await editor('IFC4X3');
+    const value = addCostValueToStore(
+      ifc4x3,
+      { ownerHistoryId: null, schema: 'IFC4X3' },
+      { Name: 'Remainder', ArithmeticOperator: 'MODULO' },
+    );
+    expect(ifc4x3.getNewEntity(value)?.attributes[8]).toBe('.MODULO.');
+
+    const { editor: ifc4 } = await editor();
+    expect(() => addCostValueToStore(ifc4, ANCHOR, { ArithmeticOperator: 'MODULO' }))
+      .toThrow(/only valid in IFC4X3/);
+  });
 });
 
 describe('addCostQuantityToStore', () => {

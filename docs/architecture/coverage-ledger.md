@@ -137,9 +137,9 @@ Columns:
 | IfcCooledBeamType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCoolingTowerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCoordinatedUniversalTimeOffset | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcCostItem | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcCostSchedule | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcCostValue | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcCostItem | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCostSchedule | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCostValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCountMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCovering | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCoveringType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

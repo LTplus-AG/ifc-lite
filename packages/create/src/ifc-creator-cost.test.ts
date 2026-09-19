@@ -544,6 +544,16 @@ describe('IfcCreator cost authoring — malformed input is refused (#4856)', () 
     expect(step).not.toContain('IFCCOSTSCHEDULE');
   });
 
+  it('accepts MODULO only for IFC4X3 cost values', () => {
+    const ifc4x3 = seededCreator(51, { Schema: 'IFC4X3' });
+    ifc4x3.addIfcCostValue({ Name: 'Remainder', ArithmeticOperator: 'MODULO' });
+    expect(ifc4x3.toIfc().content).toContain(',.MODULO.,');
+
+    const ifc4 = seededCreator(52);
+    expect(() => ifc4.addIfcCostValue({ Name: 'Invalid', ArithmeticOperator: 'MODULO' }))
+      .toThrow(/only valid in IFC4X3/);
+  });
+
   it('lists created IfcCostValues in toIfc().entities, like schedules and items', () => {
     const creator = seededCreator(51);
     const id = creator.addIfcCostValue({ Name: 'Rate', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 5 } });

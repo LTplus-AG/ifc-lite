@@ -377,7 +377,7 @@ function buildSection(schema) {
     const isRel = upper.startsWith('IFCREL');
     const relStatus = isRel ? (relationshipClassesUpper.has(upper) ? '✅' : '❌') : '—';
     const geometry = geometryTypes.has(upper) ? '✅' : '❌';
-    const creatable = creatorTypes.has(upper) ? '✅' : '❌';
+    const creatable = creatorTypes.has(upper) && !(schema === 'IFC2X3' && ['IFCCOSTITEM', 'IFCCOSTSCHEDULE', 'IFCCOSTVALUE'].includes(upper)) ? '✅' : '❌';
     const writable = writableTypes.has(upper) ? '✅' : '❌';
     const fixture = fixtureTypeToPathBySchema.get(schema).get(upper) ?? '—';
     const convertParts = [];

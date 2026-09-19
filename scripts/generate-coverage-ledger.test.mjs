@@ -155,6 +155,15 @@ test('real sources: generator succeeds and produces a non-empty, multi-section l
   assert.match(ledger, /\| IfcWall \|/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
 });
 
+test('schema-refused IFC2X3 cost builders stay non-creatable (#4857)', () => {
+  const ledger = regenerateAgainstRealRoot();
+  for (const entity of ['IfcCostItem', 'IfcCostSchedule', 'IfcCostValue']) {
+    const row = sectionOf(ledger, 'IFC2X3').split('\n').find((line) => line.startsWith(`| ${entity} |`));
+    assert.ok(row, `missing ${entity} in IFC2X3 ledger`);
+    assert.equal(row.split('|').map((column) => column.trim())[6], '❌');
+  }
+});
+
 test('writable and fixture columns: known types carry correct, non-vacuous values (#4207)', () => {
   const { status, ledger } = runOn();
   assert.equal(status, 0);

@@ -26,8 +26,8 @@ import {
   requireMatchingCostSchema,
 } from './cost-reference-validation.js';
 import {
-  ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
-  assertCostSchema, assertOneOf, requireRef, validateRefList, validateTypedValue,
+  COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
+  assertCostSchema, assertOneOf, requireRef, validateArithmeticOperator, validateRefList, validateTypedValue,
   type CostSchema, type CostTypedValueInput,
 } from '../cost-authoring-rules.js';
 import type {
@@ -137,7 +137,7 @@ export function addCostValueToStore(editor: StoreEditor, anchor: CostAnchor, par
   if (params.AppliedValue !== undefined && params.AppliedValueRef !== undefined) {
     throw new Error('addCostValue: AppliedValue and AppliedValueRef are the two branches of one SELECT — give at most one');
   }
-  assertOneOf(params.ArithmeticOperator, ARITHMETIC_OPERATORS, 'ArithmeticOperator', 'addCostValue');
+  validateArithmeticOperator(params.ArithmeticOperator, schema, 'addCostValue');
   let applied: IfcAttributeValue = null;
   if (params.AppliedValue !== undefined) {
     applied = typedAttrValue(params.AppliedValue, schema, 'addCostValue');

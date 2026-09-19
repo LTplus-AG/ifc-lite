@@ -26,7 +26,12 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { createCostBackend } from './cost-backend.js';
-import { createCostStoreBackend, type CostStoreModelResolution } from './cost-store-backend.js';
+// Through the package barrel, not `./cost-store-backend.js` directly — see
+// `packages/create/src/in-store/cost.test.ts`'s import comment for why: a
+// direct import of a brand-new file dies at load on revert (dead import,
+// not a RED); routed through `./index.js` (existing file, diff-only-adds),
+// a revert instead fails every call below as "is not a function".
+import { createCostStoreBackend, type CostStoreModelResolution } from './index.js';
 import type { CostGraphData } from './cost-types.js';
 
 const STEP_LINES = [

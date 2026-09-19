@@ -15,12 +15,21 @@
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+// Through the package barrel, not `./cost.js` directly: the revert oracle
+// (`scripts/check-test-revert-oracle.mjs`) reverts `in-store/cost.ts` by
+// deleting it outright (it is brand new), which would make a direct import
+// unresolvable at load time — a dead import, not a RED assertion. Routed
+// through `../index.js` (an EXISTING file whose diff only ADDS export
+// lines), a revert instead removes the re-export and every call below fails
+// as an ordinary "X is not a function" — the assertion-level signal the
+// oracle is designed to read. See cost-backend-mutations.test.ts for the
+// companion witness that does not depend on this file at all.
 import {
   addCostItemToStore, addCostQuantityToStore, addCostScheduleToStore, addCostValueToStore,
   assignCostItemsToScheduleInStore, assignObjectsToCostItemInStore,
   attachCostValuesToItemInStore, nestCostItemsInStore, removeCostEntityInStore,
   type CostAnchor, type ExistingRelatedList,
-} from './cost.js';
+} from '../index.js';
 
 const MINIMAL = `ISO-10303-21;
 HEADER;

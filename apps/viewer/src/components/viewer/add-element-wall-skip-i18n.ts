@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TranslationKey } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 const WALL_SKIP_REASON_KEYS = {
   'no-source-bytes': 'addElement.auto.skipReason.noSourceBytes',
@@ -23,7 +24,7 @@ export function formatWallSkipReasons(t: Translate, locale: string, reasons: Rec
       ? WALL_SKIP_REASON_KEYS[reason as keyof typeof WALL_SKIP_REASON_KEYS]
       : null;
     const label = key ? t(key) : t('addElement.auto.skipReason.unknown', { reason });
-    return t('addElement.auto.skipReasonCount', { count, reason: label });
+    return t('addElement.auto.skipReasonCount', { countDisplay: formatLocaleNumber(locale, count), reason: label });
   });
   try {
     return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(entries);

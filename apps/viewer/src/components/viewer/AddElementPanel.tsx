@@ -32,6 +32,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { EntityNode } from '@ifc-lite/query';
 import type { AddElementType } from '@/store/slices/addElementSlice';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { ELEMENT_OPTIONS, SPACE_PREDEFINED_TYPES } from './add-element-options';
 import { formatWallSkipReasons } from './add-element-wall-skip-i18n';
 
@@ -402,7 +403,7 @@ interface DropGuidanceProps {
 
 /** Stateful guidance pane — mirrors the multi-click flow so the user always knows what comes next. */
 function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onClearPending }: DropGuidanceProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   if (!ready) {
     return (
       <section className="mt-2 rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 p-3 text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
@@ -425,7 +426,7 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
     } else {
       primary = t(`addElement.guidance.axis.${type}End` as TranslationKey);
       secondary = hoverDistance !== null
-        ? t('addElement.guidance.axis.length', { length: hoverDistance.toFixed(2) })
+        ? t('addElement.guidance.axis.length', { length: formatLocaleNumber(locale, hoverDistance, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })
         : t('addElement.guidance.restart');
     }
   } else {
@@ -443,10 +444,10 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
         primary = t(`addElement.guidance.polygon.${type}First` as TranslationKey);
         secondary = t('addElement.guidance.polygon.firstSecondary');
       } else if (pendingCount < 3) {
-        primary = t('addElement.guidance.polygon.needPoint', { point: pendingCount + 1 });
+        primary = t('addElement.guidance.polygon.needPoint', { point: formatLocaleNumber(locale, pendingCount + 1) });
         secondary = t('addElement.guidance.restart');
       } else {
-        primary = t('addElement.guidance.polygon.nextPoint', { point: pendingCount + 1 });
+        primary = t('addElement.guidance.polygon.nextPoint', { point: formatLocaleNumber(locale, pendingCount + 1) });
         secondary = t('addElement.guidance.polygon.restart');
       }
     }
@@ -574,7 +575,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
       if (count === 0) {
         toast.info(t('addElement.auto.noneToGenerate'));
       } else {
-        toast.success(t('addElement.auto.generated', { count }));
+        toast.success(t('addElement.auto.generated', { count, countDisplay: formatLocaleNumber(locale, count) }));
       }
     } finally {
       setBusy(false);
@@ -677,23 +678,24 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
           <div>
             {t('addElement.auto.previewSummary', {
               count: preview.regions.length,
-              contributing: preview.wallsContributing,
-              considered: preview.wallsConsidered,
+              countDisplay: formatLocaleNumber(locale, preview.regions.length),
+              contributing: formatLocaleNumber(locale, preview.wallsContributing),
+              considered: formatLocaleNumber(locale, preview.wallsConsidered),
             })}
           </div>
           {preview.regions.length > 0 && (
             <div className="opacity-80">
-              {t('addElement.auto.totalArea', { area: preview.regions.reduce((sum, r) => sum + r.area, 0).toFixed(1) })}
+              {t('addElement.auto.totalArea', { area: formatLocaleNumber(locale, preview.regions.reduce((sum, r) => sum + r.area, 0), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
             </div>
           )}
           {preview.diagnostics && (
             <div className="opacity-80 mt-1">
               {t('addElement.auto.graph', {
-                vertices: preview.diagnostics.vertices,
-                edges: preview.diagnostics.edgesAfterSplit,
-                faces: preview.diagnostics.facesTotal,
-                outer: preview.diagnostics.outerFacesDropped,
-                small: preview.diagnostics.belowMinAreaDropped,
+                vertices: formatLocaleNumber(locale, preview.diagnostics.vertices),
+                edges: formatLocaleNumber(locale, preview.diagnostics.edgesAfterSplit),
+                faces: formatLocaleNumber(locale, preview.diagnostics.facesTotal),
+                outer: formatLocaleNumber(locale, preview.diagnostics.outerFacesDropped),
+                small: formatLocaleNumber(locale, preview.diagnostics.belowMinAreaDropped),
               })}
             </div>
           )}

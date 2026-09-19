@@ -17,7 +17,8 @@ import type { addElementEn as AddElementEnType } from '@/i18n/catalogues/add-ele
 let addElementEn: typeof AddElementEnType | undefined;
 try {
   ({ addElementEn } = await import('@/i18n/catalogues/add-element.en'));
-} catch {
+} catch (error) {
+  console.error('[AddElementPanel.i18n] failed to load the feature catalogue', error);
   addElementEn = undefined;
 }
 
@@ -109,6 +110,10 @@ describe('Add Element localization (#4918)', () => {
     assert.match(text, /⟦placement missing⟧/);
     assert.match(text, /⟦placement could not be resolved⟧/);
     assert.doesNotMatch(text, /no-placement|placement-not-resolvable/);
+
+    registerLocale('ar-EG', {});
+    act(() => setLocale('ar-EG'));
+    assert.match(ui.textContent ?? '', /٢/, 'Auto Spaces display counts must use active-locale digits');
   });
 
   it('recomputes unnamed-storey fallbacks and complete unit labels on a live locale change', () => {

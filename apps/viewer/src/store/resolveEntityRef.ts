@@ -60,7 +60,16 @@ export function resolveEntityRef(globalId: number): EntityRef {
 export function resolveGlobalId(globalId: number): string | null {
   const state = useViewerStore.getState();
   const entityRef = resolveEntityRefFromState(state, globalId);
-  const dataStore = state.models.get(entityRef.modelId)?.ifcDataStore ?? state.ifcDataStore;
+  return resolveEntityRefGlobalId(entityRef);
+}
+
+/** Resolve an exact model-space ref without losing identity to overlapping
+ * renderer-id ranges. Parsed and StoreEditor-created entities share this path. */
+export function resolveEntityRefGlobalId(entityRef: EntityRef): string | null {
+  const state = useViewerStore.getState();
+  const dataStore = entityRef.modelId === 'legacy'
+    ? state.ifcDataStore
+    : state.models.get(entityRef.modelId)?.ifcDataStore;
   const resolvedGlobalId = dataStore?.entities.getGlobalId(entityRef.expressId);
   if (resolvedGlobalId) return resolvedGlobalId;
 

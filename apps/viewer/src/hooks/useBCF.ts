@@ -27,9 +27,9 @@ import type { EntityRef } from '@/store/types';
 import {
   globalIdToExpressId as globalIdToExpressIdLookup,
   expressIdToGlobalId as expressIdToGlobalIdLookup,
-  entityRefToGlobalId as entityRefToGlobalIdLookup,
   resolveUniqueGlobalIds,
 } from './bcfIdLookup';
+import { resolveEntityRefGlobalId } from '@/store/resolveEntityRef';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
@@ -320,8 +320,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
   const componentRefToGlobalId = useCallback(
     (ref: ComponentRef): string | null => typeof ref === 'number'
       ? expressIdToGlobalId(ref)
-      : entityRefToGlobalIdLookup(ref, models, ifcDataStore),
-    [expressIdToGlobalId, models, ifcDataStore],
+      : resolveEntityRefGlobalId(ref),
+    [expressIdToGlobalId],
   );
   /** A registered model whose metadata has not hydrated yet cannot name its entities YET (#4529). */
   const isEntityPending = useCallback(

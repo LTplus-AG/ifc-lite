@@ -9,7 +9,7 @@
  * accounting for multi-model federation offsets and single-model fallback.
  */
 
-import type { EntityRef, FederatedModel } from '@/store/types';
+import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 
@@ -33,20 +33,6 @@ export function resolveUniqueGlobalIds<T>(
     guids.push(guid);
   }
   return guids;
-}
-
-/** Resolve an exact model-space ref without first reducing it to an ambiguous
- * renderer id. This is required for collaboration-room models, whose offset
- * may overlap another loaded model's renderer-id range. */
-export function entityRefToGlobalId(
-  ref: EntityRef,
-  models: Map<string, FederatedModel>,
-  ifcDataStore: IfcDataStore | null | undefined,
-): string | null {
-  const entities = ref.modelId === 'legacy'
-    ? ifcDataStore?.entities
-    : models.get(ref.modelId)?.ifcDataStore?.entities;
-  return entities?.getGlobalId(ref.expressId) ?? null;
 }
 
 /**

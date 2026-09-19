@@ -81,6 +81,7 @@ beforeEach(async () => {
     isolatedEntities: null,
     ghostExceptEntities: null,
     hiddenEntities: new Set(),
+    mutationViews: new Map(),
     // The state left behind by `focusClash`: selection cleared, pair only
     // painted via the highlight channel.
     selectedEntityId: null,
@@ -333,6 +334,43 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
         { color: 'FFFF8000', guids: [ordinaryGuid] },
         { color: 'FF00D1FF', guids: [roomGuid] },
       ],
+    );
+  });
+
+  it('includes a StoreEditor-created clash member by its exact model ref (#4921)', async () => {
+    const overlayId = 900;
+    const overlayGuid = 'AUTHORED00000000000001';
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([
+          ['ordinary', {
+            id: 'ordinary', name: 'ordinary', idOffset: 0, maxExpressId: CLASH_B_ID,
+            ifcDataStore: dataStore, geometryResult: null, loadedAt: 0,
+          }],
+        ]) as unknown as ViewerState['models'],
+        ifcDataStore: null,
+        mutationViews: new Map([
+          ['ordinary', {
+            getNewEntity: (expressId: number) => expressId === overlayId
+              ? { attributes: [overlayGuid] }
+              : null,
+          }],
+        ]) as unknown as ViewerState['mutationViews'],
+      });
+    });
+
+    const overlayRef = { modelId: 'ordinary', expressId: overlayId };
+    const viewpoint = await api!.createViewpointFromState({
+      includeSnapshot: false,
+      includeSelection: false,
+      additionalSelectedRefs: [overlayRef],
+      additionalColoredRefs: [{ color: 'FFFF8000', refs: [overlayRef] }],
+    });
+
+    assert.deepEqual(viewpoint?.components?.selection?.map((component) => component.ifcGuid), [overlayGuid]);
+    assert.deepEqual(
+      viewpoint?.components?.coloring?.[0]?.components.map((component) => component.ifcGuid),
+      [overlayGuid],
     );
   });
 });

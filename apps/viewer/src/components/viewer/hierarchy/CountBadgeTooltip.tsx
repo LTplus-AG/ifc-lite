@@ -4,6 +4,7 @@
 
 import type { ObjectCountSummary } from './objectCountSummary';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 /** The hover card behind a tree row's count badge — headline first, then only
  *  the breakdown lines that have something to say. Spatial rows arrive with
@@ -15,20 +16,20 @@ export function CountBadgeTooltip({
   elementCount: number;
   summary?: ObjectCountSummary;
 }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const headline = summary
-    ? t('hierarchy.countBadge.objects', { count: summary.counted, formatted: summary.counted.toLocaleString() })
-    : t('hierarchy.countBadge.elements', { count: elementCount, formatted: elementCount.toLocaleString() });
+    ? t('hierarchy.countBadge.objects', { count: summary.counted, formatted: formatLocaleNumber(locale, summary.counted) })
+    : t('hierarchy.countBadge.elements', { count: elementCount, formatted: formatLocaleNumber(locale, elementCount) });
   const rest = summary ? [
     summary.typeCounts.length > 0
-      ? summary.typeCounts.map(([type, count]) => `${count.toLocaleString()} ${type}`).join(' · ')
+      ? summary.typeCounts.map(([type, count]) => `${formatLocaleNumber(locale, count)} ${type}`).join(' · ')
       : null,
     !summary.geometryKnown ? t('hierarchy.countBadge.loadingGeometry') : null,
     summary.withoutGeometry > 0
-      ? t('hierarchy.countBadge.withoutGeometry', { count: summary.withoutGeometry, formatted: summary.withoutGeometry.toLocaleString() })
+      ? t('hierarchy.countBadge.withoutGeometry', { count: summary.withoutGeometry, formatted: formatLocaleNumber(locale, summary.withoutGeometry) })
       : null,
     summary.spacesNotCounted > 0
-      ? t('hierarchy.countBadge.spacesNotCounted', { count: summary.spacesNotCounted, formatted: summary.spacesNotCounted.toLocaleString() })
+      ? t('hierarchy.countBadge.spacesNotCounted', { count: summary.spacesNotCounted, formatted: formatLocaleNumber(locale, summary.spacesNotCounted) })
       : null,
   ].filter((line): line is string => line !== null) : [];
   return (

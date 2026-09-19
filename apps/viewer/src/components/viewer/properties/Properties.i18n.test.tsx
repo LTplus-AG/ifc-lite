@@ -37,6 +37,7 @@ import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { ProjectUnits, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { AssemblyBadge } from './AssemblyBadge.js';
 import { SpatialLocationBadge } from './SpatialLocationBadge.js';
 import { ClassificationCard } from './ClassificationCard.js';
@@ -346,6 +347,44 @@ describe('Properties panel localization (#4918 slice 4)', () => {
       />,
     );
     assert.ok(container.textContent?.includes('[2 opening-one]'), 'relationships count interpolates');
+  });
+
+  catalogueIt('localizes complete double-georeference guidance and numbers (#4918)', () => {
+    registerLocale('de', {
+      'properties.georef.doubleGeorefHeading': 'DOPPELT.',
+      'properties.georef.doubleGeorefBody': 'VERSATZ {displacement}.',
+      'properties.georef.rotationOverrideNote': 'DREHUNG.',
+      'properties.georef.distanceKilometres': 'DISTANZ {value} KM',
+      'properties.georef.scaleOverrideReasonOther': 'SKALIERUNG {fields}.',
+      'properties.georef.correctionOffsets': 'OFFSET NULL',
+      'properties.georef.correctionAngle': 'WINKEL NULL',
+      'properties.georef.correctionScale': 'MASSSTAB {value}',
+      'properties.georef.rawValuesCorrectionFactorOther': 'KORREKTUR {edits}; FAKTOREN {factors}.',
+    });
+    act(() => setLocale('de'));
+    const coordinateInfo: CoordinateInfo = {
+      originShift: { x: MAP_CONVERSION.eastings, y: 0, z: -MAP_CONVERSION.northings },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      originalBounds: {
+        min: { x: MAP_CONVERSION.eastings, y: 0, z: -MAP_CONVERSION.northings },
+        max: { x: MAP_CONVERSION.eastings, y: 0, z: -MAP_CONVERSION.northings },
+      },
+      hasLargeCoordinates: true,
+    };
+    const mapConversion = { ...MAP_CONVERSION, scale: 2, factorX: 0.5, factorY: 0.5 };
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        coordinateInfo={coordinateInfo}
+        lengthUnitScale={1}
+        schemaVersion="IFC4"
+      />,
+    );
+    const text = container.textContent ?? '';
+    assert.match(text, /DISTANZ 6\.004 KM/);
+    assert.match(text, /SKALIERUNG Scale, FactorX und FactorY/);
+    assert.match(text, /KORREKTUR OFFSET NULL, WINKEL NULL und MASSSTAB 1; FAKTOREN FactorX und FactorY/);
+    assert.doesNotMatch(text, /not applied|not editable|The file's own values|about/);
   });
 
   catalogueIt('resolves a retained EPSG search error in the current locale', () => {

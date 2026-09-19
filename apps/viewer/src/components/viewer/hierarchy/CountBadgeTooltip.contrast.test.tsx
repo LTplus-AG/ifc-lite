@@ -78,4 +78,22 @@ describe('CountBadgeTooltip contrast', () => {
     assert.match(container.textContent, /PSEUDO many 5/);
     assert.match(container.textContent, /PSEUDO space 1/);
   });
+
+  it('formats every count with the active catalogue locale (#4918)', () => {
+    registerLocale('de', {
+      'hierarchy.countBadge.objects': { one: '{formatted} Objekt', other: '{formatted} Objekte' },
+      'hierarchy.countBadge.spacesNotCounted': { one: '{formatted} Raum', other: '{formatted} Räume' },
+    });
+    setLocale('de');
+    const localized = {
+      ...summary,
+      counted: 1234,
+      typeCounts: [['IfcWall', 1234]] as Array<[string, number]>,
+      spacesNotCounted: 1234,
+    };
+    const container = render(<CountBadgeTooltip elementCount={1234} summary={localized} />);
+    assert.match(container.textContent, /1\.234 Objekte/);
+    assert.match(container.textContent, /1\.234 IfcWall/);
+    assert.match(container.textContent, /1\.234 Räume/);
+  });
 });

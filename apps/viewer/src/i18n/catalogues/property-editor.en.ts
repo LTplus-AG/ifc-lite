@@ -12,6 +12,7 @@ export const propertyEditorEn = {
   'propertyEditor.inline.unset': 'Unset',
   'propertyEditor.inline.true': 'True',
   'propertyEditor.inline.false': 'False',
+  'propertyEditor.inline.unknown': 'Unknown',
   'propertyEditor.inline.enterValue': 'Enter value',
   'propertyEditor.inline.reviewScope': 'Review scope (Enter)',
   'propertyEditor.inline.save': 'Save (Enter)',

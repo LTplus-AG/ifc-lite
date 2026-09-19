@@ -204,7 +204,7 @@ export function PropertyEditor({
     }
   }, [handleSave, handleCancel, showScopeConfirm]);
 
-  const displayValue = formatDisplayValue(currentValue);
+  const displayValue = formatDisplayValue(currentValue, t);
 
   // Non-editing view: value with pen icon on right (always visible)
   if (!isEditing) {
@@ -1631,10 +1631,12 @@ function formatValue(value: unknown): string {
   return String(raw);
 }
 
-function formatDisplayValue(value: unknown): string {
+function formatDisplayValue(value: unknown, t: (key: TranslationKey) => string): string {
   const raw = extractRawValue(value);
   if (raw === null || raw === undefined) return '\u2014';
-  if (typeof raw === 'boolean') return raw ? 'True' : 'False';
+  if (typeof raw === 'boolean') {
+    return raw ? t('propertyEditor.inline.true') : t('propertyEditor.inline.false');
+  }
   if (typeof raw === 'number') {
     return Number.isInteger(raw)
       ? raw.toLocaleString()
@@ -1645,9 +1647,9 @@ function formatDisplayValue(value: unknown): string {
   // Handle boolean strings (STEP enum format)
   const strVal = String(raw);
   const upper = strVal.toUpperCase();
-  if (upper === '.T.') return 'True';
-  if (upper === '.F.') return 'False';
-  if (upper === '.U.') return 'Unknown';
+  if (upper === '.T.') return t('propertyEditor.inline.true');
+  if (upper === '.F.') return t('propertyEditor.inline.false');
+  if (upper === '.U.') return t('propertyEditor.inline.unknown');
   return strVal;
 }
 

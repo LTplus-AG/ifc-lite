@@ -63,6 +63,24 @@ describe('Property editor localization (#4918)', () => {
     );
   });
 
+  it('updates read-only boolean and logical values when the active locale changes', () => {
+    assert.ok(propertyEditorEn, 'property-editor.en.ts catalogue must exist');
+    const ui = render(
+      <div>
+        <PropertyEditor modelId="model" entityId={1} psetName="Pset_Test" propName="Enabled" currentValue />
+        <PropertyEditor modelId="model" entityId={1} psetName="Pset_Test" propName="Disabled" currentValue={false} />
+        <PropertyEditor modelId="model" entityId={1} psetName="Pset_Test" propName="Logical" currentValue=".U." />
+      </div>,
+    );
+    registerLocale('property-editor-readonly-pseudo', pseudoLocale());
+    act(() => setLocale('property-editor-readonly-pseudo'));
+
+    const text = ui.textContent ?? '';
+    assert.match(text, /⟦True⟧/);
+    assert.match(text, /⟦False⟧/);
+    assert.match(text, /⟦Unknown⟧/);
+  });
+
   it('updates every enrichment-dialog trigger without remounting', () => {
     const ui = render(
       <div>

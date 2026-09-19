@@ -36,6 +36,7 @@ import remarkGfm from 'remark-gfm';
 import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
+import { resolveLiveMessage, type LiveTranslationMessage } from './live-translation-message.js';
 import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
 import {
   getPlaygroundModel,
@@ -109,8 +110,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   toolCalls?: ChatToolCall[];
-  /** True while we're still streaming + looping tool calls. */
-  pending?: boolean;
+  /** True while we're still streaming + looping tool calls. */ pending?: boolean;
 }
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -141,7 +141,7 @@ export function PlaygroundChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LiveTranslationMessage | null>(null); const errorText = resolveLiveMessage(t, error);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -202,11 +202,11 @@ export function PlaygroundChat({
   const send = useCallback(
     async (prompt: string, attached: UploadedFile[]) => {
       if (!model) {
-        setError(t('mcp.playgroundChat.placeholderNoModel'));
+        setError({ key: 'mcp.playgroundChat.placeholderNoModel' });
         return;
       }
       if (!keys.anthropicKey) {
-        setError(t('mcp.playgroundChat.anthropicKeyRequired'));
+        setError({ key: 'mcp.playgroundChat.anthropicKeyRequired' });
         return;
       }
       setError(null);
@@ -252,7 +252,7 @@ export function PlaygroundChat({
               : msg,
           ),
         );
-        setError(anthropicErrorMessage(err, credentials.workspaceId));
+        setError({ text: anthropicErrorMessage(err, credentials.workspaceId) });
       } finally {
         setStreaming(false);
       }
@@ -275,14 +275,14 @@ export function PlaygroundChat({
     for (const f of Array.from(files)) {
       // 25 MB cap so a small IFC fits, but blocks rogue gigabyte drops.
       if (f.size > 25 * 1024 * 1024) {
-        setError(t('mcp.playgroundChat.fileTooLarge', { name: f.name }));
+        setError({ key: 'mcp.playgroundChat.fileTooLarge', params: { name: f.name } });
         continue;
       }
       try {
         const entry = await playgroundUploads.add(f);
         list.push(entry);
       } catch (err) {
-        setError(t('mcp.playgroundChat.failedToReadFile', { name: f.name, error: err instanceof Error ? err.message : String(err) }));
+        setError({ key: 'mcp.playgroundChat.failedToReadFile', params: { name: f.name, error: err instanceof Error ? err.message : String(err) } });
       }
     }
     if (list.length > 0) {
@@ -356,7 +356,7 @@ export function PlaygroundChat({
 
       {error && (
         <div className="mx-5 mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
-          {error}
+          {errorText}
         </div>
       )}
 

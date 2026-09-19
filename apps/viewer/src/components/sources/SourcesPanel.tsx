@@ -300,8 +300,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
                 >
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>
-                    <span className="font-medium">{failure.provider}</span>{' '}
-                    {t('sources.sourcesPanel.failedToRegister')} {failure.reason}
+                    {t('sources.sourcesPanel.failedToRegister', { provider: failure.provider, reason: failure.reason })}
                   </span>
                 </li>
               ))}

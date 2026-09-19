@@ -142,4 +142,39 @@ describe('mcp/playground chrome localization (#4918)', () => {
   it('HeroScene translates its WebGL-unavailable caption', () => {
     runOracle('hero-scene', mcpEn, ['mcp.heroScene.'], () => render(<HeroScene step={0} />));
   });
+
+  it('PlaygroundChat keeps a shown error banner reactive to a live locale switch (#4918 slice 5b review)', async () => {
+    // The real bug path: attaching an oversized file sets a real error
+    // banner through the actual `attachFiles` handler — not a fixture — the
+    // same way playground-attach-dupes.test.tsx drives a real file input.
+    const container = render(<PlaygroundChat model={null} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    assert.ok(input, 'file input must be present');
+
+    const oversized = new File([new Uint8Array(1)], 'huge.ifc', { type: 'application/octet-stream' });
+    Object.defineProperty(oversized, 'size', { value: 26 * 1024 * 1024, configurable: true });
+    Object.defineProperty(input, 'files', { value: [oversized], configurable: true });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const english = mcpPlaygroundEn['mcp.playgroundChat.fileTooLarge'] as string;
+    assert.ok(
+      document.body.textContent?.includes(english.replace('{name}', 'huge.ifc')),
+      'the English error banner must be showing after the oversized attach',
+    );
+
+    // Switch locale WITHOUT touching the file input again — a stored,
+    // already-resolved string would leave the banner in English forever.
+    registerLocale('playground-chat-error-pseudo', {
+      'mcp.playgroundChat.fileTooLarge': 'MARKED {name} too large',
+    });
+    act(() => setLocale('playground-chat-error-pseudo'));
+
+    assert.ok(
+      document.body.textContent?.includes('MARKED huge.ifc too large'),
+      'the shown error banner must retranslate live, not stay pinned to the locale active when it was set',
+    );
+  });
 });

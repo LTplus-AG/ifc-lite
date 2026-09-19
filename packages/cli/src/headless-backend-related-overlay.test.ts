@@ -97,4 +97,25 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     const forward = backend.query.related(parent.ref, 'IfcRelAggregates', 'forward');
     expect(forward.some((r) => r.expressId === child.ref.expressId)).toBe(false);
   });
+
+  it('uses positional endpoint overrides on a queued relationship', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [parent, originalChild, replacementChild] = backend.query.entities({ types: ['IfcWall'] });
+
+    const relationship = backend.store.addEntity('default', {
+      type: 'IfcRelAggregates',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${parent.ref.expressId}`, [`#${originalChild.ref.expressId}`]],
+    });
+    backend.store.setPositionalAttribute(relationship, 5, [`#${replacementChild.ref.expressId}`]);
+
+    const related = backend.query.related(parent.ref, 'IfcRelAggregates', 'forward');
+    expect(related.some((ref) => ref.expressId === originalChild.ref.expressId)).toBe(false);
+    expect(related.some((ref) => ref.expressId === replacementChild.ref.expressId)).toBe(true);
+    const rows = backend.query.relationships(parent.ref).relations ?? [];
+    expect(rows.some((edge) => edge.relationshipId === relationship.expressId
+      && edge.entity.id === originalChild.ref.expressId)).toBe(false);
+    expect(rows.some((edge) => edge.relationshipId === relationship.expressId
+      && edge.entity.id === replacementChild.ref.expressId)).toBe(true);
+  });
 });

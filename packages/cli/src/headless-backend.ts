@@ -458,11 +458,8 @@ export class HeadlessBackend implements BimBackend {
           seen.add(key);
           return true;
         });
-        for (const edge of foldQueuedRelationshipEdges(
-          view.getNewEntities(),
-          (id) => view.isDeleted(id),
-          ref.expressId,
-        )) {
+        for (const edge of foldQueuedRelationshipEdges(view.getNewEntities(), (id) => view.isDeleted(id),
+          ref.expressId, (id) => view.getPositionalMutationsForEntity(id))) {
           const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
           if (seen.has(key)) continue;
           const target = getEntityData({ modelId: ref.modelId, expressId: edge.targetId });
@@ -492,7 +489,8 @@ export class HeadlessBackend implements BimBackend {
         };
         const isDeleted = view ? (id: number) => view.isDeleted(id) : () => false;
         for (const id of extractExactRelatedIds(store, ref.expressId, relType, direction, isDeleted)) take(id);
-        if (view) for (const t of foldQueuedRelated(view.getNewEntities(), (id) => view.isDeleted(id), relType, direction, ref.expressId)) take(t);
+        if (view) for (const t of foldQueuedRelated(view.getNewEntities(), (id) => view.isDeleted(id),
+          relType, direction, ref.expressId, (id) => view.getPositionalMutationsForEntity(id))) take(t);
         return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
       },
     };

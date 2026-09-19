@@ -31,7 +31,8 @@ import {
   expandTypes,
   QUERY_REL_TYPE_MAP,
 } from '@ifc-lite/parser';
-import { applyAttributeMutationsToEntityData, mergeAttributeMutations } from './mutation-view.js';
+import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttributeMutations } from './mutation-view.js';
+import { foldMutationRelated, foldMutationRelationshipEdges } from './query-overlay-relations.js';
 import { evaluateFilterGroups } from '../../lib/search/filter-evaluate-groups.js';
 import { totalRuleCount } from '../../lib/search/filter-groups.js';
 import { definedModelTagIdsOf } from '../../lib/model-tags/evaluator-models.js';
@@ -182,7 +183,35 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     if (!model?.ifcDataStore) {
       return { voids: [], fills: [], groups: [], connections: [] };
     }
-    return extractRelationshipsOnDemand(model.ifcDataStore, ref.expressId);
+    const result = extractRelationshipsOnDemand(model.ifcDataStore, ref.expressId);
+    const view = getMutationViewForModel(store, ref.modelId);
+    if (!view) return result;
+    if (view.isDeleted(ref.expressId)) return { ...result, relations: [] };
+
+    const seen = new Set<string>();
+    const relations = (result.relations ?? []).flatMap((edge) => {
+      if (view.isDeleted(edge.relationshipId) || view.isDeleted(edge.entity.id)) return [];
+      const target = getEntityData({ modelId: ref.modelId, expressId: edge.entity.id });
+      if (!target) return [];
+      const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
+    });
+    for (const edge of foldMutationRelationshipEdges(view, ref.expressId)) {
+      const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
+      if (seen.has(key)) continue;
+      const target = getEntityData({ modelId: ref.modelId, expressId: edge.targetId });
+      if (!target) continue;
+      seen.add(key);
+      relations.push({
+        relationshipId: edge.relationshipId,
+        relationshipType: edge.relationshipType,
+        direction: edge.direction,
+        entity: { id: edge.targetId, name: target.name || undefined, type: target.type },
+      });
+    }
+    return { ...result, relations };
   }
 
   function queryEntities(descriptor: QueryDescriptor): EntityData[] {
@@ -353,8 +382,18 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       if (!model?.ifcDataStore) return [];
       const relEnum = QUERY_REL_TYPE_MAP[relType];
       if (relEnum === undefined) return [];
-      const targets = extractExactRelatedIds(model.ifcDataStore, ref.expressId, relType, direction);
-      return targets.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
+      const view = getMutationViewForModel(store, ref.modelId);
+      if (view?.isDeleted(ref.expressId)) return [];
+      const seen = new Set<number>();
+      const targets: number[] = [];
+      const take = (expressId: number) => {
+        if (view?.isDeleted(expressId) || seen.has(expressId)) return;
+        seen.add(expressId);
+        targets.push(expressId);
+      };
+      for (const target of extractExactRelatedIds(model.ifcDataStore, ref.expressId, relType, direction)) take(target);
+      if (view) for (const target of foldMutationRelated(view, relType, direction, ref.expressId)) take(target);
+      return targets.map((expressId) => ({ modelId: ref.modelId, expressId }));
     },
   };
 }

@@ -68,6 +68,12 @@ describe('buildEChartsOption', () => {
     // Narrow width: 20 categories cannot fit within PRINT_LEGEND_MAX_ROWS rows, so the legend is
     // capped below 20 — but the pie itself still carries all 20 slices; only the legend is capped.
     const narrow = buildEChartsOption({ aggregation: agg, width: 150, height: 400, print: true });
+    const narrowLegend = narrow.legend as { type: string; formatter: (name: string) => string; data?: string[] };
+    // Asserted directly on the option, not scraped from the rendered SVG: the pie's own per-slice
+    // label (`{b}`, unrelated to the legend) can carry the same full category text, so a plain
+    // "does this string appear in the SVG" check cannot isolate legend truncation from that (review finding).
+    expect(narrowLegend.type).toBe('plain');
+    expect(narrowLegend.formatter('IfcVeryDescriptiveElementTypeNumber0')).not.toBe('IfcVeryDescriptiveElementTypeNumber0');
     expect(legendData(narrow)!.length).toBeGreaterThan(0);
     expect(legendData(narrow)!.length).toBeLessThan(20);
     expect(sliceCount(narrow)).toBe(20);

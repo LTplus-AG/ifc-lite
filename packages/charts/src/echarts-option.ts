@@ -146,8 +146,11 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       // and position the pie from the room actually left after capping the legend to
       // PRINT_LEGEND_MAX_ROWS rows (categories beyond the cap still slice the pie; they just have
       // no legend entry, the same trade-off label truncation already makes for long names).
-      const width = args.width ?? DEFAULT_WIDTH;
-      const height = args.height ?? DEFAULT_HEIGHT;
+      // A non-finite or non-positive measurement (0, NaN, Infinity — a host mid-measure, or a bad
+      // value round-tripped through JSON) must fall back too, not just `undefined` (review finding):
+      // it would otherwise divide/multiply its way into a NaN or Infinity radius percentage.
+      const width = typeof args.width === 'number' && Number.isFinite(args.width) && args.width > 0 ? args.width : DEFAULT_WIDTH;
+      const height = typeof args.height === 'number' && Number.isFinite(args.height) && args.height > 0 ? args.height : DEFAULT_HEIGHT;
       const itemsPerRow = Math.max(1, Math.floor(width / 90));
       const shownItems = Math.min(categories.length, itemsPerRow * PRINT_LEGEND_MAX_ROWS);
       const legendRows = Math.min(PRINT_LEGEND_MAX_ROWS, Math.ceil(categories.length / itemsPerRow));

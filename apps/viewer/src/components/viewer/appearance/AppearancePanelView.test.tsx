@@ -230,7 +230,7 @@ it('always exposes planar alignment for calibrated sources even after box or UV 
 
 it('copies a saved filter and requires an explicit update after its Search definition changes #4404', () => {
   clearSavedFilters();
-  saveFilter('Fire walls', 'AND', [Rule.name('eq', 'Rated')]);
+  saveFilter('Fire walls', [{ rules: [Rule.name('eq', 'Rated')], combinator: 'AND' }]);
   function Workbench() {
     const [scope, setScope] = useState<AppearancePanelViewProps['scope']>({ kind: 'model' });
     return <><AppearancePanelView {...props({ scope, onScopeChange: setScope })} />
@@ -240,7 +240,7 @@ it('copies a saved filter and requires an explicit update after its Search defin
     const ui = render(<Workbench />);
     select(ui, 'Appearance scope', 'filter');
     assert.match(ui.querySelector('output')?.textContent ?? '', /Rated/);
-    saveFilter('Fire walls', 'AND', [Rule.name('eq', 'Revised')]);
+    saveFilter('Fire walls', [{ rules: [Rule.name('eq', 'Revised')], combinator: 'AND' }]);
     click(button(ui, 'Refresh filters'));
     assert.match(ui.querySelector('output')?.textContent ?? '', /Rated/);
     click(button(ui, 'Use updated filter'));

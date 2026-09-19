@@ -188,10 +188,12 @@ describe('searchSlice — filter rule actions', () => {
     store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
   });
 
-  it('starts with the empty filter state', () => {
+  it('starts with the empty filter state — one empty AND group', () => {
     const s = store.getState();
-    assert.deepStrictEqual(s.searchFilter.rules, []);
-    assert.strictEqual(s.searchFilter.combinator, 'AND');
+    assert.strictEqual(s.searchFilter.groups.length, 1);
+    assert.deepStrictEqual(s.searchFilter.groups[0].rules, []);
+    assert.strictEqual(s.searchFilter.groups[0].combinator, 'AND');
+    assert.strictEqual(s.searchFilterActiveGroup, 0);
     assert.strictEqual(s.searchFilter.limit, 500);
     assert.strictEqual(s.searchFilterSchema.size, 0);
     assert.strictEqual(s.searchFilterResult, null);
@@ -199,17 +201,17 @@ describe('searchSlice — filter rule actions', () => {
     assert.strictEqual(s.searchFilterError, null);
   });
 
-  it('setFilterCombinator / setFilterLimit patch the filter state', () => {
+  it('setFilterCombinator / setFilterLimit patch the active group / filter state', () => {
     store.getState().setFilterCombinator('OR');
-    assert.strictEqual(store.getState().searchFilter.combinator, 'OR');
+    assert.strictEqual(store.getState().searchFilter.groups[0].combinator, 'OR');
     store.getState().setFilterLimit(100);
     assert.strictEqual(store.getState().searchFilter.limit, 100);
   });
 
-  it('addFilterRule appends a rule', () => {
+  it('addFilterRule appends a rule to the active group', () => {
     const r = { kind: 'ifcType' as const, values: ['IfcWall'], op: 'in' as const };
     store.getState().addFilterRule(r);
-    const rules = store.getState().searchFilter.rules;
+    const rules = store.getState().searchFilter.groups[0].rules;
     assert.strictEqual(rules.length, 1);
     assert.deepStrictEqual(rules[0], r);
   });
@@ -219,7 +221,7 @@ describe('searchSlice — filter rule actions', () => {
     const r2 = { kind: 'ifcType' as const, values: ['IfcDoor'], op: 'in' as const };
     store.getState().addFilterRule(r1);
     store.getState().updateFilterRule(0, r2);
-    assert.deepStrictEqual(store.getState().searchFilter.rules[0], r2);
+    assert.deepStrictEqual(store.getState().searchFilter.groups[0].rules[0], r2);
   });
 
   it('updateFilterRule is a no-op for out-of-range indices', () => {
@@ -236,7 +238,7 @@ describe('searchSlice — filter rule actions', () => {
     store.getState().addFilterRule(r1);
     store.getState().addFilterRule(r2);
     store.getState().removeFilterRule(0);
-    const rules = store.getState().searchFilter.rules;
+    const rules = store.getState().searchFilter.groups[0].rules;
     assert.strictEqual(rules.length, 1);
     assert.strictEqual(rules[0].kind, 'name');
   });
@@ -247,7 +249,7 @@ describe('searchSlice — filter rule actions', () => {
     assert.strictEqual(store.getState().searchFilter, before);
   });
 
-  it('clearFilterRules empties rules but preserves combinator + limit', () => {
+  it('clearFilterRules empties the active group but preserves its combinator + limit', () => {
     store.getState().setFilterCombinator('OR');
     store.getState().setFilterLimit(123);
     store.getState().addFilterRule({
@@ -255,19 +257,68 @@ describe('searchSlice — filter rule actions', () => {
     });
     store.getState().clearFilterRules();
     const f = store.getState().searchFilter;
-    assert.deepStrictEqual(f.rules, []);
-    assert.strictEqual(f.combinator, 'OR');
+    assert.deepStrictEqual(f.groups[0].rules, []);
+    assert.strictEqual(f.groups[0].combinator, 'OR');
     assert.strictEqual(f.limit, 123);
   });
 
   it('setSearchFilter replaces the whole filter state', () => {
     const next = {
-      rules: [{ kind: 'name' as const, op: 'eq' as const, value: 'X' }],
-      combinator: 'OR' as const,
+      groups: [{ rules: [{ kind: 'name' as const, op: 'eq' as const, value: 'X' }], combinator: 'OR' as const }],
       limit: 42,
     };
     store.getState().setSearchFilter(next);
     assert.strictEqual(store.getState().searchFilter, next);
+  });
+});
+
+describe('searchSlice — filter groups (#4904)', () => {
+  let store: StoreApi<SearchSlice>;
+
+  beforeEach(() => {
+    store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
+  });
+
+  it('addFilterGroup appends an empty AND group and makes it active', () => {
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcWall'], op: 'in' });
+    store.getState().addFilterGroup();
+    const s = store.getState();
+    assert.strictEqual(s.searchFilter.groups.length, 2);
+    assert.deepStrictEqual(s.searchFilter.groups[1], { rules: [], combinator: 'AND' });
+    assert.strictEqual(s.searchFilterActiveGroup, 1);
+  });
+
+  it('rule actions after addFilterGroup target the NEW group, leaving group 0 untouched', () => {
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcWall'], op: 'in' });
+    store.getState().addFilterGroup();
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcDoor'], op: 'in' });
+    const groups = store.getState().searchFilter.groups;
+    assert.strictEqual(groups[0].rules.length, 1);
+    assert.strictEqual(groups[0].rules[0].kind, 'ifcType');
+    if (groups[0].rules[0].kind === 'ifcType') assert.deepStrictEqual(groups[0].rules[0].values, ['IfcWall']);
+    assert.strictEqual(groups[1].rules.length, 1);
+    if (groups[1].rules[0].kind === 'ifcType') assert.deepStrictEqual(groups[1].rules[0].values, ['IfcDoor']);
+  });
+
+  it('removeFilterGroup refuses to drop the last remaining group', () => {
+    const before = store.getState().searchFilter;
+    store.getState().removeFilterGroup(0);
+    assert.strictEqual(store.getState().searchFilter, before);
+    assert.strictEqual(store.getState().searchFilter.groups.length, 1);
+  });
+
+  it('removeFilterGroup drops a group and clamps the active index', () => {
+    store.getState().addFilterGroup(); // active = 1
+    store.getState().addFilterGroup(); // active = 2
+    store.getState().removeFilterGroup(2);
+    const s = store.getState();
+    assert.strictEqual(s.searchFilter.groups.length, 2);
+    assert.strictEqual(s.searchFilterActiveGroup, 1);
+  });
+
+  it('setActiveFilterGroup clamps to the valid range', () => {
+    store.getState().setActiveFilterGroup(5);
+    assert.strictEqual(store.getState().searchFilterActiveGroup, 0);
   });
 });
 

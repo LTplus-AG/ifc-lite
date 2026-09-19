@@ -24,7 +24,9 @@ import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
 import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
 import type { FilterRule, Combinator } from '@/lib/search/filter-rules';
+import { emptyFilterGroup, type FilterGroup } from '@/lib/search/filter-groups';
 import type { FilterSchema, PsetQtoSchema, FilterValueSchema } from '@/lib/search/filter-schema';
+import { clampGroupIndex, createFilterGroupActions } from './searchSlice.filterGroups.js';
 
 /** Index lifecycle state for a single model. */
 export type Tier1IndexStatus = 'pending' | 'building' | 'ready' | 'error';
@@ -75,18 +77,23 @@ export interface SearchFilterResult {
 }
 
 /**
- * Unified filter state — chip rules + AND/OR + result cap. Drives the
- * path-B evaluator in `lib/search/filter-evaluate.ts`.
+ * Unified filter state — OR-of-AND filter groups + result cap. Drives the
+ * path-B evaluator in `lib/search/filter-evaluate.ts`
+ * (`evaluateFilterGroupsFederated`).
+ *
+ * `groups` is never empty: the builder always has an "active" group to add
+ * rules into, so a filter with nothing typed yet is one group with zero
+ * rules, not zero groups (#4904). `+` in the selector field, or the "Add
+ * group" button in the builder, appends another group; groups OR together.
  */
 export interface SearchFilterStateValue {
-  rules: FilterRule[];
-  combinator: Combinator;
+  groups: FilterGroup[];
   /** Result cap. `0` = no cap (evaluator's internal default applies). */
   limit: number;
 }
 
 export function emptyFilterState(): SearchFilterStateValue {
-  return { rules: [], combinator: 'AND', limit: 500 };
+  return { groups: [emptyFilterGroup()], limit: 500 };
 }
 
 /**
@@ -129,8 +136,12 @@ export interface SearchSlice {
   searchFilterRunning: boolean;
   /** Latest Filter error message — set when the evaluator throws. */
   searchFilterError: string | null;
-  /** Filter rule state — chip rules, combinator, limit. */
+  /** Filter rule state — OR-of-AND groups, limit. */
   searchFilter: SearchFilterStateValue;
+  /** Which `searchFilter.groups` index the builder UI's rule list, AND/OR
+   *  toggle and add/remove-rule actions target. Clamped into range whenever
+   *  a group is removed or the whole filter state is replaced. */
+  searchFilterActiveGroup: number;
   /**
    * Set when a rule is pushed into the Filter from outside the modal
    * (e.g. clicking a Hierarchy node). The Filter panel watches this and
@@ -189,17 +200,32 @@ export interface SearchSlice {
   setSearchFilterError: (error: string | null) => void;
 
   // ── Filter-rule actions ───────────────────────────────────────────
-  /** Replace the whole filter state — used by Reset and preset loading. */
+  /** Replace the whole filter state — used by Reset and preset loading.
+   *  Clamps the active group index into the new state's range. */
   setSearchFilter: (state: SearchFilterStateValue) => void;
   /** Arm/disarm the "auto-run on next Filter render" flag. */
   setSearchFilterAutoRunPending: (pending: boolean) => void;
+  /** AND/OR toggle for the ACTIVE group only — other groups keep their own. */
   setFilterCombinator: (combinator: Combinator) => void;
   setFilterLimit: (limit: number) => void;
+  /** Add a rule to the ACTIVE group. */
   addFilterRule: (rule: FilterRule) => void;
+  /** Update rule `index` within the ACTIVE group. */
   updateFilterRule: (index: number, rule: FilterRule) => void;
+  /** Remove rule `index` from the ACTIVE group. */
   removeFilterRule: (index: number) => void;
-  /** Drop every rule but keep combinator + limit. */
+  /** Drop every rule in the ACTIVE group but keep its combinator, the other
+   *  groups, and the limit. */
   clearFilterRules: () => void;
+  /** Append a new empty AND group (the selector's `+`, or the builder's "Add
+   *  group" button) and make it the active one. */
+  addFilterGroup: () => void;
+  /** Remove group `index`. Refuses to drop the last remaining group — a
+   *  filter always has at least one, even if it is empty. Clamps the active
+   *  group index afterward. */
+  removeFilterGroup: (index: number) => void;
+  /** Switch which group the rule-editing actions above target. */
+  setActiveFilterGroup: (index: number) => void;
 
   // ── Schema cache actions ──────────────────────────────────────────
   setFilterSchema: (modelId: string, basic: FilterSchema) => void;
@@ -222,6 +248,7 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchFilterRunning: false,
   searchFilterError: null,
   searchFilter: emptyFilterState(),
+  searchFilterActiveGroup: 0,
   searchFilterAutoRunPending: false,
   searchFilterSchema: new Map(),
 
@@ -306,45 +333,20 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   setSearchFilterResult: (searchFilterResult) => set({ searchFilterResult, searchFilterError: null }),
   setSearchFilterError: (searchFilterError) => set({ searchFilterError }),
 
-  setSearchFilter: (searchFilter) => set({ searchFilter }),
+  setSearchFilter: (searchFilter) =>
+    set((state) => ({
+      searchFilter,
+      searchFilterActiveGroup: clampGroupIndex(state.searchFilterActiveGroup, searchFilter.groups.length),
+    })),
 
   setSearchFilterAutoRunPending: (searchFilterAutoRunPending) =>
     set({ searchFilterAutoRunPending }),
 
-  setFilterCombinator: (combinator) =>
-    set((state) => ({ searchFilter: { ...state.searchFilter, combinator } })),
-
   setFilterLimit: (limit) =>
     set((state) => ({ searchFilter: { ...state.searchFilter, limit } })),
 
-  addFilterRule: (rule) =>
-    set((state) => ({
-      searchFilter: {
-        ...state.searchFilter,
-        rules: [...state.searchFilter.rules, rule],
-      },
-    })),
-
-  updateFilterRule: (index, rule) =>
-    set((state) => {
-      const rules = state.searchFilter.rules;
-      if (index < 0 || index >= rules.length) return {};
-      const next = rules.slice();
-      next[index] = rule;
-      return { searchFilter: { ...state.searchFilter, rules: next } };
-    }),
-
-  removeFilterRule: (index) =>
-    set((state) => {
-      const rules = state.searchFilter.rules;
-      if (index < 0 || index >= rules.length) return {};
-      const next = rules.slice();
-      next.splice(index, 1);
-      return { searchFilter: { ...state.searchFilter, rules: next } };
-    }),
-
-  clearFilterRules: () =>
-    set((state) => ({ searchFilter: { ...state.searchFilter, rules: [] } })),
+  // Group-aware rule/combinator/group actions — see searchSlice.filterGroups.ts.
+  ...createFilterGroupActions(set),
 
   setFilterSchema: (modelId, basic) =>
     set((state) => {

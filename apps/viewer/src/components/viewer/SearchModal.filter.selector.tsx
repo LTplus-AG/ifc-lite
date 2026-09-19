@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { readSelector } from '@/lib/search/selector-to-rules';
+import { groupsToSelectorText } from '@/lib/search/filter-groups';
 
 const DOCS_URL = 'https://ifclite.dev/docs/guide/selector-syntax/';
 const PLACEHOLDER = 'IfcWall, Pset_WallCommon.FireRating=/REI.*/';
@@ -41,6 +42,7 @@ export function useActiveSchemaVersion(): string | undefined {
 
 export function SearchModalFilterSelector() {
   const limit = useViewerStore((s) => s.searchFilter.limit);
+  const groups = useViewerStore((s) => s.searchFilter.groups);
   const setSearchFilter = useViewerStore((s) => s.setSearchFilter);
   const schemaVersion = useActiveSchemaVersion();
   const [text, setText] = useState('');
@@ -56,9 +58,9 @@ export function SearchModalFilterSelector() {
       return;
     }
 
-    const { combinator, rules, unsupported } = reading;
+    const { groups: readGroups, unsupported } = reading;
 
-    if (rules.length === 0) {
+    if (readGroups.length === 0) {
       setFeedback({
         tone: 'error',
         lines: ['Nothing in this selector maps to a filter rule yet:', ...unsupported],
@@ -66,13 +68,20 @@ export function SearchModalFilterSelector() {
       return;
     }
 
-    setSearchFilter({ rules, combinator, limit });
+    setSearchFilter({ groups: readGroups, limit });
     setFeedback(
       unsupported.length > 0
         ? { tone: 'warning', lines: ['Applied without these parts:', ...unsupported] }
         : null,
     );
   }, [limit, schemaVersion, setSearchFilter, text]);
+
+  // Round-trips class-name / GlobalId groups back to selector text — a `+`
+  // added via the builder's "Add group" button shows up here without
+  // leaving the builder (#4904). `null` when the current filter has no
+  // clause this echo can render (property/quantity/etc. rules, or no rules
+  // at all); the input keeps whatever the user is typing either way.
+  const currentAsText = groupsToSelectorText(groups);
 
   return (
     <div className="flex flex-col gap-1.5 border-b border-zinc-200 px-4 pb-3 pt-4 dark:border-zinc-800">
@@ -120,6 +129,15 @@ export function SearchModalFilterSelector() {
             <li key={line}>{line}</li>
           ))}
         </ul>
+      )}
+
+      {currentAsText.length > 0 && (
+        <p
+          className="truncate font-mono text-[10px] text-muted-foreground"
+          title="The current filter, as selector text — a second group (Add group, below) shows up here joined with &quot;+&quot;."
+        >
+          {currentAsText}
+        </p>
       )}
     </div>
   );

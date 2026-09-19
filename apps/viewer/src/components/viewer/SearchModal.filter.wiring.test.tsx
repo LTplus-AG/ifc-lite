@@ -77,7 +77,7 @@ function seedStore() {
   );
   useViewerStore.setState({
     ...seeded,
-    searchFilter: { rules: [{ field: 'Name', op: 'contains', value: 'Wall' }], combinator: 'AND', limit: 500 } as never,
+    searchFilter: { groups: [{ rules: [{ field: 'Name', op: 'contains', value: 'Wall' }], combinator: 'AND' }], limit: 500 } as never,
     searchFilterResult: RESULT as never,
     searchFilterRunning: false,
     searchFilterError: null,
@@ -240,7 +240,7 @@ function seedIsolateStore(options: {
   framedIds = [];
   useViewerStore.setState({
     ...seeded,
-    searchFilter: { rules: [{ field: 'Name', op: 'contains', value: 'Wall' }], combinator: 'AND', limit: 500 } as never,
+    searchFilter: { groups: [{ rules: [{ field: 'Name', op: 'contains', value: 'Wall' }], combinator: 'AND' }], limit: 500 } as never,
     searchFilterResult: { columns: options.columns, rows: options.rows, truncated: false } as never,
     searchFilterRunning: false,
     searchFilterError: null,
@@ -614,7 +614,7 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
         id: MODEL_ID, name: MODEL_ID, visible: true, idOffset: ID_OFFSET, ifcDataStore: store,
       } as never]]),
       activeModelId: MODEL_ID,
-      searchFilter: { rules: [Rule.name('contains', 'Wall')], combinator: 'AND', limit: 500 } as never,
+      searchFilter: { groups: [{ rules: [Rule.name('contains', 'Wall')], combinator: 'AND' }], limit: 500 } as never,
       searchFilterResult: null,
       searchFilterRunning: false,
       searchFilterError: null,
@@ -695,7 +695,7 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
       // A user-typed chip pattern with the well-known nested-quantifier
       // catastrophic-backtracking shape — the same class `regex-guard`
       // rejects for IDS (#4259) and the Lists panel (#4262).
-      searchFilter: { rules: [Rule.name('matches', '(a+)+$')], combinator: 'AND', limit: 500 } as never,
+      searchFilter: { groups: [{ rules: [Rule.name('matches', '(a+)+$')], combinator: 'AND' }], limit: 500 } as never,
       searchFilterResult: null,
       searchFilterRunning: false,
       searchFilterError: null,

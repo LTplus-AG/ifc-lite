@@ -15,7 +15,7 @@ function makeStore(searchFilter: unknown): StoreApi {
 }
 
 test('entitiesMatchingActiveFilter returns null when no filter rules are active', () => {
-  const adapter = createQueryAdapter(makeStore({ rules: [], combinator: 'AND', limit: 500 }));
+  const adapter = createQueryAdapter(makeStore({ groups: [{ rules: [], combinator: 'AND' }], limit: 500 }));
   // null (not []) so callers can distinguish "no filter" from "zero matches".
   assert.equal(adapter.entitiesMatchingActiveFilter(), null);
 });

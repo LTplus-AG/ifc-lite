@@ -104,7 +104,7 @@ export function SearchInline() {
       stepVimCycle: s.stepVimCycle,
       setSearchModalOpen: s.setSearchModalOpen,
       setSearchModalTab: s.setSearchModalTab,
-      activeRuleCount: s.searchFilter.rules.length,
+      activeRuleCount: s.searchFilter.groups.reduce((n, g) => n + g.rules.length, 0),
       clearFilterRules: s.clearFilterRules,
       models: s.models,
       setSelectedEntity: s.setSelectedEntity,

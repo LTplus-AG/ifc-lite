@@ -20,7 +20,6 @@ function lostRenderer() {
   const renderer = new Renderer(canvas());
   renderer['deviceLost'] = true;
   renderer['deviceLostGeneration'] = renderer['initGeneration'];
-  renderer['scene']['prepareDeviceRecovery'] = () => ({ ok: true });
   renderer['scene']['discardGpuResourcesForRecovery'] = () => {};
   renderer['scene']['restoreGpuResourcesAfterRecovery'] = () => {};
   renderer['refreshPlacementBounds'] = () => {};
@@ -169,6 +168,46 @@ describe('Renderer.recoverDevice (#4885)', () => {
       assert.strictEqual(renderer.isReady(), false);
     } finally {
       error.mock.restore();
+    }
+  });
+
+  it('revalidates scene blockers after replacement initialization', async () => {
+    const renderer = lostRenderer();
+    renderer['initOnce'] = async () => {
+      const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
+      device.device = {} as GPUDevice;
+      device.context = {} as GPUCanvasContext;
+      renderer['pipeline'] = {} as never;
+      renderer['scene']['meshes'].push({ hydrated: false } as never);
+    };
+
+    assert.deepStrictEqual(await renderer.recoverDevice(), {
+      ok: false,
+      reason: 'unsupported-authored-meshes',
+    });
+    assert.strictEqual(renderer.isDeviceLost(), true);
+    assert.strictEqual(renderer.isReady(), false);
+  });
+
+  it('observes a replacement loss queued during synchronous scene restore', async () => {
+    const renderer = lostRenderer();
+    renderer['scene']['restoreGpuResourcesAfterRecovery'] = () => {
+      queueMicrotask(() => renderer['handleDeviceLost']({
+        message: 'replacement lost during restore',
+        reason: 'unknown',
+      }));
+    };
+    const error = mock.method(console, 'error', () => undefined);
+    const warn = mock.method(console, 'warn', () => undefined);
+    try {
+      const result = await renderer.recoverDevice();
+      assert.strictEqual(result.ok, false);
+      if (!result.ok) assert.strictEqual(result.reason, 'scene-restore-failed');
+      assert.strictEqual(renderer.isDeviceLost(), true);
+      assert.strictEqual(renderer.isReady(), false);
+    } finally {
+      error.mock.restore();
+      warn.mock.restore();
     }
   });
 

@@ -130,6 +130,13 @@ async function recoverRendererDeviceOnce(
     if (host.deviceLossSequence !== lossSequence) {
       throw new Error('Replacement GPU device was lost during initialization');
     }
+    const initializedPreparation = host.scene.prepareDeviceRecovery();
+    if (!initializedPreparation.ok) {
+      host.deviceLost = true;
+      host.ready = false;
+      host.teardown(false);
+      return initializedPreparation;
+    }
     if (host.recovery.quantizedBatchesRequested && host.pipeline) {
       const quantized = await host.pipeline.ensureQuantizedPipelines();
       host.scene.setQuantizedBatches(quantized);
@@ -137,8 +144,24 @@ async function recoverRendererDeviceOnce(
     phase = 'scene';
     if (!host.pipeline) throw new Error('Replacement render pipeline was not initialized');
     host.scene.restoreGpuResourcesAfterRecovery(host.device.getDevice(), host.pipeline);
+    // A loss which settles during the synchronous restore cannot run its
+    // device.lost callback until this continuation yields. Let it latch before
+    // readiness is published, then revalidate because the yield also permits a
+    // caller to mutate the scene.
+    await Promise.resolve();
+    if (generation !== host.initGeneration || host.destroyed) {
+      host.teardown(false);
+      return { ok: false, reason: 'renderer-destroyed' };
+    }
     if (host.deviceLossSequence !== lossSequence) {
       throw new Error('Replacement GPU device was lost during scene restore');
+    }
+    const restoredPreparation = host.scene.prepareDeviceRecovery();
+    if (!restoredPreparation.ok) {
+      host.deviceLost = true;
+      host.ready = false;
+      host.teardown(false);
+      return restoredPreparation;
     }
     // teardown(false) deliberately drops GPU-only point clouds and overlays.
     // Rebuild the authoritative bounds from the restored IFC scene before

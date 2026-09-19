@@ -593,13 +593,28 @@ END-ISO-10303-21;`;
     await assert.rejects(() => resolveChartFilter(models, { selector: 'NotARealIfcClass' }, toGlobalId));
     // A parse error (unterminated regex).
     await assert.rejects(() => resolveChartFilter(models, { selector: 'Name=/unterminated' }, toGlobalId));
-    // Rules exist (IfcWall) but the "+" union of a second group is unsupported —
-    // still refused rather than run on the readable IfcWall rule alone.
-    await assert.rejects(() => resolveChartFilter(models, { selector: 'IfcWall + IfcDoor' }, toGlobalId));
+    // A rule exists (the property clause) but the class+GlobalId combination
+    // in the same group is unsupported (#4904/#4987 — a class and a GlobalId
+    // both ADD elements rather than narrow, so an AND cannot express it) —
+    // still refused rather than run on the readable property rule alone.
+    await assert.rejects(() => resolveChartFilter(models, { selector: 'IfcWall, 0MoO$xC5PB9uNyzGgqhL9B, Probe.Tag=Special' }, toGlobalId));
 
     // No filter at all resolves to `null`, never an error.
     assert.equal(await resolveChartFilter(models, undefined, toGlobalId), null);
     assert.equal(await resolveChartFilter(models, { selector: '   ' }, toGlobalId), null);
+  });
+
+  // #4904/#4987 landed on main while this PR was open: a `+`-separated
+  // selector is now a real OR-of-AND-groups query, not a refusal. Route the
+  // chart filter through the same groups-aware evaluator
+  // (`evaluateFilterGroupsFederated`) so a chart's own filter supports `+`
+  // exactly as the search Filter tab does — never a second matching path.
+  it('source filter: a "+" union resolves as the OR of both groups (#4904/#4987 groups-aware evaluator)', async () => {
+    const state = useViewerStore.getState();
+    const models = evaluatorModelsFromState(state);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(state.models, modelId, expressId);
+    const ids = await resolveChartFilter(models, { selector: 'IfcWall + IfcDoor' }, toGlobalId, { limit: 1_000 });
+    assert.deepEqual([...(ids as Set<number>)].sort((a, b) => a - b), [GID(41), GID(43)], 'the wall and the door — the union of both groups, not just the first');
   });
 
   // #4946 review (PR #4984): a chart filter used to match only the ON-DISK

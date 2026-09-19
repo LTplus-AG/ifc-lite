@@ -11,3 +11,13 @@ export function formatLocaleCount(value: number, locale: string): string {
     return value.toLocaleString('en');
   }
 }
+
+/** Format a user-facing list with the active UI locale. */
+export function formatLocaleList(values: readonly string[], locale: string): string {
+  try {
+    return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(values);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    return new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(values);
+  }
+}

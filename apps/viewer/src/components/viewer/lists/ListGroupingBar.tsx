@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n/useTranslation';
 import { formatLocaleCount } from './formatLocaleCount';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 
 interface ListGroupingBarProps {
   /** Active grouping columns, outermost first (multi-criteria, issue #1790). */
@@ -93,7 +94,9 @@ export function ListGroupingBar({
               {i === 0 ? t('lists.groupingBar.groupedByChip', { label: g.label }) : t('lists.groupingBar.thenChip', { label: g.label })}
             </Chip>
           ))
-        : <span className="text-muted-foreground">{t('lists.groupingBar.noGroupingPrefix')} <span className="font-medium text-foreground">⋮</span> {t('lists.groupingBar.noGroupingSuffix')}</span>}
+        : <span className="text-muted-foreground">{styleInterpolatedValues(t, 'lists.groupingBar.noGrouping', [
+          ['menu', <span key="menu" className="font-medium text-foreground">⋮</span>],
+        ])}</span>}
 
       {sums.map((s) => (
         <Chip key={s.id} icon={<Sigma className="h-3 w-3 text-primary" />} onRemove={() => onRemoveSum(s.id)} removeLabel={t('lists.groupingBar.removeSumOfAriaLabel', { label: s.label })}>{s.label}</Chip>

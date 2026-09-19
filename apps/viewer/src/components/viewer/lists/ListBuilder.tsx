@@ -51,6 +51,7 @@ import { rebuildGrouping } from './list-table-utils';
 import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { formatLocaleCount } from './formatLocaleCount';
+import { PatternHint } from './PatternHint';
 import {
   isEditableColumn,
   draftFromColumn,
@@ -60,7 +61,8 @@ import {
   updateColumnInPlace,
   type ColumnDraft,
 } from '@/lib/lists/column-edit';
-import { previewSetPattern, formatMatchHint } from './pattern-preview'; import { useTranslation } from '@/i18n/useTranslation';
+import { previewSetPattern } from './pattern-preview';
+import { useTranslation } from '@/i18n/useTranslation';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -450,15 +452,15 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           <Section
             label={t('lists.builder.sectionScope')}
             hint={isSnapshot
-              ? t('lists.builder.scopeSnapshotHint', { count: formatLocaleCount(snapshotCount, locale) })
+              ? t('lists.builder.scopeSnapshotHint', { count: snapshotCount, countDisplay: formatLocaleCount(snapshotCount, locale) })
               : selectedTypes.size > 0
-                ? t('lists.builder.scopeSelectedElementsHint', { count: formatLocaleCount(totalSelectedEntities, locale) })
+                ? t('lists.builder.scopeSelectedElementsHint', { count: totalSelectedEntities, countDisplay: formatLocaleCount(totalSelectedEntities, locale) })
                 : t('lists.builder.scopeAllElementsHint')}
           >
             {isSnapshot ? (
               <p className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
                 <strong className="font-medium text-foreground">{t('lists.builder.filterSnapshotLabel')}</strong>{' '}
-                {t('lists.builder.filterSnapshotHint', { count: formatLocaleCount(snapshotCount, locale) })}
+                {t('lists.builder.filterSnapshotHint', { count: snapshotCount, countDisplay: formatLocaleCount(snapshotCount, locale) })}
               </p>
             ) : (
               <>
@@ -476,7 +478,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
                 </div>
                 {selectedTypes.size === 0 && (
                   <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                    {t('lists.builder.noTypeSelectedPrefix')} <strong className="font-medium text-foreground">{t('lists.builder.allModelElementsLabel')}</strong>{t('lists.builder.noTypeSelectedSuffix')}
+                    {t('lists.builder.noTypeSelected')}
                   </p>
                 )}
               </>
@@ -886,7 +888,8 @@ function ColumnEditorPanel({
   onClose: () => void;
   isDuplicate?: (draft: ColumnDraft) => boolean;
 }) {
-  const { t } = useTranslation(); const [source, setSource] = useState<'property' | 'quantity'>(initial.source);
+  const { t } = useTranslation();
+  const [source, setSource] = useState<'property' | 'quantity'>(initial.source);
   const [setName, setSetName] = useState(initial.setName);
   const [propName, setPropName] = useState(initial.propName);
 
@@ -962,21 +965,7 @@ function ColumnEditorPanel({
           {mode === 'add' ? <Plus className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
         </Button>
       </div>
-      {preview.isInvalid ? (
-        <p className="text-[11px] leading-relaxed text-destructive">
-          {t('lists.builder.invalidPatternHint')}
-        </p>
-      ) : preview.isPattern ? (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          {formatMatchHint(preview.matches)}
-        </p>
-      ) : (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          {t('lists.builder.patternHintPrefix')}{' '}
-          <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> {t('lists.builder.patternHintSuffix')}{' '}
-          <code className="rounded bg-muted px-1 font-mono text-[10px]">{t('lists.builder.patternHintExample')}</code>.
-        </p>
-      )}
+      <PatternHint preview={preview} />
     </div>
   );
 }

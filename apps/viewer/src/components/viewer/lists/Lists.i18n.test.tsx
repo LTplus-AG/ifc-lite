@@ -46,8 +46,9 @@ import { ListErrorBox } from './ListErrorBox.js';
 let listsEn: typeof ListsEnType | undefined;
 try {
   ({ listsEn } = await import('@/i18n/catalogues/lists.en'));
-} catch {
-  listsEn = undefined;
+} catch (error) {
+  if (error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND') listsEn = undefined;
+  else throw error;
 }
 const HAS_CATALOGUE = listsEn !== undefined;
 const CATALOGUE: typeof ListsEnType = listsEn ?? ({} as typeof ListsEnType);
@@ -263,10 +264,21 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
     act(() => setLocale('lists-panel-results-pseudo'));
     const after = readableStrings(container);
 
+    const result = useViewerStore.getState().listResult;
+    assert.ok(result);
+    const summaryValue = CATALOGUE['lists.panel.resultsSummary'];
+    const englishSummary = typeof summaryValue === 'string'
+      ? summaryValue
+      : result.totalCount === 1 ? summaryValue.one : summaryValue.other;
+    const renderSummary = (template: string) => `(${template
+      .replace('{countDisplay}', String(result.totalCount))
+      .replace('{ms}', result.executionTime.toFixed(0))})`;
+    assert.ok(english.has(renderSummary(englishSummary)));
+    assert.ok(after.has(renderSummary(mark('lists.panel.resultsSummary'))));
+
     const resultsKeys: ListsKey[] = [
       'lists.panel.editList',
       'lists.panel.results',
-      'lists.panel.resultsSummary',
       'lists.panel.editConfiguration',
       'lists.panel.backToLists',
     ];

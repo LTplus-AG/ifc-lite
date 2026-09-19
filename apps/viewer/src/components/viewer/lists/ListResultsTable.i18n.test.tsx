@@ -31,7 +31,7 @@ import assert from 'node:assert/strict';
 import { useState, act } from 'react';
 import type { ListResult, ListGrouping } from '@ifc-lite/lists';
 import { ProjectUnits } from '@ifc-lite/parser';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import type { listsEn as ListsEnType } from '@/i18n/catalogues/lists.en';
@@ -43,8 +43,9 @@ import { ListResultsTable } from './ListResultsTable.js';
 let listsEn: typeof ListsEnType | undefined;
 try {
   ({ listsEn } = await import('@/i18n/catalogues/lists.en'));
-} catch {
-  listsEn = undefined;
+} catch (error) {
+  if (error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND') listsEn = undefined;
+  else throw error;
 }
 const HAS_CATALOGUE = listsEn !== undefined;
 const CATALOGUE: typeof ListsEnType = listsEn ?? ({} as typeof ListsEnType);
@@ -218,7 +219,11 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
 
     registerLocale('list-results-rowcount-pseudo', PSEUDO);
     act(() => setLocale('list-results-rowcount-pseudo'));
-    assert.equal(rowCountSpan!.textContent, '⟦lists.resultsTable.rowCount|{count} rows⟧'.replace('{count}', '2'));
+    assert.equal(rowCountSpan!.textContent, mark('lists.resultsTable.rowCount').replace('{countDisplay}', '2'));
+
+    act(() => setLocale('en'));
+    typeInto(container.querySelector('input[placeholder="Filter results..."]') as HTMLInputElement, 'Wall A');
+    assert.equal(rowCountSpan!.textContent, '1 / 2 rows');
   });
 
   it('translates the schedule (pivot) table once toggled from nested view', () => {

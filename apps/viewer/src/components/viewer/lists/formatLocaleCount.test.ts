@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatLocaleCount } from './formatLocaleCount.js';
+import { formatLocaleCount, formatLocaleList } from './formatLocaleCount.js';
 
 describe('formatLocaleCount (#4918)', () => {
   it('uses the active locale grouping rules', () => {
@@ -12,7 +12,8 @@ describe('formatLocaleCount (#4918)', () => {
     assert.equal(formatLocaleCount(1234, 'de-DE'), '1.234');
   });
 
-  it('falls back for deliberately invalid pseudo-locales used by i18n tests', () => {
-    assert.equal(formatLocaleCount(1234, 'lists-pseudo'), '1,234');
+  it('falls back after a deterministic malformed-locale RangeError', () => {
+    assert.equal(formatLocaleCount(1234, 'en_US'), '1,234');
+    assert.equal(formatLocaleList(['A', 'B'], 'en_US'), 'A and B');
   });
 });

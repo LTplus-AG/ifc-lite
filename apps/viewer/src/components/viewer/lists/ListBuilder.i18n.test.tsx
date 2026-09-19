@@ -49,8 +49,9 @@ import { ListBuilder } from './ListBuilder.js';
 let listsEn: typeof ListsEnType | undefined;
 try {
   ({ listsEn } = await import('@/i18n/catalogues/lists.en'));
-} catch {
-  listsEn = undefined;
+} catch (error) {
+  if (error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND') listsEn = undefined;
+  else throw error;
 }
 const HAS_CATALOGUE = listsEn !== undefined;
 const CATALOGUE: typeof ListsEnType = listsEn ?? ({} as typeof ListsEnType);
@@ -213,7 +214,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       'lists.builder.scopeAllElementsHint',
       'lists.builder.sectionFilters',
       'lists.builder.sectionColumns',
-      'lists.builder.allModelElementsLabel',
+      'lists.builder.noTypeSelected',
       'lists.builder.addFilter',
       'lists.builder.customColumn',
       'lists.builder.customColumnHint',
@@ -226,8 +227,8 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
 
     assert.equal(
       noTypeParagraph!.textContent,
-      `${mark('lists.builder.noTypeSelectedPrefix')} ${mark('lists.builder.allModelElementsLabel')}${mark('lists.builder.noTypeSelectedSuffix')}`,
-      'noTypeSelectedPrefix/allModelElementsLabel/noTypeSelectedSuffix must all be translated',
+      mark('lists.builder.noTypeSelected'),
+      'the complete no-type-selected message must be translated',
     );
   });
 
@@ -255,7 +256,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const after = readableStrings(container);
 
     assert.ok(after.has(mark('lists.builder.filterSnapshotLabel')), 'filterSnapshotLabel must be translated');
-    const expectedHint = mark('lists.builder.filterSnapshotHint').replace('{count}', '1');
+    const expectedHint = mark('lists.builder.filterSnapshotHint').replace('{countDisplay}', '1');
     assert.ok(after.has(expectedHint), 'filterSnapshotHint must be translated with its interpolated count');
   });
 
@@ -356,8 +357,10 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
 
     assert.equal(
       hintParagraph!.textContent,
-      `${mark('lists.builder.patternHintPrefix')} /…/ ${mark('lists.builder.patternHintSuffix')} ${mark('lists.builder.patternHintExample')}.`,
-      'patternHintPrefix/patternHintSuffix/patternHintExample must all be translated',
+      mark('lists.builder.patternHint')
+        .replace('{delimiter}', '/…/')
+        .replace('{example}', '/Qto_.*BaseQuantities/'),
+      'the complete pattern instruction must be translated',
     );
   });
 

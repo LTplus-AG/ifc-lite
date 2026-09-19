@@ -338,7 +338,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           className="h-7 text-xs border-0 shadow-none focus-visible:ring-0 px-0"
         />
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {(searchQuery || filterByVisibility) ? t('lists.resultsTable.rowCountOfTotal', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale), total: formatLocaleCount(result.rows.length, locale) }) : t('lists.resultsTable.rowCount', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale) })}
+          {(searchQuery || filterByVisibility) ? t('lists.resultsTable.rowCountOfTotal', { count: result.rows.length, countDisplay: formatLocaleCount(sortedRows.length, locale), total: formatLocaleCount(result.rows.length, locale) }) : t('lists.resultsTable.rowCount', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale) })}
         </span>
         <Tooltip>
           <TooltipTrigger asChild>

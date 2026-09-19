@@ -36,6 +36,7 @@ import { ListResultsTable } from './ListResultsTable';
 import { ListErrorBox } from './ListErrorBox';
 import { ListLibrary } from './ListLibrary';
 import { useTranslation } from '@/i18n/useTranslation';
+import { formatLocaleCount } from './formatLocaleCount';
 
 interface ListPanelProps {
   onClose?: () => void;
@@ -44,7 +45,7 @@ interface ListPanelProps {
 type PanelView = 'library' | 'builder' | 'results';
 
 export function ListPanel({ onClose }: ListPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { ifcDataStore, models, geometryResult } = useIfc();
   const renderFrame = useRenderFrameOffsets(); // scene-wide frame for World X/Y/Z (issue #3671)
   const [view, setView] = useState<PanelView>('library');
@@ -292,7 +293,11 @@ export function ListPanel({ onClose }: ListPanelProps) {
           </span>
           {view === 'results' && listResult && (
             <span className="text-xs text-muted-foreground">
-              ({t('lists.panel.resultsSummary', { count: listResult.totalCount, ms: listResult.executionTime.toFixed(0) })})
+              ({t('lists.panel.resultsSummary', {
+                count: listResult.totalCount,
+                countDisplay: formatLocaleCount(listResult.totalCount, locale),
+                ms: listResult.executionTime.toFixed(0),
+              })})
             </span>
           )}
         </div>
@@ -382,4 +387,3 @@ export function ListPanel({ onClose }: ListPanelProps) {
     </div>
   );
 }
-

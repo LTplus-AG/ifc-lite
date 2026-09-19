@@ -8,17 +8,18 @@
  * selected element's attributes and properties — and the bindings resolve
  * live in the preview. Image, chart and topic blocks pick their source.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
 import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindings';
-import type { DocumentBlock, TextBlock } from '@/lib/document/types';
+import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, type BlockWidth, type DocumentBlock, type TextBlock } from '@/lib/document/types';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -33,8 +34,58 @@ export interface BlockEditorProps {
   onRemove: () => void;
 }
 
-const KIND_LABEL: Record<DocumentBlock['kind'], string> = { text: 'Text', image: 'Image', chart: 'Chart', topic: 'BCF topic' };
+const KIND_LABEL: Record<DocumentBlock['kind'], string> = { text: 'Text', image: 'Image', chart: 'Chart', topic: 'BCF topic', spacer: 'Spacer' };
 const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
+
+/** Chart and image blocks share this "two-up" width picker (#4940). */
+function WidthEditor({ width, onChange }: { width: BlockWidth | undefined; onChange: (width: BlockWidth) => void }) {
+  const { t } = useTranslation();
+  return (
+    <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.widthLabel')}
+      <select className={field} value={width ?? 'full'} onChange={(e) => onChange(e.target.value as BlockWidth)} aria-label={t('document.block.widthAriaLabel')} title={t('document.block.widthTitle')}>
+        <option value="full">{t('document.block.widthFull')}</option><option value="half">{t('document.block.widthHalf')}</option>
+      </select>
+    </label>
+  );
+}
+
+/**
+ * A number input that clamps on blur/Enter, not on every keystroke (#4940 review): clamping
+ * immediately rewrites the field as each digit lands (typing "300" clamped to 120 after the "3",
+ * then the "0" landed on "120" making "1200"), so a typed value like 300 could never be reached.
+ * The raw text is kept in local state; `onCommit` only fires the clamped number once editing ends.
+ */
+function ClampedHeightInput({ value, min, max, placeholder, ariaLabel, allowUndefined, onCommit }: { value: number | undefined; min: number; max: number; placeholder?: string; ariaLabel: string; allowUndefined?: boolean; onCommit: (value: number | undefined) => void }) {
+  const [text, setText] = useState(value === undefined ? '' : String(value));
+  useEffect(() => { setText(value === undefined ? '' : String(value)); }, [value]);
+  const commit = (): void => {
+    const trimmed = text.trim();
+    if (trimmed === '') {
+      const next = allowUndefined ? undefined : min;
+      setText(next === undefined ? '' : String(next));
+      onCommit(next);
+      return;
+    }
+    const raw = Number(trimmed);
+    const clamped = Number.isFinite(raw) ? Math.min(max, Math.max(min, raw)) : (value ?? min);
+    setText(String(clamped));
+    onCommit(clamped);
+  };
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      className={`${field} w-16`}
+      value={text}
+      placeholder={placeholder}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      aria-label={ariaLabel}
+    />
+  );
+}
 
 /** The fields offered for insertion: the fixed suggestions, the model's storeys, and the selected element. */
 function useFieldOptions(bindings: BindingContext): Array<{ path: string; label: string }> {
@@ -60,6 +111,7 @@ function useFieldOptions(bindings: BindingContext): Array<{ path: string; label:
 }
 
 function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings: BindingContext; onChange: (b: TextBlock) => void }) {
+  const { t } = useTranslation();
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const options = useFieldOptions(bindings);
   const insert = (path: string): void => {
@@ -75,7 +127,8 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
       <div className="flex flex-wrap items-center gap-2">
         <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">Style
           <select className={field} value={block.style} onChange={(e) => onChange({ ...block, style: e.target.value as TextBlock['style'] })} aria-label="Text style">
-            <option value="title">Title</option><option value="heading">Heading</option><option value="body">Body</option>
+            <option value="title">Title</option><option value="heading">Heading</option><option value="subheading">{t('document.block.textStyleSubheading')}</option>
+            <option value="body">Body</option><option value="small">{t('document.block.textStyleSmall')}</option><option value="caption">{t('document.block.textStyleCaption')}</option>
           </select>
         </label>
         <label className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-muted-foreground">Insert field
@@ -99,6 +152,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
 }
 
 export function BlockEditor({ block, index, count, bindings, topics, charts, onChange, onMove, onRemove }: BlockEditorProps) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const pickImage = async (file: File | undefined): Promise<void> => {
     if (!file || block.kind !== 'image') return;
@@ -144,6 +198,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
               </select>
             </label>
             <input className={`${field} flex-1`} value={block.caption ?? ''} placeholder="Caption" onChange={(e) => onChange({ ...block, caption: e.target.value || undefined })} aria-label="Image caption" />
+            <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
           </div>
         </>
       )}
@@ -168,7 +223,25 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
           <label className="inline-flex items-center gap-1 text-muted-foreground">
             <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> 3D snapshot
           </label>
+          <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
+            <ClampedHeightInput
+              value={block.height}
+              min={CHART_BLOCK_HEIGHT_MIN}
+              max={CHART_BLOCK_HEIGHT_MAX}
+              placeholder="220"
+              allowUndefined
+              ariaLabel={t('document.block.chartHeightAriaLabel')}
+              onCommit={(height) => onChange({ ...block, height })}
+            />
+          </label>
+          <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
         </div>
+      )}
+
+      {block.kind === 'spacer' && (
+        <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
+          <ClampedHeightInput value={block.height} min={4} max={400} ariaLabel={t('document.block.spacerHeightAriaLabel')} onCommit={(height) => onChange({ ...block, height: height ?? 4 })} />
+        </label>
       )}
 
       {block.kind === 'topic' && (

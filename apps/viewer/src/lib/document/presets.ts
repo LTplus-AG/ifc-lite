@@ -14,7 +14,7 @@ const text = (style: TextBlock['style'], value: string): TextBlock => ({ kind: '
 
 export function blankDocument(): DocumentSpec {
   return {
-    version: 1,
+    version: 2,
     id: freshDocumentId(),
     name: 'Untitled document',
     page: { size: 'A4', orientation: 'portrait' },
@@ -32,7 +32,7 @@ export function coverSheetDocument(): DocumentSpec {
     { kind: 'chart', id: freshBlockId(), chart: newChartSpec(), snapshot: true },
     text('body', 'Issued {Today}.'),
   ];
-  return { version: 1, id: freshDocumentId(), name: 'Cover sheet', page: { size: 'A4', orientation: 'portrait' }, blocks };
+  return { version: 2, id: freshDocumentId(), name: 'Cover sheet', page: { size: 'A4', orientation: 'portrait' }, blocks };
 }
 
 export const DOCUMENT_PRESETS: ReadonlyArray<{ name: string; create: () => DocumentSpec }> = [

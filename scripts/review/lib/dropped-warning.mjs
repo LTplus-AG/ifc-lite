@@ -23,6 +23,8 @@
 
 /** The word every per-finding drop starts its warning with. */
 export const DROPPED_LABEL = 'DROPPED';
+/** A finding kept but moved to the one added line its quote is the text of. */
+export const REANCHORED_LABEL = 'REANCHORED';
 
 /** What `validate-findings.mjs` prints in front of every warning. */
 export const WARN_PREFIX = '⚠️  ';

@@ -527,8 +527,11 @@ test('#3936: missing findings after the retry scores an unusable review instead 
 test('#3829: a retryable validation failure gets exactly the production corrective retry', (t) => {
   const dir = tmpCase(t);
   evalCase(dir, { expected: [{ path: 'src/f.ts', what: 'Number(raw) returns NaN and the comparison falls through, closing the session' }] });
+  // The first attempt quotes text that is on NO added line, so it is dropped and
+  // retried. (A real quote on the wrong line would now be re-anchored instead of
+  // retried, which is a different, cheaper path.)
   const first = fenced([
-    { path: 'src/f.ts', line: 2, quote: '  if (n > 0) return n;', body: 'Number(raw) returns NaN, so the comparison falls through and closes the session.', class: 'numeric-bound' },
+    { path: 'src/f.ts', line: 2, quote: '  if (n >= 0) return n;', body: 'Number(raw) returns NaN, so the comparison falls through and closes the session.', class: 'numeric-bound' },
   ]);
   const corrected = fenced([
     { path: 'src/f.ts', line: 3, quote: '  if (n > 0) return n;', body: 'Number(raw) returns NaN, so the comparison falls through and closes the session.', class: 'numeric-bound' },

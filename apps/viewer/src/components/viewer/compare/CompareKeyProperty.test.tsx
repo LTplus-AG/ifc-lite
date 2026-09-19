@@ -6,7 +6,8 @@
  * The Compare panel's "Key on" control (issue #4989): typing an invalid spec
  * shows an inline note and never applies (the store keeps its last-applied
  * value); a valid `Tag`/`Pset.Property` spec commits on blur/Enter/clear —
- * never per keystroke, since a commit re-runs the whole comparison; the
+ * never per keystroke, since a commit invalidates the fingerprint cache
+ * (the NEXT "Run comparison" click re-extracts both models); the
  * duplicate-authored-key note renders whenever the caller has one to show.
  */
 
@@ -26,13 +27,13 @@ function input(container: HTMLElement): HTMLInputElement {
 
 describe('CompareKeyProperty (#4989)', () => {
   it('does not commit per keystroke; commits once on Enter with the full value', () => {
-    // A commit re-runs the whole comparison (both models re-fingerprinted),
-    // so typing `Pset_Asset.AssetId` character by character (valid from
+    // A commit invalidates the fingerprint cache for the next Run, so
+    // typing `Pset_Asset.AssetId` character by character (valid from
     // `Pset_Asset.A` on) must not fire `onKeyProperty` until the user is
     // actually done — one call, not ~8.
     const applied: (string | undefined)[] = [];
     const container = render(
-      <CompareKeyProperty keyProperty={undefined} onKeyProperty={(v) => applied.push(v)} duplicateNote={null} />,
+      <CompareKeyProperty keyProperty={undefined} onKeyProperty={(v) => applied.push(v)} duplicateInfo={null} />,
     );
     const el = input(container);
     const full = 'Pset_Asset.AssetId';
@@ -47,7 +48,7 @@ describe('CompareKeyProperty (#4989)', () => {
   it('commits on blur too', () => {
     const applied: (string | undefined)[] = [];
     const container = render(
-      <CompareKeyProperty keyProperty={undefined} onKeyProperty={(v) => applied.push(v)} duplicateNote={null} />,
+      <CompareKeyProperty keyProperty={undefined} onKeyProperty={(v) => applied.push(v)} duplicateInfo={null} />,
     );
     const el = input(container);
     typeInto(el, 'Tag');
@@ -58,7 +59,7 @@ describe('CompareKeyProperty (#4989)', () => {
 
   it('clears any invalid note once the committed value is valid', () => {
     const container = render(
-      <CompareKeyProperty keyProperty={undefined} onKeyProperty={() => {}} duplicateNote={null} />,
+      <CompareKeyProperty keyProperty={undefined} onKeyProperty={() => {}} duplicateInfo={null} />,
     );
     const el = input(container);
     typeInto(el, 'Tag');
@@ -69,7 +70,7 @@ describe('CompareKeyProperty (#4989)', () => {
   it('shows an inline note for an invalid spec and never commits it, even on Enter', () => {
     const applied: (string | undefined)[] = [];
     const container = render(
-      <CompareKeyProperty keyProperty={undefined} onKeyProperty={(v) => applied.push(v)} duplicateNote={null} />,
+      <CompareKeyProperty keyProperty={undefined} onKeyProperty={(v) => applied.push(v)} duplicateInfo={null} />,
     );
     const el = input(container);
     typeInto(el, 'not a valid spec');
@@ -80,7 +81,7 @@ describe('CompareKeyProperty (#4989)', () => {
 
   it('names the still-applied scheme in the invalid-spec note (GlobalId when none applied)', () => {
     const container = render(
-      <CompareKeyProperty keyProperty={undefined} onKeyProperty={() => {}} duplicateNote={null} />,
+      <CompareKeyProperty keyProperty={undefined} onKeyProperty={() => {}} duplicateInfo={null} />,
     );
     typeInto(input(container), 'not valid');
     const text = container.textContent ?? '';
@@ -92,7 +93,7 @@ describe('CompareKeyProperty (#4989)', () => {
     // The code deliberately leaves the last committed scheme in place while
     // the field holds an invalid edit — the message must say so honestly.
     const container = render(
-      <CompareKeyProperty keyProperty="Pset_Asset.AssetId" onKeyProperty={() => {}} duplicateNote={null} />,
+      <CompareKeyProperty keyProperty="Pset_Asset.AssetId" onKeyProperty={() => {}} duplicateInfo={null} />,
     );
     typeInto(input(container), 'not valid');
     const text = container.textContent ?? '';
@@ -104,7 +105,7 @@ describe('CompareKeyProperty (#4989)', () => {
   it('clearing the field back to empty commits undefined (GlobalId) immediately, no Enter needed', () => {
     const applied: (string | undefined)[] = [];
     const container = render(
-      <CompareKeyProperty keyProperty="Tag" onKeyProperty={(v) => applied.push(v)} duplicateNote={null} />,
+      <CompareKeyProperty keyProperty="Tag" onKeyProperty={(v) => applied.push(v)} duplicateInfo={null} />,
     );
     typeInto(input(container), '');
     assert.deepEqual(applied, [undefined]);
@@ -115,7 +116,7 @@ describe('CompareKeyProperty (#4989)', () => {
       <CompareKeyProperty
         keyProperty="Tag"
         onKeyProperty={() => {}}
-        duplicateNote="2 authored values shared by several elements fell back to GlobalId: A, B"
+        duplicateInfo={{ count: 2, shown: ['A', 'B'], truncated: false }}
       />,
     );
     assert.ok(container.textContent?.includes('fell back to GlobalId: A, B'));
@@ -126,7 +127,7 @@ describe('CompareKeyProperty (#4989)', () => {
       <CompareKeyProperty
         keyProperty="Tag"
         onKeyProperty={() => {}}
-        duplicateNote="1 authored value shared by several elements fell back to GlobalId: A"
+        duplicateInfo={{ count: 1, shown: ['A'], truncated: false }}
       />,
     );
     typeInto(input(container), 'not valid');

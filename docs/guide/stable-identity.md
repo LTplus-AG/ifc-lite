@@ -64,7 +64,7 @@ ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
 ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
 ```
 
-Each entry is `{ base, here, reason }`: the old key, the new key, and the evidence (`content-match:renamed`, `content-match:respecified`, …). Commit the file next to the models. It is a reviewed claim, and the digest pinning is what makes it one: replayed against a different pair of files it is refused, not silently applied. See [Identity maps](model-diff.md#identity-maps).
+Each entry is `{ base, here, reason }`: the old key, the new key, and the evidence (`content-match:renamed`, `content-match:respecified`, …). Commit the file next to the models. It is a reviewed claim, and the digest pinning is what makes it one: replayed against a different pair of files it is refused, not silently applied. See [Identity maps](model-diff.md#identity-maps). An identity map is a human decision artifact regardless of how the reason got there, so a hand-written or viewer-exported entry whose `reason` starts with `successor:` is honoured as a replacement (lineage relation `replaced`) on replay, exactly as if it had come from accepting a suggestion in Step 4 below — the map does not have to originate from `--accept` for that to hold.
 
 An identity map is strictly one-to-one. That is deliberate — identity is not a relation that survives being split — and it is why the next step exists.
 
@@ -97,7 +97,7 @@ A lineage entry is `{ base[], head[], relation, reason, shares? }` with one of f
 | `largest-share` | the piece with the largest volume share; orphaned rather than guessed when shares are missing or tied |
 | `orphan-on-split` | nowhere; only one-to-one relations rekey |
 
-Merges and replacements rekey under every policy. The output gains `lineage_relation` and `lineage_from` columns so each row says where it came from, and orphans are always written aside (to `--orphans`, or to `<out>.orphans.<ext>` when you gave none), never dropped.
+Merges and replacements rekey under every policy. `rekey` treats `identity` and `replaced` identically — both are 1:1, so both simply follow the row's key to its new one under every `--policy`; the two relations exist to tell a reader HOW the pairing was established (committed by the engine vs. accepted by a person), not to change what rekeying does with the row. The output gains `lineage_relation` and `lineage_from` columns so each row says where it came from, and orphans are always written aside (to `--orphans`, or to `<out>.orphans.<ext>` when you gave none), never dropped.
 
 `--lineage-in lineage.json --lineage-out lineage.json` on the next comparison replays the one-to-one entries as key aliases and carries the rest forward, so the file is a stable round trip rather than something that erodes on every run. See [Lineage and rekeying external data](model-diff.md#lineage-and-rekeying-external-data).
 

@@ -14,6 +14,7 @@ import {
   lineageOfDiff,
   lineageSidecarMismatches,
   parseLineageSidecar,
+  SUCCESSOR_REASON_PREFIX,
   type IdentityMapSidecar,
   type LineageEntry,
   type LineageSidecar,
@@ -70,7 +71,14 @@ export function mergeLineage(
     // Only a pair this run still sees as add + delete can be a replacement;
     // a claim about keys not in these files is stale.
     if (diff.byKey.get(entry.base)?.state !== 'deleted' || diff.byKey.get(entry.here)?.state !== 'added') continue;
-    entries.push({ base: [entry.base], head: [entry.here], relation: 'replaced', reason: entry.reason });
+    // Same contract as `lineage.ts`'s own accepted-successor fold (issue
+    // #4989 review): only a HAND-WRITTEN `successor:*` reason is a
+    // replacement claim; a viewer-exported `accepted:ambiguous` entry is a
+    // plain identity decision, and writing it `replaced` here meant the
+    // next `--lineage-in l --lineage-out l` round trip (which reads THIS
+    // file's own `relation` back, not the reason) silently flipped it.
+    const relation = entry.reason.startsWith(SUCCESSOR_REASON_PREFIX) ? 'replaced' : 'identity';
+    entries.push({ base: [entry.base], head: [entry.here], relation, reason: entry.reason });
     taken.add(entry.base);
     taken.add(entry.here);
   }

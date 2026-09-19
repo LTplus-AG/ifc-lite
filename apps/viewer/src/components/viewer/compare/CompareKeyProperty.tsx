@@ -14,29 +14,36 @@
  * the last-applied store value. Only a spec `parseAuthoredKeySpec` accepts —
  * or an empty string, meaning GlobalId — is ever written back.
  *
- * COMMIT TIMING (review, #4989): `onKeyProperty` reaches the store, and the
- * store change re-runs the WHOLE comparison — both models re-fingerprinted.
- * Committing on every valid keystroke made typing `Pset_Asset.AssetId`
- * (valid from `Pset_Asset.A` on) re-run that ~8 times for one entry. So this
+ * COMMIT TIMING (review, #4989): `onKeyProperty` reaches the store, and
+ * `keyProperty` is part of `useCompare`'s fingerprint-cache key — the NEXT
+ * "Run comparison" click re-extracts both models under the new scheme
+ * (`useCompare.ts` does not depend on it, so a store change alone does not
+ * re-run anything). Committing on every valid keystroke still cost a wasted
+ * store write and cache invalidation on each one: typing `Pset_Asset.AssetId`
+ * (valid from `Pset_Asset.A` on) committed ~8 times for one entry. So this
  * commits only on blur, Enter, or the text becoming empty (clearing is its
  * own decision, not something to wait on) — never merely because the
  * in-progress text happens to parse. The inline validity note stays live on
- * every keystroke; only the expensive part is deferred.
+ * every keystroke; only the store write is deferred.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { parseAuthoredKeySpec } from '@ifc-lite/parser';
+import { useTranslation } from '@/i18n/useTranslation';
+import type { DuplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
 
 interface CompareKeyPropertyProps {
   /** The applied store value (`undefined` = GlobalId). */
   keyProperty: string | undefined;
   onKeyProperty: (keyProperty: string | undefined) => void;
-  /** First few authored values more than one element carried this run
-   *  (`duplicateAuthoredKeyNote`'s already-formatted sentence), or `null`. */
-  duplicateNote: string | null;
+  /** First few authored values more than one element carried this run, or
+   *  `null`. Translated into text here, not upstream — see
+   *  `duplicateAuthoredKeyInfo`'s doc comment. */
+  duplicateInfo: DuplicateAuthoredKeyInfo | null;
 }
 
-export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateNote }: CompareKeyPropertyProps) {
+export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateInfo }: CompareKeyPropertyProps) {
+  const { t } = useTranslation();
   const [text, setText] = useState(keyProperty ?? '');
   // What WE last committed to the store, so an external change (session
   // reset, clearing decisions) is told apart from our own valid commit and
@@ -82,7 +89,7 @@ export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateNote }
   return (
     <div className="space-y-1">
       <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-text select-none">
-        <span className="shrink-0">Key on</span>
+        <span className="shrink-0">{t('compareKeyProperty.label')}</span>
         <input
           type="text"
           value={text}
@@ -91,18 +98,22 @@ export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateNote }
           onKeyDown={(e) => {
             if (e.key === 'Enter') commit(e.currentTarget.value);
           }}
-          placeholder="Tag or Pset.Prop"
+          placeholder={t('compareKeyProperty.placeholder')}
           className="flex-1 rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
         />
       </label>
       {invalid && (
         <p className="text-[10px] text-[#e0af68]">
-          Not a valid key — use <code>Tag</code> or <code>Pset.Property</code>. Still comparing on{' '}
-          {keyProperty ?? 'GlobalId'}.
+          {t('compareKeyProperty.invalidNote', { scheme: keyProperty ?? t('compareKeyProperty.globalId') })}
         </p>
       )}
-      {!invalid && duplicateNote && (
-        <p className="text-[10px] text-[#e0af68]">{duplicateNote}</p>
+      {!invalid && duplicateInfo && (
+        <p className="text-[10px] text-[#e0af68]">
+          {t('compareKeyProperty.duplicateNote', {
+            count: duplicateInfo.count,
+            values: duplicateInfo.shown.join(', ') + (duplicateInfo.truncated ? ', …' : ''),
+          })}
+        </p>
       )}
     </div>
   );

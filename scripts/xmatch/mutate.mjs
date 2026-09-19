@@ -377,6 +377,14 @@ export function mutateModel(text, options) {
     seed,
     source: sourcePath,
     sourceSha256: createHash('sha256').update(text).digest('hex'),
+    // The digest of the text `run.mjs` actually fingerprints as "base"
+    // (issue #4989 review) — `sourceSha256` above stays the PRISTINE file's
+    // digest even when `merged` produced a mutated base text, because that
+    // is still what `sourcePath` names on disk. `baseSha256` differs from
+    // `sourceSha256` exactly when `mergedPrimaries.length > 0`; identical
+    // (and redundant) for every OTHER model, which is why it is computed
+    // over `baseText` rather than gated on that condition here.
+    baseSha256: createHash('sha256').update(baseText).digest('hex'),
     unitScale,
     plan,
     applied,

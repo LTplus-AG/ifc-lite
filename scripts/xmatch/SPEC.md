@@ -51,6 +51,14 @@ by **source express id** — a channel the matcher never reads. The key is
 produced by construction: the generator records what it did, rather than
 deriving a correspondence from any hash or comparison.
 
+The key carries two digests (issue #4989 review): `sourceSha256` is always
+the PRISTINE file's digest — the bytes `sourcePath` names on disk, whether or
+not anything in this run touched them — and `baseSha256` is the digest of the
+text `run.mjs` actually fingerprints as "base". The two are byte-identical
+for every model with no `merged` role; they diverge exactly when `merged`
+produced a mutated base text (see below), and a reader comparing the key
+against what was actually scored must use `baseSha256`.
+
 The head is a from-scratch re-export of the kind content matching exists for:
 
 * every `IfcRoot` gets a new GlobalId, and

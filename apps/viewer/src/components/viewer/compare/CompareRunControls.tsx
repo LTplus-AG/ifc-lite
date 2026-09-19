@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import type { DiffScope } from '@ifc-lite/diff';
+import type { DuplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
 import { CompareBlacklist } from './CompareBlacklist';
 import { CompareKeyProperty } from './CompareKeyProperty';
 import type { ChangedTypeCount } from './changeRow';
@@ -42,7 +43,7 @@ interface CompareRunControlsProps {
   onMatchByContent: (enabled: boolean) => void;
   keyProperty: string | undefined;
   onKeyProperty: (keyProperty: string | undefined) => void;
-  duplicateAuthoredKeyNote: string | null;
+  duplicateInfo: DuplicateAuthoredKeyInfo | null;
   canRun: boolean;
   running: boolean;
   onRun: () => void;
@@ -74,7 +75,7 @@ export function CompareRunControls({
   onMatchByContent,
   keyProperty,
   onKeyProperty,
-  duplicateAuthoredKeyNote,
+  duplicateInfo,
   canRun,
   running,
   onRun,
@@ -169,7 +170,7 @@ export function CompareRunControls({
       <CompareKeyProperty
         keyProperty={keyProperty}
         onKeyProperty={onKeyProperty}
-        duplicateNote={duplicateAuthoredKeyNote}
+        duplicateInfo={duplicateInfo}
       />
 
       <Button

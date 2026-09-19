@@ -44,17 +44,32 @@ export function resolveAuthoredKeys(
   return keys;
 }
 
+/** The Compare panel's duplicate-authored-key note, as DATA rather than an
+ *  assembled English sentence — issue #4989 review: a lib file outside
+ *  `apps/viewer/src/components` sits under the i18n literal gate's radar,
+ *  but baking prose here just moves the untranslatable string one hop, it
+ *  does not remove it. The component (`CompareKeyProperty.tsx`) turns this
+ *  into text via `t('compareKeyProperty.duplicateNote', …)`. */
+export interface DuplicateAuthoredKeyInfo {
+  /** Total authored values that collided (the true count, not `shown.length`). */
+  count: number;
+  /** The first few colliding values, for display. */
+  shown: string[];
+  /** Did `shown` have to be truncated? */
+  truncated: boolean;
+}
+
 /**
- * The Compare panel's note for a non-empty `duplicateAuthoredKeys` map: how
- * many authored values fell back to GlobalId, and the first few so the user
- * can see whether it's a real collision or an obviously-blank sentinel value
- * repeated across the model. `null` when the map is empty (nothing to say).
+ * The Compare panel's duplicate-authored-key info for a non-empty
+ * `duplicateAuthoredKeys` map: how many authored values fell back to
+ * GlobalId, and the first few so the user can see whether it's a real
+ * collision or an obviously-blank sentinel value repeated across the
+ * model. `null` when the map is empty (nothing to say).
  */
-export function duplicateAuthoredKeyNote(duplicates: ReadonlyMap<string, number[]>): string | null {
+export function duplicateAuthoredKeyInfo(
+  duplicates: ReadonlyMap<string, number[]>,
+): DuplicateAuthoredKeyInfo | null {
   if (duplicates.size === 0) return null;
   const values = [...duplicates.keys()];
-  const shown = values.slice(0, 5).join(', ');
-  const more = values.length > 5 ? ', …' : '';
-  const count = duplicates.size;
-  return `${count} authored value${count === 1 ? '' : 's'} shared by several elements fell back to GlobalId: ${shown}${more}`;
+  return { count: duplicates.size, shown: values.slice(0, 5), truncated: values.length > 5 };
 }

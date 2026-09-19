@@ -235,6 +235,51 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     });
   });
 
+  it('folds an accepted map by REASON, not uniformly: successor:* is replaced, accepted:ambiguous is identity (#4989 review)', async () => {
+    // Both walls renamed so content matching leaves BOTH as add + delete —
+    // room for two accepted entries carrying different reasons. An identity
+    // map is a human decision artifact either way; only a SUCCESSOR claim
+    // (footprint/position evidence) is a replacement, never a plain
+    // ambiguous-group pick — writing both `replaced` meant a viewer-exported
+    // map's `accepted:ambiguous` entries silently became `replaced` on
+    // `--accept`, then `identity` on the next `--lineage-in`/`--lineage-out`
+    // round trip (this file's OWN `relation` read back, not the reason).
+    await writeFile(
+      headPath,
+      HEAD_MODEL.replace("'Wall A'", "'Wall A (rebuilt)'").replace("'Wall B'", "'Wall B (rebuilt)'"),
+      'utf-8',
+    );
+    const acceptPath = join(dir, 'accepted.json');
+    await writeFile(
+      acceptPath,
+      JSON.stringify({
+        format: 'ifc-lite/identity-map',
+        version: 1,
+        base: modelIdentityOf(basePath, await readFile(basePath)),
+        head: modelIdentityOf(headPath, await readFile(headPath)),
+        entries: [
+          { base: guid('OLDA'), here: guid('NEWA'), reason: 'successor:footprint' },
+          { base: guid('OLDB'), here: guid('NEWB'), reason: 'accepted:ambiguous' },
+        ],
+      }),
+      'utf-8',
+    );
+    await contentDiffCommand({ basePath, headPath, accept: acceptPath, lineageOut: lineagePath, json: true });
+    const first = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(first.entries).toEqual([
+      { base: [guid('OLDA')], head: [guid('NEWA')], relation: 'replaced', reason: 'successor:footprint' },
+      { base: [guid('OLDB')], head: [guid('NEWB')], relation: 'identity', reason: 'accepted:ambiguous' },
+    ]);
+
+    // Round trip: replaying the SAME lineage as both --lineage-in and
+    // --lineage-out (no --accept this time) must reproduce it byte for byte.
+    const before = await readFile(lineagePath, 'utf-8');
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: lineagePath, json: true });
+    expect(await readFile(lineagePath, 'utf-8')).toBe(before);
+    const second = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(second.entries).toEqual(first.entries);
+  });
+
   it('lists a bare deletion in the lineage so rekey can orphan exactly that row', async () => {
     // Head without wall B at all: A is renamed by content, B is simply gone.
     const withoutB = HEAD_MODEL.replace(/#71= IFCWALL[^\n]*\n/, '').replace('(#70,#71)', '(#70)');

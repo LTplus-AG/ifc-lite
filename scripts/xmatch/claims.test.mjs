@@ -15,6 +15,7 @@ import { indexModel } from './edits.mjs';
 import { unnamedNodesNormalised } from './guards.mjs';
 import * as scoreClaims from './score-claims.mjs';
 import { scoreSplits } from './score-claims.mjs';
+import { scorePair } from './score.mjs';
 import { parseStepFile } from './step-file.mjs';
 import { representationMapDigest } from './successor-edits.mjs';
 
@@ -82,6 +83,26 @@ test('scoreMerges (#4989): the piece set must equal the key\'s {a, b} exactly', 
   const splitOnly = scoreMerges(key, [claim(1, [21], 'split')], options).byMerge;
   assert.equal(splitOnly.claimed, 0);
   assert.equal(splitOnly.splitClaims, 1);
+});
+
+test('a 1:1 content match onto a `merged` base is wrongPartner, never correct (#4989 review)', () => {
+  // The PRIMARY's own row: base id 1, head [1] — the head keeps the SAME id
+  // (just renamed), so `expected.get(1)` is trivially `Set([1])` and a
+  // self-pairing 1:1 content match would satisfy plain set equality. That
+  // is exactly the whole-vs-half identity claim the content matcher must
+  // never make; `merged` bases exist only for the split/merge claim stage.
+  const key = {
+    elements: [
+      { base: 1, kind: 'merged', class: 'prismatic', head: [1] },
+      { base: 2, kind: 'merged', class: 'prismatic', head: [1] },
+    ],
+    insertedHeadIds: [],
+  };
+  const selfPair = { kind: 'renamed', tier: 'geometry-hash', base: [fp(1)], head: [fp(1)] };
+  const score = scorePair(key, [selfPair]);
+  assert.equal(score.overall.correctPairs, 0, 'a whole-vs-half self-pair must not be credited');
+  assert.equal(score.falsePairs.wrongPartner, 1);
+  assert.equal(score.overall.claimedPairs, 1);
 });
 
 test('the map digest walks a cyclic, deep subgraph without recursion', () => {

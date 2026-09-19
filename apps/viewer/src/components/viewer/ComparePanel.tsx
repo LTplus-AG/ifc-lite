@@ -31,7 +31,7 @@ import { focusRefs } from './compare/focusRefs';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
 import { productTypeSplit, typeObjectHint } from '@/lib/compare/productTypeCounts';
-import { duplicateAuthoredKeyNote } from '@/lib/compare/authoredKeys';
+import { duplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
 import type { DiffState, DiffEntry } from '@ifc-lite/diff';
 
 interface ComparePanelProps {
@@ -248,8 +248,8 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onMatchByContent={setMatchByContent}
                 keyProperty={keyProperty}
                 onKeyProperty={setKeyProperty}
-                duplicateAuthoredKeyNote={
-                  result?.duplicateAuthoredKeys ? duplicateAuthoredKeyNote(result.duplicateAuthoredKeys) : null
+                duplicateInfo={
+                  result?.duplicateAuthoredKeys ? duplicateAuthoredKeyInfo(result.duplicateAuthoredKeys) : null
                 }
                 canRun={canRun}
                 running={running}

@@ -34,21 +34,8 @@ type TFunction = (key: TranslationKey, params?: TranslationParameters) => string
  * the user looking for it.
  */
 export function emptyStateHelperText(t: TFunction, canGenerate: boolean, canImport: boolean): string {
-  const generateHelp = t('schedule.emptyState.generateHelp');
-  const importHelp = t('schedule.emptyState.importHelp');
-  if (canGenerate && canImport) {
-    return t('schedule.emptyState.helperBoth', { generate: generateHelp, import: importHelp });
-  }
-  if (canGenerate) {
-    return t('schedule.emptyState.helperGenerateOnly', { generate: generateHelp });
-  }
-  // Sentence-initial, so the import clause is capitalised on its own.
-  // `charAt(0)`, not `importHelp[0]`: an explicit empty-string translation
-  // is a valid, deliberate override (registry.ts's own documented
-  // fallback rule), and `''[0]` is `undefined` — indexing would throw on
-  // `.toUpperCase()` where `charAt` just returns `''`.
-  const capitalizedImportHelp = `${importHelp.charAt(0).toUpperCase()}${importHelp.slice(1)}`;
-  return t('schedule.emptyState.helperImportOnly', { import: capitalizedImportHelp });
+  if (canGenerate && canImport) return t('schedule.emptyState.helperBoth');
+  return t(canGenerate ? 'schedule.emptyState.helperGenerateOnly' : 'schedule.emptyState.helperImportOnly');
 }
 
 export function GanttEmptyState({

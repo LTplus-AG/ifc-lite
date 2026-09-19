@@ -53,8 +53,9 @@ import type { FlattenedTask } from './schedule-utils.js';
 let scheduleEn: typeof ScheduleEnType | undefined;
 try {
   ({ scheduleEn } = await import('@/i18n/catalogues/schedule.en'));
-} catch {
-  scheduleEn = undefined;
+} catch (error) {
+  if (error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND') scheduleEn = undefined;
+  else throw error;
 }
 const HAS_CATALOGUE = scheduleEn !== undefined;
 const CATALOGUE: typeof ScheduleEnType = scheduleEn ?? ({} as typeof ScheduleEnType);
@@ -477,15 +478,7 @@ describe('GanttEmptyState localization (#4918)', { skip: !HAS_CATALOGUE && 'sche
     act(() => setLocale('empty-state-work-plans-pseudo'));
     const workPlansAfter = visibleStrings(workPlansContainer);
     checkCovered(workPlansEnglish, workPlansAfter, 'schedule.emptyState.');
-    assert.ok([...workPlansAfter].some(s => s.startsWith('⟦schedule.emptyState.helperBoth|')), 'helperBoth interpolation not marked');
-    // `generateHelp`/`importHelp` never render standalone — they're always
-    // the interpolated `{generate}`/`{import}` params substituted into
-    // `helperBoth`, so their marked text is a substring of that combined
-    // sentence rather than a set member of its own.
-    assert.ok([...workPlansAfter].some(s => s.includes(mark('schedule.emptyState.generateHelp'))), 'generateHelp param not embedded in helperBoth');
-    assert.ok([...workPlansAfter].some(s => s.includes(mark('schedule.emptyState.importHelp'))), 'importHelp param not embedded in helperBoth');
-    covered.add('schedule.emptyState.generateHelp');
-    covered.add('schedule.emptyState.importHelp');
+    assert.ok(workPlansAfter.has(mark('schedule.emptyState.helperBoth')), 'complete helperBoth message not marked');
   });
 
   it('translates the "no schedule found" state, generate-only helper text', () => {
@@ -510,7 +503,8 @@ describe('GanttEmptyState localization (#4918)', { skip: !HAS_CATALOGUE && 'sche
     registerLocale('empty-state-import-only-pseudo', PSEUDO);
     act(() => setLocale('empty-state-import-only-pseudo'));
     const after = visibleStrings(container);
-    assert.ok([...after].some(s => s.startsWith('⟦schedule.emptyState.helperImportOnly|')), 'helperImportOnly interpolation not marked');
+    assert.ok([...after].some(s => s.startsWith('⟦schedule.emptyState.helperImportOnly|')), 'helperImportOnly message not marked');
+    covered.add('schedule.emptyState.helperImportOnly');
   });
 });
 
@@ -684,7 +678,7 @@ describe('GenerateScheduleDialog localization (#4918)', { skip: !HAS_CATALOGUE &
     const after = visibleStrings(container);
     checkCovered(english, after, 'schedule.generateDialog.');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.summaryLine|')), 'summary line interpolation not marked');
-    assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.firstTask|')), 'first-task interpolation not marked');
+    assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.taskRangeSingle|')), 'single-task interpolation not marked');
   });
 
   it('translates the "nothing to group by" state when there is no spatial hierarchy or geometry', () => {

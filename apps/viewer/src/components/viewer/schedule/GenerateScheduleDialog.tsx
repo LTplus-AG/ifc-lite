@@ -332,8 +332,12 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                   />
                   {preview.groupCount > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      {styleInterpolatedValues(t('schedule.generateDialog.firstTask', { name: firstTaskName }), [[firstTaskName, <span key="first" className="font-medium">{firstTaskName}</span>]])}
-                      {preview.groupCount > 1 && <> · {styleInterpolatedValues(t('schedule.generateDialog.lastTask', { name: lastTaskName }), [[lastTaskName, <span key="last" className="font-medium">{lastTaskName}</span>]])}</>}
+                      {styleInterpolatedValues(t, preview.groupCount > 1
+                        ? 'schedule.generateDialog.taskRangeMultiple' : 'schedule.generateDialog.taskRangeSingle', [
+                        ['first', <span key="first" className="font-medium">{firstTaskName}</span>],
+                        ...(preview.groupCount > 1 ? [['last',
+                          <span key="last" className="font-medium">{lastTaskName}</span>] as const] : []),
+                      ])}
                     </p>
                   )}
                 </div>

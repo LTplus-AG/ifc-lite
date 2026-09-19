@@ -12,6 +12,7 @@
 import { Ruler } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { GenerateScheduleOptions } from './generate-schedule';
 
 export interface HeightStrategyPanelProps {
@@ -27,7 +28,7 @@ export function HeightStrategyPanel({
   onHeightToleranceChange,
   onSubgroupChange,
 }: HeightStrategyPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   return (
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3 grid gap-3">
       <div className="flex items-center gap-2">
@@ -42,7 +43,9 @@ export function HeightStrategyPanel({
         <div className="flex items-center justify-between">
           <Label htmlFor="gen-tol" className="text-xs">{t('schedule.heightStrategy.sliceHeightLabel')}</Label>
           <span className="text-xs font-mono text-muted-foreground">
-            {t('schedule.heightStrategy.sliceHeightValue', { value: heightTolerance.toFixed(1) })}
+            {t('schedule.heightStrategy.sliceHeightValue', {
+              value: formatLocaleNumber(locale, heightTolerance, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+            })}
           </span>
         </div>
         <input

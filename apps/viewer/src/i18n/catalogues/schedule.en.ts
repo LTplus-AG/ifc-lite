@@ -148,8 +148,8 @@ export const scheduleEn = {
   'schedule.generateDialog.summaryHeading': 'Summary',
   'schedule.generateDialog.generatedLocally': 'Generated locally — not written to IFC',
   'schedule.generateDialog.summaryLine': '{groups} tasks · {products} products · finishes {date}',
-  'schedule.generateDialog.firstTask': 'First task: {name}',
-  'schedule.generateDialog.lastTask': 'last: {name}',
+  'schedule.generateDialog.taskRangeSingle': 'First task: {first}',
+  'schedule.generateDialog.taskRangeMultiple': 'First task: {first} · last: {last}',
   'schedule.generateDialog.noGroupsMatch':
     'No groups match the current options — tweak the strategy or disable "Skip empty groups".',
   'schedule.generateDialog.cancel': 'Cancel',
@@ -175,11 +175,10 @@ export const scheduleEn = {
   'schedule.emptyState.noScheduleFoundTitle': 'No schedule found',
   'schedule.emptyState.noScheduleFoundMessage':
     "This model doesn't define any {task}, {schedule}, or {sequence} entities. The Gantt panel powers itself from those entities and the products they control via {assigns}.",
-  'schedule.emptyState.generateHelp': 'Build a schedule by storey, building, or element-Z height slice',
-  'schedule.emptyState.importHelp': 'import one from MS Project (MSPDI XML) or a Gantt CSV export',
-  'schedule.emptyState.helperBoth': '{generate}, or {import}.',
-  'schedule.emptyState.helperGenerateOnly': '{generate}.',
-  'schedule.emptyState.helperImportOnly': '{import}.',
+  'schedule.emptyState.helperBoth':
+    'Build a schedule by storey, building, or element-Z height slice, or import one from MS Project (MSPDI XML) or a Gantt CSV export.',
+  'schedule.emptyState.helperGenerateOnly': 'Build a schedule by storey, building, or element-Z height slice.',
+  'schedule.emptyState.helperImportOnly': 'Import one from MS Project (MSPDI XML) or a Gantt CSV export.',
 
   // ── Animation settings popover (AnimationSettingsPopover.tsx) ───────
   'schedule.animation.settingsAriaLabel': 'Animation settings',

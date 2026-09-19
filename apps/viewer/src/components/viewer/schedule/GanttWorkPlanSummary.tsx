@@ -4,6 +4,7 @@
 
 import type { WorkScheduleInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
+import { formatLocaleList } from '@/i18n/intlFormat';
 
 interface GanttWorkPlanSummaryProps {
   workSchedules: WorkScheduleInfo[];
@@ -65,7 +66,7 @@ function displayName(item: WorkScheduleInfo): string {
  * tasks exclusively by IfcWorkSchedule.
  */
 export function GanttWorkPlanSummary({ workSchedules }: GanttWorkPlanSummaryProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { groups, ungroupedSchedules } = buildWorkPlanGroups(workSchedules);
   if (groups.length === 0) return null;
 
@@ -90,7 +91,7 @@ export function GanttWorkPlanSummary({ workSchedules }: GanttWorkPlanSummaryProp
               <span className="font-medium">{displayName(plan)}</span>
               <span className="text-muted-foreground" aria-label={t('schedule.workPlanSummary.nestedAriaLabel')}>
                 {childSchedules.length > 0
-                  ? t('schedule.workPlanSummary.schedulesList', { names: childSchedules.map(displayName).join(', ') })
+                  ? t('schedule.workPlanSummary.schedulesList', { names: formatLocaleList(locale, childSchedules.map(displayName)) })
                   : t('schedule.workPlanSummary.noNestedSchedules')}
               </span>
             </li>
@@ -98,7 +99,7 @@ export function GanttWorkPlanSummary({ workSchedules }: GanttWorkPlanSummaryProp
         </ul>
         {ungroupedSchedules.length > 0 && (
           <span className="shrink-0 text-muted-foreground">
-            {t('schedule.workPlanSummary.ungrouped', { names: ungroupedSchedules.map(displayName).join(', ') })}
+            {t('schedule.workPlanSummary.ungrouped', { names: formatLocaleList(locale, ungroupedSchedules.map(displayName)) })}
           </span>
         )}
       </div>

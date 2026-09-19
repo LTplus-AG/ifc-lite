@@ -38,10 +38,10 @@ describe('emptyStateHelperText', () => {
     assert.match(text, /^Import one from MS Project/);
   });
 
-  it('preserves a valid empty import-help translation without throwing', () => {
-    const emptyImport = (key: Parameters<typeof t>[0], params?: Parameters<typeof t>[1]) =>
-      key === 'schedule.emptyState.importHelp' ? '' : t(key, params);
-    assert.equal(emptyStateHelperText(emptyImport, false, true), '.');
+  it('uses the locale-owned import-only sentence without JavaScript casing', () => {
+    const turkishImport = (key: Parameters<typeof t>[0], params?: Parameters<typeof t>[1]) =>
+      key === 'schedule.emptyState.helperImportOnly' ? 'İş planını içe aktarın.' : t(key, params);
+    assert.equal(emptyStateHelperText(turkishImport, false, true), 'İş planını içe aktarın.');
   });
 
   it('ends every variant as a single sentence', () => {

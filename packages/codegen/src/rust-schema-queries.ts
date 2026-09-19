@@ -14,7 +14,7 @@ import type { ExpressSchema } from './express-parser.js';
 import { getAllAttributes } from './express-parser.js';
 
 /** Emitted inside `impl IfcType { … }`, closing the impl block. */
-export function generateSchemaQueries(schema: ExpressSchema): string {
+export function generateSchemaQueries(schema: ExpressSchema, visibility = 'pub'): string {
   return `    /// This entity's attributes, in STEP declaration order.
     ///
     /// Supertype attributes come FIRST, which is what makes the position here
@@ -54,7 +54,7 @@ ${schema.entities.map((e) => `            Self::${e.name} => &[${getAllAttribute
 /// WHOLE schema — mapping every class to some other vocabulary, auditing
 /// which ones it covers, generating a table — otherwise has to re-parse
 /// the EXPRESS file or scrape this one.
-pub static ALL: &[IfcType] = &[
+${visibility} static ALL: &[IfcType] = &[
 ${schema.entities.map((e) => `    IfcType::${e.name},`).join('\n')}\n];
 
 `;

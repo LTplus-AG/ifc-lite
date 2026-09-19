@@ -82,6 +82,10 @@ pub mod streaming;
 pub(crate) mod unit_labels;
 pub mod units;
 
+#[cfg(test)]
+#[path = "schema_registry_tests.rs"]
+mod schema_registry_tests;
+
 pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex};
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use dense_index::DenseEntityIndex;
@@ -91,7 +95,7 @@ pub use fast_parse::{
     extract_face_indices_from_entity, extract_first_entity_ref, parse_coordinates_direct,
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
 };
-pub use generated::{IfcType, IFC_TYPES};
+pub use generated::{attribute_names_for_schema, IfcType, IFC_TYPES};
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
 pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use legacy_entities::{

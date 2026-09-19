@@ -90,6 +90,22 @@ describe('captureVisibility', () => {
     assert.equal(out.notice, null);
   });
 
+  it('reports a colliding hydrated owner that lacks a GlobalId', () => {
+    const resolve = () => ['GUID-nameable-owner'];
+    const hasUnnameableOwner = () => true;
+    const isolated = captureVisibility(new Set([1]), new Set(), resolve, () => false, hasUnnameableOwner);
+    assert.deepStrictEqual(isolated.visibleGuids, ['GUID-nameable-owner']);
+    assert.deepStrictEqual(isolated.notice, {
+      unnameable: 1, total: 1, kind: 'isolated', omitted: false, pending: false, ids: [1],
+    });
+
+    const hidden = captureVisibility(null, new Set([1]), resolve, () => false, hasUnnameableOwner);
+    assert.deepStrictEqual(hidden.hiddenGuids, ['GUID-nameable-owner']);
+    assert.deepStrictEqual(hidden.notice, {
+      unnameable: 1, total: 1, kind: 'hidden', omitted: false, pending: false, ids: [1],
+    });
+  });
+
   it('refuses an isolate when a colliding renderer id is only partially resolved', () => {
     const out = captureVisibility(
       new Set([1]),

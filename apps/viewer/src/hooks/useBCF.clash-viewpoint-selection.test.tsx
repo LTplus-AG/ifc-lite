@@ -350,7 +350,8 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
     );
   });
 
-  it('keeps exact isolation GUIDs when the first numeric owner has no GUID (#4921)', async () => {
+  it('keeps exact isolation GUIDs and reports another hydrated owner without one (#4921)', async (t) => {
+    const warn = t.mock.method(console, 'warn', () => undefined);
     const roomGuid = 'ROOMMODEL0000000000001';
     const model = (id: string, guid: string | undefined) => ({
       id, name: id, idOffset: 0, maxExpressId: CLASH_A_ID,
@@ -381,6 +382,9 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
       [roomGuid],
       'an exact model-bound GUID makes a numerically unnameable isolation recordable',
     );
+    assert.ok(warn.mock.calls.some((call) => String(call.arguments[0]).includes(
+      '1 of 1 isolated entities have no resolvable IFC GlobalId',
+    )), 'the hydrated owner without a GlobalId must not disappear from capture diagnostics');
   });
 
   it('includes a StoreEditor-created clash member in selection, coloring, and isolation (#4921)', async () => {

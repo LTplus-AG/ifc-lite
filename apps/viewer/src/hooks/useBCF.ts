@@ -354,6 +354,14 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         }
         return false;
       };
+      const hasCapturedRefWithoutGlobalId = (globalId: number): boolean => {
+        for (const modelId of componentState.models.keys()) {
+          const entityRef = componentState.resolveGlobalIdInModel(modelId, globalId);
+          if (!entityRef) continue;
+          if (!resolveEntityRefGlobalIdFromState(componentState, entityRef)) return true;
+        }
+        return false;
+      };
       // Bind component identity before snapshot capture can yield. A model
       // replacement may reuse the same local express id for another entity.
       const selectedRefs: ComponentRef[] = [];
@@ -429,6 +437,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           visibilityState.hiddenEntities,
           resolveCapturedRef,
           isCapturedRefPending,
+          hasCapturedRefWithoutGlobalId,
         );
         ({ visibleGuids, hiddenGuids } = capture);
         let notice = capture.notice;

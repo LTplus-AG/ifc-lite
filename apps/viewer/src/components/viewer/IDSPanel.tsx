@@ -16,66 +16,17 @@
  */
 
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
-import {
-  X,
-  Upload,
-  Play,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  ChevronDown,
-  ChevronRight,
-  Filter,
-  Focus,
-  EyeOff,
-  Eye,
-  Boxes,
-  Layers,
-  FileText,
-  Loader2,
-  Building2,
-  RefreshCw,
-  Trash2,
-  Wrench,
-} from 'lucide-react';
+import { AlertCircle, FileText, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useIDS } from '@/hooks/useIDS';
-import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import { openGenericFileDialog } from '@/services/file-dialog';
-import type {
-  IDSSpecificationResult,
-  IDSEntityResult,
-  IDSRequirementResult,
-} from '@ifc-lite/ids';
-import {
-  groupRequirementResults,
-  computeCheckStats,
-  type RequirementGroup,
-} from '@/hooks/ids/idsRequirementGrouping';
-import { cn } from '@/lib/utils';
-import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
-import { IDSAuditSummary } from './IDSAuditSummary';
-import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrectionDialog';
-import { ReportExportButton } from './IDSReportExportButton';
+import { IDSCorrectionDialog } from './IDSCorrectionDialog';
+import { useTranslation } from '@/i18n';
+import { IDSPanelResults } from './IDSPanelResults';
+import { IDSPanelStates, IDSValidationProgress } from './IDSPanelStates';
 
 // ============================================================================
 // Types
@@ -84,445 +35,29 @@ import { ReportExportButton } from './IDSReportExportButton';
 interface IDSPanelProps {
   onClose?: () => void;
 }
-
-// ============================================================================
-// Helper Components
-// ============================================================================
-
-function StatusIcon({ status, showLabel = false }: { status: 'pass' | 'fail' | 'not_applicable'; showLabel?: boolean }) {
-  const labels = {
-    pass: 'Passed',
-    fail: 'Failed',
-    not_applicable: 'Not Applicable',
-  };
-
-  const icons = {
-    pass: <CheckCircle className="h-4 w-4 text-green-500" aria-hidden="true" />,
-    fail: <XCircle className="h-4 w-4 text-red-500" aria-hidden="true" />,
-    not_applicable: <AlertCircle className="h-4 w-4 text-yellow-500" aria-hidden="true" />,
-  };
-
-  return (
-    <span className="inline-flex items-center gap-1" role="status" aria-label={labels[status]}>
-      {icons[status]}
-      {showLabel && <span className="sr-only">{labels[status]}</span>}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: 'pass' | 'fail' | 'not_applicable' }) {
-  const variant = status === 'pass' ? 'default' : status === 'fail' ? 'destructive' : 'secondary';
-  const label = status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : 'N/A';
-
-  return (
-    <Badge variant={variant} className="text-xs">
-      {label}
-    </Badge>
-  );
-}
-
-function PassRateBar({ passRate }: { passRate: number }) {
-  const color = passRate >= 80 ? 'bg-green-500' : passRate >= 50 ? 'bg-yellow-500' : 'bg-red-500';
-
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className={cn('h-full rounded-full transition-all', color)}
-          style={{ width: `${passRate}%` }}
-        />
-      </div>
-      <span className="text-xs text-muted-foreground w-10 text-right">{passRate}%</span>
-    </div>
-  );
-}
-
-// ============================================================================
-// Specification Card Component
-// ============================================================================
-
-interface SpecificationCardProps {
-  result: IDSSpecificationResult;
-  isActive: boolean;
-  onSelect: () => void;
-  onEntityClick: (modelId: string, expressId: number) => void;
-  filterMode: 'all' | 'failed' | 'passed';
-  onCorrect: () => void;
-}
-
-function SpecificationCard({
-  result,
-  isActive,
-  onSelect,
-  onEntityClick,
-  filterMode,
-  onCorrect,
-}: SpecificationCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // Filter entity results based on mode
-  const filteredEntities = useMemo(() => {
-    if (filterMode === 'all') return result.entityResults;
-    return result.entityResults.filter((e) =>
-      filterMode === 'failed' ? !e.passed : e.passed
-    );
-  }, [result.entityResults, filterMode]);
-
-  // Regroup this specification's entity results by requirement ("check")
-  // rather than by entity. A specification can carry several requirements
-  // (fire rating, certificate ref, width, ...) — grouping first (before any
-  // status filtering) keeps the per-requirement counts aligned across
-  // entities; see idsRequirementGrouping.ts for why that ordering matters.
-  const requirementGroups = useMemo(
-    () => groupRequirementResults(result.entityResults),
-    [result.entityResults]
-  );
-  const checkStats = useMemo(
-    () => computeCheckStats(result.entityResults),
-    [result.entityResults]
-  );
-  const filteredRequirementGroups = useMemo(() => {
-    if (filterMode === 'all') return requirementGroups;
-    return requirementGroups.filter((g) =>
-      filterMode === 'failed' ? g.failedCount > 0 : g.passedCount > 0
-    );
-  }, [requirementGroups, filterMode]);
-  const applicableChecks = checkStats.passedChecks + checkStats.failedChecks;
-
-  // Only a scalar property requirement with an exact pset/property name is
-  // correctable (#3929) — computed lazily so a spec with no failures (or no
-  // correctable shape) never renders the action.
-  const hasCorrectable = useMemo(
-    () => result.failedCount > 0 && getCorrectableRequirements(result).length > 0,
-    [result]
-  );
-
-  return (
-    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-      <div
-        className={cn(
-          'rounded-lg border transition-colors',
-          isActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-        )}
-      >
-        {/* Specification Header. The "Correct" action is a real interactive
-            control, so it lives OUTSIDE the collapse-toggle <button> as a
-            sibling rather than nested inside it (a <button> inside a
-            <button> is invalid HTML and breaks click targeting). */}
-        <div className="flex items-start gap-2 p-3">
-          <CollapsibleTrigger asChild>
-            <button className="flex-1 min-w-0 flex items-start gap-2 text-left" onClick={onSelect}>
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4 mt-0.5 shrink-0" />
-              ) : (
-                <ChevronRight className="h-4 w-4 mt-0.5 shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <StatusIcon status={result.status} />
-                  <span className="font-medium text-sm truncate">
-                    {result.specification.name}
-                  </span>
-                </div>
-                {result.specification.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                    {result.specification.description}
-                  </p>
-                )}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-3 w-3" />
-                    {result.applicableCount} entities
-                  </span>
-                  <span className="text-green-600">{result.passedCount} passed</span>
-                  <span className="text-red-600">{result.failedCount} failed</span>
-                </div>
-                <div className="mt-2">
-                  <PassRateBar passRate={result.passRate} />
-                </div>
-                {/* Check-level rate: an entity is failed by its FIRST failing
-                    requirement while its other requirements still count as
-                    passes here, so this normally reads HIGHER than the
-                    entity-level rate above — both matter and are shown
-                    separately rather than picking one. See computeCheckStats
-                    for the denominator caveat. */}
-                {applicableChecks > 0 && (
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {checkStats.passedChecks}/{applicableChecks} checks passed ({checkStats.checkPassRate}%)
-                    {requirementGroups.length > 1 && ` across ${requirementGroups.length} requirements`}
-                  </div>
-                )}
-              </div>
-            </button>
-          </CollapsibleTrigger>
-          {hasCorrectable && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 shrink-0"
-              onClick={onCorrect}
-            >
-              <Wrench className="h-3.5 w-3.5 mr-1" />
-              Correct
-            </Button>
-          )}
-        </div>
-
-        {/* Requirement Breakdown */}
-        <CollapsibleContent>
-          <Separator />
-          <div className="p-2 space-y-1">
-            {filteredRequirementGroups.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground text-center">
-                No {filterMode === 'failed' ? 'failed' : filterMode === 'passed' ? 'passed' : ''} requirements
-              </div>
-            ) : (
-              filteredRequirementGroups.map((group) => (
-                <RequirementGroupRow key={group.key} group={group} onEntityClick={onEntityClick} />
-              ))
-            )}
-          </div>
-        </CollapsibleContent>
-
-        {/* Entity Results */}
-        <CollapsibleContent>
-          <Separator />
-          <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">By entity</div>
-          <div className="max-h-64 overflow-auto">
-            {filteredEntities.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground text-center">
-                No {filterMode === 'failed' ? 'failed' : filterMode === 'passed' ? 'passed' : ''} entities
-              </div>
-            ) : (
-              <div className="divide-y">
-                {filteredEntities.slice(0, 100).map((entity) => (
-                  <EntityResultRow
-                    key={`${entity.modelId}:${entity.expressId}`}
-                    entity={entity}
-                    onClick={() => onEntityClick(entity.modelId, entity.expressId)}
-                  />
-                ))}
-                {filteredEntities.length > 100 && (
-                  <div className="p-2 text-xs text-muted-foreground text-center">
-                    Showing 100 of {filteredEntities.length} entities
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </CollapsibleContent>
-      </div>
-    </Collapsible>
-  );
-}
-
-// ============================================================================
-// Entity Result Row Component
-// ============================================================================
-
-interface EntityResultRowProps {
-  entity: IDSEntityResult;
-  onClick: () => void;
-}
-
-function EntityResultRow({ entity, onClick }: EntityResultRowProps) {
-  const [showDetails, setShowDetails] = useState(false);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onClick();
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      setShowDetails(true);
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      setShowDetails(false);
-    }
-  };
-
-  return (
-    <div className="hover:bg-muted/50 focus-within:bg-muted/50 focus-within:ring-2 focus-within:ring-primary focus-within:ring-inset rounded-md">
-      <button
-        className="w-full p-2 text-left flex items-center gap-2 focus:outline-none"
-        onClick={onClick}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
-        aria-expanded={showDetails}
-        aria-label={`${entity.entityName || '#' + entity.expressId} - ${entity.entityType} - ${entity.passed ? 'Passed' : 'Failed'}`}
-      >
-        <StatusIcon status={entity.passed ? 'pass' : 'fail'} />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm truncate">
-            {entity.entityName || `#${entity.expressId}`}
-          </div>
-          <div className="text-xs text-muted-foreground truncate">
-            {entity.entityType}
-            {entity.globalId && ` · ${entity.globalId}`}
-          </div>
-        </div>
-        {/* Chevron - shrink-0 keeps it visible */}
-        <span
-          role="button"
-          tabIndex={-1}
-          className="shrink-0 p-1 rounded hover:bg-accent"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowDetails(!showDetails);
-          }}
-          aria-label={showDetails ? 'Hide details' : 'Show details'}
-        >
-          {showDetails ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </span>
-      </button>
-      {showDetails && (
-        <div className="pl-8 pr-2 pb-2 space-y-1">
-          {entity.requirementResults.map((req, idx) => (
-            <RequirementResultRow key={req.requirement.id || idx} result={req} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================================
-// Requirement Result Row Component
-// ============================================================================
-
-interface RequirementResultRowProps {
-  result: IDSRequirementResult;
-}
-
-function RequirementResultRow({ result }: RequirementResultRowProps) {
-  return (
-    <div className="text-xs flex items-start gap-2 py-1">
-      <StatusIcon status={result.status} />
-      <div className="flex-1 min-w-0">
-        <div className="text-muted-foreground">{result.checkedDescription}</div>
-        {result.failureReason && (
-          <div className="text-red-600 mt-0.5">{result.failureReason}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Requirement Group Row Component
-// ============================================================================
-
-interface RequirementGroupRowProps {
-  group: RequirementGroup;
-  onEntityClick: (modelId: string, expressId: number) => void;
-}
-
-function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRowProps) {
-  const [showFailures, setShowFailures] = useState(false);
-  const hasFailures = group.failingEntities.length > 0;
-  const status: 'pass' | 'fail' | 'not_applicable' =
-    group.failedCount > 0 ? 'fail' : group.passedCount > 0 ? 'pass' : 'not_applicable';
-
-  return (
-    <div className="rounded-md border border-border/60">
-      <button
-        type="button"
-        className="w-full p-2 text-left flex items-start gap-2 hover:bg-muted/50 rounded-md disabled:hover:bg-transparent"
-        onClick={() => hasFailures && setShowFailures((v) => !v)}
-        disabled={!hasFailures}
-        aria-expanded={hasFailures ? showFailures : undefined}
-      >
-        <StatusIcon status={status} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-[10px] uppercase">{group.facetType}</Badge>
-            <span className="text-xs truncate">{group.checkedDescription}</span>
-          </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            <span className="text-green-600">{group.passedCount} passed</span>
-            {' · '}
-            <span className="text-red-600">{group.failedCount} failed</span>
-            {group.notApplicableCount > 0 && (
-              <>
-                {' · '}
-                <span>{group.notApplicableCount} n/a</span>
-              </>
-            )}
-          </div>
-        </div>
-        {hasFailures && (
-          showFailures ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />
-        )}
-      </button>
-      {showFailures && hasFailures && (
-        <div className="pl-6 pr-2 pb-2 space-y-1">
-          {group.failingEntities.map((entity) => (
-            <button
-              key={`${entity.modelId}:${entity.expressId}`}
-              type="button"
-              className="w-full text-left text-xs p-1.5 rounded hover:bg-muted/50 flex flex-col gap-0.5"
-              onClick={() => onEntityClick(entity.modelId, entity.expressId)}
-            >
-              <span className="truncate">
-                {entity.entityType}
-                {entity.entityName ? ` · ${entity.entityName}` : ''}
-                {entity.globalId ? ` · ${entity.globalId}` : ''}
-              </span>
-              {entity.failureReason && (
-                <span className="text-red-600">{entity.failureReason}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ============================================================================
 // Main Panel Component
 // ============================================================================
 
 export function IDSPanel({ onClose }: IDSPanelProps) {
+  const { t, locale } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const ids = useIDS();
   const {
     // State
     document,
-    auditReport,
-    auditing,
     report,
     loading,
     progress,
     error,
-    activeSpecificationId,
-    filterMode,
-    isolationScope,
-    isolateMode,
-    isolationActive,
-    visibilityFilterActive,
-    focusMode,
-
     // Actions
     loadIDSFile,
     clearIDS,
     runValidation,
     clearValidation,
-    setActiveSpecification,
     focusEntity,
-    setFilterMode,
-    setIsolationScope,
-    setFocusMode,
-    applyColors,
-    isolateFailed,
-    isolatePassed,
-    isolateInvolved,
-    clearIsolation,
-    exportReportJSON,
-    exportReportHTML,
-    exportReportBCF,
-    bcfExportProgress,
-  } = useIDS();
+  } = ids;
 
   // Validation runs against one model at a time. When a federation is loaded,
   // surface which model the results reflect and let the user switch (#1591).
@@ -578,10 +113,10 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
 
   const loadIdsFromDialog = useCallback(async (): Promise<boolean> => {
     const file = await openGenericFileDialog({
-      title: 'Open IDS File',
+      title: t('idsPanel.openFileTitle'),
       filters: [
-        { name: 'IDS Files', extensions: ['ids', 'xml'] },
-        { name: 'All Files', extensions: ['*'] },
+        { name: t('idsPanel.idsFiles'), extensions: ['ids', 'xml'] },
+        { name: t('idsPanel.allFiles'), extensions: ['*'] },
       ],
     });
     if (file) {
@@ -589,7 +124,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
       return true;
     }
     return false;
-  }, [loadIDSFile]);
+  }, [loadIDSFile, t, locale]);
 
   const handleLoadIdsClick = useCallback(async () => {
     const loaded = await loadIdsFromDialog();
@@ -607,425 +142,13 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     focusEntity(modelId, expressId);
   }, [focusEntity]);
 
-  // Active state for the isolate toggle buttons. A button is "active" only
-  // when ITS mode is applied AND isolation is still live, so an externally
-  // cleared isolation self-heals the button back to inactive.
-  const failedActive = isolationActive && isolateMode === 'failed';
-  const passedActive = isolationActive && isolateMode === 'passed';
-  const involvedActive = isolationActive && isolateMode === 'involved';
-
-  // Clicking the active isolate button toggles it off (undo).
-  const handleIsolateFailed = useCallback(() => {
-    if (failedActive) clearIsolation();
-    else isolateFailed();
-  }, [failedActive, clearIsolation, isolateFailed]);
-
-  const handleIsolatePassed = useCallback(() => {
-    if (passedActive) clearIsolation();
-    else isolatePassed();
-  }, [passedActive, clearIsolation, isolatePassed]);
-
-  const handleIsolateInvolved = useCallback(() => {
-    if (involvedActive) clearIsolation();
-    else isolateInvolved();
-  }, [involvedActive, clearIsolation, isolateInvolved]);
-
-  // Render validation progress
-  const renderProgress = () => {
-    if (!progress) return null;
-
-    // Validation of large code-list IDS packs runs for many seconds, and
-    // a few broad specs dominate the time — so a percentage keyed on spec
-    // index sits near 0 for a while. Surface the always-advancing spec
-    // counter (and the per-spec entity count) so the panel visibly moves
-    // throughout, not just in the back half.
-    const specNumber = Math.min(progress.specificationIndex + 1, progress.totalSpecifications);
-    const isComplete = progress.phase === 'complete';
-    const headline = isComplete
-      ? 'Validation complete'
-      : `Validating specification ${specNumber} of ${progress.totalSpecifications}`;
-    const detail =
-      progress.phase === 'validating' && progress.totalEntities > 0
-        ? `Checking ${progress.entitiesProcessed.toLocaleString()} / ${progress.totalEntities.toLocaleString()} entities`
-        : progress.phase === 'filtering' && progress.totalEntities > 0
-          ? `Scanning ${progress.entitiesProcessed.toLocaleString()} / ${progress.totalEntities.toLocaleString()} candidates`
-          : progress.phase === 'filtering'
-            ? 'Finding applicable entities…'
-            : null;
-
-    return (
-      <div className="p-3 border-b">
-        <div className="flex items-center gap-2 mb-1">
-          {!isComplete && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
-          <span className="text-sm font-medium tabular-nums">{headline}</span>
-        </div>
-        {detail && <div className="text-xs text-muted-foreground mb-2 tabular-nums">{detail}</div>}
-        <Progress value={progress.percentage} className="h-2" />
-      </div>
-    );
-  };
-
-  // Render empty state
-  const renderEmptyState = () => {
-    if (document) return null;
-
-    // When parse failed but the auditor still produced issues, surface
-    // them here. This is the most common path for malformed input —
-    // bare "Invalid XML format" tells the user nothing actionable, but
-    // the audit lists the specific structural problems.
-    const hasAuditIssues =
-      auditReport !== null && auditReport.issues.length > 0;
-
-    return (
-      <div className="flex flex-col h-full p-6">
-        {hasAuditIssues && (
-          <div className="mb-4">
-            <IDSAuditSummary report={auditReport} auditing={auditing} />
-          </div>
-        )}
-
-        <div className="flex flex-col items-center justify-center flex-1 text-center">
-          <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="font-medium text-sm mb-2">
-            {hasAuditIssues ? 'IDS Document Has Errors' : 'No IDS Loaded'}
-          </h3>
-          <p className="text-xs text-muted-foreground mb-4">
-            {hasAuditIssues
-              ? 'Fix the issues above and try loading again.'
-              : 'Load an IDS (Information Delivery Specification) file to validate your model'}
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".ids,.xml"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <Button onClick={() => { void handleLoadIdsClick(); }} {...tourAnchor(TOUR_ANCHORS.idsLoad)}>
-            <Upload className="h-4 w-4 mr-2" />
-            {hasAuditIssues ? 'Load Different File' : 'Load IDS File'}
-          </Button>
-        </div>
-      </div>
-    );
-  };
-
-  // Render document loaded but no validation
-  const renderDocumentLoaded = () => {
-    if (!document || report) return null;
-
-    // Only the document-level auditor's `error` verdict gates model
-    // validation — warnings still let the user proceed (they're style
-    // hints, not blockers). The button keeps its primary affordance
-    // unless we genuinely can't validate.
-    const auditHasErrors = auditReport?.status === 'error';
-
-    return (
-      <div className="p-4 space-y-3">
-        <div className="rounded-lg border p-4">
-          <h3 className="font-medium text-sm mb-1">{document.info.title}</h3>
-          {document.info.description && (
-            <p className="text-xs text-muted-foreground mb-2">{document.info.description}</p>
-          )}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>{document.specifications.length} specifications</span>
-            {document.info.version && <span>v{document.info.version}</span>}
-          </div>
-        </div>
-
-        <IDSAuditSummary report={auditReport} auditing={auditing} />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="block">
-              <Button
-                className="w-full"
-                onClick={() => { void runValidation(); }}
-                disabled={loading || auditHasErrors}
-                variant={auditHasErrors ? 'secondary' : 'default'}
-                {...tourAnchor(TOUR_ANCHORS.idsRun)}
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4 mr-2" />
-                )}
-                Run Validation
-              </Button>
-            </span>
-          </TooltipTrigger>
-          {auditHasErrors && (
-            <TooltipContent>
-              Resolve audit errors before validating against a model.
-            </TooltipContent>
-          )}
-        </Tooltip>
-      </div>
-    );
-  };
-
-  // Render validation results
-  const renderResults = () => {
-    if (!report) return null;
-
-    // In 'spec' scope the isolate/color actions target the active
-    // specification; disable them until one is selected.
-    const specScope = isolationScope === 'spec';
-    const noActiveSpec = specScope && !activeSpecificationId;
-    const scopeSuffix = specScope ? ' (this spec)' : ' (whole IDS)';
-
-    return (
-      <>
-        {/* Audit summary stays visible above the validation report so
-            users can still see authoring issues alongside model results. */}
-        {auditReport && auditReport.status !== 'valid' && (
-          <div className="p-3 border-b">
-            <IDSAuditSummary report={auditReport} auditing={false} />
-          </div>
-        )}
-
-        {/* Summary Header */}
-        <div className="p-3 border-b bg-muted/30" {...tourAnchor(TOUR_ANCHORS.idsSummary)}>
-          {idsMultiModel && (
-            <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground min-w-0">
-              <span className="shrink-0">Validate</span>
-              {/* Federation targets one model at a time. Surface it as a picker
-                  (same plain-select pattern as Compare) so the user can both
-                  see which model the results reflect and switch to another.
-                  Changing it re-runs validation against the chosen model. */}
-              <select
-                value={pendingModelId ?? report.modelInfo.modelId}
-                onChange={(e) => {
-                  // An active isolation (failed/passed/involved) pins
-                  // isolatedEntities to the OLD model's global ids. The new
-                  // report replaces idsIsolateMode but leaves those ids in
-                  // place, so the new target would look hidden. Clear the
-                  // isolation before validating the newly picked model.
-                  clearIsolation();
-                  setPendingModelId(e.target.value);
-                  void runValidation(e.target.value);
-                }}
-                disabled={loading}
-                aria-label="Model to validate"
-                className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
-              >
-                {idsModelList.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="flex items-center gap-2 mb-2">
-            <StatusIcon status={report.summary.failedSpecifications > 0 ? 'fail' : 'pass'} />
-            <span className="font-medium text-sm">
-              {report.summary.passedSpecifications}/{report.summary.totalSpecifications} Specifications Passed
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-xs text-center">
-            <div className="bg-background rounded p-2">
-              <div className="font-medium">{report.summary.totalEntitiesChecked}</div>
-              <div className="text-muted-foreground">Checked</div>
-            </div>
-            <div className="bg-background rounded p-2">
-              <div className="font-medium text-green-600">{report.summary.totalEntitiesPassed}</div>
-              <div className="text-muted-foreground">Passed</div>
-            </div>
-            <div className="bg-background rounded p-2">
-              <div className="font-medium text-red-600">{report.summary.totalEntitiesFailed}</div>
-              <div className="text-muted-foreground">Failed</div>
-            </div>
-          </div>
-          <div className="mt-2">
-            <PassRateBar passRate={report.summary.overallPassRate} />
-          </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            {specScope
-              ? '💡 Select a specification to isolate its elements — passed green, failed red'
-              : '💡 Click any entity to select and zoom to it in the 3D view'}
-          </p>
-        </div>
-
-        {/* Filter & Actions Bar */}
-        <div className="p-2 border-b flex items-center gap-1 flex-wrap">
-          <Select value={filterMode} onValueChange={(v) => setFilterMode(v as 'all' | 'failed' | 'passed')}>
-            <SelectTrigger className="h-8 w-24">
-              <Filter className="h-3 w-3 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-              <SelectItem value="passed">Passed</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Isolate scope: whole report vs. the active specification (#1236).
-              'Per Spec' isolates the selected specification's elements
-              (passed green, failed red). */}
-          <Select value={isolationScope} onValueChange={(v) => setIsolationScope(v as 'ids' | 'spec')}>
-            <SelectTrigger className="h-8 w-[112px]" aria-label="Isolate scope">
-              <Layers className="h-3 w-3 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ids">Whole IDS</SelectItem>
-              <SelectItem value="spec">Per Spec</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="flex-1 min-w-2" />
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={failedActive ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn('h-8 w-8 p-0', failedActive && 'text-red-600')}
-                aria-pressed={failedActive}
-                aria-label={failedActive ? 'Show all (undo isolate failed)' : `Isolate failed${scopeSuffix}`}
-                onClick={handleIsolateFailed}
-                disabled={noActiveSpec}
-                {...tourAnchor(TOUR_ANCHORS.idsIsolateFailed)}
-              >
-                <EyeOff className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {failedActive ? 'Show all (undo isolate failed)' : `Isolate failed${scopeSuffix}`}
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={passedActive ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn('h-8 w-8 p-0', passedActive && 'text-green-600')}
-                aria-pressed={passedActive}
-                aria-label={passedActive ? 'Show all (undo isolate passed)' : `Isolate passed${scopeSuffix}`}
-                onClick={handleIsolatePassed}
-                disabled={noActiveSpec}
-              >
-                <Eye className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {passedActive ? 'Show all (undo isolate passed)' : `Isolate passed${scopeSuffix}`}
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={involvedActive ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 w-8 p-0"
-                aria-pressed={involvedActive}
-                aria-label={involvedActive ? 'Show all (undo isolate involved)' : `Isolate involved${scopeSuffix}`}
-                onClick={handleIsolateInvolved}
-                disabled={noActiveSpec}
-              >
-                <Boxes className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {involvedActive
-                ? 'Show all (undo isolate involved)'
-                : `Isolate involved${scopeSuffix} — passed green + failed red`}
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
-                aria-label="Clear isolation (show all)"
-                onClick={clearIsolation}
-                disabled={!visibilityFilterActive}
-              >
-                <Focus className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Clear isolation (show all)</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="Reapply Colors" onClick={applyColors}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Reapply Colors</TooltipContent>
-          </Tooltip>
-
-          <Separator orientation="vertical" className="h-4 mx-1" />
-
-          <ReportExportButton
-            onExportJSON={exportReportJSON}
-            onExportHTML={exportReportHTML}
-            onExportBCF={exportReportBCF}
-            bcfExportProgress={bcfExportProgress}
-            report={report}
-          />
-        </div>
-
-        {/* On-select focus mode (#2867) — the same control, the same wording
-            and the same three modes as the clash panel's, because it is the
-            same action: how the rest of the model is shown when you activate
-            one result row. */}
-        <div className="flex items-center gap-1 px-2 py-1 border-b text-[11px] text-muted-foreground">
-          <span>On select:</span>
-          <div className="inline-flex rounded-md border border-border overflow-hidden">
-            {([
-              ['highlight', 'Highlight', 'Keep the whole model visible'],
-              ['isolate', 'Isolate', 'Hide everything except the selected element'],
-              ['ghost', 'Ghost', 'Fade the rest to translucent context (X-Ray)'],
-            ] as [IDSFocusMode, string, string][]).map(([m, label, tip]) => (
-              <button
-                key={m}
-                title={tip}
-                aria-pressed={focusMode === m}
-                onClick={() => setFocusMode(m)}
-                className={cn(
-                  'px-1.5 py-0.5 transition-colors',
-                  focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Specifications List */}
-        <ScrollArea className="flex-1" {...tourAnchor(TOUR_ANCHORS.idsResults)}>
-          <div className="p-2 space-y-2">
-            {report.specificationResults.map((specResult) => (
-              <SpecificationCard
-                key={specResult.specification.id}
-                result={specResult}
-                isActive={activeSpecificationId === specResult.specification.id}
-                onSelect={() => setActiveSpecification(specResult.specification.id)}
-                onEntityClick={handleEntityClick}
-                onCorrect={() => setCorrectionSpecId(specResult.specification.id)}
-                filterMode={filterMode}
-              />
-            ))}
-          </div>
-        </ScrollArea>
-      </>
-    );
-  };
-
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b">
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4" />
-          <span className="font-medium text-sm">IDS Validation</span>
+          <span className="font-medium text-sm">{t('idsPanel.title')}</span>
         </div>
         <div className="flex items-center gap-1">
           {/* Load New IDS */}
@@ -1044,13 +167,13 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0"
-                    aria-label="Load New IDS"
+                    aria-label={t('idsPanel.loadNew')}
                     onClick={() => { void handleLoadIdsClick(); }}
                   >
                     <Upload className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Load New IDS</TooltipContent>
+                <TooltipContent>{t('idsPanel.loadNew')}</TooltipContent>
               </Tooltip>
             </>
           )}
@@ -1063,7 +186,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 p-0"
-                  aria-label="Clear IDS"
+                  aria-label={t('idsPanel.clear')}
                   onClick={() => {
                     clearIDS();
                     clearValidation();
@@ -1072,13 +195,13 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                   <Trash2 className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Clear IDS</TooltipContent>
+              <TooltipContent>{t('idsPanel.clear')}</TooltipContent>
             </Tooltip>
           )}
 
           {/* Close */}
           {onClose && (
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Close" onClick={onClose}>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t('idsPanel.close')} onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
           )}
@@ -1096,13 +219,25 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
       )}
 
       {/* Progress */}
-      {loading && renderProgress()}
+      {loading && progress && <IDSValidationProgress progress={progress} />}
 
       {/* Content */}
       <div className="flex-1 min-h-0 flex flex-col">
-        {renderEmptyState()}
-        {renderDocumentLoaded()}
-        {renderResults()}
+        <IDSPanelStates
+          ids={ids}
+          fileInputRef={fileInputRef}
+          onFileSelect={handleFileSelect}
+          onLoadClick={() => { void handleLoadIdsClick(); }}
+        />
+        <IDSPanelResults
+          ids={ids}
+          multiModel={idsMultiModel}
+          models={idsModelList}
+          pendingModelId={pendingModelId}
+          setPendingModelId={setPendingModelId}
+          onEntityClick={handleEntityClick}
+          onCorrect={setCorrectionSpecId}
+        />
       </div>
 
       {report && correctionSpecResult && (

@@ -60,7 +60,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     const view = getMutationViewForModel(store, ref.modelId);
     if (view?.isDeleted(ref.expressId)) return null;
     const created = view?.getNewEntity(ref.expressId);
-    if (created) {
+    if (created && view) {
       const names = getAttributeNamesForSchema(created.type, model.ifcDataStore.schemaVersion);
       const attributes: unknown[] = [...created.attributes];
       for (const { name, value } of view.getAttributeMutationsForEntity(ref.expressId)) {

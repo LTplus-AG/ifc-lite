@@ -211,7 +211,7 @@ export interface DocumentData {
 export interface EntityRelationshipsData {
   voids: Array<{ id: number; name?: string; type: string }>;
   fills: Array<{ id: number; name?: string; type: string }>;
-  groups: Array<{ id: number; name?: string }>;
+  groups: Array<{ id: number; name?: string; type?: string }>;
   connections: Array<{ id: number; name?: string; type: string }>;
   /** Every graph edge touching the entity, preserving its exact IfcRel* class.
    * Optional for third-party backends compiled against the pre-#4205 shape. */

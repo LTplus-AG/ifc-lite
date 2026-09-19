@@ -42,7 +42,7 @@ export function foldRelationshipData(
   return {
     voids: entities('IFCRELVOIDSELEMENT', ['forward']),
     fills: entities('IFCRELFILLSELEMENT', ['inverse']),
-    groups: entities('IFCRELASSIGNSTOGROUP', ['inverse']).map(({ id, name }) => ({ id, name })),
+    groups: entities('IFCRELASSIGNSTOGROUP', ['inverse']),
     connections: entities('IFCRELCONNECTSPATHELEMENTS', ['forward', 'inverse'])
       .filter((entity, index, all) => entity.id !== ref.expressId && all.findIndex(other => other.id === entity.id) === index),
     relations,

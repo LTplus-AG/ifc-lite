@@ -18,9 +18,9 @@ This prompts you to select packages, choose a bump type (`patch`/`minor`/`major`
 
 On each release, the following are published automatically:
 
-**npm (36 packages):** All `@ifc-lite/*` packages + `create-ifc-lite`
+**npm (46 packages):** All `@ifc-lite/*` packages + `create-ifc-lite`
 
-**crates.io (6 crates):** `ifc-lite-core`, `ifc-lite-geometry`, `ifc-lite-clash`, `ifc-lite-processing`, `ifc-lite-ffi`, `ifc-lite-wasm`
+**crates.io (7 crates):** `ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`
 
 **GitHub Release:** Version tag + server binaries for 6 platforms
 

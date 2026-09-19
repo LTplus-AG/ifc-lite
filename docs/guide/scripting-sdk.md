@@ -18,6 +18,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.export` | Export to CSV, glTF, STEP, HBJSON, and more |
 | `bim.clash` | Run clash rules and the discipline matrix |
 | `bim.cost` | Read and evaluate IFC 5D cost schedules, items, values, and quantities |
+| `bim.structural` | Read-only access to IFC structural analysis data (analysis models, members, connections, activities, load/result groups) |
 | `bim.ids` | IDS validation |
 | `bim.bcf` | BCF topics, comments, viewpoints |
 | `bim.files`, `bim.schedule`, `bim.spatial`, `bim.spaces`, `bim.drawing`, `bim.list`, `bim.bsdd`, `bim.events`, `bim.sandbox` | Supporting namespaces (file access, scheduling, spatial ops, space program, 2D drawings, entity tables, bSDD lookups, events, sandboxed sub-scripts) |

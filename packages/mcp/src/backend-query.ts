@@ -25,10 +25,8 @@
  * `bim.decomposes`. A queued `IfcRelContainedInSpatialStructure` is how an agent
  * places something over MCP, so ignoring it was ignoring a write.
  *
- * The exact rows returned by `relationships().relations` are folded through the
- * same overlay. Its legacy voids / fills / groups / connections projections and
- * the geometry the clash and viewer tools read are rebuilt on the next
- * `model_load` after a save.
+ * Exact `relationships().relations` rows are folded through the same overlay.
+ * Legacy projections and geometry rebuild on `model_load` after a save.
  */
 
 import type {
@@ -63,7 +61,6 @@ import { EntityNode, matchesPropertyFilter } from '@ifc-lite/query';
 
 import type { CreatedEntity, PendingOverlay } from './overlay.js';
 import { foldRelationshipRows } from './backend-query-relationships.js';
-
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
 // so this module's consumers are unaffected by where it lives.
@@ -78,7 +75,6 @@ export { expandTypes };
  */
 export const isProductType = isQueryableObjectType;
 
-/** The overlay's answer for an entity it created, in `EntityData` shape. */
 function createdEntityData(created: CreatedEntity, ref: EntityRef, store: IfcDataStore): EntityData {
   const names = attributeNamesForSchema(created.ifcType, store.schemaVersion);
   const objectType = authoredValue(created.attributes[names.indexOf('ObjectType')]);
@@ -173,9 +169,7 @@ export function createQueryAdapter(
     const overrides = pending.attributes(expressId);
     const positional = pending.positionalAttributes(expressId);
     if (overrides.size === 0 && positional.size === 0) return data;
-    // `EntityData` has a slot for exactly these three; anything else the session
-    // wrote (`Tag`) reaches the caller through `attributes()` below, which
-    // carries the whole map.
+    // Other authored fields reach callers through `attributes()` below.
     const next = {
       ...data,
       name: overrides.get('Name') ?? data.name,
@@ -463,8 +457,7 @@ export function createQueryAdapter(
       const relEnum = QUERY_REL_TYPE_MAP[relType];
       if (relEnum === undefined) return [];
       const pending = overlay();
-      // A deleted entity relates to nothing. Filtering only the far end left it
-      // answering questions about itself (#2014 review).
+      // A deleted entity relates to nothing (#2014 review).
       if (pending?.deleted.has(ref.expressId)) return [];
       const out: number[] = [];
       const seen = new Set<number>();

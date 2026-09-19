@@ -17,10 +17,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { UNTAGGED_GROUP_ID } from './modelTagView';
 import type { TreeNode } from './types';
 
 export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtualRow: { size: number; start: number } }) {
+  const { t } = useTranslation();
   const { models, setModelsVisibility, tag } = useViewerStore(
     useShallow((s) => ({
       models: s.models,
@@ -49,7 +51,7 @@ export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtual
         <span className={cn('flex-1 truncate text-xs font-semibold', isUntagged && 'italic')}>{node.name}</span>
         <span
           className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400"
-          title={`${members.length} model${members.length === 1 ? '' : 's'}`}
+          title={t('hierarchy.modelTagGroup.memberCount', { count: members.length })}
         >
           {members.length}
         </span>
@@ -59,7 +61,11 @@ export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtual
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setModelsVisibility(members, !allVisible); }}
-                aria-label={allVisible ? `Hide models tagged ${node.name}` : `Show models tagged ${node.name}`}
+                aria-label={
+                  allVisible
+                    ? t('hierarchy.modelTagGroup.hideAriaLabel', { name: node.name })
+                    : t('hierarchy.modelTagGroup.showAriaLabel', { name: node.name })
+                }
                 className="p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
               >
                 {allVisible ? (
@@ -70,7 +76,9 @@ export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtual
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">{allVisible ? 'Hide these models' : 'Show these models'}</p>
+              <p className="text-xs">
+                {allVisible ? t('hierarchy.modelTagGroup.hideTooltip') : t('hierarchy.modelTagGroup.showTooltip')}
+              </p>
             </TooltipContent>
           </Tooltip>
         )}

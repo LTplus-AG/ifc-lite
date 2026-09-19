@@ -19,6 +19,8 @@
 import { useMemo } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert } from 'lucide-react';
+import { useTranslation } from '@/i18n';
+import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
   StructuralExtraction,
   StructuralMemberInfo,
@@ -41,6 +43,7 @@ export function StructuralCard({
   selectedExpressId,
   selectedGlobalId,
 }: StructuralCardProps) {
+  const { t } = useTranslation();
   const member = useMemo(
     () => findMember(structuralData, selectedExpressId, selectedGlobalId),
     [structuralData, selectedExpressId, selectedGlobalId],
@@ -85,15 +88,15 @@ export function StructuralCard({
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-violet-50 dark:hover:bg-violet-900/30 text-left transition-colors overflow-hidden">
         <Boxes className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
         <span className="font-bold text-xs text-violet-700 dark:text-violet-400 truncate flex-1 min-w-0">
-          Structural Analysis
+          {t('properties.structural.heading')}
         </span>
         {structuralData?.loadsTruncated && (
           <span
             className="flex items-center gap-1 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
-            title="One or more applied loads were bounded during extraction — this member may carry more load data than shown"
+            title={t('properties.structural.loadsTruncatedTooltip')}
           >
             <TriangleAlert className="h-2.5 w-2.5" aria-hidden />
-            Truncated
+            {t('properties.structural.truncatedBadge')}
           </span>
         )}
         <span className="text-[10px] font-mono bg-violet-100 dark:bg-violet-900/50 px-1.5 py-0.5 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 shrink-0">
@@ -106,19 +109,19 @@ export function StructuralCard({
             <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-[11px]">
               {member.predefinedType && (
                 <>
-                  <span className="text-muted-foreground">Predefined</span>
+                  <span className="text-muted-foreground">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</span>
                   <span className="font-mono text-foreground/90">{member.predefinedType}</span>
                 </>
               )}
               {member.thickness !== undefined && (
                 <>
-                  <span className="text-muted-foreground">Thickness</span>
+                  <span className="text-muted-foreground">{EXPRESS_THICKNESS_ATTRIBUTE}</span>
                   <span className="font-mono text-foreground/90">{member.thickness}</span>
                 </>
               )}
               {modelLabels.length > 0 && (
                 <>
-                  <span className="text-muted-foreground">Model</span>
+                  <span className="text-muted-foreground">{t('properties.structural.model')}</span>
                   <span className="text-foreground/90 truncate" title={modelLabels.join(', ')}>
                     {modelLabels.join(', ')}
                   </span>
@@ -132,7 +135,7 @@ export function StructuralCard({
               <div className="flex items-center gap-1.5 mb-1.5 text-violet-700 dark:text-violet-400">
                 <Anchor className="h-3 w-3 shrink-0" />
                 <span className="font-semibold text-[11px]">
-                  Connections ({connections.length})
+                  {t('properties.structural.connections', { count: connections.length })}
                 </span>
               </div>
               <div className="space-y-1.5 ml-1">
@@ -148,7 +151,7 @@ export function StructuralCard({
               <div className="flex items-center gap-1.5 mb-1.5 text-violet-700 dark:text-violet-400">
                 <ArrowDownToLine className="h-3 w-3 shrink-0" />
                 <span className="font-semibold text-[11px]">
-                  Applied loads ({activities.length})
+                  {t('properties.structural.appliedLoads', { count: activities.length })}
                 </span>
               </div>
               <div className="space-y-1.5 ml-1">

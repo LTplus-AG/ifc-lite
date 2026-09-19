@@ -27,26 +27,27 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { UNIT_ALTERNATIVES, alternativesForUnitType } from '@/lib/units/alternatives';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
-/** Human-readable label for each curated unit kind. Anything in
+/** Translation key for each curated unit kind's label. Anything in
  *  `UNIT_ALTERNATIVES` without an entry here falls back to its raw token. */
-const UNIT_KIND_LABELS: Record<string, string> = {
-  LENGTHUNIT: 'Length',
-  AREAUNIT: 'Area',
-  VOLUMEUNIT: 'Volume',
-  MASSUNIT: 'Mass',
-  TIMEUNIT: 'Time',
-  PLANEANGLEUNIT: 'Angle',
-  VOLUMETRICFLOWRATEUNIT: 'Flow rate',
-  MASSFLOWRATEUNIT: 'Mass flow rate',
-  PRESSUREUNIT: 'Pressure',
-  POWERUNIT: 'Power',
-  ENERGYUNIT: 'Energy',
-  LINEARVELOCITYUNIT: 'Velocity',
-  FREQUENCYUNIT: 'Frequency',
-  THERMODYNAMICTEMPERATUREUNIT: 'Temperature',
-  MASSDENSITYUNIT: 'Density',
-  FORCEUNIT: 'Force',
+const UNIT_KIND_LABEL_KEYS: Record<string, TranslationKey> = {
+  LENGTHUNIT: 'properties.unitDisplay.kind.length',
+  AREAUNIT: 'properties.unitDisplay.kind.area',
+  VOLUMEUNIT: 'properties.unitDisplay.kind.volume',
+  MASSUNIT: 'properties.unitDisplay.kind.mass',
+  TIMEUNIT: 'properties.unitDisplay.kind.time',
+  PLANEANGLEUNIT: 'properties.unitDisplay.kind.angle',
+  VOLUMETRICFLOWRATEUNIT: 'properties.unitDisplay.kind.flowRate',
+  MASSFLOWRATEUNIT: 'properties.unitDisplay.kind.massFlowRate',
+  PRESSUREUNIT: 'properties.unitDisplay.kind.pressure',
+  POWERUNIT: 'properties.unitDisplay.kind.power',
+  ENERGYUNIT: 'properties.unitDisplay.kind.energy',
+  LINEARVELOCITYUNIT: 'properties.unitDisplay.kind.velocity',
+  FREQUENCYUNIT: 'properties.unitDisplay.kind.frequency',
+  THERMODYNAMICTEMPERATUREUNIT: 'properties.unitDisplay.kind.temperature',
+  MASSDENSITYUNIT: 'properties.unitDisplay.kind.density',
+  FORCEUNIT: 'properties.unitDisplay.kind.force',
 };
 
 /** Sentinel radio value for "no override" (render the file's declared/SI
@@ -59,6 +60,7 @@ const FILE_DEFAULT = '__file__';
 const KINDS = Object.keys(UNIT_ALTERNATIVES).filter((k) => UNIT_ALTERNATIVES[k].length > 1);
 
 export function UnitDisplayControl() {
+  const { t } = useTranslation();
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const setUnitDisplayOverride = useViewerStore((s) => s.setUnitDisplayOverride);
   const resetUnitDisplayOverrides = useViewerStore((s) => s.resetUnitDisplayOverrides);
@@ -79,11 +81,11 @@ export function UnitDisplayControl() {
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent>Display units</TooltipContent>
+        <TooltipContent>{t('properties.unitDisplay.trigger')}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Display units
+          {t('properties.unitDisplay.trigger')}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {KINDS.map((unitType) => {
@@ -93,7 +95,9 @@ export function UnitDisplayControl() {
           return (
             <DropdownMenuSub key={unitType}>
               <DropdownMenuSubTrigger className="text-xs gap-2">
-                <span className="flex-1 truncate">{UNIT_KIND_LABELS[unitType] ?? unitType}</span>
+                <span className="flex-1 truncate">
+                  {UNIT_KIND_LABEL_KEYS[unitType] ? t(UNIT_KIND_LABEL_KEYS[unitType]) : unitType}
+                </span>
                 <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
                   {current ? current.symbol : options[0].symbol}
                 </span>
@@ -104,7 +108,7 @@ export function UnitDisplayControl() {
                   onValueChange={(v) => setUnitDisplayOverride(unitType, v === FILE_DEFAULT ? null : v)}
                 >
                   <DropdownMenuRadioItem value={FILE_DEFAULT} className="text-xs">
-                    File unit
+                    {t('properties.unitDisplay.fileUnit')}
                   </DropdownMenuRadioItem>
                   <DropdownMenuSeparator />
                   {options.map((opt) => (
@@ -124,7 +128,7 @@ export function UnitDisplayControl() {
           className="text-xs gap-2"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          Reset to file units
+          {t('properties.unitDisplay.resetToFileUnits')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

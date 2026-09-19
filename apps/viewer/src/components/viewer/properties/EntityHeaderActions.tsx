@@ -23,6 +23,7 @@ import { Focus, EyeOff, Eye, Ghost } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 
 /**
  * The fade this control installed, and the isolation as it stood BEFORE it.
@@ -37,6 +38,7 @@ import { useViewerStore } from '@/store';
 let ownedClaim: { ghost: ReadonlySet<number>; priorIsolation: Set<number> | null } | null = null;
 
 export function EntityHeaderActions() {
+  const { t } = useTranslation();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
@@ -111,7 +113,7 @@ export function EntityHeaderActions() {
             <Focus className="h-3.5 w-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Zoom to</TooltipContent>
+        <TooltipContent>{t('properties.entityHeaderActions.zoomTo')}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -166,7 +168,9 @@ export function EntityHeaderActions() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {isGhosted ? 'Clear "show in context"' : 'Show in context (fade the rest, keep it visible)'}
+          {isGhosted
+            ? t('properties.entityHeaderActions.clearShowInContext')
+            : t('properties.entityHeaderActions.showInContext')}
         </TooltipContent>
       </Tooltip>
       <Tooltip>
@@ -189,7 +193,9 @@ export function EntityHeaderActions() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {selectedEntityId && isEntityVisible(selectedEntityId) ? 'Hide' : 'Show'}
+          {selectedEntityId && isEntityVisible(selectedEntityId)
+            ? t('properties.entityHeaderActions.hide')
+            : t('properties.entityHeaderActions.show')}
         </TooltipContent>
       </Tooltip>
     </>

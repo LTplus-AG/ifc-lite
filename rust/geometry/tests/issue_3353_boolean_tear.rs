@@ -173,3 +173,48 @@ fn a_rotated_overlapping_union_stays_manifold() {
         Err(why) => panic!("union of two closed operands came back invalid: {why}"),
     }
 }
+
+/// Regression pin for the #3914 fix's large-coordinate safety guard
+/// (`plane_merge::merge_rounding_split_buckets`'s `MERGE_SAFE_MAGNITUDE`).
+///
+/// Found by a local seeded sweep of rotated/overlapping box pairs at 1000x
+/// the pinned fixture's coordinate magnitude (~O(1e3), a millimetre-scale
+/// building's raw coordinates) — independent of, and a different mechanism
+/// from, the metre-scale pin above. Measured, not assumed: an EARLIER
+/// version of the #3914 fix that scaled its merge tolerance with coordinate
+/// magnitude but did not bound the `qpos`-adjacency candidate window left 2
+/// pre-existing large-coordinate tears in a 3000-case sweep unfixed AND
+/// introduced 2 NEW ones — including this one — that the un-merged output
+/// did not have. The reason: the candidate window only ever compares
+/// buckets one `POS_QUANT` cell apart, which stops being a sound net past
+/// the coordinate magnitude where f32-rederived plane noise itself exceeds
+/// one cell (documented independently on `mesh_bridge::SNAP_GRID`: "past
+/// |c| = 128 CALLER UNITS the f32 spacing is itself a multiple of the
+/// grid"); a false-negative merge attempt at that scale can still perturb
+/// the bucket the candidate scan happened to touch. The fix's merge pass
+/// now skips entirely above that magnitude, restoring the pre-#3914 output
+/// exactly (never worse) rather than attempting a merge the one-cell window
+/// cannot make sound.
+#[test]
+fn a_large_coordinate_overlapping_union_is_not_newly_torn_by_the_merge_pass() {
+    let clipper = ClippingProcessor::new();
+    let a_min = [-1228.9475065504578, -1417.1822059816695, -2306.0253514211972];
+    let a_size = [1213.2463132281496, 3009.857479989996, 2270.47703987189];
+    let b_min = [-133.30604159842997, -1269.0140481667731, -1265.70224188568];
+    let b_size = [2049.810034945035, 3685.739373643453, 3494.266378783676];
+    let theta = 1.4195649704200568;
+
+    let a = boxed(a_min, a_size);
+    let b = rotated_boxed(b_min, b_size, theta);
+    let out = clipper.union_mesh(&a, &b).expect("union must not error");
+
+    match open_edges(&out) {
+        Ok(0) => {}
+        Ok(bad) => panic!(
+            "the merge-safety guard regressed: union came back non-manifold \
+             at large coordinate magnitude ({bad} unmatched directed edges), \
+             which the un-merged (pre-#3914) output did not"
+        ),
+        Err(why) => panic!("union of two closed operands came back invalid: {why}"),
+    }
+}

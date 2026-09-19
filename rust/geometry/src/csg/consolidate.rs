@@ -5,10 +5,12 @@
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
 mod conform;
+mod plane_merge;
 mod ring_ops;
 
 use super::ClippingProcessor;
 use conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans, PlanBucket, PlanRegion};
+use plane_merge::{merge_rounding_split_buckets, tag_for, PlaneTri};
 use ring_ops::{clean_ring, floor_pow2};
 #[cfg(test)]
 use ring_ops::{ring_is_noise, weld_near_coincident_2d};
@@ -166,46 +168,10 @@ impl ClippingProcessor {
         let qnorm = |n: f64| (n * NORMAL_QUANT).round() as i64;
 
         // Step 1 — group input triangles by plane.
-        struct PlaneTri {
-            v: [Point3<f64>; 3],
-            normal: Vector3<f64>,
-            /// This triangle's kernel-f64 plane (`n`, `d`), when the mesh
-            /// carries `plane_tags` (from `kernel::mesh_bridge::tris_to_mesh`,
-            /// the only producer) AND this specific tag is a supporting
-            /// plane of this specific triangle within tolerance. `None` for
-            /// an untagged mesh (weld/merge/transform since — every one of
-            /// which clears `plane_tags` — or a synthetic/test mesh) or a
-            /// tag that fails that per-triangle check, in which case this
-            /// triangle behaves exactly as before the #3914 fix.
-            tag: Option<(Vector3<f64>, f64)>,
-        }
         let positions = &mesh.positions;
         let vertex_count = positions.len() / 3;
         let triangle_count = mesh.indices.len() / 3;
-        let plane_tags_len_ok = mesh
-            .plane_tags
-            .as_ref()
-            .is_some_and(|tags| tags.len() == triangle_count);
-        // A tag is trusted for ITS triangle only when it is a supporting
-        // plane of that triangle to within a tolerance close to the kernel's
-        // own measured f32-cast noise (#3914 thread: legitimate splits
-        // measured ~5e-7 between the f32-rederived offset and the kernel's
-        // f64 one) — tight enough that a triangle whose cross-product normal
-        // is itself unstable (a near-degenerate sliver) fails the check and
-        // is treated as untagged, rather than trusting a coincidentally-close
-        // tag.
-        const TAG_TOL: f64 = 1.0e-6;
-        let tag_for = |tri_idx: usize, v: &[Point3<f64>; 3]| -> Option<(Vector3<f64>, f64)> {
-            if !plane_tags_len_ok {
-                return None;
-            }
-            // SAFETY of the unwrap: `plane_tags_len_ok` already confirmed
-            // `mesh.plane_tags` is `Some` with one tag per triangle.
-            let tag = &mesh.plane_tags.as_ref().unwrap()[tri_idx];
-            let n = Vector3::new(tag.n[0], tag.n[1], tag.n[2]);
-            let supports = v.iter().all(|p| (n.dot(&p.coords) - tag.d).abs() < TAG_TOL);
-            supports.then_some((n, tag.d))
-        };
+        let plane_tags = mesh.plane_tags.as_deref();
         // BTreeMap, NOT FxHashMap: step 2 emits the output mesh in bucket
         // iteration order, and FxHasher mixes usize-wide chunks, so its
         // iteration order differs between 64-bit native and 32-bit wasm32 -
@@ -256,7 +222,7 @@ impl ClippingProcessor {
                 qpos(offset),
             );
             let tri_v = [v0, v1, v2];
-            let tag = tag_for(tri_idx, &tri_v);
+            let tag = tag_for(plane_tags, triangle_count, tri_idx, &tri_v);
             buckets.entry(key).or_default().push(PlaneTri {
                 v: tri_v,
                 normal,
@@ -264,79 +230,12 @@ impl ClippingProcessor {
             });
         }
 
-        // Issue #3914 fix: merge PAIRS of buckets that are exactly the
-        // pinned mechanism — one physical plane split by `POS_QUANT`
-        // rounding into two ADJACENT buckets sharing a quantized normal —
-        // rather than re-deriving every bucket's key from the tag (measured
-        // to regress `triangulation_invariance`'s `issue_129_mixed_bool2d_
-        // residual_preserves_established_topology` and `issue_4627_
-        // candidate_failures_preserve_prior_analytic_cuts`: real models carry
-        // legitimately distinct near-coplanar faces the #3913 near-coplanar
-        // sweep controls exist to keep split, and a global re-key does not
-        // reliably tell the two apart).
-        //
-        // Adjacency in `qpos` (offset differing by exactly one POS_QUANT
-        // cell) is the geometric signature of a rounding-boundary straddle,
-        // and is only the CANDIDATE-PAIR filter (cheap, and it is what
-        // limits this pass to neighbours instead of the whole bucket set).
-        // The actual #3914-thread discriminator is numeric, not the same
-        // coarse `POS_QUANT`/`NORMAL_QUANT` grid the geometric key already
-        // uses (that grid is exactly what let the two triangles land in
-        // different buckets in the first place, so re-quantizing the tag the
-        // same way cannot reliably tell "one plane, rounding-split" apart
-        // from "two distinct planes that happen to be adjacent"): every
-        // triangle on both sides must carry a validated tag, and those RAW
-        // (un-quantized) tags must agree with each other to `TAG_MERGE_TOL`
-        // — tight against the #3914 thread's measured true-positive margin
-        // (kernel planes agreeing to ~1e-10) and three-plus orders of
-        // magnitude below the #3913 near-coplanar sweep's deliberately
-        // distinct `SNAP_GRID` (1/65536 ≈ 1.5e-5) separation, which must NOT
-        // merge (that sweep regressed 0 -> 2/882 under quantized-key
-        // agreement before this tolerance was tightened to raw values).
-        const TAG_MERGE_TOL: f64 = 1.0e-7;
-        let tag_consensus = |tris: &[PlaneTri]| -> Option<(Vector3<f64>, f64)> {
-            let (n0, d0) = tris.first()?.tag?;
-            tris.iter()
-                .all(|t| {
-                    t.tag
-                        .is_some_and(|(n, d)| (n - n0).norm() < TAG_MERGE_TOL && (d - d0).abs() < TAG_MERGE_TOL)
-                })
-                .then_some((n0, d0))
-        };
-        let mut merged_bucket_keys: std::collections::HashSet<(i64, i64, i64, i64)> =
-            std::collections::HashSet::new();
-        {
-            let candidate_keys: Vec<(i64, i64, i64, i64)> = buckets.keys().copied().collect();
-            let mut absorbed: std::collections::HashSet<(i64, i64, i64, i64)> =
-                std::collections::HashSet::new();
-            for key in candidate_keys {
-                if absorbed.contains(&key) {
-                    continue;
-                }
-                let (nx, ny, nz, pz) = key;
-                for other in [(nx, ny, nz, pz - 1), (nx, ny, nz, pz + 1)] {
-                    if key >= other || absorbed.contains(&other) {
-                        continue;
-                    }
-                    let Some(a) = buckets.get(&key) else { continue };
-                    let Some(b) = buckets.get(&other) else { continue };
-                    let same_kernel_plane = match (tag_consensus(a), tag_consensus(b)) {
-                        (Some((na, da)), Some((nb, db))) => {
-                            (na - nb).norm() < TAG_MERGE_TOL && (da - db).abs() < TAG_MERGE_TOL
-                        }
-                        _ => false,
-                    };
-                    if same_kernel_plane {
-                        // SAFETY: `other` was confirmed present above; remove
-                        // it and fold its triangles into `key`'s bucket.
-                        let mut merged = buckets.remove(&other).unwrap();
-                        buckets.get_mut(&key).unwrap().append(&mut merged);
-                        absorbed.insert(other);
-                        merged_bucket_keys.insert(key);
-                    }
-                }
-            }
-        }
+        // Issue #3914 fix: stitch a `POS_QUANT`-rounding bucket split
+        // back together using the kernel's own f64 plane tags — see
+        // `plane_merge::merge_rounding_split_buckets` for the mechanism,
+        // why it is a narrow adjacent-pair merge rather than a global
+        // re-key, and the scale-relative/-capped tolerances involved.
+        let merged_bucket_keys = merge_rounding_split_buckets(&mut buckets);
 
         // Step 2 — three phases over the SAME bucket map.
         //

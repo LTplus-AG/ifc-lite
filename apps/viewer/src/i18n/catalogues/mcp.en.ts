@@ -80,7 +80,7 @@ export const mcpEn = {
   'mcp.mcpLanding.catalogEverything': 'Everything an agent needs.',
   'mcp.mcpLanding.signature': 'Signature',
   'mcp.mcpLanding.parametersCount': 'Parameters · {count}',
-  'mcp.mcpLanding.noParameters': 'No parameters — call with',
+  'mcp.mcpLanding.noParameters': 'No parameters — call with {token}.',
   'mcp.mcpLanding.colName': 'name',
   'mcp.mcpLanding.colType': 'type',
   'mcp.mcpLanding.colReq': 'req',

@@ -141,6 +141,15 @@ describe('mcp/playground chrome localization (#4918)', () => {
     ]);
   });
 
+  it('translates the complete viewer status line as one reorderable message (#5000 review)', () => {
+    registerLocale('mcp-playground-status-order', {
+      'mcp.mcpPlayground.viewerStatusOff': 'inline · agent-driven · OFF',
+    });
+    act(() => setLocale('mcp-playground-status-order'));
+    render(<McpPlayground />);
+    assert.ok(document.body.textContent?.includes('inline · agent-driven · OFF'));
+  });
+
   it('PlaygroundChat translates its idle-state chrome', () => {
     runOracle('playground-chat', mcpPlaygroundEn, ['mcp.playgroundChat.'], () => render(<PlaygroundChat model={null} />), [
       'mcp.playgroundChat.attachFileTitle', 'mcp.playgroundChat.placeholderNoModel',

@@ -242,6 +242,28 @@ describe('SourceFavouritesList — what is shown', () => {
       act(() => setLocale('en'));
     }
   });
+
+  it('refreshes memoized disabled reasons when the active catalogue is replaced (#5000 review)', () => {
+    registerLocale('source-favourites-replacement', {
+      'sources.sourceFavouritesList.providerUnavailable': 'OLD unavailable',
+    });
+    act(() => setLocale('source-favourites-replacement'));
+    try {
+      const host = new SourceHost();
+      saveFavourites('retired-provider', [favourite({ providerId: 'retired-provider' })]);
+      renderList(host);
+      assert.ok(document.body.textContent?.includes('OLD unavailable'));
+
+      act(() => registerLocale('source-favourites-replacement', {
+        'sources.sourceFavouritesList.providerUnavailable': 'NEW unavailable',
+      }));
+
+      assert.ok(document.body.textContent?.includes('NEW unavailable'));
+      assert.equal(document.body.textContent?.includes('OLD unavailable'), false);
+    } finally {
+      act(() => setLocale('en'));
+    }
+  });
 });
 
 describe('SourceFavouritesList — identity scoping', () => {

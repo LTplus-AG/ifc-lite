@@ -499,7 +499,7 @@ function ViewerPanel({
             {t('mcp.mcpPlayground.viewer3d')}
           </span>
           <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.22em]">
-            {open ? t('mcp.mcpPlayground.statusOn') : t('mcp.mcpPlayground.statusOff')} {t('mcp.mcpPlayground.viewerStatusSuffix')}
+            {open ? t('mcp.mcpPlayground.viewerStatusOn') : t('mcp.mcpPlayground.viewerStatusOff')}
           </span>
         </span>
         <span className="flex items-center gap-2">

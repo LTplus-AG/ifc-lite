@@ -26,9 +26,39 @@ export function ownPropertySetsFor(store: IfcDataStore, expressId: number, mutat
   return mutationView ? mutationView.getForEntity(expressId) : extractPropertiesOnDemand(store, expressId);
 }
 
-/** The occurrence's quantity sets, WITH mutations applied when present. */
-export function quantitySetsFor(store: IfcDataStore, expressId: number, mutationView: MutablePropertyView | undefined): ReturnType<typeof extractQuantitiesOnDemand> {
-  return mutationView ? mutationView.getQuantitiesForEntity(expressId) : extractQuantitiesOnDemand(store, expressId);
+type QtySets = ReturnType<typeof extractQuantitiesOnDemand>;
+
+/** Overlay sets first, each topped up with any base quantity of the same set
+ *  name it does not itself name; untouched base sets pass through as-is —
+ *  same merge `element-field-families.ts`'s `qsetsFor` uses for the same
+ *  reason: editing one quantity must not hide its siblings or an unrelated
+ *  quantity set (issue #2487). */
+function overlayFirstQtySets(overlay: QtySets, base: QtySets): QtySets {
+  const byName = new Map(overlay.map((set) => [set.name, set]));
+  const merged = overlay.map((set) => {
+    const named = new Set(set.quantities.map((q) => q.name));
+    const inherited: QtySets[number]['quantities'] = [];
+    for (const baseSet of base) {
+      if (baseSet.name !== set.name) continue;
+      for (const q of baseSet.quantities) if (!named.has(q.name)) { named.add(q.name); inherited.push(q); }
+    }
+    return inherited.length > 0 ? { ...set, quantities: [...set.quantities, ...inherited] } : set;
+  });
+  return [...merged, ...base.filter((set) => !byName.has(set.name))];
+}
+
+/** The occurrence's quantity sets, WITH mutations applied when present. A
+ *  `mutationView` built for a server-hydrated store (no quantity extractor,
+ *  `!hasQuantityBase()`) answers `getQuantitiesForEntity` from its overlay
+ *  ALONE, which would otherwise make an edited quantity's siblings — or an
+ *  untouched quantity set — vanish from a selector's reads; merge the base
+ *  back in for that case instead of trusting the overlay as the whole set. */
+export function quantitySetsFor(store: IfcDataStore, expressId: number, mutationView: MutablePropertyView | undefined): QtySets {
+  if (!mutationView) return extractQuantitiesOnDemand(store, expressId);
+  const overlay = mutationView.getQuantitiesForEntity(expressId);
+  if (mutationView.hasQuantityBase()) return overlay;
+  const base = extractQuantitiesOnDemand(store, expressId).filter((set) => !mutationView.isQuantitySetDeleted(expressId, set.name));
+  return overlayFirstQtySets(overlay, base);
 }
 
 /** The occurrence's root attributes, an edited one overriding its base value

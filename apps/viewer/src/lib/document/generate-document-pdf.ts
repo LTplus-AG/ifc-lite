@@ -110,7 +110,12 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       }
       case 'chart': {
         const agg = input.aggregations.get(block.id) ?? null;
-        const subtitle = agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data';
+        // A resolving/refused filter (#4946) names itself instead of the
+        // generic "No data" — review finding: this used to be computed only
+        // from `agg`, so `chartMessages` reached `resolveBlocks` but nothing
+        // here ever read it.
+        const message = input.chartMessages.get(block.id);
+        const subtitle = message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
         blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot });
         break;
       }
@@ -211,7 +216,9 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           } else {
             doc.setFontSize(9);
             doc.setTextColor(130);
-            doc.text('No data for this chart.', item.x, item.y + 14);
+            // A resolving/refused filter (#4946) prints its own reason instead
+            // of the generic line, same as `resolveBlocks`'s subtitle above.
+            doc.text(input.chartMessages.get(item.blockId) ?? 'No data for this chart.', item.x, item.y + 14);
             doc.setTextColor(0);
           }
           break;

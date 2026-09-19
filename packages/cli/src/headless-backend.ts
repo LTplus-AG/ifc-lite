@@ -646,7 +646,7 @@ export class HeadlessBackend implements BimBackend {
       // is visible to the very next call.
       ...createCostStoreBackend(
         (modelId) => {
-          if (modelId) assertModel(modelId);
+          assertModel(modelId ?? '');
           const ownerHistoryId = dataStore().entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
           return { modelId: MODEL_ID, store: dataStore(), editor: get(), ownerHistoryId };
         },

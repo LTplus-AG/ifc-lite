@@ -68,12 +68,14 @@ function anchorOf(resolved: CostStoreModelResolution): CostAnchor {
  * whichever one this map happened to keep.
  */
 function findNests(graph: CostGraphData) {
-  const byParent = new Map<number, ExistingRelatedList>();
+  const byParent = new Map<number, ExistingRelatedList[]>();
   const byChild = new Map<number, ExistingRelatedList[]>();
   for (const rel of graph.Relationships) {
     if (rel.Type !== 'IfcRelNests' || !rel.RelatingObject || !rel.RelatedObjects) continue;
     const entry: ExistingRelatedList = { relId: rel.ref.expressId, relatedIds: rel.RelatedObjects.map(r => r.expressId) };
-    byParent.set(rel.RelatingObject.expressId, entry);
+    const parentEntries = byParent.get(rel.RelatingObject.expressId);
+    if (parentEntries) parentEntries.push(entry);
+    else byParent.set(rel.RelatingObject.expressId, [entry]);
     for (const child of entry.relatedIds) {
       const list = byChild.get(child);
       if (list) list.push(entry); else byChild.set(child, [entry]);
@@ -83,16 +85,18 @@ function findNests(graph: CostGraphData) {
 }
 
 /** Whether `targetId` is reachable by walking DOWN (descendants) from `rootId` through `byParent`. */
-function isDescendantOf(byParent: ReadonlyMap<number, ExistingRelatedList>, rootId: number, targetId: number): boolean {
+function isDescendantOf(byParent: ReadonlyMap<number, readonly ExistingRelatedList[]>, rootId: number, targetId: number): boolean {
   const seen = new Set<number>();
   const stack = [rootId];
   while (stack.length > 0) {
     const current = stack.pop()!;
     if (seen.has(current)) continue;
     seen.add(current);
-    for (const child of byParent.get(current)?.relatedIds ?? []) {
-      if (child === targetId) return true;
-      stack.push(child);
+    for (const relationship of byParent.get(current) ?? []) {
+      for (const child of relationship.relatedIds) {
+        if (child === targetId) return true;
+        stack.push(child);
+      }
     }
   }
   return false;
@@ -219,7 +223,9 @@ function cascadeValuesForItem(graph: CostGraphData, itemId: number): number[] {
  * already authored is visible to the very next authoring call.
  */
 export function createCostStoreBackend(
-  resolve: CostStoreModelResolver, cost: Pick<CostBackendMethods, 'data'>,
+  resolve: CostStoreModelResolver,
+  cost: Pick<CostBackendMethods, 'data'>,
+  onRelationshipMutation?: (modelId: string) => void,
 ): CostStoreBackendMethods {
   const graphOf = (modelId: string): CostGraphData => cost.data(modelId, { includeMutations: true });
 
@@ -258,26 +264,47 @@ export function createCostStoreBackend(
             + 'existing nesting hierarchy — nesting it here would create a cycle.');
         }
       }
+      const targetRelationships = byParent.get(parentExpressId) ?? [];
+      const existingTarget = targetRelationships[0];
+      const uniqueChildren = [...new Set(childExpressIds)];
+      const alreadyOnlyInTarget = existingTarget !== undefined && uniqueChildren.length > 0
+        && uniqueChildren.every(childId => {
+        const memberships = byChild.get(childId) ?? [];
+        return memberships.length > 0 && memberships.every(rel => rel.relId === existingTarget?.relId);
+      });
+      if (alreadyOnlyInTarget) return ref(resolved.modelId, existingTarget!.relId);
       const relId = nestCostItemsInStore(
-        resolved.editor, anchorOf(resolved), parentExpressId, childExpressIds, byChild, byParent.get(parentExpressId),
+        resolved.editor, anchorOf(resolved), parentExpressId, childExpressIds, byChild, existingTarget,
       );
+      onRelationshipMutation?.(resolved.modelId);
       return ref(resolved.modelId, relId);
     },
     assignCostItemsToSchedule(modelId: string, scheduleExpressId: number, itemExpressIds: number[]): EntityRef {
       const resolved = resolve(modelId);
       const existing = findControlAssignment(graphOf(resolved.modelId), scheduleExpressId);
+      const alreadyMembers = new Set(existing?.allMemberIds ?? existing?.relatedIds ?? []);
+      const changed = !existing || [...new Set(itemExpressIds)].some(id => !alreadyMembers.has(id));
       const relId = assignCostItemsToScheduleInStore(resolved.editor, anchorOf(resolved), scheduleExpressId, itemExpressIds, existing);
+      if (changed) onRelationshipMutation?.(resolved.modelId);
       return ref(resolved.modelId, relId);
     },
     assignToCostItem(modelId: string, costItemExpressId: number, objectExpressIds: number[]): EntityRef {
       const resolved = resolve(modelId);
       const existing = findControlAssignment(graphOf(resolved.modelId), costItemExpressId);
+      const alreadyMembers = new Set(existing?.allMemberIds ?? existing?.relatedIds ?? []);
+      const changed = !existing || [...new Set(objectExpressIds)].some(id => !alreadyMembers.has(id));
       const relId = assignObjectsToCostItemInStore(resolved.editor, anchorOf(resolved), costItemExpressId, objectExpressIds, existing);
+      if (changed) onRelationshipMutation?.(resolved.modelId);
       return ref(resolved.modelId, relId);
     },
     setCostItemValues(modelId: string, itemExpressId: number, valueExpressIds: number[]): void {
       const resolved = resolve(modelId);
+      const current = graphOf(resolved.modelId).CostItems.find(item => item.ref.expressId === itemExpressId);
+      const currentIds = (current?.CostValues ?? []).map(value => value.expressId);
+      if (current && currentIds.length === valueExpressIds.length
+        && currentIds.every((id, index) => id === valueExpressIds[index])) return;
       attachCostValuesToItemInStore(resolved.editor, itemExpressId, valueExpressIds);
+      onRelationshipMutation?.(resolved.modelId);
     },
     removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void {
       const resolved = resolve(modelId);
@@ -291,6 +318,7 @@ export function createCostStoreBackend(
       const referrers = buildRemovalReferrers(graph, expressId);
       const cascadeValueIds = kind === 'IfcCostItem' ? cascadeValuesForItem(graph, expressId) : [];
       removeCostEntityInStore(resolved.editor, anchorOf(resolved), expressId, referrers, { detach: options?.detach, cascadeValueIds });
+      onRelationshipMutation?.(resolved.modelId);
     },
   };
 }

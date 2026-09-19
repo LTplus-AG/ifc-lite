@@ -91,6 +91,17 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
     assert.deepEqual(relationshipMutationCalls, ['m', 'm', 'm', 'm', 'm']);
   });
 
+  it('does not clear undo history for an already-applied assignment', async () => {
+    const { store, relationshipMutationCalls } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const schedule = adapter.addCostSchedule('m', { Name: 'S' });
+    const item = adapter.addCostItem('m', { Name: 'I' });
+    relationshipMutationCalls.length = 0;
+    adapter.assignCostItemsToSchedule('m', schedule.expressId, [item.expressId]);
+    adapter.assignCostItemsToSchedule('m', schedule.expressId, [item.expressId]);
+    assert.deepEqual(relationshipMutationCalls, ['m']);
+  });
+
   it('refuses every cost-authoring call when canCollabEdit() is false (viewer/commenter role in a shared session)', async () => {
     const { store } = await makeStore(() => false);
     const adapter = createStoreAdapter(store);

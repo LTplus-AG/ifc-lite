@@ -21,7 +21,9 @@
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor, IfcAttributeValue } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
-import { requireAssignableIfcObject, requireEntitySubtype } from './cost-reference-validation.js';
+import {
+  requireAssignableIfcObject, requireEntitySubtype, requireEntityType, requireEntityTypeOneOf,
+} from './cost-reference-validation.js';
 import {
   ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
   assertCostSchema, assertOneOf, requireRef, validateRefList, validateTypedValue,
@@ -46,46 +48,10 @@ function schemaOf(anchor: CostAnchor): CostSchema {
   return anchor.schema ?? 'IFC4';
 }
 
-/**
- * Refuse an id that does not resolve to `expectedType` — existing (source or
- * overlay-created, retype-aware, via `StoreEditor.getEntityType`) or not.
- * Every builder here that takes "an id of a specific class" (a parent to
- * nest under, an item to attach values to, a schedule to control from, …)
- * checks it, so a caller's typo or a stale id fails loudly here rather than
- * writing a structurally valid but semantically wrong STEP reference.
- */
-function requireEntityType(editor: StoreEditor, id: number, expectedType: string, attribute: string, context: string): void {
-  const actual = editor.getEntityType(id);
-  if (actual === undefined) {
-    throw new Error(`${context}: ${attribute} #${id} does not exist in this model`);
-  }
-  if (actual.toUpperCase() !== expectedType.toUpperCase()) {
-    throw new Error(`${context}: ${attribute} #${id} must be an ${expectedType}, got ${actual}`);
-  }
-}
-
-/** Like `requireEntityType`, but `id` may resolve to any one of `allowedTypes` (already UPPERCASE). */
-function requireEntityTypeOneOf(editor: StoreEditor, id: number, allowedTypes: ReadonlySet<string>, attribute: string, context: string): void {
-  const actual = editor.getEntityType(id);
-  if (actual === undefined) {
-    throw new Error(`${context}: ${attribute} #${id} does not exist in this model`);
-  }
-  if (!allowedTypes.has(actual.toUpperCase())) {
-    throw new Error(`${context}: ${attribute} #${id} must be one of ${[...allowedTypes].join(', ')}, got ${actual}`);
-  }
-}
-
 /** `IfcCostValue.Components` / `IfcAppliedValueSelect`'s entity branches: another cost/applied value. */
 const APPLIED_VALUE_ENTITY_TYPES: ReadonlySet<string> = new Set(['IFCCOSTVALUE', 'IFCAPPLIEDVALUE']);
 /** The entity branches of IFC4/IFC4X3 IfcAppliedValueSelect. */
 const APPLIED_VALUE_REF_TYPES: ReadonlySet<string> = new Set(['IFCMEASUREWITHUNIT', 'IFCREFERENCE']);
-const REMOVABLE_COST_ENTITY_TYPES = new Set(['IFCCOSTSCHEDULE', 'IFCCOSTITEM', 'IFCCOSTVALUE']);
-/** `IfcCostItem.CostQuantities`: every `IfcPhysicalSimpleQuantity` subtype `addCostQuantityToStore` can write. */
-const COST_QUANTITY_ENTITY_TYPES: ReadonlySet<string> = new Set([
-  'IFCQUANTITYLENGTH', 'IFCQUANTITYAREA', 'IFCQUANTITYVOLUME', 'IFCQUANTITYWEIGHT',
-  'IFCQUANTITYTIME', 'IFCQUANTITYCOUNT', 'IFCQUANTITYNUMBER',
-]);
-
 function typedAttrValue(value: CostTypedValueInput, schema: CostSchema, context: string): IfcAttributeValue {
   validateTypedValue(value, schema, context);
   return { typed: { type: value.Type, value: value.Value } };
@@ -141,7 +107,9 @@ export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, para
   validateRefList(params.CostValues, 'CostValues', 'addCostItem');
   validateRefList(params.CostQuantities, 'CostQuantities', 'addCostItem');
   for (const id of params.CostValues ?? []) requireEntityType(editor, id, 'IfcCostValue', 'CostValues', 'addCostItem');
-  for (const id of params.CostQuantities ?? []) requireEntityTypeOneOf(editor, id, COST_QUANTITY_ENTITY_TYPES, 'CostQuantities', 'addCostItem');
+  for (const id of params.CostQuantities ?? []) {
+    requireEntitySubtype(editor, id, 'IfcPhysicalQuantity', 'CostQuantities', 'addCostItem');
+  }
   return editor.addEntity('IfcCostItem', [
     generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
@@ -360,6 +328,7 @@ function assignToControlInStore(
     // secondary relationship's members into the primary one.
     const alreadyMember = new Set(existingAssignment.allMemberIds ?? existingAssignment.relatedIds);
     const toAdd = uniqueRelated.filter(id => !alreadyMember.has(id));
+    if (toAdd.length === 0) return existingAssignment.relId;
     const merged = [...existingAssignment.relatedIds, ...toAdd];
     editor.setPositionalAttribute(existingAssignment.relId, 4, merged.map(id => `#${id}`));
     return existingAssignment.relId;
@@ -409,135 +378,4 @@ export function attachCostValuesToItemInStore(editor: StoreEditor, itemId: numbe
     requireEntityType(editor, id, 'IfcCostValue', 'CostValues', 'setCostItemValues');
   }
   editor.setPositionalAttribute(itemId, 7, valueIds.length === 0 ? null : valueIds.map(id => `#${id}`));
-}
-
-/** Every reference the caller found pointing at the entity being removed — see the module header. */
-export interface CostRemovalReferrers {
-  /** `IfcCostItem.CostValues` lists containing the target value, keyed by the item's expressId. */
-  itemCostValues?: ReadonlyMap<number, readonly number[]>;
-  /** `IfcCostValue.Components` lists containing the target value, keyed by the owning value's expressId. */
-  valueComponents?: ReadonlyMap<number, readonly number[]>;
-  /**
-   * `IfcCostValue.AppliedValue`'s `Reference` branch (`AppliedValueRef`,
-   * pointing at an `IfcMeasureWithUnit`) naming the target, keyed by the
-   * owning value's expressId. A single required-when-present attribute, not
-   * a list — same danger as `Components`, different shape.
-   */
-  valueAppliedValueRef?: ReadonlyMap<number, number>;
-  /** `IfcRelNests.RelatedObjects` lists containing the target, keyed by the rel's expressId. */
-  nestRelatedObjects?: ReadonlyMap<number, readonly number[]>;
-  /** `IfcRelAssignsToControl.RelatedObjects` lists containing the target, keyed by the rel's expressId. */
-  assignmentRelatedObjects?: ReadonlyMap<number, readonly number[]>;
-  /**
-   * `IfcRelNests` ids where the target IS `RelatingObject` — the target is a
-   * NESTING PARENT. `RelatingObject` is a required (non-optional) attribute,
-   * so the rel cannot be "detached" the way a `RelatedObjects` member can:
-   * removing its parent leaves it referring to a tombstoned id, so the whole
-   * rel is removed too.
-   */
-  nestsAsParent?: readonly number[];
-  /**
-   * `IfcRelAssignsToControl` ids where the target IS `RelatingControl` — the
-   * target CONTROLS these objects (a schedule controlling items, or an item
-   * controlling assigned products/tasks). Same reasoning as `nestsAsParent`:
-   * `RelatingControl` is required, so the rel is removed, not rewritten.
-   */
-  assignmentsAsControl?: readonly number[];
-  /**
-   * Every OTHER cost relationship type — `IfcRelAssignsToProduct`,
-   * `IfcRelAssignsToProcess`, `IfcRelDeclares`, `IfcRelAssociatesAppliedValue`,
-   * `IfcRelSchedulesCostItems`, `IfcAppliedValueRelationship`, and any future
-   * subtype the cost reader enumerates — that references the target in ANY
-   * of its reference attributes (`RelatedObjects`, `RelatedDefinitions`,
-   * `Components`, or any `Relating*` scalar), by expressId. Unlike
-   * `nestRelatedObjects`/`assignmentRelatedObjects`, the caller does not name
-   * a positional slot for these — the exact layout varies by type — so this
-   * is never partially rewritten: `detach: true` tombstones the WHOLE
-   * relationship. Safe (never leaves a dangling reference to the deleted
-   * entity) but more aggressive than a precise per-slot rewrite would be,
-   * since any OTHER member of that same relationship goes with it.
-   */
-  otherRelationships?: readonly number[];
-}
-
-/**
- * Safe-delete an `IfcCostSchedule` / `IfcCostItem` / `IfcCostValue`.
- *
- * A value still listed in another item's `CostValues` or another value's
- * `Components` is REFUSED — naming every referrer — unless
- * `options.detach` is set, in which case those lists are rewritten first
- * (never left as `()`; tombstoned as `$` when that empties them). Every
- * `IfcRelNests` / `IfcRelAssignsToControl` naming the target is detached the
- * same way (rel tombstoned when its own list would empty). `cascadeValueIds`
- * — values referenced ONLY by the entity being removed — are removed too.
- */
-export function removeCostEntityInStore(
-  editor: StoreEditor,
-  anchor: CostAnchor,
-  expressId: number,
-  referrers: CostRemovalReferrers,
-  options: { detach?: boolean; cascadeValueIds?: readonly number[] } = {},
-): void {
-  assertCostSchema(schemaOf(anchor), 'removeCostEntity');
-  requireEntityTypeOneOf(editor, expressId, REMOVABLE_COST_ENTITY_TYPES, 'expressId', 'removeCostEntity');
-  const blockers: string[] = [];
-  for (const [itemId, values] of referrers.itemCostValues ?? []) {
-    if (values.includes(expressId)) blockers.push(`IfcCostItem #${itemId}.CostValues`);
-  }
-  for (const [valueId, components] of referrers.valueComponents ?? []) {
-    if (components.includes(expressId)) blockers.push(`IfcCostValue #${valueId}.Components`);
-  }
-  for (const [valueId, ref] of referrers.valueAppliedValueRef ?? []) {
-    if (ref === expressId) blockers.push(`IfcCostValue #${valueId}.AppliedValue (AppliedValueRef)`);
-  }
-  for (const relId of referrers.otherRelationships ?? []) {
-    blockers.push(`relationship #${relId}`);
-  }
-  if (blockers.length > 0 && !options.detach) {
-    throw new Error(
-      `removeCostEntity: #${expressId} is still referenced by ${blockers.join(', ')}. `
-      + 'Pass { detach: true } to rewrite those lists first.');
-  }
-  if (blockers.length > 0) {
-    for (const [itemId, values] of referrers.itemCostValues ?? []) {
-      if (!values.includes(expressId)) continue;
-      const remaining = values.filter(id => id !== expressId);
-      editor.setPositionalAttribute(itemId, 7, remaining.length === 0 ? null : remaining.map(id => `#${id}`));
-    }
-    for (const [valueId, components] of referrers.valueComponents ?? []) {
-      if (!components.includes(expressId)) continue;
-      const remaining = components.filter(id => id !== expressId);
-      editor.setPositionalAttribute(valueId, 9, remaining.length === 0 ? null : remaining.map(id => `#${id}`));
-    }
-    for (const [valueId, ref] of referrers.valueAppliedValueRef ?? []) {
-      if (ref !== expressId) continue;
-      editor.setPositionalAttribute(valueId, 2, null);
-    }
-    // No known positional slot for these types — see the field's doc comment
-    // on CostRemovalReferrers. Tombstoning the whole rel is the only rewrite
-    // that is safe without one.
-    for (const relId of referrers.otherRelationships ?? []) editor.removeEntity(relId);
-  }
-  for (const [relId, related] of referrers.nestRelatedObjects ?? []) {
-    if (!related.includes(expressId)) continue;
-    const remaining = related.filter(id => id !== expressId);
-    if (remaining.length === 0) editor.removeEntity(relId);
-    else editor.setPositionalAttribute(relId, 5, remaining.map(id => `#${id}`));
-  }
-  for (const [relId, related] of referrers.assignmentRelatedObjects ?? []) {
-    if (!related.includes(expressId)) continue;
-    const remaining = related.filter(id => id !== expressId);
-    if (remaining.length === 0) editor.removeEntity(relId);
-    else editor.setPositionalAttribute(relId, 4, remaining.map(id => `#${id}`));
-  }
-  // The target is the RELATING (required) endpoint of these rels — a
-  // schedule losing the items it controls, or an item losing its nested
-  // children / controlled objects. Nothing to rewrite the list down to:
-  // the rel's own anchor is gone, so the rel goes with it.
-  for (const relId of referrers.nestsAsParent ?? []) editor.removeEntity(relId);
-  for (const relId of referrers.assignmentsAsControl ?? []) editor.removeEntity(relId);
-  for (const cascadeId of options.cascadeValueIds ?? []) {
-    editor.removeEntity(cascadeId);
-  }
-  editor.removeEntity(expressId);
 }

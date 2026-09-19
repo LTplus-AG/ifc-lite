@@ -59,15 +59,10 @@ export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } fr
 export {
   addCostScheduleToStore, addCostItemToStore, addCostValueToStore, addCostQuantityToStore,
   nestCostItemsInStore, assignCostItemsToScheduleInStore, assignObjectsToCostItemInStore,
-  attachCostValuesToItemInStore, removeCostEntityInStore,
-  type CostAnchor, type ExistingRelatedList, type CostRemovalReferrers,
+  attachCostValuesToItemInStore,
+  type CostAnchor, type ExistingRelatedList,
 } from './in-store/cost.js';
-export {
-  assertOneOf, assertCostSchema as assertCostSchemaAuthorable, isIntegerMeasure, validateTypedValue,
-  validateRefList, requireRef as requireCostRef,
-  MEASURE_TYPES, QUANTITY_KINDS, ARITHMETIC_OPERATORS, COST_SCHEDULE_TYPES, COST_ITEM_TYPES,
-  type CostSchema as CostAuthoringSchema, type CostTypedValueInput,
-} from './cost-authoring-rules.js';
+export { removeCostEntityInStore, type CostRemovalReferrers } from './in-store/cost-removal.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
 export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';

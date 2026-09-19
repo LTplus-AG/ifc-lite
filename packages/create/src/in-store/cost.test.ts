@@ -107,7 +107,7 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
     expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [applied] }))
       .toThrow(/must be an IfcCostValue, got IfcAppliedValue/);
     expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostQuantities: [100] }))
-      .toThrow(/CostQuantities #100 must be one of/);
+      .toThrow(/CostQuantities #100 must be an IfcPhysicalQuantity/);
     expect(() => addCostValueToStore(ed, ANCHOR, { AppliedValueRef: 100 }))
       .toThrow(/AppliedValueRef #100 must be one of/);
     expect(() => addCostValueToStore(ed, ANCHOR, { UnitBasis: 100 }))
@@ -118,6 +118,15 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
       .toThrow(/Unit #99999 does not exist/);
     expect(() => addCostQuantityToStore(ed, ANCHOR, { Kind: 'IfcQuantityLength', Name: 'Q', Value: 1, Unit: 100 }))
       .toThrow(/Unit #100 must be an IfcNamedUnit, got IFCWALL/);
+  });
+
+  it('accepts IfcPhysicalComplexQuantity in CostQuantities', async () => {
+    const { editor: ed } = await editor();
+    const complex = ed.addEntity('IfcPhysicalComplexQuantity', [
+      'Assembly', null, [], null, null, null,
+    ]).expressId;
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I', CostQuantities: [complex] });
+    expect(ed.getNewEntity(item)?.attributes[8]).toEqual([`#${complex}`]);
   });
 
   it('refuses a PredefinedType outside the enum, on a schedule, an item, and an ArithmeticOperator on a value', async () => {

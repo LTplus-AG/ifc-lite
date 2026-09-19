@@ -123,6 +123,17 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
       .toThrow(new RegExp(`parentId #${child} is already a descendant of childId #${parent}`));
   });
 
+  it('checks every IfcRelNests record when one parent has split child lists', async () => {
+    const { storeCost, view } = await session();
+    const parent = storeCost.addCostItem('m', { Name: 'Parent' }).expressId;
+    const childA = storeCost.addCostItem('m', { Name: 'A' }).expressId;
+    const childB = storeCost.addCostItem('m', { Name: 'B' }).expressId;
+    view.createEntity('IfcRelNests', ['0nest00000000000000001', null, null, null, `#${parent}`, [`#${childA}`]]);
+    view.createEntity('IfcRelNests', ['0nest00000000000000002', null, null, null, `#${parent}`, [`#${childB}`]]);
+    expect(() => storeCost.nestCostItems('m', childA, [parent]))
+      .toThrow(/would create a cycle/);
+  });
+
   it('does not copy a SECOND existing IfcRelAssignsToControl\'s members into the primary one when appending', async () => {
     const { storeCost, cost, view } = await session();
     const item = storeCost.addCostItem('m', { Name: 'I' }).expressId;

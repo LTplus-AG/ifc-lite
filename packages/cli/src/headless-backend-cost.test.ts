@@ -57,4 +57,15 @@ describe('#4857 CLI headless backend: bim.store.addEntity and bim.cost agree', (
     const item = bim.cost.data().CostItems.find(i => i.ref.expressId === ref.expressId);
     expect(item?.Name).toBe('Freshly authored');
   });
+
+  it('rejects an empty modelId before cost authoring mutates the default model', async () => {
+    const bytes = new TextEncoder().encode(STEP);
+    const store = await new IfcParser().parseColumnar(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    const bim = createBimContext({ backend: new HeadlessBackend(store, 't.ifc') });
+    expect(() => bim.store.addCostItem('', { Name: 'Wrong model' })).toThrow(/Unknown modelId/);
+    expect(bim.cost.data().CostItems).toHaveLength(0);
+  });
 });

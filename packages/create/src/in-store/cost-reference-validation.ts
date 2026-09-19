@@ -5,6 +5,28 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 
+/** Require a live entity of one exact IFC class. */
+export function requireEntityType(
+  editor: StoreEditor, id: number, expectedType: string, attribute: string, context: string,
+): void {
+  const actual = editor.getEntityType(id);
+  if (actual === undefined) throw new Error(`${context}: ${attribute} #${id} does not exist in this model`);
+  if (actual.toUpperCase() !== expectedType.toUpperCase()) {
+    throw new Error(`${context}: ${attribute} #${id} must be an ${expectedType}, got ${actual}`);
+  }
+}
+
+/** Require a live entity whose exact class belongs to `allowedTypes`. */
+export function requireEntityTypeOneOf(
+  editor: StoreEditor, id: number, allowedTypes: ReadonlySet<string>, attribute: string, context: string,
+): void {
+  const actual = editor.getEntityType(id);
+  if (actual === undefined) throw new Error(`${context}: ${attribute} #${id} does not exist in this model`);
+  if (!allowedTypes.has(actual.toUpperCase())) {
+    throw new Error(`${context}: ${attribute} #${id} must be one of ${[...allowedTypes].join(', ')}, got ${actual}`);
+  }
+}
+
 /** Require a live entity that descends from one IFC schema supertype. */
 export function requireEntitySubtype(
   editor: StoreEditor, id: number, supertype: string, attribute: string, context: string,

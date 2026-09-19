@@ -226,7 +226,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       // model ids the same way every other `bim.cost` caller does — it does
       // not know the mutation-view alias and would reject it as unknown.
       return { modelId: requested, store: dataStore, editor, ownerHistoryId };
-    }, costAdapter), store),
+    }, costAdapter, modelId => store.getState().markCostRelationshipMutation(modelId)), store),
   };
 }
 
@@ -262,9 +262,7 @@ function withCostMutationTracking(
     fn: (...args: A) => R,
   ) => (...args: A): R => {
     assertCanEdit();
-    const result = fn(...args);
-    store.getState().markCostRelationshipMutation(args[0]);
-    return result;
+    return fn(...args);
   };
   return {
     ...methods,

@@ -2989,6 +2989,7 @@ export const createMutationSlice: StateCreator<
         });
       }
       view.deleteEntity(mutation.entityId);
+      get().mirrorEntityRemove(modelId, mutation.entityId);
       // Drop the mesh back out, inverse of the undo handler's restore (#4925).
       stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
       // Re-hide the mesh — symmetric with the menu's delete handler

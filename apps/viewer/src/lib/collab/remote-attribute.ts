@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
 import { referenceListFromPaths, referenceScalarFromPath } from './attribute-reference-lists';
 
-type RemoteAttributeValue = string | number | boolean | null | unknown[];
+type RemoteAttributeValue = unknown;
 
 /** Apply one peer attribute, restoring room paths to local STEP references. */
 export function applyRemoteAttribute(
@@ -30,11 +30,12 @@ export function applyRemoteAttribute(
     if (ref !== null && index >= 0) view.setPositionalAttribute(entityId, index, ref);
     return;
   }
-  // Null must use the type-agnostic positional serializer. Named REAL/SELECT
-  // writers reject the literal string '$' and would retain stale source data.
-  if (value === null) {
-    if (index >= 0) view.setPositionalAttribute(entityId, index, null);
+  // The positional serializer preserves typed SELECTs, lists, booleans and
+  // numeric measures. Stringifying here turns `{ typed: ... }` into
+  // `[object Object]` and corrupts the peer's STEP record.
+  if (index >= 0) {
+    view.setPositionalAttribute(entityId, index, value as IfcAttributeValue);
     return;
   }
-  view.setAttribute(entityId, attrName, String(value));
+  if (value !== null && value !== undefined) view.setAttribute(entityId, attrName, String(value));
 }

@@ -57,6 +57,10 @@ export function referenceScalarToPath(
   value: unknown,
 ): string | null | undefined {
   if (!isReferenceScalarAttribute(attrName)) return undefined;
+  // AppliedValue is a mixed SELECT: a positive number is commonly the
+  // measure itself, not an express-id. Only an explicit STEP `#id` string is
+  // portable as a reference here.
+  if (attrName.split('::').at(-1) === 'AppliedValue' && typeof value === 'number') return undefined;
   const id = explicitReferenceId(value);
   if (id === null) return undefined;
   return pathForEntity(store, id);

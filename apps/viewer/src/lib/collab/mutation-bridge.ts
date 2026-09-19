@@ -141,7 +141,7 @@ export function mirrorAttribute(
     ? referencePaths
     : referencePath !== undefined
       ? referencePath
-      : toScalar(value);
+      : value;
   // Never broadcast local express ids: they are model-instance-specific and
   // can silently bind to different entities on a peer.
   if (referencePaths === null || referencePath === null) return;
@@ -200,7 +200,7 @@ export interface RemoteApplyHandlers {
   /** Apply a remote property deletion. */
   onPropertyDelete(modelId: string, entityId: number, pset: string, prop: string): void;
   /** Apply a remote attribute write. */
-  onAttribute(modelId: string, entityId: number, attrName: string, value: ScalarValue | unknown[]): void;
+  onAttribute(modelId: string, entityId: number, attrName: string, value: unknown): void;
   /**
    * Apply a remote placement (move / rotate) write. Receives the entity's full
    * new local placement decoded from `usd::xformop`; the handler reconciles it
@@ -210,6 +210,8 @@ export interface RemoteApplyHandlers {
   onPlacement?(modelId: string, entityId: number, placement: LocalPlacement): void;
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(modelId: string, entityId: number): void;
+  /** A peer created an entity that this already-loaded model has not mapped yet. */
+  onEntityCreate?(target: RoomEntityTarget, entityPath: string, ifcClass: string): void;
   /** The whole Pset vanished. Property names are unavailable by design: Yjs
    *  detaches the map before the event is observed, so `forEach` yields 0
    *  entries. The consumer drops the entire set for (entityId, pset). */
@@ -258,11 +260,19 @@ export function attachRemoteApply(
       // We only act on deletes here; additions are picked up by the recipient's
       // full reconstruct. `entityForPath` resolves the removed path's expressId.
       if (path.length === 0) {
-        if (!handlers.onEntityDelete) continue;
         for (const [entityPath, change] of ev.changes.keys) {
-          if (change.action !== 'delete') continue;
           const hit = resolve(entityPath);
           if (!hit) continue;
+          if (change.action === 'add' && handlers.onEntityCreate) {
+            const entity = entities.get(entityPath) as { get(key: string): unknown } | undefined;
+            const attributes = entity?.get('attributes') as { get(key: string): unknown } | undefined;
+            const classValue = attributes?.get('bsi::ifc::class') as { code?: unknown } | undefined;
+            if (typeof classValue?.code === 'string') {
+              handlers.onEntityCreate(hit, entityPath, classValue.code);
+            }
+            continue;
+          }
+          if (change.action !== 'delete' || !handlers.onEntityDelete) continue;
           const id = entityForPath(hit.store, entityPath);
           if (id !== null) handlers.onEntityDelete(hit.modelId, id);
         }
@@ -293,7 +303,7 @@ export function attachRemoteApply(
             modelId,
             entityId,
             attrName,
-            isReferenceListAttribute(attrName) && Array.isArray(raw) ? raw : toScalar(raw),
+            raw,
           );
         }
       } else if (path[1] === 'psets' && path.length === 3 && typeof path[2] === 'string') {

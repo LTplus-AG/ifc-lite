@@ -37,6 +37,7 @@ import type {
   WebSocketStatus,
 } from '@ifc-lite/collab';
 import type { PropertyValueType } from '@ifc-lite/data';
+import { StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import { collabServerUrl } from '@/lib/collab/config';
 import {
@@ -53,7 +54,7 @@ import {
   mirrorPropertyDelete,
   type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
-import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
+import { entityForPath, pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
@@ -867,6 +868,14 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // and re-gates on it (`roomStoreFor` / `roomMutationViewFor`), so a
     // handler cannot be handed one model and write another.
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
+      onEntityCreate: ({ modelId, store }, entityPath, ifcClass) => {
+        if (entityForPath(store, entityPath) !== null) return;
+        const view = roomMutationViewFor(get(), modelId);
+        if (!view) return;
+        const created = new StoreEditor(store, view).addEntity(ifcClass, []);
+        registerEntityPath(store, created.expressId, entityPath);
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+      },
       onProperty: (modelId, entityId, pset, prop, value, type) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;

@@ -239,18 +239,14 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Name'), 'Wall-A');
   });
 
-  it('mirrorAttribute collapses a list/ref value to its stable JSON string form (toScalar)', () => {
+  it('mirrorAttribute preserves a structured list instead of stringifying it', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
 
     mirrorAttribute(api, fakeSession(doc), store, 1, 'bsi::ifc::prop::Layers', ['a', 'b', 3]);
 
-    // Pinned against the literal JSON string, not just "truthy" — toScalar's
-    // array branch must specifically produce `JSON.stringify`, not the
-    // generic `String(value)` fallback (which would yield "a,b,3" and lose
-    // round-trip fidelity through the CRDT's flat-attribute wire shape).
-    assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), '["a","b",3]');
+    assert.deepEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), ['a', 'b', 3]);
   });
 
   it('mirrors cost reference lists as peer-resolvable room paths (#4857)', () => {
@@ -274,6 +270,28 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     mirrorAttribute(api, fakeSession(doc), store, 1, 'UnitBasis', '#2');
 
     assert.equal(getAttribute(doc, '/value', 'UnitBasis'), '/basis');
+  });
+
+  it('preserves numeric AppliedValue measures instead of treating them as express ids (#4857 review)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/value', { ifcClass: 'IfcCostValue' });
+    createEntity(doc, '/entity-2', { ifcClass: 'IfcMeasureWithUnit' });
+    const store = fakeStore(new Map([[1, '/value'], [2, '/entity-2']]));
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'AppliedValue', 2);
+
+    assert.equal(getAttribute(doc, '/value', 'AppliedValue'), 2);
+  });
+
+  it('preserves typed AppliedValue payloads structurally (#4857 review)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/value', { ifcClass: 'IfcCostValue' });
+    const store = fakeStore(new Map([[1, '/value']]));
+    const typed = { typed: { type: 'IfcMonetaryMeasure', value: 42 } };
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'AppliedValue', typed);
+
+    assert.deepEqual(getAttribute(doc, '/value', 'AppliedValue'), typed);
   });
 
   it('mirrorAttribute no-ops when the entity is not in the doc', () => {
@@ -343,6 +361,25 @@ function recordingHandlers(): RemoteApplyHandlers & {
 }
 
 describe('mutation-bridge attachRemoteApply (inbound)', () => {
+  it('reports a peer-created top-level entity before its nested attributes (#4857 review)', () => {
+    const doc = createCollabDoc();
+    const store = fakeStore(new Map());
+    const handlers = recordingHandlers();
+    handlers.onEntityCreate = (target, path, ifcClass) => {
+      handlers.calls.push({ fn: 'onEntityCreate', args: [target.modelId, path, ifcClass] });
+    };
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+
+    applyAsRemoteEdit(doc, (remote) => {
+      createEntity(remote, '/peer-value', { ifcClass: 'IfcCostValue' });
+    });
+
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onEntityCreate',
+      args: [MODEL, '/peer-value', 'IfcCostValue'],
+    }]);
+  });
   it('dispatches a remote pset property write to onProperty (pset already exists)', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
@@ -791,6 +828,22 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     const dataStore = buildDataStore(1, 'IfcMapConversion', '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,1.5);');
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Scale', 2.25));
     assert.strictEqual(line, '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,2.25);');
+  });
+
+  it('a remote peer preserves a typed AppliedValue SELECT structurally (#4857 review)', () => {
+    const dataStore = buildDataStore(
+      1,
+      'IfcCostValue',
+      "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),$,$,$,$,$,$,$);",
+    );
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(
+      view,
+      dataStore,
+      1,
+      'AppliedValue',
+      { typed: { type: 'IfcMonetaryMeasure', value: 42 } },
+    ));
+    assert.strictEqual(line, "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(42),$,$,$,$,$,$,$);");
   });
 
   it('resolves the canonical IFCX-qualified name before positional schema lookup (#4857 review)', () => {

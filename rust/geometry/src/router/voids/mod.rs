@@ -1743,5 +1743,3 @@ mod batch_cutter_tests;
 mod cut_effect_count_tests;
 #[cfg(test)]
 mod single_cut_outcome_tests;
-#[cfg(test)]
-mod issue_3977_tests;

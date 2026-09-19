@@ -40,19 +40,21 @@ fn a_welded_cutter_still_batches_after_the_host_was_cut() {
         box_opening([-1.2, -0.4, -0.6], [-0.8, 0.4, 0.6], 1, true),
         box_opening([0.8, -0.4, -0.6], [1.2, 0.4, 0.6], 2, true),
     ];
-    let host = GeometryRouter::make_box_mesh(
-        Point3::new(-2.0, -0.15, -1.5),
-        Point3::new(2.0, 0.15, 1.5),
-    );
+    let host =
+        GeometryRouter::make_box_mesh(Point3::new(-2.0, -0.15, -1.5), Point3::new(2.0, 0.15, 1.5));
     for o in &openings[1..] {
         let m = mesh_of(o);
-        assert!(!mesh_is_closed_exact(m), "premise: the jittered cutter is bit-exactly open");
+        assert!(
+            !mesh_is_closed_exact(m),
+            "premise: the jittered cutter is bit-exactly open"
+        );
         assert!(
             mesh_is_closed_exact(&m.welded_by_position(1.0e-6)),
             "premise: the 1 µm weld closes it, so admission accepts it"
         );
     }
-    let group_tris = mesh_of(&openings[1]).triangle_count() + mesh_of(&openings[2]).triangle_count();
+    let group_tris =
+        mesh_of(&openings[1]).triangle_count() + mesh_of(&openings[2]).triangle_count();
 
     let ctx = VoidContext {
         merged_openings: openings.clone(),
@@ -72,10 +74,108 @@ fn a_welded_cutter_still_batches_after_the_host_was_cut() {
     // the one record whose cutter side is exactly both members' triangles.
     let census = take_csg_census();
     assert!(
-        census.iter().any(|r| r.op == 0 && r.b_tris as usize == group_tris),
+        census
+            .iter()
+            .any(|r| r.op == 0 && r.b_tris as usize == group_tris),
         "the two welded cutters must be subtracted as one batch ({group_tris} cutter \
          triangles in one call); the re-extension refused them and they were cut \
          one by one: {:?}",
         census.iter().map(|r| r.b_tris).collect::<Vec<_>>()
+    );
+}
+
+fn issue_3977_prism(profile: &[(f32, f32)], z0: f32, z1: f32) -> Mesh {
+    let mut mesh = Mesh::new();
+    for &z in &[z0, z1] {
+        for &(x, y) in profile {
+            mesh.positions.extend_from_slice(&[x, y, z]);
+            mesh.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+        }
+    }
+    let count = profile.len() as u32;
+    for i in 1..count - 1 {
+        mesh.indices.extend_from_slice(&[0, i + 1, i]);
+        mesh.indices
+            .extend_from_slice(&[count, count + i, count + i + 1]);
+    }
+    for i in 0..count {
+        let next = (i + 1) % count;
+        mesh.indices
+            .extend_from_slice(&[i, next, count + next, i, count + next, count + i]);
+    }
+    mesh
+}
+
+fn issue_3977_rotate(mesh: &Mesh, angle: f64) -> Mesh {
+    let (sin, cos) = angle.sin_cos();
+    let mut rotated = mesh.clone();
+    for position in rotated.positions.chunks_exact_mut(3) {
+        let (x, y) = (position[0] as f64, position[1] as f64);
+        position[0] = (cos * x - sin * y) as f32;
+        position[1] = (sin * x + cos * y) as f32;
+    }
+    rotated
+}
+
+#[test]
+fn plan_rotated_mitred_wall_tip_strip_is_closed_3977() {
+    let angle = 3.0_f64.to_radians();
+    let host = issue_3977_rotate(
+        &issue_3977_prism(
+            &[(0.0, -0.05), (4.0, -0.05), (3.85, 0.05), (0.0, 0.05)],
+            0.0,
+            3.0,
+        ),
+        angle,
+    );
+    // A 13 mm strip has one face on the long wall face, crosses the mitred
+    // corner, and is flush with both vertical caps. In the world frame this
+    // exact configuration returns 147 triangles with unmatched edges.
+    let cutter = issue_3977_rotate(
+        &issue_3977_prism(
+            &[(3.987, -0.05), (4.0, -0.05), (4.0, 0.1), (3.987, 0.1)],
+            0.0,
+            3.0,
+        ),
+        angle,
+    );
+    let (sin, cos) = angle.sin_cos();
+    let frame = OpeningFrame {
+        depth: Vector3::new(0.0, 0.0, 1.0),
+        cross_a: Vector3::new(cos, sin, 0.0),
+        cross_b: Vector3::new(-sin, cos, 0.0),
+        depth_is_authored: true,
+    };
+    let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
+    assert!(
+        vertical_depth_wall_frame(&host, &openings).is_some(),
+        "the authored vertical cutter and thin, tall host must qualify"
+    );
+    let mut inferred = openings.clone();
+    let OpeningType::DiagonalRectangular(_, inferred_frame) = &mut inferred[0] else {
+        unreachable!()
+    };
+    inferred_frame.depth_is_authored = false;
+    assert!(
+        vertical_depth_wall_frame(&host, &inferred).is_none(),
+        "an inferred vertical direction must not opt a host into the new path"
+    );
+    let host_volume = mesh_signed_volume(&host).abs();
+    let context = VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let bounds = world_host_bounds(&host);
+    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    assert!(
+        mesh_is_closed_exact(&output),
+        "wall-local cut must close the rotated mitred-tip strip ({} tris)",
+        output.triangle_count()
+    );
+    assert!(
+        mesh_signed_volume(&output).abs() < host_volume - 1.0e-5,
+        "the closed result must retain the actual tip cut"
     );
 }

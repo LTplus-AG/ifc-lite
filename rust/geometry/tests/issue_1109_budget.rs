@@ -47,6 +47,7 @@ fn box_mesh(min: [f32; 3], max: [f32; 3]) -> Mesh {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
@@ -104,6 +105,7 @@ fn faceted_slab(min: [f32; 3], max: [f32; 3], n: usize, z_top: f32) -> Mesh {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None }
 }
 

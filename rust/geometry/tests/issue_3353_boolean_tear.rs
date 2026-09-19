@@ -13,31 +13,41 @@
 //! classification verdict was UNCHANGED by the #3341 fix — the tear was
 //! already there, upstream or independent of it.
 //!
-//! Root cause, traced in this repo down to `classify.rs`
-//! (`rust/geometry/src/kernel/arrangement/classify.rs`): the exact
-//! arrangement recovers 100% of the input triangles (`unrecovered == 0`),
-//! but `boolean_vids_components` decides whether a triangle is a coincident
-//! duplicate of a face on the OTHER operand using two structurally
-//! different tests depending on which operand owns the triangle:
-//! - for a triangle from A: `BComponents::surface_normal`, tested against
-//!   B's ORIGINAL (pre-arrangement) faces;
-//! - for a triangle from B: `c_on_or_near_a`, tested against A's
-//!   ORIGINAL faces.
+//! ## Superseded root cause (issue #3914)
 //!
-//! At a near-degenerate rotated overlap the two tests can disagree on the
-//! same coincident pair, so a redundant triangle survives on BOTH operands
-//! and a shared edge ends up used by three kept triangles instead of two —
-//! classification reports a clean result, but the mesh is non-manifold.
+//! The title/root-cause framing above (`classify.rs`'s two coincident-face
+//! detectors, `c_on_or_near_a` vs `BComponents::surface_normal`, disagreeing)
+//! was the ORIGINAL hypothesis when this test was pinned. Issue #3914 traced
+//! this specific fixture down and found the two detectors agree completely
+//! on it (measured, not assumed) — the mechanism is unrelated, and lives one
+//! stage later, entirely inside `consolidate_coplanar`.
 //!
-//! Both detectors are private to `classify.rs` (`fn c_on_or_near_a` and
-//! `BComponents::surface_normal`, `pub(super)`), so they cannot be driven
-//! directly from an external `tests/` binary without changing that file's
-//! visibility. This test instead pins the OBSERVABLE symptom: a Union of
-//! two overlapping, rotated, closed boxes comes back non-manifold. It is
-//! `#[ignore]`d because it documents a known, unfixed defect rather than
-//! asserting a passing invariant — do not un-ignore it without first fixing
-//! the detector disagreement in `classify.rs` and re-validating with the
-//! full `triangulation_invariance` census (see AGENTS.md).
+//! The real mechanism: `rust/geometry/src/csg/consolidate.rs`'s
+//! `consolidate_coplanar` buckets the kernel's watertight output by a plane
+//! key it RE-DERIVES from each triangle's f32-rounded vertices. On this
+//! fixture's rotated tilted face, two operand-B parent triangles (whose true
+//! kernel planes agree to 1e-10) land in the same physical plane but their
+//! re-derived offsets straddle the bucket's `POS_QUANT = 1e6` rounding
+//! boundary, splitting one plane into two adjacent buckets. Each bucket is
+//! re-triangulated independently, and the cross-bucket seam-conform pass in
+//! `csg/consolidate/conform.rs` is tangential-only — it reconciles
+//! disagreement WITHIN a shared plane and cannot represent the resulting
+//! normal-direction offset BETWEEN the two buckets, so the seam tears.
+//!
+//! The fix (issue #3914): `kernel::mesh_bridge::tris_to_mesh`, the kernel
+//! boolean's sole `Mesh` producer, now tags every output triangle with its
+//! f64 supporting plane (`Mesh::plane_tags`) computed BEFORE the f32 cast.
+//! `consolidate_coplanar` buckets by that kernel-precise plane when the tags
+//! validate (present, one per triangle, each a supporting plane of its own
+//! triangle), so the two parent triangles land in the SAME bucket instead of
+//! straddling the rounding boundary — no clustering, no new tolerance, no
+//! kernel change. A mesh without tags (anything that went through a
+//! weld/merge/transform since, or a synthetic/test mesh) is byte-identical to
+//! before.
+//!
+//! This test is left un-ignored specifically because it is now pinning a
+//! FIXED invariant, verified against the full `triangulation_invariance`
+//! census and the #3913 sweep (see the issue thread and this PR's evidence).
 //!
 //! ## Not fixed by the #3353 near-coplanar weld, and why
 //!
@@ -47,12 +57,13 @@
 //! by welding the operands onto shared planes before the arrangement. That
 //! closed a 9464-union sweep of the rotated corner-overlap family.
 //!
-//! This case is untouched by it — measured, not assumed: it still fails
-//! identically with the weld in place. Its operands are not a near-coplanar
-//! pair, so the weld has nothing to move; the mechanism stated above (two
-//! coincident-face detectors disagreeing) is unrelated to the snap. Do not
-//! read the near-coplanar fix as having addressed this, and do not re-open
-//! the near-coplanar work when attacking it.
+//! This case was untouched by it before the #3914 fix above — measured, not
+//! assumed: it failed identically with the weld in place. Its operands are
+//! not a near-coplanar pair, so the weld has nothing to move; the mechanism
+//! is the `consolidate_coplanar` plane-bucket split described above, unrelated
+//! to the pre-arrangement snap. Do not read the near-coplanar fix as having
+//! addressed this, and do not re-open the near-coplanar work when attacking
+//! a similar-looking failure.
 //!
 //! The case below was found by a local seeded sweep of rotated/overlapping
 //! box pairs through `ClippingProcessor::union_mesh` (seed 6 of a
@@ -132,19 +143,13 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
     Ok(edges.values().filter(|&&(f, r)| f != 1 || r != 1).count())
 }
 
-/// Pins #3353: two closed, overlapping, rotated boxes in; a non-manifold
-/// shell out. `#[ignore]`d — this is a known open defect (the
-/// `c_on_or_near_a` / `BComponents::surface_normal` disagreement described
-/// above), not a passing invariant. Un-ignore only once that disagreement
-/// is reconciled AND the full `triangulation_invariance` census is clean.
-/// The #3353 near-coplanar weld does NOT reach it; see the module doc.
+/// Pins #3353/#3914: two closed, overlapping, rotated boxes in; a manifold
+/// shell out. Was `#[ignore]`d as a known open defect until #3914 traced and
+/// fixed the actual mechanism — a `consolidate_coplanar` plane-bucket split,
+/// not the `classify.rs` detector disagreement originally suspected (see the
+/// module doc's "Superseded root cause" section). The #3353 near-coplanar
+/// weld does NOT reach it; see the module doc.
 #[test]
-#[ignore = "known open defect, issue #3353 (consolidation half): classify.rs's two \
-            coincident-face detectors (c_on_or_near_a vs BComponents::surface_normal) \
-            disagree on a near-degenerate rotated overlap, leaving a redundant triangle \
-            on both operands and a non-manifold shared edge. NOT the near-coplanar half \
-            fixed by issue_3353_near_coplanar_rotated_overlap.rs, whose weld leaves this \
-            case unchanged"]
 fn a_rotated_overlapping_union_stays_manifold() {
     let clipper = ClippingProcessor::new();
 

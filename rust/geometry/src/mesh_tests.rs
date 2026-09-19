@@ -157,6 +157,7 @@ fn test_validate_indices_strips_out_of_bounds() {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     };
     mesh.validate_indices();
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -174,6 +175,7 @@ fn test_validate_indices_empty_positions() {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     };
     mesh.validate_indices();
     assert!(mesh.indices.is_empty());
@@ -191,6 +193,7 @@ fn test_validate_indices_incomplete_triangle() {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     };
     mesh.validate_indices();
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -366,6 +369,7 @@ fn test_validate_indices_all_valid() {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     };
     mesh.validate_indices();
     assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
@@ -394,6 +398,7 @@ fn drop_thin_removes_collinear_sliver_keeps_real_triangle() {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
@@ -411,6 +416,7 @@ fn drop_thin_removes_coincident_pair_needle() {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
@@ -426,6 +432,7 @@ fn drop_thin_keeps_thin_but_real_triangle_just_above_grid() {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
@@ -458,6 +465,7 @@ fn drop_thin_does_not_open_a_crack_in_a_closed_solid() {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(
@@ -480,6 +488,7 @@ fn drop_thin_skips_oob_and_fully_collapsed_without_panic() {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -503,6 +512,7 @@ fn drop_degenerate_skips_oob_index_without_panic() {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     };
     mesh.drop_degenerate_triangles();
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -520,6 +530,7 @@ fn drop_thin_is_idempotent() {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     let once = mesh.indices.clone();
@@ -541,6 +552,7 @@ fn clean_degenerate_uses_the_reconcile_grid() {
         rtc_applied: false,
         origin: [0.0; 3],
         welded_in_object_frame: false,
+        plane_tags: None,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.clean_degenerate();
     assert_eq!(mesh.indices, vec![3, 4, 5]);

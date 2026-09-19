@@ -67,6 +67,7 @@ pub(in crate::router::voids) fn mesh_to_frame(
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     }
 }
 

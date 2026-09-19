@@ -1681,3 +1681,32 @@ in the hot path needs no dedicated perf lever, only a byte-identity
 check on a fixture the gate does not touch; the real cost of moving the
 line is paid only by files that cross between the old and new bands
 (1-10 km), which this fixture is not one of.
+
+## Kernel-plane tags for consolidate's rounding-split fix (#3914)
+
+`kernel::mesh_bridge::tris_to_mesh` now tags every output triangle with its
+f64 supporting plane (`Mesh::plane_tags`) and `consolidate_coplanar` validates
+each tag (a per-triangle supporting-plane check) and cross-checks adjacent
+`POS_QUANT`-bucket pairs against it before merging any of them. On
+AC20-FZK-Haus (no CSG cuts in this fixture) output was byte-identical
+(285 meshes / 35,940 vertices / 19,456 triangles both sides) and total time
+was noise-dominated at this file's scale — nothing in the hot path runs
+differently when a mesh carries no tags or a bucket has no rounding-split
+neighbour, which is the overwhelming majority case. On the CSG-heavy
+ISSUE_129 fixture the new merge pass legitimately fires: output triangle/
+vertex counts drop slightly (fewer, correctly-merged coplanar triangles
+where a physical plane used to be torn across two buckets), confirmed
+non-regressive by the full `triangulation_invariance` census/golden suite
+passing (previously two hosts in that suite — `issue_129_mixed_bool2d_
+residual_preserves_established_topology` and `issue_4627_candidate_
+failures_preserve_prior_analytic_cuts` — caught two earlier, broader
+variants of this fix that keyed EVERY bucket by the kernel tag instead of
+only merging validated adjacent pairs). Lesson: for a per-triangle
+provenance tag meant to correct a narrow rounding edge case, do not let it
+become the primary bucketing key everywhere it validates — real models
+carry legitimately distinct near-coplanar faces (the #3913 sweep's
+deliberate `SNAP_GRID` controls) that a blanket re-key cannot tell apart
+from a genuine rounding split; gate the tag's effect to the specific
+adjacent-bucket-pair mechanism the defect actually is, with a tolerance
+tight against the true-positive margin (~1e-10) and far below the
+legitimate-distinct-plane separation (~1.5e-5).

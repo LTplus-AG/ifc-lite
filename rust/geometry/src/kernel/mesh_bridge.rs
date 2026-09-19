@@ -63,7 +63,10 @@ pub fn mesh_to_tris(m: &Mesh) -> Vec<Tri> {
         .collect()
 }
 
-fn face_normal(t: &Tri) -> [f32; 3] {
+/// The triangle's supporting plane in f64: unit normal + offset (`n . v0`),
+/// BEFORE any f32 cast. `(0,0,1,0)`-ish degenerate fallback for a
+/// zero-area triangle, matching `face_normal`'s old `[0,0,1]` default.
+fn face_plane(t: &Tri) -> ([f64; 3], f64) {
     let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
     let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
     let n = [
@@ -73,17 +76,29 @@ fn face_normal(t: &Tri) -> [f32; 3] {
     ];
     let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
     if len > 0.0 {
-        [(n[0] / len) as f32, (n[1] / len) as f32, (n[2] / len) as f32]
+        let n = [n[0] / len, n[1] / len, n[2] / len];
+        let d = n[0] * t[0][0] + n[1] * t[0][1] + n[2] * t[0][2];
+        (n, d)
     } else {
-        [0.0, 0.0, 1.0]
+        ([0.0, 0.0, 1.0], t[0][2])
     }
 }
 
 /// The kernel's triangle list → a `Mesh` (per-face flat normals, f64 → f32).
+///
+/// Also tags every output triangle with its f64 supporting plane
+/// ([`PlaneTag`], issue #3914) — the exact plane this function's own f64
+/// arithmetic derived, before the `positions`/`normals` f32 cast below loses
+/// precision. This is the ONLY producer of `Mesh::plane_tags`: every other
+/// mesh-building/editing path leaves it `None`, so `consolidate_coplanar`
+/// only trusts a plane identity that came straight from the kernel.
 pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
+    use crate::mesh::PlaneTag;
     let mut m = Mesh::with_capacity(tris.len() * 3, tris.len() * 3);
+    let mut tags = Vec::with_capacity(tris.len());
     for t in tris {
-        let n = face_normal(t);
+        let (n64, d64) = face_plane(t);
+        let n = [n64[0] as f32, n64[1] as f32, n64[2] as f32];
         let base = (m.positions.len() / 3) as u32;
         for p in t {
             m.positions
@@ -91,7 +106,9 @@ pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
             m.normals.extend_from_slice(&n);
         }
         m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+        tags.push(PlaneTag { n: n64, d: d64 });
     }
+    m.plane_tags = Some(tags);
     m
 }
 

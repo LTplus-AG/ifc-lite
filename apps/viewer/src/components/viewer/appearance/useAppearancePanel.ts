@@ -193,7 +193,10 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
           setStatusMessage(translatedMessage('appearance.controller.faceSelectionChanged')); return;
         }
         const state = useViewerStore.getState();
-        if (!plan.items.length) throw new AppearanceValidationError('appearance.controller.noSupportedSurfaces');
+        if (!plan.items.length) {
+          if (plan.exclusions[0]?.reason) throw new Error(plan.exclusions[0].reason);
+          throw new AppearanceValidationError('appearance.controller.noSupportedSurfaces');
+        }
         // Exclusions must be acknowledged explicitly before the narrower scope applies.
         supported.current = [...new Set(plan.items.map(item => item.productId))];
         if (plan.exclusions.length) {

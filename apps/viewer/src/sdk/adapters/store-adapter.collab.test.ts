@@ -21,6 +21,7 @@ before(async () => {
     'ENDSEC;', 'DATA;',
     "#1=IFCPROJECT('0project000000000000000',$,'Project',$,$,$,$,$,$);",
     "#2=IFCWALL('0wall000000000000000000',$,'Existing',$,$,$,$,$,.NOTDEFINED.);",
+    '#3=IFCCARTESIANPOINT((1.,2.,3.));',
     'ENDSEC;', 'END-ISO-10303-21;',
   ].join('\n');
   const bytes = new TextEncoder().encode(step);
@@ -110,7 +111,42 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.equal(calls.filter(call => call.kind === 'create').length, 1);
   });
 
-  it('uses IFC2X3 positional names and does not mirror undefined as a string', () => {
+  it('releases a locally claimed GlobalId when its overlay entity is removed', () => {
+    const { adapter } = fixture();
+    const attributes = ['0reusable000000000000000', null, 'First', null, null, null, null, null, '.NOTDEFINED.'];
+    const first = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes });
+    assert.equal(adapter.removeEntity(first), true);
+    assert.doesNotThrow(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes }));
+  });
+
+  it('preserves structured create and positional values on the collaboration wire', () => {
+    const { adapter, calls } = fixture();
+    const point = adapter.addEntity(MODEL, { type: 'IFCCARTESIANPOINT', attributes: [[1, 2, 3]] });
+    assert.deepEqual(
+      (calls[0]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::Coordinates'],
+      [1, 2, 3],
+    );
+    const typed = { typed: { type: 'IfcLengthMeasure', value: 4 } };
+    adapter.setPositionalAttribute(point, 0, typed);
+    assert.deepEqual(calls.at(-1), {
+      kind: 'attribute',
+      args: [MODEL, point.expressId, 'bsi::ifc::prop::Coordinates', typed],
+    });
+  });
+
+  it('registers a stable room identity before editing and removing a source GUID-less entity', () => {
+    const { adapter, calls } = fixture();
+    const point = { modelId: MODEL, expressId: 3 };
+    adapter.setPositionalAttribute(point, 0, [4, 5, 6]);
+    assert.deepEqual(calls[0]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
+    assert.deepEqual(calls[1], {
+      kind: 'attribute', args: [MODEL, 3, 'bsi::ifc::prop::Coordinates', [4, 5, 6]],
+    });
+    assert.equal(adapter.removeEntity(point), true);
+    assert.deepEqual(calls.at(-1), { kind: 'remove', args: [MODEL, 3] });
+  });
+
+  it('uses IFC2X3 positional names and mirrors undefined as an explicit clear', () => {
     const { adapter, calls } = fixture(true, ifc2x3Store);
     const created = adapter.addEntity(MODEL, {
       type: 'IFCAPPROVALRELATIONSHIP',
@@ -124,10 +160,10 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     adapter.setPositionalAttribute(created, 0, '#2');
     adapter.setPositionalAttribute(created, 0, undefined);
     const edits = calls.filter(call => call.kind === 'attribute');
-    assert.deepEqual(edits, [{
-      kind: 'attribute',
-      args: [MODEL, created.expressId, 'bsi::ifc::prop::RelatedApproval', '#2'],
-    }]);
+    assert.deepEqual(edits, [
+      { kind: 'attribute', args: [MODEL, created.expressId, 'bsi::ifc::prop::RelatedApproval', '#2'] },
+      { kind: 'attribute', args: [MODEL, created.expressId, 'bsi::ifc::prop::RelatedApproval', null] },
+    ]);
   });
 
   it('rejects read-only room writes before touching the local overlay', () => {

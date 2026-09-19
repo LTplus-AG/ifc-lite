@@ -135,7 +135,7 @@ export function mirrorAttribute(
   const path = pathForEntity(store, entityId);
   if (!path || !api.hasEntity(session.doc, path)) return;
   session.transact(() => {
-    api.setAttribute(session.doc, path, attrName, toScalar(value));
+    api.setAttribute(session.doc, path, attrName, value);
   });
 }
 
@@ -216,14 +216,21 @@ export function applyRemoteAttribute(
   store: IfcDataStore,
   entityId: number,
   attrName: string,
-  value: ScalarValue,
+  value: unknown,
 ): void {
-  if (value === null) {
-    const index = getAttributeNamesAcrossSchemas(store.entities.getTypeName(entityId)).indexOf(attrName);
-    if (index >= 0) view.setPositionalAttribute(entityId, index, null);
+  const plainName = attrName.startsWith('bsi::ifc::prop::')
+    ? attrName.slice('bsi::ifc::prop::'.length)
+    : attrName;
+  const sourceType = store.entities.getTypeName(entityId);
+  const entityType = sourceType && sourceType !== 'Unknown'
+    ? sourceType
+    : view.getNewEntity(entityId)?.type ?? sourceType;
+  const index = getAttributeNamesAcrossSchemas(entityType).indexOf(plainName);
+  if (index >= 0) {
+    view.setPositionalAttribute(entityId, index, value as Parameters<MutablePropertyView['setPositionalAttribute']>[2]);
     return;
   }
-  view.setAttribute(entityId, attrName, String(value));
+  if (value !== null && value !== undefined) view.setAttribute(entityId, plainName, String(value));
 }
 
 /**
@@ -238,7 +245,7 @@ export interface RemoteApplyHandlers {
   /** Apply a remote property deletion. */
   onPropertyDelete(modelId: string, entityId: number, pset: string, prop: string): void;
   /** Apply a remote attribute write. */
-  onAttribute(modelId: string, entityId: number, attrName: string, value: ScalarValue): void;
+  onAttribute(modelId: string, entityId: number, attrName: string, value: unknown): void;
   /**
    * Apply a remote placement (move / rotate) write. Receives the entity's full
    * new local placement decoded from `usd::xformop`; the handler reconciles it

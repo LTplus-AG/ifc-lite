@@ -208,33 +208,25 @@ describe("storey headline: physical objects that have a shape", () => {
     assert.strictEqual(storey.countSummary?.withoutGeometry, 1, 'and only the marker is shapeless');
   });
 
-  it('explains the headline on hover, and prints only the lines that say something', () => {
-    // The hover rides on the node, so it is asserted through the same entry
-    // point as the number it explains.
+  it('carries the semantic count breakdown used by the localized hover', () => {
     const { storey } = storeyNodeOf(createStoreyDataStore(), GEOMETRY_LOADED);
-    assert.deepStrictEqual(storey.countTooltipLines, [
-      '3 objects',
-      '1 IfcDoor · 1 IfcElementAssembly · 1 IfcWall',
-      '1 element without geometry',
-      '1 space (not counted)',
+    assert.strictEqual(storey.countSummary?.counted, 3);
+    assert.deepStrictEqual(storey.countSummary?.typeCounts, [
+      ['IfcDoor', 1], ['IfcElementAssembly', 1], ['IfcWall', 1],
     ]);
+    assert.strictEqual(storey.countSummary?.withoutGeometry, 1);
+    assert.strictEqual(storey.countSummary?.spacesNotCounted, 1);
 
     // Give the marker a shape and the model-quality line goes away: a
     // permanent "0 without geometry" row is noise, and the line appearing is
     // the signal.
     const clean = storeyNodeOf(createStoreyDataStore(), new Set([...GEOMETRY_LOADED, 50])).storey;
-    assert.ok(
-      !clean.countTooltipLines?.some((line) => line.includes('without geometry')),
-      'no shapeless element, no line',
-    );
+    assert.strictEqual(clean.countSummary?.withoutGeometry, 0);
   });
 
   it('says on hover that a mid-load number is provisional', () => {
     const { storey } = storeyNodeOf(createStoreyDataStore(), GEOMETRY_ABSENT);
-    assert.ok(
-      storey.countTooltipLines?.includes('geometry still loading — counting every object'),
-      'the headline must never depend on a hover to be defensible, but a provisional one says so',
-    );
+    assert.strictEqual(storey.countSummary?.geometryKnown, false);
   });
 
   it('still SHOWS every contained entity as a selectable row, the shapeless marker grayed under "Other"', () => {

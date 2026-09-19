@@ -9,6 +9,7 @@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Link2, Focus } from 'lucide-react';
 import type { EntityRelationships } from '@ifc-lite/parser';
+import { useTranslation } from '@/i18n';
 
 interface RelationshipsCardProps {
   relationships: EntityRelationships;
@@ -18,6 +19,7 @@ interface RelationshipsCardProps {
 }
 
 export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
+  const { t } = useTranslation();
   const { voids, fills, groups, connections } = relationships;
   const totalCount = voids.length + fills.length + groups.length + connections.length;
 
@@ -28,7 +30,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/30 text-left transition-colors overflow-hidden">
         <Link2 className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400 shrink-0" />
         <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 truncate flex-1 min-w-0">
-          Relationships
+          {t('properties.relationships.heading')}
         </span>
         <span className="text-[10px] font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0">
           {totalCount}
@@ -39,7 +41,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           {voids.length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                Openings ({voids.length})
+                {t('properties.relationships.openings', { count: voids.length })}
               </div>
               {voids.map((item) => (
                 <RelItem key={item.id} item={item} onSelect={onSelectEntity} />
@@ -49,7 +51,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           {fills.length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                Fills ({fills.length})
+                {t('properties.relationships.fills', { count: fills.length })}
               </div>
               {fills.map((item) => (
                 <RelItem key={item.id} item={item} onSelect={onSelectEntity} />
@@ -59,7 +61,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           {groups.length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                Groups &amp; Zones ({groups.length})
+                {t('properties.relationships.groupsAndZones', { count: groups.length })}
               </div>
               {groups.map((item) => (
                 <GroupItem
@@ -74,7 +76,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           {connections.length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                Connections ({connections.length})
+                {t('properties.relationships.connections', { count: connections.length })}
               </div>
               {connections.map((item) => (
                 <RelItem key={item.id} item={item} onSelect={onSelectEntity} />
@@ -112,16 +114,19 @@ function GroupItem({ item, onSelect, onIsolateMembers }: {
   onSelect?: (id: number) => void;
   onIsolateMembers?: (id: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 py-0.5 group/rel">
       <button
         className="flex items-center gap-2 text-xs flex-1 min-w-0 text-left hover:text-primary transition-colors"
         onClick={() => onSelect?.(item.id)}
         type="button"
-        title="Show this group's attributes"
+        title={t('properties.relationships.showGroupAttributesTooltip')}
       >
         <span className="font-mono text-zinc-500 dark:text-zinc-500 text-[10px]">#{item.id}</span>
-        <span className="text-zinc-600 dark:text-zinc-400 truncate">{item.name || `Group #${item.id}`}</span>
+        <span className="text-zinc-600 dark:text-zinc-400 truncate">
+          {item.name || t('properties.relationships.groupFallbackName', { id: item.id })}
+        </span>
         <span className="text-[10px] text-zinc-400 ml-auto shrink-0">{item.type}</span>
       </button>
       {onIsolateMembers && (
@@ -129,7 +134,7 @@ function GroupItem({ item, onSelect, onIsolateMembers }: {
           className="shrink-0 p-0.5 text-zinc-400 hover:text-primary transition-colors"
           onClick={() => onIsolateMembers(item.id)}
           type="button"
-          title="Isolate this group's members in 3D"
+          title={t('properties.relationships.isolateGroupMembersTooltip')}
         >
           <Focus className="h-3.5 w-3.5" />
         </button>

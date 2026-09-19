@@ -21,7 +21,6 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { buildMaterialUsageIndex, extractGroupMembersOnDemand } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { countBadgeLines } from './countBadgeLabel';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
 import { buildOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
 import { emitElementsWithOtherBucket } from './elementSubtree';
@@ -352,7 +351,6 @@ function buildSpatialNodes(
     isVisible: true, // Visibility computed lazily during render
     elementCount: hasDirectElements ? objects.counted : undefined,
     countSummary: hasDirectElements ? objects : undefined,
-    countTooltipLines: hasDirectElements ? countBadgeLines(objects.counted, objects) : undefined,
     storeyDisplayElevation: spatialNode.elevation === undefined
       ? undefined
       : (displayElevationOf?.(spatialNode.expressId, spatialNode.elevation) ?? spatialNode.elevation),
@@ -450,7 +448,6 @@ export function buildTreeData(
         isVisible: true, // Computed lazily during render
         elementCount: unified.objects.counted,
         countSummary: unified.objects,
-        countTooltipLines: countBadgeLines(unified.objects.counted, unified.objects),
         storeyDisplayElevation: unified.displayElevation,
       });
 
@@ -478,7 +475,6 @@ export function buildTreeData(
             isVisible: true, // Computed lazily during render
             elementCount: storey.objects.counted,
             countSummary: storey.objects,
-            countTooltipLines: countBadgeLines(storey.objects.counted, storey.objects),
             // Federated models can sit at different absolute heights even when
             // their relative elevations group them together; label each one.
             storeyDisplayElevation: unified.displayElevation === undefined

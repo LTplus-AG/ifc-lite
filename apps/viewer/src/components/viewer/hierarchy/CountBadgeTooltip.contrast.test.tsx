@@ -24,12 +24,22 @@ import assert from 'node:assert/strict';
 import { render, cleanup } from '@/test/render.js';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.js';
 import { CountBadgeTooltip } from './CountBadgeTooltip.js';
+import { registerLocale, setLocale } from '@/i18n';
 
-afterEach(cleanup);
+const summary = {
+  counted: 5,
+  rows: 6,
+  typeCounts: [['IfcWall', 3], ['IfcDoor', 2]] as Array<[string, number]>,
+  withoutGeometry: 0,
+  spacesNotCounted: 1,
+  geometryKnown: true,
+};
+
+afterEach(() => { cleanup(); setLocale('en'); });
 
 describe('CountBadgeTooltip contrast', () => {
   it('renders the headline at text-xs', () => {
-    const container = render(<CountBadgeTooltip elementCount={5} lines={['5 objects', '3 Walls', '2 Doors']} />);
+    const container = render(<CountBadgeTooltip elementCount={5} summary={summary} />);
     const headline = container.querySelector('p');
     assert.equal(headline?.textContent, '5 objects');
     assert.equal(headline?.className, 'text-xs');
@@ -40,7 +50,7 @@ describe('CountBadgeTooltip contrast', () => {
       <Tooltip defaultOpen>
         <TooltipTrigger>5</TooltipTrigger>
         <TooltipContent>
-          <CountBadgeTooltip elementCount={5} lines={['5 objects', '3 Walls', '2 Doors']} />
+          <CountBadgeTooltip elementCount={5} summary={summary} />
         </TooltipContent>
       </Tooltip>,
     );
@@ -56,5 +66,16 @@ describe('CountBadgeTooltip contrast', () => {
     for (const line of secondaryLines) {
       assert.equal(line.className, 'text-[10px] text-muted-foreground');
     }
+  });
+
+  it('resolves semantic count lines through the active catalogue (#4918)', () => {
+    registerLocale('count-tooltip-test', {
+      'hierarchy.countBadge.objects': { one: 'PSEUDO one {formatted}', other: 'PSEUDO many {formatted}' },
+      'hierarchy.countBadge.spacesNotCounted': { one: 'PSEUDO space {formatted}', other: 'PSEUDO spaces {formatted}' },
+    });
+    setLocale('count-tooltip-test');
+    const container = render(<CountBadgeTooltip elementCount={5} summary={summary} />);
+    assert.match(container.textContent, /PSEUDO many 5/);
+    assert.match(container.textContent, /PSEUDO space 1/);
   });
 });

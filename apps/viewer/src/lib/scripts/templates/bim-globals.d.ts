@@ -647,6 +647,24 @@ declare const bim: {
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section. */
     addMember(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcCostSchedule to a parsed model. */
+    addCostSchedule(modelId: string, params: { Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: "BUDGET" | "COSTPLAN" | "ESTIMATE" | "TENDER" | "PRICEDBILLOFQUANTITIES" | "UNPRICEDBILLOFQUANTITIES" | "SCHEDULEOFRATES" | "USERDEFINED" | "NOTDEFINED"; Status?: string; SubmittedOn?: string; UpdateDate?: string }): { modelId: string; expressId: number };
+    /** Add an IfcCostItem to a parsed model. */
+    addCostItem(modelId: string, params: { Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: "USERDEFINED" | "NOTDEFINED"; CostValues?: number[]; CostQuantities?: number[] }): { modelId: string; expressId: number };
+    /** Add an IfcCostValue to a parsed model. */
+    addCostValue(modelId: string, params: { Name?: string; Description?: string; AppliedValue?: { Type: "IfcMonetaryMeasure" | "IfcAreaMeasure" | "IfcVolumeMeasure" | "IfcLengthMeasure" | "IfcMassMeasure" | "IfcTimeMeasure" | "IfcCountMeasure" | "IfcNumericMeasure" | "IfcRatioMeasure" | "IfcReal" | "IfcInteger"; Value: number }; AppliedValueRef?: number; UnitBasis?: number; ApplicableDate?: string; FixedUntilDate?: string; Category?: string; Condition?: string; ArithmeticOperator?: "ADD" | "DIVIDE" | "MULTIPLY" | "SUBTRACT"; Components?: number[] }): { modelId: string; expressId: number };
+    /** Add an IfcCostQuantity to a parsed model. */
+    addCostQuantity(modelId: string, params: { Kind: "IfcQuantityLength" | "IfcQuantityArea" | "IfcQuantityVolume" | "IfcQuantityWeight" | "IfcQuantityTime" | "IfcQuantityCount" | "IfcQuantityNumber"; Name: string; Value: number; Description?: string; Unit?: number; Formula?: string }): { modelId: string; expressId: number };
+    /** Create or update the loaded-model cost relationship for nestCostItems. */
+    nestCostItems(modelId: string, parentExpressId: number, childExpressIds: number[]): { modelId: string; expressId: number };
+    /** Create or update the loaded-model cost relationship for assignCostItemsToSchedule. */
+    assignCostItemsToSchedule(modelId: string, scheduleExpressId: number, itemExpressIds: number[]): { modelId: string; expressId: number };
+    /** Create or update the loaded-model cost relationship for assignToCostItem. */
+    assignToCostItem(modelId: string, costItemExpressId: number, objectExpressIds: number[]): { modelId: string; expressId: number };
+    /** Replace an IfcCostItem CostValues list; pass [] to clear it. */
+    setCostItemValues(modelId: string, itemExpressId: number, valueExpressIds: number[]): void;
+    /** Safely remove an IfcCostSchedule, IfcCostItem, or IfcCostValue from a parsed model. */
+    removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void;
   };
   /** Lens visualization */
   lens: {

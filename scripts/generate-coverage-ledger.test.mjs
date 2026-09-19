@@ -165,16 +165,19 @@ test('dynamic cost quantity kinds follow their schema gates in creatable coverag
     'IfcQuantityTime', 'IfcQuantityCount', 'IfcQuantityNumber',
   ];
   for (const entity of ['IfcCostItem', 'IfcCostSchedule', 'IfcCostValue', ...quantityKinds.slice(0, -1)]) {
+    // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not source text
     const row = sectionOf(ledger, 'IFC2X3').split('\n').find((line) => line.startsWith(`| ${entity} |`));
     assert.ok(row, `missing ${entity} in IFC2X3 ledger`);
     assert.equal(row.split('|').map((column) => column.trim())[6], '❌');
   }
   for (const entity of quantityKinds.filter((kind) => kind !== 'IfcQuantityNumber')) {
+    // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not source text
     const row = sectionOf(ledger, 'IFC4').split('\n').find((line) => line.startsWith(`| ${entity} |`));
     assert.ok(row, `missing ${entity} in IFC4 ledger`);
     assert.equal(row.split('|').map((column) => column.trim())[6], '✅');
   }
   const numberRow = sectionOf(ledger, 'IFC4X3').split('\n')
+    // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not source text
     .find((line) => line.startsWith('| IfcQuantityNumber |'));
   assert.ok(numberRow, 'missing IfcQuantityNumber in IFC4X3 ledger');
   assert.equal(numberRow.split('|').map((column) => column.trim())[6], '✅');

@@ -53,7 +53,7 @@ interface GenerateScheduleDialogProps {
 }
 
 export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleDialogProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const { ifcDataStore, models, activeModelId } = useIfc();
   const commitGeneratedSchedule = useViewerStore(s => s.commitGeneratedSchedule);
   const setGanttPanelVisible = useViewerStore(s => s.setGanttPanelVisible);
@@ -79,13 +79,13 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   const hasGeometry = !!modelContext;
   const canGenerate = hasSpatial || hasGeometry;
 
-  const [options, setOptions] = useState<GenerateScheduleOptions>(DEFAULT_OPTIONS);
+  const [options, setOptions] = useState<GenerateScheduleOptions>({ ...DEFAULT_OPTIONS, scheduleName: '' });
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // Standalone IfcWorkPlan — see `buildWorkPlanInfo`'s doc comment for why
   // it's kept out of `GenerateScheduleOptions` and composed in here instead.
   const [createWorkPlan, setCreateWorkPlan] = useState(false);
-  const [workPlanName, setWorkPlanName] = useState('Project plan');
+  const [workPlanName, setWorkPlanName] = useState('');
 
   // Reset form state on every (re)open so users can reuse the dialog.
   useEffect(() => {
@@ -93,11 +93,11 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       // Compute a fresh start date on each open so re-opening the dialog
       // reflects "today" — `DEFAULT_OPTIONS.startDate` is evaluated at module
       // load and goes stale in long-running sessions.
-      setOptions({ ...DEFAULT_OPTIONS, startDate: defaultStartDate() });
+      setOptions({ ...DEFAULT_OPTIONS, startDate: defaultStartDate(), scheduleName: '' });
       setAdvancedOpen(false);
       setSubmitting(false);
       setCreateWorkPlan(false);
-      setWorkPlanName('Project plan');
+      setWorkPlanName('');
     }
   }, [open]);
 
@@ -114,13 +114,13 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   // Live preview — runs on every option change. The helper is pure and cheap
   // enough (O(vertex count) for the Z strategy; O(storeys × products) for
   // the others) that we don't debounce.
+  const effectiveOptions = useMemo(() => ({ ...options, scheduleName: options.scheduleName.trim() || t('schedule.generateAdvanced.scheduleNamePlaceholder') }), [options, t, revision]);
   const preview = useMemo(() => {
     if (!canGenerate) return null;
-    return generateScheduleFromSpatialHierarchy(activeStore, options, modelContext);
-  }, [activeStore, canGenerate, modelContext, options]);
+    return generateScheduleFromSpatialHierarchy(activeStore, effectiveOptions, modelContext);
+  }, [activeStore, canGenerate, modelContext, effectiveOptions]);
 
   const canSubmit = !!preview && !preview.empty && preview.groupCount > 0 && !submitting;
-
   const handleChange = useCallback(<K extends keyof GenerateScheduleOptions>(
     key: K,
     value: GenerateScheduleOptions[K],
@@ -144,7 +144,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
             ...preview.extraction.workSchedules,
             buildWorkPlanInfo(
               preview.extraction.workSchedules[0]?.globalId ?? 'workplan',
-              workPlanName,
+              workPlanName.trim() || t('schedule.generateAdvanced.workPlanNamePlaceholder'),
               // Group the generated IfcWorkSchedule(s) under this plan so
               // the relation round-trips (see buildWorkPlanInfo's doc
               // comment) instead of shipping a decorative orphan.
@@ -154,7 +154,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
         }
       : preview.extraction;
 
-    logGeneratedScheduleDebug(extraction, options);
+    logGeneratedScheduleDebug(extraction, effectiveOptions);
 
     // rAF gives the button time to paint its pressed state before we swap
     // the Gantt rows; cheap-but-visible feedback.
@@ -169,7 +169,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       setSubmitting(false);
       onOpenChange(false);
     });
-  }, [preview, options, createWorkPlan, workPlanName, commitGeneratedSchedule, setGanttPanelVisible, setAnimationEnabled, onOpenChange, activeModelId, models]);
+  }, [preview, effectiveOptions, createWorkPlan, workPlanName, t, commitGeneratedSchedule, setGanttPanelVisible, setAnimationEnabled, onOpenChange, activeModelId, models]);
 
   // Only read in the `preview && !preview.empty` branch below; computed
   // here (not memoized — cheap string ops) so the JSX itself stays a

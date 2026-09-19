@@ -21,7 +21,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { advance, cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { PluralTranslation, TranslationValue } from '@/i18n';
 import { en } from '@/i18n/en';
@@ -235,6 +235,14 @@ describe('GanttDragTooltip localization (#4918)', { skip: !HAS_CATALOGUE && 'sch
     assert.ok(after.has(mark('schedule.dragTooltip.hint')));
     covered.add('schedule.dragTooltip.shifting');
     covered.add('schedule.dragTooltip.hint');
+  });
+
+  it('formats fractional drag durations with the active locale decimal separator', () => {
+    registerLocale('de', { 'schedule.dragTooltip.duration': 'Dauer: {days} T' });
+    act(() => setLocale('de'));
+    const container = render(<GanttDragTooltip live={{ taskGlobalId: 'g1', mode: 'shift',
+      liveStartMs: 0, liveFinishMs: 1.5 * 86_400_000 }} />);
+    assert.match(container.textContent ?? '', /Dauer: 1,5 T/);
   });
 });
 
@@ -679,6 +687,30 @@ describe('GenerateScheduleDialog localization (#4918)', { skip: !HAS_CATALOGUE &
     checkCovered(english, after, 'schedule.generateDialog.');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.summaryLine|')), 'summary line interpolation not marked');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.taskRangeSingle|')), 'single-task interpolation not marked');
+  });
+
+  it('persists active-locale schedule and work-plan defaults instead of hidden English values', async () => {
+    registerLocale('de', {
+      'schedule.generateAdvanced.scheduleNamePlaceholder': 'Bauablauf',
+      'schedule.generateAdvanced.workPlanNamePlaceholder': 'Projektplan',
+    });
+    act(() => setLocale('de'));
+    useViewerStore.setState({ ifcDataStore: buildMockStore() });
+    render(<GenerateScheduleDialog open onOpenChange={() => {}} />);
+    click([...document.body.querySelectorAll('button')].find(button => button.textContent === 'Advanced')!);
+    const scheduleName = document.body.querySelector<HTMLInputElement>('#gen-name')!;
+    assert.equal(scheduleName.value, '');
+    assert.equal(scheduleName.placeholder, 'Bauablauf');
+    const switches = [...document.body.querySelectorAll<HTMLElement>('[role="switch"]')];
+    click(switches.at(-1)!);
+    const workPlanName = document.body.querySelector<HTMLInputElement>('#gen-plan-name')!;
+    assert.equal(workPlanName.value, '');
+    assert.equal(workPlanName.placeholder, 'Projektplan');
+    click([...document.body.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Generate schedule')!);
+    await advance(20);
+    const schedules = useViewerStore.getState().scheduleData?.workSchedules ?? [];
+    assert.equal(schedules.find(schedule => schedule.kind === 'WorkSchedule')?.name, 'Bauablauf');
+    assert.equal(schedules.find(schedule => schedule.kind === 'WorkPlan')?.name, 'Projektplan');
   });
 
   it('translates the "nothing to group by" state when there is no spatial hierarchy or geometry', () => {

@@ -11,6 +11,7 @@
  */
 
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 export interface GanttDragTooltipProps {
   live: {
@@ -22,9 +23,9 @@ export interface GanttDragTooltipProps {
 }
 
 export function GanttDragTooltip({ live }: GanttDragTooltipProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const durMs = Math.max(0, live.liveFinishMs - live.liveStartMs);
-  const durDays = (durMs / 86_400_000).toFixed(2).replace(/\.?0+$/, '');
+  const durDays = formatLocaleNumber(locale, durMs / 86_400_000, { maximumFractionDigits: 2 });
   const fmt = (ms: number) => {
     const d = new Date(ms);
     const pad = (n: number) => n.toString().padStart(2, '0');

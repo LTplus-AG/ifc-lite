@@ -259,10 +259,24 @@ describe('manual clash group focus (#4921)', () => {
     });
     let current = viewpoint(1);
     useViewerStore.setState({ cameraCallbacks: { getViewpoint: () => current } });
-    const framed = current;
+    const framed = { viewpoint: current };
     assert.equal(focusedCameraViewpointIsCurrent(framed), true);
     current = viewpoint(7);
     assert.equal(focusedCameraViewpointIsCurrent(framed), false,
       'camera navigation during the paint/snapshot wait must invalidate the authored viewpoint');
+  });
+
+  it('does not treat an unavailable camera frame callback as capture-ready (#4921)', async () => {
+    const focused = focusClashGroup(
+      [clash('no-camera', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    const framed = await focused.frameReady;
+    assert.equal(framed, null);
+    assert.equal(focusedCameraViewpointIsCurrent(framed), false,
+      'capture must abort rather than accepting the pre-frame camera pose');
   });
 });

@@ -14,9 +14,13 @@ interface SelectionRef {
   expressId: number;
 }
 
+export interface FramedCamera {
+  viewpoint: CameraViewpoint | null;
+}
+
 export interface FocusedClashGroup {
   /** Completes after framing and returns the exact camera pose that must be captured. */
-  frameReady: Promise<CameraViewpoint | null>;
+  frameReady: Promise<FramedCamera | null>;
   selectedRefs: SelectionRef[];
   aRefs: SelectionRef[];
   bRefs: SelectionRef[];
@@ -48,7 +52,9 @@ function currentCameraViewpoint(): CameraViewpoint | null {
 }
 
 /** True while no competing navigation has changed the camera selected for capture. */
-export function focusedCameraViewpointIsCurrent(expected: CameraViewpoint | null): boolean {
+export function focusedCameraViewpointIsCurrent(framed: FramedCamera | null): boolean {
+  if (!framed) return false;
+  const expected = framed.viewpoint;
   const canReadCurrent = useViewerStore.getState().cameraCallbacks.getViewpoint !== undefined;
   if (!expected && !canReadCurrent) return true;
   const current = currentCameraViewpoint();
@@ -129,11 +135,16 @@ export function focusClashGroup(
   state.setSelectedEntityIds([...globalIds]);
   state.addEntitiesToSelection(refs);
   applyFocusMode([...globalIds], mode);
-  const frameReady = new Promise<CameraViewpoint | null>((resolve) => {
+  const frameReady = new Promise<FramedCamera | null>((resolve) => {
     requestAnimationFrame(() => {
+      const frameSelection = useViewerStore.getState().cameraCallbacks.frameSelection;
+      if (!frameSelection) {
+        resolve(null);
+        return;
+      }
       try {
-        Promise.resolve(useViewerStore.getState().cameraCallbacks.frameSelection?.(0)).then(() => {
-          resolve(currentCameraViewpoint());
+        Promise.resolve(frameSelection(0)).then(() => {
+          resolve({ viewpoint: currentCameraViewpoint() });
         }, (error) => {
           console.error('[clash] Could not finish framing the manual clash group:', error);
           resolve(null);

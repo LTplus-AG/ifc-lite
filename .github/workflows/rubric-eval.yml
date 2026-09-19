@@ -60,7 +60,7 @@ jobs:
         run: node --test scripts/review/rubric-eval.test.mjs
 
       - name: Install the reviewer CLI
-        run: npm install -g @anthropic-ai/claude-code@2.0.76
+        run: npm install -g @anthropic-ai/claude-code@2.1.278
 
       - name: Score
         env:

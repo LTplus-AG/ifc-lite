@@ -162,29 +162,27 @@ class ViewOverlay implements PendingOverlay {
     return this.tombstones;
   }
 
+  private effectiveCreatedEntity(entity: NewEntity): CreatedEntity {
+    const attributes = [...entity.attributes];
+    const names = getAttributeNamesForSchema(entity.type, this.store.schemaVersion);
+    const named = new Map(this.view.getAttributeMutationsForEntity(entity.expressId)
+      .map(({ name, value }) => [name, value]));
+    const positional = this.view.getPositionalMutationsForEntity(entity.expressId) ?? new Map();
+    for (const mutation of this.view.getMutationsForEntity(entity.expressId)) {
+      const key = mutation.attributeName ?? '';
+      if (key.startsWith('@')) {
+        const index = Number(key.slice(1));
+        if (positional.has(index)) attributes[index] = positional.get(index)!;
+      } else {
+        const index = names.indexOf(key);
+        if (index >= 0 && named.has(key)) attributes[index] = named.get(key)!;
+      }
+    }
+    return toCreatedEntity({ ...entity, attributes });
+  }
+
   get createdAll(): readonly CreatedEntity[] {
-    if (!this.all) this.all = this.view.getNewEntities().map(entity => {
-      const attributes = [...entity.attributes];
-      const names = getAttributeNamesForSchema(entity.type, this.store.schemaVersion);
-      for (const { name, value } of this.view.getAttributeMutationsForEntity(entity.expressId)) {
-        const index = names.indexOf(name);
-        if (index >= 0) attributes[index] = value;
-      }
-      for (const [index, value] of this.view.getPositionalMutationsForEntity(entity.expressId) ?? []) attributes[index] = value;
-      for (const mutation of this.view.getMutationsForEntity(entity.expressId)) {
-        const key = mutation.attributeName ?? '';
-        if (key.startsWith('@')) {
-          const index = Number(key.slice(1));
-          const value = this.view.getPositionalMutationsForEntity(entity.expressId)?.get(index);
-          if (value !== undefined) attributes[index] = value;
-        } else {
-          const current = this.view.getAttributeMutationsForEntity(entity.expressId).find(attribute => attribute.name === key);
-          const index = names.indexOf(key);
-          if (current && index >= 0) attributes[index] = current.value;
-        }
-      }
-      return toCreatedEntity({ ...entity, attributes });
-    });
+    if (!this.all) this.all = this.view.getNewEntities().map(entity => this.effectiveCreatedEntity(entity));
     return this.all;
   }
 
@@ -204,7 +202,7 @@ class ViewOverlay implements PendingOverlay {
     // The view already indexes new entities by id; going through `createdAll`
     // here made every `entityData` call O(number of queued creates).
     const raw = this.view.getNewEntity(expressId);
-    return raw ? toCreatedEntity(raw) : null;
+    return raw ? this.effectiveCreatedEntity(raw) : null;
   }
 
   attributes(expressId: number): AttributeOverrides {

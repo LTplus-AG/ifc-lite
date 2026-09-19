@@ -939,6 +939,16 @@ describe('containment over queued relationships', () => {
         entity: expect.objectContaining({ id: 41, type: 'IfcBuildingStorey' }),
       }));
 
+    const wallRef = { modelId: 'm', expressId: wall.expressId };
+    model.bim.store.setPositionalAttribute(wallRef, 2, "'Wall C renamed'");
+    expect(model.bim.relationships({ modelId: 'm', expressId: 41 }).relations)
+      .toContainEqual(expect.objectContaining({
+        relationshipId: relationship.expressId,
+        direction: 'forward',
+        entity: expect.objectContaining({ id: wall.expressId, name: 'Wall C renamed' }),
+      }));
+    expect(model.bim.entity(wallRef)?.name).toBe('Wall C renamed');
+
     await call('entity_set_attribute', {
       global_id: guid('RELZ'), attribute: 'RelatedElements', value: '#73',
     });

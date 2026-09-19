@@ -59,6 +59,7 @@ import {
 import { parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
 import { GeometryProcessor, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+import type { UseTranslationResult } from '@/i18n/useTranslation';
 import {
   createClashEngine,
   disciplineMatrixRules,
@@ -163,6 +164,8 @@ export interface DispatchContext {
    *  primary `model` argument to dispatch() is reachable; diff tools that
    *  need two models use `model_id` to look the second one up. */
   registry?: Map<string, LoadedPlaygroundModel>;
+  /** Resolve user-visible tool results in the viewer's active locale. */
+  translate?: UseTranslationResult['t'];
 }
 
 // ── BCF session state ─────────────────────────────────────────────────────
@@ -249,6 +252,14 @@ const NO_WEBGL_MESSAGE =
 
 const NO_WEBGL_HINT = 'Answer with the non-viewer tools; no 3D tool can succeed on this device.';
 
+function noWebglMessage(ctx: DispatchContext): string {
+  return ctx.translate?.('mcp.playgroundDispatcher.webglUnavailable') ?? NO_WEBGL_MESSAGE;
+}
+
+function noWebglHint(ctx: DispatchContext): string {
+  return ctx.translate?.('mcp.playgroundDispatcher.webglUnavailableHint') ?? NO_WEBGL_HINT;
+}
+
 /**
  * Has three.js given up on WebGL for this session?
  *
@@ -283,8 +294,8 @@ function requireViewer(ctx: DispatchContext): ViewerController {
   if (isWebglUnavailable(ctx)) {
     throw new ToolExecutionError({
       code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: NO_WEBGL_MESSAGE,
-      hint: NO_WEBGL_HINT,
+      message: noWebglMessage(ctx),
+      hint: noWebglHint(ctx),
     });
   }
   if (!ctx.viewer || !ctx.viewer.isLoaded()) {
@@ -1314,7 +1325,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     // Asking the user for permission to open a panel that cannot exist spends
     // a turn and then lands on viewer_open's refusal anyway.
     if (isWebglUnavailable(ctx)) {
-      return { text: NO_WEBGL_MESSAGE, structured: { suggestedTool: null, webglUnavailable: true } };
+      return { text: noWebglMessage(ctx), structured: { suggestedTool: null, webglUnavailable: true } };
     }
     const reason = String(args.reason ?? '');
     return {
@@ -1329,7 +1340,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     // optimistic "geometry is processing" text below is what sent the agent
     // round the loop in the first place.
     if (isWebglUnavailable(ctx)) {
-      return { text: NO_WEBGL_MESSAGE, structured: { open: false, pending: false, webglUnavailable: true } };
+      return { text: noWebglMessage(ctx), structured: { open: false, pending: false, webglUnavailable: true } };
     }
     if (ctx.openViewerPanel) ctx.openViewerPanel();
     if (ctx.viewer && ctx.viewer.isLoaded()) {
@@ -1378,7 +1389,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     // reads the controller flag; a second branch on `s.webglUnavailable` below
     // would be unreachable, which a mutation run confirmed.
     if (isWebglUnavailable(ctx)) {
-      return { text: NO_WEBGL_MESSAGE, structured: s ?? { open: false, loaded: false, webglUnavailable: true } };
+      return { text: noWebglMessage(ctx), structured: s ?? { open: false, loaded: false, webglUnavailable: true } };
     }
     if (!s) return { text: 'No viewer attached.', structured: { open: false } };
     return {

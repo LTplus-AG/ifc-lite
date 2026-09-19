@@ -86,7 +86,7 @@ interface BulkPropertyEditorProps {
 }
 
 export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
@@ -155,7 +155,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     }
 
     return list;
-  }, [open, models, legacyIfcDataStore, t, locale]);
+  }, [open, models, legacyIfcDataStore, t, locale, revision]);
 
   // Auto-select first model when dialog opens
   useEffect(() => {
@@ -179,7 +179,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       };
     }
     return models.get(selectedModelId);
-  }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t, locale]);
+  }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t, locale, revision]);
 
   // Loading state for initial dialog open computation
   const [isInitializing, setIsInitializing] = useState(false);
@@ -265,7 +265,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     return () => {
       if (initTimerRef.current) clearTimeout(initTimerRef.current);
     };
-  }, [open, selectedModel, t, locale]);
+  }, [open, selectedModel, t, locale, revision]);
 
   // Ensure mutation view exists for selected model — only when dialog is open
   useEffect(() => {
@@ -568,8 +568,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
             const mutation = queryEngine.applyAction(entityIds[j], action);
             if (mutation) mutations.push(mutation);
           } catch (error) {
-            const detail = error instanceof Error ? error.message : t('bulkPropertyEditor.unknownError');
-            errors.push(t('bulkPropertyEditor.entityError', { id: entityIds[j], detail }));
+            const detail = error instanceof Error ? error.message : undefined;
+            errors.push(t('bulkPropertyEditor.entityError', {
+              id: entityIds[j],
+              detail: detail ?? t('bulkPropertyEditor.unknownError'),
+            }));
             failures.push({ kind: 'entity', id: entityIds[j], detail });
           }
         }
@@ -601,7 +604,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         errors: [error instanceof Error ? error.message : t('bulkPropertyEditor.unknownError')],
       });
       setValidationFailure(null);
-      setRuntimeFailures([{ kind: 'execute', detail: error instanceof Error ? error.message : t('bulkPropertyEditor.unknownError') }]);
+      setRuntimeFailures([{ kind: 'execute', detail: error instanceof Error ? error.message : undefined }]);
     } finally {
       setIsExecuting(false);
       setExecuteProgress(null);

@@ -114,4 +114,58 @@ describe('BulkPropertyEditor localization (#4918)', () => {
     await advance(0);
     assert.match(document.body.textContent ?? '', /\[Aktuelles Modell\]/);
   });
+
+  it('invalidates cached labels when the active catalogue is replaced', async () => {
+    const legacy = fixtureModel('legacy-replacement', {
+      entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall A' }],
+    });
+    useViewerStore.setState({
+      models: new Map(),
+      ifcDataStore: legacy.ifcDataStore,
+      geometryResult: legacy.geometryResult,
+    });
+    registerLocale('en-x-bulk-replacement', {
+      'bulkPropertyEditor.currentModel': '[first model]',
+    });
+    setLocale('en-x-bulk-replacement');
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    click(container.querySelector('button')!);
+    await advance(0);
+    assert.match(document.body.textContent ?? '', /\[first model\]/);
+    act(() => registerLocale('en-x-bulk-replacement', {
+      'bulkPropertyEditor.currentModel': '[second model]',
+    }));
+    await advance(0);
+    assert.match(document.body.textContent ?? '', /\[second model\]/);
+  });
+
+  it('invalidates cached type labels when the active catalogue is replaced', async () => {
+    useViewerStore.setState(fixtureModels(fixtureModel('replacement-model', {
+      entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall A' }],
+    })));
+    registerLocale('en-x-bulk-type-replacement', { 'bulkPropertyEditor.type.wall': '[first wall]' });
+    setLocale('en-x-bulk-type-replacement');
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    click(container.querySelector('button')!);
+    await advance(0);
+    assert.match(document.body.textContent ?? '', /\[first wall\]/);
+    act(() => registerLocale('en-x-bulk-type-replacement', { 'bulkPropertyEditor.type.wall': '[second wall]' }));
+    await advance(0);
+    assert.match(document.body.textContent ?? '', /\[second wall\]/);
+  });
+
+  it('retranslates unknown runtime failures after a locale switch', () => {
+    const ui = render(<BulkExecutionResult
+      result={{ success: false, mutations: [], affectedEntityCount: 0, errors: [] }}
+      validationFailure={null}
+      runtimeFailures={[{ kind: 'execute' }]}
+    />);
+    assert.match(ui.textContent ?? '', /Unknown error/);
+    registerLocale('en-x-bulk-runtime', {
+      'bulkPropertyEditor.unknownError': '[unbekannter Fehler]',
+      'bulkPropertyEditor.executionFailed': '[Ausführung: {detail}]',
+    });
+    act(() => setLocale('en-x-bulk-runtime'));
+    assert.match(ui.textContent ?? '', /\[Ausführung: \[unbekannter Fehler\]\]/);
+  });
 });

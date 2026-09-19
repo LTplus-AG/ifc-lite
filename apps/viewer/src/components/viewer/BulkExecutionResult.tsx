@@ -12,8 +12,8 @@ import { appliedResultKey } from './bulk-property-editor-options';
 import { hasActiveTranslation, resolveEnglish } from '@/i18n/registry';
 
 export type BulkRuntimeFailure =
-  | { kind: 'entity'; id: number; detail: string }
-  | { kind: 'execute'; detail: string };
+  | { kind: 'entity'; id: number; detail?: string }
+  | { kind: 'execute'; detail?: string };
 
 export function BulkExecutionResult({
   result,
@@ -42,8 +42,8 @@ export function BulkExecutionResult({
         })
       : runtimeFailures.length > 0
         ? runtimeFailures.map((failure) => failure.kind === 'entity'
-            ? t('bulkPropertyEditor.entityError', { id: failure.id, detail: failure.detail })
-            : t('bulkPropertyEditor.executionFailed', { detail: failure.detail })).join(', ')
+            ? t('bulkPropertyEditor.entityError', { id: failure.id, detail: failure.detail ?? t('bulkPropertyEditor.unknownError') })
+            : t('bulkPropertyEditor.executionFailed', { detail: failure.detail ?? t('bulkPropertyEditor.unknownError') })).join(', ')
         : t('bulkPropertyEditor.unknownError');
 
   return (

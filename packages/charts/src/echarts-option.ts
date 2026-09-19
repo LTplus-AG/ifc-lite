@@ -46,6 +46,13 @@ export interface BuildOptionArgs {
   showTitle?: boolean;
   /** Width available to the chart in px; sizes the category labels so none is dropped. */
   width?: number;
+  /**
+   * SSR (PDF / preview) rendering, not the interactive canvas (#4940): the
+   * pie legend's `type: 'scroll'` has nothing to scroll in a static SVG and
+   * clips instead, so print mode wraps it as a fixed plain legend under a
+   * shrunk pie. Screen and print both truncate long labels.
+   */
+  print?: boolean;
 }
 
 /** Fallback width when the host has not measured yet. */
@@ -58,6 +65,10 @@ function formatValue(value: number, unit?: string): string {
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2);
   return unit ? `${text} ${unit}` : text;
 }
+
+/** A legend label past this many characters is truncated with an ellipsis; the full name is in the tooltip. */
+const LEGEND_LABEL_MAX_CHARS = 24;
+const truncateLegendLabel = (name: string): string => (name.length > LEGEND_LABEL_MAX_CHARS ? `${name.slice(0, LEGEND_LABEL_MAX_CHARS - 1)}…` : name);
 
 function measureLabel(aggregation: Aggregation): string {
   const { measure } = aggregation.spec;
@@ -119,14 +130,18 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   };
 
   if (spec.type === 'pie') {
+    const legend = args.print
+      // No scrollbar in a static SVG: a fixed, wrapped legend under a smaller pie instead of a clipped scroll list.
+      ? { type: 'plain', orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: theme.mutedText, fontSize: 10 }, formatter: truncateLegendLabel, tooltip: { show: true } }
+      : { type: 'scroll', orient: 'vertical', right: 0, top: 'middle', textStyle: { color: theme.mutedText }, formatter: truncateLegendLabel, tooltip: { show: true } };
     return {
       ...base,
-      legend: { type: 'scroll', orient: 'vertical', right: 0, top: 'middle', textStyle: { color: theme.mutedText } },
+      legend,
       series: [{
         type: 'pie',
         name: measureLabel(aggregation),
-        radius: ['35%', '70%'],
-        center: ['40%', '50%'],
+        radius: args.print ? ['28%', '52%'] : ['35%', '70%'],
+        center: args.print ? ['50%', '42%'] : ['40%', '50%'],
         // An empty dataset shows the host's message, not a grey placeholder ring.
         showEmptyCircle: false,
         data: itemData(categories, flags),
@@ -174,7 +189,7 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
     // ECharts 6 keeps axis labels inside the grid's outer bounds by default
     // (`containLabel` is the removed v5 way of saying the same).
     grid: { left: 8, right: 8, top: stacked ? 32 : yName ? 28 : 12, bottom: 8 },
-    ...(stacked ? { legend: { top: 0, textStyle: { color: theme.mutedText } } } : {}),
+    ...(stacked ? { legend: { top: 0, textStyle: { color: theme.mutedText }, formatter: truncateLegendLabel, tooltip: { show: true } } } : {}),
     xAxis: {
       type: 'category',
       data: labels,

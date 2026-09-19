@@ -110,7 +110,9 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
         output: () => doc.output('blob'),
       };
     },
-    renderSvg: (aggregation, width, height, t) => renderChartSvg({ aggregation, width, height, theme: t, showTitle: false }),
+    // `print: true` (#4940): the printed SVG has no interactive scroll, so a
+    // pie's legend switches to a wrapped plain layout instead of clipping.
+    renderSvg: (aggregation, width, height, t) => renderChartSvg({ aggregation, width, height, theme: t, showTitle: false, print: true }),
     capture,
     theme,
     now: () => new Date(),

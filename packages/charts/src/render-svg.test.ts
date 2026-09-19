@@ -79,6 +79,27 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
     for (const attr of svg.matchAll(/=\"([^\"]*)\"/g)) expect(attr[1]).not.toContain('"');
     expect(svg).not.toContain('"Segoe UI"');
   });
+
+  it('a print-mode pie with a long legend wraps as a plain legend that stays inside the SVG, not the unscrollable "scroll" type that clips in a static image (#4940)', () => {
+    const width = 480;
+    const manyBuckets: ChartDataset = {
+      ...ds,
+      rows: Array.from({ length: 20 }, (_, i) => ({ ids: [200 + i], values: [`IfcVeryDescriptiveElementTypeNumber${i}`, 'L1'] })),
+    };
+    const agg = aggregate({ ...bar, type: 'pie' }, manyBuckets);
+    const screen = renderChartSvg({ aggregation: agg, width, height: 320 });
+    const print = renderChartSvg({ aggregation: agg, width, height: 320, print: true });
+    // The screen legend is ECharts' own `type: 'scroll'`; nothing to scroll once it is a flat SVG, so it clips.
+    // Print mode truncates every long label (the full 39-character name never appears) and adds an ellipsis.
+    expect(screen).toContain('IfcVeryDescriptiveElementTypeNumber0');
+    expect(print).not.toContain('IfcVeryDescriptiveElementTypeNumber0');
+    expect(print).toContain('…');
+    // No <text> element's x sits past the declared canvas width: a scroll legend can emit off-canvas nodes,
+    // a wrapped plain legend cannot.
+    const xs = [...print.matchAll(/<text[^>]*\sx="(-?[\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(xs.length).toBeGreaterThan(0);
+    for (const x of xs) expect(x).toBeLessThanOrEqual(width);
+  });
 });
 
 describe('validateDashboardSpec', () => {

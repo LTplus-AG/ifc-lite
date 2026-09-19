@@ -77,6 +77,7 @@ import {
   extractTypePropertiesOnDemand,
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
+  extractExactRelatedIds,
   expandTypes,
   QUERY_REL_TYPE_MAP,
   isQueryableObjectType,
@@ -84,7 +85,6 @@ import {
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createScheduleAdapter } from './headless-backend-schedule.js';
-import { edgeSurvives } from '@ifc-lite/data';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
 import { overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
@@ -453,7 +453,6 @@ export class HeadlessBackend implements BimBackend {
         if (relEnum === undefined) return [];
         const view = getMutationView();
         if (view?.isDeleted(ref.expressId)) return []; // deleted relates to nothing
-        const half = direction === 'forward' ? store.relationships.forward : store.relationships.inverse;
         const out: number[] = [];
         const seen = new Set<number>();
         const take = (id: number): void => {
@@ -461,15 +460,8 @@ export class HeadlessBackend implements BimBackend {
           seen.add(id);
           out.push(id);
         };
-        // Two `IfcRel*` instances can name the same triple; the graph keeps
-        // only one as `relationshipId` and folds the rest into
-        // `shadowedRelationshipIds` (#3760). `edgeSurvives` (shared with the
-        // MCP backend, #3782 review) treats the connection as alive as long
-        // as any one of them still exists.
         const isDeleted = view ? (id: number) => view.isDeleted(id) : () => false;
-        for (const edge of half.getEdges(ref.expressId, relEnum)) {
-          if (edgeSurvives(edge, isDeleted)) take(edge.target);
-        }
+        for (const id of extractExactRelatedIds(store, ref.expressId, relType, direction, isDeleted)) take(id);
         if (view) for (const t of foldQueuedRelated(view.getNewEntities(), (id) => view.isDeleted(id), relType, direction, ref.expressId)) take(t);
         return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
       },

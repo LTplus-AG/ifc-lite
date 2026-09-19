@@ -815,6 +815,7 @@ export {
     extractTypeQuantitiesOnDemand,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
+    extractExactRelatedIds,
     extractGroupMembersOnDemand,
     extractGroupAssignmentFactorOnDemand,
     extractGeoreferencingOnDemand,

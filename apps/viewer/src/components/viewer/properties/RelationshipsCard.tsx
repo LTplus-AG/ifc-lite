@@ -93,9 +93,9 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
                 Relationship Records ({exactRelations.length})
               </div>
-              {exactRelations.map((relation) => (
+              {exactRelations.map((relation, index) => (
                 <RelationshipEdgeItem
-                  key={`${relation.direction}:${relation.relationshipId}:${relation.entity.id}`}
+                  key={`${relation.direction}:${relation.relationshipId}:${relation.entity.id}:${relation.relationshipType}:${index}`}
                   relation={relation}
                   onSelect={onSelectEntity}
                 />

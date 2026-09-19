@@ -89,3 +89,22 @@ export function extractExactRelationshipEdges(
     append('inverse');
     return result;
 }
+
+/** Return unique opposite-end ids for one exact EXPRESS relationship class. */
+export function extractExactRelatedIds(
+    store: IfcDataStore,
+    entityId: number,
+    relationshipType: string,
+    direction: 'forward' | 'inverse',
+    isDeletedRelationship: (relationshipId: number) => boolean = () => false,
+): number[] {
+    const result: number[] = [];
+    const seen = new Set<number>();
+    for (const edge of extractExactRelationshipEdges(store, entityId)) {
+        if (edge.direction !== direction || edge.relationshipType !== relationshipType) continue;
+        if (isDeletedRelationship(edge.relationshipId) || seen.has(edge.entity.id)) continue;
+        seen.add(edge.entity.id);
+        result.push(edge.entity.id);
+    }
+    return result;
+}

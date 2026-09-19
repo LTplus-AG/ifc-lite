@@ -10,7 +10,7 @@ import {
   StringTable,
 } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { extractExactRelationshipEdges } from './exact-relationship-edges.js';
+import { extractExactRelatedIds, extractExactRelationshipEdges } from './exact-relationship-edges.js';
 
 describe('exact relationship edge display data (#4205)', () => {
   it('canonicalizes an endpoint available only through its raw STEP ref', () => {
@@ -59,5 +59,25 @@ describe('exact relationship edge display data (#4205)', () => {
       'IfcRelNests',
       'IfcRelConnectsElements',
     ]);
+  });
+
+  it('separates exact queries from broad compatibility buckets', () => {
+    const graph = new RelationshipGraphBuilder();
+    graph.addEdge(10, 20, RelationshipType.Aggregates, 101);
+    graph.addEdge(10, 30, RelationshipType.Aggregates, 102);
+    graph.addEdge(10, 30, RelationshipType.Nests, 102);
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(2, strings);
+    builder.add(101, 'IFCRELAGGREGATES', '', '', '', '', false, false);
+    builder.add(102, 'IFCRELNESTS', '', '', '', '', false, false);
+    const store = {
+      entities: builder.build(),
+      entityIndex: { byId: new Map(), byType: new Map() },
+      relationships: graph.build(),
+    } as unknown as IfcDataStore;
+
+    expect(extractExactRelatedIds(store, 10, 'IfcRelAggregates', 'forward')).toEqual([20]);
+    expect(extractExactRelatedIds(store, 10, 'IfcRelNests', 'forward')).toEqual([30]);
+    expect(extractExactRelatedIds(store, 10, 'IfcRelNests', 'forward', (id) => id === 102)).toEqual([]);
   });
 });

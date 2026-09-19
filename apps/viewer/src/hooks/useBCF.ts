@@ -26,7 +26,9 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { EntityRef } from '@/store/types';
 import {
   globalIdToExpressId as globalIdToExpressIdLookup,
+  resolveCapturedRefGlobalIds,
   resolveUniqueGlobalIds,
+  type ComponentRef,
 } from './bcfIdLookup';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { fromGlobalIdFromModels } from '@/store/globalId';
@@ -51,7 +53,6 @@ interface UseBCFOptions {
   rendererRef?: React.RefObject<Renderer | null>;
 }
 
-type ComponentRef = number | EntityRef;
 interface CreateViewpointOptions {
   /** Include a snapshot image */
   includeSnapshot?: boolean;
@@ -312,16 +313,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     [models],
   );
 
-  /** A registered model whose metadata has not hydrated yet cannot name its entities YET (#4529). */
-  const isEntityPending = useCallback(
-    (globalId: number): boolean => {
-      const resolved = fromGlobalIdFromModels(models, globalId);
-      const model = resolved && resolved.modelId !== 'legacy' ? models.get(resolved.modelId) : undefined;
-      return !!model && !model.ifcDataStore && model.loadState !== 'error';
-    },
-    [models]
-  );
-
   /**
    * Convert IFC GlobalId string to expressId (with model offset for federation)
    * Returns { expressId, modelId } or null if not found
@@ -350,11 +341,18 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         : null;
       const additionalSelectedRefs = opts.additionalSelectedRefs ?? focusedClash?.selectedRefs;
       const additionalColoredRefs = opts.additionalColoredRefs ?? focusedClash?.coloredRefs;
-      const resolveCapturedRef = (ref: ComponentRef): string | null => {
-        if (typeof ref !== 'number') return resolveEntityRefGlobalIdFromState(componentState, ref);
-        const entityRef = componentState.resolveGlobalIdFromModels(ref)
-          ?? (componentState.models.size === 0 ? { modelId: 'legacy', expressId: ref } : null);
-        return entityRef ? resolveEntityRefGlobalIdFromState(componentState, entityRef) : null;
+      const resolveCapturedRef = (ref: ComponentRef): string[] => resolveCapturedRefGlobalIds(
+        ref,
+        componentState.models.keys(),
+        (modelId, globalId) => componentState.resolveGlobalIdInModel(modelId, globalId),
+        entityRef => resolveEntityRefGlobalIdFromState(componentState, entityRef),
+      );
+      const isCapturedRefPending = (globalId: number): boolean => {
+        for (const [modelId, model] of componentState.models) {
+          if (!componentState.resolveGlobalIdInModel(modelId, globalId)) continue;
+          if (!model.ifcDataStore && model.loadState !== 'error') return true;
+        }
+        return false;
       };
       // Bind component identity before snapshot capture can yield. A model
       // replacement may reuse the same local express id for another entity.
@@ -430,7 +428,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           visibilityState.isolatedEntities,
           visibilityState.hiddenEntities,
           resolveCapturedRef,
-          isEntityPending,
+          isCapturedRefPending,
         );
         ({ visibleGuids, hiddenGuids } = capture);
         let notice = capture.notice;

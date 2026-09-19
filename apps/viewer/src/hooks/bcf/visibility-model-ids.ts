@@ -13,7 +13,7 @@ type CaptureState = Pick<ViewerState,
 /** Source models represented by the exact visibility snapshot serialized to BCF. */
 export function visibilityModelIdsForCapture(
   state: CaptureState,
-  resolveGlobalId: (globalId: number) => string | null,
+  resolveGlobalId: (globalId: number) => string | readonly string[] | null,
 ): string[] {
   const modelIds = new Set<string>();
   const scoped = state.isolatedEntities !== null
@@ -25,8 +25,9 @@ export function visibilityModelIdsForCapture(
 
   const ids = state.isolatedEntities ?? state.hiddenEntities;
   for (const globalId of ids) {
-    const guid = resolveGlobalId(globalId);
-    if (!guid) continue;
+    const resolved = resolveGlobalId(globalId);
+    const guids = typeof resolved === 'string' ? [resolved] : resolved ?? [];
+    if (guids.length === 0) continue;
     if (state.models.size === 0) modelIds.add('legacy');
     // Revision federations can legitimately share a GlobalId. Preserve every
     // matching source rather than attributing the component to the first map entry.
@@ -34,7 +35,7 @@ export function visibilityModelIdsForCapture(
       const exactGuid = resolveEntityRefGlobalIdFromState(state, {
         modelId, expressId: globalId - model.idOffset,
       });
-      if (exactGuid === guid) modelIds.add(modelId);
+      if (exactGuid && guids.includes(exactGuid)) modelIds.add(modelId);
     }
   }
   return [...modelIds];

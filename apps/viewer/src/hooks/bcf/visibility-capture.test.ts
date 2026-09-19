@@ -84,6 +84,12 @@ describe('captureVisibility', () => {
     assert.equal(describeVisibilityNotice(out.notice!), null, 'console only, no toast');
   });
 
+  it('serializes every model-qualified entity affected by a colliding renderer id', () => {
+    const out = captureVisibility(null, new Set([1]), () => ['GUID-ordinary', 'GUID-room']);
+    assert.deepStrictEqual(out.hiddenGuids, ['GUID-ordinary', 'GUID-room']);
+    assert.equal(out.notice, null);
+  });
+
   it('a hide-list with no nameable member records no Visibility at all', () => {
     const out = captureVisibility(null, new Set([4]), resolve);
     assert.equal(out.hiddenGuids, undefined);

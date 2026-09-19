@@ -29,8 +29,8 @@
  * shortfall is logged, not toasted.
  */
 
-/** Resolves a global entity id to its IFC GlobalId, or nothing when the entity has none. */
-export type GuidResolver = (globalId: number) => string | null | undefined;
+/** Resolves every IFC GlobalId affected by one renderer id. */
+export type GuidResolver = (globalId: number) => string | readonly string[] | null | undefined;
 /** True when the entity belongs to a registered model whose metadata is still loading. */
 export type PendingPredicate = (globalId: number) => boolean;
 
@@ -107,11 +107,20 @@ export function describeVisibilityNotice(notice: VisibilityNotice): string | nul
 
 function nameable(ids: ReadonlySet<number>, resolve: GuidResolver): { guids: string[]; unnameable: number[] } {
   const guids: string[] = [];
+  const seen = new Set<string>();
   const unnameable: number[] = [];
   for (const id of ids) {
-    const guid = resolve(id);
-    if (guid) guids.push(guid);
-    else unnameable.push(id);
+    const resolved = resolve(id);
+    const candidates = typeof resolved === 'string' ? [resolved] : resolved ?? [];
+    if (candidates.length === 0) {
+      unnameable.push(id);
+      continue;
+    }
+    for (const guid of candidates) {
+      if (seen.has(guid)) continue;
+      seen.add(guid);
+      guids.push(guid);
+    }
   }
   return { guids, unnameable };
 }

@@ -9,7 +9,13 @@ type RenderInvalidator = Pick<Renderer, 'requestRender'>;
 type FrameMin = Parameters<Camera['frameBounds']>[0];
 type FrameMax = Parameters<Camera['frameBounds']>[1];
 
-/** Frame selection bounds, dirty immediate frames, then publish pose-dependent UI. */
+function isUsableCaptureBounds(min: FrameMin, max: FrameMax): boolean {
+  return Number.isFinite(min.x) && Number.isFinite(min.y) && Number.isFinite(min.z)
+    && Number.isFinite(max.x) && Number.isFinite(max.y) && Number.isFinite(max.z)
+    && max.x >= min.x && max.y >= min.y && max.z >= min.z;
+}
+
+/** Frame usable selection bounds, dirty immediate frames, then publish pose-dependent UI. */
 export function frameSelectionBounds(
   camera: FrameBoundsCamera,
   renderer: RenderInvalidator,
@@ -17,8 +23,14 @@ export function frameSelectionBounds(
   max: FrameMax,
   durationMs: number,
   onFramed: () => void,
-): Promise<void> {
+): Promise<boolean> {
+  // Camera.frameBounds deliberately resolves after rejecting malformed boxes,
+  // so callers cannot infer success from promise settlement alone.
+  if (!isUsableCaptureBounds(min, max)) return Promise.resolve(false);
   const frameReady = camera.frameBounds(min, max, durationMs);
   if (durationMs <= 0) renderer.requestRender();
-  return frameReady.then(onFramed);
+  return frameReady.then(() => {
+    onFramed();
+    return true;
+  });
 }

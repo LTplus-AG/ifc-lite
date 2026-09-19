@@ -27,8 +27,27 @@ describe('capture framing (#4921)', () => {
     assert.equal(pose, 'framed', 'duration-0 framing must apply before invalidating the canvas');
     assert.equal(renderRequestedAtPose, 'framed',
       'the paint wait must contain a frame rendered from the captured camera pose');
-    await frameReady;
+    assert.equal(await frameReady, true);
     assert.equal(scaleCalculatedAtPose, 'framed',
       'pose-dependent scale UI must update after framing completes');
+  });
+
+  it('reports malformed renderer bounds as unframed instead of reusing the previous pose', async () => {
+    let frameCalls = 0;
+    let renderCalls = 0;
+    let scaleCalls = 0;
+    const framed = await frameSelectionBounds(
+      { frameBounds: async () => { frameCalls++; } },
+      { requestRender: () => { renderCalls++; } },
+      { x: Number.POSITIVE_INFINITY, y: 10, z: 10 },
+      { x: Number.NEGATIVE_INFINITY, y: 0, z: 0 },
+      0,
+      () => { scaleCalls++; },
+    );
+
+    assert.equal(framed, false);
+    assert.equal(frameCalls, 0, 'do not delegate a box the renderer will reject as a resolved no-op');
+    assert.equal(renderCalls, 0);
+    assert.equal(scaleCalls, 0);
   });
 });

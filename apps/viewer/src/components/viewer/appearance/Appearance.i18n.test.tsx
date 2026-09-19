@@ -31,8 +31,6 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import type { appearancePanelEn as AppearancePanelEnType } from '@/i18n/catalogues/appearance-panel.en';
-import type { appearanceWorkflowsEn as AppearanceWorkflowsEnType } from '@/i18n/catalogues/appearance-workflows.en';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { AppearancePanelView } from './AppearancePanelView.js';
@@ -44,8 +42,8 @@ import { PdfFidelityReportView } from './PdfFidelityReportView.js';
 import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
-let appearancePanelEn: typeof AppearancePanelEnType | undefined;
-let appearanceWorkflowsEn: typeof AppearanceWorkflowsEnType | undefined;
+let appearancePanelEn: Catalogue | undefined;
+let appearanceWorkflowsEn: Catalogue | undefined;
 try {
   ({ appearancePanelEn } = await import('@/i18n/catalogues/appearance-panel.en'));
   ({ appearanceWorkflowsEn } = await import('@/i18n/catalogues/appearance-workflows.en'));
@@ -54,8 +52,8 @@ try {
 }
 const HAS_CATALOGUE = appearancePanelEn !== undefined && appearanceWorkflowsEn !== undefined;
 const MERGED_EN = {
-  ...(appearancePanelEn ?? ({} as typeof AppearancePanelEnType)),
-  ...(appearanceWorkflowsEn ?? ({} as typeof AppearanceWorkflowsEnType)),
+  ...(appearancePanelEn ?? {}),
+  ...(appearanceWorkflowsEn ?? {}),
 };
 type AppearanceKey = keyof typeof MERGED_EN;
 const KEYS = Object.keys(MERGED_EN) as AppearanceKey[];

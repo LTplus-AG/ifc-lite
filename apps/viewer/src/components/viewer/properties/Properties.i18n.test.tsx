@@ -33,7 +33,6 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render, click } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import type { propertiesEn as PropertiesEnType } from '@/i18n/catalogues/properties.en';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { ProjectUnits, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
@@ -54,14 +53,14 @@ import { FederationAlignmentControls } from './FederationAlignmentControls.js';
 import { EpsgLookupDialog } from './EpsgLookupDialog.js';
 import { TaskEditCard } from './TaskEditCard.js';
 
-let propertiesEn: typeof PropertiesEnType | undefined;
+let propertiesEn: Catalogue | undefined;
 try {
   ({ propertiesEn } = await import('@/i18n/catalogues/properties.en'));
 } catch (error) {
   if (!(error instanceof Error) || !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
 }
 const HAS_CATALOGUE = propertiesEn !== undefined;
-const CATALOGUE: typeof PropertiesEnType = propertiesEn ?? ({} as typeof PropertiesEnType);
+const CATALOGUE: Catalogue = propertiesEn ?? {};
 
 type PropertiesKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as PropertiesKey[];

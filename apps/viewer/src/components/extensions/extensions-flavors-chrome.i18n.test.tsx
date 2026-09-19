@@ -274,6 +274,41 @@ describe('FlavorDialog localization (#4918)', () => {
       { key: 'extensionsFlavors.flavorDialog.helpHint.p4' },
     ]);
   });
+
+  it('translates the destructive delete confirmation at interaction time', async () => {
+    const host = new StubHost();
+    const active = makeFlavor({ id: 'flv.active', name: 'Active' });
+    const removable = makeFlavor({ id: 'flv.removable', name: 'Removable' });
+    await host.flavors.put(active);
+    await host.flavors.put(removable);
+    await host.flavors.activate(active.id);
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <FlavorDialog open onClose={() => {}} />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(20);
+
+    act(() => setLocale(PSEUDO_LOCALE));
+    const deleteButton = [...document.body.querySelectorAll('button')].find(
+      (button) => button.getAttribute('aria-label') === r('extensionsFlavors.flavorListView.deleteAriaLabel', { name: removable.name }),
+    );
+    assert.ok(deleteButton, 'the inactive flavor delete button must render');
+
+    const originalConfirm = globalThis.confirm;
+    let prompt: string | undefined;
+    globalThis.confirm = (message) => {
+      prompt = String(message);
+      return false;
+    };
+    try {
+      click(deleteButton);
+    } finally {
+      globalThis.confirm = originalConfirm;
+    }
+
+    assert.equal(prompt, r('extensionsFlavors.flavorDialog.confirmDelete', { id: removable.id }));
+  });
 });
 
 describe('FlavorMergeDialog localization (#4918)', () => {

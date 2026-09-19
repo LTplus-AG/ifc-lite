@@ -58,13 +58,20 @@ A changeset states a bump level for **npm packages**. A change can be additive i
 `rust-major-offset.json` at the repo root is how that is said out loud:
 
 ```json
-{ "majorOffset": 1, "reason": "…which crate's public API broke…", "refs": ["#3210"] }
+{
+  "$comment": "schema and tooling guidance",
+  "majorOffset": 1,
+  "reason": "cumulative history of earlier Rust-only breaks",
+  "latestBreak": "the new break that spends this major",
+  "refs": ["#3210"]
+}
 ```
 
 `sync-versions.js` adds `majorOffset` to the **major** of the npm-derived version when it writes the Rust manifests. npm 6.1.0 with `majorOffset: 1` publishes the crates at 7.1.0; the npm packages, the root `package.json` and the `v*` tag stay on 6.1.0. At `majorOffset: 0` the two versions are the same string; for the current value, read `rust-major-offset.json`, and the crates run that many majors ahead of the npm packages.
 
 - Minor and patch keep tracking npm, so raising the offset is a **once per Rust-only major** edit, not a per-release chore.
-- A non-zero offset without a `reason` and at least one `refs` entry is a hard failure: a permanent major-version claim about a published crate has to say what broke.
+- For a new Rust-only major, increment `majorOffset` by exactly one, preserve the historical `reason` verbatim, replace `latestBreak` with a non-empty description of the newly measured break, and append the new issue/PR references to `refs` without removing or reordering its existing entries. Do not fold the new account into `reason`: the release revert oracle uses the rotated `latestBreak` to prove that the major was spent deliberately rather than by stale metadata.
+- A non-zero offset without a non-empty `reason`, non-empty `latestBreak`, and at least one `refs` entry is a hard failure: a permanent major-version claim about a published crate has to say both what history led here and which break caused the latest increment.
 - `pnpm check:rust-major-offset` (run on every PR) fails when the committed manifests do not match what the offset implies. Whether the offset is **large enough** is a different question, answered by `scripts/check-rust-semver.mjs` against the crate live on crates.io.
 
 ### Workflow

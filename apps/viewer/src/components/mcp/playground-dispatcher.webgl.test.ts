@@ -220,6 +220,23 @@ describe('viewer tools on a device that refuses WebGL (#2412)', () => {
     }
   });
 
+  it('keeps the live translation keys when the locale changes before an action rejection settles', async () => {
+    latchNoWebgl();
+    let locale = 'old';
+    const ctx: DispatchContext = {
+      viewer: fakeViewer({ loaded: false, webglUnavailable: true }),
+      translate: (key) => `${locale}:${key}`,
+    };
+
+    const pending = dispatch(model, 'viewer_isolate', { type: 'IfcWall' }, ctx);
+    locale = 'new';
+    const result = await pending;
+
+    assert.equal(result.text, 'old:mcp.playgroundDispatcher.webglUnavailable');
+    assert.equal(result.textKey, 'mcp.playgroundDispatcher.webglUnavailable');
+    assert.equal(result.hintKey, 'mcp.playgroundDispatcher.webglUnavailableHint');
+  });
+
   it('refuses viewer_wait_for_selection immediately instead of blocking on a canvas nobody can click', async () => {
     latchNoWebgl();
     const ctx: DispatchContext = { viewer: fakeViewer({ loaded: false, webglUnavailable: true }) };

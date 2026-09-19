@@ -300,6 +300,7 @@ function requireViewer(ctx: DispatchContext): ViewerController {
     throw new ToolExecutionError({
       code: ToolErrorCode.UNSUPPORTED_OPERATION,
       message: noWebglMessage(ctx),
+      details: { webglUnavailable: true },
       hint: noWebglHint(ctx),
     });
   }
@@ -2029,7 +2030,7 @@ export async function dispatch(
     return { text: out.text, textKey: out.textKey, structured: out.structured, isError: false, download: out.download };
   } catch (err) {
     if (err instanceof ToolExecutionError) {
-      const webglUnavailable = isWebglUnavailable(ctx) && err.message === noWebglMessage(ctx);
+      const webglUnavailable = err.details?.webglUnavailable === true;
       return {
         text: err.message,
         textKey: webglUnavailable ? 'mcp.playgroundDispatcher.webglUnavailable' : undefined,

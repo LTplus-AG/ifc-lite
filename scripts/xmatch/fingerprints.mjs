@@ -13,13 +13,16 @@
  *   (`packages/cli/dist/commands/diff-engine.js`), which walks every
  *   `IfcObjectDefinition` and hashes it with `@ifc-lite/diff`'s canonical
  *   `buildDataFingerprint` / `buildComponentFingerprints`;
- * - the geometry half is the wasm mesh pass with `setComputeGeometryHashes`
- *   on — the same `geometryHashValues` / `geometryAabbValues` the viewer's
- *   compare reads, in the same absolute-world Y-up frame.
+ * - the geometry half is `runGeometryPass` / `attachGeometryFingerprints` from
+ *   the CLI's `--geometry` adapter (`packages/cli/dist/commands/diff-geometry.js`,
+ *   issue #4956) — the wasm mesh pass with `setComputeGeometryHashes` on, the
+ *   same `geometryHashValues` / `geometryAabbValues` the viewer's compare
+ *   reads, in the same absolute-world Y-up frame.
  *
- * The CLI adapter alone is data-scope (Node has no geometry pipeline), so this
- * module is what a headless run of the VIEWER's compare looks like: real data
- * fingerprints with the real world geometry hash and world box attached.
+ * Until #4956 this module duplicated the geometry-pass assembly itself; now
+ * both halves are the CLI's own code, so this file is what running
+ * `ifc-lite diff --by-content --geometry` over the corpus looks like from
+ * inside the harness, not a second opinion about it.
  *
  * Two more fields ride along since issue #4955, both resolved the way the
  * shipped adapters resolve them: `volume` from `geometryVolumeValues` (a
@@ -37,11 +40,13 @@ import { readFileSync } from 'node:fs';
 // something else.
 import { IfcParser, spatialContainerPath } from '../../packages/parser/dist/index.js';
 import { buildFileFingerprints } from '../../packages/cli/dist/commands/diff-engine.js';
+import {
+  attachGeometryFingerprints,
+  GEOMETRY_HASH_TOLERANCE,
+  runGeometryPass,
+} from '../../packages/cli/dist/commands/diff-geometry.js';
 
-/** Quantization grid for the geometry hash, in metres. The wasm default
- *  (`DEFAULT_GEOM_HASH_TOLERANCE`), stated here because the fixture's
- *  calibration stratum reasons about it. */
-export const GEOMETRY_HASH_TOLERANCE = 1e-3;
+export { GEOMETRY_HASH_TOLERANCE };
 
 /** Parse STEP bytes into an `IfcDataStore`, quietly. */
 async function loadStore(bytes) {
@@ -60,77 +65,6 @@ async function loadStore(bytes) {
 }
 
 /**
- * Run the wasm geometry pass and collect per-entity world hashes and boxes.
- *
- * Returns `{ hashes, aabbs, volumes, unitScale }`, the maps keyed by express
- * id. A box with a non-finite coordinate is DROPPED rather than passed on: the
- * engine treats a present box as usable, and a NaN would classify every
- * comparison it touches as garbage rather than abstaining. A volume is kept
- * only when finite and positive — `NaN` is the wasm's "not proved closed"
- * sentinel (`MeshCollection.geometryVolumeValues`), resolved at this boundary
- * exactly as `@ifc-lite/geometry`'s `geometryVolumeAt` resolves it.
- */
-function geometryPass(api, bytes) {
-  const pre = api.buildPrePassOnce(bytes);
-  const hashes = new Map();
-  const aabbs = new Map();
-  const volumes = new Map();
-  const unitScale = pre?.unitScale ?? 1;
-  const total = pre?.totalJobs ?? 0;
-
-  // The pre-pass cache is cleared in an OUTER finally, exactly as
-  // `scripts/lib/mesh-via-prepass.mjs` does it, and for a reason this harness
-  // feels harder than a script that processes one file: ONE `IfcAPI` is reused
-  // across every base and head revision of every model in the corpus. A model
-  // that produces no jobs, or a `processGeometryBatch` that throws, would
-  // otherwise carry a populated cache into the NEXT file — and stale wasm
-  // state between two revisions does not look like a leak, it looks like a
-  // matcher regression, in the one place whose whole purpose is to be believed
-  // about matcher regressions.
-  try {
-    if (!pre || !pre.jobs || total === 0) return { hashes, aabbs, volumes, unitScale };
-
-    const [rtcX, rtcY, rtcZ] = pre.rtcOffset ? Array.from(pre.rtcOffset) : [0, 0, 0];
-    const collection = api.processGeometryBatch(
-      bytes,
-      pre.jobs,
-      pre.unitScale,
-      rtcX,
-      rtcY,
-      rtcZ,
-      pre.needsShift,
-      pre.voidKeys,
-      pre.voidCounts,
-      pre.voidValues,
-      pre.styleIds,
-      pre.styleColors,
-    );
-    try {
-      const ids = collection.geometryHashIds;
-      const values = collection.geometryHashValues;
-      const boxes = collection.geometryAabbValues;
-      // Optional getter: a wasm build that predates it answers `undefined`,
-      // and every split claim then stops at `extent` rather than failing.
-      const volumeValues = collection.geometryVolumeValues;
-      for (let i = 0; i < ids.length; i++) {
-        hashes.set(ids[i], values[i]);
-        const volume = volumeValues?.[i];
-        if (Number.isFinite(volume) && volume > 0) volumes.set(ids[i], volume);
-        const box = Array.from(boxes.slice(6 * i, 6 * i + 6));
-        if (box.length === 6 && box.every((value) => Number.isFinite(value))) {
-          aabbs.set(ids[i], { min: [box[0], box[1], box[2]], max: [box[3], box[4], box[5]] });
-        }
-      }
-    } finally {
-      collection.free();
-    }
-  } finally {
-    if (api.clearPrePassCache) api.clearPrePassCache();
-  }
-  return { hashes, aabbs, volumes, unitScale };
-}
-
-/**
  * Fingerprint one file exactly as a viewer compare would see it.
  *
  * `stripKeys` replaces every fingerprint's `key` with an opaque per-file token.
@@ -138,20 +72,22 @@ function geometryPass(api, bytes) {
  * key survives — but any pair whose answer key lives in the GlobalId does, and
  * a fixture that leaves the answer visible in an input the matcher reads is
  * circular. The caller asserts the stripping actually happened.
+ *
+ * The pre-pass cache is cleared inside `runGeometryPass`'s own `finally`
+ * (issue #4956), which matters here specifically: ONE `IfcAPI` is reused
+ * across every base and head revision of every model in the corpus, so stale
+ * wasm state carried from one file into the next would not look like a leak —
+ * it would look like a matcher regression, in the one place whose whole
+ * purpose is to be believed about matcher regressions.
  */
 export async function fingerprintFile(path, api, { stripKeys = false } = {}) {
   const bytes = readFileSync(path);
   const store = await loadStore(bytes);
   const fingerprints = buildFileFingerprints(store);
-  const { hashes, aabbs, volumes, unitScale } = geometryPass(api, bytes);
+  const geometry = runGeometryPass(api, bytes);
+  attachGeometryFingerprints(fingerprints, geometry);
 
   for (const fingerprint of fingerprints) {
-    const hash = hashes.get(fingerprint.ref);
-    if (hash !== undefined) fingerprint.geometryHash = hash;
-    const aabb = aabbs.get(fingerprint.ref);
-    if (aabb !== undefined) fingerprint.aabb = aabb;
-    const volume = volumes.get(fingerprint.ref);
-    if (volume !== undefined) fingerprint.volume = volume;
     // A NAME path (`Project/Building/Level 2/Room 204`), never GlobalIds, so
     // it survives the re-GUID; both revisions go through this one resolver.
     const container = spatialContainerPath(store, fingerprint.ref);
@@ -168,8 +104,8 @@ export async function fingerprintFile(path, api, { stripKeys = false } = {}) {
 
   return {
     fingerprints,
-    meshedIds: new Set(hashes.keys()),
-    unitScale,
+    meshedIds: new Set(geometry.hashes.keys()),
+    unitScale: geometry.unitScale,
     originalKeys,
     schemaVersion: store.schemaVersion,
   };

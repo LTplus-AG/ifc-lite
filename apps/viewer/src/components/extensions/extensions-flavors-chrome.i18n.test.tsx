@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
-import type { Bundle, BundleFile, Flavor } from '@ifc-lite/extensions';
+import { DEFAULT_FLAVOR_ID, type Bundle, type BundleFile, type Flavor } from '@ifc-lite/extensions';
 import { cleanup, render, click } from '@/test/render.js';
 import { Toaster } from '@/components/ui/toast';
 import { registerLocale, setLocale } from '@/i18n';
@@ -32,6 +32,10 @@ import { resolve } from '@/i18n/registry';
 import { extensionsFlavorsEn } from '@/i18n/catalogues/extensions-flavors.en';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { IdbFlavorStorage } from '@/services/extensions/idb-flavor-storage.js';
+import {
+  DEFAULT_FLAVOR_DESCRIPTION,
+  DEFAULT_FLAVOR_NAME,
+} from '@/services/extensions/default-flavor-metadata.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { ExtensionsPanel } from './ExtensionsPanel.js';
 import { FlavorDialog } from './FlavorDialog.js';
@@ -562,6 +566,50 @@ describe('FlavorMergeDialog localization (#4918)', () => {
 });
 
 describe('FlavorImportPreview localization (#4918)', () => {
+  it('localizes untouched canonical metadata without masking imported edits', () => {
+    const canonical = {
+      flavor: makeFlavor({
+        id: DEFAULT_FLAVOR_ID,
+        name: DEFAULT_FLAVOR_NAME,
+        description: DEFAULT_FLAVOR_DESCRIPTION,
+      }),
+      extensionBundles: new Map(),
+      summary: undefined,
+    };
+    render(
+      <FlavorImportPreview
+        unpacked={canonical}
+        busy={false}
+        onCancel={() => {}}
+        onMerge={() => {}}
+        onSaveAsNew={() => {}}
+        onReplace={() => {}}
+      />,
+    );
+    act(() => setLocale(PSEUDO_LOCALE));
+    const canonicalText = document.body.textContent ?? '';
+    assert.match(canonicalText, new RegExp(r('extensionsFlavors.flavorIndicator.defaultLabel').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(canonicalText, new RegExp(r('extensionsFlavors.flavorIndicator.defaultDescription').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+    cleanup();
+    const customized = {
+      ...canonical,
+      flavor: { ...canonical.flavor, name: 'Imported custom name', description: 'Imported custom description' },
+    };
+    render(
+      <FlavorImportPreview
+        unpacked={customized}
+        busy={false}
+        onCancel={() => {}}
+        onMerge={() => {}}
+        onSaveAsNew={() => {}}
+        onReplace={() => {}}
+      />,
+    );
+    assert.match(document.body.textContent ?? '', /Imported custom name/);
+    assert.match(document.body.textContent ?? '', /Imported custom description/);
+  });
+
   it('translates the preview header, stats line, and action buttons', () => {
     const unpacked = {
       flavor: makeFlavor({

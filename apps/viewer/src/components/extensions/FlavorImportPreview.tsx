@@ -15,6 +15,10 @@ import { FilePlus, GitMerge } from 'lucide-react';
 import type { UnpackedFlavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
+import {
+  localizedFlavorDescription,
+  localizedFlavorName,
+} from './localized-flavor-metadata';
 
 interface FlavorImportPreviewProps {
   unpacked: UnpackedFlavor;
@@ -34,20 +38,22 @@ export function FlavorImportPreview({
   onReplace,
 }: FlavorImportPreviewProps) {
   const { t } = useTranslation();
+  const name = localizedFlavorName(unpacked.flavor, t);
+  const description = localizedFlavorDescription(unpacked.flavor, t);
   return (
     <div className="space-y-3">
       <div className="text-sm font-medium">{t('extensionsFlavors.flavorImportPreview.title')}</div>
       <div className="rounded border bg-muted/30 p-3 text-xs space-y-1">
         <div>
           <span className="text-muted-foreground">{t('extensionsFlavors.flavorImportPreview.nameLabel')}</span>{' '}
-          <span className="font-medium">{unpacked.flavor.name}</span>
+          <span className="font-medium">{name}</span>
         </div>
         <div>
           <span className="text-muted-foreground">{t('extensionsFlavors.flavorImportPreview.idLabel')}</span>{' '}
           <code className="font-mono">{unpacked.flavor.id}</code>
         </div>
-        {unpacked.flavor.description && (
-          <div className="text-muted-foreground">{unpacked.flavor.description}</div>
+        {description && (
+          <div className="text-muted-foreground">{description}</div>
         )}
         <div className="text-muted-foreground">
           {t('extensionsFlavors.flavorImportPreview.statsLine', {

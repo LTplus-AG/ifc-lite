@@ -331,7 +331,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     setBusy(true);
     try {
       const flavor = await host.flavors.importFlavor(preview.unpacked, { strategy });
-      toast.success(t('extensionsFlavors.flavorDialog.toast.imported', { name: flavor.name }));
+      toast.success(t('extensionsFlavors.flavorDialog.toast.imported', { name: localizedFlavorName(flavor, t) }));
       setPreview(null);
     } catch (err) {
       if (err && (err as { name?: string }).name === 'ExtensionStorageQuotaError') {

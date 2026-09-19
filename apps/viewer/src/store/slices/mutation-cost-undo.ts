@@ -21,9 +21,18 @@
 
 import type { Mutation } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
+import { normalizeMutationModelId } from '../../sdk/adapters/mutation-view.js';
 
 type SetState = (partial: Partial<ViewerState> | ((state: ViewerState) => Partial<ViewerState>)) => void;
 
+/**
+ * `modelId` is normalised the same way `getOrCreateMutationView` normalises
+ * it before REGISTERING the `MutablePropertyView` (`__legacy__` for a
+ * single-model / no-real-id session) — both the push here and the undo/redo
+ * apply path's `state.mutationViews.get(modelId)` lookup have to agree on
+ * that key, or a legacy-session create pushes an undo entry the apply path
+ * can never find the matching view for and silently no-ops.
+ */
 export function pushCreateEntityUndo(
   set: SetState,
   modelId: string,
@@ -31,23 +40,24 @@ export function pushCreateEntityUndo(
   ifcType: string,
 ): void {
   set((s) => {
+    const normalizedModelId = normalizeMutationModelId(s, modelId);
     const newUndoStacks = new Map(s.undoStacks);
-    const stack = newUndoStacks.get(modelId) || [];
+    const stack = newUndoStacks.get(normalizedModelId) || [];
     const mutation: Mutation = {
       id: `mut_${ifcType.toLowerCase()}_${entityId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       type: 'CREATE_ENTITY',
       timestamp: Date.now(),
-      modelId,
+      modelId: normalizedModelId,
       entityId,
       attributeName: ifcType,
     };
-    newUndoStacks.set(modelId, [...stack, mutation]);
+    newUndoStacks.set(normalizedModelId, [...stack, mutation]);
 
     const newRedoStacks = new Map(s.redoStacks);
-    newRedoStacks.set(modelId, []);
+    newRedoStacks.set(normalizedModelId, []);
 
     const newDirty = new Set(s.dirtyModels);
-    newDirty.add(modelId);
+    newDirty.add(normalizedModelId);
 
     return {
       undoStacks: newUndoStacks,

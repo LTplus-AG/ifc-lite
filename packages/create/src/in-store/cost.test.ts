@@ -206,6 +206,30 @@ describe('nestCostItemsInStore', () => {
     expect(ed.hasEntity(900)).toBe(false);
     expect(view.getPositionalMutationsForEntity(901)?.get(5)).toEqual(['#902']);
   });
+
+  it('refuses parentId === one of childIds (self-nesting)', async () => {
+    const { editor: ed } = await editor();
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    expect(() => nestCostItemsInStore(ed, ANCHOR, item, [item], new Map()))
+      .toThrow(/cannot also be one of childIds/);
+  });
+
+  it('refuses a parentId or childId that is not an IfcCostItem', async () => {
+    const { editor: ed } = await editor();
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    expect(() => nestCostItemsInStore(ed, ANCHOR, 100, [item], new Map()))
+      .toThrow(/parentId #100 must be an IfcCostItem, got IFCWALL/);
+    expect(() => nestCostItemsInStore(ed, ANCHOR, item, [100], new Map()))
+      .toThrow(/childId #100 must be an IfcCostItem, got IFCWALL/);
+  });
+
+  it('de-duplicates childIds when creating a fresh IfcRelNests', async () => {
+    const { editor: ed } = await editor();
+    const parent = addCostItemToStore(ed, ANCHOR, { Name: 'Parent' });
+    const child = addCostItemToStore(ed, ANCHOR, { Name: 'Child' });
+    const relId = nestCostItemsInStore(ed, ANCHOR, parent, [child, child], new Map());
+    expect(ed.getNewEntity(relId)!.attributes[5]).toEqual([`#${child}`]);
+  });
 });
 
 describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', () => {
@@ -223,10 +247,31 @@ describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', ()
   it('assigns a product AND a task to a cost item as legal RelatedObjects', async () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
-    const relId = assignObjectsToCostItemInStore(ed, ANCHOR, item, [100, 200]);
+    // #100 (IfcWall, the fixture's product) and a freshly authored IfcTask —
+    // assignObjectsToCostItemInStore does not type-check RelatedObjects
+    // (products AND tasks are legal), but it does now require they EXIST.
+    const task = ed.addEntity('IfcTask', ['0task00000000000000001', null, 'T', null, null, null, null, null, '.NOTDEFINED.', null, null, null]).expressId;
+    const relId = assignObjectsToCostItemInStore(ed, ANCHOR, item, [100, task]);
     const rel = ed.getNewEntity(relId)!;
-    expect(rel.attributes[4]).toEqual(['#100', '#200']);
+    expect(rel.attributes[4]).toEqual(['#100', `#${task}`]);
     expect(rel.attributes[6]).toBe(`#${item}`);
+  });
+
+  it('de-duplicates relatedObjectIds when creating a fresh IfcRelAssignsToControl', async () => {
+    const { editor: ed } = await editor();
+    const schedule = addCostScheduleToStore(ed, ANCHOR, { Name: 'S' });
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    const relId = assignCostItemsToScheduleInStore(ed, ANCHOR, schedule, [item, item]);
+    expect(ed.getNewEntity(relId)!.attributes[4]).toEqual([`#${item}`]);
+  });
+
+  it('refuses a relatingControlId of the wrong class, and a relatedObjectId that does not exist', async () => {
+    const { editor: ed } = await editor();
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    expect(() => assignCostItemsToScheduleInStore(ed, ANCHOR, 100, [item]))
+      .toThrow(/relatingControlId #100 must be an IfcCostSchedule, got IFCWALL/);
+    expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [99999]))
+      .toThrow(/relatedObjectIds #99999 does not exist/);
   });
 });
 
@@ -241,8 +286,18 @@ describe('attachCostValuesToItemInStore', () => {
   it('replaces CostValues with the given list', async () => {
     const { editor: ed, view } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
-    attachCostValuesToItemInStore(ed, item, [1, 2]);
-    expect(view.getPositionalMutationsForEntity(item)?.get(7)).toEqual(['#1', '#2']);
+    const v1 = addCostValueToStore(ed, ANCHOR, { Name: 'V1' });
+    const v2 = addCostValueToStore(ed, ANCHOR, { Name: 'V2' });
+    attachCostValuesToItemInStore(ed, item, [v1, v2]);
+    expect(view.getPositionalMutationsForEntity(item)?.get(7)).toEqual([`#${v1}`, `#${v2}`]);
+  });
+
+  it('refuses an itemId that is not an IfcCostItem, and a valueId that is not an IfcCostValue', async () => {
+    const { editor: ed } = await editor();
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    const value = addCostValueToStore(ed, ANCHOR, { Name: 'V' });
+    expect(() => attachCostValuesToItemInStore(ed, 100, [value])).toThrow(/itemId #100 must be an IfcCostItem, got IFCWALL/);
+    expect(() => attachCostValuesToItemInStore(ed, item, [100])).toThrow(/CostValues #100 must be an IfcCostValue, got IFCWALL/);
   });
 });
 
@@ -270,7 +325,8 @@ describe('removeCostEntityInStore', () => {
   it('detaches from IfcRelNests and IfcRelAssignsToControl, tombstoning an emptied rel', async () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
-    const nestId = nestCostItemsInStore(ed, ANCHOR, 900, [item], new Map());
+    const parent = addCostItemToStore(ed, ANCHOR, { Name: 'Parent' });
+    const nestId = nestCostItemsInStore(ed, ANCHOR, parent, [item], new Map());
     const assignId = assignObjectsToCostItemInStore(ed, ANCHOR, item, [100]);
     removeCostEntityInStore(ed, ANCHOR, item, {
       nestRelatedObjects: new Map([[nestId, [item]]]),

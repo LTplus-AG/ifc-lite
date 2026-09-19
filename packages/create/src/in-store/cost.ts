@@ -49,6 +49,24 @@ function schemaOf(anchor: CostAnchor): CostSchema {
   return anchor.schema ?? 'IFC4';
 }
 
+/**
+ * Refuse an id that does not resolve to `expectedType` — existing (source or
+ * overlay-created, retype-aware, via `StoreEditor.getEntityType`) or not.
+ * Every builder here that takes "an id of a specific class" (a parent to
+ * nest under, an item to attach values to, a schedule to control from, …)
+ * checks it, so a caller's typo or a stale id fails loudly here rather than
+ * writing a structurally valid but semantically wrong STEP reference.
+ */
+function requireEntityType(editor: StoreEditor, id: number, expectedType: string, attribute: string, context: string): void {
+  const actual = editor.getEntityType(id);
+  if (actual === undefined) {
+    throw new Error(`${context}: ${attribute} #${id} does not exist in this model`);
+  }
+  if (actual.toUpperCase() !== expectedType.toUpperCase()) {
+    throw new Error(`${context}: ${attribute} #${id} must be an ${expectedType}, got ${actual}`);
+  }
+}
+
 function typedAttrValue(value: CostTypedValueInput, schema: CostSchema, context: string): IfcAttributeValue {
   validateTypedValue(value, schema, context);
   return { typed: { type: value.Type, value: value.Value } };
@@ -220,23 +238,33 @@ export function nestCostItemsInStore(
   assertCostSchema(schema, 'nestCostItems');
   validateRefList(childIds, 'childIds', 'nestCostItems');
   requireRef(parentId, 'parentId', 'nestCostItems');
+  if (childIds.includes(parentId)) {
+    throw new Error(`nestCostItems: parentId #${parentId} cannot also be one of childIds (an item cannot nest itself)`);
+  }
+  requireEntityType(editor, parentId, 'IfcCostItem', 'parentId', 'nestCostItems');
+  // De-duplicated once: every use below (the reparent scan, the merge, the
+  // freshly-created rel's own RelatedObjects) reads from this, not childIds
+  // — a repeated id in the caller's list must not write a repeated #N into a
+  // list IFC readers count members of.
+  const uniqueChildIds = [...new Set(childIds)];
+  for (const childId of uniqueChildIds) requireEntityType(editor, childId, 'IfcCostItem', 'childId', 'nestCostItems');
   // Detach every child of THIS call from every old rel it is a member of, one
   // rewrite per (rel, not per (rel, child)): two children reparented out of
   // the same old IfcRelNests in one call must both leave it, and re-filtering
   // the ORIGINAL (unchanged) relatedIds on each iteration would make the
   // second child's rewrite silently undo the first child's removal.
   const detachedRelIds = new Set<number>();
-  for (const childId of childIds) {
+  for (const childId of uniqueChildIds) {
     for (const existing of existingNestByChild.get(childId) ?? []) {
       if (existing.relId === existingTargetNest?.relId || detachedRelIds.has(existing.relId)) continue;
       detachedRelIds.add(existing.relId);
-      const remaining = existing.relatedIds.filter(id => !childIds.includes(id));
+      const remaining = existing.relatedIds.filter(id => !uniqueChildIds.includes(id));
       if (remaining.length === 0) editor.removeEntity(existing.relId);
       else editor.setPositionalAttribute(existing.relId, 5, remaining.map(id => `#${id}`));
     }
   }
   if (existingTargetNest) {
-    const merged = [...new Set([...existingTargetNest.relatedIds, ...childIds])];
+    const merged = [...new Set([...existingTargetNest.relatedIds, ...uniqueChildIds])];
     editor.setPositionalAttribute(existingTargetNest.relId, 5, merged.map(id => `#${id}`));
     return existingTargetNest.relId;
   }
@@ -246,7 +274,7 @@ export function nestCostItemsInStore(
     null,
     null,
     `#${parentId}`,
-    childIds.map(id => `#${id}`),
+    uniqueChildIds.map(id => `#${id}`),
   ]).expressId;
 }
 
@@ -265,13 +293,23 @@ function assignToControlInStore(
   relatedObjectIds: number[],
   existingAssignment: ExistingRelatedList | undefined,
   context: string,
+  controlType: string,
+  relatedType?: string,
 ): number {
   const schema = schemaOf(anchor);
   assertCostSchema(schema, context);
   validateRefList(relatedObjectIds, 'relatedObjectIds', context);
   requireRef(relatingControlId, 'relatingControlId', context);
+  requireEntityType(editor, relatingControlId, controlType, 'relatingControlId', context);
+  // De-duplicated once so a repeated id in the caller's list can't write a
+  // repeated #N into RelatedObjects — a caller-visible malformed member list.
+  const uniqueRelated = [...new Set(relatedObjectIds)];
+  for (const id of uniqueRelated) {
+    if (relatedType) requireEntityType(editor, id, relatedType, 'relatedObjectIds', context);
+    else if (!editor.hasEntity(id)) throw new Error(`${context}: relatedObjectIds #${id} does not exist in this model`);
+  }
   if (existingAssignment) {
-    const merged = [...new Set([...existingAssignment.relatedIds, ...relatedObjectIds])];
+    const merged = [...new Set([...existingAssignment.relatedIds, ...uniqueRelated])];
     editor.setPositionalAttribute(existingAssignment.relId, 4, merged.map(id => `#${id}`));
     return existingAssignment.relId;
   }
@@ -280,7 +318,7 @@ function assignToControlInStore(
     ownerHistoryRef(anchor.ownerHistoryId),
     null,
     null,
-    relatedObjectIds.map(id => `#${id}`),
+    uniqueRelated.map(id => `#${id}`),
     null,
     `#${relatingControlId}`,
   ]).expressId;
@@ -291,15 +329,23 @@ export function assignCostItemsToScheduleInStore(
   editor: StoreEditor, anchor: CostAnchor, scheduleId: number, itemIds: number[],
   existingAssignment?: ExistingRelatedList,
 ): number {
-  return assignToControlInStore(editor, anchor, scheduleId, itemIds, existingAssignment, 'assignCostItemsToSchedule');
+  return assignToControlInStore(
+    editor, anchor, scheduleId, itemIds, existingAssignment, 'assignCostItemsToSchedule', 'IfcCostSchedule', 'IfcCostItem',
+  );
 }
 
-/** Assign `objectIds` (products AND/OR tasks) to `costItemId` (IfcCostItem) as the objects it controls. */
+/**
+ * Assign `objectIds` (products AND/OR tasks) to `costItemId` (IfcCostItem) as
+ * the objects it controls. `objectIds` are NOT type-checked against one
+ * class — that is the point of "products AND tasks are legal" — only their
+ * existence is (via `StoreEditor.addEntity`'s own checks and this rel's own
+ * export-time reference resolution).
+ */
 export function assignObjectsToCostItemInStore(
   editor: StoreEditor, anchor: CostAnchor, costItemId: number, objectIds: number[],
   existingAssignment?: ExistingRelatedList,
 ): number {
-  return assignToControlInStore(editor, anchor, costItemId, objectIds, existingAssignment, 'assignToCostItem');
+  return assignToControlInStore(editor, anchor, costItemId, objectIds, existingAssignment, 'assignToCostItem', 'IfcCostItem');
 }
 
 /**
@@ -308,7 +354,11 @@ export function assignObjectsToCostItemInStore(
  * written as `$` — never `()`, which `[1:?]` forbids.
  */
 export function attachCostValuesToItemInStore(editor: StoreEditor, itemId: number, valueIds: readonly number[]): void {
-  for (const id of valueIds) requireRef(id, 'CostValues', 'setCostItemValues');
+  requireEntityType(editor, itemId, 'IfcCostItem', 'itemId', 'setCostItemValues');
+  for (const id of valueIds) {
+    requireRef(id, 'CostValues', 'setCostItemValues');
+    requireEntityType(editor, id, 'IfcCostValue', 'CostValues', 'setCostItemValues');
+  }
   editor.setPositionalAttribute(itemId, 7, valueIds.length === 0 ? null : valueIds.map(id => `#${id}`));
 }
 
@@ -344,6 +394,21 @@ export interface CostRemovalReferrers {
    * `RelatingControl` is required, so the rel is removed, not rewritten.
    */
   assignmentsAsControl?: readonly number[];
+  /**
+   * Every OTHER cost relationship type — `IfcRelAssignsToProduct`,
+   * `IfcRelAssignsToProcess`, `IfcRelDeclares`, `IfcRelAssociatesAppliedValue`,
+   * `IfcRelSchedulesCostItems`, `IfcAppliedValueRelationship`, and any future
+   * subtype the cost reader enumerates — that references the target in ANY
+   * of its reference attributes (`RelatedObjects`, `RelatedDefinitions`,
+   * `Components`, or any `Relating*` scalar), by expressId. Unlike
+   * `nestRelatedObjects`/`assignmentRelatedObjects`, the caller does not name
+   * a positional slot for these — the exact layout varies by type — so this
+   * is never partially rewritten: `detach: true` tombstones the WHOLE
+   * relationship. Safe (never leaves a dangling reference to the deleted
+   * entity) but more aggressive than a precise per-slot rewrite would be,
+   * since any OTHER member of that same relationship goes with it.
+   */
+  otherRelationships?: readonly number[];
 }
 
 /**
@@ -375,6 +440,9 @@ export function removeCostEntityInStore(
   for (const [valueId, ref] of referrers.valueAppliedValueRef ?? []) {
     if (ref === expressId) blockers.push(`IfcCostValue #${valueId}.AppliedValue (AppliedValueRef)`);
   }
+  for (const relId of referrers.otherRelationships ?? []) {
+    blockers.push(`relationship #${relId}`);
+  }
   if (blockers.length > 0 && !options.detach) {
     throw new Error(
       `removeCostEntity: #${expressId} is still referenced by ${blockers.join(', ')}. `
@@ -395,6 +463,10 @@ export function removeCostEntityInStore(
       if (ref !== expressId) continue;
       editor.setPositionalAttribute(valueId, 2, null);
     }
+    // No known positional slot for these types — see the field's doc comment
+    // on CostRemovalReferrers. Tombstoning the whole rel is the only rewrite
+    // that is safe without one.
+    for (const relId of referrers.otherRelationships ?? []) editor.removeEntity(relId);
   }
   for (const [relId, related] of referrers.nestRelatedObjects ?? []) {
     if (!related.includes(expressId)) continue;

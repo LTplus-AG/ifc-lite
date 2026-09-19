@@ -173,6 +173,28 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(pendingValue.AppliedValue).toBeUndefined();
   });
 
+  it('the generic relationship scan also covers IfcRelDeclares and IfcRelAssignsToProduct, not just IfcRelNests/IfcRelAssignsToControl', async () => {
+    const { storeCost, cost, view } = await session();
+    const item = storeCost.addCostItem('m', { Name: 'Declared item' }).expressId;
+    // Neither rel type is one `removeCostEntityInStore` knows a positional
+    // slot for — CostRemovalReferrers.otherRelationships is what has to pick
+    // these up (walking every reference field, not a hand list of two types).
+    const declares = view.createEntity('IfcRelDeclares', [
+      '0decl000000000000000001', null, null, null, '#1', [`#${item}`],
+    ]).expressId;
+    const assignsToProduct = view.createEntity('IfcRelAssignsToProduct', [
+      '0prod000000000000000002', null, null, null, [`#${item}`], null, '#1',
+    ]).expressId;
+
+    expect(() => storeCost.removeCostEntity('m', item)).toThrow(/still referenced by relationship/);
+
+    storeCost.removeCostEntity('m', item, { detach: true });
+    const graph = cost.data('m');
+    expect(graph.CostItems.some(i => i.ref.expressId === item)).toBe(false);
+    expect(graph.Relationships.some(r => r.ref.expressId === declares)).toBe(false);
+    expect(graph.Relationships.some(r => r.ref.expressId === assignsToProduct)).toBe(false);
+  });
+
   it('refuses to remove a non-cost entity (a wall) through removeCostEntity', async () => {
     const { storeCost } = await session();
     // #1 is IFCWALL in the fixture — not IfcCostSchedule/IfcCostItem/IfcCostValue.

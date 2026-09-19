@@ -114,19 +114,39 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
   const assignmentRelatedObjects = new Map<number, readonly number[]>();
   const nestsAsParent: number[] = [];
   const assignmentsAsControl: number[] = [];
+  const otherRelationships: number[] = [];
   for (const rel of graph.Relationships) {
     const related = (rel.RelatedObjects ?? []).map(r => r.expressId);
     if (rel.Type === 'IfcRelNests') {
       if (related.includes(expressId)) nestRelatedObjects.set(rel.ref.expressId, related);
       if (rel.RelatingObject?.expressId === expressId) nestsAsParent.push(rel.ref.expressId);
-    } else if (rel.Type === 'IfcRelAssignsToControl') {
+      continue;
+    }
+    if (rel.Type === 'IfcRelAssignsToControl') {
       if (related.includes(expressId)) assignmentRelatedObjects.set(rel.ref.expressId, related);
       if (rel.RelatingControl?.expressId === expressId) assignmentsAsControl.push(rel.ref.expressId);
+      continue;
     }
+    // Every OTHER cost relationship type the reader enumerates
+    // (IfcRelAssignsToProduct, IfcRelAssignsToProcess, IfcRelDeclares,
+    // IfcRelAssociatesAppliedValue, IfcRelSchedulesCostItems,
+    // IfcAppliedValueRelationship, and any future subtype the reader adds) —
+    // walked generically over every reference-bearing field `graph.Relationships`
+    // already exposes, not a hand list of types, so a new subtype the cost
+    // reader starts enumerating is covered automatically rather than silently
+    // missed. See CostRemovalReferrers.otherRelationships for why these are
+    // never partially rewritten.
+    const scalarRefs = [
+      rel.RelatingObject, rel.RelatingControl, rel.RelatingProduct, rel.RelatingProcess,
+      rel.RelatingContext, rel.RelatingAppliedValue, rel.ComponentOfTotal,
+    ];
+    const listRefs = [...related, ...(rel.RelatedDefinitions ?? []).map(r => r.expressId), ...(rel.Components ?? []).map(r => r.expressId)];
+    const references = scalarRefs.some(r => r?.expressId === expressId) || listRefs.includes(expressId);
+    if (references) otherRelationships.push(rel.ref.expressId);
   }
   return {
     itemCostValues, valueComponents, valueAppliedValueRef, nestRelatedObjects, assignmentRelatedObjects,
-    nestsAsParent, assignmentsAsControl,
+    nestsAsParent, assignmentsAsControl, otherRelationships,
   };
 }
 

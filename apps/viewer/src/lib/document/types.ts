@@ -163,7 +163,10 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         if (typeof block.snapshot !== 'boolean') errors.push({ path: `${at}.snapshot`, message: 'expected a boolean' });
         break;
       case 'spacer':
-        if (typeof block.height !== 'number' || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
+        // Number.isFinite also rejects Infinity/-Infinity/NaN — a `1e309` in an imported file
+        // parses as Infinity and would otherwise pass "a positive number" straight into a CSS
+        // height in the preview (review finding).
+        if (typeof block.height !== 'number' || !Number.isFinite(block.height) || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
         break;
       default:
         errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer' });

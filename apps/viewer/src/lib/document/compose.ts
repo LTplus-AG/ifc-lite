@@ -131,7 +131,10 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     y = top;
   };
   const ensure = (h: number): void => {
-    if (y + h > bottom && page.items.length > 0) newPage();
+    // `y >= bottom` also breaks even on an empty page: a leading spacer clamped to the full
+    // printable height left the cursor exactly at `bottom` with `page.items.length === 0`, so the
+    // next block drew at the footer instead of starting a fresh page (review finding).
+    if (y + h > bottom && (page.items.length > 0 || y >= bottom)) newPage();
   };
 
   // Both a full-width chart/image and one half of a two-up row need the same
@@ -139,17 +142,22 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   // computed once per block and the actual `y` (known only after a possible
   // page break) is applied last, through `draw`.
   const layoutImage = (block: Extract<ResolvedBlock, { kind: 'image' }>, boxX: number, boxW: number): { height: number; draw: (y: number) => DrawnItem[] } => {
-    const h = Math.min(block.height, bottom - top);
+    // The caption's own row must fit the page frame too, so it is reserved before the image height
+    // is clamped (review finding: a tall image + caption could still clamp to the full frame, then
+    // draw the caption past `bottom`, in the footer band).
+    const captionH = block.caption ? 14 : 0;
+    const h = Math.min(block.height, bottom - top - captionH);
     const w = Math.min(boxW, h * block.aspect);
     const drawnH = w / block.aspect;
-    const captionH = block.caption ? 14 : 0;
     const x = block.align === 'left' ? boxX : block.align === 'right' ? boxX + boxW - w : boxX + (boxW - w) / 2;
     return {
       height: drawnH + captionH,
       draw: (y) => {
         const items: DrawnItem[] = [{ kind: 'image', blockId: block.id, x, y, w, h: drawnH }];
-        // A long caption must not cross the inter-column gap into the paired half-width block (review finding).
-        if (block.caption) items.push({ kind: 'text', x, y: y + drawnH + 11, size: 8, bold: false, gray: 130, text: truncateToWidth(block.caption, boxW, 8, false, input.measure) });
+        // A long caption must not cross the inter-column gap into the paired half-width block, and
+        // for a centered/right-aligned narrow image it starts at `x > boxX`, so it is truncated to
+        // the room actually left in the column from `x`, not the column's full width (review finding).
+        if (block.caption) items.push({ kind: 'text', x, y: y + drawnH + 11, size: 8, bold: false, gray: 130, text: truncateToWidth(block.caption, boxX + boxW - x, 8, false, input.measure) });
         return items;
       },
     };

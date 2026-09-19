@@ -174,6 +174,11 @@ describe('document file', () => {
     assert.deepEqual(validateDocumentSpec(badChartHeight).map((e) => e.path), ['blocks[0].height']);
     const badWidth = { ...v2, blocks: [{ ...halfImage, width: 'third' }] };
     assert.deepEqual(validateDocumentSpec(badWidth).map((e) => e.path), ['blocks[0].width']);
+    // Infinity ("a positive number") must not slip past validation into a CSS height (review finding).
+    const infiniteSpacer = { ...v2, blocks: [{ kind: 'spacer', id: 's2', height: Infinity }] };
+    assert.deepEqual(validateDocumentSpec(infiniteSpacer).map((e) => e.path), ['blocks[0].height']);
+    const nanSpacer = { ...v2, blocks: [{ kind: 'spacer', id: 's3', height: Number.NaN }] };
+    assert.deepEqual(validateDocumentSpec(nanSpacer).map((e) => e.path), ['blocks[0].height']);
   });
 });
 
@@ -290,6 +295,23 @@ describe('compose', () => {
     for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= bottom, `${item.kind} at y=${item.y} must stay above the footer at ${bottom}`);
     const after = layout.pages.flatMap((p) => p.items).find((i) => i.kind === 'text' && i.text === 'after the spacer');
     assert.ok(after, 'the text after the oversized spacer is still drawn somewhere, not lost past the page bounds');
+  });
+
+  it('a leading full-page spacer does not strand the next chart at the footer on an otherwise-empty page (review finding, #4940)', () => {
+    // A spacer clamped to the full printable height leaves y === bottom with the page still empty;
+    // `ensure` used to refuse a page break in that case (unlike the per-line text path), so the
+    // block right after it drew starting at the footer instead of a fresh page.
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'sp', height: 5000 },
+        { kind: 'chart', id: 'c', title: 'Chart', subtitle: '', hasData: false, snapshot: false },
+      ],
+    });
+    const bottom = layout.size.h - 40 - 24;
+    const chart = layout.pages.flatMap((p) => p.items).find((i) => i.kind === 'chart')!;
+    assert.ok(chart.y + chart.h <= bottom, `chart bottom ${chart.y + chart.h} must stay above the footer at ${bottom}, not start at it`);
+    assert.equal(layout.pages.length, 2, 'the spacer fills page 1 entirely; the chart starts a fresh page 2');
   });
 
   it('a long chart title in a half-width column is truncated, not left to overrun into the next column (review finding, #4940)', () => {

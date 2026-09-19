@@ -4,8 +4,10 @@
 
 """Generate the #4206 structural edge-curve interoperability fixture.
 
-The fixture is authored by this project and serialized through IfcOpenShell's
-current IFC4 exporter. Run with an output path as the first argument.
+The fixture is authored by this project and serialized through IfcOpenShell
+0.8.3.post2's IFC4 exporter. That exact version reproduces the catalogued
+fixture hash; other builds may serialize different bytes. Run with an output
+path as the first argument.
 """
 
 from pathlib import Path

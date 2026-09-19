@@ -68,7 +68,9 @@ by the ifc-lite contributors under MPL-2.0. It is serialized through the
 IfcOpenShell 0.8.3.post2 IFC4 exporter API by
 `scripts/fixtures/generate-structural-edge-curve.py`; no third-party model or
 generator source was copied. The fixed timestamp and stable GUIDs make the
-export byte-reproducible.
+export byte-reproducible with that exact IfcOpenShell version. Other exporter
+builds may serialize different bytes; use 0.8.3.post2 when reproducing the
+catalogued SHA-256, or intentionally regenerate and upload a new fixture hash.
 
 ## For maintainers: adding a new fixture
 

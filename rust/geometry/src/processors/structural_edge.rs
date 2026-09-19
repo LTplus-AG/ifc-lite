@@ -133,14 +133,20 @@ fn resolve_edge_points(
 }
 
 fn ribbon_mesh(points: &[Point3<f64>]) -> Mesh {
-    let mut mesh = Mesh::with_capacity(
-        points.len().saturating_sub(1) * 4,
-        points.len().saturating_sub(1) * 6,
-    );
+    let points: Vec<_> = points
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, point)| (index == 0 || point != points[index - 1]).then_some(point))
+        .collect();
+    if points.len() < 2 {
+        return Mesh::new();
+    }
+
+    let mut rights = Vec::with_capacity(points.len() - 1);
+    let mut normals = Vec::with_capacity(points.len() - 1);
     for pair in points.windows(2) {
-        let start = pair[0];
-        let end = pair[1];
-        let direction = end - start;
+        let direction = pair[1] - pair[0];
         let length = direction.norm();
         // Exact-zero check: identical authored points subtract to bit-exact
         // zero at every coordinate scale; genuinely tiny edges remain valid.
@@ -148,23 +154,75 @@ fn ribbon_mesh(points: &[Point3<f64>]) -> Mesh {
             continue;
         }
         let direction = direction / length;
-        let cross_z = direction.cross(&Vector3::new(0.0, 0.0, 1.0));
-        let right = if cross_z.norm() > PARALLEL_EPSILON {
-            cross_z.normalize()
-        } else {
-            direction.cross(&Vector3::new(1.0, 0.0, 0.0)).normalize()
-        };
-        let offset = right * RIBBON_HALF_WIDTH_FILE_UNITS;
+        let mut right = perpendicular(direction);
+        if rights
+            .last()
+            .is_some_and(|previous: &Vector3<f64>| previous.dot(&right) < 0.0)
+        {
+            right = -right;
+        }
         let normal = right.cross(&direction);
-        let base = (mesh.positions.len() / 3) as u32;
-        mesh.add_vertex(start - offset, normal);
-        mesh.add_vertex(start + offset, normal);
-        mesh.add_vertex(end - offset, normal);
-        mesh.add_vertex(end + offset, normal);
+        rights.push(right);
+        normals.push(normal);
+    }
+
+    let mut mesh = Mesh::with_capacity(points.len() * 2, (points.len() - 1) * 6);
+    for index in 0..points.len() {
+        let offset = join_offset(index, &rights);
+        let normal = join_normal(index, &normals);
+        mesh.add_vertex(points[index] - offset, normal);
+        mesh.add_vertex(points[index] + offset, normal);
+    }
+    for span in 0..rights.len() {
+        let base = (span * 2) as u32;
         mesh.add_triangle(base, base + 1, base + 3);
         mesh.add_triangle(base, base + 3, base + 2);
     }
     mesh
+}
+
+fn perpendicular(direction: Vector3<f64>) -> Vector3<f64> {
+    let cross_z = direction.cross(&Vector3::new(0.0, 0.0, 1.0));
+    if cross_z.norm() > PARALLEL_EPSILON {
+        cross_z.normalize()
+    } else {
+        direction.cross(&Vector3::new(1.0, 0.0, 0.0)).normalize()
+    }
+}
+
+fn join_offset(index: usize, rights: &[Vector3<f64>]) -> Vector3<f64> {
+    let width = RIBBON_HALF_WIDTH_FILE_UNITS;
+    if index == 0 {
+        return rights[0] * width;
+    }
+    if index == rights.len() {
+        return rights[index - 1] * width;
+    }
+
+    let incoming = rights[index - 1];
+    let outgoing = rights[index];
+    let Some(miter) = (incoming + outgoing).try_normalize(PARALLEL_EPSILON) else {
+        return incoming * width;
+    };
+    let projection = miter.dot(&incoming).abs();
+    if projection <= PARALLEL_EPSILON {
+        return incoming * width;
+    }
+    // Bound near-reversal miters: a diagnostic ribbon must not grow a spike
+    // many times longer than its authored half-width.
+    miter * (width / projection).min(width * 4.0)
+}
+
+fn join_normal(index: usize, normals: &[Vector3<f64>]) -> Vector3<f64> {
+    if index == 0 {
+        return normals[0];
+    }
+    if index == normals.len() {
+        return normals[index - 1];
+    }
+    (normals[index - 1] + normals[index])
+        .try_normalize(PARALLEL_EPSILON)
+        .unwrap_or(normals[index - 1])
 }
 
 /// Resolve `IfcEdge`'s `EdgeStart` (attribute 0) or `EdgeEnd` (attribute 1)

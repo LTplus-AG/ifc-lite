@@ -221,6 +221,11 @@ fn edge_curve_uses_its_authored_geometry_instead_of_collapsing_to_a_chord() {
         12,
         "the two authored polyline spans each need a ribbon quad"
     );
+    assert_eq!(
+        mesh.positions.len(),
+        6 * 3,
+        "the two spans must share one vertex pair at their bend"
+    );
     assert!(
         mesh.positions
             .chunks_exact(3)
@@ -242,6 +247,23 @@ fn oriented_edge_reverses_the_underlying_curve_walk() {
     assert!(
         (first[0] - 10.0).abs() < 1e-6,
         "Orientation=.F. must begin at EdgeEnd: {first:?}"
+    );
+}
+
+#[test]
+fn bent_edge_is_one_continuous_indexed_ribbon() {
+    let source = curved_member(true).replace("(#9)", "(#8)");
+    let mut decoder = EntityDecoder::new(&source);
+    let router = GeometryRouter::new();
+    let entity = decoder.decode_by_id(12).unwrap();
+
+    let mesh = router.process_element(&entity, &mut decoder).unwrap();
+    assert_eq!(mesh.positions.len(), 6 * 3);
+    assert_eq!(mesh.indices, vec![0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4]);
+    let bend = midpoints(&mesh).1;
+    assert!(
+        (bend[0] - 5.0).abs() < 1e-6 && (bend[1] - 5.0).abs() < 1e-6,
+        "the shared indexed join must remain centred on the authored bend: {bend:?}"
     );
 }
 

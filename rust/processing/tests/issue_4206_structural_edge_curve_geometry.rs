@@ -11,8 +11,7 @@
 use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::{process_geometry, MeshData};
 
-const FIXTURE: &str =
-    "../../tests/models/ifcopenshell/generated_structural_edge_curve.ifc";
+const FIXTURE: &str = "../../tests/models/ifcopenshell/generated_structural_edge_curve.ifc";
 
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
@@ -58,10 +57,7 @@ fn pair_midpoint(mesh: &MeshData, first: usize) -> [f64; 3] {
     ]
 }
 
-fn member_mesh(
-    result: &ifc_lite_processing::ProcessingResult,
-    id: u32,
-) -> &MeshData {
+fn member_mesh(result: &ifc_lite_processing::ProcessingResult, id: u32) -> &MeshData {
     let meshes: Vec<_> = result
         .meshes
         .iter()
@@ -79,20 +75,29 @@ fn ifcopenshell_exported_edge_curve_honors_curve_sense_and_orientation() {
     let result = process_geometry(&source);
 
     let polyline = member_mesh(&result, polyline_id);
-    assert_eq!(polyline.positions.len(), 8 * 3, "two spans need two ribbon quads");
+    assert_eq!(
+        polyline.positions.len(),
+        6 * 3,
+        "two spans must share one ribbon vertex pair at the bend"
+    );
     let polyline_start = pair_midpoint(polyline, 0);
     let polyline_bend = pair_midpoint(polyline, 2);
-    let polyline_end = pair_midpoint(polyline, 6);
-    assert!((polyline_start[0] - 10.0).abs() < 1e-6, "{polyline_start:?}");
+    let polyline_end = pair_midpoint(polyline, 4);
     assert!(
-        (polyline_bend[0] - 5.0).abs() < 1e-6
-            && (polyline_bend[1] - 5.0).abs() < 1e-6,
+        (polyline_start[0] - 10.0).abs() < 1e-6,
+        "{polyline_start:?}"
+    );
+    assert!(
+        (polyline_bend[0] - 5.0).abs() < 1e-6 && (polyline_bend[1] - 5.0).abs() < 1e-6,
         "the exporter-authored bend must survive: {polyline_bend:?}"
     );
     assert!(polyline_end[0].abs() < 1e-6, "{polyline_end:?}");
 
     let circle = member_mesh(&result, circle_id);
-    assert!(circle.positions.len() > 8 * 3, "a circle arc must be sampled");
+    assert!(
+        circle.positions.len() > 6 * 3,
+        "a circle arc must be sampled"
+    );
     let centers: Vec<_> = (0..circle.positions.len() / 3)
         .step_by(2)
         .map(|vertex| pair_midpoint(circle, vertex))

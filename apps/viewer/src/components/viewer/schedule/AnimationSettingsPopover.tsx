@@ -338,7 +338,7 @@ export function AnimationSettingsPopover({
               <div className="grid gap-1">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="prep-days" className="text-xs">{t('schedule.animation.lookAheadWindowLabel')}</Label>
-                  <span className="text-xs font-mono text-muted-foreground">{t('schedule.animation.lookAheadWindowValue', { days: formatLocaleNumber(locale, settings.preparationDays) })}</span>
+                  <span className="text-xs font-mono text-muted-foreground">{t('schedule.animation.lookAheadWindowValue', { count: settings.preparationDays, days: formatLocaleNumber(locale, settings.preparationDays) })}</span>
                 </div>
                 <input
                   id="prep-days"

@@ -25,7 +25,8 @@ export interface GanttDragTooltipProps {
 export function GanttDragTooltip({ live }: GanttDragTooltipProps) {
   const { t, locale } = useTranslation();
   const durMs = Math.max(0, live.liveFinishMs - live.liveStartMs);
-  const durDays = formatLocaleNumber(locale, durMs / 86_400_000, { maximumFractionDigits: 2 });
+  const durationDays = durMs / 86_400_000;
+  const durDays = formatLocaleNumber(locale, durationDays, { maximumFractionDigits: 2 });
   const fmt = (ms: number) => formatLocaleDate(locale, ms, {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
     hour12: false, timeZone: 'UTC',
@@ -44,7 +45,7 @@ export function GanttDragTooltip({ live }: GanttDragTooltipProps) {
       <div className="font-sans text-[10px] uppercase tracking-wider opacity-70">{modeLabel}</div>
       <div>{t('schedule.dragTooltip.start', { value: fmt(live.liveStartMs) })}</div>
       <div>{t('schedule.dragTooltip.finish', { value: fmt(live.liveFinishMs) })}</div>
-      <div className="opacity-80">{t('schedule.dragTooltip.duration', { days: durDays })}</div>
+      <div className="opacity-80">{t('schedule.dragTooltip.duration', { count: durationDays, days: durDays })}</div>
       <div className="font-sans text-[9px] opacity-50 mt-0.5">{t('schedule.dragTooltip.hint')}</div>
     </div>
   );

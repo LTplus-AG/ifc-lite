@@ -222,11 +222,19 @@ describe('GanttDragTooltip localization (#4918)', () => {
   });
 
   it('formats fractional drag durations with the active locale decimal separator', () => {
-    registerLocale('de', { 'schedule.dragTooltip.duration': 'Dauer: {days} T' });
+    registerLocale('de', { 'schedule.dragTooltip.duration': {
+      one: 'Dauer: {days} Tag',
+      other: 'Dauer: {days} Tage',
+    } });
     act(() => setLocale('de'));
     const container = render(<GanttDragTooltip live={{ taskGlobalId: 'g1', mode: 'shift',
       liveStartMs: 0, liveFinishMs: 1.5 * 86_400_000 }} />);
-    assert.match(container.textContent ?? '', /Dauer: 1,5 T/);
+    assert.match(container.textContent ?? '', /Dauer: 1,5 Tage/);
+
+    cleanup();
+    const singular = render(<GanttDragTooltip live={{ taskGlobalId: 'g1', mode: 'shift',
+      liveStartMs: 0, liveFinishMs: 86_400_000 }} />);
+    assert.match(singular.textContent ?? '', /Dauer: 1 Tag/);
   });
 
   it('formats UTC drag timestamps with the active locale', () => {
@@ -509,11 +517,20 @@ describe('AnimationSettingsPopover localization (#4918)', () => {
   it('formats the look-ahead value with the active locale numerals', () => {
     const settings = useViewerStore.getState().animationSettings;
     useViewerStore.setState({ animationSettings: { ...settings, preparationDays: 12, showPreparationGhost: true } });
-    registerLocale('ar-EG-u-nu-arab', { 'schedule.animation.lookAheadWindowValue': '{days} يوم' });
+    registerLocale('ar-EG-u-nu-arab', { 'schedule.animation.lookAheadWindowValue': {
+      one: '{days} يوم واحد',
+      other: '{days} أيام',
+    } });
     act(() => setLocale('ar-EG-u-nu-arab'));
     const container = render(<AnimationSettingsPopover animationEnabled onToggleAnimation={() => {}} />);
     openMenu(container.querySelector('button[aria-haspopup="menu"]')!);
-    assert.match(document.body.textContent ?? '', /١٢ يوم/);
+    assert.match(document.body.textContent ?? '', /١٢ أيام/);
+
+    cleanup();
+    useViewerStore.setState({ animationSettings: { ...settings, preparationDays: 1, showPreparationGhost: true } });
+    const singular = render(<AnimationSettingsPopover animationEnabled onToggleAnimation={() => {}} />);
+    openMenu(singular.querySelector('button[aria-haspopup="menu"]')!);
+    assert.match(document.body.textContent ?? '', /١ يوم واحد/);
   });
 
   it('formats the intensity percentage with the active locale', () => {

@@ -793,10 +793,10 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     assert.strictEqual(line, '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,2.25);');
   });
 
-  it('a name that does not resolve to a known root-attribute slot is skipped, not guessed at', () => {
+  it('resolves the canonical IFCX-qualified name before positional schema lookup (#4857 review)', () => {
     const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'bsi::ifc::prop::Description', null));
-    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);", 'unresolved name: no edit landed, source line unchanged');
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
   });
 
   it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for applyRemoteAttribute', () => {

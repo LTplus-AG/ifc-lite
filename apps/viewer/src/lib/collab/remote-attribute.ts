@@ -16,7 +16,10 @@ export function applyRemoteAttribute(
   attrName: string,
   value: RemoteAttributeValue,
 ): void {
-  const index = getAttributeNamesAcrossSchemas(store.entities.getTypeName(entityId)).indexOf(attrName);
+  const plainName = attrName.startsWith('bsi::ifc::prop::')
+    ? attrName.slice('bsi::ifc::prop::'.length)
+    : attrName;
+  const index = getAttributeNamesAcrossSchemas(store.entities.getTypeName(entityId)).indexOf(plainName);
   const refs = referenceListFromPaths(store, attrName, value);
   if (refs !== undefined) {
     if (refs !== null && index >= 0) view.setPositionalAttribute(entityId, index, refs);

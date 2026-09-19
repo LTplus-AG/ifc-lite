@@ -16,6 +16,7 @@ import { joiner, localIdOf, ownerShare } from '@/test/collab-room-harness.js';
 import { roomStepExportSource } from './room-step-export.js';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
 import { StepExporter } from '@ifc-lite/export';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 
 function withTaggedQuantityRoot(source: Uint8Array): Uint8Array {
   const text = new TextDecoder().decode(source);
@@ -46,6 +47,43 @@ function withTaggedQuantityRoot(source: Uint8Array): Uint8Array {
 }
 
 describe('portable room STEP source (#4604)', () => {
+  it('remaps embedded room reference ids back to source ids on export (#4857 review)', async () => {
+    const text = [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('cost.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;', 'DATA;',
+      "#1=IFCCOSTITEM('0item00000000000000000',$,'Item',$,$,$,.NOTDEFINED.,(#2,#3),$);",
+      "#2=IFCCOSTVALUE('A',$,IFCMONETARYMEASURE(2.),$,$,$,$,$,$,$);",
+      "#3=IFCCOSTVALUE('B',$,IFCMONETARYMEASURE(3.),$,$,$,$,$,$,$);",
+      "#10=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,$,$);",
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const bytes = new TextEncoder().encode(text);
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
+    const doc = collab.createCollabDoc();
+    const blobs = new collab.MemoryBlobStore();
+    const slot = collab.modelSlotRef('m0');
+    await ownerShare(doc, blobs, [{
+      modelId: 'cost', name: 'cost.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
+      schemaVersion: 'IFC4', fileName: 'cost.ifc', portableStepSource: bytes,
+    }], new Map([['cost', slot]]));
+    const guest = joiner(doc, blobs, 'cost-reference-export');
+    await guest.reconstructor.reconstruct();
+    const model = guest.store.state().models.values().next().value;
+    assert.ok(model?.ifcDataStore);
+    const itemId = localIdOf(model, `${slot.pathPrefix}/0item00000000000000000`);
+    const valueId = localIdOf(model, `${slot.pathPrefix}/ifc-lite-ref-3`);
+    const view = new MutablePropertyView(model.ifcDataStore.properties, model.id);
+    view.setPositionalAttribute(itemId, 7, [`#${valueId}`]);
+    const portable = roomStepExportSource(model.ifcDataStore, view, model.id);
+    assert.ok(portable);
+    const output = new StepExporter(portable.dataStore, portable.mutationView)
+      .export({ schema: 'IFC4', applyMutations: true });
+    const outputText = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
+    assert.match(outputText, /#1=IFCCOSTITEM\([^\n]*\(#3\),\$\);/);
+    guest.reconstructor.teardown();
+  });
+
   it('preserves unchanged exact psets, qsets and unprojected root attributes', async () => {
     const control = new Uint8Array(await readFile(new URL(
       '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',

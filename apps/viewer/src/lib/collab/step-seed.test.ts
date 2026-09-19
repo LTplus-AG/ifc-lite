@@ -14,7 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { buildStepSeedSource } from './step-seed.js';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 
 function makeFakeStore(): IfcDataStore {
   const rows = new Map<number, { guid: string; name: string; desc: string; objType: string; type: string }>([
@@ -256,5 +256,32 @@ describe('collab step-seed spatial hierarchy (buildChildrenByPath)', () => {
     const project = Array.from(source.entities).find((e) => e.guid === 'GUID-PROJ')!;
     assert.ok(project.attributes, 'seeded project must carry attributes');
     assert.ok(!('bsi::ifc::prop::Elevation' in project.attributes));
+  });
+});
+
+describe('collab step-seed portable cost references (#4857 review)', () => {
+  it('seeds deterministic paths for referenced non-root rows', async () => {
+    const step = [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('cost.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;', 'DATA;',
+      "#1=IFCCOSTITEM('0item00000000000000000',$,'Item',$,$,$,.NOTDEFINED.,(#2),$);",
+      "#2=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),#3,$,$,$,$,$,$);",
+      '#3=IFCMEASUREWITHUNIT(IFCREAL(1.),#4);',
+      '#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const bytes = new TextEncoder().encode(step);
+    const store = await new IfcParser().parseColumnar(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    const entities = Array.from(buildStepSeedSource(store).entities);
+    const item = entities.find(entity => entity.guid === '0item00000000000000000');
+    const value = entities.find(entity => entity.guid === 'ifc-lite-ref-2');
+    const basis = entities.find(entity => entity.guid === 'ifc-lite-ref-3');
+    assert.ok(item && value && basis, 'the root and its non-root reference graph are seeded');
+    assert.deepEqual(item.attributes?.['bsi::ifc::prop::CostValues'], ['/ifc-lite-ref-2']);
+    assert.equal(value.attributes?.['bsi::ifc::prop::UnitBasis'], '/ifc-lite-ref-3');
   });
 });

@@ -5,44 +5,14 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { entityForPath, pathForEntity } from './entity-paths';
-
-const REFERENCE_LIST_ATTRIBUTES = new Set([
-  'Components',
-  'CostQuantities',
-  'CostValues',
-  'RelatedObjects',
-]);
-
-const REFERENCE_SCALAR_ATTRIBUTES = new Set([
-  'AppliedValue',
-  'Unit',
-  'UnitBasis',
-  'RelatingActor',
-  'RelatingControl',
-  'RelatingGroup',
-  'RelatingObject',
-  'RelatingProcess',
-  'RelatingProduct',
-  'RelatingResource',
-]);
-
-function localReferenceId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
-  if (typeof value !== 'string') return null;
-  const match = /^#([1-9]\d*)$/.exec(value);
-  return match ? Number(match[1]) : null;
-}
-
-function localAttributeName(attrName: string): string {
-  return attrName.split('::').at(-1) ?? attrName;
-}
+import { isPortableReferenceList, isPortableReferenceScalar, localReferenceId } from './portable-reference-entities';
 
 export function isReferenceListAttribute(attrName: string): boolean {
-  return REFERENCE_LIST_ATTRIBUTES.has(localAttributeName(attrName));
+  return isPortableReferenceList(attrName);
 }
 
 export function isReferenceScalarAttribute(attrName: string): boolean {
-  return REFERENCE_SCALAR_ATTRIBUTES.has(localAttributeName(attrName));
+  return isPortableReferenceScalar(attrName);
 }
 
 /** `undefined`: ordinary attribute; `null`: reference list could not resolve. */

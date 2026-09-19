@@ -48,7 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
-import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
+import { createCostUndoMutations, mirrorCreateEntityRedo, type CostUndoMethods } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import type { TypeViewMode } from '../constants.js';
@@ -2794,6 +2794,7 @@ export const createMutationSlice: StateCreator<
       // The view's `deleteEntity` returns false if it's already gone, which
       // is fine for redo to re-establish.
       view.deleteEntity(mutation.entityId);
+      get().mirrorEntityRemove(modelId, mutation.entityId);
       // Also remove the created mesh from the scene + geometryResult (#4925).
       stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
     } else if (mutation.type === 'DELETE_ENTITY') {
@@ -2803,6 +2804,7 @@ export const createMutationSlice: StateCreator<
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
         view.restoreNewEntity(stashed);
+        mirrorCreateEntityRedo(get(), modelId, stashed);
       } else {
         view.restoreFromTombstone(mutation.entityId);
       }

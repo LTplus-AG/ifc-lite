@@ -10,6 +10,7 @@ import { roomSymbolicSource } from './room-symbolic-source';
 import { propertyValueTypeFor } from './mutation-bridge';
 import { asExpressIdRef, readAttributes, resolvePlacementChain, resolveRotationState } from '@/lib/placement-core';
 import '@/lib/placement-edit.boot';
+import { isPortableReferenceList, isPortableReferenceScalar, localReferenceId } from './portable-reference-entities';
 
 export interface RoomStepExportSource {
   dataStore: IfcDataStore;
@@ -32,6 +33,52 @@ function propertyEqual(left: Property, right: Property): boolean {
 
 function quantityEqual(left: Quantity, right: Quantity): boolean {
   return left.value === right.value;
+}
+
+function sourceReference(
+  value: unknown,
+  sourceIdByRoomId: ReadonlyMap<number, number>,
+): string | null {
+  const roomId = localReferenceId(value);
+  if (roomId === null) return null;
+  const sourceId = sourceIdByRoomId.get(roomId);
+  if (sourceId === undefined) {
+    throw new Error(`Room reference #${roomId} is outside the portable IFC source.`);
+  }
+  return `#${sourceId}`;
+}
+
+/** Translate references embedded in reconstructed-room positional mutations. */
+function toSourceMutation(
+  mutation: Mutation,
+  roomStore: IfcDataStore,
+  sourceIdByRoomId: ReadonlyMap<number, number>,
+  modelId: string,
+): Mutation {
+  const sourceEntityId = sourceIdByRoomId.get(mutation.entityId);
+  if (sourceEntityId === undefined) {
+    throw new Error(`Room entity #${mutation.entityId} is outside the portable IFC source.`);
+  }
+  let attributeName = mutation.attributeName;
+  if (attributeName?.startsWith('@')) {
+    const index = Number(attributeName.slice(1));
+    attributeName = Number.isSafeInteger(index)
+      ? getAttributeNamesAcrossSchemas(roomStore.entities.getTypeName(mutation.entityId))[index]
+      : undefined;
+  }
+  let newValue = mutation.newValue;
+  let oldValue = mutation.oldValue;
+  if (attributeName && isPortableReferenceList(attributeName)) {
+    const remap = (value: typeof newValue): typeof newValue => Array.isArray(value)
+      ? value.map(member => sourceReference(member, sourceIdByRoomId) ?? member)
+      : value;
+    newValue = remap(newValue);
+    oldValue = remap(oldValue);
+  } else if (attributeName && isPortableReferenceScalar(attributeName)) {
+    newValue = sourceReference(newValue, sourceIdByRoomId) ?? newValue;
+    oldValue = sourceReference(oldValue, sourceIdByRoomId) ?? oldValue;
+  }
+  return { ...mutation, modelId, entityId: sourceEntityId, newValue, oldValue };
 }
 
 function snapshotView(
@@ -174,11 +221,8 @@ export function roomStepExportSource(
     return out;
   };
   const view = snapshotView(roomStore, portable, modelId);
-  const mutations: Mutation[] = (roomView?.getMutations() ?? []).map(mutation => ({
-    ...mutation,
-    modelId,
-    entityId: sourceIdByRoomId.get(mutation.entityId)!,
-  }));
+  const mutations: Mutation[] = (roomView?.getMutations() ?? [])
+    .map(mutation => toSourceMutation(mutation, roomStore, sourceIdByRoomId, modelId));
   view.applyMutations(mutations);
   return {
     dataStore: portable.dataStore,

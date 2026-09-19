@@ -17,11 +17,28 @@
  * storey, so neither applies. The adapter mirrors its overlay delta separately.
  */
 
-import type { Mutation } from '@ifc-lite/mutations';
+import type { Mutation, NewEntity } from '@ifc-lite/mutations';
+import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import { normalizeMutationModelId } from '../../sdk/adapters/mutation-view.js';
 
 type SetState = (partial: Partial<ViewerState> | ((state: ViewerState) => Partial<ViewerState>)) => void;
+
+export function mirrorCreateEntityRedo(
+  state: ViewerState,
+  modelId: string,
+  entity: NewEntity,
+): void {
+  const names = getAttributeNamesAcrossSchemas(entity.type);
+  const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
+    ? entity.attributes[0]
+    : null;
+  state.mirrorEntityCreate(modelId, entity.expressId, entity.type, guid, null);
+  entity.attributes.forEach((value, index) => {
+    const name = names[index];
+    if (name) state.mirrorAttributeEdit(modelId, entity.expressId, name, value);
+  });
+}
 
 /**
  * `modelId` is normalised the same way `getOrCreateMutationView` normalises

@@ -586,6 +586,28 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
+        // Every path below (mapped-item cache, dedup-cache hit, uncached
+        // build) can trip the thread-local curve-capped flag (#4901) -- a
+        // mapped source walks its own processors directly
+        // (`process_mapped_item_cached`), bypassing the inline drain this
+        // function used to have right after the uncached build, which left a
+        // capped edge inside a mapped item unreported AND the flag still set
+        // for whichever unrelated item happened to be processed next
+        // (Macroscope review). Draining exactly ONCE here, around every
+        // path, keeps the flag scoped to the item that actually set it,
+        // regardless of which branch below produced (or skipped) new work.
+        let result = self.process_representation_item_body(item, decoder);
+        if crate::processors::take_curve_capped() {
+            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+        }
+        result
+    }
+
+    fn process_representation_item_body(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Mesh> {
         // MappedItem has its own instancing cache (the source representation is
         // already shared), so it never enters the structural-hash path. It also
         // sets its own instance_meta, so the direct-solid tagging below is skipped.
@@ -623,17 +645,11 @@ impl GeometryRouter {
                 .map(|p| p.bool_failure_count())
         });
 
-        let mesh_result = self.process_representation_item_uncached(item, decoder);
-        // A capped B-spline curve edge (#4901) degrades silently inside the
-        // edge-loop walk — no `Result` reaches here to carry it — so drain
-        // the thread-local flag `curves.rs`/`polyline.rs` set on rejection
-        // and report it under the curve's OWN type, regardless of whether
-        // the containing item still produced a mesh (a degraded edge is a
-        // reportable defect even when the rest of the face tessellates).
-        if crate::processors::take_curve_capped() {
-            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-        }
-        let mesh = mesh_result?;
+        // The curve-capped flag (#4901) is drained by the public
+        // `process_representation_item` wrapper around this whole function,
+        // not here — see its doc comment for why (mapped items bypass this
+        // uncached path entirely).
+        let mesh = self.process_representation_item_uncached(item, decoder)?;
 
         // If this call's processor recorded anything new, decide whether THIS
         // router keeps it: the item-dedup cache's `diagnostic_claimed` set

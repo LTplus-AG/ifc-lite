@@ -10,28 +10,20 @@ use super::super::helpers::{extract_loop_points_by_id, FaceData};
 use super::faceted::FacetedBrepProcessor;
 use crate::router::GeometryProcessor;
 
-/// A capped B-spline curve/surface (#4901) drops silently here otherwise —
-/// neither processor has a `GeometryRouter` for `record_unsupported_item`.
-/// This trace is the honest floor. `allow`: `diag_debug!` no-ops without a
-/// tracing subscriber (wasm release), leaving both params unused there.
+/// A dropped `IfcAdvancedFace` (unsupported surface, or a #4901 degree/work
+/// cap) has nowhere else to go here — neither processor has a
+/// `GeometryRouter` for `record_unsupported_item`. This trace is the honest
+/// floor. `allow`: `diag_debug!` no-ops without a tracing subscriber (wasm
+/// release), leaving both params unused there.
 #[allow(unused_variables)]
-fn trace_capped_face(face_id: u32, error: Option<&Error>) {
-    match error {
-        Some(_e) => crate::diag::diag_debug!(
-            { face_id, error = %_e, "skipping unsupported advanced face in surface model" }
-            else {
-                #[cfg(debug_assertions)]
-                eprintln!("[ifc-lite] Skipping unsupported advanced face #{face_id} in surface model: {_e}");
-            }
-        ),
-        None => crate::diag::diag_debug!(
-            { face_id, "capped B-spline curve edge in surface model" }
-            else {
-                #[cfg(debug_assertions)]
-                eprintln!("[ifc-lite] Capped B-spline curve edge on advanced face #{face_id} in surface model");
-            }
-        ),
-    }
+fn trace_capped_face(face_id: u32, error: &Error) {
+    crate::diag::diag_debug!(
+        { face_id, error = %error, "skipping unsupported advanced face in surface model" }
+        else {
+            #[cfg(debug_assertions)]
+            eprintln!("[ifc-lite] Skipping unsupported advanced face #{face_id} in surface model: {error}");
+        }
+    );
 }
 
 // ---------- FaceBasedSurfaceModelProcessor ----------
@@ -98,18 +90,19 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
                 };
 
                 if face.ifc_type == IfcType::IfcAdvancedFace {
-                    // Advanced face: delegate to shared NURBS/planar/cylindrical handler
-                    let advanced_result = process_advanced_face(&face, decoder, quality);
-                    // A capped B-spline curve EDGE (#4901) can trip even when
-                    // the face still tessellates (the rest of its loop is
-                    // fine), so check regardless of Ok/Err.
-                    if crate::processors::take_curve_capped() {
-                        trace_capped_face(face.id, None);
-                    }
-                    let (positions, indices) = match advanced_result {
+                    // Advanced face: delegate to shared NURBS/planar/cylindrical handler.
+                    // A capped B-spline curve EDGE (#4901) inside a still-OK
+                    // face is deliberately NOT drained here: this processor
+                    // is always reached through `GeometryRouter` (the
+                    // processor registry / mapped-item dispatch), and those
+                    // call sites own the single authoritative drain. Racing
+                    // them for the same thread-local flag here always won
+                    // (this runs first), silently swallowing the router's
+                    // typed diagnostic (caught in review).
+                    let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
                         Ok(result) => result,
                         Err(ref e) => {
-                            trace_capped_face(face.id, Some(e));
+                            trace_capped_face(face.id, e);
                             continue;
                         }
                     };
@@ -281,18 +274,19 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
                 };
 
                 if face.ifc_type == IfcType::IfcAdvancedFace {
-                    // Advanced face: delegate to shared NURBS/planar/cylindrical handler
-                    let advanced_result = process_advanced_face(&face, decoder, quality);
-                    // A capped B-spline curve EDGE (#4901) can trip even when
-                    // the face still tessellates (the rest of its loop is
-                    // fine), so check regardless of Ok/Err.
-                    if crate::processors::take_curve_capped() {
-                        trace_capped_face(face.id, None);
-                    }
-                    let (positions, indices) = match advanced_result {
+                    // Advanced face: delegate to shared NURBS/planar/cylindrical handler.
+                    // A capped B-spline curve EDGE (#4901) inside a still-OK
+                    // face is deliberately NOT drained here: this processor
+                    // is always reached through `GeometryRouter` (the
+                    // processor registry / mapped-item dispatch), and those
+                    // call sites own the single authoritative drain. Racing
+                    // them for the same thread-local flag here always won
+                    // (this runs first), silently swallowing the router's
+                    // typed diagnostic (caught in review).
+                    let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
                         Ok(result) => result,
                         Err(ref e) => {
-                            trace_capped_face(face.id, Some(e));
+                            trace_capped_face(face.id, e);
                             continue;
                         }
                     };

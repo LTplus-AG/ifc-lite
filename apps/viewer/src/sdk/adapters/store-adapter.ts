@@ -209,6 +209,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       }
     },
     addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
+      assertCanEdit('addColumn');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) {
@@ -220,6 +221,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.columnId };
     },
     addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef {
+      assertCanEdit('addWall');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) {
@@ -231,6 +233,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.wallId };
     },
     addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef {
+      assertCanEdit('addSlab');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) {
@@ -242,6 +245,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.slabId };
     },
     addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef {
+      assertCanEdit('addBeam');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) {
@@ -253,6 +257,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.beamId };
     },
     addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef {
+      assertCanEdit('addDoor');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) throw new Error(`bim.store.addDoor: no model loaded for id "${modelId}"`);
@@ -262,6 +267,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.doorId };
     },
     addWindow(modelId: string, storeyExpressId: number, params: AddWindowInStoreParams): EntityRef {
+      assertCanEdit('addWindow');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) throw new Error(`bim.store.addWindow: no model loaded for id "${modelId}"`);
@@ -271,6 +277,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.windowId };
     },
     addSpace(modelId: string, storeyExpressId: number, params: AddSpaceInStoreParams): EntityRef {
+      assertCanEdit('addSpace');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) throw new Error(`bim.store.addSpace: no model loaded for id "${modelId}"`);
@@ -280,6 +287,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.spaceId };
     },
     addRoof(modelId: string, storeyExpressId: number, params: AddRoofInStoreParams): EntityRef {
+      assertCanEdit('addRoof');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) throw new Error(`bim.store.addRoof: no model loaded for id "${modelId}"`);
@@ -289,6 +297,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.roofId };
     },
     addPlate(modelId: string, storeyExpressId: number, params: AddPlateInStoreParams): EntityRef {
+      assertCanEdit('addPlate');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) throw new Error(`bim.store.addPlate: no model loaded for id "${modelId}"`);
@@ -298,6 +307,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedModelId, expressId: result.plateId };
     },
     addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef {
+      assertCanEdit('addMember');
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       if (!editor || !dataStore) throw new Error(`bim.store.addMember: no model loaded for id "${modelId}"`);

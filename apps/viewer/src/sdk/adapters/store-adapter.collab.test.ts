@@ -503,6 +503,21 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.throws(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes: [] }), /read-only/);
     assert.throws(() => adapter.setPositionalAttribute({ modelId: MODEL, expressId: 2 }, 2, 'Blocked'), /read-only/);
     assert.throws(() => adapter.removeEntity({ modelId: MODEL, expressId: 2 }), /read-only/);
+    const builders: Array<readonly [string, () => unknown]> = [
+      ['addColumn', () => adapter.addColumn(MODEL, 1, {} as never)],
+      ['addWall', () => adapter.addWall(MODEL, 1, {} as never)],
+      ['addSlab', () => adapter.addSlab(MODEL, 1, {} as never)],
+      ['addBeam', () => adapter.addBeam(MODEL, 1, {} as never)],
+      ['addDoor', () => adapter.addDoor(MODEL, 1, {} as never)],
+      ['addWindow', () => adapter.addWindow(MODEL, 1, {} as never)],
+      ['addSpace', () => adapter.addSpace(MODEL, 1, {} as never)],
+      ['addRoof', () => adapter.addRoof(MODEL, 1, {} as never)],
+      ['addPlate', () => adapter.addPlate(MODEL, 1, {} as never)],
+      ['addMember', () => adapter.addMember(MODEL, 1, {} as never)],
+    ];
+    for (const [operation, invoke] of builders) {
+      assert.throws(invoke, new RegExp(`bim\\.store\\.${operation}.*read-only`));
+    }
     assert.equal(view.getMutations().length, 0);
     assert.deepEqual(calls, []);
   });

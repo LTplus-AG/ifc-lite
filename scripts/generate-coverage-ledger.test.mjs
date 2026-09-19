@@ -68,11 +68,20 @@ const realGeneratorSrc = readFileSync(GENERATOR, 'utf8');
  * committed fixture corpus across all schemas — not the trimmed single-file
  * corpus `runOn()` uses), and returns the freshly rendered ledger text. */
 function regenerateAgainstRealRoot() {
-  const r = spawnSync(process.execPath, [GENERATOR, '--root', ROOT], { encoding: 'utf8' });
-  if (r.status !== 0) {
-    throw new Error(`generator failed against the real repo root: ${r.stdout}${r.stderr}`);
+  const ledgerPath = join(ROOT, 'docs/architecture/coverage-ledger.md');
+  const committedLedger = readFileSync(ledgerPath, 'utf8');
+  try {
+    const r = spawnSync(process.execPath, [GENERATOR, '--root', ROOT], { encoding: 'utf8' });
+    if (r.status !== 0) {
+      throw new Error(`generator failed against the real repo root: ${r.stdout}${r.stderr}`);
+    }
+    return readFileSync(ledgerPath, 'utf8');
+  } finally {
+    // This test deliberately executes a mutating generator against the real
+    // tree. Restore its generated artifact even when another harness (the
+    // revert oracle) temporarily swaps the generator's production inputs.
+    writeFileSync(ledgerPath, committedLedger);
   }
-  return readFileSync(join(ROOT, 'docs/architecture/coverage-ledger.md'), 'utf8');
 }
 
 /** The FILE_SCHEMA a committed `.ifc` fixture (absolute path) itself

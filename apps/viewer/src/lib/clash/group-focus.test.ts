@@ -204,6 +204,35 @@ describe('manual clash group focus (#4921)', () => {
       'BCF cannot assign two colors to the same GUID, so the PNG must not either');
   });
 
+  it('colors every loaded occurrence addressed by the exported BCF GlobalId', () => {
+    const crossRevision = clash('cross-revision-loaded', 10, 10);
+    crossRevision.b.model = 'revision-b';
+    const entities = (expressId: number) => ({
+      getGlobalId: () => 'SHARED-GUID',
+      getExpressIdByGlobalId: (guid: string) => guid === 'SHARED-GUID' ? expressId : -1,
+    });
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, ifcDataStore: { entities: entities(10) } }],
+        ['revision-b', { idOffset: 1000, ifcDataStore: { entities: entities(10) } }],
+        ['revision-c', { idOffset: 2000, ifcDataStore: { entities: entities(30) } }],
+      ]) as unknown as ViewerState['models'],
+    });
+
+    const focused = focusClashGroup(
+      [crossRevision],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [10, CLASH_COLOR_A], [1010, CLASH_COLOR_A], [2030, CLASH_COLOR_A],
+    ]), 'the PNG must paint every loaded occurrence that BCF will color by shared GUID');
+    assert.deepEqual(focused.modelIds, ['model', 'revision-b'],
+      'an unrelated revision is colored for BCF parity without becoming a group participant');
+  });
+
   it('returns viewpoint refs only for objects that resolved in the current models', () => {
     const current = clash('current', 10, 20);
     const stale = clash('stale', 30, 40);
@@ -339,6 +368,47 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().toggleTypeVisibility('spaces');
     assert.equal(focusedSceneRevisionIsCurrent(beforeVisibilityChange), false,
       'a type filter enabled during snapshot capture must invalidate the frame');
+  });
+
+  it('reveals hidden participating models before framing the exported group', async () => {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const frameSelection = mock.fn();
+    useViewerStore.setState({
+      cameraCallbacks: { frameSelection },
+      models: new Map([
+        ['model', {
+          idOffset: 0,
+          visible: true,
+          ifcDataStore: { entities: { getGlobalId: (id: number) => `MODEL-${id}` } },
+        }],
+        ['hidden', {
+          idOffset: 1000,
+          visible: false,
+          ifcDataStore: { entities: { getGlobalId: (id: number) => `HIDDEN-${id}` } },
+        }],
+      ]) as unknown as ViewerState['models'],
+    });
+    const hiddenMember = clash('hidden-model', 10, 20);
+    hiddenMember.b.model = 'hidden';
+    const focused = focusClashGroup(
+      [hiddenMember],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    assert.equal(useViewerStore.getState().models.get('hidden')?.visible, true,
+      'a serialized component cannot remain absent from the PNG');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 0,
+      'framing must wait until the newly visible model has painted');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 1);
+
+    useViewerStore.getState().setModelVisibility('hidden', false);
+    assert.equal(focusedSceneRevisionIsCurrent(focused), false,
+      'rehiding a participating model during capture invalidates the scene');
   });
 
   it('waits for exploded offsets to be reverted and painted before framing', async () => {

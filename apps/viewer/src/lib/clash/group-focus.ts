@@ -171,6 +171,23 @@ function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: 
   return [...guids];
 }
 
+/** Paint every loaded model occurrence that BCF will address by IFC GlobalId. */
+function addLoadedGuidOccurrenceColors(
+  state: ReturnType<typeof useViewerStore.getState>,
+  colorByGuid: ReadonlyMap<string, RGBA>,
+  colors: Map<number, RGBA>,
+): void {
+  for (const [modelId, model] of state.models) {
+    const entities = model.ifcDataStore?.entities;
+    if (!entities?.getExpressIdByGlobalId) continue;
+    for (const [guid, color] of colorByGuid) {
+      const expressId = entities.getExpressIdByGlobalId(guid);
+      if (expressId < 0) continue;
+      colors.set(toGlobalIdFromModels(state.models, modelId, expressId), color);
+    }
+  }
+}
+
 /** True while the models, authored IFC, and rendered visibility still match the focused frame. */
 export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boolean {
   const state = useViewerStore.getState();
@@ -224,6 +241,8 @@ export function focusClashGroup(
     }
   }
   if (refs.length === 0) return null;
+  const hiddenParticipatingModelIds = [...new Set(refs.map(ref => ref.modelId))]
+    .filter(modelId => state.models.get(modelId)?.visible === false);
   // A storey filter or exploded offsets would render only a transformed
   // subset of the group, but BCF cannot serialize either presentation. Use
   // the one canonical level-display transition before framing the group.
@@ -233,9 +252,16 @@ export function focusClashGroup(
   }
   // Class filtering is a renderer visibility gate, but BCF viewpoints cannot
   // represent it. Clear it before composing the clash focus/capture state.
-  const waitForPresentationReset = state.classFilter !== null
+  const waitForPresentationReset = hiddenParticipatingModelIds.length > 0
+    || state.classFilter !== null
     || !Object.values(state.typeVisibility).every(Boolean)
     || state.typeViewMode !== 'model';
+  // BCF cannot serialize a viewer-only whole-model visibility toggle. Reveal
+  // only models represented by the group so its selected components, colors,
+  // framing, and snapshot all describe the same rendered scene.
+  if (hiddenParticipatingModelIds.length > 0) {
+    state.setModelsVisibility(hiddenParticipatingModelIds, true);
+  }
   if (state.classFilter !== null) state.clearClassFilter();
   // Type toggles and the type-library view also remove geometry before it
   // reaches the renderer, but BCF has no equivalent presentation channel.
@@ -260,37 +286,39 @@ export function focusClashGroup(
   // An object on both sides gets one deterministic color, never two.
   for (const key of aRefs.keys()) bRefs.delete(key);
   const a = [...aRefs.values()], b = [...bRefs.values()];
+  const presentationState = useViewerStore.getState();
   // BCF colors are keyed only by IFC GlobalId. If two loaded revisions expose
   // the same GlobalId on opposite sides, paint every occurrence amber (A wins)
   // instead of showing a split that the exported viewpoint cannot reproduce.
   const colorByGuid = new Map<string, RGBA>();
   for (const ref of a) {
-    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     if (guid) colorByGuid.set(guid, CLASH_COLOR_A);
   }
   for (const ref of b) {
-    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     if (guid && !colorByGuid.has(guid)) colorByGuid.set(guid, CLASH_COLOR_B);
   }
   const clashColors = new Map<number, RGBA>();
   for (const ref of a) {
-    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     clashColors.set(
-      toGlobalIdFromModels(state.models, ref.modelId, ref.expressId),
+      toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId),
       guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_A) : CLASH_COLOR_A,
     );
   }
   for (const ref of b) {
-    const globalId = toGlobalIdFromModels(state.models, ref.modelId, ref.expressId);
-    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    const globalId = toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId);
+    const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     if (!clashColors.has(globalId)) {
       clashColors.set(globalId, guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_B) : CLASH_COLOR_B);
     }
   }
+  addLoadedGuidOccurrenceColors(presentationState, colorByGuid, clashColors);
   const renderedARefs = [...a];
   const renderedBRefs: SelectionRef[] = [];
   for (const ref of b) {
-    const globalId = toGlobalIdFromModels(state.models, ref.modelId, ref.expressId);
+    const globalId = toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId);
     (clashColors.get(globalId) === CLASH_COLOR_A ? renderedARefs : renderedBRefs).push(ref);
   }
   state.setClashHighlightColors(clashColors);
@@ -301,9 +329,9 @@ export function focusClashGroup(
     selectedRefs: refs,
     aRefs: a,
     bRefs: b,
-    selectedGuids: resolvedGuids(state, refs),
-    aGuids: resolvedGuids(state, renderedARefs),
-    bGuids: resolvedGuids(state, renderedBRefs),
+    selectedGuids: resolvedGuids(presentationState, refs),
+    aGuids: resolvedGuids(presentationState, renderedARefs),
+    bGuids: resolvedGuids(presentationState, renderedBRefs),
     modelIds: [...new Set(refs.map(ref => ref.modelId))],
     sceneRevision: {
       modelRevisions: new Map(focusedState.models),

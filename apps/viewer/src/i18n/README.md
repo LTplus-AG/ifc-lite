@@ -107,6 +107,12 @@ The saved-list builder catalogue (#4918 slice 6, lists) covers
 `lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
 `lists.columnMenu.*`, `lists.errorBox.*`).
 
+The 2D-section workspace catalogue (#4918 viewer-panels slice) covers
+`Section2DPanel.tsx`: header controls and overflow menus, drawing modes,
+annotation tools and guidance, export/print prompts, generation/error states,
+empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
+phase text and IFC/DXF data remain supplied by their owning systems.
+
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
 `GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,

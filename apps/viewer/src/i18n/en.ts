@@ -20,6 +20,7 @@ import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
+import { section2dEn } from './catalogues/section-2d.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
@@ -30,6 +31,7 @@ export const en = {
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,
   ...sectionToolEn,
+  ...section2dEn,
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...mainToolbarEn,

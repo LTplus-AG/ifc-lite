@@ -90,10 +90,11 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   const owners = useMemo(() => appearanceOwners(useViewerStore.getState(), modelId ?? ''),
     [models, modelId, selection, primarySelection, mutationVersion]);
   const scopeResult = appearanceScope(catalogState?.modelId === modelId ? catalogState.catalog : null, owners.selectedProductIds, scope);
-  const unavailableReason = roomId ? translatedMessage('appearance.controller.leaveRoom')
+  const unavailableReason = useMemo(() => roomId ? translatedMessage('appearance.controller.leaveRoom')
     : !target?.ifcDataStore ? translatedMessage('appearance.controller.openIfc')
     : target.schemaVersion === 'IFC2X3' || target.schemaVersion === 'IFC5' ? translatedMessage('appearance.controller.requiresIfc4')
-    : target.loadState && target.loadState !== 'complete' ? translatedMessage('appearance.controller.waitForModel') : undefined;
+    : target.loadState && target.loadState !== 'complete' ? translatedMessage('appearance.controller.waitForModel') : undefined,
+  [roomId, target?.ifcDataStore, target?.schemaVersion, target?.loadState]);
 
   const pdfSource = usePdfAppearanceSource(selectedSource, id => {
     setSourceId(id); setSettings(current => ({ ...current, kind: 'planar', repeatS: false, repeatT: false }));

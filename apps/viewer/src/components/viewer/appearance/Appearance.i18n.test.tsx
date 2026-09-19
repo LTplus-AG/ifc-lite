@@ -251,7 +251,7 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
     const partial = render(<PdfFidelityReportView report={{
       sha256: 'partial', algorithm: 'ifclite-pdf-fidelity-v1', rasterOnly: false, exact: false,
       convertiblePaths: 2, omittedPaints: 1,
-      summary: [{ kind: 'text', count: 1, visibleCount: 1 }],
+      summary: [{ kind: 'text', count: 1, visibleCount: 1, bboxPdf: null }],
       omissions: [], omissionsTruncated: false,
     }} userUnit={1} />);
 

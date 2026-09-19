@@ -19,6 +19,6 @@
  * at `PropertiesPanel`), but that is not the express id this convention
  * formats. So the fallback names only the kind, not a fabricated id.
  */
-export function setDisplayName(name: string, kind: 'Property Set' | 'Quantity Set'): string {
-  return name.trim() ? name : `Unnamed ${kind}`;
+export function setDisplayName(name: string, fallback: string): string {
+  return name.trim() ? name : fallback;
 }

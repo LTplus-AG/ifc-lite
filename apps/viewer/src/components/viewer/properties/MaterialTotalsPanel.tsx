@@ -35,6 +35,7 @@ import { resolveQuantityDisplay } from '@/lib/units/display';
 import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface MaterialTotals {
   /** Number of elements using this material (across all loaded models). */
@@ -148,11 +149,11 @@ export function aggregateQuantitiesFromQsets(
 }
 
 /** Format an aggregated quantity with magnitude-appropriate precision. */
-function formatNumber(value: number): string {
+export function formatMaterialNumber(locale: string, value: number): string {
   if (value === 0) return '0';
-  if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  if (Math.abs(value) >= 1) return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  if (Math.abs(value) >= 1000) return formatLocaleNumber(locale, value, { maximumFractionDigits: 0 });
+  if (Math.abs(value) >= 1) return formatLocaleNumber(locale, value, { maximumFractionDigits: 2 });
+  return formatLocaleNumber(locale, value, { maximumFractionDigits: 4 });
 }
 
 /** Render an aggregated total with its resolved unit (issue #1573 follow-up):
@@ -167,6 +168,7 @@ function formatNumber(value: number): string {
  *  values before this label is applied — a pre-existing concern (the block was
  *  previously hardcoded m³/m²/kg) that this label does not attempt to fix. */
 function formatTotal(
+  locale: string,
   value: number,
   quantityType: number,
   projectUnits: ProjectUnits,
@@ -174,7 +176,8 @@ function formatTotal(
 ): string {
   const disp = resolveQuantityDisplay(value, quantityType, projectUnits, overrides);
   const shown = disp.converted ?? value;
-  return disp.unit ? `${formatNumber(shown)} ${disp.unit}` : formatNumber(shown);
+  const formatted = formatMaterialNumber(locale, shown);
+  return disp.unit ? `${formatted} ${disp.unit}` : formatted;
 }
 
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
@@ -331,15 +334,15 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
               <span className="font-bold text-xs text-amber-700 dark:text-amber-400 uppercase tracking-wide">{t('properties.materialTotals.totalsHeading')}</span>
             </div>
             <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
-              <TotalRow label={t('properties.materialTotals.elements')} value={totals.elementCount.toLocaleString()} />
+              <TotalRow label={t('properties.materialTotals.elements')} value={formatLocaleNumber(locale, totals.elementCount)} />
               {totals.hasVolume && (
-                <TotalRow label={t('properties.materialTotals.volume')} value={formatTotal(totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.volume')} value={formatTotal(locale, totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides)} />
               )}
               {totals.hasArea && (
-                <TotalRow label={t('properties.materialTotals.area')} value={formatTotal(totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.area')} value={formatTotal(locale, totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides)} />
               )}
               {totals.hasWeight && (
-                <TotalRow label={t('properties.materialTotals.weight')} value={formatTotal(totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.weight')} value={formatTotal(locale, totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides)} />
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
@@ -352,7 +355,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
               <div className="flex items-start gap-1.5 px-2.5 py-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>
-                  {t('properties.materialTotals.partialVolumeNote', { counted: totals.elementsWithVolume.toLocaleString(), total: totals.elementCount.toLocaleString() })}
+                  {t('properties.materialTotals.partialVolumeNote', { counted: formatLocaleNumber(locale, totals.elementsWithVolume), total: formatLocaleNumber(locale, totals.elementCount) })}
                 </span>
               </div>
             )}
@@ -369,7 +372,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                 {totals.byClass.map((c) => (
                   <div key={c.ifcClass} className="flex items-center justify-between px-2.5 py-1.5 text-xs">
                     <span className="font-mono text-zinc-600 dark:text-zinc-400 truncate">{c.ifcClass}</span>
-                    <span className="font-mono text-zinc-900 dark:text-zinc-100">{c.count.toLocaleString()}</span>
+                    <span className="font-mono text-zinc-900 dark:text-zinc-100">{formatLocaleNumber(locale, c.count)}</span>
                   </div>
                 ))}
               </div>

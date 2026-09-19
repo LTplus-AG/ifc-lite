@@ -14,6 +14,14 @@ import type { TranslationValue } from '../types';
  * content, not literals, and stay out of this catalogue.
  */
 export const propertiesEn = {
+  'properties.propertySet.unnamed': 'Unnamed Property Set',
+  'properties.quantitySet.unnamed': 'Unnamed Quantity Set',
+  'properties.quantitySet.type.length': 'Length',
+  'properties.quantitySet.type.area': 'Area',
+  'properties.quantitySet.type.volume': 'Volume',
+  'properties.quantitySet.type.count': 'Count',
+  'properties.quantitySet.type.weight': 'Weight',
+  'properties.quantitySet.type.time': 'Time',
   // AssemblyBadge
   'properties.assemblyBadge.tooltip': 'Select the parent assembly',
   'properties.assemblyBadge.label': 'Part of Assembly',

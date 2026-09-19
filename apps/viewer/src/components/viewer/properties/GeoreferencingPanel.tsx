@@ -32,6 +32,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 
 // ── Field-specific assistance data ─────────────────────────────────────
@@ -249,7 +250,7 @@ interface AngleRowProps {
 }
 
 function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
 
@@ -314,7 +315,7 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
         ) : (
           <>
             <span className="text-[11px] font-mono tabular-nums text-teal-700 dark:text-teal-400">
-              {angle != null ? parseFloat(angle.toFixed(6)) : '-'}
+              {angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}
               <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{t('properties.georef.degUnit')}</span>
             </span>
             {editable && (

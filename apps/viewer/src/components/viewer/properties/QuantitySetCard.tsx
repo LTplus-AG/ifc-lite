@@ -10,17 +10,19 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { QuantitySet } from './encodingUtils';
 import type { ProjectUnits } from '@ifc-lite/parser';
-import { resolveQuantityDisplay, formatConverted } from '@/lib/units/display';
+import { resolveQuantityDisplay } from '@/lib/units/display';
 import { setDisplayName } from './setDisplayName';
+import { useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 /** Maps quantity type to friendly name for tooltip */
-const QUANTITY_TYPE_NAMES: Record<number, string> = {
-  0: 'Length',
-  1: 'Area',
-  2: 'Volume',
-  3: 'Count',
-  4: 'Weight',
-  5: 'Time',
+const QUANTITY_TYPE_KEYS: Record<number, TranslationKey> = {
+  0: 'properties.quantitySet.type.length',
+  1: 'properties.quantitySet.type.area',
+  2: 'properties.quantitySet.type.volume',
+  3: 'properties.quantitySet.type.count',
+  4: 'properties.quantitySet.type.weight',
+  5: 'properties.quantitySet.type.time',
 };
 
 export interface QuantitySetCardProps {
@@ -32,18 +34,21 @@ export interface QuantitySetCardProps {
 }
 
 export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: QuantitySetCardProps) {
+  const { t, locale } = useTranslation();
   const formatValue = (value: number, type: number): string => {
     if (isNaN(value)) return '\u2014'; // em-dash for empty values
     const disp = resolveQuantityDisplay(value, type, projectUnits, unitDisplayOverrides ?? {});
-    const formatted = disp.converted !== null ? formatConverted(disp.converted) : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+    const formatted = formatLocaleNumber(locale, disp.converted ?? value, {
+      maximumFractionDigits: disp.converted !== null ? 4 : 3,
+    });
     return disp.unit ? `${formatted} ${disp.unit}` : formatted;
   };
 
   return (
     <Collapsible defaultOpen className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/20 dark:bg-blue-950/20 w-full max-w-full overflow-hidden">
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-left transition-colors overflow-hidden">
-        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{setDisplayName(qset.name, 'Quantity Set')}</span>
-        <span className="text-[10px] font-mono bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shrink-0">{qset.quantities.length}</span>
+        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{setDisplayName(qset.name, t('properties.quantitySet.unnamed'))}</span>
+        <span className="text-[10px] font-mono bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shrink-0">{formatLocaleNumber(locale, qset.quantities.length)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-blue-200 dark:border-blue-800 divide-y divide-blue-100 dark:divide-blue-900/30">
@@ -51,11 +56,11 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
             // Names render VERBATIM: the parse path already decoded them
             // (see the note on `parsePropertyValue`), and decoding a second
             // time collapses `\\` twice.
-            const typeName = QUANTITY_TYPE_NAMES[q.type];
+            const typeKey = QUANTITY_TYPE_KEYS[q.type];
             return (
               <div key={`${q.name}-${index}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-blue-50/50 dark:hover:bg-blue-900/20">
                 {/* Quantity name with type tooltip */}
-                {typeName ? (
+                {typeKey ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="text-zinc-500 dark:text-zinc-400 font-medium cursor-help break-words">
@@ -66,7 +71,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
                       {/* TooltipContent uses the neutral popover surface (#4767);
                           secondary text uses its semantic muted token instead
                           of a hardcoded primary-foreground opacity tier. */}
-                      <span className="text-muted-foreground">{typeName}</span>
+                      <span className="text-muted-foreground">{t(typeKey)}</span>
                     </TooltipContent>
                   </Tooltip>
                 ) : (

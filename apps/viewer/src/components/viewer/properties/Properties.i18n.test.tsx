@@ -387,6 +387,27 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.doesNotMatch(text, /not applied|not editable|The file's own values|about/);
   });
 
+  catalogueIt('formats the grid-north angle with the active locale', () => {
+    act(() => setLocale('de'));
+    const radians = 12.345678 * Math.PI / 180;
+    const container = render(
+      <GeoreferencingPanel
+        georef={{
+          hasGeoreference: true,
+          mapConversion: { ...MAP_CONVERSION, xAxisAbscissa: Math.cos(radians), xAxisOrdinate: Math.sin(radians) },
+          projectedCRS: PROJECTED_CRS,
+          source: 'mapConversion',
+        }}
+        schemaVersion="IFC4"
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    assert.match(container.textContent ?? '', /12,345678/);
+    assert.doesNotMatch(container.textContent ?? '', /12\.345678/);
+  });
+
   catalogueIt('resolves a retained EPSG search error in the current locale', () => {
     registerLocale('epsg-a', { 'properties.epsgLookup.noResults': '[no results A]' });
     registerLocale('epsg-b', { 'properties.epsgLookup.noResults': '[no results B]' });

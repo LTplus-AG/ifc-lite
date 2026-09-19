@@ -43,7 +43,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { QuantityType } from '@ifc-lite/data';
-import { aggregateQuantitiesFromQsets } from './MaterialTotalsPanel.js';
+import { aggregateQuantitiesFromQsets, formatMaterialNumber } from './MaterialTotalsPanel.js';
 
 type Qty = { name: string; type: number; value: number };
 type Qset = { quantities: readonly Qty[] };
@@ -218,5 +218,12 @@ describe('aggregateQuantitiesFromQsets', () => {
       );
       assert.equal(r.area, 10);
     });
+  });
+});
+
+describe('material total locale formatting (#4918)', () => {
+  it('uses the requested app locale rather than the host locale', () => {
+    assert.equal(formatMaterialNumber('de-DE', 1234.5), '1.235');
+    assert.equal(formatMaterialNumber('de-DE', 12.5), '12,5');
   });
 });

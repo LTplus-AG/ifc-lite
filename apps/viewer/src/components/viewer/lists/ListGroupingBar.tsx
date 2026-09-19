@@ -11,6 +11,7 @@
 import { Group, Sigma, X, ChevronsDownUp, ChevronsUpDown, ListTree, Table2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n/useTranslation';
 
 interface ListGroupingBarProps {
   /** Active grouping columns, outermost first (multi-criteria, issue #1790). */
@@ -30,7 +31,8 @@ interface ListGroupingBarProps {
   onViewChange?: (view: 'nested' | 'schedule') => void;
 }
 
-function Chip({ icon, children, onRemove, removeLabel = 'Remove' }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void; removeLabel?: string }) {
+function Chip({ icon, children, onRemove, removeLabel }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void; removeLabel?: string }) {
+  const { t } = useTranslation();
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] font-medium text-foreground">
       {icon}
@@ -38,7 +40,7 @@ function Chip({ icon, children, onRemove, removeLabel = 'Remove' }: { icon: Reac
       <button
         onClick={onRemove}
         className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-primary/20 hover:text-foreground"
-        aria-label={removeLabel}
+        aria-label={removeLabel ?? t('lists.groupingBar.remove')}
       >
         <X className="h-3 w-3" />
       </button>
@@ -51,6 +53,7 @@ export function ListGroupingBar({
   onRemoveGroup, onRemoveSum, onToggleExpandAll,
   view = 'nested', onViewChange,
 }: ListGroupingBarProps) {
+  const { t } = useTranslation();
   const grouped = groups.length > 0;
   const scheduleMode = view === 'schedule';
   return (
@@ -61,7 +64,7 @@ export function ListGroupingBar({
             <button
               onClick={() => onViewChange(scheduleMode ? 'nested' : 'schedule')}
               aria-pressed={scheduleMode}
-              aria-label={scheduleMode ? 'Switch to nested tree view' : 'Switch to schedule (pivot) table view'}
+              aria-label={scheduleMode ? t('lists.groupingBar.switchToNestedAriaLabel') : t('lists.groupingBar.switchToScheduleAriaLabel')}
               className={cn(
                 'mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] hover:bg-muted hover:text-foreground',
                 scheduleMode ? 'text-primary' : 'text-muted-foreground',
@@ -70,14 +73,14 @@ export function ListGroupingBar({
               {scheduleMode ? <Table2 className="h-3.5 w-3.5" /> : <ListTree className="h-3.5 w-3.5" />}
             </button>
           </TooltipTrigger>
-          <TooltipContent>{scheduleMode ? 'Showing schedule (pivot) table — switch to nested tree' : 'Showing nested tree — switch to schedule (pivot) table'}</TooltipContent>
+          <TooltipContent>{scheduleMode ? t('lists.groupingBar.showingScheduleTooltip') : t('lists.groupingBar.showingNestedTooltip')}</TooltipContent>
         </Tooltip>
       )}
       {grouped && !scheduleMode && (
         <button
           onClick={onToggleExpandAll}
           className="mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-          title={allExpanded ? 'Collapse all groups' : 'Expand all groups'}
+          title={allExpanded ? t('lists.groupingBar.collapseAllGroups') : t('lists.groupingBar.expandAllGroups')}
         >
           {allExpanded ? <ChevronsDownUp className="h-3.5 w-3.5" /> : <ChevronsUpDown className="h-3.5 w-3.5" />}
         </button>
@@ -85,19 +88,19 @@ export function ListGroupingBar({
 
       {grouped
         ? groups.map((g, i) => (
-            <Chip key={g.id} icon={<Group className="h-3 w-3 text-primary" />} onRemove={() => onRemoveGroup(g.id)} removeLabel={`Remove grouping by ${g.label}`}>
-              {i === 0 ? `Grouped by ${g.label}` : `then ${g.label}`}
+            <Chip key={g.id} icon={<Group className="h-3 w-3 text-primary" />} onRemove={() => onRemoveGroup(g.id)} removeLabel={t('lists.groupingBar.removeGroupingByAriaLabel', { label: g.label })}>
+              {i === 0 ? t('lists.groupingBar.groupedByChip', { label: g.label }) : t('lists.groupingBar.thenChip', { label: g.label })}
             </Chip>
           ))
-        : <span className="text-muted-foreground">No grouping — use a column&apos;s <span className="font-medium text-foreground">⋮</span> menu to group or sum</span>}
+        : <span className="text-muted-foreground">{t('lists.groupingBar.noGroupingPrefix')} <span className="font-medium text-foreground">⋮</span> {t('lists.groupingBar.noGroupingSuffix')}</span>}
 
       {sums.map((s) => (
-        <Chip key={s.id} icon={<Sigma className="h-3 w-3 text-primary" />} onRemove={() => onRemoveSum(s.id)} removeLabel={`Remove sum of ${s.label}`}>{s.label}</Chip>
+        <Chip key={s.id} icon={<Sigma className="h-3 w-3 text-primary" />} onRemove={() => onRemoveSum(s.id)} removeLabel={t('lists.groupingBar.removeSumOfAriaLabel', { label: s.label })}>{s.label}</Chip>
       ))}
 
       <span className={cn('ml-auto whitespace-nowrap font-medium text-muted-foreground')}>
-        {grouped && <>{groupCount.toLocaleString()} group{groupCount === 1 ? '' : 's'} · </>}
-        {count.toLocaleString()} element{count === 1 ? '' : 's'}
+        {grouped && <>{t('lists.groupingBar.groupCount', { count: groupCount })} · </>}
+        {t('lists.groupingBar.elementCount', { count })}
       </span>
     </div>
   );

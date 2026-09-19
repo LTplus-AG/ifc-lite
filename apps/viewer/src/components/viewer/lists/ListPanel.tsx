@@ -35,6 +35,7 @@ import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 import { ListErrorBox } from './ListErrorBox';
 import { ListLibrary } from './ListLibrary';
+import { useTranslation } from '@/i18n/useTranslation';
 
 interface ListPanelProps {
   onClose?: () => void;
@@ -43,6 +44,7 @@ interface ListPanelProps {
 type PanelView = 'library' | 'builder' | 'results';
 
 export function ListPanel({ onClose }: ListPanelProps) {
+  const { t } = useTranslation();
   const { ifcDataStore, models, geometryResult } = useIfc();
   const renderFrame = useRenderFrameOffsets(); // scene-wide frame for World X/Y/Z (issue #3671)
   const [view, setView] = useState<PanelView>('library');
@@ -212,7 +214,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
     const clone: ListDefinition = {
       ...definition,
       id: crypto.randomUUID(),
-      name: `${definition.name} (Copy)`,
+      name: t('lists.panel.copyName', { name: definition.name }),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -284,13 +286,13 @@ export function ListPanel({ onClose }: ListPanelProps) {
         <div className="flex items-center gap-2">
           <Table2 className="h-4 w-4" />
           <span className="font-medium text-sm">
-            {view === 'library' && 'Lists'}
-            {view === 'builder' && (editingList ? 'Edit List' : 'New List')}
-            {view === 'results' && 'Results'}
+            {view === 'library' && t('lists.panel.title')}
+            {view === 'builder' && (editingList ? t('lists.panel.editList') : t('lists.panel.newList'))}
+            {view === 'results' && t('lists.panel.results')}
           </span>
           {view === 'results' && listResult && (
             <span className="text-xs text-muted-foreground">
-              ({listResult.totalCount} rows, {listResult.executionTime.toFixed(0)}ms)
+              ({t('lists.panel.resultsSummary', { count: listResult.totalCount, ms: listResult.executionTime.toFixed(0) })})
             </span>
           )}
         </div>
@@ -299,29 +301,29 @@ export function ListPanel({ onClose }: ListPanelProps) {
             <>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="Edit Configuration" onClick={handleEditFromResults}>
+                  <Button variant="ghost" size="icon-sm" aria-label={t('lists.panel.editConfiguration')} onClick={handleEditFromResults}>
                     <Settings2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Edit Configuration</TooltipContent>
+                <TooltipContent>{t('lists.panel.editConfiguration')}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="Back to Lists" onClick={() => setView('library')}>
+                  <Button variant="ghost" size="icon-sm" aria-label={t('lists.panel.backToLists')} onClick={() => setView('library')}>
                     <Table2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Back to Lists</TooltipContent>
+                <TooltipContent>{t('lists.panel.backToLists')}</TooltipContent>
               </Tooltip>
             </>
           )}
           {view === 'builder' && (
             <Button variant="ghost" size="sm" onClick={() => setView('library')} className="text-xs h-7">
-              Cancel
+              {t('lists.panel.cancel')}
             </Button>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
+            <Button variant="ghost" size="icon-sm" aria-label={t('lists.panel.close')} onClick={onClose}>
               <X className="h-3.5 w-3.5" />
             </Button>
           )}

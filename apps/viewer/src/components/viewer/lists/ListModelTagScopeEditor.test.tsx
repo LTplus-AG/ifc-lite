@@ -18,8 +18,17 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ListModelTagScope } from '@ifc-lite/lists';
 import { render, cleanup, click } from '@/test/render.js';
+import { en } from '@/i18n/en';
+import { listsEn } from '@/i18n/catalogues/lists.en';
 import { useViewerStore } from '@/store';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor.js';
+
+// `ListModelTagScopeEditor` now reads the `lists.*` i18n catalogue (#4918),
+// not yet wired into `apps/viewer/src/i18n/en.ts` (a later integration
+// pass does that across the whole sweep) — `en` is a plain, non-frozen
+// object, so patch the catalogue in here the same way `resolve()` in
+// `registry.ts` already falls back to `en[key]` for every other one.
+Object.assign(en, listsEn);
 
 let structure = '';
 let mep = '';

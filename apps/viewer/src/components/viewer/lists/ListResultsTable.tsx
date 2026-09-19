@@ -31,7 +31,7 @@ import { posthog } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
-import { ColumnHeaderMenu } from './ColumnHeaderMenu';
+import { useTranslation } from '@/i18n/useTranslation'; import { ColumnHeaderMenu } from './ColumnHeaderMenu';
 import { ListGroupingBar } from './ListGroupingBar';
 import { ListScheduleTable } from './ListScheduleTable';
 import {
@@ -57,7 +57,7 @@ interface ListResultsTableProps {
 }
 
 export function ListResultsTable({ result, listName, grouping, onGroupingChange, modelUnits }: ListResultsTableProps) {
-  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
+  const { t } = useTranslation(); const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const parentRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortCol, setSortCol] = useState<number | null>(null);
@@ -277,7 +277,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
   // grouping (sections + per-group count/sums), and the grand totals.
   const handleExport = useCallback((format: ExportFormat) => {
     const model = buildExportModel({
-      title: listName?.trim() || 'List',
+      title: listName?.trim() || t('lists.resultsTable.defaultTitle'),
       columns,
       rows: sortedRows,
       grouping,
@@ -296,7 +296,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       row_count: sortedRows.length,
       column_count: columns.length,
     });
-  }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths, modelUnits, unitDisplayOverrides]);
+  }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths, modelUnits, unitDisplayOverrides, t]);
 
   // Flat, ordered list of the selectable rows (group headers excluded) and a
   // lookup from a row to its position, so Shift+click range-select works over
@@ -332,32 +332,32 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       <div className="flex items-center gap-2 px-3 py-1.5 border-b">
         <Search className="h-3.5 w-3.5 text-muted-foreground" />
         <Input
-          placeholder="Filter results..."
+          placeholder={t('lists.resultsTable.filterPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="h-7 text-xs border-0 shadow-none focus-visible:ring-0 px-0"
         />
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {sortedRows.length}{(searchQuery || filterByVisibility) ? ` / ${result.rows.length}` : ''} rows
+          {(searchQuery || filterByVisibility) ? t('lists.resultsTable.rowCountOfTotal', { count: sortedRows.length, total: result.rows.length }) : t('lists.resultsTable.rowCount', { count: sortedRows.length })}
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className={cn('h-6 w-6 shrink-0', filterByVisibility && 'text-primary')} aria-label={filterByVisibility ? 'Showing visible objects only' : 'Showing all objects'} aria-pressed={filterByVisibility} onClick={() => setFilterByVisibility((p) => !p)}>
+            <Button variant="ghost" size="icon-sm" className={cn('h-6 w-6 shrink-0', filterByVisibility && 'text-primary')} aria-label={filterByVisibility ? t('lists.resultsTable.showingVisibleOnly') : t('lists.resultsTable.showingAllObjects')} aria-pressed={filterByVisibility} onClick={() => setFilterByVisibility((p) => !p)}>
               {filterByVisibility ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{filterByVisibility ? 'Showing visible objects only' : 'Showing all objects'}</TooltipContent>
+          <TooltipContent>{filterByVisibility ? t('lists.resultsTable.showingVisibleOnly') : t('lists.resultsTable.showingAllObjects')}</TooltipContent>
         </Tooltip>
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className="h-6 w-6 shrink-0" aria-label="Export">
+                <Button variant="ghost" size="icon-sm" className="h-6 w-6 shrink-0" aria-label={t('lists.resultsTable.exportAriaLabel')}>
                   <Download className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent>Export…</TooltipContent>
+            <TooltipContent>{t('lists.resultsTable.exportEllipsis')}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('csv')}>
@@ -427,14 +427,14 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                   style={{ width: columnWidths[colIdx] }}
                 >
                   <button className="flex min-w-0 flex-1 items-center gap-1 hover:text-foreground" onClick={() => handleHeaderClick(colIdx)}>
-                    {groupedBy && <ChevronDown className="h-3 w-3 shrink-0 text-primary" aria-label="grouped" />}
+                    {groupedBy && <ChevronDown className="h-3 w-3 shrink-0 text-primary" aria-label={t('lists.resultsTable.groupedAriaLabel')} />}
                     {groupedBy && groupColumnIds.length > 1 && (
-                      <span className="shrink-0 text-[9px] font-semibold tabular-nums text-primary" aria-label={`grouping level ${groupLevel + 1}`}>
+                      <span className="shrink-0 text-[9px] font-semibold tabular-nums text-primary" aria-label={t('lists.resultsTable.groupingLevelAriaLabel', { level: groupLevel + 1 })}>
                         {groupLevel + 1}
                       </span>
                     )}
                     <span className="truncate">{col.label ?? col.propertyName}{unit ? ` (${unit})` : ''}</span>
-                    {summed && <span className="text-primary">Σ</span>}
+                    {summed && <span className="text-primary">{t('lists.resultsTable.sumIcon')}</span>}
                     {sortCol === colIdx && (sortDir === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)}
                   </button>
                   {onGroupingChange && (
@@ -455,7 +455,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[col.id]; return n; })}
                     className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
-                    title="Drag to resize · double-click to auto-fit"
+                    title={t('lists.resultsTable.dragToResizeTitle')}
                   />
                 </div>
               );
@@ -532,7 +532,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
             <div className="flex sticky bottom-0 z-10 border-t-2 border-border bg-muted/90 backdrop-blur-sm">
               {columns.map((col, colIdx) => (
                 <div key={col.id} className="flex items-center border-r border-border/30 px-2 py-1 text-xs font-semibold shrink-0" style={{ width: columnWidths[colIdx] }}>
-                  {colIdx === 0 && <span className="text-muted-foreground">Total · {totals.count.toLocaleString()}</span>}
+                  {colIdx === 0 && <span className="text-muted-foreground">{t('lists.resultsTable.totalCount', { count: totals.count })}</span>}
                   {sumColumnIds.includes(col.id) && (
                     <span className="ml-auto font-mono tabular-nums text-foreground">{formatCellValue(totals.sums[col.id])}</span>
                   )}

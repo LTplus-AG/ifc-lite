@@ -26,6 +26,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LIST_PRESETS } from '@/lib/lists';
 import type { ListDefinition } from '@/lib/lists';
+import { useTranslation } from '@/i18n/useTranslation';
 
 interface ListLibraryProps {
   definitions: ListDefinition[];
@@ -54,6 +55,7 @@ export function ListLibrary({
   onExport,
   onImport,
 }: ListLibraryProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Actions */}
@@ -66,11 +68,11 @@ export function ListLibrary({
           className="text-xs h-7"
         >
           <Plus className="h-3 w-3 mr-1" />
-          New List
+          {t('lists.library.newList')}
         </Button>
         <Button variant="ghost" size="sm" onClick={onImport} className="text-xs h-7">
           <Upload className="h-3 w-3 mr-1" />
-          Import
+          {t('lists.library.import')}
         </Button>
       </div>
 
@@ -79,7 +81,7 @@ export function ListLibrary({
         {definitions.length > 0 && (
           <div className="px-3 py-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Saved Lists
+              {t('lists.library.savedLists')}
             </span>
             <div className="mt-1 space-y-1">
               {definitions.map(def => (
@@ -105,7 +107,7 @@ export function ListLibrary({
         {/* Presets */}
         <div className="px-3 py-2">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Templates
+            {t('lists.library.templates')}
           </span>
           <div className="mt-1 space-y-1">
             {LIST_PRESETS.map(preset => (
@@ -145,6 +147,7 @@ interface ListItemProps {
 }
 
 function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit, onDuplicate, onDelete, onExport, isPreset }: ListItemProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer hover:bg-muted/50 ${
@@ -175,12 +178,12 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                     if (hasData) onExecute(definition);
                   }}
                   disabled={!hasData}
-                  aria-label={`Run list ${definition.name}`}
+                  aria-label={t('lists.library.runListAriaLabel', { name: definition.name })}
                 >
                   <Play className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Run</TooltipContent>
+              <TooltipContent>{t('lists.library.run')}</TooltipContent>
             </Tooltip>
             {!isPreset && onEdit && (
               <Tooltip>
@@ -193,12 +196,12 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onEdit(definition);
                     }}
-                    aria-label={`Edit list ${definition.name}`}
+                    aria-label={t('lists.library.editListAriaLabel', { name: definition.name })}
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Edit</TooltipContent>
+                <TooltipContent>{t('lists.library.edit')}</TooltipContent>
               </Tooltip>
             )}
             {onDuplicate && (
@@ -212,12 +215,12 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDuplicate(definition);
                     }}
-                    aria-label={isPreset ? `Use ${definition.name} as template` : `Duplicate list ${definition.name}`}
+                    aria-label={isPreset ? t('lists.library.useAsTemplateAriaLabel', { name: definition.name }) : t('lists.library.duplicateListAriaLabel', { name: definition.name })}
                   >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{isPreset ? 'Use as Template' : 'Duplicate'}</TooltipContent>
+                <TooltipContent>{isPreset ? t('lists.library.useAsTemplate') : t('lists.library.duplicate')}</TooltipContent>
               </Tooltip>
             )}
             {!isPreset && onExport && (
@@ -231,12 +234,12 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onExport(definition);
                     }}
-                    aria-label={`Export list ${definition.name}`}
+                    aria-label={t('lists.library.exportListAriaLabel', { name: definition.name })}
                   >
                     <Download className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Export</TooltipContent>
+                <TooltipContent>{t('lists.library.export')}</TooltipContent>
               </Tooltip>
             )}
             {!isPreset && onDelete && (
@@ -250,12 +253,12 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDelete(definition.id);
                     }}
-                    aria-label={`Delete list ${definition.name}`}
+                    aria-label={t('lists.library.deleteListAriaLabel', { name: definition.name })}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Delete</TooltipContent>
+                <TooltipContent>{t('lists.library.delete')}</TooltipContent>
               </Tooltip>
             )}
           </>

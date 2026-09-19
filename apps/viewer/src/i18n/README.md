@@ -98,6 +98,15 @@ reopen pill. The wall-split tool catalogue (`split-tool.en.ts`) covers
 remaining literal was added to the existing `section-tool.en.ts` catalogue
 rather than a new file.
 
+The saved-list builder catalogue (#4918 slice 6, lists) covers
+`ListBuilder.tsx`, `ListLibrary.tsx`, `ListGroupingBar.tsx`,
+`ListModelTagScopeEditor.tsx`, `ListResultsTable.tsx`, `ListPanel.tsx`,
+`ColumnHeaderMenu.tsx`, `ListScheduleTable.tsx`, and `ListErrorBox.tsx`
+(`lists.en.ts`, per-sub-area key prefixes: `lists.builder.*`,
+`lists.library.*`, `lists.panel.*`, `lists.resultsTable.*`,
+`lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
+`lists.columnMenu.*`, `lists.errorBox.*`).
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

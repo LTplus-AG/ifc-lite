@@ -59,7 +59,7 @@ import {
   updateColumnInPlace,
   type ColumnDraft,
 } from '@/lib/lists/column-edit';
-import { previewSetPattern, formatMatchHint } from './pattern-preview';
+import { previewSetPattern, formatMatchHint } from './pattern-preview'; import { useTranslation } from '@/i18n/useTranslation';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -177,7 +177,7 @@ interface ListBuilderProps {
 }
 
 export function ListBuilder({ providers, stores, initial, onSave, onCancel, onExecute }: ListBuilderProps) {
-  const [name, setName] = useState(initial?.name ?? '');
+  const { t } = useTranslation(); const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [selectedTypes, setSelectedTypes] = useState<Set<IfcTypeEnum>>(
     new Set(initial?.entityTypes ?? [])
@@ -432,13 +432,13 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           {/* Identity */}
           <div className="space-y-2">
             <Input
-              placeholder="List name…"
+              placeholder={t('lists.builder.namePlaceholder')}
               value={name}
               onChange={e => setName(e.target.value)}
               className="h-9 text-sm font-medium"
             />
             <Input
-              placeholder="Description (optional)"
+              placeholder={t('lists.builder.descriptionPlaceholder')}
               value={description}
               onChange={e => setDescription(e.target.value)}
               className="h-7 text-xs"
@@ -456,9 +456,8 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           >
             {isSnapshot ? (
               <p className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                <strong className="font-medium text-foreground">Filter snapshot</strong> — frozen to the{' '}
-                {snapshotCount.toLocaleString()} elements that matched the search filter. Entity-type scope
-                doesn&apos;t apply; configure columns and grouping below.
+                <strong className="font-medium text-foreground">{t('lists.builder.filterSnapshotLabel')}</strong>{' '}
+                {t('lists.builder.filterSnapshotHint', { count: snapshotCount.toLocaleString() })}
               </p>
             ) : (
               <>
@@ -476,8 +475,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
                 </div>
                 {selectedTypes.size === 0 && (
                   <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                    No type selected — the list targets <strong className="font-medium text-foreground">all model elements</strong>.
-                    Use filters to narrow by name, material, classification or storey.
+                    {t('lists.builder.noTypeSelectedPrefix')} <strong className="font-medium text-foreground">{t('lists.builder.allModelElementsLabel')}</strong>{t('lists.builder.noTypeSelectedSuffix')}
                   </p>
                 )}
               </>
@@ -540,14 +538,14 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
       {/* Bottom actions */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-t bg-muted/30">
         <Button size="sm" onClick={handleRun} disabled={!canRun} className="h-8 gap-1.5 text-xs font-medium">
-          <Play className="h-3.5 w-3.5" /> Run
+          <Play className="h-3.5 w-3.5" /> {t('lists.builder.run')}
         </Button>
         <Button variant="outline" size="sm" onClick={handleSave} disabled={!canRun} className="h-8 gap-1.5 text-xs">
-          <Save className="h-3.5 w-3.5" /> Save
+          <Save className="h-3.5 w-3.5" /> {t('lists.builder.save')}
         </Button>
         <div className="flex-1" />
         <Button variant="ghost" size="sm" onClick={onCancel} className="h-8 text-xs">
-          Cancel
+          {t('lists.builder.cancel')}
         </Button>
       </div>
     </div>
@@ -575,7 +573,7 @@ function SelectedColumns({
 }) {
   // Which column's inline editor is open (one at a time). Cleared when the
   // edited column is removed or after a save.
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const { t } = useTranslation(); const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
     <div className="mb-3 space-y-1">
@@ -595,7 +593,7 @@ function SelectedColumns({
               {editable && (
                 <button
                   onClick={() => setEditingId(editing ? null : col.id)}
-                  aria-label={editing ? 'Close editor' : 'Edit column'}
+                  aria-label={editing ? t('lists.builder.closeEditorAriaLabel') : t('lists.builder.editColumnAriaLabel')}
                   aria-pressed={editing}
                   className={cn(
                     'shrink-0 hover:text-foreground',
@@ -608,7 +606,7 @@ function SelectedColumns({
               <button
                 onClick={() => onMove(idx, -1)}
                 disabled={idx === 0}
-                aria-label="Move up"
+                aria-label={t('lists.builder.moveUpAriaLabel')}
                 className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -616,14 +614,14 @@ function SelectedColumns({
               <button
                 onClick={() => onMove(idx, 1)}
                 disabled={idx === columns.length - 1}
-                aria-label="Move down"
+                aria-label={t('lists.builder.moveDownAriaLabel')}
                 className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => { if (editing) setEditingId(null); onRemove(col.id); }}
-                aria-label="Remove column"
+                aria-label={t('lists.builder.removeColumnAriaLabel')}
                 className="shrink-0 text-muted-foreground hover:text-destructive"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -821,7 +819,7 @@ function CustomColumnEntry({
   onAdd: (col: ColumnDefinition) => void;
   isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const { t } = useTranslation(); const [open, setOpen] = useState(false);
 
   if (!open) {
     return (
@@ -829,8 +827,8 @@ function CustomColumnEntry({
         onClick={() => setOpen(true)}
         className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
       >
-        <Plus className="h-3.5 w-3.5" /> Custom column
-        <span className="ml-auto font-mono text-[10px] opacity-70">Pset/Qto or /regex/</span>
+        <Plus className="h-3.5 w-3.5" /> {t('lists.builder.customColumn')}
+        <span className="ml-auto font-mono text-[10px] opacity-70">{t('lists.builder.customColumnHint')}</span>
       </button>
     );
   }
@@ -887,7 +885,7 @@ function ColumnEditorPanel({
   onClose: () => void;
   isDuplicate?: (draft: ColumnDraft) => boolean;
 }) {
-  const [source, setSource] = useState<'property' | 'quantity'>(initial.source);
+  const { t } = useTranslation(); const [source, setSource] = useState<'property' | 'quantity'>(initial.source);
   const [setName, setSetName] = useState(initial.setName);
   const [propName, setPropName] = useState(initial.propName);
 
@@ -923,16 +921,16 @@ function ColumnEditorPanel({
   return (
     <div className="space-y-2 rounded-md border border-border/60 bg-card p-2.5">
       <div className="flex items-center gap-1.5">
-        <Chip selected={source === 'property'} onClick={() => setSource('property')}>Property</Chip>
-        <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>Quantity</Chip>
+        <Chip selected={source === 'property'} onClick={() => setSource('property')}>{t('lists.builder.property')}</Chip>
+        <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>{t('lists.builder.quantity')}</Chip>
         {preview.isPattern && (
           <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary">
-            regex
+            {t('lists.builder.regexBadge')}
           </span>
         )}
         <button
           onClick={onClose}
-          aria-label={mode === 'add' ? 'Close custom column' : 'Close editor'}
+          aria-label={mode === 'add' ? t('lists.builder.closeCustomColumnAriaLabel') : t('lists.builder.closeEditorAriaLabel')}
           className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
         >
           <ChevronUp className="h-3.5 w-3.5" />
@@ -942,14 +940,14 @@ function ColumnEditorPanel({
         <ComboInput
           value={setName}
           options={setOptions}
-          placeholder={source === 'quantity' ? 'Qto_… or /Qto_.*/' : 'Pset_… or /Pset_.*/'}
+          placeholder={source === 'quantity' ? t('lists.builder.quantitySetPlaceholder') : t('lists.builder.propertySetPlaceholder')}
           className="h-7 min-w-0 flex-1 text-xs"
           onChange={setSetName}
         />
         <ComboInput
           value={propName}
           options={propOptions}
-          placeholder={source === 'quantity' ? 'NetVolume' : 'FireRating'}
+          placeholder={source === 'quantity' ? t('lists.builder.quantityNamePlaceholder') : t('lists.builder.propertyNamePlaceholder')}
           className="h-7 min-w-0 flex-1 text-xs"
           onChange={setPropName}
         />
@@ -957,7 +955,7 @@ function ColumnEditorPanel({
           size="sm"
           onClick={submit}
           disabled={!canSubmit}
-          aria-label={mode === 'add' ? 'Add custom column' : 'Save column'}
+          aria-label={mode === 'add' ? t('lists.builder.addCustomColumnAriaLabel') : t('lists.builder.saveColumnAriaLabel')}
           className="h-7 shrink-0 px-2"
         >
           {mode === 'add' ? <Plus className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
@@ -965,7 +963,7 @@ function ColumnEditorPanel({
       </div>
       {preview.isInvalid ? (
         <p className="text-[11px] leading-relaxed text-destructive">
-          Invalid pattern. It would be matched as a literal name, so it likely hits nothing.
+          {t('lists.builder.invalidPatternHint')}
         </p>
       ) : preview.isPattern ? (
         <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -973,9 +971,9 @@ function ColumnEditorPanel({
         </p>
       ) : (
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Type an exact set name, or wrap a pattern in{' '}
-          <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> to pull one value across every
-          matching set, e.g. <code className="rounded bg-muted px-1 font-mono text-[10px]">/Qto_.*BaseQuantities/</code>.
+          {t('lists.builder.patternHintPrefix')}{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> {t('lists.builder.patternHintSuffix')}{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[10px]">{t('lists.builder.patternHintExample')}</code>.
         </p>
       )}
     </div>
@@ -1021,7 +1019,7 @@ function PickerItem({
   selected: boolean;
   onAdd: () => void;
 }) {
-  return (
+  const { t } = useTranslation(); return (
     <button
       className={cn(
         'flex w-full items-center gap-1.5 rounded px-2 py-1 text-xs',
@@ -1032,7 +1030,7 @@ function PickerItem({
     >
       {selected ? <Check className="h-3 w-3 text-primary" /> : <Plus className="h-3 w-3" />}
       <span className="truncate">{label}</span>
-      {selected && <span className="ml-auto text-[10px]">added</span>}
+      {selected && <span className="ml-auto text-[10px]">{t('lists.builder.added')}</span>}
     </button>
   );
 }
@@ -1055,6 +1053,7 @@ function GroupingBody({
   onGroupLevelChange: (level: number, id: string) => void;
   onToggleSum: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   // One select per active level, plus a trailing empty slot to add the next
   // level (as long as ungrouped columns remain).
   const levelSlots = groupByColumnIds.length < columns.length
@@ -1065,13 +1064,13 @@ function GroupingBody({
       <div className="space-y-1.5">
         {levelSlots.map((id, level) => (
           <label key={level} className="flex items-center gap-2 text-xs">
-            <span className="w-16 shrink-0 text-muted-foreground">{level === 0 ? 'Group by' : 'then by'}</span>
+            <span className="w-16 shrink-0 text-muted-foreground">{level === 0 ? t('lists.builder.groupByLabel') : t('lists.builder.thenByLabel')}</span>
             <select
               value={id}
               onChange={(e) => onGroupLevelChange(level, e.target.value)}
               className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="">{level === 0 ? '— None (flat list) —' : 'None'}</option>
+              <option value="">{level === 0 ? t('lists.builder.noneFlatList') : t('lists.builder.none')}</option>
               {columns
                 .filter((c) => c.id === id || !groupByColumnIds.includes(c.id))
                 .map((c) => (
@@ -1082,18 +1081,18 @@ function GroupingBody({
         ))}
         {groupByColumnIds.length > 0 && (
           <div className="text-[11px] text-muted-foreground">
-            Each group shows its element count.
+            {t('lists.builder.groupCountHint')}
           </div>
         )}
       </div>
       <div>
         <div className="mb-1 text-[11px] text-muted-foreground">
-          Σ Totals — sum these columns per group and overall
+          {t('lists.builder.totalsHint')}
         </div>
         <div className="flex flex-wrap gap-1.5">
           {columns.map((c) => (
             <Chip key={c.id} selected={sumColumnIds.has(c.id)} onClick={() => onToggleSum(c.id)}>
-              <span className="font-mono">Σ</span> {c.label ?? c.propertyName}
+              <span className="font-mono">{t('lists.builder.sumIcon')}</span> {c.label ?? c.propertyName}
             </Chip>
           ))}
         </div>
@@ -1191,7 +1190,7 @@ function ConditionsBody({
   onUpdate: (idx: number, condition: PropertyCondition) => void;
   onRemove: (idx: number) => void;
 }) {
-  return (
+  const { t } = useTranslation(); return (
     <div className="space-y-1.5">
       {conditions.map((condition, idx) => (
         <ConditionRow
@@ -1210,7 +1209,7 @@ function ConditionsBody({
         onClick={() => onAdd(defaultConditionFor('attribute'))}
         className="flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
       >
-        <Plus className="h-3.5 w-3.5" /> Add filter
+        <Plus className="h-3.5 w-3.5" /> {t('lists.builder.addFilter')}
       </button>
     </div>
   );
@@ -1235,6 +1234,7 @@ function ConditionRow({
   onChange: (next: PropertyCondition) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const ops = operatorsFor(condition.source);
   const showValue = condition.operator !== 'exists';
   const isProperty = condition.source === 'property';
@@ -1299,7 +1299,7 @@ function ConditionRow({
         value={condition.source}
         onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource, zoneSets))}
         className={SELECT_CLASS}
-        aria-label="Filter dimension"
+        aria-label={t('lists.builder.filterDimensionAriaLabel')}
       >
         {CONDITION_SOURCES.map((s) => (
           <option key={s.source} value={s.source}>{s.label}</option>
@@ -1311,7 +1311,7 @@ function ConditionRow({
           value={condition.propertyName}
           onChange={(e) => onChange({ ...condition, propertyName: e.target.value })}
           className={SELECT_CLASS}
-          aria-label="Attribute"
+          aria-label={t('lists.builder.attributeAriaLabel')}
         >
           {ENTITY_ATTRIBUTES.map((a) => (
             <option key={a} value={a}>{a}</option>
@@ -1324,7 +1324,7 @@ function ConditionRow({
           value={condition.propertyName || 'Storey'}
           onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
           className={SELECT_CLASS}
-          aria-label="Spatial level"
+          aria-label={t('lists.builder.spatialLevelAriaLabel')}
         >
           {SPATIAL_LEVELS.map((level) => (
             <option key={level} value={level}>{level}</option>
@@ -1338,9 +1338,9 @@ function ConditionRow({
             value={condition.psetName ?? ''}
             onChange={(e) => onChange({ ...condition, psetName: e.target.value, value: '' })}
             className={SELECT_CLASS}
-            aria-label="Zone set"
+            aria-label={t('lists.builder.zoneSetAriaLabel')}
           >
-            {zoneSets.length === 0 && <option value="">(no zone sets)</option>}
+            {zoneSets.length === 0 && <option value="">{t('lists.builder.noZoneSets')}</option>}
             {zoneSets.map((zs) => (
               <option key={zs.id} value={zs.id}>{zs.name}</option>
             ))}
@@ -1349,10 +1349,10 @@ function ConditionRow({
             value={condition.propertyName || 'Zone'}
             onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
             className={SELECT_CLASS}
-            aria-label="Zone display mode"
+            aria-label={t('lists.builder.zoneDisplayModeAriaLabel')}
           >
-            <option value="Zone">Zone</option>
-            <option value="Straddles">Straddles</option>
+            <option value="Zone">{t('lists.builder.zoneOption')}</option>
+            <option value="Straddles">{t('lists.builder.straddlesOption')}</option>
             <option value={ZONE_MODE_VOLUME_LABEL}>{ZONE_MODE_VOLUME_LABEL}</option>
             <option value={ZONE_MODE_BREAKDOWN_LABEL}>{ZONE_MODE_BREAKDOWN_LABEL}</option>
           </select>
@@ -1364,14 +1364,14 @@ function ConditionRow({
           <ComboInput
             value={condition.psetName ?? ''}
             options={setNameOptions}
-            placeholder={isQuantity ? 'Qto_…' : 'Pset_…'}
+            placeholder={isQuantity ? t('lists.builder.qtoPlaceholder') : t('lists.builder.psetPlaceholder')}
             className="h-7 w-32 text-xs"
             onChange={(v) => onChange({ ...condition, psetName: v })}
           />
           <ComboInput
             value={condition.propertyName}
             options={propNameOptions}
-            placeholder="name"
+            placeholder={t('lists.builder.namePropertyPlaceholder')}
             className="h-7 w-28 text-xs"
             onChange={(v) => onChange({ ...condition, propertyName: v })}
           />
@@ -1382,7 +1382,7 @@ function ConditionRow({
         value={condition.operator}
         onChange={(e) => onChange({ ...condition, operator: e.target.value as ConditionOperator })}
         className={SELECT_CLASS}
-        aria-label="Operator"
+        aria-label={t('lists.builder.operatorAriaLabel')}
       >
         {ops.map((op) => (
           <option key={op} value={op}>{OPERATOR_LABEL[op]}</option>
@@ -1401,7 +1401,7 @@ function ConditionRow({
 
       <button
         onClick={onRemove}
-        aria-label="Remove filter"
+        aria-label={t('lists.builder.removeFilterAriaLabel')}
         className="ml-auto shrink-0 text-muted-foreground hover:text-destructive"
       >
         <Trash2 className="h-3.5 w-3.5" />

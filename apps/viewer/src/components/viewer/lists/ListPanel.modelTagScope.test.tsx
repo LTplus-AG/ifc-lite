@@ -16,9 +16,18 @@ import assert from 'node:assert/strict';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { render, cleanup, click, advance } from '@/test/render.js';
+import { en } from '@/i18n/en';
+import { listsEn } from '@/i18n/catalogues/lists.en';
 import { useViewerStore } from '@/store';
 import type { ListDefinition, ListModelTagScope } from '@/lib/lists';
 import { ListPanel } from './ListPanel.js';
+
+// `ListPanel` now reads the `lists.*` i18n catalogue (#4918), not yet wired
+// into `apps/viewer/src/i18n/en.ts` (a later integration pass does that
+// across the whole sweep) — `en` is a plain, non-frozen object, so patch
+// the catalogue in here the same way `resolve()` in `registry.ts` already
+// falls back to `en[key]` for every other one.
+Object.assign(en, listsEn);
 
 /** One real IfcWall named after its model, so a row says where it came from. */
 function buildStore(name: string): IfcDataStore {

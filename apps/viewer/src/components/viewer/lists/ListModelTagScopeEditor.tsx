@@ -24,6 +24,7 @@ import { describeListModelTagScope } from '@/lib/lists/model-tag-scope';
 import { ModelTagChip } from '@/components/viewer/hierarchy/ModelTagChip';
 import { OP_LABEL } from '../SearchModal.filter.editors.shared';
 import { Chip } from './ListBuilder.parts';
+import { useTranslation } from '@/i18n/useTranslation';
 
 export interface ListModelTagScopeEditorProps {
   value: ListModelTagScope | undefined;
@@ -31,6 +32,7 @@ export interface ListModelTagScopeEditorProps {
 }
 
 export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEditorProps) {
+  const { t } = useTranslation();
   const { tags, assignments, models } = useViewerStore(
     useShallow((s) => ({ tags: s.modelTags, assignments: s.modelTagAssignments, models: s.models })),
   );
@@ -54,14 +56,14 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
   return (
     <div className="mt-3 space-y-1.5" data-list-model-tag-scope>
       <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span className="shrink-0">Models</span>
+        <span className="shrink-0">{t('lists.modelTagScope.models')}</span>
         <select
-          aria-label="Model tag scope"
+          aria-label={t('lists.modelTagScope.selectAriaLabel')}
           value={value?.op ?? 'all'}
           onChange={(e) => setOp(e.target.value)}
           className="h-7 rounded-md border border-border bg-background px-1.5 text-xs text-foreground"
         >
-          <option value="all">all models</option>
+          <option value="all">{t('lists.modelTagScope.allModels')}</option>
           {MODEL_TAG_OPS.map((op) => (
             <option key={op} value={op}>{OP_LABEL[op]}</option>
           ))}
@@ -80,16 +82,15 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
         </div>
       )}
       {value && value.op !== 'untagged' && value.tagIds.length === 0 ? (
-        <p className="text-[10px] text-muted-foreground">Pick at least one tag, or the list runs over no model.</p>
+        <p className="text-[10px] text-muted-foreground">{t('lists.modelTagScope.pickAtLeastOneTag')}</p>
       ) : value && (
         <p className="text-[10px] text-muted-foreground" data-list-model-tag-scope-hint>
-          Runs over {describeListModelTagScope(value, tags)}.
+          {t('lists.modelTagScope.runsOver', { description: describeListModelTagScope(value, tags) })}
         </p>
       )}
       {unresolved.length > 0 && (
         <p role="alert" className="text-[10px] text-amber-700 dark:text-amber-400">
-          {unresolved.length === 1 ? 'A tag in this scope' : `${unresolved.length} tags in this scope`} no longer
-          exist{unresolved.length === 1 ? 's' : ''}. The list will not run until {unresolved.length === 1 ? 'it is' : 'they are'} removed.
+          {t('lists.modelTagScope.unresolvedTagsWarning', { count: unresolved.length })}
         </p>
       )}
     </div>

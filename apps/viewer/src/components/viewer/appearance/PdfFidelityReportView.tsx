@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfFidelityReport, PdfOmissionSummary, PdfPageRect } from '@/lib/appearance/pdf/vector-types';
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 
 /** Translation keys for the canonical omission kinds (#4406). Unknown kinds show verbatim. */
 const LABEL_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -46,6 +48,18 @@ export function omissionLabel(kind: string, t: (key: TranslationKey, params?: Tr
 export function visibleOmissionCount(report: PdfFidelityReport): number {
   return report.summary.reduce((count, entry) => count + entry.visibleCount, 0);
 }
+const PARTIAL_SUMMARY_KEYS = {
+  zero: 'appearance.pdfFidelity.partialSummaryZeroPaths',
+  one: 'appearance.pdfFidelity.partialSummaryOnePath',
+  two: 'appearance.pdfFidelity.partialSummaryTwoPaths',
+  few: 'appearance.pdfFidelity.partialSummaryFewPaths',
+  many: 'appearance.pdfFidelity.partialSummaryManyPaths',
+  other: 'appearance.pdfFidelity.partialSummaryOtherPaths',
+} as const satisfies Record<Intl.LDMLPluralRule, TranslationKey>;
+
+function partialSummaryKey(locale: string, pathCount: number): TranslationKey {
+  return PARTIAL_SUMMARY_KEYS[selectPluralCategory(locale, pathCount)];
+}
 /** Extent in unrotated PDF user space (CropBox coordinates) shown in points:
  * one user-space unit is `UserUnit` points (ISO 32000-1 §14.11.5), so a page
  * with `/UserUnit 2` reports twice the raw coordinate. */
@@ -73,7 +87,7 @@ function OmissionRow({ entry, userUnit }: { entry: PdfOmissionSummary; userUnit:
 }
 /** The canonical page verdict, shown before any geometry is prepared. `userUnit` is the page's /UserUnit. */
 export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelityReport; userUnit: number }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   if (report.rasterOnly) {
     return <p role="alert" className="text-[11px] text-destructive">{t('appearance.pdfFidelity.rasterOnlyNotice')}</p>;
   }
@@ -83,13 +97,21 @@ export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelit
   const visible = report.summary.filter(entry => entry.visibleCount > 0);
   const invisible = report.summary.reduce((count, entry) => count + entry.count - entry.visibleCount, 0);
   const omissions = visibleOmissionCount(report);
+  const summaryParams = {
+    count: omissions,
+    omissionCount: formatLocaleNumber(locale, omissions),
+    pathCount: formatLocaleNumber(locale, report.convertiblePaths),
+  };
+  const activeSummaryKey = partialSummaryKey(locale, report.convertiblePaths);
+  const summary = hasActiveTranslation(activeSummaryKey)
+    ? t(activeSummaryKey, summaryParams)
+    : resolveEnglish(partialSummaryKey('en', report.convertiblePaths), {
+        count: omissions,
+        omissionCount: formatLocaleNumber('en', omissions),
+        pathCount: formatLocaleNumber('en', report.convertiblePaths),
+      });
   return <div role="status" className="space-y-1 text-[11px]">
-    <p className="text-amber-700 dark:text-amber-400">{t(omissions === 1
-      ? report.convertiblePaths === 1 ? 'appearance.pdfFidelity.partialSummaryOneOmissionOnePath' : 'appearance.pdfFidelity.partialSummaryOneOmissionManyPaths'
-      : report.convertiblePaths === 1 ? 'appearance.pdfFidelity.partialSummaryManyOmissionsOnePath' : 'appearance.pdfFidelity.partialSummaryManyOmissionsManyPaths', {
-      omissionCount: omissions,
-      pathCount: report.convertiblePaths,
-    })}</p>
+    <p className="text-amber-700 dark:text-amber-400">{summary}</p>
     <ul className="list-disc pl-4" aria-label={t('appearance.pdfFidelity.omissionsAriaLabel')}>{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} userUnit={userUnit} />)}</ul>
     {invisible > 0 && <p className="text-muted-foreground">{t('appearance.pdfFidelity.invisibleItemsNote', { count: invisible })}</p>}
     {report.omissionsTruncated && <p className="text-muted-foreground">{t('appearance.pdfFidelity.truncatedNote')}</p>}

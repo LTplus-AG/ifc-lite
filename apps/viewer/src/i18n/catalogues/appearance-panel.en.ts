@@ -252,14 +252,30 @@ export const appearancePanelEn = {
   'appearance.pdfFidelity.row.unsupportedRegion': '{count} × Unsupported operator {operator} — region x {x0}–{x1}, y {y0}–{y1} pt',
   'appearance.pdfFidelity.row.unknown': '{count} × {kind}',
   'appearance.pdfFidelity.row.unknownRegion': '{count} × {kind} — region x {x0}–{x1}, y {y0}–{y1} pt',
-  'appearance.pdfFidelity.partialSummaryOneOmissionOnePath':
-    'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} path converts.',
-  'appearance.pdfFidelity.partialSummaryOneOmissionManyPaths':
-    'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
-  'appearance.pdfFidelity.partialSummaryManyOmissionsOnePath':
-    'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} path converts.',
-  'appearance.pdfFidelity.partialSummaryManyOmissionsManyPaths':
-    'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
+  'appearance.pdfFidelity.partialSummaryZeroPaths': {
+    one: 'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
+    other: 'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
+  },
+  'appearance.pdfFidelity.partialSummaryOnePath': {
+    one: 'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} path converts.',
+    other: 'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} path converts.',
+  },
+  'appearance.pdfFidelity.partialSummaryTwoPaths': {
+    one: 'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
+    other: 'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
+  },
+  'appearance.pdfFidelity.partialSummaryFewPaths': {
+    one: 'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
+    other: 'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
+  },
+  'appearance.pdfFidelity.partialSummaryManyPaths': {
+    one: 'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
+    other: 'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
+  },
+  'appearance.pdfFidelity.partialSummaryOtherPaths': {
+    one: 'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
+    other: 'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
+  },
   'appearance.pdfFidelity.omissionsAriaLabel': 'PDF omissions',
   'appearance.pdfFidelity.invisibleItemsNote': { one: '{count} further item is not visible on the page and does not affect the conversion.', other: '{count} further items are not visible on the page and do not affect the conversion.' },
   'appearance.pdfFidelity.truncatedNote': 'The detailed list is truncated; these counts are complete.',

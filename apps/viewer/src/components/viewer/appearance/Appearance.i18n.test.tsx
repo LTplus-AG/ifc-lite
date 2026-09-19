@@ -260,8 +260,10 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
 
   catalogueIt('keeps the complete partial PDF verdict reorderable', () => {
     registerLocale('en-x-pdf-verdict', {
-      'appearance.pdfFidelity.partialSummaryOneOmissionManyPaths':
-        'PATHS {pathCount} AFTER OMISSION {omissionCount}',
+      'appearance.pdfFidelity.partialSummaryOtherPaths': {
+        one: 'PATHS {pathCount} AFTER ONE OMISSION {omissionCount}',
+        other: 'PATHS {pathCount} AFTER OMISSIONS {omissionCount}',
+      },
     });
     act(() => setLocale('en-x-pdf-verdict'));
     const partial = render(<PdfFidelityReportView report={{
@@ -271,7 +273,25 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
       omissions: [], omissionsTruncated: false,
     }} userUnit={1} />);
 
-    assert.match(partial.textContent ?? '', /PATHS 2 AFTER OMISSION 1/);
+    assert.match(partial.textContent ?? '', /PATHS 2 AFTER ONE OMISSION 1/);
+  });
+
+  catalogueIt('selects both plural dimensions with the active locale', () => {
+    registerLocale('ar-EG-x-pdf-plurals', {
+      'appearance.pdfFidelity.partialSummaryManyPaths': {
+        few: '[few omissions {omissionCount}; many paths {pathCount}]',
+        other: '[other omissions {omissionCount}; many paths {pathCount}]',
+      },
+    });
+    act(() => setLocale('ar-EG-x-pdf-plurals'));
+    const partial = render(<PdfFidelityReportView report={{
+      sha256: 'arabic-plurals', algorithm: 'ifclite-pdf-fidelity-v1', rasterOnly: false, exact: false,
+      convertiblePaths: 11, omittedPaints: 3,
+      summary: [{ kind: 'text', count: 3, visibleCount: 3, bboxPdf: null }],
+      omissions: [], omissionsTruncated: false,
+    }} userUnit={1} />);
+
+    assert.match(partial.textContent ?? '', /\[few omissions ٣; many paths ١١\]/);
   });
 
   catalogueIt('interpolates a plural (face-mask member count style) and a named-param message', () => {

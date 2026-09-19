@@ -198,9 +198,9 @@ export const appearanceWorkflowsEn = {
   'appearance.scopeFields.convertToMeshNote':
     'Their current shape, including existing openings, becomes fixed mesh geometry. Opening relationships remain, but their reference shapes no longer render or cut the mesh. Other occurrences stay unchanged. Undo restores the original geometry.',
   'appearance.scopeFields.existingUvNote': 'Choose planar or box mapping to enable conversion.',
-  'appearance.scopeFields.affectedCount': { one: '{count} object affected', other: '{count} objects affected' },
+  'appearance.scopeFields.affectedCount': { one: '{countDisplay} object affected', other: '{countDisplay} objects affected' },
   'appearance.scopeFields.excludedCount': '{count} excluded',
-  'appearance.scopeFields.convertedSummary': { one: '{count} object will become mesh geometry', other: '{count} objects will become mesh geometry' },
+  'appearance.scopeFields.convertedSummary': { one: '{countDisplay} object will become mesh geometry', other: '{countDisplay} objects will become mesh geometry' },
   'appearance.scopeFields.exclusionReasonsSummary': 'Why some objects are excluded',
   'appearance.scopeFields.useSupportedObjects': 'Use supported objects',
 

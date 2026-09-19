@@ -43,7 +43,7 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
       }
     }}>
       <option value="model">{t('appearance.scopeFields.entireModel')}</option>
-      <option value="selection">{t('appearance.scopeFields.currentSelection', { count: props.selectionCount })}</option>
+      <option value="selection">{t('appearance.scopeFields.currentSelection', { count: formatLocaleNumber(locale, props.selectionCount) })}</option>
       <option value="class" disabled={!props.classes.length}>{t('appearance.scopeFields.ifcClassOption')}</option>
       <option value="type" disabled={!props.types.length}>{t('appearance.scopeFields.exactIfcTypeOption')}</option>
       <option value="filter" disabled={!filters.length}>{t('appearance.scopeFields.savedFilterOption')}</option>
@@ -83,9 +83,15 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
       </span>
     </label>
     <div className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px]" aria-live="polite">
-      <span className="font-medium">{t('appearance.scopeFields.affectedCount', { count: props.affectedCount })}</span>
+      <span className="font-medium">{t('appearance.scopeFields.affectedCount', {
+        count: props.affectedCount,
+        countDisplay: formatLocaleNumber(locale, props.affectedCount),
+      })}</span>
       {props.excludedCount > 0 && <span className="text-muted-foreground"> · {t('appearance.scopeFields.excludedCount', { count: formatLocaleNumber(locale, props.excludedCount) })}</span>}
-      {!!converted.length && <details className="mt-1" open={!!props.faceMasks?.targets.length}><summary className="cursor-pointer font-medium">{t('appearance.scopeFields.convertedSummary', { count: converted.length })}</summary>
+      {!!converted.length && <details className="mt-1" open={!!props.faceMasks?.targets.length}><summary className="cursor-pointer font-medium">{t('appearance.scopeFields.convertedSummary', {
+        count: converted.length,
+        countDisplay: formatLocaleNumber(locale, converted.length),
+      })}</summary>
         {props.faceMasks?.targets.length ? <div className="mt-1"><FaceMaskTargets controls={props.faceMasks} disabled={props.disabled} /></div>
           : <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-muted-foreground">{converted.map(item => <li key={item.productId}>{item.name}</li>)}</ul>}
       </details>}

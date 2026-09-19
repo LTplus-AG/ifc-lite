@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ENTITIES_IFC4, IFC_DATA_TYPES } from '@ifc-lite/data';
 import { generateFromSchema } from '../src/generator.js';
-import { entityCatalogSchema } from '../src/rust-type-universe.js';
+import * as schemaHierarchy from '../src/schema-hierarchy.js';
 
 describe('generateFromSchema — CRLF line endings (#4220)', () => {
   let outputDir: string;
@@ -92,7 +92,11 @@ describe('generateFromSchema — CRLF line endings (#4220)', () => {
 
 describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
   it('adapts a non-vacuous IFC4 entity catalog and excludes its data types', () => {
-    const supplemental = entityCatalogSchema('IFC4_FAMILY', ENTITIES_IFC4, IFC_DATA_TYPES);
+    const supplemental = schemaHierarchy.entityCatalogSchema(
+      'IFC4_FAMILY',
+      ENTITIES_IFC4,
+      IFC_DATA_TYPES,
+    );
     const names = new Set(supplemental.entities.map((entity) => entity.name));
 
     expect(supplemental.entities.length).toBeGreaterThan(800);

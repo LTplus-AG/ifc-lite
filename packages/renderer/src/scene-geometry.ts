@@ -264,6 +264,65 @@ export function mergeGeometry(
 }
 
 /**
+ * Whether rebasing these meshes to `origin` keeps every source triangle that
+ * is non-degenerate in its existing local f32 frame non-degenerate after the
+ * renderer's f64-offset/f32-store step. Widely separated survey chunks may
+ * need independent batch frames even when seam-safe shared framing is the
+ * normal path.
+ */
+export function originPreservesTriangleTopology(
+  meshes: readonly MeshData[],
+  origin: readonly [number, number, number],
+): boolean {
+  const areaSquared = (
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    cx: number, cy: number, cz: number,
+  ): number => {
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const acx = cx - ax, acy = cy - ay, acz = cz - az;
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+    return nx * nx + ny * ny + nz * nz;
+  };
+  const minimumAreaSquared = Number.EPSILON * Number.EPSILON;
+  for (const mesh of meshes) {
+    const p = mesh.positions;
+    const ox = (mesh.origin?.[0] ?? 0) - origin[0];
+    const oy = (mesh.origin?.[1] ?? 0) - origin[1];
+    const oz = (mesh.origin?.[2] ?? 0) - origin[2];
+    for (let i = 0; i + 2 < mesh.indices.length; i += 3) {
+      const ai = mesh.indices[i] * 3, bi = mesh.indices[i + 1] * 3, ci = mesh.indices[i + 2] * 3;
+      const sourceArea = areaSquared(
+        p[ai], p[ai + 1], p[ai + 2],
+        p[bi], p[bi + 1], p[bi + 2],
+        p[ci], p[ci + 1], p[ci + 2],
+      );
+      if (!(Number.isFinite(sourceArea) && sourceArea > minimumAreaSquared)) continue;
+      const shiftedArea = areaSquared(
+        Math.fround(p[ai] + ox), Math.fround(p[ai + 1] + oy), Math.fround(p[ai + 2] + oz),
+        Math.fround(p[bi] + ox), Math.fround(p[bi + 1] + oy), Math.fround(p[bi + 2] + oz),
+        Math.fround(p[ci] + ox), Math.fround(p[ci + 1] + oy), Math.fround(p[ci + 2] + oz),
+      );
+      if (!(Number.isFinite(shiftedArea) && shiftedArea > minimumAreaSquared)) return false;
+    }
+  }
+  return true;
+}
+
+/** Prefer an inherited/base-batch frame, then the model-wide seam frame, but
+ * never choose either when its f32 rebase would erase valid topology. */
+export function topologySafeBatchOrigin(
+  meshes: readonly MeshData[],
+  inherited: [number, number, number] | undefined,
+  shared: [number, number, number] | undefined,
+): [number, number, number] | undefined {
+  const requested = inherited ?? shared;
+  return requested && originPreservesTriangleTopology(meshes, requested) ? requested : undefined;
+}
+
+/**
  * Split a meshDataArray into chunks where each chunk's largest buffer
  * (vertex or index) stays within maxBufferSize.
  *

@@ -4,3 +4,4 @@
 
 /** Canonical IFC EXPRESS attribute spelling; schema names are never localized. */
 export const EXPRESS_NAME_ATTRIBUTE = 'Name';
+export const EXPRESS_IDENTIFICATION_ATTRIBUTE = 'Identification';

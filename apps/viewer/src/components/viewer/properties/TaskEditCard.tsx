@@ -27,13 +27,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  ClipboardList, ChevronDown, Diamond, Plus, Minus, Trash2, Info,
-} from 'lucide-react';
+import { ClipboardList, ChevronDown, Diamond, Plus, Minus, Trash2, Info } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
+import { EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 
 /** IfcTaskTypeEnum values — same list as the Generate dialog. */
 const TASK_TYPES: readonly string[] = [
@@ -179,7 +178,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
         <div className="border-t-2 border-primary/40 p-3 grid gap-3">
           {/* Identity */}
           <div className="grid gap-1.5">
-            <Label htmlFor="task-name" className="text-[11px]">{t('properties.taskEdit.nameLabel')}</Label>
+            <Label htmlFor="task-name" className="text-[11px]">{EXPRESS_NAME_ATTRIBUTE}</Label>
             <Input
               id="task-name"
               value={nameDraft}
@@ -345,7 +344,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           {showDetails && (
             <div className="grid gap-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="task-ident" className="text-[11px]">{t('properties.taskEdit.identificationLabel')}</Label>
+                <Label htmlFor="task-ident" className="text-[11px]">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</Label>
                 <Input
                   id="task-ident"
                   value={identDraft}

@@ -246,7 +246,6 @@ export const propertiesEn = {
   // TaskEditCard
   'properties.taskEdit.heading': 'Edit task',
   'properties.taskEdit.pendingBadge': '● Pending',
-  'properties.taskEdit.nameLabel': 'Name',
   'properties.taskEdit.namePlaceholder': 'Untitled task',
   'properties.taskEdit.predefinedTypeLabel': 'Predefined type',
   'properties.taskEdit.milestoneLabel': 'Milestone',
@@ -265,7 +264,6 @@ export const propertiesEn = {
   'properties.taskEdit.removeButtonWithCount': 'Remove ({count})',
   'properties.taskEdit.removeTooltip': 'Remove the selected 3D objects from this task.',
   'properties.taskEdit.detailsToggle': 'Details',
-  'properties.taskEdit.identificationLabel': 'Identification',
   'properties.taskEdit.globalIdLabel': 'Global ID',
   'properties.taskEdit.deleteTaskButton': 'Delete task',
   'properties.taskEdit.confirmDelete': 'Delete?',

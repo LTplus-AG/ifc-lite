@@ -8,13 +8,13 @@ import { useTranslation } from '@/i18n';
 type Review = Awaited<ReturnType<typeof reviewRestoredAssignment>>;
 /** Changed membership remains inspectable without mounting thousands of rows. */
 export function AppearanceMembershipChanges({ review }: { review: Review }) {
-  const { t } = useTranslation();
+  const { t, revision } = useTranslation();
   const [page, setPage] = useState(0);
   const changes = useMemo(() => [
-    ...review.changes.added.map(GlobalId => `Added: ${GlobalId}`),
-    ...review.changes.removed.map(GlobalId => `Removed: ${GlobalId}`),
-    ...review.changes.renumbered.map(item => `Renumbered: ${item.GlobalId} → #${item.expressId}`),
-  ], [review]);
+    ...review.changes.added.map(GlobalId => t('appearance.membershipChanges.added', { GlobalId })),
+    ...review.changes.removed.map(GlobalId => t('appearance.membershipChanges.removed', { GlobalId })),
+    ...review.changes.renumbered.map(item => t('appearance.membershipChanges.renumbered', item)),
+  ], [review, t, revision]);
   const last = Math.max(0, Math.ceil(changes.length / 50) - 1), current = Math.min(page, last);
   if (!changes.length) return null;
   return <details className="text-[11px]">

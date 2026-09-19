@@ -15,6 +15,9 @@ import type { TranslationValue } from '../types';
 export const appearancePanelEn = {
   // AppearanceMembershipChanges
   'appearance.membershipChanges.summary': 'Inspect changed GlobalIds',
+  'appearance.membershipChanges.added': 'Added: {GlobalId}',
+  'appearance.membershipChanges.removed': 'Removed: {GlobalId}',
+  'appearance.membershipChanges.renumbered': 'Renumbered: {GlobalId} → #{expressId}',
   'appearance.membershipChanges.previous': 'Previous changes',
   'appearance.membershipChanges.next': 'Next changes',
 

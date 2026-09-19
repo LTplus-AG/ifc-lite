@@ -16,13 +16,18 @@ import { appearanceSelectClass } from './AppearanceSourceFields';
 import { useIfc } from '@/hooks/useIfc';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
 
 const MAX_CAPTURE_ROWS = 200_000;
 const CAPTURE_ACCEPT = '.glb,.gltf,.bin,.png,.jpg,.jpeg,.ifc,.ifczip';
 
+type CaptureMessage =
+  | { kind: 'translated'; key: TranslationKey; params?: TranslationParameters }
+  | { kind: 'raw'; text: string }
+  | null;
+
 export function AppearanceCapturePanel() {
-  const { t, locale, revision } = useTranslation();
+  const { t, revision } = useTranslation();
   const models = useViewerStore(state => state.models), selected = useViewerStore(state => state.selectedEntityId);
   const room = useViewerStore(state => state.collabRoomId);
   const placement = useViewerStore(state => state.modelPlacement);
@@ -44,21 +49,25 @@ export function AppearanceCapturePanel() {
   const [Name, setName] = useState('Captured surface');
   const [created, setCreated] = useState(false);
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(''), [error, setError] = useState(false);
+  const [message, setMessage] = useState<CaptureMessage>(null), [error, setError] = useState(false);
+  const setTranslatedMessage = useCallback((key: TranslationKey, params?: TranslationParameters) => {
+    setMessage({ kind: 'translated', key, params });
+  }, []);
+  const setRawMessage = useCallback((text: string) => { setMessage({ kind: 'raw', text }); }, []);
   const operation = useRef<AbortController | null>(null);
   const scanInput = useRef<HTMLInputElement>(null);
   const routeScanFiles = useCallback((files: File[]) => {
-    setMessage(t('appearance.capture.loadingScan')); setError(false);
+    setTranslatedMessage('appearance.capture.loadingScan'); setError(false);
     // Bundle preparation awaits before routing, so decide from the store now:
     // a model loaded meanwhile is added to, not replaced.
     if (useViewerStore.getState().models.size === 0 && files.length === 1) void loadFile(files[0]);
     else void loadFilesSequentially(files);
-  }, [loadFile, loadFilesSequentially, t]);
+  }, [loadFile, loadFilesSequentially, setTranslatedMessage]);
   const prepareAndLoadScan = usePreparedModelFileRoute(routeScanFiles);
   useEffect(() => () => { operation.current?.abort(); operation.current = null; }, []);
   const [imagesSettled, setImagesSettled] = useState(0);
   useEffect(() => {
-    operation.current?.abort(); setReady(false); setPrepared(null); setAssetId(null); setMessage(''); setError(false);
+    operation.current?.abort(); setReady(false); setPrepared(null); setAssetId(null); setMessage(null); setError(false);
     setPlaceholder(false);
     if (!candidate) { setTriangles([]); return; }
     setChosen(candidate.id);
@@ -68,9 +77,9 @@ export function AppearanceCapturePanel() {
       setAssetId(first.assetId);
       setTriangles(count <= MAX_CAPTURE_ROWS ? Array.from({ length: count }, (_, i) => i) : [0]);
       setPlaceholder(count > MAX_CAPTURE_ROWS);
-      if (count > MAX_CAPTURE_ROWS) setMessage(t('appearance.capture.surfaceTooLarge', { count: count.toLocaleString() }));
+      if (count > MAX_CAPTURE_ROWS) setTranslatedMessage('appearance.capture.surfaceTooLarge', { count });
     } catch (failure) {
-      setTriangles([]); setMessage(failure instanceof Error ? failure.message : String(failure));
+      setTriangles([]); setRawMessage(failure instanceof Error ? failure.message : String(failure));
       // A freshly loaded scan is listed before its images settle: wait for them and prepare again.
       const decoding = modelAppearanceAssets.pendingDecode(candidate.modelId);
       setError(!decoding);
@@ -79,38 +88,38 @@ export function AppearanceCapturePanel() {
       void decoding.then(() => { if (live) setImagesSettled(count => count + 1); });
       return () => { live = false; };
     }
-  }, [candidate?.modelId, candidate?.mesh, imagesSettled, t]);
+  }, [candidate?.modelId, candidate?.mesh, imagesSettled, setRawMessage, setTranslatedMessage]);
   useEffect(() => { setCreated(false); }, [candidate?.mesh, triangles]);
   useEffect(() => {
     if (operation.current || created) return;
     setPrepared(null); if (!candidate || !assetId) return;
-    if (placement.preview) { setMessage(t('appearance.capture.finishRepositioning')); return; }
-    if (!triangles.length) { setMessage(t('appearance.capture.noTriangles')); return; }
-    try { setPrepared(prepareCapturedRegion(candidate.modelId,candidate.mesh,triangles)); setError(false); setMessage(placeholder
-      ? t('appearance.capture.overLimitNotice')
-      : t('appearance.capture.reviewRegion')); }
-    catch (failure) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
-  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placeholder, placement, created, t, locale]);
+    if (placement.preview) { setTranslatedMessage('appearance.capture.finishRepositioning'); return; }
+    if (!triangles.length) { setTranslatedMessage('appearance.capture.noTriangles'); return; }
+    try { setPrepared(prepareCapturedRegion(candidate.modelId,candidate.mesh,triangles)); setError(false); setTranslatedMessage(placeholder
+      ? 'appearance.capture.overLimitNotice'
+      : 'appearance.capture.reviewRegion'); }
+    catch (failure) { setError(true); setRawMessage(failure instanceof Error ? failure.message : String(failure)); }
+  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placeholder, placement, created, setRawMessage, setTranslatedMessage]);
   async function createDestination() {
     if (loading || busy) return;
-    setMessage(t('appearance.capture.creatingDestination')); setError(false);
+    setTranslatedMessage('appearance.capture.creatingDestination'); setError(false);
     try {
       const modelId = await addModel(createBlankIfcFile({ projectName: 'Captured Surfaces' }));
-      if (modelId) { target.setChosenModel(modelId); target.setChosenContainer(undefined); setMessage(t('appearance.capture.destinationCreated')); }
-      else { setError(true); setMessage(t('appearance.capture.destinationFailed')); }
-    } catch (failure) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
+      if (modelId) { target.setChosenModel(modelId); target.setChosenContainer(undefined); setTranslatedMessage('appearance.capture.destinationCreated'); }
+      else { setError(true); setTranslatedMessage('appearance.capture.destinationFailed'); }
+    } catch (failure) { setError(true); setRawMessage(failure instanceof Error ? failure.message : String(failure)); }
   }
   async function create() {
     const renderer = getGlobalRenderer();
     if (!prepared || !ready || !renderer || !target.modelId || target.containerId === undefined || operation.current || room) return;
-    const controller = new AbortController(); operation.current = controller; setBusy(true); setError(false); setMessage(t('appearance.capture.creatingSurface'));
+    const controller = new AbortController(); operation.current = controller; setBusy(true); setError(false); setTranslatedMessage('appearance.capture.creatingSurface');
     try {
       const result = await createIfcFromCapturedMesh(target.modelId,target.containerId,prepared,renderer,{ Name,signal:controller.signal });
       if (controller.signal.aborted) return;
       selectCreatedAppearanceObject(target.modelId, result);
       setPrepared(null); setCreated(true);
-      setMessage(t('appearance.capture.surfaceCreated'));
-    } catch (failure) { if (!controller.signal.aborted) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); } }
+      setTranslatedMessage('appearance.capture.surfaceCreated');
+    } catch (failure) { if (!controller.signal.aborted) { setError(true); setRawMessage(failure instanceof Error ? failure.message : String(failure)); } }
     finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   return <section className="mt-4 space-y-3" aria-label={t('appearance.capture.sectionAriaLabel')} aria-busy={busy || loading}>
@@ -129,8 +138,8 @@ export function AppearanceCapturePanel() {
     {!candidate && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.formatsNote')}</p>}
     {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', { count: excludedSurfaces })}</p>}
     {candidate && assetId && <AppearanceMeshPreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy || loading}
-      onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setMessage(t('appearance.capture.regionTooLarge')); return; } setPlaceholder(false); setTriangles(ids); }}
-      onReady={value => { setReady(value); if (value && !message) { setError(false); setMessage(t('appearance.capture.reviewRegion')); } }} onError={text => { setReady(false); setError(true); setMessage(text); }} />}
+      onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setTranslatedMessage('appearance.capture.regionTooLarge'); return; } setPlaceholder(false); setTriangles(ids); }}
+      onReady={value => { setReady(value); if (value && !message) { setError(false); setTranslatedMessage('appearance.capture.reviewRegion'); } }} onError={text => { setReady(false); setError(true); setRawMessage(text); }} />}
     {!!assetId && <p className="text-[11px]" role="status">{t('appearance.capture.trianglesInRegion', { count: triangles.length })}</p>}
     </div>
     <fieldset disabled={busy || loading || !!room} className="space-y-2 rounded-md border bg-muted/20 p-3">
@@ -152,7 +161,7 @@ export function AppearanceCapturePanel() {
         onClick={() => { void create(); }}>{t('appearance.capture.createIfcObject')}</Button>
     </fieldset>
     {room && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.leaveRoomNotice')}</p>}
-    {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setMessage(t('appearance.capture.cancelled')); }}>{t('appearance.capture.cancelCreation')}</Button>}
-    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
+    {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setTranslatedMessage('appearance.capture.cancelled'); }}>{t('appearance.capture.cancelCreation')}</Button>}
+    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message.kind === 'translated' ? t(message.key, message.params) : message.text}</p>}
   </section>;
 }

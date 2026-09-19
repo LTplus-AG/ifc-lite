@@ -32,6 +32,7 @@ import {
 import type {
   CostItemParams, CostQuantityParams, CostScheduleParams, CostValueParams,
 } from '../types-cost.js';
+import { assertNoNestingCycle } from './cost-nesting-cycle.js';
 
 /** What `nestCostItemsInStore` / `assign*InStore` / `removeCostEntityInStore` need to
  *  reparent or detach cleanly — the model's owner history and target schema. */
@@ -260,29 +261,8 @@ export function nestCostItemsInStore(
   // list IFC readers count members of.
   const uniqueChildIds = [...new Set(childIds)];
   for (const childId of uniqueChildIds) requireEntityType(editor, childId, 'IfcCostItem', 'childId', 'nestCostItems');
-  // Walk from the proposed parent toward its existing ancestors. If one of
-  // the requested children is already above it, adding parent -> child would
-  // close a cycle. `relatingId` is optional for compatibility with callers
-  // that only supply the relationship's member list; the high-level SDK
-  // supplies it for every existing IfcRelNests row.
-  const requested = new Set(uniqueChildIds);
-  const visitedAncestors = new Set<number>();
-  const ancestors = [parentId];
-  while (ancestors.length > 0) {
-    const current = ancestors.pop()!;
-    if (visitedAncestors.has(current)) continue;
-    visitedAncestors.add(current);
-    for (const membership of existingNestByChild.get(current) ?? []) {
-      if (membership.relatingId === undefined) continue;
-      if (requested.has(membership.relatingId)) {
-        throw new Error(
-          `nestCostItems: parentId #${parentId} is already a descendant of childId #${membership.relatingId} `
-          + 'in the existing nesting hierarchy — nesting it here would create a cycle.',
-        );
-      }
-      ancestors.push(membership.relatingId);
-    }
-  }
+  // The SDK supplies relatingId so the helper can reject indirect cycles.
+  assertNoNestingCycle(parentId, uniqueChildIds, existingNestByChild);
   // Detach every child of THIS call from every old rel it is a member of, one
   // rewrite per (rel, not per (rel, child)): two children reparented out of
   // the same old IfcRelNests in one call must both leave it, and re-filtering

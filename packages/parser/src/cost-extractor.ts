@@ -29,11 +29,6 @@ function scalarString(value: unknown): string | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value.toString() : undefined;
 }
 
-function effectiveGlobalId(reader: CostEntityReader, store: IfcDataStore, expressId: number): string {
-  const effective = reader.get(expressId);
-  return asString(effective?.attributes?.[0]) ?? store.entities?.getGlobalId?.(expressId) ?? '';
-}
-
 function dateTime2x3(reader: CostEntityReader, value: unknown): string | undefined {
   const pad = (part: number): string => String(part).padStart(2, '0');
   let current = asRef(value);
@@ -379,7 +374,7 @@ export function extractCostOnDemand(
           relatedItem.controllingScheduleGlobalIds.push(schedule.GlobalId ?? '');
         } else if (item && isProductLike(reader, relatedId)) {
           item.productExpressIds.push(relatedId);
-          item.productGlobalIds.push(effectiveGlobalId(reader, store, relatedId));
+          item.productGlobalIds.push(reader.globalId(relatedId));
         }
       }
     } else if (relation.Type === 'IfcRelAssignsToProduct' && relation.RelatingProduct !== undefined) {
@@ -387,7 +382,7 @@ export function extractCostOnDemand(
         const item = items.get(relatedId);
         if (!item) continue;
         item.productExpressIds.push(relation.RelatingProduct);
-        item.productGlobalIds.push(effectiveGlobalId(reader, store, relation.RelatingProduct));
+        item.productGlobalIds.push(reader.globalId(relation.RelatingProduct));
       }
     }
   }

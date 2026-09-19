@@ -68,6 +68,12 @@ export class CostEntityReader {
     this.extractor = new EntityExtractor(this.source);
   }
 
+  /** GlobalId from the effective overlay record, then the immutable source table. */
+  globalId(expressId: number): string {
+    return asString(this.get(expressId)?.attributes?.[0])
+      ?? this.store.entities?.getGlobalId?.(expressId) ?? '';
+  }
+
   /** True when a pending edit has deleted `expressId` from the loaded model. */
   private isDeleted(expressId: number): boolean {
     return this.overlay?.isDeleted(expressId) === true;

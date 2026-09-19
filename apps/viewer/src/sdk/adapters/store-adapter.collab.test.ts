@@ -63,17 +63,24 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.deepEqual(calls.at(-1), { kind: 'remove', args: [MODEL, created.expressId] });
   });
 
-  it('gives non-root entities a stable room identity before mirroring attributes', () => {
+  it('gives same-express-ID non-roots collision-safe room identities before mirroring attributes', () => {
     const { adapter, calls } = fixture();
     const created = adapter.addEntity(MODEL, {
       type: 'IFCCOSTVALUE',
       attributes: ['Rate', null, 12.5, null, null, null, null, null, null, null],
     });
-
-    assert.deepEqual(calls[0], {
-      kind: 'create',
-      args: [MODEL, created.expressId, 'IFCCOSTVALUE', `ifc-lite-ref-${created.expressId}`, null],
+    const peer = fixture();
+    const peerCreated = peer.adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Rate', null, 12.5, null, null, null, null, null, null, null],
     });
+
+    const roomKey = calls[0]?.args[3];
+    const peerRoomKey = peer.calls[0]?.args[3];
+    assert.equal(created.expressId, peerCreated.expressId);
+    assert.match(String(roomKey), /^ifc-lite-store-[0-9a-f-]{36}$/);
+    assert.match(String(peerRoomKey), /^ifc-lite-store-[0-9a-f-]{36}$/);
+    assert.notEqual(roomKey, peerRoomKey);
     assert.ok(calls.some(call => call.kind === 'attribute'
       && call.args[1] === created.expressId && call.args[2] === 'AppliedValue' && call.args[3] === 12.5));
   });

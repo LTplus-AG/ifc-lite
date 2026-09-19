@@ -90,7 +90,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     const names = getAttributeNamesAcrossSchemas(entity.type);
     const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
       ? entity.attributes[0]
-      : `ifc-lite-ref-${expressId}`;
+      : `ifc-lite-store-${crypto.randomUUID()}`;
     const state = store.getState();
     state.mirrorEntityCreate(modelId, expressId, entity.type, guid, null);
     entity.attributes.forEach((value, index) => {

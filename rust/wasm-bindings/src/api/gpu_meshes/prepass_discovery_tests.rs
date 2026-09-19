@@ -232,11 +232,9 @@ END-ISO-10303-21;
 "#;
 
 // #3187: an IFC2X3 `IfcDoorStyle` whose RepresentationMap no IfcMappedItem
-// references. `IfcType::from_str("IFCDOORSTYLE")` is `Unknown` -- the
-// keyword is one IFC4X3 dropped -- so the flag-setting classifier and the
-// label this walk attaches must BOTH go through the legacy-aware
-// resolver, or the span is either never flagged or flagged and then
-// labelled `Unknown`.
+// references. The exact generated variant and the modern processing mapping
+// are deliberately distinct: the former preserves identity, while the latter
+// keeps geometry behaviour stable.
 const LEGACY_TYPE_FIXTURE: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -267,13 +265,9 @@ END-ISO-10303-21;
 #[test]
 fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() {
     let bytes = LEGACY_TYPE_FIXTURE.as_bytes();
-    assert!(
-        matches!(
-            ifc_lite_core::IfcType::from_str("IFCDOORSTYLE"),
-            ifc_lite_core::IfcType::Unknown(_)
-        ),
-        "sanity: the BARE resolver must not know IFCDOORSTYLE, or this test \
-         cannot tell the legacy-aware label from the literal one"
+    assert_eq!(
+        ifc_lite_core::IfcType::from_str("IFCDOORSTYLE"),
+        ifc_lite_core::IfcType::IfcDoorStyle
     );
 
     let (records, classes, handoff) =
@@ -320,15 +314,9 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
 #[test]
 fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
-    // Anti-vacuity: if the generated enum ever learns this keyword, the
-    // bare resolver returns the right type and this test passes with the
-    // fix reverted.
-    assert!(
-        matches!(
-            ifc_lite_core::IfcType::from_str("IFCBEAMSTANDARDCASE"),
-            ifc_lite_core::IfcType::Unknown(_)
-        ),
-        "sanity: the BARE resolver must not know IFCBEAMSTANDARDCASE"
+    assert_eq!(
+        ifc_lite_core::IfcType::from_str("IFCBEAMSTANDARDCASE"),
+        ifc_lite_core::IfcType::IfcBeamStandardCase
     );
 
     let (records, classes, handoff) =

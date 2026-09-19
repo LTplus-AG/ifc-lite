@@ -289,6 +289,13 @@ pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
 /// native pipeline, which still has the keyword in hand, labelled it correctly
 /// (#3179).
 pub fn legacy_aware_ifc_type_from_record(decoded: IfcType, record: &[u8]) -> IfcType {
+    // #4203: supported legacy schema names now have exact enum variants. Keep
+    // this helper's classification contract stable: native callers already
+    // map these names through legacy_aware_ifc_type, and the browser must not
+    // diverge merely because the decoder can finally preserve the exact name.
+    if let Some(info) = get_legacy_entity_info(decoded.as_str()) {
+        return info.base_type;
+    }
     if !matches!(decoded, IfcType::Unknown(_)) {
         return decoded;
     }

@@ -25,3 +25,36 @@ describe('#4855 CLI cost backend', () => {
     expect(() => bim.cost.data('another-model')).toThrow('Unknown modelId');
   });
 });
+
+// #4857 PR A — the CLI headless backend's OWN createCostBackend call did not
+// pass its MutablePropertyView, so `bim.store.addEntity` and `bim.cost.data()`
+// disagreed about the very same loaded model: an entity created through the
+// generic (pre-existing) `bim.store.addEntity` overlay primitive was invisible
+// to `bim.cost` no matter what it was. Deliberately uses ONLY that pre-existing
+// entry point — no `@ifc-lite/create` builder — so this witness's only subject
+// is `headless-backend.ts`'s `this.cost = createCostBackend(...)` wiring, an
+// EXISTING file whose diff does not delete anything this test imports.
+describe('#4857 CLI headless backend: bim.store.addEntity and bim.cost agree', () => {
+  const STEP = [
+    'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+    "FILE_NAME('t.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+    'ENDSEC;', 'DATA;',
+    "#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,$,$);",
+    'ENDSEC;', 'END-ISO-10303-21;',
+  ].join('\n');
+
+  it('a bim.store.addEntity-created IfcCostItem is visible to bim.cost.data() before export', async () => {
+    const bytes = new TextEncoder().encode(STEP);
+    const store = await new IfcParser().parseColumnar(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    const bim = createBimContext({ backend: new HeadlessBackend(store, 't.ifc') });
+    const ref = bim.store.addEntity('default', {
+      type: 'IfcCostItem',
+      attributes: ['0newitem000000000000001', null, 'Freshly authored', null, null, null, '.NOTDEFINED.', null, null],
+    });
+    const item = bim.cost.data().CostItems.find(i => i.ref.expressId === ref.expressId);
+    expect(item?.Name).toBe('Freshly authored');
+  });
+});

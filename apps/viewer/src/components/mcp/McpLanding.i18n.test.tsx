@@ -28,8 +28,8 @@
  *    `psetsCount`, `schemaOnly`) — gated behind `WireframeStage`'s internal
  *    step timer (2s per step, 12 steps), not driven here.
  *  - `mcp.playgroundViewer.*` keys live in the same catalogue file but
- *    belong to a component this page never mounts; they simply never
- *    appear in the English pass, so the loop below skips them.
+ *    belong to a component this page never mounts; `STATIC_KEYS` excludes
+ *    that namespace before the completeness assertion below.
  */
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
@@ -54,6 +54,24 @@ const STATIC_KEYS = KEYS.filter((key) => {
   if (typeof value !== 'string' || value.includes('{')) return false;
   return key.startsWith('mcp.mcpLanding.') || key.startsWith('mcp.heroScene.');
 });
+
+/** Static landing-page keys deliberately unreachable in this render state.
+ * Every exception is named so removing any other call site makes this test
+ * red instead of silently reducing an arbitrary coverage count. */
+const NOT_RENDERED_STATIC_KEYS = new Set<McpKey>([
+  // Copy success needs navigator.clipboard plus the transient 1.4s timer.
+  'mcp.mcpLanding.copied',
+  // WireframeStage advances to these overlay steps on its 2s timer.
+  'mcp.mcpLanding.bsddWallBadge',
+  'mcp.mcpLanding.schemaOnly',
+  // The opened first client has no deep link, so the sibling dialog branch
+  // is unreachable here (the grid still covers the one-click card label).
+  'mcp.mcpLanding.oneClickOrCopy',
+  // Only the first catalogue row is expanded, and that tool has parameters.
+  'mcp.mcpLanding.noParameters',
+  // Its parameters are all optional, so the required-value marker is absent.
+  'mcp.mcpLanding.yes',
+]);
 
 /** Key-specific pseudo translation; keeps every `{placeholder}` of the English text. */
 const mark = (key: McpKey) => `⟦${key}|${mcpEn[key]}⟧`;
@@ -111,15 +129,17 @@ describe('McpLanding localization (#4918)', () => {
     act(() => setLocale('mcp-landing-pseudo'));
     const after = readableStrings();
 
-    let covered = 0;
     for (const key of STATIC_KEYS) {
+      if (NOT_RENDERED_STATIC_KEYS.has(key)) continue;
       const text = mcpEn[key] as string;
-      if (!english.has(text)) continue; // not on screen in this render; see file header
-      assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
-      covered += 1;
+      assert.ok(
+        [...english].some((candidate) => candidate.includes(text)),
+        `${key}: "${text}" must be rendered in this test state or explicitly excluded`,
+      );
+      assert.ok(
+        [...after].some((candidate) => candidate.includes(mark(key))),
+        `${key}: "${text}" must be translated, marked text not found`,
+      );
     }
-    // Sanity: the render + interactions above must actually have exercised
-    // a meaningful slice of the catalogue, or this test would pass vacuously.
-    assert.ok(covered >= 30, `expected at least 30 static keys to be covered, saw ${covered}`);
   });
 });

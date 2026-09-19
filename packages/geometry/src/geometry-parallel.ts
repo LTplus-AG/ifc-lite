@@ -42,6 +42,7 @@ import { stitchShards, type ShardColumns } from './shard-stitch.js';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
   emptyStylesPrepassEvent,
+  frozenStallPhase,
   GateTracker,
   PhaseBoundTimers,
   preWorkerPhaseFailureDiagnostics,
@@ -895,6 +896,14 @@ export async function* processParallel(
       streamEndPendingQueueDrain = false;
       sendStreamEnd();
     }
+    // Every pre-worker gate is open, so no #4902 phase-bound timeout can still
+    // need `workerSetup` to replace a worker (each of the three settles at or
+    // before this point — see stall-phase.ts). With #4884 in-call recovery
+    // OFF, nothing else ever replays it either: release the closures (styles/
+    // prepass-columns retain the large prepass arrays) instead of holding them
+    // for the rest of the load. Recovery ON still needs the full log to bring
+    // a LATER in-call replacement up to date, so it is left alone.
+    if (!(hungJobTimeoutMs > 0)) workerSetup.length = 0;
   };
 
   // Step-by-step timing so we can tell exactly where time goes.
@@ -1669,6 +1678,13 @@ export async function* processParallel(
   };
   } finally {
     phaseBoundTimers.clearAll();
+    // Re-seat the caller's handle to a frozen snapshot (#4979 review): the
+    // live reader closes over `gateTracker`, and transitively this whole
+    // generator's scope (including `sharedBuffer`) — the caller may still
+    // hold the handle long after this teardown runs.
+    if (options?.stallPhaseHandle) {
+      options.stallPhaseHandle.getStallPhase = frozenStallPhase(gateTracker.getStallPhase());
+    }
     stopHungJobMonitor();
     options?.signal?.removeEventListener('abort', onAbort);
     for (const w of workers) {

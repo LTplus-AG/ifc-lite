@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { GateTracker, preWorkerPhaseBoundMs, preWorkerPhaseFailureDiagnostics } from './stall-phase.js';
+import { frozenStallPhase, GateTracker, preWorkerPhaseBoundMs, preWorkerPhaseFailureDiagnostics } from './stall-phase.js';
 
 /**
  * Issue #4902: production "Geometry stream stalled... Last rendered meshes: 0"
@@ -53,6 +53,24 @@ describe('GateTracker.getStallPhase (#4902)', () => {
     t.markStylesReceived();
     t.markEntityIndexReceived();
     expect(t.getStallPhase()).toBe('shard-scan');
+  });
+});
+
+describe('frozenStallPhase (#4979 review)', () => {
+  it('returns the exact phase it was given, every time it is called', () => {
+    const reader = frozenStallPhase('entity-index-gate');
+    expect(reader()).toBe('entity-index-gate');
+    expect(reader()).toBe('entity-index-gate');
+  });
+
+  it('is a plain closure over its argument only — no GateTracker involved', () => {
+    // The point of a frozen reader (vs. `() => gateTracker.getStallPhase()`)
+    // is that it does not need one at all: two independent snapshots of the
+    // SAME phase are unrelated functions, not two views onto shared state.
+    const a = frozenStallPhase('workers');
+    const b = frozenStallPhase('workers');
+    expect(a).not.toBe(b);
+    expect(a()).toBe(b());
   });
 });
 

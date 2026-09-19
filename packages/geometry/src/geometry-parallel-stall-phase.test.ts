@@ -358,10 +358,12 @@ describe('processParallel pre-worker phase bounds (#4902)', () => {
     }) as unknown as typeof Worker;
 
     const controller = new AbortController();
+    const stallPhaseHandle: StallPhaseHandle = {};
     const shared = new SharedArrayBuffer(8 * 1024 * 1024);
     const gen = processParallel(new Uint8Array(shared), new CoordinateHandler(), undefined, shared, {
       workerCountOverride: 2,
       signal: controller.signal,
+      stallPhaseHandle,
     });
     const drained = (async () => {
       const events: StreamingGeometryEvent[] = [];
@@ -372,6 +374,8 @@ describe('processParallel pre-worker phase bounds (#4902)', () => {
     // Let the pool's synchronous setup run: the shard-scan bound is armed.
     await vi.advanceTimersByTimeAsync(0);
     expect(vi.getTimerCount()).toBeGreaterThan(0);
+    const liveReader = stallPhaseHandle.getStallPhase;
+    expect(liveReader?.()).toBe('shard-scan');
 
     // Abort well before the bound elapses — the `.return()` / abort teardown
     // path AGENTS.md calls out, and the one a superseded/cancelled/failed
@@ -381,6 +385,14 @@ describe('processParallel pre-worker phase bounds (#4902)', () => {
     controller.abort();
     await drained;
     expect(vi.getTimerCount()).toBe(0);
+
+    // The handle is re-seated to a frozen snapshot (#4979 review), not left
+    // pointing at the live reader that closes over this whole generator's
+    // scope (gateTracker, and through it sharedBuffer). Same phase, but a
+    // DIFFERENT function — the caller can keep holding the handle after
+    // teardown without that.
+    expect(stallPhaseHandle.getStallPhase).not.toBe(liveReader);
+    expect(stallPhaseHandle.getStallPhase?.()).toBe('shard-scan');
 
     // The timer is gone, not merely defused: advancing past where its bound
     // would have fired must not resurrect any of its side effects (a warning,

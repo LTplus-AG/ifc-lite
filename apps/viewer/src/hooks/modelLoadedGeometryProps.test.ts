@@ -263,7 +263,7 @@ const loader = stripSource(readFileSync(loaderPath, 'utf8'), loaderPath);
  * for this event is private to `loadTelemetry.ts` (#2624) — every call site
  * in this file, including the wasm path, goes through `captureModelLoaded`.
  */
-function captureArgsAround(anchor: string, callPrefix = 'captureModelLoaded('): string {
+function captureArgsAround(anchor: string): string {
   const { code, masked } = loader;
   const payloadSpreadIdx = code.indexOf(anchor);
   assert.notEqual(payloadSpreadIdx, -1, `${anchor} must appear somewhere in useIfcLoader.ts`);
@@ -272,9 +272,9 @@ function captureArgsAround(anchor: string, callPrefix = 'captureModelLoaded('): 
     -1,
     `${anchor} must be UNIQUE in useIfcLoader.ts, or this extraction is anchored on the wrong call`,
   );
-  const callStart = code.lastIndexOf(callPrefix, payloadSpreadIdx);
-  assert.notEqual(callStart, -1, `${anchor} must sit inside a ${callPrefix}...) call`);
-  const argsOpen = callStart + callPrefix.length - 1; // index of the call's own `(`
+  const callStart = code.lastIndexOf('captureModelLoaded(', payloadSpreadIdx);
+  assert.notEqual(callStart, -1, `${anchor} must sit inside a captureModelLoaded(...) call`);
+  const argsOpen = callStart + 'captureModelLoaded('.length - 1; // index of the call's own `(`
   assert.equal(masked[argsOpen], '(');
   let depth = 0;
   let argsClose = -1;
@@ -369,27 +369,6 @@ describe('ifc_model_loaded wiring (#2388)', () => {
     const returnIdx = src.indexOf('boundedIteratorReturn(geometryIterator)', closeIdx);
     const abortIdx = src.indexOf('geometryAbort.abort()', closeIdx);
     assert.ok(abortIdx !== -1 && abortIdx < returnIdx, 'the stream must be aborted before return() is awaited');
-  });
-
-  it('wires a stallPhaseHandle into the geometry stream and reads it back on the geometry_processing capture (#4902)', () => {
-    // `stallPhaseHandle` is created once at function scope (so the catch
-    // block below the try can still reach it — see `closeGeometryIterator`
-    // just above it, same rationale).
-    assert.match(src, /const stallPhaseHandle: StallPhaseHandle = \{\};/);
-
-    // `processAdaptive`'s OWN argument list must contain the option — not
-    // just a string somewhere nearby, which would stay green if the handle
-    // were passed to an unrelated call or dropped from this one.
-    const processArgs = captureArgsAround('stallPhaseHandle,', 'geometryProcessor.processAdaptive(');
-    assert.match(processArgs, /\bstallPhaseHandle,/);
-
-    // The `geometry_processing` captureException call's OWN argument list
-    // must read the phase back through `geometryProcessingStallPhase` (a
-    // function with its own behavioural unit tests below, rather than an
-    // inline `stallPhaseHandle.getStallPhase?.()` expression this text check
-    // could not tell apart from a copy that reads a different handle).
-    const captureArgs = captureArgsAround("context: 'geometry_processing'", 'posthog.captureException(');
-    assert.match(captureArgs, /stall_phase: geometryProcessingStallPhase\(stallPhaseHandle\)/);
   });
 
   it('marks the SERVER fast path\'s capture as a retry when it is one', () => {

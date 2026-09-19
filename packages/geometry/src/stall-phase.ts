@@ -83,6 +83,21 @@ export class GateTracker {
   }
 }
 
+/**
+ * A `getStallPhase` reader that returns a fixed `phase` and closes over
+ * NOTHING else (#4979 review). `processParallel`'s `finally` re-seats the
+ * caller-owned `stallPhaseHandle` to one of these on teardown: the LIVE
+ * reader it installed at the start (`() => gateTracker.getStallPhase()`)
+ * closes over `gateTracker`, which — through the rest of that generator's
+ * scope — keeps the per-load `sharedBuffer` reachable for as long as the
+ * caller holds the handle, even after every worker is gone. A snapshot taken
+ * at teardown is exactly as useful for a watchdog that reads it afterwards
+ * (the phase cannot change once nothing is left running) without the retention.
+ */
+export function frozenStallPhase(phase: StallPhase): () => StallPhase {
+  return () => phase;
+}
+
 // Bound for a pre-worker phase that waits on a single worker's reply (a shard
 // scan, one style slice, styles finalize). Mirrors the desktop first-batch
 // floor/ramp in watchdog.ts (15_000 + MB*30) rather than the browser one

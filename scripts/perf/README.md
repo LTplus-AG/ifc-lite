@@ -1755,3 +1755,35 @@ AND a breadth cap must bound the same quantity the hot loop actually multiplies
 out to (samples x grid, not grid alone), or a real fixture proves the guess
 wrong. Always run the correctness harness against a fixture that exercises the
 lever before trusting a calibrated constant.
+
+## Wall-local vertical opening classification (#3977)
+
+Exact-source native `perf_probe` comparison of base `6304b8ebc` and branch
+`89b93e364` used five balanced, interleaved fresh-process rounds per fixture.
+Median parse / geometry / total milliseconds were 8 / 11 / 19 -> 8 / 10 / 19
+on AC20-FZK-Haus and 26 / 929 / 955 -> 28 / 930 / 958 on CSG-heavy ISSUE_129.
+The heavy Holter control was deliberately included because the classifier runs
+once per opening: its medians were 407 / 741 / 1,160 -> 403 / 752 / 1,155 ms.
+Holter's geometry samples were noisy on both sides (base 455-774 ms, branch
+430-775 ms), so the 1.5% geometry-median difference is not a regression signal;
+its total median improved 0.4%. Every round retained identical output counts:
+AC20 285 meshes / 35,940 vertices / 19,456 triangles / 0 failures, ISSUE_129
+1,402 / 219,848 / 135,737 / 41, and Holter 109,514 / 4,502,946 / 2,882,383 /
+0. Verdict: no material full-load regression and no performance claim.
+
+The source-matched browser worker-pool control compared the same base with
+`cb7557caa` in five interleaved fresh-Chromium-process pairs per fixture. The
+observed metadata-plus-render median was 479 -> 483 ms on AC20 (+0.8%, below
+the base's 7% spread), 1,862 -> 1,860 ms on ISSUE_129 (-0.1%, below 5%), and
+5,114 -> 5,084 ms on Holter (-0.6%, below 17%). First geometry, first visible,
+stream completion, spatial readiness, metadata completion, and the legacy app
+total likewise stayed inside their respective noise floors. Every round kept
+the same total mesh count between revisions. This qualifies the actual browser
+worker path as well as the native phase split; it does not qualify search,
+cache-tail memory, properties, picking, or Firefox.
+
+The lesson is to scope authored-depth preservation to the vertical-depth
+selector itself. Applying it to the established horizontal-depth route changed
+real heavy-model cuts even though small synthetic cases remained green; the
+heavy census caught that overreach, and restoring the old horizontal route
+removed every branch-caused census delta.

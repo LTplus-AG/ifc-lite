@@ -17,6 +17,7 @@ mod bool2d_path;
 mod coaxial_union;
 pub(crate) mod geom;
 mod malformed_opening_repair;
+mod local_frame;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
@@ -32,6 +33,7 @@ use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
     translate_cutter_mesh, world_host_bounds, OpeningBox,
 };
+use local_frame::vertical_depth_wall_frame;
 use sweep::{drop_faces_outside_host, mesh_to_keep};
 mod sweep;
 
@@ -83,6 +85,7 @@ struct OpeningFrame {
     depth: Vector3<f64>,
     cross_a: Vector3<f64>,
     cross_b: Vector3<f64>,
+    depth_is_authored: bool,
 }
 
 impl OpeningFrame {
@@ -99,6 +102,7 @@ impl OpeningFrame {
             depth,
             cross_a,
             cross_b,
+            depth_is_authored: true,
         })
     }
 
@@ -799,12 +803,16 @@ impl GeometryRouter {
         // Define the wall frame from the first opening whose depth is a
         // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
         // keep their (unchanged) world path.
-        let axes = ctx
+        let horizontal_axes = ctx
             .merged_openings
             .iter()
             .filter_map(depth_of)
             .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
-            .and_then(wall_frame_from_depth)?;
+            .and_then(wall_frame_from_depth);
+        let (axes, vertical_depth_frame) = match horizontal_axes {
+            Some(axes) => (axes, false),
+            None => (vertical_depth_wall_frame(mesh, &ctx.merged_openings)?, true),
+        };
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a
         // plan-rotated wall never has them (they'd be diagonal), so bail.
@@ -858,7 +866,13 @@ impl GeometryRouter {
                 _ => false,
             };
             if frame_aligned {
-                local_openings.push(OpeningType::Rectangular(lmn, lmx, Some(z)));
+                // Preserve THIS cutter's authored penetration axis. The new
+                // #3977 selector also admits vertically extruded strips, whose
+                // local depth is +Y rather than the wall normal (+Z). Extending
+                // those along +Z would turn a partial-thickness vertical slot
+                // into a full-through cut.
+                let depth = if vertical_depth_frame { frame_depth } else { Some(z) };
+                local_openings.push(OpeningType::Rectangular(lmn, lmx, depth));
             } else {
                 let mesh_local = mesh_to_frame(cutter, &axes, center);
                 // Keep this cutter's true depth in the frame; fall back to the

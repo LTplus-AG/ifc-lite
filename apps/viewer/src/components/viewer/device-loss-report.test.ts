@@ -225,6 +225,20 @@ describe('reportDeviceLost tells the USER, not only error tracking', () => {
       const text = String(errorToast.mock.calls[0].arguments[0]);
       assert.match(text, /reload/i, 'the toast must name the only action that restores rendering');
       assert.match(text, /graphics device/i, 'and name the cause, not just "something went wrong"');
+      assert.doesNotMatch(text, /automatic recovery/i, 'a host with no recovery API must not claim recovery started');
+    } finally {
+      errorToast.mock.restore();
+    }
+  });
+
+  it('says automatic recovery started only when the renderer supports it', async () => {
+    await flushDynamicImport();
+    const errorToast = mock.method(toast, 'error', () => 0);
+    try {
+      reportDeviceLost({ message: SAFARI_LOST, reason: 'render-exception' }, undefined, true);
+      await flushDynamicImport();
+
+      assert.match(String(errorToast.mock.calls[0].arguments[0]), /automatic recovery is starting/i);
     } finally {
       errorToast.mock.restore();
     }

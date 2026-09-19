@@ -59,7 +59,7 @@ import {
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
-import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryActions, type SceneRecoveryHost } from './scene-device-recovery.js';
+import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -245,10 +245,6 @@ export class Scene {
     const access = this.bindAppearanceAccess(device, pipeline);
     return this.appearanceController ??= createSceneAppearancePreview(access, this.sharedAppearanceBuckets(access));
   }
-  private readonly recoveryActions: SceneRecoveryActions = {
-    resetAppearanceBatchCohorts: () => this.appearanceBuckets?.forget(),
-    invalidateAuthoredPreparations: () => { this.authoredGeneration++; this.authoredPreparations.invalidate(); },
-  };
   placeAppearanceSource(mesh: MeshData): MeshData { return this.modelTranslations.placeMesh(mesh); }
   appearanceSourceMesh(mesh: MeshData): MeshData { return this.modelTranslations.sourceFromPlaced(mesh); }
 
@@ -413,8 +409,8 @@ export class Scene {
   private ephemeralStreamingMode: boolean = false;
 
   async prepareDeviceRecovery(): Promise<SceneDeviceRecoveryPreparation> { return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
-  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost, this.recoveryActions); }
-  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline, this.recoveryActions); }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
+  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
 
   /**
    * Add mesh to scene
@@ -2358,7 +2354,7 @@ export class Scene {
    * Call this after finalizeStreaming() when all color updates have been applied.
    */
   releaseGeometryData(): void {
-    this.authoredGeneration++;
+    this.authoredGeneration++; this.authoredPreparations.invalidate();
     if (this.geometryReleased) return;
     if (this.instanceSuppression.retained) {
       console.warn('[Appearance] Retained occurrence history still needs CPU geometry');
@@ -3816,7 +3812,7 @@ export class Scene {
    * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
-    this.authoredGeneration++;
+    this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3825,7 +3821,7 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
-    this.authoredGeneration++;
+    this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

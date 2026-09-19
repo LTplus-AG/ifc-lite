@@ -223,6 +223,20 @@ describe('Scene device recovery (#4885)', () => {
     assert.deepStrictEqual(first.created.map(value => value.destroyed), first.created.map(() => 1));
   });
 
+  it('invalidates and releases a detached authored transaction on an ordinary scene reload', () => {
+    const scene = new Scene(), first = device();
+    const pipeline = {
+      getUniformBufferSize: () => 256,
+      getBindGroupLayout: () => ({}),
+    } as unknown as RenderPipeline;
+    const prepared = scene.prepareAuthoredOwner([triangle(24)], first.gpu, pipeline);
+
+    scene.clearFlatGeometry();
+
+    assert.deepStrictEqual(first.created.map(value => value.destroyed), first.created.map(() => 1));
+    assert.throws(() => prepared.commit(), /released/);
+  });
+
   it('preserves evicted residency shells instead of eagerly re-uploading them', () => {
     const scene = new Scene(), source = triangle(10), shell = batch(1), replacement = batch(2);
     shell.colorKey = 'flat';
@@ -242,6 +256,24 @@ describe('Scene device recovery (#4885)', () => {
     scene['createBatchedMesh'] = () => replacement;
     assert.strictEqual(scene.processResidencyRestores({} as GPUDevice, {} as RenderPipeline), 1);
     assert.strictEqual(bucketState.batchedMesh, replacement);
+  });
+
+  it('repartitions evicted shells for a smaller replacement limit without allocating buffers', () => {
+    const scene = new Scene(), first = triangle(25), second = triangle(26), shell = batch(1);
+    shell.colorKey = 'flat';
+    shell.gpuResident = false;
+    const bucketState = { key: 'flat', meshData: [first, second], batchedMesh: shell, vertexBytes: 168 };
+    scene['buckets'].set('flat', bucketState);
+    scene['batchedMeshes'] = [shell];
+    scene.discardGpuResourcesForRecovery();
+
+    const smaller = { limits: { maxBufferSize: 120 } } as unknown as GPUDevice;
+    scene.restoreGpuResourcesAfterRecovery(smaller, {} as RenderPipeline);
+
+    assert.strictEqual(scene['buckets'].size, 2);
+    assert.deepStrictEqual(scene.getBatchedMeshes().map((entry) => entry.gpuResident), [false, false]);
+    assert.strictEqual(new Set(scene.getBatchedMeshes().map((entry) => entry.id)).size, 2);
+    assert.strictEqual(shell.vertexBuffer.destroyed, 0);
   });
 
   it('rebinds cached appearance-history GPU closures to the replacement device', () => {
@@ -316,6 +348,38 @@ describe('Scene device recovery (#4885)', () => {
         assert.ok(Math.abs(colors[occurrence][channel] - expected[occurrence][channel]) < 1e-6);
       }
     }
+  });
+
+  it('restores an instance-specific override independently of the flat override map', () => {
+    const scene = new Scene(), first = device();
+    scene.addInstancedShard(first.gpu, shard(), 9);
+    scene.setColorOverrides(new Map([[42, [1, 0, 0, 1]]]), first.gpu, {} as RenderPipeline);
+    scene.setInstancedColorOverrides(new Map([[42, [0, 1, 0, 0.5]]]));
+    scene.discardGpuResourcesForRecovery();
+
+    const second = device();
+    scene.restoreGpuResourcesAfterRecovery(second.gpu, {} as RenderPipeline);
+    const color = second.writes
+      .filter(write => write.offset % 88 === 68)
+      .map(write => [...new Float32Array(write.data.buffer)])
+      .at(-1);
+
+    assert.deepStrictEqual(color, [0, 1, 0, 0.5]);
+    assert.deepStrictEqual(scene['instancedOverrideColors']?.get(42), [0, 1, 0, 0.5]);
+  });
+
+  it('does not rebuild bounds for an authored replacement\'s suppressed instance', () => {
+    const scene = new Scene(), first = device();
+    scene.addInstancedShard(first.gpu, shard(), 9);
+    const lease = scene['instanceSuppression'].acquire(42, 9);
+    lease.setSuppressed(true);
+    assert.strictEqual(scene.getInstancedEntityBounds(42), null);
+
+    scene.discardGpuResourcesForRecovery();
+    scene.restoreGpuResourcesAfterRecovery(device().gpu, {} as RenderPipeline);
+
+    assert.strictEqual(scene.getInstancedEntityBounds(42), null);
+    lease.release();
   });
 
   it('cleans a partial replacement upload and remains retryable', () => {

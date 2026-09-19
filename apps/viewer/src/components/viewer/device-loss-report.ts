@@ -89,6 +89,7 @@ export function resetDeviceLossReportForTests(): void {
 export function reportDeviceLost(
   info: { message: string; reason: string },
   context?: DeviceLossContext,
+  recoveryAvailable = false,
 ): void {
   if (reported) return;
   reported = true;
@@ -155,7 +156,9 @@ export function reportDeviceLost(
   void import('@/components/ui/toast').then((m) => {
     m.toast.error(
       'The graphics device was lost, so the 3D view has stopped drawing. ' +
-      'Automatic recovery is starting; reload the page if it does not return.',
+      (recoveryAvailable
+        ? 'Automatic recovery is starting; reload the page if it does not return.'
+        : 'Reload the page to restore rendering.'),
     );
   }).catch((err) => {
     // Best-effort: a failed toast must never mask the device loss itself. But
@@ -336,7 +339,7 @@ export function subscribeViewportHealth(
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
     // must describe the moment the device died, not the Viewport mount.
     renderer.onDeviceLost((info) => {
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer));
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
       if (!recovery && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },

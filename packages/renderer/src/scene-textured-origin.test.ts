@@ -305,7 +305,7 @@ describe('#4406 multi-part authored owner staging', () => {
     assert.throws(() => scene.prepareAuthoredOwner([{ ...meshData(85, ORIGIN, false), indices: new Uint32Array([0, 1, 99]) }], device, fakePipeline), /valid geometry/);
     const prepared = scene.prepareAuthoredOwner([meshData(85, ORIGIN, false)], device, fakePipeline);
     scene.clear();
-    assert.throws(() => prepared.commit(), /scene changed/);
+    assert.throws(() => prepared.commit(), /released/);
     prepared.dispose(); prepared.dispose();
     assert.equal(scene.getMeshDataPieces(85), undefined);
   });

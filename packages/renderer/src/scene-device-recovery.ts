@@ -12,6 +12,7 @@ import { cloneOverrides } from './scene-derived-batches.js';
 import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { BATCH_CONSTANTS } from './constants.js';
+import { createSceneBatchShell } from './scene-batch-upload.js';
 
 interface RecoveryBucket {
   key: string;
@@ -32,6 +33,9 @@ export interface SceneRecoveryHost {
   streamingFragments: BatchedMesh[];
   pendingBatchKeys: Set<string>;
   appearanceController?: { hasActiveDrafts(): boolean };
+  appearanceBuckets?: { forget(): void };
+  authoredGeneration: number;
+  authoredPreparations: { invalidate(): void };
   meshes: Mesh[];
   batchedMeshes: BatchedMesh[];
   buckets: Map<string, RecoveryBucket>;
@@ -39,6 +43,7 @@ export interface SceneRecoveryHost {
   activeBucketKey: Map<string, string>;
   dirtyBuckets: Set<string>;
   nextSplitId: number;
+  nextBatchId: number;
   coldBuckets: Set<string>;
   texturedMeshes: TexturedMesh[];
   sharedTextures: Map<number, { texture: GPUTexture; refs: number }>;
@@ -48,8 +53,11 @@ export interface SceneRecoveryHost {
   liveInstancedTemplates: InstancedTemplateGPU[];
   instancedTemplateCpu: (InstancedTemplateCpu | undefined)[];
   instancedEntityMap: Map<number, InstancedOccurrence[]>;
+  instanceSuppression: { has(expressId: number): boolean };
   instancedSelected: Set<number>;
   instancedOverrideColors: ReadonlyMap<number, readonly [number, number, number, number]> | null;
+  instancedOverridden: Set<number>;
+  instancedHasTransparent: boolean;
   instancedGhosted: Set<number>;
   lastGhostAlpha: number;
   instancedDevice?: GPUDevice;
@@ -59,6 +67,7 @@ export interface SceneRecoveryHost {
   meshDataMap: Map<number, MeshData[]>;
   colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null;
   appearanceAccessState?: unknown;
+  modelTranslations: { registerDrawable<T>(drawable: T, modelIndex: number): T };
   drainColdTier(): Promise<void>;
   dropAllPartialCaches(): void;
   destroyOverrideBatches(): void;
@@ -69,11 +78,7 @@ export interface SceneRecoveryHost {
     device: GPUDevice, pipeline: RenderPipeline, bucketKey?: string,
   ): BatchedMesh;
   createTexturedMesh(mesh: MeshData, device: GPUDevice, pipeline: RenderPipeline): void;
-  setColorOverrides(
-    colors: ReadonlyMap<number, readonly [number, number, number, number]>,
-    device: GPUDevice,
-    pipeline: RenderPipeline,
-  ): void;
+  setColorOverrides(colors: Map<number, [number, number, number, number]>, device: GPUDevice, pipeline: RenderPipeline): void;
   writeInstanceFlags(device: GPUDevice, eid: number): void;
   writeInstanceColor(device: GPUDevice, eid: number, color: readonly [number, number, number, number]): void;
   writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void;
@@ -83,11 +88,6 @@ export interface SceneRecoveryHost {
     maxX: number, maxY: number, maxZ: number,
   ): WorldBox;
   refreshLiveInstancedTemplates(): void;
-}
-
-export interface SceneRecoveryActions {
-  invalidateAuthoredPreparations(): void;
-  resetAppearanceBatchCohorts(): void;
 }
 
 export type SceneDeviceRecoveryPreparation =
@@ -121,12 +121,12 @@ export async function prepareSceneDeviceRecovery(host: SceneRecoveryHost): Promi
 
 export function discardSceneGpuResourcesForRecovery(
   host: SceneRecoveryHost,
-  actions: SceneRecoveryActions,
 ): void {
   // Fence detached authoring transactions before any old-device handle dies.
   // Their commit validation will release the staged buffers instead of
   // publishing them into the recovered scene.
-  actions.invalidateAuthoredPreparations();
+  host.authoredGeneration++;
+  host.authoredPreparations.invalidate();
   const evicted = new Set<BatchedMesh>();
   for (const bucket of host.buckets.values()) {
     if (bucket.batchedMesh?.gpuResident === false) evicted.add(bucket.batchedMesh);
@@ -174,7 +174,6 @@ function restoreFlatBuckets(
   host: SceneRecoveryHost,
   device: GPUDevice,
   pipeline: RenderPipeline,
-  actions: SceneRecoveryActions,
 ): void {
   const maxBufferSize = Math.floor(
     (device.limits?.maxBufferSize ?? BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE) *
@@ -204,6 +203,7 @@ function restoreFlatBuckets(
 
     repartitioned = true;
     const evicted = bucket.batchedMesh?.gpuResident === false;
+    const evictedShell = bucket.batchedMesh;
     const dirty = host.dirtyBuckets.delete(originalKey);
     const hash = originalKey.lastIndexOf('#');
     const baseKey = hash >= 0 ? originalKey.slice(0, hash) : originalKey;
@@ -216,11 +216,12 @@ function restoreFlatBuckets(
       target.key = key;
       target.meshData = parts;
       target.vertexBytes = bucketVertexBytes(parts);
-      const batch = host.createBatchedMesh(parts, parts[0].color, device, pipeline, key);
-      if (evicted) {
-        destroyGpuResources(batch);
-        batch.gpuResident = false;
-      }
+      const batch = evicted
+        ? host.modelTranslations.registerDrawable(
+            createSceneBatchShell(parts, evictedShell!, host.nextBatchId++, key),
+            parts[0].modelIndex ?? 0,
+          )
+        : host.createBatchedMesh(parts, parts[0].color, device, pipeline, key);
       target.batchedMesh = batch;
       host.buckets.set(key, target);
       for (const part of parts) host.meshDataBucket.set(part, target);
@@ -230,7 +231,7 @@ function restoreFlatBuckets(
     }
     host.activeBucketKey.set(baseKey, activeKey);
   }
-  if (repartitioned) actions.resetAppearanceBatchCohorts();
+  if (repartitioned) host.appearanceBuckets?.forget();
 }
 
 function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): void {
@@ -265,6 +266,7 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
     }
   }
   for (const [eid, occurrences] of host.instancedEntityMap) {
+    if (host.instanceSuppression.has(eid)) continue;
     for (const occurrence of occurrences) {
       const cpu = host.instancedTemplateCpu[occurrence.templateIndex];
       const template = host.instancedTemplates[occurrence.templateIndex];
@@ -300,21 +302,28 @@ export function restoreSceneGpuResourcesAfterRecovery(
   host: SceneRecoveryHost,
   device: GPUDevice,
   pipeline: RenderPipeline,
-  actions: SceneRecoveryActions,
 ): void {
   try {
     if (host.appearanceAccessState) host.bindAppearanceAccess(device, pipeline);
-    restoreFlatBuckets(host, device, pipeline, actions);
+    restoreFlatBuckets(host, device, pipeline);
     const textured = new Set<MeshData>();
     for (const pieces of host.meshDataMap.values()) {
       for (const piece of pieces) if (hasRenderableTexture(piece)) textured.add(piece);
     }
     for (const piece of textured) host.createTexturedMesh(piece, device, pipeline);
     restoreInstancedTemplates(host, device);
-    if (host.colorOverrides) host.setColorOverrides(cloneOverrides(host.colorOverrides), device, pipeline);
+    if (host.colorOverrides) {
+      const instanced = host.instancedOverrideColors;
+      const overridden = host.instancedOverridden;
+      const transparent = host.instancedHasTransparent;
+      host.setColorOverrides(cloneOverrides(host.colorOverrides), device, pipeline);
+      host.instancedOverrideColors = instanced;
+      host.instancedOverridden = overridden;
+      host.instancedHasTransparent = transparent;
+    }
     restoreInstancedAppearance(host, device);
   } catch (error) {
-    discardSceneGpuResourcesForRecovery(host, actions);
+    discardSceneGpuResourcesForRecovery(host);
     throw error;
   }
 }

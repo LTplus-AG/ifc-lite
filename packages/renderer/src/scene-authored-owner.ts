@@ -11,7 +11,7 @@ export interface PreparedAuthoredOwner {
   dispose(): void;
 }
 
-/** Own detached GPU preparations so recovery can release them before device teardown. */
+/** Own detached GPU preparations so scene invalidation can release them before teardown. */
 export class AuthoredPreparationRegistry {
   private active = new Set<PreparedAuthoredOwner>();
 

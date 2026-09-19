@@ -199,3 +199,42 @@ export function interleaveSplitAndMerge(pool, taken, roles, eligible, plan, sour
     );
   }
 }
+
+/** The declared mutation set `mutate.mjs` draws from. Counts are targets; a
+ *  role that cannot be applied to a given element falls through to the next
+ *  candidate, and the answer key records what was actually applied. Moved
+ *  out of `mutate.mjs` for the module-size house rule (AGENTS.md). */
+export const DEFAULT_PLAN = {
+  retriangulated: 12,
+  reshaped: 18,
+  deleted: 12,
+  duplicated: 8,
+  moved: 24,
+  /** Whole same-content groups moved at once — the only path to tier 3. */
+  movedGroups: 2,
+  inserted: 8,
+  /** Re-GUID plus ONE data edit and no geometry change (issue #4955). */
+  respecified: 14,
+  /** Rename plus a 1.25x thickness: the `footprint` successor case. */
+  thickened: 10,
+  /** Rename plus a different type's mapped geometry: the `position` case. */
+  swapped: 6,
+  /** One owned rectangle extrusion becomes two half-length products. */
+  splitLength: 6,
+  /** The base-side split-in-reverse (issue #4989) — the honest inverse of
+   *  `splitLength`, drawn AFTER it (interleaved, `interleaveSplitAndMerge`)
+   *  from the same detached-rectangle-owner pool. */
+  merged: 8,
+  /** Of the `deleted`, how many get a small head-only element planted inside
+   *  their box — the successor stage's negative control. */
+  insertedNearby: 5,
+  /** Extrusion depth multiplier for `reshaped`. */
+  reshapeScale: 1.15,
+  /** Thickness multiplier for `thickened`: old box nests in new, IoU 0.8. */
+  thickenScale: 1.25,
+  /** Per-axis size of the `insertedNearby` element relative to the deleted one. */
+  nearbyFactor: 0.3,
+  /** Move distances (metres) cycled through for `moved`, all well inside the
+   *  engine's 10 m `maxMoveDistance` and well outside its 2 mm move tolerance. */
+  moveDistances: [0.35, 0.8, 1.6, 2.4],
+};

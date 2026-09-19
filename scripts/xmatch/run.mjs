@@ -23,12 +23,11 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fingerprintFile, GEOMETRY_HASH_TOLERANCE } from './fingerprints.mjs';
-import { mutateModel } from './mutate.mjs';
-import { donorPairKey, incomparableSwaps } from './successor-mutations.mjs';
+import { GEOMETRY_HASH_TOLERANCE } from './fingerprints.mjs';
+import { buildPair } from './build-pair.mjs';
 import {
   checkCorpusThresholds,
   checkThresholds,
@@ -36,7 +35,7 @@ import {
   scorePair,
   targetGaps,
 } from './score.mjs';
-import { guardFailures, runGuards } from './guards.mjs';
+import { guardFailures } from './guards.mjs';
 import { replacer, report } from './run-report.mjs';
 import { realMatcher, sameContentGroups, volumeSet } from './run-matcher.mjs';
 import { checkInvariantTripwires } from './invariants.mjs';
@@ -112,82 +111,6 @@ function fail(message) {
   process.exit(2);
 }
 
-/** Build one pair and everything the guards need to judge it. */
-async function buildPair(entry, api) {
-  const modelPath = join(ROOT, entry.model);
-  if (!existsSync(modelPath)) {
-    fail(`fixture missing: ${entry.model} — run \`pnpm fixtures\` first`);
-  }
-  const sourceText = readFileSync(modelPath, 'utf-8');
-  // Preliminary only: population / meshedIds / same-content groups for role
-  // ASSIGNMENT. The `merged` role (#4989) needs the actual BASE fingerprints
-  // to come from a possibly-mutated base text (see below) — this pass is not
-  // published as the pair's `base`.
-  const prelim = await fingerprintFile(modelPath, api);
-
-  mkdirSync(OUT_DIR, { recursive: true });
-  const headPath = join(OUT_DIR, `${entry.seed}-${entry.model.replaceAll('/', '_')}`);
-  const geometryAabbs = new Map(
-    prelim.fingerprints
-      .filter((fingerprint) => fingerprint.aabb)
-      .map((fingerprint) => [fingerprint.ref, fingerprint.aabb]),
-  );
-  const excludedDonors = new Set();
-  // Base occurrence bounds are a cheap fail-closed prefilter (#4995). The
-  // generated head is still authoritative: mapping targets and placements
-  // can make the same map a different size at its recipient. Reject such a
-  // pair and replay the seeded mutation without it; every retry excludes at
-  // least one finite product/map pair, and the cap turns unexpected corpus
-  // drift into a loud fixture failure rather than a false-positive answer
-  // key. The regeneration re-fingerprints the MUTATED base text too (#4989):
-  // `merged` can produce one, and `incomparableSwaps` must compare against
-  // what was actually scored, not the pristine file it may have diverged from.
-  for (let attempt = 1; attempt <= MAX_SWAP_ATTEMPTS; attempt++) {
-    const { text: headText, baseText, key } = mutateModel(sourceText, {
-      seed: entry.seed,
-      meshedIds: prelim.meshedIds,
-      population: prelim.fingerprints.map((fingerprint) => fingerprint.ref),
-      geometryAabbs,
-      excludedDonors,
-      sameContentGroups: sameContentGroups(prelim),
-      unitScale: prelim.unitScale,
-      sourcePath: entry.model,
-      plan: entry.plan,
-    });
-    writeFileSync(headPath, headText);
-    const head = await fingerprintFile(headPath, api);
-
-    // `merged` (#4989) is the ONLY thing that ever touches base: for every
-    // other model (and every model with no `merged` role) `baseText` is
-    // `sourceText` verbatim, and `prelim` already IS the correct base — no
-    // second wasm pass. Only when it differs do we re-fingerprint the
-    // mutated base text, which is the actual pair being compared and scored.
-    let base = prelim;
-    let basePath;
-    if (baseText !== sourceText) {
-      basePath = join(OUT_DIR, `${entry.seed}-base-${entry.model.replaceAll('/', '_')}`);
-      writeFileSync(basePath, baseText);
-      base = await fingerprintFile(basePath, api);
-    }
-
-    const invalid = incomparableSwaps(key, base.fingerprints, head.fingerprints);
-    if (invalid.length === 0) {
-      const guards = runGuards(baseText, headText, base, head, key);
-      return { key, base, head, guards, headPath, basePath };
-    }
-    let added = 0;
-    for (const swap of invalid) {
-      if (!Number.isInteger(swap.donorMap)) continue;
-      const size = excludedDonors.size;
-      excludedDonors.add(donorPairKey(swap.base, swap.donorMap));
-      if (excludedDonors.size > size) added++;
-    }
-    if (added === 0) fail(`swapped geometry has unusable bounds in ${entry.model}`);
-    process.stdout.write(`  retrying ${entry.model}: rejected ${added} incomparable mapped donor(s)\n`);
-  }
-  fail(`no comparable mapped donors remained in ${entry.model} after ${MAX_SWAP_ATTEMPTS} attempts`);
-}
-
 async function main() {
   const wasmPath = join(ROOT, 'packages/wasm/pkg/ifc-lite_bg.wasm');
   if (!existsSync(wasmPath)) fail('packages/wasm/pkg/ifc-lite_bg.wasm missing — run `pnpm build:wasm`');
@@ -239,7 +162,12 @@ async function main() {
   ];
 
   for (const entry of CORPUS) {
-    const { key, base, head, guards, headPath, basePath } = await buildPair(entry, api);
+    const { key, base, head, guards, headPath, basePath } = await buildPair(entry, api, {
+      root: ROOT,
+      outDir: OUT_DIR,
+      maxAttempts: MAX_SWAP_ATTEMPTS,
+      fail,
+    });
     const fixtureFailures = guardFailures(guards);
     const real = realMatcher(base.fingerprints, head.fingerprints);
     const { matches } = real;

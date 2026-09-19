@@ -56,6 +56,7 @@ import { splitBaseForMerge } from './merge-base-split.mjs';
 import {
   assignGroups,
   axisVector,
+  DEFAULT_PLAN,
   hasOwnPlacement,
   interleaveSplitAndMerge,
   isSpatialType,
@@ -71,43 +72,6 @@ import {
 // a private copy of the table would drift from the thing being measured.
 import { planeAngleFactor, resampleableArcs, retriangulateElement } from './retriangulate.mjs';
 import { parseStepFile, serializeStepFile } from './step-file.mjs';
-
-/** The declared mutation set. Counts are targets; a role that cannot be
- *  applied to a given element falls through to the next candidate, and the
- *  answer key records what was actually applied. */
-const DEFAULT_PLAN = {
-  retriangulated: 12,
-  reshaped: 18,
-  deleted: 12,
-  duplicated: 8,
-  moved: 24,
-  /** Whole same-content groups moved at once — the only path to tier 3. */
-  movedGroups: 2,
-  inserted: 8,
-  /** Re-GUID plus ONE data edit and no geometry change (issue #4955). */
-  respecified: 14,
-  /** Rename plus a 1.25x thickness: the `footprint` successor case. */
-  thickened: 10,
-  /** Rename plus a different type's mapped geometry: the `position` case. */
-  swapped: 6,
-  /** One owned rectangle extrusion becomes two half-length products. */
-  splitLength: 6,
-  /** Two real, adjacent, matching rectangle owners become one longer product
-   *  (issue #4989) — drawn AFTER `splitLength`, from whatever it left. */
-  merged: 8,
-  /** Of the `deleted`, how many get a small head-only element planted inside
-   *  their box — the successor stage's negative control. */
-  insertedNearby: 5,
-  /** Extrusion depth multiplier for `reshaped`. */
-  reshapeScale: 1.15,
-  /** Thickness multiplier for `thickened`: old box nests in new, IoU 0.8. */
-  thickenScale: 1.25,
-  /** Per-axis size of the `insertedNearby` element relative to the deleted one. */
-  nearbyFactor: 0.3,
-  /** Move distances (metres) cycled through for `moved`, all well inside the
-   *  engine's 10 m `maxMoveDistance` and well outside its 2 mm move tolerance. */
-  moveDistances: [0.35, 0.8, 1.6, 2.4],
-};
 
 /**
  * Mutate `text` into a head revision plus the answer key.

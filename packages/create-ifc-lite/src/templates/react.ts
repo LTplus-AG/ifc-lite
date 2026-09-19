@@ -317,7 +317,7 @@ export default function App() {
         if (loadId !== loadIdRef.current) return;
 
         if (event.type === 'batch') {
-          if (!renderer.addMeshes(event.meshes, true).ok) { setStatus('Graphics device lost — reload the page.'); break; }
+          renderer.addMeshes(event.meshes, true);
           loadedMeshes = event.totalSoFar;
           setStatus('Loaded ' + loadedMeshes + ' meshes...');
         }

@@ -109,5 +109,13 @@ describe('Property editor localization (#4918)', () => {
       /⟦IFC standard property set: Pset_WallCommon⟧/,
       'imported English suggestion prose must not leak into a contributed locale',
     );
+
+    registerLocale('fr', { 'propertyEditor.property.title': 'Ajouter une propriété' });
+    act(() => setLocale('fr'));
+    assert.match(
+      document.body.textContent ?? '',
+      /Properties common to the definition of all occurrences of IfcWall/,
+      'a partial locale must retain detailed schema guidance when it omits the display-description key',
+    );
   });
 });

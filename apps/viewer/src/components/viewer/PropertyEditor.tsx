@@ -74,6 +74,7 @@ import {
   type QtoDefinition,
 } from '@/lib/ifc4-qto-definitions';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { hasActiveTranslation } from '@/i18n/registry';
 import { INLINE_VALUE_TYPES, MATERIAL_CATEGORIES } from './property-editor-options';
 
 // ── Edit-deck button styling ────────────────────────────────────────────────
@@ -594,7 +595,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                               <span className="font-medium">{def.name}</span>
                               <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{locale === 'en' ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
+                            <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardSetDescription') ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -622,7 +623,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                             <span className="font-medium">{prop.name}</span>
                             <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t(getTypeNameKey(prop.type))}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{locale === 'en' ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
+                          <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardPropertyDescription') ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -788,7 +789,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
                   <SelectItem key={cs.name} value={cs.name}>
                     <div className="flex flex-col">
                       <span className="font-medium">{cs.name}</span>
-                      <span className="text-[10px] text-zinc-400">{locale === 'en' ? cs.description : t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
+                      <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.classification.standardSystemDescription') ? cs.description : t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -1167,7 +1168,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                               <span className="font-medium">{def.name}</span>
                               <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{locale === 'en' ? def.description : t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
+                            <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardSetDescription') ? def.description : t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -1195,7 +1196,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                             <span className="font-medium">{qty.name}</span>
                             <Badge variant="secondary" className="h-4 px-1 text-[9px]">{qty.unit}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{locale === 'en' ? qty.description : t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
+                          <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardQuantityDescription') ? qty.description : t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
                         </div>
                       </SelectItem>
                     ))}

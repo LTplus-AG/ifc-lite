@@ -74,8 +74,16 @@ export async function loadWasmRuntime(): Promise<WasmRuntimeResult> {
   try {
     const wasmModule = await import('@ifc-lite/wasm');
     wasmModule.initSync({ module: bytes });
+    // Constructed before the next call that can throw, so a failure past this
+    // point has a handle to free rather than leaking it (AGENTS.md "Geometry
+    // & WASM").
     const api = new wasmModule.IfcAPI();
-    api.setComputeGeometryHashes(GEOMETRY_HASH_TOLERANCE);
+    try {
+      api.setComputeGeometryHashes(GEOMETRY_HASH_TOLERANCE);
+    } catch (error) {
+      api.free();
+      throw error;
+    }
     return { ok: true, runtime: { api } };
   } catch (error) {
     return {
@@ -115,6 +123,25 @@ export interface GeometryPassResult {
 }
 
 /**
+ * Number of jobs sent to one `processGeometryBatch` call.
+ *
+ * Matches `DEFAULT_BATCH_SIZING.maxJobs` in `@ifc-lite/geometry`'s
+ * `batch-sizing.ts` — the cap the browser worker's adaptive sizer clamps every
+ * call to, tuned on the largest real models so one call's meshes stay a
+ * bounded slice of the file rather than the whole thing. Restated here
+ * (rather than imported) because that module is internal to the geometry
+ * worker's streaming path and not part of `@ifc-lite/geometry`'s public
+ * surface; kept in sync by citing the source. This path has no adaptive
+ * timing to resize it (a one-shot CLI pass, not a watchdog-bounded worker), so
+ * it is a fixed cap rather than the worker's targetMs-driven adaptive size.
+ */
+const JOBS_PER_BATCH = 512;
+
+/** Uint32 slots per job in `PrePassResult.jobs` — see `prePass.jobs.slice(startJob
+ *  * JOB_STRIDE, endJob * JOB_STRIDE)` in `@ifc-lite/geometry`'s `processStreamingBytes`. */
+const JOB_STRIDE = 3;
+
+/**
  * Run the wasm geometry pass over one file's bytes and collect per-entity
  * world hashes, boxes and volumes (issue #4956).
  *
@@ -123,60 +150,87 @@ export interface GeometryPassResult {
  * coordinate is dropped rather than passed on (a present box must be usable,
  * never a NaN the engine would classify as garbage), and a volume is kept
  * only when finite and positive (`NaN` is the wasm's "not proved closed"
- * sentinel). Every wasm handle this opens (`MeshCollection`, the pre-pass
- * cache) is freed in `finally`, so a throw mid-pass — or an `api` reused for
- * a second file right after — never leaks or carries stale state forward.
+ * sentinel).
+ *
+ * **Chunked, not one `processGeometryBatch` call over every job.** The naive
+ * one-shot version materializes every mesh of the whole file into a single
+ * `MeshCollection` before any hash is read, which OOMs on a large model
+ * (issue #4956 review) — the same reason the browser worker path never does
+ * this either (`@ifc-lite/geometry`'s `processStreamingBytes`, `batch-sizing.ts`).
+ * Each `JOBS_PER_BATCH`-sized slice gets its own `MeshCollection`, is read and
+ * freed, and only its extracted (hash, aabb, volume) triples survive into the
+ * next iteration.
+ *
+ * The pre-pass call is inside the same `try` the cache-clear `finally`
+ * guards: `buildPrePassOnce` can itself throw (a malformed file), and a throw
+ * before the `try` would skip `clearPrePassCache()`, carrying whatever partial
+ * state it left behind into the next file processed through this `api`.
  */
 export function runGeometryPass(api: WasmIfcAPI, bytes: Uint8Array): GeometryPassResult {
-  const pre = api.buildPrePassOnce(bytes) as PrePassResult | undefined;
   const hashes = new Map<DiffRef, bigint>();
   const aabbs = new Map<DiffRef, GeometryAabb>();
   const volumes = new Map<DiffRef, number>();
-  const unitScale = pre?.unitScale ?? 1;
-  const total = pre?.totalJobs ?? 0;
+  let unitScale = 1;
 
   try {
+    const pre = api.buildPrePassOnce(bytes) as PrePassResult | undefined;
+    unitScale = pre?.unitScale ?? 1;
+    const total = pre?.totalJobs ?? 0;
     if (!pre || !pre.jobs || total === 0) return { hashes, aabbs, volumes, unitScale };
 
     const rtcOffset = pre.rtcOffset ? Array.from(pre.rtcOffset) : [0, 0, 0];
     const [rtcX, rtcY, rtcZ] = rtcOffset;
-    const collection = api.processGeometryBatch(
-      bytes,
-      pre.jobs,
-      pre.unitScale ?? 1,
-      rtcX,
-      rtcY,
-      rtcZ,
-      pre.needsShift ?? false,
-      pre.voidKeys ?? new Uint32Array(0),
-      pre.voidCounts ?? new Uint32Array(0),
-      pre.voidValues ?? new Uint32Array(0),
-      pre.styleIds ?? new Uint32Array(0),
-      pre.styleColors ?? new Uint8Array(0),
-    );
-    try {
-      const ids = collection.geometryHashIds;
-      const values = collection.geometryHashValues;
-      const boxes = collection.geometryAabbValues;
-      // Optional getter (issue #4955): a wasm build that predates it answers
-      // `undefined`, and volumes simply stay empty rather than throwing.
-      const volumeValues = collection.geometryVolumeValues;
-      for (let i = 0; i < ids.length; i++) {
-        hashes.set(ids[i], values[i]);
-        const volume = volumeValues?.[i];
-        if (volume !== undefined && Number.isFinite(volume) && volume > 0) {
-          volumes.set(ids[i], volume);
+    const voidKeys = pre.voidKeys ?? new Uint32Array(0);
+    const voidCounts = pre.voidCounts ?? new Uint32Array(0);
+    const voidValues = pre.voidValues ?? new Uint32Array(0);
+    const styleIds = pre.styleIds ?? new Uint32Array(0);
+    const styleColors = pre.styleColors ?? new Uint8Array(0);
+
+    for (let startJob = 0; startJob < total; startJob += JOBS_PER_BATCH) {
+      const endJob = Math.min(startJob + JOBS_PER_BATCH, total);
+      const jobSlice = pre.jobs.slice(startJob * JOB_STRIDE, endJob * JOB_STRIDE);
+      const collection = api.processGeometryBatch(
+        bytes,
+        jobSlice,
+        pre.unitScale ?? 1,
+        rtcX,
+        rtcY,
+        rtcZ,
+        pre.needsShift ?? false,
+        voidKeys,
+        voidCounts,
+        voidValues,
+        styleIds,
+        styleColors,
+      );
+      try {
+        const ids = collection.geometryHashIds;
+        const values = collection.geometryHashValues;
+        const boxes = collection.geometryAabbValues;
+        // Optional getter (issue #4955): a wasm build that predates it
+        // answers `undefined`, and volumes simply stay empty rather than
+        // throwing.
+        const volumeValues = collection.geometryVolumeValues;
+        for (let i = 0; i < ids.length; i++) {
+          hashes.set(ids[i], values[i]);
+          const volume = volumeValues?.[i];
+          if (volume !== undefined && Number.isFinite(volume) && volume > 0) {
+            volumes.set(ids[i], volume);
+          }
+          const box = Array.from(boxes.slice(6 * i, 6 * i + 6));
+          if (box.length === 6 && box.every((value) => Number.isFinite(value))) {
+            aabbs.set(ids[i], {
+              min: [box[0], box[1], box[2]],
+              max: [box[3], box[4], box[5]],
+            });
+          }
         }
-        const box = Array.from(boxes.slice(6 * i, 6 * i + 6));
-        if (box.length === 6 && box.every((value) => Number.isFinite(value))) {
-          aabbs.set(ids[i], {
-            min: [box[0], box[1], box[2]],
-            max: [box[3], box[4], box[5]],
-          });
-        }
+      } finally {
+        // Freed before the next chunk's call, not batched up with the rest —
+        // this is the whole point of chunking: at most one batch's meshes
+        // are live in wasm memory at a time.
+        collection.free();
       }
-    } finally {
-      collection.free();
     }
   } finally {
     if (api.clearPrePassCache) api.clearPrePassCache();

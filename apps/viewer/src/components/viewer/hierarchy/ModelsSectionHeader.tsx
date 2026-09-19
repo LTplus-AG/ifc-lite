@@ -25,6 +25,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { SectionHeader } from './SectionHeader';
 import type { TreeNode } from './types';
 import { applyModelTagView, isModelTagFilterActive, modelIdsMatchingTagView } from './modelTagView';
@@ -44,6 +45,7 @@ const chipClass = (active: boolean) =>
   );
 
 export function ModelsSectionHeader({ count }: { count: number }) {
+  const { t } = useTranslation();
   const { view, tags, assignments, models, setModelTagView, isolateModels } = useViewerStore(
     useShallow((s) => ({
       view: s.modelTagView,
@@ -82,7 +84,7 @@ export function ModelsSectionHeader({ count }: { count: number }) {
 
   return (
     <>
-      <SectionHeader icon={FileBox} title="Models" count={count} />
+      <SectionHeader icon={FileBox} title={t('hierarchy.modelsSection.title')} count={count} />
       {(inUse.length > 0 || filterActive || view.groupByTag) && (
         <div className="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950" data-model-tag-controls>
           <Button
@@ -91,9 +93,9 @@ export function ModelsSectionHeader({ count }: { count: number }) {
             aria-pressed={view.groupByTag}
             className={chipClass(view.groupByTag)}
             onClick={() => setModelTagView({ groupByTag: !view.groupByTag })}
-            title="Group the model rows by tag, with an Untagged group"
+            title={t('hierarchy.modelsSection.byTagTooltip')}
           >
-            <Tag className="mr-1 h-3 w-3" /> By tag
+            <Tag className="mr-1 h-3 w-3" /> {t('hierarchy.modelsSection.byTag')}
           </Button>
           <span className="mx-1 h-3 w-px bg-zinc-300 dark:bg-zinc-700" aria-hidden />
           {chips.map((tag) => {
@@ -104,10 +106,15 @@ export function ModelsSectionHeader({ count }: { count: number }) {
                 variant={active ? 'default' : 'outline'}
                 size="sm"
                 aria-pressed={active}
-                aria-label={`${active ? 'Stop listing' : 'List'} models tagged ${tag.name}`}
+                aria-label={t('hierarchy.modelsSection.tagFilterAriaLabel', {
+                  action: active
+                    ? t('hierarchy.modelsSection.filterActionStop')
+                    : t('hierarchy.modelsSection.filterActionList'),
+                  name: tag.name,
+                })}
                 className={chipClass(active)}
                 onClick={() => toggleTag(tag.id)}
-                title={`List the models tagged ${tag.name} — this filters the rows, it does not hide models`}
+                title={t('hierarchy.modelsSection.tagFilterTooltip', { name: tag.name })}
               >
                 {tag.name}
               </Button>
@@ -117,12 +124,16 @@ export function ModelsSectionHeader({ count }: { count: number }) {
             variant={view.filterUntagged ? 'default' : 'outline'}
             size="sm"
             aria-pressed={view.filterUntagged}
-            aria-label={`${view.filterUntagged ? 'Stop listing' : 'List'} untagged models`}
+            aria-label={t('hierarchy.modelsSection.untaggedFilterAriaLabel', {
+              action: view.filterUntagged
+                ? t('hierarchy.modelsSection.filterActionStop')
+                : t('hierarchy.modelsSection.filterActionList'),
+            })}
             className={chipClass(view.filterUntagged)}
             onClick={() => setModelTagView({ filterUntagged: !view.filterUntagged })}
-            title="List the models that carry no tag"
+            title={t('hierarchy.modelsSection.untaggedFilterTooltip')}
           >
-            Untagged
+            {t('hierarchy.modelsSection.untagged')}
           </Button>
           {filterActive && matching && (
             <>
@@ -131,21 +142,21 @@ export function ModelsSectionHeader({ count }: { count: number }) {
                 size="sm"
                 className={chipClass(false)}
                 onClick={() => isolateModels(matching)}
-                title="Show the listed models and hide every other model in the viewport"
+                title={t('hierarchy.modelsSection.isolateMatchingTooltip')}
               >
-                <Eye className="mr-1 h-3 w-3" /> Isolate matching models
+                <Eye className="mr-1 h-3 w-3" /> {t('hierarchy.modelsSection.isolateMatching')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 className={chipClass(false)}
-                aria-label="Clear model tag filter"
+                aria-label={t('hierarchy.modelsSection.clearFilterAriaLabel')}
                 onClick={() => setModelTagView({ filterTagIds: [], filterUntagged: false })}
               >
-                Clear
+                {t('hierarchy.modelsSection.clear')}
               </Button>
               <span className="ml-auto text-[10px] font-mono text-zinc-500" data-model-tag-filter-count>
-                {matching.length} of {models.size}
+                {t('hierarchy.modelsSection.matchingCount', { matching: matching.length, total: models.size })}
               </span>
             </>
           )}

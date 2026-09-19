@@ -9,6 +9,7 @@
  */
 
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import type { ModelTag } from '@/lib/model-tags/types';
 
 export interface ModelTagChipProps {
@@ -21,13 +22,14 @@ export interface ModelTagChipProps {
 }
 
 export function ModelTagChip({ tag, unresolved, onRemove, className }: ModelTagChipProps) {
+  const { t } = useTranslation();
   const broken = unresolved || !tag;
-  const label = tag?.name ?? 'Unknown tag';
+  const label = tag?.name ?? t('hierarchy.modelTagChip.unknownTag');
   return (
     <span
       data-model-tag-chip={tag?.id ?? ''}
       data-unresolved={broken ? 'true' : undefined}
-      title={broken ? 'This tag no longer exists' : label}
+      title={broken ? t('hierarchy.modelTagChip.unresolvedTitle') : label}
       className={cn(
         'inline-flex max-w-[9rem] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] leading-tight',
         broken
@@ -41,7 +43,7 @@ export function ModelTagChip({ tag, unresolved, onRemove, className }: ModelTagC
       {onRemove && (
         <button
           type="button"
-          aria-label={`Remove tag ${label}`}
+          aria-label={t('hierarchy.modelTagChip.removeAriaLabel', { name: label })}
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           className="text-muted-foreground hover:text-foreground"
         >

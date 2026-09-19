@@ -107,6 +107,17 @@ The saved-list builder catalogue (#4918 slice 6, lists) covers
 `lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
 `lists.columnMenu.*`, `lists.errorBox.*`).
 
+The hierarchy catalogue (#4918 slice 4) covers the spatial tree's own
+chrome: `HierarchyNode`'s row controls (visibility, expand/collapse,
+elevation and count badges) and its split-out `ModelHeaderRow`, the Models
+section header and its by-tag filter chips (`ModelsSectionHeader`), the
+per-row tag strip and its tag editor dialog (`ModelRowTags`,
+`ModelTagEditor`, `ModelTagChip`, `ModelTagGroupRow`), the sort control
+(`HierarchySortControl`, whose `SORT_OPTIONS` table carries `labelKey`s the
+same way `camera-commands.ts` does), and the Building Storeys display
+controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
+model content, not literals, and stay out of the catalogue.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

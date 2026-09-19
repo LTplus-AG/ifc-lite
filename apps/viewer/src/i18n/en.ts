@@ -11,6 +11,7 @@ import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
+import { hierarchyEn } from './catalogues/hierarchy.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
@@ -41,6 +42,7 @@ export const en = {
   ...splitToolEn,
   ...documentEn,
   ...documentMenuEn,
+  ...hierarchyEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

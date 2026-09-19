@@ -195,7 +195,9 @@ ifc-lite-server
 npx @ifc-lite/server-bin
 ```
 
-**Environment Variables:**
+**Environment Variables** (the most common ones; the full list, including
+`CORS_ORIGINS`, `IFC_SERVER_API_TOKEN` and the memory/admission knobs, is in the
+[Server guide](server.md#environment-variables)):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -224,8 +226,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ifc-lite-core = "4"
-ifc-lite-geometry = "4"
+ifc-lite-core = "15"
+ifc-lite-geometry = "15"
 ```
 
 Or install via cargo:
@@ -273,8 +275,8 @@ pnpm fixtures tests/models/ara3d/AC20-FZK-Haus.ifc
 
 ### Prerequisites
 
-- **Node.js** 22.x
-- **pnpm** 8.0 or higher
+- **Node.js** 22.13+ or 24.x (`engines` in `package.json`)
+- **pnpm** 10 (pinned via `packageManager: pnpm@10.8.1`; `corepack enable` picks it up)
 - **Rust** toolchain (the pinned nightly in `rust-toolchain.toml`, installed automatically by `rustup`) - only for WASM builds (and your own desktop builds, if any)
 
 ### Clone and Build

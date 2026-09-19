@@ -2,6 +2,11 @@
 
 ## 9.1 Command reference (`packages/cli`, new `layer` namespace)
 
+The commands ship today as `ifc-lite layer <publish|create|status|diff|merge|push|log|bake|revert|rebase>`
+and `ifc-lite ref <list|create|move|protect>`; `ifc` below is the spec's shorthand. `layer checks`
+is not a separate command — check evidence is attached with `layer publish --check`. See
+[the CLI guide](../../guide/cli.md#layer-layered-change-tracking) for the shipped flags and examples.
+
 ```shell
 ifc layer create   --base <ref|stack|file.ifcx> --intent "..." [--scope "<capability>"]
 ifc layer status                                   current draft: op count, scope usage

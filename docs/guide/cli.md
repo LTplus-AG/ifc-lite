@@ -262,6 +262,7 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 |------|-------------|
 | `--type <T>` | Filter by IFC type (comma-separated) |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
+| `--select <selector>` | IfcOpenShell-style selector (classes union with `--type`; properties AND with `--where`) |
 | `--storey <name>` | Filter to elements in a storey |
 | `--props` | Include property sets in output |
 | `--quantities` | Include quantity sets in output |
@@ -285,9 +286,10 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 | `--offset <N>` | Skip first N results |
 | `--json` | JSON output |
 
-`--type` and `--where` are the CLI's own filter surface, not the IfcOpenShell
-selector syntax. See [Selector Syntax](selector-syntax.md) for how each selector
-construct is spelled here, and for what accepting selector text on the CLI would take.
+`--select` accepts selector text directly — a lossless subset of the IfcOpenShell
+grammar; unsupported constructs throw. `--type` and `--where` remain the CLI's own
+filter surface for everything else. See [Selector Syntax](selector-syntax.md) for
+how each selector construct is spelled across surfaces.
 
 ---
 
@@ -1071,6 +1073,60 @@ ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
 | `--name <name>` | Override the manifest name during `ext init` |
 
 The full design lives in [Authoring Extensions](extension-authoring.md). For the security model — capability grammar, sandbox limits, signing semantics — see [the threat-model RFC](../architecture/ai-customization/02-security.md).
+
+---
+
+### `layer` — Layered Change Tracking
+
+Publish content-addressed layers with provenance manifests over a local layer store (`.ifc-lite/` of the cwd, override with `--store <dir>`), diff composed states, merge candidates into refs, and derive log/bake/revert/rebase from the same state-based op model.
+
+```bash
+ifc-lite layer create --base main --intent "Relocate fire doors"
+ifc-lite layer publish delta.ifcx --base main --intent "Relocate fire doors" --check requirements.ids=report.json
+ifc-lite layer diff main --against candidate-layer-id --json
+ifc-lite layer merge candidate-layer-id --into main --preview
+ifc-lite layer log main --json
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `publish <delta.ifcx>` | Publish a delta as a content-addressed layer. `--base <ref\|->`, `--intent "<text>"`, `--scope <claim>` (repeatable), `--check <spec.ids>=<report.json>` (repeatable), `--principal <id>`, `--kind human\|agent\|hybrid`, `--strict-scope`, `--json` |
+| `create` | Record a draft descriptor (`.ifc-lite/draft.json`). `--base <ref>`, `--intent "<text>"`, `--scope <claim>` |
+| `status` | Show the draft and whether its base ref moved |
+| `diff <side>` | Diff composed states; a side is a ref, layer id, or `.ifcx` file. `--against <side>`, `--components`, `--json` |
+| `merge <layer-id>` | Merge a candidate into a ref (fast-forward or three-way plan). `--into <ref>`, `--preview`, `--resolve ours\|theirs`, `--waive <spec> --reason "<text>"`, `--approved-by <principal>`, `--json` |
+| `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>`, `--set-ref`, `--json` |
+| `log <ref>` | Provenance log, newest first. `--json` |
+| `bake <ref> -o <out>` | Materialize a tombstone-free flat document |
+| `revert <layer-id>` | Publish an inverse layer and append it to a ref. `--in <ref>`, `--resolve ours\|theirs`, `--json` |
+| `rebase <layer-id>` | Re-plan a candidate onto a ref's current stack and publish the rebased layer. `--onto <ref>`, `--json` |
+
+All subcommands honour `--store <dir>` (default `<cwd>/.ifc-lite`). Exit codes: 0 clean, 2 conflicts, 3 policy failure, 4 scope violation (with `--strict-scope`), 1 generic errors.
+
+---
+
+### `ref` — Manage Named Refs
+
+Manage named refs (branch-like pointers onto a layer stack) in the layer store.
+
+```bash
+ifc-lite ref list --json
+ifc-lite ref create feature-x --from main
+ifc-lite ref protect main --require-check requirements.ids --require-human-approval
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `list` | List refs with layer counts and stack hashes. `--json`, `--store <dir>` |
+| `create <name>` | Create a ref, optionally copying another ref's layer stack (`--from <ref>`) |
+| `move <name>` | Point a ref at another ref's stack or at a comma-separated list of layer ids (`--to <target>`) |
+| `protect <name>` | Set merge policy on a ref. `--require-check <spec>` (repeatable), `--require-human-approval` |
+
+All subcommands honour `--store <dir>` (default `<cwd>/.ifc-lite`).
 
 ---
 

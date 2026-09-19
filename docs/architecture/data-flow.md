@@ -422,7 +422,7 @@ flowchart TB
 
     subgraph Registry["FederationRegistry"]
         Reg1["Model A: offset=0, max=5000"]
-        Reg2["Model B: offset=5000, max=3000"]
+        Reg2["Model B: offset=5001+headroom, max=3000"]
     end
 
     subgraph Store["Zustand Store"]

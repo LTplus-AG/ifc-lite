@@ -233,19 +233,28 @@ The framed transform path (`mesh_world.rs`) transforms every vertex in f64, trac
 `packages/geometry/src/coordinate-handler.ts` provides TypeScript-side coordinate handling as a fallback when WASM doesn't apply RTC:
 
 ```typescript
-class CoordinateHandler {
-    // Thresholds
-    private readonly NORMAL_COORD_THRESHOLD = 10_000;   // 10km
-    private readonly MAX_REASONABLE_COORD = 10_000_000; // 10,000km
+export const NORMAL_COORD_THRESHOLD_M = 10000;
 
-    // State
-    private wasmRtcDetected: boolean = false;
-    private activeThreshold: number;
+export class CoordinateHandler {
     private originShift: Vec3 = { x: 0, y: 0, z: 0 };
+    private readonly MAX_REASONABLE_COORD = 1e7;
+
+    // Authoritative pre-pass state. Undefined is reserved for native producers
+    // that cannot report their coordinate frame and therefore need inference.
+    private wasmRtcApplied: boolean | undefined = undefined;
+    // Active threshold used by both bounds validation and position cleanup.
+    private activeThreshold: number = 1e7;
 
     /**
-     * Process meshes incrementally for streaming.
-     * Detects if WASM already applied RTC by checking coordinate ranges.
+     * Record the world→render metadata the WASM pre-pass resolved for this
+     * model: the length-unit scale and the RTC offset the mesh path actually
+     * subtracted. Pass `rtcOffset: null` when no shift was applied.
+     */
+    setWasmMetadata(lengthUnitScale: number | undefined, rtcOffset: Vec3 | null, exactFrame?: RtcFrame): void;
+
+    /**
+     * Process meshes incrementally for streaming, using the authoritative
+     * WASM metadata when `setWasmMetadata` has been called.
      */
     processMeshesIncremental(batch: MeshData[]): void;
 
@@ -259,43 +268,29 @@ class CoordinateHandler {
 
 ### WASM RTC Detection
 
-The TypeScript layer detects if WASM already applied RTC:
+`setWasmMetadata` records whether the WASM pre-pass applied an RTC shift, rather than
+the TypeScript layer inferring it from coordinate ranges:
 
 ```typescript
-processMeshesIncremental(batch: MeshData[]): void {
-    // Check first batch for WASM RTC
-    if (!this.wasmRtcDetected) {
-        let smallCoordCount = 0;
-        let totalVertices = 0;
-
-        for (const mesh of batch) {
-            for (let i = 0; i < mesh.positions.length; i += 3) {
-                if (Math.abs(mesh.positions[i]) < this.NORMAL_COORD_THRESHOLD) {
-                    smallCoordCount++;
-                }
-                totalVertices++;
-            }
-        }
-
-        // If >80% vertices are within threshold, WASM applied RTC
-        if (smallCoordCount / totalVertices > 0.8) {
-            this.wasmRtcDetected = true;
-            // Use stricter threshold for bounds calculation
-            this.activeThreshold = this.NORMAL_COORD_THRESHOLD;
-        }
-    }
+setWasmMetadata(lengthUnitScale: number | undefined, rtcOffset: Vec3 | null, exactFrame?: RtcFrame): void {
+    const frame = resolveWasmMetadataFrame(rtcOffset, exactFrame);
+    this.lengthUnitScale = lengthUnitScale;
+    this.appliedWasmRtcOffset = rtcOffset ? { ...rtcOffset } : null;
+    this.wasmRtcApplied = rtcOffset !== null;
 }
 ```
 
 ### Threshold Consistency
 
-**Critical**: The same threshold must be used for bounds calculation AND vertex cleanup:
+**Critical**: The same threshold must be used for bounds calculation AND vertex cleanup.
+`processMeshesIncremental` derives it from `wasmRtcApplied` on every batch:
 
 ```typescript
 processMeshesIncremental(batch: MeshData[]): void {
-    // Set threshold based on WASM RTC detection
-    this.activeThreshold = this.wasmRtcDetected
-        ? this.NORMAL_COORD_THRESHOLD
+    // Applied WASM RTC uses the stricter post-RTC validation threshold.
+    // Known-not-applied and unknown native coordinates start broad.
+    this.activeThreshold = this.wasmRtcApplied === true
+        ? NORMAL_COORD_THRESHOLD_M
         : this.MAX_REASONABLE_COORD;
 
     // Use same threshold for bounds...
@@ -307,6 +302,10 @@ processMeshesIncremental(batch: MeshData[]): void {
     }
 }
 ```
+
+Native buffer streaming and adaptive native processing have no pre-pass decision and
+retain the legacy first-vertex vote; WASM callers set their authoritative frame first
+through `setWasmMetadata`.
 
 ## API Reference
 
@@ -488,7 +487,7 @@ if (pre.needsShift && pre.rtcOffset) {
 // In TypeScript path
 const info = handler.getCurrentCoordinateInfo();
 console.log('[RTC] Handler info:', {
-    wasmDetected: handler.wasmRtcDetected,
+    wasmDetected: handler.wasmRtcApplied,
     originShift: info?.originShift,
     hasLargeCoordinates: info?.hasLargeCoordinates
 });

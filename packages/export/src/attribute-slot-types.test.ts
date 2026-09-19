@@ -215,6 +215,11 @@ describe('serializeStringSlot', () => {
     expect(serializeStringSlot('*')).toBe('*');
   });
 
+  it('quotes marker-like text with significant surrounding whitespace', () => {
+    expect(serializeStringSlot(' $ ')).toBe("' $ '");
+    expect(serializeStringSlot(' * ')).toBe("' * '");
+  });
+
   // #4931: an edit to '' used to fold into the `$` (absent) marker, so a
   // pending edit that explicitly cleared an IfcLabel to empty text collapsed
   // to unset on export. STEP — and #4881/#4909's read model — distinguish

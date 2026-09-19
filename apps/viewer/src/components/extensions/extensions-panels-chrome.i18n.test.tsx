@@ -87,7 +87,7 @@ class StubExtensionHost extends ExtensionHostService {
           score: 0.82,
         },
       ],
-      eventCount: 17,
+      eventCount: 1234,
       at: new Date('2026-01-01T00:00:00Z').toISOString(),
     };
   }
@@ -489,8 +489,8 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
         other: '{count} capacités accordées (fr)',
       },
       'extensionsPanels.ideasPanel.suggestionsSummary': {
-        one: '{count} suggestion (fr) · {events} événements',
-        other: '{count} suggestions (fr) · {events} événements',
+        one: '{countDisplay} suggestion (fr) · {events} événements',
+        other: '{countDisplay} suggestions (fr) · {events} événements',
       },
       'extensionsPanels.ideasPanel.occurrenceSummary': {
         one: '{occurrences} occurrence · {sessions} session · {date} · {score}',
@@ -527,7 +527,7 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(container.textContent ?? '', /· v9\.9\.9 \(fr\)/);
     assert.match(container.textContent ?? '', /1 sur 1 événement \(fr\)/);
     assert.match(container.textContent ?? '', /· 1 capacité accordée \(fr\)/);
-    assert.match(container.textContent ?? '', /1 suggestion \(fr\) · 17 événements/);
+    assert.match(container.textContent ?? '', /1 suggestion \(fr\) · 1 234 événements/);
     assert.match(container.textContent ?? '', /ERREUR command not found — 1 test échoué \(fr\)/);
     assert.match(container.textContent ?? '', /4 occurrences · 2 sessions · .* · 0,82/);
     assert.match(container.textContent ?? '', /SDK 2\.0\.0 · 1 à réparer \(fr\)/);

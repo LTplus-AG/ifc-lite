@@ -168,7 +168,8 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
             <span className="text-[11px] text-muted-foreground">
               {t('extensionsPanels.ideasPanel.suggestionsSummary', {
                 count: patterns.length,
-                events: event.eventCount,
+                countDisplay: formatLocaleNumber(locale, patterns.length),
+                events: formatLocaleNumber(locale, event.eventCount),
               })}
             </span>
           )}

@@ -237,7 +237,9 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorIndicator.activeAriaLabel': 'Active flavor: {name}. Click to manage flavors.',
   'extensionsFlavors.flavorIndicator.inactiveAriaLabel': 'No active flavor. Click to manage flavors.',
   'extensionsFlavors.flavorIndicator.activeTitle':
-    'Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: {name}{description}\nClick to switch / export / import / merge.',
+    'Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: {name}\nClick to switch / export / import / merge.',
+  'extensionsFlavors.flavorIndicator.activeTitleWithDescription':
+    'Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: {name}\n{description}\nClick to switch / export / import / merge.',
   'extensionsFlavors.flavorIndicator.inactiveTitle':
     'Flavors — switchable profiles of your extensions, lenses, and settings.\nClick to manage.',
   'extensionsFlavors.flavorIndicator.defaultLabel': 'Default',

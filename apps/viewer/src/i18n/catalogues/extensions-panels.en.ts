@@ -171,8 +171,8 @@ export const extensionsPanelsEn = {
   // ── IdeasPanel ──
   'extensionsPanels.ideasPanel.title': 'Ideas',
   'extensionsPanels.ideasPanel.suggestionsSummary': {
-    one: '{count} suggestion · {events} events',
-    other: '{count} suggestions · {events} events',
+    one: '{countDisplay} suggestion · {events} events',
+    other: '{countDisplay} suggestions · {events} events',
   },
   'extensionsPanels.ideasPanel.helpLabel': 'Ideas',
   'extensionsPanels.ideasPanel.helpCuratedSubject': 'Curated starter ideas',

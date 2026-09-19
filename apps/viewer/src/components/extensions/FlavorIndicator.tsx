@@ -70,10 +70,9 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
       }
       title={
         flavor
-          ? t('extensionsFlavors.flavorIndicator.activeTitle', {
-              name: name ?? flavor.name,
-              description: description ? `\n${description}` : '',
-            })
+          ? description
+            ? t('extensionsFlavors.flavorIndicator.activeTitleWithDescription', { name: name ?? flavor.name, description })
+            : t('extensionsFlavors.flavorIndicator.activeTitle', { name: name ?? flavor.name })
           : t('extensionsFlavors.flavorIndicator.inactiveTitle')
       }
       className={

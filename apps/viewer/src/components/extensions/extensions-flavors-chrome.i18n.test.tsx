@@ -711,9 +711,26 @@ describe('FlavorIndicator localization (#4918)', () => {
       { key: 'extensionsFlavors.flavorIndicator.activeAriaLabel', params: { name: 'Indicated' } },
       {
         key: 'extensionsFlavors.flavorIndicator.activeTitle',
-        params: { name: 'Indicated', description: '' },
+        params: { name: 'Indicated' },
       },
     ]);
+  });
+
+  it('lets a locale own the active flavor description separator and order', async () => {
+    registerLocale('en-x-flavor-title-order', {
+      'extensionsFlavors.flavorIndicator.activeTitleWithDescription': '{description} BEFORE {name}',
+    });
+    setLocale('en-x-flavor-title-order');
+    const host = new StubHost();
+    await host.flavors.put(makeFlavor({ id: 'flv.ordered', name: 'Ordered', description: 'Details' }));
+    await host.flavors.activate('flv.ordered');
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <FlavorIndicator />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(10);
+    assert.equal(container.querySelector('button')?.getAttribute('title'), 'Details BEFORE Ordered');
   });
 
   it('localizes seeded baseline metadata while preserving its canonical id', async () => {
@@ -734,14 +751,14 @@ describe('FlavorIndicator localization (#4918)', () => {
     act(() => setLocale(PSEUDO_LOCALE));
 
     const name = r('extensionsFlavors.flavorIndicator.defaultLabel');
-    const description = `\n${r('extensionsFlavors.flavorIndicator.defaultDescription')}`;
+    const description = r('extensionsFlavors.flavorIndicator.defaultDescription');
     assert.ok(readableStrings().has(name));
     assert.ok(readableStrings().has(
       r('extensionsFlavors.extensionsPanel.activeFlavorTitle', { name }),
     ));
     assert.ok(
       readableStrings().has(
-        r('extensionsFlavors.flavorIndicator.activeTitle', { name, description }),
+        r('extensionsFlavors.flavorIndicator.activeTitleWithDescription', { name, description }),
       ),
     );
   });

@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 import { render, cleanup } from '@/test/render.js';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.js';
 import { CountBadgeTooltip } from './CountBadgeTooltip.js';
+import { registerLocale, setLocale } from '@/i18n';
 
 const summary = {
   counted: 5,
@@ -34,7 +35,7 @@ const summary = {
   geometryKnown: true,
 };
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); setLocale('en'); });
 
 describe('CountBadgeTooltip contrast', () => {
   it('renders the headline at text-xs', () => {
@@ -65,5 +66,16 @@ describe('CountBadgeTooltip contrast', () => {
     for (const line of secondaryLines) {
       assert.equal(line.className, 'text-[10px] text-muted-foreground');
     }
+  });
+
+  it('resolves semantic count lines through the active catalogue (#4918)', () => {
+    registerLocale('count-tooltip-test', {
+      'hierarchy.countBadge.objects': { one: 'PSEUDO one {formatted}', other: 'PSEUDO many {formatted}' },
+      'hierarchy.countBadge.spacesNotCounted': { one: 'PSEUDO space {formatted}', other: 'PSEUDO spaces {formatted}' },
+    });
+    setLocale('count-tooltip-test');
+    const container = render(<CountBadgeTooltip elementCount={5} summary={summary} />);
+    assert.match(container.textContent, /PSEUDO many 5/);
+    assert.match(container.textContent, /PSEUDO space 1/);
   });
 });

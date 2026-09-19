@@ -13,8 +13,8 @@ const MARKERS = {
 const MARKER_PATTERN = /(\uE000(?:groups|products|date)\uE001)/;
 
 interface ScheduleSummaryLineProps {
-  groups: number;
-  products: number;
+  groups: string;
+  products: string;
   date: string;
 }
 

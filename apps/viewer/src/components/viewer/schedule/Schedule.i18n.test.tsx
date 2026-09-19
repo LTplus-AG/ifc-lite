@@ -624,7 +624,7 @@ describe('GanttToolbar localization (#4918)', { skip: !HAS_CATALOGUE && 'schedul
 
 describe('ScheduleSummaryLine localization (#4918)', () => {
   it('preserves translator ordering while styling the three interpolated values', () => {
-    const container = render(<ScheduleSummaryLine groups={2} products={7} date="2030-01-02" />);
+    const container = render(<ScheduleSummaryLine groups="2" products="7" date="2030-01-02" />);
     const summary = container.querySelector('p');
     assert.ok(summary);
     assert.equal(summary.querySelectorAll('span.font-semibold').length, 2,

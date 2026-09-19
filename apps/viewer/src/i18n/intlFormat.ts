@@ -19,3 +19,11 @@ export function formatLocaleNumber(locale: string, value: number, options?: Intl
 export function formatLocaleList(locale: string, values: readonly string[]): string {
   return new Intl.ListFormat(supportedLocale(locale), { style: 'long', type: 'conjunction' }).format(values);
 }
+
+export function formatLocaleDate(
+  locale: string,
+  value: number | Date,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  return new Intl.DateTimeFormat(supportedLocale(locale), options).format(value);
+}

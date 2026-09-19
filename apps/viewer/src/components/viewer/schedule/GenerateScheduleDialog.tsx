@@ -41,7 +41,8 @@ import {
   type GenerateScheduleOptions,
   type GenerateOrder,
 } from './generate-schedule';
-import { formatDateTime, buildWorkPlanInfo, logGeneratedScheduleDebug } from './schedule-utils';
+import { buildWorkPlanInfo, logGeneratedScheduleDebug } from './schedule-utils';
+import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { HeightStrategyPanel } from './HeightStrategyPanel';
 import { GenerateAdvancedPanel } from './GenerateAdvancedPanel';
 import { ScheduleSummaryLine } from './ScheduleSummaryLine';
@@ -52,7 +53,7 @@ interface GenerateScheduleDialogProps {
 }
 
 export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleDialogProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { ifcDataStore, models, activeModelId } = useIfc();
   const commitGeneratedSchedule = useViewerStore(s => s.commitGeneratedSchedule);
   const setGanttPanelVisible = useViewerStore(s => s.setGanttPanelVisible);
@@ -326,9 +327,9 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                     <span className="text-xs text-muted-foreground">{t('schedule.generateDialog.generatedLocally')}</span>
                   </div>
                   <ScheduleSummaryLine
-                    groups={preview.groupCount}
-                    products={preview.productCount}
-                    date={formatDateTime(new Date(preview.finishDate).getTime())}
+                    groups={formatLocaleNumber(locale, preview.groupCount)}
+                    products={formatLocaleNumber(locale, preview.productCount)}
+                    date={formatLocaleDate(locale, new Date(preview.finishDate), { year: 'numeric', month: 'short', day: 'numeric' })}
                   />
                   {preview.groupCount > 0 && (
                     <p className="text-xs text-muted-foreground">

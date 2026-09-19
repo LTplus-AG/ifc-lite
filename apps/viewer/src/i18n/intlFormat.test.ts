@@ -15,8 +15,12 @@ test('formats schedule numbers and lists with the active locale', () => {
   );
 });
 
-test('falls back for synthetic test locale identifiers', () => {
-  assert.doesNotThrow(() => formatLocaleNumber('schedule-pseudo', 3.5));
-  assert.doesNotThrow(() => formatLocaleList('schedule-pseudo', ['A', 'B']));
-  assert.doesNotThrow(() => formatLocaleDate('schedule-pseudo', new Date(), { year: 'numeric' }));
+test('falls back to English for an invalid locale identifier', () => {
+  assert.throws(() => Intl.getCanonicalLocales('replaceable'), RangeError);
+  assert.equal(formatLocaleNumber('replaceable', 3.5, { minimumFractionDigits: 1 }), '3.5');
+  assert.equal(formatLocaleList('replaceable', ['A', 'B']), 'A and B');
+  assert.equal(
+    formatLocaleDate('replaceable', new Date(Date.UTC(2026, 8, 19)), { year: 'numeric', timeZone: 'UTC' }),
+    '2026',
+  );
 });

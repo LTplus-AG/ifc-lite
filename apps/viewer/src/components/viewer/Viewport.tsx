@@ -1230,8 +1230,7 @@ export function Viewport({
             calculateScale();
           }
         },
-        setSpaceOverlayMeshes: (meshes) => {
-          // Space Sketch draft ghosts, via `runGpuUpload` (#4885); loss checked FIRST, or a stale overlay is removed for a no-op append.
+        setSpaceOverlayMeshes: (meshes) => { // Space Sketch draft ghosts, via runGpuUpload (#4885); loss checked FIRST.
           const renderer = rendererRef.current;
           if (!renderer || renderer.isDeviceLost()) return;
           const scene = renderer.getScene(), device = renderer.getGPUDevice(), pipeline = renderer.getPipeline();
@@ -1242,8 +1241,9 @@ export function Viewport({
               spaceOverlayIdsRef.current = new Set();
             }
             if (meshes.length > 0) {
-              scene.appendToBatches(meshes, device, pipeline, false);
-              spaceOverlayIdsRef.current = new Set(meshes.map((m) => m.expressId));
+              const ids = new Set(meshes.map((m) => m.expressId)); // rolled back below on a GPU failure, or they orphan as ghosts (review)
+              try { scene.appendToBatches(meshes, device, pipeline, false); spaceOverlayIdsRef.current = ids; }
+              catch (err) { scene.removeMeshesForEntities(removableOverlayIds(ids)); throw err; }
             }
             if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
           }, { isDeviceLost: () => renderer.isDeviceLost() });

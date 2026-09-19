@@ -36,15 +36,14 @@
 
 import {
   extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   extractTypePropertiesOnDemand,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
-  extractAllEntityAttributes,
   mergeInheritedPropertySets,
   type IfcDataStore,
   type ClassificationInfo,
 } from '@ifc-lite/parser';
+import { ownPropertySetsFor, quantitySetsFor, attributesFor } from './filter-evaluate-mutations.js';
 
 import { RelationshipType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -215,13 +214,7 @@ export interface EvaluatorModel {
   id: string;
   filterIdentity?: string;
   tagIds?: ReadonlySet<string>;
-  store: IfcDataStore | null;
-  /** Live property/quantity/attribute edits for this model (#4946 review
-   *  finding), folded into `evaluateOneEntity`'s reads when present so a
-   *  rule matches the EDITED value. A snapshot as of the call, same as
-   *  `tagIds` — a mutation committed while a run is in flight does not
-   *  change what that run matches. */
-  mutationView?: MutablePropertyView;
+  store: IfcDataStore | null; mutationView?: MutablePropertyView; // #4946
 }
 
 export async function evaluateFilterRulesFederated(
@@ -244,8 +237,7 @@ export async function evaluateFilterRulesFederated(
   interface Plan {
     modelId: string;
     scope: ModelScope;
-    store: IfcDataStore;
-    mutationView: MutablePropertyView | undefined;
+    store: IfcDataStore; mutationView: MutablePropertyView | undefined; // #4946
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
   }
@@ -269,8 +261,7 @@ export async function evaluateFilterRulesFederated(
     plans.push({
       modelId: m.id,
       scope,
-      store: m.store,
-      mutationView: m.mutationView,
+      store: m.store, mutationView: m.mutationView,
       iter: arr ?? source,
       total: arr ? arr.length : -1,
     });
@@ -286,8 +277,7 @@ export async function evaluateFilterRulesFederated(
     const ctx: EvalContext = {
       store: plan.store,
       modelId: plan.modelId,
-      scope: plan.scope,
-      mutationView: plan.mutationView,
+      scope: plan.scope, mutationView: plan.mutationView,
       table: plan.store.entities,
       options,
       hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -354,11 +344,7 @@ interface EvalContext {
   /** Scopes a `StoreyRule.refs` exact match to this store's own model. */
   modelId: string;
   /** What the model-scoped rules (`model`, `modelTag`) read. */
-  scope: ModelScope;
-  /** Live edits for this model (#4946 review finding); `undefined` for the
-   *  sync entry (`evaluateFilterRules`, tests) and for a federated caller
-   *  that has no mutation slice (the SDK's headless adapter). */
-  mutationView?: MutablePropertyView;
+  scope: ModelScope; mutationView?: MutablePropertyView; // #4946
   table: IfcDataStore['entities'];
   options: EvaluateOptions;
   hasPropertyRule: boolean;
@@ -392,13 +378,7 @@ function evaluateOneEntity(
   let attrCache: AttrRows | null = null;
   const psetsFor = (): PsetRows => {
     if (!psetCache) {
-      // A live edit wins over the on-disk value (#4946 review finding):
-      // `mutationView.getForEntity` returns the occurrence's property sets
-      // WITH mutations applied, the same call `element-field-reader.ts`'s
-      // `setsFor` makes for the Elements chart field. Type-level psets are
-      // still read from the base store only — a mutation on the TYPE
-      // object (rather than the occurrence) is not yet reflected here.
-      const ownSets = ctx.mutationView ? ctx.mutationView.getForEntity(expressId) : extractPropertiesOnDemand(ctx.store, expressId);
+      const ownSets = ownPropertySetsFor(ctx.store, expressId, ctx.mutationView); // #4946, mutation-aware
       const typeSets = getInheritedTypePsets(ctx, expressId);
       // IFC inheritance is per-PROPERTY, not per-set, and the occurrence's
       // own value wins on a name collision — same rule the IDS bridge
@@ -411,10 +391,7 @@ function evaluateOneEntity(
     return psetCache;
   };
   const qtysFor = (): QtyRows => {
-    if (!qtyCache) {
-      const sets = ctx.mutationView ? ctx.mutationView.getQuantitiesForEntity(expressId) : extractQuantitiesOnDemand(ctx.store, expressId);
-      qtyCache = flattenQtys(sets);
-    }
+    if (!qtyCache) qtyCache = flattenQtys(quantitySetsFor(ctx.store, expressId, ctx.mutationView));
     return qtyCache;
   };
   const matNamesFor = (): string[] => {
@@ -434,20 +411,7 @@ function evaluateOneEntity(
     return classCache;
   };
   const attrsFor = (): AttrRows => {
-    if (!attrCache) {
-      const base = extractAllEntityAttributes(ctx.store, expressId);
-      const edits = ctx.mutationView?.getAttributeMutationsForEntity(expressId);
-      if (edits && edits.length > 0) {
-        // Same merge `element-field-reader.ts`'s `attrsFor` does: an edited
-        // attribute overrides its base value by name, order otherwise kept.
-        const merged = new Map<string, AttrRows[number]>();
-        for (const a of base) merged.set(a.name, a);
-        for (const e of edits) merged.set(e.name, e);
-        attrCache = [...merged.values()];
-      } else {
-        attrCache = base;
-      }
-    }
+    if (!attrCache) attrCache = attributesFor(ctx.store, expressId, ctx.mutationView);
     return attrCache;
   };
 

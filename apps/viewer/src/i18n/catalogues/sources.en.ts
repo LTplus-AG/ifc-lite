@@ -121,15 +121,22 @@ export const sourcesEn = {
   'sources.sourcesPanel.failedToRegister': '{provider} failed to register: {reason}',
   'sources.sourcesPanel.noProviderMessage': 'No provider',
   'sources.sourcesPanel.connectionTestUnsupported': 'Provider does not support connection testing',
-  'sources.sourcesPanel.revisionChangedModels': {
-    one: '{count} loaded model has a newer revision',
-    other: '{count} loaded models have a newer revision',
+  'sources.sourcesPanel.revisionChangedOnly': {
+    one: '{count} loaded model has a newer revision — use Sync to update.',
+    other: '{count} loaded models have newer revisions — use Sync to update.',
   },
-  'sources.sourcesPanel.revisionDeletedFiles': {
-    one: '{count} source file is gone upstream',
-    other: '{count} source files are gone upstream',
+  'sources.sourcesPanel.revisionDeletedOnly': {
+    one: '{count} source file is gone upstream — use Sync to update.',
+    other: '{count} source files are gone upstream — use Sync to update.',
   },
-  'sources.sourcesPanel.revisionSyncPrompt': '{summary} — use Sync to update.',
+  'sources.sourcesPanel.revisionChangedOneDeletedOne':
+    '{changed} loaded model has a newer revision and {deleted} source file is gone upstream — use Sync to update.',
+  'sources.sourcesPanel.revisionChangedOneDeletedMany':
+    '{changed} loaded model has a newer revision and {deleted} source files are gone upstream — use Sync to update.',
+  'sources.sourcesPanel.revisionChangedManyDeletedOne':
+    '{changed} loaded models have newer revisions and {deleted} source file is gone upstream — use Sync to update.',
+  'sources.sourcesPanel.revisionChangedManyDeletedMany':
+    '{changed} loaded models have newer revisions and {deleted} source files are gone upstream — use Sync to update.',
   'sources.sourcesPanel.downloadFailedWithMessage': '{name}: {message}',
   'sources.sourcesPanel.downloadFailedGeneric': 'Failed to download {name} from {title}',
 } as const satisfies Record<string, TranslationValue>;

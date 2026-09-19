@@ -25,6 +25,29 @@ interface SourcesPanelProps {
   onClose: () => void;
 }
 
+type Translate = ReturnType<typeof useTranslation>['t'];
+
+/** Build one complete, locale-orderable source revision notice. */
+export function revisionSyncMessage(t: Translate, changed: number, deleted: number): string {
+  if (changed > 0 && deleted > 0) {
+    const key = changed === 1
+      ? deleted === 1
+        ? 'sources.sourcesPanel.revisionChangedOneDeletedOne'
+        : 'sources.sourcesPanel.revisionChangedOneDeletedMany'
+      : deleted === 1
+        ? 'sources.sourcesPanel.revisionChangedManyDeletedOne'
+        : 'sources.sourcesPanel.revisionChangedManyDeletedMany';
+    return t(key, { changed, deleted });
+  }
+  if (changed > 0) {
+    return t('sources.sourcesPanel.revisionChangedOnly', { count: changed });
+  }
+  if (deleted > 0) {
+    return t('sources.sourcesPanel.revisionDeletedOnly', { count: deleted });
+  }
+  return '';
+}
+
 export function RegistrationFailureMessage({ provider, reason }: { provider: string; reason: string }) {
   const { t } = useTranslation();
   const marker = '\uE000provider\uE001';
@@ -104,14 +127,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         if (controller.signal.aborted || updates.length === 0) return;
         const deleted = updates.filter((u) => u.event.deleted).length;
         const changed = updates.length - deleted;
-        const parts: string[] = [];
-        if (changed > 0) {
-          parts.push(t('sources.sourcesPanel.revisionChangedModels', { count: changed }));
-        }
-        if (deleted > 0) {
-          parts.push(t('sources.sourcesPanel.revisionDeletedFiles', { count: deleted }));
-        }
-        toast.info(t('sources.sourcesPanel.revisionSyncPrompt', { summary: parts.join('; ') }));
+        toast.info(revisionSyncMessage(t, changed, deleted));
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;

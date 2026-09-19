@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
 import assert from 'node:assert/strict';
-import { main, buildJudgePrompt } from './run-judge.mjs';
+import { main, buildJudgePrompt, judge } from './run-judge.mjs';
+import { resolveProviderFallbacks } from './provider-fallbacks.mjs';
 
 const RUBRIC = join(HERE, 'judge.md');
 
@@ -63,6 +64,37 @@ function run(doc, spawn) {
 const docOf = (n) => ({ verdict: 'findings', findings: Array.from({ length: n }, (_, i) => finding(i)) });
 
 // ============================================ 1. the failure direction that matters
+
+test('the judge forwards its provider chain to runReviewerWithFailover when Claude fails', () => {
+  const seen = [];
+  const tokens = [{ token: 'sk-ant-oat01-test', label: 'the primary credential' }];
+  const spawn = () => ({ status: 1, stdout: '', stderr: 'Usage limit reached' });
+  const result = judge({
+    judgeRubricPath: RUBRIC,
+    findings: [finding(0)],
+    tokens,
+    spawn,
+    providerFallback: [
+      { label: 'openrouter-fallback', run: (p) => { seen.push('openrouter-fallback'); return verdictsRunFromPrompt(p); } },
+    ],
+  });
+  assert.deepEqual(seen, ['openrouter-fallback']);
+  assert.equal(result.ran, true);
+});
+
+/** The judge's real verdict wire format, used only by the provider-chain test above. */
+function verdictsRunFromPrompt() {
+  return JSON.stringify({ end: 'ifc-lite-judge-v1', verdicts: [{ index: 0, keep: true, file: 'packages/a/f0.ts', line: 10 }] });
+}
+
+test('resolveProviderFallbacks builds the judge-specific env-var names and default model chain', () => {
+  const providers = resolveProviderFallbacks(
+    { OPENROUTER_API_KEY: 'k' },
+    { openRouterModelsEnvVar: 'OPENROUTER_JUDGE_MODELS', openRouterModelEnvVar: 'OPENROUTER_JUDGE_MODEL', openRouterDefaultModels: ['anthropic/claude-haiku-4.5'] },
+  );
+  assert.equal(providers.length, 1);
+  assert.equal(providers[0].label, 'openrouter-fallback');
+});
 
 test('a judge that CANNOT RUN keeps every finding, and says it did not run', () => {
   // The whole contract. An outage must not be able to delete a validated finding,

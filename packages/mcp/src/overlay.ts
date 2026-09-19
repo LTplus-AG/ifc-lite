@@ -39,7 +39,6 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { LoadedModel } from './context.js';
-import type { QueuedRelation } from './overlay-relationships.js';
 /** An entity that exists only in the overlay (`entity_create`). */
 export interface CreatedEntity {
   expressId: number;
@@ -102,10 +101,6 @@ export interface PendingOverlay {
   propertySets(expressId: number): PropertySet[];
   /** Base quantity sets with the overlay's edits applied. */
   quantitySets(expressId: number): QuantitySet[];
-  /** Queued relationships of one IFC class, e.g.
-   *  `'IfcRelContainedInSpatialStructure'`. Empty for a session that created
-   *  none, which is the common case. */
-  queuedRelations(ifcRelType: string): readonly QueuedRelation[];
   relationshipEdges(expressId: number, ifcRelType?: string): ReturnType<typeof effectiveRelationshipEdges>;
   readonly supersededRelationshipIds: ReadonlySet<number>;
 }
@@ -155,9 +150,6 @@ class ViewOverlay implements PendingOverlay {
   private all: readonly CreatedEntity[] | null = null;
   private identified: readonly CreatedEntity[] | null = null;
   private count: number | null = null;
-  /** Built on first use and never for a session that asks no relationship
-   *  question, which is most of them. */
-  private relationsByType: Map<string, QueuedRelation[]> | null = null;
   private effectiveRelations: EffectiveRelationshipOverlay | null = null;
 
   constructor(view: MutablePropertyView, store: IfcDataStore) {
@@ -227,19 +219,6 @@ class ViewOverlay implements PendingOverlay {
 
   attributesByEntity(): ReadonlyMap<number, AttributeOverrides> {
     return this.view.getAttributeMutationsByEntity();
-  }
-
-  queuedRelations(ifcRelType: string): readonly QueuedRelation[] {
-    if (!this.relationsByType) {
-      this.relationsByType = new Map();
-      for (const relation of this.relationshipOverlay.relationships) {
-        const key = relation.relationshipType.toUpperCase();
-        const list = this.relationsByType.get(key);
-        if (list) list.push(relation);
-        else this.relationsByType.set(key, [relation]);
-      }
-    }
-    return this.relationsByType.get(ifcRelType.toUpperCase()) ?? [];
   }
 
   private get relationshipOverlay(): EffectiveRelationshipOverlay {
@@ -349,9 +328,8 @@ export function pendingMutationsField(...overlays: Array<PendingOverlay | null>)
  * GlobalId was `Width` — which then joined the cross-model identity list, so
  * `get_entity(global_id: 'Width')` resolved to a property value, `model_diff`
  * reported `Width` as an added entity, and `get_entities_bulk` could call it an
- * ambiguous GlobalId. This is the same hazard `indexQueuedRelations` avoids by
- * resolving relationship ends by attribute name, and the same one the columnar
- * parser hits when it keys an `IfcMaterial` on the Name in slot 0.
+ * ambiguous GlobalId. The columnar parser hits the same hazard when it keys an
+ * `IfcMaterial` on the Name in slot 0.
  *
  * So the header is read only when the class actually derives from `IfcRoot`,
  * cross-schema (#2003) so an IFC2X3- or IFC4X3-only root is not judged by the

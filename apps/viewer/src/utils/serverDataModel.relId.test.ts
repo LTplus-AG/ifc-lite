@@ -127,6 +127,18 @@ describe('server-loaded relationship ids', () => {
     assert.equal(relationships.forward.getEdges(1)[0].type, RelationshipType.Aggregates);
   });
 
+  it('keeps exact alias buckets alongside the compatibility buckets (#4205)', () => {
+    const { relationships } = store([
+      { rel_type: 'IFCRELNESTS', relating_id: 1, related_id: 2, rel_id: 910 },
+      { rel_type: 'IFCRELASSIGNSTOGROUPBYFACTOR', relating_id: 2, related_id: 4, rel_id: 911 },
+    ]);
+
+    assert.deepEqual(relationships.getRelated(1, RelationshipType.Aggregates, 'forward'), [2]);
+    assert.deepEqual(relationships.getRelated(1, RelationshipType.Nests, 'forward'), [2]);
+    assert.deepEqual(relationships.getRelated(2, RelationshipType.AssignsToGroup, 'forward'), [4]);
+    assert.deepEqual(relationships.getRelated(2, RelationshipType.AssignsToGroupByFactor, 'forward'), [4]);
+  });
+
   it('falls back to 0 when the server sends no rel_id (older payload), and says so once', () => {
     // An older server omits the column, so `rel_id` is absent. The edge must
     // still be built; it just has no id to name. Absence has to LOOK different

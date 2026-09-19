@@ -54,7 +54,7 @@ describe('RelationshipsCard exact relationship edges (#4205)', () => {
     assert.equal(selected, 42);
   });
 
-  it('does not duplicate an exact edge already represented by a purpose-built section', () => {
+  it('keeps record identity even when a purpose-built section also represents the endpoint', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -75,7 +75,7 @@ describe('RelationshipsCard exact relationship edges (#4205)', () => {
     });
 
     assert.ok(host.textContent?.includes('Openings (1)'));
-    assert.equal(host.querySelector('[title="#91 IfcRelVoidsElement"]'), null);
-    assert.equal(host.textContent?.includes('IfcRelVoidsElement'), false);
+    assert.ok(host.querySelector('[title="#91 IfcRelVoidsElement"]'));
+    assert.ok(host.textContent?.includes('IfcRelVoidsElement'));
   });
 });

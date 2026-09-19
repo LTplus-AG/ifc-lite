@@ -4,6 +4,7 @@
 
 import { relationshipTypeName, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
+import { normalizeIfcTypeName } from './ifc-schema.js';
 
 /** One exact-class edge touching an entity (#4205). */
 export interface ExactRelationshipEdge {
@@ -35,7 +36,9 @@ export function extractExactRelationshipEdges(
     const seen = new Set<string>();
     const entityInfo = (id: number): ExactRelationshipEdge['entity'] => {
         const ref = store.entityIndex.byId.get(id);
-        const type = resolvedTypeName(store.entities, id) ?? ref?.type ?? 'Unknown';
+        const type = resolvedTypeName(store.entities, id)
+            ?? (ref ? normalizeIfcTypeName(ref.type) : undefined)
+            ?? 'Unknown';
         const name = store.entities.getName(id);
         return { id, name: name || undefined, type };
     };

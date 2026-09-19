@@ -1104,7 +1104,7 @@ function CatalogToolDetail({
         </div>
         {params.length === 0 ? (
           <p className="text-[12.5px]" style={{ color: PAPER_DIM }}>
-            {t('mcp.mcpLanding.noParameters')} <code style={{ ...mono }}>{`{}`}</code>.
+            {t('mcp.mcpLanding.noParameters', { token: '{}' })}
           </p>
         ) : (
           <div className="overflow-x-auto">

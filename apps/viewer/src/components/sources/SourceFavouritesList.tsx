@@ -82,13 +82,14 @@ export function SourceFavouritesList({
   onOpen,
   onChanged,
 }: SourceFavouritesListProps) {
-  const { t, locale } = useTranslation();
+  const { t, revision: localeRevision } = useTranslation();
   const rows = useMemo<FavouriteRow[]>(() => {
     // The counter is not read directly — it exists to re-derive this list after
-    // a star press elsewhere in the panel. `locale` is read the same way, to
-    // re-derive `disabledReason` after a locale switch.
+    // a star press elsewhere in the panel. `localeRevision` is read the same
+    // way, to re-derive `disabledReason` after either a locale switch or an
+    // in-place replacement of the active catalogue.
     void favouritesVersion;
-    void locale;
+    void localeRevision;
 
     const all: FavouriteRow[] = [];
     for (const providerId of listFavouriteProviderIds()) {
@@ -118,7 +119,7 @@ export function SourceFavouritesList({
       }
     }
     return all.sort((left, right) => right.favourite.addedAt - left.favourite.addedAt);
-  }, [favouritesVersion, liveIdentities, locale, sourceHost, t]);
+  }, [favouritesVersion, liveIdentities, localeRevision, sourceHost, t]);
 
   if (rows.length === 0) return null;
 

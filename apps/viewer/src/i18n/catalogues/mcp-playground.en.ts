@@ -47,9 +47,8 @@ export const mcpPlaygroundEn = {
   'mcp.mcpPlayground.removeTitle': 'Remove from list',
   'mcp.mcpPlayground.download': 'download',
   'mcp.mcpPlayground.viewer3d': '3D viewer',
-  'mcp.mcpPlayground.statusOn': 'on',
-  'mcp.mcpPlayground.statusOff': 'off',
-  'mcp.mcpPlayground.viewerStatusSuffix': '· inline · agent-driven',
+  'mcp.mcpPlayground.viewerStatusOn': 'on · inline · agent-driven',
+  'mcp.mcpPlayground.viewerStatusOff': 'off · inline · agent-driven',
   'mcp.mcpPlayground.loadModelFirst': 'load a model first',
 
   // ── PlaygroundChat: composer + header ──

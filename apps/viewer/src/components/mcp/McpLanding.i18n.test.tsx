@@ -143,4 +143,19 @@ describe('McpLanding localization (#4918)', () => {
       );
     }
   });
+
+  it('keeps the zero-parameter sentence reorderable as one translation (#5000 review)', () => {
+    registerLocale('mcp-landing-reordered-token', {
+      'mcp.mcpLanding.noParameters': '{token} ONLY — no arguments',
+    });
+    act(() => setLocale('mcp-landing-reordered-token'));
+    const container = render(<McpLanding />);
+    const viewerClose = container.querySelector('#viewer_close > button');
+    assert.ok(viewerClose, 'the zero-parameter viewer_close catalogue row must render');
+    click(viewerClose);
+    const sentence = [...container.querySelectorAll('p')].find((paragraph) =>
+      paragraph.textContent?.includes('no arguments'),
+    );
+    assert.equal(sentence?.textContent?.trim(), '{} ONLY — no arguments');
+  });
 });

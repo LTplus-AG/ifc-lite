@@ -20,6 +20,7 @@ const REFERENCE_SCALAR_ATTRIBUTES = new Set([
   'AppliedValue', 'ComponentOfTotal', 'DataValue', 'Dimensions', 'RelatingAppliedValue',
   'RelatingConstraint', 'Unit', 'UnitBasis', 'UnitComponent', 'RelatingActor', 'RelatingControl',
   'RelatingContext', 'RelatingGroup', 'RelatingObject', 'RelatingProcess', 'RelatingProduct', 'RelatingResource',
+  'ConversionFactor',
 ]);
 // Only these root-level slots introduce a GUID-less portable subgraph. Once
 // inside that graph we inspect every reference-shaped value, so the closure is

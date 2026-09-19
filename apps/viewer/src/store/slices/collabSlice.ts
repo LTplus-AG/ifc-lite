@@ -53,7 +53,7 @@ import {
   mirrorPropertyDelete,
   type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
-import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
+import { pathForEntity, pathForGuid, registerEntityPath, unregisterEntityPath } from '@/lib/collab/entity-paths';
 import { createRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -902,8 +902,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
-      // A peer deleted an entity: hide its mesh (matches the owner's local
-      // removeEntity, which hides rather than destroying GPU buffers).
+      // A peer deleted an entity: tombstone it and hide its renderer mesh.
       //
       // Unlike the four handlers above, this one does not go through
       // `roomMutationViewFor`'s own null check, so it needs its own: in the
@@ -914,10 +913,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       // (non-null only once the model exists) makes this drop the event
       // exactly like its siblings until then.
       onEntityDelete: (modelId, entityId) => {
-        if (!roomStoreFor(get(), modelId)) return;
+        const store = roomStoreFor(get(), modelId);
+        if (!store) return;
+        roomMutationViewFor(get(), modelId)?.deleteEntity(entityId);
+        unregisterEntityPath(store, entityId);
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-        get().hideEntities([globalId]);
-        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        get().hideEntities([globalId]); set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
     });
 

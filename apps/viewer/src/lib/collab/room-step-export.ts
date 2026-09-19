@@ -13,6 +13,7 @@ import '@/lib/placement-edit.boot';
 import {
   isPortableReferenceList, isPortableReferenceScalar, localReferenceId, portableEntityKey,
 } from './portable-reference-entities';
+import { pathForEntity } from './entity-paths';
 
 export interface RoomStepExportSource {
   dataStore: IfcDataStore;
@@ -70,8 +71,7 @@ function structuredSourceReference(
   const local = sourceReference(value, sourceIdByRoomId);
   if (local) return local;
   if (typeof value !== 'string' || !value.startsWith('/')) return null;
-  const key = value.slice(value.lastIndexOf('/') + 1);
-  const sourceId = sourceIdByPortableKey.get(key);
+  const sourceId = sourceIdByPortableKey.get(value);
   if (sourceId === undefined) throw new Error(`Room path ${value} is outside the portable IFC source.`);
   return `#${sourceId}`;
 }
@@ -272,7 +272,8 @@ export function roomStepExportSource(
   for (const [sourceId, roomId] of portable.ownerIds) {
     sourceIdByRoomId.set(roomId, sourceId);
     const key = portableEntityKey(portable.dataStore, sourceId);
-    if (key) sourceIdByPortableKey.set(key, sourceId);
+    const path = pathForEntity(roomStore, roomId);
+    if (key && path) sourceIdByPortableKey.set(path, sourceId);
   }
   const toSourceIds = (ids: ReadonlySet<number> | null | undefined): Set<number> | null | undefined => {
     if (ids === null || ids === undefined) return ids;

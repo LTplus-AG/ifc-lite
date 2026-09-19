@@ -18,6 +18,7 @@
  */
 
 import type { Mutation, NewEntity } from '@ifc-lite/mutations';
+import type { MeshData } from '@ifc-lite/geometry';
 import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import { normalizeMutationModelId } from '../../sdk/adapters/mutation-view.js';
@@ -34,12 +35,13 @@ export function mirrorCreateEntityRedo(
   state: ViewerState,
   modelId: string,
   entity: NewEntity,
+  mesh: MeshData | null = null,
 ): void {
   const names = getAttributeNamesAcrossSchemas(entity.type);
   const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
     ? entity.attributes[0]
     : costEntityRoomKeys.get(entity) ?? null;
-  state.mirrorEntityCreate(modelId, entity.expressId, entity.type, guid, null);
+  state.mirrorEntityCreate(modelId, entity.expressId, entity.type, guid, mesh);
   entity.attributes.forEach((value, index) => {
     const name = names[index];
     if (name) state.mirrorAttributeEdit(modelId, entity.expressId, name, value);

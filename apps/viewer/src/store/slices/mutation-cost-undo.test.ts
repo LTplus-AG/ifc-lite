@@ -16,6 +16,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { NewEntity } from '@ifc-lite/mutations';
+import type { MeshData } from '@ifc-lite/geometry';
 import {
   pushCreateEntityUndo,
   markCostRelationshipMutation,
@@ -95,5 +96,16 @@ describe('cost entity collaboration redo identity', () => {
       mirrorAttributeEdit: () => {},
     } as unknown as import('../index.js').ViewerState, 'm1', entity);
     assert.equal(creates[0]?.[3], 'ifc-lite-cost-stable-key');
+  });
+
+  it('passes the stashed mesh when recreating a geometric overlay for peers', () => {
+    const entity = { expressId: 42, type: 'IFCWALL', attributes: ['wall-guid'] } as NewEntity;
+    const mesh = { expressId: 42 } as MeshData;
+    const creates: unknown[][] = [];
+    mirrorCreateEntityRedo({
+      mirrorEntityCreate: (...args: unknown[]) => { creates.push(args); },
+      mirrorAttributeEdit: () => {},
+    } as unknown as import('../index.js').ViewerState, 'm1', entity, mesh);
+    assert.equal(creates[0]?.[4], mesh);
   });
 });

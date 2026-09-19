@@ -261,6 +261,32 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     assert.deepEqual(getAttribute(doc, '/item', 'CostValues'), ['/value-a', '/value-b']);
   });
 
+  it('seeds a newly referenced GUID-less source closure before publishing it (#4857 review)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/item', { ifcClass: 'IfcCostItem' });
+    const store = fakeStore(new Map([[1, '/item']]));
+    Object.assign(store, {
+      schemaVersion: 'IFC4',
+      entities: {
+        getExpressIdByGlobalId: () => -1,
+        getGlobalId: () => undefined,
+        getTypeName: (id: number) => id === 2 ? 'IfcQuantityLength' : 'IfcSIUnit',
+      },
+      getEntity: (id: number) => id === 2
+        ? { expressId: 2, type: 'IFCQUANTITYLENGTH', attributes: ['Length', null, '#3', 4] }
+        : id === 3
+          ? { expressId: 3, type: 'IFCSIUNIT', attributes: [null, '.LENGTHUNIT.', null, '.METRE.'] }
+          : null,
+    });
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'CostQuantities', ['#2']);
+
+    assert.ok(hasEntity(doc, '/ifc-lite-ref-2'));
+    assert.ok(hasEntity(doc, '/ifc-lite-ref-3'));
+    assert.equal(getAttribute(doc, '/ifc-lite-ref-2', 'bsi::ifc::prop::Unit'), '/ifc-lite-ref-3');
+    assert.deepEqual(getAttribute(doc, '/item', 'CostQuantities'), ['/ifc-lite-ref-2']);
+  });
+
   it('mirrors scalar cost references as peer-resolvable room paths (#4857)', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/value', { ifcClass: 'IfcCostValue' });

@@ -32,6 +32,7 @@ import {
   referenceListToPaths,
   referenceScalarToPath,
 } from './attribute-reference-lists';
+import { seedReferencedSourceEntities } from './portable-reference-seed';
 export { applyRemoteAttribute } from './remote-attribute';
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
@@ -135,6 +136,7 @@ export function mirrorAttribute(
 ): void {
   const path = pathForEntity(store, entityId);
   if (!path || !api.hasEntity(session.doc, path)) return;
+  seedReferencedSourceEntities(api, session, store, attrName, value);
   const referencePaths = referenceListToPaths(store, attrName, value);
   const referencePath = referenceScalarToPath(store, attrName, value);
   const wireValue = referencePaths !== undefined

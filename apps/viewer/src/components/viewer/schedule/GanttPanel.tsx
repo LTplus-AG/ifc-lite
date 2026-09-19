@@ -18,6 +18,7 @@ import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import { GanttToolbar } from './GanttToolbar';
 import { GanttTaskTree } from './GanttTaskTree';
 import { GanttTimeline } from './GanttTimeline';
@@ -37,6 +38,7 @@ interface GanttPanelProps {
 const LEFT_PANE_WIDTH = 320;
 
 export function GanttPanel({ onClose }: GanttPanelProps) {
+  const { t } = useTranslation();
   const { ifcDataStore, models, loading, activeModelId } = useIfc();
 
   // Resolve the active model once; shared by extraction + canGenerate.
@@ -282,13 +284,13 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
           className="px-3 py-2 bg-destructive/5 border-b flex items-center gap-2 text-xs"
         >
           <span className="text-muted-foreground">
-            Importing &quot;{pendingImport.fileName}&quot; will replace the current schedule and its undo history.
+            {t('schedule.panel.importReplaceWarning', { fileName: pendingImport.fileName })}
           </span>
           <Button variant="destructive" size="sm" onClick={confirmPendingImport} className="h-5 px-2 text-xs">
-            Replace
+            {t('schedule.panel.replace')}
           </Button>
           <Button variant="ghost" size="sm" onClick={cancelPendingImport} className="h-5 px-2 text-xs">
-            Cancel
+            {t('schedule.panel.cancel')}
           </Button>
         </div>
       )}

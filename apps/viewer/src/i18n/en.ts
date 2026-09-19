@@ -17,6 +17,7 @@ import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
+import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
@@ -37,6 +38,7 @@ export const en = {
   ...filterGroupsEn,
   ...chartsEn,
   ...listsEn,
+  ...scheduleEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,

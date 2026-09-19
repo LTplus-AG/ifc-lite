@@ -23,10 +23,11 @@ import type { StoreEditor, IfcAttributeValue } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
 import {
   requireAssignableIfcObjectDefinition, requireEntitySubtype, requireEntityType, requireEntityTypeOneOf,
+  requireMatchingCostSchema,
 } from './cost-reference-validation.js';
 import {
   ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
-  assertCostSchema, assertOneOf, requireCostSchema, requireRef, validateRefList, validateTypedValue,
+  assertCostSchema, assertOneOf, requireRef, validateRefList, validateTypedValue,
   type CostSchema, type CostTypedValueInput,
 } from '../cost-authoring-rules.js';
 import type {
@@ -67,7 +68,7 @@ function refListAttr(ids: number[] | undefined): IfcAttributeValue {
  * IFC2X3 (different layout, see `assertCostSchema`).
  */
 export function addCostScheduleToStore(editor: StoreEditor, anchor: CostAnchor, params: CostScheduleParams): number {
-  const schema = requireCostSchema(anchor.schema);
+  const schema = requireMatchingCostSchema(editor, anchor.schema);
   assertCostSchema(schema, 'addCostSchedule');
   if (typeof params.Name !== 'string' || params.Name.length === 0) {
     throw new Error('addCostSchedule: Name is required');
@@ -95,7 +96,7 @@ export function addCostScheduleToStore(editor: StoreEditor, anchor: CostAnchor, 
  * attach them after the fact instead.
  */
 export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, params: CostItemParams): number {
-  const schema = requireCostSchema(anchor.schema);
+  const schema = requireMatchingCostSchema(editor, anchor.schema);
   const costValues = params.CostValues === undefined ? undefined : [...new Set(params.CostValues)];
   const costQuantities = params.CostQuantities === undefined ? undefined : [...new Set(params.CostQuantities)];
   assertCostSchema(schema, 'addCostItem');
@@ -131,7 +132,7 @@ export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, para
  * at most one may be given (mirrors `emitCostValue`).
  */
 export function addCostValueToStore(editor: StoreEditor, anchor: CostAnchor, params: CostValueParams): number {
-  const schema = requireCostSchema(anchor.schema);
+  const schema = requireMatchingCostSchema(editor, anchor.schema);
   assertCostSchema(schema, 'addCostValue');
   if (params.AppliedValue !== undefined && params.AppliedValueRef !== undefined) {
     throw new Error('addCostValue: AppliedValue and AppliedValueRef are the two branches of one SELECT — give at most one');
@@ -171,7 +172,7 @@ export function addCostValueToStore(editor: StoreEditor, anchor: CostAnchor, par
  * [2] Unit, [3] `<Kind>Value`, [4] Formula.
  */
 export function addCostQuantityToStore(editor: StoreEditor, anchor: CostAnchor, params: CostQuantityParams): number {
-  const schema = requireCostSchema(anchor.schema);
+  const schema = requireMatchingCostSchema(editor, anchor.schema);
   assertCostSchema(schema, 'addCostQuantity');
   if (typeof params.Name !== 'string' || params.Name.length === 0) {
     throw new Error('addCostQuantity: Name is required');
@@ -243,7 +244,7 @@ export function nestCostItemsInStore(
   existingNestByChild: ReadonlyMap<number, readonly ExistingRelatedList[]>,
   existingTargetNest?: ExistingRelatedList,
 ): number {
-  const schema = requireCostSchema(anchor.schema);
+  const schema = requireMatchingCostSchema(editor, anchor.schema);
   assertCostSchema(schema, 'nestCostItems');
   validateRefList(childIds, 'childIds', 'nestCostItems');
   requireRef(parentId, 'parentId', 'nestCostItems');
@@ -307,7 +308,7 @@ function assignToControlInStore(
   controlType: string,
   relatedType?: string,
 ): number {
-  const schema = requireCostSchema(anchor.schema);
+  const schema = requireMatchingCostSchema(editor, anchor.schema);
   assertCostSchema(schema, context);
   validateRefList(relatedObjectIds, 'relatedObjectIds', context);
   requireRef(relatingControlId, 'relatingControlId', context);
@@ -380,7 +381,7 @@ export function attachCostValuesToItemInStore(
   itemId: number,
   valueIds: readonly number[],
 ): void {
-  assertCostSchema(requireCostSchema(anchor.schema), 'setCostItemValues');
+  assertCostSchema(requireMatchingCostSchema(editor, anchor.schema), 'setCostItemValues');
   requireEntityType(editor, itemId, 'IfcCostItem', 'itemId', 'setCostItemValues');
   for (const id of valueIds) {
     requireRef(id, 'CostValues', 'setCostItemValues');

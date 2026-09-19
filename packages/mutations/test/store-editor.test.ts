@@ -27,6 +27,14 @@ function makeStore(maxId: number, deferredIds?: number[]): MutationStoreShape {
 }
 
 describe('StoreEditor', () => {
+  it('exposes the loaded model schema without guessing one', () => {
+    const store = { ...makeStore(1), schemaVersion: 'IFC4X3' };
+    const editor = new StoreEditor(store, new MutablePropertyView(null, 'm1'));
+    expect(editor.getSchemaVersion()).toBe('IFC4X3');
+    expect(new StoreEditor(makeStore(1), new MutablePropertyView(null, 'm2')).getSchemaVersion())
+      .toBeUndefined();
+  });
+
   it('addEntity allocates an expressId above the existing watermark', () => {
     const store = makeStore(10);
     const view = new MutablePropertyView(null, 'm1');

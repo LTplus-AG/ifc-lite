@@ -53,8 +53,9 @@ async function parse(text: string): Promise<IfcDataStore> {
   );
 }
 
-async function editor(): Promise<{ store: IfcDataStore; editor: StoreEditor; view: MutablePropertyView }> {
-  const store = await parse(MINIMAL);
+async function editor(schema: CostAnchor['schema'] = 'IFC4'):
+Promise<{ store: IfcDataStore; editor: StoreEditor; view: MutablePropertyView }> {
+  const store = await parse(MINIMAL.replace("FILE_SCHEMA(('IFC4'))", `FILE_SCHEMA(('${schema}'))`));
   const view = new MutablePropertyView(null, 'm');
   return { store, editor: new StoreEditor(store, view), view };
 }
@@ -67,6 +68,15 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
     const missingSchema = { ownerHistoryId: null } as CostAnchor;
     expect(() => addCostScheduleToStore(ed, missingSchema, { Name: 'Unsafe' }))
       .toThrow(/CostAnchor\.schema is required/);
+  });
+
+  it('rejects an anchor schema that does not match the loaded model', async () => {
+    const { editor: ed } = await editor();
+    expect(() => addCostQuantityToStore(
+      ed, { ownerHistoryId: null, schema: 'IFC4X3' },
+      { Name: 'Count', Kind: 'IfcQuantityNumber', Value: 1 },
+    )).toThrow(/does not match the loaded model schema IFC4/);
+    expect(ed.getNewEntities()).toHaveLength(0);
   });
 
   it('emits the IFC4 attribute layout in order', async () => {
@@ -102,7 +112,7 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
   });
 
   it('refuses IFC2X3 by name', async () => {
-    const { editor: ed } = await editor();
+    const { editor: ed } = await editor('IFC2X3');
     expect(() => addCostScheduleToStore(ed, { ownerHistoryId: null, schema: 'IFC2X3' }, { Name: 'x' }))
       .toThrow(/IFC2X3/);
   });
@@ -121,7 +131,7 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
   it('resolves constructor references before writing them: addCostItem.CostValues/CostQuantities, addCostValue.AppliedValueRef/UnitBasis/Components, addCostQuantity.Unit', async () => {
     const { editor: ed } = await editor();
     expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [100] }))
-      .toThrow(/CostValues #100 must be an IfcCostValue, got IFCWALL/);
+      .toThrow(/CostValues #100 must be an IfcCostValue, got IfcWall/);
     const applied = ed.addEntity('IfcAppliedValue', [null, null, null, null, null, null, null, null, null, null]).expressId;
     expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [applied] }))
       .toThrow(/must be an IfcCostValue, got IfcAppliedValue/);
@@ -130,13 +140,13 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
     expect(() => addCostValueToStore(ed, ANCHOR, { AppliedValueRef: 100 }))
       .toThrow(/AppliedValueRef #100 must be one of/);
     expect(() => addCostValueToStore(ed, ANCHOR, { UnitBasis: 100 }))
-      .toThrow(/UnitBasis #100 must be an IfcMeasureWithUnit, got IFCWALL/);
+      .toThrow(/UnitBasis #100 must be an IfcMeasureWithUnit, got IfcWall/);
     expect(() => addCostValueToStore(ed, ANCHOR, { Components: [100] }))
       .toThrow(/Components #100 must be one of/);
     expect(() => addCostQuantityToStore(ed, ANCHOR, { Kind: 'IfcQuantityLength', Name: 'Q', Value: 1, Unit: 99999 }))
       .toThrow(/Unit #99999 does not exist/);
     expect(() => addCostQuantityToStore(ed, ANCHOR, { Kind: 'IfcQuantityLength', Name: 'Q', Value: 1, Unit: 100 }))
-      .toThrow(/Unit #100 must be an IfcNamedUnit, got IFCWALL/);
+      .toThrow(/Unit #100 must be an IfcNamedUnit, got IfcWall/);
   });
 
   it('accepts IfcPhysicalComplexQuantity in CostQuantities', async () => {
@@ -161,7 +171,7 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
 
 describe('addCostQuantityToStore', () => {
   it('IFC4X3 IfcQuantityCount serializes as an INTEGER literal, not a REAL one', async () => {
-    const { editor: ed } = await editor();
+    const { editor: ed } = await editor('IFC4X3');
     const id = addCostQuantityToStore(ed, { ownerHistoryId: null, schema: 'IFC4X3' }, { Kind: 'IfcQuantityCount', Name: 'N', Value: 5 });
     // The `{ real }` overlay marker always forces a trailing decimal point
     // (`5.`), which is what IFC4X3's INTEGER-typed IfcCountMeasure must NOT
@@ -302,9 +312,9 @@ describe('nestCostItemsInStore', () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     expect(() => nestCostItemsInStore(ed, ANCHOR, 100, [item], new Map()))
-      .toThrow(/parentId #100 must be an IfcCostItem, got IFCWALL/);
+      .toThrow(/parentId #100 must be an IfcCostItem, got IfcWall/);
     expect(() => nestCostItemsInStore(ed, ANCHOR, item, [100], new Map()))
-      .toThrow(/childId #100 must be an IfcCostItem, got IFCWALL/);
+      .toThrow(/childId #100 must be an IfcCostItem, got IfcWall/);
   });
 
   it('de-duplicates childIds when creating a fresh IfcRelNests', async () => {
@@ -375,7 +385,7 @@ describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', ()
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     expect(() => assignCostItemsToScheduleInStore(ed, ANCHOR, 100, [item]))
-      .toThrow(/relatingControlId #100 must be an IfcCostSchedule, got IFCWALL/);
+      .toThrow(/relatingControlId #100 must be an IfcCostSchedule, got IfcWall/);
     expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [99999]))
       .toThrow(/relatedObjectIds #99999 does not exist/);
   });
@@ -403,8 +413,8 @@ describe('attachCostValuesToItemInStore', () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     const value = addCostValueToStore(ed, ANCHOR, { Name: 'V' });
-    expect(() => attachCostValuesToItemInStore(ed, ANCHOR, 100, [value])).toThrow(/itemId #100 must be an IfcCostItem, got IFCWALL/);
-    expect(() => attachCostValuesToItemInStore(ed, ANCHOR, item, [100])).toThrow(/CostValues #100 must be an IfcCostValue, got IFCWALL/);
+    expect(() => attachCostValuesToItemInStore(ed, ANCHOR, 100, [value])).toThrow(/itemId #100 must be an IfcCostItem, got IfcWall/);
+    expect(() => attachCostValuesToItemInStore(ed, ANCHOR, item, [100])).toThrow(/CostValues #100 must be an IfcCostValue, got IfcWall/);
   });
 
   // #4985 review: setCostItemValues([v, v]) must not write a duplicate
@@ -419,7 +429,7 @@ describe('attachCostValuesToItemInStore', () => {
   });
 
   it('refuses IFC2X3 before writing its incompatible slot layout', async () => {
-    const { editor: ed } = await editor();
+    const { editor: ed } = await editor('IFC2X3');
     expect(() => attachCostValuesToItemInStore(
       ed, { ownerHistoryId: null, schema: 'IFC2X3' }, 41, [],
     )).toThrow(/not supported for IFC2X3/);
@@ -439,7 +449,7 @@ describe('removeCostEntityInStore', () => {
   it('refuses to remove an unrelated model entity through the public builder', async () => {
     const { editor: ed } = await editor();
     expect(() => removeCostEntityInStore(ed, ANCHOR, 100, {}))
-      .toThrow(/expressId #100 must be one of .* got IFCWALL/);
+      .toThrow(/expressId #100 must be one of .* got IfcWall/);
     expect(ed.hasEntity(100)).toBe(true);
   });
 
@@ -460,6 +470,26 @@ describe('removeCostEntityInStore', () => {
       { detach: true },
     );
     expect(view.getPositionalMutationsForEntity(item)?.get(7)).toBeNull();
+    expect(ed.hasEntity(value)).toBe(false);
+  });
+
+  it('blocks optional scalar referrers by default and nulls them when detaching', async () => {
+    const { editor: ed, view } = await editor();
+    const value = addCostValueToStore(ed, ANCHOR, { Name: 'Original value' });
+    const asset = ed.addEntity('IfcAsset', [
+      'assetGuid000000000000000', null, 'Asset', null, null,
+      null, `#${value}`, null, null, null, null, null, null, null,
+    ]).expressId;
+    const referrers = { optionalScalarReferrers: [{ entityId: asset, attributeIndex: 6 }] };
+
+    expect(() => removeCostEntityInStore(ed, ANCHOR, value, referrers))
+      .toThrow(new RegExp(`entity #${asset} attribute 6`));
+    expect(ed.hasEntity(asset)).toBe(true);
+    expect(ed.hasEntity(value)).toBe(true);
+
+    removeCostEntityInStore(ed, ANCHOR, value, referrers, { detach: true });
+    expect(view.getPositionalMutationsForEntity(asset)?.get(6)).toBeNull();
+    expect(ed.hasEntity(asset)).toBe(true);
     expect(ed.hasEntity(value)).toBe(false);
   });
 
@@ -490,7 +520,7 @@ describe('removeCostEntityInStore', () => {
   });
 
   it('refuses IFC2X3', async () => {
-    const { editor: ed } = await editor();
+    const { editor: ed } = await editor('IFC2X3');
     expect(() => removeCostEntityInStore(ed, { ownerHistoryId: null, schema: 'IFC2X3' }, 1, {}))
       .toThrow(/IFC2X3/);
   });

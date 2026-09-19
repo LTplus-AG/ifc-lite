@@ -297,6 +297,11 @@ export class StoreEditor {
     return this.view.getNewEntities();
   }
 
+  /** The schema declared by the loaded model, if the store exposes it. */
+  getSchemaVersion(): string | undefined {
+    return this.store.schemaVersion;
+  }
+
   /**
    * The entity's CURRENT IFC class — canonical, from whichever layer is
    * authoritative: a pending retype, an overlay-created entity's authored

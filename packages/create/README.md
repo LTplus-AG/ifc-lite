@@ -33,7 +33,9 @@ const { content } = creator.toIfc(); // IFC STEP text
   `addCostQuantityToStore`) plus relationship helpers for nesting, schedule/object assignment, value lists,
   and safe removal. They require a `CostAnchor` for schema/owner-history/GUID allocation, accept existing
   relationship maps from the host, reject IFC2X3 authoring, and make destructive removal explicit with
-  `{ detach: true }` when surviving references must be rewritten.
+  `{ detach: true }` when surviving references must be rewritten. Removal referrer data distinguishes
+  required relationship endpoints (whose relationship is deleted) from optional scalar attributes
+  (which are rewritten to `$`), so detaching a cost value never deletes its surviving owner.
 - Space generation: `generateSpacesFromWalls` and `detectEnclosedAreas` derive IfcSpace footprints from wall layouts
 - Fully typed parameter objects for every element
 

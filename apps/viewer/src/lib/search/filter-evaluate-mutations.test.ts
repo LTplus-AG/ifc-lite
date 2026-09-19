@@ -152,4 +152,69 @@ describe('getInheritedTypePsets (via evaluateFilterRulesFederated): editing a pr
     const matches = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], rules, 'AND');
     assert.deepEqual(matches, [], 'the deleted type set is not reintroduced from the immutable base');
   });
+
+  // Review finding: `typePsetCache` is keyed by typeId alone, for the whole
+  // duration of one federated run. `mutationView` is a live, mutable object
+  // a caller (or, mid-scan, another entity's evaluation) can edit BETWEEN
+  // chunk yields; caching the mutation-APPLIED result would keep answering
+  // a type's PRE-edit psets for the rest of that run. Force two yield
+  // boundaries (chunkSize: 1) and mutate the type between them, in the
+  // SAME run, to prove the second occurrence sees the edit.
+  it('a type edit committed BETWEEN chunk yields, in the same federated run, is reflected for the next occurrence', async () => {
+    const bytes = new TextEncoder().encode(TYPE_FIXTURE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(store.properties, 'm1');
+    configureMutationView(view, store);
+    let mutated = false;
+    const matches = await evaluateFilterRulesFederated(
+      [{ id: 'm1', store, mutationView: view }],
+      [Rule.ifcType(['IfcWall']), Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')],
+      'AND',
+      {
+        chunkSize: 1,
+        onProgress: (scanned) => {
+          // Fires once per chunk boundary; mutate the type right after the
+          // FIRST wall (100) is scanned, before the SECOND (110) is.
+          if (scanned === 1 && !mutated) {
+            mutated = true;
+            view.setProperty(200, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
+          }
+        },
+      },
+    );
+    assert.deepEqual(matches.map((r) => r.expressId), [100], 'entity 110, scanned AFTER the mid-run edit, must not match the pre-edit value a stale typeId-only cache would have kept serving');
+  });
+});
+
+// Review finding: `name=` and `predefinedType=` read a dedicated fast-path
+// column (`ctx.table.getNameOrUndefined` / `resolveEntityPredefinedType`)
+// instead of `attributesFor`'s full merge, so the occurrence-level overlay
+// this PR added for generic `attribute` rules never reached them.
+describe('name= and predefinedType= rules read a live attribute edit (#4946 review)', () => {
+  it('Name edited on the occurrence changes what name= matches', async () => {
+    const bytes = new TextEncoder().encode(MINI_IFC);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer);
+    const view = new MutablePropertyView(store.properties, 'm1');
+    configureMutationView(view, store);
+
+    const before = await evaluateFilterRulesFederated([{ id: 'm1', store }], [Rule.name('eq', 'Wall A')], 'AND');
+    assert.deepEqual(before.map((r) => r.expressId), [41]);
+
+    view.setAttribute(41, 'Name', 'Wall Z');
+    const afterOld = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], [Rule.name('eq', 'Wall A')], 'AND');
+    assert.deepEqual(afterOld, [], 'no longer matches its old Name');
+    const afterNew = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], [Rule.name('eq', 'Wall Z')], 'AND');
+    assert.deepEqual(afterNew.map((r) => r.expressId), [41], 'matches the edited Name instead');
+  });
+
+  it('PredefinedType edited on the occurrence changes what predefinedType= matches', async () => {
+    const bytes = new TextEncoder().encode(MINI_IFC);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer);
+    const view = new MutablePropertyView(store.properties, 'm1');
+    configureMutationView(view, store);
+
+    view.setAttribute(41, 'PredefinedType', 'SOLIDWALL');
+    const matched = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], [Rule.predefinedType(['SOLIDWALL'])], 'AND');
+    assert.deepEqual(matched.map((r) => r.expressId), [41], 'the wall now matches its edited PredefinedType, live, no reload');
+  });
 });

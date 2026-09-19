@@ -92,3 +92,12 @@ export function attributesFor(store: IfcDataStore, expressId: number, mutationVi
   for (const e of edits) merged.set(e.name, e);
   return [...merged.values()];
 }
+
+/** An edited value for ONE root attribute (#4946 review), for the two rule
+ *  kinds that read a dedicated fast-path column instead of `attributesFor`'s
+ *  full merge: `name` (`ctx.table.getNameOrUndefined`) and `predefinedType`
+ *  (`resolveEntityPredefinedType`). `undefined` means "no edit" — the caller
+ *  falls through to its base read, same as an unedited `attributesFor` row. */
+export function mutatedAttributeValue(mutationView: MutablePropertyView | undefined, expressId: number, attrName: string): string | undefined {
+  return mutationView?.getAttributeMutationsForEntity(expressId).find((e) => e.name === attrName)?.value;
+}

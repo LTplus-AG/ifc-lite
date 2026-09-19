@@ -344,6 +344,12 @@ export function focusClashGroup(
     if (!guid) continue;
     occurrences.get(guid)?.add(toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId));
   }
+  for (const rendererIds of occurrences.values()) {
+    for (const rendererId of resolvePresentationIds(
+      presentationState.cameraCallbacks.resolveHighlightIds,
+      [...rendererIds],
+    )) rendererIds.add(rendererId);
+  }
   reconcileGuidOccurrenceColors(colorByGuid, occurrences, clashColors);
   const presentationClashColors = resolvePresentationColorMap(
     presentationState.cameraCallbacks.resolveHighlightIds,

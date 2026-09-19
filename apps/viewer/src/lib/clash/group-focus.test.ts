@@ -208,6 +208,35 @@ describe('manual clash group focus (#4921)', () => {
     assert.deepEqual(focused.bGuids, []);
   });
 
+  it('promotes a B aggregate GUID when its expanded part collides with expanded A', () => {
+    const entities = {
+      getGlobalId: (id: number) => id === 10 ? 'GUID-A' : id === 20 ? 'GUID-B' : null,
+      getExpressIdByGlobalId: (guid: string) => guid === 'GUID-A' ? 10 : guid === 'GUID-B' ? 20 : -1,
+    };
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, ifcDataStore: { entities } }],
+      ]) as unknown as ViewerState['models'],
+      cameraCallbacks: {
+        resolveHighlightIds: (ids) => ids.flatMap(id => id === 10 || id === 20 ? [30] : [id]),
+      },
+    });
+
+    const focused = focusClashGroup(
+      [clash('two-expanded-aggregates', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+
+    assert.ok(focused);
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [30, CLASH_COLOR_A], [10, CLASH_COLOR_A], [20, CLASH_COLOR_A],
+    ]));
+    assert.deepEqual(focused.aGuids, ['GUID-A', 'GUID-B']);
+    assert.deepEqual(focused.bGuids, []);
+  });
+
   it('reports when no objects resolve so callers cannot capture an unrelated selection', () => {
     useViewerStore.getState().setSelectedEntityIds([99]);
     const applyFocusMode = mock.fn();

@@ -25,14 +25,21 @@ The `FederationRegistry` (singleton in `@ifc-lite/renderer`) assigns each model 
 ┌─────────────────────────────────────────────────────────────┐
 │ Global ID Space                                             │
 │                                                             │
-│  Model A (offset=0)     Model B (offset=5000)    Model C   │
+│  Model A (offset=0)   Model B (offset=A.end+1+H) Model C  │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌────────────┐│
-│  │  IDs 1 - 5000    │  │  IDs 5001 - 8000 │  │ 8001-10000 ││
+│  │  IDs 1 - 5000    │  │  B.off+1 - +3000 │  │ B.end+H..  ││
 │  │  (maxExpressId:   │  │  (maxExpressId:  │  │            ││
 │  │   5000)           │  │   3000)          │  │            ││
 │  └──────────────────┘  └──────────────────┘  └────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
+
+The registry accepts the range `offset … offset + maxExpressId` (express id 0 is
+valid at the registry boundary, although normal STEP entities start at 1). The next offset is
+`offset + maxExpressId + 1 + OVERLAY_ID_HEADROOM` (H = 1,000,000): the headroom is
+reserved so ids the mutation overlay allocates into a loaded model after load
+(added walls, spaces, …) cannot collide with the next model's real entities while
+the overlay stays within that 1,000,000-ID reservation.
 
 ```typescript
 // Registration (maxExpressId = highest expressId in the model)
@@ -109,7 +116,7 @@ flowchart TD
     File2[IFC File 2] --> Parse2[Parse]
 
     Parse1 --> Register1[Register Model 1<br/>offset = 0]
-    Parse2 --> Register2[Register Model 2<br/>offset = maxId1]
+    Parse2 --> Register2[Register Model 2<br/>offset = maxId1 + 1 + headroom]
 
     Register1 --> Store[Zustand Store<br/>models Map]
     Register2 --> Store

@@ -132,7 +132,8 @@ property/pset/material/classification/schedule NAMES and VALUES, which are
 model content.
 
 The appearance-panel catalogue (#4918 slice 4, split across
-`appearance-panel.en.ts` and `appearance-workflows.en.ts` purely to stay
+`appearance-panel.en.ts`, `appearance-workflows.en.ts`, and
+`appearance-pickers.en.ts` purely to stay
 under the module-size budget — both share the same `appearance.*` key
 namespace) covers the rest of the Appearance panel: the panel-level view
 (source-action switch, status line, apply/discard footer), the source/
@@ -143,6 +144,15 @@ point capture previews and face-mask picker, and the scan capture/
 alignment/transfer workflows. It is a sibling to `appearance-assignment-
 list.en.ts` / `appearance-assignment-members.en.ts`, which cover
 `AppearanceAssignmentList`/`AppearanceAssignmentMembers` themselves.
+
+The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
+`GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
+`GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,
+`GanttWorkPlanSummary.tsx`, `GenerateAdvancedPanel.tsx`,
+`GanttDragTooltip.tsx`, `GanttPanel.tsx`, and `GanttTaskTree.tsx`
+(`schedule.en.ts`), a sibling to the narrower `gantt-work-calendar.en.ts`
+(#4830's single work-calendar toggle, prefix `gantt.workCalendar.*`) with
+no key overlap.
 
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for

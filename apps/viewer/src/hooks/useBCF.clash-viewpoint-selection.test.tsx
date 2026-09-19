@@ -462,4 +462,37 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
     assert.equal(viewpoints[0], null,
       'a snapshot painted from another model revision must not be paired with the old component GUIDs');
   });
+
+  it('reports visibility source models from the exact component snapshot (#4921)', async () => {
+    const sharedGuid = 'SHAREDREVISION000000001';
+    const model = (id: string) => ({
+      id, name: `${id}.ifc`, idOffset: 0, maxExpressId: CLASH_A_ID,
+      ifcDataStore: {
+        entities: { getGlobalId: (expressId: number) => expressId === CLASH_A_ID ? sharedGuid : undefined },
+      },
+      geometryResult: null, loadedAt: 0,
+    });
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([
+          ['old-revision', model('old-revision')],
+          ['visible-revision', model('visible-revision')],
+        ]) as unknown as ViewerState['models'],
+        ifcDataStore: null,
+        hiddenEntities: new Set([CLASH_A_ID]),
+        hiddenEntitiesByModel: new Map([['visible-revision', new Set([CLASH_A_ID])]]),
+      });
+    });
+    const capturedModelIds: string[][] = [];
+    const viewpoint = await api!.createViewpointFromState({
+      includeSnapshot: false,
+      includeSelection: false,
+      includeHidden: true,
+      onVisibilityModelIdsCaptured: (modelIds) => capturedModelIds.push([...modelIds]),
+    });
+
+    assert.deepEqual(viewpoint?.components?.visibility?.exceptions?.map((component) => component.ifcGuid), [sharedGuid]);
+    assert.deepEqual(new Set(capturedModelIds[0]), new Set(['old-revision', 'visible-revision']),
+      'the exact hidden-model source must survive ambiguous shared GlobalIds');
+  });
 });

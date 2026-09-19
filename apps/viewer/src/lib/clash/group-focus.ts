@@ -21,8 +21,15 @@ export interface FocusedClashGroup {
   aGuids: string[];
   bGuids: string[];
   modelIds: string[];
-  visibilityModelIds: string[];
-  modelRevisions: ReadonlyMap<string, object>;
+  sceneRevision: {
+    modelRevisions: ReadonlyMap<string, object>;
+    mutationVersion: number;
+    hiddenEntities: ReadonlySet<number>;
+    isolatedEntities: ReadonlySet<number> | null;
+    ghostExceptEntities: ReadonlySet<number> | null;
+    hiddenEntitiesByModel: ReadonlyMap<string, ReadonlySet<number>>;
+    isolatedEntitiesByModel: ReadonlyMap<string, ReadonlySet<number>>;
+  };
 }
 
 function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: Iterable<SelectionRef>): string[] {
@@ -34,25 +41,20 @@ function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: 
   return [...guids];
 }
 
-function visibilityModelIds(state: ReturnType<typeof useViewerStore.getState>): string[] {
-  const modelIds = new Set<string>();
-  const ids = state.isolatedEntities ?? state.hiddenEntities;
-  for (const globalId of ids) {
-    const ref = state.resolveGlobalIdFromModels(globalId)
-      ?? (state.models.size === 0 ? { modelId: 'legacy', expressId: globalId } : undefined);
-    if (ref && resolveEntityRefGlobalIdFromState(state, ref)) modelIds.add(ref.modelId);
+/** True while the models, authored IFC, and rendered visibility still match the focused frame. */
+export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boolean {
+  const state = useViewerStore.getState();
+  const revision = focused.sceneRevision;
+  if (state.models.size !== revision.modelRevisions.size) return false;
+  for (const [modelId, model] of revision.modelRevisions) {
+    if (state.models.get(modelId) !== model) return false;
   }
-  return [...modelIds];
-}
-
-/** True while every model visible when the group was focused is still the same loaded revision. */
-export function focusedModelRevisionsAreCurrent(focused: FocusedClashGroup): boolean {
-  const models = useViewerStore.getState().models;
-  if (models.size !== focused.modelRevisions.size) return false;
-  for (const [modelId, revision] of focused.modelRevisions) {
-    if (models.get(modelId) !== revision) return false;
-  }
-  return true;
+  return state.mutationVersion === revision.mutationVersion
+    && state.hiddenEntities === revision.hiddenEntities
+    && state.isolatedEntities === revision.isolatedEntities
+    && state.ghostExceptEntities === revision.ghostExceptEntities
+    && state.hiddenEntitiesByModel === revision.hiddenEntitiesByModel
+    && state.isolatedEntitiesByModel === revision.isolatedEntitiesByModel;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -102,7 +104,14 @@ export function focusClashGroup(
     aGuids: resolvedGuids(state, a),
     bGuids: resolvedGuids(state, b),
     modelIds: [...new Set(refs.map(ref => ref.modelId))],
-    visibilityModelIds: visibilityModelIds(focusedState),
-    modelRevisions: new Map(focusedState.models),
+    sceneRevision: {
+      modelRevisions: new Map(focusedState.models),
+      mutationVersion: focusedState.mutationVersion,
+      hiddenEntities: focusedState.hiddenEntities,
+      isolatedEntities: focusedState.isolatedEntities,
+      ghostExceptEntities: focusedState.ghostExceptEntities,
+      hiddenEntitiesByModel: focusedState.hiddenEntitiesByModel,
+      isolatedEntitiesByModel: focusedState.isolatedEntitiesByModel,
+    },
   };
 }

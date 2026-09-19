@@ -35,6 +35,7 @@ import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationId
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 import { toast } from '@/components/ui/toast';
 import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-capture';
+import { visibilityModelIdsForCapture } from './bcf/visibility-model-ids';
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
@@ -84,6 +85,8 @@ interface CreateViewpointOptions {
   additionalColoredGuids?: { color: string; guids: string[] }[];
   /** Abort when caller-owned scene identity changes while snapshot capture yields. */
   isCaptureStillValid?: () => boolean;
+  /** Exact source models represented by the visibility state bound for this capture. */
+  onVisibilityModelIdsCaptured?: (modelIds: readonly string[]) => void;
 }
 interface UseBCFResult {
   /** Create a viewpoint from current viewer state */
@@ -386,6 +389,11 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // mutate the store; mixing that newer state with the older PNG makes a
       // viewpoint reopen differently from its snapshot.
       const visibilityState = includeHidden ? componentState : undefined;
+      if (visibilityState && opts.onVisibilityModelIdsCaptured) {
+        opts.onVisibilityModelIdsCaptured(
+          visibilityModelIdsForCapture(visibilityState, (id) => resolveCapturedRef(id)),
+        );
+      }
 
       // Snapshot FIRST, camera after: the PNG and the camera's `aspectRatio`
       // describe one frame, so they must come from one drawing buffer.

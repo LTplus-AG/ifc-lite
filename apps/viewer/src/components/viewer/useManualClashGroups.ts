@@ -16,7 +16,7 @@ import {
   saveManualClashGroups,
   type ManualClashGroup,
 } from '@/lib/clash/manual-groups';
-import { focusedModelRevisionsAreCurrent, type FocusedClashGroup } from '@/lib/clash/group-focus';
+import { focusedSceneRevisionIsCurrent, type FocusedClashGroup } from '@/lib/clash/group-focus';
 import { CLASH_COLOR_A, CLASH_COLOR_B, clashColorToBcfArgb } from '@/lib/clash/clash-colors';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { sortClashes, type Clash, type ClashSeverity, type ClashSortBy } from '@ifc-lite/clash';
@@ -177,22 +177,24 @@ export function useManualClashGroups({
       });
       // FRAME-WAIT-ALLOW(#2385): capture only after the group focus has painted.
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      if (!focusedModelRevisionsAreCurrent(focused)) {
+      if (!focusedSceneRevisionIsCurrent(focused)) {
         toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
         return;
       }
+      let visibilityModelIds: readonly string[] = [];
       const viewpoint = await createViewpointFromState({
         includeSnapshot: true,
         includeSelection: false,
         includeHidden: true,
-        isCaptureStillValid: () => focusedModelRevisionsAreCurrent(focused),
+        isCaptureStillValid: () => focusedSceneRevisionIsCurrent(focused),
+        onVisibilityModelIdsCaptured: (modelIds) => { visibilityModelIds = modelIds; },
         additionalSelectedGuids: focused.selectedGuids,
         additionalColoredGuids: [
           { color: clashColorToBcfArgb(CLASH_COLOR_A), guids: focused.aGuids },
           { color: clashColorToBcfArgb(CLASH_COLOR_B), guids: focused.bGuids },
         ].filter((entry) => entry.guids.length > 0),
       });
-      if (!focusedModelRevisionsAreCurrent(focused)) {
+      if (!focusedSceneRevisionIsCurrent(focused)) {
         toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
         return;
       }
@@ -200,7 +202,7 @@ export function useManualClashGroups({
       const header = headerFilesForViewpoints(
         viewpoint ? [viewpoint] : [],
         topic.creationDate,
-        [...focused.modelIds, ...focused.visibilityModelIds],
+        [...focused.modelIds, ...visibilityModelIds],
       );
       if (header.length > 0) topic.header = header;
       addTopic(topic);

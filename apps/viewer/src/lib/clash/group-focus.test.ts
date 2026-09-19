@@ -7,7 +7,7 @@ import { beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import { useViewerStore, type ViewerState } from '@/store';
-import { focusClashGroup, focusedModelRevisionsAreCurrent, type FocusedClashGroup } from './group-focus.js';
+import { focusClashGroup, focusedSceneRevisionIsCurrent, type FocusedClashGroup } from './group-focus.js';
 
 function clash(id: string, a: number, b: number): Clash {
   return {
@@ -24,13 +24,14 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().clearEntitySelection();
     useViewerStore.setState({
       cameraCallbacks: {}, lensAppliedColors: new Map(), models: new Map(),
-      hiddenEntities: new Set(), isolatedEntities: null,
+      hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
+      hiddenEntitiesByModel: new Map(), isolatedEntitiesByModel: new Map(), mutationVersion: 0,
     });
   });
 
-  function payload(focused: FocusedClashGroup | null): Omit<FocusedClashGroup, 'modelRevisions'> | null {
+  function payload(focused: FocusedClashGroup | null): Omit<FocusedClashGroup, 'sceneRevision'> | null {
     if (!focused) return null;
-    const { modelRevisions: _modelRevisions, ...rest } = focused;
+    const { sceneRevision: _sceneRevision, ...rest } = focused;
     return rest;
   }
 
@@ -52,7 +53,6 @@ describe('manual clash group focus (#4921)', () => {
         bRefs: [{ modelId: 'model', expressId: 130 }],
         selectedGuids: [], aGuids: [], bGuids: [],
         modelIds: ['model'],
-        visibilityModelIds: [],
       },
     );
 
@@ -114,9 +114,8 @@ describe('manual clash group focus (#4921)', () => {
       aGuids: ['MODEL-10', 'ROOM-10'],
       bGuids: ['MODEL-20', 'MODEL-30'],
       modelIds: ['model', 'room:r:m0'],
-      visibilityModelIds: [],
     });
-    assert.equal(focusedModelRevisionsAreCurrent(focused), false,
+    assert.equal(focusedSceneRevisionIsCurrent(focused), false,
       'a replacement during the frame wait must invalidate the focused scene');
 
     const state = useViewerStore.getState();
@@ -139,32 +138,19 @@ describe('manual clash group focus (#4921)', () => {
       bRefs: [{ modelId: 'model', expressId: 20 }],
       selectedGuids: [], aGuids: [], bGuids: [],
       modelIds: ['model'],
-      visibilityModelIds: [],
     });
   });
 
-  it('captures the source model of pre-existing visibility components for the BCF header', () => {
-    const model = (id: string, idOffset: number, maxExpressId: number) => ({
-      id, name: `${id}.ifc`, idOffset, maxExpressId,
-      ifcDataStore: { entities: { getGlobalId: (expressId: number) => `${id}-${expressId}` } },
-      geometryResult: null, loadedAt: 0,
-    });
-    useViewerStore.setState({
-      models: new Map([
-        ['focused', model('focused', 0, 100)],
-        ['hidden', model('hidden', 1_000, 100)],
-      ]) as unknown as ViewerState['models'],
-      hiddenEntities: new Set([1_005]),
-    });
-    const focused = focusClashGroup(
-      [clash('c1', 10, 20)],
-      (element) => ({ modelId: 'focused', expressId: element.ref }),
-      mock.fn(),
-      'ghost',
-    );
+  it('invalidates a focused frame when authored IFC or visibility changes while capture waits', () => {
+    const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
+    const beforeMutation = focusClashGroup([clash('mutation', 10, 20)], resolve, mock.fn(), 'ghost');
+    assert.ok(beforeMutation);
+    useViewerStore.setState({ mutationVersion: 1 });
+    assert.equal(focusedSceneRevisionIsCurrent(beforeMutation), false);
 
-    assert.ok(focused);
-    assert.deepEqual(focused.visibilityModelIds, ['hidden']);
-    assert.equal(focusedModelRevisionsAreCurrent(focused), true);
+    const beforeVisibility = focusClashGroup([clash('visibility', 10, 20)], resolve, mock.fn(), 'ghost');
+    assert.ok(beforeVisibility);
+    useViewerStore.setState({ hiddenEntities: new Set([99]) });
+    assert.equal(focusedSceneRevisionIsCurrent(beforeVisibility), false);
   });
 });

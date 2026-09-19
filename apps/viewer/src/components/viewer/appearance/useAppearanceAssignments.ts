@@ -20,11 +20,17 @@ import { AppearancePreviewSession } from '@/lib/appearance/preview.js';
 import type { AppearanceAssetOwner } from '@/lib/appearance/assets.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { rawMessage, translatedMessage, type LocalizedMessage } from './localized-message.js';
+import type { TranslationKey, TranslationParameters } from '@/i18n';
 
 type Prepared = Awaited<ReturnType<typeof prepareAppearanceAssignments>>;
 type Preview = ReturnType<typeof stageAppearanceAssignments>;
 type Review = Awaited<ReturnType<typeof reviewRestoredAssignment>>;
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+class AssignmentValidationError extends Error {
+  constructor(readonly key: TranslationKey, readonly params?: TranslationParameters) { super(key); }
+}
+const localizedError = (error: unknown): LocalizedMessage => error instanceof AssignmentValidationError
+  ? translatedMessage(error.key, error.params) : rawMessage(error);
 
 /** Stored recipes are inert. Only this mounted controller holds guarded live
  * snapshots, and restored rows require explicit membership review. */
@@ -102,13 +108,13 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     const controller = new AbortController(); pending.current = controller;
     setStatus('preparing');
     try { await operation(controller.signal); }
-    catch (error) { if (!controller.signal.aborted && mounted.current) { setStatus('error'); setNotice(rawMessage(error)); } }
+    catch (error) { if (!controller.signal.aborted && mounted.current) { setStatus('error'); setNotice(localizedError(error)); } }
     finally { if (pending.current === controller) pending.current = null; }
   }
   function add() {
     base.onDiscard(); releasePreview();
     void run(async signal => {
-      if (!base.modelId || !base.sourceId || !worker.current) throw new Error('Choose a model, source and scope first.');
+      if (!base.modelId || !base.sourceId || !worker.current) throw new AssignmentValidationError('appearance.assignments.validation.chooseScope');
       const previous = rows.find(row => row.model.modelId === base.modelId);
       const captured = await captureAppearanceAssignment({ modelId: base.modelId, sourceId: base.sourceId,
         slotId: previous?.model.slotId ?? crypto.randomUUID(), scope: base.scope, settings: base.settings,
@@ -127,10 +133,12 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     releasePreview();
     void run(async signal => {
       const planner = worker.current, renderer = getGlobalRenderer();
-      if (!planner || !renderer) throw new Error('The appearance renderer is not ready.');
+      if (!planner || !renderer) throw new AssignmentValidationError('appearance.assignments.validation.rendererNotReady');
       const captured = rows.map(row => {
         const bound = live.current.get(row.id);
-        if (!bound) throw new Error(`Review and bind ${row.model.name} / ${row.source.name} before previewing.`);
+        if (!bound) throw new AssignmentValidationError('appearance.assignments.validation.reviewBeforePreview', {
+          modelName: row.model.name, sourceName: row.source.name,
+        });
         bound.validate(); return { ...bound, assignment: row };
       });
       const owner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() };

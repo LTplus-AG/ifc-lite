@@ -94,12 +94,13 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
     else setRenaming({ ...renaming, hasError: true });
   };
 
-  const scopeLabel = bulk
-    ? t('hierarchy.modelTagEditor.descriptionScopeAll', { count: modelIds.length })
-    : modelName ??
-      (modelIds.length === 1
-        ? t('hierarchy.modelTagEditor.descriptionScopeThisModel')
-        : t('hierarchy.modelTagEditor.descriptionScopeCount', { count: modelIds.length }));
+  const description = bulk
+    ? t('hierarchy.modelTagEditor.descriptionAll', { count: modelIds.length })
+    : modelName
+      ? t('hierarchy.modelTagEditor.descriptionNamed', { name: modelName })
+      : modelIds.length === 1
+        ? t('hierarchy.modelTagEditor.descriptionThisModel')
+        : t('hierarchy.modelTagEditor.descriptionCount', { count: modelIds.length });
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -107,7 +108,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
         <DialogHeader>
           <DialogTitle>{t('hierarchy.modelTagEditor.title')}</DialogTitle>
           <DialogDescription>
-            {t('hierarchy.modelTagEditor.description', { scope: scopeLabel })}
+            {description}
           </DialogDescription>
         </DialogHeader>
 

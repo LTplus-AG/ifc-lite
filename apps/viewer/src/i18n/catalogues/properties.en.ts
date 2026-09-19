@@ -246,7 +246,6 @@ export const propertiesEn = {
   'properties.taskEdit.heading': 'Edit task',
   'properties.taskEdit.pendingBadge': '● Pending',
   'properties.taskEdit.namePlaceholder': 'Untitled task',
-  'properties.taskEdit.predefinedTypeLabel': 'Predefined type',
   'properties.taskEdit.milestoneLabel': 'Milestone',
   'properties.taskEdit.startLabel': 'Start',
   'properties.taskEdit.finishLabel': 'Finish',

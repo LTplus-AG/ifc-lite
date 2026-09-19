@@ -32,7 +32,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
-import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';
 
 /** IfcTaskTypeEnum values — same list as the Generate dialog. */
 const TASK_TYPES: readonly string[] = [
@@ -192,7 +192,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
 
           <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
             <div className="grid gap-1.5">
-              <Label htmlFor="task-type" className="text-[11px]">{t('properties.taskEdit.predefinedTypeLabel')}</Label>
+              <Label htmlFor="task-type" className="text-[11px]">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</Label>
               <Select
                 value={task.predefinedType || 'NOTDEFINED'}
                 onValueChange={(v) => updateTask(taskGlobalId, { predefinedType: v })}

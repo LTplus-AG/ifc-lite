@@ -55,10 +55,10 @@ export const hierarchyEn = {
 
   // ModelTagEditor
   'hierarchy.modelTagEditor.title': 'Model tags',
-  'hierarchy.modelTagEditor.descriptionScopeAll': 'all {count} models',
-  'hierarchy.modelTagEditor.descriptionScopeThisModel': 'this model',
-  'hierarchy.modelTagEditor.descriptionScopeCount': { one: '{count} model', other: '{count} models' },
-  'hierarchy.modelTagEditor.description': 'Labels for {scope}. Tags are organisation only — they never change the IFC file.',
+  'hierarchy.modelTagEditor.descriptionAll': 'Labels for all {count} models. Tags are organisation only — they never change the IFC file.',
+  'hierarchy.modelTagEditor.descriptionNamed': 'Labels for {name}. Tags are organisation only — they never change the IFC file.',
+  'hierarchy.modelTagEditor.descriptionThisModel': 'Labels for this model. Tags are organisation only — they never change the IFC file.',
+  'hierarchy.modelTagEditor.descriptionCount': { one: 'Labels for {count} model. Tags are organisation only — they never change the IFC file.', other: 'Labels for {count} models. Tags are organisation only — they never change the IFC file.' },
   'hierarchy.modelTagEditor.applyToAriaLabel': 'Apply to',
   'hierarchy.modelTagEditor.selected': 'Selected',
   'hierarchy.modelTagEditor.allModels': 'All {count} models',

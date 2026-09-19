@@ -75,7 +75,10 @@ export const appearanceWorkflowsEn = {
   'appearance.assignments.reviewRowSummary': '{modelName} · {queryLabel}',
   'appearance.assignments.reviewChanges': '{added} added · {removed} removed · {renumbered} renumbered',
   'appearance.assignments.sourceModelChanged': 'The model file differs from the saved source.',
-  'appearance.assignments.removedExclusionsNotice': '{count} excluded objects no longer exist in this scope.',
+  'appearance.assignments.removedExclusionsNotice': { one: '{count} excluded object no longer exists in this scope.', other: '{count} excluded objects no longer exist in this scope.' },
+  'appearance.assignments.validation.chooseScope': 'Choose a model, source and scope first.',
+  'appearance.assignments.validation.rendererNotReady': 'The appearance renderer is not ready.',
+  'appearance.assignments.validation.reviewBeforePreview': 'Review and bind {modelName} / {sourceName} before previewing.',
   'appearance.assignments.acceptReview': 'Accept reviewed scope',
   'appearance.assignments.previewAll': 'Preview all assignments',
   'appearance.assignments.saveRecipe': 'Save recipe',
@@ -363,8 +366,9 @@ export const appearanceWorkflowsEn = {
   'appearance.scanTransfer.interiorTexels': '{observed} transferred interior texels of {total}.',
   'appearance.scanTransfer.observedSamples': '{observed} observed samples of {total}.',
   'appearance.scanTransfer.unknownSummary':
-    'Unknown: {tooFar} too far · {incompatibleNormals} incompatible normals · {ambiguous} ambiguous · {behind} behind the surface{sparse}.',
-  'appearance.scanTransfer.tooSparseSuffix': ' · {count} too sparse',
+    'Unknown: {tooFar} too far · {incompatibleNormals} incompatible normals · {ambiguous} ambiguous · {behind} behind the surface.',
+  'appearance.scanTransfer.unknownPointSummary':
+    'Unknown: {tooFar} too far · {incompatibleNormals} incompatible normals · {ambiguous} ambiguous · {behind} behind the surface · {sparse} too sparse.',
   'appearance.scanTransfer.pointCloudSourceNote': 'Point-cloud source of {count} points; sample orientation from {orientation}.',
   'appearance.scanTransfer.coveragePerSurface': 'Coverage per IFC surface',
   'appearance.scanTransfer.surfaceCoverageRow': '#{productId} / surface #{geometryItemId}: {observed} of {total} samples observed.',

@@ -44,6 +44,7 @@ import { useDrawing2DPersistence } from '@/hooks/useDrawing2DPersistence';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { useDrawingMarkupRestoreOnLoad } from '@/hooks/useDrawingMarkupRestoreOnLoad';
 import { SaveMarkupToModelButton, SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
+import { useTranslation } from '@/i18n';
 
 interface Section2DPanelProps {
   mergedGeometry?: GeometryResult | null;
@@ -55,6 +56,7 @@ export function Section2DPanel({
   mergedGeometry,
   computedIsolatedIds,
 }: Section2DPanelProps = {}): React.ReactElement | null {
+  const { t } = useTranslation();
   // Both mounted unconditionally, before `!panelVisible` below, so each
   // restore runs even with the panel closed — safe together, see
   // `useDrawingMarkupRestoreOnLoad`'s module doc (#4153 vs #4159).
@@ -423,7 +425,7 @@ export function Section2DPanel({
       // `null` — see its docstring). Either way the button used to do
       // nothing with no explanation; tell the user so a malformed
       // `IfcMapConversion` doesn't read as an unresponsive button.
-      toast.error("Couldn't centre this underlay: its bounds are missing or the georeference produced non-finite coordinates.");
+      toast.error(t('section2d.underlay.missingBounds'));
       return;
     }
     const modelCx = (drawing.bounds.min.x + drawing.bounds.max.x) / 2;
@@ -439,11 +441,11 @@ export function Section2DPanel({
     // underlay, and a NaN here would otherwise still get written into the
     // stored placement, which survives toggling georeferencing back off.
     if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
-      toast.error("Couldn't centre this underlay: the drawing bounds are not finite.");
+      toast.error(t('section2d.underlay.nonFiniteDrawing'));
       return;
     }
     updateDxfUnderlayPlacement(id, { offsetX, offsetY });
-  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable]);
+  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable, t]);
 
   // Point-cloud scan overlay (issue #1805): a thin band of the loaded
   // scan(s) around the active section plane, projected into the SAME
@@ -486,7 +488,7 @@ export function Section2DPanel({
     const presetHint = COMMON_SCALES.map((s) => s.name).join(', ');
     const asDisplayed = displayOptions.scale || 100;
     const input = window.prompt(
-      `Export PDF at scale 1:N — enter N, or leave blank for "as displayed" (currently 1:${asDisplayed}).\nCommon scales: ${presetHint}`,
+      t('section2d.pdf.prompt', { scale: asDisplayed, presets: presetHint }),
       String(asDisplayed)
     );
     if (input === null) return; // cancelled
@@ -497,11 +499,11 @@ export function Section2DPanel({
     }
     const n = Number(trimmed.replace(/^1:/, ''));
     if (!Number.isFinite(n) || n <= 0) {
-      window.alert(`Invalid scale "${input}". Enter a positive number, e.g. 100 for 1:100.`);
+      window.alert(t('section2d.pdf.invalid', { input }));
       return;
     }
     handleExportPDF(n);
-  }, [displayOptions.scale, handleExportPDF]);
+  }, [displayOptions.scale, handleExportPDF, t]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CALLBACKS
@@ -676,13 +678,13 @@ export function Section2DPanel({
           {!isExpanded && (
             <span
               onMouseDown={drag.onDragStart}
-              title="Drag to move"
+              title={t('section2d.dragTitle')}
               className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
             >
               <GripVertical className="h-3.5 w-3.5" />
             </span>
           )}
-          <h2 className="font-semibold text-xs shrink-0">2D Section</h2>
+          <h2 className="font-semibold text-xs shrink-0">{t('section2d.heading')}</h2>
         </div>
 
         <div className="flex items-center gap-1 min-w-0">
@@ -694,7 +696,7 @@ export function Section2DPanel({
                 variant={displayOptions.show3DOverlay ? 'default' : 'ghost'}
                 size="icon-sm"
                 onClick={toggle3DOverlay}
-                title="Toggle 3D overlay"
+                title={t('section2d.overlay.toggleTitle')}
               >
                 {displayOptions.show3DOverlay ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </Button>
@@ -704,7 +706,7 @@ export function Section2DPanel({
                 variant={displayOptions.useSymbolicRepresentations ? 'default' : 'ghost'}
                 size="icon-sm"
                 onClick={toggleSymbolicRepresentations}
-                title={displayOptions.useSymbolicRepresentations ? 'Symbolic representations (Plan)' : 'Section cut (Body)'}
+                title={displayOptions.useSymbolicRepresentations ? t('section2d.symbolic.planTitle') : t('section2d.symbolic.cutTitle')}
               >
                 {displayOptions.useSymbolicRepresentations ? <Shapes className="h-4 w-4" /> : <Box className="h-4 w-4" />}
               </Button>
@@ -714,7 +716,7 @@ export function Section2DPanel({
                 variant={displayOptions.showIfcAnnotations ? 'default' : 'ghost'}
                 size="icon-sm"
                 onClick={toggleIfcAnnotations}
-                title={displayOptions.showIfcAnnotations ? 'Hide IFC annotations on this section' : 'Show IFC annotations on this section'}
+                title={displayOptions.showIfcAnnotations ? t('section2d.ifcAnnotations.hideTitle') : t('section2d.ifcAnnotations.showTitle')}
                 disabled={sectionPlane.axis !== 'down'}
               >
                 <Tag className="h-4 w-4" />
@@ -727,8 +729,8 @@ export function Section2DPanel({
                 onClick={toggleConstructionProjection}
                 title={
                   displayOptions.showConstructionProjection
-                    ? 'Hide construction projection (overhead & visible reference lines)'
-                    : 'Show construction projection (overhead & visible reference lines)'
+                    ? t('section2d.construction.hideTitle')
+                    : t('section2d.construction.showTitle')
                 }
                 disabled={sectionPlane.custom !== undefined}
               >
@@ -741,7 +743,7 @@ export function Section2DPanel({
                   <Button
                     variant={annotation2DActiveTool !== 'none' ? 'default' : 'ghost'}
                     size="icon-sm"
-                    title="Annotation tools"
+                    title={t('section2d.annotations.title')}
                   >
                     <PenTool className="h-4 w-4" />
                   </Button>
@@ -749,36 +751,31 @@ export function Section2DPanel({
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool('none')}>
                     <MousePointer2 className="h-4 w-4 mr-2" />
-                    Select / Pan
-                    {annotation2DActiveTool === 'none' && <span className="ml-auto text-xs text-primary">Active</span>}
+                    {annotation2DActiveTool === 'none' ? t('section2d.annotations.selectActive') : t('section2d.annotations.select')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'measure' ? 'none' : 'measure')}>
                     <Ruler className="h-4 w-4 mr-2" />
-                    Distance Measure
-                    {annotation2DActiveTool === 'measure' && <span className="ml-auto text-xs text-primary">Active</span>}
+                    {annotation2DActiveTool === 'measure' ? t('section2d.annotations.distanceActive') : t('section2d.annotations.distance')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'polygon-area' ? 'none' : 'polygon-area')}>
                     <Hexagon className="h-4 w-4 mr-2" />
-                    Area Measure
-                    {annotation2DActiveTool === 'polygon-area' && <span className="ml-auto text-xs text-primary">Active</span>}
+                    {annotation2DActiveTool === 'polygon-area' ? t('section2d.annotations.areaActive') : t('section2d.annotations.area')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'text' ? 'none' : 'text')}>
                     <Type className="h-4 w-4 mr-2" />
-                    Text Box
-                    {annotation2DActiveTool === 'text' && <span className="ml-auto text-xs text-primary">Active</span>}
+                    {annotation2DActiveTool === 'text' ? t('section2d.annotations.textActive') : t('section2d.annotations.text')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'cloud' ? 'none' : 'cloud')}>
                     <Cloud className="h-4 w-4 mr-2" />
-                    Revision Cloud
-                    {annotation2DActiveTool === 'cloud' && <span className="ml-auto text-xs text-primary">Active</span>}
+                    {annotation2DActiveTool === 'cloud' ? t('section2d.annotations.cloudActive') : t('section2d.annotations.cloud')}
                   </DropdownMenuItem>
                   {hasAnnotations && (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={clearAllAnnotations2D}>
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Clear All Annotations
+                        {t('section2d.annotations.clear')}
                       </DropdownMenuItem>
                     </>
                   )}
@@ -799,7 +796,7 @@ export function Section2DPanel({
                     return !prev;
                   });
                 }}
-                title="Drawing settings"
+                title={t('section2d.settings.title')}
                 className="relative"
               >
                 <Palette className="h-4 w-4" />
@@ -820,7 +817,7 @@ export function Section2DPanel({
                   }
                   setSheetPanelVisible(!sheetPanelVisible);
                 }}
-                title="Drawing sheet setup"
+                title={t('section2d.sheet.title')}
                 className="relative"
               >
                 <FileText className="h-4 w-4" />
@@ -844,7 +841,7 @@ export function Section2DPanel({
                     return !prev;
                   });
                 }}
-                title="DXF underlays"
+                title={t('section2d.dxf.title')}
                 className="relative"
               >
                 <Layers className="h-4 w-4" />
@@ -868,7 +865,7 @@ export function Section2DPanel({
                     return !prev;
                   });
                 }}
-                title="Scan layer (point cloud overlay)"
+                title={t('section2d.scan.title')}
                 className="relative"
               >
                 <ScanLine className="h-4 w-4" />
@@ -880,23 +877,23 @@ export function Section2DPanel({
               <div className="w-px h-4 bg-border mx-1" />
 
               {/* Zoom controls */}
-              <Button variant="ghost" size="icon-sm" onClick={zoomOut} title="Zoom out">
+              <Button variant="ghost" size="icon-sm" onClick={zoomOut} title={t('section2d.zoom.out')}>
                 <ZoomOut className="h-4 w-4" />
               </Button>
               <span className="text-xs font-mono w-10 text-center">
                 {Math.round(viewTransform.scale * 100)}%
               </span>
-              <Button variant="ghost" size="icon-sm" onClick={zoomIn} title="Zoom in">
+              <Button variant="ghost" size="icon-sm" onClick={zoomIn} title={t('section2d.zoom.in')}>
                 <ZoomIn className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon-sm" onClick={fitToView} title="Fit to view">
+              <Button variant="ghost" size="icon-sm" onClick={fitToView} title={t('section2d.zoom.fit')}>
                 <Maximize2 className="h-4 w-4" />
               </Button>
               <Button
                 variant={isPinned ? 'default' : 'ghost'}
                 size="icon-sm"
                 onClick={togglePinned}
-                title={isPinned ? 'Unpin view (auto-fit on regenerate)' : 'Pin view (keep position on regenerate)'}
+                title={isPinned ? t('section2d.pin.unpinTitle') : t('section2d.pin.pinTitle')}
               >
                 {isPinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
               </Button>
@@ -909,7 +906,7 @@ export function Section2DPanel({
                 size="icon-sm"
                 onClick={handleExportSVG}
                 disabled={!drawing}
-                title="Download SVG"
+                title={t('section2d.export.svg')}
               >
                 <Download className="h-4 w-4" />
               </Button>
@@ -918,7 +915,7 @@ export function Section2DPanel({
                 size="icon-sm"
                 onClick={handleExportDXF}
                 disabled={!drawing}
-                title="Download DXF"
+                title={t('section2d.export.dxf')}
               >
                 <FileDown className="h-4 w-4" />
               </Button>
@@ -927,7 +924,7 @@ export function Section2DPanel({
                 size="icon-sm"
                 onClick={handleExportPdfPrompt}
                 disabled={!drawing}
-                title="Download PDF (to scale)"
+                title={t('section2d.export.pdf')}
               >
                 <FileText className="h-4 w-4" />
               </Button>
@@ -936,7 +933,7 @@ export function Section2DPanel({
                 size="icon-sm"
                 onClick={handlePrint}
                 disabled={!drawing}
-                title="Print"
+                title={t('section2d.export.print')}
               >
                 <Printer className="h-4 w-4" />
               </Button>
@@ -950,7 +947,7 @@ export function Section2DPanel({
                 size="icon-sm"
                 onClick={() => generateDrawing(false)}
                 disabled={status === 'generating'}
-                title="Regenerate"
+                title={t('section2d.regenerate')}
               >
                 {status === 'generating' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -965,109 +962,109 @@ export function Section2DPanel({
           {isNarrow && (
             <>
               {/* Essential zoom controls */}
-              <Button variant="ghost" size="icon-sm" onClick={fitToView} title="Fit to view">
+              <Button variant="ghost" size="icon-sm" onClick={fitToView} title={t('section2d.zoom.fit')}>
                 <Maximize2 className="h-4 w-4" />
               </Button>
 
               {/* Overflow menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" title="More options">
+                  <Button variant="ghost" size="icon-sm" title={t('section2d.more')}>
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onClick={toggle3DOverlay}>
                     {displayOptions.show3DOverlay ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
-                    3D Overlay {displayOptions.show3DOverlay ? 'On' : 'Off'}
+                    {displayOptions.show3DOverlay ? t('section2d.menu.overlayOn') : t('section2d.menu.overlayOff')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={toggleSymbolicRepresentations}>
                     {displayOptions.useSymbolicRepresentations ? <Shapes className="h-4 w-4 mr-2" /> : <Box className="h-4 w-4 mr-2" />}
-                    {displayOptions.useSymbolicRepresentations ? 'Symbolic (Plan)' : 'Section Cut (Body)'}
+                    {displayOptions.useSymbolicRepresentations ? t('section2d.menu.symbolicPlan') : t('section2d.menu.sectionCut')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={toggleIfcAnnotations} disabled={sectionPlane.axis !== 'down'}>
                     <Tag className="h-4 w-4 mr-2" />
-                    IFC Annotations {displayOptions.showIfcAnnotations ? 'On' : 'Off'}
+                    {displayOptions.showIfcAnnotations ? t('section2d.menu.ifcAnnotationsOn') : t('section2d.menu.ifcAnnotationsOff')}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={toggleConstructionProjection}
                     disabled={sectionPlane.custom !== undefined}
                   >
                     <BoxSelect className="h-4 w-4 mr-2" />
-                    Construction Projection {displayOptions.showConstructionProjection ? 'On' : 'Off'}
+                    {displayOptions.showConstructionProjection ? t('section2d.menu.constructionOn') : t('section2d.menu.constructionOff')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool('none')}>
                     <MousePointer2 className="h-4 w-4 mr-2" />
-                    Select / Pan {annotation2DActiveTool === 'none' ? '(On)' : ''}
+                    {annotation2DActiveTool === 'none' ? t('section2d.annotations.selectActive') : t('section2d.annotations.select')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'measure' ? 'none' : 'measure')}>
                     <Ruler className="h-4 w-4 mr-2" />
-                    Distance Measure {annotation2DActiveTool === 'measure' ? '(On)' : ''}
+                    {annotation2DActiveTool === 'measure' ? t('section2d.annotations.distanceActive') : t('section2d.annotations.distance')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'polygon-area' ? 'none' : 'polygon-area')}>
                     <Hexagon className="h-4 w-4 mr-2" />
-                    Area Measure {annotation2DActiveTool === 'polygon-area' ? '(On)' : ''}
+                    {annotation2DActiveTool === 'polygon-area' ? t('section2d.annotations.areaActive') : t('section2d.annotations.area')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'text' ? 'none' : 'text')}>
                     <Type className="h-4 w-4 mr-2" />
-                    Text Box {annotation2DActiveTool === 'text' ? '(On)' : ''}
+                    {annotation2DActiveTool === 'text' ? t('section2d.annotations.textActive') : t('section2d.annotations.text')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool(annotation2DActiveTool === 'cloud' ? 'none' : 'cloud')}>
                     <Cloud className="h-4 w-4 mr-2" />
-                    Revision Cloud {annotation2DActiveTool === 'cloud' ? '(On)' : ''}
+                    {annotation2DActiveTool === 'cloud' ? t('section2d.annotations.cloudActive') : t('section2d.annotations.cloud')}
                   </DropdownMenuItem>
                   {hasAnnotations && (
                     <DropdownMenuItem onClick={clearAllAnnotations2D}>
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Clear All Annotations
+                      {t('section2d.annotations.clear')}
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => { setDxfPanelOpen(false); setSettingsPanelOpen(true); }}>
                     <Palette className="h-4 w-4 mr-2" />
-                    Drawing Settings...
+                    {t('section2d.menu.settings')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => { setDxfPanelOpen(false); setSheetPanelVisible(true); }}>
                     <FileText className="h-4 w-4 mr-2" />
-                    Sheet Setup {sheetEnabled ? '(On)' : ''}
+                    {sheetEnabled ? t('section2d.menu.sheetOn') : t('section2d.menu.sheetOff')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => { setSettingsPanelOpen(false); setSheetPanelVisible(false); setScanPanelOpen(false); setDxfPanelOpen(true); }}>
                     <Layers className="h-4 w-4 mr-2" />
-                    DXF Underlays {dxfUnderlays.length > 0 ? `(${dxfUnderlays.length})` : ''}
+                    {dxfUnderlays.length > 0 ? t('section2d.menu.dxfCount', { count: dxfUnderlays.length }) : t('section2d.menu.dxf')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => { setSettingsPanelOpen(false); setSheetPanelVisible(false); setDxfPanelOpen(false); setScanPanelOpen(true); }}>
                     <ScanLine className="h-4 w-4 mr-2" />
-                    Scan Layer {displayOptions.showScanSection ? '(On)' : ''}
+                    {displayOptions.showScanSection ? t('section2d.menu.scanOn') : t('section2d.menu.scanOff')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={zoomIn}>
                     <ZoomIn className="h-4 w-4 mr-2" />
-                    Zoom In
+                    {t('section2d.zoom.in')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={zoomOut}>
                     <ZoomOut className="h-4 w-4 mr-2" />
-                    Zoom Out
+                    {t('section2d.zoom.out')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={togglePinned}>
                     {isPinned ? <Pin className="h-4 w-4 mr-2" /> : <PinOff className="h-4 w-4 mr-2" />}
-                    Pin View {isPinned ? 'On' : 'Off'}
+                    {isPinned ? t('section2d.menu.pinOn') : t('section2d.menu.pinOff')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleExportSVG} disabled={!drawing}>
                     <Download className="h-4 w-4 mr-2" />
-                    Download SVG
+                    {t('section2d.export.svg')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleExportDXF} disabled={!drawing}>
                     <FileDown className="h-4 w-4 mr-2" />
-                    Download DXF
+                    {t('section2d.export.dxf')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleExportPdfPrompt} disabled={!drawing}>
                     <FileText className="h-4 w-4 mr-2" />
-                    Download PDF (to scale)
+                    {t('section2d.export.pdf')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handlePrint} disabled={!drawing}>
                     <Printer className="h-4 w-4 mr-2" />
-                    Print
+                    {t('section2d.export.print')}
                   </DropdownMenuItem>
                   <SaveMarkupToModelMenuItem />
                   <DropdownMenuSeparator />
@@ -1077,7 +1074,7 @@ export function Section2DPanel({
                     ) : (
                       <RefreshCw className="h-4 w-4 mr-2" />
                     )}
-                    Regenerate
+                    {t('section2d.regenerate')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1085,7 +1082,7 @@ export function Section2DPanel({
           )}
 
           {/* Close button always visible */}
-          <Button variant="ghost" size="icon-sm" onClick={handleClose} title="Close">
+          <Button variant="ghost" size="icon-sm" onClick={handleClose} title={t('section2d.close')}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -1119,12 +1116,12 @@ export function Section2DPanel({
         {status === 'error' && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-destructive text-center">
-              <p className="font-medium">Generation failed</p>
+              <p className="font-medium">{t('section2d.error.generation')}</p>
               <p className="text-sm text-muted-foreground">
                 {drawingError}
               </p>
               <Button variant="outline" size="sm" className="mt-4" onClick={() => generateDrawing(false)}>
-                Retry
+                {t('section2d.error.retry')}
               </Button>
             </div>
           </div>
@@ -1172,7 +1169,7 @@ export function Section2DPanel({
             {isRegenerating && (
               <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span>Updating...</span>
+                <span>{t('section2d.updating')}</span>
               </div>
             )}
           </>
@@ -1200,9 +1197,8 @@ export function Section2DPanel({
         {/* Measure mode tip - bottom right */}
         {measure2DMode && measure2DStart && (
           <div className="absolute bottom-2 right-2 pointer-events-none z-10">
-            <div className="flex items-center gap-1.5 text-[10px] text-black">
-              <kbd className={`px-1 py-0.5 text-[9px] font-mono font-semibold ${measure2DShiftLocked ? 'text-primary' : 'text-black'}`}>Shift</kbd>
-              <span className="text-black">perpendicular</span>
+            <div className={`text-[10px] font-mono font-semibold ${measure2DShiftLocked ? 'text-primary' : 'text-black'}`}>
+              {t('section2d.tip.shift')}
             </div>
           </div>
         )}
@@ -1211,9 +1207,9 @@ export function Section2DPanel({
         {annotation2DActiveTool === 'polygon-area' && (
           <div className="absolute bottom-2 right-2 pointer-events-none z-10">
             <div className="text-[10px] text-black bg-white/80 px-1.5 py-0.5 rounded">
-              {polygonArea2DPoints.length === 0 ? 'Click to place first vertex · Hold Shift to constrain' :
-               polygonArea2DPoints.length < 3 ? `${polygonArea2DPoints.length} vertices — need at least 3 · Shift = constrain` :
-               'Double-click or click first vertex to close · Shift = constrain'}
+              {polygonArea2DPoints.length === 0 ? t('section2d.tip.polygonFirst') :
+               polygonArea2DPoints.length < 3 ? t('section2d.tip.polygonNeed', { count: polygonArea2DPoints.length }) :
+               t('section2d.tip.polygonClose')}
             </div>
           </div>
         )}
@@ -1222,7 +1218,7 @@ export function Section2DPanel({
         {annotation2DActiveTool === 'cloud' && (
           <div className="absolute bottom-2 right-2 pointer-events-none z-10">
             <div className="text-[10px] text-black bg-white/80 px-1.5 py-0.5 rounded">
-              {cloudAnnotation2DPoints.length === 0 ? 'Click to place first corner' : 'Click to place second corner · Shift = square'}
+              {cloudAnnotation2DPoints.length === 0 ? t('section2d.tip.cloudFirst') : t('section2d.tip.cloudSecond')}
             </div>
           </div>
         )}
@@ -1231,7 +1227,7 @@ export function Section2DPanel({
         {annotation2DActiveTool === 'text' && !textAnnotation2DEditing && (
           <div className="absolute bottom-2 right-2 pointer-events-none z-10">
             <div className="text-[10px] text-black bg-white/80 px-1.5 py-0.5 rounded">
-              Click to place text box
+              {t('section2d.tip.text')}
             </div>
           </div>
         )}
@@ -1240,7 +1236,7 @@ export function Section2DPanel({
         {selectedAnnotation2D && annotation2DActiveTool === 'none' && (
           <div className="absolute bottom-2 right-2 pointer-events-none z-10">
             <div className="text-[10px] text-black bg-white/80 px-1.5 py-0.5 rounded">
-              {selectedAnnotation2D.type === 'text' ? 'Del = delete · Drag to move · Double-click to edit' : 'Del = delete · Drag to move'} · Esc = deselect
+              {selectedAnnotation2D.type === 'text' ? t('section2d.tip.selectionText') : t('section2d.tip.selectionOther')}
             </div>
           </div>
         )}
@@ -1248,8 +1244,8 @@ export function Section2DPanel({
         {status === 'ready' && drawing && drawing.cutPolygons.length === 0 && (!drawing.lines || drawing.lines.length === 0) && dxfUnderlayData.length === 0 && !hasReferences && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-muted-foreground">
-              <p className="font-medium">No geometry at this level</p>
-              <p className="text-sm mt-1">Move the section plane to cut through geometry</p>
+              <p className="font-medium">{t('section2d.empty.title')}</p>
+              <p className="text-sm mt-1">{t('section2d.empty.description')}</p>
             </div>
           </div>
         )}
@@ -1278,7 +1274,7 @@ export function Section2DPanel({
               <div
                 className="absolute top-0 right-0 w-4 h-4 cursor-nesw-resize hover:bg-primary/20 transition-colors"
                 onMouseDown={handleResizeStart('corner-top')}
-                title="Resize"
+                title={t('section2d.resize')}
               />
             </>
           ) : (
@@ -1290,7 +1286,7 @@ export function Section2DPanel({
               <div
                 className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize hover:bg-primary/20 transition-colors"
                 onMouseDown={handleResizeStart('corner-bottom')}
-                title="Resize"
+                title={t('section2d.resize')}
               />
             </>
           )}

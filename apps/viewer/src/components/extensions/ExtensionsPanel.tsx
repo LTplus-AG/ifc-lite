@@ -36,10 +36,11 @@ import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 import { useViewerStore } from '@/store';
-import * as toastText from './toast-helpers';
 import { HelpHint } from './HelpHint';
 import { useTranslation } from '@/i18n';
 import { formatExtensionDate } from './localized-date';
+import { localizedFlavorName } from './localized-flavor-metadata';
+import { useActiveFlavor } from './use-active-flavor';
 interface ExtensionsPanelProps {
   onClose?: () => void;
 }
@@ -58,21 +59,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   /** Active-flavor name surfaced in the panel header to give the concept impressions. */
   const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
-  const [activeFlavorName, setActiveFlavorName] = useState<string | undefined>();
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = async () => {
-      try {
-        const flavor = await host.flavors.getActive();
-        if (!cancelled) setActiveFlavorName(flavor?.name);
-      } catch {
-        // Best-effort: header chip just goes blank if read fails.
-      }
-    };
-    void refresh();
-    const off = host.flavors.onChange(() => void refresh());
-    return () => { cancelled = true; off(); };
-  }, [host]);
+  const activeFlavor = useActiveFlavor(host);
+  const activeFlavorName = activeFlavor ? localizedFlavorName(activeFlavor, t) : undefined;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{
     bytes: Uint8Array;
@@ -99,14 +87,14 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
       if (!files || files.length === 0) return;
       const file = files[0];
       if (!file.name.toLowerCase().endsWith('.iflx')) {
-        toast.error(`Expected a .iflx extension bundle, got ${file.name}.`);
+        toast.error(t('extensionsFlavors.extensionsPanel.toast.expectedBundle', { filename: file.name }));
         return;
       }
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const preview = await host.previewBundle(bytes);
         if (!preview.ok) {
-          toast.error(`Bundle did not unpack: ${preview.errors[0]?.message ?? 'unknown error'}`);
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.bundleUnpackFailed', { error: preview.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError') }));
           return;
         }
         // Detect upgrade: same id already installed → pass the previous
@@ -120,10 +108,10 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           previousVersion: existing ? `v${existing.version}` : undefined,
         });
       } catch (err) {
-        toast.error(`Failed to read file: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(t('extensionsFlavors.extensionsPanel.toast.readFileFailed', { error: err instanceof Error ? err.message : String(err) }));
       }
     },
-    [host],
+    [host, t],
   );
 
   // Authoring loop hand-off: when the chat panel produces a clean
@@ -141,7 +129,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
       try {
         const preview = await host.previewBundle(bytes);
         if (!preview.ok) {
-          toast.error(`Authored bundle didn't unpack: ${preview.errors[0]?.message ?? 'unknown'}`);
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.authoredBundleUnpackFailed', { error: preview.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError') }));
           setPendingAuthoredBundle(null);
           return;
         }
@@ -155,11 +143,11 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         });
         setPendingAuthoredBundle(null);
       } catch (err) {
-        toast.error(`Authored bundle preview failed: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(t('extensionsFlavors.extensionsPanel.toast.authoredBundlePreviewFailed', { error: err instanceof Error ? err.message : String(err) }));
         setPendingAuthoredBundle(null);
       }
     })();
-  }, [pendingAuthoredBundle, pending, host, setPendingAuthoredBundle]);
+  }, [pendingAuthoredBundle, pending, host, setPendingAuthoredBundle, t]);
 
   const handleApprove = useCallback(
     async (grants: string[]) => {
@@ -170,23 +158,25 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
       setBusy(true);
       try {
         const status = await host.installFromBytes(pending.bytes, grants);
-        toast.success(`${status.id} v${status.version} installed`);
+        toast.success(t('extensionsFlavors.extensionsPanel.toast.installed', { id: status.id, version: status.version }));
         setPending(null);
       } catch (err) {
         if (err instanceof ExtensionStorageQuotaError) {
-          toast.error(
-            `Out of browser storage. Uninstall an extension or clear some flavors, then retry.`,
-          );
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.storageFull'));
         } else if (err instanceof ExtensionInstallError) {
-          toast.error(`Install rejected: ${err.validationErrors[0]?.message ?? err.message}`);
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.installRejected', {
+            error: err.validationErrors[0]?.message ?? err.message,
+          }));
         } else {
-          toast.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.installFailed', {
+            error: err instanceof Error ? err.message : String(err),
+          }));
         }
       } finally {
         setBusy(false);
       }
     },
-    [host, pending, busy],
+    [host, pending, busy, t],
   );
 
   return (
@@ -335,7 +325,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                 variant="default"
                 size="sm"
                 onClick={() => {
-                  queueChatPrompt('Author an extension for me. Help me describe it: what should it do?');
+                  queueChatPrompt(t('extensionsFlavors.extensionsPanel.emptyState.authoringPrompt'));
                   setChatPanelVisible(true);
                   setScriptPanelVisible(true);
                 }}
@@ -407,7 +397,12 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                       checked={record.enabled}
                       onCheckedChange={(checked) => {
                         host.setEnabled(record.id, checked).catch((err) => {
-                          toast.error(toastText.failed(checked ? 'Enable' : 'Disable', err));
+                          toast.error(t('extensionsFlavors.extensionsPanel.toast.operationFailed', {
+                            operation: t(checked
+                              ? 'extensionsFlavors.extensionsPanel.operation.enable'
+                              : 'extensionsFlavors.extensionsPanel.operation.disable'),
+                            error: err instanceof Error ? err.message : String(err),
+                          }));
                         });
                       }}
                       aria-label={
@@ -420,9 +415,12 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                       size="icon"
                       variant="ghost"
                       onClick={() => {
-                        if (!confirm(`Uninstall ${record.id}?`)) return;
+                        if (!confirm(t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }))) return;
                         host.uninstall(record.id).catch((err) => {
-                          toast.error(toastText.failed('Uninstall', err));
+                          toast.error(t('extensionsFlavors.extensionsPanel.toast.operationFailed', {
+                            operation: t('extensionsFlavors.extensionsPanel.operation.uninstall'),
+                            error: err instanceof Error ? err.message : String(err),
+                          }));
                         });
                       }}
                       aria-label={t('extensionsFlavors.extensionsPanel.row.uninstallAriaLabel', { id: record.id })}

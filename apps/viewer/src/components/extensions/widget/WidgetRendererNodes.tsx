@@ -36,7 +36,7 @@ import type {
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type UseTranslationResult } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { WidgetRenderer, asArray, resolveBinding, type WidgetRendererContext } from './WidgetRenderer';
 
@@ -107,7 +107,9 @@ export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendere
   return (
     <div className="rounded-md border p-3 space-y-1.5">
       <div className="text-[11px] text-muted-foreground">
-        {t('extensionsPanels.widgetRenderer.chartLabel', { variant: node.variant })}
+        {t('extensionsPanels.widgetRenderer.chartLabel', {
+          variant: localizedChartVariant(node.variant, t),
+        })}
       </div>
       {rows.map((row, i) => {
         const label = String((row as Record<string, unknown>)[xField] ?? '');
@@ -127,6 +129,24 @@ export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendere
       })}
     </div>
   );
+}
+
+function localizedChartVariant(
+  variant: ChartNode['variant'],
+  t: UseTranslationResult['t'],
+): string {
+  switch (variant) {
+    case 'bar':
+      return t('extensionsPanels.widgetRenderer.chartVariant.bar');
+    case 'line':
+      return t('extensionsPanels.widgetRenderer.chartVariant.line');
+    case 'pie':
+      return t('extensionsPanels.widgetRenderer.chartVariant.pie');
+    default: {
+      const exhaustive: never = variant;
+      return exhaustive;
+    }
+  }
 }
 
 export function RenderMarkdown({ node }: { node: MarkdownNode; ctx: WidgetRendererContext }) {

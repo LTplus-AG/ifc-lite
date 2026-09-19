@@ -55,10 +55,13 @@ export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
         buildExportFilename(baseName, payload.extension),
         payload.mimeType || 'application/octet-stream',
       );
-      toast.success(`Exported with ${payload.name}`);
+      toast.success(t('extensionsFlavors.extensionExportSlot.exportedToast', { name: payload.name }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      toast.error(`"${payload.name}" failed: ${message}`);
+      toast.error(t('extensionsFlavors.extensionExportSlot.failedToast', {
+        name: payload.name,
+        error: message,
+      }));
     } finally {
       setRunningId(null);
     }

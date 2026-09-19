@@ -64,6 +64,8 @@ function widgetTree(): WidgetNode {
       { type: 'Table', columns: [{ field: 'a', title: 'A' }], data: '$.missing' },
       { type: 'EntityList', data: '$.missing', idField: 'id' },
       { type: 'Chart', variant: 'bar', data: '$.missing' },
+      { type: 'Chart', variant: 'line', data: '$.missing' },
+      { type: 'Chart', variant: 'pie', data: '$.missing' },
       { type: 'ErrorBanner', message: 'Something failed', retryCommand: 'cmd.retry' },
       { type: 'Bogus' } as unknown as WidgetNode,
     ],
@@ -129,7 +131,8 @@ describe('Widget DSL renderer localization (#4918)', () => {
 
   it('interpolates the chart label and crash banner under a live locale switch', () => {
     registerLocale('widget-renderer-fr', {
-      'extensionsPanels.widgetRenderer.chartLabel': '{variant} graphique (fr)',
+      'extensionsPanels.widgetRenderer.chartLabel': 'graphique {variant} (fr)',
+      'extensionsPanels.widgetRenderer.chartVariant.line': 'LINÉAIRE',
       'extensionsPanels.widgetErrorBoundary.crashed': '{label} a planté (fr)',
     } as Catalogue);
     setLocale('widget-renderer-fr');
@@ -143,7 +146,8 @@ describe('Widget DSL renderer localization (#4918)', () => {
       </div>,
     );
 
-    assert.match(readableText(container), /line graphique \(fr\)/);
+    assert.match(readableText(container), /graphique LINÉAIRE \(fr\)/);
+    assert.doesNotMatch(readableText(container), /graphique line/);
     assert.match(readableText(container), /ext-b\/widget-b a planté \(fr\)/);
   });
 });

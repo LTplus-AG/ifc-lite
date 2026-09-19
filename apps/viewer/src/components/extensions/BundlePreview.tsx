@@ -38,9 +38,11 @@ export function BundlePreview({ bundle }: BundlePreviewProps) {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`Copied ${selected} to clipboard`);
+      toast.success(t('extensionsFlavors.bundlePreview.copySuccessToast', { path: selected }));
     } catch (err) {
-      toast.error(`Copy failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('extensionsFlavors.bundlePreview.copyFailedToast', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
     }
   };
 

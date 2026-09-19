@@ -37,7 +37,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type UseTranslationResult } from '@/i18n';
 
 interface FlavorMergeDialogProps {
   open: boolean;
@@ -113,11 +113,13 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
       merged.id = flavorMergedId(theirs.id);
       merged.updatedAt = new Date().toISOString();
       await host.flavors.put(merged, 'three-way merge');
-      toast.success(`Merged into ${merged.id}`);
+      toast.success(t('extensionsFlavors.flavorMergeDialog.toast.merged', { id: merged.id }));
       onMerged?.(merged);
       onClose();
     } catch (err) {
-      toast.error(`Merge failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('extensionsFlavors.flavorMergeDialog.toast.failed', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
     } finally {
       setBusy(false);
     }
@@ -176,11 +178,12 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
                 const key = conflictKey(conflict);
                 const choice = resolutions[key] ?? 'ours';
                 const hasBase = conflict.base !== undefined;
+                const conflictKind = localizedMergeConflictKind(conflict.kind, t);
                 return (
                   <li key={key} className="px-3 py-2 space-y-1.5">
                     <div className="flex items-center gap-2 text-xs">
                       <code className="font-mono uppercase text-[10px] bg-muted rounded px-1.5 py-0.5">
-                        {conflict.kind}
+                        {conflictKind}
                       </code>
                       <span className="font-mono text-[11px] break-all">{conflict.key}</span>
                     </div>
@@ -188,7 +191,7 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
                       className={`grid gap-2 text-[11px] ${hasBase ? 'grid-cols-3' : 'grid-cols-2'}`}
                       role="radiogroup"
                       aria-label={t('extensionsFlavors.flavorMergeDialog.resolveAriaLabel', {
-                        kind: conflict.kind,
+                        kind: conflictKind,
                         key: conflict.key,
                       })}
                     >
@@ -233,6 +236,30 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
       </DialogContent>
     </Dialog>
   );
+}
+
+function localizedMergeConflictKind(
+  kind: MergeConflict['kind'],
+  t: UseTranslationResult['t'],
+): string {
+  switch (kind) {
+    case 'extension_version':
+      return t('extensionsFlavors.flavorMergeDialog.conflictKind.extensionVersion');
+    case 'extension_capabilities':
+      return t('extensionsFlavors.flavorMergeDialog.conflictKind.extensionCapabilities');
+    case 'lens':
+      return t('extensionsFlavors.flavorMergeDialog.conflictKind.lens');
+    case 'saved_query':
+      return t('extensionsFlavors.flavorMergeDialog.conflictKind.savedQuery');
+    case 'keybinding':
+      return t('extensionsFlavors.flavorMergeDialog.conflictKind.keybinding');
+    case 'setting':
+      return t('extensionsFlavors.flavorMergeDialog.conflictKind.setting');
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
 }
 
 function ResolutionChip({

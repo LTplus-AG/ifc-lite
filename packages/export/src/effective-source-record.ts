@@ -82,7 +82,7 @@ export function effectiveCreatedRecord(
   view: MutablePropertyView,
   expressId: number,
   schemaVersion: string | undefined,
-): { type: string; text: string } | null {
+): { type: string; text: string; notWritten: string[] } | null {
   const created = view.getNewEntity(expressId);
   if (!created) return null;
   const schema = (schemaVersion as IfcSchemaVersion | undefined) || 'IFC4';
@@ -97,7 +97,11 @@ export function effectiveCreatedRecord(
     }
     args = retypeArgTokens(slots, created.type, type, retype.predefinedType, schema).tokens.join(',');
   }
-  args = applyOverlayEntityOverrides(args, type, named, view.getPositionalMutationsForEntity(expressId), schema);
+  const notWritten: string[] = [];
+  args = applyOverlayEntityOverrides(
+    args, type, named, view.getPositionalMutationsForEntity(expressId), schema,
+    (name, value) => notWritten.push(`${name} = ${JSON.stringify(value)} is not a number and the slot is REAL-typed`),
+  );
   const upper = type.toUpperCase();
-  return { type: upper, text: `#${expressId}=${upper}(${args});` };
+  return { type: upper, text: `#${expressId}=${upper}(${args});`, notWritten };
 }

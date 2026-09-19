@@ -418,6 +418,13 @@ describe('IfcCreator cost authoring — malformed input is refused (#4856)', () 
     })).toThrow(/must be a finite number/);
   });
 
+  it('rejects a typed value without Type through the public diagnostic path', () => {
+    const creator = seededCreator(42);
+    expect(() => creator.addIfcCostValue({
+      AppliedValue: { Value: 5 } as unknown as { Type: 'IfcMonetaryMeasure'; Value: number },
+    })).toThrow(/Type is required on a typed value/);
+  });
+
   it('refuses a fractional IFC4X3 IfcQuantityCount rather than silently rounding it, and writes nothing partial', () => {
     const creator = seededCreator(41, { Schema: 'IFC4X3' });
     const before = creator.addIfcPhysicalQuantity({

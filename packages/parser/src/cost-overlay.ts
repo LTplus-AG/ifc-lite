@@ -92,6 +92,8 @@ export interface CostCreatedRecord {
   type?: string;
   /** The record text exactly as export would write it. Present iff `error` is not. */
   text?: string;
+  /** Pending edits the exporter rejects while retaining the authored slot. */
+  notWritten?: readonly string[];
   /** Present instead of `type`/`text` when the record could not be read (see above). */
   error?: string;
 }

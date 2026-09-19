@@ -10,8 +10,53 @@
  * answers questions ABOUT the enum stay separable.
  */
 
+import type { IfcEntityInfo } from '@ifc-lite/data';
 import type { EntityDefinition, ExpressSchema } from './express-parser.js';
 import { getAllAttributes } from './express-parser.js';
+
+/** Adapt class-shaped IFC catalog rows into a name-only EXPRESS supplement. */
+export function entityCatalogSchema(
+  name: string,
+  catalog: readonly IfcEntityInfo[],
+  excludedTypes: readonly { readonly name: string }[],
+): ExpressSchema {
+  const excludedNames = new Set(excludedTypes.map((type) => type.name.toUpperCase()));
+  const entities: EntityDefinition[] = catalog
+    .filter(
+      (entity) =>
+        !excludedNames.has(entity.name.toUpperCase()) &&
+        (entity.parent !== undefined || entity.abstract || entity.attributes.length > 0),
+    )
+    .map((entity) => ({
+      name: entity.name,
+      isAbstract: entity.abstract,
+      supertype: entity.parent,
+      attributes: [],
+    }));
+  return { name, entities, types: [], enums: [], selects: [] };
+}
+
+/** Merge exact names while preserving canonical positional metadata. */
+export function mergeTypeUniverse(
+  canonical: ExpressSchema,
+  supplemental: readonly ExpressSchema[],
+): ExpressSchema {
+  const entities = [...canonical.entities];
+  const names = new Set(entities.map((entity) => entity.name.toUpperCase()));
+  for (const schema of supplemental) {
+    for (const entity of schema.entities) {
+      if (!names.has(entity.name.toUpperCase())) {
+        entities.push(entity);
+        names.add(entity.name.toUpperCase());
+      }
+    }
+  }
+  return {
+    ...canonical,
+    name: [canonical, ...supplemental].map((item) => item.name).join(' + '),
+    entities,
+  };
+}
 
 /** Emitted inside `impl IfcType { … }`, closing the impl block. */
 export function generateSchemaQueries(

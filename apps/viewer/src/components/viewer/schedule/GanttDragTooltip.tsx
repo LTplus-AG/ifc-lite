@@ -11,7 +11,7 @@
  */
 
 import { useTranslation } from '@/i18n';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 
 export interface GanttDragTooltipProps {
   live: {
@@ -26,11 +26,10 @@ export function GanttDragTooltip({ live }: GanttDragTooltipProps) {
   const { t, locale } = useTranslation();
   const durMs = Math.max(0, live.liveFinishMs - live.liveStartMs);
   const durDays = formatLocaleNumber(locale, durMs / 86_400_000, { maximumFractionDigits: 2 });
-  const fmt = (ms: number) => {
-    const d = new Date(ms);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  };
+  const fmt = (ms: number) => formatLocaleDate(locale, ms, {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    hour12: false, timeZone: 'UTC',
+  });
   const modeLabel =
     live.mode === 'shift' ? t('schedule.dragTooltip.shifting')
     : live.mode === 'resize-start' ? t('schedule.dragTooltip.resizingStart')

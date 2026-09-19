@@ -33,8 +33,8 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
-import { useTranslation } from '@/i18n';
-import type { TranslationKey } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import {
   DEFAULT_PALETTE,
   type AnimationSettings,
@@ -96,7 +96,7 @@ export function AnimationSettingsPopover({
   animationEnabled,
   onToggleAnimation,
 }: AnimationSettingsPopoverProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const settings = useViewerStore(s => s.animationSettings);
   const patch = useViewerStore(s => s.patchAnimationSettings);
   const reset = useViewerStore(s => s.resetAnimationSettings);
@@ -339,7 +339,7 @@ export function AnimationSettingsPopover({
               <div className="grid gap-1">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="prep-days" className="text-xs">{t('schedule.animation.lookAheadWindowLabel')}</Label>
-                  <span className="text-xs font-mono text-muted-foreground">{t('schedule.animation.lookAheadWindowValue', { days: settings.preparationDays })}</span>
+                  <span className="text-xs font-mono text-muted-foreground">{t('schedule.animation.lookAheadWindowValue', { days: formatLocaleNumber(locale, settings.preparationDays) })}</span>
                 </div>
                 <input
                   id="prep-days"

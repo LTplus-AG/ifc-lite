@@ -244,6 +244,18 @@ describe('GanttDragTooltip localization (#4918)', { skip: !HAS_CATALOGUE && 'sch
       liveStartMs: 0, liveFinishMs: 1.5 * 86_400_000 }} />);
     assert.match(container.textContent ?? '', /Dauer: 1,5 T/);
   });
+
+  it('formats UTC drag timestamps with the active locale', () => {
+    registerLocale('ar-EG-u-nu-arab', {
+      'schedule.dragTooltip.start': 'البداية: {value}',
+      'schedule.dragTooltip.finish': 'النهاية: {value}',
+    });
+    act(() => setLocale('ar-EG-u-nu-arab'));
+    const container = render(<GanttDragTooltip live={{ taskGlobalId: 'g1', mode: 'shift',
+      liveStartMs: Date.UTC(2024, 4, 1, 8, 0), liveFinishMs: Date.UTC(2024, 4, 6, 8, 0) }} />);
+    assert.match(container.textContent ?? '', /٢٠٢٤/);
+    assert.doesNotMatch(container.textContent ?? '', /2024-05-0/);
+  });
 });
 
 describe('GanttWorkPlanSummary localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
@@ -510,6 +522,16 @@ describe('GanttEmptyState localization (#4918)', { skip: !HAS_CATALOGUE && 'sche
 });
 
 describe('AnimationSettingsPopover localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+  it('formats the look-ahead value with the active locale numerals', () => {
+    const settings = useViewerStore.getState().animationSettings;
+    useViewerStore.setState({ animationSettings: { ...settings, preparationDays: 12, showPreparationGhost: true } });
+    registerLocale('ar-EG-u-nu-arab', { 'schedule.animation.lookAheadWindowValue': '{days} يوم' });
+    act(() => setLocale('ar-EG-u-nu-arab'));
+    const container = render(<AnimationSettingsPopover animationEnabled onToggleAnimation={() => {}} />);
+    openMenu(container.querySelector('button[aria-haspopup="menu"]')!);
+    assert.match(document.body.textContent ?? '', /١٢ يوم/);
+  });
+
   it('translates the trigger, style tiles, timing toggles, and (once open) the phased/palette section', () => {
     const settings = useViewerStore.getState().animationSettings;
     useViewerStore.setState({

@@ -11,19 +11,31 @@ import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { AddElementPanel } from './AddElementPanel.js';
 import type { addElementEn as AddElementEnType } from '@/i18n/catalogues/add-element.en';
+
+let AddElementPanel: typeof import('./AddElementPanel.js').AddElementPanel | undefined;
+try {
+  ({ AddElementPanel } = await import('./AddElementPanel.js'));
+} catch {
+  console.error('[AddElementPanel.i18n] localized panel unavailable; regression assertions will fail');
+  AddElementPanel = undefined;
+}
 
 let addElementEn: typeof AddElementEnType | undefined;
 try {
   ({ addElementEn } = await import('@/i18n/catalogues/add-element.en'));
-} catch (error) {
-  console.error('[AddElementPanel.i18n] failed to load the feature catalogue', error);
+} catch {
+  console.error('[AddElementPanel.i18n] feature catalogue unavailable; regression assertions will fail');
   addElementEn = undefined;
 }
 
 const HAS_CATALOGUE = addElementEn !== undefined;
 const CATALOGUE = addElementEn ?? ({} as typeof AddElementEnType);
+
+function renderPanel() {
+  assert.ok(AddElementPanel, 'localized AddElementPanel module must load');
+  return render(<AddElementPanel onClose={() => undefined} />);
+}
 
 function marked(text: string): string {
   return `⟦${text}⟧`;
@@ -60,7 +72,7 @@ afterEach(() => {
 describe('Add Element localization (#4918)', () => {
   it('updates visible panel chrome, type help, and accessibility text when the locale changes', () => {
     assert.ok(HAS_CATALOGUE, 'add-element.en.ts catalogue must exist');
-    const ui = render(<AddElementPanel onClose={() => undefined} />);
+    const ui = renderPanel();
     assert.match(ui.textContent ?? '', /Add Element/);
     assert.match(ui.textContent ?? '', /Click Start, then End/);
     assert.equal(ui.querySelector('[aria-label="Close add element panel"]')?.getAttribute('aria-label'), 'Close add element panel');
@@ -97,7 +109,7 @@ describe('Add Element localization (#4918)', () => {
         },
       },
     });
-    const ui = render(<AddElementPanel onClose={() => undefined} />);
+    const ui = renderPanel();
     registerLocale('add-element-auto-pseudo', pseudoLocale());
     act(() => setLocale('add-element-auto-pseudo'));
 
@@ -123,7 +135,7 @@ describe('Add Element localization (#4918)', () => {
     assert.ok(model.ifcDataStore);
     Object.assign(model.ifcDataStore, { getEntity: () => null });
     useViewerStore.setState(fixtureModels(model));
-    const ui = render(<AddElementPanel onClose={() => undefined} />);
+    const ui = renderPanel();
     assert.match(ui.textContent ?? '', /Storey #2/);
     assert.match(ui.textContent ?? '', /Thickness \(m\)/);
 

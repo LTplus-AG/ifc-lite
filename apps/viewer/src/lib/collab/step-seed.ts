@@ -31,10 +31,12 @@ import type { ModelSlotRef, StepSeedEntity, StepSeedSource } from '@ifc-lite/col
 import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
 import {
   isPortableReferenceList,
+  isPortableReferenceRootType,
   isPortableReferenceScalar,
   localReferenceId,
   portableEntityKey,
   portableEntityPath,
+  portableReferenceEntityIds,
 } from './portable-reference-entities';
 
 const IFC_CLASS_URI = (code: string) =>
@@ -114,6 +116,7 @@ export function buildStepSeedSource(
   };
   const childrenByPath = buildChildrenByPath(store, guidPathFor);
   const storeyElevations = store.spatialHierarchy?.storeyElevations;
+  const portableReferenceIds = portableReferenceEntityIds(store);
 
   function* iterate(): Generator<StepSeedEntity> {
     for (const [expressId, ref] of store.entityIndex.byId.entries()) {
@@ -152,7 +155,9 @@ export function buildStepSeedSource(
       // Preserve the positional surface of the small non-root graph reached
       // by cost/constraint reference attributes. Root rows remain the bounded
       // table-backed seed above; only reference-bearing slots are added there.
-      const sourceEntity = store.getEntity?.(expressId) ?? null;
+      const needsStructuredAttributes = portableReferenceIds.has(expressId)
+        || isPortableReferenceRootType(ref.type);
+      const sourceEntity = needsStructuredAttributes ? store.getEntity?.(expressId) ?? null : null;
       if (sourceEntity) {
         const names = getAttributeNamesAcrossSchemas(sourceEntity.type);
         const includeOrdinary = !store.entities.getGlobalId(expressId);
@@ -160,15 +165,16 @@ export function buildStepSeedSource(
           const name = names[index];
           if (!name || value === undefined) return;
           let wireValue: unknown = value;
-          if (isPortableReferenceList(name) && Array.isArray(value)) {
-            const paths: string[] = [];
+          if ((includeOrdinary || isPortableReferenceList(name)) && Array.isArray(value)) {
+            const paths: unknown[] = [];
             for (const member of value) {
               const id = localReferenceId(member);
               const path = id === null ? null : portableEntityPath(store, id, slot);
               if (path) paths.push(path);
+              else if (includeOrdinary) paths.push(member);
             }
             wireValue = paths;
-          } else if (isPortableReferenceScalar(name)) {
+          } else if (includeOrdinary || isPortableReferenceScalar(name)) {
             const id = localReferenceId(value);
             const path = id === null ? null : portableEntityPath(store, id, slot);
             if (path) wireValue = path;

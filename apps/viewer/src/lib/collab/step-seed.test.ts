@@ -284,4 +284,26 @@ describe('collab step-seed portable cost references (#4857 review)', () => {
     assert.deepEqual(item.attributes?.['bsi::ifc::prop::CostValues'], ['/ifc-lite-ref-2']);
     assert.equal(value.attributes?.['bsi::ifc::prop::UnitBasis'], '/ifc-lite-ref-3');
   });
+
+  it('keeps the complete transitive quantity closure', async () => {
+    const step = [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('quantity.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;', 'DATA;',
+      "#1=IFCCOSTITEM('0item00000000000000000',$,'Item',$,$,$,.NOTDEFINED.,$,(#2));",
+      "#2=IFCPHYSICALCOMPLEXQUANTITY('Assembly',$,(#3),$,$,$);",
+      "#3=IFCQUANTITYLENGTH('Leaf',$,$,4.,$);",
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const bytes = new TextEncoder().encode(step);
+    const store = await new IfcParser().parseColumnar(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    const entities = Array.from(buildStepSeedSource(store).entities);
+    const complex = entities.find(entity => entity.guid === 'ifc-lite-ref-2');
+    assert.ok(complex);
+    assert.deepEqual(complex.attributes?.['bsi::ifc::prop::HasQuantities'], ['/ifc-lite-ref-3']);
+    assert.ok(entities.some(entity => entity.guid === 'ifc-lite-ref-3'));
+  });
 });

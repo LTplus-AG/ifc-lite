@@ -2803,8 +2803,7 @@ export const createMutationSlice: StateCreator<
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
-        view.restoreNewEntity(stashed);
-        mirrorCreateEntityRedo(get(), modelId, stashed);
+        view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed);
       } else {
         view.restoreFromTombstone(mutation.entityId);
       }
@@ -2962,12 +2961,12 @@ export const createMutationSlice: StateCreator<
         );
       }
     } else if (mutation.type === 'CREATE_ENTITY') {
-      // Redo of a create: replay from the stashed NewEntity. Symmetrical to
-      // DELETE_ENTITY's undo — same map, same key.
+      // Redo of a create: replay from the stashed NewEntity, symmetrical to DELETE_ENTITY's undo.
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
         view.restoreNewEntity(stashed);
+        mirrorCreateEntityRedo(get(), modelId, stashed);
       } else {
         // Source-buffer entities have no stash; the editor's deleteEntity
         // call simply re-tombstoned them — which is exactly what we want

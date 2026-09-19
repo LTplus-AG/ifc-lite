@@ -67,12 +67,26 @@ describe('portable room STEP source (#4604)', () => {
       modelId: 'cost', name: 'cost.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
       schemaVersion: 'IFC4', fileName: 'cost.ifc', portableStepSource: bytes,
     }], new Map([['cost', slot]]));
+    collab.setAttribute(
+      doc,
+      `${slot.pathPrefix}/0item00000000000000000`,
+      'bsi::ifc::prop::CostValues',
+      [`${slot.pathPrefix}/ifc-lite-ref-3`],
+    );
     const guest = joiner(doc, blobs, 'cost-reference-export');
     await guest.reconstructor.reconstruct();
     const model = guest.store.state().models.values().next().value;
     assert.ok(model?.ifcDataStore);
     const itemId = localIdOf(model, `${slot.pathPrefix}/0item00000000000000000`);
     const valueId = localIdOf(model, `${slot.pathPrefix}/ifc-lite-ref-3`);
+    const peerPortable = roomStepExportSource(model.ifcDataStore, undefined, model.id);
+    assert.ok(peerPortable);
+    const peerOutput = new StepExporter(peerPortable.dataStore, peerPortable.mutationView)
+      .export({ schema: 'IFC4', applyMutations: true });
+    const peerText = typeof peerOutput.content === 'string'
+      ? peerOutput.content : new TextDecoder().decode(peerOutput.content);
+    assert.match(peerText, /#1=IFCCOSTITEM\([^\n]*\(#3\),\$\);/,
+      'a fresh recipient exports the CRDT snapshot without needing a local mutation');
     const view = new MutablePropertyView(model.ifcDataStore.properties, model.id);
     view.setPositionalAttribute(itemId, 7, [`#${valueId}`]);
     const portable = roomStepExportSource(model.ifcDataStore, view, model.id);

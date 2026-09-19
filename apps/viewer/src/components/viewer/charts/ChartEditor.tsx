@@ -7,11 +7,17 @@
  * the dataset), an optional stack column, the measure, and top-N. Native
  * selects, like the clash panel's — nothing here needs a portal.
  */
-import { useState } from 'react';
-import { elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
+import { useMemo, useState } from 'react';
+import { HelpCircle } from 'lucide-react';
+import { CHART_FILTER_NOT_APPLICABLE_SOURCES, elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
+import { readChartFilter } from '@/lib/charts/source-filter';
+import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector';
+import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
 import { ElementFieldPicker } from './ElementFieldPicker';
 import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
+
+const FILTER_PLACEHOLDER = 'IfcWall, Pset_WallCommon.FireRating=/REI.*/';
 
 const TYPE_LABELS: Record<ChartType, string> = {
   bar: 'Bar',
@@ -63,6 +69,17 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
 
 export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading }: ChartEditorProps) {
   const [draft, setDraft] = useState<ChartSpec>(spec);
+  const schemaVersion = useActiveSchemaVersion();
+  const [filterText, setFilterText] = useState(spec.filter?.selector ?? '');
+  const [filterFeedback, setFilterFeedback] = useState<SelectorFeedback | null>(null);
+  const filterApplicable = !CHART_FILTER_NOT_APPLICABLE_SOURCES.has(draft.source);
+  // `null` means "no filter typed" — always valid; a real reading is either
+  // ok or a refusal message (#4946's all-or-nothing rule, `readChartFilter`).
+  const filterReading = useMemo(
+    () => (filterApplicable && filterText.trim().length > 0 ? readChartFilter(filterText, { schemaVersion }) : null),
+    [filterApplicable, filterText, schemaVersion],
+  );
+  const filterValid = filterReading === null || filterReading.ok;
   const columns = editorColumns(datasets[draft.source], draft);
   const rowCount = datasets[draft.source].rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
@@ -71,12 +88,17 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const dimensionOk = dims.some((c) => c.id === draft.dimension);
   const measureOk = draft.measure.agg === 'count' || numberColumns.some((c) => c.id === draft.measure.column);
   const stackOk = draft.type !== 'stackedBar' || categoryColumns.some((c) => c.id === draft.stackBy);
-  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk;
+  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && filterValid;
 
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
     const allowed = dimensionColumns(draft.type, cols);
     setDraft({ ...draft, source, elementField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+    // Not every source can be filtered (#4946); switching to one clears the
+    // field rather than leave text behind that the next save would drop
+    // silently.
+    setFilterText('');
+    setFilterFeedback(null);
   };
 
   const setElementField = (elementField: ElementFieldBinding | undefined): void => {
@@ -124,7 +146,13 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       data-chart-editor
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid) onSave({ ...draft, title: draft.title.trim() });
+        if (filterReading && !filterReading.ok) {
+          setFilterFeedback({ tone: 'error', lines: [filterReading.message] });
+          return;
+        }
+        if (!valid) return;
+        const filter = filterApplicable && filterText.trim().length > 0 ? { selector: filterText.trim() } : undefined;
+        onSave({ ...draft, title: draft.title.trim(), filter });
       }}
     >
       <label className="flex flex-col gap-0.5">
@@ -141,6 +169,39 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         {draft.source === 'elements' && (
           <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
         )}
+        <label className="col-span-2 flex flex-col gap-0.5">
+          <span className="text-muted-foreground">Source filter (selector)</span>
+          {filterApplicable ? (
+            <>
+              <div className="flex items-center gap-1">
+                <input
+                  className={`${field} flex-1 font-mono`}
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  onBlur={() => setFilterFeedback(filterReading && !filterReading.ok ? { tone: 'error', lines: [filterReading.message] } : null)}
+                  placeholder={FILTER_PLACEHOLDER}
+                  aria-label="Source filter"
+                  spellCheck={false}
+                />
+                <a
+                  href={DOCS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Selector syntax reference"
+                  title="Selector syntax reference"
+                  className="text-muted-foreground hover:text-foreground shrink-0"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </a>
+              </div>
+              {filterFeedback && <SelectorFeedbackList feedback={filterFeedback} />}
+            </>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">
+              Source filter is not applicable to {draft.source === 'bcf' ? 'BCF topics' : 'Model compare'}.
+            </span>
+          )}
+        </label>
         <label className="flex flex-col gap-0.5">
           <span className="text-muted-foreground">Chart</span>
           <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label="Chart type">

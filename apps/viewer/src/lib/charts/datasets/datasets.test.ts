@@ -27,6 +27,9 @@ import { buildCompareDataset, COMPARE_COLUMNS } from './compare.js';
 import { buildElementsDataset } from './elements.js';
 import { DASHBOARD_PRESETS } from '../presets.js';
 import { createElementFieldReader } from '../element-field-reader.js';
+import { applyChartFilter, resolveChartFilter } from '../source-filter.js';
+import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models.js';
+import { toGlobalIdFromModels } from '@/store/globalId.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -549,5 +552,53 @@ END-ISO-10303-21;`;
         if (chart.type === 'histogram') assert.equal(dim.kind, 'number', chart.title);
       }
     }
+  });
+
+  // #4946 — a chart's own source filter: the SAME matching path the search
+  // Filter tab uses (`readSelector` -> `evaluateFilterRulesFederated`), then
+  // ONE post-filter (`applyChartFilter`) shared by every source.
+  it('source filter: resolveChartFilter + applyChartFilter narrow an elements row set, and keep a clash row on an any-match', async () => {
+    const state = useViewerStore.getState();
+    const models = evaluatorModelsFromState(state);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(state.models, modelId, expressId);
+
+    const ids = await resolveChartFilter(models, { selector: 'IfcWall' }, toGlobalId, { limit: 1_000 });
+    assert.ok(ids);
+    assert.deepEqual([...(ids as Set<number>)], [GID(41)], 'IfcWall matches only the one wall in the fixture');
+
+    const elementsDs = buildElementsDataset({ kind: 'all' }, state);
+    assert.equal(elementsDs.rows.length, 3, 'unfiltered: wall + beam + door');
+    const filteredElements = applyChartFilter(elementsDs, ids as Set<number>);
+    assert.equal(filteredElements.rows.length, 1, 'filtered: the wall row only');
+    assert.notEqual(filteredElements.fingerprint, elementsDs.fingerprint, 'a filtered dataset never reuses the unfiltered fingerprint');
+
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [box('0Wall00000000000000041', GID(41), 'IfcWall', [0, 0, 0], [1, 1, 1]), box('0Beam00000000000000042', GID(42), 'IfcBeam', [0.5, 0, 0], [1.5, 1, 1])],
+      [{ id: 'str', name: 'STR', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }],
+    );
+    useViewerStore.setState({ clashResult: result, clashGroups: null, clashReviews: new Map(), clashRunSeq: 8 });
+    const clashDs = buildClashDataset(useViewerStore.getState());
+    assert.equal(clashDs.rows.length, 1);
+    const filteredClash = applyChartFilter(clashDs, ids as Set<number>);
+    assert.equal(filteredClash.rows.length, 1, 'the clash keeps its row: ids [wall, beam] any-matches the filtered wall');
+  });
+
+  it('source filter: a refused reading (no rule, unsupported syntax, or a parse error) THROWS instead of narrowing on the readable part', async () => {
+    const state = useViewerStore.getState();
+    const models = evaluatorModelsFromState(state);
+    const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(state.models, modelId, expressId);
+
+    // No filterable class/attribute at all — reads as plain text, zero rules.
+    await assert.rejects(() => resolveChartFilter(models, { selector: 'NotARealIfcClass' }, toGlobalId));
+    // A parse error (unterminated regex).
+    await assert.rejects(() => resolveChartFilter(models, { selector: 'Name=/unterminated' }, toGlobalId));
+    // Rules exist (IfcWall) but the "+" union of a second group is unsupported —
+    // still refused rather than run on the readable IfcWall rule alone.
+    await assert.rejects(() => resolveChartFilter(models, { selector: 'IfcWall + IfcDoor' }, toGlobalId));
+
+    // No filter at all resolves to `null`, never an error.
+    assert.equal(await resolveChartFilter(models, undefined, toGlobalId), null);
+    assert.equal(await resolveChartFilter(models, { selector: '   ' }, toGlobalId), null);
   });
 });

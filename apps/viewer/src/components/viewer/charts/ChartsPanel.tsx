@@ -25,12 +25,13 @@ import { DashboardMenu } from './DashboardMenu';
 import { ReportExportDialog } from './ReportExportDialog';
 import { useChart3DLink, useChartColorOverlay } from './useChart3DLink';
 import { useChartDatasets } from './useChartDatasets';
+import { useChartSourceFilters } from './useChartSourceFilters';
 import type { ChartRenderer } from './useEChart';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 import { useElementFieldCatalog } from './useElementFieldCatalog';
 
 const FOCUS_LABEL: Record<ChartFocusMode, string> = { highlight: 'Highlight', isolate: 'Isolate', ghost: 'Ghost others' };
-const SCOPE_LABEL: Record<ChartScope['kind'], string> = { all: 'All models', visible: 'Visible elements', basket: 'Basket', list: 'Saved list' };
+const SCOPE_LABEL: Record<ChartScope['kind'], string> = { all: 'All models', visible: 'Visible elements', basket: 'Basket' };
 
 export interface ChartsPanelProps {
   onClose?: () => void;
@@ -93,6 +94,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   // exposes IFC fields immediately.
   const fieldCatalog = useElementFieldCatalog(editing !== null);
   const link = useChart3DLink();
+  const sourceFilters = useChartSourceFilters(dashboard?.charts ?? []);
 
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());
   const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
@@ -149,7 +151,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
     update({ ...dashboard, charts: dashboard.charts.filter((c) => c.id !== id), layout: dashboard.layout.filter((l) => l.chartId !== id) });
   }, [dashboard, update]);
   const setScope = useCallback((kind: ChartScope['kind']) => {
-    if (!dashboard || kind === 'list') return;
+    if (!dashboard) return;
     update({ ...dashboard, scope: { kind } });
   }, [dashboard, update]);
   const setLayout = useCallback((layout: DashboardLayoutItem[]) => {
@@ -158,10 +160,12 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const renderCard = useCallback((id: string) => {
     const spec = dashboard?.charts.find((c) => c.id === id);
     if (!spec) return null;
+    const filterText = spec.filter?.selector;
     return (
       <ChartCard
         spec={spec}
         dataset={datasets[spec.source]}
+        filterState={filterText ? sourceFilters.get(filterText) : undefined}
         link={link}
         renderer={renderer}
         onEdit={() => setEditing(spec)}
@@ -169,7 +173,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
         onAggregation={onAggregation}
       />
     );
-  }, [dashboard, datasets, link, renderer, removeChart, onAggregation]);
+  }, [dashboard, datasets, sourceFilters, link, renderer, removeChart, onAggregation]);
 
   const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
 

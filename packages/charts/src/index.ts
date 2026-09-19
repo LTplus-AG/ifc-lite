@@ -7,6 +7,7 @@ export { aggregate, idsForCategories, categoriesForIds, idsForItems, itemsForIds
 export { assignColors, emptyPalette, paletteColor, OTHER_BUCKET_KEY, OTHER_BUCKET_COLOR, type PaletteAssignment } from './palette.js';
 export { buildEChartsOption, DEFAULT_THEME, type ChartTheme, type BuildOptionArgs, type EChartsOptionObject } from './echarts-option.js';
 export { renderChartSvg, registerEChartsModules, type RenderSvgOptions } from './render-svg.js';
-export { validateDashboardSpec, isDashboardSpec, isReportSpec, DASHBOARD_GRID_COLUMNS, type DashboardValidationError } from './validate.js';
+export { validateDashboardSpec, isDashboardSpec, isReportSpec, DASHBOARD_GRID_COLUMNS, CHART_FILTER_NOT_APPLICABLE_SOURCES, type DashboardValidationError } from './validate.js';
+export { migrateDashboardSpec } from './migrate.js';
 export { elementsDataset, ELEMENT_COLUMNS, ELEMENT_DATASET_COLUMNS, type ElementsDatasetModel, type ElementsStore, type ElementsEntityTable } from './elements-dataset.js';
 export { elementFieldColumnId, elementFieldLabel, elementFieldColumn, normalizeElementFieldValue, type NormalizedElementFieldValue } from './element-field.js';

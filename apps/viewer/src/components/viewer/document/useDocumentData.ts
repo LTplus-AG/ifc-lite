@@ -9,12 +9,14 @@
  * so what is on screen is what prints.
  */
 import { useMemo } from 'react';
-import { aggregate, type Aggregation } from '@ifc-lite/charts';
+import { aggregate, type Aggregation, type ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
+import { applyChartFilter } from '@/lib/charts/source-filter';
 import { useChartDatasets } from '../charts/useChartDatasets';
+import { useChartSourceFilters } from '../charts/useChartSourceFilters';
 
 export interface DocumentData {
   bindings: BindingContext;
@@ -29,6 +31,11 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const bcfProject = useViewerStore((s) => s.bcfProject);
   const datasets = useChartDatasets(ALL_SCOPE);
+  // Same resolution hook the Charts panel uses (#4946), so a document chart
+  // block prints the SAME filtered numbers the dashboard card shows — never
+  // a second, possibly-stale reading of the same selector.
+  const charts = useMemo<ChartSpec[]>(() => (document?.blocks ?? []).flatMap((b) => (b.kind === 'chart' ? [b.chart] : [])), [document]);
+  const sourceFilters = useChartSourceFilters(charts);
 
   const bindings = useMemo<BindingContext>(() => {
     const bound: Array<BindingContext['models'][number]> = [];
@@ -40,15 +47,26 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
     const out = new Map<string, Aggregation | null>();
     for (const block of document?.blocks ?? []) {
       if (block.kind !== 'chart') continue;
+      const spec = block.chart;
       try {
-        out.set(block.id, aggregate(block.chart, datasets[block.chart.source]));
+        const filterText = spec.filter?.selector;
+        const filterState = filterText ? sourceFilters.get(filterText) : undefined;
+        const baseDataset = datasets[spec.source];
+        // Never the unfiltered rows under a filter (#4946): resolving/erred
+        // prints an EMPTY dataset, same as the dashboard card.
+        const dataset = !filterText
+          ? baseDataset
+          : filterState?.status === 'ok'
+            ? applyChartFilter(baseDataset, filterState.ids)
+            : { ...baseDataset, rows: [] };
+        out.set(block.id, aggregate(spec, dataset));
       } catch (err) {
         console.warn(`[Documents] chart "${block.chart.title}" cannot aggregate`, err);
         out.set(block.id, null);
       }
     }
     return out;
-  }, [document, datasets]);
+  }, [document, datasets, sourceFilters]);
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
 

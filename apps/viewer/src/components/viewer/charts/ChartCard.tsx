@@ -13,13 +13,18 @@ import { Crosshair, Pencil, X } from 'lucide-react';
 import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
+import { applyChartFilter } from '@/lib/charts/source-filter';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
 import { chartBucketIdentity, chartSelectionIsLive, sameChartBucketIdentity, type Chart3DLink } from './useChart3DLink';
+import type { ChartSourceFilterState } from './useChartSourceFilters';
 
 export interface ChartCardProps {
   spec: ChartSpec;
   dataset: ChartDataset;
+  /** Resolution of `spec.filter`, from `useChartSourceFilters`; `undefined`
+   *  when the chart has no filter, or a lookup hasn't landed yet. */
+  filterState?: ChartSourceFilterState;
   link: Chart3DLink;
   renderer?: ChartRenderer;
   onEdit: () => void;
@@ -40,6 +45,24 @@ export function describeAggregation(aggregation: Aggregation): string {
   return `${plural(aggregation.categories.length, 'bucket')} · ${total}${rest}${unmeasured}${unsupported}`;
 }
 
+/**
+ * The card's subtitle: the aggregation summary, with the filter's own state
+ * folded in. A resolving or erred filter REPLACES the summary — the row
+ * count underneath is of the empty placeholder dataset, not a real answer,
+ * so showing it next to "Resolving filter…" would read as a contradiction.
+ * An applied filter only APPENDS its selector text, since the summary above
+ * it already reflects the narrowed rows.
+ */
+function subtitleFor(spec: ChartSpec, aggregation: Aggregation | null, filterSelector: string | undefined, filterState: ChartSourceFilterState | undefined): string {
+  if (filterSelector) {
+    if (filterState?.status === 'error') return filterState.message;
+    if (filterState === undefined || filterState.status === 'resolving') return 'Resolving filter…';
+  }
+  if (!aggregation) return 'Cannot aggregate — edit the chart';
+  const summary = describeAggregation(aggregation);
+  return filterSelector ? `${summary} · filter: ${filterSelector}` : summary;
+}
+
 /** What fills an empty chart, per source — where the data comes from, in the app's own words. */
 export const EMPTY_HINTS: Record<ChartSource, string> = {
   elements: 'No elements in scope.',
@@ -50,7 +73,7 @@ export const EMPTY_HINTS: Record<ChartSource, string> = {
   compare: 'No comparison yet — compare two models (Analyze › Compare).',
 };
 
-export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onAggregation }: ChartCardProps) {
+export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, onRemove, onAggregation }: ChartCardProps) {
   const chartSlice = useViewerStore((s) => s.chartSlice);
   const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
   const chartSliceBuckets = useViewerStore((s) => s.chartSliceBuckets);
@@ -58,17 +81,27 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
   // Colours are kept by label across re-aggregations; the previous palette lives here.
   const paletteRef = useRef<PaletteAssignment | undefined>(undefined);
 
+  const filterSelector = spec.filter?.selector;
+  // Resolving or erred: an EMPTY dataset, never the unfiltered rows under a
+  // filter (#4946) — a card must not flash the whole model's numbers while
+  // its filter is still running, or keep showing them after it fails.
+  const filteredDataset = useMemo<ChartDataset>(() => {
+    if (!filterSelector) return dataset;
+    if (filterState?.status === 'ok') return applyChartFilter(dataset, filterState.ids);
+    return { ...dataset, rows: [] };
+  }, [dataset, filterSelector, filterState]);
+
   const aggregation = useMemo<Aggregation | null>(() => {
     try {
       const slice = chartSliceSource === spec.id ? null : chartSlice;
-      const result = aggregate(spec, dataset, { slice, palette: paletteRef.current });
+      const result = aggregate(spec, filteredDataset, { slice, palette: paletteRef.current });
       paletteRef.current = result.palette;
       return result;
     } catch (err) {
       console.warn(`[Charts] chart "${spec.title}" cannot aggregate`, err);
       return null;
     }
-  }, [spec, dataset, chartSlice, chartSliceSource]);
+  }, [spec, filteredDataset, chartSlice, chartSliceSource]);
 
   useEffect(() => { onAggregation?.(spec, aggregation); }, [onAggregation, spec, aggregation]);
 
@@ -118,7 +151,7 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
     link.frameItems(aggregation, items);
   }, [aggregation, selection.full, link]);
 
-  const subtitle = aggregation ? describeAggregation(aggregation) : 'Cannot aggregate — edit the chart';
+  const subtitle = subtitleFor(spec, aggregation, filterSelector, filterState);
 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>
@@ -141,7 +174,9 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
         <div ref={ref} className="absolute inset-0" data-chart-host />
         {aggregation && aggregation.categories.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-muted-foreground" data-chart-empty>
-            {dataset.rows.length === 0 ? EMPTY_HINTS[spec.source] : 'Nothing to bucket — every row is without a value for this dimension.'}
+            {filterSelector && filterState?.status !== 'ok'
+              ? subtitle
+              : filteredDataset.rows.length === 0 ? EMPTY_HINTS[spec.source] : 'Nothing to bucket — every row is without a value for this dimension.'}
           </div>
         )}
       </div>

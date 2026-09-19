@@ -7,6 +7,7 @@ import { aggregate } from './aggregate.js';
 import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption } from './echarts-option.js';
 import { renderChartSvg } from './render-svg.js';
 import { validateDashboardSpec } from './validate.js';
+import { migrateDashboardSpec } from './migrate.js';
 import type { ChartDataset, ChartSpec, DashboardSpec } from './types.js';
 
 const ds: ChartDataset = {
@@ -82,7 +83,7 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
 
 describe('validateDashboardSpec', () => {
   const good: DashboardSpec = {
-    version: 1, id: 'd', name: 'Overview', scope: { kind: 'all' },
+    version: 2, id: 'd', name: 'Overview', scope: { kind: 'all' },
     charts: [bar, { ...bar, id: 'c2', type: 'stackedBar', stackBy: 'Storey' }],
     layout: [{ chartId: 'c', x: 0, y: 0, w: 6, h: 4 }, { chartId: 'c2', x: 6, y: 0, w: 6, h: 4 }],
   };
@@ -103,7 +104,7 @@ describe('validateDashboardSpec', () => {
     expect(validateDashboardSpec({ ...good, page: { size: 'A4', orientation: 'landscape' }, titleBlock: { project: 'X' }, snapshots: true })).toEqual([]);
   });
 
-  it('rejects malformed or non-element IFC field bindings without changing dashboard version 1', () => {
+  it('rejects malformed or non-element IFC field bindings without changing dashboard version 2', () => {
     const invalid = { ...good, charts: [{ ...bar, source: 'clash', elementField: { kind: 'property', psetName: '', propertyName: 'X', valueKind: 'guess' } }], layout: [good.layout[0]] };
     expect(validateDashboardSpec(invalid).map(({ path }) => path).sort()).toEqual([
       '.charts[0].elementField', '.charts[0].elementField.psetName', '.charts[0].elementField.valueKind',
@@ -123,7 +124,7 @@ describe('validateDashboardSpec', () => {
 
   it('reports every problem at once with its path', () => {
     const bad = JSON.parse(JSON.stringify(good)) as Record<string, unknown>;
-    bad.version = 2;
+    bad.version = 1;
     (bad.charts as Array<Record<string, unknown>>)[1].stackBy = undefined;
     (bad.charts as Array<Record<string, unknown>>)[1].id = 'c';
     (bad.layout as Array<Record<string, unknown>>)[1].chartId = 'missing';
@@ -140,5 +141,50 @@ describe('validateDashboardSpec', () => {
     cells.layout[0] = { chartId: 'c', x: -1, y: 0.5, w: 0, h: 4 };
     expect(validateDashboardSpec(cells).map((e) => e.path).sort()).toEqual(['.layout[0].w', '.layout[0].x', '.layout[0].y']);
     expect(validateDashboardSpec(null)).toEqual([{ path: '', message: 'expected a dashboard object' }]);
+  });
+
+  // #4946 — the per-chart source filter and its "not applicable" sources.
+  it('accepts a source filter on elements/clash/schedule/ids and rejects it on bcf/compare', () => {
+    for (const source of ['elements', 'clash', 'schedule', 'ids'] as const) {
+      expect(validateDashboardSpec({ ...good, charts: [{ ...bar, source, filter: { selector: 'IfcWall' } }], layout: [good.layout[0]] })).toEqual([]);
+    }
+    for (const source of ['bcf', 'compare'] as const) {
+      expect(validateDashboardSpec({ ...good, charts: [{ ...bar, source, filter: { selector: 'IfcWall' } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter']);
+    }
+    expect(validateDashboardSpec({ ...good, charts: [{ ...bar, filter: { selector: '' } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter.selector']);
+  });
+});
+
+// #4946 — version 1 -> 2: adds `ChartSpec.filter`, drops the `list` scope.
+describe('migrateDashboardSpec', () => {
+  const v1 = {
+    version: 1, id: 'd', name: 'Overview', scope: { kind: 'all' },
+    charts: [bar], layout: [{ chartId: 'c', x: 0, y: 0, w: 6, h: 4 }],
+  };
+
+  it('bumps a version-1 dashboard to version 2 and leaves version 2 untouched', () => {
+    expect(migrateDashboardSpec(v1)).toEqual({ ...v1, version: 2 });
+    const v2 = { ...v1, version: 2 };
+    expect(migrateDashboardSpec(v2)).toBe(v2);
+    const migrated = migrateDashboardSpec(v1) as DashboardSpec;
+    expect(validateDashboardSpec(migrated)).toEqual([]);
+  });
+
+  it('folds a version-1 "list" scope to "all" — the resolver it needed was deleted with the scaffold', () => {
+    const withList = { ...v1, scope: { kind: 'list', listId: 'saved-1' } };
+    const migrated = migrateDashboardSpec(withList) as DashboardSpec;
+    expect(migrated.scope).toEqual({ kind: 'all' });
+    expect(validateDashboardSpec(migrated)).toEqual([]);
+  });
+
+  it('does not migrate a non-dashboard value or a version other than 1', () => {
+    expect(migrateDashboardSpec(null)).toBe(null);
+    expect(migrateDashboardSpec('nope')).toBe('nope');
+    const v3 = { ...v1, version: 3 };
+    expect(migrateDashboardSpec(v3)).toBe(v3);
+  });
+
+  it('a raw version-1 object is refused by validateDashboardSpec directly — migration is not optional', () => {
+    expect(validateDashboardSpec(v1).map((e) => e.path)).toEqual(['.version']);
   });
 });

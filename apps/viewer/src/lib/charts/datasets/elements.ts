@@ -35,7 +35,7 @@ function includeSets(scope: ChartScope, state: ModelsState): Map<string, Set<num
   let refs: EntityRef[];
   if (scope.kind === 'visible') refs = getVisibleBasketEntityRefsFromStore();
   else if (scope.kind === 'basket') refs = [...state.pinboardEntities].map(stringToEntityRef);
-  else return null; // 'all' — a 'list' scope is resolved by the caller into rows, not an include set
+  else return null; // 'all' — no include set; a per-chart source filter (#4946) narrows rows separately
   const sets = new Map<string, Set<number>>();
   for (const ref of refs) {
     // Single-model rows are keyed 'legacy'/'default' by their producers while

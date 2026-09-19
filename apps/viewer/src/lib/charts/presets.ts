@@ -37,7 +37,7 @@ export function modelOverviewDashboard(): DashboardSpec {
   const byStorey = newChartSpec({ title: 'Elements by storey', type: 'pie', dimension: ELEMENT_COLUMNS.storey, sort: 'label' });
   const typeByStorey = newChartSpec({ title: 'Types per storey', type: 'stackedBar', dimension: ELEMENT_COLUMNS.storey, stackBy: ELEMENT_COLUMNS.ifcType, sort: 'label', topN: 8 });
   return {
-    version: 1,
+    version: 2,
     id: freshId('dashboard'),
     name: 'Model overview',
     scope: { kind: 'all' },
@@ -56,7 +56,7 @@ function grid(charts: ChartSpec[]): DashboardSpec['layout'] {
 }
 
 function dashboard(name: string, charts: ChartSpec[]): DashboardSpec {
-  return { version: 1, id: freshId('dashboard'), name, scope: { kind: 'all' }, charts, layout: grid(charts) };
+  return { version: 2, id: freshId('dashboard'), name, scope: { kind: 'all' }, charts, layout: grid(charts) };
 }
 
 /** Weekly coordination meeting: clashes by discipline pair / severity / review / storey, issues by status / assignee / due, opened vs closed per week. */

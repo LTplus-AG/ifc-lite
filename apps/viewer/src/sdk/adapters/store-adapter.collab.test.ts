@@ -7,7 +7,13 @@ import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
-import { registerEntityMaps, registerStoreSlot } from '@/lib/collab/entity-paths.js';
+import {
+  pathForGuid,
+  registerEntityMaps,
+  registerEntityPath,
+  registerStoreSlot,
+  unregisterEntityPath,
+} from '@/lib/collab/entity-paths.js';
 import { deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-delete.js';
 import { createStoreAdapter } from './store-adapter.js';
 import type { StoreApi } from './types.js';
@@ -43,15 +49,27 @@ before(async () => {
 
 type MirrorCall = { kind: 'create' | 'remove' | 'attribute'; args: unknown[] };
 
-function fixture(canEdit = true, modelStore = dataStore) {
+function fixture(
+  canEdit = true,
+  modelStore = dataStore,
+  canMirrorCreate?: () => boolean,
+) {
   const view = new MutablePropertyView(modelStore.properties, MODEL);
   const calls: MirrorCall[] = [];
   const state = {
     models: new Map([[MODEL, { id: MODEL, ifcDataStore: modelStore }]]),
     getMutationView: (modelId: string) => modelId === MODEL ? view : null,
     canCollabEdit: () => canEdit,
-    mirrorEntityCreate: (...args: unknown[]) => calls.push({ kind: 'create', args }),
-    mirrorEntityRemove: (...args: unknown[]) => calls.push({ kind: 'remove', args }),
+    mirrorEntityCreate: (...args: unknown[]) => {
+      calls.push({ kind: 'create', args });
+      if (canMirrorCreate?.()) {
+        registerEntityPath(modelStore, args[1] as number, pathForGuid(modelStore, args[3] as string));
+      }
+    },
+    mirrorEntityRemove: (...args: unknown[]) => {
+      calls.push({ kind: 'remove', args });
+      unregisterEntityPath(modelStore, args[1] as number);
+    },
     mirrorAttributeEdit: (...args: unknown[]) => calls.push({ kind: 'attribute', args }),
   } as unknown as ViewerState;
   const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
@@ -182,6 +200,21 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     });
     assert.equal(adapter.removeEntity(point), true);
     assert.deepEqual(calls.at(-1), { kind: 'remove', args: [MODEL, 3] });
+  });
+
+  it('retries source mirroring after collaboration is initially unavailable', () => {
+    let available = false;
+    const { adapter, calls } = fixture(true, ifc2x3Store, () => available);
+    const point = { modelId: MODEL, expressId: 3 };
+
+    adapter.setPositionalAttribute(point, 0, [4, 5, 6]);
+    available = true;
+    adapter.setPositionalAttribute(point, 0, [7, 8, 9]);
+
+    const creates = calls.filter(call => call.kind === 'create');
+    assert.equal(creates.length, 2);
+    assert.deepEqual(creates[0]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
+    assert.deepEqual(creates[1]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
   });
 
   it('uses IFC2X3 positional names and mirrors undefined as an explicit clear', () => {

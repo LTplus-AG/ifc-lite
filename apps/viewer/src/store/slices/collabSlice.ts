@@ -1217,9 +1217,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // slot, like every seeded path — and register it so this (and later
     // edits to it) resolve.
     let path = pathForEntity(store, entityId);
+    let generatedPath = false;
     if (!path && guid) {
       path = pathForGuid(store, guid);
-      registerEntityPath(store, entityId, path);
+      generatedPath = true;
     }
     if (!path) return;
     const ifcClass = normalizeIfcClass(ifcType);
@@ -1230,6 +1231,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
       });
     });
+    if (generatedPath) registerEntityPath(store, entityId, path);
     // The mesh blob is baked at the element's world position → identity baseline
     // (so a later move composes correctly; see reconcilePlacementMesh).
     placementApi.setPlacementBaseline(session.doc, path, { location: [0, 0, 0] });

@@ -53,7 +53,7 @@ import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
-import { entityForPath, pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths.js';
+import { entityForPath, pathForEntity, pathForGuid } from '@/lib/collab/entity-paths.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -136,7 +136,6 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     while (dataStore.entities.getExpressIdByGlobalId(roomKey) >= 0) {
       roomKey = `ifc-lite-ref-${expressId}-${++suffix}`;
     }
-    registerEntityPath(dataStore, expressId, pathForGuid(dataStore, roomKey));
     const referenceSlots = referenceAttributeSlotsForStore(dataStore, entity.type);
     entity.attributes.forEach((value, index) => ensureReferencedRoomEntities(
       modelId, editor, dataStore, value, referenceSlots[index] ?? false,

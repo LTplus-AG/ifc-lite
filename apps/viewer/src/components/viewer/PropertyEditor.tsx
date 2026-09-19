@@ -73,6 +73,8 @@ import {
   type QtoQuantityDef,
   type QtoDefinition,
 } from '@/lib/ifc4-qto-definitions';
+import { useTranslation } from '@/i18n';
+import { INLINE_VALUE_TYPES, MATERIAL_CATEGORIES } from './property-editor-options';
 
 // ── Edit-deck button styling ────────────────────────────────────────────────
 // Data-enrichment actions (Property / Quantity / Classification / Material)
@@ -117,6 +119,7 @@ export function PropertyEditor({
   editScope,
   onClose,
 }: PropertyEditorProps) {
+  const { t } = useTranslation();
   const setProperty = useViewerStore((s) => s.setProperty);
   const deleteProperty = useViewerStore((s) => s.deleteProperty);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -141,7 +144,7 @@ export function PropertyEditor({
   const commitSave = useCallback(() => {
     const parsedValue = parseValue(value, valueType);
     if (parsedValue === PARSE_INVALID) {
-      return toast.error(`"${value}" is not a valid ${getTypeName(valueType)} value — save cancelled.`);
+      return toast.error(t('propertyEditor.inline.invalid', { value, type: getTypeName(valueType) }));
     }
     // Normalize model ID for legacy models
     let normalizedModelId = modelId;
@@ -154,7 +157,7 @@ export function PropertyEditor({
     setShowScopeConfirm(false);
     setIsEditing(false);
     onClose?.();
-  }, [modelId, entityId, psetName, propName, value, valueType, setProperty, bumpMutationVersion, onClose]);
+  }, [modelId, entityId, psetName, propName, value, valueType, setProperty, bumpMutationVersion, onClose, t]);
 
   const handleSave = useCallback(() => {
     if (editScope && !showScopeConfirm && !isUnchanged) {
@@ -209,7 +212,7 @@ export function PropertyEditor({
         <span
           className="font-mono text-zinc-900 dark:text-zinc-100 select-all break-words flex-1 min-w-0 cursor-text"
           onClick={() => setIsEditing(true)}
-          title="Click to edit"
+          title={t('propertyEditor.inline.clickToEdit')}
         >
           {displayValue}
         </span>
@@ -224,7 +227,7 @@ export function PropertyEditor({
               <PenLine className="h-3 w-3 text-purple-500" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="left">Edit property</TooltipContent>
+          <TooltipContent side="left">{t('propertyEditor.inline.editProperty')}</TooltipContent>
         </Tooltip>
       </div>
     );
@@ -239,8 +242,8 @@ export function PropertyEditor({
           // Tri-state: a boolean property value is optional in IFC, so "Unset"
           // is a first-class choice — we never silently coerce to false. An
           // empty `value` ('') means unset (issue #1107).
-          <div className="flex items-center gap-1 flex-1" role="radiogroup" aria-label="Boolean value">
-            {([['', 'Unset'], ['true', 'True'], ['false', 'False']] as const).map(([v, label]) => {
+          <div className="flex items-center gap-1 flex-1" role="radiogroup" aria-label={t('propertyEditor.inline.booleanAria')}>
+            {([['', t('propertyEditor.inline.unset')], ['true', t('propertyEditor.inline.true')], ['false', t('propertyEditor.inline.false')]] as const).map(([v, label]) => {
               const active = value === v;
               return (
                 <button
@@ -273,7 +276,7 @@ export function PropertyEditor({
             }}
             onKeyDown={handleKeyDown}
             className="h-7 text-xs font-mono flex-1 bg-white dark:bg-zinc-900"
-            placeholder="Enter value"
+            placeholder={t('propertyEditor.inline.enterValue')}
             type={valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer ? 'number' : 'text'}
             step={valueType === PropertyValueType.Real ? 'any' : undefined}
           />
@@ -291,7 +294,7 @@ export function PropertyEditor({
               <Check className="h-3.5 w-3.5 text-green-600" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{editScope && !showScopeConfirm && !isUnchanged ? 'Review scope (Enter)' : 'Save (Enter)'}</TooltipContent>
+          <TooltipContent>{editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -304,7 +307,7 @@ export function PropertyEditor({
               <X className="h-3.5 w-3.5 text-zinc-500" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Cancel (Esc)</TooltipContent>
+          <TooltipContent>{t('propertyEditor.inline.cancel')}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -317,20 +320,13 @@ export function PropertyEditor({
               <Trash2 className="h-3.5 w-3.5 text-red-500" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Delete property</TooltipContent>
+          <TooltipContent>{t('propertyEditor.inline.delete')}</TooltipContent>
         </Tooltip>
       </div>
 
       {/* Type selector - always visible */}
       <div className="flex flex-wrap gap-1">
-        {[
-          { type: PropertyValueType.String, label: 'String' },
-          { type: PropertyValueType.Label, label: 'Label' },
-          { type: PropertyValueType.Identifier, label: 'ID' },
-          { type: PropertyValueType.Real, label: 'Real' },
-          { type: PropertyValueType.Integer, label: 'Int' },
-          { type: PropertyValueType.Boolean, label: 'Bool' },
-        ].map(({ type, label }) => (
+        {INLINE_VALUE_TYPES.map(({ type, labelKey }) => (
           <Button
             key={type}
             variant={valueType === type ? 'default' : 'outline'}
@@ -340,13 +336,13 @@ export function PropertyEditor({
               setValueType(type);
               if (showScopeConfirm) setShowScopeConfirm(false);
               // Convert value if switching to/from boolean
-              if (type === PropertyValueType.Boolean || type === PropertyValueType.Logical) {
+              if (type === PropertyValueType.Boolean) {
                 const boolVal = value.toLowerCase() === 'true' || value === '1' || value === 'yes';
                 setValue(boolVal ? 'true' : 'false');
               }
             }}
           >
-            {label}
+            {t(labelKey)}
           </Button>
         ))}
       </div>
@@ -355,11 +351,11 @@ export function PropertyEditor({
         <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-[11px]">
           <div className="font-medium text-zinc-900 dark:text-zinc-100">
             {editScope.mode === 'type'
-              ? `Apply this change on ${editScope.typeEntityName}?`
-              : `Write this inherited value back to ${editScope.typeEntityName}?`}
+              ? t('propertyEditor.inline.scopeType', { typeEntityName: editScope.typeEntityName })
+              : t('propertyEditor.inline.scopeInherited', { typeEntityName: editScope.typeEntityName })}
           </div>
           <div className="mt-0.5 text-zinc-600 dark:text-zinc-400">
-            {editScope.affectedCount} {editScope.affectedCount === 1 ? 'occurrence' : 'occurrences'} may reflect the update unless locally overridden.
+            {t('propertyEditor.inline.scopeImpact', { count: editScope.affectedCount })}
           </div>
           <div className="mt-2 flex items-center gap-2">
             <Button
@@ -368,7 +364,7 @@ export function PropertyEditor({
               className="h-6 rounded-none border-indigo-300 text-[10px] uppercase tracking-wide hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-950/30"
               onClick={commitSave}
             >
-              Apply To Type
+              {t('propertyEditor.inline.applyToType')}
             </Button>
             <Button
               variant="ghost"
@@ -376,7 +372,7 @@ export function PropertyEditor({
               className="h-6 rounded-none px-2 text-[10px] uppercase tracking-wide"
               onClick={() => setShowScopeConfirm(false)}
             >
-              Keep Editing
+              {t('propertyEditor.inline.keepEditing')}
             </Button>
           </div>
         </div>
@@ -400,6 +396,7 @@ interface NewPropertyDialogProps {
 /** Schema-aware dialog for adding new properties: filters available property
  *  sets by IFC entity type and suggests correctly-typed IFC4 properties. */
 export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets, schemaVersion }: NewPropertyDialogProps) {
+  const { t } = useTranslation();
   const setProperty = useViewerStore((s) => s.setProperty);
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -462,7 +459,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
 
     const parsedValue = parseValue(value, valueType);
     if (parsedValue === PARSE_INVALID) {
-      return toast.error(`"${value}" is not a valid ${getTypeName(valueType)} value — property not added.`);
+      return toast.error(t('propertyEditor.property.invalid', { value, type: getTypeName(valueType) }));
     }
     let normalizedModelId = modelId;
     if (modelId === 'legacy') {
@@ -491,7 +488,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
     setValueType(PropertyValueType.String);
     setIsCustomPset(false);
     setOpen(false);
-  }, [modelId, entityId, effectivePsetName, effectivePropName, value, valueType, existingPsets, setProperty, createPropertySet, bumpMutationVersion]);
+  }, [modelId, entityId, effectivePsetName, effectivePropName, value, valueType, existingPsets, setProperty, createPropertySet, bumpMutationVersion, t]);
 
   const resetForm = useCallback(() => {
     setPsetName('');
@@ -506,7 +503,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title="Add property" className={EDIT_TOOL_CLS}>
+        <Button variant="ghost" size="icon" title={t('propertyEditor.property.trigger')} className={EDIT_TOOL_CLS}>
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
@@ -514,13 +511,16 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="h-4 w-4" />
-            Add Property
+            {t('propertyEditor.property.title')}
           </DialogTitle>
           <DialogDescription>
-            Add a property to this <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{entityType}</span> element.
+            {t('propertyEditor.property.description', { entityType })}
             {validPsetDefs.length > 0 && (
               <span className="block mt-1 text-emerald-600 dark:text-emerald-400">
-                {schemaVersion || 'IFC4'} schema: {validPsetDefs.length} standard property set{validPsetDefs.length !== 1 ? 's' : ''} available
+                {t('propertyEditor.property.available', {
+                  schema: schemaVersion || 'IFC4',
+                  count: validPsetDefs.length,
+                })}
               </span>
             )}
           </DialogDescription>
@@ -529,40 +529,40 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
           {/* Property Set Selection */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Property Set</Label>
+              <Label className="text-sm font-medium">{t('propertyEditor.property.setLabel')}</Label>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-6 px-2 text-[10px]"
                 onClick={() => { setIsCustomPset(!isCustomPset); setPsetName(''); setCustomPsetName(''); setPropName(''); setCustomPropName(''); }}
               >
-                {isCustomPset ? 'Use standard' : 'Custom name'}
+                {isCustomPset ? t('propertyEditor.shared.useStandard') : t('propertyEditor.shared.customName')}
               </Button>
             </div>
             {isCustomPset ? (
               <Input
                 value={customPsetName}
                 onChange={(e) => setCustomPsetName(e.target.value)}
-                placeholder="e.g., Pset_MyCustomProperties"
+                placeholder={t('propertyEditor.property.customSetPlaceholder')}
                 className="font-mono text-sm"
               />
             ) : (
               <Select value={psetName} onValueChange={(v) => { setPsetName(v); setPropName(''); setCustomPropName(''); setValue(''); }}>
                 <SelectTrigger className="font-mono text-sm">
-                  <SelectValue placeholder="Select property set..." />
+                  <SelectValue placeholder={t('propertyEditor.property.selectSet')} />
                 </SelectTrigger>
                 <SelectContent>
                   {/* Existing psets on this entity */}
                   {existingStandardPsets.length > 0 && (
                     <>
                       <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        On this element
+                        {t('propertyEditor.shared.onElement')}
                       </div>
                       {existingStandardPsets.map((def) => (
                         <SelectItem key={def.name} value={def.name}>
                           <div className="flex items-center gap-2">
                             <span>{def.name}</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">existing</Badge>
+                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t('propertyEditor.shared.existing')}</Badge>
                           </div>
                         </SelectItem>
                       ))}
@@ -572,7 +572,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).length > 0 && (
                     <>
                       <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        Existing (custom)
+                        {t('propertyEditor.shared.existingCustom')}
                       </div>
                       {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).map((name) => (
                         <SelectItem key={name} value={name}>
@@ -585,14 +585,14 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   {availableStandardPsets.length > 0 && (
                     <>
                       <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                        {schemaVersion || 'IFC4'} Standard — {entityType}
+                        {t('propertyEditor.property.standardGroup', { schema: schemaVersion || 'IFC4', entityType })}
                       </div>
                       {availableStandardPsets.map((def) => (
                         <SelectItem key={def.name} value={def.name}>
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{def.name}</span>
-                              <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">new</Badge>
+                              <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
                             <span className="text-[10px] text-zinc-400">{def.description}</span>
                           </div>
@@ -607,12 +607,12 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
 
           {/* Property Selection */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Property</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.property.label')}</Label>
             {propertySuggestions.length > 0 ? (
               <div className="space-y-2">
                 <Select value={propName} onValueChange={handlePropertySelect}>
                   <SelectTrigger className="font-mono text-sm">
-                    <SelectValue placeholder="Select property..." />
+                    <SelectValue placeholder={t('propertyEditor.property.select')} />
                   </SelectTrigger>
                   <SelectContent>
                     {propertySuggestions.map((prop) => (
@@ -633,7 +633,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   <Input
                     value={customPropName}
                     onChange={(e) => setCustomPropName(e.target.value)}
-                    placeholder="Or type custom property name..."
+                    placeholder={t('propertyEditor.property.customPlaceholder')}
                     className="font-mono text-sm"
                   />
                 )}
@@ -642,7 +642,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
               <Input
                 value={customPropName}
                 onChange={(e) => setCustomPropName(e.target.value)}
-                placeholder="e.g., FireRating"
+                placeholder={t('propertyEditor.property.examplePlaceholder')}
                 className="font-mono text-sm"
               />
             )}
@@ -650,7 +650,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
 
           {/* Type selector */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Type</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.shared.type')}</Label>
             <Select
               value={valueType.toString()}
               onValueChange={(v) => setValueType(parseInt(v) as PropertyValueType)}
@@ -659,32 +659,32 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={PropertyValueType.String.toString()}>String</SelectItem>
-                <SelectItem value={PropertyValueType.Real.toString()}>Real</SelectItem>
-                <SelectItem value={PropertyValueType.Integer.toString()}>Integer</SelectItem>
-                <SelectItem value={PropertyValueType.Boolean.toString()}>Boolean</SelectItem>
-                <SelectItem value={PropertyValueType.Label.toString()}>Label</SelectItem>
-                <SelectItem value={PropertyValueType.Identifier.toString()}>Identifier</SelectItem>
+                <SelectItem value={PropertyValueType.String.toString()}>{t('propertyEditor.valueType.string')}</SelectItem>
+                <SelectItem value={PropertyValueType.Real.toString()}>{t('propertyEditor.valueType.real')}</SelectItem>
+                <SelectItem value={PropertyValueType.Integer.toString()}>{t('propertyEditor.valueType.integer')}</SelectItem>
+                <SelectItem value={PropertyValueType.Boolean.toString()}>{t('propertyEditor.valueType.boolean')}</SelectItem>
+                <SelectItem value={PropertyValueType.Label.toString()}>{t('propertyEditor.valueType.label')}</SelectItem>
+                <SelectItem value={PropertyValueType.Identifier.toString()}>{t('propertyEditor.valueType.identifier')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* Value input */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Value</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.shared.value')}</Label>
             {valueType === PropertyValueType.Boolean ? (
               <div className="flex items-center gap-3">
                 <Switch
                   checked={value === 'true'}
                   onCheckedChange={(checked) => setValue(checked ? 'true' : 'false')}
                 />
-                <span className="text-sm text-zinc-500">{value === 'true' ? 'True' : 'False'}</span>
+                <span className="text-sm text-zinc-500">{value === 'true' ? t('propertyEditor.inline.true') : t('propertyEditor.inline.false')}</span>
               </div>
             ) : (
               <Input
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                placeholder="Property value"
+                placeholder={t('propertyEditor.property.valuePlaceholder')}
                 type={valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer ? 'number' : 'text'}
                 className="font-mono text-sm"
               />
@@ -693,10 +693,10 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { setOpen(false); resetForm(); }}>
-            Cancel
+            {t('propertyEditor.shared.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={!effectivePsetName || !effectivePropName}>
-            Add Property
+            {t('propertyEditor.property.title')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -717,6 +717,7 @@ interface AddClassificationDialogProps {
 /** Dialog for adding a classification reference (Uniclass, OmniClass,
  *  MasterFormat, etc.), stored as a special property set for mutation tracking. */
 export function AddClassificationDialog({ modelId, entityId, entityType }: AddClassificationDialogProps) {
+  const { t } = useTranslation();
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
@@ -760,7 +761,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
       if (!o) { setSystem(''); setCustomSystem(''); setIdentification(''); setName(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title="Add classification" className={EDIT_TOOL_CLS}>
+        <Button variant="ghost" size="icon" title={t('propertyEditor.classification.trigger')} className={EDIT_TOOL_CLS}>
           <Tag className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
@@ -768,19 +769,19 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Tag className="h-4 w-4" />
-            Add Classification
+            {t('propertyEditor.classification.title')}
           </DialogTitle>
           <DialogDescription>
-            Assign a classification reference to this <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{entityType}</span>.
+            {t('propertyEditor.classification.description', { entityType })}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           {/* Classification System */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Classification System</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.classification.system')}</Label>
             <Select value={system} onValueChange={setSystem}>
               <SelectTrigger>
-                <SelectValue placeholder="Select system..." />
+                <SelectValue placeholder={t('propertyEditor.classification.selectSystem')} />
               </SelectTrigger>
               <SelectContent>
                 {CLASSIFICATION_SYSTEMS.map((cs) => (
@@ -792,7 +793,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
                   </SelectItem>
                 ))}
                 <SelectItem value="__custom__">
-                  <span className="text-zinc-500">Custom system...</span>
+                  <span className="text-zinc-500">{t('propertyEditor.classification.customSystem')}</span>
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -800,7 +801,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
               <Input
                 value={customSystem}
                 onChange={(e) => setCustomSystem(e.target.value)}
-                placeholder="Classification system name"
+                placeholder={t('propertyEditor.classification.systemPlaceholder')}
                 className="mt-2"
               />
             )}
@@ -808,32 +809,32 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
 
           {/* Identification (code) */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Identification Code</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.classification.code')}</Label>
             <Input
               value={identification}
               onChange={(e) => setIdentification(e.target.value)}
-              placeholder="e.g., Ss_25_10_30 or 03 30 00"
+              placeholder={t('propertyEditor.classification.codePlaceholder')}
               className="font-mono"
             />
-            <p className="text-[10px] text-zinc-400">The classification code or reference number</p>
+            <p className="text-[10px] text-zinc-400">{t('propertyEditor.classification.codeHelp')}</p>
           </div>
 
           {/* Name (optional) */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Name (optional)</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.classification.name')}</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Cast-in-place concrete walls"
+              placeholder={t('propertyEditor.classification.namePlaceholder')}
             />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('propertyEditor.shared.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={!effectiveSystem || !identification}>
-            Add Classification
+            {t('propertyEditor.classification.title')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -853,6 +854,7 @@ interface AddMaterialDialogProps {
 
 /** Dialog for assigning a material, stored as a special property set for mutation tracking. */
 export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterialDialogProps) {
+  const { t } = useTranslation();
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
@@ -901,7 +903,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
       if (!o) { setMaterialName(''); setCategory(''); setDescription(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title="Add material" className={EDIT_TOOL_CLS}>
+        <Button variant="ghost" size="icon" title={t('propertyEditor.material.trigger')} className={EDIT_TOOL_CLS}>
           <Layers className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
@@ -909,34 +911,34 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Layers className="h-4 w-4" />
-            Add Material
+            {t('propertyEditor.material.title')}
           </DialogTitle>
           <DialogDescription>
-            Assign a material to this <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{entityType}</span>.
+            {t('propertyEditor.material.description', { entityType })}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           {/* Material Name */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Material Name</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.material.name')}</Label>
             <Input
               value={materialName}
               onChange={(e) => setMaterialName(e.target.value)}
-              placeholder="e.g., Concrete C30/37"
+              placeholder={t('propertyEditor.material.namePlaceholder')}
               className="font-mono"
             />
           </div>
 
           {/* Category */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Category</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.material.category')}</Label>
             <Select value={category} onValueChange={setCategory}>
               <SelectTrigger>
-                <SelectValue placeholder="Select category..." />
+                <SelectValue placeholder={t('propertyEditor.material.selectCategory')} />
               </SelectTrigger>
               <SelectContent>
-                {materialCategories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                {materialCategories.map((category) => (
+                  <SelectItem key={category.value} value={category.value}>{t(category.labelKey)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -944,32 +946,26 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
 
           {/* Description */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Description (optional)</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.material.descriptionLabel')}</Label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Additional details about the material"
+              placeholder={t('propertyEditor.material.descriptionPlaceholder')}
             />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('propertyEditor.shared.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={!materialName}>
-            Add Material
+            {t('propertyEditor.material.title')}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
-// Common material categories - static, hoisted to module scope
-const MATERIAL_CATEGORIES = [
-  'Concrete', 'Steel', 'Wood', 'Masonry', 'Glass', 'Aluminium',
-  'Insulation', 'Gypsum', 'Stone', 'Ceramic', 'Plastic', 'Composite',
-] as const;
 
 // ============================================================================
 // Quantity Dialog
@@ -985,6 +981,7 @@ interface AddQuantityDialogProps {
 /** Schema-aware dialog for adding quantities: filters available quantity
  *  sets by IFC entity type and suggests correctly-typed IFC4 quantities. */
 export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos }: AddQuantityDialogProps) {
+  const { t } = useTranslation();
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const setProperty = useViewerStore((s) => s.setProperty);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -1041,7 +1038,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
 
     const parsedValue = parseFloat(value);
     if (Number.isNaN(parsedValue)) {
-      return toast.error(`"${value}" is not a valid number — quantity not added.`);
+      return toast.error(t('propertyEditor.quantity.invalid', { value }));
     }
     let normalizedModelId = modelId;
     if (modelId === 'legacy') {
@@ -1070,7 +1067,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
     setQuantityType(QuantityType.Length);
     setIsCustomQto(false);
     setOpen(false);
-  }, [modelId, entityId, effectiveQtoName, effectiveQuantityName, value, existingQtos, setProperty, createPropertySet, bumpMutationVersion]);
+  }, [modelId, entityId, effectiveQtoName, effectiveQuantityName, value, existingQtos, setProperty, createPropertySet, bumpMutationVersion, t]);
 
   const resetForm = useCallback(() => {
     setQtoName('');
@@ -1085,7 +1082,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title="Add quantity" className={EDIT_TOOL_CLS}>
+        <Button variant="ghost" size="icon" title={t('propertyEditor.quantity.trigger')} className={EDIT_TOOL_CLS}>
           <Ruler className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
@@ -1093,13 +1090,13 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Ruler className="h-4 w-4" />
-            Add Quantity
+            {t('propertyEditor.quantity.title')}
           </DialogTitle>
           <DialogDescription>
-            Add a quantity to this <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{entityType}</span> element.
+            {t('propertyEditor.quantity.description', { entityType })}
             {validQtoDefs.length > 0 && (
               <span className="block mt-1 text-emerald-600 dark:text-emerald-400">
-                IFC4 schema: {validQtoDefs.length} standard quantity set{validQtoDefs.length !== 1 ? 's' : ''} available
+                {t('propertyEditor.quantity.available', { count: validQtoDefs.length })}
               </span>
             )}
           </DialogDescription>
@@ -1108,39 +1105,39 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
           {/* Quantity Set Selection */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Quantity Set</Label>
+              <Label className="text-sm font-medium">{t('propertyEditor.quantity.setLabel')}</Label>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-6 px-2 text-[10px]"
                 onClick={() => { setIsCustomQto(!isCustomQto); setQtoName(''); setCustomQtoName(''); setQuantityName(''); setCustomQuantityName(''); }}
               >
-                {isCustomQto ? 'Use standard' : 'Custom name'}
+                {isCustomQto ? t('propertyEditor.shared.useStandard') : t('propertyEditor.shared.customName')}
               </Button>
             </div>
             {isCustomQto ? (
               <Input
                 value={customQtoName}
                 onChange={(e) => setCustomQtoName(e.target.value)}
-                placeholder="e.g., Qto_MyCustomQuantities"
+                placeholder={t('propertyEditor.quantity.customSetPlaceholder')}
                 className="font-mono text-sm"
               />
             ) : (
               <Select value={qtoName} onValueChange={(v) => { setQtoName(v); setQuantityName(''); setCustomQuantityName(''); setValue(''); }}>
                 <SelectTrigger className="font-mono text-sm">
-                  <SelectValue placeholder="Select quantity set..." />
+                  <SelectValue placeholder={t('propertyEditor.quantity.selectSet')} />
                 </SelectTrigger>
                 <SelectContent>
                   {existingStandardQtos.length > 0 && (
                     <>
                       <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        On this element
+                        {t('propertyEditor.shared.onElement')}
                       </div>
                       {existingStandardQtos.map((def) => (
                         <SelectItem key={def.name} value={def.name}>
                           <div className="flex items-center gap-2">
                             <span>{def.name}</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">existing</Badge>
+                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t('propertyEditor.shared.existing')}</Badge>
                           </div>
                         </SelectItem>
                       ))}
@@ -1149,7 +1146,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                   {existingQtos.filter(q => !existingStandardQtos.some(d => d.name === q)).length > 0 && (
                     <>
                       <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        Existing (custom)
+                        {t('propertyEditor.shared.existingCustom')}
                       </div>
                       {existingQtos.filter(q => !existingStandardQtos.some(d => d.name === q)).map((name) => (
                         <SelectItem key={name} value={name}>
@@ -1161,14 +1158,14 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                   {availableStandardQtos.length > 0 && (
                     <>
                       <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                        IFC4 Standard — {entityType}
+                        {t('propertyEditor.quantity.standardGroup', { entityType })}
                       </div>
                       {availableStandardQtos.map((def) => (
                         <SelectItem key={def.name} value={def.name}>
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{def.name}</span>
-                              <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">new</Badge>
+                              <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
                             <span className="text-[10px] text-zinc-400">{def.description}</span>
                           </div>
@@ -1183,12 +1180,12 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
 
           {/* Quantity Selection */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Quantity</Label>
+            <Label className="text-sm font-medium">{t('propertyEditor.quantity.label')}</Label>
             {quantitySuggestions.length > 0 ? (
               <div className="space-y-2">
                 <Select value={quantityName} onValueChange={handleQuantitySelect}>
                   <SelectTrigger className="font-mono text-sm">
-                    <SelectValue placeholder="Select quantity..." />
+                    <SelectValue placeholder={t('propertyEditor.quantity.select')} />
                   </SelectTrigger>
                   <SelectContent>
                     {quantitySuggestions.map((qty) => (
@@ -1208,7 +1205,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                   <Input
                     value={customQuantityName}
                     onChange={(e) => setCustomQuantityName(e.target.value)}
-                    placeholder="Or type custom quantity name..."
+                    placeholder={t('propertyEditor.quantity.customPlaceholder')}
                     className="font-mono text-sm"
                   />
                 )}
@@ -1217,7 +1214,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
               <Input
                 value={customQuantityName}
                 onChange={(e) => setCustomQuantityName(e.target.value)}
-                placeholder="e.g., Length"
+                placeholder={t('propertyEditor.quantity.examplePlaceholder')}
                 className="font-mono text-sm"
               />
             )}
@@ -1226,7 +1223,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
           {/* Value input */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">
-              Value
+              {t('propertyEditor.shared.value')}
               {quantityName && (
                 <span className="ml-2 text-xs text-zinc-400 font-normal">
                   ({getQuantityUnit(quantityType)})
@@ -1236,7 +1233,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
             <Input
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="Numeric value"
+              placeholder={t('propertyEditor.quantity.numericPlaceholder')}
               type="number"
               step="any"
               className="font-mono text-sm"
@@ -1245,10 +1242,10 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { setOpen(false); resetForm(); }}>
-            Cancel
+            {t('propertyEditor.shared.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={!effectiveQtoName || !effectiveQuantityName}>
-            Add Quantity
+            {t('propertyEditor.quantity.title')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1276,6 +1273,7 @@ interface ReassignClassDialogProps {
  * (Proxy ↔ Column/Beam/Member/Plate/Wall) sharing the IfcElement layout.
  */
 export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersion }: ReassignClassDialogProps) {
+  const { t } = useTranslation();
   const setEntityType = useViewerStore((s) => s.setEntityType);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
@@ -1322,20 +1320,19 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" title="Reassign IFC class" className={RECLASS_TOOL_CLS}>
+        <Button variant="ghost" size="sm" title={t('propertyEditor.reassign.trigger')} className={RECLASS_TOOL_CLS}>
           <Replace className="h-3.5 w-3.5 shrink-0" />
-          <span>Reassign</span>
+          <span>{t('propertyEditor.reassign.action')}</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Replace className="h-4 w-4" />
-            Reassign IFC Class
+            {t('propertyEditor.reassign.title')}
           </DialogTitle>
           <DialogDescription>
-            Change this element&apos;s IFC class in place. It keeps its identity, geometry and
-            relationships — only the class (and an optional predefined type) change on export.
+            {t('propertyEditor.reassign.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -1358,7 +1355,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           {/* quick picks */}
           {quickTargets.length > 0 && (
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Common</Label>
+              <Label className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">{t('propertyEditor.reassign.common')}</Label>
               <div className="flex flex-wrap gap-1.5">
                 {quickTargets.map((t) => (
                   <button
@@ -1381,11 +1378,11 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
 
           {/* searchable full list */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Target class</Label>
-            <ComboInput value={target} onChange={setTarget} options={targets} placeholder="Search element classes…" />
+            <Label className="text-sm font-medium">{t('propertyEditor.reassign.targetClass')}</Label>
+            <ComboInput value={target} onChange={setTarget} options={targets} placeholder={t('propertyEditor.reassign.searchPlaceholder')} />
             {trimmedTarget.length > 0 && !knownTarget && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                Not a standard {schema} element — it will export as a vendor/custom class.
+                {t('propertyEditor.reassign.nonStandard', { schema })}
               </p>
             )}
           </div>
@@ -1394,12 +1391,12 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           {predefinedOptions.length > 0 && (
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">
-                Predefined type <span className="font-normal text-zinc-400">(optional)</span>
+                {t('propertyEditor.reassign.predefinedType')}
               </Label>
               <Select value={predefinedType || '__none__'} onValueChange={(v) => setPredefinedType(v === '__none__' ? '' : v)}>
-                <SelectTrigger className="font-mono text-sm"><SelectValue placeholder="— none —" /></SelectTrigger>
+                <SelectTrigger className="font-mono text-sm"><SelectValue placeholder={t('propertyEditor.reassign.none')} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">— none —</SelectItem>
+                  <SelectItem value="__none__">{t('propertyEditor.reassign.none')}</SelectItem>
                   {predefinedOptions.map((p) => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -1407,15 +1404,14 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           )}
 
           <p className="text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">
-            Updates immediately here, in the model tree and lists, and is written to the
-            exported IFC. Class-based 3D colors refresh on reload.
+            {t('propertyEditor.reassign.help')}
           </p>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => { reset(); setOpen(false); }}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={() => { reset(); setOpen(false); }}>{t('propertyEditor.shared.cancel')}</Button>
           <Button size="sm" onClick={handleApply} disabled={!canApply}>
-            <Check className="mr-1 h-3.5 w-3.5" /> Reassign
+            <Check className="mr-1 h-3.5 w-3.5" /> {t('propertyEditor.reassign.action')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1429,6 +1425,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
  * panel immediately, before the model is re-exported / reloaded.
  */
 export function ReassignBadge({ modelId, entityId, entityType }: { modelId: string; entityId: number; entityType: string }) {
+  const { t } = useTranslation();
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const pending = useMemo(() => {
@@ -1447,13 +1444,13 @@ export function ReassignBadge({ modelId, entityId, entityType }: { modelId: stri
   return (
     <div className="flex items-center gap-1.5 rounded-md border border-indigo-200/70 bg-indigo-50/50 px-2 py-1 text-[11px] dark:border-indigo-900/60 dark:bg-indigo-950/25">
       <Replace className="h-3 w-3 shrink-0 text-indigo-500" />
-      <span className="text-zinc-500 dark:text-zinc-400">Reassigned</span>
+      <span className="text-zinc-500 dark:text-zinc-400">{t('propertyEditor.reassign.badge')}</span>
       <ArrowRight className="h-3 w-3 shrink-0 text-indigo-400" />
       <code className="font-mono font-medium text-indigo-600 dark:text-indigo-300">{pending.newType}</code>
       {pending.predefinedType && (
         <code className="font-mono text-indigo-500/80 dark:text-indigo-300/70">· {pending.predefinedType}</code>
       )}
-      <span className="ml-auto text-zinc-400 dark:text-zinc-500">on export</span>
+      <span className="ml-auto text-zinc-400 dark:text-zinc-500">{t('propertyEditor.reassign.onExport')}</span>
     </div>
   );
 }
@@ -1543,6 +1540,7 @@ interface UndoRedoButtonsProps {
  * Undo/Redo buttons for property mutations
  */
 export function UndoRedoButtons({ modelId }: UndoRedoButtonsProps) {
+  const { t } = useTranslation();
   const canUndo = useViewerStore((s) => s.canUndo);
   const canRedo = useViewerStore((s) => s.canRedo);
   const undo = useViewerStore((s) => s.undo);
@@ -1576,7 +1574,7 @@ export function UndoRedoButtons({ modelId }: UndoRedoButtonsProps) {
             <Undo className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Undo</TooltipContent>
+        <TooltipContent>{t('propertyEditor.history.undo')}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1590,7 +1588,7 @@ export function UndoRedoButtons({ modelId }: UndoRedoButtonsProps) {
             <Redo className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Redo</TooltipContent>
+        <TooltipContent>{t('propertyEditor.history.redo')}</TooltipContent>
       </Tooltip>
     </div>
   );

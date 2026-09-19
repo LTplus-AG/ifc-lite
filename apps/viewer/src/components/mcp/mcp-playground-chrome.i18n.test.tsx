@@ -56,7 +56,7 @@ import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { mcpPlaygroundEn } from '@/i18n/catalogues/mcp-playground.en';
 import { mcpEn } from '@/i18n/catalogues/mcp.en';
 import { McpPlayground } from './McpPlayground.js';
-import { PlaygroundChat } from './PlaygroundChat.js';
+import { PlaygroundChat, ToolCallView } from './PlaygroundChat.js';
 import { PlaygroundViewer } from './PlaygroundViewer.js';
 import { HeroScene } from './HeroScene.js';
 
@@ -190,5 +190,32 @@ describe('mcp/playground chrome localization (#4918)', () => {
       document.body.textContent?.includes('MARKED huge.ifc too large'),
       'the shown error banner must retranslate live, not stay pinned to the locale active when it was set',
     );
+  });
+
+  it('keeps an existing WebGL tool result reactive to a live locale switch', () => {
+    registerLocale('tool-result-en', mcpEn);
+    act(() => setLocale('tool-result-en'));
+    render(<ToolCallView call={{
+      id: 'webgl-result', name: 'viewer_isolate', args: {}, startedAt: 0, finishedAt: 1,
+      result: {
+        text: mcpEn['mcp.playgroundDispatcher.webglUnavailable'] as string,
+        textKey: 'mcp.playgroundDispatcher.webglUnavailable',
+        hint: mcpEn['mcp.playgroundDispatcher.webglUnavailableHint'] as string,
+        hintKey: 'mcp.playgroundDispatcher.webglUnavailableHint',
+        structured: null, isError: true,
+      },
+    }} />);
+    const button = document.querySelector('button');
+    assert.ok(button);
+    act(() => button.click());
+    assert.ok(document.body.textContent?.includes(mcpEn['mcp.playgroundDispatcher.webglUnavailable'] as string));
+
+    registerLocale('tool-result-pseudo', {
+      'mcp.playgroundDispatcher.webglUnavailable': 'MARKED WebGL unavailable',
+      'mcp.playgroundDispatcher.webglUnavailableHint': 'MARKED use non-viewer tools',
+    });
+    act(() => setLocale('tool-result-pseudo'));
+    assert.ok(document.body.textContent?.includes('MARKED WebGL unavailable'));
+    assert.ok(document.body.textContent?.includes('MARKED use non-viewer tools'));
   });
 });

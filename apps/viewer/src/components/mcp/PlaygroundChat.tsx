@@ -96,7 +96,7 @@ Downloads (very important):
 
 // ── message model ──────────────────────────────────────────────────────────
 
-interface ChatToolCall {
+export interface ChatToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
@@ -659,7 +659,7 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
   );
 }
 
-function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showDownload?: boolean }): ReactNode {
+export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showDownload?: boolean }): ReactNode {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const isErr = call.result?.isError;
@@ -732,10 +732,12 @@ function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showD
                 )}
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >
-                {call.result.text}
+                {call.result.textKey ? t(call.result.textKey) : call.result.text}
               </pre>
               {call.result.hint && (
-                <p className="mt-1.5 text-[10.5px] italic text-white/50">{call.result.hint}</p>
+                <p className="mt-1.5 text-[10.5px] italic text-white/50">
+                  {call.result.hintKey ? t(call.result.hintKey) : call.result.hint}
+                </p>
               )}
             </>
           )}
@@ -1165,27 +1167,18 @@ const MARKDOWN_COMPONENTS = {
     <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-[12px] leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />
   ),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  table: (props: any) => (
-    <div className="my-2 overflow-x-auto rounded border border-white/10">
-      <table className="w-full border-collapse text-[12.5px]" {...props} />
-    </div>
-  ),
+  table: (props: any) => <div className="my-2 overflow-x-auto rounded border border-white/10">
+    <table className="w-full border-collapse text-[12.5px]" {...props} />
+  </div>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   thead: (props: any) => <thead className="bg-white/[0.04]" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  th: (props: any) => (
-    <th
-      className="border-b border-white/10 px-2.5 py-1.5 text-left text-[10.5px] uppercase tracking-[0.18em] text-white/70"
-      style={{ fontFamily: '"JetBrains Mono", monospace' }}
-      {...props}
-    />
-  ),
+  th: (props: any) => <th className="border-b border-white/10 px-2.5 py-1.5 text-left text-[10.5px] uppercase tracking-[0.18em] text-white/70"
+    style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   td: (props: any) => <td className="border-b border-white/5 px-2.5 py-1.5 align-top" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  blockquote: (props: any) => (
-    <blockquote className="my-2 border-l-2 border-white/20 pl-3 italic text-white/70" {...props} />
-  ),
+  blockquote: (props: any) => <blockquote className="my-2 border-l-2 border-white/20 pl-3 italic text-white/70" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   hr: (props: any) => <hr className="my-3 border-white/10" {...props} />,
 };

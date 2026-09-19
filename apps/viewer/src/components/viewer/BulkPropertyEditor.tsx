@@ -652,7 +652,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
   // Mark config dirty when criteria or action settings change after a completed execute
   useEffect(() => {
-    if (executeResult) setExecuteDirty(true);
+    if (executeResult) { setExecuteDirty(true); setExecuteResult(null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on config changes
   }, [selectedTypes, selectedStoreys, namePattern, filters, actionType, targetPset, targetProp, targetValue, valueType]);
 

@@ -28,6 +28,9 @@ describe('BulkPropertyEditor localization (#4918)', () => {
     cleanup();
     const plural = render(<BulkExecutionProgress done={1} total={2} />);
     assert.match(plural.textContent ?? '', /1 \/ 2 entities/);
+    cleanup();
+    const malformed = render(<BulkExecutionProgress done={Number.NaN} total={1} />);
+    assert.doesNotMatch(malformed.innerHTML, /NaN/, 'malformed progress must resolve to a finite width');
   });
 
   it('updates the mounted dialog and complete plural message when the locale changes', () => {

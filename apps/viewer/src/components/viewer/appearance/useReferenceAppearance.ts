@@ -16,10 +16,18 @@ import type { RegisteredAppearanceReference } from '@/lib/appearance/references/
 import type { AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { rawMessage, translatedMessage, type LocalizedMessage } from './localized-message.js';
+import type { TranslationKey } from '@/i18n';
 
 import { referenceEditSettings, restoreReferenceSource } from '@/lib/appearance/references/edit.js';
 
 type Preview = { record: RegisteredAppearanceReference; source: AppearanceSourceOption; bitmap: ImageBitmap; signal: AbortSignal };
+class ReferenceAppearanceError extends Error {
+  constructor(readonly translationKey: TranslationKey) {
+    super(translationKey);
+  }
+}
+const referenceErrorMessage = (error: unknown): LocalizedMessage => error instanceof ReferenceAppearanceError
+  ? translatedMessage(error.translationKey) : rawMessage(error);
 const normals = { xy: [0, 0, 1], xz: [0, -1, 0], yz: [1, 0, 0] } satisfies Record<string, [number, number, number]>;
 
 /** One transient reference uses the same source and calibration controls as IFC
@@ -53,19 +61,19 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
     const timer = setTimeout(() => { inFlight = true; void (async () => {
       try {
         const mapping = appearanceMapping({ ...settings, kind: 'planar' });
-        if (mapping.kind !== 'planar') throw new Error('References need planar placement.');
+        if (mapping.kind !== 'planar') throw new ReferenceAppearanceError('appearance.reference.planarPlacementRequired');
         const calibration: PlaneCalibrationRequest = { ...(source.calibrationFrame ?? (source.pdf ? pdfCalibrationFrame(source.pdf.recipe)
           : imageCalibrationFrame(source.width, source.height))), ...source.calibration!,
           worldAnchor: mapping.origin, worldDirection: mapping.axisU, planeNormal: normals[settings.plane] };
         const result = await calibrateAppearancePlane(calibration);
         controller.signal.throwIfAborted();
-        if (result.rasterCorners.length !== 4) throw new Error('The calibrated reference has incomplete corners.');
+        if (result.rasterCorners.length !== 4) throw new ReferenceAppearanceError('appearance.reference.incompleteCorners');
         const [a, b, c, d] = result.rasterCorners;
         const record: RegisteredAppearanceReference = { id: editing?.id ?? crypto.randomUUID(), sourceId: source.id,
           assetId: source.assetId ?? source.id, cornersIfcWorld: [a, b, c, d], frameKey,
           visible: editing?.visible ?? true, locked: false, opacity: editing?.opacity ?? 1, calibration, pdf: captureReferencePdfLineage(source, calibration) };
         const corners = referenceRenderCorners(record, useViewerStore.getState());
-        if (!corners) throw new Error('The workspace frame changed. Refresh reference placement.');
+        if (!corners) throw new ReferenceAppearanceError('appearance.reference.workspaceFrameChanged');
         appearanceAssets.retain(record.assetId, owner);
         const bitmap = await appearanceAssets.decode(record.assetId, owner, controller.signal);
         await renderer.getReferenceImages().set({ ...record, id: draftId, corners, bitmap }, controller.signal);
@@ -76,7 +84,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
         if (!controller.signal.aborted) {
           renderer.getReferenceImages().remove(draftId);
           appearanceAssets.releaseOwner(owner);
-          setStatus('error'); setMessage(rawMessage(error));
+          setStatus('error'); setMessage(referenceErrorMessage(error));
         }
       } finally {
         inFlight = false;
@@ -100,17 +108,17 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
       appearanceAssets.retain(record.assetId, placementOwner);
       signal.throwIfAborted();
       const corners = referenceRenderCorners(record, useViewerStore.getState());
-      if (!corners) throw new Error('The workspace frame changed. Refresh reference placement.');
+      if (!corners) throw new ReferenceAppearanceError('appearance.reference.workspaceFrameChanged');
       // Replacement is published through the committed-record bridge, so the
       // old registered image stays valid until the transaction is accepted.
       if (!editing) await renderer.getReferenceImages().set({ ...record, corners, bitmap }, signal);
       signal.throwIfAborted();
       const state = useViewerStore.getState();
       if (placementFrameKey(state) !== record.frameKey || state.appearanceSources.find(item => item.id === record.sourceId) !== prepared.source) {
-        throw new Error('The source or registration changed while placing the reference.');
+        throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
       }
       if (editing) {
-        if (state.appearanceReferences.get(editing.id) !== editing) throw new Error('This drawing changed. Discard and open Edit again.');
+        if (state.appearanceReferences.get(editing.id) !== editing) throw new ReferenceAppearanceError('appearance.reference.drawingChanged');
         state.replaceAppearanceReference(editing.id, record);
       } else state.addAppearanceReference(record);
       state.selectAppearanceReference(record.id);
@@ -118,20 +126,20 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
         ? 'appearance.reference.saved' : 'appearance.reference.placed'));
     } catch (error) {
       if (!useViewerStore.getState().appearanceReferences.has(record.id)) renderer.getReferenceImages().remove(record.id);
-      if (!signal.aborted) { setStatus('error'); setMessage(rawMessage(error)); }
+      if (!signal.aborted) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
     } finally { appearanceAssets.releaseOwner(placementOwner); }
   }
   function edit(id: string): void {
     try {
       const record = useViewerStore.getState().appearanceReferences.get(id);
-      if (!record) throw new Error('This drawing was removed.');
+      if (!record) throw new ReferenceAppearanceError('appearance.reference.drawingRemoved');
       const restoredSettings = referenceEditSettings(record);
       const restoredSource = restoreReferenceSource(record);
       base.onDiscard();
       base.onSourceChange(restoredSource.id);
       base.onSettingsChange(restoredSettings);
       setEditing(record); setEditRevision(value => value + 1); setActive(true);
-    } catch (error) { setStatus('error'); setMessage(rawMessage(error)); }
+    } catch (error) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
   }
   if (!enabled) return base;
   return { ...base, status, statusMessage: message, onEditReference: edit, editingReference: !!editing,

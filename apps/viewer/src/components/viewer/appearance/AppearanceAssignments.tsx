@@ -53,10 +53,10 @@ export function AppearanceAssignments({ controller: c, base, formValid = true }:
       <AppearanceAssignmentList rows={c.resolved} disabled={c.busy} objectName={objectName}
         onMove={c.move} onRemove={c.remove} onExclude={(id, GlobalId, excluded) => c.change(id, row => ({ ...row,
           excludedGlobalIds: excluded ? [...row.excludedGlobalIds, GlobalId] : row.excludedGlobalIds.filter(guid => guid !== GlobalId) }))} />
-      {c.rows.map(row => c.bound(row.id) ? <p key={row.id} className="text-[11px] text-muted-foreground">{t('appearance.assignments.rowSummary', {
+      {c.rows.map(row => c.bound(row.id) ? <p key={row.id} className="text-[11px] text-muted-foreground">{t(row.settings.representationPolicy === 'evaluatedOccurrence'
+        ? 'appearance.assignments.rowSummaryMapped' : 'appearance.assignments.rowSummary', {
           modelName: row.model.name,
           queryLabel: queryLabel(row, t),
-          mappedNote: row.settings.representationPolicy === 'evaluatedOccurrence' ? t('appearance.assignments.mappedConversionEnabled') : '',
         })}</p>
         : <ReviewBinding key={row.id} row={row} controller={c} base={base} />)}
       {c.review && <div role="region" aria-label={t('appearance.assignments.reviewAriaLabel')} className="space-y-2 rounded border bg-muted/30 p-2 text-xs">

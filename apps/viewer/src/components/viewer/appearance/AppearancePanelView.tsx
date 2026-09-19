@@ -12,6 +12,7 @@ import { AppearanceReferenceLibrary } from './AppearanceReferenceLibrary.js';
 import { AppearanceMappingFields } from './AppearanceMappingFields.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { useTranslation } from '@/i18n';
+import { resolveLocalizedMessage } from './localized-message.js';
 
 /** Controlled dock content. Preview, selection, asset lifetimes and commands live in the controller. */
 export function AppearancePanelView(props: AppearancePanelViewProps) {
@@ -31,8 +32,9 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;
   const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || (!reference && !props.modelId) || !props.sourceId;
   const applyDisabled = !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
+  const controllerMessage = resolveLocalizedMessage(props.unavailableReason ?? props.statusMessage, t);
   const message = !props.assignmentMode && invalidFields.size ? t('appearance.panelView.invalidFieldsMessage') :
-    props.unavailableReason ?? props.statusMessage ?? ({
+    controllerMessage ?? ({
       idle: t('appearance.panelView.status.idle'),
       preparing: t('appearance.panelView.status.preparing'),
       ready: props.showingOriginal ? t('appearance.panelView.status.readyShowingOriginal') : t('appearance.panelView.status.readyPreview'),

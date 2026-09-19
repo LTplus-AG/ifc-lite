@@ -14,12 +14,12 @@ import { commitAppearance } from '@/lib/appearance/command';
 import { prepareMeshTransfer, type ScanTransferSettings } from '@/lib/appearance/scan/prepare-transfer';
 import type { MeshTransferPlan } from '@/lib/appearance/scan/transfer-types';
 import type { ScanWorkflowMessage, useScanWorkbench } from './useScanWorkbench';
+import { ScanValidationError, scanFailureMessage } from './scan-validation-message';
 
 interface Draft {
   output: Awaited<ReturnType<typeof prepareMeshTransfer>>; owner: AppearanceAssetOwner;
   groups: AppearancePreviewParts[]; preview: AppearancePreviewSession | null;
 }
-const describe = (error: unknown) => error instanceof Error ? error.message : String(error);
 const translated = (key: Extract<ScanWorkflowMessage, { kind: 'translated' }>['key']): ScanWorkflowMessage => ({ kind: 'translated', key });
 const raw = (text: string): ScanWorkflowMessage => ({ kind: 'raw', text });
 type ScanTransferWorkbench = Pick<ReturnType<typeof useScanWorkbench>, 'targetId' | 'session' | 'result' | 'stale' | 'busy' | 'applyAppearance'>;
@@ -61,20 +61,20 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     let adopted = false; setBusy(true); setReady(false); setError(false); setStatus(translated('appearance.scanTransfer.status.sampling'));
     try {
       const session = work.session, renderer = getGlobalRenderer();
-      if (!renderer) throw new Error('Wait for the 3D view to be ready.');
+      if (!renderer) throw new ScanValidationError('appearance.scanTransfer.error.viewNotReady');
       const output = await prepareMeshTransfer(session, work.result, productIds, settings, planner.current, owner, controller.signal);
       controller.signal.throwIfAborted(); session.validate();
       setCoverage(output.transfer);
       if (!output.plan || !output.transfer.applicable || !(output.transfer.coverage.observedRasterInteriorTexels > 0)) { setStatus(output.transfer.diagnostics.length ? raw(output.transfer.diagnostics.join(' ')) : translated('appearance.scanTransfer.status.noSurface')); return; }
-      if (output.transfer.exclusions.length) throw new Error('Some chosen objects are unsupported. Review the exclusions and explicitly choose a supported scope.');
+      if (output.transfer.exclusions.length) throw new ScanValidationError('appearance.scanTransfer.error.unsupportedObjects');
       const first = output.itemImages.values().next().value;
-      if (!first) throw new Error('Transfer produced no retained surface image.');
+      if (!first) throw new ScanValidationError('appearance.scanTransfer.error.noRetainedImage');
       const groups = bindAppearancePreview(useViewerStore.getState(), renderer, session.targetModelId, output.plan,
         first.bitmap, first.imageUri, false, false, expandAppearanceCorners, output.itemImages);
       const staged = new AppearancePreviewSession(renderer); staged.stage(groups);
       draft.current = { output, owner, groups, preview: staged }; adopted = true;
       setReady(true); setOriginal(false); setStatus(translated('appearance.scanTransfer.status.reviewCoverage'));
-    } catch (failure) { if (!controller.signal.aborted && mounted.current) { setError(true); setStatus(raw(describe(failure))); } }
+    } catch (failure) { if (!controller.signal.aborted && mounted.current) { setError(true); setStatus(scanFailureMessage(failure)); } }
     finally { if (!adopted) appearanceAssets.releaseOwner(owner); if (operation.current === controller) { operation.current = null; if (mounted.current) setBusy(false); } }
   }
   function compare() {
@@ -84,7 +84,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
       work.session?.validate();
       if (current.preview) { current.preview.cancel(); current.preview = null; setOriginal(true); }
       else { const next = new AppearancePreviewSession(renderer); next.stage(current.groups); current.preview = next; setOriginal(false); }
-    } catch (failure) { setError(true); setStatus(raw(describe(failure))); setReady(false); }
+    } catch (failure) { setError(true); setStatus(scanFailureMessage(failure)); setReady(false); }
   }
   async function apply() {
     const current = draft.current, session = work.session, renderer = getGlobalRenderer();

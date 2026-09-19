@@ -20,9 +20,10 @@ import type { ScanRegistrationReport, ScanRegistrationRequest } from '@/lib/appe
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types';
 import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client';
 import { useScanTransfer } from './useScanTransfer';
+import { registerLocale, setLocale, useTranslation } from '@/i18n';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); mock.restoreAll(); setGlobalRendererRef({ current: null }); useViewerStore.setState(initial); appearanceAssets.clear(); });
+afterEach(() => { cleanup(); mock.restoreAll(); setGlobalRendererRef({ current: null }); useViewerStore.setState(initial); appearanceAssets.clear(); setLocale('en'); });
 const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='), c => c.charCodeAt(0));
 class HeldWorker implements AppearanceWorker {
   onmessage: AppearanceWorker['onmessage'] = null;
@@ -55,6 +56,37 @@ async function fixture() {
   setGlobalRendererRef({ current: { hasActiveClipping: () => false } as Renderer });
   return { session, result, assetId: asset.id, restoreCanvas: () => Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, writable: true, value: canvas }) };
 }
+test('mounted transfer keeps expected validation translatable across live locale changes #4918', async () => {
+  const f = await fixture(), descriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: HeldWorker });
+  setGlobalRendererRef({ current: null });
+  registerLocale('en-x-scan-a', { 'appearance.scanTransfer.error.viewNotReady': 'view unavailable A' });
+  registerLocale('en-x-scan-b', { 'appearance.scanTransfer.error.viewNotReady': 'view unavailable B' });
+  setLocale('en-x-scan-a');
+  function Harness() {
+    const { t } = useTranslation();
+    const transfer = useScanTransfer({ targetId: 'target', session: f.session, result: f.result, stale: false, busy: false,
+      applyAppearance: async () => { throw new Error('Apply is not exercised'); } });
+    const status = transfer.status.kind === 'translated' ? t(transfer.status.key, transfer.status.params) : transfer.status.text;
+    return <><button onClick={() => { transfer.setProductIds([10]); transfer.setSettings(value => ({ ...value, reviewed: true })); }}>Choose</button>
+      <button onClick={() => void transfer.preview()}>Preview</button><output>{status}</output></>;
+  }
+  try {
+    const ui = render(<Harness />), find = (label: string) => [...ui.querySelectorAll('button')].find(button => button.textContent === label)!;
+    click(find('Choose'));
+    await advance(0);
+    click(find('Preview'));
+    await advance(0);
+    assert.match(ui.textContent ?? '', /view unavailable A/);
+    act(() => setLocale('en-x-scan-b'));
+    assert.match(ui.textContent ?? '', /view unavailable B/);
+  } finally {
+    cleanup();
+    f.restoreCanvas();
+    if (descriptor) Object.defineProperty(globalThis, 'Worker', descriptor); else Reflect.deleteProperty(globalThis, 'Worker');
+  }
+});
+
 for (const reason of ['cancel', 'settings', 'stale', 'removed'] as const) test(`mounted transfer ${reason} stops pending work and ignores late completion #4381`, async () => {
   const f = await fixture(), workers: HeldWorker[] = [], descriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
   Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: class extends HeldWorker { constructor() { super(); workers.push(this); } } });

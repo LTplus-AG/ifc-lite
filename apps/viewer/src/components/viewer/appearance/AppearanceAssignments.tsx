@@ -9,6 +9,7 @@ import type { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import type { AppearancePanelViewProps } from './types.js';
 import type { AppearanceAssignment } from '@/lib/appearance/assignments/types.js';
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
+import { resolveLocalizedMessage } from './localized-message.js';
 
 type Controller = ReturnType<typeof useAppearanceAssignments>;
 /** `t` is threaded in explicitly: this is a plain (non-component) helper, so
@@ -76,6 +77,6 @@ export function AppearanceAssignments({ controller: c, base, formValid = true }:
       <label className="cursor-pointer text-xs underline">{t('appearance.assignments.restoreRecipe')}<input aria-label={t('appearance.assignments.restoreRecipeAriaLabel')} type="file" accept="application/json,.json"
         className="sr-only" disabled={c.busy} onChange={event => { const file = event.currentTarget.files?.[0]; if (file) c.restore(file); event.currentTarget.value = ''; }} /></label>
     </div>
-    {!c.rows.length && <p role={c.status === 'error' ? 'alert' : 'status'} className="text-[11px] text-muted-foreground">{c.notice}</p>}
+    {!c.rows.length && <p role={c.status === 'error' ? 'alert' : 'status'} className="text-[11px] text-muted-foreground">{resolveLocalizedMessage(c.notice, t)}</p>}
   </section>;
 }

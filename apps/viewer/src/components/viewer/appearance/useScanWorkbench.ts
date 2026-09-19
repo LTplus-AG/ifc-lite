@@ -10,6 +10,7 @@ import { prepareScanSession, type ScanSession, type ScanSourceSelector } from '@
 import { targetLandmark } from '@/lib/appearance/scan/landmarks';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { ScanLandmark, ScanPair, ScanRegistrationRequest, ScanRegistrationReport } from '@/lib/appearance/scan/types';
+import { ScanValidationError, scanFailureMessage } from './scan-validation-message';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 export type ScanWorkflowMessage =
   | { kind: 'translated'; key: TranslationKey; params?: TranslationParameters }
@@ -71,11 +72,11 @@ export function useScanWorkbench() {
       try {
         const rect = canvas.getBoundingClientRect(), target = targetLandmark(session, renderer, event.clientX - rect.left, event.clientY - rect.top);
         const existing = rows.current;
-        if (existing.some(row => row.correspondence.sourceObservation === pending.point.observation || row.correspondence.targetFeature === target.feature)) throw new Error('That landmark is already paired. Choose an independent point.');
-        if (existing.filter(row => row.partition === pending.partition).length >= 256) throw new Error('Each fit/check set is limited to 256 pairs.');
+        if (existing.some(row => row.correspondence.sourceObservation === pending.point.observation || row.correspondence.targetFeature === target.feature)) throw new ScanValidationError('appearance.scan.error.duplicateLandmark');
+        if (existing.filter(row => row.partition === pending.partition).length >= 256) throw new ScanValidationError('appearance.scan.error.pairLimit');
         const row: ScanPair = { source: pending.point, partition: pending.partition, correspondence: { id: crypto.randomUUID(), sourceObservation: pending.point.observation, targetFeature: target.feature, source: pending.point.point, target: target.point } };
         setPairs(previous => [...previous, row]); setPending(null); setResult(null); setAligned(false); setError(false); setStatus(translated('appearance.scan.status.pairAdded'));
-      } catch (failure) { setError(true); setStatus(raw(message(failure))); }
+      } catch (failure) { setError(true); setStatus(scanFailureMessage(failure)); }
     };
     canvas.addEventListener('pointerdown', start, true); canvas.addEventListener('pointerup', pick, true);
     return () => { canvas.removeEventListener('pointerdown', start, true); canvas.removeEventListener('pointerup', pick, true); };
@@ -100,7 +101,7 @@ export function useScanWorkbench() {
   }
   async function refreshAppearanceBinding(controller: AbortController) {
     const saved = recovery.current;
-    if (!session || !saved || !planner.current) throw new Error('No retained landmark binding is available.');
+    if (!session || !saved || !planner.current) throw new ScanValidationError('appearance.scan.error.noRetainedBinding');
     setResult(null); setAligned(false); setStatus(translated('appearance.scan.status.refreshing'));
     const next = await prepareScanSession(session.sourceModelId, session.selector, session.targetModelId, controller.signal);
     saved.rebind(next);
@@ -114,7 +115,8 @@ export function useScanWorkbench() {
     if (!recovery.current || busy) return;
     const controller = new AbortController(); operation.current = controller; ownAppearance.current = true; setBusy(true);
     try { await refreshAppearanceBinding(controller); }
-    catch (failure) { setStale(true); setError(true); setStatus(controller.signal.aborted ? translated('appearance.scan.status.revalidationCancelled') : raw(message(failure))); }
+    catch (failure) { setStale(true); setError(true); setStatus(controller.signal.aborted
+      ? translated('appearance.scan.status.revalidationCancelled') : scanFailureMessage(failure)); }
     finally { ownAppearance.current = false; if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   async function applyAppearance(action: (signal: AbortSignal) => Promise<void>) {

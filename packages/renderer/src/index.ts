@@ -356,12 +356,11 @@ export class Renderer {
     /** Retained so a listener registered AFTER the loss still learns of it. */
     private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
-    /** Counts every device-loss signal, including one from a replacement
-     * device while the original loss latch is still deliberately set. */
+    /** Counts losses, including one from a replacement while the original latch remains set. */
     private deviceLossSequence = 0;
-    private lostReferenceImages = false;
-    private recoveryInFlight: Promise<DeviceRecoveryResult> | null = null;
-    private quantizedBatchesRequested = false;
+    private readonly recovery = {
+        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false,
+    };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
     private readonly deviationComputer = new DeviationComputer();
     private readonly visualEnhancementResolver = new VisualEnhancementResolver();
@@ -833,7 +832,7 @@ export class Renderer {
         this.deviceLossSequence++;
         if (this.deviceLost) return;
         this.deviceLost = true;
-        this.lostReferenceImages = this.referenceImages.hasImages();
+        this.recovery.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
@@ -1620,7 +1619,7 @@ export class Renderer {
      * rejecting pipeline creation) batches stay on the f32 path.
      */
     async enableQuantizedBatches(): Promise<boolean> {
-        this.quantizedBatchesRequested = true;
+        this.recovery.quantizedBatchesRequested = true;
         if (!this.pipeline) return false;
         const ok = await this.pipeline.ensureQuantizedPipelines();
         if (ok) this.scene.setQuantizedBatches(true);

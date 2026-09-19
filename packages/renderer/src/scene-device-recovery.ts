@@ -83,8 +83,11 @@ export interface SceneRecoveryHost {
     maxX: number, maxY: number, maxZ: number,
   ): WorldBox;
   refreshLiveInstancedTemplates(): void;
+}
+
+export interface SceneRecoveryActions {
+  invalidateAuthoredPreparations(): void;
   resetAppearanceBatchCohorts(): void;
-  invalidateAuthoredPreparationsForRecovery(): void;
 }
 
 export type SceneDeviceRecoveryPreparation =
@@ -116,11 +119,14 @@ export async function prepareSceneDeviceRecovery(host: SceneRecoveryHost): Promi
   return host.coldBuckets.size > 0 ? { ok: false, reason: 'cold-restore-failed' } : { ok: true };
 }
 
-export function discardSceneGpuResourcesForRecovery(host: SceneRecoveryHost): void {
+export function discardSceneGpuResourcesForRecovery(
+  host: SceneRecoveryHost,
+  actions: SceneRecoveryActions,
+): void {
   // Fence detached authoring transactions before any old-device handle dies.
   // Their commit validation will release the staged buffers instead of
   // publishing them into the recovered scene.
-  host.invalidateAuthoredPreparationsForRecovery();
+  actions.invalidateAuthoredPreparations();
   const evicted = new Set<BatchedMesh>();
   for (const bucket of host.buckets.values()) {
     if (bucket.batchedMesh?.gpuResident === false) evicted.add(bucket.batchedMesh);
@@ -168,6 +174,7 @@ function restoreFlatBuckets(
   host: SceneRecoveryHost,
   device: GPUDevice,
   pipeline: RenderPipeline,
+  actions: SceneRecoveryActions,
 ): void {
   const maxBufferSize = Math.floor(
     (device.limits?.maxBufferSize ?? BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE) *
@@ -223,7 +230,7 @@ function restoreFlatBuckets(
     }
     host.activeBucketKey.set(baseKey, activeKey);
   }
-  if (repartitioned) host.resetAppearanceBatchCohorts();
+  if (repartitioned) actions.resetAppearanceBatchCohorts();
 }
 
 function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): void {
@@ -293,10 +300,11 @@ export function restoreSceneGpuResourcesAfterRecovery(
   host: SceneRecoveryHost,
   device: GPUDevice,
   pipeline: RenderPipeline,
+  actions: SceneRecoveryActions,
 ): void {
   try {
     if (host.appearanceAccessState) host.bindAppearanceAccess(device, pipeline);
-    restoreFlatBuckets(host, device, pipeline);
+    restoreFlatBuckets(host, device, pipeline, actions);
     const textured = new Set<MeshData>();
     for (const pieces of host.meshDataMap.values()) {
       for (const piece of pieces) if (hasRenderableTexture(piece)) textured.add(piece);
@@ -306,7 +314,7 @@ export function restoreSceneGpuResourcesAfterRecovery(
     if (host.colorOverrides) host.setColorOverrides(cloneOverrides(host.colorOverrides), device, pipeline);
     restoreInstancedAppearance(host, device);
   } catch (error) {
-    discardSceneGpuResourcesForRecovery(host);
+    discardSceneGpuResourcesForRecovery(host, actions);
     throw error;
   }
 }

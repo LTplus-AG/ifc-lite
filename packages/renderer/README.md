@@ -33,7 +33,7 @@ renderer.requestRender();
 ```typescript
 renderer.onDeviceLost(async () => {
   const result = await renderer.recoverDevice();
-  if (!result.ok) {
+  if (result.ok === false) {
     console.error('Renderer recovery failed:', result.reason);
   } else if (result.omissions.length > 0) {
     console.warn('Recovered with transient layers cleared:', result.omissions);

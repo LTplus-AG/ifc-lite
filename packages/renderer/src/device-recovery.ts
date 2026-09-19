@@ -37,7 +37,11 @@ export interface RendererRecoveryHost {
   scene: Scene;
   overlays: { recoveryOmissions(): DeviceRecoveryOmission[] };
   pointCloudRenderer: { hasAssets(): boolean } | null;
-  recoveryInFlight: Promise<DeviceRecoveryResult> | null;
+  recovery: {
+    inFlight: Promise<DeviceRecoveryResult> | null;
+    lostReferenceImages: boolean;
+    quantizedBatchesRequested: boolean;
+  };
   deviceLost: boolean;
   destroyed: boolean;
   ready: boolean;
@@ -45,8 +49,6 @@ export interface RendererRecoveryHost {
   deviceLostGeneration: number | null;
   initChain: Promise<void>;
   deviceLossSequence: number;
-  lostReferenceImages: boolean;
-  quantizedBatchesRequested: boolean;
   deviceLostInfo: { message: string; reason: string } | null;
   rejectReadyWaiters(error: Error): void;
   teardown(clearScene?: boolean): void;
@@ -67,7 +69,7 @@ export function rendererDeviceLostError(): Error {
 
 /** Coalesce and serialize recovery with the renderer's ordinary init lifecycle. */
 export function recoverRendererDevice(host: RendererRecoveryHost): Promise<DeviceRecoveryResult> {
-  if (host.recoveryInFlight) return host.recoveryInFlight;
+  if (host.recovery.inFlight) return host.recovery.inFlight;
   if (!host.deviceLost) return Promise.resolve({ ok: false, reason: 'not-lost' });
   if (host.destroyed) return Promise.resolve({ ok: false, reason: 'renderer-destroyed' });
 
@@ -80,9 +82,9 @@ export function recoverRendererDevice(host: RendererRecoveryHost): Promise<Devic
     () => recoverRendererDeviceOnce(host, generation),
   );
   host.initChain = run.then(() => undefined, () => undefined);
-  host.recoveryInFlight = run;
+  host.recovery.inFlight = run;
   const clearInFlight = () => {
-    if (host.recoveryInFlight === run) host.recoveryInFlight = null;
+    if (host.recovery.inFlight === run) host.recovery.inFlight = null;
   };
   void run.then(clearInFlight, clearInFlight);
   return run;
@@ -109,7 +111,7 @@ async function recoverRendererDeviceOnce(
   }
 
   const omissions = host.overlays.recoveryOmissions();
-  if (host.lostReferenceImages) omissions.push('reference-images');
+  if (host.recovery.lostReferenceImages) omissions.push('reference-images');
   if (host.pointCloudRenderer?.hasAssets()) omissions.push('point-clouds');
 
   let phase: 'device' | 'scene' = 'scene';
@@ -126,7 +128,7 @@ async function recoverRendererDeviceOnce(
     if (host.deviceLossSequence !== lossSequence) {
       throw new Error('Replacement GPU device was lost during initialization');
     }
-    if (host.quantizedBatchesRequested && host.pipeline) {
+    if (host.recovery.quantizedBatchesRequested && host.pipeline) {
       const quantized = await host.pipeline.ensureQuantizedPipelines();
       host.scene.setQuantizedBatches(quantized);
     }
@@ -138,7 +140,7 @@ async function recoverRendererDeviceOnce(
     }
     host.deviceLost = false;
     host.deviceLostInfo = null;
-    host.lostReferenceImages = false;
+    host.recovery.lostReferenceImages = false;
     host.markReady(generation);
     host.requestRender();
     return { ok: true, omissions };

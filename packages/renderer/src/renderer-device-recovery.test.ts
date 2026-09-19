@@ -75,7 +75,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
 
   it('reports transient GPU-only content as explicit omissions', async () => {
     const renderer = lostRenderer();
-    renderer['lostReferenceImages'] = true;
+    renderer['recovery'].lostReferenceImages = true;
     renderer['pointCloudRenderer'] = { hasAssets: () => true } as never;
     renderer['overlays']['recoveryOmissions'] = () => ['line-overlays', 'symbolic-overlays'];
     assert.deepStrictEqual(await renderer.recoverDevice(), {
@@ -87,7 +87,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
   it('re-probes quantized pipelines before rebuilding quantized scene buffers', async () => {
     const renderer = lostRenderer();
     let probes = 0, sceneEnabled: boolean | undefined;
-    renderer['quantizedBatchesRequested'] = true;
+    renderer['recovery'].quantizedBatchesRequested = true;
     renderer['initOnce'] = async () => {
       const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
       device.device = {} as GPUDevice;

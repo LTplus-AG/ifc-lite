@@ -59,7 +59,7 @@ import {
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
-import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
+import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryActions, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -245,11 +245,11 @@ export class Scene {
     const access = this.bindAppearanceAccess(device, pipeline);
     return this.appearanceController ??= createSceneAppearancePreview(access, this.sharedAppearanceBuckets(access));
   }
-  private resetAppearanceBatchCohorts(): void { this.appearanceBuckets?.forget(); }
-  private invalidateAuthoredPreparationsForRecovery(): void { this.authoredGeneration++; this.authoredPreparations.invalidate(); }
-  /** Place canonical native appearance source geometry in this model's live frame. */
+  private readonly recoveryActions: SceneRecoveryActions = {
+    resetAppearanceBatchCohorts: () => this.appearanceBuckets?.forget(),
+    invalidateAuthoredPreparations: () => { this.authoredGeneration++; this.authoredPreparations.invalidate(); },
+  };
   placeAppearanceSource(mesh: MeshData): MeshData { return this.modelTranslations.placeMesh(mesh); }
-  /** Retain model-local source coordinates when publishing a placed appearance mesh. */
   appearanceSourceMesh(mesh: MeshData): MeshData { return this.modelTranslations.sourceFromPlaced(mesh); }
 
   /** Stage one new IFC owner with all its coloured or textured geometry parts. */
@@ -413,8 +413,8 @@ export class Scene {
   private ephemeralStreamingMode: boolean = false;
 
   async prepareDeviceRecovery(): Promise<SceneDeviceRecoveryPreparation> { return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
-  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
-  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost, this.recoveryActions); }
+  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline, this.recoveryActions); }
 
   /**
    * Add mesh to scene

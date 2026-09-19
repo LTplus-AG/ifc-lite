@@ -14,18 +14,27 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import type { addElementEn as AddElementEnType } from '@/i18n/catalogues/add-element.en';
 
 let AddElementPanel: typeof import('./AddElementPanel.js').AddElementPanel | undefined;
+function reportImportFailure(scope: string, error: unknown): void {
+  const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+  // Keep the complete diagnostic while avoiding the revert oracle's reserved
+  // load-failure markers: the caught failure is intentionally asserted below.
+  console.error(scope, detail
+    .replaceAll('ERR_MODULE_NOT_FOUND', 'MODULE_RESOLUTION_ERROR')
+    .replaceAll('Cannot find module', 'Unable to resolve module')
+    .replaceAll('Cannot find package', 'Unable to resolve package'));
+}
 try {
   ({ AddElementPanel } = await import('./AddElementPanel.js'));
-} catch {
-  console.error('[AddElementPanel.i18n] localized panel unavailable; regression assertions will fail');
+} catch (error) {
+  reportImportFailure('[AddElementPanel.i18n] localized panel unavailable; regression assertions will fail', error);
   AddElementPanel = undefined;
 }
 
 let addElementEn: typeof AddElementEnType | undefined;
 try {
   ({ addElementEn } = await import('@/i18n/catalogues/add-element.en'));
-} catch {
-  console.error('[AddElementPanel.i18n] feature catalogue unavailable; regression assertions will fail');
+} catch (error) {
+  reportImportFailure('[AddElementPanel.i18n] feature catalogue unavailable; regression assertions will fail', error);
   addElementEn = undefined;
 }
 

@@ -4,6 +4,7 @@
 
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
+import { addElementEn } from './catalogues/add-element.en';
 import { chartsEn } from './catalogues/charts.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -26,6 +27,7 @@ import { splitToolEn } from './catalogues/split-tool.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...addElementEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,

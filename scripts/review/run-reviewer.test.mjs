@@ -489,6 +489,55 @@ test('the stdout excerpt is capped at 800 chars in the log line, independent of 
   assert.equal(excerpt.length, 800);
 });
 
+test('an EMPTY token list with no provider chain still fails AUTH_MISSING immediately', () => {
+  assert.throws(
+    () => runReviewerWithFailover({ prompt: 'p', model: 'sonnet', tokens: [], spawn: () => { throw new Error('must not be called'); } }),
+    (e) => e.reason === 'AUTH_MISSING',
+  );
+});
+
+test('#finding-4: an EMPTY token list with a configured provider chain goes straight to it, never AUTH_MISSING', () => {
+  // Before this fix, `tokens.length === 0` threw AUTH_MISSING before the
+  // provider loop was ever reached, so `run-judge.mjs` -- which is Claude-token
+  // driven but forwards whatever `providerFallback` it was given -- could never
+  // fall back to OpenRouter/OpenAI when no Claude credential was configured at
+  // all. It could only fail over FROM a failing Claude run.
+  let fallbackCalls = 0;
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [],
+    spawn: () => { throw new Error('the Claude CLI must never be spawned with no token'); },
+    providerFallback: (prompt) => { fallbackCalls += 1; assert.equal(prompt, 'p'); return '{"verdict":"clean"}'; },
+  });
+  assert.equal(result.text, '{"verdict":"clean"}');
+  assert.equal(result.envelope.provider, 'openai-fallback');
+  assert.equal(fallbackCalls, 1);
+});
+
+test('#finding-4: an empty token list with an ARRAY provider chain tries each provider in order', () => {
+  const seen = [];
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [],
+    spawn: () => { throw new Error('must not be called'); },
+    providerFallback: [
+      { label: 'openrouter-fallback', run: () => { seen.push('openrouter-fallback'); throw new Error('down'); } },
+      { label: 'openai-fallback', run: () => { seen.push('openai-fallback'); return '{"verdict":"clean"}'; } },
+    ],
+  });
+  assert.deepEqual(seen, ['openrouter-fallback', 'openai-fallback']);
+  assert.equal(result.text, '{"verdict":"clean"}');
+});
+
+test('#finding-4: an empty token list where every provider fails still reports FALLBACK_ERROR, not AUTH_MISSING', () => {
+  assert.throws(
+    () => runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [],
+      spawn: () => { throw new Error('must not be called'); },
+      providerFallback: () => { throw new Error('HTTP 500'); },
+    }),
+    (error) => error.reason === 'FALLBACK_ERROR' && /HTTP 500/.test(error.message),
+  );
+});
+
 test('resolveTokens: the same secret in both slots is REFUSED, not treated as a fallback', () => {
   // An easy mistake while wiring the second one up, and a fallback that shares
   // the primary's pool and expiry fails at exactly the moment it is needed while

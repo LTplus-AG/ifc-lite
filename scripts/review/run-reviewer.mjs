@@ -82,6 +82,7 @@ import { applicableClassesFromRaw, renderApplicableForPrompt } from './lib/class
 import { RunReviewerError } from './lib/run-reviewer-error.mjs';
 import { checkToken, resolveTokens } from './lib/credentials.mjs';
 import { maybeRunEnsemble } from './ensemble-reviewer.mjs';
+import { redactSecrets } from './lib/redact-secrets.mjs';
 
 export { RunReviewerError, checkToken, resolveTokens };
 
@@ -360,10 +361,9 @@ export function runReviewer({ prompt, model, spawn = realSpawn, token = null }) 
     // CLI_SILENT_EXIT carries the CLI's own stdout excerpt on top of the
     // remedy: with stderr empty there is otherwise nothing to diagnose from,
     // and run 33802488121's opaque envelope is exactly the shape this is for.
-    // Capped at 1500 chars and read from `r.stdout` alone -- never the env or
-    // the credential -- so this cannot leak the token even if a future CLI
-    // version echoes its own environment into stdout.
-    const rawStdout = String(r.stdout ?? '').slice(0, 1500).trim();
+    // Capped at 1500 chars, read from `r.stdout` alone, and `redactSecrets`-ed
+    // as a backstop should a future CLI version echo its own env into stdout.
+    const rawStdout = redactSecrets(String(r.stdout ?? '').slice(0, 1500).trim());
     const stdoutNote = reason === 'CLI_SILENT_EXIT' ? `\n--- stdout ---\n${rawStdout || '(empty)'}` : '';
     throw new RunReviewerError(
       reason,
@@ -431,12 +431,16 @@ function remedyFor(reason) {
  *     misconfigured second provider is never hidden behind a first failure.
  */
 export function runReviewerWithFailover({ prompt, model, tokens, spawn, providerFallback = null }) {
-  if (!Array.isArray(tokens) || tokens.length === 0) {
-    throw new RunReviewerError('AUTH_MISSING', 'No usable credential was resolved.');
-  }
+  const hasTokens = Array.isArray(tokens) && tokens.length > 0;
+  const noCredential = new RunReviewerError('AUTH_MISSING', 'No usable credential was resolved.');
+  // A CLAUDE-FREE, PROVIDER-ONLY RUN IS VALID: only "nothing at all configured"
+  // is immediate. `last` starts as this same error so a token-less run falls
+  // straight through to `providerFallback` below with a truthful `last.reason`,
+  // instead of the old unconditional throw that made the chain unreachable.
+  if (!hasTokens && !providerFallback) throw noCredential;
   const RETRYABLE = new Set(['AUTH_FAILED', 'QUOTA_DRAINED', 'CLI_SILENT_EXIT']);
-  let last;
-  for (const [i, t] of tokens.entries()) {
+  let last = noCredential;
+  for (const [i, t] of hasTokens ? tokens.entries() : []) {
     try {
       const r = runReviewer({ prompt, model, token: t.token, spawn });
       if (i > 0) console.log(`auth: succeeded on ${t.label} after ${tokens[0].label} failed.`);
@@ -513,19 +517,15 @@ async function main() {
   if (await maybeRunEnsemble({ env: process.env, input, prompt, outPath: args.out })) return;
 
   const tokens = resolveTokens(process.env);
-  if (tokens.length === 0) {
-    // Unchanged message: `checkToken` owns this diagnosis, and it is the one a
-    // reader has already seen in the logs.
-    checkToken(process.env.CLAUDE_CODE_OAUTH_TOKEN);
-  }
-  console.log(
-    `auth: ${tokens[0].note}` +
-      (tokens.length > 1
-        ? `, plus ${tokens.length - 1} fallback credential(s)`
-        : ', NO fallback configured (set CLAUDE_CODE_OAUTH_TOKEN_2 from a second account)'),
-  );
-
   const providers = resolveProviderFallbacks(process.env);
+  // Only reached with NEITHER a Claude credential NOR a provider configured --
+  // a provider-only run must reach the failover below instead of failing here.
+  if (tokens.length === 0 && providers.length === 0) checkToken(process.env.CLAUDE_CODE_OAUTH_TOKEN);
+  console.log(tokens.length === 0
+    ? 'auth: no Claude credential configured; relying on the provider chain.'
+    : `auth: ${tokens[0].note}` + (tokens.length > 1
+      ? `, plus ${tokens.length - 1} fallback credential(s)`
+      : ', NO fallback configured (set CLAUDE_CODE_OAUTH_TOKEN_2 from a second account)'));
   console.log(describeProviderFallbacks(providers));
 
   const { text, envelope } = runReviewerWithFailover({

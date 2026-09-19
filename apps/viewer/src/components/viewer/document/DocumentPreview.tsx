@@ -8,7 +8,7 @@
  * SSR SVG the PDF gets; an unresolved binding is marked in place, never
  * printed as an empty string.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
@@ -94,6 +94,16 @@ function ChartSvg({ aggregation, message, width, height }: { aggregation: Aggreg
   return <div className="w-full overflow-hidden" dangerouslySetInnerHTML={{ __html: svg }} data-chart-svg />;
 }
 
+/** Mirrors PDF image sizing once the browser has measured the data URL's intrinsic ratio. */
+function PreviewImage({ dataUrl, alt, height, contentWidth }: { dataUrl: string; alt: string; height: number; contentWidth: number }) {
+  const [aspect, setAspect] = useState<number | null>(null);
+  const drawnHeight = aspect && aspect > 0 ? Math.min(height, contentWidth / aspect) : height;
+  return <img src={dataUrl} alt={alt} style={{ height: drawnHeight, maxWidth: contentWidth }} className="w-auto object-contain" onLoad={(event) => {
+    const { naturalWidth, naturalHeight } = event.currentTarget;
+    if (naturalWidth > 0 && naturalHeight > 0) setAspect(naturalWidth / naturalHeight);
+  }} />;
+}
+
 function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth, scale }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number; scale: number }) {
   switch (block.kind) {
     case 'text':
@@ -104,7 +114,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
         <figure className={`flex flex-col ${block.align === 'center' ? 'items-center' : block.align === 'right' ? 'items-end' : 'items-start'}`}>
           <div className={`flex w-full ${justify}`}>
             {block.dataUrl
-              ? <img src={block.dataUrl} alt={block.caption ?? ''} style={{ height: block.height * scale }} className="max-w-full object-contain" />
+              ? <PreviewImage key={block.dataUrl} dataUrl={block.dataUrl} alt={block.caption ?? ''} height={block.height * scale} contentWidth={contentWidth} />
               : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height: block.height * scale, minWidth: 80 }}>No image yet</div>}
           </div>
           {block.caption && <figcaption className="text-[10px] text-neutral-500">{block.caption}</figcaption>}
@@ -116,7 +126,10 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
       const height = (block.height ?? CHART_BLOCK_HEIGHT_DEFAULT) * scale;
       return (
         <div>
-          <div className="text-sm font-semibold">{block.chart.title} <span className="text-[10px] font-normal text-neutral-500">{subtitle}{block.snapshot ? ' · 3D snapshot in the PDF' : ''}</span></div>
+          <div className="flex min-w-0 items-baseline gap-1 text-sm font-semibold">
+            <span className="min-w-0 truncate" title={block.chart.title}>{block.chart.title}</span>
+            <span className="min-w-0 truncate text-[10px] font-normal text-neutral-500" title={subtitle}>{subtitle}{block.snapshot ? ' · 3D snapshot in the PDF' : ''}</span>
+          </div>
           <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} />
         </div>
       );

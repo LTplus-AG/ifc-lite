@@ -16,6 +16,7 @@
  * from ECharts' own palette, so the legend, the 3D overlay and the printed
  * report agree.
  */
+import { format } from 'echarts/core';
 import type { Aggregation, Bucket, ChartItem } from './types.js';
 
 /** The tokens a host reads off its stylesheet; ECharts has no CSS variables. */
@@ -72,9 +73,13 @@ function formatValue(value: number, unit?: string): string {
   return unit ? `${text} ${unit}` : text;
 }
 
-/** A legend label past this many characters is truncated with an ellipsis; the full name is in the tooltip. */
+/** A screen legend label past this many characters is truncated with an ellipsis; the full name is in the tooltip. */
 const LEGEND_LABEL_MAX_CHARS = 24;
 const truncateLegendLabel = (name: string): string => (name.length > LEGEND_LABEL_MAX_CHARS ? `${name.slice(0, LEGEND_LABEL_MAX_CHARS - 1)}…` : name);
+
+const PRINT_LEGEND_SYMBOL_WIDTH = 10;
+const PRINT_LEGEND_SYMBOL_TEXT_GAP = 5;
+const PRINT_LEGEND_ITEM_GAP = 6;
 
 /**
  * Middle-ellipsis truncation for axis labels (#4940 review): `IfcSlab`, `IfcSpace` and
@@ -84,12 +89,52 @@ const truncateLegendLabel = (name: string): string => (name.length > LEGEND_LABE
  * Keeping a short head and a short tail instead survives the common-prefix case far more often.
  */
 export function truncateMiddle(text: string, maxChars: number): string {
+  if (maxChars <= 0) return '';
   if (text.length <= maxChars) return text;
-  if (maxChars < 4) return `${text.slice(0, Math.max(1, maxChars - 1))}…`;
+  if (maxChars === 1) return '…';
+  if (maxChars < 4) return `${text.slice(0, maxChars - 1)}…`;
   const keep = maxChars - 1;
   const head = Math.ceil(keep * 0.6);
   const tail = keep - head;
   return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
+}
+
+/**
+ * Pack the fixed print legend using the same public ECharts text metrics as
+ * the SVG renderer. The 10px font must be included in both truncation and
+ * measurement: measuring a full label and rendering an ellipsis is what let
+ * a single wide label miscount its row in the first place.
+ */
+function packPrintLegend(labels: readonly string[], width: number, font: string): {
+  shownItems: number;
+  rows: number;
+  legendH: number;
+  formatter: (name: string) => string;
+} {
+  const maxTextWidth = Math.max(0, width - PRINT_LEGEND_SYMBOL_WIDTH - PRINT_LEGEND_SYMBOL_TEXT_GAP - PRINT_LEGEND_ITEM_GAP);
+  const formatter = (name: string) => format.truncateText(name, maxTextWidth, font, '…');
+  const rowHeight = Math.max(PRINT_LEGEND_SYMBOL_WIDTH, format.getTextRect('M', font).height);
+  let rows = labels.length > 0 ? 1 : 0;
+  let rowWidth = 0;
+  let shownItems = 0;
+  for (const label of labels) {
+    const text = formatter(label);
+    const itemWidth = PRINT_LEGEND_SYMBOL_WIDTH + PRINT_LEGEND_SYMBOL_TEXT_GAP + format.getTextRect(text, font).width;
+    const nextWidth = rowWidth === 0 ? itemWidth : rowWidth + PRINT_LEGEND_ITEM_GAP + itemWidth;
+    if (nextWidth > width && rowWidth > 0) {
+      rows += 1;
+      rowWidth = 0;
+    }
+    if (rows > PRINT_LEGEND_MAX_ROWS) break;
+    rowWidth = rowWidth === 0 ? itemWidth : nextWidth;
+    shownItems += 1;
+  }
+  return {
+    shownItems,
+    rows,
+    legendH: rows > 0 ? rows * rowHeight + (rows - 1) * PRINT_LEGEND_ITEM_GAP : 0,
+    formatter,
+  };
 }
 
 function measureLabel(aggregation: Aggregation): string {
@@ -173,10 +218,8 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       // it would otherwise divide/multiply its way into a NaN or Infinity radius percentage.
       const width = typeof args.width === 'number' && Number.isFinite(args.width) && args.width > 0 ? args.width : DEFAULT_WIDTH;
       const height = typeof args.height === 'number' && Number.isFinite(args.height) && args.height > 0 ? args.height : DEFAULT_HEIGHT;
-      const itemsPerRow = Math.max(1, Math.floor(width / 90));
-      const shownItems = Math.min(categories.length, itemsPerRow * PRINT_LEGEND_MAX_ROWS);
-      const legendRows = Math.min(PRINT_LEGEND_MAX_ROWS, Math.ceil(categories.length / itemsPerRow));
-      const legendH = categories.length > 0 ? legendRows * 14 + 6 : 0;
+      const printLegendFont = `10px ${theme.fontFamily}`;
+      const { shownItems, legendH, formatter } = packPrintLegend(categories.map((category) => category.label), width, printLegendFont);
       const pieAreaH = Math.max(40, height - legendH - 8);
       const pieDiameter = Math.min(width * 0.7, pieAreaH) * 0.92;
       const box = Math.min(width, height);
@@ -189,8 +232,9 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       // (leader lines fan out and cross each other, let alone the legend) is crowded.
       crowded = pieDiameter < 200 || categories.length > 8;
       legend = {
-        type: 'plain', orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10,
-        textStyle: { color: theme.mutedText, fontSize: 10 }, formatter: truncateLegendLabel, tooltip: { show: true },
+        type: 'plain', orient: 'horizontal', left: 'center', bottom: 0,
+        itemWidth: PRINT_LEGEND_SYMBOL_WIDTH, itemHeight: PRINT_LEGEND_SYMBOL_WIDTH, itemGap: PRINT_LEGEND_ITEM_GAP,
+        padding: 0, textStyle: { color: theme.mutedText, fontSize: 10, fontFamily: theme.fontFamily }, formatter, tooltip: { show: true },
         // Fewer legend entries than categories: cap `data` so the wrapped legend cannot grow past its reserved rows.
         ...(shownItems < categories.length ? { data: categories.slice(0, shownItems).map((c) => c.label) } : {}),
       };

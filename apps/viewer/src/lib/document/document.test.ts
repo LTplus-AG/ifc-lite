@@ -178,6 +178,8 @@ describe('document file', () => {
     assert.deepEqual(validateDocumentSpec(textWithWidth), []); // an unknown extra property on a text block is not itself a validation error
     const badChartHeight = { ...v2, blocks: [{ ...halfChart, height: 10 }] };
     assert.deepEqual(validateDocumentSpec(badChartHeight).map((e) => e.path), ['blocks[0].height']);
+    const nonFiniteChartHeight = { ...v2, blocks: [{ ...halfChart, height: Number.NaN }] };
+    assert.deepEqual(validateDocumentSpec(nonFiniteChartHeight).map((e) => e.path), ['blocks[0].height']);
     const badWidth = { ...v2, blocks: [{ ...halfImage, width: 'third' }] };
     assert.deepEqual(validateDocumentSpec(badWidth).map((e) => e.path), ['blocks[0].width']);
     // Infinity ("a positive number") must not slip past validation into a CSS height (review finding).

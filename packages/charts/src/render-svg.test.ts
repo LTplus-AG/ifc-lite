@@ -116,6 +116,9 @@ describe('buildEChartsOption', () => {
   });
 
   it.skipIf(!truncateMiddle)('truncates a long axis label from the middle, not the tail, so IFC classes sharing a prefix stay distinguishable (#4940 review: headed-Chrome finding — IfcSlab/IfcSpace/IfcSpatialZone all read "IfcS…")', () => {
+    expect(truncateMiddle!('IfcSpatialZone', 0)).toBe('');
+    expect(truncateMiddle!('IfcSpatialZone', 1)).toBe('…');
+    expect(truncateMiddle!('IfcSpatialZone', 2)).toBe('I…');
     expect(truncateMiddle!('IfcSlab', 10)).toBe('IfcSlab');
     expect(truncateMiddle!('IfcSpatialZone', 8)).toBe('IfcSp…ne');
     expect(truncateMiddle!('IfcSpatialZone', 3)).toBe('If…');
@@ -169,6 +172,26 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
     const xs = [...print.matchAll(/<text[^>]*\sx="(-?[\d.]+)"/g)].map((m) => Number(m[1]));
     expect(xs.length).toBeGreaterThan(0);
     for (const x of xs) expect(x).toBeLessThanOrEqual(width);
+  });
+
+  it('caps a wide-label print legend at four rendered rows while retaining every pie slice (#4983)', () => {
+    const width = 480;
+    const names = Array.from({ length: 20 }, (_, i) => `W${'ideIfcElementName'.repeat(8)}-${i}`);
+    const manyBuckets: ChartDataset = {
+      ...ds,
+      rows: names.map((name, i) => ({ ids: [500 + i], values: [name, 'L1'] })),
+    };
+    const agg = aggregate({ ...bar, type: 'pie' }, manyBuckets);
+    const option = buildEChartsOption({ aggregation: agg, width, height: 320, print: true });
+    expect((option.series as Array<{ data: unknown[] }>)[0].data).toHaveLength(names.length);
+
+    const svg = renderChartSvg({ aggregation: agg, width, height: 320, print: true });
+    expect(svg).not.toContain(names[0]);
+    const legendRows = new Set(
+      [...svg.matchAll(/<text[^>]*transform="translate\([^ ]+ ([\d.]+)\)"[^>]*>W[^<]*<\/text>/g)].map((match) => match[1]),
+    );
+    expect(legendRows.size).toBeGreaterThan(0);
+    expect(legendRows.size).toBeLessThanOrEqual(4);
   });
 });
 

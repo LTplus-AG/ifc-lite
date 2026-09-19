@@ -86,7 +86,8 @@ log('screenshot saved', `${OUT}/05-after-fix.png`);
 const pieSvg = await page.locator('[data-preview-row] [data-chart-svg]').nth(1).innerHTML();
 const texts = [...pieSvg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
 log('pie svg text nodes', texts.length, texts);
-const ok = texts.length <= 10; // legend rows only; 14 uncapped callouts would push this well past 10
+const hasLegendText = texts.some((text) => text.trim().length > 0);
+const ok = hasLegendText && texts.length <= 10 && errors.length === 0; // legend rows only; 14 uncapped callouts would push this well past 10
 log(ok ? 'PASS: text-node count matches the capped legend, no extra per-slice callouts' : 'FAIL: more text than the legend accounts for — a callout may still be drawn');
 log('page errors', errors.length, errors.slice(0, 10));
 

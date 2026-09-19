@@ -149,6 +149,26 @@ function captureDownloads(): { downloads: Array<{ name: string; blob: Blob }>; r
   };
 }
 
+/**
+ * Wait until `count` downloads were captured. The sidecar export digests the
+ * two models' bytes with `crypto.subtle` before it saves, so a fixed wait races
+ * a loaded CI runner: the first test then sees 0 saves and the next one sees 2.
+ */
+async function waitForDownloads(
+  capture: ReturnType<typeof captureDownloads>,
+  count: number,
+  label = 'download',
+): Promise<void> {
+  for (let i = 0; i < 250 && capture.downloads.length < count; i++) await advance(20);
+  assert.equal(capture.downloads.length, count, `${count} ${label}(s) saved`);
+}
+
+/** Poll until `ready()` holds — the import path digests the file bytes first. */
+async function waitUntil(ready: () => boolean, label: string): Promise<void> {
+  for (let i = 0; i < 250 && !ready(); i++) await advance(20);
+  assert.ok(ready(), label);
+}
+
 /** Hand a file to the hidden import input the way the picker does. */
 function importFile(container: HTMLElement, file: File): void {
   const input = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -216,8 +236,7 @@ describe('ComparePanel Suggestions (#4955)', () => {
       const container = render(<ComparePanel />);
       click(buttons(container, 'Accept')[0]);
       click(buttons(container, 'Export map')[0]);
-      await advance(20);
-      assert.equal(capture.downloads.length, 1, 'one file saved');
+      await waitForDownloads(capture, 1, 'identity map');
       assert.equal(capture.downloads[0].name, 'compare-A.ifc-vs-B.ifc.identity-map.json');
       const sidecar = parseIdentityMapSidecar(await capture.downloads[0].blob.text());
       assert.deepEqual(sidecar.entries, [{ base: 'W1', here: 'W1b', reason: 'successor:footprint' }]);
@@ -236,8 +255,7 @@ describe('ComparePanel Suggestions (#4955)', () => {
 
   async function exportLineage(container: HTMLElement, capture: ReturnType<typeof captureDownloads>): Promise<LineageFile> {
     click(buttons(container, 'Export lineage')[0]);
-    await advance(20);
-    assert.equal(capture.downloads.length, 1);
+    await waitForDownloads(capture, 1, 'lineage');
     return JSON.parse(await capture.downloads[0].blob.text()) as LineageFile;
   }
 
@@ -300,7 +318,7 @@ describe('ComparePanel Suggestions (#4955)', () => {
       const container = render(<ComparePanel />);
       assert.ok((container.textContent ?? '').includes('Replaced ·'), 'another pair\'s decision does not hide the suggestion');
       click(buttons(container, 'Export map')[0]);
-      await advance(20);
+      await waitForDownloads(capture, 1, 'identity map');
       const sidecar = parseIdentityMapSidecar(await capture.downloads[0].blob.text());
       assert.deepEqual(sidecar.entries, []);
     } finally {
@@ -316,7 +334,7 @@ describe('ComparePanel Suggestions (#4955)', () => {
       entries: [{ base: 'W1', here: 'W1b', reason: 'successor:footprint' }],
     });
     importFile(container, new File([serializeIdentityMapSidecar(foreign)], 'foreign.identity-map.json'));
-    await advance(20);
+    await waitUntil(() => container.querySelector('[role="status"]') !== null, 'a status message appears');
     const status = container.querySelector('[role="status"]');
     assert.ok(status, 'a refusal message is shown');
     assert.match(status.textContent ?? '', /base model does not match/);
@@ -331,7 +349,7 @@ describe('ComparePanel Suggestions (#4955)', () => {
       entries: [{ base: 'W1', here: 'W1b', reason: 'successor:footprint' }],
     });
     importFile(container, new File([serializeIdentityMapSidecar(own)], 'own.identity-map.json'));
-    await advance(20);
+    await waitUntil(() => useViewerStore.getState().compareAcceptedIdentity.length > 0, 'the import landed in the store');
     assert.deepEqual(useViewerStore.getState().compareAcceptedIdentity, [
       { ...AB, base: 'W1', here: 'W1b', reason: 'successor:footprint' },
     ]);

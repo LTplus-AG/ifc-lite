@@ -87,3 +87,20 @@ describe('generateFromSchema — CRLF line endings (#4220)', () => {
     }
   });
 });
+
+describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
+  it('does not read Rust-only supplemental paths for a TypeScript-only generation', () => {
+    const outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-4203-ts-only-'));
+    try {
+      expect(() =>
+        generateFromSchema('SCHEMA TEST; END_SCHEMA;', outputDir, {
+          rust: false,
+          rustSupplementalSchemaPaths: [join(outputDir, 'does-not-exist.exp')],
+          skipCollisionCheck: true,
+        }),
+      ).not.toThrow();
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+});

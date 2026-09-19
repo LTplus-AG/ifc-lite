@@ -68,9 +68,11 @@ export function generateFromSchema(
 
   console.log('📖 Parsing EXPRESS schema...');
   const schema = parseExpressSchema(schemaContent);
-  const rustSupplementalSchemas = (options.rustSupplementalSchemaPaths ?? []).map((path) =>
-    parseExpressSchema(readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n'))
-  );
+  const rustSupplementalSchemas = options.rust
+    ? (options.rustSupplementalSchemaPaths ?? []).map((path) =>
+        parseExpressSchema(readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n'))
+      )
+    : [];
 
   console.log(`✓ Parsed ${schema.name}`);
   console.log(`  - ${schema.entities.length} entities`);

@@ -87,25 +87,31 @@ function readableStrings(): Set<string> {
  *  reads (registered under its own locale name rather than `en` — `mcp.en.ts`
  *  / `mcp-playground.en.ts` are not wired into the real `en` catalogue yet;
  *  a separate, central step integrates every #4918-sweep catalogue at once). */
-function runOracle(
+function runOracle<T extends Catalogue>(
   name: string,
-  baseline: Catalogue,
+  baseline: T,
   prefixes: string[],
   mount: () => ReturnType<typeof render>,
+  requiredKeys: Array<keyof T & string>,
 ): void {
-  const KEYS = Object.keys(baseline) as Array<keyof typeof baseline>;
+  const KEYS = Object.keys(baseline) as Array<keyof T & string>;
   const STATIC_KEYS = KEYS.filter((key) => {
     const value = baseline[key];
     if (typeof value !== 'string' || value.includes('{')) return false;
     return prefixes.some((p) => (key as string).startsWith(p));
   });
-  const mark = (key: keyof typeof baseline) => `⟦${String(key)}|${baseline[key] as string}⟧`;
+  const mark = (key: keyof T & string) => `⟦${key}|${baseline[key] as string}⟧`;
   const PSEUDO: Catalogue = Object.fromEntries(KEYS.map((key) => [key, mark(key)]));
 
   registerLocale(`${name}-en-baseline`, baseline);
   act(() => setLocale(`${name}-en-baseline`));
   mount();
   const english = readableStrings();
+  for (const key of requiredKeys) {
+    const value = baseline[key];
+    assert.equal(typeof value, 'string', `${name}: required key ${key} must be a string`);
+    assert.ok(english.has(value as string), `${name}: required key ${key} must be visible before locale switch`);
+  }
 
   registerLocale(`${name}-pseudo`, PSEUDO);
   act(() => setLocale(`${name}-pseudo`));
@@ -128,19 +134,27 @@ afterEach(() => {
 
 describe('mcp/playground chrome localization (#4918)', () => {
   it('McpPlayground translates its shell chrome', () => {
-    runOracle('mcp-playground-shell', mcpPlaygroundEn, ['mcp.mcpPlayground.'], () => render(<McpPlayground />));
+    runOracle('mcp-playground-shell', mcpPlaygroundEn, ['mcp.mcpPlayground.'], () => render(<McpPlayground />), [
+      'mcp.mcpPlayground.title', 'mcp.mcpPlayground.backToMcp', 'mcp.mcpPlayground.sampleModels',
+    ]);
   });
 
   it('PlaygroundChat translates its idle-state chrome', () => {
-    runOracle('playground-chat', mcpPlaygroundEn, ['mcp.playgroundChat.'], () => render(<PlaygroundChat model={null} />));
+    runOracle('playground-chat', mcpPlaygroundEn, ['mcp.playgroundChat.'], () => render(<PlaygroundChat model={null} />), [
+      'mcp.playgroundChat.attachFileTitle', 'mcp.playgroundChat.placeholderNoModel',
+    ]);
   });
 
   it('PlaygroundViewer translates its WebGL-unavailable caption', () => {
-    runOracle('playground-viewer', mcpEn, ['mcp.playgroundViewer.'], () => render(<PlaygroundViewer model={null} />));
+    runOracle('playground-viewer', mcpEn, ['mcp.playgroundViewer.'], () => render(<PlaygroundViewer model={null} />), [
+      'mcp.playgroundViewer.webglUnavailableTitle',
+    ]);
   });
 
   it('HeroScene translates its WebGL-unavailable caption', () => {
-    runOracle('hero-scene', mcpEn, ['mcp.heroScene.'], () => render(<HeroScene step={0} />));
+    runOracle('hero-scene', mcpEn, ['mcp.heroScene.'], () => render(<HeroScene step={0} />), [
+      'mcp.heroScene.webglUnavailable',
+    ]);
   });
 
   it('PlaygroundChat keeps a shown error banner reactive to a live locale switch (#4918 slice 5b review)', async () => {

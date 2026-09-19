@@ -35,7 +35,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { resolveLiveMessage, type LiveTranslationMessage } from './live-translation-message.js';
 import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
 import {
@@ -109,6 +109,7 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  displayTextKey?: TranslationKey;
   toolCalls?: ChatToolCall[];
   /** True while we're still streaming + looping tool calls. */ pending?: boolean;
 }
@@ -248,7 +249,14 @@ export function PlaygroundChat({
         setMessages((m) =>
           m.map((msg) =>
             msg.id === assistantMessage.id
-              ? { ...msg, pending: false, text: msg.text || t('mcp.playgroundChat.requestFailed') }
+              ? msg.text
+                ? { ...msg, pending: false }
+                : {
+                    ...msg,
+                    pending: false,
+                    text: t('mcp.playgroundChat.requestFailed'),
+                    displayTextKey: 'mcp.playgroundChat.requestFailed',
+                  }
               : msg,
           ),
         );
@@ -455,10 +463,9 @@ export function PlaygroundChat({
           </button>
         </div>
         <p className="mt-1.5 text-[10px] text-white/40">
-          {t('mcp.playgroundChat.footerHint', {
-            tools: tools.length,
-            attachedSuffix: uploads.length > 0 ? t('mcp.playgroundChat.attachedFilesSuffix', { count: uploads.length }) : '',
-          })}
+          {uploads.length > 0
+            ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
+            : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
         </p>
         {dragOver && (
           <div
@@ -637,7 +644,7 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
       {msg.text && (
         <div className="prose-playground max-w-[95%] text-[13.5px] leading-relaxed text-white/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-            {msg.text}
+            {msg.displayTextKey ? t(msg.displayTextKey) : msg.text}
           </ReactMarkdown>
           {msg.pending && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-[#d6ff3f]" />}
         </div>

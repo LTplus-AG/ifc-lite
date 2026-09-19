@@ -70,8 +70,11 @@ function readableStrings(container: HTMLElement): Set<string> {
 
 /** Assert that every English static key readable in `container` reappears
  *  marked once the pseudo-locale is active. */
-function assertTranslates(container: HTMLElement, localeName: string): void {
+function assertTranslates(container: HTMLElement, localeName: string, requiredKeys: TourKey[]): void {
   const english = readableStrings(container);
+  for (const key of requiredKeys) {
+    assert.ok(english.has(toursEn[key]), `${key}: expected English text to be visible before locale switch`);
+  }
   registerLocale(localeName, PSEUDO);
   act(() => setLocale(localeName));
   const after = readableStrings(container);
@@ -93,7 +96,12 @@ afterEach(() => {
 describe('LearnTab localization (#4918)', () => {
   it('translates the catalog description, completed badge, and start/replay buttons', () => {
     const container = render(<LearnTab onClose={() => {}} />);
-    assertTranslates(container, 'tours-learntab-pseudo');
+    assertTranslates(container, 'tours-learntab-pseudo', [
+      'tours.learnTab.description',
+      'tours.learnTab.start',
+    ]);
+    const minutes = getTour('welcome')!.minutes;
+    assert.ok(readableStrings(container).has(mark('tours.learnTab.minutes').replace('{n}', String(minutes))));
   });
 });
 
@@ -148,14 +156,25 @@ describe('TourHost prerequisite card localization (#4918)', () => {
       useTourStore.setState({ status: 'prereq', tourId: 'welcome' });
     });
     const container = render(<TourHost />);
-    assertTranslates(container, 'tours-prereq-pseudo');
+    assertTranslates(container, 'tours-prereq-pseudo', [
+      'tours.tourHost.prereqModel',
+      'tours.tourHost.cancel',
+      'tours.tourHost.loadDemoProject',
+    ]);
+    assert.ok(readableStrings(container).has(
+      mark('tours.tourHost.prereqAriaLabel').replace('{title}', getTour('welcome')!.title),
+    ));
   });
 });
 
 describe('TourInvite localization (#4918)', () => {
   it('translates the first-run invite prompt, CTA, and dismiss label', () => {
     const container = render(<TourInvite />);
-    assertTranslates(container, 'tours-invite-pseudo');
+    assertTranslates(container, 'tours-invite-pseudo', [
+      'tours.tourInvite.prompt',
+      'tours.tourInvite.start',
+      'tours.tourInvite.dismissAriaLabel',
+    ]);
   });
 });
 
@@ -164,14 +183,29 @@ describe('TourStepCard localization (#4918)', () => {
   // 'orbit' is a canvas step (no anchor/floating-ui positioning needed under jsdom).
   const step = tour.steps.find((s) => s.id === 'orbit')!;
 
+  afterEach(() => {
+    useTourStore.setState({ hintVisible: false, gateBroken: false });
+  });
+
   it('translates the aria-label, end-tour button, skip button, and progress controls', () => {
+    act(() => useTourStore.setState({ gateBroken: true }));
     const container = render(
       <TourStepCard tour={tour} step={step} stepIndex={1} targetEl={null} />,
     );
-    assertTranslates(container, 'tours-stepcard-pseudo');
+    assertTranslates(container, 'tours-stepcard-pseudo', [
+      'tours.tourStepCard.endTourAriaLabel',
+      'tours.tourStepCard.skipStep',
+      'tours.tourStepCard.next',
+    ]);
+    assert.ok(readableStrings(container).has(
+      mark('tours.tourStepCard.ariaLabel')
+        .replace('{step}', '2')
+        .replace('{total}', String(tour.steps.length))
+        .replace('{title}', step.title),
+    ));
   });
 
-  it('translates "Done" on the final step and the stuck hint when a gate is broken', () => {
+  it('translates "Done" on the final step', () => {
     const lastIndex = tour.steps.length - 1;
     const lastStep = tour.steps[lastIndex];
     const container = render(
@@ -183,5 +217,22 @@ describe('TourStepCard localization (#4918)', () => {
     act(() => setLocale('tours-stepcard-done-pseudo'));
     const after = readableStrings(container);
     assert.ok(after.has(mark('tours.tourStepCard.done')));
+  });
+
+  it('translates the stuck hint and removes it once a broken gate unlocks Next', () => {
+    const gatedIndex = tour.steps.findIndex((candidate) => candidate.gate !== undefined);
+    assert.notEqual(gatedIndex, -1, 'welcome tour must retain a gated step for this regression');
+    act(() => useTourStore.setState({ hintVisible: true, gateBroken: false }));
+    const container = render(
+      <TourStepCard tour={tour} step={tour.steps[gatedIndex]} stepIndex={gatedIndex} targetEl={null} />,
+    );
+    registerLocale('tours-stepcard-stuck-pseudo', PSEUDO);
+    act(() => setLocale('tours-stepcard-stuck-pseudo'));
+    assert.ok(readableStrings(container).has(mark('tours.tourStepCard.stuckHint')));
+
+    act(() => useTourStore.setState({ gateBroken: true }));
+    const unlocked = readableStrings(container);
+    assert.equal(unlocked.has(mark('tours.tourStepCard.stuckHint')), false);
+    assert.ok(unlocked.has(mark('tours.tourStepCard.next')));
   });
 });

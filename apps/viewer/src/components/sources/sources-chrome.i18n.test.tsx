@@ -72,7 +72,7 @@ import { SourceFolderTree } from './SourceFolderTree.js';
 import { SourceProjectsStep } from './SourceProjectsStep.js';
 import { SourceProviderRow } from './SourceProviderRow.js';
 import { SourceSettingsDialog } from './SourceSettingsDialog.js';
-import { SourcesPanel } from './SourcesPanel.js';
+import { RegistrationFailureMessage, SourcesPanel } from './SourcesPanel.js';
 import { saveFavourites, type SourceFavourite } from '@/lib/sources/favourites';
 import { syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
 
@@ -853,5 +853,19 @@ describe('SourcesPanel chrome localization', () => {
       'bad api version — my-provider konnte nicht registriert werden',
     );
     setLocale('en');
+  });
+
+  it('keeps the provider emphasized when a locale reorders the complete failure sentence', () => {
+    registerLocale('sources-failure-reordered-markup', {
+      'sources.sourcesPanel.failedToRegister': '{reason} — provider {provider} failed',
+    });
+    act(() => setLocale('sources-failure-reordered-markup'));
+    const container = render(
+      <RegistrationFailureMessage provider="my-provider" reason="bad api version" />,
+    );
+
+    assert.equal(container.textContent, 'bad api version — provider my-provider failed');
+    const emphasized = container.querySelector('.font-medium');
+    assert.equal(emphasized?.textContent, 'my-provider');
   });
 });

@@ -59,11 +59,11 @@ export const mcpPlaygroundEn = {
   'mcp.playgroundChat.placeholderAddNote': 'Add a note (or just send to validate the attached file)…',
   'mcp.playgroundChat.placeholderDefault': 'Ask the agent — drop a .ids onto the chat to validate it.',
   'mcp.playgroundChat.send': 'Send',
-  'mcp.playgroundChat.footerHint':
-    'BYOK · {tools} tools · {attachedSuffix}enter to send · ⇧+enter for newline · drop files to attach',
-  'mcp.playgroundChat.attachedFilesSuffix': {
-    one: '{count} attached file · ',
-    other: '{count} attached files · ',
+  'mcp.playgroundChat.footerHintNoAttachments':
+    'BYOK · {tools} tools · enter to send · ⇧+enter for newline · drop files to attach',
+  'mcp.playgroundChat.footerHintWithAttachments': {
+    one: 'BYOK · {tools} tools · {count} attached file · enter to send · ⇧+enter for newline · drop files to attach',
+    other: 'BYOK · {tools} tools · {count} attached files · enter to send · ⇧+enter for newline · drop files to attach',
   },
   'mcp.playgroundChat.releaseToAttach': 'release to attach',
   'mcp.playgroundChat.brand': 'ifc-lite/mcp · agent',

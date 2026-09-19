@@ -14,6 +14,12 @@ export const viewerShellEn = {
   'viewerShell.chunkError.loadFailedDetail': 'This usually means the app was updated while your tab was open.',
   'viewerShell.chunkError.crashedDetail': 'An unexpected error stopped it from rendering.',
   'viewerShell.chunkError.reload': 'Reload',
+  'viewerShell.chunkLabel.appearancePanel': 'Appearance panel',
+  'viewerShell.chunkLabel.chartsPanel': 'Charts panel',
+  'viewerShell.chunkLabel.documentPanel': 'Document panel',
+  'viewerShell.chunkLabel.layersPanel': 'Layers panel',
+  'viewerShell.chunkLabel.mcpPage': 'MCP page',
+  'viewerShell.chunkLabel.mcpPlayground': 'MCP playground',
 
   'viewerShell.dialog.close': 'Close',
 } as const;

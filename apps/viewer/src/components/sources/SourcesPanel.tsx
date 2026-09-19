@@ -25,6 +25,21 @@ interface SourcesPanelProps {
   onClose: () => void;
 }
 
+export function RegistrationFailureMessage({ provider, reason }: { provider: string; reason: string }) {
+  const { t } = useTranslation();
+  const marker = '\uE000provider\uE001';
+  const message = t('sources.sourcesPanel.failedToRegister', { provider: marker, reason });
+  const markerIndex = message.indexOf(marker);
+  if (markerIndex === -1) return message;
+  return (
+    <>
+      {message.slice(0, markerIndex)}
+      <span className="font-medium">{provider}</span>
+      {message.slice(markerIndex + marker.length)}
+    </>
+  );
+}
+
 interface SourceDownloadSelection {
   readonly projectId: string;
   readonly files: readonly PluginSourceFile[];
@@ -300,7 +315,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
                 >
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>
-                    {t('sources.sourcesPanel.failedToRegister', { provider: failure.provider, reason: failure.reason })}
+                    <RegistrationFailureMessage provider={failure.provider} reason={failure.reason} />
                   </span>
                 </li>
               ))}

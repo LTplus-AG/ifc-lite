@@ -382,7 +382,7 @@ export interface CameraCallbacks {
   rotateLeft?: () => void;
   /** Rotate the camera exactly 90° around the vertical axis. */
   rotateRight?: () => void;
-  frameSelection?: () => void;
+  frameSelection?: (durationMs?: number) => void;
   /**
    * Resolve ids to what the 3D renderer can actually highlight, expanding a
    * geometry-less `IfcRelAggregates` assembly (own id has no mesh) to its

@@ -20,9 +20,9 @@ export interface IdLookupResult {
 
 /** Resolve refs to IFC GlobalIds once, preserving first-seen order. Passing a
  * shared `seen` set deduplicates across several serialized BCF groups. */
-export function resolveUniqueGlobalIds(
-  refs: Iterable<number>,
-  resolve: (ref: number) => string | null,
+export function resolveUniqueGlobalIds<T>(
+  refs: Iterable<T>,
+  resolve: (ref: T) => string | null,
   seen = new Set<string>(),
 ): string[] {
   const guids: string[] = [];

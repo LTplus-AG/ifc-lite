@@ -5,6 +5,7 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
+import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -37,6 +38,7 @@ export const en = {
   ...filterGroupsEn,
   ...chartsEn,
   ...listsEn,
+  ...clashGroupsEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,

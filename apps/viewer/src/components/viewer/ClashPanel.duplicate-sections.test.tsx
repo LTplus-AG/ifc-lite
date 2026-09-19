@@ -139,7 +139,7 @@ describe('ClashPanel — duplicate scan sections (#2530)', () => {
 });
 
 describe('ClashPanel - Pairs/Issues toggle vs duplicate scans (#2535)', () => {
-  it('hides the toggle and proximity wording during a duplicate scan', async () => {
+  it('offers Pairs/Groups but hides proximity Issues during a duplicate scan', async () => {
     // Proximity grouping does not apply to a duplicate scan: its grouping is
     // coincident SETS. Offering "Issues" (with the "within Xm" tooltip) there
     // presents a control whose wording describes a different mechanism.
@@ -154,8 +154,12 @@ describe('ClashPanel - Pairs/Issues toggle vs duplicate scans (#2535)', () => {
     // latter feeds the happy-dom element into the assertion diff, whose deep
     // inspection of the DOM graph exhausts the heap before the test can fail.
     assert.ok(buttonByText('Issues') === null, 'no Issues toggle during a duplicate scan');
-    assert.ok(buttonByText('Pairs') === null, 'no Pairs toggle during a duplicate scan');
+    assert.ok(buttonByText('Pairs'), 'duplicate pairs remain directly accessible');
+    const groupsButton = buttonByText('Groups');
+    assert.ok(groupsButton, 'manual groups remain accessible for duplicate results');
+    await act(async () => groupsButton.click());
     const text = container!.textContent ?? '';
+    assert.ok(text.includes('User-defined groups'), 'the Groups control switches to manual groups');
     assert.ok(!text.includes('Grouped by proximity'), 'no proximity wording during a duplicate scan');
     assert.ok(!/\bissues?\b/i.test(text), `no issue-count wording during a duplicate scan; got: ${text.slice(0, 400)}`);
   });

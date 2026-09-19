@@ -27,6 +27,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Renderer } from '@ifc-lite/renderer';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { writeBCF } from '@ifc-lite/bcf';
 import type { BCFProject, BCFViewpoint } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
@@ -36,6 +37,16 @@ import { useBCF } from './useBCF.js';
 const ASPECT = 16 / 9;
 /** What the viewport is resized to mid-capture in the ordering test. */
 const RESIZED_ASPECT = 4 / 3;
+const INITIAL_HIDDEN = 41;
+const LATER_HIDDEN = 42;
+const dataStore = {
+  entities: {
+    getGlobalId: (expressId: number) => expressId === INITIAL_HIDDEN
+      ? 'INITIAL-HIDDEN-GUID'
+      : expressId === LATER_HIDDEN ? 'LATER-HIDDEN-GUID' : undefined,
+    getExpressIdByGlobalId: () => undefined,
+  },
+} as unknown as IfcDataStore;
 
 /**
  * The live ratio, so a test can resize the viewport the way the render loop
@@ -112,6 +123,7 @@ beforeEach(async () => {
   duringGpuWait = null;
   useViewerStore.setState({
     models: new Map(),
+    ifcDataStore: dataStore,
     isolatedEntities: null,
     ghostExceptEntities: null,
     hiddenEntities: new Set(),
@@ -185,6 +197,27 @@ describe('useBCF — captured viewpoints carry the viewport aspect ratio', () =>
       viewpoint.perspectiveCamera?.aspectRatio,
       RESIZED_ASPECT,
       'BUG: the camera ratio was read before the snapshot, so it describes a frame the PNG is not',
+    );
+  });
+
+  it('captures visibility before the async snapshot wait (#5011 review)', async () => {
+    useViewerStore.setState({ hiddenEntities: new Set([INITIAL_HIDDEN]) });
+    const canvas = { toDataURL: () => 'data:image/png;base64,c25hcHNob3Q=' } as unknown as HTMLCanvasElement;
+    act(() => api!.setCanvasRef({ current: canvas }));
+    duringGpuWait = () => {
+      useViewerStore.setState({ hiddenEntities: new Set([LATER_HIDDEN]) });
+    };
+
+    const captured: (BCFViewpoint | null)[] = [];
+    await act(async () => {
+      captured.push(await api!.createViewpointFromState({ includeSnapshot: true }));
+    });
+    const viewpoint = captured[0];
+    assert.ok(viewpoint);
+    assert.deepEqual(
+      viewpoint.components?.visibility?.exceptions?.map((component) => component.ifcGuid),
+      ['INITIAL-HIDDEN-GUID'],
+      'the visibility component must describe the same pre-wait frame as the snapshot',
     );
   });
 });

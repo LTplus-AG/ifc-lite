@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { DEFAULT_APPEARANCE_ASSET_LIMITS as limits } from '@/lib/appearance/asset-format.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 export const appearanceSelectClass = 'h-9 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50';
 export function AppearanceSourceFields(props: Pick<AppearancePanelViewProps,
   'allowPdf' | 'sources' | 'sourceId' | 'onSourceChange' | 'onRemoveSource' | 'onUpload' | 'sourceBusy' | 'sourceHelp'> & { disabled: boolean }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const picker = useRef<HTMLInputElement>(null);
   const id = useId();
   const [dragging, setDragging] = useState(false);
@@ -33,7 +34,7 @@ export function AppearanceSourceFields(props: Pick<AppearancePanelViewProps,
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium" title={source?.name}>{source?.name ?? (props.allowPdf ? t('appearance.sourceFields.addImageOrPdf') : t('appearance.sourceFields.addImageToBegin'))}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{source ? t('appearance.sourceFields.dimensionsPx', { width: source.width.toLocaleString(), height: source.height.toLocaleString() }) : props.allowPdf ? t('appearance.sourceFields.dropPdfHint') : t('appearance.sourceFields.dropImageHint')}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{source ? t('appearance.sourceFields.dimensionsPx', { width: formatLocaleNumber(locale, source.width), height: formatLocaleNumber(locale, source.height) }) : props.allowPdf ? t('appearance.sourceFields.dropPdfHint') : t('appearance.sourceFields.dropImageHint')}</p>
           <Button type="button" variant="ghost" size="sm" className="mt-1 h-7 px-0 text-primary" disabled={disabled} onClick={() => picker.current?.click()}>
             <Upload aria-hidden="true" />{props.sourceBusy ? (props.allowPdf ? t('appearance.sourceFields.readingSource') : t('appearance.sourceFields.readingImage')) : source ? (props.allowPdf ? t('appearance.sourceFields.uploadAnotherSource') : t('appearance.sourceFields.uploadAnotherImage')) : (props.allowPdf ? t('appearance.sourceFields.chooseImageOrPdf') : t('appearance.sourceFields.chooseImage'))}
           </Button>
@@ -57,8 +58,8 @@ export function AppearanceSourceFields(props: Pick<AppearancePanelViewProps,
     </label>}
     <p className="text-[10px] leading-relaxed text-muted-foreground">{props.sourceHelp ?? (props.allowPdf ? t('appearance.sourceFields.helpPdf') : t('appearance.sourceFields.helpImage', {
       maxMb: limits.maxImageBytes / 1048576,
-      maxMegapixels: (limits.maxPixels / 1e6).toFixed(1),
-      maxDimension: limits.maxDimension.toLocaleString(),
+      maxMegapixels: formatLocaleNumber(locale, limits.maxPixels / 1e6, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+      maxDimension: formatLocaleNumber(locale, limits.maxDimension),
     }))}</p>
   </section>;
 }

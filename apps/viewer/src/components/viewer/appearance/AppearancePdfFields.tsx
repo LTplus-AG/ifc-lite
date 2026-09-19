@@ -9,11 +9,12 @@ import { appearanceSelectClass } from './AppearanceSourceFields.js';
 import { AppearancePdfCrop } from './AppearancePdfCrop.js';
 import type { AppearancePdfControls, AppearancePdfPasswordPrompt } from './pdf-controls.js';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
   pdf: AppearancePdfControls; disabled: boolean; onInvalid(name: string, invalid: boolean): void;
 }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [pageText, setPageText] = useState(String(pdf.pageNumber));
   const pageValid = pageText.trim() !== '' && Number.isInteger(Number(pageText)) && Number(pageText) >= 1 && Number(pageText) <= pdf.pageCount;
   useEffect(() => { setPageText(String(pdf.pageNumber)); onInvalid('pdfPage', false); }, [pdf.pageNumber, onInvalid]);
@@ -38,7 +39,7 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
               const next = event.currentTarget.value; const number = Number(next);
               setPageText(next); onInvalid('pdfPage', next.trim() === '' || !Number.isInteger(number) || number < 1 || number > pdf.pageCount);
             }} onBlur={commitPage} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitPage(); } }} />
-          <span className="whitespace-nowrap">{t('appearance.pdfFields.ofPageCount', { count: pdf.pageCount.toLocaleString() })}</span>
+          <span className="whitespace-nowrap">{t('appearance.pdfFields.ofPageCount', { count: formatLocaleNumber(locale, pdf.pageCount) })}</span>
         </label>
         <Button type="button" variant="outline" size="icon-sm" aria-label={t('appearance.pdfFields.nextPageAriaLabel')} disabled={disabled || pdf.pageNumber >= pdf.pageCount}
           onClick={() => pdf.onPageChange(pdf.pageNumber + 1)}><ChevronRight aria-hidden="true" /></Button>

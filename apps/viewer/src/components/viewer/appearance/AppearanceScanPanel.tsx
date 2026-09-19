@@ -12,15 +12,18 @@ import { ScanTransferFields } from './ScanTransferFields';
 import { useScanTransfer } from './useScanTransfer';
 import { useScanWorkbench } from './useScanWorkbench';
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 const ignoreRegion = () => {};
 /** `t` is threaded in explicitly: this is a plain (non-component) helper, so
  *  it cannot call the `useTranslation` hook itself. */
-const metres = (value: number | null, t: (key: TranslationKey, params?: TranslationParameters) => string) =>
-  value === null ? t('appearance.scan.metresEmpty') : t('appearance.scan.metresValue', { value: value.toPrecision(3) });
+const metres = (value: number | null, locale: string, t: (key: TranslationKey, params?: TranslationParameters) => string) =>
+  value === null ? t('appearance.scan.metresEmpty') : t('appearance.scan.metresValue', {
+    value: formatLocaleNumber(locale, value, { minimumSignificantDigits: 3, maximumSignificantDigits: 3 }),
+  });
 
 /** Correspondence review owns a preview only; the loaded scan is never moved. */
 export function AppearanceScanPanel() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const work = useScanWorkbench();
   const transfer = useScanTransfer(work);
   const report = work.result?.report;
@@ -44,7 +47,7 @@ export function AppearanceScanPanel() {
   const previewInstruction = work.aligned ? t('appearance.scan.alignedInstruction') : undefined;
   return <section className="space-y-3 pt-4" aria-label={t('appearance.scan.sectionAriaLabel')} aria-busy={work.busy}>
     <fieldset className="space-y-3" disabled={transfer.busy || transfer.ready}><div><h2 className="text-sm font-semibold">{t('appearance.scan.heading')}</h2><p className="mt-1 text-xs text-muted-foreground">{t('appearance.scan.description')}</p></div>
-    <label className="block text-xs">{t('appearance.scan.sourceLabel')}<select className="mt-1 w-full rounded border bg-background p-2" value={work.sourceId} disabled={work.busy} onChange={event => work.setSourceId(event.target.value)}><option value="">{t('appearance.scan.chooseSource')}</option>{work.sources.map(source => <option key={source.id} value={source.id}>{source.kind === 'surface' ? t('appearance.scan.surfaceSource', { model: source.modelName, number: source.surfaceNumber ?? 0 }) : t('appearance.scan.pointCloudSource', { model: source.modelName, retained: (source.retainedCount ?? 0).toLocaleString(), seen: (source.seenCount ?? 0).toLocaleString() })}</option>)}</select></label>
+    <label className="block text-xs">{t('appearance.scan.sourceLabel')}<select className="mt-1 w-full rounded border bg-background p-2" value={work.sourceId} disabled={work.busy} onChange={event => work.setSourceId(event.target.value)}><option value="">{t('appearance.scan.chooseSource')}</option>{work.sources.map(source => <option key={source.id} value={source.id}>{source.kind === 'surface' ? t('appearance.scan.surfaceSource', { model: source.modelName, number: formatLocaleNumber(locale, source.surfaceNumber ?? 0) }) : t('appearance.scan.pointCloudSource', { model: source.modelName, retained: formatLocaleNumber(locale, source.retainedCount ?? 0), seen: formatLocaleNumber(locale, source.seenCount ?? 0) })}</option>)}</select></label>
     <label className="block text-xs">{t('appearance.scan.targetModelLabel')}<select className="mt-1 w-full rounded border bg-background p-2" value={work.targetId} disabled={work.busy} onChange={event => work.setTargetId(event.target.value)}><option value="">{t('appearance.scan.chooseTargetModel')}</option>{work.targets.map(target => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
     {mesh && meshSource && <AppearanceMeshPreview mesh={mesh} assetId={meshSource.assetId} triangles={triangles} disabled={previewDisabled} regionControls={false} onRegion={ignoreRegion} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={hit => work.pickSource(sourceLandmark(meshSource.mesh, hit, meshSource.meshOrdinal))} markers={markers} canvasLabel={t('appearance.scan.canvasLabel')} instruction={previewInstruction ?? t('appearance.scan.defaultInstruction')} />}
     {points && pointSource && <AppearancePointPreview source={pointSource} positions={points} disabled={previewDisabled} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={index => work.pickSource(pointLandmark(pointSource, index))} markers={markers} canvasLabel={t('appearance.scan.canvasLabel')} instruction={previewInstruction} />}
@@ -56,9 +59,9 @@ export function AppearanceScanPanel() {
     {work.pairs.length > 0 && <ol className="max-h-48 space-y-1 overflow-y-auto" aria-label={t('appearance.scan.pairsAriaLabel')}>{work.pairs.map((pair, index) => {
       const residual = (pair.partition === 'fit' ? report?.fit : report?.heldOut)?.points.find(point => point.id === pair.correspondence.id);
       const landmark = `P${index + 1}`;
-      return <li key={pair.correspondence.id} className="flex items-center gap-2 text-xs"><span>{landmark}</span><select aria-label={t('appearance.scan.purposeOfLandmark', { landmark })} value={pair.partition} disabled={work.busy} onChange={event => work.changePartition(pair.correspondence.id, event.target.value === 'fit' ? 'fit' : 'check')} className="rounded border bg-background p-1"><option value="fit">{t('appearance.scan.fitOption')}</option><option value="check">{t('appearance.scan.checkOption')}</option></select><span className="flex-1">{residual ? metres(residual.distanceMetres, t) : t('appearance.scan.notMeasured')}</span><Button variant="ghost" size="sm" disabled={work.busy} aria-label={t('appearance.scan.removeLandmarkAriaLabel', { landmark })} onClick={() => work.remove(pair.correspondence.id)}>{t('appearance.scan.remove')}</Button></li>;
+      return <li key={pair.correspondence.id} className="flex items-center gap-2 text-xs"><span>{landmark}</span><select aria-label={t('appearance.scan.purposeOfLandmark', { landmark })} value={pair.partition} disabled={work.busy} onChange={event => work.changePartition(pair.correspondence.id, event.target.value === 'fit' ? 'fit' : 'check')} className="rounded border bg-background p-1"><option value="fit">{t('appearance.scan.fitOption')}</option><option value="check">{t('appearance.scan.checkOption')}</option></select><span className="flex-1">{residual ? metres(residual.distanceMetres, locale, t) : t('appearance.scan.notMeasured')}</span><Button variant="ghost" size="sm" disabled={work.busy} aria-label={t('appearance.scan.removeLandmarkAriaLabel', { landmark })} onClick={() => work.remove(pair.correspondence.id)}>{t('appearance.scan.remove')}</Button></li>;
     })}</ol>}
-    {report && <div className="space-y-1 rounded border p-2 text-xs" aria-label={t('appearance.scan.resultsAriaLabel')}><p>{t('appearance.scan.fitRms', { rms: metres(report.fit.rmsMetres, t), max: metres(report.fit.maxMetres, t) })}</p><p>{t('appearance.scan.checkRms', { rms: metres(report.heldOut.rmsMetres, t), max: metres(report.heldOut.maxMetres, t) })}</p><p>{t('appearance.scan.spreadRatio', { ratio: report.sourceSpread.nonCollinearityRatio.toPrecision(3) })}</p>{report.diagnostics.map(diagnostic => <p key={diagnostic}>{diagnostic}</p>)}<p>{t('appearance.scan.inspectNote')}</p></div>}
+    {report && <div className="space-y-1 rounded border p-2 text-xs" aria-label={t('appearance.scan.resultsAriaLabel')}><p>{t('appearance.scan.fitRms', { rms: metres(report.fit.rmsMetres, locale, t), max: metres(report.fit.maxMetres, locale, t) })}</p><p>{t('appearance.scan.checkRms', { rms: metres(report.heldOut.rmsMetres, locale, t), max: metres(report.heldOut.maxMetres, locale, t) })}</p><p>{t('appearance.scan.spreadRatio', { ratio: formatLocaleNumber(locale, report.sourceSpread.nonCollinearityRatio, { minimumSignificantDigits: 3, maximumSignificantDigits: 3 }) })}</p>{report.diagnostics.map(diagnostic => <p key={diagnostic}>{diagnostic}</p>)}<p>{t('appearance.scan.inspectNote')}</p></div>}
     <p role={work.error ? 'alert' : 'status'} aria-live="polite" className={`text-xs ${work.error ? 'text-destructive' : 'text-muted-foreground'}`}>{work.status.kind === 'translated' ? t(work.status.key, work.status.params) : work.status.text}</p>
     <div className="flex flex-wrap gap-2">
       {(work.busy || work.pending) && <Button size="sm" variant="outline" onClick={work.cancel}>{t('appearance.scan.cancel')}</Button>}

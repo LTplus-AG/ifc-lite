@@ -17,6 +17,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 const MAX_CAPTURE_ROWS = 200_000;
 const CAPTURE_ACCEPT = '.glb,.gltf,.bin,.png,.jpg,.jpeg,.ifc,.ifczip';
@@ -27,7 +28,7 @@ type CaptureMessage =
   | null;
 
 export function AppearanceCapturePanel() {
-  const { t, revision } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const models = useViewerStore(state => state.models), selected = useViewerStore(state => state.selectedEntityId);
   const room = useViewerStore(state => state.collabRoomId);
   const placement = useViewerStore(state => state.modelPlacement);
@@ -35,7 +36,7 @@ export function AppearanceCapturePanel() {
   const target = useIfcAuthoringTarget();
   const candidates = useMemo(() => [...models.values()].flatMap(model => (model.geometryResult?.meshes ?? [])
     .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
-      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: index + 1, triangleCount: (mesh.indices.length / 3).toLocaleString() }) }] : [])), [models, t, revision]);
+      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: formatLocaleNumber(locale, index + 1), triangleCount: formatLocaleNumber(locale, mesh.indices.length / 3) }) }] : [])), [models, t, locale, revision]);
   const excludedSurfaces = useMemo(() => [...models.values()].reduce((count, model) => count
     + (model.geometryResult?.meshes ?? []).filter(mesh => !mesh.textureRef).length, 0), [models]);
   const [chosen, setChosen] = useState('');

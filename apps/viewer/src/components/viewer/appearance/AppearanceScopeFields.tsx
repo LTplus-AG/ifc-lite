@@ -9,11 +9,12 @@ import type { AppearancePanelViewProps } from './types.js';
 import { appearanceSelectClass } from './AppearanceSourceFields.js';
 import { FaceMaskTargets } from './face-mask/FaceMaskTargets.js';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
   'models' | 'modelId' | 'onModelChange' | 'scope' | 'onScopeChange' | 'classes' | 'types' |
   'settings' | 'onSettingsChange' | 'convertedObjects' | 'faceMasks' | 'selectionCount' | 'affectedCount' | 'excludedCount' | 'exclusions' | 'onUseSupported'> & { disabled: boolean }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const id = useId();
   const [filters, setFilters] = useState(() => loadSavedFilters(ownAppearanceQuery));
   const currentName = props.scope.kind === 'filter' ? props.scope.query.name : undefined;
@@ -83,7 +84,7 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
     </label>
     <div className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px]" aria-live="polite">
       <span className="font-medium">{t('appearance.scopeFields.affectedCount', { count: props.affectedCount })}</span>
-      {props.excludedCount > 0 && <span className="text-muted-foreground"> · {t('appearance.scopeFields.excludedCount', { count: props.excludedCount.toLocaleString() })}</span>}
+      {props.excludedCount > 0 && <span className="text-muted-foreground"> · {t('appearance.scopeFields.excludedCount', { count: formatLocaleNumber(locale, props.excludedCount) })}</span>}
       {!!converted.length && <details className="mt-1" open={!!props.faceMasks?.targets.length}><summary className="cursor-pointer font-medium">{t('appearance.scopeFields.convertedSummary', { count: converted.length })}</summary>
         {props.faceMasks?.targets.length ? <div className="mt-1"><FaceMaskTargets controls={props.faceMasks} disabled={props.disabled} /></div>
           : <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-muted-foreground">{converted.map(item => <li key={item.productId}>{item.name}</li>)}</ul>}

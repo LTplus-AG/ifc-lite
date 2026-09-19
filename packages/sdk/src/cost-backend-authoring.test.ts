@@ -368,6 +368,31 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(graph.CostValues.some(entry => entry.ref.expressId === value)).toBe(false);
   });
 
+  it('does not cascade a sibling value referenced from a retained target record', async () => {
+    const { storeCost, cost, view } = await session();
+    const retained = storeCost.addCostValue('m', { Name: 'Retained sibling' }).expressId;
+    const referenced = storeCost.addCostValue('m', { Name: 'Referenced sibling' }).expressId;
+    const item = storeCost.addCostItem('m', {
+      Name: 'I',
+      CostValues: [retained, referenced],
+    }).expressId;
+    // OwnerHistory is deliberately outside the cost graph's known reference
+    // slots. The generic effective-record scan must still see the target-to-
+    // target reference while deciding whether `referenced` may be cascaded.
+    view.setPositionalAttribute(retained, 1, `#${referenced}`);
+    view.createEntity('IfcMetric', [
+      'Keep retained sibling', null, '.NOTDEFINED.', null, null, null, null,
+      '.EQUALTO.', null, `#${retained}`, null,
+    ]);
+
+    storeCost.removeCostEntity('m', item);
+
+    const graph = cost.data('m');
+    expect(graph.CostItems.some(entry => entry.ref.expressId === item)).toBe(false);
+    expect(graph.CostValues.some(entry => entry.ref.expressId === retained)).toBe(true);
+    expect(graph.CostValues.some(entry => entry.ref.expressId === referenced)).toBe(true);
+  });
+
   it('an IfcMetric reference prevents an item removal from cascading its value', async () => {
     const { storeCost, cost, view } = await session();
     const value = storeCost.addCostValue('m', { Name: 'Shared value' }).expressId;

@@ -62,11 +62,12 @@ export function effectiveCostReferenceOccurrences(
   const referrers = new Map<number, Map<number, number>>();
   const seen = new Set<number>();
   const visitSource = (id: number, ref: { byteOffset: number; byteLength: number; type: string }) => {
-    if (targetIds.has(id) || seen.has(id) || view.isDeleted(id)) return;
+    if (seen.has(id) || view.isDeleted(id)) return;
     seen.add(id);
     const sourceText = store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
     const record = effectiveSourceRecord(view, id, sourceText, ref.type, store.schemaVersion);
     for (const [targetId, count] of referencedTargetCounts(record.text, targetIds)) {
+      if (targetId === id) continue;
       const incoming = referrers.get(targetId) ?? new Map<number, number>();
       incoming.set(id, count);
       referrers.set(targetId, incoming);
@@ -75,10 +76,11 @@ export function effectiveCostReferenceOccurrences(
   for (const [id, ref] of store.entityIndex.byId) visitSource(id, ref);
   for (const [id, ref] of store.deferredEntityIndex ?? []) visitSource(id, ref);
   for (const entity of view.getNewEntities()) {
-    if (targetIds.has(entity.expressId) || seen.has(entity.expressId)) continue;
+    if (seen.has(entity.expressId)) continue;
     const record = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
     if (!record) continue;
     for (const [targetId, count] of referencedTargetCounts(record.text, targetIds)) {
+      if (targetId === entity.expressId) continue;
       const incoming = referrers.get(targetId) ?? new Map<number, number>();
       incoming.set(entity.expressId, count);
       referrers.set(targetId, incoming);

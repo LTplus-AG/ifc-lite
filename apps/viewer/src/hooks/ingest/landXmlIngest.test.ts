@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModel } from './landXmlViewerModel.js';
 import { parseLandXmlTin } from './landXmlTin.js';
+import { connectedFaceComponents } from './landXmlIngest.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -138,6 +139,31 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(result.geometryResult.meshes[1].origin, [800_000_000.5, 700_000_000, -900_000_000.5]);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 800_000_001);
     assert.equal(result.warnings.some((warning) => /degenerate face/.test(warning)), false);
+  });
+
+  it('rebases every valid face when a connected component exceeds one f32 frame', () => {
+    const connectedAcrossSurveyRange = LANDXML
+      .replace(
+        '</Pnts>',
+        `<P id="50">900000000 800000000 700000000</P>
+         <P id="51">900000000 800000001 700000000</P>
+         <P id="52">900000001 800000000 700000000</P>
+         <P id="60">900001000 800001000 700000100</P></Pnts>`,
+      )
+      .replace('</Faces>', '<F>50 51 52</F><F>30 50 60</F></Faces>');
+    const result = parseLandXmlViewerModel(bytes(connectedAcrossSurveyRange));
+    assert.equal(result.geometryResult.totalTriangles, 3, 'no valid face is discarded during local-frame recovery');
+    assert.equal(result.warnings.some((warning) => /degenerate face|render precision/.test(warning)), false);
+  });
+
+  it('walks a high-valence face fan without rescanning its shared point adjacency (#4937)', () => {
+    const faceCount = 10_000;
+    const faces = Array.from({ length: faceCount }, (_, index) => (
+      ['center', `outer-${index}`, `outer-${index + 1}`] as [string, string, string]
+    ));
+    const components = connectedFaceComponents(faces);
+    assert.equal(components.length, 1);
+    assert.equal(components[0].length, faceCount);
   });
 
   it('decodes XML-required UTF-16 input before parsing', () => {

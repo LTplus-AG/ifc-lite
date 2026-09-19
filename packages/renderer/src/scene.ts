@@ -30,7 +30,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
+import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
@@ -437,10 +437,10 @@ export class Scene {
   /** The shared local-frame origin all batches relativize against (null until
    *  the first batch is built). Per-mesh highlight/picker VBOs replicate the
    *  batch's exact f32 path against this so they render bit-coincident. */
-  getSharedFrameOrigin(modelIndex = 0): [number, number, number] | null {
-    return this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? null;
+  getSharedFrameOrigin(modelIndex = 0, meshData?: MeshData): [number, number, number] | null {
+    const placed = meshData ? this.modelTranslations.placeMesh(meshData) : undefined;
+    return (placed && this.meshDataBucket.get(placed)?.batchedMesh?.origin) ?? this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? null;
   }
-
   /**
    * Enable/disable spatial chunk bucketing (issue #1682 phase 2). When set,
    * colour buckets are additionally partitioned by world grid cell, making
@@ -2542,7 +2542,7 @@ export class Scene {
   private createBatchedMesh(
     meshes: MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, bucketKey?: string,
-    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off',
+    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off', frameOrigin?: [number, number, number],
   ): BatchedMesh {
     // Keep main's model-local frame and translation registration while staging
     // every GPU allocation before publishing Scene state.
@@ -2550,7 +2550,7 @@ export class Scene {
     const offset = this.modelTranslations.get(modelIndex);
     const result = createSceneBatch(meshes, color, device, pipeline, {
       id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
-      origin: this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
+      origin: topologySafeBatchOrigin(meshes, frameOrigin ?? this.meshDataBucket.get(meshes[0])?.batchedMesh?.origin, this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex)),
       quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);
     this.nextBatchId++;
@@ -2761,7 +2761,7 @@ export class Scene {
     // decision (#4832): the overlay built from the same source must match its depth.
     const color = visibleMeshData[0].color;
     const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline, undefined,
-      inheritedQuantization(this.quantizedBatchesEnabled, bucket?.batchedMesh));
+      inheritedQuantization(this.quantizedBatchesEnabled, bucket?.batchedMesh), bucket?.batchedMesh?.origin);
 
     // Cache it
     this.partialBatchCache.set(cacheKey, partialBatch);
@@ -2829,7 +2829,7 @@ export class Scene {
       if (sourceKey !== null) for (const piece of meshData) this.overlaySources.set(piece, sourceKey);
       const quantization = inheritedQuantization(this.quantizedBatchesEnabled, sourceBatch);
       for (const chunk of this.splitMeshDataForBufferLimit(meshData, maxBufferSize)) {
-        this.overrideBatches.push(this.createBatchedMesh(chunk, color, device, pipeline, undefined, quantization));
+        this.overrideBatches.push(this.createBatchedMesh(chunk, color, device, pipeline, undefined, quantization, sourceBatch?.origin));
       }
     }
   }

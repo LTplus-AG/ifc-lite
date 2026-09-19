@@ -23,7 +23,7 @@ interface WorldPoint {
   z: number;
 }
 
-function connectedFaceComponents(
+export function connectedFaceComponents(
   faces: LandXmlTinSurface['faces'],
 ): Array<LandXmlTinSurface['faces']> {
   const faceIndexesByPoint = new Map<string, number[]>();
@@ -41,12 +41,15 @@ function connectedFaceComponents(
     if (visited[start]) continue;
     const component: LandXmlTinSurface['faces'] = [];
     const pending = [start];
+    const processedPointIds = new Set<string>();
     visited[start] = 1;
     while (pending.length > 0) {
       const faceIndex = pending.pop()!;
       const face = faces[faceIndex];
       component.push(face);
       for (const pointId of face) {
+        if (processedPointIds.has(pointId)) continue;
+        processedPointIds.add(pointId);
         for (const neighbour of faceIndexesByPoint.get(pointId) ?? []) {
           if (visited[neighbour]) continue;
           visited[neighbour] = 1;
@@ -91,7 +94,7 @@ function buildSurfaceMesh(
   linearScale: number,
   elevationScale: number,
   originOverride?: [number, number, number],
-): { mesh: MeshData | null; degenerateFaces: number; bounds: Bounds3D | null } {
+): { mesh: MeshData | null; degenerateFaces: number; bounds: Bounds3D | null; unrenderedFaces: LandXmlTinSurface['faces'] } {
   const worldById = new Map<string, WorldPoint>();
   for (const point of surface.points) {
     // LandXML: northing/easting/elevation (Z-up). Viewer: X east, Y up,
@@ -121,7 +124,7 @@ function buildSurfaceMesh(
     degenerateFaces++;
     return false;
   });
-  if (retainedFaces.length === 0) return { mesh: null, degenerateFaces, bounds: null };
+  if (retainedFaces.length === 0) return { mesh: null, degenerateFaces, bounds: null, unrenderedFaces: [] };
 
   const referencedPointIds = new Set(retainedFaces.flatMap((face) => face));
   const retainedPoints = surface.points.filter((point) => referencedPointIds.has(point.id));
@@ -153,6 +156,7 @@ function buildSurfaceMesh(
 
   const indices: number[] = [];
   const renderedFaces: LandXmlTinSurface['faces'] = [];
+  const unrenderedFaces: LandXmlTinSurface['faces'] = [];
   const normalSums = new Float64Array(positions.length);
   for (const face of retainedFaces) {
     let a = indexById.get(face[0])!;
@@ -168,7 +172,7 @@ function buildSurfaceMesh(
     let nz = abx * acy - aby * acx;
     const length = Math.hypot(nx, ny, nz);
     if (!Number.isFinite(length) || length <= Number.EPSILON) {
-      degenerateFaces++;
+      unrenderedFaces.push(face);
       continue;
     }
     // LandXML does not promise a terrain-face winding. Point the normal up so
@@ -193,15 +197,10 @@ function buildSurfaceMesh(
       // by the normal post-cast path below.
       const firstFace = retainedFaces[0];
       const a = worldById.get(firstFace[0])!;
-      const b = worldById.get(firstFace[1])!;
-      const c = worldById.get(firstFace[2])!;
-      return buildSurfaceMesh(surface, expressId, linearScale, elevationScale, [
-        (a.x + b.x + c.x) / 3,
-        (a.y + b.y + c.y) / 3,
-        (a.z + b.z + c.z) / 3,
-      ]);
+      const retried = buildSurfaceMesh(surface, expressId, linearScale, elevationScale, [a.x, a.y, a.z]);
+      return { ...retried, degenerateFaces: degenerateFaces + retried.degenerateFaces };
     }
-    return { mesh: null, degenerateFaces, bounds: null };
+    return { mesh: null, degenerateFaces, bounds: null, unrenderedFaces };
   }
   if (renderedFaces.length !== retainedFaces.length) {
     const compacted = buildSurfaceMesh(
@@ -210,7 +209,11 @@ function buildSurfaceMesh(
       linearScale,
       elevationScale,
     );
-    return { ...compacted, degenerateFaces: degenerateFaces + compacted.degenerateFaces };
+    return {
+      ...compacted,
+      degenerateFaces: degenerateFaces + compacted.degenerateFaces,
+      unrenderedFaces: [...unrenderedFaces, ...compacted.unrenderedFaces],
+    };
   }
 
   const normals = new Float32Array(normalSums.length);
@@ -238,6 +241,7 @@ function buildSurfaceMesh(
       min: { x: minX, y: minY, z: minZ },
       max: { x: maxX, y: maxY, z: maxZ },
     },
+    unrenderedFaces: [],
   };
 }
 
@@ -251,28 +255,46 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
   for (const surface of parsed.surfaces) {
     let renderedComponents = 0;
     let degenerateFaces = 0;
+    let unrepresentableFaces = 0;
     for (const faces of connectedFaceComponents(surface.faces)) {
-      const result = buildSurfaceMesh(
-        { ...surface, faces },
-        meshes.length + 1,
-        parsed.units.linearScaleToMeters,
-        parsed.units.elevationScaleToMeters,
-      );
-      degenerateFaces += result.degenerateFaces;
-      if (!result.mesh) continue;
-      renderedComponents++;
-      meshes.push(result.mesh);
-      if (result.bounds) {
-        bounds.min.x = Math.min(bounds.min.x, result.bounds.min.x);
-        bounds.min.y = Math.min(bounds.min.y, result.bounds.min.y);
-        bounds.min.z = Math.min(bounds.min.z, result.bounds.min.z);
-        bounds.max.x = Math.max(bounds.max.x, result.bounds.max.x);
-        bounds.max.y = Math.max(bounds.max.y, result.bounds.max.y);
-        bounds.max.z = Math.max(bounds.max.z, result.bounds.max.z);
+      const pending = [faces];
+      while (pending.length > 0) {
+        const currentFaces = pending.pop()!;
+        const result = buildSurfaceMesh(
+          { ...surface, faces: currentFaces },
+          meshes.length + 1,
+          parsed.units.linearScaleToMeters,
+          parsed.units.elevationScaleToMeters,
+        );
+        degenerateFaces += result.degenerateFaces;
+        if (result.mesh) {
+          renderedComponents++;
+          meshes.push(result.mesh);
+        }
+        if (result.bounds) {
+          bounds.min.x = Math.min(bounds.min.x, result.bounds.min.x);
+          bounds.min.y = Math.min(bounds.min.y, result.bounds.min.y);
+          bounds.min.z = Math.min(bounds.min.z, result.bounds.min.z);
+          bounds.max.x = Math.max(bounds.max.x, result.bounds.max.x);
+          bounds.max.y = Math.max(bounds.max.y, result.bounds.max.y);
+          bounds.max.z = Math.max(bounds.max.z, result.bounds.max.z);
+        }
+        if (result.unrenderedFaces.length === 0) continue;
+        if (result.unrenderedFaces.length < currentFaces.length) {
+          pending.push(result.unrenderedFaces);
+        } else if (currentFaces.length > 1) {
+          const middle = Math.ceil(currentFaces.length / 2);
+          pending.push(currentFaces.slice(0, middle), currentFaces.slice(middle));
+        } else {
+          unrepresentableFaces++;
+        }
       }
     }
     if (degenerateFaces > 0) {
       warnings.push(`Skipped ${degenerateFaces} degenerate face(s) in surface "${surface.name}"`);
+    }
+    if (unrepresentableFaces > 0) {
+      warnings.push(`Skipped ${unrepresentableFaces} face(s) in surface "${surface.name}" because their coordinate span exceeds render precision`);
     }
     if (renderedComponents === 0) {
       warnings.push(`Skipped surface "${surface.name}" because it has no non-degenerate faces`);

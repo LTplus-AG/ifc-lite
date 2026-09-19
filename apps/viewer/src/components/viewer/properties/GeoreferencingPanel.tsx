@@ -44,12 +44,9 @@ const MAP_UNITS = ['METRE', 'FOOT', 'US SURVEY FOOT'];
 const COMMON_VERTICAL_DATUMS = ['MSL', 'NAVD88', 'EVRF2007', 'EVRF2019', 'AHD', 'ODN', 'LN02'];
 
 type FieldHint = {
-  placeholderKey?: TranslationKey;
-  suggestions?: string[];
-  isSelect?: boolean;
-  helpTextKey?: TranslationKey;
+  placeholderKey?: TranslationKey; suggestions?: string[];
+  isSelect?: boolean; helpTextKey?: TranslationKey;
 };
-
 function getFieldHint(entity: string, field: string): FieldHint {
   if (entity === 'projectedCRS') {
     switch (field) {
@@ -254,7 +251,6 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
-
   const startEdit = useCallback(() => {
     if (!editable) return;
     setEditValue(angle != null ? angle.toFixed(6) : '');
@@ -264,9 +260,7 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const commitEdit = useCallback(() => {
     if (!onAngleChange) return;
     let rad: number;
-    try {
-      rad = parseRotationDegrees(editValue);
-    } catch (error) {
+    try { rad = parseRotationDegrees(editValue); } catch (error) {
       if (error instanceof Error) return;
       throw error;
     }

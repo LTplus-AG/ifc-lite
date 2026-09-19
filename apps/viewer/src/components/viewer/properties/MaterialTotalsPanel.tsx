@@ -36,7 +36,6 @@ import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-
 interface MaterialTotals {
   /** Number of elements using this material (across all loaded models). */
   elementCount: number;
@@ -155,7 +154,6 @@ export function formatMaterialNumber(locale: string, value: number): string {
   if (Math.abs(value) >= 1) return formatLocaleNumber(locale, value, { maximumFractionDigits: 2 });
   return formatLocaleNumber(locale, value, { maximumFractionDigits: 4 });
 }
-
 /** Render an aggregated total with its resolved unit (issue #1573 follow-up):
  *  the display-unit override when set, else the file's declared/SI-default
  *  unit — same resolution as the property/quantity cards below, just with
@@ -179,7 +177,6 @@ function formatTotal(
   const formatted = formatMaterialNumber(locale, shown);
   return disp.unit ? `${formatted} ${disp.unit}` : formatted;
 }
-
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
   const { t, locale, revision } = useTranslation();
   const { ifcDataStore, models } = useIfc();

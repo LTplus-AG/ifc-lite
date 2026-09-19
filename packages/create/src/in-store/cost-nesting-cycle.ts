@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 interface NestMembership {
+  relId?: number;
   relatingId?: number;
 }
 
@@ -20,7 +21,13 @@ export function assertNoNestingCycle(
     if (visited.has(current)) continue;
     visited.add(current);
     for (const membership of existingByChild.get(current) ?? []) {
-      if (membership.relatingId === undefined) continue;
+      if (membership.relatingId === undefined) {
+        throw new Error(
+          `nestCostItems: existing nesting relationship #${membership.relId ?? 'unknown'} `
+          + 'is missing relatingId; '
+          + 'the nesting graph is incomplete, so cycle safety cannot be established.',
+        );
+      }
       if (requested.has(membership.relatingId)) {
         throw new Error(
           `nestCostItems: parentId #${parentId} is already a descendant of childId #${membership.relatingId} `

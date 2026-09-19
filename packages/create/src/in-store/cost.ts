@@ -39,14 +39,17 @@ import { assertNoNestingCycle } from './cost-nesting-cycle.js';
 export interface CostAnchor {
   /** IfcOwnerHistory expressId, or null when the model has none (written as `$`). */
   ownerHistoryId: number | null;
-  /** Target schema; IFC2X3 is refused (see `assertCostSchema`). Defaults to `'IFC4'`. */
-  schema?: CostSchema;
+  /** Target schema; IFC2X3 is refused (see `assertCostSchema`). */
+  schema: CostSchema;
   /** Optional seeded randomness for authored GlobalIds — see `SpatialAnchor.guidRandom`. */
   guidRandom?: RandomSource;
 }
 
 function schemaOf(anchor: CostAnchor): CostSchema {
-  return anchor.schema ?? 'IFC4';
+  if (anchor.schema !== 'IFC2X3' && anchor.schema !== 'IFC4' && anchor.schema !== 'IFC4X3') {
+    throw new Error('CostAnchor.schema is required and must match the loaded model schema');
+  }
+  return anchor.schema;
 }
 
 /** `IfcCostValue.Components` / `IfcAppliedValueSelect`'s entity branches: another cost/applied value. */

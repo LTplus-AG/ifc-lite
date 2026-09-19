@@ -20,7 +20,7 @@
 import { prepareEntityOperations } from './prepare-entity-operations.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
-import { QuantityType, PropertyValueType } from '@ifc-lite/data';
+import { IFC_ENTITY_NAMES, QuantityType, PropertyValueType } from '@ifc-lite/data';
 import type {
   IfcAttributeValue,
   MutationEntityRef as EntityRef,
@@ -307,18 +307,22 @@ export class StoreEditor {
    * caller.
    */
   getEntityType(expressId: number): string | undefined {
-    if (this.view.isDeleted(expressId)) return undefined;
+    if (!this.hasEntity(expressId)) return undefined;
+    const canonical = (type: string): string => configuredNormalizer?.(type)
+      || IFC_ENTITY_NAMES[type.toUpperCase()]
+      || type;
     const retype = this.view.getEntityTypeMutation(expressId);
-    if (retype) return retype.newType;
+    if (retype) return canonical(retype.newType);
     const created = this.view.getNewEntity(expressId);
-    if (created) return created.type;
+    if (created) return canonical(created.type);
     // Deferred property atoms occupy express ids too (see
     // `computeMaxExistingId`) and are absent from `entityIndex.byId` —
     // without this fallback a valid, non-deleted deferred entity id reads as
     // "does not exist" here even though `hasEntity` (which already checks
     // `deferredEntityIndex`) says it does.
-    return this.store.entityIndex.byId.get(expressId)?.type
+    const sourceType = this.store.entityIndex.byId.get(expressId)?.type
       ?? this.store.deferredEntityIndex?.get(expressId)?.type;
+    return sourceType ? canonical(sourceType) : undefined;
   }
 
   /**

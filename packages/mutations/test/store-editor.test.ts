@@ -258,4 +258,14 @@ describe('StoreEditor', () => {
       setEntityTypeNormalizer(null);
     }
   });
+
+  it('getEntityType ignores orphan retypes and normalizes source/deferred types (#4857)', () => {
+    const store = makeStore(2, [8]);
+    const view = new MutablePropertyView(null, 'm1');
+    view.setEntityType(999, 'IfcColumn');
+    const editor = new StoreEditor(store, view);
+    expect(editor.getEntityType(999)).toBeUndefined();
+    expect(editor.getEntityType(1)).toBe('IfcWall');
+    expect(editor.getEntityType(8)).toBe('IfcPropertySingleValue');
+  });
 });

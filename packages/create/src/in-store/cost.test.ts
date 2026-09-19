@@ -62,6 +62,13 @@ async function editor(): Promise<{ store: IfcDataStore; editor: StoreEditor; vie
 const ANCHOR: CostAnchor = { ownerHistoryId: null, schema: 'IFC4' };
 
 describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', () => {
+  it('refuses a missing loaded-model schema instead of assuming IFC4', async () => {
+    const { editor: ed } = await editor();
+    const missingSchema = { ownerHistoryId: null } as CostAnchor;
+    expect(() => addCostScheduleToStore(ed, missingSchema, { Name: 'Unsafe' }))
+      .toThrow(/CostAnchor\.schema is required/);
+  });
+
   it('emits the IFC4 attribute layout in order', async () => {
     const { editor: ed } = await editor();
     const scheduleId = addCostScheduleToStore(ed, ANCHOR, { Name: 'Tender', PredefinedType: 'TENDER' });
@@ -274,6 +281,21 @@ describe('nestCostItemsInStore', () => {
       [ancestor],
       new Map([[descendant, [existing]]]),
     )).toThrow(/would create a cycle/);
+  });
+
+  it('refuses an incomplete ancestor graph instead of treating absence as safe', async () => {
+    const { editor: ed } = await editor();
+    const parent = addCostItemToStore(ed, ANCHOR, { Name: 'Parent' });
+    const child = addCostItemToStore(ed, ANCHOR, { Name: 'Child' });
+    const incomplete: ExistingRelatedList = { relId: 900, relatedIds: [parent] };
+
+    expect(() => nestCostItemsInStore(
+      ed,
+      ANCHOR,
+      parent,
+      [child],
+      new Map([[parent, [incomplete]]]),
+    )).toThrow(/nesting graph is incomplete/);
   });
 
   it('refuses a parentId or childId that is not an IfcCostItem', async () => {

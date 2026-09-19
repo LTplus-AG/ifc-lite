@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Link2, Focus } from 'lucide-react';
 import type { EntityRelationshipsData } from '@ifc-lite/sdk';
 import { useState } from 'react';
+import { useTranslation } from '@/i18n';
 
 interface RelationshipsCardProps {
   relationships: EntityRelationshipsData;
@@ -30,6 +31,7 @@ function relationListKey(relations: NonNullable<EntityRelationshipsData['relatio
 }
 
 export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
+  const { t } = useTranslation();
   const { voids, fills, groups, connections } = relationships;
   // Keep the exact record rows even when a convenience section below also
   // names the endpoint. Those legacy arrays collapse repeated IfcRel records
@@ -105,7 +107,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           {exactRelations.length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                Relationship Records ({exactRelations.length})
+                {t('relationshipCard.exactRecords', { count: exactRelations.length })}
               </div>
               {visibleExactRelations.map((relation, index) => (
                 <RelationshipEdgeItem
@@ -123,7 +125,9 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
                   })}
                   type="button"
                 >
-                  Show {Math.min(EXACT_RELATION_PAGE_SIZE, exactRelations.length - visibleExactCount)} more
+                  {t('relationshipCard.showMore', {
+                    count: Math.min(EXACT_RELATION_PAGE_SIZE, exactRelations.length - visibleExactCount),
+                  })}
                 </button>
               )}
             </div>

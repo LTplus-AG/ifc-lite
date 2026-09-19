@@ -963,6 +963,33 @@ describe('containment over queued relationships', () => {
     )).toBe(false);
   }, 30_000);
 
+  it('keeps exact duplicate records without duplicating legacy void/fill endpoints (#5009)', async () => {
+    await session();
+    for (const [type, prefix] of [
+      ['IfcRelVoidsElement', 'VOID'],
+      ['IfcRelFillsElement', 'FILL'],
+    ] as const) {
+      for (const suffix of ['A', 'B']) {
+        await call('entity_create', {
+          type,
+          attributes: [`'${guid(`${prefix}${suffix}`)}'`, null, null, null, '#72', '#73'],
+        });
+      }
+    }
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+
+    const hostRelationships = model.bim.relationships({ modelId: 'm', expressId: 72 });
+    expect(hostRelationships.voids.map(entity => entity.id)).toEqual([73]);
+    expect(hostRelationships.relations?.filter(edge =>
+      edge.relationshipType === 'IfcRelVoidsElement' && edge.entity.id === 73)).toHaveLength(2);
+
+    const fillRelationships = model.bim.relationships({ modelId: 'm', expressId: 73 });
+    expect(fillRelationships.fills.map(entity => entity.id)).toEqual([72]);
+    expect(fillRelationships.relations?.filter(edge =>
+      edge.relationshipType === 'IfcRelFillsElement' && edge.entity.id === 72)).toHaveLength(2);
+  }, 30_000);
+
   it('keeps a session-placed entity in an in_storey query', async () => {
     await session();
     const wallC = await createPlacedWall();

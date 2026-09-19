@@ -76,13 +76,17 @@ test('viewer exact relationship queries fold authored records and endpoint overr
   const view = store.getState().mutationViews.get('__legacy__') ?? store.getState().mutationViews.get('default');
   assert.ok(view);
   view.setAttribute(relationship.expressId, 'RelatedObjects', '#3');
+  // Positional overrides are serialized after named overrides, regardless of
+  // authoring order, so pending query results must keep the positional target.
   assert.equal(query.relationships(building).relations?.some((edge) =>
-    edge.relationshipId === relationship.expressId && edge.entity.id === 3), true);
+    edge.relationshipId === relationship.expressId && edge.entity.id === 3), false);
+  assert.equal(query.relationships(building).relations?.some((edge) =>
+    edge.relationshipId === relationship.expressId && edge.entity.id === 4), true);
 
   // Endpoint edits on parsed relationships replace, rather than augment, the immutable graph.
   view.setAttribute(5, 'RelatedObjects', '#4');
   assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [
-    { modelId: 'default', expressId: 3 }, { modelId: 'default', expressId: 4 },
+    { modelId: 'default', expressId: 4 },
   ]);
   const sourceRows = query.relationships(building).relations?.filter(edge => edge.relationshipId === 5) ?? [];
   assert.deepEqual(sourceRows.map(edge => edge.entity.id), [4]);
@@ -100,6 +104,14 @@ test('viewer exact relationship queries fold authored records and endpoint overr
 
   const host = { modelId: 'default', expressId: 8 };
   assert.deepEqual(query.relationships(host).voids.map(entity => entity.id), [7]);
+  const duplicateVoid = writes.addEntity('default', {
+    type: 'IfcRelVoidsElement',
+    attributes: ["'0000000000000000000012'", null, null, null, '#8', '#7'],
+  });
+  assert.deepEqual(query.relationships(host).voids.map(entity => entity.id), [7]);
+  assert.equal(query.relationships(host).relations?.filter(edge =>
+    edge.relationshipType === 'IfcRelVoidsElement' && edge.entity.id === 7).length, 2);
+  writes.removeEntity(duplicateVoid);
   writes.removeEntity({ modelId: 'default', expressId: 9 });
   assert.deepEqual(query.relationships(host).voids, []);
   writes.removeEntity(host);

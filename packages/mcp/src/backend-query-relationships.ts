@@ -43,8 +43,10 @@ export function foldRelationshipRows(
     .filter(edge => types.includes(edge.relationshipType.toUpperCase()) && directions.includes(edge.direction))
     .map(edge => edge.entity);
   return {
-    voids: entities(['IFCRELVOIDSELEMENT'], ['forward']),
-    fills: entities(['IFCRELFILLSELEMENT'], ['inverse']),
+    voids: entities(['IFCRELVOIDSELEMENT'], ['forward'])
+      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
+    fills: entities(['IFCRELFILLSELEMENT'], ['inverse'])
+      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
     groups: entities(['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR'], ['inverse'])
       .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index)
       .map(({ id, name }) => ({ id, name })),

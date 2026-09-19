@@ -118,12 +118,13 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     expect(rows.some((edge) => edge.relationshipId === relationship.expressId
       && edge.entity.id === replacementChild.ref.expressId)).toBe(true);
 
-    // Named and positional writes share one last-write-wins endpoint surface.
+    // Export applies positional overrides after named overrides. Readback must
+    // describe that same eventual file even when the named write happened last.
     backend.mutate.setAttribute(relationship, 'RelatedObjects', `#${originalChild.ref.expressId}`);
     expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward'))
-      .toContainEqual(originalChild.ref);
+      .not.toContainEqual(originalChild.ref);
     expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward'))
-      .not.toContainEqual(replacementChild.ref);
+      .toContainEqual(replacementChild.ref);
   });
 
   it('keeps legacy relationship projections in sync with overlay deletes and creates', async () => {
@@ -137,13 +138,23 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
       type: 'IfcRelVoidsElement',
       attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${host.ref.expressId}`, `#${target.ref.expressId}`],
     });
+    const duplicate = backend.store.addEntity('default', {
+      type: 'IfcRelVoidsElement',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzy'", null, null, null, `#${host.ref.expressId}`, `#${target.ref.expressId}`],
+    });
     expect(backend.query.relationships(host.ref).voids).toContainEqual(expect.objectContaining({
       id: target.ref.expressId,
       type: 'IfcWall',
     }));
+    expect(backend.query.relationships(host.ref).voids).toHaveLength(1);
+    expect(backend.query.relationships(host.ref).relations?.filter(
+      edge => edge.relationshipType === 'IfcRelVoidsElement' && edge.entity.id === target.ref.expressId,
+    )).toHaveLength(2);
 
     backend.store.removeEntity(relationship);
-    expect(backend.query.relationships(host.ref).voids.some(entity => entity.id === target.ref.expressId)).toBe(false);
+    expect(backend.query.relationships(host.ref).voids).toHaveLength(1);
+    backend.store.removeEntity(duplicate);
+    expect(backend.query.relationships(host.ref).voids).toEqual([]);
 
     backend.store.removeEntity(host.ref);
     expect(backend.query.relationships(host.ref)).toEqual({

@@ -95,4 +95,22 @@ describe('effective relationship overlay (#5009)', () => {
       { relationshipId: 30, relationshipType: 'IfcRelDefinesByProperties', direction: 'forward', targetId: 4 },
     ]);
   });
+
+  it('matches export precedence when named and positional edits share a slot (#5009)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer);
+    const overlay = resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => [],
+      mutatedEntityIds: () => [5],
+      namedAttributes: () => [['RelatedObjects', ['#3']]],
+      positionalAttributes: () => [[5, ['#4']]],
+      isDeleted: () => false,
+    });
+
+    expect(effectiveRelationshipEdges(overlay, () => false, 2, 'IfcRelAggregates')).toEqual([{
+      relationshipId: 5,
+      relationshipType: 'IfcRelAggregates',
+      direction: 'forward',
+      targetId: 4,
+    }]);
+  });
 });

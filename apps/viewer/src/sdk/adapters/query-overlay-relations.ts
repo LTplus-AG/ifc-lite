@@ -27,7 +27,6 @@ export function effectiveMutationRelationships(
     namedAttributes: expressId => view.getAttributeMutationsForEntity(expressId)
       .map(({ name, value }) => [name, value] as const),
     positionalAttributes: expressId => view.getPositionalMutationsForEntity(expressId) ?? [],
-    attributeWriteOrder: expressId => view.getMutationsForEntity(expressId).map(mutation => mutation.attributeName ?? ''),
     isDeleted: expressId => view.isDeleted(expressId),
   });
 }

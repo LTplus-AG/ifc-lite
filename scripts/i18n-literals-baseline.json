@@ -227,7 +227,7 @@
   "apps/viewer/src/components/viewer/properties/PropertySetCard.tsx": 5,
   "apps/viewer/src/components/viewer/properties/RawStepCard.tsx": 17,
   "apps/viewer/src/components/viewer/properties/RawStepRow.tsx": 10,
-  "apps/viewer/src/components/viewer/properties/RelationshipsCard.tsx": 8,
+  "apps/viewer/src/components/viewer/properties/RelationshipsCard.tsx": 7,
   "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx": 11,
   "apps/viewer/src/components/viewer/properties/SpatialLocationBadge.tsx": 7,
   "apps/viewer/src/components/viewer/properties/StructuralCard.tsx": 8,

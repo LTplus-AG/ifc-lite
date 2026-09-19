@@ -225,7 +225,6 @@ class ViewOverlay implements PendingOverlay {
       mutatedEntityIds: () => this.view.getMutations().map(mutation => mutation.entityId),
       namedAttributes: id => this.view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
       positionalAttributes: id => this.view.getPositionalMutationsForEntity(id) ?? [],
-      attributeWriteOrder: id => this.view.getMutationsForEntity(id).map(mutation => mutation.attributeName ?? ''),
       isDeleted: id => this.view.isDeleted(id),
     });
     return this.effectiveRelations;

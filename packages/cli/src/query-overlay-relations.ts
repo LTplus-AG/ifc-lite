@@ -16,7 +16,6 @@ function effective(store: IfcDataStore, view: MutablePropertyView) {
     mutatedEntityIds: () => view.getMutations().map(mutation => mutation.entityId),
     namedAttributes: id => view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
     positionalAttributes: id => view.getPositionalMutationsForEntity(id) ?? [],
-    attributeWriteOrder: id => view.getMutationsForEntity(id).map(mutation => mutation.attributeName ?? ''),
     isDeleted: id => view.isDeleted(id),
   });
 }
@@ -62,8 +61,10 @@ export function foldQueuedRelationshipData(
     .filter(edge => types.includes(edge.relationshipType.toUpperCase()) && directions.includes(edge.direction))
     .map(edge => edge.entity);
   return {
-    voids: entities(['IFCRELVOIDSELEMENT'], ['forward']),
-    fills: entities(['IFCRELFILLSELEMENT'], ['inverse']),
+    voids: entities(['IFCRELVOIDSELEMENT'], ['forward'])
+      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
+    fills: entities(['IFCRELFILLSELEMENT'], ['inverse'])
+      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
     groups: entities(['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR'], ['inverse'])
       .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index)
       .map(({ id, name }) => ({ id, name })),

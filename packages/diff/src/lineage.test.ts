@@ -148,6 +148,16 @@ describe('lineageFromDiff', () => {
     expect(lineageFromDiff(second, { aliasReasons: reasons })).toEqual(lineage);
     expect(lineageFromDiff(second)[0].reason).toBe('alias:replayed');
   });
+
+  it('keeps replayed successor provenance as replaced (#4989)', () => {
+    const base = [entity({ key: 'OLD', dataHash: 'old', geometryHash: 'g', aabb: WHOLE })];
+    const head = [entity({ key: 'NEW', dataHash: 'new', geometryHash: 'g', aabb: WHOLE })];
+    const diff = diffModels(base, head, { keyAliases: new Map([['NEW', 'OLD']]) });
+
+    expect(lineageFromDiff(diff, { aliasReasons: new Map([['NEW', 'successor:footprint']]) })).toEqual([
+      { base: ['OLD'], head: ['NEW'], relation: 'replaced', reason: 'successor:footprint' },
+    ]);
+  });
 });
 
 describe('keyAliasesFromLineage', () => {

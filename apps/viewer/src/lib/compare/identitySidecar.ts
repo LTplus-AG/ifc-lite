@@ -24,7 +24,6 @@ import {
   parseIdentityMapSidecar,
   serializeIdentityMapSidecar,
   serializeLineageSidecar,
-  SUCCESSOR_REASON_PREFIX,
   type IdentityMapEntry,
   type LineageEntry,
   type ModelIdentity,
@@ -104,13 +103,10 @@ export function downloadIdentityMapSidecar(
  *
  * An accepted successor is in `diff.successors` only until the re-diff
  * replays it as a key alias; from then on the engine reports it under
- * `appliedKeyAliases`, and `lineageOfDiff` carries an applied alias forward
- * as `identity` with whatever reason `aliasReasons` gives it. The relation
- * is what a consumer rekeys on, so an alias whose reason says it was an
- * accepted successor (`successor:<confidence>`) is re-labelled `replaced`
- * here: the artifact then reads the same before and after the re-diff. A
- * pair accepted out of an ambiguous group (`accepted:ambiguous`) is an
- * identity claim and stays one.
+ * `appliedKeyAliases`. `lineageOfDiff` retains its `successor:<confidence>`
+ * provenance and emits `replaced`, so the artifact reads the same before and
+ * after the re-diff. A pair accepted out of an ambiguous group
+ * (`accepted:ambiguous`) is an identity claim and stays one.
  */
 export function lineageForExport(
   result: CompareResult,
@@ -122,11 +118,6 @@ export function lineageForExport(
   );
   const aliasReasons = new Map(accepted.map((entry) => [entry.here, entry.reason]));
   const { entries, deleted } = lineageOfDiff(result.diff, { accepted: acceptedClaims, aliasReasons });
-  for (const entry of entries) {
-    if (entry.relation === 'identity' && entry.reason.startsWith(SUCCESSOR_REASON_PREFIX)) {
-      entry.relation = 'replaced';
-    }
-  }
   return { entries, deleted };
 }
 

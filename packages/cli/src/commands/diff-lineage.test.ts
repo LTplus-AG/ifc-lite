@@ -165,6 +165,13 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
       { base: [guid('OLDA')], head: [guid('NEWA')], relation: 'identity', reason: 'content-match:renamed' },
       { base: [guid('OLDB')], head: [guid('NEWB')], relation: 'replaced', reason: 'successor:footprint' },
     ]);
+
+    const replayPath = join(dir, 'replayed-lineage.json');
+    stdoutSpy.mockClear();
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: replayPath, json: true });
+    expect(stdoutJson().contentMatches).toEqual([]);
+    const replayed = JSON.parse(await readFile(replayPath, 'utf-8'));
+    expect(replayed.entries).toEqual(lineage.entries);
   });
 
   it('lists a bare deletion in the lineage so rekey can orphan exactly that row', async () => {

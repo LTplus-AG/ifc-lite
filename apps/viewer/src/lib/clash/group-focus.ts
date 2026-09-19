@@ -353,6 +353,7 @@ export function focusClashGroup(
     presentationState.cameraCallbacks.resolveHighlightIds,
     exactPresentationAGlobalIds,
   )) setClashColor(presentationClashColors, rendererId, CLASH_COLOR_A);
+  reconcileGuidOccurrenceColors(colorByGuid, occurrences, presentationClashColors);
   const renderedARefs = [...presentationARefs];
   const renderedBRefs: SelectionRef[] = [];
   for (const ref of presentationBRefs) {

@@ -50,7 +50,7 @@ export const bulkPropertyEditorEn = {
   'bulkPropertyEditor.previewMatches': { one: '{matches} entity matches your criteria ({mutations} mutation)', other: '{matches} entities match your criteria ({mutations} mutations)' },
   'bulkPropertyEditor.previewNoMatches': 'No entities match your criteria',
   'bulkPropertyEditor.applying': 'Applying changes...',
-  'bulkPropertyEditor.progress': '{done} / {total} entities',
+  'bulkPropertyEditor.progress': { one: '{done} / {total} entity', other: '{done} / {total} entities' },
   'bulkPropertyEditor.success': 'Success',
   'bulkPropertyEditor.error': 'Error',
   'bulkPropertyEditor.appliedZeroZero': 'Applied {mutations} mutations to {entities} entities',

@@ -14,6 +14,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { BulkPropertyEditor, parseBulkSetPropertyValue } from './BulkPropertyEditor.js';
 import { appliedResultKey } from './bulk-property-editor-options.js';
 import { BulkExecutionResult } from './BulkExecutionResult.js';
+import { BulkExecutionProgress } from './BulkExecutionProgress.js';
 
 afterEach(() => {
   cleanup();
@@ -21,6 +22,14 @@ afterEach(() => {
 });
 
 describe('BulkPropertyEditor localization (#4918)', () => {
+  it('pluralizes the progress entity label from the total', () => {
+    const singular = render(<BulkExecutionProgress done={0} total={1} />);
+    assert.match(singular.textContent ?? '', /0 \/ 1 entity/);
+    cleanup();
+    const plural = render(<BulkExecutionProgress done={1} total={2} />);
+    assert.match(plural.textContent ?? '', /1 \/ 2 entities/);
+  });
+
   it('updates the mounted dialog and complete plural message when the locale changes', () => {
     registerLocale('de', {
       'bulkPropertyEditor.trigger': '[Massenänderung]',

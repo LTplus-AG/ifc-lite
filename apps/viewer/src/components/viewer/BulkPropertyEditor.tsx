@@ -45,7 +45,6 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
 import { roleCanEdit } from '@/store/slices/collabSlice';
@@ -68,6 +67,7 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { FILTER_OPERATORS, IFC_ATTRIBUTE_LABELS, IFC_TYPE_MAP } from './bulk-property-editor-options';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
+import { BulkExecutionProgress } from './BulkExecutionProgress';
 
 export { parseBulkSetPropertyValue } from './bulk-property-value';
 
@@ -982,23 +982,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
           )}
 
           {/* Execute Progress */}
-          {isExecuting && executeProgress && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('bulkPropertyEditor.applying')}
-                </span>
-                <span>
-                  {t('bulkPropertyEditor.progress', {
-                    done: formatLocaleNumber(locale, executeProgress.done),
-                    total: formatLocaleNumber(locale, executeProgress.total),
-                  })}
-                </span>
-              </div>
-              <Progress value={executeProgress.total > 0 ? (executeProgress.done / executeProgress.total) * 100 : 0} />
-            </div>
-          )}
+          {isExecuting && executeProgress && <BulkExecutionProgress {...executeProgress} />}
 
           {/* Execute Result */}
           {executeResult && <BulkExecutionResult

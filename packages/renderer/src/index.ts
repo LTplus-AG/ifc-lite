@@ -193,7 +193,7 @@ import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
-import type { DeviceRecoveryOmission, DeviceRecoveryResult } from './device-recovery.js';
+import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -209,21 +209,6 @@ let warnedEntityIdRange = false;
 function rendererDestroyedError(): Error {
     const error = new Error('Renderer was destroyed before it became ready');
     error.name = 'RendererDestroyedError';
-    return error;
-}
-
-/**
- * The reason `whenReady()` rejects once the GPU device has been lost.
- *
- * Deliberately NOT `RendererDestroyedError`: a destroyed renderer is finished,
- * while a lost one is dead only until the host re-initialises it (`init()`
- * clears the latch and readiness is published again). A caller that wants to
- * retry needs to tell those apart, so the loss carries its own `name` — same
- * plain-`Error` shape, for the same reasons.
- */
-function rendererDeviceLostError(): Error {
-    const error = new Error('GPU device was lost before the renderer became ready');
-    error.name = 'RendererDeviceLostError';
     return error;
 }
 
@@ -824,106 +809,9 @@ export class Renderer {
         return this.deviceLost;
     }
 
-    /**
-     * Rebuild this renderer against a replacement GPU device without replacing
-     * the Renderer, Camera, or CPU scene graph. Concurrent calls coalesce.
-     *
-     * Recovery is intentionally unavailable after CPU geometry was released,
-     * during an unfinished stream, or when the scene contains public addMesh()
-     * drawables with no CPU source. Those cases return a stable failure reason
-     * and stay latched as lost instead of presenting an incomplete model.
-     */
+    /** Rebuild a lost GPU device in place while preserving recoverable CPU scene state. */
     recoverDevice(): Promise<DeviceRecoveryResult> {
-        if (this.recoveryInFlight) return this.recoveryInFlight;
-        if (!this.deviceLost) return Promise.resolve({ ok: false, reason: 'not-lost' });
-        if (this.destroyed) return Promise.resolve({ ok: false, reason: 'renderer-destroyed' });
-
-        const generation = ++this.initGeneration;
-        this.ready = false;
-        // A failed attempt remains a lost-device state for whenReady(). Stamp
-        // this generation before queueing so no caller can park in the gap.
-        this.deviceLostGeneration = generation;
-        this.rejectReadyWaiters(rendererDeviceLostError());
-        // Recovery owns the same GPU fields as init(). Put both lifecycles on
-        // one queue so a newer init can supersede this attempt without either
-        // body tearing down resources installed by the other.
-        const run = this.initChain.then(
-            () => this.recoverDeviceOnce(generation),
-            () => this.recoverDeviceOnce(generation),
-        );
-        this.initChain = run.then(() => undefined, () => undefined);
-        this.recoveryInFlight = run;
-        const clearInFlight = () => {
-            if (this.recoveryInFlight === run) this.recoveryInFlight = null;
-        };
-        void run.then(clearInFlight, clearInFlight);
-        return run;
-    }
-
-    private async recoverDeviceOnce(generation: number): Promise<DeviceRecoveryResult> {
-        const lossSequence = this.deviceLossSequence;
-        if (generation !== this.initGeneration || this.destroyed) {
-            return { ok: false, reason: 'renderer-destroyed' };
-        }
-        let prepared: Awaited<ReturnType<Scene['prepareDeviceRecovery']>>;
-        try {
-            prepared = await this.scene.prepareDeviceRecovery();
-        } catch (error) {
-            console.error('[Renderer] Failed to prepare the CPU scene for device recovery:', error);
-            return { ok: false, reason: 'cold-restore-failed', error };
-        }
-        if (!prepared.ok) return prepared;
-        if (generation !== this.initGeneration || this.destroyed) {
-            return { ok: false, reason: 'renderer-destroyed' };
-        }
-
-        const omissions: DeviceRecoveryOmission[] = this.overlays.recoveryOmissions();
-        if (this.lostReferenceImages) omissions.push('reference-images');
-        if (this.pointCloudRenderer?.hasAssets()) omissions.push('point-clouds');
-
-        let phase: 'device' | 'scene' = 'scene';
-        try {
-            // Old-device objects are unusable after loss. Scene teardown is kept
-            // separate so its CPU ownership survives the infrastructure rebuild.
-            this.scene.discardGpuResourcesForRecovery();
-            this.teardown(false);
-            this.device = new WebGPUDevice();
-            phase = 'device';
-            await this.initOnce(generation, { clearDeviceLost: false, publishReady: false });
-            if (generation !== this.initGeneration || this.destroyed) {
-                this.teardown(false);
-                return { ok: false, reason: 'renderer-destroyed' };
-            }
-            if (this.deviceLossSequence !== lossSequence) {
-                throw new Error('Replacement GPU device was lost during initialization');
-            }
-            if (this.quantizedBatchesRequested && this.pipeline) {
-                const quantized = await this.pipeline.ensureQuantizedPipelines();
-                this.scene.setQuantizedBatches(quantized);
-            }
-            phase = 'scene';
-            if (!this.pipeline) throw new Error('Replacement render pipeline was not initialized');
-            this.scene.restoreGpuResourcesAfterRecovery(this.device.getDevice(), this.pipeline);
-            if (this.deviceLossSequence !== lossSequence) {
-                throw new Error('Replacement GPU device was lost during scene restore');
-            }
-            this.deviceLost = false;
-            this.deviceLostInfo = null;
-            this.lostReferenceImages = false;
-            this.markReady(generation);
-            this.requestRender();
-            return { ok: true, omissions };
-        } catch (error) {
-            console.error(`[Renderer] Device recovery failed during ${phase} restore:`, error);
-            this.deviceLost = true;
-            this.ready = false;
-            try {
-                this.teardown(false);
-            } catch (teardownError) {
-                console.warn('[Renderer] Failed to dispose a partial recovery attempt:', teardownError);
-            }
-            return { ok: false, reason: phase === 'device' ? 'device-init-failed' : 'scene-restore-failed', error };
-        }
+        return recoverRendererDevice(this as unknown as RendererRecoveryHost);
     }
 
     /**

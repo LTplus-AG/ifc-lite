@@ -364,4 +364,30 @@ describe('collab step-seed portable cost references (#4857 review)', () => {
       ['/ifc-lite-ref-3-1'],
     );
   });
+
+  it('does not parse unrelated assignment graphs while finding portable rows (#4857 review)', async () => {
+    const step = [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('scan.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;', 'DATA;',
+      "#1=IFCCOSTITEM('0item00000000000000000',$,'Item',$,$,$,.NOTDEFINED.,$,$);",
+      "#2=IFCWALL('0wall00000000000000000',$,'Wall',$,$,$,$,$);",
+      "#3=IFCRELNESTS('0rel000000000000000000',$,$,$,#2,(#2));",
+      "#4=IFCRELNESTS('0costrel00000000000000',$,$,$,#1,(#1));",
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const bytes = new TextEncoder().encode(step);
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+    const originalGetEntity = store.getEntity.bind(store);
+    const parsed = new Set<number>();
+    store.getEntity = (id: number) => {
+      parsed.add(id);
+      return originalGetEntity(id);
+    };
+
+    Array.from(buildStepSeedSource(store).entities);
+
+    assert.equal(parsed.has(3), false, 'ordinary IfcRelNests must be rejected from its raw reference row');
+    assert.equal(parsed.has(4), true, 'the relationship that references a cost root must still be parsed');
+  });
 });

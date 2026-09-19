@@ -139,27 +139,67 @@ export function portableReferenceEntityIds(store: IfcDataStore): ReadonlySet<num
   const cached = referenceIdsCache.get(store);
   if (cached) return cached;
   const result = new Set<number>();
+  const relevant = new Set<number>();
   const queue: number[] = [];
+  const relationshipCandidates: number[] = [];
   for (const [type, ids] of store.entityIndex?.byType ?? []) {
     if (!isPortableReferenceRootType(type)) continue;
     if (!registryEntity(getSchemaRegistryForVersion(schemaVersion(store)), type)?.allAttributes?.some(
       attribute => isPortableReferenceList(attribute.name) || isPortableReferenceScalar(attribute.name),
     )) continue;
-    queue.push(...ids);
-    for (const id of ids) {
+    if (type.toUpperCase().startsWith('IFCREL')) relationshipCandidates.push(...ids);
+    else queue.push(...ids);
+    for (const id of ids) if (!type.toUpperCase().startsWith('IFCREL')) {
+      relevant.add(id);
       if (!store.entities.getGlobalId(id)) result.add(id);
     }
   }
   const scanned = new Set<number>();
-  while (queue.length > 0) {
-    const owner = queue.pop()!;
-    if (scanned.has(owner)) continue;
-    scanned.add(owner);
-    const inspectAll = result.has(owner);
-    for (const target of referencedIds(store, owner, inspectAll)) {
-      if (!store.entities.getGlobalId(target)) result.add(target);
-      if (!scanned.has(target)) queue.push(target);
+  const decoder = new TextDecoder();
+  const rawReferencesRelevant = (id: number): boolean => {
+    // Server/synthetic stores have no source ranges, so retain the complete
+    // fallback there. Source-backed models can cheaply reject ordinary
+    // assignment/nesting rows before invoking the synchronous entity parser.
+    if (!store.source?.byteLength) return true;
+    const ref = store.entityIndex.byId.get(id);
+    if (!ref) return false;
+    const bytes = store.source.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+    const raw = 'decodeUtf8' in store.source
+      ? store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength)
+      : decoder.decode(bytes);
+    for (const match of raw.matchAll(/#([1-9]\d*)/g)) {
+      if (relevant.has(Number(match[1]))) return true;
     }
+    return false;
+  };
+
+  let pendingRelationships = relationshipCandidates;
+  while (queue.length > 0 || pendingRelationships.length > 0) {
+    while (queue.length > 0) {
+      const owner = queue.pop()!;
+      if (scanned.has(owner)) continue;
+      scanned.add(owner);
+      const inspectAll = result.has(owner);
+      for (const target of referencedIds(store, owner, inspectAll)) {
+        relevant.add(target);
+        if (!store.entities.getGlobalId(target)) result.add(target);
+        if (!scanned.has(target)) queue.push(target);
+      }
+    }
+    const deferred: number[] = [];
+    let admitted = false;
+    for (const id of pendingRelationships) {
+      if (!rawReferencesRelevant(id)) {
+        deferred.push(id);
+        continue;
+      }
+      relevant.add(id);
+      if (!store.entities.getGlobalId(id)) result.add(id);
+      queue.push(id);
+      admitted = true;
+    }
+    pendingRelationships = deferred;
+    if (!admitted) break;
   }
   referenceIdsCache.set(store, result);
   return result;

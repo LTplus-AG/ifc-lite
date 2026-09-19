@@ -55,12 +55,8 @@ function buildSurfaceMesh(
   linearScale: number,
   elevationScale: number,
 ): { mesh: MeshData | null; degenerateFaces: number } {
-  const referencedPointIds = new Set(surface.faces.flatMap((face) => face));
-  const retainedPoints = surface.points.filter((point) => referencedPointIds.has(point.id));
   const worldById = new Map<string, WorldPoint>();
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (const point of retainedPoints) {
+  for (const point of surface.points) {
     // LandXML: northing/easting/elevation (Z-up). Viewer: X east, Y up,
     // Z south. This is the same Z-up -> Y-up convention used by IFC and the
     // point-cloud ingest path.
@@ -70,6 +66,32 @@ function buildSurfaceMesh(
       z: -point.northing * linearScale,
     };
     worldById.set(point.id, world);
+  }
+
+  let degenerateFaces = 0;
+  const retainedFaces = surface.faces.filter((face) => {
+    const a = worldById.get(face[0])!;
+    const b = worldById.get(face[1])!;
+    const c = worldById.get(face[2])!;
+    const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+    const acx = c.x - a.x, acy = c.y - a.y, acz = c.z - a.z;
+    const length = Math.hypot(
+      aby * acz - abz * acy,
+      abz * acx - abx * acz,
+      abx * acy - aby * acx,
+    );
+    if (Number.isFinite(length) && length > Number.EPSILON) return true;
+    degenerateFaces++;
+    return false;
+  });
+  if (retainedFaces.length === 0) return { mesh: null, degenerateFaces };
+
+  const referencedPointIds = new Set(retainedFaces.flatMap((face) => face));
+  const retainedPoints = surface.points.filter((point) => referencedPointIds.has(point.id));
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const point of retainedPoints) {
+    const world = worldById.get(point.id)!;
     minX = Math.min(minX, world.x); minY = Math.min(minY, world.y); minZ = Math.min(minZ, world.z);
     maxX = Math.max(maxX, world.x); maxY = Math.max(maxY, world.y); maxZ = Math.max(maxZ, world.z);
   }
@@ -94,8 +116,7 @@ function buildSurfaceMesh(
 
   const indices: number[] = [];
   const normalSums = new Float64Array(positions.length);
-  let degenerateFaces = 0;
-  for (const face of surface.faces) {
+  for (const face of retainedFaces) {
     let a = indexById.get(face[0])!;
     let b = indexById.get(face[1])!;
     let c = indexById.get(face[2])!;

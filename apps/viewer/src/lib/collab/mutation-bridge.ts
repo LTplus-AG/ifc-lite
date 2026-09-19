@@ -340,9 +340,7 @@ export function attachRemoteApply(
             if (placement && handlers.onPlacement) handlers.onPlacement(modelId, entityId, placement);
             continue;
           }
-          // IFC positional values can be structured (lists, references, and
-          // typed values). Preserve the CRDT value exactly across peers; the
-          // mutation view performs the schema-aware validation when applying it.
+          // Preserve structured IFC values; the mutation view validates them against the schema.
           handlers.onAttribute(modelId, entityId, attrName, target.get(attrName));
         }
       } else if (path[1] === 'psets' && path.length === 3 && typeof path[2] === 'string') {

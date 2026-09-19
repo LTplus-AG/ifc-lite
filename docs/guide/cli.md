@@ -1096,14 +1096,16 @@ ifc-lite layer log main --json
 | `create` | Record a draft descriptor (`.ifc-lite/draft.json`). `--base <ref>`, `--intent "<text>"`, `--scope <claim>` |
 | `status` | Show the draft and whether its base ref moved |
 | `diff <side>` | Diff composed states; a side is a ref, layer id, or `.ifcx` file. `--against <side>`, `--components`, `--json` |
-| `merge <layer-id>` | Merge a candidate into a ref (fast-forward or three-way plan). `--into <ref>`, `--preview`, `--resolve ours\|theirs`, `--waive <spec> --reason "<text>"`, `--approved-by <principal>`, `--json` |
+| `merge <layer-id>` | Merge a candidate into a ref (fast-forward or three-way plan). `--into <ref>`, `--preview`, `--resolve ours\|theirs`, `--waive <spec> --reason "<text>"`, `--approved-by <principal>`, `--allow-unrelated`, `--json` |
 | `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>`, `--set-ref`, `--json` |
 | `log <ref>` | Provenance log, newest first. `--json` |
 | `bake <ref> -o <out>` | Materialize a tombstone-free flat document |
 | `revert <layer-id>` | Publish an inverse layer and append it to a ref. `--in <ref>`, `--resolve ours\|theirs`, `--json` |
 | `rebase <layer-id>` | Re-plan a candidate onto a ref's current stack and publish the rebased layer. `--onto <ref>`, `--json` |
 
-All subcommands honour `--store <dir>` (default `<cwd>/.ifc-lite`). Exit codes: 0 clean, 2 conflicts, 3 policy failure, 4 scope violation (with `--strict-scope`), 1 generic errors.
+All subcommands honour `--store <dir>` (default `<cwd>/.ifc-lite`). Exit codes:
+0 clean, 2 conflicts, 3 policy failure, 4 scope violation (with `--strict-scope`),
+5 unrelated merge base (override with `--allow-unrelated`), and 1 generic errors.
 
 ---
 

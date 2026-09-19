@@ -20,7 +20,6 @@ ifc layer merge    <L> --into <ref> [--preview] [--resolve ours|theirs:<selector
 ifc layer push     <ref|L> --registry <url> [--token <bearer>] [--set-ref]
                                                    upload a stack (or one layer) plus its
                                                    check-evidence bytes to a registry
-ifc layer checks   <L|ref> [--ids <spec.ids>] [--required-only]
 ifc layer log      <ref> [--graph] [--author kind=agent]
 ifc layer revert   <L>                             emits inverse-op layer
 ifc layer rebase   <L> --onto <ref>

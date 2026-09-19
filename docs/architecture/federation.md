@@ -25,7 +25,7 @@ The `FederationRegistry` (singleton in `@ifc-lite/renderer`) assigns each model 
 ┌─────────────────────────────────────────────────────────────┐
 │ Global ID Space                                             │
 │                                                             │
-│  Model A (offset=0)     Model B (offset=A.end+H) Model C   │
+│  Model A (offset=0)   Model B (offset=A.end+1+H) Model C  │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌────────────┐│
 │  │  IDs 1 - 5000    │  │  B.off+1 - +3000 │  │ B.end+H..  ││
 │  │  (maxExpressId:   │  │  (maxExpressId:  │  │            ││

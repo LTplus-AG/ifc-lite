@@ -152,7 +152,8 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 |----------|--------|-------------|
 | `/api/v1/cache/check/{hash}` | GET | Check if file is cached (200 or 404) |
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
-| `/api/v1/cache/{key}` | GET / DELETE | Retrieve or evict a cached JSON result |
+| `/api/v1/cache/{key}` | GET | Retrieve a cached JSON result |
+| `/api/v1/cache/{hash}` | DELETE | Evict all cached representations for a 64-character source-file SHA-256 hash |
 | `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
 

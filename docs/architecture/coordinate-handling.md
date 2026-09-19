@@ -274,6 +274,7 @@ the TypeScript layer inferring it from coordinate ranges:
 ```typescript
 setWasmMetadata(lengthUnitScale: number | undefined, rtcOffset: Vec3 | null, exactFrame?: RtcFrame): void {
     const frame = resolveWasmMetadataFrame(rtcOffset, exactFrame);
+    this.wasmRtcFrame = frame;
     this.lengthUnitScale = lengthUnitScale;
     this.appliedWasmRtcOffset = rtcOffset ? { ...rtcOffset } : null;
     this.wasmRtcApplied = rtcOffset !== null;

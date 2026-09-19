@@ -50,6 +50,7 @@ function makeTree(t, { offsetFile, maxVersion = '6.0.1', count = MIN_WORKSPACE_P
 const VALID_OFFSET_1 = JSON.stringify({
   majorOffset: 1,
   reason: 'ifc-lite-processing MeshData gained a public field (#3210), which is a breaking Rust change under an npm minor.',
+  latestBreak: 'MeshData gained a public field in the newest Rust-only breaking release.',
   refs: ['#3210', '#3216'],
 });
 
@@ -92,6 +93,31 @@ test('readMajorOffset rejects an offset that is not a non-negative integer', (t)
   }
 });
 
+test('readMajorOffset rejects a present latestBreak that is not substantive text', (t) => {
+  for (const latestBreak of [null, 7, '', 'too short']) {
+    assert.throws(
+      () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({
+        majorOffset: 1,
+        reason: 'A sufficiently detailed historical reason for the break.',
+        latestBreak,
+        refs: ['#1'],
+      }) })),
+      (err) => err.code === 'BAD_LATEST_BREAK',
+    );
+  }
+});
+
+test('readMajorOffset requires latestBreak for every non-zero offset', (t) => {
+  assert.throws(
+    () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({
+      majorOffset: 1,
+      reason: 'A sufficiently detailed historical reason for the break.',
+      refs: ['#1'],
+    }) })),
+    (err) => err.code === 'BAD_LATEST_BREAK',
+  );
+});
+
 test('a non-zero offset must carry a reason and at least one ref', (t) => {
   assert.throws(
     () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 1, refs: ['#1'] }) })),
@@ -101,12 +127,44 @@ test('a non-zero offset must carry a reason and at least one ref', (t) => {
     () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 1, reason: 'x', refs: ['#1'] }) })),
     (err) => err.code === 'NO_REASON'
   );
+  for (const reason of [undefined, 'x']) {
+    assert.throws(
+      () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({
+        majorOffset: 1,
+        reason,
+        latestBreak: 'A sufficiently detailed description of the newest break.',
+        refs: ['#1'],
+      }) })),
+      (err) => err.code === 'NO_REASON',
+      `expected latestBreak not to mask invalid historical reason ${JSON.stringify(reason)}`,
+    );
+  }
   assert.throws(
     () =>
       readMajorOffset(
-        makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 1, reason: 'a'.repeat(40), refs: [] }) })
+        makeTree(t, { offsetFile: JSON.stringify({
+          majorOffset: 1,
+          reason: 'a'.repeat(40),
+          latestBreak: 'A sufficiently detailed description of the newest break.',
+          refs: [],
+        }) })
       ),
     (err) => err.code === 'NO_REFS'
+  );
+});
+
+test('the latest break is part of the validated and propagated reason', (t) => {
+  const root = makeTree(t, {
+    offsetFile: JSON.stringify({
+      majorOffset: 2,
+      reason: 'The first published Rust-only break is retained as history.',
+      latestBreak: 'The second published break adds a field to a constructible struct.',
+      refs: ['#1', '#2'],
+    }),
+  });
+  assert.equal(
+    readMajorOffset(root).reason,
+    'The first published Rust-only break is retained as history. The second published break adds a field to a constructible struct.',
   );
 });
 

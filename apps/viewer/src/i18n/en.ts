@@ -12,6 +12,7 @@ import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
+import { listsEn } from './catalogues/lists.en';
 import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
@@ -44,6 +45,7 @@ export const en = {
   ...sourcesEn,
   ...toursEn,
   ...viewerShellEn,
+  ...listsEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,

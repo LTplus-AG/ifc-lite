@@ -30,6 +30,9 @@ import { useViewerStore } from '@/store';
 import type { ListDefinition } from '@/lib/lists';
 import { ListPanel } from './ListPanel.js';
 
+// `lists.*` keys resolve straight off `en.ts`'s own registration now
+// (#4918 integration pass) — no per-test catalogue merge needed.
+
 const MODEL_ID = 'model-a';
 
 /** One real, geometry-bearing IfcWall — enough for `getAllEntityIds` /

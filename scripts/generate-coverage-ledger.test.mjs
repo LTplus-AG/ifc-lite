@@ -29,6 +29,7 @@ const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
 const GENERATOR = join(SCRIPTS, 'generate-coverage-ledger.mjs');
 const HELPER = join(SCRIPTS, 'check-legacy-entity-coverage.mjs');
+const SCHEMA_NAMES_HELPER = join(SCRIPTS, 'lib/rust-schema-names.mjs');
 
 const SOURCE_RELS = [
   'packages/data/src/ifc-schema/generated/entities-ifc2x3.ts',
@@ -126,6 +127,11 @@ function runOn(overrides = {}, generatorSrc = realGeneratorSrc) {
     // fight import resolution.
     mkdirSync(join(dir, 'scripts'), { recursive: true });
     writeFileSync(join(dir, 'scripts', 'check-legacy-entity-coverage.mjs'), readFileSync(HELPER, 'utf8'));
+    mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
+    writeFileSync(
+      join(dir, 'scripts', 'lib/rust-schema-names.mjs'),
+      readFileSync(SCHEMA_NAMES_HELPER, 'utf8'),
+    );
     writeFileSync(join(dir, 'scripts', 'generate-coverage-ledger.mjs'), generatorSrc);
 
     const r = spawnSync(

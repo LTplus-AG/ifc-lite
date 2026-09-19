@@ -239,18 +239,14 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Name'), 'Wall-A');
   });
 
-  it('mirrorAttribute collapses a list/ref value to its stable JSON string form (toScalar)', () => {
+  it('mirrorAttribute preserves a structured list/ref value', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
 
     mirrorAttribute(api, fakeSession(doc), store, 1, 'bsi::ifc::prop::Layers', ['a', 'b', 3]);
 
-    // Pinned against the literal JSON string, not just "truthy" — toScalar's
-    // array branch must specifically produce `JSON.stringify`, not the
-    // generic `String(value)` fallback (which would yield "a,b,3" and lose
-    // round-trip fidelity through the CRDT's flat-attribute wire shape).
-    assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), '["a","b",3]');
+    assert.deepEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), ['a', 'b', 3]);
   });
 
   it('mirrorAttribute no-ops when the entity is not in the doc', () => {
@@ -756,10 +752,10 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     assert.strictEqual(line, '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,2.25);');
   });
 
-  it('a name that does not resolve to a known root-attribute slot is skipped, not guessed at', () => {
+  it('a prefixed root attribute name resolves and a remote null clears it', () => {
     const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'bsi::ifc::prop::Description', null));
-    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);", 'unresolved name: no edit landed, source line unchanged');
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
   });
 
   it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for applyRemoteAttribute', () => {

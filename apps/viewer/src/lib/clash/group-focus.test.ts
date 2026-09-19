@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import { beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from '@/store';
 import { CLASH_COLOR_A, CLASH_COLOR_B } from './clash-colors.js';
 import {
@@ -30,6 +31,7 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().clearEntitySelection();
     useViewerStore.setState({
       cameraCallbacks: {}, lensAppliedColors: new Map(), models: new Map(),
+      mutationViews: new Map(),
       hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
       hiddenEntitiesByModel: new Map(), isolatedEntitiesByModel: new Map(), mutationVersion: 0,
       colorPresentationRevision: 0,
@@ -255,6 +257,66 @@ describe('manual clash group focus (#4921)', () => {
     ]), 'the PNG must paint every loaded occurrence that BCF will color by shared GUID');
     assert.deepEqual(focused.modelIds, ['model', 'revision-b'],
       'an unrelated revision is colored for BCF parity without becoming a group participant');
+  });
+
+  it('reconciles every GUID occurrence when loaded models collide on one renderer id', () => {
+    const crossModel = clash('guid-renderer-collision', 10, 20);
+    crossModel.b.model = 'revision-b';
+    const entities = (guid: string, expressId: number) => ({
+      getGlobalId: () => guid,
+      getExpressIdByGlobalId: (candidate: string) => candidate === guid ? expressId : -1,
+    });
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, ifcDataStore: { entities: entities('GUID-A', 10) } }],
+        ['revision-b', { idOffset: 1000, ifcDataStore: { entities: entities('GUID-B', 20) } }],
+        ['colliding-b', { idOffset: 0, ifcDataStore: { entities: entities('GUID-B', 10) } }],
+      ]) as unknown as ViewerState['models'],
+    });
+
+    const focused = focusClashGroup(
+      [crossModel],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [10, CLASH_COLOR_A], [1020, CLASH_COLOR_A],
+    ]), 'a collision promotes every occurrence of the B GUID to the renderer-visible A color');
+    assert.deepEqual(focused.aGuids, ['GUID-A', 'GUID-B']);
+    assert.deepEqual(focused.bGuids, []);
+  });
+
+  it('colors StoreEditor-created occurrences addressed by the exported BCF GlobalId', () => {
+    const overlay = new MutablePropertyView(null, 'overlay-revision');
+    overlay.setExpressIdWatermark(29);
+    overlay.createEntity('IfcWall', ['SHARED-GUID']);
+    const crossRevision = clash('overlay-occurrence', 10, 10);
+    crossRevision.b.model = 'revision-b';
+    const entities = (expressId: number) => ({
+      getGlobalId: () => 'SHARED-GUID',
+      getExpressIdByGlobalId: (guid: string) => guid === 'SHARED-GUID' ? expressId : -1,
+    });
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, ifcDataStore: { entities: entities(10) } }],
+        ['revision-b', { idOffset: 1000, ifcDataStore: { entities: entities(10) } }],
+        ['overlay-revision', { idOffset: 2000, ifcDataStore: { entities: {} } }],
+      ]) as unknown as ViewerState['models'],
+      mutationViews: new Map([['overlay-revision', overlay]]),
+    });
+
+    const focused = focusClashGroup(
+      [crossRevision],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [10, CLASH_COLOR_A], [1010, CLASH_COLOR_A], [2030, CLASH_COLOR_A],
+    ]));
   });
 
   it('returns viewpoint refs only for objects that resolved in the current models', () => {

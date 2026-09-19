@@ -14,6 +14,11 @@ import {
   resolvePresentationIds,
 } from '@/lib/presentation/resolvePresentationIds';
 import { CLASH_COLOR_A, CLASH_COLOR_B, type RGBA } from './clash-colors';
+import {
+  loadedGuidOccurrences,
+  reconcileGuidOccurrenceColors,
+  setClashColor,
+} from './guid-occurrence-colors';
 
 interface SelectionRef {
   modelId: string;
@@ -175,23 +180,6 @@ function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: 
   return [...guids];
 }
 
-/** Paint every loaded model occurrence that BCF will address by IFC GlobalId. */
-function addLoadedGuidOccurrenceColors(
-  state: ReturnType<typeof useViewerStore.getState>,
-  colorByGuid: ReadonlyMap<string, RGBA>,
-  colors: Map<number, RGBA>,
-): void {
-  for (const [modelId, model] of state.models) {
-    const entities = model.ifcDataStore?.entities;
-    if (!entities?.getExpressIdByGlobalId) continue;
-    for (const [guid, color] of colorByGuid) {
-      const expressId = entities.getExpressIdByGlobalId(guid);
-      if (expressId < 0) continue;
-      colors.set(toGlobalIdFromModels(state.models, modelId, expressId), color);
-    }
-  }
-}
-
 /** True while the models, authored IFC, and rendered visibility still match the focused frame. */
 export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boolean {
   const state = useViewerStore.getState();
@@ -313,7 +301,8 @@ export function focusClashGroup(
   const clashColors = new Map<number, RGBA>();
   for (const ref of a) {
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
-    clashColors.set(
+    setClashColor(
+      clashColors,
       toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId),
       guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_A) : CLASH_COLOR_A,
     );
@@ -321,11 +310,15 @@ export function focusClashGroup(
   for (const ref of b) {
     const globalId = toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId);
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
-    if (!clashColors.has(globalId)) {
-      clashColors.set(globalId, guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_B) : CLASH_COLOR_B);
-    }
+    setClashColor(clashColors, globalId, guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_B) : CLASH_COLOR_B);
   }
-  addLoadedGuidOccurrenceColors(presentationState, colorByGuid, clashColors);
+  const occurrences = loadedGuidOccurrences(presentationState, colorByGuid.keys());
+  for (const ref of [...a, ...b]) {
+    const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
+    if (!guid) continue;
+    occurrences.get(guid)?.add(toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId));
+  }
+  reconcileGuidOccurrenceColors(colorByGuid, occurrences, clashColors);
   const presentationClashColors = resolvePresentationColorMap(
     presentationState.cameraCallbacks.resolveHighlightIds,
     clashColors,

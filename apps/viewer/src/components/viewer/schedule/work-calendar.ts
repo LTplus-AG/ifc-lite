@@ -92,25 +92,23 @@ export function nextLocalDayStart(dayStartMs: number): number {
 
 /**
  * `WorkTimeInfo.start`/`finish` are `IfcDate` — a bare civil date with no
- * timezone (`'2024-08-01'`). Per the ECMAScript spec a date-only string
- * parses as UTC midnight; bucketing that instant into a LOCAL calendar day
- * (for consistency with `isWorkingDay`'s other local-day arithmetic) can
- * shift the effective bound back one day in a negative-UTC-offset
- * timezone (`America/*`), since UTC midnight there is still the previous
- * local evening. `isWorkingDay`'s primary inputs — the epoch instants
- * `GanttTimeline`/`playbackSlice` pass in — don't have this issue: they
- * come from `parseIsoDate`, which normalizes a TZ-less *datetime* to UTC
- * for cross-machine stability, so both sides of every real comparison go
- * through the same UTC-anchor-then-local-bucket path. Only a WorkTime
- * bound compared against those instants can disagree by a day at a
- * negative offset — a real residual edge case, flagged rather than fixed
- * silently, since fixing it means deciding what a timezone-less IFC date
- * means in an arbitrary-timezone viewer, which is bigger than this PR.
+ * timezone (`'2024-08-01'`). An earlier revision ran this through
+ * `Date.parse` (which the ECMAScript spec anchors a date-only string to
+ * UTC midnight) and then bucketed that instant into a local calendar day —
+ * in a negative-UTC-offset timezone (`America/*`), UTC midnight is still
+ * the PREVIOUS local evening, so a `'2024-08-01'` bound silently became
+ * July 31 (#4982 review). `IfcDate` names a civil date, not an instant, so
+ * this parses the `YYYY-MM-DD` components directly into a local `Date`
+ * constructor call — the same "local calendar fields, not a UTC instant"
+ * basis `localDayStart`/`nextLocalDayStart` already use — with no UTC
+ * round-trip to drift across.
  */
 function parseIfcDateLocal(s: string | undefined): number | undefined {
   if (!s) return undefined;
-  const ms = Date.parse(s);
-  return Number.isFinite(ms) ? localDayStart(ms) : undefined;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return undefined;
+  const [, y, mo, day] = m;
+  return new Date(Number(y), Number(mo) - 1, Number(day)).getTime();
 }
 
 /** Does `dayStart` (a local-midnight epoch) fall within `entry`'s start/finish bounds, if any are set? */
@@ -171,20 +169,28 @@ export function isWorkingDay(calendar: WorkCalendarInfo | undefined, epochMs: nu
   // (see the module doc's "no usable working pattern" case).
   if (!calendar.workingTimes.some(isRecognizedPattern)) return true;
   const dayStart = localDayStart(epochMs);
-  for (const exception of calendar.exceptionTimes) {
-    if (!entryCoversDay(exception, dayStart)) continue;
-    // An exception carrying its own RecurrencePattern.TimePeriods (e.g.
-    // "half-day Fridays in December: 08:00-12:00" instead of the normal
-    // 08:00-17:00) is describing DIFFERENT HOURS that day, not a closure —
-    // IfcWorkTime's TimePeriods is exactly the field that would carry
-    // "we're still open, just shorter" (#4982 review). At the day-level
-    // granularity this module works at, that means the day stays working.
-    // An exception with NO periods (the common holiday/shutdown shape,
-    // e.g. `{ start: '2024-08-01', finish: '2024-08-14' }` with no
-    // recurrence at all) has nothing but "this day is an exception" to go
-    // on, so THAT shuts the day down, same as before.
-    const hasTimePeriods = (exception.recurrencePattern?.timePeriods.length ?? 0) > 0;
-    if (!hasTimePeriods) return false;
+  // Every exception entry that covers this day, closure and reduced-hours
+  // alike — collected up front rather than branched on during the walk, so
+  // a closure encountered anywhere in the array always wins regardless of
+  // where a reduced-hours entry for the same day happens to sit (#4982
+  // review: an earlier per-entry `continue`/`return false` walk let
+  // iteration order mask which entry "won").
+  const matchingExceptions = calendar.exceptionTimes.filter(e => entryCoversDay(e, dayStart));
+  if (matchingExceptions.length > 0) {
+    const hasClosure = matchingExceptions.some(
+      e => (e.recurrencePattern?.timePeriods.length ?? 0) === 0,
+    );
+    if (hasClosure) return false;
+    // Every matching exception carries `RecurrencePattern.TimePeriods` —
+    // e.g. "half-day Saturdays: 10:00-14:00" — describing DIFFERENT HOURS
+    // that day, not a closure (`IfcWorkTime.TimePeriods` is exactly the
+    // field that would carry "still open, just shorter"). At this
+    // module's day-level granularity that means the day IS working, even
+    // when the normal weekly pattern wouldn't otherwise cover it (a
+    // reduced-hours Saturday exception opens a day the base Mon-Fri
+    // pattern never would) — so this returns `true` directly rather than
+    // falling through to the `workingTimes` loop below.
+    return true;
   }
   for (const working of calendar.workingTimes) {
     if (entryCoversDay(working, dayStart)) return true;

@@ -109,49 +109,80 @@ describe('isWorkingDay (#4830)', () => {
     assert.equal(isWorkingDay(holiday, d('2024-06-05')), false); // Wednesday, otherwise working
   });
 
-  it('an exception with TimePeriods means DIFFERENT HOURS, not closed — the day stays working (#4982 review)', () => {
-    // "Half-day Fridays in December: 08:00-12:00" — an exception entry
-    // whose own RecurrencePattern carries TimePeriods. This is describing
-    // reduced hours, not a closure; at this module's day-level
-    // granularity the day must still read as working.
-    const halfDayFridays: WorkCalendarInfo = {
+  it('an exception with TimePeriods means DIFFERENT HOURS, not closed — it OPENS an otherwise non-working day (#4982 review)', () => {
+    // "Half-day Saturdays in December: 10:00-14:00" — an exception entry
+    // whose own RecurrencePattern carries TimePeriods, covering a day
+    // (Saturday) the base Mon-Fri pattern does NOT otherwise cover. A
+    // Friday would already be working under the base pattern regardless
+    // of this logic, so it wouldn't actually prove anything (an earlier
+    // revision's test used Friday and passed even when the "must force
+    // working" branch was unreachable, per review) — Saturday is the case
+    // that only passes if the exception genuinely forces the day open.
+    const halfDaySaturdays: WorkCalendarInfo = {
       ...MON_FRI_CALENDAR,
       exceptionTimes: [{
-        name: 'Half-day Fridays',
+        name: 'Half-day Saturdays',
         start: '2024-12-01',
         finish: '2024-12-31',
         recurrencePattern: {
           recurrenceType: 'WEEKLY',
           dayComponent: [], monthComponent: [],
-          weekdayComponent: [5], // Friday
-          timePeriods: [{ start: '08:00:00', end: '12:00:00' }],
+          weekdayComponent: [6], // Saturday
+          timePeriods: [{ start: '10:00:00', end: '14:00:00' }],
         },
       }],
     };
-    assert.equal(isWorkingDay(halfDayFridays, d('2024-12-06')), true); // Friday, half-day but working
-    // A December Monday is untouched by the Friday-only exception and
-    // still working via the normal Mon-Fri pattern.
-    assert.equal(isWorkingDay(halfDayFridays, d('2024-12-02')), true);
+    assert.equal(isWorkingDay(halfDaySaturdays, d('2024-12-07')), true); // Saturday, opened by the exception
+    // A December Sunday is untouched by the Saturday-only exception and
+    // stays non-working — the exception doesn't open every weekend day,
+    // only the one it actually covers.
+    assert.equal(isWorkingDay(halfDaySaturdays, d('2024-12-08')), false);
+    // A December Monday is untouched too and still working via the
+    // normal Mon-Fri pattern (unaffected either way).
+    assert.equal(isWorkingDay(halfDaySaturdays, d('2024-12-02')), true);
   });
 
-  it('a mix of a TimePeriods exception and a plain shutdown exception applies each independently', () => {
+  it('a closure exception takes precedence over a co-matching TimePeriods exception on the same day, in EITHER array order', () => {
+    // #4982 review: collecting every matching exception before deciding
+    // (rather than branching per-entry during the walk) means a closure
+    // wins regardless of where it sits relative to a reduced-hours entry
+    // for the same day.
+    const closure = { name: 'Site shutdown', start: '2024-12-07', finish: '2024-12-07' };
+    const reducedHours = {
+      name: 'Half-day Saturdays',
+      start: '2024-12-01',
+      finish: '2024-12-31',
+      recurrencePattern: {
+        recurrenceType: 'WEEKLY' as const,
+        dayComponent: [], monthComponent: [],
+        weekdayComponent: [6],
+        timePeriods: [{ start: '10:00:00', end: '14:00:00' }],
+      },
+    };
+    const closureFirst: WorkCalendarInfo = { ...MON_FRI_CALENDAR, exceptionTimes: [closure, reducedHours] };
+    const reducedHoursFirst: WorkCalendarInfo = { ...MON_FRI_CALENDAR, exceptionTimes: [reducedHours, closure] };
+    assert.equal(isWorkingDay(closureFirst, d('2024-12-07')), false);
+    assert.equal(isWorkingDay(reducedHoursFirst, d('2024-12-07')), false);
+  });
+
+  it('a mix of a TimePeriods exception and a plain shutdown exception for DIFFERENT days applies each independently', () => {
     const mixed: WorkCalendarInfo = {
       ...MON_FRI_CALENDAR,
       exceptionTimes: [
         {
-          name: 'Half-day Fridays',
+          name: 'Half-day Saturdays',
           start: '2024-12-01',
           finish: '2024-12-31',
           recurrencePattern: {
             recurrenceType: 'WEEKLY', dayComponent: [], monthComponent: [],
-            weekdayComponent: [5],
-            timePeriods: [{ start: '08:00:00', end: '12:00:00' }],
+            weekdayComponent: [6],
+            timePeriods: [{ start: '10:00:00', end: '14:00:00' }],
           },
         },
         { name: 'Christmas', start: '2024-12-25', finish: '2024-12-26' },
       ],
     };
-    assert.equal(isWorkingDay(mixed, d('2024-12-06')), true); // half-day Friday, still working
+    assert.equal(isWorkingDay(mixed, d('2024-12-07')), true); // half-day Saturday, opened by the exception
     assert.equal(isWorkingDay(mixed, d('2024-12-25')), false); // Christmas (a Wednesday), plain shutdown wins
   });
 
@@ -488,6 +519,32 @@ describe('DST boundary (#4830, #4982 review — same local-day basis as computeT
       // 24h step across the 23h DST day.
       const sundayNoon = sunday + 12 * 3_600_000;
       assert.equal(skipToNextWorkingInstant(MON_FRI_UNBOUNDED_CALENDAR, sundayNoon), monday);
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
+  });
+
+  it('parses a bare IfcDate WorkTime bound as its own civil day, not shifted by a negative UTC offset (#4982 review)', () => {
+    // America/Los_Angeles is UTC-8 (winter, no DST in play here). Under the
+    // OLD implementation (Date.parse anchors a date-only string to UTC
+    // midnight, then bucket into a local day), '2024-08-01' would parse to
+    // 2024-08-01T00:00:00Z, which is 2024-07-31T17:00 local in LA — a
+    // DIFFERENT civil day. The fix parses the Y-M-D components directly
+    // into a local `Date`, so the bound lands on August 1st exactly,
+    // regardless of the runner's offset sign.
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      const closureOneDay: WorkCalendarInfo = {
+        ...MON_FRI_UNBOUNDED_CALENDAR,
+        exceptionTimes: [{ name: 'Closure', start: '2024-08-01', finish: '2024-08-01' }],
+      };
+      const aug1Local = new Date(2024, 7, 1).getTime(); // Thursday
+      const jul31Local = new Date(2024, 6, 31).getTime(); // Wednesday
+      assert.equal(isWorkingDay(closureOneDay, aug1Local), false); // shut exactly on Aug 1
+      // The old UTC-anchoring bug would have bled the closure back onto
+      // July 31st too; it must NOT.
+      assert.equal(isWorkingDay(closureOneDay, jul31Local), true);
     } finally {
       if (originalTz === undefined) delete process.env.TZ;
       else process.env.TZ = originalTz;

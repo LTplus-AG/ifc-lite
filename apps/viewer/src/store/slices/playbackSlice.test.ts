@@ -29,6 +29,20 @@ const makeStore = (
 
 const DAY = 86_400_000;
 
+/**
+ * Local midnight of the nth day after the epoch (1970-01-01, a Thursday).
+ * Production's `isWorkingDay`/`skipToNextWorkingInstant` bucket by LOCAL
+ * calendar day (`localDayStart`), whose boundaries are NOT exact multiples
+ * of `DAY` from epoch 0 outside UTC (a host at UTC+1/+2, e.g. Europe, has
+ * every local midnight offset from the epoch-multiple by that many hours).
+ * Tests that exercise calendar logic against synthetic (epoch-relative)
+ * playback times need this rather than raw `n * DAY` arithmetic, or they
+ * only pass by coincidence on a UTC host.
+ */
+function epochLocalDay(n: number): number {
+  return new Date(1970, 0, 1 + n).getTime();
+}
+
 // Deliberately not imported from `work-calendar.ts` (kept import-free of the
 // production module under test here, see the file-header note on
 // `check-test-revert-oracle`): builds a LOCAL midnight directly, matching
@@ -226,22 +240,56 @@ describe('playbackSlice', () => {
     });
 
     it('does not apply the calendar to a synthetic (undated) schedule range (#4982 review)', () => {
-      // Synthetic ranges are day-0-relative placeholders, not real
-      // calendar dates — evaluating MON_FRI_CALENDAR's 2024-dated bounds
-      // against 1970-epoch instants would make every entry's
-      // withinBounds check fail, reading as a total shutdown and
-      // stalling playback dead. respectWorkCalendar must be a no-op here
-      // even though a calendar resolves.
+      // Synthetic ranges (`day 0 .. sum-of-durations`, scheduleSlice.ts)
+      // are relative offsets from the epoch, not real calendar dates — the
+      // "Saturday" a day-0-relative offset happens to land on is a
+      // meaningless artifact of anchoring at 1970-01-01, not a real
+      // weekend. Applying the calendar to them anyway would still SKIP
+      // that artifact-Saturday exactly like a real one, silently
+      // distorting a schedule that was never given real dates.
+      //
+      // 1970-01-01 is a Thursday, so a naive test that starts at day 0 and
+      // only advances a fraction of a day never reaches a day boundary at
+      // all — it would pass identically whether or not the guard exists
+      // (caught on review). This one seeks to late "Friday" (day 1) and
+      // advances into "Saturday" (day 2): with the guard working, the
+      // landing instant is the plain unskipped advance; without it, a real
+      // calendar (`scheduleWithCalendar()`, Mon-Fri weekly) would skip
+      // that Saturday forward to "Monday" (day 4).
       const start = 0;
       const end = 100 * DAY;
+      // Local-day-boundary-aligned, per `epochLocalDay`'s doc comment —
+      // raw `n * DAY` arithmetic would only land on the right side of a
+      // day boundary by coincidence outside UTC.
+      const fridayLate = epochLocalDay(1) + 20 * 3_600_000; // day 1 ("Friday"), 20:00
       const s = makeStore({ start, end, synthetic: true }, scheduleWithCalendar());
       s.getState().setPlaybackSpeed(7);
       s.getState().setPlaybackLoop(false);
-      s.getState().seekSchedule(0);
+      s.getState().seekSchedule(fridayLate);
       s.getState().playSchedule();
-      s.getState().advancePlaybackBy(16);
-      assert.strictEqual(s.getState().playbackTime, 16 * 7 * 86_400); // plain, un-skipped advance
+      s.getState().advancePlaybackBy(1000); // clamped to 100ms -> lands ~12:48 into day 2
+      const rawUnskipped = fridayLate + 100 * 7 * 86_400;
+      assert.strictEqual(s.getState().playbackTime, rawUnskipped);
+      // Sanity: the un-skipped landing really is inside "day 2" ("Saturday"),
+      // strictly before "day 4" ("Monday") a real calendar would have
+      // skipped to — so this genuinely exercises the guard, not a
+      // coincidence of the numbers involved.
+      assert.ok(rawUnskipped >= epochLocalDay(2) && rawUnskipped < epochLocalDay(3));
       assert.strictEqual(s.getState().playbackIsPlaying, true);
+
+      // Contrast: the IDENTICAL seek/advance against a NON-synthetic range
+      // (synthetic: false) DOES get skipped — 1970-01-01 is a Thursday, so
+      // day 2 really is a "Saturday" the calendar treats as non-working,
+      // landing on day 4 ("Monday") instead. This is what proves the
+      // synthetic guard above is suppressing real calendar behaviour, not
+      // a no-op that happened to look the same.
+      const nonSynthetic = makeStore({ start, end, synthetic: false }, scheduleWithCalendar());
+      nonSynthetic.getState().setPlaybackSpeed(7);
+      nonSynthetic.getState().setPlaybackLoop(false);
+      nonSynthetic.getState().seekSchedule(fridayLate);
+      nonSynthetic.getState().playSchedule();
+      nonSynthetic.getState().advancePlaybackBy(1000);
+      assert.strictEqual(nonSynthetic.getState().playbackTime, epochLocalDay(4)); // skipped to "Monday"
     });
 
     it('loop-wraps to a working day when scheduleRange.start itself is non-working (#4982 review)', () => {

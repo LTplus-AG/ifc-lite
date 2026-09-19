@@ -46,3 +46,19 @@ test('remote entity creation preserves path identity and rejects invalid IFC cla
     'materialization binds the existing source instead of duplicating it',
   );
 });
+
+test('remote entity creation surfaces rejected initial references (#5008)', async () => {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
+  const view = new MutablePropertyView(store.properties, 'room');
+  const rejected: string[] = [];
+
+  assert.equal(createRemoteOverlayEntity(
+    store,
+    view,
+    '/m0/0000000000000000000003',
+    'IfcRelAggregates',
+    { 'bsi::ifc::prop::RelatingObject': { 'ifc-lite::entityPath': '/m0/missing' } },
+    (reason) => rejected.push(reason),
+  ), true);
+  assert.deepEqual(rejected, ['unresolved room reference: /m0/missing']);
+});

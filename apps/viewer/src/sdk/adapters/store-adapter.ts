@@ -53,33 +53,13 @@ import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
-import { entityForPath, pathForEntity, pathForGuid, unregisterEntityPath } from '@/lib/collab/entity-paths.js';
+import { entityForPath, pathForGuid } from '@/lib/collab/entity-paths.js';
+import { ensureSourceRoomEntities, initialRoomAttributes } from './store-adapter-collab.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
-  const MAX_SOURCE_REFERENCE_ENTITIES = 10_000;
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
-  function initialRoomAttributes(
-    dataStore: IfcDataStore,
-    type: string,
-    names: string[],
-    values: unknown[],
-    resolvePath?: (expressId: number) => string | null,
-  ): Record<string, unknown> {
-    const attributes: Record<string, unknown> = {};
-    const referenceSlots = referenceAttributeSlotsForStore(dataStore, type);
-    values.forEach((value, index) => {
-      const name = names[index];
-      if (name && name !== 'GlobalId' && value !== undefined) {
-        attributes[`bsi::ifc::prop::${name}`] = encodeRoomAttributeValue(
-          dataStore, value, referenceSlots[index] ?? false, resolvePath,
-        );
-      }
-    });
-    return attributes;
-  }
-
   function resolveDataStore(modelId: string) {
     const state = store.getState();
     const refModelId = modelId === 'legacy' ? LEGACY_MODEL_ID : modelId;
@@ -130,72 +110,6 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     );
   }
 
-  function ensureSourceRoomEntities(
-    modelId: string,
-    editor: StoreEditor,
-    roots: Iterable<number>,
-    dataStore: IfcDataStore,
-  ): void {
-    const pending = Array.from(roots);
-    const visited = new Set<number>();
-    const candidates = new Map<number, string>();
-    const entries: Array<{ expressId: number; type: string; names: string[]; values: unknown[]; roomKey: string }> = [];
-    while (pending.length > 0) {
-      const expressId = pending.pop();
-      if (expressId === undefined || visited.has(expressId)) continue;
-      visited.add(expressId);
-      if (visited.size > MAX_SOURCE_REFERENCE_ENTITIES) {
-        throw new Error(`bim.store: source reference graph exceeds ${MAX_SOURCE_REFERENCE_ENTITIES} entities`);
-      }
-      if (pathForEntity(dataStore, expressId) || editor.getNewEntity(expressId)
-        || dataStore.entities.getGlobalId(expressId)) continue;
-      const entity = dataStore.getEntity?.(expressId);
-      if (!entity) continue;
-      const names = attributeNamesForStore(dataStore, entity.type);
-      let roomKey = `ifc-lite-ref-${expressId}`;
-      let suffix = 0;
-      while (dataStore.entities.getExpressIdByGlobalId(roomKey) >= 0) {
-        roomKey = `ifc-lite-ref-${expressId}-${++suffix}`;
-      }
-      candidates.set(expressId, pathForGuid(dataStore, roomKey));
-      entries.push({ expressId, type: entity.type, names, values: entity.attributes, roomKey });
-      const referenceSlots = referenceAttributeSlotsForStore(dataStore, entity.type);
-      entity.attributes.forEach((value, index) => {
-        pending.push(...referencedExpressIds(value, referenceSlots[index] ?? false));
-      });
-    }
-    const resolvePath = (expressId: number) => candidates.get(expressId) ?? pathForEntity(dataStore, expressId);
-    // A cyclic graph has no topological creation order. Publish every path
-    // before any reference-bearing attribute so recipients can resolve all
-    // edges when the attribute events arrive.
-    const registered: number[] = [];
-    for (const entry of entries) {
-      store.getState().mirrorEntityCreate(
-        modelId, entry.expressId, entry.type, entry.roomKey, null, {},
-      );
-      if (pathForEntity(dataStore, entry.expressId) === candidates.get(entry.expressId)) {
-        registered.push(entry.expressId);
-      }
-    }
-    if (registered.length !== entries.length) {
-      // Collaboration can be unavailable while the local edit is accepted.
-      // Forget partial registrations so the complete idempotent batch retries.
-      for (const expressId of registered) unregisterEntityPath(dataStore, expressId);
-      return;
-    }
-    for (const entry of entries) {
-      const attributes = initialRoomAttributes(
-        dataStore, entry.type, entry.names, entry.values, resolvePath,
-      );
-      // createEntity is deliberately idempotent, so a second create cannot
-      // fill the shell nodes registered above. Publish the second phase as
-      // incremental writes after every cyclic path is resolvable.
-      for (const [name, value] of Object.entries(attributes)) {
-        store.getState().mirrorAttributeEdit(modelId, entry.expressId, name, value);
-      }
-    }
-  }
-
   function assertAvailableGlobalId(
     operation: string, modelId: string, editor: StoreEditor, dataStore: IfcDataStore, expressId: number, globalId: string,
   ): void {
@@ -234,9 +148,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       def.attributes.forEach((value, index) => referencedExpressIds(
         value, referenceSlots[index] ?? false, referenced,
       ));
-      ensureSourceRoomEntities(modelId, editor, referenced, dataStore);
+      const roomReferencesReady = ensureSourceRoomEntities(store, modelId, editor, referenced, dataStore);
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-      mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
+      if (roomReferencesReady) mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
       return { modelId: normalizedId, expressId: ref.expressId };
     },
     removeEntity(ref: EntityRef): boolean {
@@ -245,9 +159,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       if (!editor) return false;
       const dataStore = resolveDataStore(ref.modelId);
       if (!dataStore) return false;
-      ensureSourceRoomEntities(ref.modelId, editor, [ref.expressId], dataStore);
+      const roomEntityReady = ensureSourceRoomEntities(store, ref.modelId, editor, [ref.expressId], dataStore);
       const removed = editor.removeEntity(ref.expressId);
-      if (removed) {
+      if (removed && roomEntityReady) {
         store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
       }
       return removed;
@@ -266,15 +180,16 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       if (name === 'GlobalId') {
         throw new Error('bim.store.setPositionalAttribute: GlobalId is immutable in a shared room');
       }
+      let roomReferencesReady = true;
       if (dataStore) {
         const referenced = referencedExpressIds(
           value, type ? (referenceAttributeSlotsForStore(dataStore, type)[index] ?? false) : false,
         );
         referenced.add(ref.expressId);
-        ensureSourceRoomEntities(ref.modelId, editor, referenced, dataStore);
+        roomReferencesReady = ensureSourceRoomEntities(store, ref.modelId, editor, referenced, dataStore);
       }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
-      if (name) {
+      if (name && roomReferencesReady) {
         store.getState().mirrorAttributeEdit(
           ref.modelId,
           ref.expressId,

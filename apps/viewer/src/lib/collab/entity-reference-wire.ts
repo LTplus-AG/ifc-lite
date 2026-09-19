@@ -10,6 +10,8 @@ const STEP_REFERENCE = /^#([1-9]\d*)$/;
 const MAX_VALUE_NODES = 10_000;
 const MAX_VALUE_DEPTH = 256;
 
+export interface ReferenceTraversalBudget { remainingNodes: number }
+
 function scalarTypedMarker(value: object): boolean {
   if (Array.isArray(value)) return false;
   const typed = (value as { typed?: unknown }).typed;
@@ -18,23 +20,28 @@ function scalarTypedMarker(value: object): boolean {
   return typeof marker.type === 'string' && 'value' in marker && !isInstantiable(marker.type);
 }
 
-function assertValueBudget(nodes: number, depth: number): void {
+function assertValueBudget(nodes: number, depth: number, budget?: ReferenceTraversalBudget): void {
   if (nodes > MAX_VALUE_NODES) {
     throw new Error(`collaboration attribute value exceeds ${MAX_VALUE_NODES} nodes`);
   }
   if (depth > MAX_VALUE_DEPTH) {
     throw new Error(`collaboration attribute value exceeds depth ${MAX_VALUE_DEPTH}`);
   }
+  if (budget && --budget.remainingNodes < 0) {
+    throw new Error('collaboration source reference graph exceeds its traversal work budget');
+  }
 }
 
-export function referencedExpressIds(value: unknown, allowReferences: boolean, ids = new Set<number>()): Set<number> {
+export function referencedExpressIds(
+  value: unknown, allowReferences: boolean, ids = new Set<number>(), budget?: ReferenceTraversalBudget,
+): Set<number> {
   if (!allowReferences) return ids;
   const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
   const visited = new Set<object>();
   let nodes = 0;
   while (pending.length > 0) {
     const { value: item, depth } = pending.pop()!;
-    assertValueBudget(++nodes, depth);
+    assertValueBudget(++nodes, depth, budget);
     if (typeof item === 'string') {
       const match = STEP_REFERENCE.exec(item);
       if (match) ids.add(Number(match[1]));
@@ -65,6 +72,7 @@ export function encodeRoomAttributeValue(
   value: unknown,
   allowReferences: boolean,
   resolvePath: (expressId: number) => string | null = expressId => pathForEntity(store, expressId),
+  budget?: ReferenceTraversalBudget,
 ): unknown {
   if (!allowReferences) return value;
   let encoded: unknown;
@@ -72,7 +80,7 @@ export function encodeRoomAttributeValue(
   let nodes = 0;
   while (pending.length > 0) {
     const frame = pending.pop()!;
-    assertValueBudget(++nodes, frame.depth);
+    assertValueBudget(++nodes, frame.depth, budget);
     const item = frame.value;
     if (typeof item === 'string') {
       const match = STEP_REFERENCE.exec(item);

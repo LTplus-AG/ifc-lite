@@ -65,7 +65,7 @@ function fixture(
     canCollabEdit: () => canEdit,
     mirrorEntityCreate: (...args: unknown[]) => {
       calls.push({ kind: 'create', args });
-      if (canMirrorCreate?.()) {
+      if (canMirrorCreate?.() ?? true) {
         registerEntityPath(modelStore, args[1] as number, pathForGuid(modelStore, args[3] as string));
       }
     },
@@ -207,7 +207,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     const point = { modelId: MODEL, expressId: 3 };
     adapter.setPositionalAttribute(point, 0, [4, 5, 6]);
     assert.deepEqual(calls[0]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
-    assert.deepEqual(calls[1], {
+    assert.deepEqual(calls.filter(call => call.kind === 'attribute').at(-1), {
       kind: 'attribute', args: [MODEL, 3, 'bsi::ifc::prop::Coordinates', [4, 5, 6]],
     });
     assert.equal(adapter.removeEntity(point), true);
@@ -259,6 +259,61 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.ok(calls.some(call => call.kind === 'attribute'
       && call.args[1] === 3
       && call.args[2] === 'bsi::ifc::prop::Coordinates'));
+  });
+
+  it('retries an unregistered overlay reference before encoding its path', () => {
+    let available = false;
+    const retryStore = Object.create(dataStore) as IfcDataStore;
+    const { adapter, calls } = fixture(true, retryStore, () => available);
+    const referenced = adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Base', null, null, null, null, null, null, null, null, null],
+    });
+    available = true;
+    adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Total', null, null, null, null, null, null, null, '.ADD.', [`#${referenced.expressId}`]],
+    });
+
+    const retried = calls.filter(call => call.kind === 'create' && call.args[1] === referenced.expressId);
+    assert.equal(retried.length, 2, 'the pre-room overlay entity must be published again');
+    const parent = calls.filter(call => call.kind === 'create').at(-1);
+    const components = (parent?.args[5] as Record<string, unknown>)['bsi::ifc::prop::Components'];
+    assert.deepEqual(components, [{
+      'ifc-lite::entityPath': pathForGuid(retryStore, retried[1]?.args[3] as string),
+    }]);
+  });
+
+  it('suffixes a source materialization path already owned by a live room entity', () => {
+    const collisionStore = Object.create(dataStore) as IfcDataStore;
+    const { adapter, calls } = fixture(true, collisionStore, () => true);
+    adapter.addEntity(MODEL, {
+      type: 'IFCWALL',
+      attributes: ['ifc-lite-ref-3', null, 'Path owner', null, null, null, null, null, '.NOTDEFINED.'],
+    });
+    adapter.setPositionalAttribute({ modelId: MODEL, expressId: 3 }, 0, [4, 5, 6]);
+
+    const sourceCreate = calls.find(call => call.kind === 'create' && call.args[1] === 3);
+    assert.equal(sourceCreate?.args[3], 'ifc-lite-ref-3-1');
+  });
+
+  it('shares one bounded work budget across broad source reference attributes', () => {
+    const broadStore = Object.create(dataStore) as IfcDataStore;
+    const references = Array.from({ length: 5_000 }, () => '#4');
+    Object.defineProperty(broadStore, 'getEntity', {
+      value: (expressId: number) => expressId === 3
+        ? { expressId, type: 'IfcBooleanResult', attributes: ['.UNION.', references, references] }
+        : expressId === 4
+          ? { expressId, type: 'IfcCartesianPoint', attributes: [[0, 0, 0]] }
+          : undefined,
+    });
+    const { adapter, calls } = fixture(true, broadStore, () => true);
+
+    assert.throws(
+      () => adapter.setPositionalAttribute({ modelId: MODEL, expressId: 3 }, 1, '#4'),
+      /traversal work budget/,
+    );
+    assert.deepEqual(calls, [], 'budget exhaustion must happen before any room shell is published');
   });
 
   it('uses IFC2X3 positional names and mirrors undefined as an explicit clear', () => {

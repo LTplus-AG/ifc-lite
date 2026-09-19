@@ -847,15 +847,18 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       session.dispose();
       return;
     }
-
     // Replay peer edits into the named ROOM model without local undo or echo.
     // Room paths, never activeModelId, select the model because expressIds are
     // model-local. Resolution fails closed until registration; reconstruct then
     // rebuilds from the CRDT.
+    const rejectRemoteAttribute = (rejected: string) => {
+      console.warn('[collab] rejected remote attribute:', rejected);
+      set({ collabGeometryNotice: `A collaborative attribute could not be applied: ${rejected}` });
+    };
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
       onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes) => {
         const view = roomMutationViewFor(get(), modelId);
-        if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes))
+        if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes, rejectRemoteAttribute))
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onProperty: (modelId, entityId, pset, prop, value, type) => {
@@ -885,8 +888,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         if (!view || !store) return;
         const rejected = applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
         if (rejected) {
-          console.warn('[collab] rejected remote attribute:', rejected);
-          set({ collabGeometryNotice: `A collaborative attribute could not be applied: ${rejected}` });
+          rejectRemoteAttribute(rejected);
           return;
         }
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));

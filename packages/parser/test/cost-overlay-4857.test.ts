@@ -232,6 +232,33 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
     expect(graph.CostItems.filter(item => item.expressId === 60)).toHaveLength(1);
   });
 
+  it('reads the GlobalId of an overlay-created product assigned to a cost item (#4857 review)', () => {
+    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
+      overlay: overlay({
+        created: () => [
+          {
+            expressId: 60,
+            type: 'IFCCOSTITEM',
+            text: "#60=IFCCOSTITEM('created-item-gid-00001',$,'Created item',$,$,$,.NOTDEFINED.,$,$);",
+          },
+          {
+            expressId: 61,
+            type: 'IFCWALL',
+            text: "#61=IFCWALL('created-wall-gid-00001',$,'Created wall',$,$,$,$,$);",
+          },
+          {
+            expressId: 62,
+            type: 'IFCRELASSIGNSTOCONTROL',
+            text: "#62=IFCRELASSIGNSTOCONTROL('created-rel-gid-000001',$,$,$,(#61),$,#60);",
+          },
+        ],
+      }),
+    });
+
+    expect(itemById(graph, 60)?.productExpressIds).toEqual([61]);
+    expect(itemById(graph, 60)?.productGlobalIds).toEqual(['created-wall-gid-00001']);
+  });
+
   it('an overlay that touches nothing returns the same graph as no overlay at all', () => {
     const plain = extractCostOnDemand(buildStoreFromStep(FIXTURE));
     const overlaid = extractCostOnDemand(buildStoreFromStep(FIXTURE), {

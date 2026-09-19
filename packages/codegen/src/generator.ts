@@ -147,7 +147,7 @@ export * from './serializers.js';
   // Generate Rust code if requested
   if (options.rust) {
     console.log('\n🦀 Generating Rust code...');
-    const rustCode = generateRust(schema, { cratePrivate: options.rustCratePrivate });
+    const rustCode = generateRust(schema, options.rustCratePrivate);
     // Use absolute path directly, or join relative path with outputDir
     const rustDir = options.rustDir
       ? isAbsolute(options.rustDir)

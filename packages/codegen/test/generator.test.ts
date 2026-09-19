@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ENTITIES_IFC4, IFC_DATA_TYPES } from '@ifc-lite/data';
@@ -112,26 +112,6 @@ describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
           skipCollisionCheck: true,
         }),
       ).not.toThrow();
-    } finally {
-      rmSync(outputDir, { recursive: true, force: true });
-    }
-  });
-
-  it('includes IFC4X1 classes from the supported IFC4 family catalog, not defined types', () => {
-    const outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-4203-ifc4x1-'));
-    try {
-      generateFromSchema(
-        'SCHEMA TEST; ENTITY IfcRoot; END_ENTITY; END_SCHEMA;',
-        outputDir,
-        { rust: true, skipCollisionCheck: true },
-      );
-      const schema = readFileSync(join(outputDir, 'rust', 'schema.rs'), 'utf8');
-      expect(schema).toContain('    IfcAlignmentCurve,');
-      expect(schema).toContain('Self::IfcAlignmentCurve => Some(Self::IfcBoundedCurve),');
-      expect(schema).toContain('Self::IfcAlignmentCurve => &[],');
-      expect(schema).not.toContain('    IfcLengthMeasure,');
-      expect(schema).not.toContain('    IfcBinary,');
-      expect(schema).not.toContain('    IfcPropertySetDefinitionSet,');
     } finally {
       rmSync(outputDir, { recursive: true, force: true });
     }

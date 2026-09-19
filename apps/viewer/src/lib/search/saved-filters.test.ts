@@ -118,6 +118,18 @@ describe('saved-filters', () => {
     assert.deepStrictEqual(preset.groups[1].rules, [Rule.ifcType(['IfcDoor'])]);
   });
 
+  it('a literal schemaVersion 1 reads as the legacy single-group shape (#4987 review)', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'Old export', schemaVersion: 1, combinator: 'OR', rules: [Rule.ifcType(['IfcWall'])] }]),
+    );
+    const [preset] = loadSavedFilters();
+    assert.ok(preset, 'the legacy preset is readable');
+    assert.strictEqual(preset.groups.length, 1);
+    assert.strictEqual(preset.groups[0].combinator, 'OR');
+    assert.deepStrictEqual(preset.groups[0].rules, [Rule.ifcType(['IfcWall'])]);
+  });
+
   it('a STRING schemaVersion ("2") is unreadable, not silently read as an empty v1 preset', () => {
     (g.localStorage as MemoryStorage).setItem(
       __internal.STORAGE_KEY,

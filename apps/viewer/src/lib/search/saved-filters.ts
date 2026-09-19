@@ -113,7 +113,9 @@ function readGroups(o: Record<string, unknown>): FilterGroup[] | null {
   // #4987) caught that coercing a non-number to v1 silently read a v2
   // preset's OMITTED `rules`/`combinator` as an empty filter instead of
   // refusing the unreadable entry.
-  if (o.schemaVersion === undefined) {
+  // Pre-#4904 builds never wrote a version; a literal `1` is accepted as the
+  // same shape in case a hand-edited export names it.
+  if (o.schemaVersion === undefined || o.schemaVersion === 1) {
     const combinator: Combinator = o.combinator === 'OR' ? 'OR' : 'AND';
     return [{ rules: parseFilterRules(o.rules), combinator }];
   }

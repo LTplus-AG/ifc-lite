@@ -328,18 +328,11 @@ describe('GanttTaskTree localization (#4918)', { skip: !HAS_CATALOGUE && 'schedu
 
     assert.ok(after.has(mark('schedule.taskTree.columnTask')));
     assert.ok(after.has(mark('schedule.taskTree.columnDuration')));
-    assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.toggleExpandAriaLabel|')), 'interpolated expand aria-label not marked');
+    assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.collapseAriaLabel|')), 'interpolated collapse aria-label not marked');
+    assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.expandAriaLabel|')), 'interpolated expand aria-label not marked');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.workCalendar|')), 'interpolated work-calendar label not marked');
-    // `collapse`/`expand` never render standalone — they're always the
-    // interpolated `{action}` parameter inside `toggleExpandAriaLabel`, so
-    // their marked text is a substring of that combined aria-label rather
-    // than a set member of its own.
-    assert.ok([...after].some(s => s.includes(mark('schedule.taskTree.collapse'))), 'collapse param not embedded in the expand aria-label');
-    assert.ok([...after].some(s => s.includes(mark('schedule.taskTree.expand'))), 'expand param not embedded in the expand aria-label');
     covered.add('schedule.taskTree.columnTask');
     covered.add('schedule.taskTree.columnDuration');
-    covered.add('schedule.taskTree.collapse');
-    covered.add('schedule.taskTree.expand');
   });
 });
 
@@ -632,7 +625,7 @@ describe('GanttToolbar localization (#4918)', { skip: !HAS_CATALOGUE && 'schedul
 
 describe('ScheduleSummaryLine localization (#4918)', () => {
   it('preserves translator ordering while styling the three interpolated values', () => {
-    const container = render(<ScheduleSummaryLine groups="2" products="7" date="2030-01-02" />);
+    const container = render(<ScheduleSummaryLine groupCount={2} productCount={7} date="2030-01-02" />);
     const summary = container.querySelector('p');
     assert.ok(summary);
     assert.equal(summary.querySelectorAll('span.font-semibold').length, 2,
@@ -642,8 +635,15 @@ describe('ScheduleSummaryLine localization (#4918)', () => {
 
     registerLocale('schedule-summary-pseudo', PSEUDO);
     act(() => setLocale('schedule-summary-pseudo'));
-    assert.ok(summary.textContent?.startsWith('⟦schedule.generateDialog.summaryLine|'));
-    covered.add('schedule.generateDialog.summaryLine');
+    assert.ok(summary.textContent?.startsWith('⟦schedule.generateDialog.summaryLineGroupsOther|'));
+  });
+
+  it('selects complete singular forms independently for task groups and products', () => {
+    const bothSingular = render(<ScheduleSummaryLine groupCount={1} productCount={1} date="2030-01-02" />);
+    assert.match(bothSingular.textContent ?? '', /^1 task · 1 product · finishes/);
+    cleanup();
+    const singularProduct = render(<ScheduleSummaryLine groupCount={2} productCount={1} date="2030-01-02" />);
+    assert.match(singularProduct.textContent ?? '', /^2 tasks · 1 product · finishes/);
   });
 });
 
@@ -685,7 +685,7 @@ describe('GenerateScheduleDialog localization (#4918)', { skip: !HAS_CATALOGUE &
     act(() => setLocale('generate-dialog-pseudo'));
     const after = visibleStrings(container);
     checkCovered(english, after, 'schedule.generateDialog.');
-    assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.summaryLine|')), 'summary line interpolation not marked');
+    assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.summaryLineGroupsOne|')), 'summary line plural variant not marked');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.generateDialog.taskRangeSingle|')), 'single-task interpolation not marked');
   });
 

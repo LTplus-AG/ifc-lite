@@ -206,10 +206,9 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                         <button
                           type="button"
                           aria-expanded={expanded}
-                          aria-label={t('schedule.taskTree.toggleExpandAriaLabel', {
-                            action: expanded ? t('schedule.taskTree.collapse') : t('schedule.taskTree.expand'),
-                            label,
-                          })}
+                          aria-label={t(expanded
+                            ? 'schedule.taskTree.collapseAriaLabel'
+                            : 'schedule.taskTree.expandAriaLabel', { label })}
                           onClick={(e) => {
                             e.stopPropagation();
                             onToggleExpand(task.globalId);

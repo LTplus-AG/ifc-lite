@@ -42,7 +42,7 @@ import {
   type GenerateOrder,
 } from './generate-schedule';
 import { buildWorkPlanInfo, logGeneratedScheduleDebug } from './schedule-utils';
-import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleDate } from '@/i18n/intlFormat';
 import { HeightStrategyPanel } from './HeightStrategyPanel';
 import { GenerateAdvancedPanel } from './GenerateAdvancedPanel';
 import { ScheduleSummaryLine } from './ScheduleSummaryLine';
@@ -53,7 +53,7 @@ interface GenerateScheduleDialogProps {
 }
 
 export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleDialogProps) {
-  const { t, locale, revision } = useTranslation();
+  const { t, locale } = useTranslation();
   const { ifcDataStore, models, activeModelId } = useIfc();
   const commitGeneratedSchedule = useViewerStore(s => s.commitGeneratedSchedule);
   const setGanttPanelVisible = useViewerStore(s => s.setGanttPanelVisible);
@@ -114,7 +114,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   // Live preview — runs on every option change. The helper is pure and cheap
   // enough (O(vertex count) for the Z strategy; O(storeys × products) for
   // the others) that we don't debounce.
-  const effectiveOptions = useMemo(() => ({ ...options, scheduleName: options.scheduleName.trim() || t('schedule.generateAdvanced.scheduleNamePlaceholder') }), [options, t, revision]);
+  const effectiveOptions = useMemo(() => ({ ...options, scheduleName: options.scheduleName.trim() || t('schedule.generateAdvanced.scheduleNamePlaceholder') }), [options, t, locale]);
   const preview = useMemo(() => {
     if (!canGenerate) return null;
     return generateScheduleFromSpatialHierarchy(activeStore, effectiveOptions, modelContext);
@@ -327,8 +327,8 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                     <span className="text-xs text-muted-foreground">{t('schedule.generateDialog.generatedLocally')}</span>
                   </div>
                   <ScheduleSummaryLine
-                    groups={formatLocaleNumber(locale, preview.groupCount)}
-                    products={formatLocaleNumber(locale, preview.productCount)}
+                    groupCount={preview.groupCount}
+                    productCount={preview.productCount}
                     date={formatLocaleDate(locale, new Date(preview.finishDate), { year: 'numeric', month: 'short', day: 'numeric' })}
                   />
                   {preview.groupCount > 0 && (

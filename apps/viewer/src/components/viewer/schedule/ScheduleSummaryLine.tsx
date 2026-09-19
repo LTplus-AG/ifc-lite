@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ReactNode } from 'react';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type PluralCategory, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 const MARKERS = {
   groups: '\uE000groups\uE001',
@@ -13,18 +14,28 @@ const MARKERS = {
 const MARKER_PATTERN = /(\uE000(?:groups|products|date)\uE001)/;
 
 interface ScheduleSummaryLineProps {
-  groups: string;
-  products: string;
+  groupCount: number;
+  productCount: number;
   date: string;
 }
 
+const GROUP_SUMMARY_KEYS: Record<PluralCategory, TranslationKey> = {
+  zero: 'schedule.generateDialog.summaryLineGroupsZero',
+  one: 'schedule.generateDialog.summaryLineGroupsOne',
+  two: 'schedule.generateDialog.summaryLineGroupsTwo',
+  few: 'schedule.generateDialog.summaryLineGroupsFew',
+  many: 'schedule.generateDialog.summaryLineGroupsMany',
+  other: 'schedule.generateDialog.summaryLineGroupsOther',
+};
+
 /** Preserve translator-controlled word order while styling interpolated values. */
-export function ScheduleSummaryLine({ groups, products, date }: ScheduleSummaryLineProps) {
-  const { t } = useTranslation();
-  const translated = t('schedule.generateDialog.summaryLine', MARKERS);
+export function ScheduleSummaryLine({ groupCount, productCount, date }: ScheduleSummaryLineProps) {
+  const { t, locale } = useTranslation();
+  const groupCategory = new Intl.PluralRules(locale, { maximumSignificantDigits: 21 }).select(groupCount);
+  const translated = t(GROUP_SUMMARY_KEYS[groupCategory], { ...MARKERS, count: productCount });
   const values: Record<string, ReactNode> = {
-    [MARKERS.groups]: <span className="font-semibold">{groups}</span>,
-    [MARKERS.products]: <span className="font-semibold">{products}</span>,
+    [MARKERS.groups]: <span className="font-semibold">{formatLocaleNumber(locale, groupCount)}</span>,
+    [MARKERS.products]: <span className="font-semibold">{formatLocaleNumber(locale, productCount)}</span>,
     [MARKERS.date]: <span className="font-mono">{date}</span>,
   };
   return <p>{translated.split(MARKER_PATTERN).map((part, index) =>

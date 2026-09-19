@@ -84,9 +84,8 @@ export const scheduleEn = {
   // ── Task tree (GanttTaskTree.tsx) ───────────────────────────────────
   'schedule.taskTree.columnTask': 'Task',
   'schedule.taskTree.columnDuration': 'Duration',
-  'schedule.taskTree.collapse': 'Collapse',
-  'schedule.taskTree.expand': 'Expand',
-  'schedule.taskTree.toggleExpandAriaLabel': '{action} {label}',
+  'schedule.taskTree.collapseAriaLabel': 'Collapse {label}',
+  'schedule.taskTree.expandAriaLabel': 'Expand {label}',
   'schedule.taskTree.workCalendar': 'Work calendar: {name}',
 
   // ── Height-slice strategy sub-panel (HeightStrategyPanel.tsx) ───────
@@ -147,7 +146,12 @@ export const scheduleEn = {
   'schedule.generateDialog.orderTopDownDescription': 'Roof → upper floors → ground',
   'schedule.generateDialog.summaryHeading': 'Summary',
   'schedule.generateDialog.generatedLocally': 'Generated locally — not written to IFC',
-  'schedule.generateDialog.summaryLine': '{groups} tasks · {products} products · finishes {date}',
+  'schedule.generateDialog.summaryLineGroupsZero': { one: '{groups} tasks · {products} product · finishes {date}', other: '{groups} tasks · {products} products · finishes {date}' },
+  'schedule.generateDialog.summaryLineGroupsOne': { one: '{groups} task · {products} product · finishes {date}', other: '{groups} task · {products} products · finishes {date}' },
+  'schedule.generateDialog.summaryLineGroupsTwo': { one: '{groups} tasks · {products} product · finishes {date}', other: '{groups} tasks · {products} products · finishes {date}' },
+  'schedule.generateDialog.summaryLineGroupsFew': { one: '{groups} tasks · {products} product · finishes {date}', other: '{groups} tasks · {products} products · finishes {date}' },
+  'schedule.generateDialog.summaryLineGroupsMany': { one: '{groups} tasks · {products} product · finishes {date}', other: '{groups} tasks · {products} products · finishes {date}' },
+  'schedule.generateDialog.summaryLineGroupsOther': { one: '{groups} tasks · {products} product · finishes {date}', other: '{groups} tasks · {products} products · finishes {date}' },
   'schedule.generateDialog.taskRangeSingle': 'First task: {first}',
   'schedule.generateDialog.taskRangeMultiple': 'First task: {first} · last: {last}',
   'schedule.generateDialog.noGroupsMatch':

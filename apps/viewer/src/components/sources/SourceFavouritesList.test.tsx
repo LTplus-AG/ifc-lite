@@ -26,6 +26,7 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { registerLocale, setLocale } from '@/i18n';
 import type {
   FileSourceProvider,
   Page,
@@ -215,6 +216,31 @@ describe('SourceFavouritesList — what is shown', () => {
       ['Drawings'],
     );
     assert.equal(rowButton('Models'), undefined, 'the removed row must leave the screen');
+  });
+
+  it('reads the remove-favourite aria-label from the active locale (#4918)', () => {
+    // Registers a pseudo-locale for the row's own catalogue key by NAME
+    // (not by importing sources.en.ts — this file predates that catalogue
+    // and stays independent of it) and asserts the label actually comes
+    // from `t()` rather than a hardcoded string.
+    registerLocale('source-favourites-list-pseudo', {
+      'sources.sourceFavouritesList.removeFavouriteAria': 'MARKED-REMOVE {name}',
+    });
+    act(() => setLocale('source-favourites-list-pseudo'));
+
+    const host = new SourceHost();
+    host.register(new FakeProvider(manifest()));
+    saveFavourites('fixture-provider', [
+      favourite({ containerId: 'folder-1', containerName: 'Models', addedAt: 2 }),
+    ]);
+    renderList(host);
+
+    assert.ok(
+      document.body.querySelector('button[aria-label="MARKED-REMOVE Models"]'),
+      'the remove button aria-label must come from the active locale catalogue, not a hardcoded string',
+    );
+
+    setLocale('en');
   });
 });
 

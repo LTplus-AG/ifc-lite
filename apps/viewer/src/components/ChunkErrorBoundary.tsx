@@ -23,6 +23,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { isChunkLoadError } from '@/lib/chunk-version-skew';
 
@@ -88,44 +89,68 @@ export class ChunkErrorBoundary extends Component<
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
-    const night = this.props.tone === 'night';
-    const chunk = isChunkLoadError(error);
     return (
-      <div
-        // The fallback swaps in asynchronously, so without this a screen reader
-        // user gets no notification that the view they asked for is not coming.
-        role="alert"
-        className="flex h-full min-h-[160px] w-full flex-col items-center justify-center gap-2 px-4 text-center"
-        style={night ? { background: '#0a0a0c' } : undefined}
-      >
-        <span
-          className={night ? 'text-xs' : 'text-xs text-muted-foreground'}
-          style={night ? { color: NIGHT_TONE.fg } : undefined}
-        >
-          {chunk ? `${this.props.label} could not be loaded` : `${this.props.label} stopped working`}
-        </span>
-        <span
-          className={night ? 'max-w-[280px] text-[11px]' : 'max-w-[280px] text-[11px] text-muted-foreground'}
-          style={night ? { color: NIGHT_TONE.dim } : undefined}
-        >
-          {chunk
-            ? 'This usually means the app was updated while your tab was open.'
-            : 'An unexpected error stopped it from rendering.'}
-        </span>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className={
-            night
-              ? 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-opacity hover:opacity-80'
-              : 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors hover:bg-accent'
-          }
-          style={night ? { borderColor: NIGHT_TONE.dim, color: NIGHT_TONE.fg } : undefined}
-        >
-          <RefreshCw className="h-3 w-3" aria-hidden />
-          Reload
-        </button>
-      </div>
+      <ChunkErrorFallback
+        label={this.props.label}
+        tone={this.props.tone}
+        chunk={isChunkLoadError(error)}
+      />
     );
   }
+}
+
+/**
+ * The fallback UI as its own function component: `ChunkErrorBoundary`
+ * itself must stay a class (React only recognizes class components as
+ * error boundaries), but hooks — `useTranslation` here — only work in
+ * function components.
+ */
+function ChunkErrorFallback({
+  label,
+  tone,
+  chunk,
+}: {
+  label: string;
+  tone: ChunkErrorTone | undefined;
+  chunk: boolean;
+}): ReactNode {
+  const { t } = useTranslation();
+  const night = tone === 'night';
+  return (
+    <div
+      // The fallback swaps in asynchronously, so without this a screen reader
+      // user gets no notification that the view they asked for is not coming.
+      role="alert"
+      className="flex h-full min-h-[160px] w-full flex-col items-center justify-center gap-2 px-4 text-center"
+      style={night ? { background: '#0a0a0c' } : undefined}
+    >
+      <span
+        className={night ? 'text-xs' : 'text-xs text-muted-foreground'}
+        style={night ? { color: NIGHT_TONE.fg } : undefined}
+      >
+        {chunk ? t('viewerShell.chunkError.loadFailed', { label }) : t('viewerShell.chunkError.crashed', { label })}
+      </span>
+      <span
+        className={night ? 'max-w-[280px] text-[11px]' : 'max-w-[280px] text-[11px] text-muted-foreground'}
+        style={night ? { color: NIGHT_TONE.dim } : undefined}
+      >
+        {chunk
+          ? t('viewerShell.chunkError.loadFailedDetail')
+          : t('viewerShell.chunkError.crashedDetail')}
+      </span>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className={
+          night
+            ? 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-opacity hover:opacity-80'
+            : 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors hover:bg-accent'
+        }
+        style={night ? { borderColor: NIGHT_TONE.dim, color: NIGHT_TONE.fg } : undefined}
+      >
+        <RefreshCw className="h-3 w-3" aria-hidden />
+        {t('viewerShell.chunkError.reload')}
+      </button>
+    </div>
+  );
 }

@@ -12,12 +12,14 @@
 
 import { GraduationCap } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n';
 import { startTour } from '@/lib/tours/controller';
 import { getToursForPanel } from '@/lib/tours/registry';
 import { isTourCompleted } from '@/lib/tours/storage';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 
 export function PanelTourButton({ panelId }: { panelId: WorkspacePanelId }) {
+  const { t } = useTranslation();
   const tour = getToursForPanel(panelId)[0];
   if (!tour || isTourCompleted(tour.id, tour.version)) return null;
 
@@ -28,14 +30,14 @@ export function PanelTourButton({ panelId }: { panelId: WorkspacePanelId }) {
           type="button"
           data-chrome-btn
           data-no-drag
-          aria-label={`Start tour: ${tour.title}`}
+          aria-label={t('tours.panelTourButton.startAriaLabel', { title: tour.title })}
           onClick={() => startTour(tour.id, 'panel')}
           className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <GraduationCap className="h-3.5 w-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">{tour.title} ({tour.minutes} min tour)</TooltipContent>
+      <TooltipContent side="bottom">{t('tours.panelTourButton.tooltip', { title: tour.title, minutes: tour.minutes })}</TooltipContent>
     </Tooltip>
   );
 }

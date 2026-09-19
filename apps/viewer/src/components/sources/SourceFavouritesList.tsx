@@ -16,6 +16,7 @@ import {
   type SourceFavourite,
 } from '@/lib/sources/favourites';
 import { FileBox, Folder, X } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 interface SourceFavouritesListProps {
   sourceHost: SourceHost;
@@ -81,10 +82,13 @@ export function SourceFavouritesList({
   onOpen,
   onChanged,
 }: SourceFavouritesListProps) {
+  const { t, locale } = useTranslation();
   const rows = useMemo<FavouriteRow[]>(() => {
     // The counter is not read directly — it exists to re-derive this list after
-    // a star press elsewhere in the panel.
+    // a star press elsewhere in the panel. `locale` is read the same way, to
+    // re-derive `disabledReason` after a locale switch.
     void favouritesVersion;
+    void locale;
 
     const all: FavouriteRow[] = [];
     for (const providerId of listFavouriteProviderIds()) {
@@ -99,10 +103,10 @@ export function SourceFavouritesList({
         provider === undefined ||
         isPrefsConfigured(provider.manifest, loadResolvedSourcePrefs(provider.manifest));
       const disabledReason = provider === undefined
-        ? 'Provider unavailable'
+        ? t('sources.sourceFavouritesList.providerUnavailable')
         : configured
           ? null
-          : 'Add the required settings to browse';
+          : t('sources.sourceFavouritesList.addRequiredSettings');
 
       for (const favourite of items) {
         all.push({
@@ -114,14 +118,14 @@ export function SourceFavouritesList({
       }
     }
     return all.sort((left, right) => right.favourite.addedAt - left.favourite.addedAt);
-  }, [favouritesVersion, liveIdentities, sourceHost]);
+  }, [favouritesVersion, liveIdentities, locale, sourceHost, t]);
 
   if (rows.length === 0) return null;
 
   return (
     <div className="border-b px-3 py-2">
       <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-        Favourites
+        {t('sources.sourceFavouritesList.heading')}
       </div>
       <ul className="flex flex-col">
         {rows.map((row) => (
@@ -151,7 +155,9 @@ export function SourceFavouritesList({
             <button
               type="button"
               className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label={`Remove favourite: ${row.favourite.kind === 'file' ? row.favourite.fileName : row.favourite.containerName}`}
+              aria-label={t('sources.sourceFavouritesList.removeFavouriteAria', {
+                name: (row.favourite.kind === 'file' ? row.favourite.fileName : row.favourite.containerName) ?? '',
+              })}
               onClick={() => {
                 removeFavourite(row.favourite.providerId, row.key);
                 onChanged();

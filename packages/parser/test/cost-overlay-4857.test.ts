@@ -226,10 +226,14 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
           expressId: 60,
           type: 'IFCCOSTITEM',
           text: "#60=IFCCOSTITEM('created-gid-0000000001',$,'Created item',$,$,$,.NOTDEFINED.,$,$);",
+          notWritten: ['CostQuantities = "bad" is not a number and the slot is REAL-typed'],
         }],
       }),
     });
     expect(graph.CostItems.filter(item => item.expressId === 60)).toHaveLength(1);
+    expect(graph.Diagnostics).toContainEqual(expect.objectContaining({
+      Code: 'PENDING_EDIT_NOT_APPLIED', expressId: 60, Severity: 'warning',
+    }));
   });
 
   it('reads the GlobalId of an overlay-created product assigned to a cost item (#4857 review)', () => {

@@ -87,6 +87,7 @@ export function assertCostSchema(schema: string, method: string): void {
  */
 export function validateTypedValue(value: CostTypedValueInput | undefined, schema: CostSchema, context: string): void {
   if (value === undefined || value === null) throw new Error(`${context}: a typed value is required`);
+  if (value.Type === undefined) throw new Error(`${context}: Type is required on a typed value`);
   assertOneOf(value.Type, MEASURE_TYPES, 'Type', context);
   if (!Number.isFinite(value.Value)) {
     throw new Error(`${context}: ${value.Type} value must be a finite number`);

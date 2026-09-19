@@ -112,6 +112,12 @@ export class CostEntityReader {
         }
         if (entry.type !== undefined && entry.text !== undefined) {
           created.set(entry.expressId, { type: entry.type.toUpperCase(), text: entry.text });
+          for (const reason of entry.notWritten ?? []) {
+            this.diagnostics?.push({
+              Code: 'PENDING_EDIT_NOT_APPLIED', Severity: 'warning', expressId: entry.expressId,
+              Message: `A pending edit to newly authored #${entry.expressId} is not written on export and is not reflected here: ${reason}`,
+            });
+          }
         }
       }
       this.created = created;

@@ -4,6 +4,8 @@
 
 import { Calendar, CalendarClock, CalendarPlus, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey, TranslationParameters } from '@/i18n';
 
 interface GanttEmptyStateProps {
   loading: boolean;
@@ -22,8 +24,7 @@ interface GanttEmptyStateProps {
   onImport?: () => void;
 }
 
-const GENERATE_HELP = 'Build a schedule by storey, building, or element-Z height slice';
-const IMPORT_HELP = 'import one from MS Project (MSPDI XML) or a Gantt CSV export';
+type TFunction = (key: TranslationKey, params?: TranslationParameters) => string;
 
 /**
  * Describe only the actions actually on screen. `canGenerate` gates the
@@ -32,11 +33,18 @@ const IMPORT_HELP = 'import one from MS Project (MSPDI XML) or a Gantt CSV expor
  * be absent independently — text naming a button that was not rendered sends
  * the user looking for it.
  */
-export function emptyStateHelperText(canGenerate: boolean, canImport: boolean): string {
-  if (canGenerate && canImport) return `${GENERATE_HELP}, or ${IMPORT_HELP}.`;
-  if (canGenerate) return `${GENERATE_HELP}.`;
+export function emptyStateHelperText(t: TFunction, canGenerate: boolean, canImport: boolean): string {
+  const generateHelp = t('schedule.emptyState.generateHelp');
+  const importHelp = t('schedule.emptyState.importHelp');
+  if (canGenerate && canImport) {
+    return t('schedule.emptyState.helperBoth', { generate: generateHelp, import: importHelp });
+  }
+  if (canGenerate) {
+    return t('schedule.emptyState.helperGenerateOnly', { generate: generateHelp });
+  }
   // Sentence-initial, so the import clause is capitalised on its own.
-  return `${IMPORT_HELP[0].toUpperCase()}${IMPORT_HELP.slice(1)}.`;
+  const capitalizedImportHelp = `${importHelp[0].toUpperCase()}${importHelp.slice(1)}`;
+  return t('schedule.emptyState.helperImportOnly', { import: capitalizedImportHelp });
 }
 
 export function GanttEmptyState({
@@ -50,6 +58,7 @@ export function GanttEmptyState({
   onGenerate,
   onImport,
 }: GanttEmptyStateProps) {
+  const { t } = useTranslation();
   return (
     <div className="relative h-full w-full flex flex-col items-center justify-center text-center p-8 gap-3 text-muted-foreground">
       {onClose && (
@@ -58,7 +67,7 @@ export function GanttEmptyState({
           variant="ghost"
           className="absolute top-2 right-2"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t('schedule.emptyState.closeAriaLabel')}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -69,35 +78,34 @@ export function GanttEmptyState({
       </div>
       {!hasModel ? (
         <>
-          <h3 className="text-sm font-semibold text-foreground">Load a model with IfcTasks</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.loadModelTitle')}</h3>
           <p className="text-xs max-w-sm">
-            Open an IFC file containing <span className="font-mono">IfcTask</span> or
-            <span className="font-mono"> IfcWorkSchedule</span> entities to see the construction
-            schedule here.
+            {t('schedule.emptyState.loadModelPre')} <span className="font-mono">IfcTask</span> {t('schedule.emptyState.conjunctionOr')}
+            <span className="font-mono"> IfcWorkSchedule</span> {t('schedule.emptyState.loadModelPost')}
           </p>
         </>
       ) : loading ? (
-        <p className="text-xs">Extracting schedule…</p>
+        <p className="text-xs">{t('schedule.emptyState.extracting')}</p>
       ) : extractionError ? (
         <>
-          <h3 className="text-sm font-semibold text-destructive">Schedule extraction failed</h3>
+          <h3 className="text-sm font-semibold text-destructive">{t('schedule.emptyState.extractionFailedTitle')}</h3>
           <p className="text-xs max-w-md text-muted-foreground">
             <span className="font-mono text-destructive">{extractionError}</span>
             <br />
-            Re-open the model or inspect the browser console for details.
+            {t('schedule.emptyState.extractionFailedHint')}
           </p>
           {(canGenerate && onGenerate) || onImport ? (
             <div className="flex flex-col items-center gap-2 pt-2">
               {canGenerate && onGenerate && (
                 <Button size="sm" variant="outline" onClick={onGenerate} className="gap-2">
                   <CalendarPlus className="h-4 w-4" />
-                  Generate a schedule instead
+                  {t('schedule.emptyState.generateInstead')}
                 </Button>
               )}
               {onImport && (
                 <Button size="sm" variant="outline" onClick={onImport} className="gap-2">
                   <Upload className="h-4 w-4" />
-                  Import schedule…
+                  {t('schedule.emptyState.importEllipsis')}
                 </Button>
               )}
             </div>
@@ -105,19 +113,16 @@ export function GanttEmptyState({
         </>
       ) : selectedScheduleEmpty ? (
         <>
-          <h3 className="text-sm font-semibold text-foreground">No tasks in selected schedule</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.noTasksInScheduleTitle')}</h3>
           <p className="text-xs max-w-md">
-            Choose <span className="font-medium text-foreground">All tasks</span> or another
-            schedule to see the model&apos;s other <span className="font-mono">IfcTask</span> records.
+            {t('schedule.emptyState.noTasksInSchedulePre')} <span className="font-medium text-foreground">{t('schedule.toolbar.allTasks')}</span> {t('schedule.emptyState.noTasksInSchedulePost')} <span className="font-mono">IfcTask</span> {t('schedule.emptyState.recordsSuffix')}
           </p>
         </>
       ) : hasWorkPlans ? (
         <>
-          <h3 className="text-sm font-semibold text-foreground">No scheduled tasks</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.noScheduledTasksTitle')}</h3>
           <p className="text-xs max-w-md">
-            The loaded <span className="font-mono">IfcWorkPlan</span> data is shown above, but
-            it has no <span className="font-mono">IfcTask</span> records to draw on the Gantt
-            timeline.
+            {t('schedule.emptyState.noScheduledTasksPre')} <span className="font-mono">IfcWorkPlan</span> {t('schedule.emptyState.noScheduledTasksMid')} <span className="font-mono">IfcTask</span> {t('schedule.emptyState.noScheduledTasksPost')}
           </p>
           {(canGenerate && onGenerate) || onImport ? (
             <div className="flex flex-col items-center gap-2 pt-2">
@@ -125,30 +130,29 @@ export function GanttEmptyState({
                 {canGenerate && onGenerate && (
                   <Button size="sm" onClick={onGenerate} className="gap-2">
                     <CalendarPlus className="h-4 w-4" />
-                    Generate schedule
+                    {t('schedule.emptyState.generateScheduleButton')}
                   </Button>
                 )}
                 {onImport && (
                   <Button size="sm" variant="outline" onClick={onImport} className="gap-2">
                     <Upload className="h-4 w-4" />
-                    Import schedule…
+                    {t('schedule.emptyState.importEllipsis')}
                   </Button>
                 )}
               </div>
               <p className="text-xs text-muted-foreground max-w-xs">
-                {emptyStateHelperText(Boolean(canGenerate && onGenerate), Boolean(onImport))}
+                {emptyStateHelperText(t, Boolean(canGenerate && onGenerate), Boolean(onImport))}
               </p>
             </div>
           ) : null}
         </>
       ) : (
         <>
-          <h3 className="text-sm font-semibold text-foreground">No schedule found</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t('schedule.emptyState.noScheduleFoundTitle')}</h3>
           <p className="text-xs max-w-md">
-            This model doesn&apos;t define any <span className="font-mono">IfcTask</span>,
-            <span className="font-mono"> IfcWorkSchedule</span>, or
-            <span className="font-mono"> IfcRelSequence</span> entities. The Gantt panel powers
-            itself from those entities and the products they control via
+            {t('schedule.emptyState.noScheduleFoundPre')} <span className="font-mono">IfcTask</span>,
+            <span className="font-mono"> IfcWorkSchedule</span>, {t('schedule.emptyState.conjunctionOr')}
+            <span className="font-mono"> IfcRelSequence</span> {t('schedule.emptyState.noScheduleFoundPost')}
             <span className="font-mono"> IfcRelAssignsToProcess</span>.
           </p>
           {(canGenerate && onGenerate) || onImport ? (
@@ -157,18 +161,18 @@ export function GanttEmptyState({
                 {canGenerate && onGenerate && (
                   <Button size="sm" onClick={onGenerate} className="gap-2">
                     <CalendarPlus className="h-4 w-4" />
-                    Generate schedule
+                    {t('schedule.emptyState.generateScheduleButton')}
                   </Button>
                 )}
                 {onImport && (
                   <Button size="sm" variant="outline" onClick={onImport} className="gap-2">
                     <Upload className="h-4 w-4" />
-                    Import schedule…
+                    {t('schedule.emptyState.importEllipsis')}
                   </Button>
                 )}
               </div>
               <p className="text-xs text-muted-foreground max-w-xs">
-                {emptyStateHelperText(Boolean(canGenerate && onGenerate), Boolean(onImport))}
+                {emptyStateHelperText(t, Boolean(canGenerate && onGenerate), Boolean(onImport))}
               </p>
             </div>
           ) : null}

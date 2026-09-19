@@ -107,6 +107,15 @@ The saved-list builder catalogue (#4918 slice 6, lists) covers
 `lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
 `lists.columnMenu.*`, `lists.errorBox.*`).
 
+The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
+`GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
+`GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,
+`GanttWorkPlanSummary.tsx`, `GenerateAdvancedPanel.tsx`,
+`GanttDragTooltip.tsx`, `GanttPanel.tsx`, and `GanttTaskTree.tsx`
+(`schedule.en.ts`), a sibling to the narrower `gantt-work-calendar.en.ts`
+(#4830's single work-calendar toggle, prefix `gantt.workCalendar.*`) with
+no key overlap.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

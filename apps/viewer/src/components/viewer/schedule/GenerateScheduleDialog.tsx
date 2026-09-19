@@ -27,6 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
@@ -49,6 +50,7 @@ interface GenerateScheduleDialogProps {
 }
 
 export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleDialogProps) {
+  const { t } = useTranslation();
   const { ifcDataStore, models, activeModelId } = useIfc();
   const commitGeneratedSchedule = useViewerStore(s => s.commitGeneratedSchedule);
   const setGanttPanelVisible = useViewerStore(s => s.setGanttPanelVisible);
@@ -172,12 +174,10 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarPlus className="h-5 w-5 text-primary" />
-            Generate schedule
+            {t('schedule.generateDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            Creates a work schedule with one task per group and assigns every
-            product in that group to the task, so the 4D Gantt animation can
-            reveal them as time advances.
+            {t('schedule.generateDialog.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -185,11 +185,9 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
           <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <p className="font-medium text-foreground">Nothing to group by</p>
+              <p className="font-medium text-foreground">{t('schedule.generateDialog.nothingToGroupByTitle')}</p>
               <p className="text-muted-foreground">
-                The loaded model has neither a spatial hierarchy nor visible
-                geometry. Load an IFC with IfcBuildingStorey/IfcBuilding
-                containers or meshed elements and try again.
+                {t('schedule.generateDialog.nothingToGroupByDescription')}
               </p>
             </div>
           </div>
@@ -199,28 +197,28 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                 broken spatial hierarchies; sub-options reveal only when it's
                 active, keeping the dialog uncluttered for the common case. */}
             <div className="grid gap-2">
-              <Label>Group by</Label>
+              <Label>{t('schedule.generateDialog.groupByLabel')}</Label>
               <div className="grid grid-cols-3 gap-2">
                 <StrategyChoice
                   icon={<Layers className="h-4 w-4" />}
-                  label="Storey"
-                  description="Per IfcBuildingStorey"
+                  label={t('schedule.generateDialog.strategyStorey')}
+                  description={t('schedule.generateDialog.strategyStoreyDescription')}
                   active={options.strategy === 'IfcBuildingStorey'}
                   disabled={!hasSpatial}
                   onSelect={() => handleChange('strategy', 'IfcBuildingStorey')}
                 />
                 <StrategyChoice
                   icon={<Building2 className="h-4 w-4" />}
-                  label="Building"
-                  description="Per IfcBuilding"
+                  label={t('schedule.generateDialog.strategyBuilding')}
+                  description={t('schedule.generateDialog.strategyBuildingDescription')}
                   active={options.strategy === 'IfcBuilding'}
                   disabled={!hasSpatial}
                   onSelect={() => handleChange('strategy', 'IfcBuilding')}
                 />
                 <StrategyChoice
                   icon={<Ruler className="h-4 w-4" />}
-                  label="Height"
-                  description="Slice by element Z"
+                  label={t('schedule.generateDialog.strategyHeight')}
+                  description={t('schedule.generateDialog.strategyHeightDescription')}
                   active={options.strategy === 'IfcElement'}
                   disabled={!hasGeometry}
                   onSelect={() => handleChange('strategy', 'IfcElement')}
@@ -228,7 +226,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
               </div>
               {options.strategy !== 'IfcElement' && !hasSpatial && (
                 <p className="text-[11px] text-muted-foreground">
-                  Spatial hierarchy missing — only Height is available for this model.
+                  {t('schedule.generateDialog.spatialHierarchyMissing')}
                 </p>
               )}
             </div>
@@ -247,7 +245,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
             {/* Primary fields */}
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
-                <Label htmlFor="gen-start">Start date</Label>
+                <Label htmlFor="gen-start">{t('schedule.generateDialog.startDateLabel')}</Label>
                 <Input
                   id="gen-start"
                   type="datetime-local"
@@ -259,7 +257,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="gen-duration">Days per group</Label>
+                <Label htmlFor="gen-duration">{t('schedule.generateDialog.daysPerGroupLabel')}</Label>
                 <Input
                   id="gen-duration"
                   type="number"
@@ -276,19 +274,19 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
 
             {/* Order */}
             <div className="grid gap-2">
-              <Label>Order</Label>
+              <Label>{t('schedule.generateDialog.orderLabel')}</Label>
               <div className="grid grid-cols-2 gap-2">
                 <StrategyChoice
                   icon={<span className="text-xs font-semibold">↑</span>}
-                  label="Bottom-up"
-                  description="Site → ground → upper floors"
+                  label={t('schedule.generateDialog.orderBottomUp')}
+                  description={t('schedule.generateDialog.orderBottomUpDescription')}
                   active={options.order === 'bottom-up'}
                   onSelect={() => handleChange('order', 'bottom-up' satisfies GenerateOrder)}
                 />
                 <StrategyChoice
                   icon={<span className="text-xs font-semibold">↓</span>}
-                  label="Top-down"
-                  description="Roof → upper floors → ground"
+                  label={t('schedule.generateDialog.orderTopDown')}
+                  description={t('schedule.generateDialog.orderTopDownDescription')}
                   active={options.order === 'top-down'}
                   onSelect={() => handleChange('order', 'top-down' satisfies GenerateOrder)}
                 />
@@ -316,25 +314,26 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
               {preview && !preview.empty ? (
                 <div className="grid gap-1">
                   <div className="flex items-baseline justify-between">
-                    <span className="font-medium">Summary</span>
-                    <span className="text-xs text-muted-foreground">Generated locally — not written to IFC</span>
+                    <span className="font-medium">{t('schedule.generateDialog.summaryHeading')}</span>
+                    <span className="text-xs text-muted-foreground">{t('schedule.generateDialog.generatedLocally')}</span>
                   </div>
                   <p>
-                    <span className="font-semibold">{preview.groupCount}</span> tasks ·{' '}
-                    <span className="font-semibold">{preview.productCount}</span> products ·{' '}
-                    finishes <span className="font-mono">{formatDateTime(new Date(preview.finishDate).getTime())}</span>
+                    {t('schedule.generateDialog.summaryLine', {
+                      groups: preview.groupCount,
+                      products: preview.productCount,
+                      date: formatDateTime(new Date(preview.finishDate).getTime()),
+                    })}
                   </p>
                   {preview.groupCount > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      First task: <span className="font-medium">{preview.extraction.tasks[0]?.name}</span>
-                      {preview.groupCount > 1 && <> · last: <span className="font-medium">{preview.extraction.tasks.at(-1)?.name}</span></>}
+                      {t('schedule.generateDialog.firstTask', { name: preview.extraction.tasks[0]?.name ?? '' })}
+                      {preview.groupCount > 1 && <> · {t('schedule.generateDialog.lastTask', { name: preview.extraction.tasks.at(-1)?.name ?? '' })}</>}
                     </p>
                   )}
                 </div>
               ) : (
                 <p className="text-muted-foreground">
-                  No groups match the current options — tweak the strategy or disable
-                  &quot;Skip empty groups&quot;.
+                  {t('schedule.generateDialog.noGroupsMatch')}
                 </p>
               )}
             </div>
@@ -342,10 +341,10 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
         )}
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{t('schedule.generateDialog.cancel')}</Button>
           <Button onClick={handleGenerate} disabled={!canSubmit}>
             {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CalendarPlus className="h-4 w-4 mr-2" />}
-            Generate schedule
+            {t('schedule.generateDialog.title')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -364,6 +363,7 @@ interface StrategyChoiceProps {
 }
 
 function StrategyChoice({ icon, label, description, active, disabled, onSelect }: StrategyChoiceProps) {
+  const { t } = useTranslation();
   const base = 'flex items-start gap-2 rounded-md border p-2.5 text-left transition-colors';
   const state = active
     ? 'border-primary bg-primary/5 text-foreground'
@@ -377,7 +377,7 @@ function StrategyChoice({ icon, label, description, active, disabled, onSelect }
       className={`${base} ${state}`}
       aria-pressed={active}
       disabled={disabled}
-      title={disabled ? 'Not available for this model' : undefined}
+      title={disabled ? t('schedule.generateDialog.notAvailableForModel') : undefined}
     >
       <span className={'mt-0.5 ' + (active ? 'text-primary' : 'text-muted-foreground')}>{icon}</span>
       <span className="grid gap-0.5">

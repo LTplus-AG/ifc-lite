@@ -10,6 +10,7 @@
 import { memo, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronRight, ChevronDown, Diamond, CircleDot, Flag, GripVertical, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import type { FlattenedTask } from './schedule-utils';
 import { formatDurationShort } from './schedule-utils';
 
@@ -56,6 +57,7 @@ export const GanttTaskTree = memo(function GanttTaskTree({
   scrollTop,
   onScroll,
 }: GanttTaskTreeProps) {
+  const { t } = useTranslation();
   // Drag-to-reorder state. Uses native HTML5 drag-and-drop for
   // accessibility (screen-readers can speak the cursor transitions)
   // and cross-browser reliability. `dropIndex` drives the horizontal
@@ -103,8 +105,8 @@ export const GanttTaskTree = memo(function GanttTaskTree({
         className="sticky top-0 z-10 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium"
         style={{ height: GANTT_HEADER_HEIGHT }}
       >
-        <span>Task</span>
-        <span>Duration</span>
+        <span>{t('schedule.taskTree.columnTask')}</span>
+        <span>{t('schedule.taskTree.columnDuration')}</span>
       </div>
       <div style={{ height: rows.length * GANTT_ROW_HEIGHT }}>
         {/*
@@ -204,7 +206,10 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                         <button
                           type="button"
                           aria-expanded={expanded}
-                          aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label}`}
+                          aria-label={t('schedule.taskTree.toggleExpandAriaLabel', {
+                            action: expanded ? t('schedule.taskTree.collapse') : t('schedule.taskTree.expand'),
+                            label,
+                          })}
                           onClick={(e) => {
                             e.stopPropagation();
                             onToggleExpand(task.globalId);
@@ -249,8 +254,8 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                       {calendarName && (
                         <span
                           className="inline-flex items-center shrink-0"
-                          title={`Work calendar: ${calendarName}`}
-                          aria-label={`Work calendar: ${calendarName}`}
+                          title={t('schedule.taskTree.workCalendar', { name: calendarName })}
+                          aria-label={t('schedule.taskTree.workCalendar', { name: calendarName })}
                           role="img"
                           data-testid="gantt-task-calendar-badge"
                         >

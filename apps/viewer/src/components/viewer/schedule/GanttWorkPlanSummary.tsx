@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { WorkScheduleInfo } from '@ifc-lite/parser';
+import { useTranslation } from '@/i18n';
 
 interface GanttWorkPlanSummaryProps {
   workSchedules: WorkScheduleInfo[];
@@ -64,39 +65,40 @@ function displayName(item: WorkScheduleInfo): string {
  * tasks exclusively by IfcWorkSchedule.
  */
 export function GanttWorkPlanSummary({ workSchedules }: GanttWorkPlanSummaryProps) {
+  const { t } = useTranslation();
   const { groups, ungroupedSchedules } = buildWorkPlanGroups(workSchedules);
   if (groups.length === 0) return null;
 
   return (
     <section
-      aria-label="Work plans"
+      aria-label={t('schedule.workPlanSummary.ariaLabel')}
       className="border-b bg-muted/20 px-3 py-1.5 text-xs"
       data-testid="gantt-work-plan-summary"
     >
       <div className="flex items-center gap-2 overflow-x-auto">
         <span className="shrink-0 font-medium text-muted-foreground">
-          {groups.length === 1 ? 'Work plan' : 'Work plans'}
+          {t('schedule.workPlanSummary.heading', { count: groups.length })}
         </span>
         <ul className="flex items-center gap-2">
           {groups.map(({ plan, childSchedules }) => (
             <li
               key={plan.globalId}
               className="flex shrink-0 items-center gap-1.5 rounded border bg-background px-2 py-1"
-              title={`IfcWorkPlan ${plan.globalId}`}
+              title={t('schedule.workPlanSummary.planTitle', { globalId: plan.globalId })}
             >
               <span className="font-mono text-[10px] text-muted-foreground">IfcWorkPlan</span>
               <span className="font-medium">{displayName(plan)}</span>
-              <span className="text-muted-foreground" aria-label="Nested work schedules">
+              <span className="text-muted-foreground" aria-label={t('schedule.workPlanSummary.nestedAriaLabel')}>
                 {childSchedules.length > 0
-                  ? `Schedules: ${childSchedules.map(displayName).join(', ')}`
-                  : 'No nested schedules'}
+                  ? t('schedule.workPlanSummary.schedulesList', { names: childSchedules.map(displayName).join(', ') })
+                  : t('schedule.workPlanSummary.noNestedSchedules')}
               </span>
             </li>
           ))}
         </ul>
         {ungroupedSchedules.length > 0 && (
           <span className="shrink-0 text-muted-foreground">
-            Ungrouped: {ungroupedSchedules.map(displayName).join(', ')}
+            {t('schedule.workPlanSummary.ungrouped', { names: ungroupedSchedules.map(displayName).join(', ') })}
           </span>
         )}
       </div>

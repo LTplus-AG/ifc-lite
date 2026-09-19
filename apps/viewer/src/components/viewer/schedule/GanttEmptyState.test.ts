@@ -4,7 +4,18 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { resolve } from '@/i18n/registry';
+import { scheduleEn } from '@/i18n/catalogues/schedule.en';
+import { en } from '@/i18n/en';
 import { emptyStateHelperText } from './GanttEmptyState.js';
+
+// Wires the schedule catalogue into the English fallback so `resolve()` can
+// find `schedule.*` keys under this direct (non-hook) test — the shared
+// `en.ts` catalogue assembly is owned by the i18n sweep's integration pass,
+// not this slice (see AGENTS.md / #4918). `en` is a plain object at runtime
+// (only its TS type is `as const`), so this augmentation is safe.
+Object.assign(en, scheduleEn);
+const t = resolve;
 
 // The empty state renders whenever EITHER action is available
 // (`(canGenerate && onGenerate) || onImport`), so each button can be absent
@@ -12,7 +23,7 @@ import { emptyStateHelperText } from './GanttEmptyState.js';
 // a button that is not on screen sends the user looking for it.
 describe('emptyStateHelperText', () => {
   it('describes both actions when both are available', () => {
-    const text = emptyStateHelperText(true, true);
+    const text = emptyStateHelperText(t, true, true);
     assert.match(text, /Build a schedule/);
     assert.match(text, /import one from MS Project/);
   });
@@ -20,7 +31,7 @@ describe('emptyStateHelperText', () => {
   it('omits the import clause when there is no import action', () => {
     // Reachable: a caller that wires up generation but no file picker still
     // renders the empty state via the `canGenerate && onGenerate` arm.
-    const text = emptyStateHelperText(true, false);
+    const text = emptyStateHelperText(t, true, false);
     assert.match(text, /Build a schedule/);
     assert.doesNotMatch(text, /import/i);
   });
@@ -28,14 +39,14 @@ describe('emptyStateHelperText', () => {
   it('omits the generate clause when the model cannot be generated from', () => {
     // Reachable: `canGenerate` is false for a model with no spatial
     // hierarchy, while the import action is still offered.
-    const text = emptyStateHelperText(false, true);
+    const text = emptyStateHelperText(t, false, true);
     assert.doesNotMatch(text, /Build a schedule/);
     assert.match(text, /^Import one from MS Project/);
   });
 
   it('ends every variant as a single sentence', () => {
     for (const [canGenerate, canImport] of [[true, true], [true, false], [false, true]] as const) {
-      const text = emptyStateHelperText(canGenerate, canImport);
+      const text = emptyStateHelperText(t, canGenerate, canImport);
       assert.ok(text.endsWith('.'), `expected a full stop, got: ${text}`);
       assert.strictEqual(text.split('.').length - 1, 1, `expected one sentence, got: ${text}`);
     }

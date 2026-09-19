@@ -37,6 +37,8 @@ import {
 import { useViewerStore, countGeneratedTasks } from '@/store';
 import type { GanttTimeScale } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { formatDateTime } from './schedule-utils';
 import { AnimationSettingsPopover } from './AnimationSettingsPopover';
 
@@ -57,12 +59,12 @@ const SPEED_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 90, label: '3 mo/s' },
 ];
 
-const SCALE_OPTIONS: Array<{ value: GanttTimeScale; label: string }> = [
-  { value: 'hour', label: 'Hour' },
-  { value: 'day', label: 'Day' },
-  { value: 'week', label: 'Week' },
-  { value: 'month', label: 'Month' },
-  { value: 'year', label: 'Year' },
+const SCALE_OPTIONS: Array<{ value: GanttTimeScale; labelKey: TranslationKey }> = [
+  { value: 'hour', labelKey: 'schedule.toolbar.scaleHour' },
+  { value: 'day', labelKey: 'schedule.toolbar.scaleDay' },
+  { value: 'week', labelKey: 'schedule.toolbar.scaleWeek' },
+  { value: 'month', labelKey: 'schedule.toolbar.scaleMonth' },
+  { value: 'year', labelKey: 'schedule.toolbar.scaleYear' },
 ];
 
 // Radix Select rejects '' as a SelectItem value — use a sentinel for the
@@ -70,6 +72,7 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; label: string }> = [
 const ALL_SCHEDULES_SENTINEL = '__all__';
 
 export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
+  const { t } = useTranslation();
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
   const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
@@ -102,13 +105,13 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
   const scheduleOptions = useMemo(() => {
     if (!scheduleData) return [];
     return [
-      { value: ALL_SCHEDULES_SENTINEL, label: 'All tasks' },
+      { value: ALL_SCHEDULES_SENTINEL, label: t('schedule.toolbar.allTasks') },
       ...scheduleData.workSchedules.filter(s => s.kind === 'WorkSchedule').map(s => ({ // 'WorkPlan' never controls tasks directly
         value: s.globalId,
         label: s.name || s.globalId,
       })),
     ];
-  }, [scheduleData]);
+  }, [scheduleData, t]);
 
   const selectedScheduleValue = activeWorkScheduleId || ALL_SCHEDULES_SENTINEL;
   const handleScheduleChange = useCallback((value: string) => {
@@ -150,12 +153,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               variant="ghost"
               onClick={goStart}
               disabled={!hasData}
-              aria-label="Jump to start"
+              aria-label={t('schedule.toolbar.jumpToStart')}
             >
               <SkipBack className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Jump to start</TooltipContent>
+          <TooltipContent>{t('schedule.toolbar.jumpToStart')}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -165,12 +168,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               variant={isPlaying ? 'default' : 'ghost'}
               onClick={togglePlay}
               disabled={!hasData}
-              aria-label={isPlaying ? 'Pause' : 'Play'}
+              aria-label={isPlaying ? t('schedule.toolbar.pause') : t('schedule.toolbar.play')}
             >
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{isPlaying ? 'Pause' : 'Play'} construction sequence</TooltipContent>
+          <TooltipContent>{isPlaying ? t('schedule.toolbar.pauseConstructionSequence') : t('schedule.toolbar.playConstructionSequence')}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -180,12 +183,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               variant="ghost"
               onClick={goEnd}
               disabled={!hasData}
-              aria-label="Jump to finish"
+              aria-label={t('schedule.toolbar.jumpToFinish')}
             >
               <SkipForward className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Jump to finish</TooltipContent>
+          <TooltipContent>{t('schedule.toolbar.jumpToFinish')}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -194,12 +197,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               size="icon-sm"
               variant={playbackLoop ? 'default' : 'ghost'}
               onClick={() => setLoop(!playbackLoop)}
-              aria-label={playbackLoop ? 'Disable loop' : 'Enable loop'}
+              aria-label={playbackLoop ? t('schedule.toolbar.disableLoop') : t('schedule.toolbar.enableLoop')}
             >
               {playbackLoop ? <Repeat className="h-4 w-4" /> : <Repeat2 className="h-4 w-4" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{playbackLoop ? 'Looping' : 'One-shot'}</TooltipContent>
+          <TooltipContent>{playbackLoop ? t('schedule.toolbar.looping') : t('schedule.toolbar.oneShot')}</TooltipContent>
         </Tooltip>
       </div>
 
@@ -215,7 +218,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
           onPointerDown={onScrubPointerDown}
           disabled={!hasData}
           className="flex-1 accent-primary cursor-pointer h-1 appearance-none bg-muted rounded-full"
-          aria-label="Playback position"
+          aria-label={t('schedule.toolbar.playbackPosition')}
         />
         <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
           {hasData ? formatDateTime(playbackTime) : '—'}
@@ -227,7 +230,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
         <Calendar className="h-4 w-4 text-muted-foreground" />
         <Select value={selectedScheduleValue} onValueChange={handleScheduleChange}>
           <SelectTrigger className="h-8 w-[180px] text-xs">
-            <SelectValue placeholder="All tasks" />
+            <SelectValue placeholder={t('schedule.toolbar.allTasks')} />
           </SelectTrigger>
           <SelectContent>
             {scheduleOptions.map(opt => (
@@ -245,7 +248,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
           <TooltipTrigger asChild>
             <Gauge className="h-4 w-4 text-muted-foreground" />
           </TooltipTrigger>
-          <TooltipContent>Simulation speed</TooltipContent>
+          <TooltipContent>{t('schedule.toolbar.simulationSpeed')}</TooltipContent>
         </Tooltip>
         <Select
           value={String(playbackSpeed)}
@@ -272,7 +275,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
         <SelectContent>
           {SCALE_OPTIONS.map(opt => (
             <SelectItem key={opt.value} value={opt.value}>
-              {opt.label}
+              {t(opt.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -287,14 +290,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               variant="ghost"
               onClick={onOpenGenerate}
               disabled={!canGenerate}
-              aria-label="Generate construction schedule"
+              aria-label={t('schedule.toolbar.generateConstructionSchedule')}
             >
               <CalendarPlus className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            {canGenerate ? 'Generate schedule…' : 'No spatial hierarchy or geometry to generate from'}
-          </TooltipContent>
+          <TooltipContent>{canGenerate ? t('schedule.toolbar.generateScheduleEllipsis') : t('schedule.toolbar.noSpatialHierarchy')}</TooltipContent>
         </Tooltip>
       )}
 
@@ -306,12 +307,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               size="icon-sm"
               variant="ghost"
               onClick={onOpenImport}
-              aria-label="Import schedule from file"
+              aria-label={t('schedule.toolbar.importScheduleFromFile')}
             >
               <Upload className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Import schedule (MS Project XML or CSV)…</TooltipContent>
+          <TooltipContent>{t('schedule.toolbar.importScheduleTooltip')}</TooltipContent>
         </Tooltip>
       )}
 
@@ -330,12 +331,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
                   : undefined;
                 addTaskAction({ afterGlobalId });
               }}
-              aria-label="Add task"
+              aria-label={t('schedule.toolbar.addTask')}
             >
               <Plus className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Add task (after selection or at end)</TooltipContent>
+          <TooltipContent>{t('schedule.toolbar.addTaskTooltip')}</TooltipContent>
         </Tooltip>
       )}
 
@@ -351,12 +352,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
                 variant="ghost"
                 onClick={undoScheduleEdit}
                 disabled={undoDepth === 0}
-                aria-label="Undo schedule edit"
+                aria-label={t('schedule.toolbar.undoScheduleEdit')}
               >
                 <Undo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+            <TooltipContent>{t('schedule.toolbar.undoTooltip')}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -365,12 +366,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
                 variant="ghost"
                 onClick={redoScheduleEdit}
                 disabled={redoDepth === 0}
-                aria-label="Redo schedule edit"
+                aria-label={t('schedule.toolbar.redoScheduleEdit')}
               >
                 <Redo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+            <TooltipContent>{t('schedule.toolbar.redoTooltip')}</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -388,18 +389,16 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               onClick={() => {
                 const removed = clearGeneratedSchedule();
                 if (removed > 0) {
-                  toast.success(`Discarded ${removed} pending task${removed === 1 ? '' : 's'}.`);
+                  toast.success(t('schedule.toolbar.discardedToast', { count: removed }));
                 }
               }}
-              aria-label={`Discard ${pendingGeneratedCount} pending generated task${pendingGeneratedCount === 1 ? '' : 's'}`}
+              aria-label={t('schedule.toolbar.discardPendingAriaLabel', { count: pendingGeneratedCount })}
               className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Discard {pendingGeneratedCount} pending schedule task{pendingGeneratedCount === 1 ? '' : 's'}
-          </TooltipContent>
+          <TooltipContent>{t('schedule.toolbar.discardPendingTooltip', { count: pendingGeneratedCount })}</TooltipContent>
         </Tooltip>
       )}
 
@@ -411,14 +410,14 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
       />
 
       {onClose && (
-        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close Gantt panel">
+        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label={t('schedule.toolbar.closeGanttPanel')}>
           <X className="h-4 w-4" />
         </Button>
       )}
 
       {hasData && !hasDates && (
-        <span className="text-xs text-amber-500 whitespace-nowrap" title="No real dates — using synthetic range">
-          No dates
+        <span className="text-xs text-amber-500 whitespace-nowrap" title={t('schedule.toolbar.noDatesTitle')}>
+          {t('schedule.toolbar.noDates')}
         </span>
       )}
     </div>

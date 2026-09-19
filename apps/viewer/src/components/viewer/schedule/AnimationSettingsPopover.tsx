@@ -33,6 +33,8 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import {
   DEFAULT_PALETTE,
   type AnimationSettings,
@@ -47,21 +49,21 @@ interface AnimationSettingsPopoverProps {
 
 /** Palette entries surfaced in the customizer — every IfcTaskTypeEnum
  *  value the animator uses. Ordered by expected real-world frequency. */
-const PALETTE_LEGEND: { key: TaskPaletteKey; label: string }[] = [
-  { key: 'CONSTRUCTION', label: 'Construction' },
-  { key: 'INSTALLATION', label: 'Installation' },
-  { key: 'RENOVATION', label: 'Renovation' },
-  { key: 'MAINTENANCE', label: 'Maintenance' },
-  { key: 'LOGISTIC', label: 'Logistic' },
-  { key: 'OPERATION', label: 'Operation' },
-  { key: 'MOVE', label: 'Move' },
-  { key: 'ATTENDANCE', label: 'Attendance' },
-  { key: 'DEMOLITION', label: 'Demolition' },
-  { key: 'DISMANTLE', label: 'Dismantle' },
-  { key: 'REMOVAL', label: 'Removal' },
-  { key: 'DISPOSAL', label: 'Disposal' },
-  { key: 'USERDEFINED', label: 'User-defined' },
-  { key: 'NOTDEFINED', label: 'Not defined' },
+const PALETTE_LEGEND: { key: TaskPaletteKey; labelKey: TranslationKey }[] = [
+  { key: 'CONSTRUCTION', labelKey: 'schedule.animation.taskType.construction' },
+  { key: 'INSTALLATION', labelKey: 'schedule.animation.taskType.installation' },
+  { key: 'RENOVATION', labelKey: 'schedule.animation.taskType.renovation' },
+  { key: 'MAINTENANCE', labelKey: 'schedule.animation.taskType.maintenance' },
+  { key: 'LOGISTIC', labelKey: 'schedule.animation.taskType.logistic' },
+  { key: 'OPERATION', labelKey: 'schedule.animation.taskType.operation' },
+  { key: 'MOVE', labelKey: 'schedule.animation.taskType.move' },
+  { key: 'ATTENDANCE', labelKey: 'schedule.animation.taskType.attendance' },
+  { key: 'DEMOLITION', labelKey: 'schedule.animation.taskType.demolition' },
+  { key: 'DISMANTLE', labelKey: 'schedule.animation.taskType.dismantle' },
+  { key: 'REMOVAL', labelKey: 'schedule.animation.taskType.removal' },
+  { key: 'DISPOSAL', labelKey: 'schedule.animation.taskType.disposal' },
+  { key: 'USERDEFINED', labelKey: 'schedule.animation.taskType.userDefined' },
+  { key: 'NOTDEFINED', labelKey: 'schedule.animation.taskType.notDefined' },
 ];
 
 function rgbaToCss(rgba: RGBA): string {
@@ -94,6 +96,7 @@ export function AnimationSettingsPopover({
   animationEnabled,
   onToggleAnimation,
 }: AnimationSettingsPopoverProps) {
+  const { t } = useTranslation();
   const settings = useViewerStore(s => s.animationSettings);
   const patch = useViewerStore(s => s.patchAnimationSettings);
   const reset = useViewerStore(s => s.resetAnimationSettings);
@@ -149,22 +152,20 @@ export function AnimationSettingsPopover({
             <Button
               size="icon-sm"
               variant={animationEnabled ? 'default' : 'ghost'}
-              aria-label="Animation settings"
+              aria-label={t('schedule.animation.settingsAriaLabel')}
             >
               <Sparkles className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent>4D animation settings</TooltipContent>
+        <TooltipContent>{t('schedule.animation.settingsTooltip')}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-[360px] p-3 max-h-[min(80vh,700px)] overflow-y-auto">
         {/* ── Master toggle ────────────────────────────────────────── */}
         <div className="flex items-center justify-between gap-3 pb-2">
           <div className="grid gap-0.5">
-            <span className="text-sm font-medium">4D animation</span>
-            <span className="text-[11px] text-muted-foreground">
-              Drives viewport from the Gantt clock.
-            </span>
+            <span className="text-sm font-medium">{t('schedule.animation.title')}</span>
+            <span className="text-[11px] text-muted-foreground">{t('schedule.animation.titleDescription')}</span>
           </div>
           <Switch checked={animationEnabled} onCheckedChange={onToggleAnimation} />
         </div>
@@ -173,19 +174,19 @@ export function AnimationSettingsPopover({
 
         {/* ── Style tiles — two ways to visualize the schedule ─────── */}
         <div className="grid gap-1.5 py-2">
-          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Style</Label>
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('schedule.animation.styleLabel')}</Label>
           <div className="grid grid-cols-2 gap-2">
             <StyleTile
               icon={<Eye className="h-3.5 w-3.5" />}
-              label="Minimal"
-              description="Visibility only — no colour"
+              label={t('schedule.animation.minimalLabel')}
+              description={t('schedule.animation.minimalDescription')}
               active={!phased}
               onSelect={() => applyMinimalPreset()}
             />
             <StyleTile
               icon={<Palette className="h-3.5 w-3.5" />}
-              label="Phased"
-              description="Task-type colour overlays"
+              label={t('schedule.animation.phasedLabel')}
+              description={t('schedule.animation.phasedDescription')}
               active={phased}
               onSelect={() => applyPhasedPreset()}
             />
@@ -199,21 +200,16 @@ export function AnimationSettingsPopover({
             <div className="grid gap-1.5 py-2">
               <div className="flex items-center gap-1.5">
                 <Paintbrush className="h-3 w-3 text-primary" />
-                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Task-type palette
-                </Label>
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('schedule.animation.taskTypePaletteLabel')}</Label>
               </div>
-              <span className="text-[11px] text-muted-foreground">
-                Click any swatch to change its colour. Hover a modified entry
-                to reset just that one.
-              </span>
+              <span className="text-[11px] text-muted-foreground">{t('schedule.animation.paletteHint')}</span>
               <div className="grid grid-cols-1 gap-0.5 pt-1">
                 {PALETTE_LEGEND.map(entry => {
                   const current = palette[entry.key] ?? DEFAULT_PALETTE[entry.key];
                   return (
                     <PaletteRow
                       key={entry.key}
-                      label={entry.label}
+                      label={t(entry.labelKey)}
                       colorKey={entry.key}
                       rgba={current}
                       onChange={setPaletteColor}
@@ -238,11 +234,10 @@ export function AnimationSettingsPopover({
             >
               <div className="flex items-center gap-1.5">
                 <Palette className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium">Switch to Phased to customize colours</span>
+                <span className="text-xs font-medium">{t('schedule.animation.switchToPhasedCta')}</span>
               </div>
               <span className="text-[11px] text-muted-foreground">
-                Unlocks task-type palette editing, preparation ghost, and
-                colour intensity.
+                {t('schedule.animation.switchToPhasedHint')}
               </span>
             </button>
           </>
@@ -252,22 +247,22 @@ export function AnimationSettingsPopover({
 
         {/* ── Timing-layer toggles (always visible) ────────────────── */}
         <div className="grid gap-2 py-2">
-          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Timing</Label>
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('schedule.animation.timingLabel')}</Label>
           <ToggleRow
-            label="Hide upcoming products"
-            description="Don't render work that hasn't started yet."
+            label={t('schedule.animation.hideUpcomingLabel')}
+            description={t('schedule.animation.hideUpcomingDescription')}
             checked={settings.hideBeforePreparation}
             onChange={v => patch({ hideBeforePreparation: v })}
           />
           <ToggleRow
-            label="Hide unscheduled products"
-            description="Hide anything not assigned to a task — stops untaskd geometry rendering as material default (often pure white)."
+            label={t('schedule.animation.hideUnscheduledLabel')}
+            description={t('schedule.animation.hideUnscheduledDescription')}
             checked={settings.hideUntaskedProducts}
             onChange={v => patch({ hideUntaskedProducts: v })}
           />
           <ToggleRow
-            label="Animate demolition"
-            description="Remove products when demolition tasks complete."
+            label={t('schedule.animation.animateDemolitionLabel')}
+            description={t('schedule.animation.animateDemolitionDescription')}
             checked={settings.animateDemolition}
             onChange={v => patch({ animateDemolition: v })}
           />
@@ -280,17 +275,17 @@ export function AnimationSettingsPopover({
             {/* ── Colour-layer toggles ─────────────────────────────── */}
             <div className="grid gap-2 py-2">
               <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Colour overlays
+                {t('schedule.animation.colourOverlaysLabel')}
               </Label>
               <ToggleRow
-                label="Colour by task type"
-                description="Paint the palette colour over active products."
+                label={t('schedule.animation.colourByTaskTypeLabel')}
+                description={t('schedule.animation.colourByTaskTypeDescription')}
                 checked={settings.colorizeByTaskType}
                 onChange={v => patch({ colorizeByTaskType: v })}
               />
               <ToggleRow
-                label="Preparation ghost"
-                description="Dim products inside the look-ahead window."
+                label={t('schedule.animation.preparationGhostLabel')}
+                description={t('schedule.animation.preparationGhostDescription')}
                 checked={settings.showPreparationGhost}
                 onChange={v => patch({ showPreparationGhost: v })}
               />
@@ -298,9 +293,9 @@ export function AnimationSettingsPopover({
               {settings.showPreparationGhost && (
                 <div className="flex items-center justify-between gap-3 pl-2 pt-1 border-l-2 border-primary/30">
                   <span className="grid gap-0.5 min-w-0">
-                    <span className="text-xs font-medium">Ghost colour</span>
+                    <span className="text-xs font-medium">{t('schedule.animation.ghostColourLabel')}</span>
                     <span className="text-[10px] text-muted-foreground">
-                      Low-alpha dim applied to upcoming products.
+                      {t('schedule.animation.ghostColourDescription')}
                     </span>
                   </span>
                   <PaletteSwatch
@@ -313,8 +308,8 @@ export function AnimationSettingsPopover({
               )}
 
               <ToggleRow
-                label="Tint completed products"
-                description="Paint a neutral tint over built products so they're distinguishable from material-default geometry."
+                label={t('schedule.animation.tintCompletedLabel')}
+                description={t('schedule.animation.tintCompletedDescription')}
                 checked={settings.showCompletedTint}
                 onChange={v => patch({ showCompletedTint: v })}
               />
@@ -322,9 +317,9 @@ export function AnimationSettingsPopover({
               {settings.showCompletedTint && (
                 <div className="flex items-center justify-between gap-3 pl-2 pt-1 border-l-2 border-primary/30">
                   <span className="grid gap-0.5 min-w-0">
-                    <span className="text-xs font-medium">Completed colour</span>
+                    <span className="text-xs font-medium">{t('schedule.animation.completedColourLabel')}</span>
                     <span className="text-[10px] text-muted-foreground">
-                      Low-alpha tint applied after a task finishes.
+                      {t('schedule.animation.completedColourDescription')}
                     </span>
                   </span>
                   <PaletteSwatch
@@ -343,8 +338,8 @@ export function AnimationSettingsPopover({
             <div className="grid gap-3 py-2">
               <div className="grid gap-1">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="prep-days" className="text-xs">Look-ahead window</Label>
-                  <span className="text-xs font-mono text-muted-foreground">{settings.preparationDays}d</span>
+                  <Label htmlFor="prep-days" className="text-xs">{t('schedule.animation.lookAheadWindowLabel')}</Label>
+                  <span className="text-xs font-mono text-muted-foreground">{t('schedule.animation.lookAheadWindowValue', { days: settings.preparationDays })}</span>
                 </div>
                 <input
                   id="prep-days"
@@ -360,7 +355,7 @@ export function AnimationSettingsPopover({
 
               <div className="grid gap-1">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="palette-intensity" className="text-xs">Colour intensity</Label>
+                  <Label htmlFor="palette-intensity" className="text-xs">{t('schedule.animation.colourIntensityLabel')}</Label>
                   <span className="text-xs font-mono text-muted-foreground">
                     {Math.round(settings.paletteIntensity * 100)}%
                   </span>
@@ -376,7 +371,7 @@ export function AnimationSettingsPopover({
                   className="w-full accent-primary"
                 />
                 <span className="text-[10px] text-muted-foreground">
-                  0% = no colour (equivalent to Minimal); 100% = solid paint.
+                  {t('schedule.animation.colourIntensityHint')}
                 </span>
               </div>
             </div>
@@ -388,7 +383,7 @@ export function AnimationSettingsPopover({
         <div className="flex items-center justify-end pt-1">
           <Button size="sm" variant="ghost" onClick={reset} className="gap-1.5 text-xs">
             <RotateCcw className="h-3 w-3" />
-            Reset defaults
+            {t('schedule.animation.resetDefaults')}
           </Button>
         </div>
       </DropdownMenuContent>
@@ -458,6 +453,7 @@ interface PaletteRowProps {
  * swatches so the interactive affordance actually reads as a button.
  */
 function PaletteRow({ label, colorKey, rgba, onChange, onResetEntry, isDefault }: PaletteRowProps) {
+  const { t } = useTranslation();
   return (
     <div className="group flex items-center gap-2 px-1.5 py-1 rounded hover:bg-muted/40 transition-colors">
       <PaletteSwatch
@@ -472,7 +468,7 @@ function PaletteRow({ label, colorKey, rgba, onChange, onResetEntry, isDefault }
         </span>
         <span className="text-[10px] font-mono text-muted-foreground">
           {rgbaToHex(rgba).toUpperCase()}
-          {!isDefault && <span className="ml-1 text-primary">• modified</span>}
+          {!isDefault && <span className="ml-1 text-primary">• {t('schedule.animation.modifiedTag')}</span>}
         </span>
       </div>
       {!isDefault && (
@@ -482,12 +478,12 @@ function PaletteRow({ label, colorKey, rgba, onChange, onResetEntry, isDefault }
               type="button"
               onClick={() => onResetEntry(colorKey)}
               className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-5 w-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
-              aria-label={`Reset ${label} to default colour`}
+              aria-label={t('schedule.animation.resetEntryAriaLabel', { label })}
             >
               <RotateCcw className="h-3 w-3" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>Reset to default</TooltipContent>
+          <TooltipContent>{t('schedule.animation.resetToDefault')}</TooltipContent>
         </Tooltip>
       )}
     </div>
@@ -509,6 +505,7 @@ interface PaletteSwatchProps {
  * hover/focus confirms it's interactive.
  */
 function PaletteSwatch({ colorKey, rgba, onChange }: PaletteSwatchProps) {
+  const { t } = useTranslation();
   return (
     <label
       className={cn(
@@ -523,8 +520,8 @@ function PaletteSwatch({ colorKey, rgba, onChange }: PaletteSwatchProps) {
         backgroundSize: '6px 6px',
         backgroundPosition: '0 0, 0 3px, 3px -3px, -3px 0px',
       }}
-      title={`${colorKey} — click to edit`}
-      aria-label={`Change colour for ${colorKey}`}
+      title={t('schedule.animation.swatchTitle', { colorKey })}
+      aria-label={t('schedule.animation.swatchAriaLabel', { colorKey })}
     >
       <span
         className="absolute inset-0 rounded-sm"

@@ -11,6 +11,7 @@
 
 import { Ruler } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { useTranslation } from '@/i18n';
 import type { GenerateScheduleOptions } from './generate-schedule';
 
 export interface HeightStrategyPanelProps {
@@ -26,21 +27,22 @@ export function HeightStrategyPanel({
   onHeightToleranceChange,
   onSubgroupChange,
 }: HeightStrategyPanelProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3 grid gap-3">
       <div className="flex items-center gap-2">
         <Ruler className="h-3.5 w-3.5 text-primary" />
-        <span className="text-xs font-medium">Height-slice options</span>
+        <span className="text-xs font-medium">{t('schedule.heightStrategy.title')}</span>
         <span className="ml-auto text-[10px] text-muted-foreground">
-          Uses geometry, ignores spatial tree
+          {t('schedule.heightStrategy.usesGeometry')}
         </span>
       </div>
 
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between">
-          <Label htmlFor="gen-tol" className="text-xs">Slice height</Label>
+          <Label htmlFor="gen-tol" className="text-xs">{t('schedule.heightStrategy.sliceHeightLabel')}</Label>
           <span className="text-xs font-mono text-muted-foreground">
-            {heightTolerance.toFixed(1)} m
+            {t('schedule.heightStrategy.sliceHeightValue', { value: heightTolerance.toFixed(1) })}
           </span>
         </div>
         <input
@@ -54,19 +56,18 @@ export function HeightStrategyPanel({
           className="w-full accent-primary"
         />
         <p className="text-[10px] text-muted-foreground">
-          Elements whose geometry centroid Z falls inside the same
-          band share a task. Typical storey heights are 3–4 m.
+          {t('schedule.heightStrategy.description')}
         </p>
       </div>
 
       <div className="grid gap-1.5">
-        <Label className="text-xs">Subdivide each slice</Label>
+        <Label className="text-xs">{t('schedule.heightStrategy.subdivideLabel')}</Label>
         <div className="grid grid-cols-4 gap-1.5">
           {([
-            { k: 'none',  label: 'None'  },
-            { k: 'class', label: 'Class' },
-            { k: 'type',  label: 'Type'  },
-            { k: 'name',  label: 'Name'  },
+            { k: 'none',  label: t('schedule.heightStrategy.optionNone')  },
+            { k: 'class', label: t('schedule.heightStrategy.optionClass') },
+            { k: 'type',  label: t('schedule.heightStrategy.optionType')  },
+            { k: 'name',  label: t('schedule.heightStrategy.optionName')  },
           ] as const).map(opt => (
             <SubgroupPill
               key={opt.k}
@@ -78,12 +79,12 @@ export function HeightStrategyPanel({
         </div>
         <p className="text-[10px] text-muted-foreground">
           {elementZSubgroup === 'none'
-            ? 'One task per slice — every element in the band goes to that task.'
+            ? t('schedule.heightStrategy.subgroupNone')
             : elementZSubgroup === 'class'
-            ? 'Split each slice by IFC class (IfcWall, IfcSlab, …).'
+            ? t('schedule.heightStrategy.subgroupClass')
             : elementZSubgroup === 'type'
-            ? 'Split each slice by the element’s type name (IfcRelDefinesByType target).'
-            : 'Split each slice by each element’s Name attribute.'}
+            ? t('schedule.heightStrategy.subgroupType')
+            : t('schedule.heightStrategy.subgroupName')}
         </p>
       </div>
     </div>

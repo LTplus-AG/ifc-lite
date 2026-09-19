@@ -16,7 +16,16 @@ import {
 } from '@ifc-lite/parser';
 import { cleanup, render } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
+import { en } from '@/i18n/en';
+import { scheduleEn } from '@/i18n/catalogues/schedule.en';
 import { GanttPanel } from './GanttPanel.js';
+
+// Wires the schedule catalogue into the English fallback so `resolve()` can
+// find `schedule.*` keys under this direct render test — the shared
+// `en.ts` catalogue assembly is owned by the i18n sweep's integration pass,
+// not this slice (see AGENTS.md / #4918). `en` is a plain object at runtime
+// (only its TS type is `as const`), so this augmentation is safe.
+Object.assign(en, scheduleEn);
 
 function control(
   kind: WorkScheduleInfo['kind'],

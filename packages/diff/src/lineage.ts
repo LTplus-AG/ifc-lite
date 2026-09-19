@@ -18,12 +18,16 @@
  * Four relations, each with a different source in a `ModelDiff`:
  *
  * - `identity` — from a content match the engine COMMITTED to (the same
- *   entries `identityMapFromContentMatches` mints), and from every accepted
- *   alias the diff was run with, so a replayed lineage does not erode.
+ *   entries `identityMapFromContentMatches` mints), and from every applied
+ *   alias the diff was run with whose reason is not a successor's, so a
+ *   replayed lineage does not erode.
  * - `split` / `merge` — from `ModelDiff.splitMerges`, verbatim: one base to k
  *   heads, or k bases to one head, with the confidence in the reason.
- * - `replaced` — ONLY from successor claims a caller passed in as accepted.
- *   The engine never promotes a suggestion to lineage on its own.
+ * - `replaced` — from successor claims a caller passed in as accepted
+ *   (`options.accepted`), and from an applied alias whose reason carries the
+ *   successor prefix (see the provenance contract on
+ *   {@link LineageEntry.reason}) — i.e. a replayed accepted successor. The
+ *   engine never promotes a mere suggestion to lineage on its own.
  *
  * Every key appears in at most one entry, on either side. The engine already
  * guarantees that (content matching retires; split/merge resolves conflicts;
@@ -31,7 +35,11 @@
  * does not hold — a key with two lineages is a document that has not decided.
  */
 
-import { identityMapFromContentMatches, identityMapFromSuccessors } from './identity-map.js';
+import {
+  identityMapFromContentMatches,
+  identityMapFromSuccessors,
+  SUCCESSOR_REASON_PREFIX,
+} from './identity-map.js';
 import { compareCodeUnits } from './sidecar-common.js';
 import type { ModelDiff, SplitMergeClaim, SuccessorClaim } from './types.js';
 
@@ -49,6 +57,16 @@ export interface LineageEntry {
    * Provenance: `content-match:<kind>` or `alias:<reason>` for `identity`,
    * `split:<confidence>` / `merge:<confidence>` for those, and
    * `successor:<confidence>` for `replaced`.
+   *
+   * Provenance contract: the reason PREFIX, not the site that produced the
+   * entry, decides the relation on replay. An applied alias
+   * (`diff.appliedKeyAliases`) whose reason starts with
+   * `SUCCESSOR_REASON_PREFIX` ('successor:') is emitted as `replaced`; every
+   * other alias reason (`content-match:*`, `accepted:ambiguous`,
+   * `alias:replayed`, or a hand-written reason) stays `identity`. This is
+   * what keeps `--accept m --lineage-out l` then `--lineage-in l --lineage-out
+   * l` byte-identical: the reason carried in the sidecar is the only signal
+   * a replay has, so it must be sufficient on its own.
    */
   reason: string;
   /**
@@ -106,10 +124,12 @@ function compareEntries(a: LineageEntry, b: LineageEntry): number {
  * Derive lineage from a diff. Pure; entries are sorted by (first base key,
  * first head key) so the same comparison yields the same list.
  *
- * Applied aliases are carried forward as `identity` entries: a diff run with
- * a replayed map classifies those pairs by key, so they never reach the
- * content pass and would otherwise vanish from a `--lineage-in x --lineage-out
- * x` round trip, the file shrinking on every run.
+ * Applied aliases are carried forward as lineage entries (see the provenance
+ * contract on {@link LineageEntry.reason}): a diff run with a replayed map
+ * classifies those pairs by key, so they never reach the content or successor
+ * pass and would otherwise vanish from a `--lineage-in x --lineage-out x`
+ * round trip, the file shrinking (or downgrading `replaced` to `identity`)
+ * on every run.
  */
 export function lineageFromDiff<TRef>(
   diff: ModelDiff<TRef>,
@@ -147,7 +167,8 @@ function lineageEntriesOf<TRef>(
 
   for (const [here, base] of diff.appliedKeyAliases ?? []) {
     const reason = options.aliasReasons?.get(here) ?? 'alias:replayed';
-    entries.push({ base: [base], head: [here], relation: 'identity', reason });
+    const relation = reason.startsWith(SUCCESSOR_REASON_PREFIX) ? 'replaced' : 'identity';
+    entries.push({ base: [base], head: [here], relation, reason });
   }
   for (const entry of identityMapFromContentMatches(diff.contentMatches)) {
     entries.push({ base: [entry.base], head: [entry.here], relation: 'identity', reason: entry.reason });

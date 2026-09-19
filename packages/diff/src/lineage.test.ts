@@ -148,6 +148,43 @@ describe('lineageFromDiff', () => {
     expect(lineageFromDiff(second, { aliasReasons: reasons })).toEqual(lineage);
     expect(lineageFromDiff(second)[0].reason).toBe('alias:replayed');
   });
+
+  it('classifies a replayed alias by reason PREFIX: successor: -> replaced, anything else -> identity', () => {
+    const base = [entity({ key: 'OLD', aabb: WHOLE })];
+    const head = [entity({ key: 'NEW', aabb: WHOLE })];
+    const diff = diffModels(base, head, { keyAliases: new Map([['NEW', 'OLD']]) });
+    expect(diff.appliedKeyAliases).toEqual(new Map([['NEW', 'OLD']]));
+
+    const replaced = lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'successor:position']]),
+    });
+    expect(replaced).toEqual([
+      { base: ['OLD'], head: ['NEW'], relation: 'replaced', reason: 'successor:position' },
+    ]);
+
+    const stillIdentity = lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'accepted:ambiguous']]),
+    });
+    expect(stillIdentity).toEqual([
+      { base: ['OLD'], head: ['NEW'], relation: 'identity', reason: 'accepted:ambiguous' },
+    ]);
+  });
+
+  it('round-trips a replaced entry through keyAliasesFromLineage -> diffModels -> lineageOfDiff, byte-identical', () => {
+    const base = [entity({ key: 'OLD', aabb: WHOLE })];
+    const head = [entity({ key: 'NEW', aabb: WHOLE })];
+    const first: LineageEntry[] = [
+      { base: ['OLD'], head: ['NEW'], relation: 'replaced', reason: 'successor:position' },
+    ];
+    const aliases = keyAliasesFromLineage(first);
+    expect(aliases).toEqual(new Map([['NEW', 'OLD']]));
+
+    const reasons = new Map(first.map((e) => [e.head[0], e.reason]));
+    const replayed = diffModels(base, head, { keyAliases: aliases });
+    const { entries: second } = lineageOfDiff(replayed, { aliasReasons: reasons });
+    expect(second).toEqual(first);
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
 });
 
 describe('keyAliasesFromLineage', () => {

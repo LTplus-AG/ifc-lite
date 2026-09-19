@@ -548,12 +548,14 @@ Each entry is `{ base: string[], head: string[], relation, reason, shares? }` wi
 
 | `relation` | source | arity |
 |---|---|---|
-| `identity` | a content match the engine committed to, or an alias the diff was run with (carried forward so a replayed lineage does not erode) | 1:1 |
+| `identity` | a content match the engine committed to, or an alias the diff was run with whose reason is not a successor's (carried forward so a replayed lineage does not erode) | 1:1 |
 | `split` | `ModelDiff.splitMerges`, reason `split:<confidence>` | 1:k |
 | `merge` | `ModelDiff.splitMerges`, reason `merge:<confidence>` | k:1 |
-| `replaced` | successor claims passed in as **accepted**, reason `successor:<confidence>` | 1:1 |
+| `replaced` | successor claims passed in as **accepted** (reason `successor:<confidence>`), and any alias replayed from one | 1:1 |
 
 `shares` — each piece's fraction of the pieces' total volume, in key order — is present only when every piece carried a proved volume (never on an `extent` claim). Every key appears in at most one entry per side; the engine guarantees that by construction, and the sidecar refuses a document where it does not hold.
+
+**Provenance decides relation on replay.** A lineage entry's `reason` is not just a label: for an entry carried forward from `ModelDiff.appliedKeyAliases` (a key alias the diff was run with, from `--lineage-in`, `--identity-in`, or a viewer replay), the reason PREFIX is what decides the relation, not the call site that produced it. A reason starting with `successor:` comes back `replaced`; every other reason (`content-match:*`, `accepted:ambiguous`, `alias:replayed`, or a hand-written reason) stays `identity`. This is what keeps `--accept m --lineage-out l` followed by `--lineage-in l --lineage-out l` byte-identical, and it is also why `--accept m --identity-in m --lineage-out l` still yields `replaced` even though the alias arrived pre-applied through `--identity-in` rather than freshly folded from `--accept`.
 
 A lineage records *changes*. A key it does not mention was either matched by key (unchanged) or deleted with nothing to carry it forward, and only the sidecar's `deleted` list can tell the two apart: `lineageOfDiff` returns both, `rekeyByLineage` passes an unmentioned key through as `unchanged` unless the list names it, and a lineage handed over without the list loses no row.
 

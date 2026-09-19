@@ -167,6 +167,74 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     ]);
   });
 
+  it('replays an accepted replaced entry byte-identical: --accept then --lineage-in --lineage-out', async () => {
+    await writeFile(headPath, HEAD_MODEL.replace("'Wall B'", "'Wall B (rebuilt)'"), 'utf-8');
+    const acceptPath = join(dir, 'accepted.json');
+    await writeFile(
+      acceptPath,
+      JSON.stringify({
+        format: 'ifc-lite/identity-map',
+        version: 1,
+        base: modelIdentityOf(basePath, await readFile(basePath)),
+        head: modelIdentityOf(headPath, await readFile(headPath)),
+        entries: [{ base: guid('OLDB'), here: guid('NEWB'), reason: 'successor:footprint' }],
+      }),
+      'utf-8',
+    );
+    await contentDiffCommand({ basePath, headPath, accept: acceptPath, lineageOut: lineagePath, json: true });
+    const first = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(first.entries).toContainEqual({
+      base: [guid('OLDB')],
+      head: [guid('NEWB')],
+      relation: 'replaced',
+      reason: 'successor:footprint',
+    });
+
+    // Replay: no --accept this time, just replaying the lineage the previous
+    // run wrote. The `replaced` entry must survive — the reason prefix alone
+    // carries the relation now that the alias is applied by key, not accepted.
+    const before = await readFile(lineagePath, 'utf-8');
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: lineagePath, json: true });
+    expect(await readFile(lineagePath, 'utf-8')).toBe(before);
+    const second = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(second.entries).toEqual(first.entries);
+  });
+
+  it('folds an accepted map replayed through --identity-in into the lineage as replaced, not identity', async () => {
+    // The applied alias comes from --identity-in this time (not from the
+    // engine's own content matching or a fresh --accept fold); the reason it
+    // carries is still `successor:...`, so it must still classify as
+    // `replaced` when written to --lineage-out.
+    await writeFile(headPath, HEAD_MODEL.replace("'Wall B'", "'Wall B (rebuilt)'"), 'utf-8');
+    const mapPath = join(dir, 'identity.json');
+    await writeFile(
+      mapPath,
+      JSON.stringify({
+        format: 'ifc-lite/identity-map',
+        version: 1,
+        base: modelIdentityOf(basePath, await readFile(basePath)),
+        head: modelIdentityOf(headPath, await readFile(headPath)),
+        entries: [{ base: guid('OLDB'), here: guid('NEWB'), reason: 'successor:footprint' }],
+      }),
+      'utf-8',
+    );
+    await contentDiffCommand({
+      basePath,
+      headPath,
+      accept: mapPath,
+      identityIn: mapPath,
+      lineageOut: lineagePath,
+      json: true,
+    });
+    const lineage = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(lineage.entries).toContainEqual({
+      base: [guid('OLDB')],
+      head: [guid('NEWB')],
+      relation: 'replaced',
+      reason: 'successor:footprint',
+    });
+  });
+
   it('lists a bare deletion in the lineage so rekey can orphan exactly that row', async () => {
     // Head without wall B at all: A is renamed by content, B is simply gone.
     const withoutB = HEAD_MODEL.replace(/#71= IFCWALL[^\n]*\n/, '').replace('(#70,#71)', '(#70)');

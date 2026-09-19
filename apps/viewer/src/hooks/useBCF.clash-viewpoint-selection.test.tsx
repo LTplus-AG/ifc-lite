@@ -55,7 +55,9 @@ const dataStore = {
   },
 } as unknown as IfcDataStore;
 
+let submittedWork: Promise<void> = Promise.resolve();
 const renderer = {
+  getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => submittedWork } }),
   getCamera: () => ({
     getPosition: () => ({ x: 10, y: 5, z: 20 }),
     getTarget: () => ({ x: 1, y: 2, z: 3 }),
@@ -70,11 +72,15 @@ let api: ReturnType<typeof useBCF> | null = null;
 let root: Root | null = null;
 
 function Probe(): null {
-  api = useBCF({ rendererRef: { current: renderer } });
+  api = useBCF({
+    rendererRef: { current: renderer },
+    canvasRef: { current: { toDataURL: () => 'data:image/png;base64,c25hcHNob3Q=' } as HTMLCanvasElement },
+  });
   return null;
 }
 
 beforeEach(async () => {
+  submittedWork = Promise.resolve();
   useViewerStore.setState({
     models: new Map(),
     ifcDataStore: dataStore,
@@ -371,6 +377,49 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
     assert.deepEqual(
       viewpoint?.components?.coloring?.[0]?.components.map((component) => component.ifcGuid),
       [overlayGuid],
+    );
+  });
+
+  it('binds exact refs before an awaited snapshot can replace their model revision (#4921)', async () => {
+    const oldGuid = 'OLDREVISION000000000001';
+    const newGuid = 'NEWREVISION000000000001';
+    const model = (guid: string) => ({
+      id: 'ordinary', name: 'ordinary', idOffset: 0, maxExpressId: CLASH_A_ID,
+      ifcDataStore: {
+        entities: { getGlobalId: (expressId: number) => expressId === CLASH_A_ID ? guid : undefined },
+      },
+      geometryResult: null, loadedAt: 0,
+    });
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([['ordinary', model(oldGuid)]]) as unknown as ViewerState['models'],
+        ifcDataStore: null,
+      });
+    });
+    let finishSnapshot!: () => void;
+    submittedWork = new Promise<void>((resolve) => { finishSnapshot = resolve; });
+    const exactRef = { modelId: 'ordinary', expressId: CLASH_A_ID };
+    const capture = api!.createViewpointFromState({
+      includeSnapshot: true,
+      includeSelection: false,
+      additionalSelectedRefs: [exactRef],
+      additionalColoredRefs: [{ color: 'FFFF8000', refs: [exactRef] }],
+    });
+    await Promise.resolve();
+    let viewpoint: BCFViewpoint | null = null;
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([['ordinary', model(newGuid)]]) as unknown as ViewerState['models'],
+      });
+      finishSnapshot();
+      viewpoint = await capture;
+    });
+
+    assert.deepEqual(viewpoint?.components?.selection?.map((component) => component.ifcGuid), [oldGuid]);
+    assert.deepEqual(
+      viewpoint?.components?.coloring?.[0]?.components.map((component) => component.ifcGuid),
+      [oldGuid],
+      'BUG: the old ref was retargeted to a replacement model while snapshot capture awaited the GPU',
     );
   });
 });

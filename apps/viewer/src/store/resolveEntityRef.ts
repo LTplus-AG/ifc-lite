@@ -66,13 +66,21 @@ export function resolveGlobalId(globalId: number): string | null {
 /** Resolve an exact model-space ref without losing identity to overlapping
  * renderer-id ranges. Parsed and StoreEditor-created entities share this path. */
 export function resolveEntityRefGlobalId(entityRef: EntityRef): string | null {
-  const state = useViewerStore.getState();
+  return resolveEntityRefGlobalIdFromState(useViewerStore.getState(), entityRef);
+}
+
+/** Snapshot-aware variant for transactions that must not follow a model
+ * replacement while awaiting other work. */
+export function resolveEntityRefGlobalIdFromState(
+  state: Pick<ReturnType<typeof useViewerStore.getState>, 'models' | 'ifcDataStore' | 'mutationViews'>,
+  entityRef: EntityRef,
+): string | null {
   const dataStore = entityRef.modelId === 'legacy'
     ? state.ifcDataStore
     : state.models.get(entityRef.modelId)?.ifcDataStore;
   const resolvedGlobalId = dataStore?.entities.getGlobalId(entityRef.expressId);
   if (resolvedGlobalId) return resolvedGlobalId;
 
-  const overlayGlobalId = state.getMutationView(entityRef.modelId)?.getNewEntity(entityRef.expressId)?.attributes[0];
+  const overlayGlobalId = state.mutationViews.get(entityRef.modelId)?.getNewEntity(entityRef.expressId)?.attributes[0];
   return typeof overlayGlobalId === 'string' && overlayGlobalId.length > 0 ? overlayGlobalId : null;
 }

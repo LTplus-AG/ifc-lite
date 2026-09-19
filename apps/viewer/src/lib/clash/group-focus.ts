@@ -45,19 +45,38 @@ export interface FocusedClashGroup {
     selectedStoreys: ViewerState['selectedStoreys'];
     levelDisplayMode: ViewerState['levelDisplayMode'];
     classFilter: ViewerState['classFilter'];
+    typeVisibility: ViewerState['typeVisibility'];
+    typeViewMode: ViewerState['typeViewMode'];
   };
 }
 
 const LEVEL_DISPLAY_SETTLE_FRAME_LIMIT = 120;
+const ALL_TYPES_VISIBLE: ViewerState['typeVisibility'] = {
+  spaces: true,
+  spatialZones: true,
+  openings: true,
+  virtualElements: true,
+  site: true,
+  ifcAnnotations: true,
+  ifcGrid: true,
+};
 
 /** Frame only after an Exploded -> Stacked translation has reached the renderer. */
 function scheduleClashFrame(
   waitForLevelDisplayReset: boolean,
+  waitForPresentationReset: boolean,
   resolve: (framed: FramedCamera | null) => void,
 ): void {
   let framesRemaining = LEVEL_DISPLAY_SETTLE_FRAME_LIMIT;
   let settledFrameSeen = !waitForLevelDisplayReset;
   const frameWhenReady = (): void => {
+    if (waitForPresentationReset) {
+      // Type filtering rebuilds the geometry passed to ViewportContainer.
+      // Let that React commit paint before asking the renderer for bounds.
+      waitForPresentationReset = false;
+      requestAnimationFrame(frameWhenReady);
+      return;
+    }
     if (waitForLevelDisplayReset) {
       const state = useViewerStore.getState();
       const offsetsPending = state.appliedStoreyOffsets.size > 0
@@ -172,7 +191,9 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && activeSectionPlane(state) === revision.sectionPlane
     && state.selectedStoreys === revision.selectedStoreys
     && state.levelDisplayMode === revision.levelDisplayMode
-    && state.classFilter === revision.classFilter;
+    && state.classFilter === revision.classFilter
+    && state.typeVisibility === revision.typeVisibility
+    && state.typeViewMode === revision.typeViewMode;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -212,7 +233,21 @@ export function focusClashGroup(
   }
   // Class filtering is a renderer visibility gate, but BCF viewpoints cannot
   // represent it. Clear it before composing the clash focus/capture state.
+  const waitForPresentationReset = state.classFilter !== null
+    || !Object.values(state.typeVisibility).every(Boolean)
+    || state.typeViewMode !== 'model';
   if (state.classFilter !== null) state.clearClassFilter();
+  // Type toggles and the type-library view also remove geometry before it
+  // reaches the renderer, but BCF has no equivalent presentation channel.
+  // Normalize them in one render before framing so the PNG and reopened
+  // viewpoint agree. This deliberately leaves the user's persisted defaults
+  // alone; the capture transition is presentation state, not a preference.
+  if (!Object.values(state.typeVisibility).every(Boolean) || state.typeViewMode !== 'model') {
+    useViewerStore.setState({
+      typeVisibility: { ...ALL_TYPES_VISIBLE },
+      typeViewMode: 'model',
+    });
+  }
   state.clearEntitySelection();
   state.clearClashFocus();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
@@ -220,18 +255,37 @@ export function focusClashGroup(
   state.addEntitiesToSelection(refs);
   applyFocusMode([...globalIds], mode);
   const frameReady = new Promise<FramedCamera | null>((resolve) => {
-    scheduleClashFrame(waitForLevelDisplayReset, resolve);
+    scheduleClashFrame(waitForLevelDisplayReset, waitForPresentationReset, resolve);
   });
   // An object on both sides gets one deterministic color, never two.
   for (const key of aRefs.keys()) bRefs.delete(key);
   const a = [...aRefs.values()], b = [...bRefs.values()];
+  // BCF colors are keyed only by IFC GlobalId. If two loaded revisions expose
+  // the same GlobalId on opposite sides, paint every occurrence amber (A wins)
+  // instead of showing a split that the exported viewpoint cannot reproduce.
+  const colorByGuid = new Map<string, RGBA>();
+  for (const ref of a) {
+    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    if (guid) colorByGuid.set(guid, CLASH_COLOR_A);
+  }
+  for (const ref of b) {
+    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    if (guid && !colorByGuid.has(guid)) colorByGuid.set(guid, CLASH_COLOR_B);
+  }
   const clashColors = new Map<number, RGBA>();
   for (const ref of a) {
-    clashColors.set(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId), CLASH_COLOR_A);
+    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    clashColors.set(
+      toGlobalIdFromModels(state.models, ref.modelId, ref.expressId),
+      guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_A) : CLASH_COLOR_A,
+    );
   }
   for (const ref of b) {
     const globalId = toGlobalIdFromModels(state.models, ref.modelId, ref.expressId);
-    if (!clashColors.has(globalId)) clashColors.set(globalId, CLASH_COLOR_B);
+    const guid = resolveEntityRefGlobalIdFromState(state, ref);
+    if (!clashColors.has(globalId)) {
+      clashColors.set(globalId, guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_B) : CLASH_COLOR_B);
+    }
   }
   const renderedARefs = [...a];
   const renderedBRefs: SelectionRef[] = [];
@@ -266,6 +320,8 @@ export function focusClashGroup(
       selectedStoreys: focusedState.selectedStoreys,
       levelDisplayMode: focusedState.levelDisplayMode,
       classFilter: focusedState.classFilter,
+      typeVisibility: focusedState.typeVisibility,
+      typeViewMode: focusedState.typeViewMode,
     },
   };
 }

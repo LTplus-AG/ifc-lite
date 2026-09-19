@@ -35,6 +35,11 @@ describe('manual clash group focus (#4921)', () => {
       colorPresentationRevision: 0,
       selectedStoreys: new Set(), levelDisplayMode: 'stacked',
       appliedStoreyOffsets: new Map(), pendingMeshTranslations: null, classFilter: null,
+      typeVisibility: {
+        spaces: true, spatialZones: true, openings: true, virtualElements: true,
+        site: true, ifcAnnotations: true, ifcGrid: true,
+      },
+      typeViewMode: 'model',
     });
   });
 
@@ -168,6 +173,37 @@ describe('manual clash group focus (#4921)', () => {
     assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([[10, CLASH_COLOR_A]]));
   });
 
+  it('uses one reproducible color when distinct model occurrences share an IFC GlobalId', () => {
+    const crossRevision = clash('cross-revision', 10, 10);
+    crossRevision.b.model = 'revision-b';
+    useViewerStore.setState({
+      models: new Map([
+        ['model', {
+          idOffset: 0,
+          ifcDataStore: { entities: { getGlobalId: () => 'SHARED-GUID' } },
+        }],
+        ['revision-b', {
+          idOffset: 1000,
+          ifcDataStore: { entities: { getGlobalId: () => 'SHARED-GUID' } },
+        }],
+      ]) as unknown as ViewerState['models'],
+    });
+
+    const focused = focusClashGroup(
+      [crossRevision],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [10, CLASH_COLOR_A], [1010, CLASH_COLOR_A],
+    ]));
+    assert.deepEqual(focused.aGuids, ['SHARED-GUID']);
+    assert.deepEqual(focused.bGuids, [],
+      'BCF cannot assign two colors to the same GUID, so the PNG must not either');
+  });
+
   it('returns viewpoint refs only for objects that resolved in the current models', () => {
     const current = clash('current', 10, 20);
     const stale = clash('stale', 30, 40);
@@ -255,6 +291,54 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().setClassFilter([10], 'IfcWall');
     assert.equal(focusedSceneRevisionIsCurrent(focused), false,
       'a class filter enabled during snapshot capture must invalidate the frame');
+  });
+
+  it('normalizes unserializable type filters before framing and invalidates later changes', async () => {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const frameSelection = mock.fn();
+    useViewerStore.setState({
+      cameraCallbacks: { frameSelection },
+      typeVisibility: {
+        spaces: false, spatialZones: false, openings: false, virtualElements: false,
+        site: true, ifcAnnotations: true, ifcGrid: true,
+      },
+      typeViewMode: 'types',
+    });
+    const focused = focusClashGroup(
+      [clash('type-filter', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'isolate',
+    );
+    assert.ok(focused);
+    const state = useViewerStore.getState();
+    assert.ok(Object.values(state.typeVisibility).every(Boolean),
+      'manual-group framing must show every IFC type BCF cannot filter');
+    assert.equal(state.typeViewMode, 'model',
+      'manual-group framing must show placed occurrences, not the type library');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 0,
+      'framing must wait until the rebuilt all-types geometry has painted');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 1);
+
+    state.setTypeViewMode('types');
+    assert.equal(focusedSceneRevisionIsCurrent(focused), false,
+      'switching to type-library geometry during capture must invalidate the frame');
+
+    const beforeVisibilityChange = focusClashGroup(
+      [clash('type-filter-later', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'isolate',
+    );
+    assert.ok(beforeVisibilityChange);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    useViewerStore.getState().toggleTypeVisibility('spaces');
+    assert.equal(focusedSceneRevisionIsCurrent(beforeVisibilityChange), false,
+      'a type filter enabled during snapshot capture must invalidate the frame');
   });
 
   it('waits for exploded offsets to be reverted and painted before framing', async () => {

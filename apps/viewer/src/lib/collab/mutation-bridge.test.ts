@@ -521,13 +521,31 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     });
   });
 
+  it('preserves a structured remote positional value for schema-aware application (#5008)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/pointA', { ifcClass: 'IfcCartesianPoint' });
+    const store = fakeStore(new Map([[7, '/pointA']]));
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+    const coordinates = [1, 2, 3];
+
+    applyAsRemoteEdit(doc, (remote) => {
+      setAttribute(remote, '/pointA', 'bsi::ifc::prop::Coordinates', coordinates);
+    });
+
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onAttribute',
+      args: [MODEL, 7, 'bsi::ifc::prop::Coordinates', coordinates],
+    }]);
+  });
+
   it('drops a remote flat attribute DELETE — no onAttribute call, and no delete handler exists to call instead', () => {
     // There is no `onAttributeDelete` in RemoteApplyHandlers: attribute deletes
     // are intentionally dropped until a full reconstruct picks them up. Without
     // the `change.action === 'delete'` guard, the deleted key's value reads
-    // back as `undefined` from Yjs, and `toScalar` stringifies that to the
-    // literal string "undefined" — which `collabSlice`'s onAttribute handler
-    // would then WRITE as the attribute's new local value, corrupting it
+    // back as `undefined` from Yjs, which `collabSlice`'s onAttribute handler
+    // could then WRITE as the attribute's new local value, corrupting it
     // instead of leaving it alone.
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });

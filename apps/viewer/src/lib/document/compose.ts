@@ -108,6 +108,14 @@ export function wrapText(text: string, width: number, size: number, bold: boolea
   return lines;
 }
 
+/** A single line, ellipsis-truncated to fit `width` by the same measure `wrapText` uses (#4940 review: a half-width chart's title/subtitle must not run into the next column). */
+function truncateToWidth(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure']): string {
+  if (width <= 0 || measure(text, size, bold) <= width) return text;
+  let cut = text.length;
+  while (cut > 0 && measure(`${text.slice(0, cut)}…`, size, bold) > width) cut -= 1;
+  return cut > 0 ? `${text.slice(0, cut)}…` : '…';
+}
+
 export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   const size = pageBox(input.page);
   const contentW = size.w - 2 * REPORT_MARGIN;
@@ -147,18 +155,25 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   };
 
   const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number): { height: number; draw: (y: number) => DrawnItem[] } => {
-    const chartHeight = block.height ?? CHART_HEIGHT;
     const sideBySide = block.snapshot && block.hasData && boxW >= 640;
     const stacked = block.snapshot && block.hasData && !sideBySide;
+    // The configured height (up to CHART_BLOCK_HEIGHT_MAX, 600pt) must still fit a single page next to its
+    // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
+    const overhead = 18 + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
+    const chartHeight = Math.max(40, Math.min(block.height ?? CHART_HEIGHT, bottom - top - overhead));
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
     const totalH = 18 + (sideBySide ? Math.max(chartHeight, SNAPSHOT_HEIGHT) : chartHeight + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0));
     return {
       height: totalH,
       draw: (y) => {
+        // A half-width column must not let a long title/subtitle run into the next column (review finding).
+        const title = truncateToWidth(block.title, Math.max(20, boxW - 8), 11, true, input.measure);
         const items: DrawnItem[] = [
-          { kind: 'text', x: boxX, y: y + 11, size: 11, bold: true, gray: 0, text: block.title },
-          { kind: 'text', x: boxX + Math.min(boxW - 80, block.title.length * 6 + 12), y: y + 11, size: 8, bold: false, gray: 130, text: block.subtitle },
+          { kind: 'text', x: boxX, y: y + 11, size: 11, bold: true, gray: 0, text: title },
         ];
+        const subtitleX = boxX + Math.min(boxW - 80, title.length * 6 + 12);
+        const subtitle = truncateToWidth(block.subtitle, Math.max(20, boxX + boxW - subtitleX - 4), 8, false, input.measure);
+        items.push({ kind: 'text', x: subtitleX, y: y + 11, size: 8, bold: false, gray: 130, text: subtitle });
         const chartY = y + 18;
         items.push({ kind: 'chart', blockId: block.id, x: boxX, y: chartY, w: chartW, h: chartHeight });
         if (sideBySide) items.push({ kind: 'snapshot', blockId: block.id, x: boxX + chartW + BLOCK_GAP, y: chartY, w: boxW - chartW - BLOCK_GAP, h: SNAPSHOT_HEIGHT });
@@ -191,8 +206,11 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         break;
       }
       case 'spacer': {
-        ensure(block.height);
-        y += block.height;
+        // A spacer taller than the printable page would otherwise push every following item past
+        // the footer, since `ensure` only starts one fresh page (review finding).
+        const height = Math.min(block.height, bottom - top);
+        ensure(height);
+        y += height;
         break;
       }
       case 'image':

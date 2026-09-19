@@ -85,7 +85,7 @@ function ChartSvg({ aggregation, message, width, height }: { aggregation: Aggreg
     : null), [aggregation, width, height]);
   if (!svg) {
     return (
-      <div className="flex h-24 items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-center text-xs text-neutral-500" data-chart-empty>
+      <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-center text-xs text-neutral-500" style={{ height: Math.max(48, height) }} data-chart-empty>
         {message ?? 'No data for this chart.'}
       </div>
     );
@@ -94,7 +94,7 @@ function ChartSvg({ aggregation, message, width, height }: { aggregation: Aggreg
   return <div className="w-full overflow-hidden" dangerouslySetInnerHTML={{ __html: svg }} data-chart-svg />;
 }
 
-function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number }) {
+function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth, scale }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number; scale: number }) {
   switch (block.kind) {
     case 'text':
       return <div className={TEXT_CLASS[block.style]} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>(empty)</span>}</div>;
@@ -104,8 +104,8 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
         <figure className={`flex flex-col ${block.align === 'center' ? 'items-center' : block.align === 'right' ? 'items-end' : 'items-start'}`}>
           <div className={`flex w-full ${justify}`}>
             {block.dataUrl
-              ? <img src={block.dataUrl} alt={block.caption ?? ''} style={{ height: block.height * (contentWidth / 515) }} className="max-w-full object-contain" />
-              : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height: block.height * (contentWidth / 515), minWidth: 80 }}>No image yet</div>}
+              ? <img src={block.dataUrl} alt={block.caption ?? ''} style={{ height: block.height * scale }} className="max-w-full object-contain" />
+              : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height: block.height * scale, minWidth: 80 }}>No image yet</div>}
           </div>
           {block.caption && <figcaption className="text-[10px] text-neutral-500">{block.caption}</figcaption>}
         </figure>
@@ -113,7 +113,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
     }
     case 'chart': {
       const subtitle = chartMessage ?? (aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data');
-      const height = (block.height ?? CHART_BLOCK_HEIGHT_DEFAULT) * (contentWidth / 515);
+      const height = (block.height ?? CHART_BLOCK_HEIGHT_DEFAULT) * scale;
       return (
         <div>
           <div className="text-sm font-semibold">{block.chart.title} <span className="text-[10px] font-normal text-neutral-500">{subtitle}{block.snapshot ? ' · 3D snapshot in the PDF' : ''}</span></div>
@@ -122,7 +122,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
       );
     }
     case 'spacer':
-      return <div style={{ height: block.height * (contentWidth / 515) }} data-block-spacer />;
+      return <div style={{ height: block.height * scale }} data-block-spacer />;
     case 'topic': {
       if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>BCF topic {block.guid} is not among the loaded topics.</div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;
@@ -144,6 +144,11 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
   // The sheet scales to the panel; block content is laid out at this width.
   const width = 560;
   const contentWidth = width * (1 - 80 / size.w);
+  // px-per-pt for the whole sheet, independent of page orientation and of any one block's column
+  // width — a height in points (chart, image, spacer) converts through this, never through
+  // `contentWidth`, which is narrower than the page for a half-width column (review finding: a
+  // landscape or half-width block was rendered off the PDF's actual scale).
+  const scale = width / size.w;
   return (
     <div className="flex justify-center p-3" data-document-preview>
       <div
@@ -160,7 +165,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
                 onClick={() => onSelectBlock(block.id)}
                 data-preview-block={block.id}
               >
-                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} />
+                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} />
               </div>
             );
             return Array.isArray(group)

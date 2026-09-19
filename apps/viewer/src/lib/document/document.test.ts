@@ -265,6 +265,47 @@ describe('compose', () => {
     assert.equal(soloChart.w, contentW, 'unpaired half prints full width');
   });
 
+  it('a chart height + snapshot that would not fit a single page is clamped, never drawn past the footer (review finding, #4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'chart', id: 'c', title: 'Chart', subtitle: '', hasData: true, snapshot: true, height: 600 }],
+    });
+    const page = layout.pages[0];
+    const chart = page.items.find((i) => i.kind === 'chart')!;
+    const snapshot = page.items.find((i) => i.kind === 'snapshot')!;
+    const bottom = layout.size.h - 40 - 24; // REPORT_MARGIN + FOOTER_HEIGHT
+    assert.ok(chart.h < 600, 'the 600pt request is reduced to leave room for the stacked snapshot');
+    assert.ok(snapshot.y + snapshot.h <= bottom, `snapshot bottom ${snapshot.y + snapshot.h} must stay above the footer at ${bottom}`);
+  });
+
+  it('a spacer taller than the printable page is clamped instead of pushing later content off the page (review finding, #4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'sp', height: 5000 },
+        { kind: 'text', id: 't', style: 'body', text: 'after the spacer' },
+      ],
+    });
+    const bottom = layout.size.h - 40 - 24;
+    for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= bottom, `${item.kind} at y=${item.y} must stay above the footer at ${bottom}`);
+    const after = layout.pages.flatMap((p) => p.items).find((i) => i.kind === 'text' && i.text === 'after the spacer');
+    assert.ok(after, 'the text after the oversized spacer is still drawn somewhere, not lost past the page bounds');
+  });
+
+  it('a long chart title in a half-width column is truncated, not left to overrun into the next column (review finding, #4940)', () => {
+    const longTitle = 'A Very Long Chart Title That Would Otherwise Run Into The Next Column';
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'landscape' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'chart', id: 'a', title: longTitle, subtitle: 'a subtitle that is also fairly long for its column', hasData: false, snapshot: false, width: 'half' },
+        { kind: 'chart', id: 'b', title: 'B', subtitle: '', hasData: false, snapshot: false, width: 'half' },
+      ],
+    });
+    const texts = layout.pages[0].items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
+    assert.ok(!texts.some((t) => t.text === longTitle), 'the full title never appears untruncated');
+    assert.ok(texts.some((t) => t.text.endsWith('…')), 'the truncated title carries an ellipsis');
+  });
+
   it('the snapshot frames the bucket with the largest value, whatever the display order (review finding)', () => {
     const agg = { categories: [{ label: 'a', value: 1, ids: new Set([1]) }, { label: 'b', value: 5, ids: new Set([2, 3]) }, { label: 'c', value: 2, ids: new Set([4]) }] } as unknown as Aggregation;
     assert.deepEqual(largestBucketIds(agg), [2, 3]);

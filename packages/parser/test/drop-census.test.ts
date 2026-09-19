@@ -118,6 +118,21 @@ describe('drop census (#4208)', () => {
         expect(census.unindexedRelClasses.map(c => c.type)).toContain('IFCRELDEFINESBYOBJECT');
     });
 
+    it('counts every mapped structural connection as indexed, including eccentricity and the IFC2X3-only type (#4205)', async () => {
+        const ifc = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
+#10=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);
+#11=IFCWALL('w2',#1,'Wall2',$,$,$,$,$);
+#12=IFCWALL('w3',#1,'Wall3',$,$,$,$,$);
+#20=IFCRELCONNECTSSTRUCTURALACTIVITY('sa',#1,$,$,#10,#11);
+#21=IFCRELCONNECTSSTRUCTURALMEMBER('sm',#1,$,$,#10,#11,$,$,$,$);
+#22=IFCRELCONNECTSWITHECCENTRICITY('se',#1,$,$,#10,#11,$,$,$,$,$);
+#23=IFCRELCONNECTSSTRUCTURALELEMENT('sx',#1,$,$,#10,#12);`;
+        const census = (await parseSource(ifc)).dropCensus!;
+        expect(census.relClassesSeen).toBe(4);
+        expect(census.relClassesIndexed).toBe(4);
+        expect(census.unindexedRelClasses).toEqual([]);
+    });
+
     it('reports an IFCREL* class seen but not indexed as a relationship edge', async () => {
         // A keyword no bundled schema declares (an unreleased draft addition
         // or vendor extension) still starts with "IFCREL" (routed to

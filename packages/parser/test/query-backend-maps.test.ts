@@ -372,12 +372,16 @@ describe('QUERY_REL_TYPE_MAP', () => {
     }
   });
 
-  it('resolves the five relationships the SDK surface exposes', () => {
+  it('resolves the structural relationships the SDK surface exposes', () => {
     expect(QUERY_REL_TYPE_MAP.IfcRelContainedInSpatialStructure).toBe(RelationshipType.ContainsElements);
     expect(QUERY_REL_TYPE_MAP.IfcRelAggregates).toBe(RelationshipType.Aggregates);
     expect(QUERY_REL_TYPE_MAP.IfcRelDefinesByType).toBe(RelationshipType.DefinesByType);
     expect(QUERY_REL_TYPE_MAP.IfcRelVoidsElement).toBe(RelationshipType.VoidsElement);
     expect(QUERY_REL_TYPE_MAP.IfcRelFillsElement).toBe(RelationshipType.FillsElement);
+    expect(QUERY_REL_TYPE_MAP.IfcRelConnectsStructuralActivity).toBe(RelationshipType.ConnectsStructuralActivity);
+    expect(QUERY_REL_TYPE_MAP.IfcRelConnectsStructuralMember).toBe(RelationshipType.ConnectsStructuralMember);
+    expect(QUERY_REL_TYPE_MAP.IfcRelConnectsWithEccentricity).toBe(RelationshipType.ConnectsWithEccentricity);
+    expect(QUERY_REL_TYPE_MAP.IfcRelConnectsStructuralElement).toBe(RelationshipType.ConnectsStructuralElement);
   });
 
   it('answers undefined for a relationship outside the SDK surface', () => {

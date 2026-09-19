@@ -81,6 +81,13 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELCONNECTSELEMENTS': RelationshipType.ConnectsElements,
     'IFCRELCONNECTSPORTTOELEMENT': RelationshipType.ConnectsPortToElement,
     'IFCRELCONNECTSPORTS': RelationshipType.ConnectsPorts,
+    'IFCRELCONNECTSSTRUCTURALACTIVITY': RelationshipType.ConnectsStructuralActivity,
+    'IFCRELCONNECTSSTRUCTURALMEMBER': RelationshipType.ConnectsStructuralMember,
+    'IFCRELCONNECTSWITHECCENTRICITY': RelationshipType.ConnectsWithEccentricity,
+    // IfcRelConnectsStructuralElement exists only in IFC2X3. Its distinct
+    // structural-member endpoint and relationship identity must not be
+    // folded into IfcRelConnectsStructuralMember.
+    'IFCRELCONNECTSSTRUCTURALELEMENT': RelationshipType.ConnectsStructuralElement,
     'IFCRELSPACEBOUNDARY': RelationshipType.SpaceBoundary,
     'IFCRELASSIGNSTOGROUP': RelationshipType.AssignsToGroup,
     // Subtype of IfcRelAssignsToGroup (adds a Factor); same RelatingGroup /

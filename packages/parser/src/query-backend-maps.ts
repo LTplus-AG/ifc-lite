@@ -232,4 +232,8 @@ export const QUERY_REL_TYPE_MAP: Record<string, RelationshipType> = {
   IfcRelDefinesByType: RelationshipType.DefinesByType,
   IfcRelVoidsElement: RelationshipType.VoidsElement,
   IfcRelFillsElement: RelationshipType.FillsElement,
+  IfcRelConnectsStructuralActivity: RelationshipType.ConnectsStructuralActivity,
+  IfcRelConnectsStructuralMember: RelationshipType.ConnectsStructuralMember,
+  IfcRelConnectsWithEccentricity: RelationshipType.ConnectsWithEccentricity,
+  IfcRelConnectsStructuralElement: RelationshipType.ConnectsStructuralElement,
 };

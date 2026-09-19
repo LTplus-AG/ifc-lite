@@ -82,6 +82,18 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
     expect(item.attributes[7]).toEqual([`#${valueId}`]);
   });
 
+  it('de-duplicates constructor CostValues so evaluation cannot double-count (#4985 review)', async () => {
+    const { editor: ed } = await editor();
+    const valueId = addCostValueToStore(ed, ANCHOR, {
+      Name: 'Rate', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 12 },
+    });
+    const itemId = addCostItemToStore(ed, ANCHOR, {
+      Name: 'Facade', CostValues: [valueId, valueId],
+    });
+
+    expect(ed.getNewEntity(itemId)?.attributes[7]).toEqual([`#${valueId}`]);
+  });
+
   it('refuses IFC2X3 by name', async () => {
     const { editor: ed } = await editor();
     expect(() => addCostScheduleToStore(ed, { ownerHistoryId: null, schema: 'IFC2X3' }, { Name: 'x' }))

@@ -3,7 +3,7 @@
 "@ifc-lite/export": minor
 "@ifc-lite/create": minor
 "@ifc-lite/mutations": minor
-"@ifc-lite/sdk": minor
+"@ifc-lite/sdk": major
 "@ifc-lite/cli": minor
 "@ifc-lite/mcp": patch
 ---

@@ -99,15 +99,17 @@ export function addCostScheduleToStore(editor: StoreEditor, anchor: CostAnchor, 
  */
 export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, params: CostItemParams): number {
   const schema = schemaOf(anchor);
+  const costValues = params.CostValues === undefined ? undefined : [...new Set(params.CostValues)];
+  const costQuantities = params.CostQuantities === undefined ? undefined : [...new Set(params.CostQuantities)];
   assertCostSchema(schema, 'addCostItem');
   if (typeof params.Name !== 'string' || params.Name.length === 0) {
     throw new Error('addCostItem: Name is required');
   }
   assertOneOf(params.PredefinedType, COST_ITEM_TYPES, 'PredefinedType', 'addCostItem');
-  validateRefList(params.CostValues, 'CostValues', 'addCostItem');
-  validateRefList(params.CostQuantities, 'CostQuantities', 'addCostItem');
-  for (const id of params.CostValues ?? []) requireEntityType(editor, id, 'IfcCostValue', 'CostValues', 'addCostItem');
-  for (const id of params.CostQuantities ?? []) {
+  validateRefList(costValues, 'CostValues', 'addCostItem');
+  validateRefList(costQuantities, 'CostQuantities', 'addCostItem');
+  for (const id of costValues ?? []) requireEntityType(editor, id, 'IfcCostValue', 'CostValues', 'addCostItem');
+  for (const id of costQuantities ?? []) {
     requireEntitySubtype(editor, id, 'IfcPhysicalQuantity', 'CostQuantities', 'addCostItem');
   }
   return editor.addEntity('IfcCostItem', [
@@ -118,8 +120,8 @@ export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, para
     params.ObjectType ?? null,
     params.Identification ?? null,
     params.PredefinedType ? `.${params.PredefinedType}.` : null,
-    refListAttr(params.CostValues),
-    refListAttr(params.CostQuantities),
+    refListAttr(costValues),
+    refListAttr(costQuantities),
   ]).expressId;
 }
 

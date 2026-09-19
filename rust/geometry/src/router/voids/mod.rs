@@ -809,9 +809,9 @@ impl GeometryRouter {
             .filter_map(depth_of)
             .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
             .and_then(wall_frame_from_depth);
-        let (axes, vertical_depth_frame) = match horizontal_axes {
-            Some(axes) => (axes, false),
-            None => (vertical_depth_wall_frame(mesh, &ctx.merged_openings)?, true),
+        let axes = match horizontal_axes {
+            Some(axes) => axes,
+            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)?,
         };
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a
@@ -871,8 +871,7 @@ impl GeometryRouter {
                 // local depth is +Y rather than the wall normal (+Z). Extending
                 // those along +Z would turn a partial-thickness vertical slot
                 // into a full-through cut.
-                let depth = if vertical_depth_frame { frame_depth } else { Some(z) };
-                local_openings.push(OpeningType::Rectangular(lmn, lmx, depth));
+                local_openings.push(OpeningType::Rectangular(lmn, lmx, frame_depth));
             } else {
                 let mesh_local = mesh_to_frame(cutter, &axes, center);
                 // Keep this cutter's true depth in the frame; fall back to the

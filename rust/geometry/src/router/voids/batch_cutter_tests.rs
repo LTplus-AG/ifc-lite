@@ -210,6 +210,62 @@ fn vertical_partial_thickness_slot_keeps_its_authored_axis_3977() {
 }
 
 #[test]
+fn mixed_horizontal_and_vertical_cutters_keep_each_authored_axis_3977() {
+    let angle = 3.0_f64.to_radians();
+    let rotate = |profile: &[(f32, f32)], z0: f32, z1: f32| {
+        issue_3977_rotate(&issue_3977_prism(profile, z0, z1), angle)
+    };
+    let host = rotate(
+        &[(0.0, -0.05), (4.0, -0.05), (4.0, 0.05), (0.0, 0.05)],
+        0.0,
+        3.0,
+    );
+    let horizontal = rotate(
+        &[(0.5, -0.05), (1.0, -0.05), (1.0, 0.05), (0.5, 0.05)],
+        1.0,
+        2.0,
+    );
+    let vertical = rotate(
+        &[(2.0, -0.02), (3.0, -0.02), (3.0, 0.02), (2.0, 0.02)],
+        0.0,
+        3.0,
+    );
+    let horizontal_depth = Vector3::new(-angle.sin(), angle.cos(), 0.0);
+    let vertical_depth = Vector3::new(0.0, 0.0, 1.0);
+    let openings = vec![
+        OpeningType::DiagonalRectangular(
+            horizontal.clone(),
+            infer_opening_frame(&horizontal, Some(&horizontal_depth))
+                .expect("the ordinary opening must expose its horizontal depth"),
+        ),
+        OpeningType::DiagonalRectangular(
+            vertical.clone(),
+            infer_opening_frame(&vertical, Some(&vertical_depth))
+                .expect("the partial slot must expose its vertical depth"),
+        ),
+    ];
+    let context = VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let bounds = world_host_bounds(&host);
+    let host_volume = mesh_signed_volume(&host).abs();
+    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let removed = host_volume - mesh_signed_volume(&output).abs();
+
+    assert!(
+        mesh_is_closed_exact(&output),
+        "the mixed-axis cut must remain closed"
+    );
+    assert!(
+        (removed - 0.17).abs() < 1.0e-4,
+        "the 0.05 m^3 opening plus 0.12 m^3 partial slot must retain both authored depths; removed {removed}"
+    );
+}
+
+#[test]
 fn inferred_vertical_axis_does_not_enable_wall_local_cut_3977() {
     let angle = 3.0_f64.to_radians();
     let host = issue_3977_rotate(

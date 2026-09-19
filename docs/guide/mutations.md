@@ -466,7 +466,7 @@ The detector also picks up overlay walls (placed via `addWallToStore` since the 
 
 ### `bim.store.*` — Scripting & SDK
 
-In the viewer's QuickJS sandbox and the TypeScript SDK, the same surface is exposed as `bim.store`:
+The viewer's QuickJS sandbox and the TypeScript SDK expose the core mutation surface as `bim.store`:
 
 ```typescript
 // SDK (TypeScript app)
@@ -489,6 +489,8 @@ const col = bim.store.addColumn('default', storey, {
 **Which `modelId`?** The headless backend behind `ifc-lite run` and `ifc-lite eval` holds exactly one model and answers for two spellings of it: `'default'` and the file's basename (`'tower.ifc'`). Any other id throws at the create call, rather than handing back a ref that the next `bim.mutate.*` write would refuse. Use the id you were given: the refs from `bim.query()` already carry it, and in the viewer it is the real model id from the model registry.
 
 The sandbox gates `bim.store.*` behind a `store: true` permission (default `false`, mirrors the existing `mutate` permission). The viewer opts in.
+
+**Cost / 5D authoring (#4857)** — `addCostSchedule`, `addCostItem`, `addCostValue`, `addCostQuantity`, `nestCostItems`, `assignCostItemsToSchedule`, `assignToCostItem`, `setCostItemValues`, `removeCostEntity` — is available through the CLI/headless and viewer SDK adapters and is registered in the viewer's QuickJS `bim.store` bridge (subject to the existing `store` permission). The viewer's cost panel stays read-only by design (see [Cost Panel → Authoring from scripts](cost-panel.md#authoring-from-scripts)). An authored `IfcCostItem`/`IfcCostValue` is visible to `bim.cost.data()` immediately, before export.
 
 ### Viewer UI
 

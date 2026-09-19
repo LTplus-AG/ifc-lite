@@ -29,6 +29,7 @@ import type {
 } from '@ifc-lite/sdk';
 import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter, type EntityRefCheck, type StyleBackendMethods } from '@ifc-lite/sdk';
 import { applyStylesInStore } from '@ifc-lite/create';
+import { costStoreStubs } from './headless-backend-cost-store.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -131,9 +132,9 @@ export class HeadlessLikeBackend implements BimBackend {
     this.files = { list() { return []; }, text() { return null; }, csv() { return null; }, csvColumns() { return []; } };
     this.schedule = this.createScheduleAdapter();
     this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
-    this.cost = createCostBackend(modelId => {
+    this.cost = createCostBackend(modelId => { // #4857: lazily created overlay, visible once non-null.
       if (modelId) this.assertKnownModelId(modelId);
-      return { modelId: this.modelId, store: this.dataStore };
+      return { modelId: this.modelId, store: this.dataStore, mutationView: this.mutationView ?? undefined };
     });
   }
 
@@ -275,6 +276,7 @@ export class HeadlessLikeBackend implements BimBackend {
       addRoof: () => { throw new Error('addRoof not supported in MCP v0.1; use entity_create'); },
       addPlate: () => { throw new Error('addPlate not supported in MCP v0.1; use entity_create'); },
       addMember: () => { throw new Error('addMember not supported in MCP v0.1; use entity_create'); },
+      ...costStoreStubs(),
     };
   }
 

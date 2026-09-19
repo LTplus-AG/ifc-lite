@@ -36,7 +36,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
+import { createCostBackend, createCostStoreBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -188,7 +188,10 @@ export class HeadlessBackend implements BimBackend {
     this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
     this.cost = createCostBackend(modelId => {
       if (modelId) this.assertKnownModelId(modelId);
-      return { modelId: MODEL_ID, store: this.dataStore };
+      // Lazily created overlay (#4857): a `bim.store.addCost*` authored
+      // entity, or any pending edit, is only visible to `bim.cost` once this
+      // is non-null, and it stays null until the first mutating call.
+      return { modelId: MODEL_ID, store: this.dataStore, mutationView: this.mutationView ?? undefined };
     });
     this.spaces = this.createSpacesAdapter();
     this.style = this.createStyleAdapter();
@@ -637,6 +640,18 @@ export class HeadlessBackend implements BimBackend {
         const result = addMemberToStore(editor, anchor, params);
         return { modelId, expressId: result.memberId };
       },
+      // Cost authoring (#4857 PR A): the reparent / append / safe-delete
+      // bookkeeping lives once in `createCostStoreBackend`, reading through
+      // `this.cost` (mutation-aware) so a rel authored earlier this session
+      // is visible to the very next call.
+      ...createCostStoreBackend(
+        (modelId) => {
+          assertModel(modelId ?? '');
+          const ownerHistoryId = dataStore().entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
+          return { modelId: modelId ?? MODEL_ID, store: dataStore(), editor: get(), mutationView: this.getOrCreateMutationView(), ownerHistoryId };
+        },
+        { data: (modelId, options) => this.cost.data(modelId, options) },
+      ),
     };
   }
 

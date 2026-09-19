@@ -546,6 +546,7 @@ fn mesh_from_ptris(tris: &[PTri], template: &Mesh) -> Mesh {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: false,
+        plane_tags: None,
     }
 }
 

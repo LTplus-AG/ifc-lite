@@ -440,6 +440,7 @@ impl MeshDataJs {
             local_bounds: m.local_bounds,
             local_to_world: m.local_to_world,
             welded_in_object_frame: false,
+            plane_tags: None,
         };
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);

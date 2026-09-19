@@ -302,6 +302,7 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             rtc_applied: false,
             origin: [0.0; 3],
             welded_in_object_frame: false,
+            plane_tags: None,
         instance_meta: None, local_bounds: None, local_to_world: None };
 
         // Ship smooth per-vertex normals, computed here in the directrix-local

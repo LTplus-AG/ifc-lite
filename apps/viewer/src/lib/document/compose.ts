@@ -111,9 +111,18 @@ export function wrapText(text: string, width: number, size: number, bold: boolea
 /** A single line, ellipsis-truncated to fit `width` by the same measure `wrapText` uses (#4940 review: a half-width chart's title/subtitle must not run into the next column). */
 function truncateToWidth(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure']): string {
   if (width <= 0 || measure(text, size, bold) <= width) return text;
-  let cut = text.length;
-  while (cut > 0 && measure(`${text.slice(0, cut)}…`, size, bold) > width) cut -= 1;
-  return cut > 0 ? `${text.slice(0, cut)}…` : '…';
+  // Binary, not linear: a linear cut-by-one scan remeasures a near-full string once per code
+  // unit, quadratic in an imported title's length (review finding). `measure` grows monotonically
+  // with the prefix length for both measures this module is called with (jsPDF's textWidth, the
+  // character-count estimate), so the longest prefix that still fits is found by bisection.
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const cut = Math.ceil((low + high) / 2);
+    if (measure(`${text.slice(0, cut)}…`, size, bold) <= width) low = cut;
+    else high = cut - 1;
+  }
+  return low > 0 ? `${text.slice(0, low)}…` : '…';
 }
 
 export function composeDocument(input: ComposeDocumentInput): DocumentLayout {

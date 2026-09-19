@@ -122,7 +122,11 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
       );
     }
     case 'spacer':
-      return <div style={{ height: block.height * scale }} data-block-spacer />;
+      // The flex column's own `gap-2.5` (10px) already sits on both sides of this block, but
+      // compose.ts (and every other block here) only ever adds one trailing gap per block — a
+      // spacer effectively double-counted one, pushing everything after it lower than the PDF
+      // does (review finding). A negative margin cancels the container's second gap.
+      return <div style={{ height: block.height * scale, marginBottom: '-0.625rem' }} data-block-spacer />;
     case 'topic': {
       if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>BCF topic {block.guid} is not among the loaded topics.</div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;

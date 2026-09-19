@@ -99,6 +99,13 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       errors.push({ path: filterPath, message: 'expected { selector: string }' });
     } else {
       str(errors, chart.filter, 'selector', filterPath);
+      // `str` only rejects an empty string; a whitespace-only one ("   ")
+      // would otherwise pass validation and then resolve to "no filter" at
+      // every consumer (they all trim), stranding the chart on "Resolving
+      // filter…" forever with no matching entry to look up (review finding).
+      if (typeof chart.filter.selector === 'string' && chart.filter.selector.length > 0 && chart.filter.selector.trim().length === 0) {
+        errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector' });
+      }
       if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {
         errors.push({ path: filterPath, message: 'a source filter is not applicable to bcf or compare' });
       }

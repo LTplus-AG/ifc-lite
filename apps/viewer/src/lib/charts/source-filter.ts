@@ -103,7 +103,20 @@ function rowMatchesAny(rowIds: ArrayLike<number>, ids: ReadonlySet<number>): boo
  * any-match reading the plan settled on. Never called for `bcf` / `compare`
  * — `validate.ts` refuses a `filter` on those sources.
  */
+/** FNV-1a over the matched ids, sorted so the hash is order-independent —
+ *  two DIFFERENT id sets of the same size must never fingerprint alike
+ *  (review finding: `ids.size` alone collides `{1}` and `{2}`). */
+function fingerprintIds(ids: ReadonlySet<number>): string {
+  const sorted = [...ids].sort((a, b) => a - b);
+  let h = 0x811c9dc5;
+  for (const id of sorted) {
+    h ^= id;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${sorted.length}:${h.toString(16)}`;
+}
+
 export function applyChartFilter(dataset: ChartDataset, ids: ReadonlySet<number>): ChartDataset {
   const rows: ChartDatasetRow[] = dataset.rows.filter((row) => rowMatchesAny(row.ids, ids));
-  return { ...dataset, rows, fingerprint: `filtered:${ids.size}:${dataset.fingerprint}` };
+  return { ...dataset, rows, fingerprint: `filtered:${fingerprintIds(ids)}:${dataset.fingerprint}` };
 }

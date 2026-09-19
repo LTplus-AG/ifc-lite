@@ -152,6 +152,10 @@ describe('validateDashboardSpec', () => {
       expect(validateDashboardSpec({ ...good, charts: [{ ...bar, source, filter: { selector: 'IfcWall' } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter']);
     }
     expect(validateDashboardSpec({ ...good, charts: [{ ...bar, filter: { selector: '' } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter.selector']);
+    // A whitespace-only selector passes `str`'s empty check but every consumer
+    // trims before lookup, so it would resolve to "no filter" and strand the
+    // chart on "Resolving filter…" forever with no entry to find (review finding).
+    expect(validateDashboardSpec({ ...good, charts: [{ ...bar, filter: { selector: '   ' } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter.selector']);
   });
 });
 

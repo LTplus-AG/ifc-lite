@@ -641,4 +641,13 @@ END-ISO-10303-21;`;
     const clearedIds = await resolveChartFilter(clearedModels, { selector }, toGlobalId, { limit: 1_000 });
     assert.deepEqual([...(clearedIds as Set<number>)], [], 'edited away from the matching value: the wall no longer matches, count drops to 0');
   });
+
+  it('applyChartFilter: two different same-size id sets never fingerprint alike (review finding on PR #4984)', () => {
+    const state = useViewerStore.getState();
+    const dataset = buildElementsDataset({ kind: 'all' }, state);
+    const a = applyChartFilter(dataset, new Set([GID(41)]));
+    const b = applyChartFilter(dataset, new Set([GID(42)]));
+    assert.notEqual(a.fingerprint, b.fingerprint, 'ids.size alone would have collided {wall} and {beam}');
+    assert.equal(applyChartFilter(dataset, new Set([GID(41)])).fingerprint, a.fingerprint, 'the same id set fingerprints the same');
+  });
 });

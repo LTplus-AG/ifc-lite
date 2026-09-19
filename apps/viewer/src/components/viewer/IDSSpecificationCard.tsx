@@ -110,8 +110,14 @@ export function SpecificationCard({
                     <Building2 className="h-3 w-3" />
                     {t('idsPanel.entities', { count: result.applicableCount, countDisplay: formatLocaleNumber(locale, result.applicableCount) })}
                   </span>
-                  <span className="text-green-600">{t('idsPanel.passedCount', { count: formatLocaleNumber(locale, result.passedCount) })}</span>
-                  <span className="text-red-600">{t('idsPanel.failedCount', { count: formatLocaleNumber(locale, result.failedCount) })}</span>
+                  <span className="text-green-600">{t('idsPanel.passedCount', {
+                    count: result.passedCount,
+                    countDisplay: formatLocaleNumber(locale, result.passedCount),
+                  })}</span>
+                  <span className="text-red-600">{t('idsPanel.failedCount', {
+                    count: result.failedCount,
+                    countDisplay: formatLocaleNumber(locale, result.failedCount),
+                  })}</span>
                 </div>
                 <div className="mt-2">
                   <PassRateBar passRate={result.passRate} />
@@ -127,7 +133,7 @@ export function SpecificationCard({
                     {t(requirementGroups.length > 1 ? 'idsPanel.checksPassedAcross' : 'idsPanel.checksPassed', {
                       passed: formatLocaleNumber(locale, checkStats.passedChecks),
                       total: formatLocaleNumber(locale, applicableChecks),
-                      rate: formatLocaleNumber(locale, checkStats.checkPassRate),
+                      rate: formatLocaleNumber(locale, checkStats.checkPassRate / 100, { style: 'percent', maximumFractionDigits: 2 }),
                       requirements: formatLocaleNumber(locale, requirementGroups.length),
                     })}
                   </div>

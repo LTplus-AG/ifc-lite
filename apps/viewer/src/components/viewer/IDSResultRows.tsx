@@ -41,7 +41,10 @@ export function EntityResultRow({ entity, onClick }: EntityResultRowProps) {
         onKeyDown={handleKeyDown}
         tabIndex={0}
         aria-expanded={showDetails}
-        aria-label={t('idsPanel.entityAriaLabel', { name: entity.entityName || '#' + entity.expressId, type: entity.entityType, status: t(entity.passed ? 'idsPanel.status.passed' : 'idsPanel.status.failed') })}
+        aria-label={t(entity.passed ? 'idsPanel.entityAriaLabelPassed' : 'idsPanel.entityAriaLabelFailed', {
+          name: entity.entityName || '#' + entity.expressId,
+          type: entity.entityType,
+        })}
       >
         <StatusIcon status={entity.passed ? 'pass' : 'fail'} />
         <div className="flex-1 min-w-0">
@@ -132,13 +135,22 @@ export function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRo
             <span className="text-xs truncate">{group.checkedDescription}</span>
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            <span className="text-green-600">{t('idsPanel.passedCount', { count: formatLocaleNumber(locale, group.passedCount) })}</span>
+            <span className="text-green-600">{t('idsPanel.passedCount', {
+              count: group.passedCount,
+              countDisplay: formatLocaleNumber(locale, group.passedCount),
+            })}</span>
             {' · '}
-            <span className="text-red-600">{t('idsPanel.failedCount', { count: formatLocaleNumber(locale, group.failedCount) })}</span>
+            <span className="text-red-600">{t('idsPanel.failedCount', {
+              count: group.failedCount,
+              countDisplay: formatLocaleNumber(locale, group.failedCount),
+            })}</span>
             {group.notApplicableCount > 0 && (
               <>
                 {' · '}
-                <span>{t('idsPanel.notApplicableCount', { count: formatLocaleNumber(locale, group.notApplicableCount) })}</span>
+                <span>{t('idsPanel.notApplicableCount', {
+                  count: group.notApplicableCount,
+                  countDisplay: formatLocaleNumber(locale, group.notApplicableCount),
+                })}</span>
               </>
             )}
           </div>

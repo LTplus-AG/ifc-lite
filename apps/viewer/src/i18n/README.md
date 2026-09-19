@@ -121,12 +121,13 @@ reassignment, its pending badge, and undo/redo chrome
 names remain exact schema data; common material category display labels are
 translated without changing their stored values.
 
-The IDS-panel catalogue (#4918 viewer-panels slice) covers the validation
-panel's file, audit, progress, result-summary, filtering, isolation, focus,
-specification, requirement, entity, correction, and export chrome
-(`ids-panel.en.ts`). IDS document titles/descriptions, specification names,
-entity names/types/GlobalIds, requirement descriptions, and failure details
-remain model/document content supplied by the IDS engine.
+The IDS-panel catalogue (#4918 viewer-panels slice) covers `IDSPanel.tsx` and
+the extracted validation progress, result-summary, filtering, isolation,
+focus, specification, requirement, and entity chrome (`ids-panel.en.ts`).
+The existing `IDSAuditSummary`, correction, report-export, and BCF-export
+dialogs remain separate follow-up surfaces. IDS document titles/descriptions,
+specification names, entity names/types/GlobalIds, requirement descriptions,
+and failure details remain model/document content supplied by the IDS engine.
 
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,

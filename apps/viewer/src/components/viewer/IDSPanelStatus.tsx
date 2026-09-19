@@ -41,7 +41,9 @@ export function PassRateBar({ passRate }: { passRate: number }) {
           style={{ width: `${passRate}%` }}
         />
       </div>
-      <span className="text-xs text-muted-foreground w-10 text-right">{formatLocaleNumber(locale, passRate)}%</span>
+      <span className="text-xs text-muted-foreground w-10 text-right">
+        {formatLocaleNumber(locale, passRate / 100, { style: 'percent', maximumFractionDigits: 2 })}
+      </span>
     </div>
   );
 }

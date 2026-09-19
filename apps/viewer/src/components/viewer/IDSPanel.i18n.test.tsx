@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import { idsPanelEn } from '@/i18n/catalogues/ids-panel.en';
+import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
 import type { IDSDocument, IDSValidationReport } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
@@ -42,16 +42,30 @@ const reportFixture: IDSValidationReport = {
   specificationResults: [{
     specification: documentFixture.specifications[0],
     status: 'fail',
-    applicableCount: 1234,
-    passedCount: 0,
-    failedCount: 1234,
-    passRate: 0,
-    entityResults: [],
+    applicableCount: 2,
+    passedCount: 1,
+    failedCount: 1,
+    passRate: 50,
+    entityResults: [{
+      expressId: 1,
+      modelId: 'model-a',
+      entityType: 'IfcWall',
+      entityName: 'Wall A',
+      passed: true,
+      requirementResults: [],
+    }, {
+      expressId: 2,
+      modelId: 'model-a',
+      entityType: 'IfcDoor',
+      entityName: 'Door B',
+      passed: false,
+      requirementResults: [],
+    }],
   }],
 };
 
 function pseudoCatalogue(): Catalogue {
-  return Object.fromEntries(Object.entries(idsPanelEn).map(([key, value]) => {
+  return Object.fromEntries(Object.entries(en).map(([key, value]) => {
     if (typeof value === 'string') return [key, `⟦${key}⟧ ${value}`];
     return [key, Object.fromEntries(Object.entries(value).map(([category, form]) => [category, `⟦${key}:${category}⟧ ${form}`]))];
   }));
@@ -106,16 +120,56 @@ describe('IDSPanel localization (#4918)', () => {
     assert.match(text, /⟦idsPanel\.scope\.wholeIds⟧/);
     assert.match(text, /⟦idsPanel\.onSelect⟧/);
     assert.match(text, /⟦idsPanel\.focus\.highlight⟧/);
+    assert.match(text, /⟦idsPanel\.failedCount:one⟧/, 'plural selection receives the raw numeric count');
 
     const card = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Wall requirements'));
     assert.ok(card);
     click(card!);
     assert.match(ui.textContent ?? '', /⟦idsPanel\.noRequirements⟧/);
-    assert.match(ui.textContent ?? '', /⟦idsPanel\.noEntities⟧/);
+    assert.match(ui.textContent ?? '', /⟦idsPanel\.byEntity⟧/);
 
     registerLocale('ar-EG-u-nu-arab', {});
     act(() => setLocale('ar-EG-u-nu-arab'));
     assert.match(ui.textContent ?? '', new RegExp(new Intl.NumberFormat('ar-EG-u-nu-arab').format(1234)));
+    assert.match(
+      ui.textContent ?? '',
+      new RegExp(new Intl.NumberFormat('ar-EG-u-nu-arab', {
+        style: 'percent', maximumFractionDigits: 2,
+      }).format(0)),
+    );
+    assert.match(
+      ui.textContent ?? '',
+      new RegExp(new Intl.NumberFormat('ar-EG-u-nu-arab', {
+        style: 'percent', maximumFractionDigits: 2,
+      }).format(0.5)),
+    );
     assert.doesNotMatch(ui.textContent ?? '', /1234 Checked/);
+  });
+
+  it('falls back as one complete accessible entity label in a partial locale', () => {
+    registerLocale('en-x-ids-partial', {
+      'idsPanel.entityAriaLabelPassed': 'LOCAL {name} / {type} / passed',
+      'idsPanel.status.failed': 'LOCAL failed status',
+    });
+    setLocale('en-x-ids-partial');
+    useViewerStore.setState({
+      idsDocument: documentFixture,
+      idsValidationReport: reportFixture,
+      idsAuditReport: null,
+      idsError: null,
+      idsLoading: false,
+      idsProgress: null,
+    });
+    const ui = render(<IDSPanel />);
+    const card = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Wall requirements'));
+    assert.ok(card);
+    click(card!);
+    const labels = [...ui.querySelectorAll('button[aria-label]')].map((button) => button.getAttribute('aria-label'));
+    assert.ok(labels.includes('LOCAL Wall A / IfcWall / passed'));
+    assert.equal(
+      labels.includes('Door B - IfcDoor - Failed'),
+      true,
+      'the missing compound key falls back wholly to English, despite a translated status key',
+    );
   });
 });

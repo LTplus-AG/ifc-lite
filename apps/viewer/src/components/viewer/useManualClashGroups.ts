@@ -63,7 +63,6 @@ export function useManualClashGroups({
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<ManualGroupDialog | null>(null);
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
-  const bcfProject = useViewerStore((state) => state.bcfProject);
   const bcfAuthor = useViewerStore((state) => state.bcfAuthor);
   const setBcfProject = useViewerStore((state) => state.setBcfProject);
   const addTopic = useViewerStore((state) => state.addTopic);
@@ -198,7 +197,9 @@ export function useManualClashGroups({
         toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
         return;
       }
-      if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
+      if (!useViewerStore.getState().bcfProject) {
+        setBcfProject(createBCFProject({ name: 'Clash report' }));
+      }
       const header = headerFilesForViewpoints(
         viewpoint ? [viewpoint] : [],
         topic.creationDate,
@@ -214,7 +215,7 @@ export function useManualClashGroups({
     } finally {
       setCreatingTopic(false);
     }
-  }, [creatingTopic, resolved, setCreatingTopic, focusClashes, focusMode, bcfProject, setBcfProject,
+  }, [creatingTopic, resolved, setCreatingTopic, focusClashes, focusMode, setBcfProject,
     bcfAuthor, createViewpointFromState, headerFilesForViewpoints, addTopic, addViewpoint, setBcfPanelVisible]);
 
   return {

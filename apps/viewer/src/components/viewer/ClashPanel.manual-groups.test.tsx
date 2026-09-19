@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { summarizeClashes, type Clash, type ClashResult } from '@ifc-lite/clash';
+import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { MANUAL_CLASH_GROUPS_KEY } from '@/lib/clash/manual-groups';
@@ -114,15 +115,24 @@ describe('ClashPanel manual groups (#4921)', () => {
 
     const createBcf = container!.querySelector('button[title="Create one BCF topic from this group"]');
     assert.ok(createBcf instanceof HTMLButtonElement);
+    const concurrentProject = createBCFProject({ name: 'Concurrent review' });
+    const concurrentTopic = createBCFTopic({
+      title: 'Created during capture',
+      author: 'reviewer@example.invalid',
+    });
+    concurrentProject.topics.set(concurrentTopic.guid, concurrentTopic);
     await act(async () => {
       createBcf.click();
+      useViewerStore.setState({ bcfProject: concurrentProject });
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     });
     const topics = useViewerStore.getState().bcfProject?.topics;
-    assert.equal(topics?.size, 1, 'one group action creates exactly one BCF topic');
-    assert.equal([...topics!.values()][0].title, 'Riser coordination');
+    assert.equal(topics?.size, 2, 'a project created during capture is preserved when the group topic commits');
+    assert.ok(topics?.has(concurrentTopic.guid), 'the concurrent topic is not overwritten by stale project state');
+    const groupTopic = [...topics!.values()].find((topic) => topic.title === 'Riser coordination');
+    assert.ok(groupTopic, 'one group action creates its BCF topic');
     assert.deepEqual(
-      [...topics!.values()][0].header?.map((file) => file.filename),
+      groupTopic.header?.map((file) => file.filename),
       ['model.ifc'],
       'a pre-existing hidden component from another source must remain in the topic header',
     );

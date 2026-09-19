@@ -6,7 +6,7 @@
 //! path from STEP decoding through opening classification and void routing.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
-use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
+use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh, TessellationQuality};
 use rustc_hash::FxHashMap;
 
 const WALL_ID: u32 = 100;
@@ -135,10 +135,38 @@ fn unmatched_edges(mesh: &Mesh) -> usize {
     counts.values().filter(|&&uses| uses != 2).count()
 }
 
+fn is_closed_exact(mesh: &Mesh) -> bool {
+    let key = |index: u32| {
+        let base = index as usize * 3;
+        (
+            mesh.positions[base].to_bits(),
+            mesh.positions[base + 1].to_bits(),
+            mesh.positions[base + 2].to_bits(),
+        )
+    };
+    let mut directed_balance = FxHashMap::default();
+    for triangle in mesh.indices.chunks_exact(3) {
+        let vertices = [key(triangle[0]), key(triangle[1]), key(triangle[2])];
+        for (a, b) in [(0, 1), (1, 2), (2, 0)] {
+            if vertices[a] == vertices[b] {
+                return false;
+            }
+            *directed_balance
+                .entry((vertices[a], vertices[b]))
+                .or_insert(0_i64) += 1;
+            *directed_balance
+                .entry((vertices[b], vertices[a]))
+                .or_insert(0_i64) -= 1;
+        }
+    }
+    !mesh.indices.is_empty() && directed_balance.values().all(|&balance| balance == 0)
+}
+
 #[test]
 fn authored_vertical_strip_closes_after_real_ifc_load_3977() {
     let mut decoder = EntityDecoder::with_index(IFC, build_entity_index(IFC));
-    let router = GeometryRouter::with_units(IFC, &mut decoder);
+    let mut router = GeometryRouter::with_units(IFC, &mut decoder);
+    router.set_tessellation_quality(TessellationQuality::Lowest);
     let void_index = build_void_index(IFC, &mut decoder);
     assert_eq!(void_index.get(&WALL_ID).map(Vec::len), Some(1));
 
@@ -148,7 +176,15 @@ fn authored_vertical_strip_closes_after_real_ifc_load_3977() {
         .process_element_with_voids(&wall, &mut decoder, &void_index)
         .expect("mesh #3977 wall with its vertical strip");
 
-    assert_eq!(unmatched_edges(&cut), 0, "the loaded wall must be watertight");
+    assert!(
+        is_closed_exact(&cut),
+        "the loaded wall must be exactly watertight"
+    );
+    assert_eq!(
+        unmatched_edges(&cut),
+        0,
+        "the loaded wall must also pass the issue's 100-micrometre diagnostic"
+    );
     assert!(
         volume(&cut) < volume(&uncut) - 1.0e-5,
         "the closed result must retain the authored tip cut"

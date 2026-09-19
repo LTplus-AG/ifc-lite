@@ -1155,3 +1155,88 @@ fn the_same_item_under_a_body_source_is_still_counted_on_the_occurrence_path() {
 
 #[path = "processor_registry_tests.rs"]
 mod processor_registry_tests;
+
+/// #4901 review (Macroscope): a capped B-spline curve edge (degree past
+/// `MAX_BSPLINE_DEGREE`) inside a MAPPED source used to leave the
+/// thread-local `CURVE_CAPPED` flag both unreported (the mapped-item walker
+/// bypassed the drain entirely) AND still SET, so the next, wholly unrelated
+/// item processed on the same thread got misattributed with a spurious
+/// `IfcBSplineCurveWithKnots` diagnostic. `process_representation_item` now
+/// drains the flag around every path (mapped-cached, dedup-cache hit,
+/// uncached), not just the uncached one.
+#[test]
+fn capped_curve_in_mapped_source_is_reported_and_not_misattributed_to_the_next_item() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCCARTESIANPOINT((0.,60.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCBSPLINECURVEWITHKNOTS(999999,(#1,#4,#2),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.));
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#13,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+#55=IFCSHAPEREPRESENTATION($,'Body','SurfaceModel',(#54));
+#60=IFCREPRESENTATIONMAP($,#55);
+#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#62=IFCMAPPEDITEM(#60,#61);
+#63=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#62));
+#64=IFCPRODUCTDEFINITIONSHAPE($,$,(#63));
+#65=IFCWALL('guid-mapped',$,$,$,$,$,#64,$);
+
+#100=IFCCARTESIANPOINT((0.,0.));
+#101=IFCAXIS2PLACEMENT2D(#100,$);
+#102=IFCRECTANGLEPROFILEDEF(.AREA.,'P',#101,1000.,1000.);
+#103=IFCDIRECTION((0.,0.,1.));
+#104=IFCCARTESIANPOINT((0.,0.,0.));
+#105=IFCAXIS2PLACEMENT3D(#104,$,$);
+#106=IFCEXTRUDEDAREASOLID(#102,#105,#103,1000.);
+#107=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#106));
+#108=IFCPRODUCTDEFINITIONSHAPE($,$,(#107));
+#109=IFCWALL('guid-plain',$,$,$,$,$,#108,$);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let router = GeometryRouter::new();
+
+    let mapped_wall = decoder.decode_by_id(65).unwrap();
+    router
+        .process_element(&mapped_wall, &mut decoder)
+        .expect("router walks the mapped representation without erroring the whole element");
+
+    let after_mapped = router.take_unsupported_items();
+    assert_eq!(
+        after_mapped.get("IfcBSplineCurveWithKnots"),
+        Some(&1),
+        "the capped curve inside the mapped source must be reported, not silently dropped: {after_mapped:?}"
+    );
+
+    // A wholly unrelated element, processed AFTER the mapped one, on the
+    // same router / thread. Before the fix, the still-set flag from the
+    // mapped item's capped curve would be drained HERE instead, falsely
+    // blaming this element's own (fully supported) geometry.
+    let plain_wall = decoder.decode_by_id(109).unwrap();
+    let plain_mesh = router
+        .process_element(&plain_wall, &mut decoder)
+        .expect("the unrelated element must mesh normally");
+    assert!(!plain_mesh.positions.is_empty(), "the unrelated element's own geometry is unaffected");
+
+    let after_plain = router.take_unsupported_items();
+    assert!(
+        after_plain.is_empty(),
+        "the unrelated element must not inherit the mapped item's already-reported diagnostic: {after_plain:?}"
+    );
+}

@@ -4,45 +4,71 @@
 
 //! Pure B-spline / NURBS surface and curve math, plus B-spline attribute parsing.
 
-use crate::{Error, Point3, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use super::bspline_budget::MAX_BSPLINE_DEGREE;
+use crate::Point3;
 
-/// Evaluate a B-spline basis function (Cox-de Boor recursion)
-#[inline]
-fn bspline_basis(i: usize, p: usize, u: f64, knots: &[f64]) -> f64 {
-    // Malformed IfcBSplineSurface/CurveWithKnots can present a knot vector too
-    // short for the control-point grid (or a bailed-empty vector from
-    // expand_knots). The Cox-de Boor recursion indexes up to knots[i + p + 1];
-    // guard the largest access so an out-of-range basis contributes 0 rather
-    // than panicking the surface/curve tessellation.
-    if i + p + 1 >= knots.len() {
-        return 0.0;
+/// Evaluate every basis function `N_{i,degree}(u)` for `i` in `0..count` in
+/// one bottom-up (memoized) pass — see `bspline_budget.rs` for why the old
+/// naive-recursive form was exponential in `degree`. Bit-identical to calling
+/// it once per `i` (same recurrence, same epsilon guard), just computing each
+/// `(level, index)` cell once. Local support bounds the table to level-0
+/// width `count + degree` regardless of `knots.len()`. `degree` is clamped to
+/// [`MAX_BSPLINE_DEGREE`] here, not just at call sites, so every caller is
+/// protected (#4901).
+fn bspline_basis_table(degree: usize, u: f64, knots: &[f64], count: usize) -> Vec<f64> {
+    let degree = degree.min(MAX_BSPLINE_DEGREE);
+    if count == 0 || knots.len() < 2 {
+        return vec![0.0; count];
     }
-    if p == 0 {
-        if knots[i] <= u && u < knots[i + 1] {
-            1.0
-        } else {
-            0.0
+    // Level-0 span count: N_{i,0} needs knots[i] and knots[i+1].
+    let max_level0 = knots.len() - 1;
+    let width = count.saturating_add(degree).saturating_add(1).min(max_level0);
+
+    let mut cur: Vec<f64> = (0..width)
+        .map(|i| if knots[i] <= u && u < knots[i + 1] { 1.0 } else { 0.0 })
+        .collect();
+
+    for k in 1..=degree {
+        if cur.len() <= 1 {
+            cur.clear();
+            break;
         }
-    } else {
-        let left = {
-            let denom = knots[i + p] - knots[i];
-            if denom.abs() < 1e-10 {
-                0.0
+        let next_len = cur.len() - 1;
+        let mut next = vec![0.0; next_len];
+        for (i, slot) in next.iter_mut().enumerate() {
+            let left = if i + k < knots.len() {
+                let denom = knots[i + k] - knots[i];
+                if denom.abs() < 1e-10 { 0.0 } else { (u - knots[i]) / denom * cur[i] }
             } else {
-                (u - knots[i]) / denom * bspline_basis(i, p - 1, u, knots)
-            }
-        };
-        let right = {
-            let denom = knots[i + p + 1] - knots[i + 1];
-            if denom.abs() < 1e-10 {
                 0.0
+            };
+            let right = if i + k + 1 < knots.len() && i + 1 < cur.len() {
+                let denom = knots[i + k + 1] - knots[i + 1];
+                if denom.abs() < 1e-10 {
+                    0.0
+                } else {
+                    (knots[i + k + 1] - u) / denom * cur[i + 1]
+                }
             } else {
-                (knots[i + p + 1] - u) / denom * bspline_basis(i + 1, p - 1, u, knots)
-            }
-        };
-        left + right
+                0.0
+            };
+            *slot = left + right;
+        }
+        cur = next;
     }
+    cur.resize(count, 0.0);
+    cur
+}
+
+/// Evaluate a single B-spline basis function `N_{i,p}(u)`. Test-only:
+/// production callers use [`bspline_basis_table`] directly so they build the
+/// table once per sample point and reuse it across every `i`.
+#[cfg(test)]
+fn bspline_basis(i: usize, p: usize, u: f64, knots: &[f64]) -> f64 {
+    bspline_basis_table(p, u, knots, i + 1)
+        .get(i)
+        .copied()
+        .unwrap_or(0.0)
 }
 
 /// Evaluate a B-spline surface at parameter (u, v).
@@ -61,10 +87,18 @@ fn evaluate_bspline_surface(
     let mut result = Point3::new(0.0, 0.0, 0.0);
     let mut weight_sum = 0.0;
 
+    // Table built once per axis per (u, v) sample, not once per (i, j)
+    // (#4901). `n_v` is the longest row, not the first, so a ragged grid
+    // still gets a valid value for every `j` a row actually has.
+    let n_u = control_points.len();
+    let n_v = control_points.iter().map(Vec::len).max().unwrap_or(0);
+    let u_table = bspline_basis_table(u_degree, u, u_knots, n_u);
+    let v_table = bspline_basis_table(v_degree, v, v_knots, n_v);
+
     for (i, row) in control_points.iter().enumerate() {
-        let n_i = bspline_basis(i, u_degree, u, u_knots);
+        let n_i = u_table.get(i).copied().unwrap_or(0.0);
         for (j, cp) in row.iter().enumerate() {
-            let n_j = bspline_basis(j, v_degree, v, v_knots);
+            let n_j = v_table.get(j).copied().unwrap_or(0.0);
             let basis = n_i * n_j;
             if basis.abs() > 1e-10 {
                 let w = weights
@@ -177,161 +211,6 @@ pub(super) fn tessellate_bspline_surface(
     Some((positions, indices))
 }
 
-/// Parse rational weights from IfcRationalBSplineSurfaceWithKnots.
-/// Attribute 12: WeightsData (LIST of LIST of REAL).
-pub(crate) fn parse_rational_weights(bspline: &DecodedEntity) -> Option<Vec<Vec<f64>>> {
-    let weights_attr = bspline.get(12)?;
-    let rows = weights_attr.as_list()?;
-    let mut result = Vec::with_capacity(rows.len());
-    for row in rows {
-        let cols = row.as_list()?;
-        let row_weights: Vec<f64> = cols.iter().filter_map(|v| v.as_float()).collect();
-        if row_weights.is_empty() {
-            return None;
-        }
-        result.push(row_weights);
-    }
-    Some(result)
-}
-
-/// Parse control points from B-spline surface entity
-pub(super) fn parse_control_points(
-    bspline: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Vec<Vec<Point3<f64>>>> {
-    // Attribute 2: ControlPointsList (LIST of LIST of IfcCartesianPoint)
-    let cp_list_attr = bspline
-        .get(2)
-        .ok_or_else(|| Error::geometry("BSplineSurface missing ControlPointsList".to_string()))?;
-
-    let rows = cp_list_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected control point list".to_string()))?;
-
-    let mut result = Vec::with_capacity(rows.len());
-
-    for row in rows {
-        let cols = row
-            .as_list()
-            .ok_or_else(|| Error::geometry("Expected control point row".to_string()))?;
-
-        let mut row_points = Vec::with_capacity(cols.len());
-        for col in cols {
-            if let Some(point_id) = col.as_entity_ref() {
-                let point = decoder.decode_by_id(point_id)?;
-                let coords = point.get(0).and_then(|v| v.as_list()).ok_or_else(|| {
-                    Error::geometry("CartesianPoint missing coordinates".to_string())
-                })?;
-
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
-
-                row_points.push(Point3::new(x, y, z));
-            }
-        }
-        result.push(row_points);
-    }
-
-    Ok(result)
-}
-
-/// Per-knot multiplicity ceiling. Real knot multiplicities are bounded by
-/// degree+1 (<= ~12 for any practical NURBS); this leaves ~100x headroom while
-/// stopping an attacker-controlled multiplicity (e.g. 500_000_000) from driving
-/// a multi-gigabyte allocation.
-const MAX_KNOT_MULTIPLICITY: i64 = 1024;
-/// Total expanded-knot ceiling. A legitimate knot vector is `n_control_points +
-/// degree + 1` entries (dozens); 1<<16 is unreachable for any real model. On a
-/// malformed file that exceeds it we return an EMPTY vector, so the caller's
-/// `knots.len() <= degree` guard rejects the curve/surface rather than sampling a
-/// silently-truncated (wrong) knot vector.
-const MAX_EXPANDED_KNOTS: usize = 1 << 16;
-
-/// Expand knot vector based on multiplicities
-pub(super) fn expand_knots(knot_values: &[f64], multiplicities: &[i64]) -> Vec<f64> {
-    let mut expanded = Vec::new();
-    for (knot, &mult) in knot_values.iter().zip(multiplicities.iter()) {
-        // Negative multiplicities are already inert (`0..mult` is an empty
-        // range); clamp the upper end so one entry cannot request a huge push.
-        let mult = mult.clamp(0, MAX_KNOT_MULTIPLICITY);
-        for _ in 0..mult {
-            expanded.push(*knot);
-            if expanded.len() > MAX_EXPANDED_KNOTS {
-                return Vec::new();
-            }
-        }
-    }
-    expanded
-}
-
-/// Parse knot vectors from B-spline surface entity
-pub(super) fn parse_knot_vectors(bspline: &DecodedEntity) -> Result<(Vec<f64>, Vec<f64>)> {
-    // IFCBSPLINESURFACEWITHKNOTS attributes:
-    // 0: UDegree
-    // 1: VDegree
-    // 2: ControlPointsList (already parsed)
-    // 3: SurfaceForm
-    // 4: UClosed
-    // 5: VClosed
-    // 6: SelfIntersect
-    // 7: UMultiplicities (LIST of INTEGER)
-    // 8: VMultiplicities (LIST of INTEGER)
-    // 9: UKnots (LIST of REAL)
-    // 10: VKnots (LIST of REAL)
-    // 11: KnotSpec
-
-    // Get U multiplicities
-    let u_mult_attr = bspline
-        .get(7)
-        .ok_or_else(|| Error::geometry("BSplineSurface missing UMultiplicities".to_string()))?;
-    let u_mults: Vec<i64> = u_mult_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected U multiplicities list".to_string()))?
-        .iter()
-        .filter_map(|v| v.as_int())
-        .collect();
-
-    // Get V multiplicities
-    let v_mult_attr = bspline
-        .get(8)
-        .ok_or_else(|| Error::geometry("BSplineSurface missing VMultiplicities".to_string()))?;
-    let v_mults: Vec<i64> = v_mult_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected V multiplicities list".to_string()))?
-        .iter()
-        .filter_map(|v| v.as_int())
-        .collect();
-
-    // Get U knots
-    let u_knots_attr = bspline
-        .get(9)
-        .ok_or_else(|| Error::geometry("BSplineSurface missing UKnots".to_string()))?;
-    let u_knot_values: Vec<f64> = u_knots_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected U knots list".to_string()))?
-        .iter()
-        .filter_map(|v| v.as_float())
-        .collect();
-
-    // Get V knots
-    let v_knots_attr = bspline
-        .get(10)
-        .ok_or_else(|| Error::geometry("BSplineSurface missing VKnots".to_string()))?;
-    let v_knot_values: Vec<f64> = v_knots_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected V knots list".to_string()))?
-        .iter()
-        .filter_map(|v| v.as_float())
-        .collect();
-
-    // Expand knot vectors with multiplicities
-    let u_knots = expand_knots(&u_knot_values, &u_mults);
-    let v_knots = expand_knots(&v_knot_values, &v_mults);
-
-    Ok((u_knots, v_knots))
-}
-
 /// Evaluate a B-spline CURVE at parameter t (1D, not surface).
 pub(super) fn evaluate_bspline_curve(
     t: f64,
@@ -340,8 +219,11 @@ pub(super) fn evaluate_bspline_curve(
     knots: &[f64],
 ) -> Point3<f64> {
     let mut result = Point3::new(0.0, 0.0, 0.0);
+    // One table build for the whole curve point, not one per control point
+    // (see `evaluate_bspline_surface` — same reasoning, #4901).
+    let table = bspline_basis_table(degree, t, knots, control_points.len());
     for (i, cp) in control_points.iter().enumerate() {
-        let basis = bspline_basis(i, degree, t, knots);
+        let basis = table.get(i).copied().unwrap_or(0.0);
         if basis.abs() > 1e-10 {
             result.x += basis * cp.x;
             result.y += basis * cp.y;
@@ -356,35 +238,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expand_knots_caps_hostile_multiplicity() {
-        // A single attacker-controlled multiplicity is clamped, so it can never
-        // drive a multi-gigabyte allocation (pre-fix: 1_000_000 pushed entries).
-        let knots = expand_knots(&[0.0, 1.0], &[1_000_000, 1]);
-        assert!(
-            knots.len() <= MAX_KNOT_MULTIPLICITY as usize + 1,
-            "multiplicity not clamped: got {}",
-            knots.len()
-        );
-
-        // A knot vector whose total expansion exceeds the ceiling bails to EMPTY,
-        // so the caller's `len <= degree` guard rejects it rather than sampling a
-        // silently-truncated (wrong) knot vector.
-        let many: Vec<f64> = (0..100).map(|i| i as f64).collect();
-        let mults = vec![MAX_KNOT_MULTIPLICITY; 100]; // 100 * 1024 > MAX_EXPANDED_KNOTS
-        assert!(expand_knots(&many, &mults).is_empty());
-    }
-
-    #[test]
-    fn expand_knots_keeps_valid_vectors() {
-        assert_eq!(
-            expand_knots(&[0.0, 0.5, 1.0], &[2, 1, 2]),
-            vec![0.0, 0.0, 0.5, 1.0, 1.0]
-        );
-    }
-
-    #[test]
     fn bspline_basis_out_of_range_returns_zero_not_panic() {
         // Knot vector too short for (i, p): must contribute 0.0, not panic OOB.
         assert_eq!(bspline_basis(5, 3, 0.5, &[0.0, 1.0]), 0.0);
+    }
+
+    #[test]
+    fn bspline_basis_matches_table_for_small_degree() {
+        // The memoized table (evaluate_bspline_surface/curve's production
+        // path) must agree with the single-index accessor for every i in a
+        // realistic (low-degree, few-knot) case — regression for #4901.
+        let knots = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
+        for i in 0..5 {
+            let direct = bspline_basis(i, 2, 1.5, &knots);
+            let table = bspline_basis_table(2, 1.5, &knots, 5);
+            assert!(
+                (direct - table[i]).abs() < 1e-12,
+                "i={i}: direct={direct} table={}",
+                table[i]
+            );
+        }
     }
 }

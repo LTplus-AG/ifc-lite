@@ -46,6 +46,14 @@ export const COST_SCHEDULE_TYPES: ReadonlySet<string> = new Set<string>([
 ]);
 export const COST_ITEM_TYPES: ReadonlySet<string> = new Set<string>(['USERDEFINED', 'NOTDEFINED']);
 
+/** Validate a loaded model's schema at the untyped runtime boundary. */
+export function requireCostSchema(schema: unknown): CostSchema {
+  if (schema !== 'IFC2X3' && schema !== 'IFC4' && schema !== 'IFC4X3') {
+    throw new Error('CostAnchor.schema is required and must match the loaded model schema');
+  }
+  return schema;
+}
+
 /** Refuse a value outside its closed vocabulary; `undefined` (absent) passes. */
 export function assertOneOf(value: unknown, allowed: ReadonlySet<string>, what: string, context: string): void {
   if (value === undefined) return;

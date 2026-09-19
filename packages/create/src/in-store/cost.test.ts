@@ -427,6 +427,15 @@ describe('attachCostValuesToItemInStore', () => {
 });
 
 describe('removeCostEntityInStore', () => {
+  it('rejects a missing runtime schema before a destructive write', async () => {
+    const { editor: ed } = await editor();
+    const missingSchema = { ownerHistoryId: null } as CostAnchor;
+
+    expect(() => removeCostEntityInStore(ed, missingSchema, 100, {}))
+      .toThrow(/CostAnchor\.schema is required/);
+    expect(ed.hasEntity(100)).toBe(true);
+  });
+
   it('refuses to remove an unrelated model entity through the public builder', async () => {
     const { editor: ed } = await editor();
     expect(() => removeCostEntityInStore(ed, ANCHOR, 100, {}))

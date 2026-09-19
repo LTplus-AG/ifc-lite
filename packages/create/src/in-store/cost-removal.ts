@@ -5,7 +5,7 @@
 /** Safe removal of loaded-model cost entities and their relationship references. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { assertCostSchema } from '../cost-authoring-rules.js';
+import { assertCostSchema, requireCostSchema } from '../cost-authoring-rules.js';
 import { requireEntityTypeOneOf } from './cost-reference-validation.js';
 import type { CostAnchor } from './cost.js';
 
@@ -41,7 +41,7 @@ export function removeCostEntityInStore(
   referrers: CostRemovalReferrers,
   options: { detach?: boolean } = {},
 ): void {
-  assertCostSchema(anchor.schema ?? 'IFC4', 'removeCostEntity');
+  assertCostSchema(requireCostSchema(anchor.schema), 'removeCostEntity');
   requireEntityTypeOneOf(editor, expressId, REMOVABLE_COST_ENTITY_TYPES, 'expressId', 'removeCostEntity');
   const blockers: string[] = [];
   for (const [itemId, values] of referrers.itemCostValues ?? []) {

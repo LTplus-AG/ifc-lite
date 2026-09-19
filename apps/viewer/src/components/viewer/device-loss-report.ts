@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { RenderDegradationInfo } from '@ifc-lite/renderer';
+import type { DeviceRecoveryResult, RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 import {
   buildDeviceLossContext,
   type DeviceLossContext,
   type DeviceLossContextSource,
 } from './device-loss-context.js';
+import { startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
 
 /**
  * What the user and error tracking are told when the GPU device dies.
@@ -154,7 +155,7 @@ export function reportDeviceLost(
   void import('@/components/ui/toast').then((m) => {
     m.toast.error(
       'The graphics device was lost, so the 3D view has stopped drawing. ' +
-      'Reload the page to restore rendering.',
+      'Automatic recovery is starting; reload the page if it does not return.',
     );
   }).catch((err) => {
     // Best-effort: a failed toast must never mask the device loss itself. But
@@ -263,6 +264,29 @@ export function reportPersistentRenderDegradation(
 export interface ViewportHealthSource extends DeviceLossContextSource {
   onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void;
   onPersistentRenderDegradation(listener: (info: RenderDegradationInfo) => void): () => void;
+  recoverDevice?: DeviceRecoverySource['recoverDevice'];
+}
+
+function reportDeviceRecovery(result: DeviceRecoveryResult): void {
+  try {
+    posthog.capture(result.ok ? 'device_loss_recovered' : 'device_loss_recovery_failed', result.ok
+      ? { omissions: [...result.omissions] }
+      : { reason: result.reason });
+  } catch (err) {
+    console.warn('[Viewport] device-loss recovery telemetry failed:', err);
+  }
+  void import('@/components/ui/toast').then((m) => {
+    if (result.ok) {
+      const detail = result.omissions.length > 0
+        ? ` Some transient layers were cleared: ${result.omissions.join(', ')}.`
+        : '';
+      m.toast.success(`The 3D view recovered.${detail}`);
+    } else {
+      m.toast.error('The 3D view could not recover automatically. Reload the page to restore rendering.');
+    }
+  }).catch((err) => {
+    console.warn('[Viewport] device-loss recovery toast unavailable:', err);
+  });
 }
 
 /**
@@ -306,18 +330,26 @@ export function subscribeViewportHealth(
   renderer: ViewportHealthSource,
   buildContext: (source: DeviceLossContextSource) => DeviceLossContext = buildDeviceLossContext,
 ): () => void {
+  let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
     // must describe the moment the device died, not the Viewport mount.
-    renderer.onDeviceLost((info) =>
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer)),
-    ),
+    renderer.onDeviceLost((info) => {
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer));
+      if (!recovery && renderer.recoverDevice) {
+        recovery = startDeviceLossRecovery(
+          { recoverDevice: () => renderer.recoverDevice!() },
+          { recovered: reportDeviceRecovery, failed: reportDeviceRecovery },
+        );
+      }
+    }),
     renderer.onPersistentRenderDegradation((info) =>
       reportPersistentRenderDegradation(info, buildContextSafely(buildContext, renderer)),
     ),
   ];
   return () => {
+    recovery?.cancel();
     for (const unsubscribe of unsubscribes) unsubscribe();
   };
 }

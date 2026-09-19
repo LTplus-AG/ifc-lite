@@ -130,6 +130,11 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 export type { GpuUploadOutcome } from './gpu-upload-guard.js';
+export type {
+    DeviceRecoveryFailureReason,
+    DeviceRecoveryOmission,
+    DeviceRecoveryResult,
+} from './device-recovery.js';
 
 import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
@@ -188,6 +193,7 @@ import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
+import type { DeviceRecoveryOmission, DeviceRecoveryResult } from './device-recovery.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -366,6 +372,12 @@ export class Renderer {
     /** Retained so a listener registered AFTER the loss still learns of it. */
     private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
+    /** Counts every device-loss signal, including one from a replacement
+     * device while the original loss latch is still deliberately set. */
+    private deviceLossSequence = 0;
+    private lostReferenceImages = false;
+    private recoveryInFlight: Promise<DeviceRecoveryResult> | null = null;
+    private quantizedBatchesRequested = false;
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
     private readonly deviationComputer = new DeviationComputer();
     private readonly visualEnhancementResolver = new VisualEnhancementResolver();
@@ -556,7 +568,10 @@ export class Renderer {
         return run;
     }
 
-    private async initOnce(generation: number): Promise<void> {
+    private async initOnce(
+        generation: number,
+        options: { clearDeviceLost?: boolean; publishReady?: boolean } = {},
+    ): Promise<void> {
         // `pipeline` is the marker for "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
@@ -574,7 +589,7 @@ export class Renderer {
         // the generation and this body running is stamped with the generation
         // that is clearing it. `deviceLostGeneration` deliberately keeps its
         // stale value — it is only ever read alongside this flag.
-        this.deviceLost = false;
+        if (options.clearDeviceLost !== false) this.deviceLost = false;
         // Subscribe before the device exists so a loss during the first frames
         // is never missed — the handler is only invoked when `device.lost`
         // actually resolves (a real fault), long after init in practice.
@@ -670,7 +685,7 @@ export class Renderer {
         // synchronous CPU code while pick() is an async GPU readback.
         this.raycastEngine.setPointCloudProvider(() => this.pointCloudRenderer?.getRayQuerySources() ?? []);
 
-        this.markReady(generation);
+        if (options.publishReady !== false) this.markReady(generation);
     }
 
     /**
@@ -804,6 +819,94 @@ export class Renderer {
     }
 
     /**
+     * Rebuild this renderer against a replacement GPU device without replacing
+     * the Renderer, Camera, or CPU scene graph. Concurrent calls coalesce.
+     *
+     * Recovery is intentionally unavailable after CPU geometry was released,
+     * during an unfinished stream, or when the scene contains public addMesh()
+     * drawables with no CPU source. Those cases return a stable failure reason
+     * and stay latched as lost instead of presenting an incomplete model.
+     */
+    recoverDevice(): Promise<DeviceRecoveryResult> {
+        if (this.recoveryInFlight) return this.recoveryInFlight;
+        if (!this.deviceLost) return Promise.resolve({ ok: false, reason: 'not-lost' });
+        if (this.destroyed) return Promise.resolve({ ok: false, reason: 'renderer-destroyed' });
+
+        const run = this.recoverDeviceOnce();
+        this.recoveryInFlight = run;
+        const clearInFlight = () => {
+            if (this.recoveryInFlight === run) this.recoveryInFlight = null;
+        };
+        void run.then(clearInFlight, clearInFlight);
+        return run;
+    }
+
+    private async recoverDeviceOnce(): Promise<DeviceRecoveryResult> {
+        const generation = ++this.initGeneration;
+        const lossSequence = this.deviceLossSequence;
+        this.ready = false;
+        let prepared: Awaited<ReturnType<Scene['prepareDeviceRecovery']>>;
+        try {
+            prepared = await this.scene.prepareDeviceRecovery();
+        } catch (error) {
+            console.error('[Renderer] Failed to prepare the CPU scene for device recovery:', error);
+            return { ok: false, reason: 'cold-restore-failed', error };
+        }
+        if (!prepared.ok) return prepared;
+        if (generation !== this.initGeneration || this.destroyed) {
+            return { ok: false, reason: 'renderer-destroyed' };
+        }
+
+        const omissions: DeviceRecoveryOmission[] = this.overlays.recoveryOmissions();
+        if (this.lostReferenceImages) omissions.push('reference-images');
+        if (this.pointCloudRenderer?.hasAssets()) omissions.push('point-clouds');
+
+        let phase: 'device' | 'scene' = 'scene';
+        try {
+            // Old-device objects are unusable after loss. Scene teardown is kept
+            // separate so its CPU ownership survives the infrastructure rebuild.
+            this.scene.discardGpuResourcesForRecovery();
+            this.teardown(false);
+            this.device = new WebGPUDevice();
+            phase = 'device';
+            await this.initOnce(generation, { clearDeviceLost: false, publishReady: false });
+            if (generation !== this.initGeneration || this.destroyed) {
+                this.teardown(false);
+                return { ok: false, reason: 'renderer-destroyed' };
+            }
+            if (this.deviceLossSequence !== lossSequence) {
+                throw new Error('Replacement GPU device was lost during initialization');
+            }
+            if (this.quantizedBatchesRequested && this.pipeline) {
+                const quantized = await this.pipeline.ensureQuantizedPipelines();
+                this.scene.setQuantizedBatches(quantized);
+            }
+            phase = 'scene';
+            if (!this.pipeline) throw new Error('Replacement render pipeline was not initialized');
+            this.scene.restoreGpuResourcesAfterRecovery(this.device.getDevice(), this.pipeline);
+            if (this.deviceLossSequence !== lossSequence) {
+                throw new Error('Replacement GPU device was lost during scene restore');
+            }
+            this.deviceLost = false;
+            this.deviceLostInfo = null;
+            this.lostReferenceImages = false;
+            this.markReady(generation);
+            this.requestRender();
+            return { ok: true, omissions };
+        } catch (error) {
+            console.error(`[Renderer] Device recovery failed during ${phase} restore:`, error);
+            this.deviceLost = true;
+            this.ready = false;
+            try {
+                this.teardown(false);
+            } catch (teardownError) {
+                console.warn('[Renderer] Failed to dispose a partial recovery attempt:', teardownError);
+            }
+            return { ok: false, reason: phase === 'device' ? 'device-init-failed' : 'scene-restore-failed', error };
+        }
+    }
+
+    /**
      * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):
      * a synchronous Safari-style `DOMException` (issue #2229) caught OUTSIDE
      * `render()` never otherwise reaches `handleDeviceLost` — only the async
@@ -819,8 +922,10 @@ export class Renderer {
     }
 
     private handleDeviceLost(info: { message: string; reason: string }): void {
+        this.deviceLossSequence++;
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
@@ -1607,6 +1712,7 @@ export class Renderer {
      * rejecting pipeline creation) batches stay on the f32 path.
      */
     async enableQuantizedBatches(): Promise<boolean> {
+        this.quantizedBatchesRequested = true;
         if (!this.pipeline) return false;
         const ok = await this.pipeline.ensureQuantizedPipelines();
         if (ok) this.scene.setQuantizedBatches(true);
@@ -3647,16 +3753,18 @@ export class Renderer {
      * in-flight init. Callers: the public `destroy()` (which invalidates first)
      * and `initOnce()`, tearing down the previous init before building its own.
      */
-    private teardown(): void {
+    private teardown(clearScene: boolean = true): void {
         // Nothing below survives this call, so `whenReady()` / `isReady()` must
         // go back to waiting. Set first: every release below is synchronous, but
         // the flag is what a caller holding a live reference actually reads.
         this.ready = false;
 
         // Scene mesh GPU buffers
-        this.scene.clear();
-        // Re-arm the section-bounds diagnostic log for the next model.
-        this._loggedSectionBounds = false;
+        if (clearScene) {
+            this.scene.clear();
+            // Re-arm the section-bounds diagnostic log for the next model.
+            this._loggedSectionBounds = false;
+        }
 
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();

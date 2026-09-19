@@ -28,6 +28,28 @@ renderer.requestRender();
 
 `loadGeometry()` accepts a `GeometryResult` from `@ifc-lite/geometry` or a raw `MeshData[]`. The renderer keeps geometry in GPU buffers; subsequent `requestRender()` calls coalesce into a single frame.
 
+## Recover from GPU device loss
+
+```typescript
+renderer.onDeviceLost(async () => {
+  const result = await renderer.recoverDevice();
+  if (!result.ok) {
+    console.error('Renderer recovery failed:', result.reason);
+  } else if (result.omissions.length > 0) {
+    console.warn('Recovered with transient layers cleared:', result.omissions);
+  }
+});
+```
+
+`recoverDevice()` requests a replacement adapter/device and rebuilds the GPU
+scene in place, preserving the `Renderer`, camera, IFC geometry, model
+placements, visibility, selection and colour overrides. Concurrent calls share
+one attempt. It returns a typed failure instead of presenting an incomplete
+scene when CPU geometry has been released, streaming has not settled, cold
+geometry cannot be restored, or public `addMesh()` content has no CPU source.
+Point clouds, reference images and transient overlay layers are reported in
+`omissions` when they must be reloaded by the host.
+
 ## Pick an entity
 
 ```typescript

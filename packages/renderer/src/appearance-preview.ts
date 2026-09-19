@@ -346,6 +346,11 @@ export class AppearancePreviewController<Resource>
     return this.drafts.has(expressId);
   }
 
+  /** True while detached GPU originals are owned by an unfinished preview. */
+  hasActiveDrafts(): boolean {
+    return this.drafts.size > 0;
+  }
+
   /** End drafts, then validate every surviving history owner before GPU reset. */
   prepareRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>): Set<number> {
     // cancel() deletes from this.drafts while we iterate, so iterate a copy.

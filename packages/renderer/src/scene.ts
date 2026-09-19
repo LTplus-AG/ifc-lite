@@ -413,6 +413,200 @@ export class Scene {
   private ephemeralStreamingMode: boolean = false;
 
   /**
+   * Verify that every drawable IFC resource has a CPU reconstruction source.
+   * This deliberately runs before the renderer releases any replacement-device
+   * resources, so an unsupported scene fails without becoming half-restored.
+   */
+  async prepareDeviceRecovery(): Promise<
+    | { ok: true }
+    | { ok: false; reason: 'cpu-geometry-released' | 'scene-not-settled' | 'unsupported-authored-meshes' | 'cold-restore-failed' }
+  > {
+    if (this.geometryReleased || this.ephemeralStreamingMode) {
+      return { ok: false, reason: 'cpu-geometry-released' };
+    }
+    if (
+      this.finalizeInProgress ||
+      this.streamingFragments.length > 0 ||
+      this.pendingBatchKeys.size > 0 ||
+      this.appearanceController?.hasActiveDrafts()
+    ) {
+      return { ok: false, reason: 'scene-not-settled' };
+    }
+    // Hydrated meshes are selection duplicates and are rebuilt lazily from
+    // meshData. Public addMesh() drawables carry GPU buffers only, so accepting
+    // one here would silently drop authored geometry after recovery.
+    if (this.meshes.some((mesh) => !mesh.hydrated)) {
+      return { ok: false, reason: 'unsupported-authored-meshes' };
+    }
+    await this.drainColdTier();
+    if (this.coldBuckets.size > 0) return { ok: false, reason: 'cold-restore-failed' };
+    return { ok: true };
+  }
+
+  /**
+   * Drop dead-device handles while preserving the CPU scene graph. Called only
+   * by Renderer.recoverDevice(); ordinary destroy()/init() remains a full reset.
+   */
+  discardGpuResourcesForRecovery(): void {
+    for (const mesh of this.meshes) destroyGpuResources(mesh);
+    this.meshes = [];
+    for (const batch of this.batchedMeshes) destroyGpuResources(batch);
+    this.batchedMeshes = [];
+    for (const bucket of this.buckets.values()) bucket.batchedMesh = null;
+    this.dropAllPartialCaches();
+    this.destroyOverrideBatches();
+
+    for (const tm of this.texturedMeshes) {
+      tm.vertexBuffer.destroy();
+      tm.indexBuffer.destroy();
+      tm.uniformBuffer.destroy();
+      this.releaseTexturedMeshTexture(tm);
+    }
+    this.texturedMeshes = [];
+    for (const entry of this.sharedTextures.values()) entry.texture.destroy();
+    this.sharedTextures.clear();
+    this.rgbaTexturePool.clear();
+    this.texturedDevice = undefined;
+
+    for (const template of this.instancedTemplates) {
+      template?.vertexBuffer.destroy();
+      template?.indexBuffer.destroy();
+      template?.instanceBuffer.destroy();
+    }
+    this.instancedTemplates = new Array(this.instancedTemplateCpu.length);
+    this.liveInstancedTemplates = [];
+    this.instancedDevice = undefined;
+    this.cachedMaxBufferSize = 0;
+    this.lastDrawnFrame.clear();
+    this.residencyRestoreQueue.clear();
+  }
+
+  /** Re-upload every reconstructable scene resource to a replacement device. */
+  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void {
+    try {
+      const batches: BatchedMesh[] = [];
+      // Publish the staging list up front so the recovery rollback can destroy
+      // batches that completed before a later bucket upload failed.
+      this.batchedMeshes = batches;
+      for (const bucket of this.buckets.values()) {
+        if (bucket.meshData.length === 0) continue;
+        const batch = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
+        bucket.batchedMesh = batch;
+        batches.push(batch);
+      }
+
+      const textured = new Set<MeshData>();
+      for (const pieces of this.meshDataMap.values()) {
+        for (const piece of pieces) if (Scene.hasRenderableTexture(piece)) textured.add(piece);
+      }
+      for (const piece of textured) this.createTexturedMesh(piece, device, pipeline);
+
+      this.restoreInstancedTemplates(device);
+      if (this.colorOverrides) {
+        this.setColorOverrides(cloneOverrides(this.colorOverrides), device, pipeline);
+      } else {
+        this.restoreInstancedAppearance(device);
+      }
+    } catch (error) {
+      // Leave CPU ownership intact and remove every partially-created handle so
+      // a later recovery attempt starts from a clean scene.
+      this.discardGpuResourcesForRecovery();
+      throw error;
+    }
+  }
+
+  private restoreInstancedTemplates(device: GPUDevice): void {
+    this.instancedDevice = device;
+    this.instancedTemplates = new Array(this.instancedTemplateCpu.length);
+    for (let slot = 0; slot < this.instancedTemplateCpu.length; slot++) {
+      const cpu = this.instancedTemplateCpu[slot];
+      if (!cpu) continue;
+      let vertexBuffer: GPUBuffer | undefined;
+      let indexBuffer: GPUBuffer | undefined;
+      let instanceBuffer: GPUBuffer | undefined;
+      try {
+        const vertexData = new ArrayBuffer((cpu.positions.length / 3) * 28);
+        const vertexFloats = new Float32Array(vertexData);
+        for (let i = 0; i < cpu.positions.length / 3; i++) {
+          const offset = i * 7;
+          vertexFloats[offset] = cpu.positions[i * 3];
+          vertexFloats[offset + 1] = cpu.positions[i * 3 + 1];
+          vertexFloats[offset + 2] = cpu.positions[i * 3 + 2];
+          vertexFloats[offset + 3] = cpu.normals[i * 3] ?? 0;
+          vertexFloats[offset + 4] = cpu.normals[i * 3 + 1] ?? 0;
+          vertexFloats[offset + 5] = cpu.normals[i * 3 + 2] ?? 0;
+        }
+        vertexBuffer = device.createBuffer({
+          size: vertexData.byteLength,
+          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          mappedAtCreation: true,
+        });
+        new Uint8Array(vertexBuffer.getMappedRange()).set(new Uint8Array(vertexData));
+        vertexBuffer.unmap();
+        indexBuffer = device.createBuffer({
+          size: cpu.indices.byteLength,
+          usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+          mappedAtCreation: true,
+        });
+        new Uint32Array(indexBuffer.getMappedRange()).set(cpu.indices);
+        indexBuffer.unmap();
+        instanceBuffer = device.createBuffer({
+          size: cpu.instanceData.byteLength,
+          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          mappedAtCreation: true,
+        });
+        new Uint8Array(instanceBuffer.getMappedRange()).set(new Uint8Array(cpu.instanceData));
+        instanceBuffer.unmap();
+        this.instancedTemplates[slot] = {
+          modelIndex: cpu.modelIndex,
+          vertexBuffer,
+          indexBuffer,
+          indexCount: cpu.indices.length,
+          instanceBuffer,
+          instanceCount: cpu.instanceData.byteLength / INSTANCE_STRIDE_BYTES,
+          bounds: null,
+          maxOccRadius: 0,
+          selectedCount: 0,
+        };
+      } catch (error) {
+        vertexBuffer?.destroy();
+        indexBuffer?.destroy();
+        instanceBuffer?.destroy();
+        throw error;
+      }
+    }
+    for (const [eid, occurrences] of this.instancedEntityMap) {
+      for (const occurrence of occurrences) {
+        const cpu = this.instancedTemplateCpu[occurrence.templateIndex];
+        const template = this.instancedTemplates[occurrence.templateIndex];
+        if (!cpu || !template || !Number.isFinite(cpu.localMin[0])) continue;
+        const world = this.unionInstancedWorldAabb(
+          eid, new DataView(cpu.instanceData), occurrence.byteOffset,
+          cpu.localMin[0], cpu.localMin[1], cpu.localMin[2],
+          cpu.localMax[0], cpu.localMax[1], cpu.localMax[2],
+        );
+        foldOccurrenceWorldBox(template, world);
+        if (this.instancedSelected.has(eid)) template.selectedCount++;
+      }
+    }
+    this.refreshLiveInstancedTemplates();
+    this.restoreInstancedAppearance(device);
+  }
+
+  private restoreInstancedAppearance(device: GPUDevice): void {
+    for (const eid of this.instancedEntityMap.keys()) {
+      this.writeInstanceFlags(device, eid);
+      const base = this.instancedOverrideColors?.get(eid) ?? this.originalInstanceColor(eid);
+      if (!base) continue;
+      this.writeInstanceColor(
+        device,
+        eid,
+        composeInstancedOverrideColor(base, this.instancedGhosted.has(eid), this.lastGhostAlpha),
+      );
+    }
+  }
+
+  /**
    * Add mesh to scene
    */
   addMesh(mesh: Mesh): void {
@@ -740,8 +934,8 @@ export class Scene {
           this.meshDataBucket.set(m, bucket);
           this.addMeshData(m);
         }
-        this.coldBuckets.delete(key);
         if (members.length > 0) {
+          this.coldBuckets.delete(key);
           // Warm now — re-queue so the next restore tick rebuilds the GPU batch.
           this.residencyRestoreQueue.add(key);
         } else {

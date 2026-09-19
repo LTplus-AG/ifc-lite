@@ -4,6 +4,7 @@
 
 import type { TessellationQuality } from './types.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
+import type { StallPhaseHandle } from './stall-phase.js';
 
 export interface ProcessParallelOptions {
   /** Fresh per-load fingerprint cell shared only with the matching parser. */
@@ -115,4 +116,15 @@ export interface ProcessParallelOptions {
    * generator's cleanup while it waits on a silent worker.
    */
   signal?: AbortSignal;
+  /**
+   * Issue #4902 — filled in synchronously (before the first `await`) with a
+   * `getStallPhase()` reader over the pool's own pre-worker gate state
+   * (`prepass` / `shard-scan` / `styles-gate` / `entity-index-gate` /
+   * `workers`). Pass a fresh `{}` and read `.getStallPhase?.()` when your own
+   * watchdog fires, so the reported phase is measured rather than guessed.
+   * Once every worker starts processing chunks the phase is permanently
+   * `'workers'` — a stall past that point is the in-worker hang #4888 already
+   * covers, not this issue's pre-worker class.
+   */
+  stallPhaseHandle?: StallPhaseHandle;
 }

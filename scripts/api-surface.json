@@ -5764,6 +5764,8 @@
     "SimplifiedElementMesh: interface",
     "SimplifyMeshesResult: interface",
     "SkippedHungElements: interface",
+    "StallPhase: type",
+    "StallPhaseHandle: interface",
     "StreamingGeometryEvent: type",
     "StreamingOptions: interface",
     "StreamingProgress: interface",

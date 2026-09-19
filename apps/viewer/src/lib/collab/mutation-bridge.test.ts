@@ -705,11 +705,11 @@ describe('mutation-bridge model slots (#4444)', () => {
  */
 describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => {
   /** A minimal real IfcDataStore from one STEP entity line (mirrors packages/export's own tests). */
-  function buildDataStore(id: number, type: string, text: string): IfcDataStore {
+  function buildDataStore(id: number, type: string, text: string, schemaVersion: 'IFC2X3' | 'IFC4' = 'IFC4'): IfcDataStore {
     const encoded = new TextEncoder().encode(text);
     return {
       fileSize: encoded.byteLength,
-      schemaVersion: 'IFC4',
+      schemaVersion,
       entityCount: 1,
       parseTime: 0,
       source: encoded,
@@ -724,7 +724,7 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
   function exportedLine(dataStore: IfcDataStore, apply: (view: MutablePropertyView) => void): string {
     const view = new MutablePropertyView(null, 'room-model');
     apply(view);
-    const result = new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true });
+    const result = new StepExporter(dataStore, view).export({ schema: dataStore.schemaVersion as 'IFC2X3' | 'IFC4', applyMutations: true });
     const text = new TextDecoder().decode(result.content);
     const line = text.split('\n').find((l) => l.startsWith('#1='));
     if (!line) throw new Error('exported #1 entity line not found');
@@ -774,6 +774,16 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'bsi::ifc::prop::Description', null));
     assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
+  });
+
+  it('resolves inbound positional slots from the room schema (#5008)', () => {
+    const dataStore = buildDataStore(
+      1, 'IfcApprovalRelationship', '#1=IFCAPPROVALRELATIONSHIP(#2,#3);', 'IFC2X3',
+    );
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(
+      view, dataStore, 1, 'bsi::ifc::prop::RelatedApproval', '#9',
+    ));
+    assert.strictEqual(line, '#1=IFCAPPROVALRELATIONSHIP(#9,#3);');
   });
 
   it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for applyRemoteAttribute', () => {

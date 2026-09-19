@@ -43,11 +43,17 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const schemaVersion = useActiveSchemaVersion();
 
+  // Keyed by the RAW selector text (not trimmed): every lookup site
+  // (`ChartsPanel`, `ChartCard`, `useDocumentData`) reads `spec.filter.selector`
+  // as-is, so the map key has to match it exactly — a saved/imported
+  // dashboard whose selector carries incidental whitespace (`" IfcWall "`,
+  // validation only requires non-empty) would otherwise never find its
+  // entry and sit on "Resolving filter…" forever (review finding).
   const selectors = useMemo(() => {
     const set = new Set<string>();
     for (const chart of charts) {
-      const text = chart.filter?.selector.trim();
-      if (text) set.add(text);
+      const raw = chart.filter?.selector;
+      if (raw && raw.trim().length > 0) set.add(raw);
     }
     return [...set];
   }, [charts]);
@@ -61,9 +67,13 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
       return;
     }
     const id = (runId.current += 1);
-    setState((prev) => {
+    // ALWAYS reset to `resolving`, never carry a prior `ok` result into a new
+    // run (review finding): the federation, tags or a mutation just changed
+    // — that is why this effect re-ran — so a stale match set could select
+    // or filter by ids from a model that has since been replaced or edited.
+    setState(() => {
       const next = new Map<string, ChartSourceFilterState>();
-      for (const text of selectors) next.set(text, prev.get(text) ?? { status: 'resolving' });
+      for (const text of selectors) next.set(text, { status: 'resolving' });
       return next;
     });
 
@@ -79,6 +89,10 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
     const toGlobalId = (modelId: string, expressId: number): number => toGlobalIdFromModels(live.models, modelId, expressId);
 
     let cancelled = false;
+    // Aborts an in-flight federation scan this run supersedes (review
+    // finding): otherwise a model/tag/mutation change while a large scan is
+    // running leaves the obsolete scan consuming CPU alongside its replacement.
+    const controller = new AbortController();
     void (async () => {
       const entries = await Promise.all(
         selectors.map(async (text): Promise<[string, ChartSourceFilterState]> => {
@@ -87,6 +101,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
               schemaVersion,
               definedModelTagIds,
               limit,
+              signal: controller.signal,
             });
             return [text, { status: 'ok', ids: ids ?? new Set<number>() }];
           } catch (err) {
@@ -97,7 +112,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
       if (cancelled || runId.current !== id) return;
       setState(new Map(entries));
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [selectors, models, modelTags, modelTagAssignments, mutationVersion, schemaVersion]);
 
   return state;

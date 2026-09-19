@@ -1676,6 +1676,27 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(ui.querySelector('input[aria-label="Source filter"]'), null, 'the field is replaced by the not-applicable note');
     assert.match(ui.textContent ?? '', /not applicable to BCF topics/);
   });
+
+  it('a saved filter with incidental whitespace still resolves and narrows the card (review finding on PR #4984)', async () => {
+    // `validateDashboardSpec` only requires a non-empty string, so an
+    // imported/hand-edited dashboard can carry `" IfcWall "`. The resolver
+    // used to key its result map by the TRIMMED text while every lookup site
+    // read the RAW `spec.filter.selector` — the two never matched, so the
+    // card sat on "Resolving filter…" forever.
+    const dashboard = modelOverviewDashboard();
+    dashboard.charts = [{ ...dashboard.charts[0], filter: { selector: ' IfcWall ' } }];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id });
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    const subtitle = ui.querySelector('[data-chart-subtitle]')!.textContent!;
+    assert.match(subtitle, /3 elements/, subtitle);
+    assert.doesNotMatch(subtitle, /Resolving filter/, subtitle);
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([name, count]) => [name, count]), [['IfcWall', 3]]);
+  });
 });
 
 describe('overlapping chart bucket paint (#4832)', () => {

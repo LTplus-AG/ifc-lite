@@ -159,7 +159,7 @@ describe('nestCostItemsInStore', () => {
 
     const relId = nestCostItemsInStore(
       ed, ANCHOR, newParent, [child],
-      new Map([[child, { relId: oldNestId, relatedIds: [child] }]]),
+      new Map([[child, [{ relId: oldNestId, relatedIds: [child] }]]]),
     );
     expect(relId).not.toBe(oldNestId);
     // The old (overlay-only) rel had exactly one member, so emptying it removes it outright.
@@ -178,13 +178,33 @@ describe('nestCostItemsInStore', () => {
 
     nestCostItemsInStore(
       ed, ANCHOR, newParent, [childA, childB],
-      new Map([[childA, oldNest], [childB, oldNest]]),
+      new Map([[childA, [oldNest]], [childB, [oldNest]]]),
     );
     // Both children left; the old rel is emptied and tombstoned, not left
     // holding one of them back from a filter that only looked at ONE child
     // per rewrite (the bug: re-filtering the unchanged original list on the
     // second child's iteration would undo the first child's removal).
     expect(ed.hasEntity(oldNestId)).toBe(false);
+  });
+
+  it('reparents a child that is a member of TWO different IfcRelNests, detaching from BOTH', async () => {
+    const { editor: ed, view } = await editor();
+    const newParent = addCostItemToStore(ed, ANCHOR, { Name: 'New' });
+    const child = addCostItemToStore(ed, ANCHOR, { Name: 'Child' });
+    // A file may legally list the same child under more than one nest
+    // (MULTIPLE_NESTING_PARENTS is a diagnostic, not a refusal); the caller's
+    // resolver hands in every one it found.
+    const nestX: ExistingRelatedList = { relId: 900, relatedIds: [child] };
+    const nestY: ExistingRelatedList = { relId: 901, relatedIds: [child, 902] };
+
+    nestCostItemsInStore(ed, ANCHOR, newParent, [child], new Map([[child, [nestX, nestY]]]));
+
+    // nestX had only the child, so it is tombstoned; nestY keeps its other
+    // member (902) with the child removed — the bug this pins: a byChild map
+    // that only remembers ONE of the two rels would leave nestY untouched,
+    // so the child would still read as nested there too.
+    expect(ed.hasEntity(900)).toBe(false);
+    expect(view.getPositionalMutationsForEntity(901)?.get(5)).toEqual(['#902']);
   });
 });
 

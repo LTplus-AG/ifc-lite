@@ -26,7 +26,7 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor, IfcAttributeValue } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
 import {
-  ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES,
+  ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
   assertCostSchema, assertOneOf, requireRef, validateRefList, validateTypedValue,
   type CostSchema, type CostTypedValueInput,
 } from '../cost-authoring-rules.js';
@@ -162,6 +162,10 @@ export function addCostValueToStore(editor: StoreEditor, anchor: CostAnchor, par
 export function addCostQuantityToStore(editor: StoreEditor, anchor: CostAnchor, params: CostQuantityParams): number {
   const schema = schemaOf(anchor);
   assertCostSchema(schema, 'addCostQuantity');
+  if (typeof params.Name !== 'string' || params.Name.length === 0) {
+    throw new Error('addCostQuantity: Name is required');
+  }
+  assertOneOf(params.Kind, QUANTITY_KINDS, 'Kind', 'addCostQuantity');
   if (!Number.isFinite(params.Value)) throw new Error(`addCostQuantity: ${params.Kind} value must be a finite number`);
   if (params.Kind === 'IfcQuantityNumber' && schema !== 'IFC4X3') {
     throw new Error(`addCostQuantity: ${params.Kind} does not exist in ${schema}; requires Schema "IFC4X3"`);
@@ -195,36 +199,41 @@ export interface ExistingRelatedList {
  * Nest `childIds` under `parentId` as `IfcRelNests.RelatedObjects` (slot 5),
  * `RelatingObject` = parent.
  *
- * A child already nested under a DIFFERENT `IfcRelNests` is reparented: it is
- * removed from that rel's `RelatedObjects` first (tombstoning the rel if that
- * empties it — `RelatedObjects` is `[1:?]`, so an emptied list cannot be left
- * as `()`), then added to (or its own new) the target rel.
+ * A child already nested under one or more DIFFERENT `IfcRelNests` is
+ * reparented: it is removed from EVERY one of those rels' `RelatedObjects`
+ * first (a file may legally list a child under more than one nest —
+ * `MULTIPLE_NESTING_PARENTS` is a diagnostic, not a refusal — so detaching
+ * from only the first one found would leave it still nested under the rest),
+ * tombstoning a rel if that empties it (`RelatedObjects` is `[1:?]`, so an
+ * emptied list cannot be left as `()`), then added to (or its own new) the
+ * target rel.
  */
 export function nestCostItemsInStore(
   editor: StoreEditor,
   anchor: CostAnchor,
   parentId: number,
   childIds: number[],
-  existingNestByChild: ReadonlyMap<number, ExistingRelatedList>,
+  existingNestByChild: ReadonlyMap<number, readonly ExistingRelatedList[]>,
   existingTargetNest?: ExistingRelatedList,
 ): number {
   const schema = schemaOf(anchor);
   assertCostSchema(schema, 'nestCostItems');
   validateRefList(childIds, 'childIds', 'nestCostItems');
   requireRef(parentId, 'parentId', 'nestCostItems');
-  // Detach every child of THIS call from its old rel in one rewrite per rel,
-  // not one rewrite per child: two children reparented out of the same old
-  // IfcRelNests in one call must both leave it, and re-filtering the
-  // ORIGINAL (unchanged) relatedIds on each iteration would make the second
-  // child's rewrite silently undo the first child's removal.
+  // Detach every child of THIS call from every old rel it is a member of, one
+  // rewrite per (rel, not per (rel, child)): two children reparented out of
+  // the same old IfcRelNests in one call must both leave it, and re-filtering
+  // the ORIGINAL (unchanged) relatedIds on each iteration would make the
+  // second child's rewrite silently undo the first child's removal.
   const detachedRelIds = new Set<number>();
   for (const childId of childIds) {
-    const existing = existingNestByChild.get(childId);
-    if (!existing || existing.relId === existingTargetNest?.relId || detachedRelIds.has(existing.relId)) continue;
-    detachedRelIds.add(existing.relId);
-    const remaining = existing.relatedIds.filter(id => !childIds.includes(id));
-    if (remaining.length === 0) editor.removeEntity(existing.relId);
-    else editor.setPositionalAttribute(existing.relId, 5, remaining.map(id => `#${id}`));
+    for (const existing of existingNestByChild.get(childId) ?? []) {
+      if (existing.relId === existingTargetNest?.relId || detachedRelIds.has(existing.relId)) continue;
+      detachedRelIds.add(existing.relId);
+      const remaining = existing.relatedIds.filter(id => !childIds.includes(id));
+      if (remaining.length === 0) editor.removeEntity(existing.relId);
+      else editor.setPositionalAttribute(existing.relId, 5, remaining.map(id => `#${id}`));
+    }
   }
   if (existingTargetNest) {
     const merged = [...new Set([...existingTargetNest.relatedIds, ...childIds])];
@@ -309,6 +318,13 @@ export interface CostRemovalReferrers {
   itemCostValues?: ReadonlyMap<number, readonly number[]>;
   /** `IfcCostValue.Components` lists containing the target value, keyed by the owning value's expressId. */
   valueComponents?: ReadonlyMap<number, readonly number[]>;
+  /**
+   * `IfcCostValue.AppliedValue`'s `Reference` branch (`AppliedValueRef`,
+   * pointing at an `IfcMeasureWithUnit`) naming the target, keyed by the
+   * owning value's expressId. A single required-when-present attribute, not
+   * a list — same danger as `Components`, different shape.
+   */
+  valueAppliedValueRef?: ReadonlyMap<number, number>;
   /** `IfcRelNests.RelatedObjects` lists containing the target, keyed by the rel's expressId. */
   nestRelatedObjects?: ReadonlyMap<number, readonly number[]>;
   /** `IfcRelAssignsToControl.RelatedObjects` lists containing the target, keyed by the rel's expressId. */
@@ -356,6 +372,9 @@ export function removeCostEntityInStore(
   for (const [valueId, components] of referrers.valueComponents ?? []) {
     if (components.includes(expressId)) blockers.push(`IfcCostValue #${valueId}.Components`);
   }
+  for (const [valueId, ref] of referrers.valueAppliedValueRef ?? []) {
+    if (ref === expressId) blockers.push(`IfcCostValue #${valueId}.AppliedValue (AppliedValueRef)`);
+  }
   if (blockers.length > 0 && !options.detach) {
     throw new Error(
       `removeCostEntity: #${expressId} is still referenced by ${blockers.join(', ')}. `
@@ -371,6 +390,10 @@ export function removeCostEntityInStore(
       if (!components.includes(expressId)) continue;
       const remaining = components.filter(id => id !== expressId);
       editor.setPositionalAttribute(valueId, 9, remaining.length === 0 ? null : remaining.map(id => `#${id}`));
+    }
+    for (const [valueId, ref] of referrers.valueAppliedValueRef ?? []) {
+      if (ref !== expressId) continue;
+      editor.setPositionalAttribute(valueId, 2, null);
     }
   }
   for (const [relId, related] of referrers.nestRelatedObjects ?? []) {

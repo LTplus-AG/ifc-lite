@@ -205,8 +205,13 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     // Cost / 5D authoring (#4857 PR A). `createCostStoreBackend` resolves the
     // reparent/append/safe-delete bookkeeping from the same `bim.cost` graph
     // the model's cost adapter reads, so a rel authored earlier this session
-    // is visible to the very next call.
-    ...createCostStoreBackend((modelId: string | undefined) => {
+    // is visible to the very next call. The four CREATE calls additionally
+    // push the same undo/redo/dirty/version-bump `addColumn`/etc. push —
+    // `pushCreateEntityUndo` (mutation-cost-undo.ts) — so a script-authored
+    // cost entity is undoable like any other; `nestCostItems`/`assign*`/
+    // `setCostItemValues`/`removeCostEntity` are not yet (they can rewrite or
+    // remove several rels at once, not one CREATE_ENTITY's worth of state).
+    ...withCostCreateUndo(createCostStoreBackend((modelId: string | undefined) => {
       const requested = modelId ?? '';
       const editor = getEditor(requested);
       const dataStore = resolveDataStore(requested);
@@ -218,6 +223,28 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       // model ids the same way every other `bim.cost` caller does — it does
       // not know the mutation-view alias and would reject it as unknown.
       return { modelId: requested, store: dataStore, editor, ownerHistoryId };
-    }, costAdapter),
+    }, costAdapter), store),
+  };
+}
+
+/** Wrap the four cost CREATE methods so each pushes the standard CREATE_ENTITY
+ *  undo entry after a successful create — see the call site's comment. */
+function withCostCreateUndo(
+  methods: ReturnType<typeof createCostStoreBackend>,
+  store: StoreApi,
+): ReturnType<typeof createCostStoreBackend> {
+  const wrap = <A extends unknown[]>(
+    ifcType: string, fn: (...args: A) => EntityRef,
+  ) => (...args: A): EntityRef => {
+    const ref = fn(...args);
+    store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, ifcType);
+    return ref;
+  };
+  return {
+    ...methods,
+    addCostSchedule: wrap('IFCCOSTSCHEDULE', methods.addCostSchedule),
+    addCostItem: wrap('IFCCOSTITEM', methods.addCostItem),
+    addCostValue: wrap('IFCCOSTVALUE', methods.addCostValue),
+    addCostQuantity: wrap('IFCPHYSICALSIMPLEQUANTITY', methods.addCostQuantity),
   };
 }

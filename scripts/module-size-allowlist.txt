@@ -178,7 +178,7 @@
    482 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    635 apps/viewer/src/store/slices/modelSlice.ts
-  3277 apps/viewer/src/store/slices/mutationSlice.ts
+  3286 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    574 apps/viewer/src/store/slices/sectionSlice.ts
@@ -202,7 +202,7 @@
    495 packages/cli/src/commands/create.ts
    458 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
-   803 packages/cli/src/headless-backend.ts
+   798 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
@@ -218,6 +218,7 @@
   2843 packages/create/src/ifc-creator.ts
    448 packages/create/src/in-store/apply-style.ts
    535 packages/create/src/in-store/auto-space-detect.ts
+   421 packages/create/src/in-store/cost.ts
    878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts
   1106 packages/data/scripts/generate-ifc-schema.ts
@@ -326,7 +327,7 @@
    498 packages/sandbox/src/bridge-schema.ts
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
-   847 packages/sdk/src/types.ts
+   775 packages/sdk/src/types.ts
   1011 packages/server-client/src/client.ts
    784 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts

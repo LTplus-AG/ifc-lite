@@ -47,27 +47,47 @@ function anchorOf(resolved: CostStoreModelResolution): CostAnchor {
   return { ownerHistoryId: resolved.ownerHistoryId, schema: (resolved.store.schemaVersion as CostAnchor['schema']) ?? 'IFC4' };
 }
 
-/** Every `IfcRelNests`, keyed both by parent (RelatingObject) and by each child (RelatedObjects member). */
+/**
+ * Every `IfcRelNests`, keyed both by parent (RelatingObject) and — as the
+ * FULL LIST of every rel a child is a member of, not just one — by each
+ * child. A file can legally list the same child under more than one
+ * `IfcRelNests` (`MULTIPLE_NESTING_PARENTS` is a diagnostic, not a refusal),
+ * and a reparent has to detach it from ALL of them or it stays nested under
+ * whichever one this map happened to keep.
+ */
 function findNests(graph: CostGraphData) {
   const byParent = new Map<number, ExistingRelatedList>();
-  const byChild = new Map<number, ExistingRelatedList>();
+  const byChild = new Map<number, ExistingRelatedList[]>();
   for (const rel of graph.Relationships) {
     if (rel.Type !== 'IfcRelNests' || !rel.RelatingObject || !rel.RelatedObjects) continue;
     const entry: ExistingRelatedList = { relId: rel.ref.expressId, relatedIds: rel.RelatedObjects.map(r => r.expressId) };
     byParent.set(rel.RelatingObject.expressId, entry);
-    for (const child of entry.relatedIds) byChild.set(child, entry);
+    for (const child of entry.relatedIds) {
+      const list = byChild.get(child);
+      if (list) list.push(entry); else byChild.set(child, [entry]);
+    }
   }
   return { byParent, byChild };
 }
 
-/** The `IfcRelAssignsToControl` whose `RelatingControl` is `controlId`, if any. */
+/**
+ * The `IfcRelAssignsToControl` whose `RelatingControl` is `controlId` to
+ * append new assignments to (the first one found, if more than one exists —
+ * `IfcRelAssignsToControl` does not forbid a controller having several), with
+ * `relatedIds` the UNION across every one of them. Appending against the
+ * union, not just the primary rel's own list, is what keeps a caller from
+ * assigning an id that is already listed in a DIFFERENT rel for the same
+ * controller a second time.
+ */
 function findControlAssignment(graph: CostGraphData, controlId: number): ExistingRelatedList | undefined {
+  let primaryRelId: number | undefined;
+  const union = new Set<number>();
   for (const rel of graph.Relationships) {
-    if (rel.Type === 'IfcRelAssignsToControl' && rel.RelatingControl?.expressId === controlId) {
-      return { relId: rel.ref.expressId, relatedIds: (rel.RelatedObjects ?? []).map(r => r.expressId) };
-    }
+    if (rel.Type !== 'IfcRelAssignsToControl' || rel.RelatingControl?.expressId !== controlId) continue;
+    if (primaryRelId === undefined) primaryRelId = rel.ref.expressId;
+    for (const related of rel.RelatedObjects ?? []) union.add(related.expressId);
   }
-  return undefined;
+  return primaryRelId === undefined ? undefined : { relId: primaryRelId, relatedIds: [...union] };
 }
 
 /** Every existing reference to `expressId` the cost graph currently reports — the safe-delete input. */
@@ -78,9 +98,17 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
     if (ids.includes(expressId)) itemCostValues.set(item.ref.expressId, ids);
   }
   const valueComponents = new Map<number, readonly number[]>();
+  const valueAppliedValueRef = new Map<number, number>();
   for (const value of graph.CostValues) {
     const ids = (value.Components ?? []).map(r => r.expressId);
     if (ids.includes(expressId)) valueComponents.set(value.ref.expressId, ids);
+    // AppliedValue's `Reference` branch is IfcCostValue.AppliedValue pointing
+    // at an IfcMeasureWithUnit (or another IfcAppliedValue) THROUGH
+    // AppliedValueRef — a single required-when-present attribute, not a list,
+    // but still a live reference this deletion must not leave dangling.
+    if (value.AppliedValue?.Kind === 'Reference' && value.AppliedValue.ref.expressId === expressId) {
+      valueAppliedValueRef.set(value.ref.expressId, expressId);
+    }
   }
   const nestRelatedObjects = new Map<number, readonly number[]>();
   const assignmentRelatedObjects = new Map<number, readonly number[]>();
@@ -97,7 +125,7 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
     }
   }
   return {
-    itemCostValues, valueComponents, nestRelatedObjects, assignmentRelatedObjects,
+    itemCostValues, valueComponents, valueAppliedValueRef, nestRelatedObjects, assignmentRelatedObjects,
     nestsAsParent, assignmentsAsControl,
   };
 }

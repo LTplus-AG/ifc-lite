@@ -123,6 +123,26 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(rel.RelatedObjects?.map(r => r.expressId).sort()).toEqual([itemA, itemB].sort());
   });
 
+  it('does not duplicate a member already listed in a SECOND existing rel for the same control', async () => {
+    const { storeCost, cost, view } = await session();
+    // Schedule #40 already controls #41 (fixture). Inject a SECOND, separate
+    // IfcRelAssignsToControl for the same schedule controlling a different
+    // item — legal STEP, and the case `findControlAssignment` used to miss
+    // entirely (it only ever saw the first rel it found).
+    const itemC = storeCost.addCostItem('m', { Name: 'C' }).expressId;
+    const secondRel = view.createEntity('IfcRelAssignsToControl', [
+      '0ctrl00000000000000002', null, null, null, [`#${itemC}`], null, '#40',
+    ]).expressId;
+    // Assigning #41 (already a member, but of the OTHER rel) again must not
+    // add a second, duplicate membership anywhere.
+    storeCost.assignCostItemsToSchedule('m', 40, [41]);
+    const rels = cost.data('m').Relationships.filter(r => r.Type === 'IfcRelAssignsToControl' && r.RelatingControl?.expressId === 40);
+    const allMembers = rels.flatMap(r => r.RelatedObjects?.map(o => o.expressId) ?? []);
+    expect(allMembers.filter(id => id === 41)).toHaveLength(1);
+    // The second rel and its own member are untouched.
+    expect(cost.data('m').Relationships.some(r => r.ref.expressId === secondRel && r.RelatedObjects?.some(o => o.expressId === itemC))).toBe(true);
+  });
+
   it('refuses to delete a value still referenced by an item, and detach:true rewrites CostValues to $ first', async () => {
     const { storeCost, cost, exportedGraph } = await session();
     const value = storeCost.addCostValue('m', { Name: 'V', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 1 } }).expressId;
@@ -136,6 +156,21 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     const exported = await exportedGraph();
     const exportedItem = exported.CostItems.find(i => i.ref.expressId === 41)!;
     expect(exportedItem.CostValues ?? []).toEqual([]);
+  });
+
+  it('refuses to delete an IfcCostValue still referenced via another value\'s AppliedValueRef, and detach:true clears it', async () => {
+    const { storeCost, cost } = await session();
+    // AppliedValueRef's target is normally an IfcMeasureWithUnit, but the
+    // SELECT also admits another IfcAppliedValue/IfcCostValue — and that
+    // target IS a recognised cost kind, so it is the one `removeCostEntity`
+    // will actually let past the kind check to exercise the referrer guard.
+    const target = storeCost.addCostValue('m', { Name: 'Target' }).expressId;
+    const value = storeCost.addCostValue('m', { Name: 'V', AppliedValueRef: target }).expressId;
+    expect(() => storeCost.removeCostEntity('m', target)).toThrow(/still referenced/);
+
+    storeCost.removeCostEntity('m', target, { detach: true });
+    const pendingValue = cost.data('m').CostValues.find(v => v.ref.expressId === value)!;
+    expect(pendingValue.AppliedValue).toBeUndefined();
   });
 
   it('refuses to remove a non-cost entity (a wall) through removeCostEntity', async () => {

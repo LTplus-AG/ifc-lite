@@ -11,11 +11,11 @@ import {
   defaultManualClashGroupName,
   loadManualClashGroups,
   manualClashMember,
-  manualClashGroupBcfRefs,
   resolveManualClashGroups,
   saveManualClashGroups,
   type ManualClashGroup,
 } from '@/lib/clash/manual-groups';
+import type { FocusedClashGroup } from '@/lib/clash/group-focus';
 import { CLASH_COLOR_A, CLASH_COLOR_B, clashColorToBcfArgb } from '@/lib/clash/clash-colors';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { sortClashes, type Clash, type ClashSeverity, type ClashSortBy } from '@ifc-lite/clash';
@@ -42,7 +42,7 @@ interface UseManualClashGroupsOptions {
   visibleClashes: readonly Clash[];
   sortBy: ClashSortBy;
   focusMode: ClashFocusMode;
-  focusClashes: (clashes: readonly Clash[], mode: ClashFocusMode) => boolean;
+  focusClashes: (clashes: readonly Clash[], mode: ClashFocusMode) => FocusedClashGroup | null;
   creatingTopic: boolean;
   setCreatingTopic: Dispatch<SetStateAction<boolean>>;
   showGroups: () => void;
@@ -120,8 +120,8 @@ export function useManualClashGroups({
 
   const openCreate = useCallback((): void => {
     if (selected.length < 2) return;
-    const claimed = new Set(definitions.flatMap((group) => group.members.map((member) => member.occurrenceKey)));
-    if (selected.some((clash) => claimed.has(manualClashMember(clash).occurrenceKey))) {
+    const claimed = new Set(resolved.flatMap((group) => group.members.map((member) => member.id)));
+    if (selected.some((clash) => claimed.has(clash.id))) {
       toast.error('Remove already-grouped clashes from their current group before regrouping them.');
       return;
     }
@@ -129,7 +129,7 @@ export function useManualClashGroups({
       mode: 'create',
       initialName: defaultManualClashGroupName(selected, definitions.length + 1),
     });
-  }, [selected, definitions]);
+  }, [selected, definitions, resolved]);
 
   const submitDialog = useCallback((name: string): void => {
     if (!dialog) return;
@@ -155,12 +155,14 @@ export function useManualClashGroups({
   const removeMember = useCallback((groupId: string, clash: Clash): void => {
     const next = definitions.flatMap((group) => {
       if (group.id !== groupId) return [group];
-      const occurrenceKey = manualClashMember(clash).occurrenceKey;
-      const members = group.members.filter((member) => member.occurrenceKey !== occurrenceKey);
+      const resolvedGroup = resolved.find((item) => item.definition.id === groupId);
+      const resolvedIndex = resolvedGroup?.members.findIndex((member) => member.id === clash.id) ?? -1;
+      const persistedMember = resolvedIndex >= 0 ? resolvedGroup?.memberDefinitions[resolvedIndex] : undefined;
+      const members = persistedMember ? group.members.filter((member) => member !== persistedMember) : group.members;
       return members.length > 0 ? [{ ...group, members }] : [];
     });
     commit(next);
-  }, [definitions, commit]);
+  }, [definitions, resolved, commit]);
 
   const createBcfTopic = useCallback(async (groupId: string): Promise<void> => {
     if (creatingTopic) return;
@@ -168,7 +170,8 @@ export function useManualClashGroups({
     if (!group || group.members.length === 0) return;
     setCreatingTopic(true);
     try {
-      if (!focusClashes(group.members, focusMode)) {
+      const focused = focusClashes(group.members, focusMode);
+      if (!focused) {
         toast.error('None of this group’s objects are available in the loaded models.');
         return;
       }
@@ -182,7 +185,7 @@ export function useManualClashGroups({
         topicType: 'Clash',
         topicStatus: 'Open',
       });
-      const { selectedRefs, aRefs, bRefs } = manualClashGroupBcfRefs(group.members);
+      const { selectedRefs, aRefs, bRefs } = focused;
       const viewpoint = await createViewpointFromState({
         includeSnapshot: true,
         includeSelection: true,

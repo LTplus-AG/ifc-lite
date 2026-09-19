@@ -10,7 +10,6 @@ import {
   MANUAL_CLASH_GROUPS_KEY,
   defaultManualClashGroupName,
   loadManualClashGroups,
-  manualClashGroupBcfRefs,
   manualClashMember,
   normalizeManualClashGroups,
   resolveManualClashGroups,
@@ -79,21 +78,22 @@ describe('manual clash groups (#4921)', () => {
     ]);
   });
 
+  it('keeps a legacy review-key claim disjoint from v2 occurrence records', () => {
+    const current = clash('current');
+    const member = manualClashMember(current);
+    assert.deepEqual(normalizeManualClashGroups({ groups: [
+      { id: 'legacy', name: 'Legacy', clashKeys: [member.reviewKey] },
+      { id: 'v2', name: 'Duplicate', members: [member] },
+    ] }), [{
+      id: 'legacy',
+      name: 'Legacy',
+      members: [{ reviewKey: member.reviewKey, occurrenceKey: '' }],
+    }]);
+  });
+
   it('uses a shared element name as the default group name', () => {
     assert.equal(defaultManualClashGroupName([clash('c1', true), clash('c2', true)], 3), 'Core wall');
     assert.equal(defaultManualClashGroupName([clash('c1'), clash('c2')], 3), 'Clash group 3');
   });
 
-  it('builds one de-duplicated BCF selection and deterministic A/B colors for the whole group', () => {
-    const first = clash('c1');
-    const second = clash('c2');
-    second.a.ref = first.b.ref;
-    second.b.ref = 3;
-
-    assert.deepEqual(manualClashGroupBcfRefs([first, second]), {
-      selectedRefs: [1, 2, 3],
-      aRefs: [1, 2],
-      bRefs: [3],
-    });
-  });
 });

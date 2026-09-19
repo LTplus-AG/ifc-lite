@@ -21,12 +21,8 @@ export interface ManualClashMember {
 export interface ResolvedManualClashGroup {
   definition: ManualClashGroup;
   members: Clash[];
-}
-
-export interface ManualClashGroupBcfRefs {
-  selectedRefs: number[];
-  aRefs: number[];
-  bRefs: number[];
+  /** Persisted records aligned one-for-one with `members`. */
+  memberDefinitions: ManualClashMember[];
 }
 
 export type ManualGroupSaveResult =
@@ -58,6 +54,8 @@ export function normalizeManualClashGroups(raw: unknown): ManualClashGroup[] {
   const groups: ManualClashGroup[] = [];
   const groupIds = new Set<string>();
   const claimedOccurrences = new Set<string>();
+  const claimedReviews = new Set<string>();
+  const legacyReviewClaims = new Set<string>();
   for (const item of list) {
     if (!item || typeof item !== 'object') continue;
     const record = item as Record<string, unknown>;
@@ -76,9 +74,14 @@ export function normalizeManualClashGroups(raw: unknown): ManualClashGroup[] {
       const reviewKey = typeof member.reviewKey === 'string' ? member.reviewKey : '';
       const occurrenceKey = typeof member.occurrenceKey === 'string' ? member.occurrenceKey : '';
       if (!reviewKey) continue;
-      const claimKey = occurrenceKey ? `occurrence:${occurrenceKey}` : `legacy:${reviewKey}`;
-      if (claimedOccurrences.has(claimKey)) continue;
-      claimedOccurrences.add(claimKey);
+      if (occurrenceKey) {
+        if (claimedOccurrences.has(occurrenceKey) || legacyReviewClaims.has(reviewKey)) continue;
+        claimedOccurrences.add(occurrenceKey);
+      } else {
+        if (claimedReviews.has(reviewKey)) continue;
+        legacyReviewClaims.add(reviewKey);
+      }
+      claimedReviews.add(reviewKey);
       members.push({ reviewKey, occurrenceKey });
       if (members.length >= MAX_MEMBERS_PER_GROUP) break;
     }
@@ -138,18 +141,22 @@ export function resolveManualClashGroups(
   }
   const claimed = new Set<Clash>();
   return groups
-    .map((definition) => ({
-      definition,
-      members: definition.members.flatMap((member) => {
+    .map((definition) => {
+      const entries = definition.members.flatMap((member) => {
         const exact = (byOccurrence.get(member.occurrenceKey) ?? [])
           .find((clash) => clashReviewKey(clash) === member.reviewKey && !claimed.has(clash));
         const fallback = (byReview.get(member.reviewKey) ?? []).find((clash) => !claimed.has(clash));
         const clash = exact ?? fallback;
         if (!clash) return [];
         claimed.add(clash);
-        return [clash];
-      }),
-    }))
+        return [{ member, clash }];
+      });
+      return {
+        definition,
+        members: entries.map((entry) => entry.clash),
+        memberDefinitions: entries.map((entry) => entry.member),
+      };
+    })
     .filter((group) => group.members.length > 0);
 }
 
@@ -163,22 +170,6 @@ export function manualClashOccurrenceKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>)
     .map((element) => [element.model, element.key] as const)
     .sort(([modelA, keyA], [modelB, keyB]) => modelA.localeCompare(modelB) || keyA.localeCompare(keyB));
   return JSON.stringify([clash.rule, ...elements]);
-}
-
-/** Build one de-duplicated selection/color payload for the group's viewpoint. */
-export function manualClashGroupBcfRefs(clashes: readonly Clash[]): ManualClashGroupBcfRefs {
-  const selectedRefs = new Set<number>();
-  const aRefs = new Set<number>();
-  const bRefs = new Set<number>();
-  for (const clash of clashes) {
-    selectedRefs.add(clash.a.ref);
-    selectedRefs.add(clash.b.ref);
-    aRefs.add(clash.a.ref);
-    bRefs.add(clash.b.ref);
-  }
-  // An object found on both sides gets one deterministic color instead of two.
-  for (const ref of aRefs) bRefs.delete(ref);
-  return { selectedRefs: [...selectedRefs], aRefs: [...aRefs], bRefs: [...bRefs] };
 }
 
 /** Default to the most frequent shared element name, then a numbered label. */

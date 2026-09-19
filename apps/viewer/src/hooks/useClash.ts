@@ -844,7 +844,7 @@ export function useClash() {
     }
   }, [installClashIsolation, installClashGhost]);
 
-  const focusClashes = useCallback((clashes: readonly Clash[], mode: ClashFocusMode = 'highlight'): boolean =>
+  const focusClashes = useCallback((clashes: readonly Clash[], mode: ClashFocusMode = 'highlight') =>
     focusClashGroup(clashes, refOf, applyFocusMode, mode), [refOf, applyFocusMode]);
 
   /**

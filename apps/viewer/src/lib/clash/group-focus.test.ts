@@ -31,7 +31,10 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.setState({ cameraCallbacks: { frameSelection } });
     const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref + 100 });
 
-    assert.equal(focusClashGroup([clash('c1', 10, 20), clash('c2', 20, 30)], resolve, applyFocusMode, 'ghost'), true);
+    assert.deepEqual(
+      focusClashGroup([clash('c1', 10, 20), clash('c2', 20, 30)], resolve, applyFocusMode, 'ghost'),
+      { selectedRefs: [10, 20, 30], aRefs: [10, 20], bRefs: [30] },
+    );
 
     const state = useViewerStore.getState();
     assert.deepEqual(state.selectedEntityIds, new Set([10, 20, 30]));
@@ -46,7 +49,7 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().setSelectedEntityIds([99]);
     const applyFocusMode = mock.fn();
 
-    assert.equal(focusClashGroup([clash('c1', 10, 20)], () => null, applyFocusMode, 'isolate'), false);
+    assert.equal(focusClashGroup([clash('c1', 10, 20)], () => null, applyFocusMode, 'isolate'), null);
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([99]));
     assert.equal(applyFocusMode.mock.callCount(), 0);
@@ -59,11 +62,26 @@ describe('manual clash group focus (#4921)', () => {
     const applyFocusMode = mock.fn();
     const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
 
-    assert.equal(focusClashGroup([first, second], resolve, applyFocusMode, 'highlight'), true);
+    assert.ok(focusClashGroup([first, second], resolve, applyFocusMode, 'highlight'));
 
     const state = useViewerStore.getState();
     assert.deepEqual(state.selectedEntityIds, new Set([10, 20, 30]));
     assert.ok(state.selectedEntitiesSet.has('model:10'));
     assert.ok(state.selectedEntitiesSet.has('other-model:10'));
+  });
+
+  it('returns viewpoint refs only for objects that resolved in the current models', () => {
+    const current = clash('current', 10, 20);
+    const stale = clash('stale', 30, 40);
+    stale.a.model = 'replaced';
+    stale.b.model = 'replaced';
+    const resolve = (element: ClashElementRef) =>
+      element.model === 'replaced' ? null : { modelId: element.model, expressId: element.ref };
+
+    assert.deepEqual(focusClashGroup([current, stale], resolve, mock.fn(), 'highlight'), {
+      selectedRefs: [10, 20],
+      aRefs: [10],
+      bRefs: [20],
+    });
   });
 });

@@ -11,29 +11,38 @@ interface SelectionRef {
   expressId: number;
 }
 
+export interface FocusedClashGroup {
+  selectedRefs: number[];
+  aRefs: number[];
+  bRefs: number[];
+}
+
 /** Focus the distinct objects in a manual group through the normal selection channel. */
 export function focusClashGroup(
   clashes: readonly Clash[],
   resolve: (element: ClashElementRef) => SelectionRef | null,
   applyFocusMode: (globalIds: number[], mode: ClashFocusMode) => void,
   mode: ClashFocusMode,
-): boolean {
+): FocusedClashGroup | null {
   const state = useViewerStore.getState();
   const globalIds = new Set<number>();
   const selectionKeys = new Set<string>();
   const refs: SelectionRef[] = [];
+  const aRefs = new Set<number>();
+  const bRefs = new Set<number>();
   for (const clash of clashes) {
-    for (const element of [clash.a, clash.b]) {
+    for (const [side, element] of [['a', clash.a], ['b', clash.b]] as const) {
       const resolved = resolve(element);
       if (!resolved) continue;
       globalIds.add(element.ref);
+      (side === 'a' ? aRefs : bRefs).add(element.ref);
       const selectionKey = `${resolved.modelId}:${resolved.expressId}`;
       if (selectionKeys.has(selectionKey)) continue;
       selectionKeys.add(selectionKey);
       refs.push(resolved);
     }
   }
-  if (refs.length === 0) return false;
+  if (refs.length === 0) return null;
   state.clearEntitySelection();
   state.clearClashFocus();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
@@ -41,5 +50,7 @@ export function focusClashGroup(
   state.addEntitiesToSelection(refs);
   applyFocusMode([...globalIds], mode);
   requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
-  return true;
+  // An object on both sides gets one deterministic color, never two.
+  for (const ref of aRefs) bRefs.delete(ref);
+  return { selectedRefs: [...globalIds], aRefs: [...aRefs], bRefs: [...bRefs] };
 }

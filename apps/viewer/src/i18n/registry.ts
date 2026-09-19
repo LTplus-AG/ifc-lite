@@ -49,6 +49,11 @@ export function getLocale(): Locale {
   return activeLocale;
 }
 
+/** Whether the active locale owns a message instead of using English fallback. */
+export function hasActiveTranslation(key: TranslationKey): boolean {
+  return Object.hasOwn(catalogues.get(activeLocale) ?? {}, key);
+}
+
 /** Snapshot identity for `useSyncExternalStore`. The revision changes when an
  * active catalogue is replaced even though the locale name stays the same. */
 export function getLocaleSnapshot(): string {
@@ -68,6 +73,15 @@ export function subscribeLocale(listener: () => void): () => void {
  * translation is never silently indistinguishable from a deliberately
  * blank one.
  */
+export function selectPluralCategory(locale: Locale, count: number): Intl.LDMLPluralRule {
+  try {
+    return new Intl.PluralRules(locale, { maximumSignificantDigits: 21 }).select(count);
+  } catch (error) {
+    console.warn(`[i18n] Invalid locale "${locale}" for plural rules; using English.`, error);
+    return new Intl.PluralRules('en', { maximumSignificantDigits: 21 }).select(count);
+  }
+}
+
 function pluralForm(value: PluralTranslation, params: TranslationParameters, locale: Locale): string {
   if (!Object.hasOwn(value, 'other')) {
     throw new Error('a plural translation must define its own "other" form');
@@ -75,13 +89,7 @@ function pluralForm(value: PluralTranslation, params: TranslationParameters, loc
   const fallback = value.other;
   const count = Object.hasOwn(params, 'count') ? params.count : undefined;
   if (typeof count !== 'number') return fallback;
-  let category: Intl.LDMLPluralRule;
-  try {
-    category = new Intl.PluralRules(locale, { maximumSignificantDigits: 21 }).select(count);
-  } catch (error) {
-    console.warn(`[i18n] Invalid locale "${locale}" for plural rules; using English.`, error);
-    category = new Intl.PluralRules('en', { maximumSignificantDigits: 21 }).select(count);
-  }
+  const category = selectPluralCategory(locale, count);
   const selected = Object.hasOwn(value, category) ? value[category] : undefined;
   return selected ?? fallback;
 }
@@ -98,5 +106,14 @@ export function resolve(key: TranslationKey, params: TranslationParameters = {})
   const value = catalogue?.[key];
   const resolved = value !== undefined ? value : en[key];
   const template = typeof resolved === 'string' ? resolved : pluralForm(resolved, params, value !== undefined ? activeLocale : 'en');
+  return interpolate(template, params);
+}
+
+/** Resolve directly from the canonical English catalogue, bypassing an active
+ * partial locale. Use when the caller has already determined that a compound
+ * message must fall back as one English unit rather than key-by-key. */
+export function resolveEnglish(key: TranslationKey, params: TranslationParameters = {}): string {
+  const value = en[key];
+  const template = typeof value === 'string' ? value : pluralForm(value, params, 'en');
   return interpolate(template, params);
 }

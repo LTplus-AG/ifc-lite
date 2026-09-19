@@ -241,12 +241,12 @@ not a shortened alias. For example, use `IfcRelContainedInSpatialStructure`,
 `IfcRelPositions` (IFC4X3). `forward` follows the EXPRESS relating-to-related
 slots; `inverse` walks them in reverse.
 
-The SDK's `bim.query.relationships(ref)` also returns `relations`, alongside
+The SDK's `bim.relationships(ref)` also returns `relations`, alongside
 the convenience `voids`, `fills`, `groups`, and `connections` arrays. Each
 entry identifies one relationship record and its opposite endpoint:
 
 ```typescript
-const { relations = [] } = bim.query.relationships(wallRef);
+const { relations = [] } = bim.relationships({ modelId, expressId: wallId });
 for (const edge of relations) {
   console.log(
     edge.relationshipId,   // express id of the IfcRel* record

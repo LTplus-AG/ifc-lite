@@ -105,7 +105,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         } catch (err) {
           console.warn('[Documents] image could not be measured; printed square', err);
         }
-        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, aspect });
+        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, aspect, width: block.width });
         break;
       }
       case 'chart': {
@@ -116,7 +116,11 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         // here ever read it.
         const message = input.chartMessages.get(block.id);
         const subtitle = message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
-        blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot });
+        blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width });
+        break;
+      }
+      case 'spacer': {
+        blocks.push({ kind: 'spacer', id: block.id, height: block.height });
         break;
       }
       case 'topic': {

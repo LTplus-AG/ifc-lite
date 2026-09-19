@@ -66,6 +66,8 @@ export interface RoomReconstructDeps {
   };
   /** The slice's live reconciler — moves one entity's mesh to `placement`. */
   reconcile: (modelId: string, store: IfcDataStore, entityId: number, placement: LocalPlacement) => void;
+  /** Reconcile path-keyed remote tombstones after a store is replaced. */
+  reconcileRemoteDeletes?: (modelId: string, pathToId: ReadonlyMap<string, number> | undefined) => void;
 }
 export interface RoomReconstructor {
   /** Re-derive every slot from the doc (no-op while a run is in flight). */
@@ -238,6 +240,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       const model = deps.get().models.get(modelId);
       const raised = model ? raisedMaxExpressId(model.maxExpressId, payload.idToPath) : null;
       if (raised !== null) deps.get().updateModel(modelId, { maxExpressId: raised });
+      deps.reconcileRemoteDeletes?.(modelId, payload.pathToId);
     }
 
     if (geometryChanged || firstBuild) {

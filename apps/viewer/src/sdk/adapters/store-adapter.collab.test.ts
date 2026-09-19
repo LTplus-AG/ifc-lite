@@ -6,7 +6,15 @@ import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import {
+  EntityTableBuilder,
+  PropertyTableBuilder,
+  QuantityTableBuilder,
+  RelationshipGraphBuilder,
+  StringTable,
+} from '@ifc-lite/data';
 import type { ViewerState } from '@/store';
+import { buildIfcxDataStore } from '@/hooks/ingest/viewerModelIngest.js';
 import {
   pathForGuid,
   registerEntityMaps,
@@ -22,7 +30,7 @@ const MODEL = 'model';
 let dataStore: IfcDataStore;
 let ifc2x3Store: IfcDataStore;
 let ifc5Store: IfcDataStore;
-let reconstructedStore: IfcDataStore;
+let actualIfcxStore: IfcDataStore;
 
 before(async () => {
   const step = [
@@ -36,12 +44,24 @@ before(async () => {
   ].join('\n');
   const bytes = new TextEncoder().encode(step);
   dataStore = await new IfcParser().parseColumnar(bytes.slice().buffer);
-  reconstructedStore = await new IfcParser().parseColumnar(bytes.slice().buffer);
-  registerStoreSlot(reconstructedStore, { slotId: 'm0', pathPrefix: '/m0' });
+  const strings = new StringTable();
+  const entityBuilder = new EntityTableBuilder(1, strings);
+  entityBuilder.add(1, 'IfcWall', '0room000000000000000000', 'Room wall', '', '');
+  actualIfcxStore = buildIfcxDataStore({
+    fileSize: 0,
+    entityCount: 1,
+    parseTime: 0,
+    strings,
+    entities: entityBuilder.build(),
+    properties: new PropertyTableBuilder(strings).build(),
+    quantities: new QuantityTableBuilder(strings).build(),
+    relationships: new RelationshipGraphBuilder().build(),
+  }, new ArrayBuffer(0));
+  registerStoreSlot(actualIfcxStore, { slotId: 'm0', pathPrefix: '/m0' });
   registerEntityMaps(
-    reconstructedStore,
-    new Map([[2, '/m0/0room000000000000000000']]),
-    new Map([['/m0/0room000000000000000000', 2]]),
+    actualIfcxStore,
+    new Map([[1, '/m0/0room000000000000000000']]),
+    new Map([['/m0/0room000000000000000000', 1]]),
   );
   const ifc2x3 = step.replace("FILE_SCHEMA(('IFC4'));", "FILE_SCHEMA(('IFC2X3'));");
   const ifc2x3Bytes = new TextEncoder().encode(ifc2x3);
@@ -56,11 +76,19 @@ function fixture(
   canEdit = true,
   modelStore = dataStore,
   canMirrorCreate?: () => boolean,
+  scope: 'shared' | 'single' | 'private' = 'shared',
 ) {
   const view = new MutablePropertyView(modelStore.properties, MODEL);
   const calls: MirrorCall[] = [];
   const state = {
     models: new Map([[MODEL, { id: MODEL, ifcDataStore: modelStore }]]),
+    activeModelId: MODEL,
+    ifcDataStore: modelStore,
+    collabRoomId: scope === 'single' ? null : 'room',
+    collabRoomModels: scope === 'shared'
+      ? new Map([[MODEL, { slotId: 'm0', pathPrefix: '/m0' }]])
+      : new Map(),
+    mutationViews: new Map([[MODEL, view]]),
     getMutationView: (modelId: string) => modelId === MODEL ? view : null,
     canCollabEdit: () => canEdit,
     mirrorEntityCreate: (...args: unknown[]) => {
@@ -168,7 +196,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
   });
 
   it('rejects a GlobalId already claimed by a reconstructed room path', () => {
-    const { adapter, view } = fixture(true, reconstructedStore);
+    const { adapter, view } = fixture(true, actualIfcxStore);
     const count = view.getMutations().length;
     assert.throws(() => adapter.addEntity(MODEL, {
       type: 'IFCWALL',
@@ -186,6 +214,17 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.throws(() => adapter.setPositionalAttribute(first, 0, '0second0000000000000000'), /immutable/);
     assert.equal(view.getMutations().length, before, 'a rejected identity edit cannot mutate the overlay');
   });
+
+  for (const scope of ['single', 'private'] as const) {
+    it(`keeps GlobalId mutable for a ${scope}-user model outside the shared room`, () => {
+      const { adapter, view, calls } = fixture(true, dataStore, undefined, scope);
+      adapter.setPositionalAttribute({ modelId: MODEL, expressId: 2 }, 0, `0${scope}00000000000000000`);
+      assert.equal(
+        view.getPositionalMutationsForEntity(2)?.get(0),
+        `0${scope}00000000000000000`,
+      );
+    });
+  }
 
   it('preserves structured create and positional values on the collaboration wire', () => {
     const { adapter, calls } = fixture();
@@ -401,6 +440,30 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     );
     assert.deepEqual(calls, [], 'budget exhaustion must happen before any room shell is published');
   });
+
+  for (const scope of ['single', 'private'] as const) {
+    it(`skips room source traversal for a ${scope}-user model`, () => {
+      const broadStore = Object.create(dataStore) as IfcDataStore;
+      const references = Array.from({ length: 5_000 }, () => '#4');
+      Object.defineProperty(broadStore, 'getEntity', {
+        value: (expressId: number) => expressId === 3
+          ? { expressId, type: 'IfcBooleanResult', attributes: ['.UNION.', references, references] }
+          : expressId === 4
+            ? { expressId, type: 'IfcCartesianPoint', attributes: [[0, 0, 0]] }
+            : undefined,
+      });
+      const { adapter, calls } = fixture(true, broadStore, undefined, scope);
+
+      assert.doesNotThrow(() => adapter.setPositionalAttribute(
+        { modelId: MODEL, expressId: 3 }, 1, '#4',
+      ));
+      assert.equal(
+        calls.filter(call => call.kind === 'create').length,
+        0,
+        'a non-room edit must not materialize room entities',
+      );
+    });
+  }
 
   it('uses IFC2X3 positional names and mirrors undefined as an explicit clear', () => {
     const { adapter, calls } = fixture(true, ifc2x3Store);

@@ -55,6 +55,7 @@ import {
 } from '@/lib/collab/mutation-bridge';
 import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
 import { createRemoteOverlayEntity, deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
+import { RemoteDeleteTombstones } from '@/lib/collab/remote-entity-delete';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
@@ -691,6 +692,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
      * already own it. (#3016)
      */
     let ownLiveTeardown: (() => void) | null = null;
+    const remoteDeleteTombstones = new RemoteDeleteTombstones();
 
     const geomApi: CollabGeomApi = {
       createGeometry: (doc, geomId, opts) => collabMod.createGeometry(doc, geomId, opts),
@@ -783,6 +785,14 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           applied: () => ({ loc: placementAppliedLoc, yaw: placementAppliedYaw }),
           reconcile: (modelId, store, entityId, placement) => {
             reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
+          },
+          reconcileRemoteDeletes: (modelId, pathToId) => {
+            const restored = remoteDeleteTombstones.reconcile(
+              modelId,
+              pathToId,
+              roomMutationViewFor(get(), modelId),
+            );
+            if (restored > 0) set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
           },
         });
 
@@ -912,10 +922,14 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       // an offset-0 model of the user's OWN. Gating on `roomStoreFor`
       // (non-null only once the model exists) makes this drop the event
       // exactly like its siblings until then.
-      onEntityDelete: (modelId, entityId) => {
+      onEntityDelete: (modelId, entityId, entityPath) => {
         const store = roomStoreFor(get(), modelId);
         if (!store) return;
         if (!deleteRemoteOverlayEntity(store, roomMutationViewFor(get(), modelId), entityId)) return;
+        // Recipient stores are rebuilt from IFCX after this event. Their dense
+        // numeric ids can shift, so carry the temporary tombstone by stable
+        // room path until a replacement snapshot confirms the path is absent.
+        if (!seed) remoteDeleteTombstones.record(modelId, entityPath, entityId);
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
         get().hideEntities([globalId]);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));

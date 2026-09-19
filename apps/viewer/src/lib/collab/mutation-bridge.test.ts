@@ -631,7 +631,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
 
     teardown();
     assert.strictEqual(handlers.calls.length, 1);
-    assert.deepEqual(handlers.calls[0], { fn: 'onEntityDelete', args: [MODEL, 1] });
+    assert.deepEqual(handlers.calls[0], { fn: 'onEntityDelete', args: [MODEL, 1, '/wallA'] });
   });
 
   it('ignores local writes (own outbound mirror) — no echo back into handlers', () => {

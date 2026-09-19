@@ -8,7 +8,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser } from '@ifc-lite/parser';
 import { createRemoteOverlayEntity } from './remote-entity-create.js';
 import { entityForPath } from './entity-paths.js';
-import { deleteRemoteOverlayEntity } from './remote-entity-delete.js';
+import { deleteRemoteOverlayEntity, RemoteDeleteTombstones } from './remote-entity-delete.js';
 
 const MODEL = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
@@ -61,4 +61,27 @@ test('remote entity creation surfaces rejected initial references (#5008)', asyn
     (reason) => rejected.push(reason),
   ), true);
   assert.deepEqual(rejected, ['unresolved room reference: /m0/missing']);
+});
+
+test('remote tombstones follow stable paths across dense IFCX id reallocation (#5008)', () => {
+  const view = new MutablePropertyView(null, 'room');
+  const tracker = new RemoteDeleteTombstones();
+  const deletedPath = '/m0/deleted';
+  const survivorPath = '/m0/survivor';
+
+  view.deleteEntity(2);
+  tracker.record('room', deletedPath, 2);
+  assert.equal(view.isDeleted(2), true);
+
+  // A snapshot taken before the Yjs delete still contains the path, so its
+  // old numeric tombstone must remain until a later reconstruction catches up.
+  assert.equal(tracker.reconcile('room', new Map([[deletedPath, 2]]), view), 0);
+  assert.equal(view.isDeleted(2), true);
+
+  // In the caught-up snapshot id 2 has been reallocated to a surviving path.
+  // Clearing by stable deleted path prevents that survivor inheriting the
+  // numeric tombstone from the previous store revision.
+  assert.equal(tracker.reconcile('room', new Map([[survivorPath, 2]]), view), 1);
+  assert.equal(view.isDeleted(2), false);
+  assert.equal(tracker.reconcile('room', new Map([[survivorPath, 2]]), view), 0);
 });

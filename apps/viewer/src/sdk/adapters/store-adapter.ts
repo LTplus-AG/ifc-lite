@@ -50,11 +50,12 @@ import type {
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
-import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
+import { getMutationViewForModel, getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
 import { entityForPath, pathForGuid } from '@/lib/collab/entity-paths.js';
 import { ensureSourceRoomEntities, initialRoomAttributes } from './store-adapter-collab.js';
+import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -87,6 +88,11 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }
   }
 
+  function isSharedRoomModel(modelId: string): boolean {
+    const state = store.getState();
+    return roomSlotFor(state, normalizeMutationModelId(state, modelId)) !== null;
+  }
+
   function mirrorCreatedEntity(
     modelId: string,
     editor: StoreEditor,
@@ -115,12 +121,18 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   ): void {
     const sourceOwner = dataStore.entities.getExpressIdByGlobalId(globalId);
     const roomOwner = entityForPath(dataStore, pathForGuid(dataStore, globalId));
+    const view = getMutationViewForModel(store, modelId);
+    // Reconstructed IFCX stores intentionally have an empty STEP entity index;
+    // their real membership lives behind getEntity(). StoreEditor.hasEntity()
+    // therefore cannot be the sole liveness oracle for a room-path owner.
+    const isLive = (owner: number): boolean => !view?.isDeleted(owner)
+      && (editor.hasEntity(owner) || dataStore.getEntity?.(owner) != null);
     const localOwner = editor.getNewEntities().find((entity) => {
       const names = attributeNamesForStore(dataStore, entity.type);
       return names[0] === 'GlobalId' && entity.attributes[0] === globalId;
     })?.expressId;
-    if ((sourceOwner >= 0 && sourceOwner !== expressId && editor.hasEntity(sourceOwner))
-      || (roomOwner !== null && roomOwner !== expressId && editor.hasEntity(roomOwner))
+    if ((sourceOwner >= 0 && sourceOwner !== expressId && isLive(sourceOwner))
+      || (roomOwner !== null && roomOwner !== expressId && isLive(roomOwner))
       || (localOwner !== undefined && localOwner !== expressId)) {
       throw new Error(`bim.store.${operation}: GlobalId "${globalId}" already exists in model "${modelId}"`);
     }
@@ -148,7 +160,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       def.attributes.forEach((value, index) => referencedExpressIds(
         value, referenceSlots[index] ?? false, referenced,
       ));
-      ensureSourceRoomEntities(store, modelId, editor, referenced, dataStore);
+      if (isSharedRoomModel(modelId)) {
+        ensureSourceRoomEntities(store, modelId, editor, referenced, dataStore);
+      }
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
       mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
       return { modelId: normalizedId, expressId: ref.expressId };
@@ -159,7 +173,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       if (!editor) return false;
       const dataStore = resolveDataStore(ref.modelId);
       if (!dataStore) return false;
-      const roomEntityReady = ensureSourceRoomEntities(store, ref.modelId, editor, [ref.expressId], dataStore);
+      const shared = isSharedRoomModel(ref.modelId);
+      const roomEntityReady = !shared
+        || ensureSourceRoomEntities(store, ref.modelId, editor, [ref.expressId], dataStore);
       const removed = editor.removeEntity(ref.expressId);
       if (removed && roomEntityReady) {
         store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
@@ -177,11 +193,12 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
         ?? dataStore?.getEntity?.(ref.expressId)?.type
         ?? dataStore?.entities.getTypeName(ref.expressId);
       const name = type && dataStore ? attributeNamesForStore(dataStore, type)[index] : undefined;
-      if (name === 'GlobalId') {
+      const shared = isSharedRoomModel(ref.modelId);
+      if (name === 'GlobalId' && shared) {
         throw new Error('bim.store.setPositionalAttribute: GlobalId is immutable in a shared room');
       }
       let roomReferencesReady = true;
-      if (dataStore) {
+      if (dataStore && shared) {
         const referenced = referencedExpressIds(
           value, type ? (referenceAttributeSlotsForStore(dataStore, type)[index] ?? false) : false,
         );

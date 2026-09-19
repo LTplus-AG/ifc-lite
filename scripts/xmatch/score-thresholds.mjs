@@ -110,6 +110,23 @@ export function checkThresholds(score, thresholds) {
       }
     }
   }
+  // The `merge` direction (issue #4989), mirroring `bySplit` exactly above.
+  if (thresholds.byMerge) {
+    const row = score.byMerge;
+    if (!row || row.population === 0) {
+      const note = row?.claimed ? `, ${row.claimed} claim(s) counted by corpus.byMerge.precision` : '';
+      skipped.push(`byMerge (population 0${note})`);
+    } else {
+      floor('byMerge.recall', row.recall, thresholds.byMerge.recall);
+      if (row.claimed > 0) floor('byMerge.precision', row.precision, thresholds.byMerge.precision);
+      else if (thresholds.byMerge.precision !== undefined) skipped.push('byMerge.precision (no claims)');
+      if (row.recalled > 0) {
+        floor('byMerge.kindAgreement', row.kindAgreement, thresholds.byMerge.kindAgreement);
+      } else if (thresholds.byMerge.kindAgreement !== undefined) {
+        skipped.push('byMerge.kindAgreement (nothing recalled)');
+      }
+    }
+  }
 
   const negative = thresholds.negativeControls ?? {};
   ceiling('falsePairs.deletedBase', score.falsePairs.deletedBase, negative.deletedBase);
@@ -168,7 +185,15 @@ export function checkCorpusThresholds(scores, thresholds) {
           ? sum((score) => score.inserted)
           : kind === 'insertedNearby'
             ? sum((score) => score.insertedNearby)
-            : sum((score) => score.populations[kind]);
+            : // #4989: `score.populations.merged` counts `key.elements` ROWS (two
+              // per pair — a primary and its donor), but the pre-registered
+              // count is PAIRS (mirroring `splitLength`, one row per split).
+              // `byMerge.population` is the pair count `scoreMerges` itself
+              // uses as its recall denominator, so this is the same number
+              // that stratum's floors are measured against.
+              kind === 'merged'
+              ? sum((score) => score.byMerge?.population)
+              : sum((score) => score.populations[kind]);
     if (total < minimum) failures.push(`corpus.populations.${kind}: ${total} < floor ${minimum}`);
   }
   for (const [tier, minimum] of Object.entries(thresholds.tierPairs ?? {})) {
@@ -218,6 +243,19 @@ export function checkCorpusThresholds(scores, thresholds) {
     sum((score) => score.bySplit?.population),
     thresholds.bySplit?.recall,
   );
+  // The `merge` direction (issue #4989), mirroring `bySplit` immediately above.
+  rate(
+    'corpus.byMerge.precision',
+    sum((score) => score.byMerge?.correct),
+    sum((score) => score.byMerge?.claimed),
+    thresholds.byMerge?.precision,
+  );
+  rate(
+    'corpus.byMerge.recall',
+    sum((score) => score.byMerge?.recalled),
+    sum((score) => score.byMerge?.population),
+    thresholds.byMerge?.recall,
+  );
   for (const [name, floors] of Object.entries(thresholds.bySuccessor ?? {})) {
     rate(
       `corpus.bySuccessor.${name}.recall`,
@@ -252,134 +290,4 @@ export function checkCorpusThresholds(scores, thresholds) {
   return failures;
 }
 
-/**
- * Corpus-level strata measuring BELOW (or, for ceilings, above) their
- * pre-registered target — reported, never gating, like {@link targetGaps}.
- */
-export function corpusTargetGaps(scores, targets) {
-  const gaps = [];
-  const sum = (pick) => scores.reduce((total, score) => total + (pick(score) ?? 0), 0);
-  const compare = (label, hits, total, target) => {
-    if (target === undefined || total === 0) return;
-    const value = Number((hits / total).toFixed(6));
-    if (value < target) gaps.push(`${label}: ${value} < target ${target}`);
-  };
-  compare(
-    'corpus.bySplit.precision',
-    sum((score) => score.bySplit?.correct),
-    sum((score) => score.bySplit?.claimed),
-    targets.bySplit?.precision,
-  );
-  compare(
-    'corpus.bySplit.recall',
-    sum((score) => score.bySplit?.recalled),
-    sum((score) => score.bySplit?.population),
-    targets.bySplit?.recall,
-  );
-  for (const [name, wanted] of Object.entries(targets.bySuccessor ?? {})) {
-    compare(
-      `corpus.bySuccessor.${name}.recall`,
-      sum((score) => score.bySuccessor?.[name]?.recalled),
-      sum((score) => score.bySuccessor?.[name]?.population),
-      wanted.recall,
-    );
-  }
-  const exceed = (label, total, target) => {
-    if (target !== undefined && total > target) gaps.push(`${label}: ${total} > target ${target}`);
-  };
-  exceed(
-    'corpus.falseSuccessors.insertedNearby',
-    sum((score) => score.falseSuccessors?.insertedNearby),
-    targets.negativeControls?.successorInsertedNearby,
-  );
-  exceed(
-    'corpus.falseSuccessors.neighbourSuccessor',
-    sum((score) => score.falseSuccessors?.neighbourSuccessor),
-    targets.negativeControls?.neighbourSuccessor,
-  );
-  return gaps;
-}
-
-/**
- * Strata measuring BELOW their pre-registered target — reported, never gating.
- *
- * The gating floors are a ratchet against regression; these are the original
- * pre-registration, and the difference between them is a standing debt. A
- * fixture that quietly replaced its aspiration with its measurement would be
- * green and would have forgotten what it was for, which is the same failure as
- * a check that cannot fail, one level up.
- */
-export function targetGaps(score, targets) {
-  const gaps = [];
-  const compare = (label, value, target) => {
-    if (target === undefined || value === null || value === undefined) return;
-    if (value < target) gaps.push(`${label}: ${value} < target ${target}`);
-  };
-
-  compare('overall.precision', score.overall.precision, targets.overall?.precision);
-  compare('overall.recall', score.overall.recall, targets.overall?.recall);
-  for (const [name, target] of Object.entries(targets.byTier?.precision ?? {})) {
-    const row = score.byTier[name];
-    if (row && row.claimed > 0) compare(`byTier.${name}.precision`, row.precision, target);
-  }
-  for (const [name, wanted] of Object.entries(targets.byKind ?? {})) {
-    const row = score.byKind[name];
-    if (!row || row.population === 0) continue;
-    compare(`byKind.${name}.recall`, row.recall, wanted.recall);
-    if (row.claimed > 0) compare(`byKind.${name}.precision`, row.precision, wanted.precision);
-    if (row.recalled > 0) {
-      compare(`byKind.${name}.kindAgreement`, row.kindAgreement, wanted.kindAgreement);
-    }
-  }
-  for (const [name, wanted] of Object.entries(targets.byClass ?? {})) {
-    const row = score.byClass[name];
-    if (!row || row.population === 0) continue;
-    compare(`byClass.${name}.recall`, row.recall, wanted.recall);
-    if (row.claimed > 0) compare(`byClass.${name}.precision`, row.precision, wanted.precision);
-  }
-  for (const [name, wanted] of Object.entries(targets.bySuccessor ?? {})) {
-    const row = score.bySuccessor?.[name];
-    if (!row || row.population === 0) continue;
-    compare(`bySuccessor.${name}.recall`, row.recall, wanted.recall);
-    if (row.claimed > 0) compare(`bySuccessor.${name}.precision`, row.precision, wanted.precision);
-    if (row.recalled > 0) {
-      compare(`bySuccessor.${name}.kindAgreement`, row.kindAgreement, wanted.kindAgreement);
-    }
-  }
-  for (const [name, target] of Object.entries(targets.bySuccessorConfidence?.precision ?? {})) {
-    const row = score.bySuccessorConfidence?.[name];
-    if (row && row.claimed > 0) compare(`bySuccessorConfidence.${name}.precision`, row.precision, target);
-  }
-  if (targets.bySplit && score.bySplit && score.bySplit.population > 0) {
-    compare('bySplit.recall', score.bySplit.recall, targets.bySplit.recall);
-    if (score.bySplit.claimed > 0) {
-      compare('bySplit.precision', score.bySplit.precision, targets.bySplit.precision);
-    }
-    if (score.bySplit.recalled > 0) {
-      compare('bySplit.kindAgreement', score.bySplit.kindAgreement, targets.bySplit.kindAgreement);
-    }
-  }
-  // Ceilings have targets too: a negative control whose gating ceiling had to
-  // be raised to the measured count still reports the distance to zero.
-  const exceed = (label, value, target) => {
-    if (target === undefined || value === undefined) return;
-    if (value > target) gaps.push(`${label}: ${value} > target ${target}`);
-  };
-  const negative = targets.negativeControls ?? {};
-  exceed(
-    'falseSuccessors.insertedNearby',
-    score.falseSuccessors?.insertedNearby,
-    negative.successorInsertedNearby,
-  );
-  exceed(
-    'falseSuccessors.neighbourSuccessor',
-    score.falseSuccessors?.neighbourSuccessor,
-    negative.neighbourSuccessor,
-  );
-  exceed(
-    'respecifiedControl.reportedRenamed',
-    score.respecifiedControl?.reportedRenamed.length,
-    negative.respecifiedReportedRenamed,
-  );
-  return gaps;
-}
+export { corpusTargetGaps, targetGaps } from './score-thresholds-gaps.mjs';

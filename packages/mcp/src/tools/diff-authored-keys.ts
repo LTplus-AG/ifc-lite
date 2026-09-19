@@ -13,10 +13,12 @@
 import {
   EntityExtractor,
   authoredKeyValue,
+  extractRootAttributesFromEntity,
   getAttributeNamesAcrossSchemas,
   parseAuthoredKeySpec,
   type IfcDataStore,
 } from '@ifc-lite/parser';
+import type { EntityFingerprint } from '@ifc-lite/diff';
 import type { PendingOverlay } from '../overlay.js';
 
 /** Adapter options (issue #4955); the CLI's `FingerprintAdapterOptions` restated. */
@@ -28,6 +30,38 @@ export interface FingerprintAdapterOptions {
 
 /** Prefix on a fingerprint key taken from an authored property rather than a GlobalId. */
 export const AUTHORED_KEY_PREFIX = 'prop:';
+
+/**
+ * A collision found on either revision invalidates that authored value on
+ * both. The first side may already have been built when the second reveals the
+ * collision, so repair its key back to the entity's GlobalId before diffing.
+ */
+export function fallbackPairDuplicateAuthoredKeys(
+  sides: readonly {
+    fingerprints: EntityFingerprint<number>[];
+    store: IfcDataStore;
+  }[],
+  duplicates: ReadonlyMap<string, number[]>,
+): void {
+  if (duplicates.size === 0) return;
+  for (const { fingerprints, store } of sides) {
+    const extractor = new EntityExtractor(store.source);
+    for (const fingerprint of fingerprints) {
+      if (!fingerprint.key.startsWith(AUTHORED_KEY_PREFIX)) continue;
+      const value = fingerprint.key.slice(AUTHORED_KEY_PREFIX.length);
+      if (!duplicates.has(value)) continue;
+      const tableGlobalId = store.entities.getGlobalId(fingerprint.ref);
+      const ref = store.entityIndex.byId.get(fingerprint.ref);
+      const entity = ref ? extractor.extractEntity(ref) : undefined;
+      const sourceGlobalId = entity ? extractRootAttributesFromEntity(entity).globalId : undefined;
+      const globalId = tableGlobalId || sourceGlobalId;
+      if (!globalId) {
+        throw new Error(`Cannot restore GlobalId for authored-key collision on #${fingerprint.ref}`);
+      }
+      fingerprint.key = globalId;
+    }
+  }
+}
 
 /**
  * Build the key resolver for one model: `prop:<value>` where the entity carries

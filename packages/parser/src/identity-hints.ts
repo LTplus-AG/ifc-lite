@@ -122,8 +122,14 @@ export function authoredKeyValue(
     if (index < 0 || !ref) return undefined;
     raw = extractor.extractEntity(ref)?.attributes?.[index];
   } else {
-    const set = extractPropertiesOnDemand(store, expressId).find((pset) => pset.name === spec.pset);
-    raw = set?.properties.find((property) => property.name === spec.property)?.value;
+    for (const set of extractPropertiesOnDemand(store, expressId)) {
+      if (set.name !== spec.pset) continue;
+      const property = set.properties.find((candidate) => candidate.name === spec.property);
+      if (property) {
+        raw = property.value;
+        break;
+      }
+    }
   }
   if (raw === null || raw === undefined) return undefined;
   const value = typeof raw === 'object' ? JSON.stringify(raw) : String(raw);

@@ -48,7 +48,12 @@ import {
 import { parseAuthoredKeySpec } from '@ifc-lite/parser';
 import { loadIfcBytes } from '../loader.js';
 import { fatal, printJson } from '../output.js';
-import { buildFileFingerprints, modelIdentityOf, type DiffRef } from './diff-engine.js';
+import {
+  buildFileFingerprints,
+  fallbackPairDuplicateAuthoredKeys,
+  modelIdentityOf,
+  type DiffRef,
+} from './diff-engine.js';
 import { readModel, refuseOverwritingAnInput, unwrapModel } from './diff-content-io.js';
 import { resolveGeometryScope } from './diff-geometry.js';
 import { mergeAliases, mergeLineage, readVerifiedLineage } from './diff-lineage-io.js';
@@ -85,10 +90,13 @@ export interface ContentDiffOptions {
 
 export async function contentDiffCommand(options: ContentDiffOptions): Promise<void> {
   const { basePath, headPath } = options;
-  if (options.keyFrom !== undefined && !parseAuthoredKeySpec(options.keyFrom)) {
+  const keySpec = options.keyFrom === undefined ? undefined : parseAuthoredKeySpec(options.keyFrom);
+  if (options.keyFrom !== undefined && !keySpec) {
     fatal(`--key-from must be Tag or <PsetName>.<PropertyName>, got "${options.keyFrom}"`);
   }
-  const keyProperty = options.keyFrom?.trim();
+  // `Tag` is case-insensitive at the CLI boundary, but the persisted sidecar
+  // contract is canonical and shared with the viewer's compare UI.
+  const keyProperty = keySpec?.kind === 'tag' ? 'Tag' : options.keyFrom?.trim();
 
   // Before anything is read, and long before anything is written.
   await refuseOverwritingAnInput(options);
@@ -125,6 +133,13 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
   const adapter = { keyProperty, duplicateAuthoredKeys };
   const baseFingerprints = buildFileFingerprints(baseStore, adapter);
   const headFingerprints = buildFileFingerprints(headStore, adapter);
+  fallbackPairDuplicateAuthoredKeys(
+    [
+      { fingerprints: baseFingerprints, store: baseStore },
+      { fingerprints: headFingerprints, store: headStore },
+    ],
+    duplicateAuthoredKeys,
+  );
   for (const [value, ids] of duplicateAuthoredKeys) {
     process.stderr.write(
       `Warning: ${keyProperty} = "${value}" names ${ids.length} entities; they fall back to GlobalId.\n`,

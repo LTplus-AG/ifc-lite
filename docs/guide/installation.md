@@ -195,7 +195,9 @@ ifc-lite-server
 npx @ifc-lite/server-bin
 ```
 
-**Environment Variables:**
+**Environment Variables** (the most common ones; the full list, including
+`CORS_ORIGINS`, `IFC_SERVER_API_TOKEN` and the memory/admission knobs, is in the
+[Server guide](server.md#environment-variables)):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -224,8 +226,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ifc-lite-core = "4"
-ifc-lite-geometry = "4"
+ifc-lite-core = "15"
+ifc-lite-geometry = "15"
 ```
 
 Or install via cargo:
@@ -273,8 +275,8 @@ pnpm fixtures tests/models/ara3d/AC20-FZK-Haus.ifc
 
 ### Prerequisites
 
-- **Node.js** 22.x
-- **pnpm** 8.0 or higher
+- **Node.js** 22.13+ or 24.x (`engines` in `package.json`)
+- **pnpm** 10 (pinned via `packageManager: pnpm@10.8.1`; `corepack enable` picks it up)
 - **Rust** toolchain (the pinned nightly in `rust-toolchain.toml`, installed automatically by `rustup`) - only for WASM builds (and your own desktop builds, if any)
 
 ### Clone and Build
@@ -287,15 +289,20 @@ cd ifc-lite
 # Install dependencies
 pnpm install
 
-# Build all packages (uses pre-built WASM)
+# Build all packages (rebuilds WASM when wasm-pack is installed)
 pnpm build
 
 # Start the viewer
 pnpm dev
 ```
 
-!!! tip "No Rust Required for Development"
-    WASM binaries are pre-built and committed to the repository. You only need Rust if you're modifying the core parsing/geometry code.
+!!! tip "Type-checking without Rust"
+    The generated WASM type declarations are committed, so type-checking does
+    not require Rust. The WASM runtime itself is gitignored: a fresh checkout
+    must either build it with the pinned Rust toolchain and `wasm-pack` or run
+    `pnpm build:wasm:fetch` to download the published bundle before the viewer
+    can run or bundle. `pnpm build` rebuilds the runtime automatically when the
+    Rust tools are installed.
 
 ### Rebuilding WASM
 

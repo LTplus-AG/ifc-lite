@@ -77,7 +77,12 @@
  * product". Same lesson as `typeObjectTag.ts`.
  */
 
-import { getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import {
+  EntityExtractor,
+  extractRootAttributesFromEntity,
+  getInheritanceChainAcrossSchemas,
+  type IfcDataStore,
+} from '@ifc-lite/parser';
 
 /** class name → is it an `IfcProduct`. A property of the CLASS, and of the
  *  merged cross-schema registry rather than of any one model, so a
@@ -86,6 +91,36 @@ import { getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/p
  *  touching a single row — but note that the walk is not where the cost of this
  *  widening lands; see the module note. */
 const productByClass = new Map<string, boolean>();
+
+/**
+ * Every entity that can own an authored comparison key under the CLI/MCP
+ * `IfcObjectDefinition` scope. The viewer still fingerprints products only,
+ * but collision ownership must use the wider shared scope or a sidecar can
+ * assign a product a `prop:` key that another consumer correctly refuses.
+ */
+export function* authoredKeyOwnerIds(store: IfcDataStore): Generator<number> {
+  const seen = new Set<number>();
+  const extractor = new EntityExtractor(store.source);
+  for (const [typeKey, ids] of store.entityIndex.byType) {
+    const upper = typeKey.toUpperCase();
+    const chain = getInheritanceChainAcrossSchemas(upper);
+    const knownOwner = chain.includes('IfcObjectDefinition');
+    const unknownRoot = chain.length === 0 && !upper.startsWith('IFCREL');
+    if (!knownOwner && !unknownRoot) continue;
+    for (const expressId of ids) {
+      if (seen.has(expressId)) continue;
+      let globalId = store.entities.getGlobalId(expressId);
+      if (!globalId && knownOwner) {
+        const ref = store.entityIndex.byId.get(expressId);
+        const entity = ref ? extractor.extractEntity(ref) : undefined;
+        globalId = entity ? (extractRootAttributesFromEntity(entity).globalId ?? '') : '';
+      }
+      if (!globalId) continue;
+      seen.add(expressId);
+      yield expressId;
+    }
+  }
+}
 
 /**
  * Is this IFC class an `IfcProduct` subtype?

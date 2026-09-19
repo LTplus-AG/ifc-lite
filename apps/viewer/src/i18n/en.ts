@@ -7,6 +7,7 @@ import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignmen
 import { chartsEn } from './catalogues/charts.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
+import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
@@ -17,6 +18,7 @@ import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
+import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
@@ -38,11 +40,13 @@ export const en = {
   ...chartsEn,
   ...listsEn,
   ...clashGroupsEn,
+  ...scheduleEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,
   ...documentEn,
   ...documentMenuEn,
+  ...compareKeyPropertyEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

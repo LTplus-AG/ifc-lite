@@ -19,3 +19,15 @@ test('rich interpolation styles every exact placeholder occurrence', () => {
   assert.equal(nodes.filter((node) => node === styled).length, 2);
   assert.equal(nodes.filter((node) => typeof node === 'string').join(''), 'Use  twice:  (columns)');
 });
+
+test('rich interpolation styles the placeholder rather than matching prose', () => {
+  const styled = createElement('strong', null, 'First task');
+  const t = (_key: TranslationKey, params?: TranslationParameters) =>
+    `First task: ${String(params?.first)}`;
+  const nodes = styleInterpolatedValues(t, 'schedule.generateDialog.taskRangeSingle', [
+    ['first', styled],
+  ]);
+
+  assert.equal(nodes[0], 'First task: ');
+  assert.equal(nodes[1], styled);
+});

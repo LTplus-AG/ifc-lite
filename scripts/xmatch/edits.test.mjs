@@ -24,9 +24,21 @@ import {
   respecifyProperty,
 } from './successor-edits.mjs';
 import * as successorMutations from './successor-mutations.mjs';
+import * as mergeBaseSplit from './merge-base-split.mjs';
 import { parseStepFile, serializeStepFile, splitArgs } from './step-file.mjs';
 
 const { mapDonors } = successorMutations;
+
+// `splitBaseForMerge` is a NEW export (issue #4989, and its own new module):
+// checked INSIDE a `test()`, not at module top level. A top-level `assert`
+// that throws crashes the whole file before any subtest registers, which
+// `node --test` reports identically to an import SyntaxError —
+// indistinguishable from a load failure to the revert oracle, which is
+// exactly the ambiguity `import * as ns` + a typeof check exists to avoid.
+test('merge-base-split.mjs exports splitBaseForMerge (#4989)', () => {
+  assert.equal(typeof mergeBaseSplit.splitBaseForMerge, 'function');
+});
+const splitBaseForMerge = (...args) => mergeBaseSplit.splitBaseForMerge(...args);
 
 function stepFile(body) {
   return `ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${body}\nENDSEC;\nEND-ISO-10303-21;\n`;
@@ -148,6 +160,66 @@ test('a split yields two half-length products that tile the original', () => {
   const across = (half) =>
     (half.centre[0] - before.centre[0]) * before.v[0] + (half.centre[1] - before.centre[1]) * before.v[1];
   assert.ok(near(across(left), 0) && near(across(right), 0), 'no shift across');
+});
+
+test('splitBaseForMerge is a no-op with no primaries (#4989)', () => {
+  const { baseText, mergedEntries } = splitBaseForMerge(MODEL, [], 1, (k) => `${k}-x`, new Map());
+  assert.equal(baseText, MODEL);
+  assert.deepEqual(mergedEntries, []);
+});
+
+test('splitBaseForMerge splits the BASE, leaving the HEAD-side file untouched (#4989, inverse of split)', () => {
+  const { file, index } = load();
+  const before = ownedRectangleExtrusion(index, 10);
+  const classes = new Map([[10, 'prismatic']]);
+  const { baseText, mergedEntries } = splitBaseForMerge(MODEL, [10], 7, (k) => `${k}-test`, classes);
+
+  // The live HEAD-side file/index (`load()`'s own parse) is a completely
+  // separate object — `splitBaseForMerge` reads a FRESH parse of the
+  // pristine text, so #10 here is exactly as it was, not renamed or
+  // resized. That is the whole point: the head keeps the single original
+  // product, and only a caller's own explicit rename (`mutate.mjs`, via
+  // `applySuccessorRole`'s `merged` branch) touches it.
+  assert.equal(splitArgs(index.byId.get(10).args)[2], "'Wall A'");
+
+  // Two `key.elements` rows, both pointing at head id 10 (the primary,
+  // unedited) — the shape `scoreMerges` reconstructs as `{ base: [10,
+  // cloneId], kind: 'merged', head: [10] }`.
+  assert.equal(mergedEntries.length, 2);
+  const [primaryEntry, cloneEntry] = mergedEntries;
+  assert.deepEqual(primaryEntry, { base: 10, kind: 'merged', class: 'prismatic', head: [10] });
+  assert.equal(cloneEntry.kind, 'merged');
+  assert.equal(cloneEntry.class, 'prismatic');
+  assert.deepEqual(cloneEntry.head, [10]);
+  const cloneId = cloneEntry.base;
+  assert.notEqual(cloneId, 10);
+
+  // The BASE text is a real, separately-parseable STEP file in which #10
+  // (edited in place) and the clone tile #10's ORIGINAL full-length shape
+  // exactly — the same construction `splitElementLength` proves for
+  // `splitLength`, just applied to the base side.
+  const baseIndex = indexModel(parseStepFile(baseText));
+  const half10 = ownedRectangleExtrusion(baseIndex, 10);
+  const halfClone = ownedRectangleExtrusion(baseIndex, cloneId);
+  assert.ok(half10 && halfClone, 'both base-side halves own one rectangle extrusion outright');
+  for (const half of [half10, halfClone]) {
+    assert.ok(near(half.a, before.a / 2), 'long axis halved');
+    assert.ok(near(half.b, before.b), 'short axis kept');
+    assert.ok(near(half.depth, before.depth), 'depth kept');
+  }
+
+  // The clone's GlobalId is FRESH, not a byte-copy of #10's — this base
+  // file never goes through `mutate.mjs`'s `reguidAll` the way head does,
+  // so `splitBaseForMerge` must mint one itself.
+  const primaryGuid = splitArgs(baseIndex.byId.get(10).args)[0];
+  const cloneGuid = splitArgs(baseIndex.byId.get(cloneId).args)[0];
+  assert.notEqual(cloneGuid, primaryGuid);
+  assert.match(cloneGuid, /^'[0-9A-Za-z_$]{22}'$/);
+
+  // Both halves are enrolled in #10's own containment list — real,
+  // pre-existing membership, not something this construction has to fake.
+  assert.match(baseIndex.byId.get(30).args, /#10/);
+  assert.match(baseIndex.byId.get(30).args, new RegExp(`#${cloneId}`));
 });
 
 test('shrinking keeps the base plane and scales every axis', () => {

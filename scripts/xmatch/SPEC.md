@@ -51,6 +51,14 @@ by **source express id** — a channel the matcher never reads. The key is
 produced by construction: the generator records what it did, rather than
 deriving a correspondence from any hash or comparison.
 
+The key carries two digests (issue #4989 review): `sourceSha256` is always
+the PRISTINE file's digest — the bytes `sourcePath` names on disk, whether or
+not anything in this run touched them — and `baseSha256` is the digest of the
+text `build-pair.mjs` actually fingerprints as "base". The two are byte-identical
+for every model with no `merged` role; they diverge exactly when `merged`
+produced a mutated base text (see below), and a reader comparing the key
+against what was actually scored must use `baseSha256`.
+
 The head is a from-scratch re-export of the kind content matching exists for:
 
 * every `IfcRoot` gets a new GlobalId, and
@@ -74,6 +82,7 @@ Declared mutations, applied to elements the geometry pass produced a mesh for:
 | `thickened` | scale the SHORTER axis of the one extruded rectangle the element owns outright by 1.25, and rename | no content match; a `footprint` `SuccessorClaim` (old box nests in new, IoU 0.8) |
 | `swapped` | point the element's owned body `IfcMappedItem` at a different `IfcRepresentationMap` used by another element of the same class (family as fallback), and rename | no content match; a `position` or `footprint` `SuccessorClaim` |
 | `splitLength` | the owned extruded rectangle becomes two half-length products: a clone enrolled in every list, a private copy of the shape chain, both renamed | no content match, no successor; one `split` claim, `verified` when volumes were proved, else `extent` |
+| `merged` | the INVERSE of `splitLength` (issue #4989): a detached rectangle owner is split into two half-length products IN THE BASE ONLY, and the single original product survives, renamed, in the HEAD | no content match, no successor; one `merge` claim, expected `verified` (containment + exact volume sum) |
 | `insertedNearby` | on a `deleted` element: a head-only clone of the same class at 0.3x its size on every axis, INSIDE its box | nothing at all — a `SuccessorClaim` onto it is the negative control |
 
 The four kinds after `inserted` and the second negative control are issue
@@ -87,6 +96,63 @@ that only knew the named profile would have had no split population on two
 of three models. Half-length pieces are re-centred in the profile's own 2D
 frame, so no 3D placement is touched; the clone shares the (unedited)
 `IfcLocalPlacement`.
+
+`merged` (issue #4989) is built as the literal inverse of `splitLength`, not
+merely something that scores like one. An EARLIER version of this role
+picked two independently-real, "adjacent" rectangle owners and glued a new
+rectangle over one of them — honest-*sounding*, but a generator defect a
+review caught (2026-09-19): `mergeElementLength` extended the primary's
+profile along one fixed axis without checking which side the donor sat on,
+so most constructed pairs pointed away from their supposed partner and the
+engine correctly refused to merge them — measured `byMerge` recall 0.125,
+precision 0.5, both artefacts of the direction bug rather than a property of
+the engine. That construction, `mergePairs`/`mergeElementLength`, is
+deleted; there is exactly one construction now.
+
+The base revision is normally fingerprinted straight off the real file on
+disk (`fingerprintFile(modelPath, …)` in `build-pair.mjs`), untouched by the
+generator — which is exactly why a "pick two real neighbours" approach
+seemed necessary. But nothing stops the generator from producing a SECOND,
+separately-mutated base text for the one role that needs it: `mutate.mjs`
+picks a detached rectangle owner (interleaved with `splitLength` against the
+same candidate pool — see below), renames it in the live HEAD file
+(`freshName('merged')`) and touches nothing else there, then
+`merge-base-split.mjs`'s `splitBaseForMerge` re-parses the PRISTINE text
+fresh and calls `splitElementLength` on it — the exact same call
+`splitLength` makes on the head — producing two real half-length products in
+that base-only file: the primary's own id (edited in place, own GlobalId
+kept) and a new clone (own express id, a freshly minted GlobalId — this base
+file never goes through `mutate.mjs`'s `reguidAll`, so `splitBaseForMerge`
+mints the clone's itself, off a PRNG stream derived from the seed but never
+`random`, so it draws nothing from the streams `swapped`'s donor choice is
+already documented as immune to). `build-pair.mjs` fingerprints that base text
+instead of the pristine file whenever it differs. Both real base-side halves
+then tile the HEAD survivor's UNEDITED, full-length shape EXACTLY — the
+engine's verified merge case (containment plus an exact volume sum), the
+same proof `splitLength` already gets to 100% `verified` — not a coincidence
+of adjacency scanning.
+
+The answer key records the pair as TWO `key.elements` rows — `{ base:
+primaryId, kind: 'merged', head: [primaryId] }` and `{ base: cloneId, kind:
+'merged', head: [primaryId] }` — rather than one row with an array `base`,
+because every OTHER reader of `key.elements` (`score.mjs`, `guards.mjs`)
+assumes `element.base` is a single id; `scoreMerges` (`score-claims.mjs`)
+reconstructs `{ base: [primaryId, cloneId], head: [primaryId] }` by grouping
+on the shared `head`. `splitLength` and `merged` INTERLEAVE their draw from
+the same detached-rectangle-owner pool (`mutate-support.mjs`'s
+`interleaveSplitAndMerge`) rather than one draining it before the other
+starts — draining first was the OTHER thing the 2026-09-19 review caught:
+duplex's whole 9-element pool went to `splitLength` + `insertedNearby`
+before `merged` ever got a turn under the old ordering. Even interleaved,
+duplex's pool has no room left for `merged` once `splitLength` (4) and
+`insertedNearby`'s own rectangle draw (5) are satisfied, so its `plan`
+explicitly zeroes `merged` (`run.mjs`) rather than stealing back
+`insertedNearby`'s corpus-floor headroom; rvt01's 59-element pool alone
+carries `merged`'s population floor (8 of 8 measured `verified`, 100%
+recall/precision). Both real elements are enrolled in the survivor's
+containment list by simple fact — the clone is `splitLength`'s own
+`cloneElement`, inheriting the primary's real membership — so "the head
+product spans both" needs no separate proof here.
 
 Elements the key covers but never mutates geometrically — `IfcProject`,
 storeys, types, groups — are `renamed`, and they are the population that can
@@ -117,12 +183,15 @@ complexity lives. IFC shares nodes aggressively, so:
   changes the file and nothing about the geometry — the calibration stratum
   caught exactly that on the first run, as five re-sampled elements matching at
   tier 1 with an unchanged hash;
-* `deleted` / `duplicated` / `splitLength` / `insertedNearby` refuse unless
-  every reference to the element sits inside a list;
-* `thickened` and `splitLength` require ONE owned extruded rectangle, not
-  several: thickening every layer of a multi-layer wall by 1.25 produces
-  overlapping layers whose union box is not the `V_old / V_new` the footprint
-  profile is specified against;
+* `deleted` / `duplicated` / `splitLength` / `merged` / `insertedNearby`
+  refuse unless every reference to the element sits inside a list;
+* `thickened`, `splitLength` and `merged` require ONE owned extruded
+  rectangle, not several: thickening every layer of a multi-layer wall by
+  1.25 produces overlapping layers whose union box is not the `V_old /
+  V_new` the footprint profile is specified against; `merged` reuses
+  `splitElementLength` itself (on the base-only file), so it inherits that
+  same requirement and needs no compatibility test of its own — there is
+  only one element involved, not a pair to match;
 * `swapped` rewrites the one pointer from the element's own `IfcMappedItem`
   to a map, never the map (type geometry shared by every occurrence). The
   donor must be structurally different from the element's own map
@@ -232,11 +301,25 @@ is the `byTier` analogue: precision per REPORTED profile, so a profile that
 starts guessing shows even while the other carries the recall.
 
 **By split** — `bySplit`: recall over the `splitLength` population, precision
-over every split/merge claim (a `merge` is always wrong here: nothing in the
-corpus merges), a claim correct only when its whole is a split base and its
+over every `split` claim (a `merge` claim is scored separately, under
+`byMerge` — see below — and counted only informationally here as
+`mergeClaims`, so it can never inflate `bySplit`'s own claimed/precision
+denominators), a claim correct only when its whole is a split base and its
 piece SET is exactly that base's two heads. `kindAgreement` is the confidence:
 `verified` expected when the whole and both pieces carry a proved volume,
 `extent` otherwise — read off the fingerprints, not assumed.
+
+**By merge** — `byMerge` (issue #4989), the mirror image: recall over the
+`merged` population (pairs, not rows — `score.mjs`'s corpus-population sum
+uses `byMerge.population` rather than the raw `key.elements` count for
+exactly this reason), precision over every `merge` claim, a claim correct
+only when its whole is a `merged` head and its piece SET is exactly that
+head's two real bases `{a, b}`. A `split` claim is counted only
+informationally (`splitClaims`). Because the construction is the engine's
+own verified-merge case (containment plus an exact volume sum — see the
+`merged` row above), measured recall/precision/kindAgreement on rvt01 (the
+only populated pair; duplex's pool is spoken for) are 8/8/8/8 — all
+`verified`, same as `bySplit`.
 
 Two more negative controls with a zero target: `falseSuccessors.insertedNearby`
 (a claim onto the small element planted inside a deleted element's box) and

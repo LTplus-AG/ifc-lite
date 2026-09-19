@@ -18,7 +18,9 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import type { DiffScope } from '@ifc-lite/diff';
+import type { DuplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
 import { CompareBlacklist } from './CompareBlacklist';
+import { CompareKeyProperty } from './CompareKeyProperty';
 import type { ChangedTypeCount } from './changeRow';
 
 const SCOPES: { id: DiffScope; label: string }[] = [
@@ -39,6 +41,9 @@ interface CompareRunControlsProps {
   onShowUnchanged: (show: boolean) => void;
   matchByContent: boolean;
   onMatchByContent: (enabled: boolean) => void;
+  keyProperty: string | undefined;
+  onKeyProperty: (keyProperty: string | undefined) => void;
+  duplicateInfo: DuplicateAuthoredKeyInfo | null;
   canRun: boolean;
   running: boolean;
   onRun: () => void;
@@ -68,6 +73,9 @@ export function CompareRunControls({
   onShowUnchanged,
   matchByContent,
   onMatchByContent,
+  keyProperty,
+  onKeyProperty,
+  duplicateInfo,
   canRun,
   running,
   onRun,
@@ -155,6 +163,16 @@ export function CompareRunControls({
           </span>
         </span>
       </label>
+
+      {/* Authored key (#4989): compare on `Tag` / `Pset.Property` instead of
+          GlobalId, for a from-scratch re-export that re-GUIDs everything but
+          keeps the project's own identifiers stable. */}
+      <CompareKeyProperty
+        keyProperty={keyProperty}
+        onKeyProperty={onKeyProperty}
+        duplicateInfo={duplicateInfo}
+        disabled={running}
+      />
 
       <Button
         size="sm"

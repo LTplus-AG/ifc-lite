@@ -12,6 +12,9 @@ import { createAnnotationFromReference } from '@/lib/appearance/create-annotatio
 import { appearanceSelectClass } from './AppearanceSourceFields';
 import { PdfAnnotationFields } from './PdfAnnotationFields';
 import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
+
+type AnnotationMessage = { key: TranslationKey } | { text: string } | null;
 
 /** Explicit IFC creation, next to the independent drawing it captures. */
 export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
@@ -25,7 +28,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
   const [representation, setRepresentation] = useState<'image' | 'fills'>('image');
   const pdf = useViewerStore(state => state.appearanceReferences.get(referenceId)?.pdf);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState<AnnotationMessage>(null);
   const [error, setError] = useState(false);
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => { operation.current?.abort(); operation.current = null; }, []);
@@ -35,17 +38,17 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
   async function save() {
     if (disabled || room || operation.current || containerId === undefined || !modelId) return;
     const renderer = getGlobalRenderer();
-    if (!renderer) { setError(true); setMessage(t('appearance.annotationFields.rendererNotReady')); return; }
+    if (!renderer) { setError(true); setMessage({ key: 'appearance.annotationFields.rendererNotReady' }); return; }
     const controller = new AbortController(); operation.current = controller;
-    setBusy(true); setError(false); setMessage(t('appearance.annotationFields.creating'));
+    setBusy(true); setError(false); setMessage({ key: 'appearance.annotationFields.creating' });
     try {
       const result = await createAnnotationFromReference(modelId, containerId, referenceId, renderer, { Name, signal: controller.signal });
       if (controller.signal.aborted) return;
       selectCreatedAppearanceObject(modelId, result);
-      setMessage(t('appearance.annotationFields.created'));
+      setMessage({ key: 'appearance.annotationFields.created' });
     } catch (failure) {
       if (!controller.signal.aborted) {
-        setError(true); setMessage(failure instanceof Error ? failure.message : String(failure));
+        setError(true); setMessage({ text: failure instanceof Error ? failure.message : String(failure) });
       }
     } finally {
       if (operation.current === controller) { operation.current = null; setBusy(false); }
@@ -61,7 +64,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
           <option value="image">{t('appearance.annotationFields.representationImage')}</option><option value="fills" disabled={!pdf}>{t('appearance.annotationFields.representationPdfVectors')}</option>
         </select></label>
         <label className="block text-[11px]">{t('appearance.annotationFields.modelLabel')}<select aria-label={t('appearance.annotationFields.modelAriaLabel')} className={appearanceSelectClass} value={modelId}
-          onChange={event => { setChosenModel(event.target.value); setChosenContainer(undefined); setMessage(''); }}>
+          onChange={event => { setChosenModel(event.target.value); setChosenContainer(undefined); setMessage(null); }}>
           {!eligible.length && <option value="">{t('appearance.annotationFields.noEligibleModel')}</option>}
           {eligible.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>
@@ -75,8 +78,8 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
       </fieldset>
       {expanded && representation === 'fills' && <PdfAnnotationFields referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room} />}
       {room && <p className="text-[11px] text-muted-foreground">{t('appearance.annotationFields.leaveRoomNotice')}</p>}
-      {busy && <Button type="button" variant="ghost" size="sm" onClick={() => { operation.current?.abort(); setMessage(t('appearance.annotationFields.cancelled')); }}>{t('appearance.annotationFields.cancelCreation')}</Button>}
-      {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
+      {busy && <Button type="button" variant="ghost" size="sm" onClick={() => { operation.current?.abort(); setMessage({ key: 'appearance.annotationFields.cancelled' }); }}>{t('appearance.annotationFields.cancelCreation')}</Button>}
+      {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{'key' in message ? t(message.key) : message.text}</p>}
     </div>
   </details>;
 }

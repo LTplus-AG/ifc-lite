@@ -44,10 +44,10 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
           {material.type === 'Material' && (
             <>
               {material.name && (
-                <MaterialRow label={t('properties.field.name')} value={material.name} />
+                <MaterialRow label="Name" value={material.name} />
               )}
               {material.description && (
-                <MaterialRow label={t('properties.field.description')} value={material.description} />
+                <MaterialRow label="Description" value={material.description} />
               )}
             </>
           )}

@@ -22,7 +22,7 @@ const MAX_CAPTURE_ROWS = 200_000;
 const CAPTURE_ACCEPT = '.glb,.gltf,.bin,.png,.jpg,.jpeg,.ifc,.ifczip';
 
 export function AppearanceCapturePanel() {
-  const { t, locale } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const models = useViewerStore(state => state.models), selected = useViewerStore(state => state.selectedEntityId);
   const room = useViewerStore(state => state.collabRoomId);
   const placement = useViewerStore(state => state.modelPlacement);
@@ -30,7 +30,7 @@ export function AppearanceCapturePanel() {
   const target = useIfcAuthoringTarget();
   const candidates = useMemo(() => [...models.values()].flatMap(model => (model.geometryResult?.meshes ?? [])
     .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
-      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: index + 1, triangleCount: (mesh.indices.length / 3).toLocaleString() }) }] : [])), [models, t, locale]);
+      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: index + 1, triangleCount: (mesh.indices.length / 3).toLocaleString() }) }] : [])), [models, t, revision]);
   const excludedSurfaces = useMemo(() => [...models.values()].reduce((count, model) => count
     + (model.geometryResult?.meshes ?? []).filter(mesh => !mesh.textureRef).length, 0), [models]);
   const [chosen, setChosen] = useState('');
@@ -79,7 +79,7 @@ export function AppearanceCapturePanel() {
       void decoding.then(() => { if (live) setImagesSettled(count => count + 1); });
       return () => { live = false; };
     }
-  }, [candidate?.modelId, candidate?.mesh, imagesSettled, t, locale]);
+  }, [candidate?.modelId, candidate?.mesh, imagesSettled, t]);
   useEffect(() => { setCreated(false); }, [candidate?.mesh, triangles]);
   useEffect(() => {
     if (operation.current || created) return;

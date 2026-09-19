@@ -5,6 +5,9 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
+import { appearancePanelEn } from './catalogues/appearance-panel.en';
+import { appearancePickersEn } from './catalogues/appearance-pickers.en';
+import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -50,6 +53,9 @@ export const en = {
   ...documentMenuEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...appearancePanelEn,
+  ...appearancePickersEn,
+  ...appearanceWorkflowsEn,
   ...compareKeyPropertyEn,
 } as const;
 

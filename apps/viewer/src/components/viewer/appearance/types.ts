@@ -5,6 +5,7 @@ import type { AppearanceCalibrationProps } from './AppearanceCalibrationFields.j
 import type { AppearancePdfControls, AppearancePdfPasswordPrompt } from './pdf-controls.js';
 import type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 import type { FaceMaskControls } from './face-mask/useFaceMasks.js';
+import type { LocalizedMessage } from './localized-message.js';
 export type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 export interface AppearancePanelViewProps {
   intent?: 'apply' | 'reference' | 'capture' | 'scan';
@@ -45,8 +46,8 @@ export interface AppearancePanelViewProps {
   settings: AppearanceDraftSettings;
   onSettingsChange(patch: Partial<AppearanceDraftSettings>): void;
   status: 'idle' | 'preparing' | 'ready' | 'applying' | 'stale' | 'error';
-  statusMessage?: string;
-  unavailableReason?: string;
+  statusMessage?: string | LocalizedMessage;
+  unavailableReason?: string | LocalizedMessage;
   canApply: boolean;
   canDiscard: boolean;
   hasPreview: boolean;

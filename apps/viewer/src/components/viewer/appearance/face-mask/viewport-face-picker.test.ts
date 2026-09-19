@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Intersection } from '@ifc-lite/renderer';
-import { pickViewportAppearanceFace, registerViewportFacePicker } from './viewport-face-picker.js';
+import { pickViewportAppearanceFace, registerViewportFacePicker, viewportFacePickError } from './viewport-face-picker.js';
 
 const hit = (changes: Partial<Intersection> = {}): Intersection => ({
   point: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 }, distance: 1,
@@ -30,4 +30,12 @@ test('viewport face picker requires the exact federated owner, item and canonica
   assert.deepEqual(picked, [7, 11]);
   release();
   assert.equal(pickViewportAppearanceFace(hit()), 'inactive');
+});
+
+test('viewport face picker exposes stable translation keys for expected failures (#4918)', () => {
+  assert.equal(viewportFacePickError('miss'), 'appearance.facePicker.error.miss');
+  assert.equal(viewportFacePickError('different-surface'), 'appearance.facePicker.error.differentSurface');
+  assert.equal(viewportFacePickError('ambiguous'), 'appearance.facePicker.error.ambiguous');
+  assert.equal(viewportFacePickError('busy'), 'appearance.facePicker.error.busy');
+  assert.equal(viewportFacePickError('picked'), undefined);
 });

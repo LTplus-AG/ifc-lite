@@ -18,9 +18,12 @@ import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { installAssignmentWorker } from './assignment-worker.fixture.js';
+import { registerLocale, setLocale, useTranslation } from '@/i18n';
+import { resolveLocalizedMessage } from './localized-message.js';
 const wasm = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 
 function Harness({ initialEnabled = true, queryScope = false }: { initialEnabled?: boolean; queryScope?: boolean }) {
+  const { t } = useTranslation();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [modelId, setModelId] = useState('a');
   const sources = useViewerStore(state => state.appearanceSources);
@@ -34,7 +37,7 @@ function Harness({ initialEnabled = true, queryScope = false }: { initialEnabled
   const c = useAppearanceAssignments(base, enabled);
   return <><button onClick={() => setEnabled(true)}>Use image appearance</button><button onClick={() => { setModelId('b'); useViewerStore.getState().setActiveModel('b'); }}>Choose model b</button>
     <AppearanceAssignments controller={c} base={base} />
-    <p role="status" data-operation-status={c.status}>{c.notice}</p>
+    <p role="status" data-operation-status={c.status}>{resolveLocalizedMessage(c.notice, t)}</p>
     <button disabled={c.status !== 'ready' || c.original} onClick={() => { void c.apply(); }}>Apply assignments</button>
     <button onClick={c.cancel}>Cancel assignments</button>
   </>;
@@ -47,6 +50,22 @@ async function until(predicate: () => boolean) {
   for (let i = 0; i < 100 && !predicate(); i++) await advance(10);
   assert.ok(predicate(), `Mounted operation did not reach its expected state: ${document.body.textContent}`);
 }
+test('assignment controller messages follow live locale changes (#4918)', () => {
+  registerLocale('en-x-assignment-a', { 'appearance.assignments.status.cancelled': 'cancelled in locale A' });
+  registerLocale('en-x-assignment-b', { 'appearance.assignments.status.cancelled': 'cancelled in locale B' });
+  setLocale('en-x-assignment-a');
+  try {
+    const ui = render(<Harness />);
+    click(button(ui, 'Cancel assignments'));
+    assert.match(ui.textContent ?? '', /cancelled in locale A/);
+    act(() => setLocale('en-x-assignment-b'));
+    assert.match(ui.textContent ?? '', /cancelled in locale B/);
+  } finally {
+    cleanup();
+    setLocale('en');
+  }
+});
+
 for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
   skip: !existsSync(wasm) && 'Run pnpm build:wasm for native assignment tests',
 }, async t => {

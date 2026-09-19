@@ -90,6 +90,25 @@ describe('captureVisibility', () => {
     assert.equal(out.notice, null);
   });
 
+  it('refuses an isolate when a colliding renderer id is only partially resolved', () => {
+    const out = captureVisibility(
+      new Set([1]),
+      new Set(),
+      () => ['GUID-hydrated-owner'],
+      () => true,
+    );
+    assert.equal(out.visibleGuids, undefined,
+      'one hydrated owner must not hide the still-loading owner from the BCF allowlist');
+    assert.deepStrictEqual(out.notice, {
+      unnameable: 1,
+      total: 1,
+      kind: 'isolated',
+      omitted: true,
+      pending: true,
+      ids: [1],
+    });
+  });
+
   it('a hide-list with no nameable member records no Visibility at all', () => {
     const out = captureVisibility(null, new Set([4]), resolve);
     assert.equal(out.hiddenGuids, undefined);

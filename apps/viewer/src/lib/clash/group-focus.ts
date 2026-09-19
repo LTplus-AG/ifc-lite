@@ -7,6 +7,7 @@ import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
+import { activeSectionPlane } from '@/store/section-active';
 import { CLASH_COLOR_A, CLASH_COLOR_B, type RGBA } from './clash-colors';
 
 interface SelectionRef {
@@ -39,6 +40,7 @@ export interface FocusedClashGroup {
     selectionRevision: number;
     clashHighlightColors: ViewerState['clashHighlightColors'];
     colorPresentationRevision: number;
+    sectionPlane: ViewerState['sectionPlane'] | null;
   };
 }
 
@@ -98,7 +100,8 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && state.isolatedEntitiesByModel === revision.isolatedEntitiesByModel
     && state.selectionRevision === revision.selectionRevision
     && state.clashHighlightColors === revision.clashHighlightColors
-    && state.colorPresentationRevision === revision.colorPresentationRevision;
+    && state.colorPresentationRevision === revision.colorPresentationRevision
+    && activeSectionPlane(state) === revision.sectionPlane;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -202,6 +205,7 @@ export function focusClashGroup(
       selectionRevision: focusedState.selectionRevision,
       clashHighlightColors: focusedState.clashHighlightColors,
       colorPresentationRevision: focusedState.colorPresentationRevision,
+      sectionPlane: activeSectionPlane(focusedState),
     },
   };
 }

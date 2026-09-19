@@ -69,7 +69,7 @@ export function captureVisibility(
   isPending: PendingPredicate = () => false,
 ): VisibilityCapture {
   if (isolatedEntities !== null) {
-    const { guids, unnameable } = nameable(isolatedEntities, resolve);
+    const { guids, unnameable } = nameable(isolatedEntities, resolve, isPending);
     const pending = unnameable.some(isPending);
     const omitted = pending || (isolatedEntities.size > 0 && guids.length === 0);
     const notice: VisibilityNotice | null =
@@ -77,7 +77,7 @@ export function captureVisibility(
     return { visibleGuids: omitted ? undefined : guids, hiddenGuids: undefined, notice };
   }
   if (hiddenEntities.size === 0) return { visibleGuids: undefined, hiddenGuids: undefined, notice: null };
-  const { guids, unnameable } = nameable(hiddenEntities, resolve);
+  const { guids, unnameable } = nameable(hiddenEntities, resolve, isPending);
   return {
     visibleGuids: undefined,
     hiddenGuids: guids.length > 0 ? guids : undefined,
@@ -105,16 +105,21 @@ export function describeVisibilityNotice(notice: VisibilityNotice): string | nul
   return `Viewpoint visibility is partial: ${n} of ${notice.total} isolated ${elements} ${n === 1 ? 'has' : 'have'} no IFC GlobalId and will appear hidden to recipients.`;
 }
 
-function nameable(ids: ReadonlySet<number>, resolve: GuidResolver): { guids: string[]; unnameable: number[] } {
+function nameable(
+  ids: ReadonlySet<number>,
+  resolve: GuidResolver,
+  isPending: PendingPredicate,
+): { guids: string[]; unnameable: number[] } {
   const guids: string[] = [];
   const seen = new Set<string>();
   const unnameable: number[] = [];
   for (const id of ids) {
     const resolved = resolve(id);
     const candidates = typeof resolved === 'string' ? [resolved] : resolved ?? [];
-    if (candidates.length === 0) {
+    // A renderer id can belong to several federated models. Resolving one
+    // hydrated owner does not make a still-loading sibling safe to omit.
+    if (candidates.length === 0 || isPending(id)) {
       unnameable.push(id);
-      continue;
     }
     for (const guid of candidates) {
       if (seen.has(guid)) continue;

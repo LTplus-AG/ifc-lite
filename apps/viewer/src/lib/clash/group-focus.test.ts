@@ -196,6 +196,25 @@ describe('manual clash group focus (#4921)', () => {
     assert.equal(focusedSceneRevisionIsCurrent(beforeVisibility), false);
   });
 
+  it('invalidates a focused frame when the visible section plane changes while capture waits', () => {
+    useViewerStore.setState((state) => ({
+      activeTool: 'section',
+      sectionPlane: { ...state.sectionPlane, enabled: true, parked: false, position: 25 },
+    }));
+    const beforeSectionChange = focusClashGroup(
+      [clash('section', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'ghost',
+    );
+    assert.ok(beforeSectionChange);
+    useViewerStore.setState((state) => ({
+      sectionPlane: { ...state.sectionPlane, position: 75 },
+    }));
+    assert.equal(focusedSceneRevisionIsCurrent(beforeSectionChange), false,
+      'the serialized cut must come from the same rendered frame as the snapshot');
+  });
+
   it('invalidates capture when another selection or presentation replaces the focused group', () => {
     const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
     const beforeSelection = focusClashGroup([clash('selection', 10, 20)], resolve, mock.fn(), 'highlight');

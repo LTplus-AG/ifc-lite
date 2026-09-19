@@ -37,9 +37,8 @@ import {
 import { useViewerStore, countGeneratedTasks, type GanttTimeScale } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { formatDateTime } from './schedule-utils';
 import { AnimationSettingsPopover } from './AnimationSettingsPopover';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface GanttToolbarProps {
   onClose?: () => void;
@@ -49,13 +48,13 @@ interface GanttToolbarProps {
   canGenerate?: boolean;
 }
 
-const SPEED_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 0.5, label: '0.5 d/s' },
-  { value: 1, label: '1 d/s' },
-  { value: 3, label: '3 d/s' },
-  { value: 7, label: '1 w/s' },
-  { value: 30, label: '1 mo/s' },
-  { value: 90, label: '3 mo/s' },
+const SPEED_OPTIONS: Array<{ value: number; quantity: number; labelKey: TranslationKey }> = [
+  { value: 0.5, quantity: 0.5, labelKey: 'schedule.toolbar.speedDaysPerSecond' },
+  { value: 1, quantity: 1, labelKey: 'schedule.toolbar.speedDaysPerSecond' },
+  { value: 3, quantity: 3, labelKey: 'schedule.toolbar.speedDaysPerSecond' },
+  { value: 7, quantity: 1, labelKey: 'schedule.toolbar.speedWeeksPerSecond' },
+  { value: 30, quantity: 1, labelKey: 'schedule.toolbar.speedMonthsPerSecond' },
+  { value: 90, quantity: 3, labelKey: 'schedule.toolbar.speedMonthsPerSecond' },
 ];
 
 const SCALE_OPTIONS: Array<{ value: GanttTimeScale; labelKey: TranslationKey }> = [
@@ -221,7 +220,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
           aria-label={t('schedule.toolbar.playbackPosition')}
         />
         <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-          {hasData ? formatDateTime(playbackTime) : '—'}
+          {hasData ? formatLocaleDate(locale, playbackTime, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
         </span>
       </div>
 
@@ -260,7 +259,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
           <SelectContent>
             {SPEED_OPTIONS.map(opt => (
               <SelectItem key={opt.value} value={String(opt.value)}>
-                {opt.label}
+                {t(opt.labelKey, { value: formatLocaleNumber(locale, opt.quantity) })}
               </SelectItem>
             ))}
           </SelectContent>

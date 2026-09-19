@@ -37,7 +37,6 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import {
   DEFAULT_PALETTE,
-  type AnimationSettings,
   type TaskPaletteKey,
   type RGBA,
 } from './schedule-animator';
@@ -357,7 +356,7 @@ export function AnimationSettingsPopover({
                 <div className="flex items-center justify-between">
                   <Label htmlFor="palette-intensity" className="text-xs">{t('schedule.animation.colourIntensityLabel')}</Label>
                   <span className="text-xs font-mono text-muted-foreground">
-                    {Math.round(settings.paletteIntensity * 100)}%
+                    {formatLocaleNumber(locale, settings.paletteIntensity, { style: 'percent', maximumFractionDigits: 0 })}
                   </span>
                 </div>
                 <input

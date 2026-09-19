@@ -516,6 +516,20 @@ describe('AnimationSettingsPopover localization (#4918)', () => {
     assert.match(document.body.textContent ?? '', /١٢ يوم/);
   });
 
+  it('formats the intensity percentage with the active locale', () => {
+    const settings = useViewerStore.getState().animationSettings;
+    useViewerStore.setState({
+      animationSettings: { ...settings, colorizeByTaskType: true, paletteIntensity: 0.6 },
+    });
+    act(() => setLocale('ar-EG-u-nu-arab'));
+    const container = render(<AnimationSettingsPopover animationEnabled onToggleAnimation={() => {}} />);
+    openMenu(container.querySelector('button[aria-haspopup="menu"]')!);
+    const expected = new Intl.NumberFormat('ar-EG-u-nu-arab', {
+      style: 'percent', maximumFractionDigits: 0,
+    }).format(0.6);
+    assert.ok((document.body.textContent ?? '').includes(expected));
+  });
+
   it('translates the trigger, style tiles, timing toggles, and (once open) the phased/palette section', () => {
     const settings = useViewerStore.getState().animationSettings;
     useViewerStore.setState({
@@ -642,6 +656,26 @@ describe('GanttToolbar localization (#4918)', () => {
 
     const container = render(<GanttToolbar />);
     assert.ok(container.querySelector('button[aria-label="[1.000 Aufgaben verwerfen]"]'));
+  });
+
+  it('formats the playback date and translated speed value with the active locale', () => {
+    registerLocale('de', {
+      'schedule.toolbar.speedDaysPerSecond': '{value} Tage/Sek.',
+    });
+    act(() => setLocale('de'));
+    const playbackTime = Date.UTC(2026, 8, 19, 12);
+    useViewerStore.setState({
+      scheduleData: makeScheduleData(),
+      scheduleRange: { start: playbackTime, end: playbackTime + 86_400_000, synthetic: false },
+      playbackTime,
+      playbackSpeed: 0.5,
+    });
+    const container = render(<GanttToolbar />);
+    const date = new Intl.DateTimeFormat('de', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    }).format(playbackTime);
+    assert.ok((container.textContent ?? '').includes(date));
+    assert.ok((container.textContent ?? '').includes('0,5 Tage/Sek.'));
   });
 
   afterEach(() => {

@@ -125,7 +125,9 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           <FileText className="h-4 w-4" />
           <h2 className="text-sm font-semibold">{t('extensionsPanels.auditLogPanel.title')}</h2>
           <span className="text-[11px] text-muted-foreground">
-            {t('extensionsPanels.auditLogPanel.eventCount', { filtered: filtered.length, total: events.length })}
+            {t('extensionsPanels.auditLogPanel.eventCount', {
+              count: events.length, filtered: filtered.length, total: events.length,
+            })}
           </span>
           <HelpHint label={t('extensionsPanels.auditLogPanel.helpLabel')}>
             <p>{t('extensionsPanels.auditLogPanel.helpIntro')}</p>

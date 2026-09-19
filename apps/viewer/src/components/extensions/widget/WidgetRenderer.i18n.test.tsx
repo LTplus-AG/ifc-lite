@@ -80,6 +80,22 @@ afterEach(() => {
 });
 
 describe('Widget DSL renderer localization (#4918)', () => {
+  it('falls back to the first tab when a persisted default id is stale', () => {
+    const container = render(
+      <WidgetRenderer node={{
+        type: 'Tabs',
+        defaultTab: 'removed-tab',
+        tabs: [
+          { id: 'current', label: 'Current', children: [{ type: 'Text', text: 'Current content' }] },
+          { id: 'other', label: 'Other', children: [{ type: 'Text', text: 'Other content' }] },
+        ],
+      } as WidgetNode} ctx={CTX} />,
+    );
+
+    assert.equal(container.querySelector('[role="tab"][data-state="active"]')?.textContent, 'Current');
+    assert.match(container.textContent ?? '', /Current content/);
+  });
+
   it('translates every static widgetRenderer/widgetErrorBoundary key rendered', () => {
     const container = render(
       <div>

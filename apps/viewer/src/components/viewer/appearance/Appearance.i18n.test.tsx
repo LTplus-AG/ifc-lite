@@ -244,6 +244,6 @@ describe('Appearance localization revert-oracle witness (#4918)', () => {
     act(() => setLocale('appearance-revert-witness'));
     const container = render(<AppearancePanelView {...panelViewProps({ onIntentChange() {} })} />);
     const applyButton = [...container.querySelectorAll('button')].find((element) => element.textContent === 'translated apply witness');
-    assert.equal(applyButton?.textContent, 'translated apply witness');
+    assert.equal(applyButton?.textContent, 'translated apply witness', 'AppearancePanelView.tsx must read the active locale');
   });
 });

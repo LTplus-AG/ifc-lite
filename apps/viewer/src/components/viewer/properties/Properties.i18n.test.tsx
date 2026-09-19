@@ -337,6 +337,6 @@ describe('Properties localization revert-oracle witness (#4918)', () => {
     registerLocale('properties-revert-witness', { 'properties.assemblyBadge.label': 'translated assembly witness' });
     act(() => setLocale('properties-revert-witness'));
     const container = render(<AssemblyBadge assembly={{ expressId: 12, name: 'Assembly-01' }} onSelect={() => {}} />);
-    assert.equal(container.querySelector('.font-bold')?.textContent, 'translated assembly witness');
+    assert.equal(container.querySelector('.font-bold')?.textContent, 'translated assembly witness', 'AssemblyBadge.tsx must read the active locale');
   });
 });

@@ -153,6 +153,52 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene['buckets'].get('flat')?.batchedMesh, replacement);
   });
 
+  it('preserves evicted residency shells instead of eagerly re-uploading them', () => {
+    const scene = new Scene(), source = triangle(10), shell = batch(1), replacement = batch(2);
+    shell.colorKey = 'flat';
+    shell.gpuResident = false;
+    const bucketState = { key: 'flat', meshData: [source], batchedMesh: shell, vertexBytes: source.positions.byteLength };
+    scene['buckets'].set('flat', bucketState);
+    scene['batchedMeshes'] = [shell];
+    scene.discardGpuResourcesForRecovery();
+
+    assert.strictEqual(shell.vertexBuffer.destroyed, 0, 'already-evicted buffers must not be disposed again');
+    scene['createBatchedMesh'] = () => assert.fail('an evicted bucket must stay lazy during recovery');
+    scene.restoreGpuResourcesAfterRecovery({} as GPUDevice, {} as RenderPipeline);
+    assert.deepStrictEqual(scene.getBatchedMeshes(), [shell]);
+    assert.strictEqual(bucketState.batchedMesh, shell);
+
+    scene.requestBatchResidency(shell);
+    scene['createBatchedMesh'] = () => replacement;
+    assert.strictEqual(scene.processResidencyRestores({} as GPUDevice, {} as RenderPipeline), 1);
+    assert.strictEqual(bucketState.batchedMesh, replacement);
+  });
+
+  it('rebinds cached appearance-history GPU closures to the replacement device', () => {
+    const scene = new Scene(), source = triangle(11), old = batch(1), replacement = batch(2);
+    const first = device(), second = device();
+    const oldPipeline = {} as RenderPipeline, replacementPipeline = {} as RenderPipeline;
+    const bucketState = { key: 'flat', meshData: [source], batchedMesh: old, vertexBytes: source.positions.byteLength };
+    scene['buckets'].set('flat', bucketState);
+    scene['batchedMeshes'] = [old];
+    scene.appearancePreview(first.gpu, oldPipeline);
+    scene.discardGpuResourcesForRecovery();
+
+    let capturedDevice: GPUDevice | undefined, capturedPipeline: RenderPipeline | undefined;
+    scene['createBatchedMesh'] = (_parts, _color, targetDevice, targetPipeline) => {
+      capturedDevice = targetDevice;
+      capturedPipeline = targetPipeline;
+      return replacement;
+    };
+    scene.restoreGpuResourcesAfterRecovery(second.gpu, replacementPipeline);
+    capturedDevice = undefined;
+    capturedPipeline = undefined;
+
+    scene['appearanceAccessState']?.buckets.create([source], 'appearance-test');
+    assert.strictEqual(capturedDevice, second.gpu);
+    assert.strictEqual(capturedPipeline, replacementPipeline);
+  });
+
   it('recreates slot-stable instances and reapplies selection, hide, and colour state', () => {
     const scene = new Scene(), first = device();
     scene.addInstancedShard(first.gpu, shard(), 9);

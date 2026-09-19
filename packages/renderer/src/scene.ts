@@ -198,6 +198,7 @@ export class Scene {
   private appearanceController?: ReturnType<typeof createSceneAppearancePreview>;
 
   private appearanceBuckets?: AppearanceBuckets;
+  private appearanceAccessState?: SceneAppearanceAccess;
   private authoredGeneration = 0;
   private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
     return {
@@ -235,11 +236,25 @@ export class Scene {
     };
   }
 
+  /** Keep long-lived appearance history while redirecting its GPU closures. */
+  private bindAppearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
+    const next = this.appearanceAccess(device, pipeline);
+    const current = this.appearanceAccessState;
+    if (!current) {
+      this.appearanceAccessState = next;
+      return next;
+    }
+    const buckets = current.buckets;
+    Object.assign(current, next, { buckets });
+    Object.assign(buckets, next.buckets);
+    return current;
+  }
+
   private sharedAppearanceBuckets(access: SceneAppearanceAccess) {
     return this.appearanceBuckets ??= new AppearanceBuckets(access.buckets, id => this.meshDataMap.get(id));
   }
   appearancePreview(device: GPUDevice, pipeline: RenderPipeline) {
-    const access = this.appearanceAccess(device, pipeline);
+    const access = this.bindAppearanceAccess(device, pipeline);
     return this.appearanceController ??= createSceneAppearancePreview(access, this.sharedAppearanceBuckets(access));
   }
 
@@ -250,7 +265,7 @@ export class Scene {
 
   /** Stage one new IFC owner with all its coloured or textured geometry parts. */
   prepareAuthoredOwner(parts: readonly MeshData[], device: GPUDevice, pipeline: RenderPipeline) {
-    const access = this.appearanceAccess(device, pipeline), generation = this.authoredGeneration;
+    const access = this.bindAppearanceAccess(device, pipeline), generation = this.authoredGeneration;
     return prepareSceneAuthoredOwner(access, this.sharedAppearanceBuckets(access), parts, () => {
       if (generation !== this.authoredGeneration) throw new Error('The scene changed while preparing the object.');
     });
@@ -448,11 +463,19 @@ export class Scene {
    * by Renderer.recoverDevice(); ordinary destroy()/init() remains a full reset.
    */
   discardGpuResourcesForRecovery(): void {
+    const evicted = new Set<BatchedMesh>();
+    for (const bucket of this.buckets.values()) {
+      if (bucket.batchedMesh?.gpuResident === false) evicted.add(bucket.batchedMesh);
+    }
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     this.meshes = [];
-    for (const batch of this.batchedMeshes) destroyGpuResources(batch);
-    this.batchedMeshes = [];
-    for (const bucket of this.buckets.values()) bucket.batchedMesh = null;
+    for (const batch of this.batchedMeshes) {
+      if (!evicted.has(batch)) destroyGpuResources(batch);
+    }
+    this.batchedMeshes = [...evicted];
+    for (const bucket of this.buckets.values()) {
+      if (!bucket.batchedMesh || !evicted.has(bucket.batchedMesh)) bucket.batchedMesh = null;
+    }
     this.dropAllPartialCaches();
     this.destroyOverrideBatches();
 
@@ -484,11 +507,15 @@ export class Scene {
   /** Re-upload every reconstructable scene resource to a replacement device. */
   restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void {
     try {
-      const batches: BatchedMesh[] = [];
+      // Appearance history is CPU state, but its long-lived adapter owns GPU
+      // creation closures. Redirect them before an edit can resume.
+      if (this.appearanceAccessState) this.bindAppearanceAccess(device, pipeline);
+      const batches = this.batchedMeshes.filter(batch => batch.gpuResident === false);
       // Publish the staging list up front so the recovery rollback can destroy
       // batches that completed before a later bucket upload failed.
       this.batchedMeshes = batches;
       for (const bucket of this.buckets.values()) {
+        if (bucket.batchedMesh?.gpuResident === false) continue;
         if (bucket.meshData.length === 0) continue;
         const batch = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
         bucket.batchedMesh = batch;

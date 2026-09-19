@@ -645,6 +645,13 @@ describe('ScheduleSummaryLine localization (#4918)', () => {
     const singularProduct = render(<ScheduleSummaryLine groupCount={2} productCount={1} date="2030-01-02" />);
     assert.match(singularProduct.textContent ?? '', /^2 tasks · 1 product · finishes/);
   });
+
+  it('uses the English plural fallback for a registered non-Intl locale id', () => {
+    registerLocale('replaceable', {});
+    act(() => setLocale('replaceable'));
+    const container = render(<ScheduleSummaryLine groupCount={1} productCount={2} date="2030-01-02" />);
+    assert.match(container.textContent ?? '', /^1 task · 2 products · finishes/);
+  });
 });
 
 describe('GenerateScheduleDialog localization (#4918)', { skip: !HAS_CATALOGUE && 'schedule.en.ts catalogue module not present (revert-oracle probe)' }, () => {
@@ -706,11 +713,16 @@ describe('GenerateScheduleDialog localization (#4918)', { skip: !HAS_CATALOGUE &
     const workPlanName = document.body.querySelector<HTMLInputElement>('#gen-plan-name')!;
     assert.equal(workPlanName.value, '');
     assert.equal(workPlanName.placeholder, 'Projektplan');
+    act(() => registerLocale('de', {
+      'schedule.generateAdvanced.scheduleNamePlaceholder': 'Neuer Bauablauf',
+      'schedule.generateAdvanced.workPlanNamePlaceholder': 'Neuer Projektplan',
+    }));
+    assert.equal(scheduleName.placeholder, 'Neuer Bauablauf');
     click([...document.body.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Generate schedule')!);
     await advance(20);
     const schedules = useViewerStore.getState().scheduleData?.workSchedules ?? [];
-    assert.equal(schedules.find(schedule => schedule.kind === 'WorkSchedule')?.name, 'Bauablauf');
-    assert.equal(schedules.find(schedule => schedule.kind === 'WorkPlan')?.name, 'Projektplan');
+    assert.equal(schedules.find(schedule => schedule.kind === 'WorkSchedule')?.name, 'Neuer Bauablauf');
+    assert.equal(schedules.find(schedule => schedule.kind === 'WorkPlan')?.name, 'Neuer Projektplan');
   });
 
   it('translates the "nothing to group by" state when there is no spatial hierarchy or geometry', () => {

@@ -111,10 +111,9 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, hasSpatial, hasGeometry]);
 
-  // Live preview — runs on every option change. The helper is pure and cheap
-  // enough (O(vertex count) for the Z strategy; O(storeys × products) for
-  // the others) that we don't debounce.
-  const effectiveOptions = useMemo(() => ({ ...options, scheduleName: options.scheduleName.trim() || t('schedule.generateAdvanced.scheduleNamePlaceholder') }), [options, t, locale]);
+  // Live preview is cheap enough to run on every option change without debouncing.
+  const defaultScheduleName = t('schedule.generateAdvanced.scheduleNamePlaceholder');
+  const effectiveOptions = useMemo(() => ({ ...options, scheduleName: options.scheduleName.trim() || defaultScheduleName }), [options, defaultScheduleName]);
   const preview = useMemo(() => {
     if (!canGenerate) return null;
     return generateScheduleFromSpatialHierarchy(activeStore, effectiveOptions, modelContext);

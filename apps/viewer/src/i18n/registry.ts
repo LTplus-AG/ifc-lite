@@ -68,6 +68,15 @@ export function subscribeLocale(listener: () => void): () => void {
  * translation is never silently indistinguishable from a deliberately
  * blank one.
  */
+export function selectPluralCategory(locale: Locale, count: number): Intl.LDMLPluralRule {
+  try {
+    return new Intl.PluralRules(locale, { maximumSignificantDigits: 21 }).select(count);
+  } catch (error) {
+    console.warn(`[i18n] Invalid locale "${locale}" for plural rules; using English.`, error);
+    return new Intl.PluralRules('en', { maximumSignificantDigits: 21 }).select(count);
+  }
+}
+
 function pluralForm(value: PluralTranslation, params: TranslationParameters, locale: Locale): string {
   if (!Object.hasOwn(value, 'other')) {
     throw new Error('a plural translation must define its own "other" form');
@@ -75,13 +84,7 @@ function pluralForm(value: PluralTranslation, params: TranslationParameters, loc
   const fallback = value.other;
   const count = Object.hasOwn(params, 'count') ? params.count : undefined;
   if (typeof count !== 'number') return fallback;
-  let category: Intl.LDMLPluralRule;
-  try {
-    category = new Intl.PluralRules(locale, { maximumSignificantDigits: 21 }).select(count);
-  } catch (error) {
-    console.warn(`[i18n] Invalid locale "${locale}" for plural rules; using English.`, error);
-    category = new Intl.PluralRules('en', { maximumSignificantDigits: 21 }).select(count);
-  }
+  const category = selectPluralCategory(locale, count);
   const selected = Object.hasOwn(value, category) ? value[category] : undefined;
   return selected ?? fallback;
 }

@@ -42,6 +42,7 @@ import { BundlePreview } from './BundlePreview.js';
 import { ExtensionDockHost } from './ExtensionDockHost.js';
 import { ExtensionExportSlot } from './ExtensionExportSlot.js';
 import { ExtensionToolbarSlot } from './ExtensionToolbarSlot.js';
+import { flavorSwitchPartial } from './flavor-dialog-feedback.js';
 
 const r = resolve as unknown as (key: string, params?: TranslationParameters) => string;
 
@@ -311,6 +312,34 @@ describe('FlavorDialog localization (#4918)', () => {
   });
 });
 
+describe('flavor switch feedback localization (#4918)', () => {
+  it('translates stable persistence refusal reasons and preserves unexpected diagnostics', () => {
+    registerLocale('flavor-refusal-reasons', {
+      'extensionsFlavors.flavorDialog.part.lenses': 'LENTILLES',
+      'extensionsFlavors.flavorDialog.part.layout': 'DISPOSITION',
+      'extensionsFlavors.flavorDialog.reason.storageUnavailable': 'STOCKAGE INDISPONIBLE.',
+      'extensionsFlavors.flavorDialog.toast.switchedPartially':
+        '{id}: {parts} — {reasons}',
+    });
+    setLocale('flavor-refusal-reasons');
+
+    const message = flavorSwitchPartial(r, 'flv.example', [
+      {
+        part: 'lenses',
+        reason: 'unavailable',
+        message: 'Browser storage is unavailable — lens changes were not saved.',
+      },
+      { part: 'layout', message: 'Unexpected layout failure.' },
+    ]);
+
+    assert.equal(
+      message,
+      'flv.example: LENTILLES, DISPOSITION — STOCKAGE INDISPONIBLE. Unexpected layout failure.',
+    );
+    assert.doesNotMatch(message, /lens changes were not saved/);
+  });
+});
+
 describe('FlavorMergeDialog localization (#4918)', () => {
   it('translates the "no active flavor" state', async () => {
     const host = new StubHost();
@@ -479,6 +508,30 @@ describe('FlavorIndicator localization (#4918)', () => {
         params: { name: 'Indicated', description: '' },
       },
     ]);
+  });
+
+  it('localizes seeded baseline metadata while preserving its canonical id', async () => {
+    const host = new StubHost();
+    const baseline = await host.flavors.resetToDefaults();
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <FlavorIndicator />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(10);
+
+    assert.equal(baseline.id, 'flv.default');
+    assert.ok(readableStrings().has(r('extensionsFlavors.flavorIndicator.defaultLabel')));
+    act(() => setLocale(PSEUDO_LOCALE));
+
+    const name = r('extensionsFlavors.flavorIndicator.defaultLabel');
+    const description = `\n${r('extensionsFlavors.flavorIndicator.defaultDescription')}`;
+    assert.ok(readableStrings().has(name));
+    assert.ok(
+      readableStrings().has(
+        r('extensionsFlavors.flavorIndicator.activeTitle', { name, description }),
+      ),
+    );
   });
 });
 

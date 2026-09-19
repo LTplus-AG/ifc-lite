@@ -65,7 +65,6 @@ import { FlavorService } from './flavor-service.js';
 import { runExtensionCommand } from './host-commands.js';
 import { runExtensionExporter, type ExporterOutput } from './host-exporters.js';
 import {
-  ExtensionInstallError,
   installFromBytes,
   previewBundleBytes,
   setEnabled,
@@ -88,7 +87,9 @@ export interface ExtensionHostServiceOptions {
  */
 export interface UnappliedFlavorPart {
   part: 'lenses' | 'clash' | 'layout';
-  /** The refusal's own message, verbatim, so the user reads the real cause. */
+  /** Stable storage-refusal kind; the UI translates known reasons. */
+  reason?: 'quota' | 'unavailable' | 'serialize' | 'too_many' | 'unreadable' | 'rollback_failed';
+  /** Verbatim diagnostic and fallback for unexpected failures. */
   message: string;
 }
 
@@ -494,7 +495,7 @@ export class ExtensionHostService {
       // flavor's lenses are live.
       if (!saved.ok) {
         console.warn('[ext-host] lens restore on switch not applied:', saved.message);
-        unapplied.push({ part: 'lenses', message: saved.message });
+        unapplied.push({ part: 'lenses', reason: saved.reason, message: saved.message });
       }
     } catch (err) {
       console.warn('[ext-host] lens restore on switch failed:', err);
@@ -524,7 +525,7 @@ export class ExtensionHostService {
         // for, so this must gate on `ok` and never on "was a write refused".
         if (!applied.ok) {
           console.warn('[ext-host] clash config was not persisted on switch:', applied.message);
-          unapplied.push({ part: 'clash', message: applied.message });
+          unapplied.push({ part: 'clash', reason: applied.reason, message: applied.message });
         }
       }
     } catch (err) {
@@ -603,4 +604,3 @@ export class ExtensionHostService {
     for (const listener of this.listeners) listener();
   }
 }
-

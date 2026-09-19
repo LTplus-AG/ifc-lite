@@ -342,6 +342,11 @@ function PluralProbe({ probeKey, count }: { probeKey: PluralKey; count: number }
   return <div>{t(probeKey, { count })}</div>;
 }
 
+function MultiStoreyProbe({ count }: { count: number }) {
+  const { t } = useTranslation();
+  return <div>{t('spaceSketch.footer.confirmButtonMultiStorey', { count, floors: 3 })}</div>;
+}
+
 describe('Space Sketch localization (#4918) — catalogue-level checks for wasm-gated keys', { skip: !HAS_CATALOGUE && 'space-sketch.en.ts catalogue module not present (revert-oracle probe)' }, () => {
   it('resolves and interpolates every key whose real render site is gated on a live plate session', () => {
     for (const { key, params } of NOT_RENDERED_BY_A_REAL_COMPONENT) {
@@ -378,11 +383,7 @@ describe('Space Sketch localization (#4918) — catalogue-level checks for wasm-
   it('resolves the multi-storey confirm-button plural key with BOTH its count and floors params substituted (#4918 review, PR #5001: one complete message, not a concatenated suffix)', () => {
     const value = CATALOGUE['spaceSketch.footer.confirmButtonMultiStorey'] as PluralTranslation;
     for (const [count, form] of [[1, 'one'], [5, 'other']] as const) {
-      function MultiStoreyProbe() {
-        const { t } = useTranslation();
-        return <div>{t('spaceSketch.footer.confirmButtonMultiStorey', { count, floors: 3 })}</div>;
-      }
-      const ui = render(<MultiStoreyProbe />);
+      const ui = render(<MultiStoreyProbe count={count} />);
       const template = form === 'one' && value.one !== undefined ? value.one : value.other;
       assert.equal(
         ui.textContent,

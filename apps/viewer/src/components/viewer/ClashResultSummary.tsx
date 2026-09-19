@@ -4,15 +4,16 @@
 
 import { cn } from '@/lib/utils';
 import type { ClashSeverity } from '@ifc-lite/clash';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
 export type ClashResultView = 'pairs' | 'issues' | 'groups';
 
 const ORDER: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
-const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
-  critical: { label: 'Critical', color: '#f7768e' },
-  major: { label: 'Major', color: '#ff9e64' },
-  minor: { label: 'Minor', color: '#e0af68' },
-  info: { label: 'Info', color: '#7aa2f7' },
+const SEVERITY: Record<ClashSeverity, { labelKey: TranslationKey; color: string }> = {
+  critical: { labelKey: 'clashGroups.severity.critical', color: '#f7768e' },
+  major: { labelKey: 'clashGroups.severity.major', color: '#ff9e64' },
+  minor: { labelKey: 'clashGroups.severity.minor', color: '#e0af68' },
+  info: { labelKey: 'clashGroups.severity.info', color: '#7aa2f7' },
 };
 const ZERO_BY_SEVERITY: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
 
@@ -43,18 +44,23 @@ export function ClashResultSummary({
   duplicateSetView,
   bySeverity = ZERO_BY_SEVERITY,
 }: ClashResultSummaryProps) {
+  const { t } = useTranslation();
   const count = effectiveView === 'issues' ? issueCount : effectiveView === 'groups' ? manualGroupCount : total;
+  const issues = t('clashGroups.issueCount', { count: issueCount });
+  const pairs = t('clashGroups.pairCount', { count: total });
+  const clashes = t('clashGroups.clashCount', { count: total });
   const description = effectiveView === 'issues'
-    ? `${issueCount === 1 ? 'issue' : 'issues'} · ${total} ${total === 1 ? 'pair' : 'pairs'}`
+    ? t('clashGroups.issuePairs', { issues, pairs })
     : effectiveView === 'groups'
-      ? `${manualGroupCount === 1 ? 'group' : 'groups'} · ${total} ${total === 1 ? 'pair' : 'pairs'}`
-      : `${total === 1 ? 'clash' : 'clashes'}${shown < total ? ` · ${shown} shown` : ''}${
-        groupsAvailable && !duplicateSetView ? ` · ${issueCount} ${issueCount === 1 ? 'issue' : 'issues'}` : ''
-      }`;
+      ? t('clashGroups.groupPairs', { groups: t('clashGroups.groupCount', { count: manualGroupCount }), pairs })
+      : t(shown < total
+        ? (groupsAvailable && !duplicateSetView ? 'clashGroups.clashSummaryShownIssues' : 'clashGroups.clashSummaryShown')
+        : (groupsAvailable && !duplicateSetView ? 'clashGroups.clashSummaryIssues' : 'clashGroups.clashSummary'),
+      { clashes, shown, issues });
   return (
     <>
       {total > 0 && (
-        <div className="mb-1.5 inline-flex overflow-hidden rounded-md border border-border text-[11px]" title={`Issues group nearby pairs within ${clusterEpsilon}m; Groups are chosen and named by you`}>
+        <div className="mb-1.5 inline-flex overflow-hidden rounded-md border border-border text-[11px]" title={t('clashGroups.viewTitle', { distance: clusterEpsilon })}>
           {(['pairs', 'issues', 'groups'] as const).filter((view) => !duplicateSetView || view !== 'issues').map((view) => (
             <button
               key={view}
@@ -63,7 +69,7 @@ export function ClashResultSummary({
               disabled={view === 'issues' && !groupsAvailable}
               className={cn('px-2 py-0.5', resultView === view ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
             >
-              {view[0].toUpperCase() + view.slice(1)}
+              {t(`clashGroups.view.${view}`)}
             </button>
           ))}
         </div>
@@ -83,7 +89,7 @@ export function ClashResultSummary({
             {ORDER.filter((severity) => bySeverity[severity] > 0).map((severity) => (
               <span key={severity} className="inline-flex items-center gap-1 text-muted-foreground">
                 <span className="h-2 w-2 rounded-full" style={{ background: SEVERITY[severity].color }} />
-                {SEVERITY[severity].label} {bySeverity[severity]}
+                {t(SEVERITY[severity].labelKey)} {bySeverity[severity]}
               </span>
             ))}
           </div>

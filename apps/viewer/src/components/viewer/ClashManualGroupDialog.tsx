@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useTranslation } from '@/i18n';
 
 interface ClashManualGroupDialogProps {
   open: boolean;
@@ -23,6 +24,7 @@ export function ClashManualGroupDialog({
   onOpenChange,
   onSubmit,
 }: ClashManualGroupDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName);
   useEffect(() => {
     if (open) setName(initialName);
@@ -39,15 +41,15 @@ export function ClashManualGroupDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? 'Group selected clashes' : 'Rename clash group'}</DialogTitle>
+          <DialogTitle>{t(mode === 'create' ? 'clashGroups.createTitle' : 'clashGroups.renameTitle')}</DialogTitle>
           <DialogDescription>
             {mode === 'create'
-              ? `${memberCount} selected clashes will appear as one expandable coordination issue.`
-              : 'The group membership is unchanged.'}
+              ? t('clashGroups.createDescription', { count: memberCount })
+              : t('clashGroups.renameDescription')}
           </DialogDescription>
         </DialogHeader>
         <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Group name</span>
+          <span className="text-muted-foreground">{t('clashGroups.name')}</span>
           <input
             autoFocus
             value={name}
@@ -60,8 +62,8 @@ export function ClashManualGroupDialog({
           />
         </label>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={!name.trim()} onClick={submit}>{mode === 'create' ? 'Create group' : 'Save name'}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('clashGroups.cancel')}</Button>
+          <Button disabled={!name.trim()} onClick={submit}>{t(mode === 'create' ? 'clashGroups.create' : 'clashGroups.saveName')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

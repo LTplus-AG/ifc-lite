@@ -5,6 +5,7 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
+import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
@@ -36,6 +37,7 @@ export const en = {
   ...filterGroupsEn,
   ...chartsEn,
   ...listsEn,
+  ...clashGroupsEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,

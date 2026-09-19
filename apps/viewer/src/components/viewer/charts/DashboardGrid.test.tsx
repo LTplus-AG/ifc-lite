@@ -71,8 +71,8 @@ describe('dashboard file', () => {
   });
 
   it('refuses a file that is not a dashboard, naming the first problems', () => {
-    const broken = { ...coordinationDashboard(), version: 2, charts: 'nope' } as unknown as DashboardSpec;
-    assert.throws(() => parseDashboardFile(JSON.stringify(broken)), /Not a dashboard file: .*version.*expected version 1/);
+    const broken = { ...coordinationDashboard(), version: 3, charts: 'nope' } as unknown as DashboardSpec;
+    assert.throws(() => parseDashboardFile(JSON.stringify(broken)), /Not a dashboard file: .*version.*expected version 2/);
     assert.throws(() => parseDashboardFile('{'), SyntaxError);
   });
 });

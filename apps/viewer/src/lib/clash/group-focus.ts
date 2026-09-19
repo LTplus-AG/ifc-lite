@@ -294,11 +294,13 @@ export function focusClashGroup(
   // Renderer presentation channels match mesh ids. A geometry-less aggregate
   // therefore has to become its renderable parts through the same canonical
   // resolver used by framing, SDK visibility, and the other isolate paths.
-  const exactPresentationGlobalIds = [...presentationARefs, ...presentationBRefs]
+  const exactPresentationAGlobalIds = presentationARefs
+    .map(ref => toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
+  const exactPresentationBGlobalIds = presentationBRefs
     .map(ref => toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
   const presentationGlobalIds = resolvePresentationIds(
     state.cameraCallbacks.resolveHighlightIds,
-    exactPresentationGlobalIds,
+    [...exactPresentationAGlobalIds, ...exactPresentationBGlobalIds],
   );
   state.clearEntitySelection();
   state.clearClashFocus();
@@ -347,6 +349,10 @@ export function focusClashGroup(
     presentationState.cameraCallbacks.resolveHighlightIds,
     clashColors,
   );
+  for (const rendererId of resolvePresentationIds(
+    presentationState.cameraCallbacks.resolveHighlightIds,
+    exactPresentationAGlobalIds,
+  )) setClashColor(presentationClashColors, rendererId, CLASH_COLOR_A);
   const renderedARefs = [...presentationARefs];
   const renderedBRefs: SelectionRef[] = [];
   for (const ref of presentationBRefs) {

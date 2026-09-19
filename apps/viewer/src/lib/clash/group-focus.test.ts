@@ -149,6 +149,31 @@ describe('manual clash group focus (#4921)', () => {
     ]));
   });
 
+  it('keeps A precedence when renderer expansion collides with an explicit B id', () => {
+    const crossModel = clash('expanded-color-collision', 10, 20);
+    crossModel.a.model = 'assembly-model';
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, ifcDataStore: { entities: { getGlobalId: () => null } } }],
+        ['assembly-model', { idOffset: 0, ifcDataStore: { entities: { getGlobalId: () => null } } }],
+      ]) as unknown as ViewerState['models'],
+      cameraCallbacks: {
+        resolveHighlightIds: (ids) => ids.flatMap(id => id === 10 ? [20] : [id]),
+      },
+    });
+
+    focusClashGroup(
+      [crossModel],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [20, CLASH_COLOR_A], [10, CLASH_COLOR_A],
+    ]), 'an A aggregate expansion must beat an explicit B renderer-id collision');
+  });
+
   it('reports when no objects resolve so callers cannot capture an unrelated selection', () => {
     useViewerStore.getState().setSelectedEntityIds([99]);
     const applyFocusMode = mock.fn();

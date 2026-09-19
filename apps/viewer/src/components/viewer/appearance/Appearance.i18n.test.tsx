@@ -39,7 +39,7 @@ import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import { AppearanceCapturePanel } from './AppearanceCapturePanel.js';
 import { AppearanceScanPanel } from './AppearanceScanPanel.js';
-import { omissionLabel, PdfFidelityReportView } from './PdfFidelityReportView.js';
+import { PdfFidelityReportView } from './PdfFidelityReportView.js';
 import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
@@ -243,7 +243,6 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
   });
 
   catalogueIt('renders prototype-named unknown PDF omission kinds verbatim', () => {
-    assert.equal(omissionLabel('toString', (key) => key), 'toString');
     const container = render(<PdfFidelityReportView report={{
       sha256: 'prototype-name',
       algorithm: 'ifclite-pdf-fidelity-v1',

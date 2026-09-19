@@ -6,20 +6,6 @@ import { useTranslation, type TranslationKey, type TranslationParameters } from 
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 
-/** Translation keys for the canonical omission kinds (#4406). Unknown kinds show verbatim. */
-const LABEL_KEYS: Readonly<Record<string, TranslationKey>> = {
-  text: 'appearance.pdfFidelity.omission.text',
-  image: 'appearance.pdfFidelity.omission.image',
-  clip: 'appearance.pdfFidelity.omission.clip',
-  transparency: 'appearance.pdfFidelity.omission.transparency',
-  pattern: 'appearance.pdfFidelity.omission.pattern',
-  dash: 'appearance.pdfFidelity.omission.dash',
-  roundCapJoin: 'appearance.pdfFidelity.omission.roundCapJoin',
-  curvedStroke: 'appearance.pdfFidelity.omission.curvedStroke',
-  hairline: 'appearance.pdfFidelity.omission.hairline',
-  hidden: 'appearance.pdfFidelity.omission.hidden',
-  annotation: 'appearance.pdfFidelity.omission.annotation',
-};
 const ROW_KEYS: Readonly<Record<string, { simple: TranslationKey; region: TranslationKey }>> = {
   text: { simple: 'appearance.pdfFidelity.row.text', region: 'appearance.pdfFidelity.row.textRegion' },
   image: { simple: 'appearance.pdfFidelity.row.image', region: 'appearance.pdfFidelity.row.imageRegion' },
@@ -35,15 +21,6 @@ const ROW_KEYS: Readonly<Record<string, { simple: TranslationKey; region: Transl
 };
 function ownValue<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
   return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
-}
-/** `t` is threaded in explicitly: this is a plain (non-component) helper, so
- *  it cannot call the `useTranslation` hook itself. */
-export function omissionLabel(kind: string, t: (key: TranslationKey, params?: TranslationParameters) => string): string {
-  const key = ownValue(LABEL_KEYS, kind);
-  if (key) return t(key);
-  return kind.startsWith('unsupported:')
-    ? t('appearance.pdfFidelity.unsupportedOperator', { operator: kind.slice('unsupported:'.length) })
-    : kind;
 }
 export function visibleOmissionCount(report: PdfFidelityReport): number {
   return report.summary.reduce((count, entry) => count + entry.visibleCount, 0);

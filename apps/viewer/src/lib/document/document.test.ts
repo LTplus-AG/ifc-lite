@@ -322,6 +322,23 @@ describe('compose', () => {
     assert.equal(layout.pages.length, 2, 'the spacer fills page 1 entirely; the chart starts a fresh page 2');
   });
 
+  it('a spacer that only partially fills a page still counts the page as occupied for the block after it (review finding, #4940)', () => {
+    // A 400pt spacer on A4 portrait (printable height ~708pt) leaves the page well short of
+    // `bottom`, so `page.items.length > 0` alone (spacers draw no items) refused to start a fresh
+    // page for a 400pt chart that no longer fits — it drew through the footer instead.
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'sp', height: 400 },
+        { kind: 'chart', id: 'c', title: 'Chart', subtitle: '', hasData: true, snapshot: false, height: 400 },
+      ],
+    });
+    const bottom = layout.size.h - 40 - 24;
+    const chart = layout.pages.flatMap((p) => p.items).find((i) => i.kind === 'chart')!;
+    assert.ok(chart.y + chart.h <= bottom, `chart bottom ${chart.y + chart.h} must stay above the footer at ${bottom}, not run through it`);
+    assert.equal(layout.pages.length, 2, 'the chart moves to a fresh page 2 instead of overflowing page 1');
+  });
+
   it('a long chart title in a half-width column is truncated, not left to overrun into the next column (review finding, #4940)', () => {
     const longTitle = 'A Very Long Chart Title That Would Otherwise Run Into The Next Column';
     const layout = composeDocument({

@@ -140,10 +140,12 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     y = top;
   };
   const ensure = (h: number): void => {
-    // `y >= bottom` also breaks even on an empty page: a leading spacer clamped to the full
-    // printable height left the cursor exactly at `bottom` with `page.items.length === 0`, so the
-    // next block drew at the footer instead of starting a fresh page (review finding).
-    if (y + h > bottom && (page.items.length > 0 || y >= bottom)) newPage();
+    // A page is "occupied" once the cursor has moved past `top`, not only once something was
+    // actually drawn: a spacer advances `y` but draws no items, so `page.items.length > 0` alone
+    // missed both a spacer that filled the page exactly (y === bottom) and one that only
+    // partially filled it (top < y < bottom) — a 400pt spacer + a 400pt chart on A4 drew the
+    // chart through the footer instead of starting page 2 in the latter case (review finding).
+    if (y + h > bottom && (page.items.length > 0 || y > top)) newPage();
   };
 
   // Both a full-width chart/image and one half of a two-up row need the same

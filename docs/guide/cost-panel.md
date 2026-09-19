@@ -48,3 +48,25 @@ if (!data.HasCostData) {
 ```
 
 See the template itself (`Cost report (5D)` in the script editor's template list) for the full version, including CSV export and mixed-currency/cycle warnings.
+
+## Authoring from scripts
+
+**The panel itself stays read-only** — every write goes through `bim.store`, from a script (SDK or CLI), not through the panel UI. `bim.store` gains cost-authoring methods alongside the existing element builders (`addWall`, `addColumn`, ...): `addCostSchedule`, `addCostItem`, `addCostValue`, `addCostQuantity`, `nestCostItems`, `assignCostItemsToSchedule`, `assignToCostItem`, `setCostItemValues`, and `removeCostEntity`. A value authored this way is visible to `bim.cost.data()` immediately — before the model is ever exported — and is written into the file the next time `bim.export.ifc({ applyMutations: true })` runs.
+
+MCP's headless backend does not implement these nine methods (its v0.1 convention for every `bim.store.add*` builder — they throw `not supported in MCP v0.1; use entity_create`); author cost entities there through the generic `entity_create` tool instead. `bim.cost` reads still observe whatever `entity_create` authors, on MCP as everywhere else.
+
+```typescript
+const schedule = bim.store.addCostSchedule('default', { Name: 'Tender schedule', PredefinedType: 'TENDER' })
+const value = bim.store.addCostValue('default', {
+  Name: 'Facade rate',
+  AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 87.45 },
+})
+const item = bim.store.addCostItem('default', { Name: 'Facade package', CostValues: [value.expressId] })
+bim.store.assignCostItemsToSchedule('default', schedule.expressId, [item.expressId])
+
+// Visible immediately, without exporting:
+const data = bim.cost.data('default')
+console.log(data.CostItems.find((i) => i.ref.expressId === item.expressId)?.Name)
+```
+
+Deleting a still-referenced `IfcCostValue` (listed in another item's `CostValues`, or another value's `Components`) is refused, naming the referrer, unless `{ detach: true }` is passed — which rewrites those lists first rather than leaving a dangling reference. IFC2X3 models refuse cost authoring outright (a different, incompatible attribute layout); create or load the model as IFC4 or IFC4X3.

@@ -202,7 +202,7 @@
    495 packages/cli/src/commands/create.ts
    458 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
-   803 packages/cli/src/headless-backend.ts
+   798 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
@@ -326,7 +326,7 @@
    498 packages/sandbox/src/bridge-schema.ts
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
-   847 packages/sdk/src/types.ts
+   775 packages/sdk/src/types.ts
   1011 packages/server-client/src/client.ts
    784 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts

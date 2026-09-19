@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { posthog } from '@/lib/analytics';
-import { errorCaptureProps } from '@/lib/load-errors';
+import { classifyLoadError, errorCaptureProps } from '@/lib/load-errors';
 
 /**
  * Containment for GPU upload work (`createBuffer` and friends).
@@ -37,13 +37,25 @@ import { errorCaptureProps } from '@/lib/load-errors';
 // Session-scoped latches. Module state is deliberate: the failure is a property
 // of the device, not of any one component instance, so remounting must not
 // re-open the floodgates.
-let reportedToErrorTracking = false;
+//
+// `reportedKinds` is keyed by the classified `error_kind` (#4885), not one
+// shared flag: a session that already reported a `gpu_alloc_failed` must
+// still report the FIRST `out_of_memory` it sees, because those are different
+// bugs with different fixes and muting the second behind the first would
+// hide it from triage entirely, not just de-duplicate it.
+const reportedKinds = new Set<string>();
 const loggedLabels = new Set<string>();
+// The user-facing toast is its OWN latch, separate from `reportedKinds`
+// (review, #4885): it says "part of the model may not be drawn", true for
+// every kind this guard sees, so showing it again per distinct kind would
+// just be the same sentence twice for one still-broken session.
+let toastShown = false;
 
 /** Reset the once-per-session latches. Test seam — not used in production. */
 export function resetGpuUploadGuardForTests(): void {
-  reportedToErrorTracking = false;
+  reportedKinds.clear();
   loggedLabels.clear();
+  toastShown = false;
 }
 
 /**
@@ -51,9 +63,17 @@ export function resetGpuUploadGuardForTests(): void {
  *
  * @param label Call site identifier, used to de-duplicate console warnings.
  * @param run   The upload work.
+ * @param opts.isDeviceLost (#4885) Renderer's `isDeviceLost()`, consulted only
+ *   when the failure classifies as `gpu_alloc_failed` — tags the captured
+ *   event with `device_lost_at_time` so triage can tell device-loss fallout
+ *   from real host memory pressure, which the message alone cannot.
  * @returns The callback's value, or `undefined` if it threw.
  */
-export function runGpuUpload<T>(label: string, run: () => T): T | undefined {
+export function runGpuUpload<T>(
+  label: string,
+  run: () => T,
+  opts?: { isDeviceLost?: () => boolean },
+): T | undefined {
   try {
     return run();
   } catch (err) {
@@ -65,13 +85,18 @@ export function runGpuUpload<T>(label: string, run: () => T): T | undefined {
         err,
       );
     }
-    if (!reportedToErrorTracking) {
-      reportedToErrorTracking = true;
+    const kind = classifyLoadError(err);
+    if (!reportedKinds.has(kind)) {
+      reportedKinds.add(kind);
+      const deviceLost = kind === 'gpu_alloc_failed' ? opts?.isDeviceLost?.() : undefined;
       posthog.captureException(err, {
         context: 'gpu_upload',
         gpu_upload_site: label,
-        ...errorCaptureProps(err),
+        ...errorCaptureProps(err, undefined, deviceLost),
       });
+    }
+    if (!toastShown) {
+      toastShown = true;
       // Tell the user once. Containment keeps the session alive, but a lost
       // device does not come back on its own and the affected batches will not
       // draw — silently showing an incomplete model would be worse than the

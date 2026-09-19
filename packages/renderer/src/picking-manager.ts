@@ -14,6 +14,7 @@ import { Picker, type PointPickSizing } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions, PickResult, PickClipState } from './types.js';
 import type { PointPickNode } from './point-picker.js';
+import type { GpuUploadOutcome } from './gpu-upload-guard.js';
 
 /**
  * Supplied by the renderer when point clouds are loaded — returns the
@@ -29,7 +30,7 @@ export class PickingManager {
     private scene: Scene;
     private picker: Picker | null;
     private canvas: HTMLCanvasElement;
-    private createMeshFromDataFn: (meshData: MeshData) => void;
+    private createMeshFromDataFn: (meshData: MeshData) => GpuUploadOutcome<void>;
     private pointPickProvider: PointPickProvider | null = null;
 
     constructor(
@@ -37,7 +38,7 @@ export class PickingManager {
         scene: Scene,
         picker: Picker | null,
         canvas: HTMLCanvasElement,
-        createMeshFromDataFn: (meshData: MeshData) => void
+        createMeshFromDataFn: (meshData: MeshData) => GpuUploadOutcome<void>
     ) {
         this.camera = camera;
         this.scene = scene;
@@ -136,6 +137,14 @@ export class PickingManager {
         // For multi-model support: create meshes for ALL (expressId, modelIndex) pairs
         const baselineExistingCounts = new Map(existingPieceCounts);
         const seenOrdinalsByKey = new Map<string, number>();
+        // Any hydration failing here (#4885 review) — a lost device, or a
+        // mapped createBuffer allocation failure — means `scene.getMeshes()`
+        // below the 'gpu' return is missing that piece's buffers. Reporting
+        // 'gpu' anyway would make a subsequent pick silently skip it rather
+        // than fall back to the CPU raycast, which needs no GPU resources at
+        // all. One failure degrades the WHOLE prepare call to 'cpu': a mix of
+        // hydrated and un-hydrated pieces has no correct partial GPU answer.
+        let hydrationFailed = false;
         for (const expressId of visibleExpressIds) {
             const pieces = this.scene.getMeshDataPieces(expressId);
             if (pieces) {
@@ -148,12 +157,12 @@ export class PickingManager {
                     // Assume existing pieces correspond to the first N pieces in stable order.
                     if (ordinal < baselineExisting) continue;
 
-                    this.createMeshFromDataFn(piece);
+                    if (!this.createMeshFromDataFn(piece).ok) hydrationFailed = true;
                 }
             }
         }
 
-        return 'gpu';
+        return hydrationFailed ? 'cpu' : 'gpu';
     }
 
     /**

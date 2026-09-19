@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Raycaster, type Intersection } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
+import { messageOf } from '@/lib/load-errors';
 import { Button } from '@/components/ui/button';
 import { capturedScreenRegion } from './capture-screen-region';
 import { NO_MARKERS, PreviewMarkers, useLocalPreviewRenderer, type PreviewMarker } from './local-preview-renderer';
@@ -72,7 +73,18 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
       }
       for (const part of additionalMeshes) parts.push({ ...part, origin: [
         (part.origin?.[0] ?? 0) - base[0], (part.origin?.[1] ?? 0) - base[1], (part.origin?.[2] ?? 0) - base[2]] });
-      if (parts.length) view.loadGeometry(parts);
+      if (parts.length) {
+        // loadGeometry no longer throws for a lost device (#4885) — it
+        // returns a typed outcome, so a lost preview device must be reported
+        // through the same failure path a thrown error already used, or it
+        // silently draws nothing.
+        const outcome = view.loadGeometry(parts);
+        if (!outcome.ok) {
+          const reason = outcome.reason === 'device-lost' ? 'graphics device lost' : messageOf(outcome.error);
+          preview.failure.current?.(`Preview upload failed: ${reason}`);
+          return false;
+        }
+      }
       view.render(); preview.projectMarkers(view); return true;
     } catch (error) { preview.failure.current?.(error instanceof Error ? error.message : String(error)); return false; }
   }

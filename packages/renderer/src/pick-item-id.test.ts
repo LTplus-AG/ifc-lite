@@ -141,7 +141,7 @@ function makeManager(piece: MeshData, pieceCount: number) {
     scene as never,
     picker as never,
     canvas as HTMLCanvasElement,
-    (p) => hydrated.push(hydrate(p)),
+    (p) => { hydrated.push(hydrate(p)); return { ok: true as const, value: undefined }; },
   );
   return { manager, calls };
 }

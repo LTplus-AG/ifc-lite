@@ -438,11 +438,14 @@ class Renderer {
   // Initialize WebGPU
   init(): Promise<void>;
 
-  // Load geometry (main entry point for IFC geometry)
-  loadGeometry(geometry: GeometryResult | MeshData[]): void;
+  // Load geometry (main entry point for IFC geometry). Returns a typed
+  // outcome instead of throwing when the GPU device is lost (#4885) — check
+  // `.ok` before assuming the geometry was uploaded.
+  loadGeometry(geometry: GeometryResult | MeshData[]): GpuUploadOutcome<void>;
 
-  // Add meshes incrementally (for streaming)
-  addMeshes(meshes: MeshData[], isStreaming?: boolean): void;
+  // Add meshes incrementally (for streaming). Same lost-device contract as
+  // loadGeometry.
+  addMeshes(meshes: MeshData[], isStreaming?: boolean): GpuUploadOutcome<void>;
 
   // Rendering
   render(options?: RenderOptions): void;

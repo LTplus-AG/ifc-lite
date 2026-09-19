@@ -28,7 +28,10 @@ export function printReport(report: {
   out('');
   out(`  Base: ${report.basePath}`);
   out(`  Head: ${report.headPath}`);
-  out(`  Scope: data (the CLI has no geometry pipeline)`);
+  out(
+    `  Scope: ${diff.scope}` +
+      (diff.scope === 'data' ? ' (pass --geometry for world geometry hashes + boxes)' : ''),
+  );
   if (report.keyProperty) out(`  Key:   ${report.keyProperty} (GlobalId where absent)`);
   out('');
   out(`  Unchanged: ${diff.counts.unchanged}`);
@@ -49,6 +52,23 @@ export function printReport(report: {
       out(`    ${kind.padEnd(13)} ${count}`);
     }
     out('    (renamed / moved / reshaped / respecified are resolved; the rest need a human)');
+  }
+
+  if (diff.splitMerges) {
+    out('');
+    out(
+      diff.splitMerges.length === 0
+        ? '  Split/merge claims: none'
+        : `  Split/merge claims: ${diff.splitMerges.length}`,
+    );
+  }
+  if (diff.successors) {
+    out('');
+    out(
+      diff.successors.length === 0
+        ? '  Successor claims: none'
+        : `  Successor claims: ${diff.successors.length} (suggestions — review before accepting)`,
+    );
   }
 
   if (report.identityIn) {

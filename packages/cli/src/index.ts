@@ -97,6 +97,7 @@ const HELP = `
     convert   <file.ifc> --schema VER --out F     Convert between IFC schema versions
     diff      <f1.ifc> <f2.ifc>                   Compare two IFC files
               [--by-content] [--identity-out F] [--identity-in F]  Match re-GUIDed elements by content; save/replay the identity map
+              [--geometry] [--split-merge] [--successors]  Wasm mesh pass: world geometry hashes/boxes/volumes; split/merge + successor claims
               [--lineage-out F] [--lineage-in F] [--accept F] [--key-from Tag|Pset.Prop]  Lineage for rekeying external data; authored key
     rekey     <table.csv|json> --lineage F --out F  Carry a table keyed on old element keys across a revision
     validate  <file.ifc>                          Structural validation checks
@@ -177,6 +178,7 @@ const HELP = `
     ifc-lite diff model-v1.ifc model-v2.ifc --by-entity
     ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
     ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
+    ifc-lite diff model-v1.ifc model-v2.ifc --geometry --split-merge --successors --json
     ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --lineage-out lineage.json
     ifc-lite rekey costs.csv --lineage lineage.json --key-column GlobalId --out costs-v2.csv
     ifc-lite validate model.ifc --json

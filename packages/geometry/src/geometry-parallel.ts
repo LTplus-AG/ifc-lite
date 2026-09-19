@@ -41,6 +41,13 @@ import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
+  emptyStylesPrepassEvent,
+  frozenStallPhase,
+  GateTracker,
+  PhaseBoundTimers,
+  preWorkerPhaseFailureDiagnostics,
+} from './stall-phase.js';
+import {
   SkippedHungElementsCollector,
   startHungJobMonitor,
   WorkerJobLedger,
@@ -301,6 +308,13 @@ export async function* processParallel(
     }
   };
 
+  // Which pre-worker gate is still open (#4902) — see stall-phase.ts.
+  const gateTracker = new GateTracker();
+  if (options?.stallPhaseHandle) options.stallPhaseHandle.getStallPhase = () => gateTracker.getStallPhase();
+  // Bounded waits for those gates (#4902); cleared in the `finally` below so
+  // none outlives this load's teardown — see stall-phase.ts.
+  const phaseBoundTimers = new PhaseBoundTimers();
+
   // Pre-pass worker drives the entire pipeline via streaming events.
   let prepassMeta: PrepassMeta | null = null;
   let prepassJobsTotal = 0;
@@ -346,6 +360,10 @@ export async function* processParallel(
   const shardResults: (ShardColumns | null)[] = [];
   let shardResultsRemaining = 0;
   let shardScanDispatchedAt = -1;
+  // #4902: settles once, normally or via the bounded-wait timeout below.
+  let shardScanSettled = false;
+  let stylesSlicesSettled = false;
+  let finalizeSettled = false;
   // Shard-resolved styled-item slices (see onAllStyleSlicesReceived).
   interface StylesSlice {
     orphanIds: Uint32Array; orphanColors: Float32Array;
@@ -426,6 +444,9 @@ export async function* processParallel(
         return;
       }
       if (msg.type === 'styles-final') {
+        // A late reply after the #4902 finalize bound already drained with
+        // default colours must not reopen that gate.
+        if (finalizeSettled) return;
         // Finalized styles payload from worker 0 — feed it through the SAME
         // prepass styles-event path (gates, logging, distribution) by
         // synthesizing a prepass-stream message. The handler is a plain
@@ -633,13 +654,17 @@ export async function* processParallel(
   // Opt-in: without a budget nothing is recorded, so the pool costs what it did.
   const hungJobTimeoutMs = Math.max(0, options?.hungJobTimeoutMs ?? 0);
   const ledger = new WorkerJobLedger(workerCount, performance.now(), hungJobTimeoutMs > 0);
+  // Always recorded (#4902 review): a pre-worker phase bound below may need
+  // to replace a worker regardless of whether #4884's in-call recovery is
+  // enabled, and replaying this log is how a replacement reaches the same
+  // state every other worker is in.
   const workerSetup: Array<(w: Worker) => void> = [];
   const broadcastSetup = (setup: (w: Worker) => void) => {
-    if (hungJobTimeoutMs > 0) workerSetup.push(setup);
+    workerSetup.push(setup);
     for (const w of workers) setup(w);
   };
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
-  if (hungJobTimeoutMs > 0) workerSetup.push(postInitMessages);
+  workerSetup.push(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
   // rest of the pipeline), so it needs its own: `postInitMessages` can throw
   // (e.g. a `wasmModule` structured-clone failure — the same class of error
@@ -656,6 +681,30 @@ export async function* processParallel(
   } catch (err) {
     for (const w of workers) terminateWorkerQuietly(w, 'process worker (init)');
     throw err;
+  }
+
+  /**
+   * Terminate and replace pool worker `index` (#4902 review). A silent
+   * `scan-shard` / `resolve-styles-shard` / `finalize-styles` reply means
+   * that worker is wedged inside ONE synchronous WASM call —
+   * `geometry.worker.ts` serializes every message behind its tail promise, so
+   * continuing the fallback without replacing it would queue the fallback's
+   * own `stream-start`/chunks/`stream-end` forever behind the stuck call, and
+   * `workersCompleted` would never reach `workers.length`. None of the three
+   * bounds fires after any `stream-chunk` has reached a worker (they all sit
+   * strictly before `dispatchJobsChunk`'s gate can open), so there is no
+   * in-flight slice to replay — replaying `workerSetup` alone brings the
+   * replacement to the same state every other worker is in.
+   */
+  function replacePreWorkerPhaseWorker(index: number, reason: string): void {
+    const hung = workers[index];
+    const replacement = makeGeometryWorker();
+    workers[index] = replacement; // swap first — the stale-worker guard then drops anything the hung one flushes
+    terminateWorkerQuietly(hung, `process worker (${reason})`);
+    installWorkerHandlers(replacement, index);
+    for (const setup of workerSetup) setup(replacement);
+    if (endSentToWorkers) replacement.postMessage({ type: 'stream-end' });
+    console.warn(`[stream] worker[${index}] replaced: silent past its #4902 ${reason} bound`);
   }
 
   const sendStreamEnd = () => {
@@ -847,6 +896,14 @@ export async function* processParallel(
       streamEndPendingQueueDrain = false;
       sendStreamEnd();
     }
+    // Every pre-worker gate is open, so no #4902 phase-bound timeout can still
+    // need `workerSetup` to replace a worker (each of the three settles at or
+    // before this point — see stall-phase.ts). With #4884 in-call recovery
+    // OFF, nothing else ever replays it either: release the closures (styles/
+    // prepass-columns retain the large prepass arrays) instead of holding them
+    // for the rest of the load. Recovery ON still needs the full log to bring
+    // a LATER in-call replacement up to date, so it is left alone.
+    if (!(hungJobTimeoutMs > 0)) workerSetup.length = 0;
   };
 
   // Step-by-step timing so we can tell exactly where time goes.
@@ -933,6 +990,7 @@ export async function* processParallel(
       }
     }
     entityIndexReceived = true;
+    gateTracker.markEntityIndexReceived();
     drainQueuedChunksIfReady();
   };
 
@@ -945,6 +1003,10 @@ export async function* processParallel(
    * the serial pre-pass path — identical to flag-off behaviour.
    */
   const onAllShardsReceived = () => {
+    // A late straggler shard result may land after the #4902 bound already fell back.
+    if (shardScanSettled) return;
+    shardScanSettled = true;
+    gateTracker.markShardScanDone();
     const shards = shardResults as ShardColumns[];
     const stitched = stitchShards(shards);
     if (!stitched) {
@@ -1003,6 +1065,22 @@ export async function* processParallel(
         [slice.buffer],
       );
     }
+    // #4902 bound: a missing slice at the deadline is treated as empty
+    // (`onAllStyleSlicesReceived` already skips a `null` entry) — see stall-phase.ts.
+    phaseBoundTimers.arm(fileSizeMB, () => stylesSlicesSettled, () => {
+      console.warn(`[stream][shard] ${stylesSlicesRemaining}/${sliceCount} style slice(s) silent — proceeding with the slices that answered (#4902)`);
+      diagnostics = mergeGeometryDiagnostics(diagnostics, preWorkerPhaseFailureDiagnostics('style-slice-timeout'));
+      // Replace every worker owning a still-silent slice BEFORE continuing —
+      // same reasoning as the shard-scan bound above: `resolve-styles-shard`
+      // is synchronous WASM work on that worker's own FIFO queue.
+      const hungWorkers = new Set<number>();
+      for (let i = 0; i < sliceCount; i++) {
+        if (!stylesSliceResults[i]) hungWorkers.add(i % workers.length);
+      }
+      for (const idx of hungWorkers) replacePreWorkerPhaseWorker(idx, 'style-slice-timeout');
+      stylesSlicesRemaining = 0;
+      onAllStyleSlicesReceived();
+    });
 
     // Start the sharded pre-pass with the stitched index columns + classes
     // (stage 2: the pre-pass discovers jobs/spans from the class column and
@@ -1020,6 +1098,9 @@ export async function* processParallel(
    * canonical flatten emits the styles event through the same channel.
    */
   const onAllStyleSlicesReceived = () => {
+    // A late straggler slice may land after the #4902 bound already merged.
+    if (stylesSlicesSettled) return;
+    stylesSlicesSettled = true;
     const orphan = new Map<number, number>(); // id -> base float index (slice,i)
     const geom = new Map<number, number>();
     // First pass: count winners to size the merged columns.
@@ -1079,6 +1160,18 @@ export async function* processParallel(
       [m.orphanIds.buffer, m.orphanColors.buffer, m.geomIds.buffer, m.geomColors.buffer],
     );
     console.log(`[stream][shard] styles finalize dispatched to worker[0] @ ${elapsed()}ms`);
+    // #4902 bound: replay the empty-styles event (stall-phase.ts) so every
+    // held chunk drains with default colours instead of never draining.
+    phaseBoundTimers.arm(fileSizeMB, () => finalizeSettled, () => {
+      finalizeSettled = true;
+      console.warn('[stream][shard] styles finalize silent — draining with default colours (#4902)');
+      diagnostics = mergeGeometryDiagnostics(diagnostics, preWorkerPhaseFailureDiagnostics('styles-finalize-timeout'));
+      // worker[0] is the sole target of `finalize-styles`; replace it before
+      // the fallback drains chunks, or its still-wedged FIFO queue would
+      // never consume the `stream-chunk`/`stream-end` the drain sends it.
+      replacePreWorkerPhaseWorker(0, 'styles-finalize-timeout');
+      (prepassWorker.onmessage as (e: MessageEvent) => void)({ data: emptyStylesPrepassEvent() } as MessageEvent);
+    });
   };
 
   // SPIKE: kick off the shard scans on the idle workers NOW (before the pre-pass
@@ -1095,6 +1188,7 @@ export async function* processParallel(
     shardResults.length = n;
     shardResultsRemaining = n;
     shardScanDispatchedAt = elapsed();
+    gateTracker.markShardScanStarted();
     console.log(`[stream][shard] dispatching ${n} shard scans over ${(len / (1024 * 1024)).toFixed(1)}MB @ ${shardScanDispatchedAt}ms`);
     for (let i = 0; i < n; i++) {
       const rangeStart = Math.floor((i * len) / n);
@@ -1107,6 +1201,22 @@ export async function* processParallel(
         rangeEnd,
       });
     }
+    // #4902 bound: falls back to the serial pre-pass, same as an unresolved
+    // stitch (`onAllShardsReceived`'s `!stitched` branch) — see stall-phase.ts.
+    phaseBoundTimers.arm(fileSizeMB, () => shardScanSettled, () => {
+      shardScanSettled = true;
+      gateTracker.markShardScanDone();
+      console.warn(`[stream][shard] ${shardResultsRemaining}/${n} shard scan(s) silent — falling back to the serial pre-pass (#4902)`);
+      diagnostics = mergeGeometryDiagnostics(diagnostics, preWorkerPhaseFailureDiagnostics('shard-scan-timeout'));
+      // Replace every worker still silent on scan-shard BEFORE continuing:
+      // `scan-shard` is a synchronous WASM call, so a missing reply means
+      // that worker is wedged, not just slow — and the fallback's own
+      // stream-start/chunks/stream-end would queue forever behind it.
+      for (let i = 0; i < n; i++) {
+        if (!shardResults[i]) replacePreWorkerPhaseWorker(i, 'shard-scan-timeout');
+      }
+      startPrepass(false);
+    });
   }
 
   const prepassWorker = makePrepassWorker();
@@ -1252,6 +1362,8 @@ export async function* processParallel(
         });
 
         stylesReceived = true;
+        finalizeSettled = true; // reached via the real path — the #4902 bound is moot now
+        gateTracker.markStylesReceived();
         // Drain only when ALL gates are open (entity-index too). The
         // worker's tail-promise serialiser ensures any set-* runs
         // before any subsequent stream-chunk.
@@ -1402,6 +1514,7 @@ export async function* processParallel(
   // After we see the Rust `complete` event we can sendStreamEnd.
   const onPrepassComplete = () => {
     prepassDone = true;
+    gateTracker.markPrepassDone();
     // Only signal stream-end to workers if they actually got
     // stream-start (which gates on `meta`). Zero-geometry files
     // never trigger meta → workers never start → no stream-end
@@ -1564,6 +1677,14 @@ export async function* processParallel(
     ...(skippedReport ? { skippedHungElements: skippedReport } : {}),
   };
   } finally {
+    phaseBoundTimers.clearAll();
+    // Re-seat the caller's handle to a frozen snapshot (#4979 review): the
+    // live reader closes over `gateTracker`, and transitively this whole
+    // generator's scope (including `sharedBuffer`) — the caller may still
+    // hold the handle long after this teardown runs.
+    if (options?.stallPhaseHandle) {
+      options.stallPhaseHandle.getStallPhase = frozenStallPhase(gateTracker.getStallPhase());
+    }
     stopHungJobMonitor();
     options?.signal?.removeEventListener('abort', onAbort);
     for (const w of workers) {

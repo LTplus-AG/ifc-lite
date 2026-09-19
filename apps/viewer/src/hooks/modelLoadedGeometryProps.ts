@@ -2,7 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { GeometryDiagnostics, SkippedHungElements, TessellationQuality } from '@ifc-lite/geometry';
+import type { GeometryDiagnostics, SkippedHungElements, StallPhase, StallPhaseHandle, TessellationQuality } from '@ifc-lite/geometry';
+
+/**
+ * Read the phase a #4902 `stallPhaseHandle` reports, if any. Extracted as its
+ * own function (rather than inlined at the `geometry_processing`
+ * `captureException` call in `useIfcLoader.ts`) so its behaviour — not just
+ * its presence near that call — is unit-testable directly: `undefined` before
+ * the pool has wired a reader in, `undefined` when no handle was passed at
+ * all, and the pool's own reported phase once one exists.
+ */
+export function geometryProcessingStallPhase(handle: StallPhaseHandle | undefined): StallPhase | undefined {
+  return handle?.getStallPhase?.();
+}
 
 /**
  * Geometry-attribution properties for the `ifc_model_loaded` event (issue #2388).

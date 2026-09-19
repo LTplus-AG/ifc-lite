@@ -112,15 +112,37 @@ describe('classifyLoadError', () => {
     );
   });
 
-  it('classifies a WebGPU buffer-allocation failure as out_of_memory', () => {
+  it('classifies a WebGPU buffer-allocation failure as gpu_alloc_failed, not out_of_memory (#4885)', () => {
     // Chromium's wording is misleading — 193 KB is not "too large" for any
-    // device; what failed is mapping host memory. Same user guidance as OOM.
+    // device; what actually failed is mapping host memory, which is as often
+    // device-loss fallout as real memory pressure. Its own bucket lets
+    // `device_lost_at_time` tell the two apart instead of folding both into
+    // out_of_memory, which used to mislabel the common (loss) case.
     assert.equal(
       classifyLoadError(new RangeError(
         "Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, size (193836) is too large for the implementation when mappedAtCreation == true",
       )),
-      'out_of_memory',
+      'gpu_alloc_failed',
     );
+  });
+
+  it('still classifies tiny post-loss createBuffer sizes as gpu_alloc_failed (#4885)', () => {
+    // The production sizes from the issue's Edge-user report: 672, 5544 and
+    // 15176 bytes — nowhere near any device limit, and exactly the fallout a
+    // lost device produces on every subsequent allocation.
+    for (const size of [672, 5544, 15176]) {
+      assert.equal(
+        classifyLoadError(new RangeError(
+          `Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, size (${size}) is too large for the implementation when mappedAtCreation == true`,
+        )),
+        'gpu_alloc_failed',
+      );
+    }
+  });
+
+  it('keeps a genuinely large allocation out of gpu_alloc_failed only when it is not the mappedAtCreation wording', () => {
+    // out_of_memory still owns every other memory-exhaustion signal.
+    assert.equal(classifyLoadError(new RangeError('Array buffer allocation failed')), 'out_of_memory');
   });
 
   it('classifies an unreadable picked file, not as a memory or model failure', () => {

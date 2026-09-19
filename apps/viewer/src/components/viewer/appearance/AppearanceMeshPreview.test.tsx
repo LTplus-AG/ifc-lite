@@ -19,7 +19,7 @@ async function transport(){
   const asset=await appearanceAssets.add(png,{owner});
   mock.method(appearanceAssets,'decode',async()=>({width:1,height:1,close(){}}));
   mock.method(Renderer.prototype,'init',async()=>{});
-  mock.method(Renderer.prototype,'loadGeometry',()=>{});
+  mock.method(Renderer.prototype,'loadGeometry',()=>({ok:true as const,value:undefined}));
   mock.method(Renderer.prototype,'render',()=>{});
   mock.method(Renderer.prototype,'fitToView',()=>{});
   return asset;
@@ -42,7 +42,7 @@ test('capture preview GPU loss disables authoring and supports a fresh renderer 
 test('closing capture preview during renderer initialization cannot upload to a discarded view (#4380)',async()=>{
   const asset=await transport();let finish:()=>void=()=>{};let uploads=0;
   mock.method(Renderer.prototype,'init',()=>new Promise<void>(resolve=>{finish=resolve;}));
-  mock.method(Renderer.prototype,'loadGeometry',()=>{uploads++;});
+  mock.method(Renderer.prototype,'loadGeometry',()=>{uploads++;return{ok:true as const,value:undefined};});
   const ready:boolean[]=[];
   render(<AppearanceMeshPreview mesh={mesh} assetId={asset.id} triangles={[0]} disabled={false} onRegion={()=>{}} onReady={value=>ready.push(value)} onError={()=>{}}/>);
   await settle();cleanup();await act(async()=>{finish();});await settle();
@@ -56,7 +56,7 @@ test('multicolour PDF preview preserves relative part origins without acquiring 
   mock.method(Renderer.prototype, 'fitToView', () => {});
   mock.method(appearanceAssets, 'decode', async () => { throw new Error('Solid fills must not decode a fake texture'); });
   const uploads: MeshData[][] = [];
-  mock.method(Renderer.prototype, 'loadGeometry', (parts: MeshData[]) => { uploads.push(parts); });
+  mock.method(Renderer.prototype, 'loadGeometry', (parts: MeshData[]) => { uploads.push(parts); return { ok: true as const, value: undefined }; });
   const first: MeshData = { ...mesh, textureRef: undefined, uvs: undefined, origin: [100, 200, 300], color: [1, 0, 0, 1] };
   const second: MeshData = { ...first, origin: [103, 205, 307], color: [0, 1, 0, 1] };
   let ready = false;
@@ -69,4 +69,14 @@ test('multicolour PDF preview preserves relative part origins without acquiring 
   assert.deepEqual(uploads.at(-1)?.map(part => part.color), [[1, 0, 0, 1], [0, 1, 0, 1]]);
   assert.deepEqual(first.origin, [100, 200, 300]); assert.deepEqual(second.origin, [103, 205, 307]);
   assert.ok(uploads.at(-1)?.every(part => !part.textureBitmap && !part.textureRef));
+});
+
+test('a loadGeometry device-lost outcome reports failure instead of silently drawing nothing (#4885)', async () => {
+  const asset = await transport();
+  mock.method(Renderer.prototype, 'loadGeometry', () => ({ ok: false as const, reason: 'device-lost' as const }));
+  let error = '';
+  render(<AppearanceMeshPreview mesh={mesh} assetId={asset.id} triangles={[0]} disabled={false}
+    onRegion={() => {}} onReady={() => {}} onError={message => { error = message; }} />);
+  await settle();
+  assert.match(error, /device lost/i, 'a lost-device outcome must reach the same failure path a thrown error already used, not be dropped');
 });

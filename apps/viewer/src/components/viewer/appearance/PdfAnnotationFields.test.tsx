@@ -55,7 +55,7 @@ function installWorker(api: NativeApi, mode: WorkerMode) {
 }
 function mockPreviewRenderer() {
   mock.method(Renderer.prototype, 'init', async () => {});
-  mock.method(Renderer.prototype, 'loadGeometry', () => {});
+  mock.method(Renderer.prototype, 'loadGeometry', () => ({ ok: true as const, value: undefined }));
   mock.method(Renderer.prototype, 'fitToView', () => {});
   mock.method(Renderer.prototype, 'render', () => {});
 }

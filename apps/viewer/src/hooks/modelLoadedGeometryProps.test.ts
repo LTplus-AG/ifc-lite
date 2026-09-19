@@ -6,8 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { GeometryDiagnostics } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
+import type { GeometryDiagnostics, StallPhaseHandle } from '@ifc-lite/geometry';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -203,6 +203,21 @@ describe('skipped hung elements (#4884)', () => {
     assert.deepEqual(notices, [
       '"tower.ifc" loaded without 3 elements whose geometry could not be computed (IFCBEAM, IFCWALL).',
     ]);
+  });
+});
+
+describe('geometryProcessingStallPhase (#4902)', () => {
+  it('reads the phase a live handle reports', () => {
+    const handle: StallPhaseHandle = { getStallPhase: () => 'shard-scan' };
+    assert.equal(geometryProcessingStallPhase(handle), 'shard-scan');
+  });
+
+  it('is absent when the pool has not wired a reader in yet', () => {
+    assert.equal(geometryProcessingStallPhase({}), undefined);
+  });
+
+  it('is absent when no handle was passed at all', () => {
+    assert.equal(geometryProcessingStallPhase(undefined), undefined);
   });
 });
 

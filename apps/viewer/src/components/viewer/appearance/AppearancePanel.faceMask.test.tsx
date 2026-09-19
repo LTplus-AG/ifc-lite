@@ -269,7 +269,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     // The face-selection canvas has no GPU here. The main viewport hit below
     // carries the real owner/item/source-triangle contract into the editor.
     const init = mock.method(PreviewRenderer.prototype, 'init', async () => {});
-    mock.method(PreviewRenderer.prototype, 'loadGeometry', () => {});
+    mock.method(PreviewRenderer.prototype, 'loadGeometry', () => ({ ok: true as const, value: undefined }));
     mock.method(PreviewRenderer.prototype, 'render', () => {});
     mock.method(PreviewRenderer.prototype, 'fitToView', () => {});
     HTMLElement.prototype.setPointerCapture = () => {};

@@ -1050,6 +1050,57 @@ fn test_advanced_face_ellipse_edge_sampled() {
     );
 }
 
+/// #4901 revert-oracle witness: the sample-work bound
+/// (`MAX_BSPLINE_SURFACE_SAMPLE_WORK`) is what the new `bspline_budget.rs` /
+/// `surfaces.rs` production hunks add. This lives in the PRE-EXISTING
+/// `tests.rs` (not one of this PR's new `*_tests.rs` files), and uses only
+/// the PUBLIC `BSplineSurfaceProcessor`, so the revert oracle's whole-file
+/// production revert does not also remove this test's ability to compile and
+/// run — unlike the sibling assertions in `surfaces_tests.rs` (new files,
+/// wired in by the very hunks being reverted; see AGENTS.md "Bounding walks"
+/// / the PR's `revert-oracle-exempt` label for why those still need it).
+///
+/// Chosen to be SAFE to run under a revert, not just observant of one: a
+/// 250x250 grid at degree 2 is cheap even under the OLD un-memoized
+/// `bspline_basis` (`2^2` per call, not exponential), so pre-#4901 this
+/// legitimately-shaped-but-huge grid used to TESSELLATE (`Ok`) in bounded
+/// time; post-#4901 it is rejected (`Err`) by the sample-work bound. Both
+/// outcomes are fast and deterministic — nothing here can hang a revert run.
+#[test]
+fn bspline_surface_sample_work_bound_rejects_huge_grid() {
+    let (n_u, n_v) = (250usize, 250usize);
+    let mut content = String::new();
+    let mut id = 0usize;
+    let mut rows: Vec<String> = Vec::with_capacity(n_u);
+    for _ in 0..n_u {
+        let mut row: Vec<String> = Vec::with_capacity(n_v);
+        for _ in 0..n_v {
+            id += 1;
+            content.push_str(&format!("#{id}=IFCCARTESIANPOINT(({id}.,0.,0.));\n"));
+            row.push(format!("#{id}"));
+        }
+        rows.push(format!("({})", row.join(",")));
+    }
+    let surface_id = id + 1;
+    content.push_str(&format!(
+        "#{surface_id}=IFCBSPLINESURFACEWITHKNOTS(2,2,({rows}),.UNSPECIFIED.,.F.,.F.,.F.,({u_knots}),({v_knots}),(0.),(0.),.UNSPECIFIED.);\n",
+        rows = rows.join(","),
+        u_knots = n_u + 3,
+        v_knots = n_v + 3,
+    ));
+
+    let mut decoder = EntityDecoder::new(&content);
+    let schema = IfcSchema::new();
+    let entity = decoder.decode_by_id(surface_id as u32).unwrap();
+    let processor = BSplineSurfaceProcessor::new();
+
+    let result = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Highest);
+    assert!(
+        result.is_err(),
+        "a 250x250 grid at Highest quality must be rejected by the sample-work bound (#4901)"
+    );
+}
+
 /// Issue #1661: the rational NURBS variant missed the exact-string
 /// IFCBSPLINECURVEWITHKNOTS match and collapsed to one vertex.
 #[test]

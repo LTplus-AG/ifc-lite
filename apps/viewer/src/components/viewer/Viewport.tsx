@@ -69,6 +69,7 @@ import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
+import { runGpuUpload } from './gpu-upload-guard.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -1229,24 +1230,23 @@ export function Viewport({
             calculateScale();
           }
         },
-        setSpaceOverlayMeshes: (meshes) => {
-          // Space Sketch draft ghosts go straight to the scene (NOT through
-          // geometryResult), so per-edit churn never trips the streaming
-          // reclassifier (which would reset the camera / un-pick new spaces).
+        setSpaceOverlayMeshes: (meshes) => { // Space Sketch draft ghosts, via runGpuUpload (#4885); loss checked FIRST.
           const renderer = rendererRef.current;
-          const scene = renderer?.getScene();
-          const device = renderer?.getGPUDevice();
-          const pipeline = renderer?.getPipeline();
-          if (!renderer || !scene || !device || !pipeline) return;
-          if (spaceOverlayIdsRef.current.size > 0) {
-            scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
-            spaceOverlayIdsRef.current = new Set();
-          }
-          if (meshes.length > 0) {
-            scene.appendToBatches(meshes, device, pipeline, false);
-            spaceOverlayIdsRef.current = new Set(meshes.map((m) => m.expressId));
-          }
-          if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
+          if (!renderer || renderer.isDeviceLost()) return;
+          const scene = renderer.getScene(), device = renderer.getGPUDevice(), pipeline = renderer.getPipeline();
+          if (!scene || !device || !pipeline) return;
+          runGpuUpload('setSpaceOverlayMeshes', () => {
+            if (spaceOverlayIdsRef.current.size > 0) {
+              scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
+              spaceOverlayIdsRef.current = new Set();
+            }
+            if (meshes.length > 0) {
+              const ids = new Set(meshes.map((m) => m.expressId)); // rolled back below on a GPU failure, or they orphan as ghosts (review)
+              try { scene.appendToBatches(meshes, device, pipeline, false); spaceOverlayIdsRef.current = ids; }
+              catch (err) { scene.removeMeshesForEntities(removableOverlayIds(ids)); throw err; }
+            }
+            if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
+          }, { isDeviceLost: () => renderer.isDeviceLost() });
           renderer.clearCaches();
           renderer.requestRender();
         },

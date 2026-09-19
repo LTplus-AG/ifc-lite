@@ -49,6 +49,9 @@ export type { RtcFrame } from './rtc-frame.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 export { DEFAULT_HUNG_JOB_TIMEOUT_MS, type SkippedHungElements } from './hung-job-recovery.js';
+// #4902: which pre-worker pipeline phase a consumer's own stream watchdog
+// should attribute a stall to, derived from the pool's own gate state.
+export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
@@ -98,6 +101,7 @@ import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotati
 import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
+import type { StallPhaseHandle } from './stall-phase.js';
 
 /**
  * Default quantization grid (metres) for per-entity geometry hashing,
@@ -762,6 +766,8 @@ export class GeometryProcessor {
     signal?: AbortSignal,
     /** Opt in to hung-call recovery; see `ProcessParallelOptions.hungJobTimeoutMs` (#4884). */
     hungJobTimeoutMs?: number,
+    /** See `ProcessParallelOptions.stallPhaseHandle` (#4902). */
+    stallPhaseHandle?: StallPhaseHandle,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -773,6 +779,7 @@ export class GeometryProcessor {
       sourceFingerprint,
       signal,
       hungJobTimeoutMs,
+      stallPhaseHandle,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -844,6 +851,8 @@ export class GeometryProcessor {
       signal?: AbortSignal;
       /** Opt in to hung-call recovery on the parallel path (#4884). */
       hungJobTimeoutMs?: number;
+      /** See `ProcessParallelOptions.stallPhaseHandle` (#4902); parallel path only. */
+      stallPhaseHandle?: StallPhaseHandle;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -917,6 +926,7 @@ export class GeometryProcessor {
           options.sourceFingerprint,
           options.signal,
           options.hungJobTimeoutMs,
+          options.stallPhaseHandle,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

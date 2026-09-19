@@ -11,11 +11,17 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createLineageSidecar, serializeLineageSidecar } from '@ifc-lite/diff';
+import {
+  createIdentityMapSidecar,
+  createLineageSidecar,
+  diffModels,
+  serializeLineageSidecar,
+} from '@ifc-lite/diff';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { diffPositionals } from './diff.js';
 import { contentDiffCommand } from './diff-content.js';
 import { buildFileFingerprints, modelIdentityOf } from './diff-engine.js';
+import { mergeLineage } from './diff-lineage-io.js';
 import { parseCsv, rekeyCommand, serializeCsv } from './rekey.js';
 import { loadIfcBytes } from '../loader.js';
 import { BASE_MODEL, HEAD_MODEL, guid, model } from './diff-test-helpers.js';
@@ -60,6 +66,43 @@ describe('buildFileFingerprints with an authored key', () => {
     expect(byRef.get(70)?.key).toBe(guid('OLDA'));
     expect(byRef.get(71)?.key).toBe(guid('OLDB'));
     expect(duplicateAuthoredKeys).toEqual(new Map([['tagA', [70, 71]]]));
+  });
+});
+
+describe('mergeLineage alias provenance', () => {
+  it('takes an applied identity-map reason instead of an unreplayed merge reason (#5005 review)', () => {
+    const models = { base: { hash: 'sha256:base' }, head: { hash: 'sha256:head' } };
+    const incomingLineage = createLineageSidecar({
+      ...models,
+      entries: [{
+        base: ['A', 'B'],
+        head: ['C'],
+        relation: 'merge',
+        reason: 'merge:verified',
+      }],
+    });
+    const incomingMap = createIdentityMapSidecar({
+      ...models,
+      entries: [{ base: 'A', here: 'C', reason: 'successor:footprint' }],
+    });
+    const diff = diffModels(
+      [
+        { key: 'A', ifcType: 'IfcWall', dataHash: 'base-a', ref: 1 },
+        { key: 'B', ifcType: 'IfcWall', dataHash: 'base-b', ref: 2 },
+      ],
+      [{ key: 'C', ifcType: 'IfcWall', dataHash: 'head-c', ref: 3 }],
+      { keyAliases: new Map([['C', 'A']]) },
+    );
+
+    expect(mergeLineage(incomingLineage, incomingMap, diff, undefined)).toEqual({
+      entries: [{
+        base: ['A'],
+        head: ['C'],
+        relation: 'replaced',
+        reason: 'successor:footprint',
+      }],
+      deleted: ['B'],
+    });
   });
 });
 

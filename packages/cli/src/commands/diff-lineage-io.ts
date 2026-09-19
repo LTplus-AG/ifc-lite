@@ -58,11 +58,17 @@ export function mergeLineage(
   const aliasReasons = new Map<string, string>();
   const aliasRelations = new Map<string, 'identity' | 'replaced'>();
   for (const entry of incomingLineage?.entries ?? []) {
-    if (entry.head.length === 1 && !aliasReasons.has(entry.head[0])) {
+    // Exactly the entries keyAliasesFromLineage can replay may supply alias
+    // provenance. A merge also has one head key, but it supplies no alias;
+    // reserving that key here can steal the reason from an identity-map alias
+    // that actually applied and then make a successor look like an identity.
+    if (
+      (entry.relation === 'identity' || entry.relation === 'replaced') &&
+      entry.head.length === 1 &&
+      !aliasReasons.has(entry.head[0])
+    ) {
       aliasReasons.set(entry.head[0], entry.reason);
-      if (entry.relation === 'identity' || entry.relation === 'replaced') {
-        aliasRelations.set(entry.head[0], entry.relation);
-      }
+      aliasRelations.set(entry.head[0], entry.relation);
     }
   }
   for (const entry of incomingMap?.entries ?? []) {

@@ -27,6 +27,7 @@ import {
   type Totals, type ScheduleRow,
 } from './list-table-utils';
 import { useTranslation } from '@/i18n/useTranslation';
+import { formatLocaleCount } from './formatLocaleCount';
 
 /** A group-by or summed column reduced to what the pivot header renders. */
 export interface ScheduleChip {
@@ -64,6 +65,7 @@ export function ListScheduleTable({
   widthOverrides, setWidthOverrides, startResize, onHeaderClick, virtualizer,
 }: ListScheduleTableProps) {
   const { t, locale } = useTranslation();
+  const countLabel = t('lists.scheduleTable.count');
   // Bonsai-style blank-on-repeat: display sugar ONLY — export keeps full values.
   const scheduleDisplayPaths = useMemo(() => blankRepeatedPathValues(scheduleRows), [scheduleRows]);
 
@@ -80,10 +82,10 @@ export function ListScheduleTable({
   const scheduleColumns = useMemo(
     () => [
       ...groupChips.map((c) => ({ ...c, key: `group:${c.id}`, role: 'group' as const })),
-      { id: '__count', label: t('lists.scheduleTable.count'), key: '__count', role: 'count' as const },
+      { id: '__count', label: countLabel, key: '__count', role: 'count' as const },
       ...sumChips.map((c) => ({ ...c, key: `sum:${c.id}`, role: 'sum' as const })),
     ],
-    [groupChips, sumChips, t, locale]);
+    [groupChips, sumChips, countLabel]);
 
   // Width-override key. Normally the ORIGINAL column id, so a resize carries
   // across the schedule/nested view toggle. A column that is BOTH grouped and
@@ -180,7 +182,7 @@ export function ListScheduleTable({
                 className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
                 style={{ width: scheduleColumnWidths[groupChips.length] }}
               >
-                {row.count.toLocaleString()}
+                {formatLocaleCount(row.count, locale)}
               </div>
               {sumChips.map((s, i) => (
                 <div
@@ -200,8 +202,8 @@ export function ListScheduleTable({
       <div className="flex sticky bottom-0 z-10 border-t-2 border-border bg-muted/90 backdrop-blur-sm">
         {scheduleColumns.map((col, colIdx) => (
           <div key={col.key} className="flex items-center border-r border-border/30 px-2 py-1 text-xs font-semibold shrink-0" style={{ width: scheduleColumnWidths[colIdx] }}>
-            {colIdx === 0 && <span className="text-muted-foreground">{t('lists.scheduleTable.totalGroups', { count: scheduleRows.length, countDisplay: scheduleRows.length.toLocaleString() })}</span>}
-            {col.role === 'count' && <span className="ml-auto font-mono tabular-nums text-foreground">{totals.count.toLocaleString()}</span>}
+            {colIdx === 0 && <span className="text-muted-foreground">{t('lists.scheduleTable.totalGroups', { count: scheduleRows.length, countDisplay: formatLocaleCount(scheduleRows.length, locale) })}</span>}
+            {col.role === 'count' && <span className="ml-auto font-mono tabular-nums text-foreground">{formatLocaleCount(totals.count, locale)}</span>}
             {col.role === 'sum' && (
               <span className="ml-auto font-mono tabular-nums text-foreground">{formatCellValue(totals.sums[col.id])}</span>
             )}

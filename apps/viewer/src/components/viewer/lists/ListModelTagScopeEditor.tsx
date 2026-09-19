@@ -63,7 +63,6 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
   const options = useMemo(() => [...tags.values()].sort((a, b) => a.name.localeCompare(b.name)), [tags]);
   const countFor = (tagId: string) => [...models.keys()].filter((m) => assignments.get(m)?.has(tagId)).length;
   const unresolved = value ? unresolvedModelTagIds(value, new Set(tags.keys())) : [];
-
   const setOp = (op: string) => {
     if (op === 'all') return onChange(undefined);
     onChange({ op: op as ModelTagOp, tagIds: value?.tagIds ?? [] });

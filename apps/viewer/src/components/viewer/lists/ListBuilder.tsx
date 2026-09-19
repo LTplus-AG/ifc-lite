@@ -50,6 +50,7 @@ import { collectScopeTypes } from '@/lib/lists/scope-types';
 import { rebuildGrouping } from './list-table-utils';
 import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
+import { formatLocaleCount } from './formatLocaleCount';
 import {
   isEditableColumn,
   draftFromColumn,
@@ -177,7 +178,7 @@ interface ListBuilderProps {
 }
 
 export function ListBuilder({ providers, stores, initial, onSave, onCancel, onExecute }: ListBuilderProps) {
-  const { t } = useTranslation(); const [name, setName] = useState(initial?.name ?? '');
+  const { t, locale } = useTranslation(); const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [selectedTypes, setSelectedTypes] = useState<Set<IfcTypeEnum>>(
     new Set(initial?.entityTypes ?? [])
@@ -449,15 +450,15 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           <Section
             label={t('lists.builder.sectionScope')}
             hint={isSnapshot
-              ? t('lists.builder.scopeSnapshotHint', { count: snapshotCount.toLocaleString() })
+              ? t('lists.builder.scopeSnapshotHint', { count: formatLocaleCount(snapshotCount, locale) })
               : selectedTypes.size > 0
-                ? t('lists.builder.scopeSelectedElementsHint', { count: totalSelectedEntities.toLocaleString() })
+                ? t('lists.builder.scopeSelectedElementsHint', { count: formatLocaleCount(totalSelectedEntities, locale) })
                 : t('lists.builder.scopeAllElementsHint')}
           >
             {isSnapshot ? (
               <p className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
                 <strong className="font-medium text-foreground">{t('lists.builder.filterSnapshotLabel')}</strong>{' '}
-                {t('lists.builder.filterSnapshotHint', { count: snapshotCount.toLocaleString() })}
+                {t('lists.builder.filterSnapshotHint', { count: formatLocaleCount(snapshotCount, locale) })}
               </p>
             ) : (
               <>
@@ -467,7 +468,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
                       key={type}
                       selected={selectedTypes.has(type)}
                       onClick={() => toggleType(type)}
-                      trailing={count.toLocaleString()}
+                      trailing={formatLocaleCount(count, locale)}
                     >
                       {label}
                     </Chip>
@@ -484,7 +485,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           </Section>
 
           {/* Filters */}
-          <Section label={t('lists.builder.sectionFilters')} hint={conditions.length > 0 ? `${conditions.length}` : undefined}>
+          <Section label={t('lists.builder.sectionFilters')} hint={conditions.length > 0 ? formatLocaleCount(conditions.length, locale) : undefined}>
             <ConditionsBody
               conditions={conditions}
               discovered={discovered}
@@ -499,7 +500,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           </Section>
 
           {/* Columns */}
-          <Section label={t('lists.builder.sectionColumns')} hint={columns.length > 0 ? `${columns.length}` : undefined}>
+          <Section label={t('lists.builder.sectionColumns')} hint={columns.length > 0 ? formatLocaleCount(columns.length, locale) : undefined}>
             {columns.length > 0 && (
               <SelectedColumns
                 columns={columns}
@@ -1107,27 +1108,9 @@ function GroupingBody({
 
 type ConditionSource = PropertyCondition['source'];
 
-const CONDITION_SOURCES: { source: ConditionSource; label: string }[] = [
-  { source: 'attribute', label: 'Attribute' },
-  { source: 'property', label: 'Property' },
-  { source: 'quantity', label: 'Quantity' },
-  { source: 'material', label: 'Material' },
-  { source: 'classification', label: 'Classification' },
-  { source: 'spatial', label: 'Spatial' },
-  { source: 'model', label: 'Model' },
-  { source: 'zone', label: 'Zone' },
-];
-
-const OPERATOR_LABEL: Record<ConditionOperator, string> = {
-  equals: '=',
-  notEquals: '≠',
-  contains: 'contains',
-  gt: '>',
-  lt: '<',
-  gte: '≥',
-  lte: '≤',
-  exists: 'is set',
-};
+const CONDITION_SOURCES = [
+  'attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone',
+] as const satisfies readonly ConditionSource[];
 
 function operatorsFor(source: ConditionSource): ConditionOperator[] {
   switch (source) {
@@ -1235,6 +1218,21 @@ function ConditionRow({
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
+  const sourceLabels: Record<(typeof CONDITION_SOURCES)[number], string> = {
+    attribute: t('lists.builder.source.attribute'), property: t('lists.builder.source.property'),
+    quantity: t('lists.builder.source.quantity'), material: t('lists.builder.source.material'),
+    classification: t('lists.builder.source.classification'), spatial: t('lists.builder.source.spatial'),
+    model: t('lists.builder.source.model'), zone: t('lists.builder.source.zone'),
+  };
+  const operatorLabels: Record<ConditionOperator, string> = {
+    equals: '=', notEquals: '≠', contains: t('lists.builder.operator.contains'),
+    gt: '>', lt: '<', gte: '≥', lte: '≤', exists: t('lists.builder.operator.isSet'),
+  };
+  const spatialLevelLabels: Record<string, string> = {
+    Container: t('lists.builder.spatial.container'), Storey: t('lists.builder.spatial.storey'),
+    Building: t('lists.builder.spatial.building'), Site: t('lists.builder.spatial.site'),
+    Project: t('lists.builder.spatial.project'),
+  };
   const ops = operatorsFor(condition.source);
   const showValue = condition.operator !== 'exists';
   const isProperty = condition.source === 'property';
@@ -1281,17 +1279,17 @@ function ConditionRow({
   }, [condition.source, condition.psetName, condition.propertyName, values, spatialNames, modelNames, zoneNameOptions]);
 
   const valuePlaceholder =
-    condition.source === 'spatial' ? `${(condition.propertyName || 'Storey').toLowerCase()} name`
-      : condition.source === 'model' ? 'model / file'
-        : condition.source === 'material' ? 'material'
-          : condition.source === 'classification' ? 'code or name'
+    condition.source === 'spatial' ? t('lists.builder.valuePlaceholder.spatial', { level: spatialLevelLabels[condition.propertyName || 'Storey'] ?? condition.propertyName })
+      : condition.source === 'model' ? t('lists.builder.valuePlaceholder.model')
+        : condition.source === 'material' ? t('lists.builder.valuePlaceholder.material')
+          : condition.source === 'classification' ? t('lists.builder.valuePlaceholder.classification')
             : condition.source === 'zone' ? (
-              condition.propertyName === 'Straddles' ? 'true / false'
-                : isZoneVolumeMode(condition.propertyName) ? 'volume'
-                  : condition.propertyName === ZONE_MODE_BREAKDOWN_LABEL ? 'zone: value, …'
-                    : 'zone name'
+              condition.propertyName === 'Straddles' ? t('lists.builder.valuePlaceholder.boolean')
+                : isZoneVolumeMode(condition.propertyName) ? t('lists.builder.valuePlaceholder.volume')
+                  : condition.propertyName === ZONE_MODE_BREAKDOWN_LABEL ? t('lists.builder.valuePlaceholder.zoneBreakdown')
+                    : t('lists.builder.valuePlaceholder.zoneName')
             )
-              : 'value';
+              : t('lists.builder.valuePlaceholder.value');
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1.5 text-xs">
@@ -1301,8 +1299,8 @@ function ConditionRow({
         className={SELECT_CLASS}
         aria-label={t('lists.builder.filterDimensionAriaLabel')}
       >
-        {CONDITION_SOURCES.map((s) => (
-          <option key={s.source} value={s.source}>{s.label}</option>
+        {CONDITION_SOURCES.map((source) => (
+          <option key={source} value={source}>{sourceLabels[source]}</option>
         ))}
       </select>
 
@@ -1327,7 +1325,7 @@ function ConditionRow({
           aria-label={t('lists.builder.spatialLevelAriaLabel')}
         >
           {SPATIAL_LEVELS.map((level) => (
-            <option key={level} value={level}>{level}</option>
+            <option key={level} value={level}>{spatialLevelLabels[level] ?? level}</option>
           ))}
         </select>
       )}
@@ -1353,8 +1351,8 @@ function ConditionRow({
           >
             <option value="Zone">{t('lists.builder.zoneOption')}</option>
             <option value="Straddles">{t('lists.builder.straddlesOption')}</option>
-            <option value={ZONE_MODE_VOLUME_LABEL}>{ZONE_MODE_VOLUME_LABEL}</option>
-            <option value={ZONE_MODE_BREAKDOWN_LABEL}>{ZONE_MODE_BREAKDOWN_LABEL}</option>
+            <option value={ZONE_MODE_VOLUME_LABEL}>{t('lists.builder.zoneVolumeOption')}</option>
+            <option value={ZONE_MODE_BREAKDOWN_LABEL}>{t('lists.builder.zoneBreakdownOption')}</option>
           </select>
         </>
       )}
@@ -1385,7 +1383,7 @@ function ConditionRow({
         aria-label={t('lists.builder.operatorAriaLabel')}
       >
         {ops.map((op) => (
-          <option key={op} value={op}>{OPERATOR_LABEL[op]}</option>
+          <option key={op} value={op}>{operatorLabels[op]}</option>
         ))}
       </select>
 

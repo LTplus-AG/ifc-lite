@@ -336,6 +336,10 @@ describe('ListModelTagScopeEditor localization (#4918)', { skip: !HAS_CATALOGUE 
       'lists.modelTagScope.models',
       'lists.modelTagScope.selectAriaLabel',
       'lists.modelTagScope.allModels',
+      'lists.modelTagScope.opHasAny',
+      'lists.modelTagScope.opHasAll',
+      'lists.modelTagScope.opHasNone',
+      'lists.modelTagScope.opUntagged',
       'lists.modelTagScope.pickAtLeastOneTag',
     ]);
   });

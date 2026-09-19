@@ -199,11 +199,20 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     act(() => setLocale('list-builder-default-pseudo'));
     const after = readableStrings(container);
 
-    const covered = assertCoverage(english, after, STATIC_KEYS);
+    const conditionOnlyPrefixes = [
+      'lists.builder.source.', 'lists.builder.operator.', 'lists.builder.spatial.',
+      'lists.builder.zoneVolumeOption', 'lists.builder.zoneBreakdownOption',
+    ];
+    const covered = assertCoverage(english, after,
+      STATIC_KEYS.filter((key) => !conditionOnlyPrefixes.some((prefix) => key.startsWith(prefix))));
 
     for (const key of [
       'lists.builder.namePlaceholder',
       'lists.builder.descriptionPlaceholder',
+      'lists.builder.sectionScope',
+      'lists.builder.scopeAllElementsHint',
+      'lists.builder.sectionFilters',
+      'lists.builder.sectionColumns',
       'lists.builder.allModelElementsLabel',
       'lists.builder.addFilter',
       'lists.builder.customColumn',
@@ -271,6 +280,16 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       'lists.builder.attributeAriaLabel',
       'lists.builder.operatorAriaLabel',
       'lists.builder.removeFilterAriaLabel',
+      'lists.builder.source.attribute',
+      'lists.builder.source.property',
+      'lists.builder.source.quantity',
+      'lists.builder.source.material',
+      'lists.builder.source.classification',
+      'lists.builder.source.spatial',
+      'lists.builder.source.model',
+      'lists.builder.source.zone',
+      'lists.builder.operator.contains',
+      'lists.builder.operator.isSet',
     ]);
     act(() => setLocale('en'));
 
@@ -292,6 +311,8 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       'lists.builder.zoneDisplayModeAriaLabel',
       'lists.builder.zoneOption',
       'lists.builder.straddlesOption',
+      'lists.builder.zoneVolumeOption',
+      'lists.builder.zoneBreakdownOption',
     ]);
   });
 
@@ -532,11 +553,19 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
 
     selectValue(dimensionSelect, 'spatial');
     const spatialEnglish = readableStrings(container);
-    assert.ok(spatialEnglish.has('Container'), 'expected the spatial-level options to render (identifiers, not catalogue literals)');
+    assert.ok(spatialEnglish.has('Container'), 'expected the localized spatial-level options to render');
     registerLocale('list-builder-spatial-pseudo', PSEUDO);
     act(() => setLocale('list-builder-spatial-pseudo'));
     const spatialAfter = readableStrings(container);
-    assertCoverage(spatialEnglish, spatialAfter, ['lists.builder.spatialLevelAriaLabel']);
+    assertCoverage(spatialEnglish, spatialAfter, [
+      'lists.builder.spatialLevelAriaLabel',
+      'lists.builder.spatial.container',
+      'lists.builder.spatial.storey',
+      'lists.builder.spatial.building',
+      'lists.builder.spatial.site',
+      'lists.builder.spatial.project',
+    ]);
+    assert.ok(spatialAfter.has(mark('lists.builder.valuePlaceholder.spatial').replace('{level}', mark('lists.builder.spatial.storey'))));
     act(() => setLocale('en'));
 
     selectValue(dimensionSelect, 'property');

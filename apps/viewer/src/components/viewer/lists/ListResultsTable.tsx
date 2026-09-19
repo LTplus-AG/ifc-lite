@@ -31,7 +31,7 @@ import { posthog } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
-import { useTranslation } from '@/i18n/useTranslation'; import { ColumnHeaderMenu } from './ColumnHeaderMenu';
+import { useTranslation } from '@/i18n/useTranslation'; import { ColumnHeaderMenu } from './ColumnHeaderMenu'; import { formatLocaleCount } from './formatLocaleCount';
 import { ListGroupingBar } from './ListGroupingBar';
 import { ListScheduleTable } from './ListScheduleTable';
 import {
@@ -57,7 +57,7 @@ interface ListResultsTableProps {
 }
 
 export function ListResultsTable({ result, listName, grouping, onGroupingChange, modelUnits }: ListResultsTableProps) {
-  const { t } = useTranslation(); const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
+  const { t, locale } = useTranslation(); const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const parentRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortCol, setSortCol] = useState<number | null>(null);
@@ -338,7 +338,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           className="h-7 text-xs border-0 shadow-none focus-visible:ring-0 px-0"
         />
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {(searchQuery || filterByVisibility) ? t('lists.resultsTable.rowCountOfTotal', { count: sortedRows.length, total: result.rows.length }) : t('lists.resultsTable.rowCount', { count: sortedRows.length })}
+          {(searchQuery || filterByVisibility) ? t('lists.resultsTable.rowCountOfTotal', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale), total: formatLocaleCount(result.rows.length, locale) }) : t('lists.resultsTable.rowCount', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale) })}
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -489,7 +489,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                           <>
                             {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                             <span className="truncate" title={item.label}>{item.label}</span>
-                            <span className="ml-1 shrink-0 rounded-full bg-foreground/10 px-1.5 text-[10px] tabular-nums text-muted-foreground">{item.count.toLocaleString()}</span>
+                            <span className="ml-1 shrink-0 rounded-full bg-foreground/10 px-1.5 text-[10px] tabular-nums text-muted-foreground">{formatLocaleCount(item.count, locale)}</span>
                           </>
                         )}
                         {sumColumnIds.includes(col.id) && (
@@ -532,7 +532,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
             <div className="flex sticky bottom-0 z-10 border-t-2 border-border bg-muted/90 backdrop-blur-sm">
               {columns.map((col, colIdx) => (
                 <div key={col.id} className="flex items-center border-r border-border/30 px-2 py-1 text-xs font-semibold shrink-0" style={{ width: columnWidths[colIdx] }}>
-                  {colIdx === 0 && <span className="text-muted-foreground">{t('lists.resultsTable.totalCount', { count: totals.count.toLocaleString() })}</span>}
+                  {colIdx === 0 && <span className="text-muted-foreground">{t('lists.resultsTable.totalCount', { count: formatLocaleCount(totals.count, locale) })}</span>}
                   {sumColumnIds.includes(col.id) && (
                     <span className="ml-auto font-mono tabular-nums text-foreground">{formatCellValue(totals.sums[col.id])}</span>
                   )}

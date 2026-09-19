@@ -12,6 +12,7 @@ import { Group, Sigma, X, ChevronsDownUp, ChevronsUpDown, ListTree, Table2 } fro
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n/useTranslation';
+import { formatLocaleCount } from './formatLocaleCount';
 
 interface ListGroupingBarProps {
   /** Active grouping columns, outermost first (multi-criteria, issue #1790). */
@@ -53,7 +54,7 @@ export function ListGroupingBar({
   onRemoveGroup, onRemoveSum, onToggleExpandAll,
   view = 'nested', onViewChange,
 }: ListGroupingBarProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const grouped = groups.length > 0;
   const scheduleMode = view === 'schedule';
   return (
@@ -99,8 +100,8 @@ export function ListGroupingBar({
       ))}
 
       <span className={cn('ml-auto whitespace-nowrap font-medium text-muted-foreground')}>
-        {grouped && <>{t('lists.groupingBar.groupCount', { count: groupCount, countDisplay: groupCount.toLocaleString() })} · </>}
-        {t('lists.groupingBar.elementCount', { count, countDisplay: count.toLocaleString() })}
+        {grouped && <>{t('lists.groupingBar.groupCount', { count: groupCount, countDisplay: formatLocaleCount(groupCount, locale) })} · </>}
+        {t('lists.groupingBar.elementCount', { count, countDisplay: formatLocaleCount(count, locale) })}
       </span>
     </div>
   );

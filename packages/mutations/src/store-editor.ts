@@ -312,7 +312,13 @@ export class StoreEditor {
     if (retype) return retype.newType;
     const created = this.view.getNewEntity(expressId);
     if (created) return created.type;
-    return this.store.entityIndex.byId.get(expressId)?.type;
+    // Deferred property atoms occupy express ids too (see
+    // `computeMaxExistingId`) and are absent from `entityIndex.byId` —
+    // without this fallback a valid, non-deleted deferred entity id reads as
+    // "does not exist" here even though `hasEntity` (which already checks
+    // `deferredEntityIndex`) says it does.
+    return this.store.entityIndex.byId.get(expressId)?.type
+      ?? this.store.deferredEntityIndex?.get(expressId)?.type;
   }
 
   /**

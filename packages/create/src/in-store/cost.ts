@@ -67,6 +67,27 @@ function requireEntityType(editor: StoreEditor, id: number, expectedType: string
   }
 }
 
+/** Like `requireEntityType`, but `id` may resolve to any one of `allowedTypes` (already UPPERCASE). */
+function requireEntityTypeOneOf(editor: StoreEditor, id: number, allowedTypes: ReadonlySet<string>, attribute: string, context: string): void {
+  const actual = editor.getEntityType(id);
+  if (actual === undefined) {
+    throw new Error(`${context}: ${attribute} #${id} does not exist in this model`);
+  }
+  if (!allowedTypes.has(actual.toUpperCase())) {
+    throw new Error(`${context}: ${attribute} #${id} must be one of ${[...allowedTypes].join(', ')}, got ${actual}`);
+  }
+}
+
+/** `IfcCostValue.Components` / `IfcAppliedValueSelect`'s entity branches: another cost/applied value. */
+const APPLIED_VALUE_ENTITY_TYPES: ReadonlySet<string> = new Set(['IFCCOSTVALUE', 'IFCAPPLIEDVALUE']);
+/** `IfcAppliedValueSelect`'s entity branches admitted for `AppliedValueRef` — a literal measure, or another value. */
+const APPLIED_VALUE_REF_TYPES: ReadonlySet<string> = new Set(['IFCMEASUREWITHUNIT', ...APPLIED_VALUE_ENTITY_TYPES]);
+/** `IfcCostItem.CostQuantities`: every `IfcPhysicalSimpleQuantity` subtype `addCostQuantityToStore` can write. */
+const COST_QUANTITY_ENTITY_TYPES: ReadonlySet<string> = new Set([
+  'IFCQUANTITYLENGTH', 'IFCQUANTITYAREA', 'IFCQUANTITYVOLUME', 'IFCQUANTITYWEIGHT',
+  'IFCQUANTITYTIME', 'IFCQUANTITYCOUNT', 'IFCQUANTITYNUMBER',
+]);
+
 function typedAttrValue(value: CostTypedValueInput, schema: CostSchema, context: string): IfcAttributeValue {
   validateTypedValue(value, schema, context);
   return { typed: { type: value.Type, value: value.Value } };
@@ -121,6 +142,8 @@ export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, para
   assertOneOf(params.PredefinedType, COST_ITEM_TYPES, 'PredefinedType', 'addCostItem');
   validateRefList(params.CostValues, 'CostValues', 'addCostItem');
   validateRefList(params.CostQuantities, 'CostQuantities', 'addCostItem');
+  for (const id of params.CostValues ?? []) requireEntityTypeOneOf(editor, id, APPLIED_VALUE_ENTITY_TYPES, 'CostValues', 'addCostItem');
+  for (const id of params.CostQuantities ?? []) requireEntityTypeOneOf(editor, id, COST_QUANTITY_ENTITY_TYPES, 'CostQuantities', 'addCostItem');
   return editor.addEntity('IfcCostItem', [
     generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
@@ -154,10 +177,15 @@ export function addCostValueToStore(editor: StoreEditor, anchor: CostAnchor, par
     applied = typedAttrValue(params.AppliedValue, schema, 'addCostValue');
   } else if (params.AppliedValueRef !== undefined) {
     requireRef(params.AppliedValueRef, 'AppliedValueRef', 'addCostValue');
+    requireEntityTypeOneOf(editor, params.AppliedValueRef, APPLIED_VALUE_REF_TYPES, 'AppliedValueRef', 'addCostValue');
     applied = `#${params.AppliedValueRef}`;
   }
-  if (params.UnitBasis !== undefined) requireRef(params.UnitBasis, 'UnitBasis', 'addCostValue');
+  if (params.UnitBasis !== undefined) {
+    requireRef(params.UnitBasis, 'UnitBasis', 'addCostValue');
+    requireEntityType(editor, params.UnitBasis, 'IfcMeasureWithUnit', 'UnitBasis', 'addCostValue');
+  }
   validateRefList(params.Components, 'Components', 'addCostValue');
+  for (const id of params.Components ?? []) requireEntityTypeOneOf(editor, id, APPLIED_VALUE_ENTITY_TYPES, 'Components', 'addCostValue');
   return editor.addEntity('IfcCostValue', [
     params.Name ?? null,
     params.Description ?? null,
@@ -191,7 +219,14 @@ export function addCostQuantityToStore(editor: StoreEditor, anchor: CostAnchor, 
   if (params.Kind !== 'IfcQuantityNumber' && params.Value < 0) {
     throw new Error(`addCostQuantity: ${params.Kind} value must be non-negative, got ${params.Value}`);
   }
-  if (params.Unit !== undefined) requireRef(params.Unit, 'Unit', 'addCostQuantity');
+  if (params.Unit !== undefined) {
+    requireRef(params.Unit, 'Unit', 'addCostQuantity');
+    // Not narrowed to one class: IfcUnit is a broad SELECT (IfcSIUnit,
+    // IfcConversionBasedUnit, IfcContextDependentUnit, ...) with no single
+    // discriminating IFC type all its members share — existence is what
+    // this can check without re-deriving that whole SELECT.
+    if (!editor.hasEntity(params.Unit)) throw new Error(`addCostQuantity: Unit #${params.Unit} does not exist in this model`);
+  }
   const isInteger = params.Kind === 'IfcQuantityCount' && schema === 'IFC4X3';
   if (isInteger && !Number.isInteger(params.Value)) {
     throw new Error(`addCostQuantity: ${params.Kind} value must be a finite integer in IFC4X3`);
@@ -211,6 +246,17 @@ export interface ExistingRelatedList {
   relId: number;
   /** The relationship's current RelatedObjects (or Components), in file order. */
   relatedIds: readonly number[];
+  /**
+   * When a controller legally has MORE THAN ONE relationship of this kind
+   * (e.g. two separate `IfcRelAssignsToControl` records for the same
+   * schedule), every member across ALL of them — used only to decide which
+   * requested ids are genuinely new, never as the list written back. Writing
+   * this union into `relId`'s own slot would copy a secondary relationship's
+   * members into the primary one, duplicating membership while leaving the
+   * secondary relationship untouched. Defaults to `relatedIds` when absent
+   * (the single-relationship case, where the two are the same set).
+   */
+  allMemberIds?: readonly number[];
 }
 
 /**
@@ -309,7 +355,13 @@ function assignToControlInStore(
     else if (!editor.hasEntity(id)) throw new Error(`${context}: relatedObjectIds #${id} does not exist in this model`);
   }
   if (existingAssignment) {
-    const merged = [...new Set([...existingAssignment.relatedIds, ...uniqueRelated])];
+    // Filter against the union across every relationship for this control
+    // (a member of a DIFFERENT one is not re-added), but merge only into
+    // THIS rel's own list — never the union itself, which would copy a
+    // secondary relationship's members into the primary one.
+    const alreadyMember = new Set(existingAssignment.allMemberIds ?? existingAssignment.relatedIds);
+    const toAdd = uniqueRelated.filter(id => !alreadyMember.has(id));
+    const merged = [...existingAssignment.relatedIds, ...toAdd];
     editor.setPositionalAttribute(existingAssignment.relId, 4, merged.map(id => `#${id}`));
     return existingAssignment.relId;
   }

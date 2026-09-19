@@ -46,6 +46,13 @@ export function useCostModels(): CostModelEntry[] {
   // empty `models` Map; `getAllModelEntries` (the same compat layer the
   // `bim.cost` adapter resolves ids through) surfaces it as one entry.
   const legacyDataStore = useViewerStore((s) => s.ifcDataStore);
+  // #4857 PR A review: a script-authored `bim.store.addCost*` mutation
+  // bumps this counter (mutationSlice.ts) but changes none of the OTHER
+  // memo dependencies below, so an already-open Cost panel kept showing the
+  // pre-authoring graph until the model itself was replaced. `backend.data`
+  // already reads through the model's pending mutations (createCostAdapter);
+  // this just makes the memo re-run when there's a new one to read.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const backend = useCostBackend();
 
   return useMemo(() => {
@@ -68,5 +75,5 @@ export function useCostModels(): CostModelEntry[] {
       }
     }
     return entries;
-  }, [models, legacyDataStore, backend]);
+  }, [models, legacyDataStore, backend, mutationVersion]);
 }

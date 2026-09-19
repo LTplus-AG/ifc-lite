@@ -178,7 +178,7 @@
    482 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    635 apps/viewer/src/store/slices/modelSlice.ts
-  3286 apps/viewer/src/store/slices/mutationSlice.ts
+  3290 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    574 apps/viewer/src/store/slices/sectionSlice.ts
@@ -218,7 +218,7 @@
   2843 packages/create/src/ifc-creator.ts
    448 packages/create/src/in-store/apply-style.ts
    535 packages/create/src/in-store/auto-space-detect.ts
-   493 packages/create/src/in-store/cost.ts
+   545 packages/create/src/in-store/cost.ts
    878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts
   1106 packages/data/scripts/generate-ifc-schema.ts

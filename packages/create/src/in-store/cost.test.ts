@@ -99,6 +99,22 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
       .toThrow(/integer/);
   });
 
+  it('resolves constructor references before writing them: addCostItem.CostValues/CostQuantities, addCostValue.AppliedValueRef/UnitBasis/Components, addCostQuantity.Unit', async () => {
+    const { editor: ed } = await editor();
+    expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [100] }))
+      .toThrow(/CostValues #100 must be one of IFCCOSTVALUE, IFCAPPLIEDVALUE, got IFCWALL/);
+    expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostQuantities: [100] }))
+      .toThrow(/CostQuantities #100 must be one of/);
+    expect(() => addCostValueToStore(ed, ANCHOR, { AppliedValueRef: 100 }))
+      .toThrow(/AppliedValueRef #100 must be one of/);
+    expect(() => addCostValueToStore(ed, ANCHOR, { UnitBasis: 100 }))
+      .toThrow(/UnitBasis #100 must be an IfcMeasureWithUnit, got IFCWALL/);
+    expect(() => addCostValueToStore(ed, ANCHOR, { Components: [100] }))
+      .toThrow(/Components #100 must be one of/);
+    expect(() => addCostQuantityToStore(ed, ANCHOR, { Kind: 'IfcQuantityLength', Name: 'Q', Value: 1, Unit: 99999 }))
+      .toThrow(/Unit #99999 does not exist/);
+  });
+
   it('refuses a PredefinedType outside the enum, on a schedule, an item, and an ArithmeticOperator on a value', async () => {
     const { editor: ed } = await editor();
     expect(() => addCostScheduleToStore(ed, ANCHOR, { Name: 'S', PredefinedType: 'BOGUS' as never }))
@@ -278,7 +294,8 @@ describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', ()
 describe('attachCostValuesToItemInStore', () => {
   it('writes $ (null), never (), when clearing CostValues', async () => {
     const { editor: ed, view } = await editor();
-    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [1] });
+    const value = addCostValueToStore(ed, ANCHOR, { Name: 'V' });
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [value] });
     attachCostValuesToItemInStore(ed, item, []);
     expect(view.getPositionalMutationsForEntity(item)?.get(7)).toBeNull();
   });

@@ -15,7 +15,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pushCreateEntityUndo } from './mutation-cost-undo.js';
+import { pushCreateEntityUndo, markCostRelationshipMutation } from './mutation-cost-undo.js';
 
 type PushFn = typeof pushCreateEntityUndo;
 type SetArg = Parameters<PushFn>[0];
@@ -57,5 +57,24 @@ describe('pushCreateEntityUndo normalises modelId', () => {
     const stack = state.undoStacks.get('m1');
     assert.equal(stack?.length, 1);
     assert.equal(state.dirtyModels.has('m1'), true);
+  });
+});
+
+describe('markCostRelationshipMutation', () => {
+  it('marks the model dirty and clears BOTH the undo and redo stacks (never a dangling reference from crossing an untracked write)', () => {
+    let state = fakeState(new Map([['m1', {}]]));
+    const set: SetArg = (updater) => {
+      const partial = typeof updater === 'function' ? updater(state as never) : updater;
+      state = { ...state, ...(partial as Partial<typeof state>) };
+    };
+    pushCreateEntityUndo(set, 'm1', 1, 'IFCCOSTITEM');
+    assert.equal(state.undoStacks.get('m1')?.length, 1);
+
+    markCostRelationshipMutation(set, 'm1');
+
+    assert.deepEqual(state.undoStacks.get('m1'), []);
+    assert.deepEqual(state.redoStacks.get('m1'), []);
+    assert.equal(state.dirtyModels.has('m1'), true);
+    assert.equal(state.mutationVersion, 2);
   });
 });

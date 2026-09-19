@@ -70,6 +70,22 @@ function findNests(graph: CostGraphData) {
   return { byParent, byChild };
 }
 
+/** Whether `targetId` is reachable by walking DOWN (descendants) from `rootId` through `byParent`. */
+function isDescendantOf(byParent: ReadonlyMap<number, ExistingRelatedList>, rootId: number, targetId: number): boolean {
+  const seen = new Set<number>();
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    for (const child of byParent.get(current)?.relatedIds ?? []) {
+      if (child === targetId) return true;
+      stack.push(child);
+    }
+  }
+  return false;
+}
+
 /**
  * The `IfcRelAssignsToControl` whose `RelatingControl` is `controlId` to
  * append new assignments to (the first one found, if more than one exists —
@@ -80,14 +96,15 @@ function findNests(graph: CostGraphData) {
  * controller a second time.
  */
 function findControlAssignment(graph: CostGraphData, controlId: number): ExistingRelatedList | undefined {
-  let primaryRelId: number | undefined;
-  const union = new Set<number>();
+  let primary: { relId: number; relatedIds: number[] } | undefined;
+  const allMemberIds = new Set<number>();
   for (const rel of graph.Relationships) {
     if (rel.Type !== 'IfcRelAssignsToControl' || rel.RelatingControl?.expressId !== controlId) continue;
-    if (primaryRelId === undefined) primaryRelId = rel.ref.expressId;
-    for (const related of rel.RelatedObjects ?? []) union.add(related.expressId);
+    const related = (rel.RelatedObjects ?? []).map(r => r.expressId);
+    for (const id of related) allMemberIds.add(id);
+    if (!primary) primary = { relId: rel.ref.expressId, relatedIds: related };
   }
-  return primaryRelId === undefined ? undefined : { relId: primaryRelId, relatedIds: [...union] };
+  return primary ? { relId: primary.relId, relatedIds: primary.relatedIds, allMemberIds: [...allMemberIds] } : undefined;
 }
 
 /** Every existing reference to `expressId` the cost graph currently reports — the safe-delete input. */
@@ -159,13 +176,26 @@ function costKindOf(graph: CostGraphData, expressId: number): 'IfcCostSchedule' 
 }
 
 /** Values referenced ONLY by `itemId`'s own `CostValues` — the cascade-delete set for removing that item. */
+/**
+ * Values referenced ONLY by `itemId`'s own `CostValues` — the cascade-delete
+ * set for removing that item. Routed through `buildRemovalReferrers` (the
+ * SAME generic scan `removeCostEntity` itself uses to decide what a direct
+ * deletion may not orphan) rather than a hand check of two fields: a value
+ * this item owns can also be referenced via `Components`, another value's
+ * `AppliedValueRef`, or any of the OTHER relationship types
+ * (`otherRelationships`) — missing any of those would cascade-delete a value
+ * something else still points at, leaving a dangling reference.
+ */
 function cascadeValuesForItem(graph: CostGraphData, itemId: number): number[] {
   const item = graph.CostItems.find(i => i.ref.expressId === itemId);
   const ownValues = (item?.CostValues ?? []).map(r => r.expressId);
-  return ownValues.filter(valueId => {
+  return ownValues.filter((valueId) => {
+    const referrers = buildRemovalReferrers(graph, valueId);
     const referencedElsewhere =
-      graph.CostItems.some(other => other.ref.expressId !== itemId && (other.CostValues ?? []).some(r => r.expressId === valueId))
-      || graph.CostValues.some(v => (v.Components ?? []).some(r => r.expressId === valueId));
+      [...(referrers.itemCostValues?.keys() ?? [])].some(id => id !== itemId)
+      || (referrers.valueComponents?.size ?? 0) > 0
+      || (referrers.valueAppliedValueRef?.size ?? 0) > 0
+      || (referrers.otherRelationships?.length ?? 0) > 0;
     return !referencedElsewhere;
   });
 }
@@ -201,6 +231,21 @@ export function createCostStoreBackend(
     nestCostItems(modelId: string, parentExpressId: number, childExpressIds: number[]): EntityRef {
       const resolved = resolve(modelId);
       const { byChild, byParent } = findNests(graphOf(resolved.modelId));
+      // Ancestor/descendant cycle guard: `nestCostItemsInStore` itself only
+      // refuses DIRECT self-nesting (parentId === a childId). A file can
+      // already nest A -> B; nestCostItems(B, [A]) is not self-nesting, but
+      // it creates the reverse edge without removing the original one,
+      // producing an A<->B cycle the cost extractor would then diagnose as
+      // NESTING_CYCLE. Refuse it here instead, by walking DOWN (descendants)
+      // from every requested child to see if the proposed parent is already
+      // reachable that way.
+      for (const childId of childExpressIds) {
+        if (isDescendantOf(byParent, childId, parentExpressId)) {
+          throw new Error(
+            `nestCostItems: parentId #${parentExpressId} is already a descendant of childId #${childId} in the `
+            + 'existing nesting hierarchy — nesting it here would create a cycle.');
+        }
+      }
       const relId = nestCostItemsInStore(
         resolved.editor, anchorOf(resolved), parentExpressId, childExpressIds, byChild, byParent.get(parentExpressId),
       );

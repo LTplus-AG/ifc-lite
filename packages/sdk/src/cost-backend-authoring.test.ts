@@ -112,6 +112,40 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     )).toBe(true);
   });
 
+  it('refuses an ancestor/descendant nesting cycle, not just direct self-nesting', async () => {
+    const { storeCost } = await session();
+    const parent = storeCost.addCostItem('m', { Name: 'Parent' }).expressId;
+    const child = storeCost.addCostItem('m', { Name: 'Child' }).expressId;
+    storeCost.nestCostItems('m', parent, [child]);
+    // Trying to nest `parent` under its own existing child would create a
+    // parent<->child cycle without a direct parentId === childId.
+    expect(() => storeCost.nestCostItems('m', child, [parent]))
+      .toThrow(new RegExp(`parentId #${child} is already a descendant of childId #${parent}`));
+  });
+
+  it('does not copy a SECOND existing IfcRelAssignsToControl\'s members into the primary one when appending', async () => {
+    const { storeCost, cost, view } = await session();
+    const item = storeCost.addCostItem('m', { Name: 'I' }).expressId;
+    const primaryRel = storeCost.assignCostItemsToSchedule('m', 40, [item]).expressId;
+    // A second, separate IfcRelAssignsToControl for the SAME schedule,
+    // legally controlling a different item.
+    const other = storeCost.addCostItem('m', { Name: 'Other' }).expressId;
+    const secondRel = view.createEntity('IfcRelAssignsToControl', [
+      '0ctrl00000000000000003', null, null, null, [`#${other}`], null, '#40',
+    ]).expressId;
+
+    const newItem = storeCost.addCostItem('m', { Name: 'New' }).expressId;
+    storeCost.assignCostItemsToSchedule('m', 40, [newItem]);
+
+    const graph = cost.data('m');
+    const primary = graph.Relationships.find(r => r.ref.expressId === primaryRel)!;
+    const second = graph.Relationships.find(r => r.ref.expressId === secondRel)!;
+    // The primary rel gained the new member but did NOT absorb `other` from
+    // the second rel; the second rel is untouched.
+    expect(primary.RelatedObjects?.map(o => o.expressId).sort()).toEqual([item, newItem].sort());
+    expect(second.RelatedObjects?.map(o => o.expressId)).toEqual([other]);
+  });
+
   it('assigns cost items to a schedule and appends on a second call rather than duplicating the rel', async () => {
     const { storeCost, cost } = await session();
     const itemA = storeCost.addCostItem('m', { Name: 'A' }).expressId;

@@ -48,7 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
-import { pushCreateEntityUndo as pushCreateEntityUndoImpl } from './mutation-cost-undo.js';
+import { pushCreateEntityUndo as pushCreateEntityUndoImpl, markCostRelationshipMutation as markCostRelationshipMutationImpl } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import type { TypeViewMode } from '../constants.js';
@@ -654,6 +654,9 @@ export interface MutationSlice {
    * applies, only this tail does. See `mutation-cost-undo.ts`.
    */
   pushCreateEntityUndo: (modelId: string, entityId: number, ifcType: string) => void;
+  /** Same file's sibling, for a cost write that rewrites/removes EXISTING
+   *  relationships rather than creating one entity — see `mutation-cost-undo.ts`. */
+  markCostRelationshipMutation: (modelId: string) => void;
   /**
    * Auto-generate IfcSpace volumes for every enclosed area formed by
    * the storey's walls (existing + overlay). When `dryRun: true` the
@@ -1114,6 +1117,7 @@ export const createMutationSlice: StateCreator<
   georefMutations: new Map(),
 
   pushCreateEntityUndo: (modelId, entityId, ifcType) => pushCreateEntityUndoImpl(set, modelId, entityId, ifcType),
+  markCostRelationshipMutation: (modelId) => markCostRelationshipMutationImpl(set, modelId),
 
   // Georeferencing Mutations
   setGeorefField: (modelId, entity, field, value, oldValue) => {

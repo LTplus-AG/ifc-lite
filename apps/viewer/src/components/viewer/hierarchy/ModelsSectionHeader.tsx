@@ -106,12 +106,9 @@ export function ModelsSectionHeader({ count }: { count: number }) {
                 variant={active ? 'default' : 'outline'}
                 size="sm"
                 aria-pressed={active}
-                aria-label={t('hierarchy.modelsSection.tagFilterAriaLabel', {
-                  action: active
-                    ? t('hierarchy.modelsSection.filterActionStop')
-                    : t('hierarchy.modelsSection.filterActionList'),
-                  name: tag.name,
-                })}
+                aria-label={t(active
+                  ? 'hierarchy.modelsSection.tagFilterActiveAriaLabel'
+                  : 'hierarchy.modelsSection.tagFilterInactiveAriaLabel', { name: tag.name })}
                 className={chipClass(active)}
                 onClick={() => toggleTag(tag.id)}
                 title={t('hierarchy.modelsSection.tagFilterTooltip', { name: tag.name })}
@@ -124,11 +121,9 @@ export function ModelsSectionHeader({ count }: { count: number }) {
             variant={view.filterUntagged ? 'default' : 'outline'}
             size="sm"
             aria-pressed={view.filterUntagged}
-            aria-label={t('hierarchy.modelsSection.untaggedFilterAriaLabel', {
-              action: view.filterUntagged
-                ? t('hierarchy.modelsSection.filterActionStop')
-                : t('hierarchy.modelsSection.filterActionList'),
-            })}
+            aria-label={t(view.filterUntagged
+              ? 'hierarchy.modelsSection.untaggedFilterActiveAriaLabel'
+              : 'hierarchy.modelsSection.untaggedFilterInactiveAriaLabel')}
             className={chipClass(view.filterUntagged)}
             onClick={() => setModelTagView({ filterUntagged: !view.filterUntagged })}
             title={t('hierarchy.modelsSection.untaggedFilterTooltip')}

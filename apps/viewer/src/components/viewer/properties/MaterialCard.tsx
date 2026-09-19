@@ -12,7 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Layers } from 'lucide-react';
 import type { MaterialInfo } from '@ifc-lite/parser';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 
 const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
   Material: 'properties.material.typeLabel.material',
@@ -90,7 +90,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
                     )}
                     {layer.isVentilated && (
                       <>
-                        <span className="text-zinc-400">{t('properties.material.ventilatedLabel')}</span>
+                        <span className="text-zinc-400">{EXPRESS_IS_VENTILATED_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400">{t('properties.material.yes')}</span>
                       </>
                     )}

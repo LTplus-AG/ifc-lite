@@ -200,7 +200,6 @@ export const propertiesEn = {
   'properties.material.constituentN': 'Constituent {n}',
   'properties.material.materialN': 'Material {n}',
   'properties.material.materialLabel': 'Material',
-  'properties.material.ventilatedLabel': 'Ventilated',
   'properties.material.yes': 'Yes',
 
   // RawStepCard

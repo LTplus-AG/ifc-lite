@@ -14,3 +14,4 @@ export const EXPRESS_REVISION_ATTRIBUTE = 'Revision';
 export const EXPRESS_CATEGORY_ATTRIBUTE = 'Category';
 export const EXPRESS_THICKNESS_ATTRIBUTE = 'Thickness';
 export const EXPRESS_PREDEFINED_TYPE_ATTRIBUTE = 'PredefinedType';
+export const EXPRESS_IS_VENTILATED_ATTRIBUTE = 'IsVentilated';

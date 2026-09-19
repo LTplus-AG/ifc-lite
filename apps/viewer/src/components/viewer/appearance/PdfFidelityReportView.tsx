@@ -18,6 +18,19 @@ const LABEL_KEYS: Readonly<Record<string, TranslationKey>> = {
   hidden: 'appearance.pdfFidelity.omission.hidden',
   annotation: 'appearance.pdfFidelity.omission.annotation',
 };
+const ROW_KEYS: Readonly<Record<string, { simple: TranslationKey; region: TranslationKey }>> = {
+  text: { simple: 'appearance.pdfFidelity.row.text', region: 'appearance.pdfFidelity.row.textRegion' },
+  image: { simple: 'appearance.pdfFidelity.row.image', region: 'appearance.pdfFidelity.row.imageRegion' },
+  clip: { simple: 'appearance.pdfFidelity.row.clip', region: 'appearance.pdfFidelity.row.clipRegion' },
+  transparency: { simple: 'appearance.pdfFidelity.row.transparency', region: 'appearance.pdfFidelity.row.transparencyRegion' },
+  pattern: { simple: 'appearance.pdfFidelity.row.pattern', region: 'appearance.pdfFidelity.row.patternRegion' },
+  dash: { simple: 'appearance.pdfFidelity.row.dash', region: 'appearance.pdfFidelity.row.dashRegion' },
+  roundCapJoin: { simple: 'appearance.pdfFidelity.row.roundCapJoin', region: 'appearance.pdfFidelity.row.roundCapJoinRegion' },
+  curvedStroke: { simple: 'appearance.pdfFidelity.row.curvedStroke', region: 'appearance.pdfFidelity.row.curvedStrokeRegion' },
+  hairline: { simple: 'appearance.pdfFidelity.row.hairline', region: 'appearance.pdfFidelity.row.hairlineRegion' },
+  hidden: { simple: 'appearance.pdfFidelity.row.hidden', region: 'appearance.pdfFidelity.row.hiddenRegion' },
+  annotation: { simple: 'appearance.pdfFidelity.row.annotation', region: 'appearance.pdfFidelity.row.annotationRegion' },
+};
 /** `t` is threaded in explicitly: this is a plain (non-component) helper, so
  *  it cannot call the `useTranslation` hook itself. */
 export function omissionLabel(kind: string, t: (key: TranslationKey, params?: TranslationParameters) => string): string {
@@ -37,12 +50,23 @@ export function omissionRegion(box: PdfPageRect, userUnit: number, t: (key: Tran
   const point = (value: number) => { const pt = value * userUnit; return Number.isInteger(pt) ? String(pt) : pt.toFixed(1); };
   return t('appearance.pdfFidelity.regionExtent', { x0: point(box[0]), x1: point(box[2]), y0: point(box[1]), y1: point(box[3]) });
 }
+function regionParameters(box: PdfPageRect, userUnit: number): TranslationParameters {
+  const point = (value: number) => { const pt = value * userUnit; return Number.isInteger(pt) ? String(pt) : pt.toFixed(1); };
+  return { x0: point(box[0]), x1: point(box[2]), y0: point(box[1]), y1: point(box[3]) };
+}
 function OmissionRow({ entry, userUnit }: { entry: PdfOmissionSummary; userUnit: number }) {
   const { t } = useTranslation();
-  const label = omissionLabel(entry.kind, t);
-  return <li>{entry.bboxPdf
-    ? t('appearance.pdfFidelity.omissionRowWithRegion', { count: entry.visibleCount, label, region: omissionRegion(entry.bboxPdf, userUnit, t) })
-    : t('appearance.pdfFidelity.omissionRowSimple', { count: entry.visibleCount, label })}</li>;
+  const keys = ROW_KEYS[entry.kind];
+  const params = { count: entry.visibleCount, ...(entry.bboxPdf ? regionParameters(entry.bboxPdf, userUnit) : {}) };
+  if (keys) return <li>{t(entry.bboxPdf ? keys.region : keys.simple, params)}</li>;
+  if (entry.kind.startsWith('unsupported:')) {
+    return <li>{t(entry.bboxPdf ? 'appearance.pdfFidelity.row.unsupportedRegion' : 'appearance.pdfFidelity.row.unsupported', {
+      ...params, operator: entry.kind.slice('unsupported:'.length),
+    })}</li>;
+  }
+  return <li>{t(entry.bboxPdf ? 'appearance.pdfFidelity.row.unknownRegion' : 'appearance.pdfFidelity.row.unknown', {
+    ...params, kind: entry.kind,
+  })}</li>;
 }
 /** The canonical page verdict, shown before any geometry is prepared. `userUnit` is the page's /UserUnit. */
 export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelityReport; userUnit: number }) {

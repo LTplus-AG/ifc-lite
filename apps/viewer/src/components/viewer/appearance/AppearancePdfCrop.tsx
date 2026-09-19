@@ -11,8 +11,8 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 const mmPerPoint = 25.4 / 72;
 const displayMm = (points: number) => String(Math.round(points * mmPerPoint * 1000) / 1000);
 
-function Margin({ name, nameKey, ariaLabelKey, value, maximum, onChange, onInvalid }: {
-  name: string; nameKey: TranslationKey; ariaLabelKey: TranslationKey; value: number; maximum: number; onChange(value: number): void;
+function Margin({ name, labelKey, ariaLabelKey, value, maximum, onChange, onInvalid }: {
+  name: string; labelKey: TranslationKey; ariaLabelKey: TranslationKey; value: number; maximum: number; onChange(value: number): void;
   onInvalid(name: string, invalid: boolean): void;
 }) {
   const { t } = useTranslation();
@@ -20,7 +20,7 @@ function Margin({ name, nameKey, ariaLabelKey, value, maximum, onChange, onInval
   const invalid = text.trim() === '' || !Number.isFinite(Number(text)) || Number(text) < 0 || Number(text) >= maximum * mmPerPoint;
   useEffect(() => { setText(displayMm(value)); onInvalid(name, false); }, [value, name, onInvalid]);
   useEffect(() => () => onInvalid(name, false), [name, onInvalid]);
-  return <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.pdfCrop.marginNameMm', { name: t(nameKey) })}</span>
+  return <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t(labelKey)}</span>
     <Input aria-label={t(ariaLabelKey)} type="number" min="0" step="any"
       value={text} aria-invalid={invalid} className="h-8 text-xs aria-[invalid=true]:border-destructive" onChange={event => {
         const next = event.currentTarget.value;
@@ -86,10 +86,10 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
         onClick={() => { setReset(value => value + 1); pdf.onCropChange([0, 0, width, height]); }}>{t('appearance.pdfCrop.useFullPage')}</Button>
     </div>
     <fieldset disabled={disabled} className="grid grid-cols-2 gap-2" aria-label={t('appearance.pdfCrop.marginsAriaLabel')}>
-      <Margin key={`${reset}:Left`} name="Left" nameKey="appearance.pdfCrop.marginLeft" ariaLabelKey="appearance.pdfCrop.marginLeftAriaLabel" value={left} maximum={width - right} onInvalid={onInvalid} onChange={value => pdf.onCropChange([value, top, width - value - right, cropHeight])} />
-      <Margin key={`${reset}:Top`} name="Top" nameKey="appearance.pdfCrop.marginTop" ariaLabelKey="appearance.pdfCrop.marginTopAriaLabel" value={top} maximum={height - bottom} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, value, cropWidth, height - value - bottom])} />
-      <Margin key={`${reset}:Right`} name="Right" nameKey="appearance.pdfCrop.marginRight" ariaLabelKey="appearance.pdfCrop.marginRightAriaLabel" value={right} maximum={width - left} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, width - left - value, cropHeight])} />
-      <Margin key={`${reset}:Bottom`} name="Bottom" nameKey="appearance.pdfCrop.marginBottom" ariaLabelKey="appearance.pdfCrop.marginBottomAriaLabel" value={bottom} maximum={height - top} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, cropWidth, height - top - value])} />
+      <Margin key={`${reset}:Left`} name="Left" labelKey="appearance.pdfCrop.marginLeftMm" ariaLabelKey="appearance.pdfCrop.marginLeftAriaLabel" value={left} maximum={width - right} onInvalid={onInvalid} onChange={value => pdf.onCropChange([value, top, width - value - right, cropHeight])} />
+      <Margin key={`${reset}:Top`} name="Top" labelKey="appearance.pdfCrop.marginTopMm" ariaLabelKey="appearance.pdfCrop.marginTopAriaLabel" value={top} maximum={height - bottom} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, value, cropWidth, height - value - bottom])} />
+      <Margin key={`${reset}:Right`} name="Right" labelKey="appearance.pdfCrop.marginRightMm" ariaLabelKey="appearance.pdfCrop.marginRightAriaLabel" value={right} maximum={width - left} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, width - left - value, cropHeight])} />
+      <Margin key={`${reset}:Bottom`} name="Bottom" labelKey="appearance.pdfCrop.marginBottomMm" ariaLabelKey="appearance.pdfCrop.marginBottomAriaLabel" value={bottom} maximum={height - top} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, cropWidth, height - top - value])} />
     </fieldset>
     <p className="text-[10px] leading-relaxed text-muted-foreground">{t('appearance.pdfCrop.marginsNote')}</p>
   </div>;

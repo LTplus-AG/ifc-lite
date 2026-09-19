@@ -335,13 +335,10 @@ export const appearanceWorkflowsEn = {
   'appearance.scan.status.alignmentCancelled': 'Alignment operation cancelled. Existing pairs are retained.',
 
   // ScanTransferFields
-  'appearance.scanTransfer.orientationSourceNormals': "the capture’s own oriented normals",
-  'appearance.scanTransfer.orientationViewpoints': 'scanner station positions',
-  'appearance.scanTransfer.orientationTargetReferenced': 'the IFC face being sampled (target-referenced)',
   'appearance.scanTransfer.sectionAriaLabel': 'Scan appearance transfer',
   'appearance.scanTransfer.heading': 'Transfer scan appearance',
   'appearance.scanTransfer.description': 'Select the destination objects in the IFC view. Transfer uses their complete surfaces; it never reduces the chosen scope automatically.',
-  'appearance.scanTransfer.useSelected': 'Use selected IFC objects · {count}',
+  'appearance.scanTransfer.useSelected': { one: 'Use selected IFC object · {count}', other: 'Use selected IFC objects · {count}' },
   'appearance.scanTransfer.chooseByName': 'Choose objects by name',
   'appearance.scanTransfer.findTargetAriaLabel': 'Find transfer target',
   'appearance.scanTransfer.findPlaceholder': 'Find an IFC object',
@@ -372,7 +369,9 @@ export const appearanceWorkflowsEn = {
     'Unknown: {tooFar} too far · {incompatibleNormals} incompatible normals · {ambiguous} ambiguous · {behind} behind the surface.',
   'appearance.scanTransfer.unknownPointSummary':
     'Unknown: {tooFar} too far · {incompatibleNormals} incompatible normals · {ambiguous} ambiguous · {behind} behind the surface · {sparse} too sparse.',
-  'appearance.scanTransfer.pointCloudSourceNote': 'Point-cloud source of {count} points; sample orientation from {orientation}.',
+  'appearance.scanTransfer.pointCloudSourceNormalsNote': 'Point-cloud source of {count} points; sample orientation from the capture’s own oriented normals.',
+  'appearance.scanTransfer.pointCloudViewpointsNote': 'Point-cloud source of {count} points; sample orientation from scanner station positions.',
+  'appearance.scanTransfer.pointCloudTargetReferencedNote': 'Point-cloud source of {count} points; sample orientation from the IFC face being sampled (target-referenced).',
   'appearance.scanTransfer.coveragePerSurface': 'Coverage per IFC surface',
   'appearance.scanTransfer.surfaceCoverageRow': '#{productId} / surface #{geometryItemId}: {observed} of {total} samples observed.',
   'appearance.scanTransfer.areaCaveat':

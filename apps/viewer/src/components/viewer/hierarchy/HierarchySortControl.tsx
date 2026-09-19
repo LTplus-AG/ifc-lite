@@ -31,15 +31,15 @@ import type { HierarchySortMode } from './types';
 
 const SORT_OPTIONS: ReadonlyArray<{
   value: HierarchySortMode;
-  /** Short word for the trigger; the icon carries the direction. */
-  shortKey: TranslationKey;
+  /** Complete trigger message; the icon carries the direction. */
+  triggerKey: TranslationKey;
   labelKey: TranslationKey;
   Icon: typeof ArrowDownWideNarrow;
 }> = [
-  { value: 'elevation-desc', shortKey: 'hierarchy.sortControl.short.elevation', labelKey: 'hierarchy.sortControl.label.elevationDesc', Icon: ArrowDownWideNarrow },
-  { value: 'elevation-asc', shortKey: 'hierarchy.sortControl.short.elevation', labelKey: 'hierarchy.sortControl.label.elevationAsc', Icon: ArrowUpWideNarrow },
-  { value: 'name-asc', shortKey: 'hierarchy.sortControl.short.name', labelKey: 'hierarchy.sortControl.label.nameAsc', Icon: ArrowDownAZ },
-  { value: 'name-desc', shortKey: 'hierarchy.sortControl.short.name', labelKey: 'hierarchy.sortControl.label.nameDesc', Icon: ArrowUpAZ },
+  { value: 'elevation-desc', triggerKey: 'hierarchy.sortControl.triggerElevation', labelKey: 'hierarchy.sortControl.label.elevationDesc', Icon: ArrowDownWideNarrow },
+  { value: 'elevation-asc', triggerKey: 'hierarchy.sortControl.triggerElevation', labelKey: 'hierarchy.sortControl.label.elevationAsc', Icon: ArrowUpWideNarrow },
+  { value: 'name-asc', triggerKey: 'hierarchy.sortControl.triggerName', labelKey: 'hierarchy.sortControl.label.nameAsc', Icon: ArrowDownAZ },
+  { value: 'name-desc', triggerKey: 'hierarchy.sortControl.triggerName', labelKey: 'hierarchy.sortControl.label.nameDesc', Icon: ArrowUpAZ },
 ];
 
 interface HierarchySortControlProps {
@@ -63,7 +63,7 @@ export function HierarchySortControl({ value, onChange }: HierarchySortControlPr
         >
           <span className="flex items-center gap-1 min-w-0">
             <ActiveIcon className="h-3 w-3 shrink-0" />
-            <span className="truncate">{t('hierarchy.sortControl.triggerLabel', { short: t(active.shortKey) })}</span>
+            <span className="truncate">{t(active.triggerKey)}</span>
           </span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </Button>

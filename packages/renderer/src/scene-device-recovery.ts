@@ -184,7 +184,9 @@ function restoreFlatBuckets(
   host.batchedMeshes = restored;
   let repartitioned = false;
 
-  for (const [originalKey, bucket] of [...host.buckets]) {
+  // Recovery can repartition and replace entries, so iterate a stable snapshot.
+  const originalBuckets = Array.from(host.buckets);
+  for (const [originalKey, bucket] of originalBuckets) {
     if (bucket.meshData.length === 0) {
       if (bucket.batchedMesh?.gpuResident === false) restored.push(bucket.batchedMesh);
       continue;

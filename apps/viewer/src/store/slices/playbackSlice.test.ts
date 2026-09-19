@@ -8,7 +8,6 @@ import { createStore } from 'zustand/vanilla';
 import type { ScheduleExtraction, WorkCalendarInfo } from '@ifc-lite/parser';
 import { createPlaybackSlice, type PlaybackSlice } from './playbackSlice.js';
 import type { ScheduleTimeRange } from './scheduleSlice.js';
-import { utcDayStart } from '@/components/viewer/schedule/work-calendar.js';
 
 type TestStore = PlaybackSlice & {
   scheduleRange: ScheduleTimeRange | null;
@@ -30,8 +29,13 @@ const makeStore = (
 
 const DAY = 86_400_000;
 
+// Deliberately not imported from `work-calendar.ts` (kept import-free of the
+// production module under test here): `Date.parse` on an explicit UTC
+// midnight literal is already day-aligned, so no helper is needed, and it
+// keeps this test file loadable — and its assertions live — if a revert
+// removes `work-calendar.ts` but not this file (`check-test-revert-oracle`).
 function d(iso: string): number {
-  return utcDayStart(Date.parse(`${iso}T00:00:00Z`));
+  return Date.parse(`${iso}T00:00:00Z`);
 }
 
 /** Mon-Fri weekly calendar, same shape as `work-calendar.test.ts` (#4830). */

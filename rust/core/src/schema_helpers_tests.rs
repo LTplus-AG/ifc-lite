@@ -13,9 +13,7 @@ use super::*;
 /// not a primitive allow-list that could silently exclude a future product.
 #[test]
 fn immutable_classification_matches_predicates_for_entire_schema_and_legacy_catalog() {
-    for name in crate::generated::IFC_TYPES
-        .iter()
-        .map(IfcType::as_str)
+    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
         .chain(crate::legacy_entities::LEGACY_ENTITY_NAMES.iter().copied())
     {
         let expected = (
@@ -23,17 +21,9 @@ fn immutable_classification_matches_predicates_for_entire_schema_and_legacy_cata
             compute_is_representationless_spatial_container(name),
             compute_is_simple(name),
         );
-        let mixed: String = name
-            .chars()
-            .enumerate()
-            .map(|(i, ch)| {
-                if i % 2 == 0 {
-                    ch.to_ascii_lowercase()
-                } else {
-                    ch
-                }
-            })
-            .collect();
+        let mixed: String = name.chars().enumerate().map(|(i, ch)| {
+            if i % 2 == 0 { ch.to_ascii_lowercase() } else { ch }
+        }).collect();
         for spelling in [name.to_owned(), name.to_ascii_lowercase(), mixed] {
             assert_eq!(
                 (
@@ -62,10 +52,7 @@ fn unknown_classification_preserves_fallback_without_retaining_names() {
         ("IfcVéndor", false),
     ] {
         assert_eq!(has_geometry_by_name(name), geometry, "{name}");
-        assert!(
-            !is_representationless_spatial_container_by_name(name),
-            "{name}"
-        );
+        assert!(!is_representationless_spatial_container_by_name(name), "{name}");
         assert!(is_simple_geometry_type(name), "{name}");
         assert!(!classifications().contains_key(name.to_ascii_uppercase().as_str()));
     }
@@ -122,13 +109,7 @@ fn solar_device_has_geometry() {
 /// loosely than `starts_with("IFCREINFORCING")`.
 #[test]
 fn distribution_leaves_the_deleted_whitelist_missed_have_geometry() {
-    for name in [
-        "IFCCHILLER",
-        "IFCCOIL",
-        "IFCFAN",
-        "IFCLIGHTFIXTURE",
-        "IFCSENSOR",
-    ] {
+    for name in ["IFCCHILLER", "IFCCOIL", "IFCFAN", "IFCLIGHTFIXTURE", "IFCSENSOR"] {
         assert!(has_geometry_by_name(name), "{name}");
     }
     // `contains("Reinforc")` also admitted this, which is not a product.
@@ -235,10 +216,7 @@ fn non_geometric_spatial_excluded() {
         "IFCEXTERNALSPATIALELEMENT",
         "IFCEXTERNALSPATIALSTRUCTUREELEMENT",
     ] {
-        assert!(
-            !has_geometry_by_name(name),
-            "{name} should NOT have geometry"
-        );
+        assert!(!has_geometry_by_name(name), "{name} should NOT have geometry");
     }
 }
 
@@ -254,10 +232,7 @@ fn non_products_excluded() {
         "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
         "IFCCARTESIANPOINT",
     ] {
-        assert!(
-            !has_geometry_by_name(name),
-            "{name} should NOT have geometry"
-        );
+        assert!(!has_geometry_by_name(name), "{name} should NOT have geometry");
     }
 }
 
@@ -367,14 +342,8 @@ fn legacy_ifc2x3_products_resolve_to_their_own_supertype() {
     for (name, expected) in [
         ("IFCELECTRICALELEMENT", IfcType::IfcElement),
         ("IFCELECTRICDISTRIBUTIONPOINT", IfcType::IfcFlowController),
-        (
-            "IFCCHAMFEREDGEFEATURE",
-            IfcType::IfcFeatureElementSubtraction,
-        ),
-        (
-            "IFCROUNDEDEDGEFEATURE",
-            IfcType::IfcFeatureElementSubtraction,
-        ),
+        ("IFCCHAMFEREDGEFEATURE", IfcType::IfcFeatureElementSubtraction),
+        ("IFCROUNDEDEDGEFEATURE", IfcType::IfcFeatureElementSubtraction),
         (
             "IFCSTRUCTURALLINEARACTIONVARYING",
             IfcType::IfcStructuralLinearAction,
@@ -545,12 +514,7 @@ fn a_known_type_is_returned_untouched_whatever_the_record_says() {
 fn an_unreadable_record_changes_nothing() {
     let unknown = IfcType::from_str("IFCNOTAREALENTITY");
     assert!(matches!(unknown, IfcType::Unknown(_)));
-    for record in [
-        &b""[..],
-        &b"garbage with no equals or paren"[..],
-        &b"#1="[..],
-        &b"#1=("[..],
-    ] {
+    for record in [&b""[..], &b"garbage with no equals or paren"[..], &b"#1="[..], &b"#1=("[..]] {
         assert_eq!(legacy_aware_ifc_type_from_record(unknown, record), unknown);
     }
 }
@@ -653,33 +617,17 @@ fn every_supported_legacy_key_preserves_its_name_or_is_an_explicit_extension() {
 #[test]
 fn combined_geometry_flags_match_canonical_predicates_3987() {
     let table_len = classifications().len();
-    for name in crate::generated::IFC_TYPES
-        .iter()
-        .map(IfcType::as_str)
+    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
         .chain(crate::legacy_entities::LEGACY_ENTITY_NAMES.iter().copied())
         .chain([
-            "",
-            "IfcVendorGeometry",
-            "IfcReinforcingVendorExtension",
-            "IfcReinforcedVendorExtension",
-            "IfcVendorReinforcingExtension",
-            "IfcVéndor",
-            "IFCſPACE",
-            "IfcßBuilding",
-            "ifcwall ",
+            "", "IfcVendorGeometry", "IfcReinforcingVendorExtension",
+            "IfcReinforcedVendorExtension", "IfcVendorReinforcingExtension",
+            "IfcVéndor", "IFCſPACE", "IfcßBuilding", "ifcwall ",
         ])
     {
-        let mixed: String = name
-            .chars()
-            .enumerate()
-            .map(|(i, ch)| {
-                if i % 2 == 0 {
-                    ch.to_ascii_lowercase()
-                } else {
-                    ch
-                }
-            })
-            .collect();
+        let mixed: String = name.chars().enumerate().map(|(i, ch)| {
+            if i % 2 == 0 { ch.to_ascii_lowercase() } else { ch }
+        }).collect();
         for spelling in [name.to_owned(), name.to_ascii_lowercase(), mixed] {
             let upper = normalise_uppercase(&spelling);
             let expected = (
@@ -689,10 +637,8 @@ fn combined_geometry_flags_match_canonical_predicates_3987() {
             assert_eq!(geometry_flags_by_name(&spelling), expected, "{spelling}");
             assert_eq!(
                 geometry_flags_by_name(&spelling),
-                (
-                    has_geometry_by_name(&spelling),
-                    is_representationless_spatial_container_by_name(&spelling)
-                ),
+                (has_geometry_by_name(&spelling),
+                 is_representationless_spatial_container_by_name(&spelling)),
                 "separate public predicates differ for {spelling}",
             );
         }

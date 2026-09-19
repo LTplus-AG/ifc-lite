@@ -713,7 +713,8 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
     const rels = extractRelationshipsOnDemand(dataStore as IfcDataStore, lookupExpressId);
-    const totalCount = rels.voids.length + rels.fills.length + rels.groups.length + rels.connections.length;
+    const totalCount = rels.voids.length + rels.fills.length + rels.groups.length
+      + rels.connections.length + rels.relations.length;
     return totalCount > 0 ? rels : null;
   }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 

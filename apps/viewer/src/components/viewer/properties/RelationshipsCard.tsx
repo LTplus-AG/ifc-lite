@@ -18,23 +18,15 @@ interface RelationshipsCardProps {
 }
 
 const RELATIONSHIPS_LABEL = 'Relationships';
-const SPECIALIZED_RELATIONSHIP_TYPES = new Set([
-  'IfcRelVoidsElement',
-  'IfcRelFillsElement',
-  'IfcRelAssignsToGroup',
-  'IfcRelAssignsToGroupByFactor',
-  'IfcRelConnectsPathElements',
-]);
 
 export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
   const { voids, fills, groups, connections } = relationships;
-  // These four classes already have purpose-built sections below. Everything
-  // else uses the exact-class graph view added by #4205, so a relationship is
-  // visible without duplicating the established openings/groups UI.
-  const otherRelations = (relationships.relations ?? []).filter(
-    (relation) => !SPECIALIZED_RELATIONSHIP_TYPES.has(relation.relationshipType),
-  );
-  const totalCount = voids.length + fills.length + groups.length + connections.length + otherRelations.length;
+  // Keep the exact record rows even when a convenience section below also
+  // names the endpoint. Those legacy arrays collapse repeated IfcRel records
+  // and omit the relationship id/direction, while this view is the lossless
+  // graph surface promised by #4205.
+  const exactRelations = relationships.relations ?? [];
+  const totalCount = voids.length + fills.length + groups.length + connections.length + exactRelations.length;
 
   if (totalCount === 0) return null;
 
@@ -96,12 +88,12 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
               ))}
             </div>
           )}
-          {otherRelations.length > 0 && (
+          {exactRelations.length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                Relationships ({otherRelations.length})
+                Relationship Records ({exactRelations.length})
               </div>
-              {otherRelations.map((relation) => (
+              {exactRelations.map((relation) => (
                 <RelationshipEdgeItem
                   key={`${relation.direction}:${relation.relationshipId}:${relation.entity.id}`}
                   relation={relation}

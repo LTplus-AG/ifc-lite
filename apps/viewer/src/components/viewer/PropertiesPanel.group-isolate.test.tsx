@@ -158,6 +158,20 @@ describe('Properties panel -- "Isolate this group\'s members in 3D"', () => {
     useViewerStore.setState(initialState, true);
   });
 
+  it('mounts the Relationships card for an exact-only forward group edge (#4205)', async () => {
+    // Selecting the group itself walks the forward edge. The legacy `groups`
+    // convenience array only covers the inverse/member side, so before #4205
+    // the panel replaced this with its "No property sets" empty state even
+    // though the exact graph carried a real relationship record.
+    await seed(10);
+    const container = render(<PropertiesPanel />);
+    const text = container.textContent ?? '';
+
+    assert.match(text, /Relationship Records \(1\)/);
+    assert.match(text, /IfcRelAssignsToGroup/);
+    assert.ok(!text.includes('No property sets'), `exact relationship must suppress the empty state: ${text}`);
+  });
+
   it('isolates a geometry-less assembly member as its geometry-bearing parts, not its bare id', async () => {
     // Zone A's only member is the assembly. Before this fix the isolation set
     // was exactly {assembly} -- an id the renderer owns no mesh for, so the

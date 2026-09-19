@@ -13,14 +13,12 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { DataModel } from '@ifc-lite/server-client';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP, EMPTY_SOURCE_BYTES, type ClassificationInfo } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, type ClassificationInfo } from '@ifc-lite/parser';
 import {
   comparePropertyValues,
   IfcTypeEnumToString,
   PropertyValueType,
   QuantityType,
-  RelationshipGraphBuilder,
-  type RelationshipGraph,
   type PropertyTable,
   type PropertySet,
   type PropertyValue,
@@ -31,24 +29,12 @@ import { StringTable } from '@ifc-lite/data';
 import type { SpatialIndex } from '@ifc-lite/spatial';
 import { buildEntityTable } from './serverEntityTable';
 import { buildSpatialHierarchy } from './serverSpatialHierarchy';
+import { buildRelationships, type ServerQuantitySet } from './serverRelationships';
+export type { ServerQuantitySet } from './serverRelationships';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * Server quantity set format
- */
-export interface ServerQuantitySet {
-  qset_id: number;
-  qset_name: string;
-  method_of_measurement?: string;
-  quantities: Array<{
-    quantity_name: string;
-    quantity_value: number;
-    quantity_type: string;
-  }>;
-}
 
 /**
  * Server parse result metadata (used for convertServerDataModel)
@@ -70,115 +56,6 @@ export interface ServerParseResult {
     total_vertices: number;
     total_triangles: number;
   };
-}
-
-// ============================================================================
-// Relationship Graph Building
-// ============================================================================
-
-/**
- * Build RelationshipGraph and property/quantity mappings from server data model
- */
-function buildRelationships(
-  dataModel: DataModel
-): {
-  relationships: RelationshipGraph;
-  entityToPsets: Map<number, Array<any>>;
-  entityToQsets: Map<number, Array<ServerQuantitySet>>;
-} {
-  // Feed the same builder the WASM path uses (#3827). Building real CSR
-  // columns is what makes every `offsets`/`counts` walk downstream — the
-  // Parquet Relationships table, the DuckDB relationships table — see the
-  // server path's edges at all, and it is what makes the builder's
-  // repeated-edge handling apply here instead of only to locally parsed
-  // models. `build()` derives the inverse half from the same edge list, so
-  // only the forward direction is added below.
-  const graphBuilder = new RelationshipGraphBuilder();
-  const entityToPsets = new Map<number, Array<any>>();
-  const entityToQsets = new Map<number, Array<ServerQuantitySet>>();
-  // Type-owned sets (issue #1751): the server emits synthetic TYPEHASPROPERTYSETS
-  // rows (set -> type) for a type's IfcTypeObject.HasPropertySets. These are
-  // "Source 1" (the type's own declaration); IfcRelDefinesByProperties targeting
-  // the type is "Source 2". Collect Source 1 separately, then merge it FIRST and
-  // dedup by set name — matching the WASM path's extractTypeEntityOwnProperties.
-  const typeOwnPsets = new Map<number, Array<any>>();
-  const typeOwnQsets = new Map<number, Array<ServerQuantitySet>>();
-  const unmappedRelTypes = new Set<string>();
-  // Whether the payload carried the rel_id column at all (#3860).
-  let sawRelId = false;
-
-  // Combined loop - process relationships once for both graph building AND property mapping
-  for (const rel of dataModel.relationships) {
-    const upperType = rel.rel_type.toUpperCase();
-    const relType = CANONICAL_REL_TYPE_MAP[upperType];
-
-    // Build property set and quantity set mappings (regardless of relType mapping)
-    if (upperType === 'IFCRELDEFINESBYPROPERTIES' || upperType === 'TYPEHASPROPERTYSETS') {
-      const psetTarget = upperType === 'TYPEHASPROPERTYSETS' ? typeOwnPsets : entityToPsets;
-      const qsetTarget = upperType === 'TYPEHASPROPERTYSETS' ? typeOwnQsets : entityToQsets;
-      const pset = dataModel.propertySets.get(rel.relating_id);
-      if (pset) {
-        if (!psetTarget.has(rel.related_id)) psetTarget.set(rel.related_id, []);
-        psetTarget.get(rel.related_id)!.push(pset);
-      }
-      const qset = (dataModel as { quantitySets?: Map<number, ServerQuantitySet> }).quantitySets?.get(rel.relating_id);
-      if (qset) {
-        if (!qsetTarget.has(rel.related_id)) qsetTarget.set(rel.related_id, []);
-        qsetTarget.get(rel.related_id)!.push(qset);
-      }
-      // TYPEHASPROPERTYSETS is a synthetic, non-IFC edge — never a graph edge.
-      if (upperType === 'TYPEHASPROPERTYSETS') continue;
-    }
-
-    // Only add relationship edges for known/mapped relationship types
-    // Don't coerce unknown types to Aggregates as it corrupts semantics
-    if (relType === undefined) {
-      if (!unmappedRelTypes.has(upperType)) {
-        unmappedRelTypes.add(upperType);
-        console.debug(`[serverDataModel] Unmapped relationship type: ${rel.rel_type}`);
-      }
-      continue;
-    }
-
-    // The IfcRel express id (#3860). Absent only against a server older than
-    // the column; 0 is then the placeholder every edge used to get.
-    if (rel.rel_id !== undefined) sawRelId = true;
-    graphBuilder.addEdge(rel.relating_id, rel.related_id, relType, rel.rel_id ?? 0);
-  }
-
-  if (unmappedRelTypes.size > 0) {
-    console.warn(`[serverDataModel] Found ${unmappedRelTypes.size} unmapped relationship types: ${Array.from(unmappedRelTypes).join(', ')}`);
-  }
-
-  // Every edge then carries relationshipId 0, which looks exactly like a real
-  // graph until an export writes RelId = 0 on every row (#3860). Say it once.
-  if (!sawRelId && dataModel.relationships.length > 0) {
-    console.warn(
-      `[serverDataModel] Server sent no rel_id column: all ${dataModel.relationships.length} relationship(s) get id 0. Exported RelId will be 0 — the server predates the data-model v6 payload.`
-    );
-  }
-
-  // Merge each type's own (HasPropertySets) sets into its entry, FIRST and
-  // name-deduped over any IfcRelDefinesByProperties-attached sets already there,
-  // so `getForEntity(typeId)` matches the WASM path's type resolution and the
-  // Lists adapter's server-path type fallback (issue #1751).
-  const mergeOwnFirst = <T extends { pset_name?: string; qset_name?: string }>(
-    own: Map<number, T[]>,
-    target: Map<number, T[]>,
-    nameOf: (set: T) => string,
-  ) => {
-    for (const [typeId, ownSets] of own) {
-      const seen = new Set(ownSets.map(nameOf));
-      const rest = (target.get(typeId) ?? []).filter((s) => !seen.has(nameOf(s)));
-      target.set(typeId, [...ownSets, ...rest]);
-    }
-  };
-  mergeOwnFirst(typeOwnPsets, entityToPsets, (s) => s.pset_name ?? '');
-  mergeOwnFirst(typeOwnQsets, entityToQsets, (s) => s.qset_name ?? '');
-
-  const relationships = graphBuilder.build();
-
-  return { relationships, entityToPsets, entityToQsets };
 }
 
 // ============================================================================

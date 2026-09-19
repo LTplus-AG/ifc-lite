@@ -137,7 +137,7 @@ export function RenderMarkdown({ node }: { node: MarkdownNode; ctx: WidgetRender
 }
 
 export function RenderTabs({ node, ctx }: { node: TabsNode; ctx: WidgetRendererContext }) {
-  const first = node.defaultTab ?? node.tabs[0]?.id;
+  const first = node.tabs.some(tab => tab.id === node.defaultTab) ? node.defaultTab : node.tabs[0]?.id;
   return (
     <Tabs defaultValue={first}>
       <TabsList>

@@ -396,6 +396,10 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     host.revalidateSummary = { sdk: SDK, items: [repairItem()], needsRepair: [repairItem()] };
 
     registerLocale('extensions-panels-fr', {
+      'extensionsPanels.auditLogPanel.eventCount': {
+        one: '{filtered} sur {total} événement (fr)',
+        other: '{filtered} sur {total} événements (fr)',
+      },
       'extensionsPanels.auditLogPanel.versionSuffix': ' · v{version} (fr)',
       'extensionsPanels.auditLogPanel.capabilityGrants': {
         one: ' · {count} capacité accordée (fr)',
@@ -408,6 +412,10 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
       'extensionsPanels.repairQueuePanel.testsFailed': {
         one: '{count} test échoué (fr) :',
         other: '{count} tests échoués (fr) :',
+      },
+      'extensionsPanels.repairQueuePanel.summaryLine': {
+        one: 'SDK {sdk} · {count} à réparer (fr)',
+        other: 'SDK {sdk} · {count} à réparer (fr)',
       },
     } as Catalogue);
     setLocale('extensions-panels-fr');
@@ -430,9 +438,29 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     });
 
     assert.match(container.textContent ?? '', /· v9\.9\.9 \(fr\)/);
+    assert.match(container.textContent ?? '', /1 sur 1 événement \(fr\)/);
     assert.match(container.textContent ?? '', /· 1 capacité accordée \(fr\)/);
     assert.match(container.textContent ?? '', /1 suggestion \(fr\) · 17 événements/);
     assert.match(container.textContent ?? '', /1 test échoué \(fr\) :/);
+    assert.match(container.textContent ?? '', /SDK 2\.0\.0 · 1 à réparer \(fr\)/);
+  });
+
+  it('lets a locale reorder the complete install question', () => {
+    registerLocale('install-question-reordered', {
+      'extensionsPanels.capabilityReview.installTitle': 'v{version} de {id} installer?',
+    } as Catalogue);
+    setLocale('install-question-reordered');
+
+    render(
+      <CapabilityReview
+        open
+        summary={capabilitySummary()}
+        onApprove={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+
+    assert.match(document.body.textContent ?? '', /v1\.2\.0 de com\.example\.fire-rating installer\?/);
   });
 
   it('shows and accepts the same fixed high-risk confirmation token in every locale', () => {

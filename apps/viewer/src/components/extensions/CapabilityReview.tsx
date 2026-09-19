@@ -138,9 +138,9 @@ export function CapabilityReview({
           <div className="flex items-center gap-2">
             <RiskIcon tier={overall} />
             <DialogTitle>
-              {t('extensionsPanels.capabilityReview.installPrefix')}{' '}
-              <span className="font-mono text-base">{summary.id}</span>{' '}
-              {t('extensionsPanels.capabilityReview.installVersionSuffix', { version: summary.version })}
+              {t('extensionsPanels.capabilityReview.installTitle', {
+                id: summary.id, version: summary.version,
+              })}
             </DialogTitle>
           </div>
           <DialogDescription>

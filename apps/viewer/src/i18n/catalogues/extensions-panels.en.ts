@@ -43,7 +43,10 @@ import type { TranslationValue } from '../types';
 export const extensionsPanelsEn = {
   // ── AuditLogPanel ──
   'extensionsPanels.auditLogPanel.title': 'Audit Log',
-  'extensionsPanels.auditLogPanel.eventCount': '{filtered} of {total} events',
+  'extensionsPanels.auditLogPanel.eventCount': {
+    one: '{filtered} of {total} event',
+    other: '{filtered} of {total} events',
+  },
   'extensionsPanels.auditLogPanel.helpLabel': 'Audit log',
   'extensionsPanels.auditLogPanel.helpIntro':
     'Append-only ledger of every extension lifecycle event: install, update, enable, disable, activate, capability grant/revoke, runtime failures.',
@@ -65,7 +68,10 @@ export const extensionsPanelsEn = {
     one: ' · {count} capability grant',
     other: ' · {count} capability grants',
   },
-  'extensionsPanels.auditLogPanel.mutationEntities': ' · {count} entities',
+  'extensionsPanels.auditLogPanel.mutationEntities': {
+    one: ' · {count} entity',
+    other: ' · {count} entities',
+  },
   'extensionsPanels.auditLogPanel.networkFetch': ' · {host} ({bytes} bytes)',
   'extensionsPanels.auditLogPanel.reasonSuffix': ' · {reason}',
   'extensionsPanels.auditLogPanel.exportToast': 'Audit log exported.',
@@ -86,8 +92,7 @@ export const extensionsPanelsEn = {
   'extensionsPanels.auditLogPanel.kind.killed': 'Killed',
 
   // ── CapabilityReview ──
-  'extensionsPanels.capabilityReview.installPrefix': 'Install',
-  'extensionsPanels.capabilityReview.installVersionSuffix': 'v{version}?',
+  'extensionsPanels.capabilityReview.installTitle': 'Install {id} v{version}?',
   'extensionsPanels.capabilityReview.description':
     'Review the capabilities this extension is requesting. Uncheck any you do not want to grant. Extensions that rely on a denied capability will surface a clear error at runtime instead of running silently with broader scope.',
   'extensionsPanels.capabilityReview.signatureVerifiedTitle': 'Signature verified',
@@ -253,7 +258,10 @@ export const extensionsPanelsEn = {
 
   // ── RepairQueuePanel ──
   'extensionsPanels.repairQueuePanel.title': 'Repair queue',
-  'extensionsPanels.repairQueuePanel.summaryLine': 'SDK {sdk} · {count} need fixing',
+  'extensionsPanels.repairQueuePanel.summaryLine': {
+    one: 'SDK {sdk} · {count} needs fixing',
+    other: 'SDK {sdk} · {count} need fixing',
+  },
   'extensionsPanels.repairQueuePanel.helpLabel': 'Repair queue',
   'extensionsPanels.repairQueuePanel.helpIntroPrefix': 'When the viewer SDK bumps, extensions whose declared',
   'extensionsPanels.repairQueuePanel.engineRangeCode': 'engines.ifcLiteSdk',

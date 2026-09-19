@@ -10,6 +10,7 @@ import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { AddElementPanel } from './AddElementPanel.js';
 import type { addElementEn as AddElementEnType } from '@/i18n/catalogues/add-element.en';
 
@@ -87,5 +88,21 @@ describe('Add Element localization (#4918)', () => {
     assert.match(text, /⟦Preview⟧/);
     assert.match(text, /⟦Generate⟧/);
     assert.match(text, /⟦Authoring is disabled until a model with a building storey is loaded\.⟧/);
+  });
+
+  it('recomputes unnamed-storey fallbacks and complete unit labels on a live locale change', () => {
+    const model = fixtureModel('model.ifc', {
+      entities: [{ expressId: 2, type: 'IfcBuildingStorey' }],
+    });
+    Object.assign(model.ifcDataStore, { getEntity: () => null });
+    useViewerStore.setState(fixtureModels(model));
+    const ui = render(<AddElementPanel onClose={() => undefined} />);
+    assert.match(ui.textContent ?? '', /Storey #2/);
+    assert.match(ui.textContent ?? '', /Thickness \(m\)/);
+
+    registerLocale('add-element-storey-pseudo', pseudoLocale());
+    act(() => setLocale('add-element-storey-pseudo'));
+    assert.match(ui.textContent ?? '', /⟦Storey #2⟧/);
+    assert.match(ui.textContent ?? '', /⟦Thickness \(m\)⟧/);
   });
 });

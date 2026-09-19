@@ -44,7 +44,7 @@ interface AddElementPanelProps {
 }
 
 export function AddElementPanel({ onClose }: AddElementPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { models, ifcDataStore } = useIfc();
 
   const addElementType = useViewerStore((s) => s.addElementType);
@@ -111,7 +111,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
       opts.push({ expressId, label: name });
     }
     return opts;
-  }, [effectiveModelId, models, ifcDataStore, t]);
+  }, [effectiveModelId, models, ifcDataStore, t, locale]);
 
   // Auto-pick the first storey when the user hasn't chosen one or
   // the previous choice no longer exists in the active model. Also
@@ -271,62 +271,62 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
 
           {addElementType === 'wall' && (
             <div className="grid grid-cols-2 gap-2">
-              <NumberField label={t('addElement.dimension.thickness')} suffix="m" value={wallParams.Thickness} min={0.01} onChange={(v) => setWallParams({ Thickness: v })} />
-              <NumberField label={t('addElement.dimension.height')} suffix="m" value={wallParams.Height} min={0.01} onChange={(v) => setWallParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={wallParams.Thickness} min={0.01} onChange={(v) => setWallParams({ Thickness: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={wallParams.Height} min={0.01} onChange={(v) => setWallParams({ Height: v })} />
             </div>
           )}
 
           {addElementType === 'slab' && (
-            <NumberField label={t('addElement.dimension.thickness')} suffix="m" value={slabParams.Thickness} min={0.01} onChange={(v) => setSlabParams({ Thickness: v })} />
+            <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={slabParams.Thickness} min={0.01} onChange={(v) => setSlabParams({ Thickness: v })} />
           )}
 
           {addElementType === 'beam' && (
             <div className="grid grid-cols-2 gap-2">
-              <NumberField label={t('addElement.dimension.width')} suffix="m" value={beamParams.Width} min={0.01} onChange={(v) => setBeamParams({ Width: v })} />
-              <NumberField label={t('addElement.dimension.height')} suffix="m" value={beamParams.Height} min={0.01} onChange={(v) => setBeamParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.widthUnit', { unit: 'm' })} value={beamParams.Width} min={0.01} onChange={(v) => setBeamParams({ Width: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={beamParams.Height} min={0.01} onChange={(v) => setBeamParams({ Height: v })} />
             </div>
           )}
 
           {addElementType === 'column' && (
             <div className="grid grid-cols-3 gap-2">
-              <NumberField label={t('addElement.dimension.width')} suffix="m" value={columnParams.Width} min={0.01} onChange={(v) => setColumnParams({ Width: v })} />
-              <NumberField label={t('addElement.dimension.depth')} suffix="m" value={columnParams.Depth} min={0.01} onChange={(v) => setColumnParams({ Depth: v })} />
-              <NumberField label={t('addElement.dimension.height')} suffix="m" value={columnParams.Height} min={0.01} onChange={(v) => setColumnParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.widthUnit', { unit: 'm' })} value={columnParams.Width} min={0.01} onChange={(v) => setColumnParams({ Width: v })} />
+              <NumberField label={t('addElement.dimension.depthUnit', { unit: 'm' })} value={columnParams.Depth} min={0.01} onChange={(v) => setColumnParams({ Depth: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={columnParams.Height} min={0.01} onChange={(v) => setColumnParams({ Height: v })} />
             </div>
           )}
 
           {addElementType === 'door' && (
             <div className="grid grid-cols-3 gap-2">
-              <NumberField label={t('addElement.dimension.width')} suffix="m" value={doorParams.Width} min={0.01} onChange={(v) => setDoorParams({ Width: v })} />
-              <NumberField label={t('addElement.dimension.height')} suffix="m" value={doorParams.Height} min={0.01} onChange={(v) => setDoorParams({ Height: v })} />
-              <NumberField label={t('addElement.dimension.frame')} suffix="m" value={doorParams.FrameThickness} min={0.005} onChange={(v) => setDoorParams({ FrameThickness: v })} />
+              <NumberField label={t('addElement.dimension.widthUnit', { unit: 'm' })} value={doorParams.Width} min={0.01} onChange={(v) => setDoorParams({ Width: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={doorParams.Height} min={0.01} onChange={(v) => setDoorParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.frameUnit', { unit: 'm' })} value={doorParams.FrameThickness} min={0.005} onChange={(v) => setDoorParams({ FrameThickness: v })} />
             </div>
           )}
 
           {addElementType === 'window' && (
             <div className="grid grid-cols-3 gap-2">
-              <NumberField label={t('addElement.dimension.width')} suffix="m" value={windowParams.Width} min={0.01} onChange={(v) => setWindowParams({ Width: v })} />
-              <NumberField label={t('addElement.dimension.height')} suffix="m" value={windowParams.Height} min={0.01} onChange={(v) => setWindowParams({ Height: v })} />
-              <NumberField label={t('addElement.dimension.frame')} suffix="m" value={windowParams.FrameThickness} min={0.005} onChange={(v) => setWindowParams({ FrameThickness: v })} />
+              <NumberField label={t('addElement.dimension.widthUnit', { unit: 'm' })} value={windowParams.Width} min={0.01} onChange={(v) => setWindowParams({ Width: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={windowParams.Height} min={0.01} onChange={(v) => setWindowParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.frameUnit', { unit: 'm' })} value={windowParams.FrameThickness} min={0.005} onChange={(v) => setWindowParams({ FrameThickness: v })} />
             </div>
           )}
 
           {addElementType === 'space' && (
-            <NumberField label={t('addElement.dimension.height')} suffix="m" value={spaceParams.Height} min={0.01} onChange={(v) => setSpaceParams({ Height: v })} />
+            <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={spaceParams.Height} min={0.01} onChange={(v) => setSpaceParams({ Height: v })} />
           )}
 
           {addElementType === 'roof' && (
-            <NumberField label={t('addElement.dimension.thickness')} suffix="m" value={roofParams.Thickness} min={0.01} onChange={(v) => setRoofParams({ Thickness: v })} />
+            <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={roofParams.Thickness} min={0.01} onChange={(v) => setRoofParams({ Thickness: v })} />
           )}
 
           {addElementType === 'plate' && (
-            <NumberField label={t('addElement.dimension.thickness')} suffix="m" value={plateParams.Thickness} min={0.001} onChange={(v) => setPlateParams({ Thickness: v })} />
+            <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={plateParams.Thickness} min={0.001} onChange={(v) => setPlateParams({ Thickness: v })} />
           )}
 
           {addElementType === 'member' && (
             <div className="grid grid-cols-2 gap-2">
-              <NumberField label={t('addElement.dimension.width')} suffix="m" value={memberParams.Width} min={0.01} onChange={(v) => setMemberParams({ Width: v })} />
-              <NumberField label={t('addElement.dimension.height')} suffix="m" value={memberParams.Height} min={0.01} onChange={(v) => setMemberParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.widthUnit', { unit: 'm' })} value={memberParams.Width} min={0.01} onChange={(v) => setMemberParams({ Width: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={memberParams.Height} min={0.01} onChange={(v) => setMemberParams({ Height: v })} />
             </div>
           )}
         </section>
@@ -478,7 +478,6 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
 
 interface NumberFieldProps {
   label: string;
-  suffix?: string;
   value: number;
   min: number;
   onChange: (v: number) => void;
@@ -592,17 +591,17 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
 
       <div className="grid grid-cols-2 gap-2">
         <NumberField
-          label={t('addElement.auto.snap')} suffix="m"
+          label={t('addElement.auto.snapUnit', { unit: 'm' })}
           value={params.SnapTolerance} min={0.001}
           onChange={(v) => setParams({ SnapTolerance: v })}
         />
         <NumberField
-          label={t('addElement.auto.minArea')} suffix="m²"
+          label={t('addElement.auto.minAreaUnit', { unit: 'm²' })}
           value={params.MinArea} min={0}
           onChange={(v) => setParams({ MinArea: v })}
         />
         <NumberField
-          label={t('addElement.auto.height')} suffix="m"
+          label={t('addElement.auto.heightUnit', { unit: 'm' })}
           value={params.Height} min={0.01}
           onChange={(v) => setParams({ Height: v })}
         />
@@ -722,13 +721,12 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
   );
 }
 
-function NumberField({ label, suffix, value, min, onChange }: NumberFieldProps) {
+function NumberField({ label, value, min, onChange }: NumberFieldProps) {
   const id = `add-elem-${label.toLowerCase()}`;
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
         {label}
-        {suffix && <span className="text-zinc-400 dark:text-zinc-600 ml-1">({suffix})</span>}
       </Label>
       <Input
         id={id}

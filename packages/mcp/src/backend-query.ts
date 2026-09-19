@@ -79,17 +79,16 @@ export { expandTypes };
 export const isProductType = isQueryableObjectType;
 
 /** The overlay's answer for an entity it created, in `EntityData` shape. */
-function createdEntityData(created: CreatedEntity, ref: EntityRef): EntityData {
+function createdEntityData(created: CreatedEntity, ref: EntityRef, store: IfcDataStore): EntityData {
+  const names = attributeNamesForSchema(created.ifcType, store.schemaVersion);
+  const objectType = authoredValue(created.attributes[names.indexOf('ObjectType')]);
   return {
     ref,
     globalId: created.globalId,
     name: created.name ?? '',
     type: created.ifcType,
     description: created.description ?? '',
-    // Slot 4 is `ObjectType` on an IfcObject but `ApplicableOccurrence` on an
-    // IfcTypeObject, so it is not read positionally. An `entity_set_attribute`
-    // override still lands, applied by the caller.
-    objectType: '',
+    objectType: typeof objectType === 'string' ? objectType : '',
   };
 }
 
@@ -154,7 +153,7 @@ export function createQueryAdapter(
     const pending = overlay();
     if (pending?.deleted.has(ref.expressId)) return null;
     const created = pending?.createdEntity(ref.expressId);
-    if (created) return withOverrides(createdEntityData(created, ref), pending, ref.expressId);
+    if (created) return createdEntityData(created, ref, store);
     if (!store.entityIndex.byId.has(ref.expressId)) return null;
     const node = new EntityNode(store, ref.expressId);
     const type = node.type;
@@ -313,7 +312,7 @@ export function createQueryAdapter(
         const key = created.ifcType.toUpperCase();
         if (wanted ? !wanted.has(key) : !isProductType(key)) continue;
         results.push(withOverrides(
-          createdEntityData(created, { modelId, expressId: created.expressId }),
+          createdEntityData(created, { modelId, expressId: created.expressId }, store),
           pending,
           created.expressId,
         ));

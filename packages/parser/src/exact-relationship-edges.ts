@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { RelationshipType, relationshipTypeName, resolvedTypeName } from '@ifc-lite/data';
+import { exactTypeName, RelationshipType, relationshipTypeName, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { normalizeIfcTypeName } from './ifc-schema.js';
 
@@ -37,7 +37,9 @@ export function extractExactRelationshipEdges(
     const seen = new Set<string>();
     const entityInfo = (id: number): ExactRelationshipEdge['entity'] => {
         const ref = store.entityIndex.byId.get(id);
-        const type = resolvedTypeName(store.entities, id)
+        const exactType = exactTypeName(store.entities, id);
+        const type = (exactType !== 'Unknown' ? exactType : undefined)
+            ?? resolvedTypeName(store.entities, id)
             ?? (ref ? normalizeIfcTypeName(ref.type) : undefined)
             ?? 'Unknown';
         const name = store.entities.getName(id);

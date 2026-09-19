@@ -40,6 +40,21 @@ describe('exact relationship edge display data (#4205)', () => {
     }]);
   });
 
+  it('preserves the declared endpoint subtype when the entity table groups it', () => {
+    const graph = new RelationshipGraphBuilder();
+    graph.addEdge(10, 20, RelationshipType.Aggregates, 30);
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(1, strings);
+    builder.add(10, 'IFCDOORSTANDARDCASE', '', 'Door', '', '', false, false);
+    const store = {
+      entities: builder.build(),
+      entityIndex: { byId: new Map(), byType: new Map() },
+      relationships: graph.build(),
+    } as unknown as IfcDataStore;
+
+    expect(extractExactRelationshipEdges(store, 20)[0]?.entity.type).toBe('IfcDoorStandardCase');
+  });
+
   it('keeps distinct legacy-server rows while suppressing compatibility aliases', () => {
     const graph = new RelationshipGraphBuilder();
     graph.addEdge(10, 20, RelationshipType.Aggregates, 0);

@@ -55,22 +55,40 @@ function effectiveCreatedEntity(
   const names = getAttributeNamesForSchema(entity.type, schemaVersion);
   const named = new Map(view.getAttributeMutationsForEntity(entity.expressId).map(({ name, value }) => [name, value]));
   const positional = view.getPositionalMutationsForEntity(entity.expressId) ?? new Map();
-  const apply = (key: string): void => {
-    if (key.startsWith('@')) {
-      const index = Number(key.slice(1));
-      if (positional.has(index)) attributes[index] = positional.get(index)!;
-      return;
-    }
-    const index = names.indexOf(key);
-    if (index >= 0 && named.has(key)) attributes[index] = named.get(key)!;
-  };
   for (const [name, value] of named) {
     const index = names.indexOf(name);
     if (index >= 0) attributes[index] = value;
   }
   for (const [index, value] of positional) attributes[index] = value;
-  for (const mutation of view.getMutationsForEntity(entity.expressId)) apply(mutation.attributeName ?? '');
   return { ...entity, attributes };
+}
+
+/** Apply the export's named-then-positional precedence to parsed root fields. */
+export function applyParsedEntityOverrides(
+  view: MutablePropertyView | null,
+  expressId: number,
+  type: string,
+  schemaVersion: string,
+  data: EntityData,
+): EntityData {
+  if (!view) return data;
+  const names = getAttributeNamesForSchema(type, schemaVersion);
+  const next = { ...data };
+  const apply = (name: string, value: unknown): void => {
+    const text = scalarAttr(value);
+    switch (name) {
+      case 'GlobalId': next.globalId = text; break;
+      case 'Name': next.name = text; break;
+      case 'Description': next.description = text; break;
+      case 'ObjectType': next.objectType = text; break;
+    }
+  };
+  for (const { name, value } of view.getAttributeMutationsForEntity(expressId)) apply(name, value);
+  for (const [index, value] of view.getPositionalMutationsForEntity(expressId) ?? []) {
+    const name = names[index];
+    if (name) apply(name, value);
+  }
+  return next;
 }
 
 /**

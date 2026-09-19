@@ -101,6 +101,10 @@ test('viewer exact relationship queries fold authored records and endpoint overr
   });
   assert.equal(query.relationships(building).relations?.some(edge =>
     edge.relationshipId === createdRelationship.expressId && edge.entity.name === 'Overlay wall'), true);
+  writes.setPositionalAttribute(createdWall, 2, "'Positional overlay wall'");
+  view.setAttribute(createdWall.expressId, 'Name', 'Later named overlay wall');
+  assert.equal(query.relationships(building).relations?.some(edge =>
+    edge.relationshipId === createdRelationship.expressId && edge.entity.name === 'Positional overlay wall'), true);
 
   const host = { modelId: 'default', expressId: 8 };
   assert.deepEqual(query.relationships(host).voids.map(entity => entity.id), [7]);

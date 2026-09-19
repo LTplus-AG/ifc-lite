@@ -87,7 +87,7 @@ import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createScheduleAdapter } from './headless-backend-schedule.js';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated, foldQueuedRelationshipData, supersededRelationshipIds } from './query-overlay-relations.js';
-import { overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
+import { applyParsedEntityOverrides, overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -276,14 +276,14 @@ export class HeadlessBackend implements BimBackend {
       const node = new EntityNode(store, ref.expressId);
       const type = node.type;
       if (!type || type === 'Unknown') return null;
-      return {
+      return applyParsedEntityOverrides(getMutationView(), ref.expressId, type, store.schemaVersion, {
         ref,
         globalId: node.globalId,
         name: node.name,
         type,
         description: node.description,
         objectType: node.objectType,
-      };
+      });
     }
 
     function getProperties(ref: EntityRef): PropertySetData[] {

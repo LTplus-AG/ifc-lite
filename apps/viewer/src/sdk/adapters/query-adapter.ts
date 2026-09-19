@@ -68,18 +68,6 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
         if (index >= 0) attributes[index] = value;
       }
       for (const [index, value] of view.getPositionalMutationsForEntity(ref.expressId) ?? []) attributes[index] = value;
-      for (const mutation of view.getMutationsForEntity(ref.expressId)) {
-        const key = mutation.attributeName ?? '';
-        if (key.startsWith('@')) {
-          const index = Number(key.slice(1));
-          const value = view.getPositionalMutationsForEntity(ref.expressId)?.get(index);
-          if (value !== undefined) attributes[index] = value;
-        } else {
-          const current = view.getAttributeMutationsForEntity(ref.expressId).find(attribute => attribute.name === key);
-          const index = names.indexOf(key);
-          if (current && index >= 0) attributes[index] = current.value;
-        }
-      }
       const text = (name: string): string => {
         const value = attributes[names.indexOf(name)];
         if (typeof value !== 'string' || value === '$' || value === '*') return '';

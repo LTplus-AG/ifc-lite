@@ -197,5 +197,32 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
       id: group.expressId,
       name: 'Renamed group',
     });
+
+    backend.mutate.setAttribute(group, 'Name', 'Later named edit');
+    expect(backend.query.relationships(member.ref).groups).toContainEqual({
+      id: group.expressId,
+      name: 'Renamed group',
+    });
+  });
+
+  it('hydrates parsed endpoint edits with export precedence', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [parent, child] = backend.query.entities({ types: ['IfcWall'] });
+    backend.store.addEntity('default', {
+      type: 'IfcRelAggregates',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzv'", null, null, null, `#${parent.ref.expressId}`, [`#${child.ref.expressId}`]],
+    });
+
+    backend.mutate.setAttribute(child.ref, 'Name', 'Named endpoint');
+    expect(backend.query.relationships(parent.ref).relations).toContainEqual(expect.objectContaining({
+      entity: expect.objectContaining({ id: child.ref.expressId, name: 'Named endpoint' }),
+    }));
+
+    backend.store.setPositionalAttribute(child.ref, 2, "'Positional endpoint'");
+    backend.mutate.setAttribute(child.ref, 'Name', 'Later named endpoint');
+    expect(backend.query.relationships(parent.ref).relations).toContainEqual(expect.objectContaining({
+      entity: expect.objectContaining({ id: child.ref.expressId, name: 'Positional endpoint' }),
+    }));
   });
 });

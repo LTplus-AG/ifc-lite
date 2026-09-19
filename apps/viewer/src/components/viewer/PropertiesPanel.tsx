@@ -68,6 +68,7 @@ import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
+import { relationshipsForSelection } from './properties/merge-relationship-data';
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
   name: string;
@@ -105,7 +106,6 @@ function mergePropertySetLists(base: DisplayPropertySet[], incoming: DisplayProp
 
   return merged;
 }
-
 export function PropertiesPanel() {
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
   // here and threaded to every PropertySetCard/QuantitySetCard render site
@@ -713,7 +713,7 @@ export function PropertiesPanel() {
     if (!selectedEntity || lookupExpressId === null) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    const rels = overlayAwareQuery.relationships({ modelId: selectedEntity.modelId, expressId: lookupExpressId });
+    const rels = relationshipsForSelection(overlayAwareQuery.relationships, selectedEntity, lookupExpressId);
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length
       + rels.connections.length + (rels.relations?.length ?? 0);
     return totalCount > 0 ? rels : null;

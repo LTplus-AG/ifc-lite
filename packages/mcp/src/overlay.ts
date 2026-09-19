@@ -168,16 +168,11 @@ class ViewOverlay implements PendingOverlay {
     const named = new Map(this.view.getAttributeMutationsForEntity(entity.expressId)
       .map(({ name, value }) => [name, value]));
     const positional = this.view.getPositionalMutationsForEntity(entity.expressId) ?? new Map();
-    for (const mutation of this.view.getMutationsForEntity(entity.expressId)) {
-      const key = mutation.attributeName ?? '';
-      if (key.startsWith('@')) {
-        const index = Number(key.slice(1));
-        if (positional.has(index)) attributes[index] = positional.get(index)!;
-      } else {
-        const index = names.indexOf(key);
-        if (index >= 0 && named.has(key)) attributes[index] = named.get(key)!;
-      }
+    for (const [name, value] of named) {
+      const index = names.indexOf(name);
+      if (index >= 0) attributes[index] = value;
     }
+    for (const [index, value] of positional) attributes[index] = value;
     return toCreatedEntity({ ...entity, attributes });
   }
 

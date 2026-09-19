@@ -188,9 +188,18 @@ fn test_as_float_with_typed_value() {
 fn ifc4x1_alignment_curve_preserves_its_exact_supported_name_4203() {
     let alignment_curve = IfcType::from_str("IFCALIGNMENTCURVE");
 
-    assert_eq!(alignment_curve, IfcType::IfcAlignmentCurve);
+    assert!(!matches!(alignment_curve, IfcType::Unknown(_)));
     assert_eq!(alignment_curve.as_str(), "IFCALIGNMENTCURVE");
+    assert_eq!(alignment_curve.name(), "IfcAlignmentCurve");
     assert!(alignment_curve.attribute_names().is_empty());
+
+    for non_entity in [
+        "IFCLENGTHMEASURE",
+        "IFCBINARY",
+        "IFCPROPERTYSETDEFINITIONSET",
+    ] {
+        assert!(matches!(IfcType::from_str(non_entity), IfcType::Unknown(_)));
+    }
 }
 
 /// `IFC_TYPES` is the catalog the enum itself cannot give you: `Unknown(u32)`

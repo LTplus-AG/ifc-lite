@@ -189,19 +189,17 @@ export function removeResolvedManualClashMember(
   groupId: string,
   clash: Clash,
 ): ManualClashGroup[] {
+  const current = resolved.find((item) => item.definition.id === groupId);
+  const index = current?.members.findIndex((member) => member.id === clash.id) ?? -1;
+  const persisted = index >= 0 ? current?.memberDefinitions[index] : undefined;
+  if (!persisted) return [...groups];
+  const exactMembers = new Set(resolved.flatMap((item) => item.memberDefinitions.filter((member, memberIndex) =>
+    member.occurrenceKey === manualClashOccurrenceKey(item.members[memberIndex]))));
   return groups.flatMap((group) => {
-    if (group.id !== groupId) return [group];
-    const current = resolved.find((item) => item.definition.id === groupId);
-    const index = current?.members.findIndex((member) => member.id === clash.id) ?? -1;
-    const persisted = index >= 0 ? current?.memberDefinitions[index] : undefined;
-    const usedFallback = persisted ? persisted.occurrenceKey !== manualClashOccurrenceKey(clash) : false;
-    const exactMembers = new Set(current?.memberDefinitions.filter((member, memberIndex) =>
-      member.occurrenceKey === manualClashOccurrenceKey(current.members[memberIndex])) ?? []);
-    const members = persisted
-      ? group.members.filter((member) => usedFallback
-        ? member.reviewKey !== persisted.reviewKey || exactMembers.has(member)
-        : member !== persisted && (member.reviewKey !== persisted.reviewKey || exactMembers.has(member)))
-      : group.members;
+    const members = group.members.filter((member) => {
+      if (member === persisted) return false;
+      return member.reviewKey !== persisted.reviewKey || exactMembers.has(member);
+    });
     return members.length > 0 ? [{ ...group, members }] : [];
   });
 }
@@ -214,7 +212,8 @@ export function manualClashMember(clash: Clash): ManualClashMember {
 export function manualClashOccurrenceKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>): string {
   const elements = [clash.a, clash.b]
     .map((element) => [element.model, element.key] as const)
-    .sort(([modelA, keyA], [modelB, keyB]) => modelA.localeCompare(modelB) || keyA.localeCompare(keyB));
+    .sort(([modelA, keyA], [modelB, keyB]) =>
+      modelA < modelB ? -1 : modelA > modelB ? 1 : keyA < keyB ? -1 : keyA > keyB ? 1 : 0);
   return JSON.stringify([clash.rule, ...elements]);
 }
 

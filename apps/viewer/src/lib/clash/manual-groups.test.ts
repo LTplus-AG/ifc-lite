@@ -11,6 +11,7 @@ import {
   defaultManualClashGroupName,
   loadManualClashGroups,
   manualClashMember,
+  manualClashOccurrenceKey,
   normalizeManualClashGroups,
   resolveManualClashGroups,
   removeResolvedManualClashMember,
@@ -145,6 +146,33 @@ describe('manual clash groups (#4921)', () => {
 
     assert.deepEqual(removeResolvedManualClashMember(definitions, resolved, 'manual-1', exact), [],
       'the stale claim must not make the deleted exact occurrence reappear');
+  });
+
+  it('removes a stale same-review claim from another group when ungrouping (#4921 review)', () => {
+    const stale = clash('stale');
+    const exact = clash('exact');
+    exact.a = { ...stale.a, model: 'exact-a' };
+    exact.b = { ...stale.b, model: 'exact-b' };
+    const definitions = [
+      { id: 'stale-group', name: 'Stale', members: [manualClashMember(stale)] },
+      { id: 'exact-group', name: 'Exact', members: [manualClashMember(exact)] },
+    ];
+    const resolved = resolveManualClashGroups(definitions, [exact]);
+
+    assert.deepEqual(removeResolvedManualClashMember(definitions, resolved, 'exact-group', exact), [],
+      'the hidden stale claim in another group cannot reclaim the ungrouped clash');
+  });
+
+  it('uses ordinal ordering for persisted occurrence identities (#4921 review)', () => {
+    const current = clash('ordinal');
+    current.a = { ...current.a, model: 'ä-model', key: 'ä-key' };
+    current.b = { ...current.b, model: 'z-model', key: 'z-key' };
+
+    assert.equal(manualClashOccurrenceKey(current), JSON.stringify([
+      current.rule,
+      ['z-model', 'z-key'],
+      ['ä-model', 'ä-key'],
+    ]));
   });
 
   it('repairs overlapping/corrupt storage into disjoint named groups', () => {

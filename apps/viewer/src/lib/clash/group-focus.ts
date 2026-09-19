@@ -5,6 +5,7 @@
 import { useViewerStore } from '@/store';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import type { ClashFocusMode } from '@/store/slices/clashSlice';
+import { toGlobalIdFromModels } from '@/store/globalId';
 
 interface SelectionRef {
   modelId: string;
@@ -34,8 +35,9 @@ export function focusClashGroup(
     for (const [side, element] of [['a', clash.a], ['b', clash.b]] as const) {
       const resolved = resolve(element);
       if (!resolved) continue;
-      globalIds.add(element.ref);
-      (side === 'a' ? aRefs : bRefs).add(element.ref);
+      const globalId = toGlobalIdFromModels(state.models, resolved.modelId, resolved.expressId);
+      globalIds.add(globalId);
+      (side === 'a' ? aRefs : bRefs).add(globalId);
       const selectionKey = `${resolved.modelId}:${resolved.expressId}`;
       if (selectionKeys.has(selectionKey)) continue;
       selectionKeys.add(selectionKey);

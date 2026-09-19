@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import { focusClashGroup } from './group-focus.js';
 
 function clash(id: string, a: number, b: number): Clash {
@@ -22,7 +22,7 @@ function clash(id: string, a: number, b: number): Clash {
 describe('manual clash group focus (#4921)', () => {
   beforeEach(() => {
     useViewerStore.getState().clearEntitySelection();
-    useViewerStore.setState({ cameraCallbacks: {}, lensAppliedColors: new Map() });
+    useViewerStore.setState({ cameraCallbacks: {}, lensAppliedColors: new Map(), models: new Map() });
   });
 
   it('selects every distinct object through its model ref and applies one focus operation', async () => {
@@ -33,14 +33,14 @@ describe('manual clash group focus (#4921)', () => {
 
     assert.deepEqual(
       focusClashGroup([clash('c1', 10, 20), clash('c2', 20, 30)], resolve, applyFocusMode, 'ghost'),
-      { selectedRefs: [10, 20, 30], aRefs: [10, 20], bRefs: [30] },
+      { selectedRefs: [110, 120, 130], aRefs: [110, 120], bRefs: [130] },
     );
 
     const state = useViewerStore.getState();
-    assert.deepEqual(state.selectedEntityIds, new Set([10, 20, 30]));
+    assert.deepEqual(state.selectedEntityIds, new Set([110, 120, 130]));
     assert.deepEqual(state.selectedEntitiesSet, new Set(['model:110', 'model:120', 'model:130']));
     assert.equal(applyFocusMode.mock.callCount(), 1);
-    assert.deepEqual(applyFocusMode.mock.calls[0].arguments, [[10, 20, 30], 'ghost']);
+    assert.deepEqual(applyFocusMode.mock.calls[0].arguments, [[110, 120, 130], 'ghost']);
     await new Promise((resolveFrame) => requestAnimationFrame(resolveFrame));
     assert.equal(frameSelection.mock.callCount(), 1);
   });
@@ -59,13 +59,23 @@ describe('manual clash group focus (#4921)', () => {
     const first = clash('first', 10, 20);
     const second = clash('second', 10, 30);
     second.a.model = 'other-model';
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 1_000 }],
+        ['other-model', { idOffset: 2_000 }],
+      ]) as ViewerState['models'],
+    });
     const applyFocusMode = mock.fn();
     const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
 
-    assert.ok(focusClashGroup([first, second], resolve, applyFocusMode, 'highlight'));
+    assert.deepEqual(focusClashGroup([first, second], resolve, applyFocusMode, 'highlight'), {
+      selectedRefs: [1_010, 1_020, 2_010, 1_030],
+      aRefs: [1_010, 2_010],
+      bRefs: [1_020, 1_030],
+    });
 
     const state = useViewerStore.getState();
-    assert.deepEqual(state.selectedEntityIds, new Set([10, 20, 30]));
+    assert.deepEqual(state.selectedEntityIds, new Set([1_010, 1_020, 2_010, 1_030]));
     assert.ok(state.selectedEntitiesSet.has('model:10'));
     assert.ok(state.selectedEntitiesSet.has('other-model:10'));
   });

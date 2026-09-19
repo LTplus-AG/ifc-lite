@@ -17,11 +17,29 @@ import {
   ownedMappedItem,
   ownedPropertyValues,
   representationMapDigest,
+  representationMapExtent,
   representationMapsOf,
   respecifyProperty,
   swapMappedItem,
 } from './successor-edits.mjs';
 import { classFamilyResolver } from '../../packages/diff/dist/class-families.js';
+
+/** Mirrors the engine's unexported `POSITION_EXTENT_RATIO`. */
+const DONOR_EXTENT_RATIO = 2;
+
+/** Per-axis extents within the same ratio the `position` successor stage accepts. */
+function sizesComparable(a, b) {
+  for (let axis = 0; axis < 3; axis++) {
+    const ea = a.max[axis] - a.min[axis];
+    const eb = b.max[axis] - b.min[axis];
+    if (!Number.isFinite(ea) || !Number.isFinite(eb)) return false;
+    const big = Math.max(ea, eb);
+    const small = Math.min(ea, eb);
+    if (big <= 0) continue;
+    if (small <= 0 || big / small > DONOR_EXTENT_RATIO) return false;
+  }
+  return true;
+}
 
 /**
  * Apply one #4955 role to element `id`, recording the answer-key entry and the
@@ -120,10 +138,12 @@ export function applySuccessorRole(ctx, role, id, geometryClass) {
  * searches — and whose geometry is structurally DIFFERENT from the element's
  * own (`representationMapDigest`): a copy of the same shape under another map
  * id would leave the world geometry hash unchanged, and the engine would
- * rightly pair that as `respecified`. Elements with no such donor are absent
- * from the map and are not eligible. Donors are chosen by position in a
- * sorted list, not by the PRNG, so this draws nothing from the stream the
- * re-GUID and permutation use.
+ * rightly pair that as `respecified`. It must also have comparable local
+ * extents: the `position` successor profile rejects a per-axis size ratio over
+ * 2, so a generator donor beyond that threshold is not a valid positive.
+ * Elements with no such donor are absent from the map and are not eligible.
+ * Donors are chosen by position in a sorted list, not by the PRNG, so this
+ * draws nothing from the stream the re-GUID and permutation use.
  */
 export function mapDonors(index, population) {
   const familyOf = classFamilyResolver();
@@ -135,6 +155,15 @@ export function mapDonors(index, population) {
       digests.set(mapId, digest);
     }
     return digest;
+  };
+  const extents = new Map();
+  const extentOf = (mapId) => {
+    let extent = extents.get(mapId);
+    if (extent === undefined) {
+      extent = representationMapExtent(index, mapId);
+      extents.set(mapId, extent);
+    }
+    return extent;
   };
   const usersByType = new Map();
   const usersByFamily = new Map();
@@ -158,9 +187,13 @@ export function mapDonors(index, population) {
     if (!owned) continue;
     const statement = index.byId.get(id);
     const own = digestOf(owned.mapId);
+    const ownExtent = extentOf(owned.mapId);
     const candidates = (pool) =>
       [...(pool ?? [])]
-        .filter((mapId) => mapId !== owned.mapId && digestOf(mapId) !== own)
+        .filter(
+          (mapId) =>
+            mapId !== owned.mapId && digestOf(mapId) !== own && sizesComparable(ownExtent, extentOf(mapId)),
+        )
         .sort((a, b) => a - b);
     let choices = candidates(usersByType.get(statement.type));
     if (choices.length === 0) choices = candidates(usersByFamily.get(familyOf(statement.type)));

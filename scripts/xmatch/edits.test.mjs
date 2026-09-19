@@ -23,6 +23,7 @@ import {
   representationMapDigest,
   respecifyProperty,
 } from './successor-edits.mjs';
+import { mapDonors } from './successor-mutations.mjs';
 import { parseStepFile, serializeStepFile, splitArgs } from './step-file.mjs';
 
 function stepFile(body) {
@@ -178,4 +179,31 @@ test('the map digest sees a copy as equal and a different shape as different', (
   const { index } = load();
   assert.equal(representationMapDigest(index, 50), representationMapDigest(index, 52));
   assert.notEqual(representationMapDigest(index, 50), representationMapDigest(index, 51));
+});
+
+test('a 4.8 m window cannot receive a 0.75 m donor map (#4989)', () => {
+  const file = parseStepFile(stepFile(`
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((4.8,0.,0.));
+#3=IFCCARTESIANPOINT((0.,1.,1.));
+#4=IFCPOLYLINE((#1,#2,#3));
+#10=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#4));
+#11=IFCREPRESENTATIONMAP($,#10);
+#21=IFCCARTESIANPOINT((0.,0.,0.));
+#22=IFCCARTESIANPOINT((0.75,0.,0.));
+#23=IFCCARTESIANPOINT((0.,1.,1.));
+#24=IFCPOLYLINE((#21,#22,#23));
+#30=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#24));
+#31=IFCREPRESENTATIONMAP($,#30);
+#101=IFCMAPPEDITEM(#11,$);
+#102=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#101));
+#103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));
+#100=IFCWINDOW('0aaaaaaaaaaaaaaaaaaaaa',$,'Wide window',$,$,$,#103,$,$,$,$);
+#201=IFCMAPPEDITEM(#31,$);
+#202=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#201));
+#203=IFCPRODUCTDEFINITIONSHAPE($,$,(#202));
+#200=IFCWINDOW('0bbbbbbbbbbbbbbbbbbbbb',$,'Narrow window',$,$,$,#203,$,$,$,$);
+`));
+
+  assert.deepEqual([...mapDonors(indexModel(file), [100, 200])], []);
 });

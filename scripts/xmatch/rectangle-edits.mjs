@@ -36,7 +36,7 @@ const PLACEMENT2D_LOCATION = 0;
 const PLACEMENT2D_REFDIR = 1;
 
 /** Coordinates of a point / direction statement. */
-function coordinates(statement) {
+export function coordinates(statement) {
   const inner = statement.args.trim().replace(/^\(/, '').replace(/\)$/, '');
   return splitArgs(inner).map((value) => Number.parseFloat(value));
 }

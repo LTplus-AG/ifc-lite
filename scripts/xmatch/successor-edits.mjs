@@ -9,7 +9,8 @@
  * locality rules are the same as there.
  */
 
-import { isExclusivelyOwnedBy, isLive, refAt, structuralRefCount, PRODUCT_REPRESENTATION } from './edits.mjs';
+import { isExclusivelyOwnedBy, isLive, reachable, refAt, structuralRefCount, PRODUCT_REPRESENTATION } from './edits.mjs';
+import { coordinates } from './rectangle-edits.mjs';
 import { quote, real, referencesIn, rewriteReferences, setArg, splitArgs, unquote } from './step-file.mjs';
 
 /** `IfcMappedItem` slots: (MappingSource, MappingTarget). */
@@ -129,6 +130,29 @@ export function representationMapDigest(index, mapId) {
     lines.push(`${statement.type}(${rewriteReferences(statement.args, map)})`);
   }
   return lines.join('\n');
+}
+
+/**
+ * Axis-aligned bounds in a representation map's local frame. A donor's own
+ * occurrence can have a different placement, but the map's extents do not;
+ * this is suitable for deciding whether two mapped shapes have comparable
+ * sizes without running the geometry kernel.
+ */
+export function representationMapExtent(index, mapId) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const id of reachable(index, [mapId])) {
+    const statement = index.byId.get(id);
+    if (statement?.type !== 'IFCCARTESIANPOINT') continue;
+    const point = coordinates(statement);
+    for (let axis = 0; axis < 3; axis++) {
+      const value = point[axis] ?? 0;
+      if (!Number.isFinite(value)) continue;
+      if (value < min[axis]) min[axis] = value;
+      if (value > max[axis]) max[axis] = value;
+    }
+  }
+  return { min, max };
 }
 
 /** Point the element's owned mapped item at `donorMapId`. */

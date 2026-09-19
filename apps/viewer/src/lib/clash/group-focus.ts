@@ -9,6 +9,10 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { activeSectionPlane } from '@/store/section-active';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import {
+  resolvePresentationColorMap,
+  resolvePresentationIds,
+} from '@/lib/presentation/resolvePresentationIds';
 import { CLASH_COLOR_A, CLASH_COLOR_B, type RGBA } from './clash-colors';
 
 interface SelectionRef {
@@ -274,12 +278,19 @@ export function focusClashGroup(
       typeViewMode: 'model',
     });
   }
+  // Renderer presentation channels match mesh ids. A geometry-less aggregate
+  // therefore has to become its renderable parts through the same canonical
+  // resolver used by framing, SDK visibility, and the other isolate paths.
+  const presentationGlobalIds = resolvePresentationIds(
+    state.cameraCallbacks.resolveHighlightIds,
+    [...globalIds],
+  );
   state.clearEntitySelection();
   state.clearClashFocus();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-  state.setSelectedEntityIds([...globalIds]);
+  state.setSelectedEntityIds(presentationGlobalIds);
   state.addEntitiesToSelection(refs);
-  applyFocusMode([...globalIds], mode);
+  applyFocusMode(presentationGlobalIds, mode);
   const frameReady = new Promise<FramedCamera | null>((resolve) => {
     scheduleClashFrame(waitForLevelDisplayReset, waitForPresentationReset, resolve);
   });
@@ -315,14 +326,18 @@ export function focusClashGroup(
     }
   }
   addLoadedGuidOccurrenceColors(presentationState, colorByGuid, clashColors);
+  const presentationClashColors = resolvePresentationColorMap(
+    presentationState.cameraCallbacks.resolveHighlightIds,
+    clashColors,
+  );
   const renderedARefs = [...a];
   const renderedBRefs: SelectionRef[] = [];
   for (const ref of b) {
     const globalId = toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId);
-    (clashColors.get(globalId) === CLASH_COLOR_A ? renderedARefs : renderedBRefs).push(ref);
+    (presentationClashColors.get(globalId) === CLASH_COLOR_A ? renderedARefs : renderedBRefs).push(ref);
   }
-  state.setClashHighlightColors(clashColors);
-  state.setPendingColorUpdates(clashColors);
+  state.setClashHighlightColors(presentationClashColors);
+  state.setPendingColorUpdates(presentationClashColors);
   const focusedState = useViewerStore.getState();
   return {
     frameReady,

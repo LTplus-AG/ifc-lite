@@ -85,6 +85,30 @@ describe('manual clash group focus (#4921)', () => {
     assert.equal(frameSelection.mock.callCount(), 1);
   });
 
+  it('focuses and colors renderable parts of a geometry-less aggregate', () => {
+    const applyFocusMode = mock.fn();
+    useViewerStore.setState({
+      cameraCallbacks: {
+        resolveHighlightIds: (ids) => ids.flatMap((id) => id === 10 ? [11, 12] : [id]),
+      },
+    });
+
+    const focused = focusClashGroup(
+      [clash('assembly', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      applyFocusMode,
+      'isolate',
+    );
+    assert.ok(focused);
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([11, 12, 20, 10]),
+      'renderer selection includes the assembly parts while retaining the raw ids');
+    assert.deepEqual(applyFocusMode.mock.calls[0].arguments, [[11, 12, 20, 10], 'isolate'],
+      'isolation must not whitelist only the geometry-less assembly id');
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [11, CLASH_COLOR_A], [12, CLASH_COLOR_A], [10, CLASH_COLOR_A], [20, CLASH_COLOR_B],
+    ]), 'the same presentation expansion paints every renderable assembly part');
+  });
+
   it('reports when no objects resolve so callers cannot capture an unrelated selection', () => {
     useViewerStore.getState().setSelectedEntityIds([99]);
     const applyFocusMode = mock.fn();

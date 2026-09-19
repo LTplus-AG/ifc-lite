@@ -27,6 +27,13 @@ type CaptureMessage =
   | { kind: 'raw'; text: string }
   | null;
 
+function captureMessageParams(message: Extract<CaptureMessage, { kind: 'translated' }>, locale: string): TranslationParameters | undefined {
+  if (message.key !== 'appearance.capture.surfaceTooLarge' || typeof message.params?.count !== 'number') {
+    return message.params;
+  }
+  return { ...message.params, count: formatLocaleNumber(locale, message.params.count) };
+}
+
 export function AppearanceCapturePanel() {
   const { t, locale, revision } = useTranslation();
   const models = useViewerStore(state => state.models), selected = useViewerStore(state => state.selectedEntityId);
@@ -163,6 +170,6 @@ export function AppearanceCapturePanel() {
     </fieldset>
     {room && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.leaveRoomNotice')}</p>}
     {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setTranslatedMessage('appearance.capture.cancelled'); }}>{t('appearance.capture.cancelCreation')}</Button>}
-    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message.kind === 'translated' ? t(message.key, message.params) : message.text}</p>}
+    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message.kind === 'translated' ? t(message.key, captureMessageParams(message, locale)) : message.text}</p>}
   </section>;
 }

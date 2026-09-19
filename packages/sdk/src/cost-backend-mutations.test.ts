@@ -246,4 +246,26 @@ describe('bim.cost observes pending loaded-model mutations (#4857)', () => {
     expect(refused).toHaveLength(1);
     expect(refused[0].ref).toEqual({ modelId: 'm', expressId: 20 });
   });
+
+  // #4857 PR A — CostMutationOverlay.created(): a NEWLY CREATED entity (not
+  // just an edit to one the source already had) is visible to bim.cost
+  // before the model is ever exported. Deliberately goes through the
+  // overlay's own `createEntity` primitive rather than any `@ifc-lite/create`
+  // builder, so this is a witness for cost-overlay.ts / cost-reader.ts /
+  // cost-backend.ts's `created()` wiring specifically — on main (before that
+  // wiring), a freshly created IfcCostItem is invisible to `bim.cost.data()`.
+  it('an overlay-CREATED IfcCostItem is visible to bim.cost before export, and matches the exported graph', async () => {
+    let createdId = -1;
+    const { cost, exportedGraph } = await session((view) => {
+      // Seed the allocator past every id the fixture already uses (matches
+      // what StoreEditor.addEntity does internally for a real caller).
+      view.setExpressIdWatermark(100);
+      createdId = view.createEntity('IfcCostItem', [
+        '0newitem000000000000001', null, 'Freshly authored', null, null, null, '.NOTDEFINED.', null, null,
+      ]).expressId;
+    });
+    const pending = cost.data().CostItems.find(item => item.ref.expressId === createdId);
+    expect(pending?.Name).toBe('Freshly authored');
+    expect(new Set(cost.data().CostItems)).toEqual(new Set(await exportedGraph().then(g => g.CostItems)));
+  });
 });

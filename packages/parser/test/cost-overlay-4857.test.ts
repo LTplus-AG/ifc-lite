@@ -86,6 +86,7 @@ function overlay(parts: Partial<CostMutationOverlay>): CostMutationOverlay {
     isDeleted: () => false,
     retypes: () => new Map(),
     effectiveRecord: (_id, text) => ({ text, notWritten: [] }),
+    created: () => [],
     ...parts,
   };
 }
@@ -217,11 +218,41 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
       .toEqual([expect.objectContaining({ expressId: 20, Severity: 'warning' })]);
   });
 
+  it('lists an overlay-created entity once when its effective class is also retyped', () => {
+    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
+      overlay: overlay({
+        retypes: () => new Map([[60, 'IfcCostItem']]),
+        created: () => [{
+          expressId: 60,
+          type: 'IFCCOSTITEM',
+          text: "#60=IFCCOSTITEM('created-gid-0000000001',$,'Created item',$,$,$,.NOTDEFINED.,$,$);",
+        }],
+      }),
+    });
+    expect(graph.CostItems.filter(item => item.expressId === 60)).toHaveLength(1);
+  });
+
   it('an overlay that touches nothing returns the same graph as no overlay at all', () => {
     const plain = extractCostOnDemand(buildStoreFromStep(FIXTURE));
     const overlaid = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
       overlay: overlay({}),
     });
     expect(JSON.stringify(overlaid)).toBe(JSON.stringify(plain));
+  });
+
+  // #4857 PR A review: an older/third-party overlay has no created() member.
+  it('an overlay missing created() at runtime (an older/third-party implementation) degrades to no created entities, not a throw', () => {
+    const legacyOverlay: CostMutationOverlay = {
+      isDeleted: () => false,
+      retypes: () => new Map(),
+      effectiveRecord: (_id: number, text: string) => ({ text, notWritten: [] }),
+      // `created` deliberately absent.
+    };
+    expect(() => extractCostOnDemand(buildStoreFromStep(FIXTURE), { overlay: legacyOverlay })).not.toThrow();
+    const withLegacyOverlay = extractCostOnDemand(buildStoreFromStep(FIXTURE), { overlay: legacyOverlay });
+    const withNoOverlay = extractCostOnDemand(buildStoreFromStep(FIXTURE));
+    // No overlay-created entities to add, and nothing else touched — reads
+    // exactly like the unoverlaid graph.
+    expect(JSON.stringify(withLegacyOverlay)).toBe(JSON.stringify(withNoOverlay));
   });
 });

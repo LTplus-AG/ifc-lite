@@ -108,6 +108,15 @@ function createMockBackend() {
     addRoof: vi.fn((modelId: string) => ({ modelId, expressId: 106 })),
     addPlate: vi.fn((modelId: string) => ({ modelId, expressId: 107 })),
     addMember: vi.fn((modelId: string) => ({ modelId, expressId: 108 })),
+    addCostSchedule: vi.fn((modelId: string) => ({ modelId, expressId: 200 })),
+    addCostItem: vi.fn((modelId: string) => ({ modelId, expressId: 201 })),
+    addCostValue: vi.fn((modelId: string) => ({ modelId, expressId: 202 })),
+    addCostQuantity: vi.fn((modelId: string) => ({ modelId, expressId: 203 })),
+    nestCostItems: vi.fn((modelId: string) => ({ modelId, expressId: 204 })),
+    assignCostItemsToSchedule: vi.fn((modelId: string) => ({ modelId, expressId: 205 })),
+    assignToCostItem: vi.fn((modelId: string) => ({ modelId, expressId: 206 })),
+    setCostItemValues: vi.fn(),
+    removeCostEntity: vi.fn(),
   };
   const spatial = {
     queryBounds: vi.fn((_modelId: string, _bounds: AABB): EntityRef[] => []),

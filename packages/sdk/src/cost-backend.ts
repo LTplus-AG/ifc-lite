@@ -4,10 +4,10 @@
 
 import {
   evaluateCostItem, evaluateCostValue, extractCostOnDemand,
-  type CostAppliedValue, type CostDiagnostic, type CostEvaluationResult,
+  type CostAppliedValue, type CostCreatedRecord, type CostDiagnostic, type CostEvaluationResult,
   type CostGraphExtraction, type CostMutationOverlay, type CostRelationshipInfo, type IfcDataStore,
 } from '@ifc-lite/parser';
-import { effectiveSourceRecord } from '@ifc-lite/export';
+import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EntityRef } from './types.js';
 import type {
@@ -38,6 +38,18 @@ function costOverlay(view: MutablePropertyView, store: IfcDataStore): CostMutati
     isDeleted: id => view.isDeleted(id),
     retypes: () => new Map([...view.getTypeMutations()].map(([id, mutation]) => [id, mutation.newType])),
     effectiveRecord: (id, text, type) => effectiveSourceRecord(view, id, text, type, store.schemaVersion),
+    created: () => {
+      if (typeof view.getNewEntities !== 'function') return [];
+      return view.getNewEntities().map((entity): CostCreatedRecord => {
+        try {
+          const record = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
+          if (!record) return { expressId: entity.expressId, error: 'no longer present in the overlay' };
+          return { expressId: entity.expressId, type: record.type, text: record.text };
+        } catch (err) {
+          return { expressId: entity.expressId, error: err instanceof Error ? err.message : String(err) };
+        }
+      });
+    },
   };
 }
 export type CostModelResolver = (modelId?: string) => ResolvedCostModel;

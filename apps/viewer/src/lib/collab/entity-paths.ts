@@ -23,6 +23,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
+import { portableEntityKey } from './portable-reference-entities';
 
 // ── model slot per store (#4444) ─────────────────────────────────────────────
 
@@ -69,9 +70,9 @@ function entityMaps(store: IfcDataStore): EntityMaps {
     // large models, so extraction returned no GUID and those products were absent
     // from both maps — breaking geometry seeding AND inbound/outbound edit sync
     // for them. The table carries their GlobalId reliably (see step-seed.ts).
-    const guid = store.entities?.getGlobalId?.(expressId);
-    if (!guid) continue;
-    const path = pathForGuid(store, guid);
+    const key = portableEntityKey(store, expressId);
+    if (!key) continue;
+    const path = pathForGuid(store, key);
     toPath.set(expressId, path);
     toExpressId.set(path, expressId);
   }
@@ -88,8 +89,8 @@ export function pathForEntity(store: IfcDataStore, entityId: number): string | n
   // which dropped the vast majority of meshes at seed time. The entity *table*
   // still carries their GlobalId, so fall back to it. (No-op for IFCX stores,
   // whose maps are pre-registered via `registerEntityMaps`.)
-  const guid = store.entities?.getGlobalId?.(entityId);
-  return guid ? pathForGuid(store, guid) : null;
+  const key = portableEntityKey(store, entityId);
+  return key ? pathForGuid(store, key) : null;
 }
 /** Inbound counterpart to `pathForEntity` — used by the apply observer. */
 export function entityForPath(store: IfcDataStore, path: string): number | null {

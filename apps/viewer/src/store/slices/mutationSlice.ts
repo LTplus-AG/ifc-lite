@@ -48,6 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
+import { createCostUndoMutations, mirrorCreateEntityRedo, type CostUndoMethods } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import type { TypeViewMode } from '../constants.js';
@@ -197,7 +198,7 @@ export interface GeorefMutationData {
   mapConversion?: Partial<MapConversion>;
 }
 
-export interface MutationSlice {
+export interface MutationSlice extends CostUndoMethods {
   // State
   /** Mutation views per model */
   mutationViews: Map<string, MutablePropertyView>;
@@ -645,12 +646,8 @@ export interface MutationSlice {
     storeyExpressId: number,
     params: MemberInStoreParams
   ) => { expressId: number } | { error: string };
-  /**
-   * Auto-generate IfcSpace volumes for every enclosed area formed by
-   * the storey's walls (existing + overlay). When `dryRun: true` the
-   * detection runs but no IfcSpace is emitted — useful for live UI
-   * previews.
-   */
+  /** Auto-generate IfcSpace volumes for every enclosed area formed by the storey's walls
+   *  (existing + overlay). `dryRun: true` detects without emitting — for live UI previews. */
   generateSpacesFromWalls: (
     modelId: string,
     storeyExpressId: number,
@@ -1103,6 +1100,8 @@ export const createMutationSlice: StateCreator<
   dirtyModels: new Set(),
   mutationVersion: 0,
   georefMutations: new Map(),
+
+  ...createCostUndoMutations(set),
 
   // Georeferencing Mutations
   setGeorefField: (modelId, entity, field, value, oldValue) => {
@@ -2795,6 +2794,7 @@ export const createMutationSlice: StateCreator<
       // The view's `deleteEntity` returns false if it's already gone, which
       // is fine for redo to re-establish.
       view.deleteEntity(mutation.entityId);
+      get().mirrorEntityRemove(modelId, mutation.entityId);
       // Also remove the created mesh from the scene + geometryResult (#4925).
       stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
     } else if (mutation.type === 'DELETE_ENTITY') {
@@ -2803,7 +2803,7 @@ export const createMutationSlice: StateCreator<
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
-        view.restoreNewEntity(stashed);
+        view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed);
       } else {
         view.restoreFromTombstone(mutation.entityId);
       }
@@ -2961,12 +2961,12 @@ export const createMutationSlice: StateCreator<
         );
       }
     } else if (mutation.type === 'CREATE_ENTITY') {
-      // Redo of a create: replay from the stashed NewEntity. Symmetrical to
-      // DELETE_ENTITY's undo — same map, same key.
+      // Redo of a create: replay from the stashed NewEntity, symmetrical to DELETE_ENTITY's undo.
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
         view.restoreNewEntity(stashed);
+        mirrorCreateEntityRedo(get(), modelId, stashed);
       } else {
         // Source-buffer entities have no stash; the editor's deleteEntity
         // call simply re-tombstoned them — which is exactly what we want

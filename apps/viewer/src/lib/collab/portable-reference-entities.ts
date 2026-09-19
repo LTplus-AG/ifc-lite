@@ -97,6 +97,20 @@ export function isUnambiguousReferenceAttribute(
   return attribute ? onlyEntityChoices(registry, attribute.type) : false;
 }
 
+/** Resolve parsed STEP references without mistaking ordinary numeric measures for entity ids. */
+export function portableReferenceId(
+  store: IfcDataStore,
+  entityType: string,
+  index: number,
+  attributeName: string,
+  value: unknown,
+): number | null {
+  return isUnambiguousReferenceAttribute(store, entityType, index)
+    || plainAttributeName(attributeName) === 'AppliedValue'
+    ? explicitReferenceId(value)
+    : localReferenceId(value);
+}
+
 function referencedIds(store: IfcDataStore, entityId: number, inspectAll: boolean): number[] {
   const entity = store.getEntity(entityId);
   if (!entity) return [];
@@ -105,9 +119,8 @@ function referencedIds(store: IfcDataStore, entityId: number, inspectAll: boolea
   entity.attributes.forEach((value, index) => {
     const name = names[index];
     if (!name) return;
-    const referenceId = isUnambiguousReferenceAttribute(store, entity.type, index)
-      ? explicitReferenceId
-      : localReferenceId;
+    const referenceId = (candidate: unknown) =>
+      portableReferenceId(store, entity.type, index, name, candidate);
     if ((inspectAll || isPortableReferenceList(name)) && Array.isArray(value)) {
       for (const member of value) {
         const id = referenceId(member);
@@ -156,7 +169,15 @@ export function portableEntityKey(store: IfcDataStore, entityId: number): string
   const guid = store.entities?.getGlobalId?.(entityId);
   if (guid) return guid;
   if (!store.getEntity || !store.entityIndex?.byType) return null;
-  return portableReferenceEntityIds(store).has(entityId) ? `ifc-lite-ref-${entityId}` : null;
+  if (!portableReferenceEntityIds(store).has(entityId)) return null;
+  const base = `ifc-lite-ref-${entityId}`;
+  let key = base;
+  let suffix = 0;
+  while (store.entities.getExpressIdByGlobalId(key) >= 0) {
+    suffix += 1;
+    key = `${base}-${suffix}`;
+  }
+  return key;
 }
 
 export function portableEntityPath(store: IfcDataStore, entityId: number, slot: ModelSlotRef): string | null {

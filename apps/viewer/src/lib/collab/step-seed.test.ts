@@ -322,4 +322,46 @@ describe('collab step-seed portable cost references (#4857 review)', () => {
     assert.deepEqual(complex.attributes?.['bsi::ifc::prop::HasQuantities'], ['/ifc-lite-ref-3']);
     assert.ok(entities.some(entity => entity.guid === 'ifc-lite-ref-3'));
   });
+
+  it('preserves a numeric parsed reference in the mixed AppliedValue SELECT (#4857 review)', async () => {
+    const step = [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('applied.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;', 'DATA;',
+      "#1=IFCCOSTITEM('0item00000000000000000',$,'Item',$,$,$,.NOTDEFINED.,(#2),$);",
+      "#2=IFCCOSTVALUE('Rate',$,#3,$,$,$,$,$,$,$);",
+      '#3=IFCMEASUREWITHUNIT(IFCREAL(1.),#4);',
+      '#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const bytes = new TextEncoder().encode(step);
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+    const entities = Array.from(buildStepSeedSource(store).entities);
+    const value = entities.find(entity => entity.guid === 'ifc-lite-ref-2');
+
+    assert.equal(value?.attributes?.['bsi::ifc::prop::AppliedValue'], '/ifc-lite-ref-3');
+    assert.ok(entities.some(entity => entity.guid === 'ifc-lite-ref-3'));
+  });
+
+  it('disambiguates a portable key from a root GlobalId with the same spelling (#4857 review)', async () => {
+    const step = [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('collision.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;', 'DATA;',
+      "#1=IFCCOSTITEM('0item00000000000000000',$,'Item',$,$,$,.NOTDEFINED.,(#3),$);",
+      "#2=IFCPROJECT('ifc-lite-ref-3',$,'Project',$,$,$,$,$,$);",
+      "#3=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),$,$,$,$,$,$,$);",
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const bytes = new TextEncoder().encode(step);
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+    const entities = Array.from(buildStepSeedSource(store).entities);
+
+    assert.ok(entities.some(entity => entity.guid === 'ifc-lite-ref-3'));
+    assert.ok(entities.some(entity => entity.guid === 'ifc-lite-ref-3-1'));
+    assert.deepEqual(
+      entities.find(entity => entity.guid === '0item00000000000000000')?.attributes?.['bsi::ifc::prop::CostValues'],
+      ['/ifc-lite-ref-3-1'],
+    );
+  });
 });

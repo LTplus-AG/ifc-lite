@@ -30,15 +30,13 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { ModelSlotRef, StepSeedEntity, StepSeedSource } from '@ifc-lite/collab';
 import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
 import {
-  explicitReferenceId,
-  isUnambiguousReferenceAttribute,
   isPortableReferenceList,
   isPortableReferenceRootType,
   isPortableReferenceScalar,
-  localReferenceId,
   portableEntityKey,
   portableEntityPath,
   portableReferenceEntityIds,
+  portableReferenceId,
 } from './portable-reference-entities';
 
 const IFC_CLASS_URI = (code: string) =>
@@ -166,9 +164,8 @@ export function buildStepSeedSource(
         sourceEntity.attributes.forEach((value, index) => {
           const name = names[index];
           if (!name || value === undefined) return;
-          const referenceId = isUnambiguousReferenceAttribute(store, sourceEntity.type, index)
-            ? explicitReferenceId
-            : localReferenceId;
+          const referenceId = (candidate: unknown) =>
+            portableReferenceId(store, sourceEntity.type, index, name, candidate);
           let wireValue: unknown = value;
           if ((includeOrdinary || isPortableReferenceList(name)) && Array.isArray(value)) {
             const paths: unknown[] = [];

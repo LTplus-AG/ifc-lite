@@ -29,6 +29,7 @@ export const MODEL_FILE_EXTENSIONS = [
   '.e57',
   '.pts',
   '.xyz',
+  '.xml',
 ] as const;
 
 /**

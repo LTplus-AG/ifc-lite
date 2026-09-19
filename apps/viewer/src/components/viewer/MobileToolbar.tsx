@@ -84,7 +84,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb')
+      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb') || f.name.endsWith('.xml')
     );
     if (supportedFiles.length === 0) return;
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
@@ -103,7 +103,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb')
+      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb') || f.name.endsWith('.xml')
     );
     if (supportedFiles.length === 0) return;
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
@@ -154,7 +154,7 @@ export function MobileToolbar() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ifc,.ifcx,.ifczip,.glb"
+        accept=".ifc,.ifcx,.ifczip,.glb,.xml"
         multiple
         onChange={handleFileSelect}
         className="hidden"
@@ -162,7 +162,7 @@ export function MobileToolbar() {
       <input
         ref={addModelInputRef}
         type="file"
-        accept=".ifc,.ifcx,.ifczip,.glb"
+        accept=".ifc,.ifcx,.ifczip,.glb,.xml"
         multiple
         onChange={handleAddModelSelect}
         className="hidden"

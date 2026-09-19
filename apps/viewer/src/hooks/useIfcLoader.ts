@@ -64,7 +64,9 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 import { useIfcServer } from './useIfcServer.js';
 
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
-import { getMaxExpressId, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
+import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
+import { isLandXmlFileName } from './ingest/landXmlIngest.js';
+import { loadLandXmlModel } from './ingest/landXmlLoad.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import {
@@ -153,7 +155,6 @@ function getGeometryStreamWatchdogMs(
     fileSizeMB,
   });
 }
-
 
 /**
  * Upper bound on the "let the last batch paint" frame wait at stream complete.
@@ -638,7 +639,7 @@ export function useIfcLoader() {
             collapsed: target.collapsed ?? (useViewerStore.getState().models.size > 0),
             schemaVersion,
             loadedAt: target.loadedAt ?? Date.now(),
-            fileSize: buffer.byteLength,
+            fileSize: loadedBufferByteLength,
             sourceFile: file,
             sourceHandle: options?.sourceHandle,
             idOffset,
@@ -686,16 +687,6 @@ export function useIfcLoader() {
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
       };
-      const getSchemaVersion = (dataStore: IfcDataStore | null): 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5' => {
-        if (!dataStore) return 'IFC4';
-        if (dataStore.schemaVersion === 'IFC4X3') return 'IFC4X3';
-        if (dataStore.schemaVersion === 'IFC4') return 'IFC4';
-        if (dataStore.schemaVersion === 'IFC5') return 'IFC5';
-        return 'IFC2X3';
-      };
-
-
-
       // Detect point clouds from a small head slice FIRST. Point clouds
       // (E57/LAS/LAZ/PLY/PCD/PTS/XYZ) stream from the Blob in bounded windows
       // and must NOT be read whole into a (Shared)ArrayBuffer — a multi-GB
@@ -705,6 +696,7 @@ export function useIfcLoader() {
       // IFCX actually need the full buffer.
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       const pointCloudFormat = detectPointCloudFormat(file.name, headBuf);
+      const landXmlFile = isLandXmlFileName(file.name);
 
       // The browser path streams files ≥ STREAM_SAB_THRESHOLD directly into a
       // SharedArrayBuffer, avoiding a doubled-peak ArrayBuffer + SAB allocation
@@ -738,7 +730,7 @@ export function useIfcLoader() {
       // upload can still take the server fast-path; the local WASM path
       // consumes the now-unwrapped `buffer`.
       let textureBitmaps: TextureBitmapStore | null = null;
-      if (!pointCloudFormat) {
+      if (!pointCloudFormat && !landXmlFile) {
         const zipContents = await unwrapIfcZipWithResources(buffer);
         buffer = zipContents.model;
         // Retain original archive paths/encoded bytes alongside shared bitmaps.
@@ -746,14 +738,22 @@ export function useIfcLoader() {
         textureBitmaps = await appearanceLoad.decode(zipContents);
       }
 
-      const sourceKeyFingerprint = computeSourceFingerprint(buffer);
+      const loadedBufferByteLength = buffer.byteLength, sourceKeyFingerprint = computeSourceFingerprint(buffer);
       const modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
       const placementIdentity = pointCloudFormat ? undefined : await placementSourceIdentity(file, () => loadSessionRef.current !== currentSession);
       if (loadSessionRef.current !== currentSession) return;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity });
-      // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
-      // cloud format was already resolved from the head slice above.
-      const format = pointCloudFormat ?? detectFormat(buffer);
+      // Resolve model formats from the full buffer; point clouds were resolved from the head slice above.
+      const format = landXmlFile ? 'landxml' : pointCloudFormat ?? detectFormat(buffer);
+
+      if (format === 'landxml') {
+        await loadLandXmlModel({ buffer, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(),
+          isCurrent: () => loadSessionRef.current === currentSession, setProgress, setGeometryStreamingActive, setLoading,
+          onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
+          onError: (message) => { updateModel(modelId, { loadState: 'error', loadError: message }); setError(`LandXML parsing failed: ${message}`); },
+        });
+        return;
+      }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
@@ -1161,7 +1161,7 @@ export function useIfcLoader() {
             }
             if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
-              await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
+              await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), {
                 loadState: 'complete', cacheState: 'hit',
                 loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
               });
@@ -1235,7 +1235,7 @@ export function useIfcLoader() {
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
-          await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
+          await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
           // Geometry attribution (#2388), server row: `is_resource_retry` and
           // ONLY that. The retry re-enters `loadFile`, so a first attempt that
@@ -1923,13 +1923,13 @@ export function useIfcLoader() {
                       ? { instancedGeometryVolumes: allInstancedGeometryVolumes }
                       : {}),
                   };
-                  await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
+                  await finalizeModel(dataStore, federatedGeometry, getViewerSchemaVersion(dataStore), {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards);
                   return;
                 }
 
-                await finalizeModel(dataStore, useViewerStore.getState().geometryResult, getSchemaVersion(dataStore), {
+                await finalizeModel(dataStore, useViewerStore.getState().geometryResult, getViewerSchemaVersion(dataStore), {
                   loadState: 'complete',
                   // Only show "writing" when this file will actually be cached
                   // under the current plan (respects the size bands + kill switch).

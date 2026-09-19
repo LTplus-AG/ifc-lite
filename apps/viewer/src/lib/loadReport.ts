@@ -37,7 +37,7 @@ export interface ModelLoadReportFields {
   /** Format resolved for this load ('ifc' | 'glb' | 'ifcx' | a point-cloud format). */
   loadFormat?: string;
   /** Pipeline that produced this load; mirrors `captureModelLoaded`'s `load_path`. */
-  loadPath?: 'wasm' | 'cache' | 'server' | 'point-cloud';
+  loadPath?: 'wasm' | 'cache' | 'server' | 'point-cloud' | 'landxml';
   /** Tessellation tier actually used; `undefined` = engine default, or not
    *  applicable (the server path always runs full fidelity). */
   tessellationTier?: TessellationQuality;

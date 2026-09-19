@@ -107,14 +107,23 @@ const DEFAULT_PLAN = {
  * Mutate `text` into a head revision plus the answer key.
  *
  * @param text      source STEP text
- * @param options   `{ seed, meshedIds, unitScale, plan, sourcePath }`
+ * @param options   `{ seed, meshedIds, geometryAabbs, unitScale, plan, sourcePath }`
  *                  `meshedIds` is the set of express ids the geometry pass
  *                  produced a mesh for — the population the viewer's compare
  *                  adapter fingerprints, and therefore the only population a
- *                  content match can be scored over.
+ *                  content match can be scored over. `geometryAabbs` are the
+ *                  canonical mesh-pass bounds used to select mapped donors.
  */
 export function mutateModel(text, options) {
-  const { seed, meshedIds, population: keyed, unitScale = 1, sourcePath = '' } = options;
+  const {
+    seed,
+    meshedIds,
+    population: keyed,
+    geometryAabbs = new Map(),
+    excludedDonors = new Set(),
+    unitScale = 1,
+    sourcePath = '',
+  } = options;
   const plan = { ...DEFAULT_PLAN, ...(options.plan ?? {}) };
   const random = rng(seed);
   const file = parseStepFile(text);
@@ -180,7 +189,7 @@ export function mutateModel(text, options) {
   // before `reshaped`, whose eligible set is a superset of this one.
   assign('thickened', plan.thickened, selfContained(ownsRectangle));
   assign('reshaped', plan.reshaped, selfContained((id) => exclusiveSolids(index, id).length > 0));
-  const donors = mapDonors(index, population);
+  const donors = mapDonors(index, population, geometryAabbs, excludedDonors);
   assign('swapped', plan.swapped, selfContained((id) => !spatial(id) && donors.has(id)));
   // The nearby control RIDES ON the deleted population rather than adding to
   // it. `deleted` is drawn in two steps that total `plan.deleted` — rectangle

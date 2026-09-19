@@ -653,9 +653,9 @@ Passing `--identity-in` and `--identity-out` together rewrites the map with the 
 !!! tip "CLI diff vs the diff engine"
     Plain `ifc-lite diff` answers "what changed at the type and identity level"
     quickly and without meshing. `--by-content` adds per-entity classification
-    and content matching, still without geometry. For data-vs-geometry
-    attribution, drive `@ifc-lite/diff` directly (or use the viewer's Compare
-    mode below), supplying the data and geometry hashes.
+    and content matching, still without geometry. Add `--geometry` for
+    data-vs-geometry attribution; it runs the same wasm mesh pass as the
+    viewer and supplies the data and geometry hashes to the engine.
 
 ## MCP usage
 

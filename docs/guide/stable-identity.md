@@ -43,8 +43,14 @@ Every element the key pass left as an add plus a delete goes through [content ma
 - **`moved`** / **`reshaped`** — same data, different geometry.
 - **`ambiguous`** / **`duplicated`** / **`deduplicated`** — the engine could not decide and says so; the elements stay listed as added and deleted for you to resolve.
 
-!!! note "Geometry needs the viewer for now"
-    The Node CLI and the MCP server have no geometry pipeline, so they compare data only: a `respecified` element, a split, and every successor suggestion need the world geometry hash and are only found in the viewer's Compare mode. That is tracked in [#4956](https://github.com/LTplus-AG/ifc-lite/issues/4956). Everything in this page about lineage files, `rekey` and authored keys works on the CLI today.
+!!! note "Geometry on the CLI"
+    By default the CLI compares data only. Add `--geometry` to run the wasm mesh pass and attach world geometry hashes, bounding boxes and volumes to both files — this promotes the comparison to `scope: 'both'`, so `respecified`/`moved`/`reshaped` are told apart correctly. `--split-merge` and `--successors` then opt into the two geometry-backed detection stages:
+
+    ```bash
+    ifc-lite diff model-v1.ifc model-v2.ifc --by-content --geometry --split-merge --successors --json
+    ```
+
+    `--geometry` needs the `@ifc-lite/wasm` runtime built on the host. If it is missing, the command warns on stderr and falls back to a data-only comparison rather than failing outright — run `pnpm build:wasm:fetch` to fetch a prebuilt binary. Everything in this page about lineage files, `rekey` and authored keys works on the CLI either way.
 
 ## Step 2: save what the engine decided
 

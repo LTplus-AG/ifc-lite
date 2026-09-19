@@ -130,12 +130,7 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 export type { GpuUploadOutcome } from './gpu-upload-guard.js';
-export type {
-    DeviceRecoveryFailureReason,
-    DeviceRecoveryOmission,
-    DeviceRecoveryResult,
-} from './device-recovery.js';
-
+export type { DeviceRecoveryFailureReason, DeviceRecoveryOmission, DeviceRecoveryResult } from './device-recovery.js';
 import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
@@ -260,11 +255,9 @@ export class Renderer {
         highQuality: true,
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
-    /** Invalidates streamed handles whenever their owning GPU stack is torn down. */
     private pointCloudStreamEpoch = 0;
     private pointCloudStreamEpochs = new WeakMap<PointCloudAssetHandle, number>();
-    /**
-     * Set true at the end of the LATEST `init()`; gates `whenReady()` and
+    /** Set true at the end of the LATEST `init()`; gates `whenReady()` and
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
      * overridden (not cleared) by a device loss — see `deviceLost`, which the
      * two readiness methods consult alongside this flag because the loss can
@@ -359,7 +352,6 @@ export class Renderer {
     /** Retained so a listener registered AFTER the loss still learns of it. */
     private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
-    /** Counts losses, including one from a replacement while the original latch remains set. */
     private deviceLossSequence = 0;
     private readonly recovery = {
         inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(),
@@ -576,14 +568,10 @@ export class Renderer {
         // that is clearing it. `deviceLostGeneration` deliberately keeps its
         // stale value — it is only ever read alongside this flag.
         if (options.clearDeviceLost !== false) this.deviceLost = false;
-        // Subscribe before the device exists so a loss during the first frames
-        // is never missed — the handler is only invoked when `device.lost`
-        // actually resolves (a real fault), long after init in practice.
+        // Subscribe before init so a loss during the first frames is not missed.
         const initializingDevice = this.device;
         initializingDevice.onDeviceLost((info) => {
-            // Recovery replaces the WebGPUDevice wrapper. A delayed `lost`
-            // settlement from the abandoned wrapper must not latch the new
-            // device as lost (#4885).
+            // Ignore a delayed loss from a wrapper recovery already replaced.
             if (this.device !== initializingDevice) return;
             this.handleDeviceLost(info);
         });
@@ -811,7 +799,6 @@ export class Renderer {
         return this.deviceLost;
     }
 
-    /** Rebuild a lost GPU device in place while preserving recoverable CPU scene state. */
     recoverDevice(): Promise<DeviceRecoveryResult> {
         return recoverRendererDevice(this as unknown as RendererRecoveryHost);
     }
@@ -1032,11 +1019,8 @@ export class Renderer {
     }
 
     private currentPointCloudStreamRenderer(handle: PointCloudAssetHandle): PointCloudRenderer {
-        if (
-            this.deviceLost
-            || !this.pointCloudRenderer
-            || this.pointCloudStreamEpochs.get(handle) !== this.pointCloudStreamEpoch
-        ) throw rendererDeviceLostError();
+        if (this.deviceLost || !this.pointCloudRenderer
+            || this.pointCloudStreamEpochs.get(handle) !== this.pointCloudStreamEpoch) throw rendererDeviceLostError();
         return this.pointCloudRenderer;
     }
 

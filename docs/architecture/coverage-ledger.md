@@ -88,9 +88,9 @@ Columns:
 | IfcCalendarDate | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcCartesianPoint | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcCartesianTransformationOperator2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCartesianTransformationOperator2DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator2DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCartesianTransformationOperator3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcCartesianTransformationOperator3DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator3DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCenterLineProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcChamferEdgeFeature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcChillerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -125,7 +125,7 @@ Columns:
 | IfcConnectionPortGeometry | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcConnectionSurfaceGeometry | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcConstraintAggregationRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcConstraintClassificationRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcConstraintClassificationRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcConstraintRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcConstructionEquipmentResource | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcConstructionMaterialResource | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -353,7 +353,7 @@ Columns:
 | IfcMaterialLayerSetUsage | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMaterialList | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMeasureWithUnit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcMechanicalConcreteMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcMechanicalConcreteMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcMechanicalFastener | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMechanicalFastenerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMechanicalMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
@@ -584,7 +584,7 @@ Columns:
 | IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -794,9 +794,9 @@ Columns:
 | IfcCartesianPointList2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcCartesianPointList3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcCartesianTransformationOperator2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcCartesianTransformationOperator2DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCartesianTransformationOperator2DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCartesianTransformationOperator3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
-| IfcCartesianTransformationOperator3DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc |
+| IfcCartesianTransformationOperator3DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc |
 | IfcCenterLineProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcChiller | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcChillerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1291,7 +1291,7 @@ Columns:
 | IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelVoidsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
-| IfcReparametrisedCompositeCurveSegment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
+| IfcReparametrisedCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRepresentationMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcResourceApprovalRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcResourceConstraintRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1368,7 +1368,7 @@ Columns:
 | IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1613,9 +1613,9 @@ Columns:
 | IfcCartesianPointList2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcCartesianPointList3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcCartesianTransformationOperator2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCartesianTransformationOperator2DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator2DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCartesianTransformationOperator3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
-| IfcCartesianTransformationOperator3DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator3DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCenterLineProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcChiller | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcChillerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1714,7 +1714,7 @@ Columns:
 | IfcDimensionalExponents | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_1485_duct_elbow_surface_curve_swept.ifc |
 | IfcDimensionCount | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDirection | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
-| IfcDirectrixDerivedReferenceSweptAreaSolid | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDirectrixDerivedReferenceSweptAreaSolid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDiscreteAccessory | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDiscreteAccessoryType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDistributionBoard | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1965,7 +1965,7 @@ Columns:
 | IfcMetric | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMirroredProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMobileTelecommunicationsAppliance | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcMobileTelecommunicationsApplianceType | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcMobileTelecommunicationsApplianceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcModulusOfElasticityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcModulusOfLinearSubgradeReactionMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcModulusOfRotationalSubgradeReactionMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2153,7 +2153,7 @@ Columns:
 | IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelVoidsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc |
-| IfcReparametrisedCompositeCurveSegment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcReparametrisedCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRepresentationMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcResourceApprovalRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcResourceConstraintRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2241,7 +2241,7 @@ Columns:
 | IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

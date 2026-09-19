@@ -16,6 +16,7 @@ const REPO = join(HERE, '..', '..');
 import assert from 'node:assert/strict';
 import { main, buildJudgePrompt, judge } from './run-judge.mjs';
 import { resolveProviderFallbacks } from './provider-fallbacks.mjs';
+import { OPENROUTER_JUDGE_MODELS_DEFAULT } from './openrouter-reviewer.mjs';
 
 const RUBRIC = join(HERE, 'judge.md');
 
@@ -551,16 +552,46 @@ test('#3862 an input with NO class-pass field is normalised to false, never left
   assert.equal(Object.hasOwn(written, 'classPass'), true, 'the field must be PRESENT, not merely falsy');
 });
 
-test('#finding-3: the judge asks for a SHORTER OpenRouter timeout default than the reviewer', () => {
-  // Source-checked rather than behaviourally, the same way the workflow env
-  // wiring above is: `resolveProviderFallbacks`'s real spawn is `spawnSync`,
-  // which this suite must not invoke. The judge is an optional precision
-  // filter that fails soft (see `judge`'s own doc comment), so it must give up
-  // on a stalled OpenRouter model well before the reviewer's own 300000ms
-  // default would, rather than sitting on the job's clock for a filter nobody
-  // required.
-  const src = readFileSync(join(HERE, 'run-judge.mjs'), 'utf8');
-  const call = src.split('resolveProviderFallbacks(env, {')[1];
-  assert.ok(call, 'the judge must call resolveProviderFallbacks');
-  assert.match(call.split('});')[0], /openRouterTimeoutMsDefault:\s*120_000/);
+/**
+ * BEHAVIOURAL, not source-checked. The old version of this test read
+ * run-judge.mjs's own text and matched a regex against the literal call
+ * (`openRouterTimeoutMsDefault:\s*120_000`), which proves nothing about what
+ * actually happens at runtime -- a value could be renamed, computed, or piped
+ * through another constant and the regex would simply stop matching (or worse,
+ * keep matching something unrelated). This drives the REAL provider chain
+ * `main()` builds -- `resolveProviderFallbacks` with the judge's own
+ * `OPENROUTER_JUDGE_MODELS_DEFAULT`/120_000 options -- through an injected
+ * `spawn` (the same test-only override `provider-fallbacks.test.mjs` uses) and
+ * reads the timeout that chain actually hands OpenRouter's child process, with
+ * no network and no real `spawnSync` involved. `provider-fallbacks.test.mjs`
+ * carries the fuller version of this same check (both providers, both
+ * callers); this one pins it specifically from the judge's own construction
+ * so a future edit to run-judge.mjs's call site is caught here too.
+ */
+test('#finding-3: the judge builds a provider chain whose OpenRouter fallback actually times out at 120000ms', () => {
+  const seenTimeoutMs = [];
+  const fakeSpawn = (_cmd, _args, opts) => {
+    seenTimeoutMs.push(opts.env.OPENROUTER_TIMEOUT_MS);
+    return { status: 0, stdout: 'a plausible verdict body', stderr: '' };
+  };
+  const providers = resolveProviderFallbacks(
+    { OPENROUTER_API_KEY: 'k' },
+    {
+      openRouterModelsEnvVar: 'OPENROUTER_JUDGE_MODELS',
+      openRouterModelEnvVar: 'OPENROUTER_JUDGE_MODEL',
+      openRouterDefaultModels: OPENROUTER_JUDGE_MODELS_DEFAULT,
+      openRouterTimeoutMsDefault: 120_000,
+      spawn: fakeSpawn,
+    },
+  );
+  assert.equal(providers.length, 1);
+  providers[0].run('prompt');
+  assert.deepEqual(seenTimeoutMs, ['120000'], 'the judge\'s OpenRouter fallback must actually receive a 120000ms budget');
+
+  // And the reviewer's own call site -- no override at all -- must NOT share
+  // that shorter budget: it is the primary review path, not a fail-soft filter.
+  seenTimeoutMs.length = 0;
+  const reviewerProviders = resolveProviderFallbacks({ OPENROUTER_API_KEY: 'k' }, { spawn: fakeSpawn });
+  reviewerProviders[0].run('prompt');
+  assert.deepEqual(seenTimeoutMs, ['300000']);
 });

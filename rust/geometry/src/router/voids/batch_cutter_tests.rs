@@ -266,6 +266,59 @@ fn mixed_horizontal_and_vertical_cutters_keep_each_authored_axis_3977() {
 }
 
 #[test]
+fn antiparallel_horizontal_cutters_both_extend_through_wall_3977() {
+    let angle = 3.0_f64.to_radians();
+    let rotate = |profile: &[(f32, f32)], z0: f32, z1: f32| {
+        issue_3977_rotate(&issue_3977_prism(profile, z0, z1), angle)
+    };
+    let host = rotate(
+        &[(0.0, -0.05), (4.0, -0.05), (4.0, 0.05), (0.0, 0.05)],
+        0.0,
+        3.0,
+    );
+    // Both through-openings are authored slightly short inside the wall. The
+    // second uses the antiparallel normal, which becomes local -Z after the
+    // first opening establishes the wall frame.
+    let first = rotate(
+        &[(0.5, -0.02), (1.0, -0.02), (1.0, 0.02), (0.5, 0.02)],
+        1.0,
+        2.0,
+    );
+    let second = rotate(
+        &[(2.0, -0.02), (2.5, -0.02), (2.5, 0.02), (2.0, 0.02)],
+        1.0,
+        2.0,
+    );
+    let normal = Vector3::new(-angle.sin(), angle.cos(), 0.0);
+    let openings = vec![
+        OpeningType::DiagonalRectangular(
+            first.clone(),
+            infer_opening_frame(&first, Some(&normal)).expect("first opening frame"),
+        ),
+        OpeningType::DiagonalRectangular(
+            second.clone(),
+            infer_opening_frame(&second, Some(&-normal)).expect("antiparallel opening frame"),
+        ),
+    ];
+    let context = VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let bounds = world_host_bounds(&host);
+    let host_volume = mesh_signed_volume(&host).abs();
+    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let removed = host_volume - mesh_signed_volume(&output).abs();
+
+    assert!(mesh_is_closed_exact(&output));
+    assert!(
+        (removed - 0.1).abs() < 1.0e-4,
+        "both 0.5 x 0.1 x 1.0 m openings must extend through the wall; removed {removed}"
+    );
+}
+
+#[test]
 fn inferred_vertical_axis_does_not_enable_wall_local_cut_3977() {
     let angle = 3.0_f64.to_radians();
     let host = issue_3977_rotate(

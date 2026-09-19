@@ -97,20 +97,39 @@ export function preWorkerPhaseBoundMs(fileSizeMB: number): number {
 }
 
 /**
- * Arm a bounded wait for a pre-worker phase that depends on a single
- * worker's reply — shard scan, a style slice, styles finalize (#4902). Fires
- * `onTimeout` once, only if `isSettled()` is still false when the bound
- * elapses, so a genuine reply arriving right at the boundary (which flips the
- * call site's own settled flag before this checks it) always wins.
+ * Registry for the pre-worker phase-bound timers (#4979 review). A plain
+ * `setTimeout` that is never cancelled keeps its own closure — and whatever
+ * it closes over, including the per-load `sharedBuffer` — alive for the FULL
+ * bound even after the load completes, fails, or is superseded; on a large
+ * file that is real memory held for up to 15s + 30ms/MB for no reason. `arm`
+ * tracks the handle and self-removes it once it actually fires; `clearAll` is
+ * for the generator's own teardown (`finally`, which also runs on `.return()`
+ * / abort), which normally fires first.
  */
-export function armPreWorkerPhaseBound(
-  fileSizeMB: number,
-  isSettled: () => boolean,
-  onTimeout: () => void,
-): void {
-  setTimeout(() => {
-    if (!isSettled()) onTimeout();
-  }, preWorkerPhaseBoundMs(fileSizeMB));
+export class PhaseBoundTimers {
+  private readonly handles = new Set<ReturnType<typeof setTimeout>>();
+
+  /**
+   * Arm a bounded wait for a pre-worker phase that depends on a single
+   * worker's reply — shard scan, a style slice, styles finalize (#4902).
+   * Fires `onTimeout` once, only if `isSettled()` is still false when the
+   * bound elapses, so a genuine reply arriving right at the boundary (which
+   * flips the call site's own settled flag before this checks it) always
+   * wins.
+   */
+  arm(fileSizeMB: number, isSettled: () => boolean, onTimeout: () => void): void {
+    const handle = setTimeout(() => {
+      this.handles.delete(handle);
+      if (!isSettled()) onTimeout();
+    }, preWorkerPhaseBoundMs(fileSizeMB));
+    this.handles.add(handle);
+  }
+
+  /** Cancel every timer still pending — the load exited before its bound. */
+  clearAll(): void {
+    for (const handle of this.handles) clearTimeout(handle);
+    this.handles.clear();
+  }
 }
 
 /**

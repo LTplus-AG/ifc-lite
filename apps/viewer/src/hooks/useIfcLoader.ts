@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { buildModelLoadedGeometryProps, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
@@ -2059,7 +2059,7 @@ export function useIfcLoader() {
           // #4902: which pre-worker gate the pool was still waiting on, so a
           // "Last rendered meshes: 0" stall is attributed to a measured phase
           // instead of only ever guessed from `load_stage`.
-          stall_phase: stallPhaseHandle.getStallPhase?.(),
+          stall_phase: geometryProcessingStallPhase(stallPhaseHandle),
         });
         setLoading(false);
         setGeometryStreamingActive(false);

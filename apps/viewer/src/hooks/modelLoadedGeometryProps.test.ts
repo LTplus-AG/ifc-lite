@@ -6,8 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { GeometryDiagnostics } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
+import type { GeometryDiagnostics, StallPhaseHandle } from '@ifc-lite/geometry';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -206,6 +206,21 @@ describe('skipped hung elements (#4884)', () => {
   });
 });
 
+describe('geometryProcessingStallPhase (#4902)', () => {
+  it('reads the phase a live handle reports', () => {
+    const handle: StallPhaseHandle = { getStallPhase: () => 'shard-scan' };
+    assert.equal(geometryProcessingStallPhase(handle), 'shard-scan');
+  });
+
+  it('is absent when the pool has not wired a reader in yet', () => {
+    assert.equal(geometryProcessingStallPhase({}), undefined);
+  });
+
+  it('is absent when no handle was passed at all', () => {
+    assert.equal(geometryProcessingStallPhase(undefined), undefined);
+  });
+});
+
 /**
  * Read and stripped once. `code` has comments removed; `masked` is the same
  * text at the same offsets with string/template/regex bodies blanked. See
@@ -248,7 +263,7 @@ const loader = stripSource(readFileSync(loaderPath, 'utf8'), loaderPath);
  * for this event is private to `loadTelemetry.ts` (#2624) — every call site
  * in this file, including the wasm path, goes through `captureModelLoaded`.
  */
-function captureArgsAround(anchor: string): string {
+function captureArgsAround(anchor: string, callPrefix = 'captureModelLoaded('): string {
   const { code, masked } = loader;
   const payloadSpreadIdx = code.indexOf(anchor);
   assert.notEqual(payloadSpreadIdx, -1, `${anchor} must appear somewhere in useIfcLoader.ts`);
@@ -257,9 +272,9 @@ function captureArgsAround(anchor: string): string {
     -1,
     `${anchor} must be UNIQUE in useIfcLoader.ts, or this extraction is anchored on the wrong call`,
   );
-  const callStart = code.lastIndexOf('captureModelLoaded(', payloadSpreadIdx);
-  assert.notEqual(callStart, -1, `${anchor} must sit inside a captureModelLoaded(...) call`);
-  const argsOpen = callStart + 'captureModelLoaded('.length - 1; // index of the call's own `(`
+  const callStart = code.lastIndexOf(callPrefix, payloadSpreadIdx);
+  assert.notEqual(callStart, -1, `${anchor} must sit inside a ${callPrefix}...) call`);
+  const argsOpen = callStart + callPrefix.length - 1; // index of the call's own `(`
   assert.equal(masked[argsOpen], '(');
   let depth = 0;
   let argsClose = -1;
@@ -356,29 +371,25 @@ describe('ifc_model_loaded wiring (#2388)', () => {
     assert.ok(abortIdx !== -1 && abortIdx < returnIdx, 'the stream must be aborted before return() is awaited');
   });
 
-  it('wires a stallPhaseHandle into the geometry stream and reports its phase on a stall (#4902)', () => {
+  it('wires a stallPhaseHandle into the geometry stream and reads it back on the geometry_processing capture (#4902)', () => {
     // `stallPhaseHandle` is created once at function scope (so the catch
     // block below the try can still reach it — see `closeGeometryIterator`
-    // just above it) and passed to `processAdaptive`.
+    // just above it, same rationale).
     assert.match(src, /const stallPhaseHandle: StallPhaseHandle = \{\};/);
-    const processCallIdx = src.indexOf('geometryProcessor.processAdaptive(geometryView');
-    assert.notEqual(processCallIdx, -1);
-    const stallOptIdx = src.indexOf('stallPhaseHandle,', processCallIdx);
-    assert.ok(
-      stallOptIdx !== -1 && stallOptIdx - processCallIdx < 500,
-      'processAdaptive must receive the stallPhaseHandle option',
-    );
-    // The geometry_processing captureException call reads it back — a stall
-    // watchdog error is captured there, not where the watchdog itself throws.
-    // The anchor is a string literal, so it is looked up in `code` (masked
-    // blanks literal bodies) — same rationale as `captureArgsAround` above.
-    const geometryCatchIdx = loader.code.indexOf("context: 'geometry_processing'");
-    assert.notEqual(geometryCatchIdx, -1);
-    const stallReadIdx = src.indexOf('stall_phase: stallPhaseHandle.getStallPhase?.()', geometryCatchIdx);
-    assert.ok(
-      stallReadIdx !== -1 && stallReadIdx - geometryCatchIdx < 500,
-      'the geometry_processing captureException must report stall_phase from the same handle',
-    );
+
+    // `processAdaptive`'s OWN argument list must contain the option — not
+    // just a string somewhere nearby, which would stay green if the handle
+    // were passed to an unrelated call or dropped from this one.
+    const processArgs = captureArgsAround('stallPhaseHandle,', 'geometryProcessor.processAdaptive(');
+    assert.match(processArgs, /\bstallPhaseHandle,/);
+
+    // The `geometry_processing` captureException call's OWN argument list
+    // must read the phase back through `geometryProcessingStallPhase` (a
+    // function with its own behavioural unit tests below, rather than an
+    // inline `stallPhaseHandle.getStallPhase?.()` expression this text check
+    // could not tell apart from a copy that reads a different handle).
+    const captureArgs = captureArgsAround("context: 'geometry_processing'", 'posthog.captureException(');
+    assert.match(captureArgs, /stall_phase: geometryProcessingStallPhase\(stallPhaseHandle\)/);
   });
 
   it('marks the SERVER fast path\'s capture as a retry when it is one', () => {

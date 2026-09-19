@@ -253,7 +253,7 @@
    487 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    612 packages/geometry/src/coordinate-handler.ts
-  1628 packages/geometry/src/geometry-parallel.ts
+  1679 packages/geometry/src/geometry-parallel.ts
   1780 packages/geometry/src/geometry.worker.ts
    918 packages/geometry/src/ifc-lite-bridge.ts
   1543 packages/geometry/src/index.ts

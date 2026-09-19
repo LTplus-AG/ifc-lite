@@ -150,6 +150,14 @@ describe('processParallel pre-worker phase bounds (#4902)', () => {
     });
     const rendered = events.flatMap((e) => (e.type === 'batch' ? e.meshes.map((m) => m.expressId) : []));
     expect(rendered.sort()).toEqual([1, 2]);
+    // Both process workers were wedged inside `scan-shard` (#4979 review):
+    // both must have been terminated and replaced, not left in the pool
+    // where the fallback's own stream-start/chunks/stream-end would queue
+    // forever behind their stuck call — the two ORIGINAL instances plus the
+    // pre-pass worker plus >= 2 replacements.
+    expect(created[0].terminate).toHaveBeenCalled();
+    expect(created[1].terminate).toHaveBeenCalled();
+    expect(created.length).toBeGreaterThanOrEqual(5);
   });
 
   it('bounds a silent style slice, proceeds with the slices that answered, and still finalizes', async () => {
@@ -211,6 +219,10 @@ describe('processParallel pre-worker phase bounds (#4902)', () => {
     });
     const rendered = events.flatMap((e) => (e.type === 'batch' ? e.meshes.map((m) => m.expressId) : []));
     expect(rendered.sort()).toEqual([1, 2]);
+    // `HANG_SLICE` (1) is owned by worker[1] (`1 % workers.length`) — it must
+    // have been replaced (#4979 review), not left wedged inside its own
+    // `resolve-styles-shard` call while the merge moves on without it.
+    expect(created[1].terminate).toHaveBeenCalled();
   });
 
   it('bounds a silent finalize-styles reply and drains with default colours', async () => {
@@ -262,9 +274,14 @@ describe('processParallel pre-worker phase bounds (#4902)', () => {
     expect(complete?.type === 'complete' && complete.diagnostics?.failuresByReason).toContainEqual({
       reason: 'styles-finalize-timeout', count: 1,
     });
-    // Set-styles reached the workers with default (empty) colours — the gate
-    // opened via the fallback, not via a real finalize reply.
-    const setStyles = created[0].received.filter((m) => m.type === 'set-styles');
+    // worker[0] never replied to finalize-styles, so it was replaced (#4979
+    // review) — the REPLACEMENT (the last worker created) is what receives
+    // the fallback's set-styles with default (empty) colours; the original
+    // is terminated (by the replacement, and again by end-of-load teardown).
+    expect(created.length).toBeGreaterThan(3); // 2 process + prepass + >=1 replacement
+    expect(created[0].terminate).toHaveBeenCalled();
+    const replacement = created[created.length - 1];
+    const setStyles = replacement.received.filter((m) => m.type === 'set-styles');
     expect(setStyles).toHaveLength(1);
     expect((setStyles[0].styleIds as Uint32Array).length).toBe(0);
     const rendered = events.flatMap((e) => (e.type === 'batch' ? e.meshes.map((m) => m.expressId) : []));
@@ -328,5 +345,48 @@ describe('processParallel pre-worker phase bounds (#4902)', () => {
     const complete = events.find((e) => e.type === 'complete');
     expect(complete?.type === 'complete' && complete.diagnostics).toBeUndefined();
     expect(stallPhaseHandle.getStallPhase?.()).toBe('workers');
+  });
+
+  it('clears pending phase-bound timers on early teardown, so none fires after the pool is gone (#4979 review)', async () => {
+    (globalThis as Record<string, unknown>).Worker = vi.fn().mockImplementation(function (this: unknown) {
+      const worker = new FakeWorker((self, msg) => {
+        if (msg.type === 'scan-shard') return; // hangs forever — never reaches its bound in this test
+        installedProcessBehaviour(self, msg);
+      });
+      created.push(worker);
+      return worker;
+    }) as unknown as typeof Worker;
+
+    const controller = new AbortController();
+    const shared = new SharedArrayBuffer(8 * 1024 * 1024);
+    const gen = processParallel(new Uint8Array(shared), new CoordinateHandler(), undefined, shared, {
+      workerCountOverride: 2,
+      signal: controller.signal,
+    });
+    const drained = (async () => {
+      const events: StreamingGeometryEvent[] = [];
+      for await (const event of gen) events.push(event);
+      return events;
+    })();
+
+    // Let the pool's synchronous setup run: the shard-scan bound is armed.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Abort well before the bound elapses — the `.return()` / abort teardown
+    // path AGENTS.md calls out, and the one a superseded/cancelled/failed
+    // load actually takes. Without `PhaseBoundTimers.clearAll()` in the
+    // generator's `finally`, the still-armed timer (and the per-load closure
+    // + shared source buffer it retains) would survive until its full bound.
+    controller.abort();
+    await drained;
+    expect(vi.getTimerCount()).toBe(0);
+
+    // The timer is gone, not merely defused: advancing past where its bound
+    // would have fired must not resurrect any of its side effects (a warning,
+    // a diagnostics merge, a worker replacement) on an already-torn-down pool.
+    const warnCallsBefore = vi.mocked(console.warn).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(vi.mocked(console.warn).mock.calls.length).toBe(warnCallsBefore);
   });
 });

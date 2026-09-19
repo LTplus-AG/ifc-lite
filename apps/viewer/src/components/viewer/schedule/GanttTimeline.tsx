@@ -13,6 +13,7 @@ import type { ScheduleExtraction } from '@ifc-lite/parser';
 import { cn } from '@/lib/utils';
 import { useViewerStore, taskStartEpoch, taskFinishEpoch } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
+import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { FlattenedTask } from './schedule-utils';
@@ -61,6 +62,7 @@ export const GanttTimeline = memo(function GanttTimeline({
   scrollTop,
   onScroll,
 }: GanttTimelineProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [pixelWidth, setPixelWidth] = useState(1000);
 
@@ -211,7 +213,7 @@ export const GanttTimeline = memo(function GanttTimeline({
                 size="icon"
                 className="absolute right-1 top-0.5 h-5 w-5 z-20"
                 aria-pressed={respectWorkCalendar}
-                aria-label="Respect work calendar"
+                aria-label={t('gantt.workCalendar.toggle.ariaLabel')}
                 onClick={() => setRespectWorkCalendar(!respectWorkCalendar)}
               >
                 <CalendarOff className="h-3 w-3" />
@@ -219,8 +221,8 @@ export const GanttTimeline = memo(function GanttTimeline({
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {respectWorkCalendar
-                ? 'Non-working days shaded, animation skips them — click to ignore the work calendar'
-                : 'Work calendar ignored — click to shade non-working days and skip them during playback'}
+                ? t('gantt.workCalendar.toggle.tooltipOn')
+                : t('gantt.workCalendar.toggle.tooltipOff')}
             </TooltipContent>
           </Tooltip>
         )}

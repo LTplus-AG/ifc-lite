@@ -242,6 +242,10 @@ const fillings = query.entity(openingId).filledBy();
 | `IfcRelAssociatesMaterial` | Element → Material |
 | `IfcRelDefinesByProperties` | Element → Property sets |
 | `IfcRelDefinesByType` | Element → Type definition |
+| `IfcRelConnectsStructuralActivity` | Element → Structural activity |
+| `IfcRelConnectsStructuralMember` | Structural member → Structural connection |
+| `IfcRelConnectsWithEccentricity` | Structural member → Structural connection with eccentricity |
+| `IfcRelConnectsStructuralElement` | Element → Structural member (IFC2X3 only) |
 
 ## SQL Queries
 

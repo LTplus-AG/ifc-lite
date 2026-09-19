@@ -222,7 +222,7 @@ Columns:
 | IfcElectricTimeControlType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricVoltageMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElementAssembly | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcElementQuantity | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
+| IfcElementQuantity | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEllipse | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEllipseProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEnergyConversionDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -445,8 +445,8 @@ Columns:
 | IfcPropertyEnumeration | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertyListValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertyReferenceValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcPropertySet | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcPropertySingleValue | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
+| IfcPropertySet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcPropertySingleValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertyTableValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcProtectiveDeviceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcProxy | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -500,15 +500,15 @@ Columns:
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralActivity | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralElement | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcRelConnectsStructuralMember | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsWithEccentricity | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralElement | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelCoversBldgElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelCoversSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
+| IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelDefinesByType | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelFillsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcRelFlowControlElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -943,7 +943,7 @@ Columns:
 | IfcElectricVoltageMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcElementAssembly | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/infra-bridge.ifc |
 | IfcElementAssemblyType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | apps/viewer/public/samples/infra-bridge.ifc |
-| IfcElementQuantity | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
+| IfcElementQuantity | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcEllipse | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcEllipseProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcEnergyConversionDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1206,10 +1206,10 @@ Columns:
 | IfcPropertyEnumeration | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcPropertyListValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcPropertyReferenceValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcPropertySet | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
+| IfcPropertySet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcPropertySetDefinitionSet | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcPropertySetTemplate | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcPropertySingleValue | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
+| IfcPropertySingleValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcPropertyTableValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcProtectiveDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcProtectiveDeviceTrippingUnit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1267,16 +1267,16 @@ Columns:
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelConnectsStructuralActivity | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelConnectsStructuralMember | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelConnectsWithEccentricity | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelCoversBldgElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelCoversSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelDeclares | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelDefinesByObject | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
+| IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelDefinesByTemplate | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelDefinesByType | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelFillsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
@@ -1412,7 +1412,7 @@ Columns:
 | IfcTank | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTankType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTask | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcTaskTime | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:❌ IFC4X3:✅ | — |
+| IfcTaskTime | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTaskTimeRecurring | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTaskType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTelecomAddress | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1774,7 +1774,7 @@ Columns:
 | IfcElectricVoltageMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElementAssembly | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElementAssemblyType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcElementQuantity | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
+| IfcElementQuantity | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEllipse | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEllipseProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEnergyConversionDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2060,10 +2060,10 @@ Columns:
 | IfcPropertyEnumeration | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertyListValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertyReferenceValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcPropertySet | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
+| IfcPropertySet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcPropertySetDefinitionSet | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertySetTemplate | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcPropertySingleValue | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
+| IfcPropertySingleValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcPropertyTableValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcProtectiveDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcProtectiveDeviceTrippingUnit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2128,16 +2128,16 @@ Columns:
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralActivity | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralMember | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsWithEccentricity | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcRelCoversBldgElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelCoversSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelDeclares | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcRelDefinesByObject | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
+| IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcRelDefinesByTemplate | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelDefinesByType | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcRelFillsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
@@ -2285,7 +2285,7 @@ Columns:
 | IfcTank | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTankType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTask | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcTaskTime | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
+| IfcTaskTime | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTaskTimeRecurring | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTaskType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTelecomAddress | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

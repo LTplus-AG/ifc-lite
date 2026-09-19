@@ -49,6 +49,27 @@ describe('relationship-schema-slots (#4205)', () => {
     expect(plan).toEqual({ relating: { index: 0, isList: false }, related: { index: 1, isList: true } });
   });
 
+  it('resolves the structural connection slots and keeps the IFC2X3-only class version-scoped', () => {
+    for (const type of [
+      'IFCRELCONNECTSSTRUCTURALACTIVITY',
+      'IFCRELCONNECTSSTRUCTURALMEMBER',
+      'IFCRELCONNECTSWITHECCENTRICITY',
+      'IFCRELCONNECTSSTRUCTURALELEMENT',
+    ]) {
+      expect(getRelationshipSlotPlan(type), type).toEqual({
+        relating: { index: 0, isList: false }, related: { index: 1, isList: false },
+      });
+    }
+    for (const version of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+      for (const type of ['IFCRELCONNECTSSTRUCTURALACTIVITY', 'IFCRELCONNECTSSTRUCTURALMEMBER', 'IFCRELCONNECTSWITHECCENTRICITY']) {
+        expect(getConcreteRelationshipTypes(version).has(type), `${version}: ${type}`).toBe(true);
+      }
+    }
+    expect(getConcreteRelationshipTypes('IFC2X3').has('IFCRELCONNECTSSTRUCTURALELEMENT')).toBe(true);
+    expect(getConcreteRelationshipTypes('IFC4').has('IFCRELCONNECTSSTRUCTURALELEMENT')).toBe(false);
+    expect(getConcreteRelationshipTypes('IFC4X3').has('IFCRELCONNECTSSTRUCTURALELEMENT')).toBe(false);
+  });
+
   it('answers undefined for a name no bundled schema knows', () => {
     expect(getRelationshipSlotPlan('IFCRELTOTALLYMADEUP')).toBeUndefined();
   });

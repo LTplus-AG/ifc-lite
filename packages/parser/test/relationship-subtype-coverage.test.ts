@@ -32,6 +32,17 @@ const IFC = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
 #22=IFCRELSEQUENCE('rs',#1,$,$,#10,#11);
 `;
 
+const STRUCTURAL_IFC = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
+#10=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);
+#11=IFCWALL('w2',#1,'Wall2',$,$,$,$,$);
+#12=IFCWALL('w3',#1,'Wall3',$,$,$,$,$);
+#13=IFCWALL('w4',#1,'Wall4',$,$,$,$,$);
+#30=IFCRELCONNECTSSTRUCTURALACTIVITY('sa',#1,$,$,#10,#11);
+#31=IFCRELCONNECTSSTRUCTURALMEMBER('sm',#1,$,$,#11,#12,$,$,$,$);
+#32=IFCRELCONNECTSWITHECCENTRICITY('se',#1,$,$,#12,#13,$,$,$,$,$);
+#33=IFCRELCONNECTSSTRUCTURALELEMENT('sx',#1,$,$,#13,#10);
+`;
+
 async function parse() {
   const source = new TextEncoder().encode(IFC);
   const tokenizer = new StepTokenizer(source);
@@ -44,6 +55,19 @@ async function parse() {
   }));
   const parser = new ColumnarParser();
   return parser.parseLite(source.buffer.slice(0), entityRefs, {});
+}
+
+async function parseStructural() {
+  const source = new TextEncoder().encode(STRUCTURAL_IFC);
+  const tokenizer = new StepTokenizer(source);
+  const entityRefs = Array.from(tokenizer.scanEntitiesFast()).map((ref) => ({
+    expressId: ref.expressId,
+    type: ref.type,
+    byteOffset: ref.offset,
+    byteLength: ref.length,
+    lineNumber: ref.line,
+  }));
+  return new ColumnarParser().parseLite(source.buffer.slice(0), entityRefs, {});
 }
 
 describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
@@ -94,5 +118,27 @@ describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
     const sequenceEdges = store.relationships!.forward.getEdges(10, RelationshipType.Sequence);
     expect(sequenceEdges).toHaveLength(1);
     expect(sequenceEdges[0].relationshipId).toBe(22);
+  });
+
+  it('records every structural connection as a distinct forward and inverse edge with its own relationship id', async () => {
+    const store = await parseStructural();
+    const cases = [
+      [10, 11, RelationshipType.ConnectsStructuralActivity, 30],
+      [11, 12, RelationshipType.ConnectsStructuralMember, 31],
+      [12, 13, RelationshipType.ConnectsWithEccentricity, 32],
+      [13, 10, RelationshipType.ConnectsStructuralElement, 33],
+    ] as const;
+    for (const [relating, related, type, relationshipId] of cases) {
+      expect(store.relationships!.forward.getEdges(relating, type)).toEqual([
+        { target: related, type, relationshipId },
+      ]);
+      expect(store.relationships!.inverse.getEdges(related, type)).toEqual([
+        { target: relating, type, relationshipId },
+      ]);
+    }
+    // Eccentricity is a subclass of structural-member connection but is not
+    // an alias: its graph edge retains its own enum bucket and STEP record.
+    expect(store.relationships!.forward.getEdges(12, RelationshipType.ConnectsStructuralMember)).toEqual([]);
+    expect(store.relationships!.forward.getEdges(12, RelationshipType.ConnectsWithEccentricity)[0].relationshipId).toBe(32);
   });
 });

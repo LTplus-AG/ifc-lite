@@ -71,6 +71,10 @@ describe('RelationshipGraph', () => {
       [RelationshipType.ConnectsPortToElement]: 'IfcRelConnectsPortToElement',
       [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
       [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
+      [RelationshipType.ConnectsStructuralActivity]: 'IfcRelConnectsStructuralActivity',
+      [RelationshipType.ConnectsStructuralMember]: 'IfcRelConnectsStructuralMember',
+      [RelationshipType.ConnectsWithEccentricity]: 'IfcRelConnectsWithEccentricity',
+      [RelationshipType.ConnectsStructuralElement]: 'IfcRelConnectsStructuralElement',
       [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
       [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
       [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
@@ -104,6 +108,13 @@ describe('RelationshipGraph', () => {
       expect(rels).toHaveLength(1);
       expect(rels[0].typeName).toBe(typeName);
     }
+  });
+
+  it('keeps the structural relationship numeric values stable', () => {
+    expect(RelationshipType.ConnectsStructuralActivity).toBe(51);
+    expect(RelationshipType.ConnectsStructuralMember).toBe(52);
+    expect(RelationshipType.ConnectsWithEccentricity).toBe(53);
+    expect(RelationshipType.ConnectsStructuralElement).toBe(54);
   });
 });
 

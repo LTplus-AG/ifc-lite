@@ -239,18 +239,85 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Name'), 'Wall-A');
   });
 
-  it('mirrorAttribute collapses a list/ref value to its stable JSON string form (toScalar)', () => {
+  it('mirrorAttribute preserves a structured list instead of stringifying it', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
 
     mirrorAttribute(api, fakeSession(doc), store, 1, 'bsi::ifc::prop::Layers', ['a', 'b', 3]);
 
-    // Pinned against the literal JSON string, not just "truthy" — toScalar's
-    // array branch must specifically produce `JSON.stringify`, not the
-    // generic `String(value)` fallback (which would yield "a,b,3" and lose
-    // round-trip fidelity through the CRDT's flat-attribute wire shape).
-    assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), '["a","b",3]');
+    assert.deepEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), ['a', 'b', 3]);
+  });
+
+  it('mirrors cost reference lists as peer-resolvable room paths (#4857)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/item', { ifcClass: 'IfcCostItem' });
+    createEntity(doc, '/value-a', { ifcClass: 'IfcCostValue' });
+    createEntity(doc, '/value-b', { ifcClass: 'IfcCostValue' });
+    const store = fakeStore(new Map([[1, '/item'], [2, '/value-a'], [3, '/value-b']]));
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'CostValues', ['#2', '#3']);
+
+    assert.deepEqual(getAttribute(doc, '/item', 'CostValues'), ['/value-a', '/value-b']);
+  });
+
+  it('seeds a newly referenced GUID-less source closure before publishing it (#4857 review)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/item', { ifcClass: 'IfcCostItem' });
+    const store = fakeStore(new Map([[1, '/item']]));
+    Object.assign(store, {
+      schemaVersion: 'IFC4',
+      entities: {
+        getExpressIdByGlobalId: () => -1,
+        getGlobalId: () => undefined,
+        getTypeName: (id: number) => id === 2 ? 'IfcQuantityLength' : 'IfcSIUnit',
+      },
+      getEntity: (id: number) => id === 2
+        ? { expressId: 2, type: 'IFCQUANTITYLENGTH', attributes: ['Length', null, '#3', 4] }
+        : id === 3
+          ? { expressId: 3, type: 'IFCSIUNIT', attributes: [null, '.LENGTHUNIT.', null, '.METRE.'] }
+          : null,
+    });
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'CostQuantities', ['#2']);
+
+    assert.ok(hasEntity(doc, '/ifc-lite-ref-2'));
+    assert.ok(hasEntity(doc, '/ifc-lite-ref-3'));
+    assert.equal(getAttribute(doc, '/ifc-lite-ref-2', 'bsi::ifc::prop::Unit'), '/ifc-lite-ref-3');
+    assert.deepEqual(getAttribute(doc, '/item', 'CostQuantities'), ['/ifc-lite-ref-2']);
+  });
+
+  it('mirrors scalar cost references as peer-resolvable room paths (#4857)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/value', { ifcClass: 'IfcCostValue' });
+    createEntity(doc, '/basis', { ifcClass: 'IfcMeasureWithUnit' });
+    const store = fakeStore(new Map([[1, '/value'], [2, '/basis']]));
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'UnitBasis', '#2');
+
+    assert.equal(getAttribute(doc, '/value', 'UnitBasis'), '/basis');
+  });
+
+  it('preserves numeric AppliedValue measures instead of treating them as express ids (#4857 review)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/value', { ifcClass: 'IfcCostValue' });
+    createEntity(doc, '/entity-2', { ifcClass: 'IfcMeasureWithUnit' });
+    const store = fakeStore(new Map([[1, '/value'], [2, '/entity-2']]));
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'AppliedValue', 2);
+
+    assert.equal(getAttribute(doc, '/value', 'AppliedValue'), 2);
+  });
+
+  it('preserves typed AppliedValue payloads structurally (#4857 review)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/value', { ifcClass: 'IfcCostValue' });
+    const store = fakeStore(new Map([[1, '/value']]));
+    const typed = { typed: { type: 'IfcMonetaryMeasure', value: 42 } };
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'AppliedValue', typed);
+
+    assert.deepEqual(getAttribute(doc, '/value', 'AppliedValue'), typed);
   });
 
   it('mirrorAttribute no-ops when the entity is not in the doc', () => {
@@ -320,6 +387,27 @@ function recordingHandlers(): RemoteApplyHandlers & {
 }
 
 describe('mutation-bridge attachRemoteApply (inbound)', () => {
+  it('reports a peer-created top-level entity before its nested attributes (#4857 review)', () => {
+    const doc = createCollabDoc();
+    const store = fakeStore(new Map());
+    const handlers = recordingHandlers();
+    handlers.onEntityCreate = (target, path, ifcClass, attributes) => {
+      handlers.calls.push({ fn: 'onEntityCreate', args: [target.modelId, path, ifcClass, attributes] });
+    };
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+
+    applyAsRemoteEdit(doc, (remote) => {
+      createEntity(remote, '/peer-value', {
+        ifcClass: 'IfcCostValue', attributes: { 'bsi::ifc::prop::Name': 'Peer value' },
+      });
+    });
+
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onEntityCreate',
+      args: [MODEL, '/peer-value', 'IfcCostValue', { 'bsi::ifc::prop::Name': 'Peer value' }],
+    }]);
+  });
   it('dispatches a remote pset property write to onProperty (pset already exists)', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
@@ -505,6 +593,24 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
       fn: 'onAttribute',
       args: [MODEL, 1, 'bsi::ifc::prop::Name', 'Wall-A'],
     });
+  });
+
+  it('delivers structured cost reference paths without scalar stringification (#4857)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/item', { ifcClass: 'IfcCostItem' });
+    const store = fakeStore(new Map([[1, '/item'], [20, '/peer-value']]));
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+
+    applyAsRemoteEdit(doc, (remote) => {
+      setAttribute(remote, '/item', 'CostValues', ['/peer-value']);
+    });
+
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onAttribute',
+      args: [MODEL, 1, 'CostValues', ['/peer-value']],
+    }]);
   });
 
   it('drops a remote flat attribute DELETE — no onAttribute call, and no delete handler exists to call instead', () => {
@@ -705,6 +811,20 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','New Description',$,$,$,$,$);");
   });
 
+  it('restores peer paths as STEP-tagged list and scalar references (#4857)', () => {
+    const itemStore = buildDataStore(1, 'IfcCostItem', "#1=IFCCOSTITEM('gid',$,'Item',$,$,$,.NOTDEFINED.,$,$);");
+    registerEntityPath(itemStore, 20, '/peer-value');
+    const itemLine = exportedLine(itemStore, (view) =>
+      applyRemoteAttribute(view, itemStore, 1, 'CostValues', ['/peer-value']));
+    assert.equal(itemLine, "#1=IFCCOSTITEM('gid',$,'Item',$,$,$,.NOTDEFINED.,(#20),$);");
+
+    const valueStore = buildDataStore(1, 'IfcCostValue', "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),$,$,$,$,$,$,$);");
+    registerEntityPath(valueStore, 30, '/peer-basis');
+    const valueLine = exportedLine(valueStore, (view) =>
+      applyRemoteAttribute(view, valueStore, 1, 'UnitBasis', '/peer-basis'));
+    assert.equal(valueLine, "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),#30,$,$,$,$,$,$);");
+  });
+
   it('a remote peer explicitly clearing a STRING-typed attribute (CRDT null) exports as $, not present-and-empty', () => {
     const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Description', null));
@@ -738,10 +858,26 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     assert.strictEqual(line, '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,2.25);');
   });
 
-  it('a name that does not resolve to a known root-attribute slot is skipped, not guessed at', () => {
+  it('a remote peer preserves a typed AppliedValue SELECT structurally (#4857 review)', () => {
+    const dataStore = buildDataStore(
+      1,
+      'IfcCostValue',
+      "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),$,$,$,$,$,$,$);",
+    );
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(
+      view,
+      dataStore,
+      1,
+      'AppliedValue',
+      { typed: { type: 'IfcMonetaryMeasure', value: 42 } },
+    ));
+    assert.strictEqual(line, "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(42.),$,$,$,$,$,$,$);");
+  });
+
+  it('resolves the canonical IFCX-qualified name before positional schema lookup (#4857 review)', () => {
     const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'bsi::ifc::prop::Description', null));
-    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);", 'unresolved name: no edit landed, source line unchanged');
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
   });
 
   it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for applyRemoteAttribute', () => {

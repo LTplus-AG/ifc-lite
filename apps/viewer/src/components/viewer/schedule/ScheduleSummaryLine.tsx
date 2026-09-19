@@ -5,7 +5,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation, type PluralCategory, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { selectPluralCategory } from '@/i18n/registry';
+import { hasActiveTranslation, selectPluralCategory } from '@/i18n/registry';
 
 const MARKERS = {
   groups: '\uE000groups\uE001',
@@ -32,7 +32,10 @@ const GROUP_SUMMARY_KEYS: Record<PluralCategory, TranslationKey> = {
 /** Preserve translator-controlled word order while styling interpolated values. */
 export function ScheduleSummaryLine({ groupCount, productCount, date }: ScheduleSummaryLineProps) {
   const { t, locale } = useTranslation();
-  const groupCategory = selectPluralCategory(locale, groupCount);
+  const localeCategory = selectPluralCategory(locale, groupCount);
+  const groupCategory = hasActiveTranslation(GROUP_SUMMARY_KEYS[localeCategory])
+    ? localeCategory
+    : selectPluralCategory('en', groupCount);
   const translated = t(GROUP_SUMMARY_KEYS[groupCategory], { ...MARKERS, count: productCount });
   const values: Record<string, ReactNode> = {
     [MARKERS.groups]: <span className="font-semibold">{formatLocaleNumber(locale, groupCount)}</span>,

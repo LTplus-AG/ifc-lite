@@ -49,6 +49,11 @@ export function getLocale(): Locale {
   return activeLocale;
 }
 
+/** Whether the active locale owns a message instead of using English fallback. */
+export function hasActiveTranslation(key: TranslationKey): boolean {
+  return Object.hasOwn(catalogues.get(activeLocale) ?? {}, key);
+}
+
 /** Snapshot identity for `useSyncExternalStore`. The revision changes when an
  * active catalogue is replaced even though the locale name stays the same. */
 export function getLocaleSnapshot(): string {

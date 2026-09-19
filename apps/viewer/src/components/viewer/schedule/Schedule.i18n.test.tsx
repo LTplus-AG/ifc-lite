@@ -12,10 +12,8 @@
  * to a pseudo-locale that marks every catalogue value as `⟦key|value⟧`,
  * and assert the marked text reappears for every key that was visible.
  *
- * `en.ts` itself is not touched by this slice (owned by the sweep's
- * integration pass) — `scheduleEn` is merged into the runtime `en` object
- * here (a plain mutable object at runtime; only its TS type is `as const`)
- * so `useTranslation`'s `resolve()` can find `schedule.*` keys under test.
+ * The suite also verifies that production `en.ts` registers every schedule
+ * key; tests never patch the English fallback themselves.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -59,7 +57,6 @@ try {
 }
 const HAS_CATALOGUE = scheduleEn !== undefined;
 const CATALOGUE: typeof ScheduleEnType = scheduleEn ?? ({} as typeof ScheduleEnType);
-if (scheduleEn) Object.assign(en, scheduleEn);
 
 type ScheduleKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as ScheduleKey[];
@@ -671,6 +668,10 @@ describe('GanttToolbar localization (#4918)', { skip: !HAS_CATALOGUE && 'schedul
 });
 
 describe('ScheduleSummaryLine localization (#4918)', () => {
+  it('registers every schedule message in the production English catalogue', () => {
+    for (const key of KEYS) assert.deepEqual(en[key], CATALOGUE[key], `${key} must be registered by en.ts`);
+  });
+
   it('preserves translator ordering while styling the three interpolated values', () => {
     const container = render(<ScheduleSummaryLine groupCount={2} productCount={7} date="2030-01-02" />);
     const summary = container.querySelector('p');
@@ -698,6 +699,13 @@ describe('ScheduleSummaryLine localization (#4918)', () => {
     act(() => setLocale('replaceable'));
     const container = render(<ScheduleSummaryLine groupCount={1} productCount={2} date="2030-01-02" />);
     assert.match(container.textContent ?? '', /^1 task · 2 products · finishes/);
+  });
+
+  it('uses English group plurals when a valid partial locale falls back', () => {
+    registerLocale('ru', {});
+    act(() => setLocale('ru'));
+    const container = render(<ScheduleSummaryLine groupCount={21} productCount={2} date="2030-01-02" />);
+    assert.match(container.textContent ?? '', /^21 tasks · 2 products · finishes/);
   });
 });
 

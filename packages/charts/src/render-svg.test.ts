@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { aggregate } from './aggregate.js';
-import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption, type EChartsOptionObject } from './echarts-option.js';
+import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption, truncateMiddle, type EChartsOptionObject } from './echarts-option.js';
 import { renderChartSvg } from './render-svg.js';
 import { validateDashboardSpec } from './validate.js';
 import { migrateDashboardSpec } from './migrate.js';
@@ -86,6 +86,40 @@ describe('buildEChartsOption', () => {
     // The short chart's pie is smaller (as a fraction of its own box) than the tall one's — it leaves
     // room below it for the legend rows instead of a fixed center/radius ignoring them.
     expect(outerPct(short)).toBeLessThan(outerPct(tall));
+  });
+
+  it('hides per-slice callout labels and leader lines on a crowded print-mode pie, since the legend already names every slice (#4940 review: headed-Chrome finding — leader lines drew over the legend grid)', () => {
+    const many14: ChartDataset = { ...ds, rows: Array.from({ length: 14 }, (_, i) => ({ ids: [400 + i], values: [`Category ${i}`, 'L1'] })) };
+    const agg = aggregate({ ...bar, type: 'pie' }, many14);
+    // A 220pt half-width chart, roughly the shape of the reported layout.
+    const crowded = buildEChartsOption({ aggregation: agg, width: 220, height: 220, print: true });
+    const crowdedSeries = (crowded.series as Array<{ label: { show?: boolean }; labelLine: { show?: boolean } }>)[0];
+    expect(crowdedSeries.label.show).toBe(false);
+    expect(crowdedSeries.labelLine.show).toBe(false);
+
+    // Plenty of room, few categories, print mode: the callouts are not suppressed.
+    const roomy = buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'pie' }, ds), width: 600, height: 600, print: true });
+    const roomySeries = (roomy.series as Array<{ label: { show?: boolean }; labelLine?: { show?: boolean } }>)[0];
+    expect(roomySeries.label.show).not.toBe(false);
+
+    // Off the option shape entirely: the rendered SVG carries each name once, from the legend —
+    // not a second time from a hidden-but-still-drawn callout.
+    const svg = renderChartSvg({ aggregation: agg, width: 220, height: 220, print: true });
+    const occurrences = svg.match(/>Category 0</g) ?? [];
+    expect(occurrences.length).toBeLessThanOrEqual(1);
+  });
+
+  it('truncates a long axis label from the middle, not the tail, so IFC classes sharing a prefix stay distinguishable (#4940 review: headed-Chrome finding — IfcSlab/IfcSpace/IfcSpatialZone all read "IfcS…")', () => {
+    expect(truncateMiddle('IfcSlab', 10)).toBe('IfcSlab');
+    expect(truncateMiddle('IfcSpatialZone', 8)).toBe('IfcSp…ne');
+    expect(truncateMiddle('IfcSpatialZone', 3)).toBe('If…');
+
+    const threeClasses: ChartDataset = { ...ds, rows: [{ ids: [1], values: ['IfcSlab', 'L1'] }, { ids: [2], values: ['IfcSpace', 'L1'] }, { ids: [3], values: ['IfcSpatialZone', 'L1'] }] };
+    const agg = aggregate(bar, threeClasses);
+    const option = buildEChartsOption({ aggregation: agg, width: 240 });
+    const formatter = (option.xAxis as { axisLabel: { formatter: (name: string) => string } }).axisLabel.formatter;
+    const rendered = agg.categories.map((c) => formatter(c.label));
+    expect(new Set(rendered).size).toBe(3); // no two distinct IFC classes render the same truncated string
   });
 });
 

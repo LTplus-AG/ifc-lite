@@ -76,6 +76,22 @@ function formatValue(value: number, unit?: string): string {
 const LEGEND_LABEL_MAX_CHARS = 24;
 const truncateLegendLabel = (name: string): string => (name.length > LEGEND_LABEL_MAX_CHARS ? `${name.slice(0, LEGEND_LABEL_MAX_CHARS - 1)}…` : name);
 
+/**
+ * Middle-ellipsis truncation for axis labels (#4940 review): `IfcSlab`, `IfcSpace` and
+ * `IfcSpatialZone` share the "Ifc" + a capital prefix, so tail-only truncation (ECharts'
+ * `overflow: 'truncate'`, and the legend's own `truncateLegendLabel`) collapses all three to
+ * "IfcS…" — indistinguishable on the axis, where there is no tooltip to recover the full name.
+ * Keeping a short head and a short tail instead survives the common-prefix case far more often.
+ */
+export function truncateMiddle(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  if (maxChars < 4) return `${text.slice(0, Math.max(1, maxChars - 1))}…`;
+  const keep = maxChars - 1;
+  const head = Math.ceil(keep * 0.6);
+  const tail = keep - head;
+  return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
+}
+
 function measureLabel(aggregation: Aggregation): string {
   const { measure } = aggregation.spec;
   return measure.agg === 'count' ? 'Count' : `Sum of ${measure.column ?? ''}`;
@@ -139,6 +155,12 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
     let legend: Record<string, unknown>;
     let radius: [string, string] = ['35%', '70%'];
     let center: [string, string] = ['40%', '50%'];
+    // Per-slice callout labels (with leader lines) drawn over a legend that already carries every
+    // name (#4940 review, headed-Chrome finding): a narrow/short pie with many categories had no
+    // room for both, so the leader lines and their text landed on top of the legend grid below —
+    // unreadable in both the preview and the PDF. `crowded` suppresses the callouts in that case;
+    // the legend is what names the slice.
+    let crowded = false;
     if (args.print) {
       // No scrollbar in a static SVG: a fixed, wrapped `plain` legend under the pie instead of a
       // clipped scroll list. A FIXED radius/center overflowed a short chart (e.g. 120pt) with many
@@ -162,6 +184,10 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       const centerYPct = Math.max(20, Math.min(48, ((pieAreaH / 2 + 8) / height) * 100));
       radius = [`${(outerPct * 0.55).toFixed(0)}%`, `${outerPct.toFixed(0)}%`];
       center = ['50%', `${centerYPct.toFixed(0)}%`];
+      // The same room-left math that sizes the pie says whether a callout has anywhere to go:
+      // a small pie (little radius to anchor a leader line) or more than a handful of slices
+      // (leader lines fan out and cross each other, let alone the legend) is crowded.
+      crowded = pieDiameter < 200 || categories.length > 8;
       legend = {
         type: 'plain', orient: 'horizontal', left: 'center', bottom: 0, itemWidth: 10, itemHeight: 10,
         textStyle: { color: theme.mutedText, fontSize: 10 }, formatter: truncateLegendLabel, tooltip: { show: true },
@@ -185,7 +211,8 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
         selectedMode: 'multiple',
         selectedOffset: 6,
         emphasis: { focus: 'self' },
-        label: { color: theme.mutedText, formatter: '{b}' },
+        label: crowded ? { show: false } : { color: theme.mutedText, formatter: '{b}' },
+        labelLine: crowded ? { show: false } : {},
       }],
     };
   }
@@ -231,7 +258,12 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       type: 'category',
       data: labels,
       axisLine: { lineStyle: { color: theme.axis } },
-      axisLabel: { color: theme.mutedText, interval: 0, rotate, width: labelWidth, overflow: 'truncate', hideOverlap: true },
+      // A character-count estimate (no DOM/canvas measure available here), same order as the
+      // other size-based heuristics in this module; `overflow: 'truncate'` stays as a backstop if
+      // the estimate runs long. Middle-ellipsis, not ECharts' own tail truncation (#4940 review,
+      // headed-Chrome finding): `IfcSlab`/`IfcSpace`/`IfcSpatialZone` share a prefix and all
+      // truncated to the same "IfcS…" on a narrow half-width chart.
+      axisLabel: { color: theme.mutedText, interval: 0, rotate, width: labelWidth, overflow: 'truncate', hideOverlap: true, formatter: (name: string) => truncateMiddle(name, Math.max(4, Math.floor(labelWidth / 6.5))) },
     },
     yAxis: {
       type: 'value',

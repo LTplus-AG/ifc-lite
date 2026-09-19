@@ -29,7 +29,13 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { legacyKeys, generatedNames, parseEntityTable, droppableProducts } from './check-legacy-entity-coverage.mjs';
+import {
+  canonicalGeneratedNames,
+  legacyKeys,
+  generatedNames,
+  parseEntityTable,
+  droppableProducts,
+} from './check-legacy-entity-coverage.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
@@ -219,10 +225,11 @@ test('a broken LEGACY_ENTITY_NAMES extractor fails instead of passing vacuously'
   assert.doesNotMatch(out, /NO REMEDY MATCHED/);
 });
 
-test('the supported type union may retain transitional processing remaps', () => {
-  const { status, out } = runOn({});
-  assert.equal(status, 0, out);
-  assert.doesNotMatch(out, /from_str already resolves/);
+test('the canonical catalog excludes supplemental exact-name variants', () => {
+  const schema = real.get(SCHEMA_REL);
+  assert.ok(generatedNames(schema).has('IFCPROXY'));
+  assert.ok(!canonicalGeneratedNames(schema).has('IFCPROXY'));
+  assert.ok(canonicalGeneratedNames(schema).has('IFCWALL'));
 });
 
 test('a dead key gets the respell remedy, NOT the add-an-arm one', () => {

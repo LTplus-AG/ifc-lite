@@ -47,6 +47,7 @@ import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { downloadBlob } from '@/lib/export/download';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
+import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
 
@@ -83,9 +84,7 @@ export function MobileToolbar() {
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb') || f.name.endsWith('.xml')
-    );
+    const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
     if (supportedFiles.length === 0) return;
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
@@ -102,9 +101,7 @@ export function MobileToolbar() {
   const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.ifczip') || f.name.endsWith('.glb') || f.name.endsWith('.xml')
-    );
+    const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
     if (supportedFiles.length === 0) return;
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
@@ -154,7 +151,7 @@ export function MobileToolbar() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".ifc,.ifcx,.ifczip,.glb,.xml"
+        accept={MOBILE_FILE_ACCEPT}
         multiple
         onChange={handleFileSelect}
         className="hidden"
@@ -162,7 +159,7 @@ export function MobileToolbar() {
       <input
         ref={addModelInputRef}
         type="file"
-        accept=".ifc,.ifcx,.ifczip,.glb,.xml"
+        accept={MOBILE_FILE_ACCEPT}
         multiple
         onChange={handleAddModelSelect}
         className="hidden"

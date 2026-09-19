@@ -39,6 +39,21 @@ describe('manual clash groups (#4921)', () => {
     assert.deepEqual(loadManualClashGroups(), groups);
   });
 
+  it('quarantines unreadable saved groups before accepting a replacement (#4921 review)', () => {
+    const unreadable = '{not-json';
+    localStorage.setItem(MANUAL_CLASH_GROUPS_KEY, unreadable);
+
+    assert.deepEqual(loadManualClashGroups(), []);
+    assert.equal(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY), null);
+    assert.equal(localStorage.getItem(`${MANUAL_CLASH_GROUPS_KEY}:unreadable`), unreadable);
+
+    const groups = [{ id: 'manual-1', name: 'Recovered', members: [
+      { reviewKey: 'key-1', occurrenceKey: 'occurrence-1' },
+    ] }];
+    assert.deepEqual(saveManualClashGroups(groups), { ok: true });
+    assert.deepEqual(loadManualClashGroups(), groups);
+  });
+
   it('keeps absent keys and resolves a rerun even when transient clash ids change', () => {
     const first = clash('first');
     const absent = clash('absent');

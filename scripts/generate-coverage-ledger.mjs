@@ -103,6 +103,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { legacyKeys, generatedNames, parseEntityTable } from './check-legacy-entity-coverage.mjs';
+import { deriveCreatableTypes } from './coverage-ledger-creatable.mjs';
 
 const rootFlag = process.argv.indexOf('--root');
 const ROOT =
@@ -196,39 +197,18 @@ assertNonEmpty('geometry(processor_registry TYPES)', geometryTypes);
 
 // ─── Creatable (IfcCreator.addIfc* + in-store editor.addEntity) ─────────
 
-const creatorSrc = read('packages/create/src/ifc-creator.ts');
-function extractCreatorTypes(src) {
-  return new Set([...src.matchAll(/this\.line\([^,]+,\s*'([A-Z0-9]+)'/g)].map((m) => m[1].toUpperCase()));
-}
-const creatorTypes = extractCreatorTypes(creatorSrc);
-assertNonEmpty('creatable(IfcCreator.this.line)', creatorTypes);
 // "writable" (#4207): IfcCreator's OWN this.line() STEP-emission set, frozen
 // here BEFORE the in-store merge below widens `creatorTypes` into the
 // broader `creatable` set. See the DERIVATION comment at the top of this
 // file for why the two differ.
-const writableTypes = new Set(creatorTypes);
-
 // Every non-test TypeScript source under the in-store builder directory is
 // scanned — enumerated from the directory, not from a hand-kept list. A list
 // silently drifts: `_emit-helpers.ts` (which emits IfcColourRgb,
 // IfcSurfaceStyle, IfcSurfaceStyleShading, ...) was missing from the first
 // version of this generator, so those rows read "not creatable" while
 // `--check` stayed green. A directory walk cannot miss a new builder.
-const IN_STORE_DIR = join(ROOT, 'packages/create/src/in-store');
-const inStoreFiles = existsSync(IN_STORE_DIR)
-  ? readdirSync(IN_STORE_DIR)
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.endsWith('.d.ts'))
-      .sort()
-  : [];
-const inStoreTypes = new Set();
-for (const f of inStoreFiles) {
-  const src = readFileSync(join(IN_STORE_DIR, f), 'utf8');
-  for (const m of src.matchAll(/editor\.addEntity\('(Ifc[A-Za-z0-9]+)'/g)) {
-    creatorTypes.add(m[1].toUpperCase());
-    inStoreTypes.add(m[1].toUpperCase());
-  }
-}
-assertNonEmpty('creatable(in-store editor.addEntity)', inStoreTypes);
+const { creatorTypes, writableTypes, ifc2x3RefusedCostTypes } =
+  deriveCreatableTypes(ROOT, read, assertNonEmpty);
 
 // ─── Convertible (schema-converter.ts rename maps, direct hops only) ────
 
@@ -377,7 +357,9 @@ function buildSection(schema) {
     const isRel = upper.startsWith('IFCREL');
     const relStatus = isRel ? (relationshipClassesUpper.has(upper) ? '✅' : '❌') : '—';
     const geometry = geometryTypes.has(upper) ? '✅' : '❌';
-    const creatable = creatorTypes.has(upper) && !(schema === 'IFC2X3' && ['IFCCOSTITEM', 'IFCCOSTSCHEDULE', 'IFCCOSTVALUE'].includes(upper)) ? '✅' : '❌';
+    const schemaAllowsCreation = !(schema === 'IFC2X3' && ifc2x3RefusedCostTypes.has(upper))
+      && !(schema === 'IFC4' && upper === 'IFCQUANTITYNUMBER');
+    const creatable = creatorTypes.has(upper) && schemaAllowsCreation ? '✅' : '❌';
     const writable = writableTypes.has(upper) ? '✅' : '❌';
     const fixture = fixtureTypeToPathBySchema.get(schema).get(upper) ?? '—';
     const convertParts = [];

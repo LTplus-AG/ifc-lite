@@ -59,6 +59,7 @@ describe('bim.create cost method registration (#4856)', () => {
     expect(paramsType).toContain('AppliedValue?:');
     expect(paramsType).toContain('UnitBasis?: number');
     expect(paramsType).toContain('Components?: number[]');
+    expect(paramsType).toContain("ArithmeticOperator?: 'ADD' | 'DIVIDE' | 'MODULO'");
     expect(paramsType).not.toMatch(/AppliedValue\?: number/);
     // The two traps this API can fall into are stated, not left implicit.
     const cautions = value!.llmSemantics?.cautions?.join(' ') ?? '';

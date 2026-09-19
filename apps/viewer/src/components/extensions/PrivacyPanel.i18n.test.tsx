@@ -203,6 +203,26 @@ async function revealProposals(container: HTMLElement): Promise<void> {
 }
 
 describe('PrivacyPanel localization (#4918)', () => {
+  it('localizes untouched baseline metadata in the active-flavor label', async () => {
+    registerLocale('privacy-default-name', {
+      'extensionsFlavors.flavorIndicator.defaultLabel': 'BASELINE LOCALISÉE',
+    } as Catalogue);
+    setLocale('privacy-default-name');
+    const host = new StubExtensionHost();
+    await host.flavors.resetToDefaults();
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <PrivacyPanel />
+      </ExtensionHostContext.Provider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    assert.match(container.textContent ?? '', /BASELINE LOCALISÉE/);
+  });
+
   it('translates every static key rendered across the no-flavor and active-flavor states', async () => {
     // Pass 1: no active flavor (the empty state + top-level chrome).
     const emptyHost = new StubExtensionHost();

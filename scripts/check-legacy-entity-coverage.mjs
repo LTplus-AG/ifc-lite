@@ -322,7 +322,7 @@ before editing either.
         keys: ['arm for canonical name'],
         text: `
 An arm for a canonical IFC4X3 name is not a coverage gap, it shadows the exact
-generated type in legacy_aware_ifc_type. Supplemental IFC2X3/IFC4-only names
+generated type in legacy_aware_ifc_type. Supplemental IFC2X3/IFC4-family-only names
 still need these arms to preserve their established geometry classification;
 canonical names do not.
 

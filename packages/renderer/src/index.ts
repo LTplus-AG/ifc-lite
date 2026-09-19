@@ -129,6 +129,7 @@ export type {
     PointCloudNode,
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
+export type { GpuUploadOutcome } from './gpu-upload-guard.js';
 
 import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
@@ -186,47 +187,10 @@ import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
-import { runGuardedGpuUpload, type GpuUploadOutcome } from './gpu-upload-guard.js';
+import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
-
-/**
- * Is this throw the GPU device telling us it is gone?
- *
- * The discriminator is the exception TYPE, not its message, because WebGPU
- * draws exactly that line:
- *  - a call on a dead / invalid-state device throws a `DOMException`
- *    (`InvalidStateError` in Safari 26.5 — the whole of issue #2229);
- *  - a buffer allocation the host cannot back throws a plain `RangeError`
- *    ("createBuffer failed, size (…) is too large … when mappedAtCreation ==
- *    true"), which `gpu-upload-guard` documents happening on a HEALTHY device
- *    under memory pressure.
- *
- * Treating the second as a device loss is a false positive that costs the whole
- * session, so only the first latches; everything else degrades one frame.
- *
- * There is deliberately NO consecutive-failure threshold as a middle ground.
- * Not because failures necessarily arrive back-to-back — between two BCF / IDS
- * capture frames the awaited `camera.frameBounds` normally does let an ordinary
- * rAF frame through, which would reset a counter — but because those ordinary
- * frames are not guaranteed to SUCCEED: they allocate too (`ensureMeshResources`
- * creates a buffer per unresourced mesh, and the queued-mesh flush allocates),
- * so under sustained host memory pressure any finite budget is still reachable.
- * A latch whose safety depends on incidental animation timing is the wrong
- * shape of guarantee for "never kill the viewport by mistake".
- *
- * Real losses on browsers that do not throw are still caught by the async
- * `device.lost` promise — which the WebGPU spec makes the sole loss channel
- * anyway (on a conformant engine, calls against a lost device are no-ops, not
- * throws; Safari 26.5's synchronous throw is the deviation being handled here).
- *
- * `typeof` guarded because non-DOM hosts (Node before 17, some workers) have no
- * `DOMException` global; there, no throw can be a WebGPU device signal anyway.
- */
-function isDeviceLossThrow(error: unknown): boolean {
-    return typeof DOMException !== 'undefined' && error instanceof DOMException;
-}
 
 /**
  * The reason `whenReady()` rejects when the renderer is destroyed.
@@ -839,6 +803,21 @@ export class Renderer {
         return this.deviceLost;
     }
 
+    /**
+     * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):
+     * a synchronous Safari-style `DOMException` (issue #2229) caught OUTSIDE
+     * `render()` never otherwise reaches `handleDeviceLost` — only the async
+     * `device.lost` promise and `render()`'s own catch do — so without this,
+     * `isDeviceLost()` would keep answering false and every later upload on
+     * this path would keep failing against the same dead device.
+     */
+    private reportUploadLoss(error: unknown): void {
+        this.handleDeviceLost({
+            message: error instanceof Error ? error.message : String(error),
+            reason: 'gpu-upload-exception',
+        });
+    }
+
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
@@ -1197,7 +1176,7 @@ export class Renderer {
 
             // Update camera scene bounds for tight orthographic near/far planes
             this.camera.setSceneBounds(this.modelBounds);
-        });
+        }, (error) => this.reportUploadLoss(error));
     }
 
     /**
@@ -1220,7 +1199,7 @@ export class Renderer {
             this.scene.appendToBatches(meshes, device, pipeline, isStreaming);
             this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
             this.camera.setSceneBounds(this.modelBounds);
-        });
+        }, (error) => this.reportUploadLoss(error));
     }
 
     /**
@@ -1274,7 +1253,7 @@ export class Renderer {
                     layout: pipeline.getBindGroupLayout(),
                     entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
                 });
-            })
+            }, (error) => this.reportUploadLoss(error))
             : { ok: true, value: undefined };
 
         this.scene.addMesh(mesh);
@@ -1301,7 +1280,7 @@ export class Renderer {
                     });
                 }
             }
-        });
+        }, (error) => this.reportUploadLoss(error));
     }
 
     /**
@@ -1406,7 +1385,11 @@ export class Renderer {
 
     /** Guarded entry point (#4885) for the unguarded body below. */
     createMeshFromData(meshData: MeshData): GpuUploadOutcome<void> {
-        return runGuardedGpuUpload(() => this.isDeviceLost(), () => this.createMeshFromDataUnguarded(meshData));
+        return runGuardedGpuUpload(
+            () => this.isDeviceLost(),
+            () => this.createMeshFromDataUnguarded(meshData),
+            (error) => this.reportUploadLoss(error),
+        );
     }
 
     /**

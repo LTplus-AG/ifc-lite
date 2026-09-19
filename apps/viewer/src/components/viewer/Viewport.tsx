@@ -1231,11 +1231,11 @@ export function Viewport({
           }
         },
         setSpaceOverlayMeshes: (meshes) => {
-          // Space Sketch draft ghosts go straight to the scene. Routed through
-          // `runGpuUpload` (#4885): unguarded, a throw here reached React.
+          // Space Sketch draft ghosts, via `runGpuUpload` (#4885); loss checked FIRST, or a stale overlay is removed for a no-op append.
           const renderer = rendererRef.current;
-          const scene = renderer?.getScene(), device = renderer?.getGPUDevice(), pipeline = renderer?.getPipeline();
-          if (!renderer || !scene || !device || !pipeline) return;
+          if (!renderer || renderer.isDeviceLost()) return;
+          const scene = renderer.getScene(), device = renderer.getGPUDevice(), pipeline = renderer.getPipeline();
+          if (!scene || !device || !pipeline) return;
           runGpuUpload('setSpaceOverlayMeshes', () => {
             if (spaceOverlayIdsRef.current.size > 0) {
               scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));

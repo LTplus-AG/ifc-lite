@@ -6,6 +6,7 @@ import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { runGpuUpload, resetGpuUploadGuardForTests } from './gpu-upload-guard.js';
 import { posthog } from '@/lib/analytics';
+import { toast } from '@/components/ui/toast';
 
 // The production failure this contains, verbatim from error tracking.
 const GPU_OOM =
@@ -116,6 +117,32 @@ describe('runGpuUpload error-tracking dedupe (#4885)', () => {
       assert.equal('device_lost_at_time' in props, false);
     } finally {
       capture.mock.restore();
+    }
+  });
+
+  // Seam: production loads the toast module dynamically (to keep this
+  // render-path module free of UI imports), but that resolves to the SAME
+  // module instance as this file's static import, so `mock.method(toast,
+  // 'error')` — the pattern `device-loss-report.test.ts` already uses — works
+  // without adding an injection point to production code.
+  const flushDynamicImport = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it('toasts once per SESSION, not once per distinct error kind (review, #4885)', async () => {
+    // Telemetry is keyed per kind so a second, DIFFERENT failure still
+    // reaches error tracking (see the dedupe test above) — but the toast says
+    // "part of the model may not be drawn", true for every kind this guard
+    // sees, so it must not repeat just because the kind changed underneath.
+    await flushDynamicImport(); // drain any toast left in flight by an earlier test
+    const errorToast = mock.method(toast, 'error', () => 0);
+    try {
+      runGpuUpload('site-e', () => { throw new RangeError(GPU_OOM); }); // gpu_alloc_failed
+      runGpuUpload('site-f', () => { throw new Error('memory access out of bounds'); }); // out_of_memory
+      await flushDynamicImport();
+      assert.equal(errorToast.mock.callCount(), 1, 'one session, one toast, regardless of how many distinct kinds reported');
+    } finally {
+      errorToast.mock.restore();
     }
   });
 });

@@ -179,6 +179,31 @@ describe('runGuardedGpuUpload', () => {
         assert.strictEqual(outcome.ok, false);
         assert.ok(!outcome.ok && outcome.reason === 'error' && outcome.deviceLostAtTime === false);
     });
+
+    it('calls onLossDetected for a synchronous DOMException (Safari-style loss), not for a plain RangeError', () => {
+        // Review (#4885): a call outside render()'s own containment has no
+        // other path to `handleDeviceLost` for THIS throw shape — `isDeviceLost`
+        // above only re-READS state, it never sets it. Without this callback the
+        // renderer would never learn a Safari-style synchronous loss happened.
+        const lossCalls: unknown[] = [];
+        const domOutcome = runGuardedGpuUpload(
+            () => false,
+            () => { throw new DOMException('invalid state', 'InvalidStateError'); },
+            (error) => lossCalls.push(error),
+        );
+        assert.strictEqual(domOutcome.ok, false);
+        assert.strictEqual(lossCalls.length, 1);
+        assert.ok(lossCalls[0] instanceof DOMException);
+
+        lossCalls.length = 0;
+        const rangeOutcome = runGuardedGpuUpload(
+            () => false,
+            () => { throw new RangeError('Array buffer allocation failed'); },
+            (error) => lossCalls.push(error),
+        );
+        assert.strictEqual(rangeOutcome.ok, false);
+        assert.strictEqual(lossCalls.length, 0, 'a plain RangeError on a healthy device is not a loss signal');
+    });
 });
 
 describe('Renderer upload paths after a simulated device loss (#4885)', () => {
@@ -247,5 +272,76 @@ describe('Renderer upload paths after a simulated device loss (#4885)', () => {
         const outcome = h.renderer.createMeshFromData(triangle(1));
         assert.deepStrictEqual(outcome, { ok: false, reason: 'device-lost' });
         assert.strictEqual(h.createBufferCalls(), before);
+    });
+});
+
+describe('a synchronous Safari-style loss during an upload latches isDeviceLost() (review, #4885)', () => {
+    /** Silence the console output `handleDeviceLost` emits. */
+    function withQuietConsole<T>(run: () => T): T {
+        const warn = mock.method(console, 'warn', () => undefined);
+        const error = mock.method(console, 'error', () => undefined);
+        try {
+            return run();
+        } finally {
+            warn.mock.restore();
+            error.mock.restore();
+        }
+    }
+
+    /**
+     * A renderer whose device throws a `DOMException` from `createBuffer` on
+     * the FIRST call — the Chromium fake in `makeUploadableRenderer` above
+     * only ever succeeds, so this is a separate, minimal device wired the
+     * same way, isolated to the single-mesh `addMesh` path (its `createBuffer`
+     * call is direct, not behind `Scene.appendToBatches`'s batching).
+     */
+    function makeRendererWithThrowingCreateBuffer(): Renderer {
+        const fakeDevice = new Proxy({} as Record<string | symbol, unknown>, {
+            get(_t, prop) {
+                if (prop === 'createBuffer') {
+                    return () => { throw new DOMException('invalid state', 'InvalidStateError'); };
+                }
+                return () => undefined;
+            },
+        });
+        const renderer = new Renderer(makeCanvas());
+        poke(renderer, 'device', {
+            isInitialized: () => true,
+            getDevice: () => fakeDevice,
+            onDeviceLost: () => undefined,
+            init: async () => { throw new Error('no WebGPU in node'); },
+            destroy: () => undefined,
+        });
+        poke(renderer, 'pipeline', { getUniformBufferSize: () => 240, getBindGroupLayout: () => ({}) });
+        return renderer;
+    }
+
+    it('addMesh latches isDeviceLost() on a synchronous DOMException instead of leaving it false forever', () => {
+        const renderer = makeRendererWithThrowingCreateBuffer();
+        assert.strictEqual(renderer.isDeviceLost(), false, 'precondition: not lost yet');
+
+        const mesh = {
+            expressId: 1,
+            vertexBuffer: {} as GPUBuffer,
+            indexBuffer: {} as GPUBuffer,
+            indexCount: 3,
+            transform: { m: new Float32Array(16) },
+            color: [0.5, 0.5, 0.5, 1],
+        };
+        const outcome = withQuietConsole(() => renderer.addMesh(mesh as never));
+
+        assert.strictEqual(outcome.ok, false);
+        assert.ok(!outcome.ok && outcome.reason === 'error' && outcome.deviceLostAtTime === true);
+        assert.strictEqual(
+            renderer.isDeviceLost(),
+            true,
+            'render() latches a synchronous DOMException — an upload call outside it must too, or nothing ever learns the device died',
+        );
+
+        // ...and the SECOND call skips buffer creation cleanly (addMesh's own
+        // lost-device branch, pinned separately above) instead of repeating
+        // the throw — `isDeviceLost()` being true is what routes it there.
+        const second = withQuietConsole(() => renderer.addMesh({ ...mesh, expressId: 2 } as never));
+        assert.deepStrictEqual(second, { ok: true, value: undefined });
     });
 });

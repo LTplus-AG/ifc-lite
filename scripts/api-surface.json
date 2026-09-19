@@ -7821,6 +7821,7 @@
     "FrameTimingReport: interface",
     "GlobalIdLookup: interface",
     "GpuFrameTimingRecorder: class",
+    "GpuUploadOutcome: type",
     "HATCH_PATTERN_IDS: const",
     "HatchPatternId: type",
     "InteractionMode: type",

@@ -19,6 +19,35 @@
  * days — every one of them fallout from a device that had already died.
  */
 
+/**
+ * Is this throw the GPU device telling us it is gone?
+ *
+ * The discriminator is the exception TYPE, not its message, because WebGPU
+ * draws exactly that line:
+ *  - a call on a dead / invalid-state device throws a `DOMException`
+ *    (`InvalidStateError` in Safari 26.5 — the whole of issue #2229);
+ *  - a buffer allocation the host cannot back throws a plain `RangeError`
+ *    ("createBuffer failed, size (…) is too large … when mappedAtCreation ==
+ *    true"), which `isMappedCreateBufferOverflow` below documents happening
+ *    on a HEALTHY device under memory pressure.
+ *
+ * Treating the second as a device loss is a false positive that costs the
+ * whole session — see `runGuardedGpuUpload`'s doc for how a caught RangeError
+ * is instead checked against `isDeviceLost()`, not this classifier, to tell
+ * loss fallout from real memory pressure.
+ *
+ * Shared by `index.ts`'s frame-level `containFrameThrow` (the ONE throw class
+ * that latches mid-frame) and this module's `runGuardedGpuUpload` (the same
+ * throw class latching from a call OUTSIDE the frame, #4885) — a single
+ * classifier, so the two paths cannot drift on what counts as a loss signal.
+ *
+ * `typeof` guarded because non-DOM hosts (Node before 17, some workers) have
+ * no `DOMException` global; there, no throw can be a WebGPU device signal.
+ */
+export function isDeviceLossThrow(error: unknown): boolean {
+    return typeof DOMException !== 'undefined' && error instanceof DOMException;
+}
+
 /** The outcome of one guarded upload call. */
 export type GpuUploadOutcome<T> =
     | { ok: true; value: T }
@@ -66,10 +95,20 @@ export function isMappedCreateBufferOverflow(error: unknown): boolean {
  * Never throws: the failure comes back as data, for the caller to log,
  * report to telemetry, or ignore, but never to let escape into a React tree
  * or a streaming loop that has no idea a GPU call could fail this way.
+ *
+ * `onLossDetected` closes the gap `render()`'s own containment does not cover
+ * here: Safari's SYNCHRONOUS `DOMException` (issue #2229) reaches this catch
+ * without ever having gone through `handleDeviceLost` — nothing upstream of
+ * `run()` calls it, unlike the async `device.lost` promise, which the
+ * `WebGPUDevice` wrapper already forwards on its own. Without this callback
+ * `isDeviceLost()` would answer `false` forever after such a throw and every
+ * later call on this path would keep trying the same dead device. Called
+ * BEFORE the post-check below, so `deviceLostAtTime` reflects it.
  */
 export function runGuardedGpuUpload<T>(
     isDeviceLost: () => boolean,
     run: () => T,
+    onLossDetected?: (error: unknown) => void,
 ): GpuUploadOutcome<T> {
     if (isDeviceLost()) {
         return { ok: false, reason: 'device-lost' };
@@ -77,6 +116,7 @@ export function runGuardedGpuUpload<T>(
     try {
         return { ok: true, value: run() };
     } catch (error) {
+        if (isDeviceLossThrow(error)) onLossDetected?.(error);
         return { ok: false, reason: 'error', error, deviceLostAtTime: isDeviceLost() };
     }
 }

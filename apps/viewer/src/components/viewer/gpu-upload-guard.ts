@@ -45,11 +45,17 @@ import { classifyLoadError, errorCaptureProps } from '@/lib/load-errors';
 // hide it from triage entirely, not just de-duplicate it.
 const reportedKinds = new Set<string>();
 const loggedLabels = new Set<string>();
+// The user-facing toast is its OWN latch, separate from `reportedKinds`
+// (review, #4885): it says "part of the model may not be drawn", true for
+// every kind this guard sees, so showing it again per distinct kind would
+// just be the same sentence twice for one still-broken session.
+let toastShown = false;
 
 /** Reset the once-per-session latches. Test seam — not used in production. */
 export function resetGpuUploadGuardForTests(): void {
   reportedKinds.clear();
   loggedLabels.clear();
+  toastShown = false;
 }
 
 /**
@@ -88,6 +94,9 @@ export function runGpuUpload<T>(
         gpu_upload_site: label,
         ...errorCaptureProps(err, undefined, deviceLost),
       });
+    }
+    if (!toastShown) {
+      toastShown = true;
       // Tell the user once. Containment keeps the session alive, but a lost
       // device does not come back on its own and the affected batches will not
       // draw — silently showing an incomplete model would be worse than the

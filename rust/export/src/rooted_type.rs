@@ -181,17 +181,11 @@ mod tests {
         assert!(is_rooted_type("IFCWALL"));
     }
 
-    /// IFC2X3-only rooted type: a bare `IfcType::from_str` yields `Unknown`
-    /// for `IFCDOORSTYLE` because the IFC4X3-generated table doesn't carry
-    /// it, so this case can only pass through one of the two legacy paths --
-    /// `legacy_aware_ifc_type` (which maps it to `IfcDoorType`) or
-    /// `LEGACY_ROOTED_TYPES`, which also lists it.
+    /// IFC2X3-only rooted type: the generated supported-schema universe keeps
+    /// its exact name while rootedness remains compatible with the legacy path.
     #[test]
-    fn door_style_is_rooted_via_the_legacy_table() {
-        assert!(matches!(
-            IfcType::from_str("IFCDOORSTYLE"),
-            IfcType::Unknown(_)
-        ));
+    fn door_style_keeps_its_exact_name_and_is_rooted() {
+        assert_eq!(IfcType::from_str("IFCDOORSTYLE"), IfcType::IfcDoorStyle);
         assert!(is_rooted_type("IFCDOORSTYLE"));
 
         let line = b"#30=IFCDOORSTYLE('9zY8xW7vU6tS5rQ4pO3nM2',#2,'DoorStyle',$,$,$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,.T.,.T.);";
@@ -204,8 +198,8 @@ mod tests {
     /// `IFCPROXY`, the other legacy case cited alongside `IFCDOORSTYLE`
     /// (IFC2X3 AND IFC4; dropped from IFC4X3).
     #[test]
-    fn proxy_is_rooted_via_the_legacy_table() {
-        assert!(matches!(IfcType::from_str("IFCPROXY"), IfcType::Unknown(_)));
+    fn proxy_keeps_its_exact_name_and_is_rooted() {
+        assert_eq!(IfcType::from_str("IFCPROXY"), IfcType::IfcProxy);
         assert!(is_rooted_type("IFCPROXY"));
     }
 
@@ -287,11 +281,9 @@ mod tests {
     /// `rust/core/src/legacy_entities.rs` does NOT carry at all (confirmed:
     /// `grep -n "IFCSCHEDULETIMECONTROL\|IFCRELASSIGNSTASKS"
     /// rust/core/src/legacy_entities.rs` matches nothing), so `is_rooted_type`
-    /// can only answer `true` for them through the generated
-    /// `LEGACY_ROOTED_TYPES` table -- unlike `IFCDOORSTYLE`/`IFCPROXY` above,
-    /// which are also rooted via `legacy_aware_ifc_type` and so would stay
-    /// rooted even with a table entry deleted. This is the one test that
-    /// actually reddens if that table drops one of its table-only rows.
+    /// used to answer `true` only through `LEGACY_ROOTED_TYPES`. Their exact
+    /// generated variants now carry the EXPRESS parent chain too; keep the
+    /// transitional table entries pinned until #4203 removes that table.
     #[test]
     fn a_table_only_legacy_name_is_rooted_only_through_the_generated_table() {
         assert!(
@@ -302,22 +294,19 @@ mod tests {
             !ifc_lite_core::is_legacy_entity("IFCRELASSIGNSTASKS"),
             "premise stale: legacy_entities.rs now maps this name too"
         );
+        assert!(LEGACY_ROOTED_TYPES.contains(&"IFCSCHEDULETIMECONTROL"));
+        assert!(LEGACY_ROOTED_TYPES.contains(&"IFCRELASSIGNSTASKS"));
         assert!(is_rooted_type("IFCSCHEDULETIMECONTROL"));
         assert!(is_rooted_type("ifcscheduletimecontrol"));
         assert!(is_rooted_type("IfcRelAssignsTasks"));
     }
 
-    /// All 54 legacy entries resolve to `Unknown` against the generated
-    /// IFC4X3-only schema (that's the gap this table exists to close) and
-    /// are individually recognised as rooted.
+    /// All transitional legacy entries are individually recognised as rooted;
+    /// supported EXPRESS names now also round-trip through their exact variant.
     #[test]
-    fn every_legacy_entry_is_unknown_to_the_generated_schema_and_rooted_here() {
+    fn every_legacy_entry_is_rooted_and_preserves_its_supported_name() {
         for &name in LEGACY_ROOTED_TYPES {
-            assert!(
-                matches!(IfcType::from_str(name), IfcType::Unknown(_)),
-                "{name} unexpectedly resolved in the generated IFC4X3 schema; \
-                 it may have been added there and no longer needs the legacy table"
-            );
+            assert_eq!(IfcType::from_str(name).as_str(), name, "{name}");
             assert!(is_rooted_type(name), "{name} should be rooted");
         }
     }

@@ -10,11 +10,15 @@
  * answers questions ABOUT the enum stay separable.
  */
 
-import type { ExpressSchema } from './express-parser.js';
+import type { EntityDefinition, ExpressSchema } from './express-parser.js';
 import { getAllAttributes } from './express-parser.js';
 
 /** Emitted inside `impl IfcType { … }`, closing the impl block. */
-export function generateSchemaQueries(schema: ExpressSchema): string {
+export function generateSchemaQueries(
+  schema: ExpressSchema,
+  typeUniverse: readonly EntityDefinition[] = schema.entities
+): string {
+  const canonicalNames = new Set(schema.entities.map((entity) => entity.name));
   return `    /// This entity's attributes, in STEP declaration order.
     ///
     /// Supertype attributes come FIRST, which is what makes the position here
@@ -28,7 +32,9 @@ export function generateSchemaQueries(schema: ExpressSchema): string {
     /// as authoritative for it.
     pub fn attribute_names(&self) -> &'static [&'static str] {
         match self {
-${schema.entities.map((e) => `            Self::${e.name} => &[${getAllAttributes(e, schema).map((a) => `"${a.name}"`).join(', ')}],`).join('\n')}
+${typeUniverse.map((e) => canonicalNames.has(e.name)
+    ? `            Self::${e.name} => &[${getAllAttributes(e, schema).map((a) => `"${a.name}"`).join(', ')}],`
+    : `            Self::${e.name} => &[],`).join('\n')}
             Self::Unknown(_) => &[],
         }
     }

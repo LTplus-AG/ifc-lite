@@ -147,6 +147,11 @@ test('a failure with no remedy is reported as a defect in this script', () => {
   assert.ok(src.includes(anchor), 'checker mutation anchor drifted');
   const dir = mkdtempSync(join(tmpdir(), 'legacy-unrouted-'));
   try {
+    mkdirSync(join(dir, 'lib'));
+    writeFileSync(
+      join(dir, 'lib/rust-schema-names.mjs'),
+      readFileSync(join(SCRIPTS, 'lib/rust-schema-names.mjs'), 'utf8'),
+    );
     // The name matters: the checker's main-entry guard is
     // `process.argv[1].endsWith('check-legacy-entity-coverage.mjs')`, so a copy
     // under any other name loads, does nothing, and exits 0 -- which would make
@@ -214,26 +219,10 @@ test('a broken LEGACY_ENTITY_NAMES extractor fails instead of passing vacuously'
   assert.doesNotMatch(out, /NO REMEDY MATCHED/);
 });
 
-test('an arm whose key from_str already resolves is reported', () => {
-  // The invariant `legacy_aware_ifc_type_from_record`'s Unknown short-circuit
-  // rests on: no key in the table may be a name the generated enum knows. If
-  // one is, the short-circuit fires and the remap is silently skipped.
-  //
-  // `IFCWALL` is the mutation because it is unambiguously in `from_str` today,
-  // so the case cannot rot into a no-op the way a borderline name could.
-  const anchor = '"IFCPRESENTATIONSTYLEASSIGNMENT"';
-  assert.ok(real.get(LEGACY_REL).includes(anchor), 'mutation anchor drifted');
-  const { status, out } = runOn({
-    [LEGACY_REL]: real.get(LEGACY_REL).replace(anchor, '"IFCWALL"'),
-  });
-  assert.equal(status, 1, out);
-  assert.match(out, /has an arm for "IFCWALL", which .*from_str already resolves/);
-  assert.doesNotMatch(out, /NO REMEDY MATCHED/);
-  // The remedy has to match the failure. This class needs the arm REMOVED; the
-  // add-an-arm epilogue would send the reader the opposite way, and a gate whose
-  // instructions contradict its own finding is worse than one that says nothing.
-  assert.match(out, /REMOVE the arm/);
-  assert.doesNotMatch(out, /Add an arm mapping each name/);
+test('the supported type union may retain transitional processing remaps', () => {
+  const { status, out } = runOn({});
+  assert.equal(status, 0, out);
+  assert.doesNotMatch(out, /from_str already resolves/);
 });
 
 test('a dead key gets the respell remedy, NOT the add-an-arm one', () => {

@@ -47,7 +47,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseEntityTable, generatedNames } from './check-legacy-entity-coverage.mjs';
+import { parseEntityTable, canonicalGeneratedNames } from './check-legacy-entity-coverage.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = 'packages/data/src/ifc-schema/generated';
@@ -137,10 +137,9 @@ pub static LEGACY_ROOTED_TYPES: &[&str] = &[
 
 function generate() {
   const oldTables = loadOldTables();
-  const schemaSource = readFileSync(join(ROOT, SCHEMA_REL), 'utf8');
-  const known = generatedNames(schemaSource);
+  const known = canonicalGeneratedNames(readFileSync(join(ROOT, SCHEMA_REL), 'utf8'));
   if (known.size < 500) {
-    throw new Error(`only ${known.size} names extracted from ${SCHEMA_REL} — the extractor has drifted`);
+    throw new Error(`only ${known.size} canonical names extracted from ${SCHEMA_REL} — the extractor has drifted`);
   }
   const rows = computeLegacyRootedTypes(oldTables, known);
   if (rows.size === 0) {

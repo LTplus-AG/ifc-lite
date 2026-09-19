@@ -53,7 +53,7 @@ import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
-import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths.js';
+import { entityForPath, pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -157,9 +157,12 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     operation: string, modelId: string, dataStore: IfcDataStore, expressId: number, globalId: string,
   ): void {
     const sourceOwner = dataStore.entities.getExpressIdByGlobalId(globalId);
+    const roomOwner = entityForPath(dataStore, pathForGuid(dataStore, globalId));
     const localOwner = [...(claimedGlobalIds.get(dataStore)?.entries() ?? [])]
       .find(([, claimed]) => claimed === globalId)?.[0];
-    if ((sourceOwner >= 0 && sourceOwner !== expressId) || (localOwner !== undefined && localOwner !== expressId)) {
+    if ((sourceOwner >= 0 && sourceOwner !== expressId)
+      || (roomOwner !== null && roomOwner !== expressId)
+      || (localOwner !== undefined && localOwner !== expressId)) {
       throw new Error(`bim.store.${operation}: GlobalId "${globalId}" already exists in model "${modelId}"`);
     }
   }
@@ -211,23 +214,18 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
         throw new Error(`bim.store.setPositionalAttribute: no model loaded for id "${ref.modelId}"`);
       }
       const dataStore = resolveDataStore(ref.modelId);
-      if (dataStore) {
-        ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
-        ensureReferencedRoomEntities(ref.modelId, editor, dataStore, value);
-      }
       const type = editor.getNewEntity(ref.expressId)?.type
         ?? dataStore?.getEntity?.(ref.expressId)?.type
         ?? dataStore?.entities.getTypeName(ref.expressId);
       const name = type && dataStore ? attributeNamesForStore(dataStore, type)[index] : undefined;
-      if (name === 'GlobalId' && typeof value === 'string' && dataStore) {
-        assertAvailableGlobalId('setPositionalAttribute', ref.modelId, dataStore, ref.expressId, value);
+      if (name === 'GlobalId') {
+        throw new Error('bim.store.setPositionalAttribute: GlobalId is immutable in a shared room');
+      }
+      if (dataStore) {
+        ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
+        ensureReferencedRoomEntities(ref.modelId, editor, dataStore, value);
       }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
-      if (name === 'GlobalId' && dataStore) {
-        const claims = claimedGlobalIds.get(dataStore) ?? new Map<number, string>();
-        if (typeof value === 'string') claims.set(ref.expressId, value); else claims.delete(ref.expressId);
-        claimedGlobalIds.set(dataStore, claims);
-      }
       if (name) {
         store.getState().mirrorAttributeEdit(
           ref.modelId,

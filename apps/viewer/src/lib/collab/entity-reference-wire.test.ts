@@ -13,10 +13,13 @@ test('structured room references resolve in the recipient ID space (#5008)', () 
   registerEntityMaps(sender, new Map([[4, '/m0/target']]), new Map([['/m0/target', 4]]));
   registerEntityMaps(recipient, new Map([[91, '/m0/target']]), new Map([['/m0/target', 91]]));
 
-  const encoded = encodeRoomAttributeValue(sender, ['#4', { typed: { type: 'IfcLabel', value: 'kept' } }]);
-  assert.deepEqual(encoded, [{ 'ifc-lite::entityPath': '/m0/target' }, { typed: { type: 'IfcLabel', value: 'kept' } }]);
+  const encoded = encodeRoomAttributeValue(sender, ['#4', { typed: { type: 'IfcReference', value: '#4' } }]);
+  assert.deepEqual(encoded, [
+    { 'ifc-lite::entityPath': '/m0/target' },
+    { typed: { type: 'IfcReference', value: { 'ifc-lite::entityPath': '/m0/target' } } },
+  ]);
   assert.deepEqual(decodeRoomAttributeValue(recipient, encoded), {
-    ok: true, value: ['#91', { typed: { type: 'IfcLabel', value: 'kept' } }],
+    ok: true, value: ['#91', { typed: { type: 'IfcReference', value: '#91' } }],
   });
   assert.deepEqual(decodeRoomAttributeValue(recipient, { 'ifc-lite::entityPath': '/m0/missing' }), { ok: false });
 });

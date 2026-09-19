@@ -29,9 +29,11 @@
  * gets a name that names something else.
  *
  * SCOPE: only entities present in `entities-ifc2x3.ts` or `entities-ifc4.ts`
- * that `rust/core/src/generated/schema.rs`'s `from_str` does NOT already
- * resolve (i.e. legacy/removed names) get a row — a name the modern enum
- * already knows keeps using its own generated `attribute_names()`, unchanged.
+ * that are absent from `rust/core/src/generated/schema.rs`'s canonical IFC4X3
+ * catalog get a row. The enum also preserves those older-schema names as
+ * supplemental exact variants, but their generated `attribute_names()` are
+ * intentionally empty: positional metadata must come from the schema that
+ * declares the entity rather than an IFC4X3 approximation.
  *
  * CONFLICT HANDLING: if a name's attribute list differs between the IFC2X3
  * and IFC4 tables (this generator found none as of 2026-09), the IFC2X3 row
@@ -68,9 +70,9 @@ function loadOldTables() {
 
 /**
  * `{ name -> { attrs, sources: string[], conflict: bool } }` for every
- * entity in an older schema's table that the generated IFC4X3 enum cannot
- * resolve by name. IFC2X3 is checked before IFC4, so its row wins a conflict
- * (the loop order below; `OLD_SCHEMAS` lists it first).
+ * entity in an older schema's table that is absent from the canonical IFC4X3
+ * catalog. IFC2X3 is checked before IFC4, so its row wins a conflict (the loop
+ * order below; `OLD_SCHEMAS` lists it first).
  */
 export function computeLegacyAttributeNames(oldTables, known) {
   const rows = new Map();

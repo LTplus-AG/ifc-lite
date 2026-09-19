@@ -111,9 +111,11 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
         // void/feature family) are boolean operands, not building structure —
         // they must never emit a construction-projection profile, and walking
         // the supertype chain covers the whole family in one check. Resolved
-        // from `type_name`, NOT `entity.ifc_type`: the decoder sets that with a
-        // bare `from_str`, so a legacy keyword arrives as `Unknown` (a subtype
-        // of nothing) and `IFCOPENINGSTANDARDCASE` emitted a profile (#3172).
+        // from `type_name`, NOT `entity.ifc_type`: exact legacy variants now
+        // survive decoding, but only the legacy-aware resolver preserves their
+        // established classification; before exact-name support, a bare
+        // `from_str` produced `Unknown` and `IFCOPENINGSTANDARDCASE` emitted a
+        // profile (#3172).
         let resolved_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
         if resolved_type.is_subtype_of(IfcType::IfcFeatureElement) {
             continue;

@@ -260,8 +260,8 @@ END-ISO-10303-21;
 /// The sharded browser path's own pin for #3187. The serial scan is not
 /// reachable from a host test (it lives inside a `#[wasm_bindgen]` method
 /// driven by JS callbacks), but this walk is, and it is the path that
-/// re-attaches an `IfcType` to a span someone else flagged -- the exact
-/// place a bare `IfcType::from_str` would put `Unknown` on the wire.
+/// re-attaches a processing `IfcType` to a span someone else flagged. It must
+/// retain the legacy-aware base mapping even after exact variants exist.
 #[test]
 fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() {
     let bytes = LEGACY_TYPE_FIXTURE.as_bytes();
@@ -298,8 +298,9 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
     assert_eq!(
         labelled,
         vec![ifc_lite_core::IfcType::IfcDoorType],
-        "the sharded walk must carry the legacy IfcDoorStyle forward as its base \
-         type IfcDoorType, not as Unknown and not dropped; type_candidate_spans = {:?}",
+        "the sharded walk must carry legacy IfcDoorStyle as processing type \
+         IfcDoorType, not expose its exact schema variant or drop it; \
+         type_candidate_spans = {:?}",
         discovery.type_candidate_spans
     );
 }
@@ -307,10 +308,10 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
 /// The geometry-JOB half of the same walk, and the sibling of the test
 /// above. The type-candidate branch was made legacy-aware and this one was
 /// not, so a keyword the gate admitted through the legacy-aware
-/// `has_geometry_by_name` was then labelled by a bare `IfcType::from_str`
-/// and reached the wire as `Unknown(crc32)`. `Unknown` carries a hash of
-/// the keyword rather than the keyword, so no consumer can recover it
-/// (#3179). This is the sharded path, which is the one large models take.
+/// `has_geometry_by_name` was then labelled by a bare `IfcType::from_str` and
+/// reached the wire as `Unknown(crc32)` before #4203. Exact variants remove
+/// that information loss, but the sharded path must still preserve the same
+/// processing classification as every other path (#3179, #4203).
 #[test]
 fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
@@ -348,10 +349,8 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
     assert_eq!(
         labelled,
         vec![ifc_lite_core::IfcType::IfcBeam],
-        "the sharded walk must label the legacy IFCBEAMSTANDARDCASE job as IfcBeam, \
-         agreeing with the gate that admitted it; Unknown stores a hash of the \
-         keyword rather than the keyword, so the label cannot be repaired later \
-         from itself; buffered_jobs = {:?}",
+        "the sharded walk must label legacy IFCBEAMSTANDARDCASE as processing \
+         type IfcBeam, agreeing with the gate that admitted it; buffered_jobs = {:?}",
         discovery.buffered_jobs
     );
 }

@@ -98,7 +98,7 @@ fn legacy_keywords_are_not_scheduled_as_unknown() {
 /// three synthetic stratum extensions remain `Unknown`; all three reach the
 /// `has_geometry_by_name` arm,
 /// **0** reach the `IFCSITE` arm, and **0** reach the representationless-
-/// spatial-container arm. The remaining 4 reach NONE of the three and are
+/// spatial-container arm. The remaining four reach none of those three arms,
 /// while supported legacy type products are picked up by
 /// `type_product_ifc_type`, which resolves legacy-aware.
 ///

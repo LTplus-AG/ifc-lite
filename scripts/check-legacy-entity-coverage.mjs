@@ -5,8 +5,8 @@
 
 /**
  * Lint: `rust/core/src/legacy_entities.rs` must cover every concrete
- * `IfcProduct` subtype that the generated IFC4X3 enum cannot resolve, and must
- * not carry an arm whose key names no entity in any bundled schema.
+ * `IfcProduct` subtype absent from the canonical IFC4X3 catalog, and must not
+ * carry an arm whose key names no entity in any bundled schema.
  *
  * `rust/core/src/schema_helpers.rs` tells every classification pass to consult
  * that table "rather than a bare `IfcType::from_str`". Nothing checked that it
@@ -16,13 +16,13 @@
  * `IfcRoundedEdgeFeature`, `IfcStructuralLinearActionVarying`,
  * `IfcStructuralPlanarActionVarying`.
  *
- * The failure is SILENT, in both passes at once. A name the table misses
- * resolves to `IfcType::Unknown`, and `Unknown` is a subtype of nothing:
- * `rust/export/src/model.rs` keeps a row only if the type reaches `IfcProduct`,
- * and `has_geometry_by_name` refuses `Unknown` outright. So the entity is
- * dropped from the attribute export AND from meshing — the two passes agree,
- * on losing it. That is not the geometry/attribute divergence #1496 fixed;
- * nothing disagrees, so nothing looks wrong.
+ * Before #4203 the failure was silent in both passes at once: a name the table
+ * missed resolved to `IfcType::Unknown`, so export and meshing agreed on
+ * dropping it. The enum now preserves supported older-schema names exactly,
+ * but this table remains the compatibility contract for their processing
+ * classification and geometry flag. The gate therefore prevents one path
+ * from falling through to a supplemental variant while the others keep the
+ * established base-type mapping.
  *
  * THE DEAD-KEY HALF is the other thing that went unnoticed for as long. The
  * table carried `"IFCELECTRICALDISTRIBUTIONPOINT"`, and no such IFC2X3 entity
@@ -201,9 +201,9 @@ export function checkCoverage({
     const upper = p.name.toUpperCase();
     if (known.has(upper) || keys.has(upper)) continue;
     failures.push(
-      `${p.name} (${p.schema}, parent ${p.parent}) is a concrete IfcProduct, is not in the generated IFC4X3 enum, ` +
-        `and has no arm in ${LEGACY_REL} — a file containing it loses it from the attribute export` +
-        (p.bearsGeometry ? ' and from meshing' : ' (it carries no representation, so meshing loses nothing)'),
+      `${p.name} (${p.schema}, parent ${p.parent}) is a concrete IfcProduct absent from the canonical IFC4X3 catalog ` +
+        `and has no arm in ${LEGACY_REL} — its processing classification would fall through to the supplemental exact variant` +
+        (p.bearsGeometry ? ' instead of the shared compatibility mapping' : ' (it carries no representation)'),
     );
   }
 
@@ -347,10 +347,10 @@ with the reason. Otherwise remove the arm.
       {
         keys: ['has no arm in'],
         text: `
-Every pass that classifies an entity goes through this table, and a name it
-misses resolves to IfcType::Unknown -- a subtype of nothing. The entity is then
-dropped from the attribute export and from meshing at once, so nothing
-disagrees and nothing looks wrong.
+Every pass that classifies a supported older-schema entity goes through this
+table. Supplemental exact variants preserve the name, but they must not bypass
+the shared compatibility mapping or silently change the processing type and
+geometry policy established before #4203.
 
 Add an arm mapping each name to its closest surviving IFC4X3 supertype (its own
 parent chain in the older schema is the place to look, not a guess), and pin it

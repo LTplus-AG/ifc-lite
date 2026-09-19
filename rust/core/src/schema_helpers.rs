@@ -83,11 +83,13 @@ fn classifications() -> &'static FxHashMap<&'static str, TypeClassification> {
 ///    `IfcBuilding` (and any concrete subtype of those) are intentionally
 ///    kept — they have boundary representations the renderer consumes. See
 ///    [`is_non_geometric_spatial`] for how that exempt set is maintained.
-/// 2. Legacy IFC2x3 / removed-in-IFC4x3 names that aren't in the generated
-///    enum (e.g. `IFCSLABELEMENTEDCASE`, `IFCBUILDINGELEMENT`, `IFCPROXY`,
-///    `IFCEQUIPMENTELEMENT`, `IFCELECTRICDISTRIBUTIONPOINT`) resolve through
-///    `legacy_entities::get_legacy_entity_info`, which carries a
-///    `has_geometry` flag.
+/// 2. Legacy IFC2x3 / removed-in-IFC4x3 names that are absent from the
+///    canonical IFC4X3 catalog (e.g. `IFCSLABELEMENTEDCASE`,
+///    `IFCBUILDINGELEMENT`, `IFCPROXY`, `IFCEQUIPMENTELEMENT`,
+///    `IFCELECTRICDISTRIBUTIONPOINT`) resolve through
+///    `legacy_entities::get_legacy_entity_info`, which carries the established
+///    processing type and a `has_geometry` flag. Supplemental exact enum
+///    variants preserve their names independently.
 /// 3. Reinforcement variants not covered above fall back to a substring
 ///    match (`REINFORCING…` / `REINFORCED…`).
 pub fn has_geometry_by_name(type_name: &str) -> bool {
@@ -255,13 +257,12 @@ pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
 ///
 /// Keeps the cheap `ends_with` pre-filter that kept the resolve and the
 /// `is_subtype_of` walk off the hot path for the non-type majority, and
-/// resolves LEGACY-AWARE: under a bare [`IfcType::from_str`] the IFC2X3 type
-/// products IFC4X3 dropped (`IFCDOORSTYLE`, `IFCWINDOWSTYLE`,
-/// `IFCBUILDINGELEMENTTYPE`) come back `Unknown`, a subtype of nothing, so
-/// every gate discarded them before they could become jobs — and they carry
-/// `has_geometry: false` in the legacy table, so the ordinary product route
-/// did not reach them either. Their `RepresentationMaps` geometry was dropped
-/// by every path at once (#3187).
+/// resolves LEGACY-AWARE. Before the supported-schema universe, a bare
+/// [`IfcType::from_str`] returned `Unknown` for IFC2X3 type products IFC4X3
+/// dropped (`IFCDOORSTYLE`, `IFCWINDOWSTYLE`, `IFCBUILDINGELEMENTTYPE`), so
+/// every gate discarded them. Their exact variants now exist, but the legacy
+/// mapping remains the single classification contract shared by every path;
+/// bypassing it would silently change behavior as the enum grows (#3187).
 ///
 /// `type_name` is the raw STEP keyword as the scanner read it, in whatever case the file wrote it.
 pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
@@ -275,10 +276,11 @@ pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
 /// The legacy-aware type for an entity, recovered from its RAW STEP RECORD.
 ///
 /// For callers that hold a `DecodedEntity` and its source bytes but no keyword.
-/// `DecodedEntity.ifc_type` comes from a bare [`IfcType::from_str`], and for a
-/// name IFC4X3 dropped that is `IfcType::Unknown` — which stores a **CRC32
-/// hash, not the name**, so the keyword cannot be recovered from it. The record
-/// is the only place it still exists.
+/// `DecodedEntity.ifc_type` comes from a bare [`IfcType::from_str`]. Supported
+/// legacy names now arrive as exact variants and are remapped before the early
+/// return below. A genuinely unknown name still becomes `IfcType::Unknown`,
+/// which stores a **CRC32 hash, not the name**, so the record is the only place
+/// its keyword still exists.
 ///
 /// `decoded` is returned unchanged when it is already a known type, so the
 /// scan is paid only by entities that need it, and when the record is

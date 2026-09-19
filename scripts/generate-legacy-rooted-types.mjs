@@ -23,10 +23,10 @@
  * "does this legacy name's chain reach ancestor X", not two.
  *
  * SCOPE: a name qualifies iff it appears in `entities-ifc2x3.ts` or
- * `entities-ifc4.ts`, is NOT resolvable by `rust/core/src/generated/
- * schema.rs`'s `from_str` (i.e. IFC4X3 dropped or renamed it -- reusing
- * `generatedNames()`, the same "known" set `generate-legacy-attribute-
- * names.mjs` uses), and its parent chain in that table reaches `IfcRoot`.
+ * `entities-ifc4.ts`, is absent from `rust/core/src/generated/schema.rs`'s
+ * canonical IFC4X3 catalog (reusing `canonicalGeneratedNames()`, the same
+ * "known" set `generate-legacy-attribute-names.mjs` uses), and its parent
+ * chain in that table reaches `IfcRoot`.
  * Abstract entities are included (unlike `droppableProducts`, which excludes
  * them for a products-only question): an abstract rooted type such as
  * `IFCBUILDINGELEMENT` still carries a GlobalId as its first attribute in any
@@ -80,8 +80,8 @@ function reaches(table, name, ancestor) {
 
 /**
  * `{ name -> { rooted, sources: string[], conflict: bool } }` for every
- * legacy (not resolvable by the generated IFC4X3 enum) entity across both
- * older schemas.
+ * legacy (absent from the canonical IFC4X3 catalog) entity across both older
+ * schemas.
  */
 export function computeLegacyRootedTypes(oldTables, known) {
   const rows = new Map();

@@ -401,10 +401,12 @@ impl IfcAPI {
                 continue;
             };
             // LEGACY-AWARE, like the native pre-pass at
-            // `processing/src/processor/mod.rs:711`. Without this, a legacy
-            // keyword reaching this path arrived as `ifcType: "Unknown"` with
-            // the Unknown default colour, while the CLI and exporters labelled
-            // the same entity correctly (#3179).
+            // `processing/src/processor/mod.rs:711`. Before exact-name support,
+            // omitting this made a legacy keyword arrive as `ifcType:
+            // "Unknown"`; now it would expose the exact legacy variant but
+            // still disagree with the established CLI/exporter classification
+            // and colour. Keep every pipeline on the same resolver (#3179,
+            // #4203).
             //
             // Not every dropped keyword reaches this line: the four arms with
             // `has_geometry: false` are refused by `has_geometry_by_name` in

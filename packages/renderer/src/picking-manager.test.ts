@@ -51,6 +51,7 @@ describe('PickingManager', () => {
       canvas as HTMLCanvasElement,
       () => {
         meshCreations += 1;
+        return { ok: true as const, value: undefined };
       },
     );
 
@@ -120,6 +121,7 @@ describe('PickingManager', () => {
       canvas as HTMLCanvasElement,
       (piece) => {
         createdMeshes.push({ expressId: piece.expressId, modelIndex: piece.modelIndex });
+        return { ok: true as const, value: undefined };
       },
     );
 
@@ -135,6 +137,67 @@ describe('PickingManager', () => {
       pickerMeshes.every((m) => m.expressId === DOOR),
       'expected only the isolated door to survive the isolation filter',
     );
+  });
+
+  // Review on #4978 (#4885): a hydration failure during prepareBatchedPick —
+  // a lost device, or a mapped-createBuffer allocation failure — must not
+  // report 'gpu' with an INCOMPLETE hydrated set. Before this, the loop
+  // ignored createMeshFromDataFn's return value entirely, so a pick after the
+  // device died still tried the GPU route and silently missed the
+  // un-hydrated piece instead of falling back to the CPU raycast, which needs
+  // no GPU resources at all.
+  it('falls back to the CPU raycast when hydration fails partway (losable-device stub)', async () => {
+    const WALL = 300;
+    const DOOR = 301; // hydration for this piece "loses the device" mid-pick
+
+    const camera = {
+      unprojectToRay: () => ({ origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: -1 } }),
+      getViewProjMatrix: () => ({ m: new Float32Array(16) }),
+    };
+
+    let raycastCalls = 0;
+    let pickerCalls = 0;
+    const createdMeshes: Array<{ expressId: number }> = [];
+
+    const scene = {
+      getMeshes: () => createdMeshes,
+      getBatchedMeshes: () => [{ expressIds: [WALL] }],
+      isGeometryDataReleased: () => false,
+      getAllMeshDataExpressIds: () => [WALL, DOOR],
+      getMeshDataPieces: (expressId: number) =>
+        expressId === DOOR ? [{ expressId: DOOR }]
+        : expressId === WALL ? [{ expressId: WALL }]
+        : undefined,
+      getInstancedTemplates: () => undefined,
+      raycast: () => { raycastCalls++; return { expressId: DOOR, modelIndex: 0 }; },
+    };
+
+    const picker = { pick: async () => { pickerCalls++; return null; } };
+    const canvas = { width: 100, height: 100, getBoundingClientRect: () => ({ width: 100, height: 100 }) };
+
+    // Stands in for a losable device (same shape as `renderer.isDeviceLost()`
+    // latching mid-frame): the WALL piece hydrates fine, then the device dies
+    // and DOOR's hydration reports it, exactly what `Renderer.createMeshFromData`
+    // now returns instead of throwing (#4885).
+    let deviceLost = false;
+    const manager = new PickingManager(
+      camera as never,
+      scene as never,
+      picker as never,
+      canvas as HTMLCanvasElement,
+      (piece) => {
+        if (deviceLost) return { ok: false as const, reason: 'device-lost' as const };
+        createdMeshes.push({ expressId: piece.expressId });
+        if (piece.expressId === WALL) deviceLost = true; // "loses the device" before DOOR hydrates
+        return { ok: true as const, value: undefined };
+      },
+    );
+
+    const result = await manager.pick(50, 50);
+
+    assert.deepStrictEqual(result, { expressId: DOOR, modelIndex: 0 }, 'the CPU raycast still answers the pick');
+    assert.equal(raycastCalls, 1, 'a failed hydration must route through the CPU fallback');
+    assert.equal(pickerCalls, 0, 'the GPU picker must not run against an incompletely hydrated mesh set');
   });
 
   // Regression for #1904. pickRect used to pass scene.getMeshes() straight to
@@ -223,7 +286,7 @@ describe('PickingManager', () => {
         scene as never,
         picker as never,
         canvas as HTMLCanvasElement,
-        (piece) => { createdMeshes.push({ expressId: piece.expressId }); },
+        (piece) => { createdMeshes.push({ expressId: piece.expressId }); return { ok: true as const, value: undefined }; },
       );
 
       if (overrides.pointNodes !== undefined) {

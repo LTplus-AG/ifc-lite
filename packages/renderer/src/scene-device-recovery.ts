@@ -179,7 +179,7 @@ export function repartitionHydratedRecoveryBucket(
   const shells: BatchedMesh[] = [], keys: string[] = [];
   host.buckets.delete(key);
   for (let index = 0; index < chunks.length; index++) {
-    const targetKey = index === 0 ? key : nextRecoveryBucketKey(host, baseKey);
+    const targetKey = nextRecoveryBucketKey(host, baseKey);
     const parts = chunks[index];
     const target = index === 0 ? bucket : { key: targetKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
     const nextShell = host.modelTranslations.registerDrawable(
@@ -241,7 +241,7 @@ function restoreFlatBuckets(
     let activeKey = originalKey;
     for (let index = 0; index < chunks.length; index++) {
       const parts = chunks[index];
-      const key = index === 0 ? originalKey : nextRecoveryBucketKey(host, baseKey);
+      const key = nextRecoveryBucketKey(host, baseKey);
       const target = index === 0 ? bucket : { key, meshData: [], batchedMesh: null, vertexBytes: 0 };
       target.key = key;
       target.meshData = parts;

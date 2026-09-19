@@ -150,6 +150,14 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene.processResidencyRestores({} as GPUDevice, {} as RenderPipeline, Infinity), 2);
     assert.deepStrictEqual(uploads.map(parts => parts.map(part => part.expressId)), [[3], [3]]);
     assert.strictEqual(scene['buckets'].size, 2);
+    assert.ok([...scene['buckets'].keys()].every(bucketKey => bucketKey.includes('#')),
+      'every recovery partition is sealed from ambiguous provider re-hydration');
+
+    for (const restored of scene['batchedMeshes']) restored.gpuResident = false;
+    scene['hostBudgetBytes'] = 0;
+    scene['enforceHostBudget']();
+    assert.strictEqual(scene['coldBuckets'].size, 0, 'sealed recovery partitions cannot be cold-demoted');
+    assert.strictEqual(scene['meshDataMap'].get(3)?.length, 2, 'both exact pieces remain owned once');
   });
 
   it('replaces flat GPU batches without losing their CPU pieces', () => {
@@ -194,6 +202,8 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene.getBatchedMeshes().length, 2);
     assert.strictEqual(scene['buckets'].size, 2);
     assert.notStrictEqual(uploads[0].key, uploads[1].key);
+    assert.ok(uploads.every(({ key }) => key?.includes('#')),
+      'all recovery-created partitions are sealed from cold demotion');
     assert.strictEqual(scene['meshDataBucket'].get(first)?.meshData[0], first);
     assert.strictEqual(scene['meshDataBucket'].get(second)?.meshData[0], second);
   });
@@ -264,6 +274,7 @@ describe('Scene device recovery (#4885)', () => {
     scene.restoreGpuResourcesAfterRecovery(smaller, {} as RenderPipeline);
 
     assert.strictEqual(scene['buckets'].size, 2);
+    assert.ok([...scene['buckets'].keys()].every(key => key.includes('#')));
     assert.deepStrictEqual(scene.getBatchedMeshes().map((entry) => entry.gpuResident), [false, false]);
     assert.strictEqual(new Set(scene.getBatchedMeshes().map((entry) => entry.id)).size, 2);
     assert.strictEqual(shell.vertexBuffer.destroyed, 0);

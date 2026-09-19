@@ -17,19 +17,23 @@ export function focusClashGroup(
   resolve: (element: ClashElementRef) => SelectionRef | null,
   applyFocusMode: (globalIds: number[], mode: ClashFocusMode) => void,
   mode: ClashFocusMode,
-): void {
+): boolean {
   const state = useViewerStore.getState();
   const globalIds = new Set<number>();
+  const selectionKeys = new Set<string>();
   const refs: SelectionRef[] = [];
   for (const clash of clashes) {
     for (const element of [clash.a, clash.b]) {
       const resolved = resolve(element);
-      if (!resolved || globalIds.has(element.ref)) continue;
+      if (!resolved) continue;
       globalIds.add(element.ref);
+      const selectionKey = `${resolved.modelId}:${resolved.expressId}`;
+      if (selectionKeys.has(selectionKey)) continue;
+      selectionKeys.add(selectionKey);
       refs.push(resolved);
     }
   }
-  if (globalIds.size === 0) return;
+  if (refs.length === 0) return false;
   state.clearEntitySelection();
   state.clearClashFocus();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
@@ -37,4 +41,5 @@ export function focusClashGroup(
   state.addEntitiesToSelection(refs);
   applyFocusMode([...globalIds], mode);
   requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+  return true;
 }

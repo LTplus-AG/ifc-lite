@@ -66,6 +66,7 @@ beforeEach(async () => {
     clashReviews: new Map(),
     clashStatusFilter: new Set(['open', 'resolved', 'accepted']),
     bcfProject: null,
+    fromGlobalId: (expressId: number) => ({ modelId: 'model', expressId }),
   });
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -97,9 +98,9 @@ describe('ClashPanel manual groups (#4921)', () => {
     await act(async () => buttonWithText('Create group').click());
 
     assert.ok(container!.querySelector('button[aria-label="Collapse Riser coordination"]'));
-    const stored = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ name: string; clashKeys: string[] }> };
+    const stored = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ name: string; members: unknown[] }> };
     assert.equal(stored.groups[0].name, 'Riser coordination');
-    assert.equal(stored.groups[0].clashKeys.length, 2);
+    assert.equal(stored.groups[0].members.length, 2);
 
     const createBcf = container!.querySelector('button[title="Create one BCF topic from this group"]');
     assert.ok(createBcf instanceof HTMLButtonElement);
@@ -121,8 +122,8 @@ describe('ClashPanel manual groups (#4921)', () => {
     const removeMember = container!.querySelector('button[title="Remove this clash from the group"]');
     assert.ok(removeMember instanceof HTMLButtonElement);
     await act(async () => removeMember.click());
-    const afterEdit = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ clashKeys: string[] }> };
-    assert.equal(afterEdit.groups[0].clashKeys.length, 1, 'editing membership keeps the surviving pair');
+    const afterEdit = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ members: unknown[] }> };
+    assert.equal(afterEdit.groups[0].members.length, 1, 'editing membership keeps the surviving pair');
 
     const ungroup = container!.querySelector('button[title="Ungroup these clashes"]');
     assert.ok(ungroup instanceof HTMLButtonElement);

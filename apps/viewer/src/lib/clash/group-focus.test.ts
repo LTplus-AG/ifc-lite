@@ -31,7 +31,7 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.setState({ cameraCallbacks: { frameSelection } });
     const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref + 100 });
 
-    focusClashGroup([clash('c1', 10, 20), clash('c2', 20, 30)], resolve, applyFocusMode, 'ghost');
+    assert.equal(focusClashGroup([clash('c1', 10, 20), clash('c2', 20, 30)], resolve, applyFocusMode, 'ghost'), true);
 
     const state = useViewerStore.getState();
     assert.deepEqual(state.selectedEntityIds, new Set([10, 20, 30]));
@@ -42,13 +42,28 @@ describe('manual clash group focus (#4921)', () => {
     assert.equal(frameSelection.mock.callCount(), 1);
   });
 
-  it('ignores unresolvable objects and leaves selection untouched when none resolve', () => {
+  it('reports when no objects resolve so callers cannot capture an unrelated selection', () => {
     useViewerStore.getState().setSelectedEntityIds([99]);
     const applyFocusMode = mock.fn();
 
-    focusClashGroup([clash('c1', 10, 20)], () => null, applyFocusMode, 'isolate');
+    assert.equal(focusClashGroup([clash('c1', 10, 20)], () => null, applyFocusMode, 'isolate'), false);
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([99]));
     assert.equal(applyFocusMode.mock.callCount(), 0);
+  });
+
+  it('keeps equal numeric refs from distinct models as distinct selections', () => {
+    const first = clash('first', 10, 20);
+    const second = clash('second', 10, 30);
+    second.a.model = 'other-model';
+    const applyFocusMode = mock.fn();
+    const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
+
+    assert.equal(focusClashGroup([first, second], resolve, applyFocusMode, 'highlight'), true);
+
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.selectedEntityIds, new Set([10, 20, 30]));
+    assert.ok(state.selectedEntitiesSet.has('model:10'));
+    assert.ok(state.selectedEntitiesSet.has('other-model:10'));
   });
 });

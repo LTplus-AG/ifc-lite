@@ -7,8 +7,15 @@ import { clashReviewKey, type Clash } from '@ifc-lite/clash';
 export interface ManualClashGroup {
   id: string;
   name: string;
-  /** Durable `clashReviewKey` values, retained even when a narrower run omits them. */
-  clashKeys: string[];
+  /** Durable identities, retained even when a narrower run omits them. */
+  members: ManualClashMember[];
+}
+
+export interface ManualClashMember {
+  /** Model-independent fallback that survives reloads and model revisions. */
+  reviewKey: string;
+  /** Model-qualified identity that distinguishes equal GUID pairs in one run. */
+  occurrenceKey: string;
 }
 
 export interface ResolvedManualClashGroup {
@@ -27,7 +34,7 @@ export type ManualGroupSaveResult =
   | { ok: false; reason: 'quota' | 'serialize' | 'too_many'; message: string };
 
 export const MANUAL_CLASH_GROUPS_KEY = 'ifc-lite-clash-manual-groups';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const MAX_GROUPS = 200;
 const MAX_MEMBERS_PER_GROUP = 2_000;
 const MAX_NAME_LENGTH = 100;
@@ -50,23 +57,34 @@ export function normalizeManualClashGroups(raw: unknown): ManualClashGroup[] {
       : [];
   const groups: ManualClashGroup[] = [];
   const groupIds = new Set<string>();
-  const claimedClashes = new Set<string>();
+  const claimedOccurrences = new Set<string>();
   for (const item of list) {
     if (!item || typeof item !== 'object') continue;
     const record = item as Record<string, unknown>;
     const id = typeof record.id === 'string' ? record.id.trim() : '';
     const name = normalizeName(record.name);
-    if (!id || !name || groupIds.has(id) || !Array.isArray(record.clashKeys)) continue;
-    const clashKeys: string[] = [];
-    for (const value of record.clashKeys) {
-      if (typeof value !== 'string' || !value || claimedClashes.has(value)) continue;
-      claimedClashes.add(value);
-      clashKeys.push(value);
-      if (clashKeys.length >= MAX_MEMBERS_PER_GROUP) break;
+    if (!id || !name || groupIds.has(id)) continue;
+    const persistedMembers = Array.isArray(record.members)
+      ? record.members
+      : Array.isArray(record.clashKeys)
+        ? record.clashKeys.map((reviewKey) => ({ reviewKey, occurrenceKey: '' }))
+        : [];
+    const members: ManualClashMember[] = [];
+    for (const value of persistedMembers) {
+      if (!value || typeof value !== 'object') continue;
+      const member = value as Record<string, unknown>;
+      const reviewKey = typeof member.reviewKey === 'string' ? member.reviewKey : '';
+      const occurrenceKey = typeof member.occurrenceKey === 'string' ? member.occurrenceKey : '';
+      if (!reviewKey) continue;
+      const claimKey = occurrenceKey ? `occurrence:${occurrenceKey}` : `legacy:${reviewKey}`;
+      if (claimedOccurrences.has(claimKey)) continue;
+      claimedOccurrences.add(claimKey);
+      members.push({ reviewKey, occurrenceKey });
+      if (members.length >= MAX_MEMBERS_PER_GROUP) break;
     }
-    if (clashKeys.length === 0) continue;
+    if (members.length === 0) continue;
     groupIds.add(id);
-    groups.push({ id, name, clashKeys });
+    groups.push({ id, name, members });
     if (groups.length >= MAX_GROUPS) break;
   }
   return groups;
@@ -83,7 +101,7 @@ export function loadManualClashGroups(): ManualClashGroup[] {
 }
 
 export function saveManualClashGroups(groups: readonly ManualClashGroup[]): ManualGroupSaveResult {
-  if (groups.length > MAX_GROUPS || groups.some((group) => group.clashKeys.length > MAX_MEMBERS_PER_GROUP)) {
+  if (groups.length > MAX_GROUPS || groups.some((group) => group.members.length > MAX_MEMBERS_PER_GROUP)) {
     return { ok: false, reason: 'too_many', message: 'Too many clash groups or members to save.' };
   }
   let payload: string;
@@ -106,15 +124,45 @@ export function resolveManualClashGroups(
   groups: readonly ManualClashGroup[],
   clashes: readonly Clash[],
 ): ResolvedManualClashGroup[] {
-  const byKey = new Map(clashes.map((clash) => [clashReviewKey(clash), clash]));
+  const byOccurrence = new Map<string, Clash[]>();
+  const byReview = new Map<string, Clash[]>();
+  for (const clash of clashes) {
+    const occurrenceKey = manualClashOccurrenceKey(clash);
+    const occurrences = byOccurrence.get(occurrenceKey);
+    if (occurrences) occurrences.push(clash);
+    else byOccurrence.set(occurrenceKey, [clash]);
+    const reviewKey = clashReviewKey(clash);
+    const reviews = byReview.get(reviewKey);
+    if (reviews) reviews.push(clash);
+    else byReview.set(reviewKey, [clash]);
+  }
+  const claimed = new Set<Clash>();
   return groups
     .map((definition) => ({
       definition,
-      members: definition.clashKeys
-        .map((key) => byKey.get(key))
-        .filter((clash): clash is Clash => clash !== undefined),
+      members: definition.members.flatMap((member) => {
+        const exact = (byOccurrence.get(member.occurrenceKey) ?? [])
+          .find((clash) => clashReviewKey(clash) === member.reviewKey && !claimed.has(clash));
+        const fallback = (byReview.get(member.reviewKey) ?? []).find((clash) => !claimed.has(clash));
+        const clash = exact ?? fallback;
+        if (!clash) return [];
+        claimed.add(clash);
+        return [clash];
+      }),
     }))
     .filter((group) => group.members.length > 0);
+}
+
+/** Identify one occurrence without sacrificing the durable review-key fallback. */
+export function manualClashMember(clash: Clash): ManualClashMember {
+  return { reviewKey: clashReviewKey(clash), occurrenceKey: manualClashOccurrenceKey(clash) };
+}
+
+export function manualClashOccurrenceKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>): string {
+  const elements = [clash.a, clash.b]
+    .map((element) => [element.model, element.key] as const)
+    .sort(([modelA, keyA], [modelB, keyB]) => modelA.localeCompare(modelB) || keyA.localeCompare(keyB));
+  return JSON.stringify([clash.rule, ...elements]);
 }
 
 /** Build one de-duplicated selection/color payload for the group's viewpoint. */

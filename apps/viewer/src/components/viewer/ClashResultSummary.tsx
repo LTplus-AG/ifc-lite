@@ -53,9 +53,9 @@ export function ClashResultSummary({
       }`;
   return (
     <>
-      {total > 0 && !duplicateSetView && (
+      {total > 0 && (
         <div className="mb-1.5 inline-flex overflow-hidden rounded-md border border-border text-[11px]" title={`Issues group nearby pairs within ${clusterEpsilon}m; Groups are chosen and named by you`}>
-          {(['pairs', 'issues', 'groups'] as const).map((view) => (
+          {(['pairs', 'issues', 'groups'] as const).filter((view) => !duplicateSetView || view !== 'issues').map((view) => (
             <button
               key={view}
               type="button"

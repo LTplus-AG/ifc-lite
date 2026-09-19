@@ -11,6 +11,7 @@ import {
   defaultManualClashGroupName,
   loadManualClashGroups,
   manualClashGroupBcfRefs,
+  manualClashMember,
   normalizeManualClashGroups,
   resolveManualClashGroups,
   saveManualClashGroups,
@@ -30,7 +31,10 @@ describe('manual clash groups (#4921)', () => {
   beforeEach(() => localStorage.removeItem(MANUAL_CLASH_GROUPS_KEY));
 
   it('persists durable clash keys and restores them after panel/reload state is recreated', () => {
-    const groups = [{ id: 'manual-1', name: 'Riser issue', clashKeys: ['key-1', 'key-2'] }];
+    const groups = [{ id: 'manual-1', name: 'Riser issue', members: [
+      { reviewKey: 'key-1', occurrenceKey: 'occurrence-1' },
+      { reviewKey: 'key-2', occurrenceKey: 'occurrence-2' },
+    ] }];
     assert.deepEqual(saveManualClashGroups(groups), { ok: true });
     assert.deepEqual(loadManualClashGroups(), groups);
   });
@@ -38,11 +42,27 @@ describe('manual clash groups (#4921)', () => {
   it('keeps absent keys and resolves a rerun even when transient clash ids change', () => {
     const first = clash('first');
     const absent = clash('absent');
-    const definitions = [{ id: 'manual-1', name: 'Riser issue', clashKeys: [clashReviewKey(first), clashReviewKey(absent)] }];
+    const definitions = [{ id: 'manual-1', name: 'Riser issue', members: [manualClashMember(first), manualClashMember(absent)] }];
     const rerun = { ...first, id: 'different-runtime-id' };
     const resolved = resolveManualClashGroups(definitions, [rerun]);
     assert.deepEqual(resolved[0].members.map((member) => member.id), ['different-runtime-id']);
-    assert.deepEqual(resolved[0].definition.clashKeys, definitions[0].clashKeys);
+    assert.deepEqual(resolved[0].definition.members, definitions[0].members);
+  });
+
+  it('keeps model-qualified occurrences when durable review keys collide', () => {
+    const first = clash('first');
+    const second = clash('second');
+    second.a = { ...first.a, model: 'other-a' };
+    second.b = { ...first.b, model: 'other-b' };
+    assert.equal(clashReviewKey(first), clashReviewKey(second));
+
+    const definitions = [{ id: 'manual-1', name: 'Both copies', members: [
+      manualClashMember(first), manualClashMember(second),
+    ] }];
+    assert.deepEqual(
+      resolveManualClashGroups(definitions, [first, second])[0].members.map((member) => member.id),
+      ['first', 'second'],
+    );
   });
 
   it('repairs overlapping/corrupt storage into disjoint named groups', () => {
@@ -51,8 +71,11 @@ describe('manual clash groups (#4921)', () => {
       { id: 'g2', name: 'Second', clashKeys: ['c2', 'c3'] },
       { id: 'g3', name: ' ', clashKeys: ['c4'] },
     ] }), [
-      { id: 'g1', name: 'First', clashKeys: ['c1', 'c2'] },
-      { id: 'g2', name: 'Second', clashKeys: ['c3'] },
+      { id: 'g1', name: 'First', members: [
+        { reviewKey: 'c1', occurrenceKey: '' },
+        { reviewKey: 'c2', occurrenceKey: '' },
+      ] },
+      { id: 'g2', name: 'Second', members: [{ reviewKey: 'c3', occurrenceKey: '' }] },
     ]);
   });
 

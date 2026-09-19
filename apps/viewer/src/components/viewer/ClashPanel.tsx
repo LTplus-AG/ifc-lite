@@ -410,7 +410,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // the Pairs/Issues toggle and its epsilon wording do not apply there, and a
   // stale 'issues' choice from an earlier clash scan must not leak in either
   // (`resultView` is component state that survives a result change). (#2535)
-  const effectiveResultView = isDuplicateSetView ? 'pairs' : resultView;
+  const effectiveResultView = isDuplicateSetView && resultView === 'issues' ? 'pairs' : resultView;
 
   // Group the (filtered, sorted) clash list for display along the selected dimension.
   // Items keep their sorted order within each bucket.

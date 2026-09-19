@@ -241,7 +241,7 @@ export function focusClashGroup(
   for (const clash of clashes) {
     for (const [side, element] of [['a', clash.a], ['b', clash.b]] as const) {
       const resolved = resolve(element);
-      if (!resolved) continue;
+      if (!resolved) return null;
       const selectionKey = `${resolved.modelId}:${resolved.expressId}`;
       const sideRefs = side === 'a' ? aRefs : bRefs;
       if (!sideRefs.has(selectionKey)) sideRefs.set(selectionKey, resolved);
@@ -374,7 +374,7 @@ export function focusClashGroup(
     selectedGuids: resolvedGuids(presentationState, refs),
     aGuids: resolvedGuids(presentationState, renderedARefs),
     bGuids: resolvedGuids(presentationState, renderedBRefs),
-    modelIds: [...new Set(refs.map(ref => ref.modelId))],
+    modelIds: [...participatingModelIds],
     sceneRevision: {
       modelRevisions: new Map(focusedState.models),
       mutationVersion: focusedState.mutationVersion,

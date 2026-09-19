@@ -246,6 +246,7 @@ describe('manual clash group focus (#4921)', () => {
     ]));
     assert.deepEqual(focused.aGuids, ['GUID-A', 'GUID-B']);
     assert.deepEqual(focused.bGuids, []);
+    assert.deepEqual(focused.modelIds, ['model', 'revision-b', 'hidden-b']);
   });
 
   it('promotes a B aggregate GUID when its expanded part collides with expanded A', () => {
@@ -421,8 +422,8 @@ describe('manual clash group focus (#4921)', () => {
     assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
       [10, CLASH_COLOR_A], [1010, CLASH_COLOR_A], [2030, CLASH_COLOR_A],
     ]), 'the PNG must paint every loaded occurrence that BCF will color by shared GUID');
-    assert.deepEqual(focused.modelIds, ['model', 'revision-b'],
-      'an unrelated revision is colored for BCF parity without becoming a group participant');
+    assert.deepEqual(focused.modelIds, ['model', 'revision-b', 'revision-c'],
+      'every revision colored by the serialized GUID must be referenced by the BCF header');
   });
 
   it('reconciles every GUID occurrence when loaded models collide on one renderer id', () => {
@@ -485,7 +486,7 @@ describe('manual clash group focus (#4921)', () => {
     ]));
   });
 
-  it('returns viewpoint refs only for objects that resolved in the current models', () => {
+  it('refuses a partial capture when any grouped object no longer resolves', () => {
     const current = clash('current', 10, 20);
     const stale = clash('stale', 30, 40);
     stale.a.model = 'replaced';
@@ -493,13 +494,10 @@ describe('manual clash group focus (#4921)', () => {
     const resolve = (element: ClashElementRef) =>
       element.model === 'replaced' ? null : { modelId: element.model, expressId: element.ref };
 
-    assert.deepEqual(payload(focusClashGroup([current, stale], resolve, mock.fn(), 'highlight')), {
-      selectedRefs: [{ modelId: 'model', expressId: 10 }, { modelId: 'model', expressId: 20 }],
-      aRefs: [{ modelId: 'model', expressId: 10 }],
-      bRefs: [{ modelId: 'model', expressId: 20 }],
-      selectedGuids: [], aGuids: [], bGuids: [],
-      modelIds: ['model'],
-    });
+    useViewerStore.getState().setSelectedEntityIds([99]);
+    assert.equal(focusClashGroup([current, stale], resolve, mock.fn(), 'highlight'), null);
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([99]),
+      'a failed group must not mutate the existing scene before capture aborts');
   });
 
   it('invalidates a focused frame when authored IFC or visibility changes while capture waits', () => {

@@ -32,7 +32,7 @@ pending generic mutation overlays are not included until reload.
 - `info` - model summary: schema, entities, storeys
 - `query` - query entities by type, properties, quantities; supports `--sum`, `--group-by`, `--spatial`
 - `props` - all properties for a single entity (`--id N`)
-- `export` - export to `csv`, `json`, `ifc`, or `hbjson`
+- `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `step`, `hbjson`, or `dfjson`
 - `ids` - validate against buildingSMART IDS rules
 - `validate` - structural validation checks
 - `stats` - auto-calculated model KPIs and health check
@@ -43,11 +43,18 @@ pending generic mutation overlays are not included until reload.
 - `merge` - merge multiple IFC files into one federated file
 - `convert` - convert between IFC schema versions (`--schema IFC4`)
 - `diff` - compare two IFC files
+- `rekey` - carry a table keyed on old element keys across a revision
 - `eval` / `run` - run SDK expressions or scripts against a model
 - `ask` - natural language BIM queries
 - `view` - interactive 3D viewer in the browser, controllable via REST (`/api/command`)
 - `analyze` - query plus colorize/isolate/heatmap results in the running viewer
+- `simplify` - demesher: simplify meshes, write a lighter IFC
 - `mcp` - start an MCP server bound to one or more IFC files (stdio or http)
+- `layer` - layered change tracking over a local store (`.ifc-lite/`)
+- `ref` - manage named refs in the layer store
+- `anonymize` - export selected objects + context as an anonymized IFC
+- `schedule` - tabular schedule of one class (csv/json/md/html)
+- `delivery` - repeatable delivery check (structural + IDS) from a saved recipe
 - `gym` - reset/step/reward environment loop over the existing schema/clash/ids checks (see below)
 - `schema`, `bsdd`, `diagnose-geometry`, `extract-entities`, `generate-spaces`, `lod`, `ext` - see `ifc-lite --help`
 

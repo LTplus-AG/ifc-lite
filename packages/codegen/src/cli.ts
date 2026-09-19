@@ -24,6 +24,7 @@ program
   .option('-o, --output <dir>', 'Output directory', './generated')
   .option('-r, --rust', 'Generate Rust code', false)
   .option('--rust-dir <dir>', 'Rust output subdirectory (relative to output)', 'rust')
+  .option('--rust-crate-private', 'Keep generated Rust types crate-private', false)
   .option('--skip-collision-check', 'Skip CRC32 collision check', false)
   .option('-v, --verbose', 'Verbose output', false)
   .action(
@@ -33,6 +34,7 @@ program
         output: string;
         rust: boolean;
         rustDir: string;
+        rustCratePrivate: boolean;
         skipCollisionCheck: boolean;
         verbose: boolean;
       }
@@ -55,6 +57,7 @@ program
         const genOptions: GeneratorOptions = {
           rust: options.rust,
           rustDir: options.rustDir,
+          rustCratePrivate: options.rustCratePrivate,
           skipCollisionCheck: options.skipCollisionCheck,
         };
 

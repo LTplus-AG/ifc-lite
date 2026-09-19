@@ -85,19 +85,20 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
 /// `Unknown` for exactly those entities, which used to make this function
 /// return an empty `Vec` for every legacy class, silently (the class still
 /// got a row — `model.rs` resolves the DISPLAY type legacy-aware — it just
-/// lost its own-class attributes). `ifc_type` is the caller's already
-/// legacy-aware-resolved type (`model.rs`'s `ty` / `cand.ifc_type`), used for
-/// every name the generated enum recognises, unchanged from before.
+/// lost its own-class attributes). If the source registry and explicit legacy
+/// metadata both lack the class, no names are emitted: borrowing canonical
+/// IFC4X3 names could silently relabel an older record's positional values.
 ///
 /// Values reuse [`render_value`], so a rendered attribute reads the same as a
 /// property with the same underlying type, and anything it declines (entity
 /// references, `$`, derived `*`) is omitted rather than emitted as a dangling
 /// `#123`. Order follows the schema's attribute order, which is stable.
 pub(super) fn render_attributes(
-    entity: &DecodedEntity, raw_type_name: &str, ifc_type: IfcType,
+    entity: &DecodedEntity, raw_type_name: &str, source_schema: &str,
 ) -> Vec<PropValue> {
-    let names: &[&str] = ifc_lite_core::legacy_attribute_names(raw_type_name)
-        .unwrap_or_else(|| ifc_type.attribute_names());
+    let names: &[&str] = ifc_lite_core::attribute_names_for_schema(source_schema, raw_type_name)
+        .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
+        .unwrap_or(&[]);
     let mut out = Vec::new();
     for (i, name) in names.iter().enumerate() {
         if COMMON_ATTRIBUTES.contains(name) {

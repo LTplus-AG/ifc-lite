@@ -896,6 +896,69 @@ END-ISO-10303-21;
     );
 }
 
+/// #4203: a class shared by schema versions must use the declared source
+/// schema's positional names, not the canonical IFC4X3 enum's names.
+#[test]
+fn attribute_export_uses_the_source_schema_for_a_shared_entity() {
+    fn rows(schema: &str, attributes: &str) -> Vec<EntityRow> {
+        let ifc = format!(
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,{attributes});\nENDSEC;\nEND-ISO-10303-21;\n"
+        );
+        rows_with(&ifc, &ModelOptions::default().with_attributes(true))
+    }
+
+    let ifc2x3 = rows("IFC2X3", "'legacy-tag'");
+    let ifc4 = rows("IFC4", "'ifc4-tag',.NOTDEFINED.");
+    let ifc2x3_names: Vec<&str> = ifc2x3[0].attributes.iter().map(|p| p.name.as_str()).collect();
+    let ifc4_names: Vec<&str> = ifc4[0].attributes.iter().map(|p| p.name.as_str()).collect();
+
+    assert_eq!(ifc2x3_names, vec!["Tag"]);
+    assert_eq!(ifc4_names, vec!["Tag", "PredefinedType"]);
+}
+
+/// #4203: the data registry includes IFC4.1 transitional entities which are
+/// absent from both pinned IFC4 ADD2 and IFC4X3 EXPRESS inputs. Preserve their
+/// existing positional labels until a matching EXPRESS source is bundled.
+#[test]
+fn attribute_export_preserves_transitional_ifc4_metadata() {
+    let entity = DecodedEntity::new(
+        1,
+        IfcType::from_str("IFCALIGNMENTCURVE"),
+        vec![
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::String("alignment-tag".to_string()),
+        ],
+    );
+    let attributes = render_attributes(&entity, "IFCALIGNMENTCURVE", "IFC4X1");
+
+    assert_eq!(attributes.len(), 1);
+    assert_eq!(attributes[0].name, "Tag");
+    assert_eq!(attributes[0].value, "alignment-tag");
+}
+
+/// #4203: when a known canonical IFC4X3 entity is absent from the declared
+/// older schema, its canonical names must not label that older record's slots.
+#[test]
+fn attribute_export_does_not_borrow_names_from_a_newer_schema() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCALIGNMENT('alignment-guid',$,'Alignment',$,$,$,$,.ROAD.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(
+        ifc,
+        &ModelOptions::default().with_attributes(true),
+    );
+
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].attributes.is_empty());
+}
+
 /// A lowercase STEP keyword must resolve the same legacy attribute names as
 /// its uppercase form. `legacy_attribute_names` used to do a case-sensitive
 /// exact match while `legacy_aware_ifc_type` (used for the row's DISPLAY

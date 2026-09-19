@@ -31,6 +31,8 @@ export interface GeneratorOptions {
   rust?: boolean;
   /** Rust output directory (relative to outputDir or absolute) */
   rustDir?: string;
+  /** Keep generated Rust types visible only inside their consuming crate. */
+  rustCratePrivate?: boolean;
   /** Skip type ID collision check */
   skipCollisionCheck?: boolean;
 }
@@ -145,7 +147,7 @@ export * from './serializers.js';
   // Generate Rust code if requested
   if (options.rust) {
     console.log('\n🦀 Generating Rust code...');
-    const rustCode = generateRust(schema);
+    const rustCode = generateRust(schema, options.rustCratePrivate);
     // Use absolute path directly, or join relative path with outputDir
     const rustDir = options.rustDir
       ? isAbsolute(options.rustDir)
@@ -175,8 +177,7 @@ export * from './serializers.js';
 mod type_ids;
 mod schema;
 
-pub use type_ids::*;
-pub use schema::*;
+${options.rustCratePrivate ? '' : 'pub use type_ids::*;\n'}${options.rustCratePrivate ? 'pub(crate)' : 'pub'} use schema::*;
 `;
     writeFileSync(`${rustDir}/mod.rs`, modContent);
     console.log(`  ✓ ${rustDir}/mod.rs`);

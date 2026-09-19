@@ -21,6 +21,10 @@ node dist/cli.js schemas/IFC4X3.exp --output ./generated/ifc4x3
 ```
 
 Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core).
+Rust output is public by default. Add `--rust-crate-private` when the generated
+registry is an implementation detail of one crate and must use `pub(crate)`
+instead of becoming part of that crate's public API; the flag has no effect
+unless `--rust` is also present.
 
 Generated files (one per output directory, e.g. `./generated/ifc4`):
 

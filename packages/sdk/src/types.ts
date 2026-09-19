@@ -213,6 +213,14 @@ export interface EntityRelationshipsData {
   fills: Array<{ id: number; name?: string; type: string }>;
   groups: Array<{ id: number; name?: string }>;
   connections: Array<{ id: number; name?: string; type: string }>;
+  /** Every graph edge touching the entity, preserving its exact IfcRel* class.
+   * Optional for third-party backends compiled against the pre-#4205 shape. */
+  relations?: Array<{
+    relationshipId: number;
+    relationshipType: string;
+    direction: 'forward' | 'inverse';
+    entity: { id: number; name?: string; type: string };
+  }>;
 }
 
 // ============================================================================

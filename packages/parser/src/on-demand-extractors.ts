@@ -17,6 +17,8 @@ import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
+import { extractExactRelationshipEdges, type EntityRelationships } from './exact-relationship-edges.js';
+export type { EntityRelationships } from './exact-relationship-edges.js';
 
 // Re-export classification and material resolvers
 export { extractClassificationsOnDemand, extractClassificationSystemsOnDemand } from './classification-resolver.js';
@@ -76,18 +78,6 @@ export interface DocumentInfo {
     intendedUse?: string;
     revision?: string;
     confidentiality?: string;
-}
-
-/**
- * Structured relationship info for an entity.
- */
-export interface EntityRelationships {
-    voids: Array<{ id: number; name?: string; type: string }>;
-    fills: Array<{ id: number; name?: string; type: string }>;
-    /** Groups this entity is assigned to (IfcZone, IfcGroup, IfcSystem, …) via
-     *  IfcRelAssignsToGroup. `type` distinguishes IfcZone from a plain IfcGroup. */
-    groups: Array<{ id: number; name?: string; type: string }>;
-    connections: Array<{ id: number; name?: string; type: string }>;
 }
 
 export type { GeoreferenceInfo as GeorefInfo };
@@ -524,9 +514,11 @@ export function extractRelationshipsOnDemand(
         fills: [],
         groups: [],
         connections: [],
+        relations: [],
     };
 
     if (!store.relationships) return result;
+    result.relations = extractExactRelationshipEdges(store, entityId);
 
     const getEntityInfo = (id: number): { name?: string; type: string } => {
         const ref = store.entityIndex.byId.get(id);

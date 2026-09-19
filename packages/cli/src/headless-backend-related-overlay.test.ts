@@ -166,4 +166,25 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
       name: group.name,
     });
   });
+
+  it('hydrates positional metadata edits on a created relationship endpoint', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [member] = backend.query.entities({ types: ['IfcWall'] });
+    const group = backend.store.addEntity('default', {
+      type: 'IfcGroup',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzx'", null, "'Initial group'", null, null],
+    });
+    backend.store.addEntity('default', {
+      type: 'IfcRelAssignsToGroup',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzw'", null, null, null,
+        [`#${member.ref.expressId}`], null, `#${group.expressId}`],
+    });
+    backend.store.setPositionalAttribute(group, 2, "'Renamed group'");
+
+    expect(backend.query.relationships(member.ref).groups).toContainEqual({
+      id: group.expressId,
+      name: 'Renamed group',
+    });
+  });
 });

@@ -55,7 +55,7 @@ describe('effective relationship overlay (#5009)', () => {
     expect(overlay.supersededSourceIds).toEqual(new Set([5]));
     expect(effectiveRelationshipEdges(overlay, () => false, 2, 'IfcRelAggregates')).toEqual([{
       relationshipId: 5,
-      relationshipType: 'IFCRELAGGREGATES',
+      relationshipType: 'IfcRelAggregates',
       direction: 'forward',
       targetId: 4,
     }]);
@@ -72,7 +72,7 @@ describe('effective relationship overlay (#5009)', () => {
     });
     expect(effectiveRelationshipEdges(overlay, () => false, 2, 'IfcRelCoversSpaces')).toEqual([{
       relationshipId: 5,
-      relationshipType: 'IFCRELCOVERSSPACES',
+      relationshipType: 'IfcRelCoversSpaces',
       direction: 'forward',
       targetId: 3,
     }]);
@@ -88,11 +88,11 @@ describe('effective relationship overlay (#5009)', () => {
       isDeleted: () => false,
     });
     expect(effectiveRelationshipEdges(overlay, () => false, 4, 'IfcRelDefinesByProperties')).toEqual([
-      { relationshipId: 30, relationshipType: 'IFCRELDEFINESBYPROPERTIES', direction: 'inverse', targetId: 20 },
-      { relationshipId: 30, relationshipType: 'IFCRELDEFINESBYPROPERTIES', direction: 'inverse', targetId: 21 },
+      { relationshipId: 30, relationshipType: 'IfcRelDefinesByProperties', direction: 'inverse', targetId: 20 },
+      { relationshipId: 30, relationshipType: 'IfcRelDefinesByProperties', direction: 'inverse', targetId: 21 },
     ]);
     expect(effectiveRelationshipEdges(overlay, () => false, 21, 'IfcRelDefinesByProperties')).toEqual([
-      { relationshipId: 30, relationshipType: 'IFCRELDEFINESBYPROPERTIES', direction: 'forward', targetId: 4 },
+      { relationshipId: 30, relationshipType: 'IfcRelDefinesByProperties', direction: 'forward', targetId: 4 },
     ]);
   });
 });

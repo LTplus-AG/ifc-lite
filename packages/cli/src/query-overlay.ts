@@ -18,6 +18,7 @@
 
 import type { EntityData, EntityRef, PropertySetData, QuantitySetData } from '@ifc-lite/sdk';
 import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
+import { getAttributeNamesForSchema } from '@ifc-lite/parser';
 
 function scalarAttr(value: unknown): string {
   if (typeof value !== 'string') return '';
@@ -45,15 +46,46 @@ function createdEntityData(entity: Pick<NewEntity, 'expressId' | 'type' | 'attri
   };
 }
 
+function effectiveCreatedEntity(
+  view: MutablePropertyView,
+  entity: NewEntity,
+  schemaVersion: string,
+): NewEntity {
+  const attributes = [...entity.attributes];
+  const names = getAttributeNamesForSchema(entity.type, schemaVersion);
+  const named = new Map(view.getAttributeMutationsForEntity(entity.expressId).map(({ name, value }) => [name, value]));
+  const positional = view.getPositionalMutationsForEntity(entity.expressId) ?? new Map();
+  const apply = (key: string): void => {
+    if (key.startsWith('@')) {
+      const index = Number(key.slice(1));
+      if (positional.has(index)) attributes[index] = positional.get(index)!;
+      return;
+    }
+    const index = names.indexOf(key);
+    if (index >= 0 && named.has(key)) attributes[index] = named.get(key)!;
+  };
+  for (const [name, value] of named) {
+    const index = names.indexOf(name);
+    if (index >= 0) attributes[index] = value;
+  }
+  for (const [index, value] of positional) attributes[index] = value;
+  for (const mutation of view.getMutationsForEntity(entity.expressId)) apply(mutation.attributeName ?? '');
+  return { ...entity, attributes };
+}
+
 /**
  * `getEntityData(ref)`'s overlay half: `null` means deleted this session,
  * `undefined` means "not in the overlay, fall through to the parsed store".
  */
-export function overlayEntityData(view: MutablePropertyView | null, ref: EntityRef): EntityData | null | undefined {
+export function overlayEntityData(
+  view: MutablePropertyView | null,
+  ref: EntityRef,
+  schemaVersion: string,
+): EntityData | null | undefined {
   if (!view) return undefined;
   if (view.isDeleted(ref.expressId)) return null;
   const created = view.getNewEntity(ref.expressId);
-  return created ? createdEntityData(created, ref.modelId) : undefined;
+  return created ? createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), ref.modelId) : undefined;
 }
 
 /** This session's overlay-only entities matching an `entities()` query's type criteria. */
@@ -63,6 +95,7 @@ export function foldNewEntities(
   expandTypes: (types: string[]) => string[],
   isProductType: (upperType: string) => boolean,
   modelId: string,
+  schemaVersion: string,
 ): EntityData[] {
   const wantedTypes = types && types.length > 0 ? new Set(expandTypes(types)) : null;
   const out: EntityData[] = [];
@@ -70,7 +103,7 @@ export function foldNewEntities(
     if (view.isDeleted(created.expressId)) continue;
     const upperType = created.type.toUpperCase();
     const matches = wantedTypes ? wantedTypes.has(upperType) : isProductType(upperType);
-    if (matches) out.push(createdEntityData(created, modelId));
+    if (matches) out.push(createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), modelId));
   }
   return out;
 }

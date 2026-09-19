@@ -9,6 +9,7 @@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Link2, Focus } from 'lucide-react';
 import type { EntityRelationshipsData } from '@ifc-lite/sdk';
+import { useState } from 'react';
 
 interface RelationshipsCardProps {
   relationships: EntityRelationshipsData;
@@ -18,6 +19,15 @@ interface RelationshipsCardProps {
 }
 
 const RELATIONSHIPS_LABEL = 'Relationships';
+const EXACT_RELATION_PAGE_SIZE = 100;
+
+function relationListKey(relations: NonNullable<EntityRelationshipsData['relations']>): string {
+  const edgeKey = (index: number) => {
+    const edge = relations[index];
+    return edge ? `${edge.direction}:${edge.relationshipId}:${edge.entity.id}:${edge.relationshipType}` : '';
+  };
+  return `${relations.length}:${edgeKey(0)}:${edgeKey(relations.length - 1)}`;
+}
 
 export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
   const { voids, fills, groups, connections } = relationships;
@@ -26,6 +36,10 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
   // and omit the relationship id/direction, while this view is the lossless
   // graph surface promised by #4205.
   const exactRelations = relationships.relations ?? [];
+  const exactKey = relationListKey(exactRelations);
+  const [exactPage, setExactPage] = useState({ key: exactKey, count: EXACT_RELATION_PAGE_SIZE });
+  const visibleExactCount = exactPage.key === exactKey ? exactPage.count : EXACT_RELATION_PAGE_SIZE;
+  const visibleExactRelations = exactRelations.slice(0, visibleExactCount);
   const totalCount = voids.length + fills.length + groups.length + connections.length + exactRelations.length;
 
   if (totalCount === 0) return null;
@@ -93,13 +107,25 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
                 Relationship Records ({exactRelations.length})
               </div>
-              {exactRelations.map((relation, index) => (
+              {visibleExactRelations.map((relation, index) => (
                 <RelationshipEdgeItem
                   key={`${relation.direction}:${relation.relationshipId}:${relation.entity.id}:${relation.relationshipType}:${index}`}
                   relation={relation}
                   onSelect={onSelectEntity}
                 />
               ))}
+              {visibleExactRelations.length < exactRelations.length && (
+                <button
+                  className="mt-1 text-xs text-primary hover:underline"
+                  onClick={() => setExactPage({
+                    key: exactKey,
+                    count: Math.min(visibleExactCount + EXACT_RELATION_PAGE_SIZE, exactRelations.length),
+                  })}
+                  type="button"
+                >
+                  Show {Math.min(EXACT_RELATION_PAGE_SIZE, exactRelations.length - visibleExactCount)} more
+                </button>
+              )}
             </div>
           )}
         </div>

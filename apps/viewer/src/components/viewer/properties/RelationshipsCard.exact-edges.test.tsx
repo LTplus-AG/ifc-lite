@@ -78,4 +78,29 @@ describe('RelationshipsCard exact relationship edges (#4205)', () => {
     assert.ok(host.querySelector('[title="#91 IfcRelVoidsElement"]'));
     assert.ok(host.textContent?.includes('IfcRelVoidsElement'));
   });
+
+  it('pages large exact-edge sets instead of mounting every relationship row', () => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    const relations = Array.from({ length: 250 }, (_, index) => ({
+      relationshipId: 1000 + index,
+      relationshipType: 'IfcRelContainedInSpatialStructure',
+      direction: 'forward' as const,
+      entity: { id: 2000 + index, name: `Element ${index}`, type: 'IfcWall' },
+    }));
+
+    act(() => {
+      root!.render(<RelationshipsCard relationships={{
+        voids: [], fills: [], groups: [], connections: [], relations,
+      }} />);
+    });
+
+    assert.equal(host.querySelectorAll('[title^="#1"]').length, 100);
+    const more = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Show 100 more'));
+    assert.ok(more);
+    act(() => more.click());
+    assert.equal(host.querySelectorAll('[title^="#1"]').length, 200);
+    assert.match(host.textContent ?? '', /Show 50 more/);
+  });
 });

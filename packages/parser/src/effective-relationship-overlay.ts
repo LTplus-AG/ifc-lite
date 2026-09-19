@@ -4,7 +4,7 @@
 
 import type { IfcAttributeValue, IfcEntity } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNamesForSchema } from './ifc-schema.js';
+import { getAttributeNamesForSchema, normalizeIfcTypeName } from './ifc-schema.js';
 import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
 
 export interface EffectiveRelationship {
@@ -77,7 +77,7 @@ function resolveRelationship(
   if (!relating.length || !related.length) return null;
   return {
     relationshipId: entity.expressId,
-    relationshipType: entity.type,
+    relationshipType: normalizeIfcTypeName(entity.type),
     relating,
     related,
   };

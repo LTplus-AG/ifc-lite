@@ -14,6 +14,7 @@
     "scripts/lib/is-main-entry.mjs"
   ],
   "globalPassThroughEnv": [
+    "NODE_OPTIONS",
     "RUSTUP_HOME",
     "CARGO_HOME",
     "RUSTUP_TOOLCHAIN",

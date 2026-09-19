@@ -114,6 +114,36 @@ else
   echo "🗺️  Source maps disabled (need both POSTHOG_CLI_API_KEY and POSTHOG_CLI_ENV_ID) — traces stay minified"
 fi
 
+# ── Node heap for the viewer bundle ─────────────────────────────────────────
+# Vite/rolldown bundles ~8k modules into ~150 chunks (+ source maps when the
+# PostHog key is present). V8 sizes its default old-space heap from physical
+# RAM (~1/4), so on Vercel's basic 4-core / 8 GB builder the vite process is
+# capped near 2 GB regardless of what the container has left. Right at that
+# cap V8 stops making progress and spends its time in GC: production build
+# 1dSjtdoa7Zz8fzbXk24xyfwEY5ew (13a04c0, issue #4990) went silent at
+# "rendering chunks..." 5m42s in and was killed at the 45-minute ceiling;
+# the build before it (2hy8k6erjQV7Cm3VRVanatJbS5nB, 6c01865) died with
+# exit 137 in the same phase and only passed on a retry.
+#
+# Raise the cap so the heap can use the RAM that is actually free by the time
+# vite runs — the WASM build and every tsc task finish first (turbo dependency
+# order), so the bundler is alone in the container. 5 GB leaves ~3 GB for
+# rolldown's native side and the OS on the 8 GB machine; on a larger builder
+# the cap is simply not reached. NODE_OPTIONS is inherited by every node
+# process turbo spawns (it is a limit, not a reservation), and is listed in
+# turbo.json `globalPassThroughEnv` so strict env mode forwards it without
+# touching task hashes. Set VERCEL_NODE_MAX_OLD_SPACE_MB in the project env to
+# override; an explicit --max-old-space-size already in NODE_OPTIONS wins.
+case " ${NODE_OPTIONS:-} " in
+  *--max-old-space-size*)
+    echo "🧠 Node heap: NODE_OPTIONS already sets --max-old-space-size (${NODE_OPTIONS})"
+    ;;
+  *)
+    export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=${VERCEL_NODE_MAX_OLD_SPACE_MB:-5120}"
+    echo "🧠 Node heap: NODE_OPTIONS=${NODE_OPTIONS} (vite bundle + source maps GC-thrashed at V8's ~2 GB default on the 8 GB builder, #4990)"
+    ;;
+esac
+
 npx turbo build --filter="$FILTER"
 build_status=$?
 

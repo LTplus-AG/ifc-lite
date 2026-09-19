@@ -590,19 +590,21 @@ export class Scene {
       }
     }
     this.refreshLiveInstancedTemplates();
-    this.restoreInstancedAppearance(device);
   }
 
   private restoreInstancedAppearance(device: GPUDevice): void {
     for (const eid of this.instancedEntityMap.keys()) {
       this.writeInstanceFlags(device, eid);
-      const base = this.instancedOverrideColors?.get(eid) ?? this.originalInstanceColor(eid);
-      if (!base) continue;
-      this.writeInstanceColor(
-        device,
-        eid,
-        composeInstancedOverrideColor(base, this.instancedGhosted.has(eid), this.lastGhostAlpha),
-      );
+      const override = this.instancedOverrideColors?.get(eid);
+      if (override) {
+        this.writeInstanceColor(
+          device,
+          eid,
+          composeInstancedOverrideColor(override, this.instancedGhosted.has(eid), this.lastGhostAlpha),
+        );
+      } else if (this.instancedGhosted.has(eid)) {
+        this.writeOriginalInstanceColors(device, eid, this.lastGhostAlpha);
+      }
     }
   }
 
@@ -3759,22 +3761,15 @@ export class Scene {
     }
 
     for (const eid of toFade) {
-      const base = this.instancedOverrideColors?.get(eid) ?? this.originalInstanceColor(eid);
-      if (!base) continue;
-      this.writeInstanceColor(device, eid, [base[0], base[1], base[2], ghostAlpha]);
+      const override = this.instancedOverrideColors?.get(eid);
+      if (override) this.writeInstanceColor(device, eid, [override[0], override[1], override[2], ghostAlpha]);
+      else this.writeOriginalInstanceColors(device, eid, ghostAlpha);
     }
 
     this.instancedGhosted = next;
     this.lastGhostAlpha = ghostAlpha;
     this.instancedGhostDirty = false;
     this.instancedGhostTransparent = next.size > 0 && ghostAlpha < OPAQUE_ALPHA_CUTOFF;
-  }
-
-  /** The colour an occurrence was uploaded with, before any override or ghost. */
-  private originalInstanceColor(eid: number): readonly [number, number, number, number] | null {
-    const locs = this.instancedEntityMap.get(eid);
-    const first = locs?.[0];
-    return first ? first.originalColor : null;
   }
 
   /** Write the combined flag lane (selected | hidden) for every occurrence of `eid`
@@ -3816,6 +3811,21 @@ export class Scene {
     for (const loc of locs) {
       const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
       if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, new Float32Array(loc.originalColor));
+    }
+  }
+
+  private writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void {
+    const locs = this.instancedEntityMap.get(eid);
+    if (!locs) return;
+    for (const loc of locs) {
+      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
+      if (!buf) continue;
+      const color = loc.originalColor;
+      device.queue.writeBuffer(
+        buf,
+        loc.byteOffset + INSTANCE_COLOR_OFFSET,
+        new Float32Array([color[0], color[1], color[2], alpha]),
+      );
     }
   }
 

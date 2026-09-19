@@ -380,6 +380,23 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     assert.equal(captures[1].props?.context, 'device_lost');
   });
 
+  it('starts a fresh recovery for a later replacement-device loss', async () => {
+    const h = makeSource();
+    let recoveries = 0;
+    h.source.recoverDevice = async () => {
+      recoveries++;
+      return { ok: true, omissions: [] };
+    };
+    subscribeViewportHealth(h.source);
+
+    h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'unknown' });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    h.listeners.deviceLost[0]({ message: 'replacement lost', reason: 'unknown' });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(recoveries, 2);
+  });
+
   it('a context builder that throws costs the enrichment, never the base report', () => {
     // `buildDeviceLossContext` contains every field read and no known input
     // makes it throw - so this pins the CALL-SITE containment

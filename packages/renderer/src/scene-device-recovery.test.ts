@@ -74,6 +74,27 @@ function shard(): DecodedInstancedShard {
   };
 }
 
+function repeatedEntityShard(): DecodedInstancedShard {
+  return {
+    templates: [{ ...triangle(0), origin: [0, 0, 0] }],
+    instances: [
+      {
+        templateIndex: 0,
+        entityId: 42,
+        color: [0.1, 0.2, 0.3, 1],
+        transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+      },
+      {
+        templateIndex: 0,
+        entityId: 42,
+        color: [0.7, 0.8, 0.9, 1],
+        transform: new Float32Array([1, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+      },
+    ],
+    carriesItemIds: false,
+  };
+}
+
 describe('Scene device recovery (#4885)', () => {
   it('refuses GPU-only and unsettled scenes before releasing anything', async () => {
     const released = new Scene();
@@ -150,6 +171,28 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene.getInstancedTemplates()[0].selectedCount, 1);
     assert.deepStrictEqual([...scene.getInstancedEntityIds()], [42]);
     assert.ok(second.writes.length >= 2, 'flags and override colour must be re-applied to the new instance buffer');
+  });
+
+  it('preserves distinct occurrence colours for a shared express ID', () => {
+    const scene = new Scene(), first = device();
+    scene.addInstancedShard(first.gpu, repeatedEntityShard(), 9);
+    scene['instancedGhosted'].add(42);
+    scene['lastGhostAlpha'] = 0.25;
+    scene.discardGpuResourcesForRecovery();
+
+    const second = device();
+    scene.restoreGpuResourcesAfterRecovery(second.gpu, {} as RenderPipeline);
+    const colors = second.writes
+      .filter(write => write.offset % 88 === 68)
+      .map(write => [...new Float32Array(write.data.buffer)]);
+
+    assert.strictEqual(colors.length, 2);
+    const expected = [[0.1, 0.2, 0.3, 0.25], [0.7, 0.8, 0.9, 0.25]];
+    for (let occurrence = 0; occurrence < expected.length; occurrence++) {
+      for (let channel = 0; channel < expected[occurrence].length; channel++) {
+        assert.ok(Math.abs(colors[occurrence][channel] - expected[occurrence][channel]) < 1e-6);
+      }
+    }
   });
 
   it('cleans a partial replacement upload and remains retryable', () => {

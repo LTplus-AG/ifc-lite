@@ -338,10 +338,15 @@ export function subscribeViewportHealth(
     renderer.onDeviceLost((info) => {
       reportDeviceLost(info, buildContextSafely(buildContext, renderer));
       if (!recovery && renderer.recoverDevice) {
-        recovery = startDeviceLossRecovery(
+        const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },
           { recovered: reportDeviceRecovery, failed: reportDeviceRecovery },
         );
+        recovery = run;
+        const clearRecovery = () => {
+          if (recovery === run) recovery = null;
+        };
+        void run.promise.then(clearRecovery, clearRecovery);
       }
     }),
     renderer.onPersistentRenderDegradation((info) =>

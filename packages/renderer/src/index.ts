@@ -300,20 +300,19 @@ export class Renderer {
     private destroyed = false;
 
     /**
-     * The tail of the `init()` queue. `init()` chains onto this rather than
-     * running immediately, so two overlapping calls cannot both walk past the
-     * "a previous init completed" guard while the first is still awaiting its
-     * device and both allocate a full set of GPU objects (#2448). Always
-     * settled fulfilled — a rejected init is swallowed HERE (never for the
-     * caller) so one failure does not deadlock every later call.
+     * The tail of the GPU lifecycle queue. `init()` and `recoverDevice()` chain
+     * onto this rather than running immediately, so overlapping calls cannot
+     * both mutate the shared device/pipeline fields while one is awaiting its
+     * adapter. Always settled fulfilled — a rejected operation is swallowed
+     * HERE (never for its caller) so one failure cannot deadlock later work.
      */
     private initChain: Promise<void> = Promise.resolve();
 
     /**
-     * Incremented synchronously by every `init()` call AND by every public
-     * `destroy()`. It stamps "the lifecycle event an in-flight init belongs to":
-     * an init that no longer carries the current stamp has been superseded and
-     * must neither allocate nor publish readiness.
+     * Incremented synchronously by every `init()` / `recoverDevice()` call and
+     * by every public `destroy()`. It stamps the lifecycle event an in-flight
+     * operation belongs to: stale work must neither allocate nor publish
+     * readiness.
      *
      * Both bumps are load-bearing, for the same reason. Because the queue above
      * defers the body, an init can finish while a later one is still waiting its
@@ -832,7 +831,20 @@ export class Renderer {
         if (!this.deviceLost) return Promise.resolve({ ok: false, reason: 'not-lost' });
         if (this.destroyed) return Promise.resolve({ ok: false, reason: 'renderer-destroyed' });
 
-        const run = this.recoverDeviceOnce();
+        const generation = ++this.initGeneration;
+        this.ready = false;
+        // A failed attempt remains a lost-device state for whenReady(). Stamp
+        // this generation before queueing so no caller can park in the gap.
+        this.deviceLostGeneration = generation;
+        this.rejectReadyWaiters(rendererDeviceLostError());
+        // Recovery owns the same GPU fields as init(). Put both lifecycles on
+        // one queue so a newer init can supersede this attempt without either
+        // body tearing down resources installed by the other.
+        const run = this.initChain.then(
+            () => this.recoverDeviceOnce(generation),
+            () => this.recoverDeviceOnce(generation),
+        );
+        this.initChain = run.then(() => undefined, () => undefined);
         this.recoveryInFlight = run;
         const clearInFlight = () => {
             if (this.recoveryInFlight === run) this.recoveryInFlight = null;
@@ -841,10 +853,11 @@ export class Renderer {
         return run;
     }
 
-    private async recoverDeviceOnce(): Promise<DeviceRecoveryResult> {
-        const generation = ++this.initGeneration;
+    private async recoverDeviceOnce(generation: number): Promise<DeviceRecoveryResult> {
         const lossSequence = this.deviceLossSequence;
-        this.ready = false;
+        if (generation !== this.initGeneration || this.destroyed) {
+            return { ok: false, reason: 'renderer-destroyed' };
+        }
         let prepared: Awaited<ReturnType<Scene['prepareDeviceRecovery']>>;
         try {
             prepared = await this.scene.prepareDeviceRecovery();

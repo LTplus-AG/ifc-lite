@@ -109,6 +109,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
       assert.strictEqual(failed.ok, false);
       if (!failed.ok) assert.strictEqual(failed.reason, 'device-init-failed');
       assert.strictEqual(renderer.isDeviceLost(), true);
+      await assert.rejects(renderer.whenReady(), { name: 'RendererDeviceLostError' });
 
       renderer['initOnce'] = async () => {
         const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
@@ -149,5 +150,37 @@ describe('Renderer.recoverDevice (#4885)', () => {
     gate.resolve();
     assert.deepStrictEqual(await recovery, { ok: false, reason: 'renderer-destroyed' });
     assert.strictEqual(renderer.isReady(), false);
+  });
+
+  it('serializes a newer public init behind recovery so it owns the final GPU stack', async () => {
+    const renderer = lostRenderer(), gate = deferred<void>(), started = deferred<void>();
+    const replacementPipeline = { owner: 'newer-init' };
+    let calls = 0;
+    renderer['initOnce'] = async (generation) => {
+      calls++;
+      if (calls === 1) {
+        started.resolve();
+        await gate.promise;
+        return;
+      }
+      const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
+      device.device = {} as GPUDevice;
+      device.context = {} as GPUCanvasContext;
+      renderer['pipeline'] = replacementPipeline as never;
+      renderer['deviceLost'] = false;
+      renderer['markReady'](generation);
+    };
+
+    const recovery = renderer.recoverDevice();
+    await started.promise;
+    const initialization = renderer.init();
+    await Promise.resolve();
+    assert.strictEqual(calls, 1, 'init must wait for recovery to release lifecycle ownership');
+
+    gate.resolve();
+    assert.deepStrictEqual(await recovery, { ok: false, reason: 'renderer-destroyed' });
+    await initialization;
+    assert.strictEqual(renderer['pipeline'], replacementPipeline);
+    assert.strictEqual(renderer.isReady(), true);
   });
 });

@@ -134,15 +134,9 @@ fi
 # turbo.json `globalPassThroughEnv` so strict env mode forwards it without
 # touching task hashes. Set VERCEL_NODE_MAX_OLD_SPACE_MB in the project env to
 # override; an explicit --max-old-space-size already in NODE_OPTIONS wins.
-case " ${NODE_OPTIONS:-} " in
-  *--max[-_]old[-_]space[-_]size*)
-    echo "🧠 Node heap: NODE_OPTIONS already sets --max-old-space-size (${NODE_OPTIONS})"
-    ;;
-  *)
-    export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=${VERCEL_NODE_MAX_OLD_SPACE_MB:-5120}"
-    echo "🧠 Node heap: NODE_OPTIONS=${NODE_OPTIONS} (vite bundle + source maps GC-thrashed at V8's ~2 GB default on the 8 GB builder, #4990)"
-    ;;
-esac
+# shellcheck source=lib/vercel-node-heap.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/vercel-node-heap.sh"
+configure_vercel_node_heap
 
 npx turbo build --filter="$FILTER"
 build_status=$?

@@ -202,6 +202,30 @@ test('#3812: exit 1 with empty stderr and an opaque stdout envelope is CLI_SILEN
   );
 });
 
+test('#4XXX: CLI_SILENT_EXIT carries the first 1500 chars of stdout, never env or the token', () => {
+  const opaque = `{"type":"result","subtype":"error","padding":"${'x'.repeat(2000)}"}`;
+  assert.throws(
+    () => runReviewer({
+      prompt: 'x', model: 'sonnet', token: 'sk-ant-oat01-should-not-leak',
+      spawn: () => ({ status: 1, stdout: opaque, stderr: '' }),
+    }),
+    (error) => {
+      assert.match(error.message, /--- stdout ---/);
+      assert.equal(error.message.split('--- stdout ---\n')[1].length, 1500);
+      assert.ok(!error.message.includes('x'.repeat(1600)), 'must be capped at 1500 chars');
+      assert.doesNotMatch(error.message, /sk-ant-oat01-should-not-leak/);
+      return error.reason === 'CLI_SILENT_EXIT';
+    },
+  );
+});
+
+test('a MODEL_ERROR (non-silent) does not append a stdout section', () => {
+  assert.throws(
+    () => runReviewer({ prompt: 'x', model: 'sonnet', spawn: () => ({ status: 1, stdout: 'some stdout', stderr: 'a real diagnostic' }) }),
+    (error) => { assert.doesNotMatch(error.message, /--- stdout ---/); return error.reason === 'MODEL_ERROR'; },
+  );
+});
+
 test('`is_error: true` alongside EXIT 0 still fails', () => {
   // This is the claude-code-action #1644 shape: success by exit code, nothing by
   // content. An exit code alone is not evidence here either.
@@ -361,6 +385,53 @@ test('#3803: independent-provider failure is explicit, never a clean verdict', (
   );
 });
 
+test('an ARRAY of providers is tried in order, and the winning one names its model in the envelope', () => {
+  const seen = [];
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '', stderr: 'Usage limit reached' }),
+    providerFallback: [
+      { label: 'openrouter-fallback', run: (p) => { seen.push('openrouter-fallback'); assert.equal(p, 'p'); return { text: '{"verdict":"clean"}', model: 'openai/gpt-5.6-luna' }; } },
+      { label: 'openai-fallback', run: () => { seen.push('openai-fallback'); return '{"verdict":"findings"}'; } },
+    ],
+  });
+  assert.deepEqual(seen, ['openrouter-fallback'], 'the first provider to succeed wins; the second is never tried');
+  assert.equal(result.text, '{"verdict":"clean"}');
+  assert.equal(result.envelope.provider, 'openrouter-fallback');
+  assert.equal(result.envelope.model, 'openai/gpt-5.6-luna');
+});
+
+test('an array of providers falls through to the next one on failure, and the final error names every failure', () => {
+  const seen = [];
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '', stderr: 'Usage limit reached' }),
+    providerFallback: [
+      { label: 'openrouter-fallback', run: () => { seen.push('openrouter-fallback'); throw new Error('every OpenRouter model failed'); } },
+      { label: 'openai-fallback', run: () => { seen.push('openai-fallback'); return 'text from openai'; } },
+    ],
+  });
+  assert.deepEqual(seen, ['openrouter-fallback', 'openai-fallback']);
+  assert.equal(result.text, 'text from openai');
+  assert.equal(result.envelope.provider, 'openai-fallback');
+});
+
+test('an array of providers that ALL fail reports every one in the thrown message', () => {
+  assert.throws(
+    () => runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+      spawn: () => ({ status: 1, stdout: '', stderr: 'Usage limit reached' }),
+      providerFallback: [
+        { label: 'openrouter-fallback', run: () => { throw new Error('HTTP 500 from openrouter'); } },
+        { label: 'openai-fallback', run: () => { throw new Error('HTTP 429 from openai'); } },
+      ],
+    }),
+    (error) => error.reason === 'FALLBACK_ERROR'
+      && /HTTP 500 from openrouter/.test(error.message)
+      && /HTTP 429 from openai/.test(error.message),
+  );
+});
+
 test('#3803: model errors never switch providers', () => {
   let fallbackCalls = 0;
   assert.throws(
@@ -463,6 +534,28 @@ test('THE WIRING: the workflow actually passes the fallback secret', () => {
   const env = step.split('run:')[0];
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN\s*\}\}/);
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN_2:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN_2\s*\}\}/);
+  assert.match(env, /OPENROUTER_API_KEY:\s*\$\{\{\s*secrets\.OPENROUTER_API_KEY\s*\}\}/);
+  assert.match(env, /OPENROUTER_REVIEW_MODELS:\s*\$\{\{\s*vars\.OPENROUTER_REVIEW_MODELS\s*\}\}/);
+  assert.match(env, /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/);
+});
+
+test('THE WIRING: the validate/retry step carries the same provider chain as the first attempt', () => {
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const step = wf.split('- name: Validate the findings')[1];
+  assert.ok(step, 'the validate step must exist');
+  const env = step.split('run: |')[0];
+  assert.match(env, /OPENROUTER_API_KEY:\s*\$\{\{\s*secrets\.OPENROUTER_API_KEY\s*\}\}/);
+  assert.match(env, /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/);
+});
+
+test('THE WIRING: the judge step carries its own provider chain and model list', () => {
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const step = wf.split('- name: Judge the findings')[1];
+  assert.ok(step, 'the judge step must exist');
+  const env = step.split('run: |')[0];
+  assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN\s*\}\}/);
+  assert.match(env, /OPENROUTER_API_KEY:\s*\$\{\{\s*secrets\.OPENROUTER_API_KEY\s*\}\}/);
+  assert.match(env, /OPENROUTER_JUDGE_MODELS:\s*\$\{\{\s*vars\.OPENROUTER_JUDGE_MODELS\s*\}\}/);
   assert.match(env, /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/);
 });
 

@@ -77,7 +77,7 @@ import { randomBytes } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { renderSiblingRow } from './sibling-row.mjs';
 import { buildRetrySection } from './retry-prompt.mjs';
-import { runOpenAiFallback } from './openai-reviewer.mjs';
+import { resolveProviderFallbacks, describeProviderFallbacks } from './provider-fallbacks.mjs';
 import { applicableClassesFromRaw, renderApplicableForPrompt } from './lib/class-applicability.mjs';
 
 export class RunReviewerError extends Error {
@@ -403,9 +403,18 @@ export function runReviewer({ prompt, model, spawn = realSpawn, token = null }) 
       : stderr.trim() === ''
         ? 'CLI_SILENT_EXIT'
         : 'MODEL_ERROR';
+    // CLI_SILENT_EXIT carries the CLI's own stdout excerpt on top of the
+    // remedy: with stderr empty there is otherwise nothing to diagnose from,
+    // and run 33802488121's opaque envelope is exactly the shape this is for.
+    // Capped at 1500 chars and read from `r.stdout` alone -- never the env or
+    // the credential -- so this cannot leak the token even if a future CLI
+    // version echoes its own environment into stdout.
+    const stdoutNote = reason === 'CLI_SILENT_EXIT'
+      ? `\n--- stdout ---\n${String(r.stdout ?? '').slice(0, 1500).trim() || '(empty)'}`
+      : '';
     throw new RunReviewerError(
       reason,
-      `The reviewer CLI exited ${r.status}. ${remedyFor(reason)}\n--- stderr ---\n${stderr.trim() || '(empty)'}`,
+      `The reviewer CLI exited ${r.status}. ${remedyFor(reason)}\n--- stderr ---\n${stderr.trim() || '(empty)'}${stdoutNote}`,
     );
   }
 
@@ -458,6 +467,14 @@ function remedyFor(reason) {
 /**
  * Retry only credential-specific failures: first across independent Claude
  * accounts, then across providers. Request/model/output failures stay failed.
+ *
+ * `providerFallback` accepts EITHER shape, for backward compatibility with
+ * every existing caller and test that passes a single function:
+ *   - a plain `(prompt) => text` function, treated as one provider labelled
+ *     `'openai-fallback'` (the label existing tests and logs already assert);
+ *   - an array of `{ label, run }`, tried IN ORDER. The first to succeed wins;
+ *     if every one throws, the final error names all of their messages so a
+ *     misconfigured second provider is never hidden behind a first failure.
  */
 export function runReviewerWithFailover({ prompt, model, tokens, spawn, providerFallback = null }) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
@@ -479,13 +496,31 @@ export function runReviewerWithFailover({ prompt, model, tokens, spawn, provider
     }
   }
   if (providerFallback) {
-    console.log(`auth: Claude failed with ${last.reason}; trying the independent provider fallback.`);
-    try {
-      return { text: providerFallback(prompt), envelope: { provider: 'openai-fallback' } };
-    } catch (error) {
+    const providers = Array.isArray(providerFallback)
+      ? providerFallback
+      : [{ label: 'openai-fallback', run: providerFallback }];
+    const failures = [];
+    for (const provider of providers) {
+      console.log(`auth: Claude failed with ${last.reason}; trying ${provider.label}.`);
+      try {
+        // A provider may answer with a bare string (openai-fallback, one
+        // fixed model) or `{ text, model }` when it tried more than one model
+        // (openrouter-fallback) -- the envelope names which model actually
+        // answered only when the provider reports one.
+        const outcome = provider.run(prompt);
+        const text = typeof outcome === 'string' ? outcome : outcome.text;
+        const model = typeof outcome === 'string' ? undefined : outcome.model;
+        console.log(`auth: ${provider.label} succeeded${model ? ` (model=${model})` : ''}.`);
+        return { text, envelope: { provider: provider.label, ...(model ? { model } : {}) } };
+      } catch (error) {
+        console.log(`auth: ${provider.label} failed: ${error.message}`);
+        failures.push(`${provider.label}: ${error.message}`);
+      }
+    }
+    if (failures.length > 0) {
       throw new RunReviewerError(
         'FALLBACK_ERROR',
-        `Claude failed with ${last.reason}, and the independent provider failed: ${error.message}`,
+        `Claude failed with ${last.reason}, and every independent provider failed:\n${failures.join('\n')}`,
       );
     }
   }
@@ -557,15 +592,15 @@ function main() {
         : ', NO fallback configured (set CLAUDE_CODE_OAUTH_TOKEN_2 from a second account)'),
   );
 
-  const openAiKey = String(process.env.OPENAI_API_KEY ?? '').trim();
-  console.log(openAiKey ? 'provider fallback: configured.' : 'provider fallback: NOT configured (set OPENAI_API_KEY).');
+  const providers = resolveProviderFallbacks(process.env);
+  console.log(describeProviderFallbacks(providers));
 
   const { text, envelope } = runReviewerWithFailover({
     prompt,
     model: args.model,
     tokens,
     spawn: realSpawn,
-    providerFallback: openAiKey ? (reviewPrompt) => runOpenAiFallback({ prompt: reviewPrompt, apiKey: openAiKey }) : null,
+    providerFallback: providers.length > 0 ? providers : null,
   });
 
   writeFileSync(args.out, text);

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { calculateMeshBounds, createCoordinateInfo } from '../../utils/localParsingUtils.js';
+import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { parseLandXmlTin, type LandXmlTinSurface } from './landXmlTin.js';
 
 export interface LandXmlGeometryPayload {
@@ -54,7 +54,8 @@ function buildSurfaceMesh(
   expressId: number,
   linearScale: number,
   elevationScale: number,
-): { mesh: MeshData | null; degenerateFaces: number } {
+  originOverride?: [number, number, number],
+): { mesh: MeshData | null; degenerateFaces: number; bounds: Bounds3D | null } {
   const worldById = new Map<string, WorldPoint>();
   for (const point of surface.points) {
     // LandXML: northing/easting/elevation (Z-up). Viewer: X east, Y up,
@@ -84,7 +85,7 @@ function buildSurfaceMesh(
     degenerateFaces++;
     return false;
   });
-  if (retainedFaces.length === 0) return { mesh: null, degenerateFaces };
+  if (retainedFaces.length === 0) return { mesh: null, degenerateFaces, bounds: null };
 
   const referencedPointIds = new Set(retainedFaces.flatMap((face) => face));
   const retainedPoints = surface.points.filter((point) => referencedPointIds.has(point.id));
@@ -99,7 +100,7 @@ function buildSurfaceMesh(
   // Survey coordinates routinely sit hundreds of kilometres from zero. Keep
   // them in f64 until this per-surface origin is removed, then store the local
   // residuals as f32. MeshData.origin restores the exact world placement.
-  const origin: [number, number, number] = [
+  const origin: [number, number, number] = originOverride ?? [
     (minX + maxX) / 2,
     (minY + maxY) / 2,
     (minZ + maxZ) / 2,
@@ -115,6 +116,7 @@ function buildSurfaceMesh(
   });
 
   const indices: number[] = [];
+  const renderedFaces: LandXmlTinSurface['faces'] = [];
   const normalSums = new Float64Array(positions.length);
   for (const face of retainedFaces) {
     let a = indexById.get(face[0])!;
@@ -140,13 +142,40 @@ function buildSurfaceMesh(
       nx = -nx; ny = -ny; nz = -nz;
     }
     indices.push(a, b, c);
+    renderedFaces.push(face);
     for (const index of [a, b, c]) {
       normalSums[index * 3] += nx;
       normalSums[index * 3 + 1] += ny;
       normalSums[index * 3 + 2] += nz;
     }
   }
-  if (indices.length === 0) return { mesh: null, degenerateFaces };
+  if (indices.length === 0) {
+    if (!originOverride) {
+      // Disconnected components can be far enough apart that centering their
+      // combined extent collapses every small triangle in f32. Anchor a retry
+      // at the first real face; any still-collapsed components are compacted
+      // by the normal post-cast path below.
+      const firstFace = retainedFaces[0];
+      const a = worldById.get(firstFace[0])!;
+      const b = worldById.get(firstFace[1])!;
+      const c = worldById.get(firstFace[2])!;
+      return buildSurfaceMesh(surface, expressId, linearScale, elevationScale, [
+        (a.x + b.x + c.x) / 3,
+        (a.y + b.y + c.y) / 3,
+        (a.z + b.z + c.z) / 3,
+      ]);
+    }
+    return { mesh: null, degenerateFaces, bounds: null };
+  }
+  if (renderedFaces.length !== retainedFaces.length) {
+    const compacted = buildSurfaceMesh(
+      { ...surface, faces: renderedFaces },
+      expressId,
+      linearScale,
+      elevationScale,
+    );
+    return { ...compacted, degenerateFaces: degenerateFaces + compacted.degenerateFaces };
+  }
 
   const normals = new Float32Array(normalSums.length);
   for (let i = 0; i < normalSums.length; i += 3) {
@@ -169,6 +198,10 @@ function buildSurfaceMesh(
       origin,
     },
     degenerateFaces,
+    bounds: {
+      min: { x: minX, y: minY, z: minZ },
+      max: { x: maxX, y: maxY, z: maxZ },
+    },
   };
 }
 
@@ -178,6 +211,7 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
   const warnings = [...parsed.warnings];
   const meshes: MeshData[] = [];
   const surfaceNames: string[] = [];
+  const bounds = createEmptyBounds();
   for (const surface of parsed.surfaces) {
     const result = buildSurfaceMesh(
       surface,
@@ -194,10 +228,21 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
     }
     meshes.push(result.mesh);
     surfaceNames.push(surface.name);
+    if (result.bounds) {
+      bounds.min.x = Math.min(bounds.min.x, result.bounds.min.x);
+      bounds.min.y = Math.min(bounds.min.y, result.bounds.min.y);
+      bounds.min.z = Math.min(bounds.min.z, result.bounds.min.z);
+      bounds.max.x = Math.max(bounds.max.x, result.bounds.max.x);
+      bounds.max.y = Math.max(bounds.max.y, result.bounds.max.y);
+      bounds.max.z = Math.max(bounds.max.z, result.bounds.max.z);
+    }
   }
   if (meshes.length === 0) throw new Error('LandXML document contains no non-degenerate TIN faces');
 
-  const { bounds, stats } = calculateMeshBounds(meshes);
+  const stats = meshes.reduce((total, mesh) => ({
+    totalVertices: total.totalVertices + mesh.positions.length / 3,
+    totalTriangles: total.totalTriangles + mesh.indices.length / 3,
+  }), { totalVertices: 0, totalTriangles: 0 });
   const maxAbs = Math.max(
     Math.abs(bounds.min.x), Math.abs(bounds.min.y), Math.abs(bounds.min.z),
     Math.abs(bounds.max.x), Math.abs(bounds.max.y), Math.abs(bounds.max.z),

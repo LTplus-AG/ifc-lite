@@ -48,6 +48,27 @@ export function mirrorCreateEntityRedo(
   });
 }
 
+/** Re-publish a restored source record after its room tombstone is undone. */
+export function mirrorSourceEntityRestore(
+  state: ViewerState,
+  modelId: string,
+  entityId: number,
+  mesh: MeshData | null,
+): void {
+  const store = state.models.get(modelId)?.ifcDataStore ?? state.ifcDataStore;
+  if (!store) return;
+  const entity = store.getEntity?.(entityId);
+  if (!entity) return;
+  const names = getAttributeNamesAcrossSchemas(entity.type);
+  const guid = store.entities.getGlobalId(entityId)
+    ?? (names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string' ? entity.attributes[0] : null);
+  state.mirrorEntityCreate(modelId, entityId, entity.type, guid, mesh);
+  entity.attributes.forEach((value, index) => {
+    const name = names[index];
+    if (name) state.mirrorAttributeEdit(modelId, entityId, name, value);
+  });
+}
+
 /**
  * `modelId` is normalised the same way `getOrCreateMutationView` normalises
  * it before REGISTERING the `MutablePropertyView` (`__legacy__` for a

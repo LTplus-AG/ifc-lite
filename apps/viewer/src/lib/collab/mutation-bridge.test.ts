@@ -391,19 +391,21 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     const doc = createCollabDoc();
     const store = fakeStore(new Map());
     const handlers = recordingHandlers();
-    handlers.onEntityCreate = (target, path, ifcClass) => {
-      handlers.calls.push({ fn: 'onEntityCreate', args: [target.modelId, path, ifcClass] });
+    handlers.onEntityCreate = (target, path, ifcClass, attributes) => {
+      handlers.calls.push({ fn: 'onEntityCreate', args: [target.modelId, path, ifcClass, attributes] });
     };
     const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
-      createEntity(remote, '/peer-value', { ifcClass: 'IfcCostValue' });
+      createEntity(remote, '/peer-value', {
+        ifcClass: 'IfcCostValue', attributes: { 'bsi::ifc::prop::Name': 'Peer value' },
+      });
     });
 
     teardown();
     assert.deepEqual(handlers.calls, [{
       fn: 'onEntityCreate',
-      args: [MODEL, '/peer-value', 'IfcCostValue'],
+      args: [MODEL, '/peer-value', 'IfcCostValue', { 'bsi::ifc::prop::Name': 'Peer value' }],
     }]);
   });
   it('dispatches a remote pset property write to onProperty (pset already exists)', () => {

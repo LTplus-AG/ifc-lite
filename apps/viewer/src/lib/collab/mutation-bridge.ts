@@ -213,7 +213,12 @@ export interface RemoteApplyHandlers {
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(modelId: string, entityId: number): void;
   /** A peer created an entity that this already-loaded model has not mapped yet. */
-  onEntityCreate?(target: RoomEntityTarget, entityPath: string, ifcClass: string): void;
+  onEntityCreate?(
+    target: RoomEntityTarget,
+    entityPath: string,
+    ifcClass: string,
+    attributes: Readonly<Record<string, unknown>>,
+  ): void;
   /** The whole Pset vanished. Property names are unavailable by design: Yjs
    *  detaches the map before the event is observed, so `forEach` yields 0
    *  entries. The consumer drops the entire set for (entityId, pset). */
@@ -267,10 +272,17 @@ export function attachRemoteApply(
           if (!hit) continue;
           if (change.action === 'add' && handlers.onEntityCreate) {
             const entity = entities.get(entityPath) as { get(key: string): unknown } | undefined;
-            const attributes = entity?.get('attributes') as { get(key: string): unknown } | undefined;
+            const attributes = entity?.get('attributes') as {
+              get(key: string): unknown;
+              forEach?(fn: (value: unknown, key: string) => void): void;
+            } | undefined;
             const classValue = attributes?.get('bsi::ifc::class') as { code?: unknown } | undefined;
             if (typeof classValue?.code === 'string') {
-              handlers.onEntityCreate(hit, entityPath, classValue.code);
+              const initial: Record<string, unknown> = {};
+              attributes?.forEach?.((value, key) => {
+                if (key !== 'bsi::ifc::class') initial[key] = value;
+              });
+              handlers.onEntityCreate(hit, entityPath, classValue.code, initial);
             }
             continue;
           }

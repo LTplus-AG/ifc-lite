@@ -21,6 +21,7 @@ import {
   pushCreateEntityUndo,
   markCostRelationshipMutation,
   mirrorCreateEntityRedo,
+  mirrorSourceEntityRestore,
   rememberCostEntityRoomKey,
 } from './mutation-cost-undo.js';
 
@@ -107,5 +108,22 @@ describe('cost entity collaboration redo identity', () => {
       mirrorAttributeEdit: () => {},
     } as unknown as import('../index.js').ViewerState, 'm1', entity, mesh);
     assert.equal(creates[0]?.[4], mesh);
+  });
+
+  it('re-publishes a restored source entity with its attributes and mesh', () => {
+    const creates: unknown[][] = [];
+    const edits: unknown[][] = [];
+    const mesh = { expressId: 7 } as MeshData;
+    const dataStore = {
+      entities: { getGlobalId: () => 'wall-guid' },
+      getEntity: () => ({ expressId: 7, type: 'IFCWALL', attributes: ['wall-guid', null, 'Wall'] }),
+    };
+    mirrorSourceEntityRestore({
+      models: new Map([['m1', { ifcDataStore: dataStore }]]),
+      mirrorEntityCreate: (...args: unknown[]) => { creates.push(args); },
+      mirrorAttributeEdit: (...args: unknown[]) => { edits.push(args); },
+    } as unknown as import('../index.js').ViewerState, 'm1', 7, mesh);
+    assert.deepEqual(creates[0], ['m1', 7, 'IFCWALL', 'wall-guid', mesh]);
+    assert.ok(edits.some(args => args[2] === 'Name' && args[3] === 'Wall'));
   });
 });

@@ -48,7 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
-import { createCostUndoMutations, mirrorCreateEntityRedo, type CostUndoMethods } from './mutation-cost-undo.js';
+import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRestore, type CostUndoMethods } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import type { TypeViewMode } from '../constants.js';
@@ -2798,14 +2798,14 @@ export const createMutationSlice: StateCreator<
       // Also remove the created mesh from the scene + geometryResult (#4925).
       stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
     } else if (mutation.type === 'DELETE_ENTITY') {
-      // Undo of a delete: restore tombstone for source entity, OR replay
-      // the stashed NewEntity record for an overlay-only entity.
+      // Restore a source tombstone or replay an overlay-only entity.
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
         view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
       } else {
         view.restoreFromTombstone(mutation.entityId);
+        mirrorSourceEntityRestore(get(), modelId, mutation.entityId, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
       }
       // Re-insert the mesh removeEntity stashed when it pruned geometryResult (#4925).
       restoreStashedEntityMesh(get, set, modelId, mutation.entityId);

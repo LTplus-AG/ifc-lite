@@ -859,10 +859,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // and re-gates on it (`roomStoreFor` / `roomMutationViewFor`), so a
     // handler cannot be handed one model and write another.
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
-      onEntityCreate: ({ modelId, store }, entityPath, ifcClass) => {
+      onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
-        if (createRemoteOverlayEntity(store, view, entityPath, ifcClass)) {
+        if (createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes)) {
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
         }
       },

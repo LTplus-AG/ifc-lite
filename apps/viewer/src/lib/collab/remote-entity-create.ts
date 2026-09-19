@@ -5,6 +5,7 @@
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { entityForPath, registerEntityPath } from './entity-paths';
+import { applyRemoteAttribute } from './remote-attribute';
 
 /** Materialize and map a peer-created CRDT entity in an already-loaded STEP model. */
 export function createRemoteOverlayEntity(
@@ -12,9 +13,13 @@ export function createRemoteOverlayEntity(
   view: MutablePropertyView,
   entityPath: string,
   ifcClass: string,
+  attributes: Readonly<Record<string, unknown>> = {},
 ): boolean {
   if (entityForPath(store, entityPath) !== null) return false;
   const created = new StoreEditor(store, view).addEntity(ifcClass, []);
   registerEntityPath(store, created.expressId, entityPath);
+  for (const [name, value] of Object.entries(attributes)) {
+    applyRemoteAttribute(view, store, created.expressId, name, value);
+  }
   return true;
 }

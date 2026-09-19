@@ -17,6 +17,7 @@
  */
 
 import {
+  ACCEPTED_AMBIGUOUS_REASON,
   createIdentityMapSidecar,
   createLineageSidecar,
   identityMapSidecarMismatches,
@@ -117,7 +118,15 @@ export function lineageForExport(
     signatures.has(claimSignature(claim.base.key, claim.head.key)),
   );
   const aliasReasons = new Map(accepted.map((entry) => [entry.here, entry.reason]));
-  const { entries, deleted } = lineageOfDiff(result.diff, { accepted: acceptedClaims, aliasReasons });
+  const aliasRelations = new Map(accepted.map((entry) => [
+    entry.here,
+    entry.reason === ACCEPTED_AMBIGUOUS_REASON ? 'identity' as const : 'replaced' as const,
+  ]));
+  const { entries, deleted } = lineageOfDiff(result.diff, {
+    accepted: acceptedClaims,
+    aliasReasons,
+    aliasRelations,
+  });
   return { entries, deleted };
 }
 

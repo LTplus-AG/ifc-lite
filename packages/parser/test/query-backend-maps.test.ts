@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
-import { RelationshipType, ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3 } from '@ifc-lite/data';
+import { RelationshipType, relationshipTypeName, ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3 } from '@ifc-lite/data';
 import { ENTITY_NAME_ALIASES } from '../src/ifc-schema.js';
 import { SCHEMA_REGISTRY } from '../src/generated/schema-registry.js';
 
@@ -384,9 +384,14 @@ describe('QUERY_REL_TYPE_MAP', () => {
     expect(QUERY_REL_TYPE_MAP.IfcRelConnectsStructuralElement).toBe(RelationshipType.ConnectsStructuralElement);
   });
 
-  it('answers undefined for a relationship outside the SDK surface', () => {
-    // The backends return no edges for an unknown name rather than throwing;
-    // that only holds while the lookup misses rather than resolving to 0.
-    expect(QUERY_REL_TYPE_MAP.IfcRelAssociatesMaterial).toBeUndefined();
+  it('exposes every exact relationship class stored by the graph (#4205)', () => {
+    const types = Object.values(RelationshipType)
+      .filter((value): value is RelationshipType => typeof value === 'number');
+    expect(Object.keys(QUERY_REL_TYPE_MAP)).toHaveLength(types.length);
+    for (const type of types) {
+      expect(QUERY_REL_TYPE_MAP[relationshipTypeName(type)]).toBe(type);
+    }
+    expect(QUERY_REL_TYPE_MAP.IfcRelAssociatesMaterial).toBe(RelationshipType.AssociatesMaterial);
+    expect(QUERY_REL_TYPE_MAP.IfcRelNotInAnySchema).toBeUndefined();
   });
 });

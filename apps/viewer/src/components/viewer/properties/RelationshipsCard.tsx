@@ -17,9 +17,24 @@ interface RelationshipsCardProps {
   onIsolateGroupMembers?: (groupId: number) => void;
 }
 
+const RELATIONSHIPS_LABEL = 'Relationships';
+const SPECIALIZED_RELATIONSHIP_TYPES = new Set([
+  'IfcRelVoidsElement',
+  'IfcRelFillsElement',
+  'IfcRelAssignsToGroup',
+  'IfcRelAssignsToGroupByFactor',
+  'IfcRelConnectsPathElements',
+]);
+
 export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
   const { voids, fills, groups, connections } = relationships;
-  const totalCount = voids.length + fills.length + groups.length + connections.length;
+  // These four classes already have purpose-built sections below. Everything
+  // else uses the exact-class graph view added by #4205, so a relationship is
+  // visible without duplicating the established openings/groups UI.
+  const otherRelations = (relationships.relations ?? []).filter(
+    (relation) => !SPECIALIZED_RELATIONSHIP_TYPES.has(relation.relationshipType),
+  );
+  const totalCount = voids.length + fills.length + groups.length + connections.length + otherRelations.length;
 
   if (totalCount === 0) return null;
 
@@ -28,7 +43,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/30 text-left transition-colors overflow-hidden">
         <Link2 className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400 shrink-0" />
         <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 truncate flex-1 min-w-0">
-          Relationships
+          {RELATIONSHIPS_LABEL}
         </span>
         <span className="text-[10px] font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0">
           {totalCount}
@@ -81,9 +96,45 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
               ))}
             </div>
           )}
+          {otherRelations.length > 0 && (
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                Relationships ({otherRelations.length})
+              </div>
+              {otherRelations.map((relation) => (
+                <RelationshipEdgeItem
+                  key={`${relation.direction}:${relation.relationshipId}:${relation.entity.id}`}
+                  relation={relation}
+                  onSelect={onSelectEntity}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function RelationshipEdgeItem({ relation, onSelect }: {
+  relation: NonNullable<EntityRelationships['relations']>[number];
+  onSelect?: (id: number) => void;
+}) {
+  return (
+    <button
+      className="flex items-center gap-2 text-xs py-0.5 w-full text-left hover:text-primary transition-colors"
+      onClick={() => onSelect?.(relation.entity.id)}
+      type="button"
+      title={`#${relation.relationshipId} ${relation.relationshipType}`}
+    >
+      <span className="font-mono text-zinc-500 dark:text-zinc-500 text-[10px]">
+        {relation.direction === 'forward' ? '→' : '←'} #{relation.entity.id}
+      </span>
+      <span className="text-zinc-600 dark:text-zinc-400 truncate">
+        {relation.entity.name || relation.entity.type}
+      </span>
+      <span className="text-[10px] text-zinc-400 ml-auto shrink-0">{relation.relationshipType}</span>
+    </button>
   );
 }
 

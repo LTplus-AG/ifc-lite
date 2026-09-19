@@ -16,7 +16,7 @@
  * they are written against.
  */
 
-import { RelationshipType, expandTypeNamesToDescendants } from '@ifc-lite/data';
+import { RelationshipType, expandTypeNamesToDescendants, relationshipTypeName } from '@ifc-lite/data';
 import { getInheritanceChain, isQueryableObjectType } from './ifc-schema.js';
 
 /**
@@ -218,22 +218,13 @@ function computeExpandTypes(types: string[], schemaVersion: string | undefined):
  * Relationship names the SDK's `related(ref, relType, direction)` accepts,
  * keyed in the PascalCase spelling a caller writes.
  *
- * Deliberately NARROWER than `REL_TYPE_MAP` in `columnar-parser-indexes.ts`,
- * which the parser uses to bucket every relationship it indexes: the SDK
- * surface exposes five of those, and a name outside this map resolves to no
- * edges rather than throwing. Keeping the two maps in one place — rather than
- * three copies of this one and no cross-reference to the other — is what makes
- * that narrowing visible; widening the SDK surface is a deliberate change to
- * this table, not an accident of which backend a caller reached.
+ * Derived from the enum's canonical EXPRESS-name table so every exact class
+ * indexed by the parser is traversable through `bim.query().related()` and
+ * MCP. Before #4205 this was a nine-entry hand list: the graph contained many
+ * more classes than the public query surface could name.
  */
-export const QUERY_REL_TYPE_MAP: Record<string, RelationshipType> = {
-  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
-  IfcRelAggregates: RelationshipType.Aggregates,
-  IfcRelDefinesByType: RelationshipType.DefinesByType,
-  IfcRelVoidsElement: RelationshipType.VoidsElement,
-  IfcRelFillsElement: RelationshipType.FillsElement,
-  IfcRelConnectsStructuralActivity: RelationshipType.ConnectsStructuralActivity,
-  IfcRelConnectsStructuralMember: RelationshipType.ConnectsStructuralMember,
-  IfcRelConnectsWithEccentricity: RelationshipType.ConnectsWithEccentricity,
-  IfcRelConnectsStructuralElement: RelationshipType.ConnectsStructuralElement,
-};
+export const QUERY_REL_TYPE_MAP: Readonly<Record<string, RelationshipType>> = Object.fromEntries(
+  Object.values(RelationshipType)
+    .filter((value): value is RelationshipType => typeof value === 'number')
+    .map((value) => [relationshipTypeName(value), value]),
+);

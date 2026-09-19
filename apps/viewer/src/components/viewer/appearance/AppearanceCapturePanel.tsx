@@ -16,11 +16,13 @@ import { appearanceSelectClass } from './AppearanceSourceFields';
 import { useIfc } from '@/hooks/useIfc';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
+import { useTranslation } from '@/i18n';
 
 const MAX_CAPTURE_ROWS = 200_000;
 const CAPTURE_ACCEPT = '.glb,.gltf,.bin,.png,.jpg,.jpeg,.ifc,.ifczip';
 
 export function AppearanceCapturePanel() {
+  const { t } = useTranslation();
   const models = useViewerStore(state => state.models), selected = useViewerStore(state => state.selectedEntityId);
   const room = useViewerStore(state => state.collabRoomId);
   const placement = useViewerStore(state => state.modelPlacement);
@@ -28,7 +30,7 @@ export function AppearanceCapturePanel() {
   const target = useIfcAuthoringTarget();
   const candidates = useMemo(() => [...models.values()].flatMap(model => (model.geometryResult?.meshes ?? [])
     .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
-      label: `${model.name} · Surface ${index + 1} · ${(mesh.indices.length / 3).toLocaleString()} triangles` }] : [])), [models]);
+      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: index + 1, triangleCount: (mesh.indices.length / 3).toLocaleString() }) }] : [])), [models, t]);
   const excludedSurfaces = useMemo(() => [...models.values()].reduce((count, model) => count
     + (model.geometryResult?.meshes ?? []).filter(mesh => !mesh.textureRef).length, 0), [models]);
   const [chosen, setChosen] = useState('');
@@ -46,12 +48,12 @@ export function AppearanceCapturePanel() {
   const operation = useRef<AbortController | null>(null);
   const scanInput = useRef<HTMLInputElement>(null);
   const routeScanFiles = useCallback((files: File[]) => {
-    setMessage('Loading scan source…'); setError(false);
+    setMessage(t('appearance.capture.loadingScan')); setError(false);
     // Bundle preparation awaits before routing, so decide from the store now:
     // a model loaded meanwhile is added to, not replaced.
     if (useViewerStore.getState().models.size === 0 && files.length === 1) void loadFile(files[0]);
     else void loadFilesSequentially(files);
-  }, [loadFile, loadFilesSequentially]);
+  }, [loadFile, loadFilesSequentially, t]);
   const prepareAndLoadScan = usePreparedModelFileRoute(routeScanFiles);
   useEffect(() => () => { operation.current?.abort(); operation.current = null; }, []);
   const [imagesSettled, setImagesSettled] = useState(0);
@@ -66,7 +68,7 @@ export function AppearanceCapturePanel() {
       setAssetId(first.assetId);
       setTriangles(count <= MAX_CAPTURE_ROWS ? Array.from({ length: count }, (_, i) => i) : [0]);
       setPlaceholder(count > MAX_CAPTURE_ROWS);
-      if (count > MAX_CAPTURE_ROWS) setMessage(`This surface has ${count.toLocaleString()} triangles. Select a region with at most 200,000 triangles and vertices.`);
+      if (count > MAX_CAPTURE_ROWS) setMessage(t('appearance.capture.surfaceTooLarge', { count: count.toLocaleString() }));
     } catch (failure) {
       setTriangles([]); setMessage(failure instanceof Error ? failure.message : String(failure));
       // A freshly loaded scan is listed before its images settle: wait for them and prepare again.
@@ -77,80 +79,80 @@ export function AppearanceCapturePanel() {
       void decoding.then(() => { if (live) setImagesSettled(count => count + 1); });
       return () => { live = false; };
     }
-  }, [candidate?.modelId, candidate?.mesh, imagesSettled]);
+  }, [candidate?.modelId, candidate?.mesh, imagesSettled, t]);
   useEffect(() => { setCreated(false); }, [candidate?.mesh, triangles]);
   useEffect(() => {
     if (operation.current || created) return;
     setPrepared(null); if (!candidate || !assetId) return;
-    if (placement.preview) { setMessage('Finish repositioning the model to create this region.'); return; }
-    if (!triangles.length) { setMessage('The rectangle contains no triangle centres. Choose another region or Entire surface.'); return; }
+    if (placement.preview) { setMessage(t('appearance.capture.finishRepositioning')); return; }
+    if (!triangles.length) { setMessage(t('appearance.capture.noTriangles')); return; }
     try { setPrepared(prepareCapturedRegion(candidate.modelId,candidate.mesh,triangles)); setError(false); setMessage(placeholder
-      ? 'This surface is larger than the capture limit. Use Select region to keep at most 200,000 triangles and vertices.'
-      : 'Review the textured region, then choose where to create it.'); }
+      ? t('appearance.capture.overLimitNotice')
+      : t('appearance.capture.reviewRegion')); }
     catch (failure) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
-  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placeholder, placement, created]);
+  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placeholder, placement, created, t]);
   async function createDestination() {
     if (loading || busy) return;
-    setMessage('Creating an editable IFC4 model…'); setError(false);
+    setMessage(t('appearance.capture.creatingDestination')); setError(false);
     try {
       const modelId = await addModel(createBlankIfcFile({ projectName: 'Captured Surfaces' }));
-      if (modelId) { target.setChosenModel(modelId); target.setChosenContainer(undefined); setMessage('Editable IFC4 destination created. Your selected scan region is still ready.'); }
-      else { setError(true); setMessage('The editable IFC4 model could not be created.'); }
+      if (modelId) { target.setChosenModel(modelId); target.setChosenContainer(undefined); setMessage(t('appearance.capture.destinationCreated')); }
+      else { setError(true); setMessage(t('appearance.capture.destinationFailed')); }
     } catch (failure) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
   }
   async function create() {
     const renderer = getGlobalRenderer();
     if (!prepared || !ready || !renderer || !target.modelId || target.containerId === undefined || operation.current || room) return;
-    const controller = new AbortController(); operation.current = controller; setBusy(true); setError(false); setMessage('Creating textured IFC surface…');
+    const controller = new AbortController(); operation.current = controller; setBusy(true); setError(false); setMessage(t('appearance.capture.creatingSurface'));
     try {
       const result = await createIfcFromCapturedMesh(target.modelId,target.containerId,prepared,renderer,{ Name,signal:controller.signal });
       if (controller.signal.aborted) return;
       selectCreatedAppearanceObject(target.modelId, result);
       setPrepared(null); setCreated(true);
-      setMessage('Textured IfcBuildingElementProxy created and selected. Undo is available.');
+      setMessage(t('appearance.capture.surfaceCreated'));
     } catch (failure) { if (!controller.signal.aborted) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); } }
     finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
-  return <section className="mt-4 space-y-3" aria-label="Create from scan" aria-busy={busy || loading}>
-    <div><h2 className="text-sm font-semibold">Create from scan</h2>
-      <p className="mt-1 text-[11px] text-muted-foreground">Turn a textured scan or IFC surface into an editable IFC object.</p></div>
+  return <section className="mt-4 space-y-3" aria-label={t('appearance.capture.sectionAriaLabel')} aria-busy={busy || loading}>
+    <div><h2 className="text-sm font-semibold">{t('appearance.capture.heading')}</h2>
+      <p className="mt-1 text-[11px] text-muted-foreground">{t('appearance.capture.description')}</p></div>
     <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-      <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">1. Choose a source</h3>
-        <Button type="button" size="sm" variant="outline" disabled={busy || loading} onClick={() => scanInput.current?.click()}>Add scan</Button></div>
-      <input ref={scanInput} type="file" multiple accept={CAPTURE_ACCEPT} className="hidden" aria-label="Add scan files" onChange={event => {
+      <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">{t('appearance.capture.step1Heading')}</h3>
+        <Button type="button" size="sm" variant="outline" disabled={busy || loading} onClick={() => scanInput.current?.click()}>{t('appearance.capture.addScan')}</Button></div>
+      <input ref={scanInput} type="file" multiple accept={CAPTURE_ACCEPT} className="hidden" aria-label={t('appearance.capture.addScanFilesAriaLabel')} onChange={event => {
         const files = Array.from(event.target.files ?? []); if (files.length) prepareAndLoadScan(files); event.target.value = '';
       }}/>
-    <label className="block text-[11px]">Source surface<select className={appearanceSelectClass} aria-label="Captured source surface" value={candidate?.id ?? ''} disabled={busy || loading}
-      onChange={event => setChosen(event.target.value)}>{!candidate && <option value="">{candidates.length ? 'Choose a source surface' : 'Open or add a textured model'}</option>}
+    <label className="block text-[11px]">{t('appearance.capture.sourceSurfaceLabel')}<select className={appearanceSelectClass} aria-label={t('appearance.capture.sourceSurfaceAriaLabel')} value={candidate?.id ?? ''} disabled={busy || loading}
+      onChange={event => setChosen(event.target.value)}>{!candidate && <option value="">{candidates.length ? t('appearance.capture.chooseSourceSurface') : t('appearance.capture.openOrAddModel')}</option>}
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
-    {!candidate && <p className="text-[11px] text-muted-foreground">Choose a GLB, a glTF bundle (.gltf + .bin + textures), or an IFC with a supported base-colour texture.</p>}
-    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">None of the {excludedSurfaces.toLocaleString()} loaded {excludedSurfaces === 1 ? 'surface has' : 'surfaces have'} a supported base-colour texture with UV mapping.</p>}
+    {!candidate && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.formatsNote')}</p>}
+    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', { count: excludedSurfaces.toLocaleString() })}</p>}
     {candidate && assetId && <AppearanceMeshPreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy || loading}
-      onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setMessage('Select a smaller region with at most 200,000 triangles and vertices.'); return; } setPlaceholder(false); setTriangles(ids); }}
-      onReady={value => { setReady(value); if (value && !message) { setError(false); setMessage('Review the textured region, then choose where to create it.'); } }} onError={text => { setReady(false); setError(true); setMessage(text); }} />}
-    {!!assetId && <p className="text-[11px]" role="status">{triangles.length.toLocaleString()} {triangles.length === 1 ? 'triangle' : 'triangles'} in this region</p>}
+      onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setMessage(t('appearance.capture.regionTooLarge')); return; } setPlaceholder(false); setTriangles(ids); }}
+      onReady={value => { setReady(value); if (value && !message) { setError(false); setMessage(t('appearance.capture.reviewRegion')); } }} onError={text => { setReady(false); setError(true); setMessage(text); }} />}
+    {!!assetId && <p className="text-[11px]" role="status">{t('appearance.capture.trianglesInRegion', { count: triangles.length })}</p>}
     </div>
     <fieldset disabled={busy || loading || !!room} className="space-y-2 rounded-md border bg-muted/20 p-3">
-      <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">2. Choose a destination</h3>
-        <Button type="button" size="sm" variant="outline" disabled={busy || loading || !!room} onClick={() => { void createDestination(); }}>New IFC4 model</Button></div>
-      <label className="block text-[11px]">Destination model<select aria-label="Capture destination model" className={appearanceSelectClass} value={target.modelId}
+      <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">{t('appearance.capture.step2Heading')}</h3>
+        <Button type="button" size="sm" variant="outline" disabled={busy || loading || !!room} onClick={() => { void createDestination(); }}>{t('appearance.capture.newIfc4Model')}</Button></div>
+      <label className="block text-[11px]">{t('appearance.capture.destinationModelLabel')}<select aria-label={t('appearance.capture.destinationModelAriaLabel')} className={appearanceSelectClass} value={target.modelId}
         onChange={event => { target.setChosenModel(event.target.value); target.setChosenContainer(undefined); }}>
-        {!target.eligible.length && <option value="">Add an editable IFC4 model</option>}
+        {!target.eligible.length && <option value="">{t('appearance.capture.addEditableModel')}</option>}
         {target.eligible.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
       </select></label>
-      <label className="block text-[11px]">Container<select aria-label="Capture container" className={appearanceSelectClass} value={target.containerId ?? ''}
+      <label className="block text-[11px]">{t('appearance.capture.containerLabel')}<select aria-label={t('appearance.capture.containerAriaLabel')} className={appearanceSelectClass} value={target.containerId ?? ''}
         onChange={event => target.setChosenContainer(Number(event.target.value))}>
-        {!target.containers.length && <option value="">No spatial container available</option>}
-        {target.containers.map(node => <option key={node.expressId} value={node.expressId}>{node.name || `#${node.expressId}`}</option>)}
+        {!target.containers.length && <option value="">{t('appearance.capture.noContainer')}</option>}
+        {target.containers.map(node => <option key={node.expressId} value={node.expressId}>{node.name || t('appearance.capture.containerFallbackName', { expressId: node.expressId })}</option>)}
       </select></label>
-      <label className="block text-[11px]">Name<Input aria-label="Captured object Name" value={Name} onChange={event => setName(event.target.value)} /></label>
-      <h3 className="pt-1 text-xs font-medium">3. Create the IFC object</h3>
+      <label className="block text-[11px]">{t('appearance.capture.nameLabel')}<Input aria-label={t('appearance.capture.nameAriaLabel')} value={Name} onChange={event => setName(event.target.value)} /></label>
+      <h3 className="pt-1 text-xs font-medium">{t('appearance.capture.step3Heading')}</h3>
       <Button type="button" className="w-full" disabled={!ready || !prepared || !!placement.preview || !target.modelId || target.containerId === undefined || !Name.trim()}
-        onClick={() => { void create(); }}>Create IFC object</Button>
+        onClick={() => { void create(); }}>{t('appearance.capture.createIfcObject')}</Button>
     </fieldset>
-    {room && <p className="text-[11px] text-muted-foreground">Leave the shared room to create captured objects, then share the saved model.</p>}
-    {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setMessage('Creation cancelled.'); }}>Cancel creation</Button>}
+    {room && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.leaveRoomNotice')}</p>}
+    {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setMessage(t('appearance.capture.cancelled')); }}>{t('appearance.capture.cancelCreation')}</Button>}
     {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
   </section>;
 }

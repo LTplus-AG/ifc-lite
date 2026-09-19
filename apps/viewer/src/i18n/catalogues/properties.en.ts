@@ -342,8 +342,25 @@ export const propertiesEn = {
     'The geometry already sits at map coordinates (E {eastingValue} N {northingValue}), and this IfcMapConversion repeats the same offset. ifc-lite places the geometry where it already is; a tool that applied the conversion on top would put the model {displacement} away.',
   'properties.georef.rotationOverrideNote':
     'This file also authors a map rotation that cannot be reconciled with its own coordinates, so the model is placed grid-aligned. Check the orientation, and set Angle to Grid North by hand if it looks wrong.',
-  'properties.georef.rawValuesNote':
-    "The file's own values are shown below exactly as authored. The export is worth fixing at source; to bake the correction in here, {instruction}",
+  'properties.georef.distanceUnknown': 'an unknown distance',
+  'properties.georef.distancePlanetWidth': 'more than a planet-width',
+  'properties.georef.distanceKilometres': 'about {value} km',
+  'properties.georef.distanceMetres': 'about {value} m',
+  'properties.georef.scaleOverrideOne': 'Its {fields} is not applied either.',
+  'properties.georef.scaleOverrideOther': 'Its {fields} are not applied either.',
+  'properties.georef.scaleOverrideReasonOne':
+    'Its {fields} is not applied either: on map-sized coordinates it would re-scale the model about the map origin.',
+  'properties.georef.scaleOverrideReasonOther':
+    'Its {fields} are not applied either: on map-sized coordinates they would re-scale the model about the map origin.',
+  'properties.georef.correctionOffsets': 'set Eastings and Northings to 0',
+  'properties.georef.correctionAngle': 'set Angle to Grid North to 0',
+  'properties.georef.correctionScale': 'set Scale to {value}',
+  'properties.georef.rawValuesCorrection':
+    "The file's own values are shown below exactly as authored. The export is worth fixing at source; to bake the correction in here, {edits}, then use Export IFC (with changes).",
+  'properties.georef.rawValuesCorrectionFactorOne':
+    "The file's own values are shown below exactly as authored. The export is worth fixing at source; to bake the correction in here, {edits}, then use Export IFC (with changes). {factors} is not editable in ifc-lite; set it to 1 in the authoring tool, or the exported file is still scaled by it.",
+  'properties.georef.rawValuesCorrectionFactorOther':
+    "The file's own values are shown below exactly as authored. The export is worth fixing at source; to bake the correction in here, {edits}, then use Export IFC (with changes). {factors} are not editable in ifc-lite; set them to 1 in the authoring tool, or the exported file is still scaled by them.",
   'properties.georef.projectedCrsHeading': 'Projected CRS',
   'properties.georef.missingCrsNotice': 'Coordinate operation exists, but projected CRS is missing.',
   'properties.georef.addCrs': 'Add CRS',

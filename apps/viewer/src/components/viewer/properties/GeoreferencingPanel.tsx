@@ -27,16 +27,12 @@ import {
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
-import {
-  detectDoubleGeoreference,
-  exportCorrectionInstruction,
-  formatApproxDistance,
-  overriddenScaleNote,
-} from '@/lib/geo/double-georeference';
+import { detectDoubleGeoreference } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 
 // ── Field-specific assistance data ─────────────────────────────────────
 
@@ -350,7 +346,7 @@ export interface GeoreferencingPanelProps {
 }
 
 export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVersion, coordinateInfo, geometryResult, lengthUnitScale, storeyElevations }: GeoreferencingPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const georefMutations = useViewerStore(s => s.georefMutations);
   const setGeorefField = useViewerStore(s => s.setGeorefField);
   const setGeorefFields = useViewerStore(s => s.setGeorefFields);
@@ -735,18 +731,18 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               {t('properties.georef.doubleGeorefBody', {
                 eastingValue: doubleGeoref.worldCenter.x.toFixed(0),
                 northingValue: doubleGeoref.worldCenter.y.toFixed(0),
-                displacement: formatApproxDistance(doubleGeoref.displacement),
+                displacement: localizedApproxDistance(t, locale, doubleGeoref.displacement),
               })}
               {/* The fingerprint matches on TRANSLATION, so when the file authors
                   a rotation of its own we are choosing the orientation, not
                   restating it. Say so rather than leaving it implicit. */}
               {doubleGeoref.overridesAuthoredRotation && <> {t('properties.georef.rotationOverrideNote')}</>}
-              {' '}{overriddenScaleNote(doubleGeoref)}
+              {' '}{localizedScaleOverride(t, locale, doubleGeoref)}
               {' '}
               {/* Zeroing the offsets is NOT enough when Scale is being
                   overridden: a spec-strict consumer reading the exported file
                   back would still multiply the map-sized coordinates by it. */}
-              {t('properties.georef.rawValuesNote', { instruction: exportCorrectionInstruction(doubleGeoref) })}
+              {localizedRawValuesNote(t, locale, doubleGeoref)}
             </span>
           </div>
         </div>

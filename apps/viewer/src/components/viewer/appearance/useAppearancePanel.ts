@@ -25,6 +25,12 @@ import type { AppearancePanelViewProps, AppearanceScope, AppearanceDraftSettings
 import { useFaceMasks } from './face-mask/useFaceMasks.js';
 import { rawMessage, translatedMessage, type LocalizedMessage } from './localized-message.js';
 
+class AppearanceValidationError extends Error {
+  constructor(readonly key: Parameters<typeof translatedMessage>[0]) { super(key); }
+}
+const appearanceErrorMessage = (error: unknown): LocalizedMessage => error instanceof AppearanceValidationError
+  ? translatedMessage(error.key) : rawMessage(error);
+
 interface Draft {
   modelId: string;
   assetIds: string[];
@@ -144,7 +150,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const timer = setTimeout(() => { void (async () => {
       try {
         const worker = planner.current;
-        if (!worker) throw new Error('The appearance worker is unavailable.');
+        if (!worker) throw new AppearanceValidationError('appearance.controller.workerUnavailable');
         const currentSnapshot = await prepareAppearanceSnapshot(snapshot.current, modelId, owners.productIds, worker, controller.signal);
         if (controller.signal.aborted || !mounted.current) return;
         snapshot.current = currentSnapshot;
@@ -159,9 +165,9 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
           return;
         }
         const currentScope = await resolveAppearanceScope(currentSnapshot, owners.selectedProductIds, scope, controller.signal);
-        if (!currentScope.productIds.length) throw new Error('Choose a scope containing model surfaces.');
+        if (!currentScope.productIds.length) throw new AppearanceValidationError('appearance.controller.emptyScope');
         const renderer = getGlobalRenderer();
-        if (!renderer) throw new Error('The renderer is not ready to preview appearance.');
+        if (!renderer) throw new AppearanceValidationError('appearance.controller.rendererNotReady');
         const { source, schema, nextExpressId, bytes } = currentSnapshot;
         const assetId = selectedSource?.assetId ?? sourceId;
         // Face masks are a request-shape fault under any other policy; a
@@ -186,17 +192,17 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
           setStatusMessage(translatedMessage('appearance.controller.faceSelectionChanged')); return;
         }
         const state = useViewerStore.getState();
-        if (!plan.items.length) throw new Error(plan.exclusions[0]?.reason ?? 'No surfaces in this scope support the chosen mapping.');
+        if (!plan.items.length) throw new AppearanceValidationError('appearance.controller.noSupportedSurfaces');
         // Exclusions must be acknowledged explicitly before the narrower scope applies.
         supported.current = [...new Set(plan.items.map(item => item.productId))];
         if (plan.exclusions.length) {
           setCounts({ affected: new Set(plan.items.map(item => item.productId)).size,
             excluded: plan.exclusions.length, reasons: [...new Set(plan.exclusions.map(item => item.reason))] });
-          throw new Error('Some objects cannot receive this appearance. Use the supported objects to continue.');
+          throw new AppearanceValidationError('appearance.controller.partialExclusions');
         }
         const previous = draft.current; draft.current = null;
         discardDraft(previous);
-        if (!bitmap) throw new Error('The projected surfaces have no image.');
+        if (!bitmap) throw new AppearanceValidationError('appearance.controller.noProjectedImage');
         const groups = bindAppearancePreview(state, renderer, modelId, plan, bitmap, imageUri,
           settings.repeatS, settings.repeatT, expandAppearanceCorners, page?.itemImages);
         const session = new AppearancePreviewSession(renderer);
@@ -207,7 +213,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         setConvertedObjects((plan.conversions ?? []).map(item => ({ productId: item.productId, name: `IFC object #${item.productId}` })));
         setShowingOriginal(false); setStatus('ready'); setStatusMessage(translatedMessage('appearance.controller.previewReady'));
       } catch (error) {
-        if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(rawMessage(error)); }
+        if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(appearanceErrorMessage(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };

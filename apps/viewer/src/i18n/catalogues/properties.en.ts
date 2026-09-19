@@ -59,7 +59,6 @@ export const propertiesEn = {
     'One or more applied loads were bounded during extraction — this member may carry more load data than shown',
   'properties.structural.truncatedBadge': 'Truncated',
   'properties.structural.predefined': 'Predefined',
-  'properties.structural.thickness': 'Thickness',
   'properties.structural.model': 'Model',
   'properties.structural.connections': 'Connections ({count})',
   'properties.structural.appliedLoads': 'Applied loads ({count})',
@@ -201,7 +200,6 @@ export const propertiesEn = {
   'properties.material.constituentN': 'Constituent {n}',
   'properties.material.materialN': 'Material {n}',
   'properties.material.materialLabel': 'Material',
-  'properties.material.categoryLabel': 'Category',
   'properties.material.ventilatedLabel': 'Ventilated',
   'properties.material.yes': 'Yes',
 

@@ -26,6 +26,7 @@ import {
   type StructuralExtraction,
 } from '@ifc-lite/parser';
 import { StructuralCard } from './StructuralCard.js';
+import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 
 const FIXTURE = fileURLToPath(
   new URL('../../../../../../tests/models/ifcopenshell/structural_analysis_curve.ifc', import.meta.url),
@@ -65,6 +66,7 @@ afterEach(() => {
   host?.remove();
   root = null;
   host = null;
+  setLocale('en');
 });
 
 const maybeIt = hasFixture ? it : it.skip;
@@ -148,6 +150,23 @@ describe(`StructuralCard against structural_analysis_curve.ifc${skipMsg}`, () =>
 });
 
 describe('StructuralCard synthetic boundary-condition invariants', () => {
+  it('keeps the direct Thickness attribute label canonical', () => {
+    registerLocale('en-x-schema-label', {
+      'properties.structural.thickness': '[translated thickness]',
+    } as Catalogue);
+    setLocale('en-x-schema-label');
+    const data: StructuralExtraction = {
+      analysisModels: [],
+      members: [{ expressId: 10, globalId: 'member', type: 'IfcStructuralSurfaceMember', thickness: 0.25,
+        connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }],
+      connections: [], activities: [], loadGroups: [], resultGroups: [], hasStructural: true, loadsTruncated: false,
+    };
+
+    const text = render(<StructuralCard structuralData={data} selectedExpressId={10} selectedGlobalId="member" />);
+    assert.ok(text.includes('Thickness'));
+    assert.ok(!text.includes('[translated thickness]'));
+  });
+
   it('reports numeric stiffness as elastic instead of fixed', () => {
     const data: StructuralExtraction = {
       analysisModels: [],

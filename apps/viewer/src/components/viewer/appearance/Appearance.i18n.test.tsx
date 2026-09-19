@@ -242,6 +242,22 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
     assert.match(rasterOnly.textContent ?? '', /\[raster only\]/);
   });
 
+  catalogueIt('keeps the complete partial PDF verdict reorderable', () => {
+    registerLocale('en-x-pdf-verdict', {
+      'appearance.pdfFidelity.partialSummaryOneOmissionManyPaths':
+        'PATHS {pathCount} AFTER OMISSION {omissionCount}',
+    });
+    act(() => setLocale('en-x-pdf-verdict'));
+    const partial = render(<PdfFidelityReportView report={{
+      sha256: 'partial', algorithm: 'ifclite-pdf-fidelity-v1', rasterOnly: false, exact: false,
+      convertiblePaths: 2, omittedPaints: 1,
+      summary: [{ kind: 'text', count: 1, visibleCount: 1 }],
+      omissions: [], omissionsTruncated: false,
+    }} userUnit={1} />);
+
+    assert.match(partial.textContent ?? '', /PATHS 2 AFTER OMISSION 1/);
+  });
+
   catalogueIt('interpolates a plural (face-mask member count style) and a named-param message', () => {
     registerLocale('pseudo-interp', {
       'appearance.scopeFields.affectedCount': { one: '[{count} one]', other: '[{count} many]' },

@@ -223,10 +223,14 @@ export const appearancePanelEn = {
   'appearance.pdfFidelity.exactSummary': { one: 'Exact conversion: {count} convertible path; nothing visible is omitted.', other: 'Exact conversion: {count} convertible paths; nothing visible is omitted.' },
   'appearance.pdfFidelity.omissionRowSimple': '{count} × {label}',
   'appearance.pdfFidelity.omissionRowWithRegion': '{count} × {label} — region {region}',
-  'appearance.pdfFidelity.partialSummary':
-    'Partial conversion: {omissionCount} visible {omissionWord} would be left out; {pathCount} {pathWord}.',
-  'appearance.pdfFidelity.omissionWord': { one: 'omission', other: 'omissions' },
-  'appearance.pdfFidelity.pathConvertsWord': { one: 'path converts', other: 'paths convert' },
+  'appearance.pdfFidelity.partialSummaryOneOmissionOnePath':
+    'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} path converts.',
+  'appearance.pdfFidelity.partialSummaryOneOmissionManyPaths':
+    'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
+  'appearance.pdfFidelity.partialSummaryManyOmissionsOnePath':
+    'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} path converts.',
+  'appearance.pdfFidelity.partialSummaryManyOmissionsManyPaths':
+    'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
   'appearance.pdfFidelity.omissionsAriaLabel': 'PDF omissions',
   'appearance.pdfFidelity.invisibleItemsNote': { one: '{count} further item is not visible on the page and does not affect the conversion.', other: '{count} further items are not visible on the page and do not affect the conversion.' },
   'appearance.pdfFidelity.truncatedNote': 'The detailed list is truncated; these counts are complete.',

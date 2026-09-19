@@ -175,7 +175,7 @@ function mountAll(): HTMLElement {
         enableEditing={false}
         projectUnits={ProjectUnits.empty()}
       />
-      <MaterialCard material={{ type: 'MaterialLayerSet', name: 'Wall build-up', layers: [{ thickness: 0.1, materialName: 'Concrete', isVentilated: true }] }} />
+      <MaterialCard material={{ type: 'MaterialLayerSet', name: 'Wall build-up', layers: [{ thickness: 0.1, materialName: 'Concrete', category: 'LoadBearing', isVentilated: true }] }} />
       {/* A plain 'Material' (not a layer/profile/constituent set) is the only
           shape that renders the `typeLabel.material` badge, which is
           otherwise the same English text ("Material") as the layer-row
@@ -298,7 +298,7 @@ afterEach(() => {
 });
 
 const catalogueIt = HAS_CATALOGUE ? it : it.skip;
-const CANONICAL_IFC_ATTRIBUTES = new Set(['Name', 'GlobalId', 'Identification', 'Description', 'Location', 'Purpose', 'IntendedUse', 'Revision']);
+const CANONICAL_IFC_ATTRIBUTES = new Set(['Name', 'GlobalId', 'Identification', 'Description', 'Location', 'Purpose', 'IntendedUse', 'Revision', 'Category']);
 
 describe('Properties panel localization (#4918 slice 4)', () => {
   catalogueIt('translates the property cards and georeferencing chrome', () => {

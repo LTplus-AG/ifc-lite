@@ -11,3 +11,5 @@ export const EXPRESS_LOCATION_ATTRIBUTE = 'Location';
 export const EXPRESS_PURPOSE_ATTRIBUTE = 'Purpose';
 export const EXPRESS_INTENDED_USE_ATTRIBUTE = 'IntendedUse';
 export const EXPRESS_REVISION_ATTRIBUTE = 'Revision';
+export const EXPRESS_CATEGORY_ATTRIBUTE = 'Category';
+export const EXPRESS_THICKNESS_ATTRIBUTE = 'Thickness';

@@ -20,6 +20,7 @@ import { useMemo } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
   StructuralExtraction,
   StructuralMemberInfo,
@@ -114,7 +115,7 @@ export function StructuralCard({
               )}
               {member.thickness !== undefined && (
                 <>
-                  <span className="text-muted-foreground">{t('properties.structural.thickness')}</span>
+                  <span className="text-muted-foreground">{EXPRESS_THICKNESS_ATTRIBUTE}</span>
                   <span className="font-mono text-foreground/90">{member.thickness}</span>
                 </>
               )}

@@ -57,11 +57,11 @@ export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelit
   const invisible = report.summary.reduce((count, entry) => count + entry.count - entry.visibleCount, 0);
   const omissions = visibleOmissionCount(report);
   return <div role="status" className="space-y-1 text-[11px]">
-    <p className="text-amber-700 dark:text-amber-400">{t('appearance.pdfFidelity.partialSummary', {
+    <p className="text-amber-700 dark:text-amber-400">{t(omissions === 1
+      ? report.convertiblePaths === 1 ? 'appearance.pdfFidelity.partialSummaryOneOmissionOnePath' : 'appearance.pdfFidelity.partialSummaryOneOmissionManyPaths'
+      : report.convertiblePaths === 1 ? 'appearance.pdfFidelity.partialSummaryManyOmissionsOnePath' : 'appearance.pdfFidelity.partialSummaryManyOmissionsManyPaths', {
       omissionCount: omissions,
-      omissionWord: t('appearance.pdfFidelity.omissionWord', { count: omissions }),
       pathCount: report.convertiblePaths,
-      pathWord: t('appearance.pdfFidelity.pathConvertsWord', { count: report.convertiblePaths }),
     })}</p>
     <ul className="list-disc pl-4" aria-label={t('appearance.pdfFidelity.omissionsAriaLabel')}>{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} userUnit={userUnit} />)}</ul>
     {invisible > 0 && <p className="text-muted-foreground">{t('appearance.pdfFidelity.invisibleItemsNote', { count: invisible })}</p>}

@@ -319,4 +319,16 @@ describe('#4406 multi-part authored owner staging', () => {
     assert.equal(scene.getBatchedMeshes().length, 0);
   });
 
+  it('keeps detached authored owners valid when geometry release is refused (#4885)', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    const prepared = scene.prepareAuthoredOwner([meshData(88, ORIGIN, false)], device, fakePipeline);
+    scene['pendingBatchKeys'].add('still-building');
+
+    scene.releaseGeometryData();
+    scene['pendingBatchKeys'].clear();
+    assert.doesNotThrow(() => prepared.commit());
+    assert.equal(scene.getMeshDataPieces(88)?.length, 1);
+    scene.clear();
+  });
+
 });

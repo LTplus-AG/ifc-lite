@@ -23,6 +23,7 @@ function lostRenderer() {
   renderer['scene']['prepareDeviceRecovery'] = async () => ({ ok: true });
   renderer['scene']['discardGpuResourcesForRecovery'] = () => {};
   renderer['scene']['restoreGpuResourcesAfterRecovery'] = () => {};
+  renderer['refreshPlacementBounds'] = () => {};
   renderer['teardown'] = () => { renderer['ready'] = false; renderer['pipeline'] = null; };
   renderer['initOnce'] = async () => {
     renderer['pipeline'] = {} as never;
@@ -82,6 +83,17 @@ describe('Renderer.recoverDevice (#4885)', () => {
       ok: true,
       omissions: ['line-overlays', 'symbolic-overlays', 'reference-images', 'point-clouds'],
     });
+  });
+
+  it('recomputes bounds after omitted GPU-only layers are destroyed and before readiness', async () => {
+    const renderer = lostRenderer();
+    const order: string[] = [];
+    renderer['scene']['restoreGpuResourcesAfterRecovery'] = () => { order.push('restore'); };
+    renderer['refreshPlacementBounds'] = () => { order.push('bounds'); };
+    renderer['markReady'] = () => { order.push('ready'); renderer['ready'] = true; };
+
+    assert.strictEqual((await renderer.recoverDevice()).ok, true);
+    assert.deepStrictEqual(order, ['restore', 'bounds', 'ready']);
   });
 
   it('re-probes quantized pipelines before rebuilding quantized scene buffers', async () => {

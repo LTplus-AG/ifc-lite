@@ -57,6 +57,7 @@ export interface RendererRecoveryHost {
     options?: { clearDeviceLost?: boolean; publishReady?: boolean },
   ): Promise<void>;
   markReady(generation: number): void;
+  refreshPlacementBounds(): void;
   requestRender(): void;
 }
 
@@ -138,6 +139,11 @@ async function recoverRendererDeviceOnce(
     if (host.deviceLossSequence !== lossSequence) {
       throw new Error('Replacement GPU device was lost during scene restore');
     }
+    // teardown(false) deliberately drops GPU-only point clouds and overlays.
+    // Rebuild the authoritative bounds from the restored IFC scene before
+    // readiness is observable, so fit-to-view and sections cannot retain the
+    // vanished layers' extents.
+    host.refreshPlacementBounds();
     host.deviceLost = false;
     host.deviceLostInfo = null;
     host.recovery.lostReferenceImages = false;

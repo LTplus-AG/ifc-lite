@@ -2354,7 +2354,6 @@ export class Scene {
    * Call this after finalizeStreaming() when all color updates have been applied.
    */
   releaseGeometryData(): void {
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
     if (this.geometryReleased) return;
     if (this.instanceSuppression.retained) {
       console.warn('[Appearance] Retained occurrence history still needs CPU geometry');
@@ -2370,6 +2369,7 @@ export class Scene {
       );
       return;
     }
+    this.authoredGeneration++; this.authoredPreparations.invalidate();
 
     this.appearanceController?.forget();
 

@@ -10,6 +10,8 @@ import {
   type DeviceLossContextSource,
 } from './device-loss-context.js';
 import { startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
+import { useViewerStore } from '@/store';
+import type { FederatedModel } from '@/store/types';
 
 /**
  * What the user and error tracking are told when the GPU device dies.
@@ -270,7 +272,27 @@ export interface ViewportHealthSource extends DeviceLossContextSource {
   recoverDevice?: DeviceRecoverySource['recoverDevice'];
 }
 
+export function modelsWithoutOmittedPointCloudHandles(
+  result: DeviceRecoveryResult,
+  models: ReadonlyMap<string, FederatedModel>,
+): Map<string, FederatedModel> | null {
+  if (!result.ok || !result.omissions.includes('point-clouds')) return null;
+  let changed = false;
+  const next = new Map<string, FederatedModel>();
+  for (const [id, model] of models) {
+    if (model.pointCloudHandleId === undefined) {
+      next.set(id, model);
+      continue;
+    }
+    changed = true;
+    next.set(id, { ...model, pointCloudHandleId: undefined });
+  }
+  return changed ? next : null;
+}
+
 function reportDeviceRecovery(result: DeviceRecoveryResult): void {
+  const models = modelsWithoutOmittedPointCloudHandles(result, useViewerStore.getState().models);
+  if (models) useViewerStore.setState({ models });
   try {
     posthog.capture(result.ok ? 'device_loss_recovered' : 'device_loss_recovery_failed', result.ok
       ? { omissions: [...result.omissions] }

@@ -6,8 +6,26 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { DeviceRecoveryResult } from '@ifc-lite/renderer';
 import { startDeviceLossRecovery } from './device-loss-recovery.js';
+import { modelsWithoutOmittedPointCloudHandles } from './device-loss-report.js';
+import type { FederatedModel } from '@/store/types';
 
 describe('device-loss recovery coordinator (#4885)', () => {
+  it('invalidates every stale point-cloud handle when recovery omitted GPU clouds', () => {
+    const scan = { id: 'scan', pointCloudHandleId: 1 } as FederatedModel;
+    const bim = { id: 'bim' } as FederatedModel;
+    const models = new Map([['scan', scan], ['bim', bim]]);
+    const next = modelsWithoutOmittedPointCloudHandles(
+      { ok: true, omissions: ['point-clouds'] },
+      models,
+    );
+
+    assert.ok(next);
+    assert.strictEqual(next.get('scan')?.pointCloudHandleId, undefined);
+    assert.strictEqual(next.get('bim'), bim);
+    assert.strictEqual(models.get('scan'), scan, 'the store snapshot is not mutated in place');
+    assert.strictEqual(modelsWithoutOmittedPointCloudHandles({ ok: true, omissions: [] }, models), null);
+  });
+
   it('reports an immediate recovery once', async () => {
     let calls = 0, recovered = 0, failed = 0;
     const run = startDeviceLossRecovery(

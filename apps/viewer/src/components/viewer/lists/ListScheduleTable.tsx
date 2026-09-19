@@ -200,7 +200,7 @@ export function ListScheduleTable({
       <div className="flex sticky bottom-0 z-10 border-t-2 border-border bg-muted/90 backdrop-blur-sm">
         {scheduleColumns.map((col, colIdx) => (
           <div key={col.key} className="flex items-center border-r border-border/30 px-2 py-1 text-xs font-semibold shrink-0" style={{ width: scheduleColumnWidths[colIdx] }}>
-            {colIdx === 0 && <span className="text-muted-foreground">{t('lists.scheduleTable.totalGroups', { count: scheduleRows.length })}</span>}
+            {colIdx === 0 && <span className="text-muted-foreground">{t('lists.scheduleTable.totalGroups', { count: scheduleRows.length, countDisplay: scheduleRows.length.toLocaleString() })}</span>}
             {col.role === 'count' && <span className="ml-auto font-mono tabular-nums text-foreground">{totals.count.toLocaleString()}</span>}
             {col.role === 'sum' && (
               <span className="ml-auto font-mono tabular-nums text-foreground">{formatCellValue(totals.sums[col.id])}</span>

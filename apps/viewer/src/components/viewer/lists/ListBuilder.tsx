@@ -447,12 +447,12 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
 
           {/* Scope: entity types — or a frozen filter snapshot */}
           <Section
-            label="Scope"
+            label={t('lists.builder.sectionScope')}
             hint={isSnapshot
-              ? `${snapshotCount.toLocaleString()} elements · snapshot`
+              ? t('lists.builder.scopeSnapshotHint', { count: snapshotCount.toLocaleString() })
               : selectedTypes.size > 0
-                ? `${totalSelectedEntities.toLocaleString()} elements`
-                : 'All elements'}
+                ? t('lists.builder.scopeSelectedElementsHint', { count: totalSelectedEntities.toLocaleString() })
+                : t('lists.builder.scopeAllElementsHint')}
           >
             {isSnapshot ? (
               <p className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -484,7 +484,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           </Section>
 
           {/* Filters */}
-          <Section label="Filters" hint={conditions.length > 0 ? `${conditions.length}` : undefined}>
+          <Section label={t('lists.builder.sectionFilters')} hint={conditions.length > 0 ? `${conditions.length}` : undefined}>
             <ConditionsBody
               conditions={conditions}
               discovered={discovered}
@@ -499,7 +499,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           </Section>
 
           {/* Columns */}
-          <Section label="Columns" hint={columns.length > 0 ? `${columns.length}` : undefined}>
+          <Section label={t('lists.builder.sectionColumns')} hint={columns.length > 0 ? `${columns.length}` : undefined}>
             {columns.length > 0 && (
               <SelectedColumns
                 columns={columns}
@@ -522,7 +522,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
 
           {/* Grouping & totals */}
           {columns.length > 0 && (
-            <Section label="Grouping & Totals">
+            <Section label={t('lists.builder.sectionGroupingTotals')}>
               <GroupingBody
                 columns={columns}
                 groupByColumnIds={groupByColumnIds}

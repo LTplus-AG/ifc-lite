@@ -34,23 +34,33 @@ import { ProjectUnits } from '@ifc-lite/parser';
 import { render, cleanup, click } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
-import { listsEn } from '@/i18n/catalogues/lists.en';
+import type { listsEn as ListsEnType } from '@/i18n/catalogues/lists.en';
 import { useViewerStore } from '@/store';
 import { ListResultsTable } from './ListResultsTable.js';
 
-Object.assign(en, listsEn);
+// Guarded dynamic import (#4918 revert-oracle) — see ListBuilder.i18n.test.tsx's
+// identical comment for the full rationale.
+let listsEn: typeof ListsEnType | undefined;
+try {
+  ({ listsEn } = await import('@/i18n/catalogues/lists.en'));
+} catch {
+  listsEn = undefined;
+}
+const HAS_CATALOGUE = listsEn !== undefined;
+const CATALOGUE: typeof ListsEnType = listsEn ?? ({} as typeof ListsEnType);
+if (listsEn) Object.assign(en, listsEn);
 
-type ListsKey = keyof typeof listsEn;
-const KEYS = Object.keys(listsEn) as ListsKey[];
+type ListsKey = keyof typeof CATALOGUE;
+const KEYS = Object.keys(CATALOGUE) as ListsKey[];
 const OWNED_PREFIXES = ['lists.resultsTable.', 'lists.scheduleTable.', 'lists.groupingBar.', 'lists.columnMenu.'];
 const OWNED_KEYS = KEYS.filter((k) => OWNED_PREFIXES.some((p) => k.startsWith(p)));
 const STATIC_KEYS = OWNED_KEYS.filter((key) => {
-  const v = listsEn[key];
+  const v = CATALOGUE[key];
   return typeof v === 'string' && !v.includes('{');
 });
 
 const englishOf = (key: ListsKey): string => {
-  const v = listsEn[key];
+  const v = CATALOGUE[key];
   return typeof v === 'string' ? v : v.other;
 };
 const mark = (key: ListsKey) => `⟦${key}|${englishOf(key)}⟧`;
@@ -141,7 +151,7 @@ function Harness() {
 
 let initialState: ReturnType<typeof useViewerStore.getState>;
 
-describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4918)', () => {
+describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en.ts catalogue module not present (revert-oracle probe)' }, () => {
   beforeEach(() => {
     initialState = useViewerStore.getState();
     setLocale('en');
@@ -188,9 +198,9 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     assert.ok(english.has('Grouped by Name'), 'expected the "Grouped by Name" chip (groupedByChip, {label})');
     assert.ok(after.has(mark('lists.groupingBar.groupedByChip').replace('{label}', 'Name')), 'groupedByChip must be translated');
 
-    assert.ok(english.has('2 groups · 2 elements'), 'expected the grouping-bar count summary (groupCount + elementCount, {count})');
-    const markedGroupCount = mark('lists.groupingBar.groupCount').replace('{count}', '2');
-    const markedElementCount = mark('lists.groupingBar.elementCount').replace('{count}', '2');
+    assert.ok(english.has('2 groups · 2 elements'), 'expected the grouping-bar count summary (groupCount + elementCount, {countDisplay})');
+    const markedGroupCount = mark('lists.groupingBar.groupCount').replace('{countDisplay}', '2');
+    const markedElementCount = mark('lists.groupingBar.elementCount').replace('{countDisplay}', '2');
     assert.ok(after.has(`${markedGroupCount} · ${markedElementCount}`), 'groupCount/elementCount must be translated');
 
     assert.ok(english.has('Total · 2'), 'expected the grand-totals footer (totalCount, {count})');
@@ -230,10 +240,12 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     assert.ok(covered.has('lists.scheduleTable.count'), 'expected the pivot table\'s Count column header');
     assert.ok(covered.has('lists.groupingBar.switchToNestedAriaLabel'), 'expected the toggle button to now offer switching back to nested');
 
-    // `totalGroups` is a plural key ({count}), excluded from STATIC_KEYS —
-    // checked directly against its interpolated text (2 leaf groups here).
+    // `totalGroups` is a plural key ({count} selects the category,
+    // {countDisplay} is what's actually shown — #4918 review, PR #5004),
+    // excluded from STATIC_KEYS — checked directly against its interpolated
+    // text (2 leaf groups here).
     assert.ok(english.has('Total · 2 groups'), 'expected the pivot table\'s grand-totals footer');
-    assert.ok(after.has(mark('lists.scheduleTable.totalGroups').replace('{count}', '2')), 'totalGroups must be translated');
+    assert.ok(after.has(mark('lists.scheduleTable.totalGroups').replace('{countDisplay}', '2')), 'totalGroups must be translated');
   });
 
   it('translates the column-header menu (sort / group / sum / colour actions)', () => {

@@ -40,15 +40,31 @@ export const listsEn = {
   'lists.groupingBar.noGroupingPrefix': "No grouping — use a column's",
   'lists.groupingBar.noGroupingSuffix': 'menu to group or sum',
   'lists.groupingBar.removeSumOfAriaLabel': 'Remove sum of {label}',
-  'lists.groupingBar.groupCount': { one: '{count} group', other: '{count} groups' },
-  'lists.groupingBar.elementCount': { one: '{count} element', other: '{count} elements' },
+  'lists.groupingBar.groupCount': { one: '{countDisplay} group', other: '{countDisplay} groups' },
+  'lists.groupingBar.elementCount': { one: '{countDisplay} element', other: '{countDisplay} elements' },
 
   // ListModelTagScopeEditor
   'lists.modelTagScope.models': 'Models',
   'lists.modelTagScope.selectAriaLabel': 'Model tag scope',
   'lists.modelTagScope.allModels': 'all models',
   'lists.modelTagScope.pickAtLeastOneTag': 'Pick at least one tag, or the list runs over no model.',
-  'lists.modelTagScope.runsOver': 'Runs over {description}.',
+  // Same four operator words as the advanced filter's OP_LABEL (kept as a
+  // local copy rather than importing that shared map — #4918 review, PR
+  // #5004: OP_LABEL is a plain untranslated Record consumed by unrelated
+  // search-modal editors too, and localizing it here is scoped to what
+  // this editor renders, not a cross-cutting rename of a shared module).
+  'lists.modelTagScope.opHasAny': 'has any of',
+  'lists.modelTagScope.opHasAll': 'has all of',
+  'lists.modelTagScope.opHasNone': 'has none of',
+  'lists.modelTagScope.opUntagged': 'is untagged',
+  'lists.modelTagScope.unknownTagName': 'unknown tag',
+  // One complete message per operator (not "Runs over {description}." with
+  // a preformatted English description substituted in) so a locale
+  // controls word order/agreement for the whole sentence.
+  'lists.modelTagScope.runsOverUntagged': 'Runs over untagged models.',
+  'lists.modelTagScope.runsOverHasAny': 'Runs over models that have any of {names}.',
+  'lists.modelTagScope.runsOverHasAll': 'Runs over models that have all of {names}.',
+  'lists.modelTagScope.runsOverHasNone': 'Runs over models that have none of {names}.',
   'lists.modelTagScope.unresolvedTagsWarning': {
     one: 'A tag in this scope no longer exists. The list will not run until it is removed.',
     other: '{count} tags in this scope no longer exist. The list will not run until they are removed.',
@@ -88,7 +104,7 @@ export const listsEn = {
   'lists.scheduleTable.count': 'Count',
   'lists.scheduleTable.countAggregateTitle': 'Count aggregate — the default sort order',
   'lists.scheduleTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',
-  'lists.scheduleTable.totalGroups': { one: 'Total · {count} group', other: 'Total · {count} groups' },
+  'lists.scheduleTable.totalGroups': { one: 'Total · {countDisplay} group', other: 'Total · {countDisplay} groups' },
   'lists.scheduleTable.sumIcon': 'Σ',
 
   // ListResultsTable
@@ -109,6 +125,17 @@ export const listsEn = {
   // ListBuilder
   'lists.builder.namePlaceholder': 'List name…',
   'lists.builder.descriptionPlaceholder': 'Description (optional)',
+  // Section headings — a custom `label` prop, not one of the AST literals
+  // gate's policed attributes (#4918 review, PR #5004): the gate only
+  // walks aria-label/title/placeholder/alt, so these stayed hardcoded
+  // through the original conversion.
+  'lists.builder.sectionScope': 'Scope',
+  'lists.builder.sectionFilters': 'Filters',
+  'lists.builder.sectionColumns': 'Columns',
+  'lists.builder.sectionGroupingTotals': 'Grouping & Totals',
+  'lists.builder.scopeAllElementsHint': 'All elements',
+  'lists.builder.scopeSnapshotHint': '{count} elements · snapshot',
+  'lists.builder.scopeSelectedElementsHint': '{count} elements',
   'lists.builder.filterSnapshotLabel': 'Filter snapshot',
   'lists.builder.filterSnapshotHint': "— frozen to the {count} elements that matched the search filter. Entity-type scope doesn't apply; configure columns and grouping below.",
   'lists.builder.noTypeSelectedPrefix': 'No type selected — the list targets',

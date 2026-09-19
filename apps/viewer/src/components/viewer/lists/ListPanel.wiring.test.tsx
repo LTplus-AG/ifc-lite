@@ -26,18 +26,12 @@ import assert from 'node:assert/strict';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { render, cleanup, click, advance } from '@/test/render.js';
-import { en } from '@/i18n/en';
-import { listsEn } from '@/i18n/catalogues/lists.en';
 import { useViewerStore } from '@/store';
 import type { ListDefinition } from '@/lib/lists';
-
-// `ListPanel` now reads the `lists.*` i18n catalogue (#4918), not yet wired
-// into `apps/viewer/src/i18n/en.ts` (a later integration pass does that
-// across the whole sweep) — `en` is a plain, non-frozen object, so patch
-// the catalogue in here the same way `resolve()` in `registry.ts` already
-// falls back to `en[key]` for every other one.
-Object.assign(en, listsEn);
 import { ListPanel } from './ListPanel.js';
+
+// `lists.*` keys resolve straight off `en.ts`'s own registration now
+// (#4918 integration pass) — no per-test catalogue merge needed.
 
 const MODEL_ID = 'model-a';
 

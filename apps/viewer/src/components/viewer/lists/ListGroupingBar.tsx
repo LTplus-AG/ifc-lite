@@ -99,8 +99,8 @@ export function ListGroupingBar({
       ))}
 
       <span className={cn('ml-auto whitespace-nowrap font-medium text-muted-foreground')}>
-        {grouped && <>{t('lists.groupingBar.groupCount', { count: groupCount })} · </>}
-        {t('lists.groupingBar.elementCount', { count })}
+        {grouped && <>{t('lists.groupingBar.groupCount', { count: groupCount, countDisplay: groupCount.toLocaleString() })} · </>}
+        {t('lists.groupingBar.elementCount', { count, countDisplay: count.toLocaleString() })}
       </span>
     </div>
   );

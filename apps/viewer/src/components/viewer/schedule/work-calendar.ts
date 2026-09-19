@@ -37,10 +37,16 @@
  *    bounds, if present.
  *  - `exceptionTimes` OVERRIDE the working pattern for the days they
  *    cover — that is what "exception" means in the schema (holidays,
- *    plant shutdowns). A day matching any exception entry (by explicit
+ *    plant shutdowns) — UNLESS the exception entry itself carries
+ *    `RecurrencePattern.TimePeriods`, in which case it's describing
+ *    DIFFERENT HOURS that day ("half-day Fridays: 08:00-12:00"), not a
+ *    closure, and the day stays working at this module's day-level
+ *    granularity (#4982 review). An exception with no periods (a bare
+ *    `start`/`finish` range, the common holiday/shutdown shape) has
+ *    nothing but "this day is an exception" to go on, so that one DOES
+ *    shut the day down, matching any exception entry (by explicit
  *    `start`/`finish` range when there's no recurrence, or by the same
- *    `WEEKLY` weekday match when there is) is always non-working,
- *    regardless of what the working pattern says.
+ *    `WEEKLY` weekday match when there is).
  *  - A calendar with NO usable working pattern carries NO constraint at
  *    all — every day is working, exceptions included. This covers two
  *    cases the same way, both caught on review:
@@ -166,7 +172,19 @@ export function isWorkingDay(calendar: WorkCalendarInfo | undefined, epochMs: nu
   if (!calendar.workingTimes.some(isRecognizedPattern)) return true;
   const dayStart = localDayStart(epochMs);
   for (const exception of calendar.exceptionTimes) {
-    if (entryCoversDay(exception, dayStart)) return false;
+    if (!entryCoversDay(exception, dayStart)) continue;
+    // An exception carrying its own RecurrencePattern.TimePeriods (e.g.
+    // "half-day Fridays in December: 08:00-12:00" instead of the normal
+    // 08:00-17:00) is describing DIFFERENT HOURS that day, not a closure —
+    // IfcWorkTime's TimePeriods is exactly the field that would carry
+    // "we're still open, just shorter" (#4982 review). At the day-level
+    // granularity this module works at, that means the day stays working.
+    // An exception with NO periods (the common holiday/shutdown shape,
+    // e.g. `{ start: '2024-08-01', finish: '2024-08-14' }` with no
+    // recurrence at all) has nothing but "this day is an exception" to go
+    // on, so THAT shuts the day down, same as before.
+    const hasTimePeriods = (exception.recurrencePattern?.timePeriods.length ?? 0) > 0;
+    if (!hasTimePeriods) return false;
   }
   for (const working of calendar.workingTimes) {
     if (entryCoversDay(working, dayStart)) return true;

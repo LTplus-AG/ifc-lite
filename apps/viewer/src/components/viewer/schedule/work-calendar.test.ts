@@ -97,6 +97,64 @@ describe('isWorkingDay (#4830)', () => {
     assert.equal(isWorkingDay(MON_FRI_CALENDAR, d('2024-08-15')), true);
   });
 
+  it('an exception with NO TimePeriods shuts the day down (the plain shutdown/holiday shape)', () => {
+    // Same shape as MON_FRI_CALENDAR's own shutdown exception — a bare
+    // start/finish range, no recurrencePattern at all, so no TimePeriods
+    // to carry "different hours." Restated explicitly here as the
+    // baseline the next two tests contrast against.
+    const holiday: WorkCalendarInfo = {
+      ...MON_FRI_CALENDAR,
+      exceptionTimes: [{ name: 'Public holiday', start: '2024-06-05', finish: '2024-06-05' }],
+    };
+    assert.equal(isWorkingDay(holiday, d('2024-06-05')), false); // Wednesday, otherwise working
+  });
+
+  it('an exception with TimePeriods means DIFFERENT HOURS, not closed — the day stays working (#4982 review)', () => {
+    // "Half-day Fridays in December: 08:00-12:00" — an exception entry
+    // whose own RecurrencePattern carries TimePeriods. This is describing
+    // reduced hours, not a closure; at this module's day-level
+    // granularity the day must still read as working.
+    const halfDayFridays: WorkCalendarInfo = {
+      ...MON_FRI_CALENDAR,
+      exceptionTimes: [{
+        name: 'Half-day Fridays',
+        start: '2024-12-01',
+        finish: '2024-12-31',
+        recurrencePattern: {
+          recurrenceType: 'WEEKLY',
+          dayComponent: [], monthComponent: [],
+          weekdayComponent: [5], // Friday
+          timePeriods: [{ start: '08:00:00', end: '12:00:00' }],
+        },
+      }],
+    };
+    assert.equal(isWorkingDay(halfDayFridays, d('2024-12-06')), true); // Friday, half-day but working
+    // A December Monday is untouched by the Friday-only exception and
+    // still working via the normal Mon-Fri pattern.
+    assert.equal(isWorkingDay(halfDayFridays, d('2024-12-02')), true);
+  });
+
+  it('a mix of a TimePeriods exception and a plain shutdown exception applies each independently', () => {
+    const mixed: WorkCalendarInfo = {
+      ...MON_FRI_CALENDAR,
+      exceptionTimes: [
+        {
+          name: 'Half-day Fridays',
+          start: '2024-12-01',
+          finish: '2024-12-31',
+          recurrencePattern: {
+            recurrenceType: 'WEEKLY', dayComponent: [], monthComponent: [],
+            weekdayComponent: [5],
+            timePeriods: [{ start: '08:00:00', end: '12:00:00' }],
+          },
+        },
+        { name: 'Christmas', start: '2024-12-25', finish: '2024-12-26' },
+      ],
+    };
+    assert.equal(isWorkingDay(mixed, d('2024-12-06')), true); // half-day Friday, still working
+    assert.equal(isWorkingDay(mixed, d('2024-12-25')), false); // Christmas (a Wednesday), plain shutdown wins
+  });
+
   it('a weekday outside the WorkTime entry\'s own start/finish bounds is non-working', () => {
     assert.equal(isWorkingDay(MON_FRI_CALENDAR, d('2025-01-06')), false); // Monday, past 2024-12-31
   });

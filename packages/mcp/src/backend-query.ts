@@ -52,6 +52,7 @@ import {
   extractDocumentsOnDemand,
   extractMaterialsOnDemand,
   extractRelationshipsOnDemand,
+  extractExactRelatedIds,
   expandTypes,
   QUERY_REL_TYPE_MAP,
   extractTypePropertiesOnDemand,
@@ -59,7 +60,6 @@ import {
 } from '@ifc-lite/parser';
 import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode, matchesPropertyFilter } from '@ifc-lite/query';
-import { edgeSurvives } from '@ifc-lite/data';
 
 import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
 
@@ -452,7 +452,6 @@ export function createQueryAdapter(
       // A deleted entity relates to nothing. Filtering only the far end left it
       // answering questions about itself (#2014 review).
       if (pending?.deleted.has(ref.expressId)) return [];
-      const half = direction === 'forward' ? store.relationships.forward : store.relationships.inverse;
       const out: number[] = [];
       const seen = new Set<number>();
       const take = (expressId: number): void => {
@@ -460,15 +459,8 @@ export function createQueryAdapter(
         seen.add(expressId);
         out.push(expressId);
       };
-      // Two `IfcRel*` instances can name the same triple; the graph keeps
-      // only one as `relationshipId` and folds the rest into
-      // `shadowedRelationshipIds` (#3760). `edgeSurvives` (shared with the
-      // CLI backend, #3782 review) treats the connection as alive as long
-      // as any one of them still exists.
       const isDeleted = pending ? (id: number) => pending.deleted.has(id) : () => false;
-      for (const edge of half.getEdges(ref.expressId, relEnum)) {
-        if (edgeSurvives(edge, isDeleted)) take(edge.target);
-      }
+      for (const id of extractExactRelatedIds(store, ref.expressId, relType, direction, isDeleted)) take(id);
       for (const relation of pending?.queuedRelations(relType) ?? []) {
         if (direction === 'forward') {
           if (relation.relating !== ref.expressId) continue;

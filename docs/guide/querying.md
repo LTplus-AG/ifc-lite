@@ -234,8 +234,9 @@ const fillings = query.entity(openingId).filledBy();
 ### Relationship Types
 
 `related(ref, relationshipType, direction)` accepts the exact EXPRESS name of
-every concrete `IfcRelationship` subtype available in the model's IFC schema,
-not a shortened alias. For example, use `IfcRelContainedInSpatialStructure`,
+every schema-resolvable concrete `IfcRelationship` subtype available in the
+model's IFC schema. IFC2X3 `IfcRelAssociates` is excluded because it has no
+`Relating*` attribute. Names are never shortened aliases. For example, use `IfcRelContainedInSpatialStructure`,
 `IfcRelAggregates`, `IfcRelNests`, `IfcRelDefinesByObject`,
 `IfcRelAssociatesMaterial`, `IfcRelConnectsPorts`, `IfcRelSequence`, or
 `IfcRelPositions` (IFC4X3). `forward` follows the EXPRESS relating-to-related

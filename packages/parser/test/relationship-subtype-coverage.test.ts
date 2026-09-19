@@ -5,8 +5,10 @@
 import { describe, it, expect } from 'vitest';
 import { StepTokenizer } from '../src/tokenizer.js';
 import { ColumnarParser, extractRelationshipsOnDemand } from '../src/columnar-parser.js';
-import { RelationshipType, relationshipTypeName } from '@ifc-lite/data';
-import { REL_TYPE_MAP } from '../src/columnar-parser-indexes.js';
+import { RelationshipType } from '@ifc-lite/data';
+import { REL_TYPE_MAP, SECONDARY_REL_TYPE_MAP } from '../src/columnar-parser-indexes.js';
+import { QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
+import { normalizeIfcTypeName } from '../src/ifc-schema.js';
 import { getAllConcreteRelationshipTypes, getRelationshipSlotPlan } from '../src/relationship-schema-slots.js';
 
 // Before #4205, IfcRelAssignsToActor, IfcRelDeclares and IfcRelSequence were
@@ -188,16 +190,26 @@ describe('complete schema-derived relationship graph (#4205)', () => {
     for (const entry of cases) {
       const relationshipType = REL_TYPE_MAP[entry.type];
       expect(relationshipType, entry.type).toBeDefined();
-      expect(store.relationships.forward.getEdges(entry.relatingId, relationshipType), entry.type)
+      const exactTypeName = normalizeIfcTypeName(entry.type);
+      const exactRelationshipType = QUERY_REL_TYPE_MAP[exactTypeName];
+      expect(exactRelationshipType, entry.type).toBeDefined();
+      const compatibilityType = entry.type === 'IFCRELNESTS'
+        ? RelationshipType.Aggregates
+        : entry.type === 'IFCRELASSIGNSTOGROUPBYFACTOR'
+          ? RelationshipType.AssignsToGroup
+          : exactRelationshipType;
+      expect(relationshipType, entry.type).toBe(compatibilityType);
+      if (relationshipType !== exactRelationshipType) {
+        expect(SECONDARY_REL_TYPE_MAP[entry.type], entry.type).toBe(exactRelationshipType);
+      }
+      expect(store.relationships.forward.getEdges(entry.relatingId, exactRelationshipType), entry.type)
         .toEqual(expect.arrayContaining([
           expect.objectContaining({ target: entry.relatedId, relationshipId: entry.relationshipId }),
         ]));
-      const storedType = store.entities.getTypeName(entry.relationshipId);
-      const exactType = storedType === 'Unknown' ? relationshipTypeName(relationshipType) : storedType;
       expect(extractRelationshipsOnDemand(store, entry.relatingId).relations, entry.type)
         .toContainEqual(expect.objectContaining({
           relationshipId: entry.relationshipId,
-          relationshipType: exactType,
+          relationshipType: exactTypeName,
           direction: 'forward',
           entity: expect.objectContaining({ id: entry.relatedId }),
         }));

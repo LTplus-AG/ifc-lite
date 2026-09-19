@@ -27,6 +27,7 @@ import {
   extractTypePropertiesOnDemand,
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
+  extractExactRelatedIds,
   expandTypes,
   QUERY_REL_TYPE_MAP,
 } from '@ifc-lite/parser';
@@ -352,7 +353,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       if (!model?.ifcDataStore) return [];
       const relEnum = QUERY_REL_TYPE_MAP[relType];
       if (relEnum === undefined) return [];
-      const targets = model.ifcDataStore.relationships.getRelated(ref.expressId, relEnum, direction);
+      const targets = extractExactRelatedIds(model.ifcDataStore, ref.expressId, relType, direction);
       return targets.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
     },
   };

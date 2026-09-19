@@ -7574,6 +7574,7 @@
     "extractCostOnDemand: function",
     "extractDocumentsOnDemand: function",
     "extractEntityAttributesOnDemand: function",
+    "extractExactRelatedIds: function",
     "extractGeoreferencing: function",
     "extractGeoreferencingOnDemand: function",
     "extractGroupAssignmentFactorOnDemand: function",

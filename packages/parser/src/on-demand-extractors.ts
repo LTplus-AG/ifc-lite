@@ -19,6 +19,7 @@ import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge
 import type { GeoreferenceInfo } from './georef-extractor.js';
 import { extractExactRelationshipEdges, type EntityRelationships } from './exact-relationship-edges.js';
 export type { EntityRelationships } from './exact-relationship-edges.js';
+export { extractExactRelatedIds } from './exact-relationship-edges.js';
 
 // Re-export classification and material resolvers
 export { extractClassificationsOnDemand, extractClassificationSystemsOnDemand } from './classification-resolver.js';

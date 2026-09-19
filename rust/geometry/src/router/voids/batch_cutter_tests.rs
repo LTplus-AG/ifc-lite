@@ -319,6 +319,58 @@ fn antiparallel_horizontal_cutters_both_extend_through_wall_3977() {
 }
 
 #[test]
+fn mixed_authored_and_inferred_cutters_use_wall_normal_for_inferred_depth_3977() {
+    let angle = 3.0_f64.to_radians();
+    let rotate = |profile: &[(f32, f32)], z0: f32, z1: f32| {
+        issue_3977_rotate(&issue_3977_prism(profile, z0, z1), angle)
+    };
+    let host = rotate(
+        &[(0.0, -0.05), (4.0, -0.05), (4.0, 0.05), (0.0, 0.05)],
+        0.0,
+        3.0,
+    );
+    let authored = rotate(
+        &[(0.5, -0.05), (1.0, -0.05), (1.0, 0.05), (0.5, 0.05)],
+        1.0,
+        2.0,
+    );
+    // Its 20 mm height is the shortest box dimension, so geometry-only frame
+    // inference picks vertical as `depth`. That guess is not authored opening
+    // intent; after the first cutter selects the wall frame, this cutter must
+    // use the wall normal and cross the complete 100 mm thickness.
+    let inferred = rotate(
+        &[(2.0, -0.02), (3.0, -0.02), (3.0, 0.02), (2.0, 0.02)],
+        1.0,
+        1.02,
+    );
+    let normal = Vector3::new(-angle.sin(), angle.cos(), 0.0);
+    let authored_frame = infer_opening_frame(&authored, Some(&normal)).expect("authored frame");
+    let inferred_frame = infer_opening_frame(&inferred, None).expect("inferred frame");
+    assert!(!inferred_frame.depth_is_authored);
+    assert!(inferred_frame.depth.z.abs() > 0.98, "premise: inferred axis is vertical");
+    let openings = vec![
+        OpeningType::DiagonalRectangular(authored, authored_frame),
+        OpeningType::DiagonalRectangular(inferred, inferred_frame),
+    ];
+    let context = VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let bounds = world_host_bounds(&host);
+    let host_volume = mesh_signed_volume(&host).abs();
+    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
+    let removed = host_volume - mesh_signed_volume(&output).abs();
+
+    assert!(mesh_is_closed_exact(&output));
+    assert!(
+        (removed - 0.052).abs() < 1.0e-4,
+        "the inferred 1.0 x 0.1 x 0.02 m opening must use wall-normal penetration; removed {removed}"
+    );
+}
+
+#[test]
 fn inferred_vertical_axis_does_not_enable_wall_local_cut_3977() {
     let angle = 3.0_f64.to_radians();
     let host = issue_3977_rotate(

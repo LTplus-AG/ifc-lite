@@ -870,8 +870,15 @@ impl GeometryRouter {
                 // #3977 selector also admits vertically extruded strips, whose
                 // local depth is +Y rather than the wall normal (+Z). Extending
                 // those along +Z would turn a partial-thickness vertical slot
-                // into a full-through cut.
-                local_openings.push(OpeningType::Rectangular(lmn, lmx, frame_depth));
+                // into a full-through cut. An inferred box axis carries no such
+                // intent and must retain the established wall-normal fallback.
+                let rect_depth = match op {
+                    OpeningType::DiagonalRectangular(_, frame) if frame.depth_is_authored => {
+                        frame_depth
+                    }
+                    _ => Some(z),
+                };
+                local_openings.push(OpeningType::Rectangular(lmn, lmx, rect_depth));
             } else {
                 let mesh_local = mesh_to_frame(cutter, &axes, center);
                 // Keep this cutter's true depth in the frame; fall back to the

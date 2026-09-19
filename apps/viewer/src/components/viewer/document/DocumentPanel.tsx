@@ -84,7 +84,8 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
     const block: DocumentBlock = kind === 'text' ? { kind, id, text: '', style: 'body' }
       : kind === 'image' ? { kind, id, dataUrl: '', height: 60, align: 'left' }
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
-          : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
+          : kind === 'spacer' ? { kind, id, height: 20 }
+            : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
     setSelectedBlockId(id);
   };
@@ -169,6 +170,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('image')}>Image / logo</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('chart')}>Chart</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? 'No BCF topics loaded' : undefined}>BCF topic</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('spacer')}>Spacer</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || !document || document.blocks.length === 0} onClick={() => void exportPdf()} title="Print this page to a PDF" data-document-export>

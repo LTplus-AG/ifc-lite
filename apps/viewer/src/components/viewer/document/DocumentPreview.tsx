@@ -15,7 +15,7 @@ import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox } from '@/lib/export/report/compose';
-import type { DocumentBlock, DocumentSpec, TextBlock } from '@/lib/document/types';
+import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
 
 export interface DocumentPreviewProps {
@@ -33,8 +33,27 @@ export interface DocumentPreviewProps {
 const TEXT_CLASS: Record<TextBlock['style'], string> = {
   title: 'text-2xl font-semibold leading-tight',
   heading: 'text-base font-semibold mt-2',
+  subheading: 'text-sm font-semibold mt-1',
   body: 'text-sm leading-relaxed whitespace-pre-wrap',
+  small: 'text-[11px] leading-relaxed whitespace-pre-wrap',
+  caption: 'text-[10px] text-neutral-500 whitespace-pre-wrap',
 };
+
+/** Consecutive chart/image blocks both at `width: 'half'` render two-up (#4940); everything else is its own row. */
+function groupBlocks(blocks: readonly DocumentBlock[]): Array<DocumentBlock | [DocumentBlock, DocumentBlock]> {
+  const groups: Array<DocumentBlock | [DocumentBlock, DocumentBlock]> = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const next = blocks[i + 1];
+    if (isHalfPairable(block) && next && isHalfPairable(next)) {
+      groups.push([block, next]);
+      i += 1;
+    } else {
+      groups.push(block);
+    }
+  }
+  return groups;
+}
 
 /** A template with its placeholders resolved; unresolved ones are marked so the author sees them. */
 function ResolvedText({ text, bindings }: { text: string; bindings: BindingContext }) {
@@ -60,10 +79,10 @@ function ResolvedText({ text, bindings }: { text: string; bindings: BindingConte
   );
 }
 
-function ChartSvg({ aggregation, message, width }: { aggregation: Aggregation | null; message: string | undefined; width: number }) {
+function ChartSvg({ aggregation, message, width, height }: { aggregation: Aggregation | null; message: string | undefined; width: number; height: number }) {
   const svg = useMemo(() => (aggregation && aggregation.categories.length > 0
-    ? renderChartSvg({ aggregation, width, height: 220, theme: REPORT_THEME, showTitle: false })
-    : null), [aggregation, width]);
+    ? renderChartSvg({ aggregation, width, height, theme: REPORT_THEME, showTitle: false, print: true })
+    : null), [aggregation, width, height]);
   if (!svg) {
     return (
       <div className="flex h-24 items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-center text-xs text-neutral-500" data-chart-empty>
@@ -94,13 +113,16 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
     }
     case 'chart': {
       const subtitle = chartMessage ?? (aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data');
+      const height = (block.height ?? CHART_BLOCK_HEIGHT_DEFAULT) * (contentWidth / 515);
       return (
         <div>
           <div className="text-sm font-semibold">{block.chart.title} <span className="text-[10px] font-normal text-neutral-500">{subtitle}{block.snapshot ? ' · 3D snapshot in the PDF' : ''}</span></div>
-          <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} />
+          <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} />
         </div>
       );
     }
+    case 'spacer':
+      return <div style={{ height: block.height * (contentWidth / 515) }} data-block-spacer />;
     case 'topic': {
       if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>BCF topic {block.guid} is not among the loaded topics.</div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;
@@ -130,16 +152,21 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
       >
         <div className={`mb-3 text-[9px] ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{document.name}</div>
         <div className="flex flex-col gap-2.5">
-          {document.blocks.map((block) => (
-            <div
-              key={block.id}
-              className={`-mx-1 cursor-pointer rounded px-1 ring-offset-1 hover:ring-1 hover:ring-sky-300 ${selectedBlockId === block.id ? 'ring-1 ring-sky-500' : ''}`}
-              onClick={() => onSelectBlock(block.id)}
-              data-preview-block={block.id}
-            >
-              <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={contentWidth} />
-            </div>
-          ))}
+          {groupBlocks(document.blocks).map((group) => {
+            const wrap = (block: DocumentBlock) => (
+              <div
+                key={block.id}
+                className={`-mx-1 cursor-pointer rounded px-1 ring-offset-1 hover:ring-1 hover:ring-sky-300 ${selectedBlockId === block.id ? 'ring-1 ring-sky-500' : ''}`}
+                onClick={() => onSelectBlock(block.id)}
+                data-preview-block={block.id}
+              >
+                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} />
+              </div>
+            );
+            return Array.isArray(group)
+              ? <div key={group[0].id} className="grid grid-cols-2 gap-3" data-preview-row>{wrap(group[0])}{wrap(group[1])}</div>
+              : wrap(group);
+          })}
           {document.blocks.length === 0 && <div className={`text-xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>An empty page — add a block on the left.</div>}
         </div>
       </div>

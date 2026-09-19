@@ -85,8 +85,8 @@ describe('buildEChartsOption', () => {
     expect(sliceCount(narrow)).toBe(20);
 
     // Wide enough that every category fits its legend rows regardless of height: no explicit `data` cap.
-    const tall = buildEChartsOption({ aggregation: agg, width: 600, height: 600, print: true });
-    const short = buildEChartsOption({ aggregation: agg, width: 600, height: 120, print: true });
+    const tall = buildEChartsOption({ aggregation: agg, width: 300, height: 600, print: true });
+    const short = buildEChartsOption({ aggregation: agg, width: 300, height: 120, print: true });
     expect(legendData(tall)).toBeUndefined();
     expect(legendData(short)).toBeUndefined();
     // The short chart's pie is smaller (as a fraction of its own box) than the tall one's — it leaves
@@ -154,14 +154,17 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
   });
 
   it('a print-mode pie with a long legend wraps as a plain legend that stays inside the SVG, not the unscrollable "scroll" type that clips in a static image (#4940)', () => {
-    const width = 480;
     const manyBuckets: ChartDataset = {
       ...ds,
       rows: Array.from({ length: 20 }, (_, i) => ({ ids: [200 + i], values: [`IfcVeryDescriptiveElementTypeNumber${i}`, 'L1'] })),
     };
     const agg = aggregate({ ...bar, type: 'pie' }, manyBuckets);
-    const screen = renderChartSvg({ aggregation: agg, width, height: 320 });
-    const print = renderChartSvg({ aggregation: agg, width, height: 320, print: true });
+    const screen = renderChartSvg({ aggregation: agg, width: 480, height: 320 });
+    // Narrower than the screen render: packPrintLegend's truncation budget is roughly the whole
+    // chart width per item (a real pixel measure now, not a fixed character count), so a 39-char
+    // label needs a tight enough width to actually force truncation.
+    const printWidth = 200;
+    const print = renderChartSvg({ aggregation: agg, width: printWidth, height: 320, print: true });
     // The screen legend is ECharts' own `type: 'scroll'`; nothing to scroll once it is a flat SVG, so it clips.
     // Print mode truncates every long label (the full 39-character name never appears) and adds an ellipsis.
     expect(screen).toContain('IfcVeryDescriptiveElementTypeNumber0');
@@ -171,7 +174,7 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
     // a wrapped plain legend cannot.
     const xs = [...print.matchAll(/<text[^>]*\sx="(-?[\d.]+)"/g)].map((m) => Number(m[1]));
     expect(xs.length).toBeGreaterThan(0);
-    for (const x of xs) expect(x).toBeLessThanOrEqual(width);
+    for (const x of xs) expect(x).toBeLessThanOrEqual(printWidth);
   });
 
   it('caps a wide-label print legend at four rendered rows while retaining every pie slice (#4983)', () => {

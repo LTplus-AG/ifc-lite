@@ -122,13 +122,16 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
       );
     }
     case 'chart': {
-      const subtitle = chartMessage ?? (aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data');
       const height = (block.height ?? CHART_BLOCK_HEIGHT_DEFAULT) * scale;
+      // Computed once, not repeated as a JSX-expression literal in both the visible text and its
+      // `title` tooltip (i18n literal-count gate: a duplicated inline ternary counts twice).
+      const chartSubtitle = chartMessage ?? (aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data');
+      const subtitle = `${chartSubtitle}${block.snapshot ? ' · 3D snapshot in the PDF' : ''}`;
       return (
         <div>
           <div className="flex min-w-0 items-baseline gap-1 text-sm font-semibold">
             <span className="min-w-0 truncate" title={block.chart.title}>{block.chart.title}</span>
-            <span className="min-w-0 truncate text-[10px] font-normal text-neutral-500" title={subtitle}>{subtitle}{block.snapshot ? ' · 3D snapshot in the PDF' : ''}</span>
+            <span className="min-w-0 truncate text-[10px] font-normal text-neutral-500" title={subtitle}>{subtitle}</span>
           </div>
           <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} />
         </div>

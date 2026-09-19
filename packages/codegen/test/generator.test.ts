@@ -7,7 +7,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateFromSchema } from '../src/generator.js';
@@ -95,7 +96,7 @@ describe('generateFromSchema — crate-private Rust output (#4203)', () => {
     if (outputDir) rmSync(outputDir, { recursive: true, force: true });
   });
 
-  it('emits a crate-visible type ID re-export for sibling modules', () => {
+  it('makes generated type IDs usable by sibling Rust modules', () => {
     outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-private-rust-'));
     generateFromSchema('SCHEMA TEST; ENTITY IfcWall; END_ENTITY; END_SCHEMA;', outputDir, {
       rust: true,
@@ -104,9 +105,17 @@ describe('generateFromSchema — crate-private Rust output (#4203)', () => {
       skipCollisionCheck: true,
     });
 
-    const moduleSource = readFileSync(join(outputDir, 'generated', 'mod.rs'), 'utf8');
-    const typeIdsSource = readFileSync(join(outputDir, 'generated', 'type_ids.rs'), 'utf8');
-    expect(moduleSource).toContain('pub(crate) use type_ids::*;');
-    expect(typeIdsSource).toMatch(/pub const IFCWALL: u32 = \d+;/);
+    const probe = join(outputDir, 'probe.rs');
+    const executable = join(outputDir, process.platform === 'win32' ? 'probe.exe' : 'probe');
+    writeFileSync(probe, [
+      'mod generated;',
+      'mod sibling {',
+      '    pub fn wall_type_id() -> u32 { crate::generated::IFCWALL }',
+      '}',
+      'fn main() { assert_ne!(sibling::wall_type_id(), 0); }',
+    ].join('\n'));
+
+    execFileSync('rustc', [probe, '--edition=2021', '-o', executable]);
+    execFileSync(executable);
   });
 });

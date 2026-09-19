@@ -437,20 +437,14 @@ pub fn stream_export_model_with_options(
             global_id: cand.global_id.clone(),
             name: cand.name.clone(),
             description: cand.description.clone(),
-            // IfcTypeObject has no ObjectType attribute (attr 4 is
-            // ApplicableOccurrence); leave unset rather than mislabel it.
+            // IfcTypeObject attr 4 is ApplicableOccurrence, not ObjectType.
             object_type: None,
-            // It is meshed by construction (RepresentationMaps present).
             has_geometry: true,
-            // A type object has no ObjectPlacement — it is not an occurrence.
             placement: None,
             property_sets,
             quantity_sets,
-            // Pass 3 assembles this row from the pass-1 scan and does not hold
-            // the type entity, so this costs one decode. Worth it: the option
-            // promises attributes on every row, and a type carries the ones a
-            // consumer wants (`IfcDoorType.PredefinedType`). The count is
-            // bounded by orphan-geometry types, which is a handful per file.
+            // Pass 3 has no type handle, so honouring the attributes option
+            // costs one decode per rare orphan-geometry type.
             attributes: if opts.attributes {
                 decoder
                     .decode_by_id(cand.express_id)
@@ -461,7 +455,6 @@ pub fn stream_export_model_with_options(
                 Vec::new()
             },
         }, None);
-
         if decoder.cache_size() > PSET_CACHE_CAP {
             decoder.clear_entity_cache();
         }

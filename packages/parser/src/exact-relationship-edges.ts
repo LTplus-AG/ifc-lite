@@ -20,7 +20,8 @@ export interface EntityRelationships {
     fills: Array<{ id: number; name?: string; type: string }>;
     groups: Array<{ id: number; name?: string; type: string }>;
     connections: Array<{ id: number; name?: string; type: string }>;
-    relations: ExactRelationshipEdge[];
+    /** Optional for consumers/backends compiled against the pre-#4205 shape. */
+    relations?: ExactRelationshipEdge[];
 }
 
 /**

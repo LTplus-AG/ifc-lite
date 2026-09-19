@@ -8,13 +8,57 @@ use crate::router::GeometryProcessor;
 use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use super::advanced_face::process_advanced_face;
+use super::advanced_face::{process_advanced_face, process_planar_face_with_rtc};
 
 pub struct IfcFaceSurfaceProcessor;
 
 impl IfcFaceSurfaceProcessor {
     pub fn new() -> Self {
         Self
+    }
+
+    pub fn process_with_rtc(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+        rtc_file_units: (f64, f64, f64),
+    ) -> Result<Mesh> {
+        self.process_planar(entity, decoder, quality, Some(rtc_file_units))
+    }
+
+    fn process_planar(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+        rtc_file_units: Option<(f64, f64, f64)>,
+    ) -> Result<Mesh> {
+        let surface_attribute = entity
+            .get(1)
+            .ok_or_else(|| Error::geometry("FaceSurface missing FaceSurface"))?;
+        let surface = decoder
+            .resolve_ref(surface_attribute)?
+            .ok_or_else(|| Error::geometry("Failed to resolve FaceSurface"))?;
+        if surface.ifc_type != IfcType::IfcPlane {
+            return Ok(Mesh::new());
+        }
+        let (positions, indices) = match rtc_file_units {
+            Some(rtc) => process_planar_face_with_rtc(entity, decoder, quality, rtc)?,
+            None => process_advanced_face(entity, decoder, quality)?,
+        };
+        Ok(Mesh {
+            positions,
+            normals: Vec::new(),
+            indices,
+            rtc_applied: rtc_file_units.is_some(),
+            welded_in_object_frame: false,
+            plane_tags: None,
+            origin: [0.0; 3],
+            instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
+        })
     }
 }
 
@@ -32,34 +76,9 @@ impl GeometryProcessor for IfcFaceSurfaceProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        let surface_attribute = entity
-            .get(1)
-            .ok_or_else(|| Error::geometry("FaceSurface missing FaceSurface"))?;
-        let surface = decoder
-            .resolve_ref(surface_attribute)?
-            .ok_or_else(|| Error::geometry("Failed to resolve FaceSurface"))?;
-        if surface.ifc_type != IfcType::IfcPlane {
-            // The shared advanced-face handlers do not yet clip B-spline
-            // domains or analytic surfaces to arbitrary IfcFaceSurface bounds.
-            // Emitting their unbounded/full-domain mesh is worse than omitting
-            // a surface: it closes authored openings and extends geometry past
-            // the structural member. Keep this independently shippable slice
-            // to the planar topology whose outer and inner loops are preserved.
-            return Ok(Mesh::new());
-        }
-        let (positions, indices) = process_advanced_face(entity, decoder, quality)?;
-        Ok(Mesh {
-            positions,
-            normals: Vec::new(),
-            indices,
-            rtc_applied: false,
-            welded_in_object_frame: false,
-            plane_tags: None,
-            origin: [0.0; 3],
-            instance_meta: None,
-            local_bounds: None,
-            local_to_world: None,
-        })
+        // Non-planar direct faces remain intentionally empty until their
+        // arbitrary bounds can clip the analytic surface safely.
+        self.process_planar(entity, decoder, quality, None)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

@@ -35,6 +35,39 @@ pub(crate) use bspline_budget::take_curve_capped;
 use revolution::process_surface_of_revolution_face;
 use surfaces::{process_cylindrical_face, process_planar_face};
 
+pub(super) fn process_planar_face_with_rtc(
+    face: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+    rtc_file_units: (f64, f64, f64),
+) -> Result<(Vec<f32>, Vec<u32>)> {
+    apply_same_sense(
+        face,
+        surfaces::process_planar_face_rebased(face, decoder, quality, Some(rtc_file_units)),
+    )
+}
+
+fn apply_same_sense(
+    face: &DecodedEntity,
+    result: Result<(Vec<f32>, Vec<u32>)>,
+) -> Result<(Vec<f32>, Vec<u32>)> {
+    let same_sense = face
+        .get(2)
+        .and_then(|a| a.as_enum())
+        .map(|e| e == "T" || e == "TRUE")
+        .unwrap_or(true);
+    if same_sense {
+        result
+    } else {
+        result.map(|(positions, mut indices)| {
+            for tri in indices.chunks_exact_mut(3) {
+                tri.swap(0, 2);
+            }
+            (positions, indices)
+        })
+    }
+}
+
 /// Process a single `IfcAdvancedFace` or `IfcFaceSurface`, dispatching to the
 /// appropriate surface handler based on `FaceSurface` type.
 ///
@@ -60,12 +93,6 @@ pub(super) fn process_advanced_face(
     let surface_type = surface.ifc_type.as_str().to_uppercase();
 
     // Read SameSense (attribute 2) - when false, triangle winding must be flipped
-    let same_sense = face
-        .get(2)
-        .and_then(|a| a.as_enum())
-        .map(|e| e == "T" || e == "TRUE")
-        .unwrap_or(true);
-
     let result = if surface_type == "IFCPLANE" {
         process_planar_face(face, decoder, quality)
     } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
@@ -124,15 +151,6 @@ pub(super) fn process_advanced_face(
         }
     }
 
-    // When SameSense is false, flip triangle winding to correct face orientation
-    if !same_sense {
-        result.map(|(positions, mut indices)| {
-            for tri in indices.chunks_exact_mut(3) {
-                tri.swap(0, 2);
-            }
-            (positions, indices)
-        })
-    } else {
-        result
-    }
+    // When SameSense is false, flip triangle winding to correct face orientation.
+    apply_same_sense(face, result)
 }

@@ -211,6 +211,38 @@ fn structural_surface_routes_planar_advanced_face_subtype() {
 }
 
 #[test]
+fn structural_surface_rebases_raw_coordinates_before_f32_conversion() {
+    let face_surface = surface_member(true, false)
+        .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+        .replace("(10.,0.,0.)", "(5000000.125,5000000.,0.)")
+        .replace("(10.,10.,0.)", "(5000000.125,5000000.125,0.)")
+        .replace("(0.,10.,0.)", "(5000000.,5000000.125,0.)");
+    let advanced_face = face_surface.replace(
+        "#15=IFCFACESURFACE((#6),#14,.T.);",
+        "#15=IFCADVANCEDFACE((#6),#14,.T.,.F.);",
+    );
+    for source in [face_surface, advanced_face] {
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(18).unwrap();
+        let mut router = GeometryRouter::new();
+        router.set_rtc_offset((5_000_000.0, 5_000_000.0, 0.0));
+        let mesh = router.process_element(&entity, &mut decoder).unwrap();
+
+        let (min_x, max_x) = mesh.positions.chunks_exact(3).fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            |(min, max), point| (min.min(point[0]), max.max(point[0])),
+        );
+        let (min_y, max_y) = mesh.positions.chunks_exact(3).fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            |(min, max), point| (min.min(point[1]), max.max(point[1])),
+        );
+        assert_eq!((min_x, max_x), (0.0, 0.125));
+        assert_eq!((min_y, max_y), (0.0, 0.125));
+        assert!((signed_xy_area(&mesh) - 0.015625).abs() < 1e-9);
+    }
+}
+
+#[test]
 fn structural_surface_rejects_non_planar_faces_until_bounds_are_clipped() {
     let source = bspline_surface_member_with_hole();
     let mut decoder = EntityDecoder::new(&source);

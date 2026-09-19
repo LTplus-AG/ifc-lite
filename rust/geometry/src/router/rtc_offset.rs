@@ -300,6 +300,14 @@ impl GeometryRouter {
         let faces = shell.get(0)?.as_list()?;
         let face_id = faces.first()?.as_entity_ref()?;
         let face = decoder.decode_by_id(face_id).ok()?;
+        self.face_first_vertex(&face, decoder)
+    }
+
+    fn face_first_vertex(
+        &self,
+        face: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
         let bounds = face.get(0)?.as_list()?;
         let bound_id = bounds.first()?.as_entity_ref()?;
         let bound = decoder.decode_by_id(bound_id).ok()?;
@@ -350,6 +358,9 @@ impl GeometryRouter {
         let first_vertex = match item.ifc_type {
             IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
                 self.brep_first_vertex(item, decoder)
+            }
+            IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
+                self.face_first_vertex(item, decoder)
             }
             IfcType::IfcTriangulatedFaceSet
             | IfcType::IfcTriangulatedIrregularNetwork

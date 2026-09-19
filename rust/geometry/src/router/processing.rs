@@ -744,6 +744,34 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
+        // Direct structural faces can carry absolute georeferenced bounds.
+        // Rebase their f64 loop coordinates before the planar tessellator
+        // narrows them to f32; subtracting after processor output is too late.
+        if matches!(item.ifc_type, IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace)
+            && self.has_rtc_offset()
+            && self.representation_item_uses_raw_large_coordinates(item, decoder)
+        {
+            let processor = crate::processors::IfcFaceSurfaceProcessor::new();
+            let rtc_file_units = (
+                self.rtc_offset.0 / self.unit_scale,
+                self.rtc_offset.1 / self.unit_scale,
+                self.rtc_offset.2 / self.unit_scale,
+            );
+            let mut mesh = processor.process_with_rtc(
+                item,
+                decoder,
+                self.tessellation_quality,
+                rtc_file_units,
+            )?;
+            mesh.validate_indices();
+            self.scale_mesh(&mut mesh);
+            if !mesh.positions.is_empty() {
+                let cached = self.get_or_cache_by_hash(mesh);
+                return Ok((*cached).clone());
+            }
+            return Ok(mesh);
+        }
+
         // For raw world-coordinate FacetedBrep with RTC: subtract RTC from f64
         // coordinates BEFORE f32 conversion. Do not use this path for ordinary
         // local Breps whose large position comes from IfcObjectPlacement; those

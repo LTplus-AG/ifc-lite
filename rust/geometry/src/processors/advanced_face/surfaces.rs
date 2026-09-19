@@ -36,6 +36,15 @@ pub(super) fn process_planar_face(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
+    process_planar_face_rebased(face, decoder, quality, None)
+}
+
+pub(super) fn process_planar_face_rebased(
+    face: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+    rtc_file_units: Option<(f64, f64, f64)>,
+) -> Result<(Vec<f32>, Vec<u32>)> {
     use crate::triangulation::{project_to_2d_with_basis, triangulate_polygon_with_holes};
     let bounds = extract_face_bounds(face, decoder, quality)?;
     let Some(outer) = bounds.outer else {
@@ -51,10 +60,11 @@ pub(super) fn process_planar_face(
         .collect();
 
     let mut positions = Vec::with_capacity((outer.len() + hole_points.iter().map(|h| h.len()).sum::<usize>()) * 3);
+    let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
     for p in outer.iter().chain(hole_points.iter().flat_map(|h| h.iter())) {
-        positions.push(p.x as f32);
-        positions.push(p.y as f32);
-        positions.push(p.z as f32);
+        positions.push((p.x - rtc.0) as f32);
+        positions.push((p.y - rtc.1) as f32);
+        positions.push((p.z - rtc.2) as f32);
     }
 
     let indices = match triangulate_polygon_with_holes(&outer_2d, &holes_2d) {

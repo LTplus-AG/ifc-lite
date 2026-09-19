@@ -32,6 +32,15 @@ test('Vercel Node heap preserves other flags and never overrides an existing cap
   assert.equal(configuredNodeOptions({ NODE_OPTIONS: '--no-warnings' }), '--no-warnings --max-old-space-size=5120');
   assert.equal(configuredNodeOptions({ NODE_OPTIONS: '--max-old-space-size=3000' }), '--max-old-space-size=3000');
   assert.equal(configuredNodeOptions({ NODE_OPTIONS: '--max_old_space_size=3500' }), '--max_old_space_size=3500');
+  assert.equal(configuredNodeOptions({ NODE_OPTIONS: '--max-old-space-size 4000' }), '--max-old-space-size 4000');
+  assert.equal(configuredNodeOptions({ NODE_OPTIONS: '--max_old_space_size 4500' }), '--max_old_space_size 4500');
+});
+
+test('Vercel Node heap ignores heap-like text inside another option value (#4990)', () => {
+  assert.equal(
+    configuredNodeOptions({ NODE_OPTIONS: '--title=--max-old-space-size' }),
+    '--title=--max-old-space-size --max-old-space-size=5120',
+  );
 });
 
 test('Turbo forwards the configured heap cap to every strict-env build task (#4990)', () => {

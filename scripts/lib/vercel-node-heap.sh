@@ -8,7 +8,7 @@
 # launching the full Vercel build.
 configure_vercel_node_heap() {
   case " ${NODE_OPTIONS:-} " in
-    *--max[-_]old[-_]space[-_]size*)
+    *" --max-old-space-size="*|*" --max_old_space_size="*|*" --max-old-space-size "*|*" --max_old_space_size "*)
       echo "🧠 Node heap: NODE_OPTIONS already sets --max-old-space-size (${NODE_OPTIONS})"
       ;;
     *)

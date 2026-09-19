@@ -10,9 +10,9 @@ import type { InstancedTemplateGPU, InstancedOccurrence, InstancedTemplateCpu } 
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
-import { createSceneAppearancePreview, type SceneAppearanceAccess } from './scene-appearance-preview.js';
+import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
 import { AppearanceBuckets } from './scene-appearance-buckets.js';
-import { prepareSceneAuthoredOwner } from './scene-authored-owner.js';
+import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-authored-owner.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
@@ -32,7 +32,7 @@ import {
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
-import { composeInstancedOverrideColor } from './instanced-override-color.js';
+import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
 import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization, type RebuiltBucket } from './scene-derived-batches.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -59,6 +59,7 @@ import {
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
+import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -196,9 +197,10 @@ export class Scene {
   private sharedTextures = new Map<number, { texture: GPUTexture; refs: number }>();
   private rgbaTexturePool = new RgbaTexturePool();
   private appearanceController?: ReturnType<typeof createSceneAppearancePreview>;
-
   private appearanceBuckets?: AppearanceBuckets;
+  private appearanceAccessState?: SceneAppearanceAccess;
   private authoredGeneration = 0;
+  private authoredPreparations = new AuthoredPreparationRegistry();
   private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
     return {
       meshes: () => this.texturedMeshes, data: this.meshDataMap,
@@ -235,25 +237,23 @@ export class Scene {
     };
   }
 
+  private bindAppearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess { return this.appearanceAccessState = rebindSceneAppearanceAccess(this.appearanceAccessState, this.appearanceAccess(device, pipeline)); }
   private sharedAppearanceBuckets(access: SceneAppearanceAccess) {
     return this.appearanceBuckets ??= new AppearanceBuckets(access.buckets, id => this.meshDataMap.get(id));
   }
   appearancePreview(device: GPUDevice, pipeline: RenderPipeline) {
-    const access = this.appearanceAccess(device, pipeline);
+    const access = this.bindAppearanceAccess(device, pipeline);
     return this.appearanceController ??= createSceneAppearancePreview(access, this.sharedAppearanceBuckets(access));
   }
-
-  /** Place canonical native appearance source geometry in this model's live frame. */
   placeAppearanceSource(mesh: MeshData): MeshData { return this.modelTranslations.placeMesh(mesh); }
-  /** Retain model-local source coordinates when publishing a placed appearance mesh. */
   appearanceSourceMesh(mesh: MeshData): MeshData { return this.modelTranslations.sourceFromPlaced(mesh); }
 
   /** Stage one new IFC owner with all its coloured or textured geometry parts. */
   prepareAuthoredOwner(parts: readonly MeshData[], device: GPUDevice, pipeline: RenderPipeline) {
-    const access = this.appearanceAccess(device, pipeline), generation = this.authoredGeneration;
-    return prepareSceneAuthoredOwner(access, this.sharedAppearanceBuckets(access), parts, () => {
+    const access = this.bindAppearanceAccess(device, pipeline), generation = this.authoredGeneration;
+    return this.authoredPreparations.track(prepareSceneAuthoredOwner(access, this.sharedAppearanceBuckets(access), parts, () => {
       if (generation !== this.authoredGeneration) throw new Error('The scene changed while preparing the object.');
-    });
+    }));
   }
   /** Compatibility entry point for an image-backed single-part owner. */
   prepareTexturedOwner(mesh: MeshData, device: GPUDevice, pipeline: RenderPipeline) {
@@ -405,12 +405,12 @@ export class Scene {
   private meshQueue: MeshData[] = [];
   private meshQueueReadIndex: number = 0;
 
-  // ─── GPU-resident mode ──────────────────────────────────────────────
-  // After releaseGeometryData(), JS-side typed arrays are freed.
-  // Only lightweight metadata is retained for operations that don't need
-  // raw vertex data (bounding boxes, color key lookups, expressId sets).
   private geometryReleased: boolean = false;
   private ephemeralStreamingMode: boolean = false;
+
+  async prepareDeviceRecovery(): Promise<SceneDeviceRecoveryPreparation> { return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
+  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
 
   /**
    * Add mesh to scene
@@ -740,8 +740,8 @@ export class Scene {
           this.meshDataBucket.set(m, bucket);
           this.addMeshData(m);
         }
-        this.coldBuckets.delete(key);
         if (members.length > 0) {
+          this.coldBuckets.delete(key);
           // Warm now — re-queue so the next restore tick rebuilds the GPU batch.
           this.residencyRestoreQueue.add(key);
         } else {
@@ -2354,7 +2354,6 @@ export class Scene {
    * Call this after finalizeStreaming() when all color updates have been applied.
    */
   releaseGeometryData(): void {
-    this.authoredGeneration++;
     if (this.geometryReleased) return;
     if (this.instanceSuppression.retained) {
       console.warn('[Appearance] Retained occurrence history still needs CPU geometry');
@@ -2370,6 +2369,7 @@ export class Scene {
       );
       return;
     }
+    this.authoredGeneration++; this.authoredPreparations.invalidate();
 
     this.appearanceController?.forget();
 
@@ -3565,22 +3565,15 @@ export class Scene {
     }
 
     for (const eid of toFade) {
-      const base = this.instancedOverrideColors?.get(eid) ?? this.originalInstanceColor(eid);
-      if (!base) continue;
-      this.writeInstanceColor(device, eid, [base[0], base[1], base[2], ghostAlpha]);
+      const override = this.instancedOverrideColors?.get(eid);
+      if (override) this.writeInstanceColor(device, eid, [override[0], override[1], override[2], ghostAlpha]);
+      else this.writeOriginalInstanceColors(device, eid, ghostAlpha);
     }
 
     this.instancedGhosted = next;
     this.lastGhostAlpha = ghostAlpha;
     this.instancedGhostDirty = false;
     this.instancedGhostTransparent = next.size > 0 && ghostAlpha < OPAQUE_ALPHA_CUTOFF;
-  }
-
-  /** The colour an occurrence was uploaded with, before any override or ghost. */
-  private originalInstanceColor(eid: number): readonly [number, number, number, number] | null {
-    const locs = this.instancedEntityMap.get(eid);
-    const first = locs?.[0];
-    return first ? first.originalColor : null;
   }
 
   /** Write the combined flag lane (selected | hidden) for every occurrence of `eid`
@@ -3624,6 +3617,8 @@ export class Scene {
       if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, new Float32Array(loc.originalColor));
     }
   }
+
+  private writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void { writeOriginalInstancedColors(device, this.instancedEntityMap.get(eid) ?? [], this.instancedTemplates, INSTANCE_COLOR_OFFSET, alpha); }
 
   /**
    * Build a textured mesh (#961): interleave position+normal+entityId+uv into one
@@ -3817,7 +3812,7 @@ export class Scene {
    * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
-    this.authoredGeneration++;
+    this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3826,7 +3821,7 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
-    this.authoredGeneration++;
+    this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

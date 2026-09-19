@@ -2,13 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { RenderDegradationInfo } from '@ifc-lite/renderer';
+import type { DeviceRecoveryResult, RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 import {
   buildDeviceLossContext,
   type DeviceLossContext,
   type DeviceLossContextSource,
 } from './device-loss-context.js';
+import { startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
+import { useViewerStore } from '@/store';
+import type { FederatedModel } from '@/store/types';
 
 /**
  * What the user and error tracking are told when the GPU device dies.
@@ -88,6 +91,7 @@ export function resetDeviceLossReportForTests(): void {
 export function reportDeviceLost(
   info: { message: string; reason: string },
   context?: DeviceLossContext,
+  recoveryAvailable = false,
 ): void {
   if (reported) return;
   reported = true;
@@ -154,7 +158,9 @@ export function reportDeviceLost(
   void import('@/components/ui/toast').then((m) => {
     m.toast.error(
       'The graphics device was lost, so the 3D view has stopped drawing. ' +
-      'Reload the page to restore rendering.',
+      (recoveryAvailable
+        ? 'Automatic recovery is starting; reload the page if it does not return.'
+        : 'Reload the page to restore rendering.'),
     );
   }).catch((err) => {
     // Best-effort: a failed toast must never mask the device loss itself. But
@@ -263,6 +269,49 @@ export function reportPersistentRenderDegradation(
 export interface ViewportHealthSource extends DeviceLossContextSource {
   onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void;
   onPersistentRenderDegradation(listener: (info: RenderDegradationInfo) => void): () => void;
+  recoverDevice?: DeviceRecoverySource['recoverDevice'];
+}
+
+export function modelsWithoutOmittedPointCloudHandles(
+  result: DeviceRecoveryResult,
+  models: ReadonlyMap<string, FederatedModel>,
+): Map<string, FederatedModel> | null {
+  if (!result.ok || !result.omissions.includes('point-clouds')) return null;
+  let changed = false;
+  const next = new Map<string, FederatedModel>();
+  for (const [id, model] of models) {
+    if (model.pointCloudHandleId === undefined) {
+      next.set(id, model);
+      continue;
+    }
+    changed = true;
+    next.set(id, { ...model, pointCloudHandleId: undefined });
+  }
+  return changed ? next : null;
+}
+
+function reportDeviceRecovery(result: DeviceRecoveryResult): void {
+  const models = modelsWithoutOmittedPointCloudHandles(result, useViewerStore.getState().models);
+  if (models) useViewerStore.setState({ models });
+  try {
+    posthog.capture(result.ok ? 'device_loss_recovered' : 'device_loss_recovery_failed', result.ok
+      ? { omissions: [...result.omissions] }
+      : { reason: result.reason });
+  } catch (err) {
+    console.warn('[Viewport] device-loss recovery telemetry failed:', err);
+  }
+  void import('@/components/ui/toast').then((m) => {
+    if (result.ok) {
+      const detail = result.omissions.length > 0
+        ? ` Some transient layers were cleared: ${result.omissions.join(', ')}.`
+        : '';
+      m.toast.success(`The 3D view recovered.${detail}`);
+    } else {
+      m.toast.error('The 3D view could not recover automatically. Reload the page to restore rendering.');
+    }
+  }).catch((err) => {
+    console.warn('[Viewport] device-loss recovery toast unavailable:', err);
+  });
 }
 
 /**
@@ -306,18 +355,31 @@ export function subscribeViewportHealth(
   renderer: ViewportHealthSource,
   buildContext: (source: DeviceLossContextSource) => DeviceLossContext = buildDeviceLossContext,
 ): () => void {
+  let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
     // must describe the moment the device died, not the Viewport mount.
-    renderer.onDeviceLost((info) =>
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer)),
-    ),
+    renderer.onDeviceLost((info) => {
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
+      if (!recovery && renderer.recoverDevice) {
+        const run = startDeviceLossRecovery(
+          { recoverDevice: () => renderer.recoverDevice!() },
+          { recovered: reportDeviceRecovery, failed: reportDeviceRecovery },
+        );
+        recovery = run;
+        const clearRecovery = () => {
+          if (recovery === run) recovery = null;
+        };
+        void run.promise.then(clearRecovery, clearRecovery);
+      }
+    }),
     renderer.onPersistentRenderDegradation((info) =>
       reportPersistentRenderDegradation(info, buildContextSafely(buildContext, renderer)),
     ),
   ];
   return () => {
+    recovery?.cancel();
     for (const unsubscribe of unsubscribes) unsubscribe();
   };
 }

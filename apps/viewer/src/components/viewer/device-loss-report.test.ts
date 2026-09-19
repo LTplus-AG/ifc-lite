@@ -225,6 +225,20 @@ describe('reportDeviceLost tells the USER, not only error tracking', () => {
       const text = String(errorToast.mock.calls[0].arguments[0]);
       assert.match(text, /reload/i, 'the toast must name the only action that restores rendering');
       assert.match(text, /graphics device/i, 'and name the cause, not just "something went wrong"');
+      assert.doesNotMatch(text, /automatic recovery/i, 'a host with no recovery API must not claim recovery started');
+    } finally {
+      errorToast.mock.restore();
+    }
+  });
+
+  it('says automatic recovery started only when the renderer supports it', async () => {
+    await flushDynamicImport();
+    const errorToast = mock.method(toast, 'error', () => 0);
+    try {
+      reportDeviceLost({ message: SAFARI_LOST, reason: 'render-exception' }, undefined, true);
+      await flushDynamicImport();
+
+      assert.match(String(errorToast.mock.calls[0].arguments[0]), /automatic recovery is starting/i);
     } finally {
       errorToast.mock.restore();
     }
@@ -378,6 +392,23 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'render-exception' });
     assert.equal(captures.length, 2);
     assert.equal(captures[1].props?.context, 'device_lost');
+  });
+
+  it('starts a fresh recovery for a later replacement-device loss', async () => {
+    const h = makeSource();
+    let recoveries = 0;
+    h.source.recoverDevice = async () => {
+      recoveries++;
+      return { ok: true, omissions: [] };
+    };
+    subscribeViewportHealth(h.source);
+
+    h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'unknown' });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    h.listeners.deviceLost[0]({ message: 'replacement lost', reason: 'unknown' });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(recoveries, 2);
   });
 
   it('a context builder that throws costs the enrichment, never the base report', () => {

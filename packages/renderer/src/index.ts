@@ -130,6 +130,11 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 export type { GpuUploadOutcome } from './gpu-upload-guard.js';
+export type {
+    DeviceRecoveryFailureReason,
+    DeviceRecoveryOmission,
+    DeviceRecoveryResult,
+} from './device-recovery.js';
 
 import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
@@ -188,6 +193,7 @@ import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
+import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -203,21 +209,6 @@ let warnedEntityIdRange = false;
 function rendererDestroyedError(): Error {
     const error = new Error('Renderer was destroyed before it became ready');
     error.name = 'RendererDestroyedError';
-    return error;
-}
-
-/**
- * The reason `whenReady()` rejects once the GPU device has been lost.
- *
- * Deliberately NOT `RendererDestroyedError`: a destroyed renderer is finished,
- * while a lost one is dead only until the host re-initialises it (`init()`
- * clears the latch and readiness is published again). A caller that wants to
- * retry needs to tell those apart, so the loss carries its own `name` — same
- * plain-`Error` shape, for the same reasons.
- */
-function rendererDeviceLostError(): Error {
-    const error = new Error('GPU device was lost before the renderer became ready');
-    error.name = 'RendererDeviceLostError';
     return error;
 }
 
@@ -294,20 +285,19 @@ export class Renderer {
     private destroyed = false;
 
     /**
-     * The tail of the `init()` queue. `init()` chains onto this rather than
-     * running immediately, so two overlapping calls cannot both walk past the
-     * "a previous init completed" guard while the first is still awaiting its
-     * device and both allocate a full set of GPU objects (#2448). Always
-     * settled fulfilled — a rejected init is swallowed HERE (never for the
-     * caller) so one failure does not deadlock every later call.
+     * The tail of the GPU lifecycle queue. `init()` and `recoverDevice()` chain
+     * onto this rather than running immediately, so overlapping calls cannot
+     * both mutate the shared device/pipeline fields while one is awaiting its
+     * adapter. Always settled fulfilled — a rejected operation is swallowed
+     * HERE (never for its caller) so one failure cannot deadlock later work.
      */
     private initChain: Promise<void> = Promise.resolve();
 
     /**
-     * Incremented synchronously by every `init()` call AND by every public
-     * `destroy()`. It stamps "the lifecycle event an in-flight init belongs to":
-     * an init that no longer carries the current stamp has been superseded and
-     * must neither allocate nor publish readiness.
+     * Incremented synchronously by every `init()` / `recoverDevice()` call and
+     * by every public `destroy()`. It stamps the lifecycle event an in-flight
+     * operation belongs to: stale work must neither allocate nor publish
+     * readiness.
      *
      * Both bumps are load-bearing, for the same reason. Because the queue above
      * defers the body, an init can finish while a later one is still waiting its
@@ -366,6 +356,11 @@ export class Renderer {
     /** Retained so a listener registered AFTER the loss still learns of it. */
     private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
+    /** Counts losses, including one from a replacement while the original latch remains set. */
+    private deviceLossSequence = 0;
+    private readonly recovery = {
+        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(),
+    };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
     private readonly deviationComputer = new DeviationComputer();
     private readonly visualEnhancementResolver = new VisualEnhancementResolver();
@@ -556,7 +551,10 @@ export class Renderer {
         return run;
     }
 
-    private async initOnce(generation: number): Promise<void> {
+    private async initOnce(
+        generation: number,
+        options: { clearDeviceLost?: boolean; publishReady?: boolean } = {},
+    ): Promise<void> {
         // `pipeline` is the marker for "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
@@ -574,12 +572,19 @@ export class Renderer {
         // the generation and this body running is stamped with the generation
         // that is clearing it. `deviceLostGeneration` deliberately keeps its
         // stale value — it is only ever read alongside this flag.
-        this.deviceLost = false;
+        if (options.clearDeviceLost !== false) this.deviceLost = false;
         // Subscribe before the device exists so a loss during the first frames
         // is never missed — the handler is only invoked when `device.lost`
         // actually resolves (a real fault), long after init in practice.
-        this.device.onDeviceLost((info) => this.handleDeviceLost(info));
-        await this.device.init(this.canvas);
+        const initializingDevice = this.device;
+        initializingDevice.onDeviceLost((info) => {
+            // Recovery replaces the WebGPUDevice wrapper. A delayed `lost`
+            // settlement from the abandoned wrapper must not latch the new
+            // device as lost (#4885).
+            if (this.device !== initializingDevice) return;
+            this.handleDeviceLost(info);
+        });
+        await initializingDevice.init(this.canvas);
 
         // A `destroy()` (or a newer `init()`) landed while we were parked on the
         // device. Everything below allocates a full GPU stack — two pipelines,
@@ -670,7 +675,7 @@ export class Renderer {
         // synchronous CPU code while pick() is an async GPU readback.
         this.raycastEngine.setPointCloudProvider(() => this.pointCloudRenderer?.getRayQuerySources() ?? []);
 
-        this.markReady(generation);
+        if (options.publishReady !== false) this.markReady(generation);
     }
 
     /**
@@ -803,6 +808,11 @@ export class Renderer {
         return this.deviceLost;
     }
 
+    /** Rebuild a lost GPU device in place while preserving recoverable CPU scene state. */
+    recoverDevice(): Promise<DeviceRecoveryResult> {
+        return recoverRendererDevice(this as unknown as RendererRecoveryHost);
+    }
+
     /**
      * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):
      * a synchronous Safari-style `DOMException` (issue #2229) caught OUTSIDE
@@ -819,8 +829,10 @@ export class Renderer {
     }
 
     private handleDeviceLost(info: { message: string; reason: string }): void {
+        this.deviceLossSequence++;
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.recovery.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
@@ -1607,6 +1619,7 @@ export class Renderer {
      * rejecting pipeline creation) batches stay on the f32 path.
      */
     async enableQuantizedBatches(): Promise<boolean> {
+        this.recovery.quantizedBatchesRequested = true;
         if (!this.pipeline) return false;
         const ok = await this.pipeline.ensureQuantizedPipelines();
         if (ok) this.scene.setQuantizedBatches(true);
@@ -3647,16 +3660,18 @@ export class Renderer {
      * in-flight init. Callers: the public `destroy()` (which invalidates first)
      * and `initOnce()`, tearing down the previous init before building its own.
      */
-    private teardown(): void {
+    private teardown(clearScene: boolean = true): void {
         // Nothing below survives this call, so `whenReady()` / `isReady()` must
         // go back to waiting. Set first: every release below is synchronous, but
         // the flag is what a caller holding a live reference actually reads.
         this.ready = false;
 
         // Scene mesh GPU buffers
-        this.scene.clear();
-        // Re-arm the section-bounds diagnostic log for the next model.
-        this._loggedSectionBounds = false;
+        if (clearScene) {
+            this.scene.clear();
+            // Re-arm the section-bounds diagnostic log for the next model.
+            this._loggedSectionBounds = false;
+        }
 
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();

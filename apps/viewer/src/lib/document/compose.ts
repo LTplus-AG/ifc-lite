@@ -148,7 +148,8 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       height: drawnH + captionH,
       draw: (y) => {
         const items: DrawnItem[] = [{ kind: 'image', blockId: block.id, x, y, w, h: drawnH }];
-        if (block.caption) items.push({ kind: 'text', x, y: y + drawnH + 11, size: 8, bold: false, gray: 130, text: block.caption });
+        // A long caption must not cross the inter-column gap into the paired half-width block (review finding).
+        if (block.caption) items.push({ kind: 'text', x, y: y + drawnH + 11, size: 8, bold: false, gray: 130, text: truncateToWidth(block.caption, boxW, 8, false, input.measure) });
         return items;
       },
     };
@@ -167,11 +168,13 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       height: totalH,
       draw: (y) => {
         // A half-width column must not let a long title/subtitle run into the next column (review finding).
-        const title = truncateToWidth(block.title, Math.max(20, boxW - 8), 11, true, input.measure);
+        // The title's own width is capped to the same room the subtitle reserves for itself
+        // (review finding: `boxW - 8` let a long title run under/into the subtitle it sits next to).
+        const title = truncateToWidth(block.title, Math.max(20, boxW - 80), 11, true, input.measure);
         const items: DrawnItem[] = [
           { kind: 'text', x: boxX, y: y + 11, size: 11, bold: true, gray: 0, text: title },
         ];
-        const subtitleX = boxX + Math.min(boxW - 80, title.length * 6 + 12);
+        const subtitleX = boxX + Math.max(20, boxW - 80);
         const subtitle = truncateToWidth(block.subtitle, Math.max(20, boxX + boxW - subtitleX - 4), 8, false, input.measure);
         items.push({ kind: 'text', x: subtitleX, y: y + 11, size: 8, bold: false, gray: 130, text: subtitle });
         const chartY = y + 18;

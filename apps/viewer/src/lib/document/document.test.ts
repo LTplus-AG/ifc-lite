@@ -304,6 +304,25 @@ describe('compose', () => {
     const texts = layout.pages[0].items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
     assert.ok(!texts.some((t) => t.text === longTitle), 'the full title never appears untruncated');
     assert.ok(texts.some((t) => t.text.endsWith('…')), 'the truncated title carries an ellipsis');
+    // The title is capped to the same width the subtitle reserves for itself, so the two never overlap (review finding).
+    const chartA = layout.pages[0].items.find((i) => i.kind === 'chart' && i.blockId === 'a')!;
+    const title = texts.find((t) => t.x === chartA.x && t.y === chartA.y - 7)!; // chartY = titleY + 7 (18 - 11)
+    const subtitle = texts.find((t) => t.y === title.y && t.x > title.x)!;
+    assert.ok(subtitle.x >= title.x + estimateTextWidth(title.text, 11, true), `subtitle x=${subtitle.x} must not sit under the title text ending at ${title.x + estimateTextWidth(title.text, 11, true)}`);
+  });
+
+  it('a long half-width image caption is truncated so it stays inside its own column (review finding, #4940)', () => {
+    const longCaption = 'A very long caption that would otherwise cross the gap into the next column and keep running well past the page edge';
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'image', id: 'a', height: 60, align: 'left', aspect: 3, caption: longCaption, width: 'half' },
+        { kind: 'image', id: 'b', height: 60, align: 'left', aspect: 3, width: 'half' },
+      ],
+    });
+    const texts = layout.pages[0].items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
+    assert.ok(!texts.some((t) => t.text === longCaption), 'the full caption never appears untruncated');
+    assert.ok(texts.some((t) => t.text.endsWith('…')), 'the truncated caption carries an ellipsis');
   });
 
   it('the snapshot frames the bucket with the largest value, whatever the display order (review finding)', () => {

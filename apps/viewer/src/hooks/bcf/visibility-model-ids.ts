@@ -8,7 +8,8 @@ import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 type CaptureState = Pick<ViewerState,
   | 'models' | 'ifcDataStore' | 'mutationViews'
   | 'hiddenEntities' | 'isolatedEntities'
-  | 'hiddenEntitiesByModel' | 'isolatedEntitiesByModel'>;
+  | 'hiddenEntitiesByModel' | 'isolatedEntitiesByModel'
+  | 'resolveGlobalIdInModel'>;
 
 /** Source models represented by the exact visibility snapshot serialized to BCF. */
 export function visibilityModelIdsForCapture(
@@ -31,10 +32,10 @@ export function visibilityModelIdsForCapture(
     if (state.models.size === 0) modelIds.add('legacy');
     // Revision federations can legitimately share a GlobalId. Preserve every
     // matching source rather than attributing the component to the first map entry.
-    for (const [modelId, model] of state.models) {
-      const exactGuid = resolveEntityRefGlobalIdFromState(state, {
-        modelId, expressId: globalId - model.idOffset,
-      });
+    for (const modelId of state.models.keys()) {
+      const entityRef = state.resolveGlobalIdInModel(modelId, globalId);
+      if (!entityRef) continue;
+      const exactGuid = resolveEntityRefGlobalIdFromState(state, entityRef);
       if (exactGuid && guids.includes(exactGuid)) modelIds.add(modelId);
     }
   }

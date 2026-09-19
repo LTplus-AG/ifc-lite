@@ -34,6 +34,7 @@ describe('manual clash group focus (#4921)', () => {
       hiddenEntitiesByModel: new Map(), isolatedEntitiesByModel: new Map(), mutationVersion: 0,
       colorPresentationRevision: 0,
       selectedStoreys: new Set(), levelDisplayMode: 'stacked',
+      appliedStoreyOffsets: new Map(), pendingMeshTranslations: null, classFilter: null,
     });
   });
 
@@ -235,6 +236,61 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().setStoreysSelection([55]);
     assert.equal(focusedSceneRevisionIsCurrent(focused), false,
       'a storey isolation enabled during snapshot capture must invalidate the frame');
+  });
+
+  it('clears an unserializable class filter and invalidates its reactivation', () => {
+    useViewerStore.setState({
+      classFilter: { ids: new Set([10]), label: 'IfcWall' },
+    });
+    const focused = focusClashGroup(
+      [clash('class-filter', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'isolate',
+    );
+    assert.ok(focused);
+    assert.equal(useViewerStore.getState().classFilter, null,
+      'manual-group framing must not inherit a visibility gate BCF cannot serialize');
+
+    useViewerStore.getState().setClassFilter([10], 'IfcWall');
+    assert.equal(focusedSceneRevisionIsCurrent(focused), false,
+      'a class filter enabled during snapshot capture must invalidate the frame');
+  });
+
+  it('waits for exploded offsets to be reverted and painted before framing', async () => {
+    // Drain frame requests left by the synchronous assertions above before
+    // installing this test's callback (the callback is read at frame time).
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const frameSelection = mock.fn();
+    useViewerStore.setState({
+      cameraCallbacks: { frameSelection },
+      levelDisplayMode: 'exploded',
+      appliedStoreyOffsets: new Map([['model', new Map([[44, 8]])]]),
+    });
+    const focused = focusClashGroup(
+      [clash('exploded', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 0, 'old lifted bounds must not be framed');
+
+    useViewerStore.setState({
+      appliedStoreyOffsets: new Map(),
+      pendingMeshTranslations: new Map([[10, [0, -8, 0]]]),
+    });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 0, 'the renderer has not drained the inverse translation');
+
+    useViewerStore.setState({ pendingMeshTranslations: null });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 0, 'one paint frame follows queue drain');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 1);
+    await focused.frameReady;
   });
 
   it('invalidates capture when another selection or presentation replaces the focused group', () => {

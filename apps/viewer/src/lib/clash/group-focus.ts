@@ -44,7 +44,72 @@ export interface FocusedClashGroup {
     sectionPlane: ViewerState['sectionPlane'] | null;
     selectedStoreys: ViewerState['selectedStoreys'];
     levelDisplayMode: ViewerState['levelDisplayMode'];
+    classFilter: ViewerState['classFilter'];
   };
+}
+
+const LEVEL_DISPLAY_SETTLE_FRAME_LIMIT = 120;
+
+/** Frame only after an Exploded -> Stacked translation has reached the renderer. */
+function scheduleClashFrame(
+  waitForLevelDisplayReset: boolean,
+  resolve: (framed: FramedCamera | null) => void,
+): void {
+  let framesRemaining = LEVEL_DISPLAY_SETTLE_FRAME_LIMIT;
+  let settledFrameSeen = !waitForLevelDisplayReset;
+  const frameWhenReady = (): void => {
+    if (waitForLevelDisplayReset) {
+      const state = useViewerStore.getState();
+      const offsetsPending = state.appliedStoreyOffsets.size > 0
+        || state.pendingMeshTranslations !== null;
+      if (offsetsPending) {
+        settledFrameSeen = false;
+      } else if (!settledFrameSeen) {
+        // The translation queue was drained in a React effect. Give the renderer
+        // one paint frame before deriving bounds from the now-stacked geometry.
+        settledFrameSeen = true;
+        requestAnimationFrame(frameWhenReady);
+        return;
+      } else {
+        waitForLevelDisplayReset = false;
+      }
+      if (waitForLevelDisplayReset) {
+        framesRemaining -= 1;
+        if (framesRemaining <= 0) {
+          console.error('[clash] Timed out while restoring stacked geometry before framing.');
+          resolve(null);
+          return;
+        }
+        requestAnimationFrame(frameWhenReady);
+        return;
+      }
+    }
+
+    const frameSelection = useViewerStore.getState().cameraCallbacks.frameSelection;
+    if (!frameSelection) {
+      resolve(null);
+      return;
+    }
+    try {
+      // The callback remains void-compatible for existing synchronous callers,
+      // while Viewport returns false specifically when it has no bounds.
+      const frameResult: unknown = frameSelection(0);
+      Promise.resolve(frameResult).then((didFrame) => {
+        if (didFrame === false) {
+          resolve(null);
+          return;
+        }
+        resolve({ viewpoint: currentCameraViewpoint() });
+      }, (error) => {
+        console.error('[clash] Could not finish framing the manual clash group:', error);
+        resolve(null);
+      });
+    } catch (error) {
+      console.error('[clash] Could not frame the manual clash group:', error);
+      resolve(null);
+    }
+  };
+  requestAnimationFrame(frameWhenReady);
 }
 
 function currentCameraViewpoint(): CameraViewpoint | null {
@@ -106,7 +171,8 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && state.colorPresentationRevision === revision.colorPresentationRevision
     && activeSectionPlane(state) === revision.sectionPlane
     && state.selectedStoreys === revision.selectedStoreys
-    && state.levelDisplayMode === revision.levelDisplayMode;
+    && state.levelDisplayMode === revision.levelDisplayMode
+    && state.classFilter === revision.classFilter;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -140,9 +206,13 @@ export function focusClashGroup(
   // A storey filter or exploded offsets would render only a transformed
   // subset of the group, but BCF cannot serialize either presentation. Use
   // the one canonical level-display transition before framing the group.
+  const waitForLevelDisplayReset = state.levelDisplayMode === 'exploded';
   if (state.selectedStoreys.size > 0 || state.levelDisplayMode !== 'stacked') {
     applyLevelDisplayMode('stacked');
   }
+  // Class filtering is a renderer visibility gate, but BCF viewpoints cannot
+  // represent it. Clear it before composing the clash focus/capture state.
+  if (state.classFilter !== null) state.clearClassFilter();
   state.clearEntitySelection();
   state.clearClashFocus();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
@@ -150,31 +220,7 @@ export function focusClashGroup(
   state.addEntitiesToSelection(refs);
   applyFocusMode([...globalIds], mode);
   const frameReady = new Promise<FramedCamera | null>((resolve) => {
-    requestAnimationFrame(() => {
-      const frameSelection = useViewerStore.getState().cameraCallbacks.frameSelection;
-      if (!frameSelection) {
-        resolve(null);
-        return;
-      }
-      try {
-        // The callback remains void-compatible for existing synchronous callers,
-        // while Viewport returns false specifically when it has no bounds.
-        const frameResult: unknown = frameSelection(0);
-        Promise.resolve(frameResult).then((didFrame) => {
-          if (didFrame === false) {
-            resolve(null);
-            return;
-          }
-          resolve({ viewpoint: currentCameraViewpoint() });
-        }, (error) => {
-          console.error('[clash] Could not finish framing the manual clash group:', error);
-          resolve(null);
-        });
-      } catch (error) {
-        console.error('[clash] Could not frame the manual clash group:', error);
-        resolve(null);
-      }
-    });
+    scheduleClashFrame(waitForLevelDisplayReset, resolve);
   });
   // An object on both sides gets one deterministic color, never two.
   for (const key of aRefs.keys()) bRefs.delete(key);
@@ -219,6 +265,7 @@ export function focusClashGroup(
       sectionPlane: activeSectionPlane(focusedState),
       selectedStoreys: focusedState.selectedStoreys,
       levelDisplayMode: focusedState.levelDisplayMode,
+      classFilter: focusedState.classFilter,
     },
   };
 }

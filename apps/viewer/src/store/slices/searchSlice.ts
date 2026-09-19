@@ -217,6 +217,9 @@ export interface SearchSlice {
   /** Drop every rule in the ACTIVE group but keep its combinator, the other
    *  groups, and the limit. */
   clearFilterRules: () => void;
+  /** Drop EVERY group back to one empty AND group — what a caller with no
+   *  per-group UI context (the inline toolbar's "Clear filters") uses. */
+  clearAllFilterGroups: () => void;
   /** Append a new empty AND group (the selector's `+`, or the builder's "Add
    *  group" button) and make it the active one. */
   addFilterGroup: () => void;

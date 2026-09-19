@@ -316,6 +316,44 @@ describe('searchSlice — filter groups (#4904)', () => {
     assert.strictEqual(s.searchFilterActiveGroup, 1);
   });
 
+  it('removeFilterGroup keeps the SAME logical group active when a PRECEDING group is removed (#4987 review)', () => {
+    // A/B/C, B active. Removing A must land on B (now index 0), not
+    // re-clamp the stale numeric index 1 onto whatever slid into it (C).
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['A'], op: 'in' }); // group 0 = "A"
+    store.getState().addFilterGroup();
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['B'], op: 'in' }); // group 1 = "B"
+    store.getState().addFilterGroup();
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['C'], op: 'in' }); // group 2 = "C"
+    store.getState().setActiveFilterGroup(1); // "B" is active
+    store.getState().removeFilterGroup(0); // remove "A"
+
+    const s = store.getState();
+    assert.strictEqual(s.searchFilter.groups.length, 2);
+    assert.strictEqual(s.searchFilterActiveGroup, 0);
+    const activeRule = s.searchFilter.groups[s.searchFilterActiveGroup].rules[0];
+    assert.strictEqual(activeRule.kind, 'ifcType');
+    if (activeRule.kind === 'ifcType') assert.deepStrictEqual(activeRule.values, ['B']);
+  });
+
+  it('removeFilterGroup picks a neighbour when the ACTIVE group itself is removed', () => {
+    store.getState().addFilterGroup(); // active = 1
+    store.getState().addFilterGroup(); // active = 2
+    store.getState().removeFilterGroup(2); // removes the active group itself
+    const s = store.getState();
+    assert.strictEqual(s.searchFilter.groups.length, 2);
+    assert.strictEqual(s.searchFilterActiveGroup, 1);
+  });
+
+  it('clearAllFilterGroups empties every group, not just the active one', () => {
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcWall'], op: 'in' });
+    store.getState().addFilterGroup();
+    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcDoor'], op: 'in' });
+    store.getState().clearAllFilterGroups();
+    const s = store.getState();
+    assert.deepStrictEqual(s.searchFilter.groups, [{ rules: [], combinator: 'AND' }]);
+    assert.strictEqual(s.searchFilterActiveGroup, 0);
+  });
+
   it('setActiveFilterGroup clamps to the valid range', () => {
     store.getState().setActiveFilterGroup(5);
     assert.strictEqual(store.getState().searchFilterActiveGroup, 0);

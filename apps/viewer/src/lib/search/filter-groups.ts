@@ -44,22 +44,43 @@ export function isFilterGroup(value: unknown): value is FilterGroup {
  * both become `Rule.name`, and only one of those round-trips through text).
  * What this DOES round-trip exactly is the shape the selector's own union
  * syntax cares about: class names (`IfcWall`, `IfcDoor`, …) and GlobalIds,
- * `+`-joined across groups, comma-joined within one. Used by the Selector
- * field to echo back what the CURRENT filter state reads as, so adding a
- * second group in the builder is visible as a second `+`-joined clause
- * without leaving the builder (#4904).
+ * `+`-joined across groups. Used by the Selector field to echo back what
+ * the CURRENT filter state reads as, so adding a second group in the
+ * builder is visible as a second `+`-joined clause without leaving the
+ * builder (#4904).
+ *
+ * All-or-nothing: an empty group, or a group whose rules do not reduce to
+ * exactly ONE renderable clause, makes the WHOLE echo `''` rather than a
+ * partial rendering — review (PR #4987) caught that joining per-group
+ * fragments with `+` regardless produced text that read as a DIFFERENT
+ * query than what evaluation actually runs: an empty group left a
+ * dangling ` + `, and several `ifcType`/`globalId` rules AND'd within one
+ * group rendered as comma-separated union terms (selector-text unions use
+ * `,` to ADD classes, not narrow them), so a two-rule AND group echoed as
+ * something the evaluator would read as broader than what it actually
+ * matches. Silently showing a narrower or broader query back to the user
+ * is the same "matched nothing, said nothing" defect class #4091 exists to
+ * avoid, so this omits the echo entirely rather than guess.
  */
 export function groupsToSelectorText(groups: readonly FilterGroup[]): string {
-  return groups
-    .map((g) => g.rules.map(ruleToSelectorClause).filter((s): s is string => s !== null).join(', '))
-    .join(' + ');
+  const clauses: string[] = [];
+  for (const group of groups) {
+    if (group.rules.length === 0) continue;
+    if (group.rules.length !== 1) return '';
+    const clause = ruleToSelectorClause(group.rules[0]);
+    if (clause === null) return '';
+    clauses.push(clause);
+  }
+  return clauses.join(' + ');
 }
 
 function ruleToSelectorClause(rule: FilterRule): string | null {
   switch (rule.kind) {
     case 'ifcType':
+      if (!Array.isArray(rule.values) || rule.values.length === 0) return null;
       return rule.values.map((v) => (rule.op === 'notIn' ? `! ${v}` : v)).join(', ');
     case 'globalId':
+      if (!Array.isArray(rule.values) || rule.values.length === 0) return null;
       return rule.values.map((v) => (rule.op === 'notIn' ? `! ${v}` : v)).join(', ');
     default:
       // Every other rule kind has no single canonical selector spelling —
@@ -106,10 +127,12 @@ export function parseFilterGroups(raw: unknown): FilterGroup[] | null {
     // one rule this build cannot read is not "mostly readable", it is a
     // different query, so the whole thing is refused (see module doc).
     if (!g.rules.every(isFilterRule)) return null;
-    groups.push({
-      rules: g.rules as FilterRule[],
-      combinator: g.combinator === 'OR' ? 'OR' : 'AND',
-    });
+    // A missing/corrupted combinator must refuse too, not default to AND —
+    // review (PR #4987): silently coercing a dropped/garbled `OR` into
+    // `AND` changes which elements the group matches without telling
+    // anyone, the exact defect class this whole function exists to avoid.
+    if (g.combinator !== 'AND' && g.combinator !== 'OR') return null;
+    groups.push({ rules: g.rules as FilterRule[], combinator: g.combinator });
   }
   return groups;
 }

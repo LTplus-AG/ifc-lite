@@ -127,10 +127,20 @@ export function SearchModalFilterBuilder() {
       toast.error(`Nothing in that selector maps to a filter rule yet: ${reading.unsupported.join('; ')}`);
       return;
     }
-    // Adds into the ACTIVE group only — this button predates groups and has
-    // never had a union concept; a selector using `+` here still only
-    // contributes its first group's rules (the Selector field above is
-    // where a `+` union actually applies, replacing all groups).
+    // A `+` union is refused here rather than silently promoting only
+    // `groups[0]` — review (PR #4987): this button predates groups and adds
+    // into the single ACTIVE one, so a naive promote of "IfcWall + IfcDoor"
+    // would add the IfcWall rule and drop the IfcDoor branch with nothing
+    // to read, the exact #4091 defect class this whole adapter exists to
+    // avoid. The Selector field above (which DOES carry the full union) is
+    // where `+` text is meant to go.
+    if (reading.groups.length > 1) {
+      toast.error(
+        `"${q}" unions ${reading.groups.length} groups with "+" — use the Selector field above ` +
+          'to apply the whole union; this button only ever adds into one group.',
+      );
+      return;
+    }
     for (const rule of reading.rules) addFilterRule(rule);
     if (reading.unsupported.length > 0) {
       toast.info(`Added without these parts: ${reading.unsupported.join('; ')}`);

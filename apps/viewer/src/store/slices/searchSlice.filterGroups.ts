@@ -62,6 +62,13 @@ export interface FilterGroupActions {
   updateFilterRule: (index: number, rule: FilterRule) => void;
   removeFilterRule: (index: number) => void;
   clearFilterRules: () => void;
+  /** Drop EVERY group back to one empty AND group, keeping the limit.
+   *  Unlike `clearFilterRules` (active group only), this is what a caller
+   *  with no per-group UI context — the inline toolbar's "Clear filters" —
+   *  must use: it counts and displays rules across ALL groups (#4904), so
+   *  its clear action has to actually empty all of them or the badge stays
+   *  non-zero after the click (review, PR #4987). */
+  clearAllFilterGroups: () => void;
   addFilterGroup: () => void;
   removeFilterGroup: (index: number) => void;
   setActiveFilterGroup: (index: number) => void;
@@ -119,6 +126,12 @@ export function createFilterGroupActions(set: SetFn): FilterGroupActions {
         searchFilter: { ...state.searchFilter, groups: updateActiveGroup(state, (g) => ({ ...g, rules: [] })) },
       })),
 
+    clearAllFilterGroups: () =>
+      set((state) => ({
+        searchFilter: { ...state.searchFilter, groups: [emptyFilterGroup()] },
+        searchFilterActiveGroup: 0,
+      })),
+
     addFilterGroup: () =>
       set((state) => {
         const groups = [...state.searchFilter.groups, emptyFilterGroup()];
@@ -136,9 +149,19 @@ export function createFilterGroupActions(set: SetFn): FilterGroupActions {
         if (groups.length <= 1 || index < 0 || index >= groups.length) return {};
         const next = groups.slice();
         next.splice(index, 1);
+        // The SAME logical group the user had open must stay open — review
+        // (PR #4987): clamping the OLD numeric index alone is wrong once a
+        // PRECEDING group is removed, because every group after `index`
+        // shifts left by one but the active index does not. With A/B/C and
+        // B active (index 1), removing A (index 0) must land on B, now at
+        // index 0 — not silently re-clamp to whatever slid into index 1
+        // (C). Only when the ACTIVE group itself is removed does a
+        // neighbour take over, which `clampGroupIndex` already handles.
+        const prevActive = state.searchFilterActiveGroup;
+        const nextActive = index < prevActive ? prevActive - 1 : prevActive;
         return {
           searchFilter: { ...state.searchFilter, groups: next },
-          searchFilterActiveGroup: clampGroupIndex(state.searchFilterActiveGroup, next.length),
+          searchFilterActiveGroup: clampGroupIndex(nextActive, next.length),
         };
       }),
 

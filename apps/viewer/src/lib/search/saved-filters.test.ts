@@ -106,6 +106,49 @@ describe('saved-filters', () => {
     assert.deepStrictEqual(loadSavedFilters(), []);
   });
 
+  // ── schema-version edge cases (#4987 review) ──────────────────────────
+
+  it('a v2 entry saves and reads back its real groups (round-trip)', () => {
+    saveFilter('Union', [
+      { rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' },
+      { rules: [Rule.ifcType(['IfcDoor'])], combinator: 'AND' },
+    ]);
+    const [preset] = loadSavedFilters();
+    assert.strictEqual(preset.groups.length, 2);
+    assert.deepStrictEqual(preset.groups[1].rules, [Rule.ifcType(['IfcDoor'])]);
+  });
+
+  it('a STRING schemaVersion ("2") is unreadable, not silently read as an empty v1 preset', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'Bad version', schemaVersion: '2', combinator: 'AND', rules: [] }]),
+    );
+    // Must not appear at all — reading it as v1 would silently show an
+    // EMPTY filter under the preset's real name, which then looks saved
+    // and gets re-saved as an empty query the next time someone clicks it.
+    assert.deepStrictEqual(loadSavedFilters(), []);
+  });
+
+  it('an unrecognised FUTURE schemaVersion (3) is unreadable, not routed through the v2 groups parser', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'From the future', schemaVersion: 3, groups: [{ rules: [], combinator: 'AND' }] }]),
+    );
+    assert.deepStrictEqual(loadSavedFilters(), []);
+  });
+
+  it('an entry with an unreadable group blocks writes rather than being silently dropped on the next save', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'Corrupt v2', schemaVersion: 2, groups: [{ rules: [], combinator: 'XOR' }] }]),
+    );
+    assert.deepStrictEqual(loadSavedFilters(), []); // not shown...
+    const result = save('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    // ...but the write that would have permanently erased it is refused,
+    // exactly like the existing whole-catalog-corruption protection (#2085).
+    assert.strictEqual(result.persisted, false);
+  });
+
   it('drops malformed payloads in storage', () => {
     (g.localStorage as MemoryStorage).setItem(__internal.STORAGE_KEY, '{not-json');
     assert.deepStrictEqual(loadSavedFilters(), []);

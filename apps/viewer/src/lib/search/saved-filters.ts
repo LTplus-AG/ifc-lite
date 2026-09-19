@@ -108,11 +108,24 @@ let catalogUnwritable = false;
  *  RULE inside it is silently dropped by `parseFilterRules`, unchanged
  *  pre-#4904 behaviour that stays for the implicit-single-group case. */
 function readGroups(o: Record<string, unknown>): FilterGroup[] | null {
-  const version = typeof o.schemaVersion === 'number' ? o.schemaVersion : 1;
-  if (version >= 2) return parseFilterGroups(o.groups);
-  const combinator: Combinator = o.combinator === 'OR' ? 'OR' : 'AND';
-  const rules = parseFilterRules(o.rules);
-  return [{ rules, combinator }];
+  // `schemaVersion` ABSENT means v1 (the pre-#4904 shape). PRESENT but not a
+  // number (`"2"`, `null`, …) is corruption, not "no version" — review (PR
+  // #4987) caught that coercing a non-number to v1 silently read a v2
+  // preset's OMITTED `rules`/`combinator` as an empty filter instead of
+  // refusing the unreadable entry.
+  if (o.schemaVersion === undefined) {
+    const combinator: Combinator = o.combinator === 'OR' ? 'OR' : 'AND';
+    return [{ rules: parseFilterRules(o.rules), combinator }];
+  }
+  if (typeof o.schemaVersion !== 'number') return null;
+  // Exactly v2 — a version this build does not recognise (a future v3, …)
+  // must refuse too, not fall through the v2 `groups` parser: review (PR
+  // #4987) caught that `>= 2` treated an incompatible future shape as an
+  // ordinary v2 read, which (combined with `writeRaw` only ever
+  // serializing what `readRaw` returned) would permanently drop it from
+  // the catalog on the very next save.
+  if (o.schemaVersion !== 2) return null;
+  return parseFilterGroups(o.groups);
 }
 
 function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
@@ -147,7 +160,24 @@ function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
       if (!name || name.length > MAX_NAME_LEN) continue;
 
       const groups = readGroups(o);
-      if (groups === null) continue; // unreadable groups → skip this entry, not the whole catalog
+      if (groups === null) {
+        // Unreadable groups: skip this ONE entry from the returned list
+        // (not the whole catalog, per the module doc), but ALSO latch
+        // `catalogUnwritable` — review (PR #4987) caught that without this,
+        // the very next `saveFilter`/`deleteSavedFilter` calls `writeRaw`
+        // with the reduced (survivors-only) list, which permanently
+        // deletes the unreadable entry instead of merely hiding it. Same
+        // "preserve, don't destroy, what we failed to read" principle the
+        // whole-catalog corruption path below already applies (#2085).
+        catalogUnwritable = true;
+        console.warn(
+          `[ifc-lite] Saved filter "${name}" has an unreadable group (unknown rule kind/op, ` +
+            `bad combinator, or an unsupported schema version) and will not be shown. Saving or ` +
+            `deleting ANY other preset is blocked until it is repaired or removed by hand, so it ` +
+            `is not silently lost the next time the catalog is written.`,
+        );
+        continue;
+      }
       const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : Date.now();
       const preset: SavedFilterPreset = {
         name,

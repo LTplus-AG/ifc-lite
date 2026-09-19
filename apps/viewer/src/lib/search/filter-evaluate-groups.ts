@@ -65,10 +65,19 @@ export function evaluateFilterGroups(
   for (const group of groups) {
     if (out.length >= limit) break;
     if (group.rules.length === 0) continue;
-    const remaining = limit - out.length;
+    // Each group's OWN cap is the full `limit`, not `limit - out.length` —
+    // review (PR #4987) caught that a shrinking per-group cap can underfill
+    // the union: if THIS group's first N matches all duplicate ones an
+    // earlier group already returned, capping it at the (small) remaining
+    // budget stops the scan before its later, actually-unique matches are
+    // ever reached. The outer `out.length >= limit` check above still skips
+    // whole groups once the union is already full, and the inner loop below
+    // still stops appending once it is; the only change is that a later
+    // group may now be asked to find more candidates than strictly remain,
+    // which costs some extra scanning but never drops a real match.
     const groupOut = evaluateFilterRules(modelId, store, group.rules, group.combinator, {
       ...options,
-      limit: remaining,
+      limit,
     });
     for (const el of groupOut) {
       const key = groupKey(el);
@@ -94,14 +103,43 @@ export async function evaluateFilterGroupsFederated(
   const limit = options.limit ?? DEFAULT_LIMIT;
   const seen = new Set<string>();
   const out: FilteredElement[] = [];
+  // A single-use candidate iterable (a generator, say) would be exhausted
+  // by the first group's call and come back empty for every later one —
+  // review (PR #4987). Materialize each model's candidates ONCE, up front,
+  // so every group's `evaluateFilterRulesFederated` call gets its own fresh
+  // pass over the same (now-array) candidate set.
+  const candidatesByModel = options.candidateExpressIdsByModel
+    ? new Map([...options.candidateExpressIdsByModel].map(([id, c]) => [id, [...c]] as const))
+    : undefined;
+  // Accumulate `scanned` ACROSS groups rather than handing each group's raw
+  // per-group progress straight through — review (PR #4987) caught that
+  // without this, a multi-group run's progress bar reached 100% at the end
+  // of group 1 and then reset to 0% when group 2 started. `total` is
+  // reported as -1 (unknown) for the whole multi-group run: the UI's own
+  // progress renderer already has an unknown-total mode (a plain "scanned
+  // N" count, no bar) for exactly this case, rather than a bar this
+  // function would otherwise have to guess a cross-group total for.
+  let scannedSoFar = 0;
   for (const group of groups) {
     if (out.length >= limit) break;
     if (group.rules.length === 0) continue;
-    const remaining = limit - out.length;
+    let lastGroupScanned = 0;
+    // See the sync entry above (`evaluateFilterGroups`) for why this is
+    // `limit`, not `limit - out.length`: a shrinking per-group cap can
+    // underfill the union when a later group's early matches duplicate an
+    // earlier group's.
     const groupOut = await evaluateFilterRulesFederated(models, group.rules, group.combinator, {
       ...options,
-      limit: remaining,
+      candidateExpressIdsByModel: candidatesByModel,
+      limit,
+      onProgress: options.onProgress
+        ? (scanned) => {
+            lastGroupScanned = scanned;
+            options.onProgress!(scannedSoFar + scanned, -1);
+          }
+        : undefined,
     });
+    scannedSoFar += lastGroupScanned;
     for (const el of groupOut) {
       const key = groupKey(el);
       if (seen.has(key)) continue;

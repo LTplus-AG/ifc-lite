@@ -97,7 +97,6 @@
   "apps/viewer/src/components/viewer/PointCloudLegend.tsx": 8,
   "apps/viewer/src/components/viewer/PointCloudPanel.tsx": 19,
   "apps/viewer/src/components/viewer/PropertiesPanel.tsx": 41,
-  "apps/viewer/src/components/viewer/PropertyEditor.tsx": 123,
   "apps/viewer/src/components/viewer/RoomPanel.tsx": 22,
   "apps/viewer/src/components/viewer/SaveMarkupToModelButton.tsx": 1,
   "apps/viewer/src/components/viewer/ScanSectionPanel.tsx": 16,

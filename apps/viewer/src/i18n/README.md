@@ -113,6 +113,14 @@ annotation tools and guidance, export/print prompts, generation/error states,
 empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
 phase text and IFC/DXF data remain supplied by their owning systems.
 
+The property-editor catalogue (#4918 editor-workflow slice) covers
+`PropertyEditor.tsx`: inline value and type editing, scope confirmation,
+property/quantity/classification/material authoring dialogs, class
+reassignment, its pending badge, and undo/redo chrome
+(`property-editor.en.ts`). Runtime IFC entity, property, quantity, and enum
+names remain exact schema data; common material category display labels are
+translated without changing their stored values.
+
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
 `GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,

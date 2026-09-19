@@ -13,6 +13,7 @@ import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
+import { propertyEditorEn } from './catalogues/property-editor.en';
 import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
@@ -34,6 +35,7 @@ export const en = {
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...mainToolbarEn,
+  ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
   ...ganttWorkCalendarEn,

@@ -29,6 +29,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { PropertyEditor } from './PropertyEditor.js';
 import { toast } from '@/components/ui/toast';
+import { registerLocale, setLocale } from '@/i18n';
 
 const MODEL_ID = 'model-a';
 const ENTITY_ID = 42;
@@ -128,6 +129,7 @@ describe('PropertyEditor — Real/Integer parse guard (commitSave)', () => {
   afterEach(() => {
     cleanup();
     if (originalToastError) toast.error = originalToastError;
+    setLocale('en');
   });
 
   function spyToastError() {
@@ -140,12 +142,17 @@ describe('PropertyEditor — Real/Integer parse guard (commitSave)', () => {
 
   it('does not write 0 for a non-numeric Real edit; blocks the save with an error', async () => {
     spyToastError();
+    registerLocale('property-editor-parse-pseudo', {
+      'propertyEditor.inline.invalid': 'INVALID {type}: {value}',
+      'propertyEditor.valueType.real': 'Localized real',
+    });
+    setLocale('property-editor-parse-pseudo');
     const view = seedStore();
     const container = render(
       <PropertyEditor modelId={MODEL_ID} entityId={ENTITY_ID} psetName={PSET} propName={PROP} currentValue={null} />,
     );
 
-    const { save } = await typeThenSwitchType(container, 'abc', 'Real');
+    const { save } = await typeThenSwitchType(container, 'abc', 'Localized real');
     click(save);
     await advance(0);
 
@@ -155,7 +162,7 @@ describe('PropertyEditor — Real/Integer parse guard (commitSave)', () => {
       'a non-numeric Real entry must not write a fabricated 0',
     );
     assert.equal(toastMessages.length, 1, 'an error must be surfaced to the user');
-    assert.match(toastMessages[0], /not a valid Real value/);
+    assert.equal(toastMessages[0], 'INVALID Localized real: abc');
   });
 
   it('does not write 0 for a non-numeric Integer edit; blocks the save with an error', async () => {

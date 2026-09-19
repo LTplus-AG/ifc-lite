@@ -17,7 +17,7 @@ import { crc32, formatCRC32TableLiteral } from './crc32.js';
 import { getInheritanceChain } from './express-parser.js';
 import { generateSchemaQueries } from './rust-schema-queries.js';
 import { generateTypeNameParser } from './rust-type-name-parser.js';
-import { mergeTypeUniverse } from './rust-type-universe.js';
+import { mergeTypeUniverse } from './schema-hierarchy.js';
 
 export interface RustGeneratedCode {
   typeIds: string;

@@ -21,7 +21,7 @@ import { generateTypeIds } from './type-ids-generator.js';
 import { generateSerializers } from './serialization-generator.js';
 import { generateRust, type RustGeneratedCode } from './rust-generator.js';
 import { findCollisions } from './crc32.js';
-import { entityCatalogSchema } from './rust-type-universe.js';
+import { entityCatalogSchema } from './schema-hierarchy.js';
 
 export interface FullGeneratedCode extends GeneratedCode {
   typeIds: string;

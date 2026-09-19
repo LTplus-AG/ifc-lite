@@ -87,14 +87,17 @@ pub struct Mesh {
     /// real "already welded?" answer `build_mesh_data` today INFERS (#4122).
     pub welded_in_object_frame: bool,
     /// Per-triangle kernel-f64 supporting planes (issue #3914), 1:1 with
-    /// `indices.chunks_exact(3)` when `Some`. Set only by
-    /// `kernel::mesh_bridge::tris_to_mesh`, the boolean kernel's direct
-    /// output. Every constructor/weld/merge/transform that changes triangle
-    /// count, order, or position — i.e. everything but `tris_to_mesh` itself —
-    /// MUST leave this `None` (mirrors `instance_meta`'s "no longer canonical"
-    /// contract): a stale tag pointing at the wrong post-edit triangle would
-    /// silently mis-bucket `consolidate_coplanar`. `None` is always safe;
-    /// callers fall back to today's geometric re-derivation.
+    /// `indices.chunks_exact(3)` when `Some`. Carried by direct kernel union
+    /// output so `consolidate_coplanar` can repair a plane bucket split caused
+    /// by the f64-to-f32 cast. Difference and intersection outputs deliberately
+    /// leave this `None`: they can become operands of later booleans, where
+    /// merging their intermediate plane buckets changes subsequent cuts
+    /// (#5012). Every constructor/weld/merge/transform that changes triangle
+    /// count, order, or position MUST also leave this `None` (mirrors
+    /// `instance_meta`'s "no longer canonical" contract): a stale tag pointing
+    /// at the wrong post-edit triangle would silently mis-bucket
+    /// `consolidate_coplanar`. `None` is always safe; callers fall back to the
+    /// geometric re-derivation.
     pub plane_tags: Option<Vec<PlaneTag>>,
 }
 

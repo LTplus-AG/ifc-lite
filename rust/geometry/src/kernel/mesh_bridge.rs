@@ -89,10 +89,18 @@ fn face_plane(t: &Tri) -> ([f64; 3], f64) {
 /// Also tags every output triangle with its f64 supporting plane
 /// ([`PlaneTag`], issue #3914) — the exact plane this function's own f64
 /// arithmetic derived, before the `positions`/`normals` f32 cast below loses
-/// precision. This is the ONLY producer of `Mesh::plane_tags`: every other
-/// mesh-building/editing path leaves it `None`, so `consolidate_coplanar`
-/// only trusts a plane identity that came straight from the kernel.
+/// precision. Union output carries the tags through this entry point;
+/// difference/intersection output uses [`tris_to_mesh_without_plane_tags`]
+/// because its consolidated result can become another boolean operand (#5012).
 pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
+    tris_to_mesh_impl(tris, true)
+}
+
+fn tris_to_mesh_without_plane_tags(tris: &[Tri]) -> Mesh {
+    tris_to_mesh_impl(tris, false)
+}
+
+fn tris_to_mesh_impl(tris: &[Tri], carry_plane_tags: bool) -> Mesh {
     use crate::mesh::PlaneTag;
     let mut m = Mesh::with_capacity(tris.len() * 3, tris.len() * 3);
     let mut tags = Vec::with_capacity(tris.len());
@@ -108,7 +116,9 @@ pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
         m.indices.extend_from_slice(&[base, base + 1, base + 2]);
         tags.push(PlaneTag { n: n64, d: d64 });
     }
-    m.plane_tags = Some(tags);
+    if carry_plane_tags {
+        m.plane_tags = Some(tags);
+    }
     m
 }
 
@@ -157,7 +167,7 @@ pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh) -> (Mesh, bool) {
     promote_cutter_verts_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
     let (tris, changed) = difference_all_lenient(&h, &[&c]);
-    (tris_to_mesh(&tris), changed)
+    (tris_to_mesh_without_plane_tags(&tris), changed)
 }
 
 /// What [`subtract_many`] made of a cutter group.
@@ -181,7 +191,7 @@ impl BatchSubtract {
     /// `Cut` when the classifier changed the host, `Unchanged` otherwise.
     fn classified(tris: &[Tri], changed: bool) -> Self {
         if changed {
-            Self::Cut(tris_to_mesh(tris))
+            Self::Cut(tris_to_mesh_without_plane_tags(tris))
         } else {
             Self::Unchanged
         }
@@ -334,7 +344,7 @@ pub fn intersection_tris(a: &Mesh, b: &Mesh) -> Vec<Tri> {
 
 /// `a ∩ b` as a `Mesh`.
 pub fn intersection(a: &Mesh, b: &Mesh) -> Mesh {
-    tris_to_mesh(&intersection_tris(a, b))
+    tris_to_mesh_without_plane_tags(&intersection_tris(a, b))
 }
 
 #[cfg(test)]

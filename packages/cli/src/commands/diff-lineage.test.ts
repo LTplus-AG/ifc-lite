@@ -110,6 +110,20 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     expect(lineage.keyProperty).toBe('Tag');
   });
 
+  it('falls back on both files when only the second has a duplicate authored key (#5005 review)', async () => {
+    await writeFile(headPath, HEAD_MODEL.replace("'tagB'", "'tagA'"), 'utf-8');
+    await contentDiffCommand({ basePath, headPath, keyFrom: 'Tag', json: true });
+
+    const result = stdoutJson();
+    expect(result.duplicateAuthoredKeys).toEqual(['tagA']);
+    const keys = result.contentMatches.flatMap((match: { base: string[]; head: string[] }) => [
+      ...match.base,
+      ...match.head,
+    ]);
+    expect(keys).toContain(guid('OLDA'));
+    expect(keys).not.toContain('prop:tagA');
+  });
+
   it('rejects a malformed --key-from', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('exit');

@@ -101,6 +101,22 @@ describe('compareSlice - plain UI setters', () => {
     assert.equal(slice.get().compareShowUnchanged, true);
   });
 
+  it('changing the authored-key scheme retires results computed under the old scheme (#5005 review)', () => {
+    const slice = makeSlice();
+    slice.get().setCompareResult(fakeResult({ keyProperty: undefined }));
+    slice.get().setCompareRunning(true);
+    slice.get().setCompareError('old run');
+    slice.get().setCompareSelectedKey('OLD');
+
+    slice.get().setCompareKeyProperty('Tag');
+
+    assert.equal(slice.get().compareKeyProperty, 'Tag');
+    assert.equal(slice.get().compareResult, null);
+    assert.equal(slice.get().compareRunning, false);
+    assert.equal(slice.get().compareError, null);
+    assert.equal(slice.get().compareSelectedKey, null);
+  });
+
   it('setCompareSelectedKey sets and clears the highlighted row', () => {
     const slice = makeSlice();
     slice.get().setCompareSelectedKey('GUID-123');

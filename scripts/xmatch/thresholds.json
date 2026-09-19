@@ -62,12 +62,9 @@
     "  bySplit.precision                  0.363636 -> 1        (F5 fixed)",
     "  bySuccessorConfidence.position.precision 0.416667 -> 1 (F6 fixed)",
     "  falseSuccessors.insertedNearby     7 -> 0               (F6; ceiling back to 0)",
-    "  bySuccessor.position.recall        0.166667 -> 0.333333 duplex (F4 fixed;",
-    "      the rest is F6's size check refusing a donor of a different size)",
-    "  corpus.bySuccessor.position.recall 0.5 (unchanged: 4 duplex + 2 rvt01",
-    "      swaps onto much larger/smaller donors, correctly refused)",
-    "Still below target: bySuccessor.position.recall (floor 0.313 duplex-bound,",
-    "corpus 0.48 vs 0.6) and bySuccessor.footprint.kindAgreement 0.857143 on",
+    "  bySuccessor.position.recall        0.166667 -> 0.833333 duplex (F4/F6 fixed)",
+    "  corpus.bySuccessor.position.recall 0.5 -> 0.916667",
+    "Still below target: bySuccessor.footprint.kindAgreement 0.857143 on",
     "rvt01 (stacked-finish uniqueness margin). Every other new stratum is 1.0."
   ],
   "margin": 0.02,
@@ -93,12 +90,23 @@
     },
     "bySuccessor": {
       "footprint": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.837 },
-      "position": { "recall": 0.313, "precision": 0.98, "kindAgreement": 0.98 }
+      "position": {
+        "$comment": "Ratcheted 2026-09-19 (post-#4995 rebase, floors only rise): duplex 5/6=0.833333 (worst populated pair), floor = baseline - 0.02 margin. Measured on the SAME AABB-based donor filter main's own 0.313 floor predates.",
+        "recall": 0.813333,
+        "precision": 0.98,
+        "kindAgreement": 0.98
+      }
     },
     "bySuccessorConfidence": {
       "precision": { "footprint": 0.98, "position": 0.98 }
     },
     "bySplit": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.98 },
+    "byMerge": {
+      "$comment": "Ratcheted 2026-09-19 (post-#4995 rebase, issue #4989): rvt01 is the only populated pair (duplex's rectangle-owner pool is spoken for by splitLength+insertedNearby): 8/8/8/8, recall 1, precision 1, kindAgreement 1 (all verified). baseline >= target, floor = max(target, baseline - margin).",
+      "recall": 0.98,
+      "precision": 0.98,
+      "kindAgreement": 0.98
+    },
     "byClass": {
       "prismatic": { "recall": 0.85, "precision": 0.98 },
       "curved": { "recall": 0.98, "precision": 0.98 },
@@ -138,6 +146,7 @@
       "thickened": 20,
       "swapped": 10,
       "splitLength": 10,
+      "merged": 8,
       "insertedNearby": 10
     },
     "tierPairs": {
@@ -156,9 +165,18 @@
       "agreement": 0.98
     },
     "bySplit": { "precision": 0.98, "recall": 0.98 },
+    "byMerge": {
+      "$comment": "Ratcheted 2026-09-19 (post-#4995 rebase): corpus recall 8/8=1, precision 8/8=1; baseline >= target, floor = max(target, baseline - 0.02 margin).",
+      "precision": 0.98,
+      "recall": 0.98
+    },
     "bySuccessor": {
       "footprint": { "recall": 0.98, "precision": 0.98 },
-      "position": { "recall": 0.48, "precision": 0.98 }
+      "position": {
+        "$comment": "Ratcheted 2026-09-19 (post-#4995 rebase, floors only rise): corpus recall 11/12=0.916667; floor = baseline - 0.02 margin.",
+        "recall": 0.896667,
+        "precision": 0.98
+      }
     },
     "falseSuccessors": { "insertedNearby": 0, "neighbourSuccessor": 0 }
   },
@@ -196,6 +214,11 @@
       "precision": { "footprint": 0.98, "position": 0.98 }
     },
     "bySplit": { "recall": 0.8, "precision": 0.98, "kindAgreement": 0.9 },
+    "byMerge": {
+      "recall": 0.8,
+      "precision": 0.98,
+      "kindAgreement": 0.9
+    },
     "negativeControls": {
       "successorInsertedNearby": 0,
       "neighbourSuccessor": 0,

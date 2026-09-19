@@ -148,6 +148,59 @@ describe('lineageFromDiff', () => {
     expect(lineageFromDiff(second, { aliasReasons: reasons })).toEqual(lineage);
     expect(lineageFromDiff(second)[0].reason).toBe('alias:replayed');
   });
+
+  it('classifies a replayed alias by reason PREFIX: successor: -> replaced, anything else -> identity', () => {
+    const base = [entity({ key: 'OLD', aabb: WHOLE })];
+    const head = [entity({ key: 'NEW', aabb: WHOLE })];
+    const diff = diffModels(base, head, { keyAliases: new Map([['NEW', 'OLD']]) });
+    expect(diff.appliedKeyAliases).toEqual(new Map([['NEW', 'OLD']]));
+
+    const replaced = lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'successor:position']]),
+    });
+    expect(replaced).toEqual([
+      { base: ['OLD'], head: ['NEW'], relation: 'replaced', reason: 'successor:position' },
+    ]);
+
+    const stillIdentity = lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'accepted:ambiguous']]),
+    });
+    expect(stillIdentity).toEqual([
+      { base: ['OLD'], head: ['NEW'], relation: 'identity', reason: 'accepted:ambiguous' },
+    ]);
+  });
+
+  it('preserves an incoming lineage relation even when its free-form reason suggests the opposite (#5005 review)', () => {
+    const diff = diffModels(
+      [entity({ key: 'OLD', aabb: WHOLE })],
+      [entity({ key: 'NEW', aabb: WHOLE })],
+      { keyAliases: new Map([['NEW', 'OLD']]) },
+    );
+    expect(lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'successor:hand-written']]),
+      aliasRelations: new Map([['NEW', 'identity']]),
+    })[0]).toMatchObject({ relation: 'identity', reason: 'successor:hand-written' });
+    expect(lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'reviewed replacement']]),
+      aliasRelations: new Map([['NEW', 'replaced']]),
+    })[0]).toMatchObject({ relation: 'replaced', reason: 'reviewed replacement' });
+  });
+
+  it('round-trips a replaced entry through keyAliasesFromLineage -> diffModels -> lineageOfDiff, byte-identical', () => {
+    const base = [entity({ key: 'OLD', aabb: WHOLE })];
+    const head = [entity({ key: 'NEW', aabb: WHOLE })];
+    const first: LineageEntry[] = [
+      { base: ['OLD'], head: ['NEW'], relation: 'replaced', reason: 'successor:position' },
+    ];
+    const aliases = keyAliasesFromLineage(first);
+    expect(aliases).toEqual(new Map([['NEW', 'OLD']]));
+
+    const reasons = new Map(first.map((e) => [e.head[0], e.reason]));
+    const replayed = diffModels(base, head, { keyAliases: aliases });
+    const { entries: second } = lineageOfDiff(replayed, { aliasReasons: reasons });
+    expect(second).toEqual(first);
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
 });
 
 describe('keyAliasesFromLineage', () => {
@@ -221,11 +274,19 @@ describe('lineage sidecar', () => {
 
   it('round-trips, sorted and byte-stable, with the key scheme pinned and the deleted list sorted', () => {
     const sidecar = createLineageSidecar({ ...models, entries, keyProperty: 'Pset_Asset.AssetId', deleted: ['z', 'y', 'z'] });
+    expect(sidecar.version).toBe(2);
     expect(sidecar.entries.map((e) => e.base[0])).toEqual(['a', 'w']);
     expect(sidecar.deleted).toEqual(['y', 'z']);
     const text = serializeLineageSidecar(sidecar);
     expect(serializeLineageSidecar(createLineageSidecar({ ...models, entries: [...entries].reverse(), keyProperty: 'Pset_Asset.AssetId', deleted: ['y', 'z'] }))).toBe(text);
     expect(parseLineageSidecar(text)).toEqual(sidecar);
+    // Before keyed lineage gained version 2, the released writer emitted this
+    // exact version-1-plus-keyProperty shape. Keep reading those artifacts,
+    // while createLineageSidecar upgrades all newly written keyed files to v2.
+    expect(parseLineageSidecar(text.replace('"version": 2', '"version": 1'))).toEqual({ ...sidecar, version: 1 });
+    const plain = createLineageSidecar({ ...models, entries });
+    expect(plain.version).toBe(1);
+    expect(() => parseLineageSidecar(serializeLineageSidecar(plain).replace('"version": 1', '"version": 2'))).toThrow(/requires keyProperty/);
     expect(text.endsWith('\n')).toBe(true);
   });
 

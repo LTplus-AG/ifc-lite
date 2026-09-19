@@ -6,6 +6,7 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
+import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
 import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
@@ -45,6 +46,7 @@ export const en = {
   ...documentMenuEn,
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
+  ...compareKeyPropertyEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

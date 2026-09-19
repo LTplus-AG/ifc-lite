@@ -548,12 +548,14 @@ Each entry is `{ base: string[], head: string[], relation, reason, shares? }` wi
 
 | `relation` | source | arity |
 |---|---|---|
-| `identity` | a content match the engine committed to, or an alias the diff was run with (carried forward so a replayed lineage does not erode) | 1:1 |
+| `identity` | a content match the engine committed to, or an alias the diff was run with whose reason is not a successor's (carried forward so a replayed lineage does not erode) | 1:1 |
 | `split` | `ModelDiff.splitMerges`, reason `split:<confidence>` | 1:k |
 | `merge` | `ModelDiff.splitMerges`, reason `merge:<confidence>` | k:1 |
-| `replaced` | successor claims passed in as **accepted**, reason `successor:<confidence>` | 1:1 |
+| `replaced` | successor claims passed in as **accepted** (reason `successor:<confidence>`), and any alias replayed from one | 1:1 |
 
 `shares` — each piece's fraction of the pieces' total volume, in key order — is present only when every piece carried a proved volume (never on an `extent` claim). Every key appears in at most one entry per side; the engine guarantees that by construction, and the sidecar refuses a document where it does not hold.
+
+**The explicit lineage relation wins on replay.** A version-1 lineage already permits a free-form `reason`, so `--lineage-in` carries both its `relation` and provenance forward without trying to infer one from the other. An identity map has no relation field; only there does the reason prefix supply the missing distinction: `successor:` becomes `replaced`, while `content-match:*`, `accepted:ambiguous`, `alias:replayed`, or another reason becomes `identity`. This keeps both `--accept m --lineage-out l` followed by `--lineage-in l --lineage-out l` and hand-written valid v1 lineages byte-stable.
 
 A lineage records *changes*. A key it does not mention was either matched by key (unchanged) or deleted with nothing to carry it forward, and only the sidecar's `deleted` list can tell the two apart: `lineageOfDiff` returns both, `rekeyByLineage` passes an unmentioned key through as `unchanged` unless the list names it, and a lineage handed over without the list loses no row.
 
@@ -561,7 +563,7 @@ A lineage records *changes*. A key it does not mention was either matched by key
 
 ### The lineage sidecar
 
-`createLineageSidecar` / `serializeLineageSidecar` / `parseLineageSidecar` define `ifc-lite/lineage` version 1, pinned to both model digests exactly like the identity-map sidecar and checked by `lineageSidecarMismatches` before anything is applied. Both sidecars also record an optional `keyProperty` — the authored key scheme the keys were taken under, absent meaning GlobalId — and report a scheme mismatch like a digest mismatch, because a GlobalId-keyed map replayed under an authored key would otherwise apply nothing, silently. An identity map carrying a `keyProperty` is written as **version 2**, so a version-1 reader (which ignores unknown fields and would apply the entries under GlobalId) refuses it outright; a map without one stays version 1, byte-identical to before.
+`createLineageSidecar` / `serializeLineageSidecar` / `parseLineageSidecar` define `ifc-lite/lineage`, pinned to both model digests exactly like the identity-map sidecar and checked by `lineageSidecarMismatches` before anything is applied. Both sidecars also record an optional `keyProperty` — the authored key scheme the keys were taken under, absent meaning GlobalId — and report a scheme mismatch like a digest mismatch, because a GlobalId-keyed artifact replayed under an authored key would otherwise apply nothing, silently. An identity map or lineage carrying a `keyProperty` is written as **version 2**, so a version-1 reader (which ignores unknown fields and would apply the entries under GlobalId) refuses it outright; an artifact without one stays version 1, byte-identical to before.
 
 ## CLI usage
 
@@ -590,7 +592,7 @@ ifc-lite diff model-v1.ifc model-v2.ifc --json
 | `--key-from <Tag\|Pset.Prop>` | Compare on an authored identifier instead of GlobalId (implies `--by-content`) |
 | `--lineage-out <file>` | Write the lineage this run establishes (implies `--by-content`) |
 | `--lineage-in <file>` | Replay a lineage's 1:1 entries as key aliases and carry it forward (implies `--by-content`) |
-| `--accept <map.json>` | Fold a reviewed identity map into the lineage as `replaced` entries |
+| `--accept <map.json>` | Fold reviewed claims into lineage: `successor:*` reasons become `replaced`; other accepted identities become `identity` |
 | `--json` | JSON output |
 
 Without `--by-entity`, the command reports the schema, entity count, entity-count delta, and the per-type differences (sorted by the size of the delta). With `--by-entity` it adds the count of GlobalIds added, removed, and common between the two files.
@@ -642,7 +644,7 @@ ifc-lite rekey costs.csv --lineage lineage.json --key-column GlobalId --out cost
 
 An entity carrying a non-empty, unique value is keyed `prop:<value>`; every other entity keeps its GlobalId. A value two entities share is refused for both (they fall back to GlobalId and the command warns), because a key that names two things is not a key. The identity map and the lineage both record the scheme they were written under (`keyProperty`), and replaying either under a different scheme is refused like a digest mismatch — a GlobalId-keyed map under `--key-from` would otherwise apply nothing, silently.
 
-`--lineage-out` writes the [lineage](#lineage-and-rekeying-external-data) this run established; `--lineage-in` replays its 1:1 entries as aliases and carries the rest forward, so `--lineage-in x --lineage-out x` is a stable round trip. `--accept` takes an identity-map sidecar a human wrote or exported after reviewing the viewer's successor suggestions, and folds each claim whose pair is still an add plus a delete into the lineage as `replaced`. The successor and split/merge stages themselves need geometry and do not run on this path (see #4956).
+`--lineage-out` writes the [lineage](#lineage-and-rekeying-external-data) this run established; `--lineage-in` replays its 1:1 entries as aliases and carries the rest forward, so `--lineage-in x --lineage-out x` is a stable round trip. `--accept` takes an identity-map sidecar a human wrote or exported after review and folds each claim whose pair is still an add plus a delete into the lineage. Because an identity map has no relation field, the reason supplies the distinction: `successor:*` becomes `replaced`, while `accepted:ambiguous` and other accepted identity reasons become `identity`. The successor and split/merge stages themselves need `--geometry` to produce anything on this path (see [`--geometry`, `--split-merge`, `--successors`](#-geometry-split-merge-successors) above) — pass `--geometry --split-merge --successors` alongside `--accept`/`--lineage-out` to have this run derive its own split/merge and successor claims instead of only replaying what an earlier run recorded.
 
 `ifc-lite rekey` applies a lineage to a CSV or JSON table: each row keyed on an old key is rewritten to its successor(s) under `--policy copy-to-all` (default), `largest-share` or `orphan-on-split`, with `lineage_relation` and `lineage_from` columns recording what happened; rows with nowhere to go are written to `--orphans` rather than dropped.
 
@@ -734,6 +736,14 @@ What you see when a match is found:
 | report (CSV/JSON) | one row per B element, `Change` = `Renamed` / `Moved` / `Reshaped` / `Respecified`, with the counterpart's GlobalId in `MatchedGlobalId` when the match is exactly 1:1 | the existing add/delete rows gain the group kind in the `Match` column — no row is duplicated |
 
 The report's `counts` gained `matched` and `needsReview` for the same reason the badge exists: a retiring match lowers `added` and `deleted`, and a reader who cannot see why would take the lower numbers at face value. `Match` and `MatchedGlobalId` are appended after `Model`, so a consumer reading the first six CSV columns positionally is unaffected.
+
+### Comparing on an authored key
+
+The run controls also carry a **Key on** field, next to the content-matching checkbox: an authored `Tag` or `Pset.Property` to compare on instead of GlobalId (see [Authored keys](#authored-keys-lineage-and-rekey) for the same spec on the CLI's `--key-from`). Leave it empty for the default, GlobalId. An entity carrying a non-empty, unique value under the spec is keyed `prop:<value>`; every other entity — and every entity when the value collides between two or more elements — keeps its GlobalId, and the panel shows a note naming the first few colliding values so a real collision is easy to tell apart from a blank sentinel repeated across the model.
+
+Because the key scheme decides what a fingerprint's identity even *is*, changing it re-extracts both sides rather than re-running the cheap in-place re-diff a scope or blacklist change gets — press **Run comparison** again after changing it. An invalid spec (anything that is not `Tag` or `Pset.Property`) shows an inline note and is never applied; the panel keeps comparing under whatever scheme was last valid.
+
+Suggestions accepted, identity maps exported/imported, and telemetry are all scoped to the scheme the run used: an identity map exported under an authored key writes the sidecar's `keyProperty` field (format version 2), and an import is refused — with the mismatch shown — unless the panel's current scheme matches exactly, GlobalId included. A pair accepted while comparing on GlobalId does not silently reappear once the panel is keyed on `Pset_Asset.AssetId`; it has to be reviewed again under the new scheme.
 
 ### Suggestions and accepting identity
 

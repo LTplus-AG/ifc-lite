@@ -11,10 +11,17 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  createIdentityMapSidecar,
+  createLineageSidecar,
+  diffModels,
+  serializeLineageSidecar,
+} from '@ifc-lite/diff';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { diffPositionals } from './diff.js';
 import { contentDiffCommand } from './diff-content.js';
 import { buildFileFingerprints, modelIdentityOf } from './diff-engine.js';
+import { mergeLineage } from './diff-lineage-io.js';
 import { parseCsv, rekeyCommand, serializeCsv } from './rekey.js';
 import { loadIfcBytes } from '../loader.js';
 import { BASE_MODEL, HEAD_MODEL, guid, model } from './diff-test-helpers.js';
@@ -62,6 +69,43 @@ describe('buildFileFingerprints with an authored key', () => {
   });
 });
 
+describe('mergeLineage alias provenance', () => {
+  it('takes an applied identity-map reason instead of an unreplayed merge reason (#5005 review)', () => {
+    const models = { base: { hash: 'sha256:base' }, head: { hash: 'sha256:head' } };
+    const incomingLineage = createLineageSidecar({
+      ...models,
+      entries: [{
+        base: ['A', 'B'],
+        head: ['C'],
+        relation: 'merge',
+        reason: 'merge:verified',
+      }],
+    });
+    const incomingMap = createIdentityMapSidecar({
+      ...models,
+      entries: [{ base: 'A', here: 'C', reason: 'successor:footprint' }],
+    });
+    const diff = diffModels(
+      [
+        { key: 'A', ifcType: 'IfcWall', dataHash: 'base-a', ref: 1 },
+        { key: 'B', ifcType: 'IfcWall', dataHash: 'base-b', ref: 2 },
+      ],
+      [{ key: 'C', ifcType: 'IfcWall', dataHash: 'head-c', ref: 3 }],
+      { keyAliases: new Map([['C', 'A']]) },
+    );
+
+    expect(mergeLineage(incomingLineage, incomingMap, diff, undefined)).toEqual({
+      entries: [{
+        base: ['A'],
+        head: ['C'],
+        relation: 'replaced',
+        reason: 'successor:footprint',
+      }],
+      deleted: ['B'],
+    });
+  });
+});
+
 describe('ifc-lite diff --key-from and the lineage loop', () => {
   let dir: string;
   let basePath: string;
@@ -99,6 +143,28 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     // matched by GlobalId — nothing is left for content matching.
     expect(result.counts).toMatchObject({ added: 0, deleted: 0 });
     expect(result.contentMatches).toEqual([]);
+  });
+
+  it('canonicalizes case-insensitive --key-from tag in output and persisted lineage (#5005 review)', async () => {
+    await contentDiffCommand({ basePath, headPath, keyFrom: ' tag ', lineageOut: lineagePath, json: true });
+
+    expect(stdoutJson().keyProperty).toBe('Tag');
+    const lineage = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(lineage.keyProperty).toBe('Tag');
+  });
+
+  it('falls back on both files when only the second has a duplicate authored key (#5005 review)', async () => {
+    await writeFile(headPath, HEAD_MODEL.replace("'tagB'", "'tagA'"), 'utf-8');
+    await contentDiffCommand({ basePath, headPath, keyFrom: 'Tag', json: true });
+
+    const result = stdoutJson();
+    expect(result.duplicateAuthoredKeys).toEqual(['tagA']);
+    const keys = result.contentMatches.flatMap((match: { base: string[]; head: string[] }) => [
+      ...match.base,
+      ...match.head,
+    ]);
+    expect(keys).toContain(guid('OLDA'));
+    expect(keys).not.toContain('prop:tagA');
   });
 
   it('rejects a malformed --key-from', async () => {
@@ -165,6 +231,140 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
       { base: [guid('OLDA')], head: [guid('NEWA')], relation: 'identity', reason: 'content-match:renamed' },
       { base: [guid('OLDB')], head: [guid('NEWB')], relation: 'replaced', reason: 'successor:footprint' },
     ]);
+  });
+
+  it('replays an accepted replaced entry byte-identical: --accept then --lineage-in --lineage-out', async () => {
+    await writeFile(headPath, HEAD_MODEL.replace("'Wall B'", "'Wall B (rebuilt)'"), 'utf-8');
+    const acceptPath = join(dir, 'accepted.json');
+    await writeFile(
+      acceptPath,
+      JSON.stringify({
+        format: 'ifc-lite/identity-map',
+        version: 1,
+        base: modelIdentityOf(basePath, await readFile(basePath)),
+        head: modelIdentityOf(headPath, await readFile(headPath)),
+        entries: [{ base: guid('OLDB'), here: guid('NEWB'), reason: 'successor:footprint' }],
+      }),
+      'utf-8',
+    );
+    await contentDiffCommand({ basePath, headPath, accept: acceptPath, lineageOut: lineagePath, json: true });
+    const first = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(first.entries).toContainEqual({
+      base: [guid('OLDB')],
+      head: [guid('NEWB')],
+      relation: 'replaced',
+      reason: 'successor:footprint',
+    });
+
+    // Replay: no --accept this time, just replaying the lineage the previous
+    // run wrote. The `replaced` entry must survive — the reason prefix alone
+    // carries the relation now that the alias is applied by key, not accepted.
+    const before = await readFile(lineagePath, 'utf-8');
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: lineagePath, json: true });
+    expect(await readFile(lineagePath, 'utf-8')).toBe(before);
+    const second = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(second.entries).toEqual(first.entries);
+  });
+
+  it('preserves a valid v1 lineage relation instead of re-inferring it from a free-form reason (#5005 review)', async () => {
+    await writeFile(headPath, HEAD_MODEL.replace("'Wall B'", "'Wall B (rebuilt)'"), 'utf-8');
+    const baseBytes = await readFile(basePath);
+    const headBytes = await readFile(headPath);
+    const sidecar = createLineageSidecar({
+      base: modelIdentityOf(basePath, baseBytes),
+      head: modelIdentityOf(headPath, headBytes),
+      entries: [{
+        base: [guid('OLDB')],
+        head: [guid('NEWB')],
+        relation: 'identity',
+        reason: 'successor:free-form-but-explicitly-identity',
+      }],
+    });
+    await writeFile(lineagePath, serializeLineageSidecar(sidecar), 'utf-8');
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: lineagePath, json: true });
+
+    const replayed = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(replayed.entries).toContainEqual(sidecar.entries[0]);
+  });
+
+  it('folds an accepted map replayed through --identity-in into the lineage as replaced, not identity', async () => {
+    // The applied alias comes from --identity-in this time (not from the
+    // engine's own content matching or a fresh --accept fold); the reason it
+    // carries is still `successor:...`, so it must still classify as
+    // `replaced` when written to --lineage-out.
+    await writeFile(headPath, HEAD_MODEL.replace("'Wall B'", "'Wall B (rebuilt)'"), 'utf-8');
+    const mapPath = join(dir, 'identity.json');
+    await writeFile(
+      mapPath,
+      JSON.stringify({
+        format: 'ifc-lite/identity-map',
+        version: 1,
+        base: modelIdentityOf(basePath, await readFile(basePath)),
+        head: modelIdentityOf(headPath, await readFile(headPath)),
+        entries: [{ base: guid('OLDB'), here: guid('NEWB'), reason: 'successor:footprint' }],
+      }),
+      'utf-8',
+    );
+    await contentDiffCommand({
+      basePath,
+      headPath,
+      accept: mapPath,
+      identityIn: mapPath,
+      lineageOut: lineagePath,
+      json: true,
+    });
+    const lineage = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(lineage.entries).toContainEqual({
+      base: [guid('OLDB')],
+      head: [guid('NEWB')],
+      relation: 'replaced',
+      reason: 'successor:footprint',
+    });
+  });
+
+  it('folds an accepted map by REASON, not uniformly: successor:* is replaced, accepted:ambiguous is identity (#4989 review)', async () => {
+    // Both walls renamed so content matching leaves BOTH as add + delete —
+    // room for two accepted entries carrying different reasons. An identity
+    // map is a human decision artifact either way; only a SUCCESSOR claim
+    // (footprint/position evidence) is a replacement, never a plain
+    // ambiguous-group pick — writing both `replaced` meant a viewer-exported
+    // map's `accepted:ambiguous` entries silently became `replaced` on
+    // `--accept`, then `identity` on the next `--lineage-in`/`--lineage-out`
+    // round trip (this file's OWN `relation` read back, not the reason).
+    await writeFile(
+      headPath,
+      HEAD_MODEL.replace("'Wall A'", "'Wall A (rebuilt)'").replace("'Wall B'", "'Wall B (rebuilt)'"),
+      'utf-8',
+    );
+    const acceptPath = join(dir, 'accepted.json');
+    await writeFile(
+      acceptPath,
+      JSON.stringify({
+        format: 'ifc-lite/identity-map',
+        version: 1,
+        base: modelIdentityOf(basePath, await readFile(basePath)),
+        head: modelIdentityOf(headPath, await readFile(headPath)),
+        entries: [
+          { base: guid('OLDA'), here: guid('NEWA'), reason: 'successor:footprint' },
+          { base: guid('OLDB'), here: guid('NEWB'), reason: 'accepted:ambiguous' },
+        ],
+      }),
+      'utf-8',
+    );
+    await contentDiffCommand({ basePath, headPath, accept: acceptPath, lineageOut: lineagePath, json: true });
+    const first = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(first.entries).toEqual([
+      { base: [guid('OLDA')], head: [guid('NEWA')], relation: 'replaced', reason: 'successor:footprint' },
+      { base: [guid('OLDB')], head: [guid('NEWB')], relation: 'identity', reason: 'accepted:ambiguous' },
+    ]);
+
+    // Round trip: replaying the SAME lineage as both --lineage-in and
+    // --lineage-out (no --accept this time) must reproduce it byte for byte.
+    const before = await readFile(lineagePath, 'utf-8');
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: lineagePath, json: true });
+    expect(await readFile(lineagePath, 'utf-8')).toBe(before);
+    const second = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(second.entries).toEqual(first.entries);
   });
 
   it('lists a bare deletion in the lineage so rekey can orphan exactly that row', async () => {

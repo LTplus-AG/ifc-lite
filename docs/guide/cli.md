@@ -883,12 +883,15 @@ Reports:
 |------|-------------|
 | `--by-entity` | Compare every `IfcObjectDefinition` by GlobalId (added / removed / common) |
 | `--by-content` | Per-entity comparison via the `@ifc-lite/diff` engine, pairing re-GUIDed elements by content |
+| `--geometry` | Run the wasm mesh pass and attach world geometry hashes/boxes/volumes (implies `--by-content`; falls back to data-only with a warning if the wasm runtime isn't built) |
+| `--split-merge` | Opt into the split/merge detector (implies `--by-content`; needs `--geometry` to produce claims) |
+| `--successors` | Opt into the successor-match detector (implies `--by-content`; needs `--geometry` to produce claims) |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims so those elements are matched by key (implies `--by-content`) |
 | `--key-from <Tag\|Pset.Prop>` | Key the comparison on an authored identifier instead of GlobalId (implies `--by-content`) |
 | `--lineage-out <file>` | Write the lineage this comparison establishes, for `rekey` (implies `--by-content`) |
 | `--lineage-in <file>` | Replay a lineage's one-to-one entries and carry the rest forward (implies `--by-content`) |
-| `--accept <map.json>` | Fold a reviewed identity map into the lineage as `replaced` entries |
+| `--accept <map.json>` | Fold reviewed claims into lineage: `successor:*` reasons become `replaced`; other accepted identities become `identity` |
 | `--json` | JSON output |
 
 Both comparison modes cover the same entities: every `IfcObjectDefinition` in the file. See [what gets compared](#what-gets-compared) below.
@@ -905,7 +908,7 @@ ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
 ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
 ```
 
-The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. This path compares **data only** — the CLI has no geometry pipeline — so every unambiguous match reports as `renamed`. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
+The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. Without `--geometry` this path compares **data only**, so every unambiguous match reports as `renamed`; add `--geometry` (and `--split-merge` / `--successors`) to attach world geometry and tell `moved`/`reshaped` apart, and to produce split/merge and successor claims. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
 
 `--identity-out` and `--lineage-out` refuse to write over either input model.
 

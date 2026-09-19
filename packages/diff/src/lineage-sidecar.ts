@@ -31,12 +31,15 @@ import {
 
 export const LINEAGE_SIDECAR_FORMAT = 'ifc-lite/lineage';
 export const LINEAGE_SIDECAR_VERSION = 1;
+/** A keyed lineage must use a version old readers reject; otherwise they can
+ * silently interpret authored keys as GlobalIds. */
+export const LINEAGE_SIDECAR_KEYED_VERSION = 2;
 
 const RELATIONS: ReadonlySet<string> = new Set<LineageRelation>(['identity', 'split', 'merge', 'replaced']);
 
 export interface LineageSidecar {
   format: typeof LINEAGE_SIDECAR_FORMAT;
-  version: typeof LINEAGE_SIDECAR_VERSION;
+  version: typeof LINEAGE_SIDECAR_VERSION | typeof LINEAGE_SIDECAR_KEYED_VERSION;
   base: ModelIdentity;
   head: ModelIdentity;
   created?: string;
@@ -98,7 +101,7 @@ export function createLineageSidecar(init: LineageSidecarInit): LineageSidecar {
 
   const sidecar: LineageSidecar = {
     format: LINEAGE_SIDECAR_FORMAT,
-    version: LINEAGE_SIDECAR_VERSION,
+    version: init.keyProperty !== undefined ? LINEAGE_SIDECAR_KEYED_VERSION : LINEAGE_SIDECAR_VERSION,
     base: normalizeModelIdentity(init.base),
     head: normalizeModelIdentity(init.head),
     entries,
@@ -175,7 +178,11 @@ export function validateLineageSidecar(value: unknown): string[] {
   const errors: string[] = [];
   const sidecar = value as Record<string, unknown>;
   if (sidecar.format !== LINEAGE_SIDECAR_FORMAT) errors.push(`format must be "${LINEAGE_SIDECAR_FORMAT}"`);
-  if (sidecar.version !== LINEAGE_SIDECAR_VERSION) errors.push(`version must be ${LINEAGE_SIDECAR_VERSION}`);
+  if (sidecar.version !== LINEAGE_SIDECAR_VERSION && sidecar.version !== LINEAGE_SIDECAR_KEYED_VERSION) {
+    errors.push(`version must be ${LINEAGE_SIDECAR_VERSION} or ${LINEAGE_SIDECAR_KEYED_VERSION}`);
+  } else if (sidecar.version === LINEAGE_SIDECAR_KEYED_VERSION && sidecar.keyProperty === undefined) {
+    errors.push(`version ${LINEAGE_SIDECAR_KEYED_VERSION} requires keyProperty`);
+  }
   for (const side of ['base', 'head'] as const) errors.push(...validateModelIdentity(sidecar[side], side));
   errors.push(...validateCreated(sidecar.created));
   errors.push(...validateKeyProperty(sidecar.keyProperty));

@@ -10,6 +10,7 @@
  */
 
 import { StoreEditor } from '@ifc-lite/mutations';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -50,11 +51,26 @@ import type {
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
+import { attributeNamesForStore } from '@/lib/collab/schema-attribute-names.js';
+import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
+import { entityForPath, pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
+  const claimedGlobalIds = new WeakMap<IfcDataStore, Map<number, string>>();
+
+  function initialRoomAttributes(dataStore: IfcDataStore, names: string[], values: unknown[]): Record<string, unknown> {
+    const attributes: Record<string, unknown> = {};
+    values.forEach((value, index) => {
+      const name = names[index];
+      if (name && name !== 'GlobalId' && value !== undefined) {
+        attributes[`bsi::ifc::prop::${name}`] = encodeRoomAttributeValue(dataStore, value);
+      }
+    });
+    return attributes;
+  }
 
   function resolveDataStore(modelId: string) {
     const state = store.getState();
@@ -77,27 +93,147 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     return editor;
   }
 
+  function assertCanEdit(operation: string): void {
+    if (!store.getState().canCollabEdit()) {
+      throw new Error(`bim.store.${operation}: collaboration is read-only for this participant`);
+    }
+  }
+
+  function mirrorCreatedEntity(
+    modelId: string,
+    editor: StoreEditor,
+    expressId: number,
+    dataStore: IfcDataStore,
+  ): void {
+    const entity = editor.getNewEntity(expressId);
+    if (!entity) return;
+    const names = attributeNamesForStore(dataStore, entity.type);
+    const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
+      ? entity.attributes[0]
+      : `ifc-lite-store-${crypto.randomUUID()}`;
+    const state = store.getState();
+    state.mirrorEntityCreate(
+      modelId,
+      expressId,
+      entity.type,
+      guid,
+      null,
+      initialRoomAttributes(dataStore, names, entity.attributes),
+    );
+  }
+
+  function ensureSourceRoomEntity(
+    modelId: string,
+    editor: StoreEditor,
+    expressId: number,
+    dataStore: IfcDataStore,
+  ): void {
+    if (pathForEntity(dataStore, expressId) || editor.getNewEntity(expressId) || dataStore.entities.getGlobalId(expressId)) return;
+    const entity = dataStore.getEntity?.(expressId);
+    if (!entity) return;
+    const names = attributeNamesForStore(dataStore, entity.type);
+    let roomKey = `ifc-lite-ref-${expressId}`;
+    let suffix = 0;
+    while (dataStore.entities.getExpressIdByGlobalId(roomKey) >= 0) {
+      roomKey = `ifc-lite-ref-${expressId}-${++suffix}`;
+    }
+    registerEntityPath(dataStore, expressId, pathForGuid(dataStore, roomKey));
+    for (const value of entity.attributes) ensureReferencedRoomEntities(modelId, editor, dataStore, value);
+    store.getState().mirrorEntityCreate(
+      modelId, expressId, entity.type, roomKey, null,
+      initialRoomAttributes(dataStore, names, entity.attributes),
+    );
+  }
+
+  function ensureReferencedRoomEntities(
+    modelId: string, editor: StoreEditor, dataStore: IfcDataStore, value: unknown,
+  ): void {
+    for (const expressId of referencedExpressIds(value)) {
+      ensureSourceRoomEntity(modelId, editor, expressId, dataStore);
+    }
+  }
+
+  function assertAvailableGlobalId(
+    operation: string, modelId: string, dataStore: IfcDataStore, expressId: number, globalId: string,
+  ): void {
+    const sourceOwner = dataStore.entities.getExpressIdByGlobalId(globalId);
+    const roomOwner = entityForPath(dataStore, pathForGuid(dataStore, globalId));
+    const localOwner = [...(claimedGlobalIds.get(dataStore)?.entries() ?? [])]
+      .find(([, claimed]) => claimed === globalId)?.[0];
+    if ((sourceOwner >= 0 && sourceOwner !== expressId)
+      || (roomOwner !== null && roomOwner !== expressId)
+      || (localOwner !== undefined && localOwner !== expressId)) {
+      throw new Error(`bim.store.${operation}: GlobalId "${globalId}" already exists in model "${modelId}"`);
+    }
+  }
+
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
+      assertCanEdit('addEntity');
       const normalizedId = normalizeMutationModelId(store.getState(), modelId);
       const editor = getEditor(modelId);
       if (!editor) {
         throw new Error(`bim.store.addEntity: no model loaded for id "${modelId}"`);
       }
+      const dataStore = resolveDataStore(modelId);
+      if (!dataStore) {
+        throw new Error(`bim.store.addEntity: no model loaded for id "${modelId}"`);
+      }
+      const names = attributeNamesForStore(dataStore, def.type);
+      const globalId = names[0] === 'GlobalId' && typeof def.attributes[0] === 'string'
+        ? def.attributes[0]
+        : null;
+      if (globalId) assertAvailableGlobalId('addEntity', modelId, dataStore, -1, globalId);
+      for (const value of def.attributes) ensureReferencedRoomEntities(modelId, editor, dataStore, value);
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
+      if (globalId) {
+        const claims = claimedGlobalIds.get(dataStore) ?? new Map<number, string>();
+        claims.set(ref.expressId, globalId); claimedGlobalIds.set(dataStore, claims);
+      }
+      mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
       return { modelId: normalizedId, expressId: ref.expressId };
     },
     removeEntity(ref: EntityRef): boolean {
+      assertCanEdit('removeEntity');
       const editor = getEditor(ref.modelId);
       if (!editor) return false;
-      return editor.removeEntity(ref.expressId);
+      const dataStore = resolveDataStore(ref.modelId);
+      if (!dataStore) return false;
+      ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
+      const removed = editor.removeEntity(ref.expressId);
+      if (removed) {
+        claimedGlobalIds.get(dataStore)?.delete(ref.expressId);
+        store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
+      }
+      return removed;
     },
     setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
+      assertCanEdit('setPositionalAttribute');
       const editor = getEditor(ref.modelId);
       if (!editor) {
         throw new Error(`bim.store.setPositionalAttribute: no model loaded for id "${ref.modelId}"`);
       }
+      const dataStore = resolveDataStore(ref.modelId);
+      const type = editor.getNewEntity(ref.expressId)?.type
+        ?? dataStore?.getEntity?.(ref.expressId)?.type
+        ?? dataStore?.entities.getTypeName(ref.expressId);
+      const name = type && dataStore ? attributeNamesForStore(dataStore, type)[index] : undefined;
+      if (name === 'GlobalId') {
+        throw new Error('bim.store.setPositionalAttribute: GlobalId is immutable in a shared room');
+      }
+      if (dataStore) {
+        ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
+        ensureReferencedRoomEntities(ref.modelId, editor, dataStore, value);
+      }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
+      if (name) {
+        store.getState().mirrorAttributeEdit(
+          ref.modelId,
+          ref.expressId,
+          `bsi::ifc::prop::${name}`,
+          dataStore ? encodeRoomAttributeValue(dataStore, value ?? null) : value ?? null,
+        );
+      }
     },
     addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
       const editor = getEditor(modelId);

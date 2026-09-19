@@ -12,12 +12,7 @@
  *                                                       │  (y-websocket)
  *   peer's Y.Doc update ─▶ observeDeep (txn.local=false) ─▶ apply to MutablePropertyView
  *
- * Entities are addressed by slot-qualified GUID path (`slotPath(slot, guid)`
- * — `/<slotId>/<guid>`, or the legacy `/<guid>` of a single-model room),
- * matching `seedFromStep` (#4444); the per-store expressId↔path registry
- * lives in `entity-paths.ts`. Inbound, the path itself names the slot, so the
- * observer resolves the store BY PATH and hands every handler the model the
- * edit belongs to. Inbound apply writes straight to the `MutablePropertyView`
+ * Slot-qualified GUID paths match `seedFromStep` (#4444); inbound paths select the model.
  * (not the slice's undo-tracked actions) so remote edits don't pollute the
  * local undo stack and can't echo back to the doc. The collab runtime is
  * injected (the module the caller already lazy-loaded) so this file pulls no
@@ -25,10 +20,13 @@
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
-import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import { entityForPath, pathForEntity } from './entity-paths';
+import { remoteEntityDefinition } from './remote-entity-definition';
+import { attributeNamesForStore } from './schema-attribute-names';
+import { decodeRoomAttributeValue } from './entity-reference-wire';
 
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
@@ -135,7 +133,7 @@ export function mirrorAttribute(
   const path = pathForEntity(store, entityId);
   if (!path || !api.hasEntity(session.doc, path)) return;
   session.transact(() => {
-    api.setAttribute(session.doc, path, attrName, toScalar(value));
+    api.setAttribute(session.doc, path, attrName, value);
   });
 }
 
@@ -216,14 +214,24 @@ export function applyRemoteAttribute(
   store: IfcDataStore,
   entityId: number,
   attrName: string,
-  value: ScalarValue,
+  value: unknown,
 ): void {
-  if (value === null) {
-    const index = getAttributeNamesAcrossSchemas(store.entities.getTypeName(entityId)).indexOf(attrName);
-    if (index >= 0) view.setPositionalAttribute(entityId, index, null);
+  const plainName = attrName.startsWith('bsi::ifc::prop::')
+    ? attrName.slice('bsi::ifc::prop::'.length)
+    : attrName;
+  const sourceType = store.entities.getTypeName(entityId);
+  const entityType = sourceType && sourceType !== 'Unknown'
+    ? sourceType
+    : view.getNewEntity(entityId)?.type ?? sourceType;
+  const index = attributeNamesForStore(store, entityType).indexOf(plainName);
+  if (index >= 0) {
+    const decoded = decodeRoomAttributeValue(store, value);
+    if (decoded.ok) {
+      view.setPositionalAttribute(entityId, index, decoded.value as Parameters<MutablePropertyView['setPositionalAttribute']>[2]);
+    }
     return;
   }
-  view.setAttribute(entityId, attrName, String(value));
+  if (value !== null && value !== undefined) view.setAttribute(entityId, plainName, String(value));
 }
 
 /**
@@ -238,7 +246,7 @@ export interface RemoteApplyHandlers {
   /** Apply a remote property deletion. */
   onPropertyDelete(modelId: string, entityId: number, pset: string, prop: string): void;
   /** Apply a remote attribute write. */
-  onAttribute(modelId: string, entityId: number, attrName: string, value: ScalarValue): void;
+  onAttribute(modelId: string, entityId: number, attrName: string, value: unknown): void;
   /**
    * Apply a remote placement (move / rotate) write. Receives the entity's full
    * new local placement decoded from `usd::xformop`; the handler reconciles it
@@ -248,6 +256,8 @@ export interface RemoteApplyHandlers {
   onPlacement?(modelId: string, entityId: number, placement: LocalPlacement): void;
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(modelId: string, entityId: number): void;
+  onEntityCreate?(target: RoomEntityTarget, entityPath: string, ifcClass: string,
+    attributes: Readonly<Record<string, unknown>>): void;
   /** The whole Pset vanished. Property names are unavailable by design: Yjs
    *  detaches the map before the event is observed, so `forEach` yields 0
    *  entries. The consumer drops the entire set for (entityId, pset). */
@@ -296,11 +306,15 @@ export function attachRemoteApply(
       // We only act on deletes here; additions are picked up by the recipient's
       // full reconstruct. `entityForPath` resolves the removed path's expressId.
       if (path.length === 0) {
-        if (!handlers.onEntityDelete) continue;
         for (const [entityPath, change] of ev.changes.keys) {
-          if (change.action !== 'delete') continue;
           const hit = resolve(entityPath);
           if (!hit) continue;
+          if (change.action === 'add' && handlers.onEntityCreate) {
+            const definition = remoteEntityDefinition(entities.get(entityPath));
+            if (definition) handlers.onEntityCreate(hit, entityPath, definition.ifcClass, definition.attributes);
+            continue;
+          }
+          if (change.action !== 'delete' || !handlers.onEntityDelete) continue;
           const id = entityForPath(hit.store, entityPath);
           if (id !== null) handlers.onEntityDelete(hit.modelId, id);
         }
@@ -326,7 +340,8 @@ export function attachRemoteApply(
             if (placement && handlers.onPlacement) handlers.onPlacement(modelId, entityId, placement);
             continue;
           }
-          handlers.onAttribute(modelId, entityId, attrName, toScalar(target.get(attrName)));
+          // Preserve structured IFC values; the mutation view validates them against the schema.
+          handlers.onAttribute(modelId, entityId, attrName, target.get(attrName));
         }
       } else if (path[1] === 'psets' && path.length === 3 && typeof path[2] === 'string') {
         const psetName = path[2];

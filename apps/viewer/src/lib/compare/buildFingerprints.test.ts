@@ -184,6 +184,35 @@ describe('buildEntityFingerprints - component sub-hashes (#1891)', () => {
   });
 });
 
+describe('buildEntityFingerprints - authored-key ownership (#5005 review)', () => {
+  it('refuses a product key also owned by an out-of-viewer-scope IfcTask', async () => {
+    const store = await storeFromStep([
+      "#1=IFCWALL('0aaaaaaaaaaaaaaaaaaaaa',$,'Wall',$,$,$,$,'wall-tag',.STANDARD.);",
+      "#2=IFCPROPERTYSINGLEVALUE('Key',$,IFCLABEL('SHARED'),$);",
+      "#3=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'Pset_Asset',$,(#2));",
+      "#4=IFCRELDEFINESBYPROPERTIES('0ccccccccccccccccccccc',$,$,$,(#1),#3);",
+      "#5=IFCTASK('0ddddddddddddddddddddd',$,'Task',$,$,$,$,'TASK-1',$,.F.,$,$,.CONSTRUCTION.);",
+      "#6=IFCPROPERTYSINGLEVALUE('Key',$,IFCLABEL('SHARED'),$);",
+      "#7=IFCPROPERTYSET('0eeeeeeeeeeeeeeeeeeeee',$,'Pset_Asset',$,(#6));",
+      "#8=IFCRELDEFINESBYPROPERTIES('0fffffffffffffffffffff',$,$,$,(#5),#7);",
+    ].join('\n'));
+    const duplicateAuthoredKeys = new Map<string, number[]>();
+    const built = await buildEntityFingerprints({
+      modelId: 'A',
+      store,
+      meshes: meshes(1, 7n),
+      idOffset: 0,
+      keyProperty: 'Pset_Asset.Key',
+      duplicateAuthoredKeys,
+    });
+
+    const wall = built.find((fingerprint) => fingerprint.ref.localId === 1);
+    assert.ok(wall);
+    assert.strictEqual(wall.key, '0aaaaaaaaaaaaaaaaaaaaa');
+    assert.deepStrictEqual(duplicateAuthoredKeys.get('SHARED'), [1, 5]);
+  });
+});
+
 describe('buildEntityFingerprints - geometry hash first-wins (#924)', () => {
   it('keeps the FIRST defined hash when two submeshes of one entity disagree', async () => {
     // The doc comment on `geometryByLocalId` promises "the first mesh carrying

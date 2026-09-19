@@ -57,7 +57,7 @@ import {
 } from '@ifc-lite/diff';
 import { extractProjectUnits, spatialContainerPath, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
-import { comparableProductIds } from './compareScope.js';
+import { authoredKeyOwnerIds, comparableProductIds } from './compareScope.js';
 import { resolveAuthoredKeys, type ExtractedPropertySets } from './authoredKeys.js';
 import { buildDataInput } from './buildDataInput.js';
 export { AUTHORED_KEY_PREFIX } from './authoredKeys.js';
@@ -295,9 +295,11 @@ export async function buildEntityFingerprints(
   // A Pset.Property key uses the same extraction as the data fingerprint.
   // Cache that pre-pass so large models do not parse every property set twice.
   const propertySetsById = new Map<number, ExtractedPropertySets>();
+  const authoredKeyOwners = new Set(geometryByLocalId.keys());
+  for (const localId of authoredKeyOwnerIds(store)) authoredKeyOwners.add(localId);
   const authoredKeys = await resolveAuthoredKeys(
     store,
-    geometryByLocalId.keys(),
+    authoredKeyOwners,
     model.keyProperty,
     model.duplicateAuthoredKeys,
     propertySetsById,

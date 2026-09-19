@@ -891,7 +891,7 @@ Reports:
 | `--key-from <Tag\|Pset.Prop>` | Key the comparison on an authored identifier instead of GlobalId (implies `--by-content`) |
 | `--lineage-out <file>` | Write the lineage this comparison establishes, for `rekey` (implies `--by-content`) |
 | `--lineage-in <file>` | Replay a lineage's one-to-one entries and carry the rest forward (implies `--by-content`) |
-| `--accept <map.json>` | Fold a reviewed identity map into the lineage as `replaced` entries |
+| `--accept <map.json>` | Fold reviewed claims into lineage: `successor:*` reasons become `replaced`; other accepted identities become `identity` |
 | `--json` | JSON output |
 
 Both comparison modes cover the same entities: every `IfcObjectDefinition` in the file. See [what gets compared](#what-gets-compared) below.

@@ -219,6 +219,7 @@ test('rust offset: latestBreak is non-empty and changes on subsequent increments
   }
   const currentBefore = offsetText({ offset: 6, latestBreak: 'Current break.', refs: ['#4685', '#4791'] });
   assert.equal(classifyOffset(currentBefore, offsetText({ offset: 7, latestBreak: 'Current break.', refs: ['#4685', '#4791', '#4988'] })), false);
+  assert.equal(classifyOffset(currentBefore, offsetText({ offset: 7, latestBreak: '  Current break.  ', refs: ['#4685', '#4791', '#4988'] })), false);
 });
 
 test('rust offset: existing refs remain an ordered prefix and new refs are issue numbers', () => {

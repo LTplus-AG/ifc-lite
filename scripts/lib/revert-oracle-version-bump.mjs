@@ -121,7 +121,8 @@ function rustMajorOffsetOnly(beforeText, afterText) {
   if (after.reason !== before.reason) return false;
   if (typeof after.latestBreak !== 'string' || after.latestBreak.trim().length === 0) return false;
   if ('latestBreak' in before
-    && (typeof before.latestBreak !== 'string' || before.latestBreak === after.latestBreak)) return false;
+    && (typeof before.latestBreak !== 'string'
+      || before.latestBreak.trim() === after.latestBreak.trim())) return false;
   if (!Array.isArray(before.refs) || !Array.isArray(after.refs)) return false;
   if (after.refs.length <= before.refs.length) return false;
   if (!before.refs.every((ref, i) => typeof ref === 'string' && after.refs[i] === ref)) return false;

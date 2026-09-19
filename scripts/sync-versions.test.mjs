@@ -83,6 +83,7 @@ function makeTree(t, { npmVersion = '6.1.0', stale = '6.0.1', offsetFile, packag
 const OFFSET_1 = JSON.stringify({
   majorOffset: 1,
   reason: 'ifc-lite-geometry SubMeshCollection and ifc-lite-processing MeshData broke their public API in #3210 under an npm minor.',
+  latestBreak: 'The newest break changes SubMeshCollection and MeshData public fields.',
   refs: ['#3210'],
 });
 

@@ -222,10 +222,10 @@ export function applyMajorOffset(version, majorOffset) {
  * accident, so treating a missing one as "offset 0" would quietly restore the
  * behaviour this exists to replace.
  *
- * A NON-ZERO offset must additionally carry a `reason` and at least one
- * `refs` entry. An offset is a permanent major-version claim about published
- * crates; the one thing a reader will want six months later is what broke,
- * and prose that is required is prose that exists.
+ * A NON-ZERO offset must additionally carry a `reason`, a `latestBreak`, and
+ * at least one `refs` entry. An offset is a permanent major-version claim
+ * about published crates; the one thing a reader will want six months later
+ * is what broke, and prose that is required is prose that exists.
  */
 export function readMajorOffset(rootDir) {
   const path = join(rootDir, OFFSET_FILE_NAME);
@@ -267,6 +267,12 @@ export function readMajorOffset(rootDir) {
       throw offsetError(
         'NO_REASON',
         `${OFFSET_FILE_NAME} claims majorOffset ${majorOffset} but gives no "reason". A Rust-only major is a permanent claim about a published crate; say which crate's public API broke.`
+      );
+    }
+    if (latestBreak.length < 20) {
+      throw offsetError(
+        'BAD_LATEST_BREAK',
+        `${OFFSET_FILE_NAME} claims majorOffset ${majorOffset} but gives no substantive "latestBreak". Name the newest Rust-only public API break that spent this major.`
       );
     }
     if (refs.length === 0) {

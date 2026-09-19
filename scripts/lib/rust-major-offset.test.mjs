@@ -50,6 +50,7 @@ function makeTree(t, { offsetFile, maxVersion = '6.0.1', count = MIN_WORKSPACE_P
 const VALID_OFFSET_1 = JSON.stringify({
   majorOffset: 1,
   reason: 'ifc-lite-processing MeshData gained a public field (#3210), which is a breaking Rust change under an npm minor.',
+  latestBreak: 'MeshData gained a public field in the newest Rust-only breaking release.',
   refs: ['#3210', '#3216'],
 });
 
@@ -106,6 +107,17 @@ test('readMajorOffset rejects a present latestBreak that is not substantive text
   }
 });
 
+test('readMajorOffset requires latestBreak for every non-zero offset', (t) => {
+  assert.throws(
+    () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({
+      majorOffset: 1,
+      reason: 'A sufficiently detailed historical reason for the break.',
+      refs: ['#1'],
+    }) })),
+    (err) => err.code === 'BAD_LATEST_BREAK',
+  );
+});
+
 test('a non-zero offset must carry a reason and at least one ref', (t) => {
   assert.throws(
     () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 1, refs: ['#1'] }) })),
@@ -118,7 +130,12 @@ test('a non-zero offset must carry a reason and at least one ref', (t) => {
   assert.throws(
     () =>
       readMajorOffset(
-        makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 1, reason: 'a'.repeat(40), refs: [] }) })
+        makeTree(t, { offsetFile: JSON.stringify({
+          majorOffset: 1,
+          reason: 'a'.repeat(40),
+          latestBreak: 'A sufficiently detailed description of the newest break.',
+          refs: [],
+        }) })
       ),
     (err) => err.code === 'NO_REFS'
   );

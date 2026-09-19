@@ -5,11 +5,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { QuantityType } from '@ifc-lite/data';
 import type { ElementFieldBinding } from '@ifc-lite/charts';
 import { createElementFieldReader } from './element-field-reader.js';
+import { configureMutationView } from '@/utils/configureMutationView.js';
 
 const FIRE: ElementFieldBinding = { kind: 'property', psetName: 'Pset_SlabCommon', propertyName: 'FireRating', valueKind: 'category' };
 const SPREAD: ElementFieldBinding = { kind: 'property', psetName: 'Pset_SlabCommon', propertyName: 'SurfaceSpreadOfFlame', valueKind: 'category' };
@@ -46,7 +47,7 @@ describe('chart IFC field reader (#4833)', () => {
     const bytes = await readFile(SAMPLE);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
     const view = new MutablePropertyView(store.properties, 'fixture');
-    view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    configureMutationView(view, store);
     view.setProperty(52, 'Pset_SlabCommon', 'FireRating', null);
     assert.equal(createElementFieldReader(store, view).read(52, FIRE), null);
     view.deleteProperty(52, 'Pset_SlabCommon', 'FireRating');
@@ -64,9 +65,20 @@ describe('chart IFC field reader (#4833)', () => {
     assert.equal(updatedReader.read(52, SPREAD), 'UPDATED');
     assert.ok(updatedReader.discover([52]).properties.get('AddedTypePset')?.some(({ binding }) => binding.kind === 'property' && binding.propertyName === 'NewField'));
     const deleted = new MutablePropertyView(store.properties, 'fixture');
-    deleted.setOnDemandExtractor((id) => id === 50 ? extractTypeEntityOwnProperties(store, id) : extractPropertiesOnDemand(store, id));
+    configureMutationView(deleted, store);
     deleted.deleteProperty(50, 'Pset_SlabCommon', 'SurfaceSpreadOfFlame');
     assert.equal(createElementFieldReader(store, deleted).read(52, SPREAD), null);
+  });
+
+  it('does not restore an occurrence fallback after its defining type property set is deleted', async () => {
+    const bytes = await readFile(SAMPLE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const view = new MutablePropertyView(store.properties, 'fixture');
+    configureMutationView(view, store);
+    assert.equal(createElementFieldReader(store, view).read(52, SPREAD), 'A2 s1 d0', 'the occurrence reads its type property before deletion');
+
+    view.deletePropertySet(50, 'Pset_SlabCommon');
+    assert.equal(createElementFieldReader(store, view).read(52, SPREAD), null, 'the deleted type set cannot be merged back into the fallback');
   });
 
   it('preserves explicit units with their scale and never sums an incompatible measure', async () => {

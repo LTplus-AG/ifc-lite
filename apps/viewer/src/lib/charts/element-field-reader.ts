@@ -114,7 +114,12 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
       const base = provider.getTypePropertySets?.(id) ?? [];
       const overlay = mutationView?.hasChanges(typeId) ? mutationView.getForEntity(typeId) : [];
       const overlayNames = new Set(overlay.map((set) => set.name));
-      cached = overlay.length > 0 ? [...overlay, ...base.filter((set) => !overlayNames.has(set.name))] : base;
+      const visibleBase = mutationView
+        ? base.filter((set) => !mutationView.isPropertySetDeleted(typeId, set.name))
+        : base;
+      cached = overlay.length > 0
+        ? [...overlay, ...visibleBase.filter((set) => !overlayNames.has(set.name))]
+        : visibleBase;
       typeSets.set(typeId, cached);
     }
     return cached;

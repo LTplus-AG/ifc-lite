@@ -13,12 +13,13 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { quantitySetsFor } from './filter-evaluate-mutations.js';
 import { evaluateFilterRulesFederated } from './filter-evaluate.js';
 import { Rule } from './filter-rules.js';
+import { configureMutationView } from '@/utils/configureMutationView.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -127,7 +128,7 @@ describe('getInheritedTypePsets (via evaluateFilterRulesFederated): editing a pr
     assert.deepEqual(before.map((r) => r.expressId).sort((a, b) => a - b), [100, 110], 'both walls inherit IsExternal=true from the type before any edit');
 
     const view = new MutablePropertyView(store.properties, 'm1');
-    view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    configureMutationView(view, store);
     view.setProperty(200, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
 
     const after = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], rules, 'AND');
@@ -135,5 +136,20 @@ describe('getInheritedTypePsets (via evaluateFilterRulesFederated): editing a pr
 
     const afterFalse = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], [wallsOnly, Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'false')], 'AND');
     assert.deepEqual(afterFalse.map((r) => r.expressId).sort((a, b) => a - b), [100, 110], 'and both now match the edited value');
+  });
+
+  it('deleting a type property set stops occurrences from inheriting it', async () => {
+    const bytes = new TextEncoder().encode(TYPE_FIXTURE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(store.properties, 'm1');
+    configureMutationView(view, store);
+    const wallsOnly = Rule.ifcType(['IfcWall']);
+    const rules = [wallsOnly, Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')];
+    const before = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], rules, 'AND');
+    assert.deepEqual(before.map((r) => r.expressId).sort((a, b) => a - b), [100, 110], 'the occurrences match before the type set is deleted');
+
+    view.deletePropertySet(200, 'Pset_WallCommon');
+    const matches = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], rules, 'AND');
+    assert.deepEqual(matches, [], 'the deleted type set is not reintroduced from the immutable base');
   });
 });

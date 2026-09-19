@@ -41,7 +41,8 @@ export function typePropertySetsFor(typeBasePsets: PsetSets, typeId: number, mut
   if (!mutationView?.hasChanges(typeId)) return typeBasePsets;
   const overlay = mutationView.getForEntity(typeId);
   const overlayNames = new Set(overlay.map((set) => set.name));
-  return [...overlay, ...typeBasePsets.filter((set) => !overlayNames.has(set.name))];
+  const visibleBase = typeBasePsets.filter((set) => !mutationView.isPropertySetDeleted(typeId, set.name));
+  return [...overlay, ...visibleBase.filter((set) => !overlayNames.has(set.name))];
 }
 
 type QtySets = ReturnType<typeof extractQuantitiesOnDemand>;

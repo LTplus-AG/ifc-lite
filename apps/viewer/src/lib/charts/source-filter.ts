@@ -5,10 +5,9 @@
 /**
  * A chart's own source filter (#4946): selector text, read the SAME way the
  * search Filter tab reads it (`readSelector`) and run through the SAME
- * evaluator every other selector-driven feature runs
- * (`evaluateFilterRulesFederated`), exactly as `lib/clash/set-filter-resolve.ts`
- * does for a clash set filter. There is deliberately no second matcher for
- * charts to drift from the first.
+ * groups-aware evaluator every selector-driven feature runs
+ * (`evaluateFilterGroupsFederated`). There is deliberately no second matcher
+ * for charts to drift from the first.
  *
  * `readChartFilter` applies the chart's all-or-nothing reading rule: a
  * parse error, a reading with no rules, or ANY unsupported construct is
@@ -20,13 +19,14 @@
  */
 import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { readSelector } from '@/lib/search/selector-to-rules';
-import { evaluateFilterRulesFederated, type EvaluatorModel } from '@/lib/search/filter-evaluate';
-import type { Combinator, FilterRule } from '@/lib/search/filter-rules';
+import { evaluateFilterGroupsFederated } from '@/lib/search/filter-evaluate-groups';
+import type { EvaluatorModel } from '@/lib/search/filter-evaluate';
+import type { FilterGroup } from '@/lib/search/filter-groups';
 import { describeSelectorParseError } from '@/components/viewer/SearchModal.filter.feedback';
 import type { ChartDataset, ChartDatasetRow, ChartSourceFilter } from '@ifc-lite/charts';
 
 export type ChartFilterReading =
-  | { ok: true; rules: FilterRule[]; combinator: Combinator }
+  | { ok: true; groups: FilterGroup[] }
   | { ok: false; message: string };
 
 /** Read + adapt selector text with the chart's refuse-don't-narrow rule.
@@ -48,7 +48,7 @@ export function readChartFilter(text: string, options: { schemaVersion?: string 
       message: `Refused rather than run on the readable part alone: ${reading.unsupported.join('; ')}.`,
     };
   }
-  return { ok: true, rules: reading.rules, combinator: reading.combinator };
+  return { ok: true, groups: reading.groups };
 }
 
 export interface ResolveChartFilterOptions {
@@ -81,7 +81,7 @@ export async function resolveChartFilter(
   if (!filter || trimSelectorWhitespace(filter.selector).length === 0) return null;
   const reading = readChartFilter(filter.selector, { schemaVersion: options.schemaVersion });
   if (!reading.ok) throw new Error(reading.message);
-  const matched = await evaluateFilterRulesFederated(models, reading.rules, reading.combinator, {
+  const matched = await evaluateFilterGroupsFederated(models, reading.groups, {
     limit: options.limit,
     signal: options.signal,
     definedModelTagIds: options.definedModelTagIds,

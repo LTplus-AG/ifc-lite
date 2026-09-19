@@ -44,6 +44,17 @@ describe('MutablePropertyView', () => {
     expect(view.getForEntity(7)).toEqual([]);
   });
 
+  it('reports a property-set deletion that masks a base set', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+      name: 'Pset_WallCommon',
+      properties: [{ name: 'IsExternal', type: PropertyValueType.Boolean, value: true }],
+    }] : []);
+    view.deletePropertySet(7, 'Pset_WallCommon');
+
+    expect(view.isPropertySetDeleted(7, 'Pset_WallCommon')).toBe(true);
+  });
+
   it('treats a null/unset property as present, not absent (issue #1107)', () => {
     // A bSDD Boolean is added unset (value null) so we never pick a value for
     // the user. Such a property still EXISTS — null must not be read as absent.

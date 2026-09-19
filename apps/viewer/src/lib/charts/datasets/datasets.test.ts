@@ -615,6 +615,14 @@ END-ISO-10303-21;`;
     const toGlobalId = (modelId: string, expressId: number) => toGlobalIdFromModels(state.models, modelId, expressId);
     const ids = await resolveChartFilter(models, { selector: 'IfcWall + IfcDoor' }, toGlobalId, { limit: 1_000 });
     assert.deepEqual([...(ids as Set<number>)].sort((a, b) => a - b), [GID(41), GID(43)], 'the wall and the door — the union of both groups, not just the first');
+
+    const mixedIds = await resolveChartFilter(
+      models,
+      { selector: 'IfcWall, Name="Beam B" + IfcDoor, Name="Door C"' },
+      toGlobalId,
+      { limit: 1_000 },
+    );
+    assert.deepEqual([...(mixedIds as Set<number>)], [GID(43)], 'each union branch keeps its own AND terms');
   });
 
   // #4946 review (PR #4984): a chart filter used to match only the ON-DISK

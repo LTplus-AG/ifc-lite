@@ -160,6 +160,28 @@ export function resolveManualClashGroups(
     .filter((group) => group.members.length > 0);
 }
 
+/** Remove the persisted claim behind one displayed member, including an ambiguous stale fallback. */
+export function removeResolvedManualClashMember(
+  groups: readonly ManualClashGroup[],
+  resolved: readonly ResolvedManualClashGroup[],
+  groupId: string,
+  clash: Clash,
+): ManualClashGroup[] {
+  return groups.flatMap((group) => {
+    if (group.id !== groupId) return [group];
+    const current = resolved.find((item) => item.definition.id === groupId);
+    const index = current?.members.findIndex((member) => member.id === clash.id) ?? -1;
+    const persisted = index >= 0 ? current?.memberDefinitions[index] : undefined;
+    const usedFallback = persisted ? persisted.occurrenceKey !== manualClashOccurrenceKey(clash) : false;
+    const members = persisted
+      ? group.members.filter((member) => usedFallback
+        ? member.reviewKey !== persisted.reviewKey
+        : member !== persisted)
+      : group.members;
+    return members.length > 0 ? [{ ...group, members }] : [];
+  });
+}
+
 /** Identify one occurrence without sacrificing the durable review-key fallback. */
 export function manualClashMember(clash: Clash): ManualClashMember {
   return { reviewKey: clashReviewKey(clash), occurrenceKey: manualClashOccurrenceKey(clash) };

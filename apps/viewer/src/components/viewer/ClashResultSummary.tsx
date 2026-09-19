@@ -67,7 +67,7 @@ export function ClashResultSummary({
               type="button"
               onClick={() => setResultView(view)}
               disabled={view === 'issues' && !groupsAvailable}
-              className={cn('px-2 py-0.5', resultView === view ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              className={cn('px-2 py-0.5', effectiveView === view ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
             >
               {t(`clashGroups.view.${view}`)}
             </button>

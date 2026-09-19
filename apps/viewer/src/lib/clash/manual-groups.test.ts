@@ -13,6 +13,7 @@ import {
   manualClashMember,
   normalizeManualClashGroups,
   resolveManualClashGroups,
+  removeResolvedManualClashMember,
   saveManualClashGroups,
 } from './manual-groups.js';
 
@@ -62,6 +63,23 @@ describe('manual clash groups (#4921)', () => {
       resolveManualClashGroups(definitions, [first, second])[0].members.map((member) => member.id),
       ['first', 'second'],
     );
+  });
+
+  it('removes every stale duplicate claim after one ambiguous fallback (#4921 review)', () => {
+    const first = clash('first');
+    const second = clash('second');
+    second.a = { ...first.a, model: 'old-a-2' };
+    second.b = { ...first.b, model: 'old-b-2' };
+    const definitions = [{ id: 'manual-1', name: 'Both copies', members: [
+      manualClashMember(first), manualClashMember(second),
+    ] }];
+    const rerun = clash('rerun');
+    rerun.a = { ...first.a, model: 'new-a' };
+    rerun.b = { ...first.b, model: 'new-b' };
+    const resolved = resolveManualClashGroups(definitions, [rerun]);
+    assert.equal(resolved[0].members.length, 1, 'one stale record falls back to the only current clash');
+    assert.deepEqual(removeResolvedManualClashMember(definitions, resolved, 'manual-1', rerun), [],
+      'the sibling stale record cannot immediately claim the removed clash');
   });
 
   it('repairs overlapping/corrupt storage into disjoint named groups', () => {

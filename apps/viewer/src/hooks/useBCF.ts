@@ -427,7 +427,11 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       let hiddenGuids: string[] | undefined;
       let visibleGuids: string[] | undefined;
       if (includeHidden) {
-        const capture = captureVisibility(isolatedEntities, hiddenEntities, expressIdToGlobalId, isEntityPending);
+        // Focus/isolate can update the store immediately before an async
+        // snapshot capture. Read visibility now instead of using this hook's
+        // pre-focus render closure, so the PNG and BCF components agree.
+        const current = useViewerStore.getState();
+        const capture = captureVisibility(current.isolatedEntities, current.hiddenEntities, expressIdToGlobalId, isEntityPending);
         ({ visibleGuids, hiddenGuids } = capture);
         if (capture.notice) {
           const { unnameable, total, kind, omitted, pending, ids } = capture.notice;

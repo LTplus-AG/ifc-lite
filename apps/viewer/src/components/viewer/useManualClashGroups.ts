@@ -11,6 +11,7 @@ import {
   defaultManualClashGroupName,
   loadManualClashGroups,
   manualClashMember,
+  removeResolvedManualClashMember,
   resolveManualClashGroups,
   saveManualClashGroups,
   type ManualClashGroup,
@@ -153,15 +154,7 @@ export function useManualClashGroups({
   }, [definitions, commit]);
 
   const removeMember = useCallback((groupId: string, clash: Clash): void => {
-    const next = definitions.flatMap((group) => {
-      if (group.id !== groupId) return [group];
-      const resolvedGroup = resolved.find((item) => item.definition.id === groupId);
-      const resolvedIndex = resolvedGroup?.members.findIndex((member) => member.id === clash.id) ?? -1;
-      const persistedMember = resolvedIndex >= 0 ? resolvedGroup?.memberDefinitions[resolvedIndex] : undefined;
-      const members = persistedMember ? group.members.filter((member) => member !== persistedMember) : group.members;
-      return members.length > 0 ? [{ ...group, members }] : [];
-    });
-    commit(next);
+    commit(removeResolvedManualClashMember(definitions, resolved, groupId, clash));
   }, [definitions, resolved, commit]);
 
   const createBcfTopic = useCallback(async (groupId: string): Promise<void> => {

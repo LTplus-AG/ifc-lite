@@ -23,6 +23,7 @@ import {
   representationMapDigest,
   respecifyProperty,
 } from './successor-edits.mjs';
+import { donorPairKey, incomparableSwaps } from './geometry-bounds.mjs';
 import { mapDonors } from './successor-mutations.mjs';
 import { parseStepFile, serializeStepFile, splitArgs } from './step-file.mjs';
 
@@ -181,20 +182,19 @@ test('the map digest sees a copy as equal and a different shape as different', (
   assert.notEqual(representationMapDigest(index, 50), representationMapDigest(index, 51));
 });
 
-test('a 4.8 m window cannot receive a 0.75 m donor map (#4989)', () => {
-  const file = parseStepFile(stepFile(`
+function mappedParametricFile() {
+  return parseStepFile(stepFile(`
 #1=IFCCARTESIANPOINT((0.,0.,0.));
-#2=IFCCARTESIANPOINT((4.8,0.,0.));
-#3=IFCCARTESIANPOINT((0.,1.,1.));
-#4=IFCPOLYLINE((#1,#2,#3));
-#10=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#4));
-#11=IFCREPRESENTATIONMAP($,#10);
-#21=IFCCARTESIANPOINT((0.,0.,0.));
-#22=IFCCARTESIANPOINT((0.75,0.,0.));
-#23=IFCCARTESIANPOINT((0.,1.,1.));
-#24=IFCPOLYLINE((#21,#22,#23));
-#30=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#24));
-#31=IFCREPRESENTATIONMAP($,#30);
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCDIRECTION((0.,0.,1.));
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.8,4.8);
+#5=IFCEXTRUDEDAREASOLID(#4,#2,#3,4.8);
+#10=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#5));
+#11=IFCREPRESENTATIONMAP(#2,#10);
+#24=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,0.75,0.75);
+#25=IFCEXTRUDEDAREASOLID(#24,#2,#3,0.75);
+#30=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#25));
+#31=IFCREPRESENTATIONMAP(#2,#30);
 #101=IFCMAPPEDITEM(#11,$);
 #102=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#101));
 #103=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));
@@ -204,6 +204,48 @@ test('a 4.8 m window cannot receive a 0.75 m donor map (#4989)', () => {
 #203=IFCPRODUCTDEFINITIONSHAPE($,$,(#202));
 #200=IFCWINDOW('0bbbbbbbbbbbbbbbbbbbbb',$,'Narrow window',$,$,$,#203,$,$,$,$);
 `));
+}
 
-  assert.deepEqual([...mapDonors(indexModel(file), [100, 200])], []);
+const box = (size) => ({ min: [0, 0, 0], max: [size, size, size] });
+
+test('canonical bounds reject a parametric 4.8 m / 0.75 m donor pair (#4989)', () => {
+  const file = mappedParametricFile();
+  const bounds = new Map([
+    [100, box(4.8)],
+    [200, box(0.75)],
+  ]);
+
+  assert.deepEqual([...mapDonors(indexModel(file), [100, 200], bounds)], []);
+});
+
+test('mapped donors fail closed without canonical geometry bounds (#4989)', () => {
+  const file = mappedParametricFile();
+  assert.deepEqual([...mapDonors(indexModel(file), [100, 200], new Map([[100, box(1)]]))], []);
+});
+
+test('mapped donors remain eligible when canonical bounds are comparable (#4989)', () => {
+  const file = mappedParametricFile();
+  const bounds = new Map([
+    [100, box(1)],
+    [200, box(1.5)],
+  ]);
+
+  assert.deepEqual([...mapDonors(indexModel(file), [100, 200], bounds)], [
+    [100, 31],
+    [200, 11],
+  ]);
+  assert.deepEqual(
+    [...mapDonors(indexModel(file), [100, 200], bounds, new Set([donorPairKey(100, 31)]))],
+    [[200, 11]],
+  );
+});
+
+test('post-mutation bounds reject a transformed donor that passed the base prefilter (#4989)', () => {
+  const key = {
+    elements: [{ base: 100, kind: 'swapped', head: [900], detail: { donorMap: 31 } }],
+  };
+  const base = [{ ref: 100, aabb: box(1) }];
+  const head = [{ ref: 900, aabb: box(3) }];
+
+  assert.deepEqual(incomparableSwaps(key, base, head), [{ base: 100, donorMap: 31, head: 900 }]);
 });

@@ -27,6 +27,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fingerprintFile, GEOMETRY_HASH_TOLERANCE } from './fingerprints.mjs';
+import { donorPairKey, incomparableSwaps } from './geometry-bounds.mjs';
 import { mutateModel } from './mutate.mjs';
 import {
   checkCorpusThresholds,
@@ -54,6 +55,7 @@ const ROOT = resolve(HERE, '../..');
 const OUT_DIR = join(ROOT, '.xmatch-out');
 const SCORECARD = join(HERE, 'scorecard.json');
 const THRESHOLDS = JSON.parse(readFileSync(join(HERE, 'thresholds.json'), 'utf-8'));
+const MAX_SWAP_ATTEMPTS = 16;
 
 /**
  * The corpus. Each entry is one real model plus the seed its mutation is
@@ -114,23 +116,50 @@ async function buildPair(entry, api) {
   const sourceText = readFileSync(modelPath, 'utf-8');
   const base = await fingerprintFile(modelPath, api);
 
-  const { text: headText, key } = mutateModel(sourceText, {
-    seed: entry.seed,
-    meshedIds: base.meshedIds,
-    population: base.fingerprints.map((fingerprint) => fingerprint.ref),
-    sameContentGroups: sameContentGroups(base),
-    unitScale: base.unitScale,
-    sourcePath: entry.model,
-    plan: entry.plan,
-  });
-
   mkdirSync(OUT_DIR, { recursive: true });
   const headPath = join(OUT_DIR, `${entry.seed}-${entry.model.replaceAll('/', '_')}`);
-  writeFileSync(headPath, headText);
-  const head = await fingerprintFile(headPath, api);
-
-  const guards = runGuards(sourceText, headText, base, head, key);
-  return { key, base, head, guards, headPath };
+  const geometryAabbs = new Map(
+    base.fingerprints
+      .filter((fingerprint) => fingerprint.aabb)
+      .map((fingerprint) => [fingerprint.ref, fingerprint.aabb]),
+  );
+  const excludedDonors = new Set();
+  // Base occurrence bounds are a cheap fail-closed prefilter. The generated
+  // head is still authoritative: mapping targets and placements can make the
+  // same map a different size at its recipient. Reject such a pair and replay
+  // the seeded mutation without it; every retry excludes at least one finite
+  // product/map pair, and the cap turns unexpected corpus drift into a loud
+  // fixture failure rather than a false-positive answer key.
+  for (let attempt = 1; attempt <= MAX_SWAP_ATTEMPTS; attempt++) {
+    const { text: headText, key } = mutateModel(sourceText, {
+      seed: entry.seed,
+      meshedIds: base.meshedIds,
+      population: base.fingerprints.map((fingerprint) => fingerprint.ref),
+      geometryAabbs,
+      excludedDonors,
+      sameContentGroups: sameContentGroups(base),
+      unitScale: base.unitScale,
+      sourcePath: entry.model,
+      plan: entry.plan,
+    });
+    writeFileSync(headPath, headText);
+    const head = await fingerprintFile(headPath, api);
+    const invalid = incomparableSwaps(key, base.fingerprints, head.fingerprints);
+    if (invalid.length === 0) {
+      const guards = runGuards(sourceText, headText, base, head, key);
+      return { key, base, head, guards, headPath };
+    }
+    let added = 0;
+    for (const swap of invalid) {
+      if (!Number.isInteger(swap.donorMap)) continue;
+      const size = excludedDonors.size;
+      excludedDonors.add(donorPairKey(swap.base, swap.donorMap));
+      if (excludedDonors.size > size) added++;
+    }
+    if (added === 0) fail(`swapped geometry has unusable bounds in ${entry.model}`);
+    process.stdout.write(`  retrying ${entry.model}: rejected ${added} incomparable mapped donor(s)\n`);
+  }
+  fail(`no comparable mapped donors remained in ${entry.model} after ${MAX_SWAP_ATTEMPTS} attempts`);
 }
 
 async function main() {

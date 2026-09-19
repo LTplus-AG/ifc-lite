@@ -17,29 +17,12 @@ import {
   ownedMappedItem,
   ownedPropertyValues,
   representationMapDigest,
-  representationMapExtent,
   representationMapsOf,
   respecifyProperty,
   swapMappedItem,
 } from './successor-edits.mjs';
+import { donorPairKey, sizesComparable } from './geometry-bounds.mjs';
 import { classFamilyResolver } from '../../packages/diff/dist/class-families.js';
-
-/** Mirrors the engine's unexported `POSITION_EXTENT_RATIO`. */
-const DONOR_EXTENT_RATIO = 2;
-
-/** Per-axis extents within the same ratio the `position` successor stage accepts. */
-function sizesComparable(a, b) {
-  for (let axis = 0; axis < 3; axis++) {
-    const ea = a.max[axis] - a.min[axis];
-    const eb = b.max[axis] - b.min[axis];
-    if (!Number.isFinite(ea) || !Number.isFinite(eb)) return false;
-    const big = Math.max(ea, eb);
-    const small = Math.min(ea, eb);
-    if (big <= 0) continue;
-    if (small <= 0 || big / small > DONOR_EXTENT_RATIO) return false;
-  }
-  return true;
-}
 
 /**
  * Apply one #4955 role to element `id`, recording the answer-key entry and the
@@ -138,14 +121,15 @@ export function applySuccessorRole(ctx, role, id, geometryClass) {
  * searches — and whose geometry is structurally DIFFERENT from the element's
  * own (`representationMapDigest`): a copy of the same shape under another map
  * id would leave the world geometry hash unchanged, and the engine would
- * rightly pair that as `respecified`. It must also have comparable local
- * extents: the `position` successor profile rejects a per-axis size ratio over
- * 2, so a generator donor beyond that threshold is not a valid positive.
+ * rightly pair that as `respecified`. It must also have a user whose canonical
+ * geometry bounds are comparable to the recipient: the `position` successor
+ * profile rejects a per-axis size ratio over 2, so a donor beyond that
+ * threshold is not a valid positive. Missing geometry fails closed.
  * Elements with no such donor are absent from the map and are not eligible.
  * Donors are chosen by position in a sorted list, not by the PRNG, so this
  * draws nothing from the stream the re-GUID and permutation use.
  */
-export function mapDonors(index, population) {
+export function mapDonors(index, population, geometryAabbs = new Map(), excludedDonors = new Set()) {
   const familyOf = classFamilyResolver();
   const digests = new Map();
   const digestOf = (mapId) => {
@@ -156,15 +140,7 @@ export function mapDonors(index, population) {
     }
     return digest;
   };
-  const extents = new Map();
-  const extentOf = (mapId) => {
-    let extent = extents.get(mapId);
-    if (extent === undefined) {
-      extent = representationMapExtent(index, mapId);
-      extents.set(mapId, extent);
-    }
-    return extent;
-  };
+  const usersByMap = new Map();
   const usersByType = new Map();
   const usersByFamily = new Map();
   for (const id of population) {
@@ -179,6 +155,14 @@ export function mapDonors(index, population) {
         table.set(key, set);
       }
     }
+    // A product with several mapped items has bounds for their union, not for
+    // any one donor map. Only a single owned mapped item is sound evidence.
+    const owned = ownedMappedItem(index, id);
+    if (owned) {
+      const users = usersByMap.get(owned.mapId) ?? new Set();
+      users.add(id);
+      usersByMap.set(owned.mapId, users);
+    }
   }
   const donors = new Map();
   let ordinal = 0;
@@ -187,12 +171,18 @@ export function mapDonors(index, population) {
     if (!owned) continue;
     const statement = index.byId.get(id);
     const own = digestOf(owned.mapId);
-    const ownExtent = extentOf(owned.mapId);
+    const ownAabb = geometryAabbs.get(id);
+    if (!ownAabb) continue;
     const candidates = (pool) =>
       [...(pool ?? [])]
         .filter(
           (mapId) =>
-            mapId !== owned.mapId && digestOf(mapId) !== own && sizesComparable(ownExtent, extentOf(mapId)),
+            mapId !== owned.mapId &&
+            digestOf(mapId) !== own &&
+            !excludedDonors.has(donorPairKey(id, mapId)) &&
+            [...(usersByMap.get(mapId) ?? [])].some((userId) =>
+              sizesComparable(ownAabb, geometryAabbs.get(userId)),
+            ),
         )
         .sort((a, b) => a - b);
     let choices = candidates(usersByType.get(statement.type));

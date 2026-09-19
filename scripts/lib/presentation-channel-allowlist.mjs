@@ -121,7 +121,11 @@ export const NO_MARKER_REQUIRED = new Map([
     'file never installs a non-null set of its own.',
   ],
   [
-    'apps/viewer/src/components/viewer/CommandPalette.tsx',
+    // Moved from CommandPalette.tsx to this sibling data module by #4918
+    // slice 3 (the command TABLE, including the "Hide Selection" command
+    // below, split out so the component stays under its module-size
+    // budget) -- same call site, same justification, new file.
+    'apps/viewer/src/components/viewer/commandPaletteCommandsCore.ts',
     'The "Hide Selection" command hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best.',
   ],
   [

@@ -75,3 +75,23 @@ not cover the command palette (`CommandPalette.tsx`, ~745 lines / 84
 literals — sized for its own slice) or extension-contributed labels
 (`extension.label`, sourced from the extension registry, not a literal) —
 those remain for a later slice of the #4918 sweep.
+
+The command-palette catalogue (#4918 slice 3) covers the Ctrl/Cmd+K palette's
+static command labels, its browse-mode category headers, and its own chrome
+(search placeholder, empty state, footer hints). The command TABLE itself
+was split out of `CommandPalette.tsx` into `commandPaletteCommandsCore.ts` /
+`commandPaletteCommandsPanels.ts` (data + `labelKey` rows, no `t()` call of
+their own — same pattern as slice 2's registries) so the component stays
+under its module-size budget. Recent-file names, script-template labels,
+tour titles, and extension-contributed labels stay uncatalogued, same
+reasoning as slice 2: each is runtime content, not a literal in this repo.
+
+**The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
+TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
+hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and
+`aria-label`/`title`/`placeholder`/`alt` string-literal attributes —
+skipping IFC EXPRESS names, an explicit technical-acronym allowlist, and
+short symbol/unit clusters (`⌘Z`, `m²`) — and ratchets a per-file count in
+`scripts/i18n-literals-baseline.json` (wired into `pnpm lint` and CI's
+node-tests job): a file's count may never rise above its baseline row,
+and a fall also fails until `node scripts/check-i18n-literals.mjs --update` re-records it (a ratchet in both directions).

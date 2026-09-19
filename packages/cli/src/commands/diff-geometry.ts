@@ -106,6 +106,12 @@ interface PrePassResult {
   voidValues?: Uint32Array;
   styleIds?: Uint32Array;
   styleColors?: Uint8Array;
+  // Pre-pass tail (#4977 review): without these every chunk's fresh decoder
+  // re-scans the file for IFCPROJECT / material colours.
+  planeAngleToRadians?: number;
+  materialElementIds?: Uint32Array;
+  materialColorCounts?: Uint32Array;
+  materialColors?: Uint8Array;
 }
 
 export interface GeometryAabb {
@@ -218,6 +224,10 @@ export function runGeometryPass(api: WasmIfcAPI, bytes: Uint8Array): GeometryPas
             voidValues,
             styleIds,
             styleColors,
+            pre.planeAngleToRadians,
+            pre.materialElementIds,
+            pre.materialColorCounts,
+            pre.materialColors,
           )
         : api.processGeometryBatch(
             bytes,
@@ -232,6 +242,10 @@ export function runGeometryPass(api: WasmIfcAPI, bytes: Uint8Array): GeometryPas
             voidValues,
             styleIds,
             styleColors,
+            pre.planeAngleToRadians,
+            pre.materialElementIds,
+            pre.materialColorCounts,
+            pre.materialColors,
           );
       try {
         const ids = collection.geometryHashIds;

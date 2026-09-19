@@ -27,6 +27,7 @@ import type { EntityRef } from '@/store/types';
 import {
   globalIdToExpressId as globalIdToExpressIdLookup,
   expressIdToGlobalId as expressIdToGlobalIdLookup,
+  entityRefToGlobalId as entityRefToGlobalIdLookup,
   resolveUniqueGlobalIds,
 } from './bcfIdLookup';
 import { fromGlobalIdFromModels } from '@/store/globalId';
@@ -50,6 +51,7 @@ interface UseBCFOptions {
   rendererRef?: React.RefObject<Renderer | null>;
 }
 
+type ComponentRef = number | EntityRef;
 interface CreateViewpointOptions {
   /** Include a snapshot image */
   includeSnapshot?: boolean;
@@ -69,13 +71,13 @@ interface CreateViewpointOptions {
    * without this every capture made while a clash is focused had no
    * `<Selection>` at all (#4806).
    */
-  additionalSelectedRefs?: number[];
+  additionalSelectedRefs?: ComponentRef[];
   /**
    * Federated entity refs to record as BCF `<Coloring>`, grouped by an ARGB
    * hex colour (e.g. `'FFFF8000'`, matching `BCFColoring.color`). Defaults
    * like `additionalSelectedRefs`, to the focused clash's on-screen tint.
    */
-  additionalColoredRefs?: { color: string; refs: number[] }[];
+  additionalColoredRefs?: { color: string; refs: ComponentRef[] }[];
 }
 interface UseBCFResult {
   /** Create a viewpoint from current viewer state */
@@ -315,7 +317,12 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       expressIdToGlobalIdLookup(expressId, models, ifcDataStore),
     [models, ifcDataStore]
   );
-
+  const componentRefToGlobalId = useCallback(
+    (ref: ComponentRef): string | null => typeof ref === 'number'
+      ? expressIdToGlobalId(ref)
+      : entityRefToGlobalIdLookup(ref, models, ifcDataStore),
+    [expressIdToGlobalId, models, ifcDataStore],
+  );
   /** A registered model whose metadata has not hydrated yet cannot name its entities YET (#4529). */
   const isEntityPending = useCallback(
     (globalId: number): boolean => {
@@ -408,7 +415,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           }
         }
         for (const ref of additionalSelectedRefs ?? []) {
-          const guid = expressIdToGlobalId(ref);
+          const guid = componentRefToGlobalId(ref);
           if (guid && !guids.includes(guid)) guids.push(guid);
         }
         return guids.length > 0 ? guids : undefined;
@@ -422,7 +429,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         ? additionalColoredRefs
             .map(({ color, refs }) => ({
               color,
-              guids: resolveUniqueGlobalIds(refs, expressIdToGlobalId, emittedColoredGuids),
+              guids: resolveUniqueGlobalIds(refs, componentRefToGlobalId, emittedColoredGuids),
             }))
             .filter((entry) => entry.guids.length > 0)
         : undefined;
@@ -473,6 +480,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       hiddenEntities,
       isolatedEntities,
       expressIdToGlobalId,
+      componentRefToGlobalId,
     ]
   );
 

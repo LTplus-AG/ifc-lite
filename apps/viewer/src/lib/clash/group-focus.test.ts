@@ -33,7 +33,16 @@ describe('manual clash group focus (#4921)', () => {
 
     assert.deepEqual(
       focusClashGroup([clash('c1', 10, 20), clash('c2', 20, 30)], resolve, applyFocusMode, 'ghost'),
-      { selectedRefs: [110, 120, 130], aRefs: [110, 120], bRefs: [130], modelIds: ['model'] },
+      {
+        selectedRefs: [
+          { modelId: 'model', expressId: 110 },
+          { modelId: 'model', expressId: 120 },
+          { modelId: 'model', expressId: 130 },
+        ],
+        aRefs: [{ modelId: 'model', expressId: 110 }, { modelId: 'model', expressId: 120 }],
+        bRefs: [{ modelId: 'model', expressId: 130 }],
+        modelIds: ['model'],
+      },
     );
 
     const state = useViewerStore.getState();
@@ -61,22 +70,27 @@ describe('manual clash group focus (#4921)', () => {
     second.a.model = 'room:r:m0';
     useViewerStore.setState({
       models: new Map([
-        ['model', { idOffset: 1_000 }],
-        ['room:r:m0', { idOffset: 2_000 }],
+        ['model', { idOffset: 0 }],
+        ['room:r:m0', { idOffset: 0 }],
       ]) as ViewerState['models'],
     });
     const applyFocusMode = mock.fn();
     const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
 
     assert.deepEqual(focusClashGroup([first, second], resolve, applyFocusMode, 'highlight'), {
-      selectedRefs: [1_010, 1_020, 2_010, 1_030],
-      aRefs: [1_010, 2_010],
-      bRefs: [1_020, 1_030],
+      selectedRefs: [
+        { modelId: 'model', expressId: 10 },
+        { modelId: 'model', expressId: 20 },
+        { modelId: 'room:r:m0', expressId: 10 },
+        { modelId: 'model', expressId: 30 },
+      ],
+      aRefs: [{ modelId: 'model', expressId: 10 }, { modelId: 'room:r:m0', expressId: 10 }],
+      bRefs: [{ modelId: 'model', expressId: 20 }, { modelId: 'model', expressId: 30 }],
       modelIds: ['model', 'room:r:m0'],
     });
 
     const state = useViewerStore.getState();
-    assert.deepEqual(state.selectedEntityIds, new Set([1_010, 1_020, 2_010, 1_030]));
+    assert.deepEqual(state.selectedEntityIds, new Set([10, 20, 30]));
     assert.ok(state.selectedEntitiesSet.has('model:10'));
     assert.ok(state.selectedEntitiesSet.has('room:r:m0:10'));
   });
@@ -90,9 +104,9 @@ describe('manual clash group focus (#4921)', () => {
       element.model === 'replaced' ? null : { modelId: element.model, expressId: element.ref };
 
     assert.deepEqual(focusClashGroup([current, stale], resolve, mock.fn(), 'highlight'), {
-      selectedRefs: [10, 20],
-      aRefs: [10],
-      bRefs: [20],
+      selectedRefs: [{ modelId: 'model', expressId: 10 }, { modelId: 'model', expressId: 20 }],
+      aRefs: [{ modelId: 'model', expressId: 10 }],
+      bRefs: [{ modelId: 'model', expressId: 20 }],
       modelIds: ['model'],
     });
   });

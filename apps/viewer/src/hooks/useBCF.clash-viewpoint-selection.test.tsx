@@ -34,7 +34,7 @@ import JSZip from 'jszip';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { writeBCF, type BCFProject, type BCFViewpoint } from '@ifc-lite/bcf';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import { useBCF } from './useBCF.js';
 
 /** Express ids behind the two clashing entities, and their IFC GlobalIds. */
@@ -282,6 +282,56 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
       [
         { color: 'FFFF8000', guids: [CLASH_A_GUID] },
         { color: 'FF00D1FF', guids: [CLASH_B_GUID] },
+      ],
+    );
+  });
+
+  it('keeps model identity when two loaded models use the same renderer id (#4921)', async () => {
+    const ordinaryGuid = 'ORDINARY00000000000001';
+    const roomGuid = 'ROOMMODEL0000000000001';
+    const model = (id: string, guid: string) => ({
+      id, name: id, idOffset: 0, maxExpressId: CLASH_A_ID,
+      ifcDataStore: {
+        entities: { getGlobalId: (expressId: number) => expressId === CLASH_A_ID ? guid : undefined },
+      },
+      geometryResult: null, loadedAt: 0,
+    });
+    await act(async () => {
+      useViewerStore.setState({
+        models: new Map([
+          ['ordinary', model('ordinary', ordinaryGuid)],
+          ['room:r:m0', model('room:r:m0', roomGuid)],
+        ]) as unknown as ViewerState['models'],
+        ifcDataStore: null,
+      });
+    });
+
+    const ordinaryRef = { modelId: 'ordinary', expressId: CLASH_A_ID };
+    const roomRef = { modelId: 'room:r:m0', expressId: CLASH_A_ID };
+    const viewpoint = await api!.createViewpointFromState({
+      includeSnapshot: false,
+      includeSelection: false,
+      additionalSelectedRefs: [ordinaryRef, roomRef],
+      additionalColoredRefs: [
+        { color: 'FFFF8000', refs: [ordinaryRef] },
+        { color: 'FF00D1FF', refs: [roomRef] },
+      ],
+    });
+
+    assert.ok(viewpoint, 'a viewpoint must be produced');
+    assert.deepEqual(
+      viewpoint.components?.selection?.map((component) => component.ifcGuid),
+      [ordinaryGuid, roomGuid],
+      'BUG: reducing both refs to renderer id 501 resolves both through the first model',
+    );
+    assert.deepEqual(
+      viewpoint.components?.coloring?.map((group) => ({
+        color: group.color,
+        guids: group.components.map((component) => component.ifcGuid),
+      })),
+      [
+        { color: 'FFFF8000', guids: [ordinaryGuid] },
+        { color: 'FF00D1FF', guids: [roomGuid] },
       ],
     );
   });

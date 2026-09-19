@@ -9,7 +9,7 @@
  * accounting for multi-model federation offsets and single-model fallback.
  */
 
-import type { FederatedModel } from '@/store/types';
+import type { EntityRef, FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 
@@ -20,9 +20,9 @@ export interface IdLookupResult {
 
 /** Resolve refs to IFC GlobalIds once, preserving first-seen order. Passing a
  * shared `seen` set deduplicates across several serialized BCF groups. */
-export function resolveUniqueGlobalIds(
-  refs: Iterable<number>,
-  resolve: (ref: number) => string | null,
+export function resolveUniqueGlobalIds<T>(
+  refs: Iterable<T>,
+  resolve: (ref: T) => string | null,
   seen = new Set<string>(),
 ): string[] {
   const guids: string[] = [];
@@ -33,6 +33,20 @@ export function resolveUniqueGlobalIds(
     guids.push(guid);
   }
   return guids;
+}
+
+/** Resolve an exact model-space ref without first reducing it to an ambiguous
+ * renderer id. This is required for collaboration-room models, whose offset
+ * may overlap another loaded model's renderer-id range. */
+export function entityRefToGlobalId(
+  ref: EntityRef,
+  models: Map<string, FederatedModel>,
+  ifcDataStore: IfcDataStore | null | undefined,
+): string | null {
+  const entities = ref.modelId === 'legacy'
+    ? ifcDataStore?.entities
+    : models.get(ref.modelId)?.ifcDataStore?.entities;
+  return entities?.getGlobalId(ref.expressId) ?? null;
 }
 
 /**

@@ -13,9 +13,9 @@ interface SelectionRef {
 }
 
 export interface FocusedClashGroup {
-  selectedRefs: number[];
-  aRefs: number[];
-  bRefs: number[];
+  selectedRefs: SelectionRef[];
+  aRefs: SelectionRef[];
+  bRefs: SelectionRef[];
   modelIds: string[];
 }
 
@@ -30,16 +30,17 @@ export function focusClashGroup(
   const globalIds = new Set<number>();
   const selectionKeys = new Set<string>();
   const refs: SelectionRef[] = [];
-  const aRefs = new Set<number>();
-  const bRefs = new Set<number>();
+  const aRefs = new Map<string, SelectionRef>();
+  const bRefs = new Map<string, SelectionRef>();
   for (const clash of clashes) {
     for (const [side, element] of [['a', clash.a], ['b', clash.b]] as const) {
       const resolved = resolve(element);
       if (!resolved) continue;
       const globalId = toGlobalIdFromModels(state.models, resolved.modelId, resolved.expressId);
       globalIds.add(globalId);
-      (side === 'a' ? aRefs : bRefs).add(globalId);
       const selectionKey = `${resolved.modelId}:${resolved.expressId}`;
+      const sideRefs = side === 'a' ? aRefs : bRefs;
+      if (!sideRefs.has(selectionKey)) sideRefs.set(selectionKey, resolved);
       if (selectionKeys.has(selectionKey)) continue;
       selectionKeys.add(selectionKey);
       refs.push(resolved);
@@ -54,11 +55,11 @@ export function focusClashGroup(
   applyFocusMode([...globalIds], mode);
   requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
   // An object on both sides gets one deterministic color, never two.
-  for (const ref of aRefs) bRefs.delete(ref);
+  for (const key of aRefs.keys()) bRefs.delete(key);
   return {
-    selectedRefs: [...globalIds],
-    aRefs: [...aRefs],
-    bRefs: [...bRefs],
+    selectedRefs: refs,
+    aRefs: [...aRefs.values()],
+    bRefs: [...bRefs.values()],
     modelIds: [...new Set(refs.map(ref => ref.modelId))],
   };
 }

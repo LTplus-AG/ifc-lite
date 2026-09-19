@@ -59,6 +59,8 @@ import { McpPlayground } from './McpPlayground.js';
 import { PlaygroundChat, ToolCallView } from './PlaygroundChat.js';
 import { PlaygroundViewer } from './PlaygroundViewer.js';
 import { HeroScene } from './HeroScene.js';
+import type { LoadedPlaygroundModel } from './playground-dispatcher.js';
+import { clearApiKeys, updateApiKeys } from '@/services/api-keys';
 
 function addReadable(root: ParentNode, out: Set<string>): void {
   root.querySelectorAll('*').forEach((element) => {
@@ -130,6 +132,7 @@ function runOracle<T extends Catalogue>(
 
 afterEach(() => {
   cleanup();
+  clearApiKeys();
   setLocale('en');
 });
 
@@ -201,6 +204,31 @@ describe('mcp/playground chrome localization (#4918)', () => {
       document.body.textContent?.includes('MARKED huge.ifc too large'),
       'the shown error banner must retranslate live, not stay pinned to the locale active when it was set',
     );
+  });
+
+  it('renders a key-backed request failure after an initially empty translation becomes non-empty', async () => {
+    registerLocale('empty-request-failure', { 'mcp.playgroundChat.requestFailed': '' });
+    act(() => {
+      setLocale('empty-request-failure');
+      updateApiKeys({ anthropicKey: 'sk-ant-test', anthropicWorkspaceId: 'workspace\u200b' });
+    });
+    const model = { id: 'fixture', name: 'fixture.ifc', fileSize: 0 } as unknown as LoadedPlaygroundModel;
+    const container = render(<PlaygroundChat model={model} />);
+    const textarea = container.querySelector('textarea');
+    assert.ok(textarea);
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    assert.ok(valueSetter);
+    act(() => {
+      valueSetter.call(textarea, 'fail this request');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      container.querySelector('form')?.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.doesNotMatch(container.textContent ?? '', /TRANSLATED REQUEST FAILURE/);
+    act(() => registerLocale('empty-request-failure', { 'mcp.playgroundChat.requestFailed': 'TRANSLATED REQUEST FAILURE' }));
+    assert.match(container.textContent ?? '', /TRANSLATED REQUEST FAILURE/);
   });
 
   it('keeps an existing WebGL tool result reactive to a live locale switch', () => {

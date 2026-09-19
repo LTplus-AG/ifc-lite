@@ -641,7 +641,7 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
           })}
         </ul>
       )}
-      {msg.text && (
+      {(msg.text || msg.displayTextKey) && (
         <div className="prose-playground max-w-[95%] text-[13.5px] leading-relaxed text-white/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
             {msg.displayTextKey ? t(msg.displayTextKey) : msg.text}
@@ -649,10 +649,10 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
           {msg.pending && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-[#d6ff3f]" />}
         </div>
       )}
-      {msg.pending && !msg.text && msg.toolCalls && msg.toolCalls.length > 0 && (
+      {msg.pending && !msg.text && !msg.displayTextKey && msg.toolCalls && msg.toolCalls.length > 0 && (
         <div className="text-[11px] text-white/40">{t('mcp.playgroundChat.composingAnswer')}</div>
       )}
-      {msg.pending && !msg.text && (!msg.toolCalls || msg.toolCalls.length === 0) && (
+      {msg.pending && !msg.text && !msg.displayTextKey && (!msg.toolCalls || msg.toolCalls.length === 0) && (
         <div className="text-[11px] text-white/40">{t('mcp.playgroundChat.thinking')}</div>
       )}
     </div>

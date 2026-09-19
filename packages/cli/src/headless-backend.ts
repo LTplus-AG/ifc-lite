@@ -86,7 +86,7 @@ import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } fro
 import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createScheduleAdapter } from './headless-backend-schedule.js';
 import { exportHbjson, exportDfjson } from './energy-export.js';
-import { foldQueuedRelated, foldQueuedRelationshipEdges } from './query-overlay-relations.js';
+import { foldQueuedRelated, foldQueuedRelationshipEdges, supersededRelationshipIds } from './query-overlay-relations.js';
 import { overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
@@ -451,15 +451,15 @@ export class HeadlessBackend implements BimBackend {
         if (view.isDeleted(ref.expressId)) return { ...result, relations: [] };
 
         const seen = new Set<string>();
+        const superseded = supersededRelationshipIds(store, view);
         const relations = (result.relations ?? []).filter((edge) => {
-          if (view.isDeleted(edge.relationshipId) || view.isDeleted(edge.entity.id)) return false;
+          if (view.isDeleted(edge.relationshipId) || superseded.has(edge.relationshipId) || view.isDeleted(edge.entity.id)) return false;
           const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
         });
-        for (const edge of foldQueuedRelationshipEdges(view.getNewEntities(), (id) => view.isDeleted(id),
-          ref.expressId, (id) => view.getPositionalMutationsForEntity(id))) {
+        for (const edge of foldQueuedRelationshipEdges(store, view, ref.expressId)) {
           const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
           if (seen.has(key)) continue;
           const target = getEntityData({ modelId: ref.modelId, expressId: edge.targetId });
@@ -487,10 +487,10 @@ export class HeadlessBackend implements BimBackend {
           seen.add(id);
           out.push(id);
         };
-        const isDeleted = view ? (id: number) => view.isDeleted(id) : () => false;
+        const superseded = view ? supersededRelationshipIds(store, view) : new Set<number>();
+        const isDeleted = view ? (id: number) => view.isDeleted(id) || superseded.has(id) : () => false;
         for (const id of extractExactRelatedIds(store, ref.expressId, relType, direction, isDeleted)) take(id);
-        if (view) for (const t of foldQueuedRelated(view.getNewEntities(), (id) => view.isDeleted(id),
-          relType, direction, ref.expressId, (id) => view.getPositionalMutationsForEntity(id))) take(t);
+        if (view) for (const t of foldQueuedRelated(store, view, relType, direction, ref.expressId)) take(t);
         return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
       },
     };

@@ -117,5 +117,12 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
       && edge.entity.id === originalChild.ref.expressId)).toBe(false);
     expect(rows.some((edge) => edge.relationshipId === relationship.expressId
       && edge.entity.id === replacementChild.ref.expressId)).toBe(true);
+
+    // Named and positional writes share one last-write-wins endpoint surface.
+    backend.mutate.setAttribute(relationship, 'RelatedObjects', `#${originalChild.ref.expressId}`);
+    expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward'))
+      .toContainEqual(originalChild.ref);
+    expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward'))
+      .not.toContainEqual(replacementChild.ref);
   });
 });

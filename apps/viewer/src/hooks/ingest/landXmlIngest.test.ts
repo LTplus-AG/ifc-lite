@@ -223,6 +223,14 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Math.abs(info.max.y - (102 * 0.3048)) < 1e-5);
   });
 
+  it('rejects prototype property names as unsupported units', () => {
+    const inheritedUnit = LANDXML.replace('linearUnit="meter"', 'linearUnit="constructor"');
+    assert.throws(
+      () => parseLandXmlViewerModel(bytes(inheritedUnit)),
+      /Unsupported LandXML linear unit: constructor/,
+    );
+  });
+
   it('rejects a face whose point identity cannot be resolved', () => {
     assert.throws(
       () => parseLandXmlTin(LANDXML.replace('<F>10 20 30</F>', '<F>10 20 999</F>')),

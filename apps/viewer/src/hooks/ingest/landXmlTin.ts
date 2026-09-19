@@ -115,7 +115,9 @@ function parseFiniteTuple(text: string | null, count: number, context: string): 
 }
 
 function scaleFor(unit: string, context: string): number {
-  const scale = UNIT_SCALE_TO_METERS[unit];
+  const scale = Object.prototype.hasOwnProperty.call(UNIT_SCALE_TO_METERS, unit)
+    ? UNIT_SCALE_TO_METERS[unit]
+    : undefined;
   if (scale === undefined) throw new Error(`Unsupported LandXML ${context} unit: ${unit}`);
   return scale;
 }

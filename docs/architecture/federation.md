@@ -38,7 +38,8 @@ The registry accepts the range `offset … offset + maxExpressId` (express id 0 
 valid at the registry boundary, although normal STEP entities start at 1). The next offset is
 `offset + maxExpressId + 1 + OVERLAY_ID_HEADROOM` (H = 1,000,000): the headroom is
 reserved so ids the mutation overlay allocates into a loaded model after load
-(added walls, spaces, …) can never collide with the next model's real entities.
+(added walls, spaces, …) cannot collide with the next model's real entities while
+the overlay stays within that 1,000,000-ID reservation.
 
 ```typescript
 // Registration (maxExpressId = highest expressId in the model)

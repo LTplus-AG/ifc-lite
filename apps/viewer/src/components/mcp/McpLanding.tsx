@@ -23,14 +23,7 @@
  * user navigates away.
  */
 
-import {
-  type CSSProperties,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowLeft,
@@ -46,6 +39,8 @@ import {
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+import { formatLocaleCount } from '@/components/viewer/lists/formatLocaleCount';
 import { HeroScene, HERO_STEPS, HERO_STEP_MS, type HeroStep } from './HeroScene';
 import {
   CATALOG,
@@ -177,7 +172,7 @@ function TopBar(): ReactNode {
 // ── hero ────────────────────────────────────────────────────────────────────
 
 function Hero(): ReactNode {
-  const { t } = useTranslation(); const stats = useMemo(() => catalogStats(), []);
+  const { t, locale } = useTranslation(); const stats = useMemo(() => catalogStats(), []);
   return (
     <section className="relative z-10 overflow-hidden">
       <div className="mx-auto max-w-[1280px] px-6 pt-20 pb-32 md:pt-32 md:pb-44">
@@ -226,10 +221,10 @@ function Hero(): ReactNode {
               </button>
             </div>
             <div className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-4">
-              <Stat number={stats.total} label={t('mcp.mcpLanding.statTypedTools')} />
-              <Stat number={stats.categories} label={t('mcp.mcpLanding.statCategories')} />
-              <Stat number={5} label={t('mcp.mcpLanding.statMcpClients')} />
-              <Stat number={2} label={t('mcp.mcpLanding.statTransports')} sublabel={t('mcp.mcpLanding.statTransportsSublabel')} />
+              <Stat>{statMessage(t, locale, 'mcp.mcpLanding.statTypedTools', stats.total)}</Stat>
+              <Stat>{statMessage(t, locale, 'mcp.mcpLanding.statCategories', stats.categories)}</Stat>
+              <Stat>{statMessage(t, locale, 'mcp.mcpLanding.statMcpClients', 5)}</Stat>
+              <Stat sublabel={t('mcp.mcpLanding.statTransportsSublabel')}>{statMessage(t, locale, 'mcp.mcpLanding.statTransports', 2)}</Stat>
             </div>
           </div>
 
@@ -242,23 +237,23 @@ function Hero(): ReactNode {
   );
 }
 
-function Stat({ number, label, sublabel }: { number: number; label: string; sublabel?: string }): ReactNode {
+function statMessage(t: ReturnType<typeof useTranslation>['t'], locale: string, key: Parameters<typeof t>[0], count: number): ReactNode {
+  const number = <span key="countDisplay" style={{ ...display, color: PAPER, fontStyle: 'italic' }} className="text-[44px] leading-none">{formatLocaleCount(count, locale)}</span>;
+  return styleInterpolatedValues(t, key, [['countDisplay', number]], { count });
+}
+
+function Stat({ children, sublabel }: { children: ReactNode; sublabel?: string }): ReactNode {
   return (
-    <div className="flex items-baseline gap-2">
-      <span style={{ ...display, color: PAPER, fontStyle: 'italic' }} className="text-[44px] leading-none">
-        {number}
-      </span>
-      <div className="flex flex-col leading-tight">
+    <div className="flex items-baseline gap-2"><div className="flex flex-col leading-tight">
         <span className="text-[12px] uppercase tracking-[0.18em]" style={{ color: PAPER_DIM, fontWeight: 600 }}>
-          {label}
+          {children}
         </span>
         {sublabel && (
           <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px]">
             {sublabel}
           </span>
         )}
-      </div>
-    </div>
+      </div></div>
   );
 }
 

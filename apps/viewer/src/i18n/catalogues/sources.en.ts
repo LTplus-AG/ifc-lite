@@ -34,8 +34,8 @@ export const sourcesEn = {
   'sources.sourceBrowserHeader.syncedAt': 'Synced {time}',
   'sources.sourceBrowserHeader.sync': 'Sync',
   'sources.sourceBrowserHeader.syncedJustNow': 'just now',
-  'sources.sourceBrowserHeader.syncedMinutesAgo': '{minutes}m ago',
-  'sources.sourceBrowserHeader.syncedHoursAgo': '{hours}h ago',
+  'sources.sourceBrowserHeader.syncedMinutesAgo': { one: '{count}m ago', other: '{count}m ago' },
+  'sources.sourceBrowserHeader.syncedHoursAgo': { one: '{count}h ago', other: '{count}h ago' },
 
   // ── SourceEntityList / LoadMoreRow ──
   'sources.sourceEntityList.loading': 'Loading…',

@@ -27,11 +27,11 @@ function formatSyncTime(t: Translate, timestamp: number): string {
   if (deltaMs < 60_000) return t('sources.sourceBrowserHeader.syncedJustNow');
   if (deltaMs < 3_600_000) {
     return t('sources.sourceBrowserHeader.syncedMinutesAgo', {
-      minutes: Math.floor(deltaMs / 60_000),
+      count: Math.floor(deltaMs / 60_000),
     });
   }
   return t('sources.sourceBrowserHeader.syncedHoursAgo', {
-    hours: Math.floor(deltaMs / 3_600_000),
+    count: Math.floor(deltaMs / 3_600_000),
   });
 }
 

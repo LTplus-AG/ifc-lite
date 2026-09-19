@@ -280,7 +280,10 @@ describe('lineage sidecar', () => {
     const text = serializeLineageSidecar(sidecar);
     expect(serializeLineageSidecar(createLineageSidecar({ ...models, entries: [...entries].reverse(), keyProperty: 'Pset_Asset.AssetId', deleted: ['y', 'z'] }))).toBe(text);
     expect(parseLineageSidecar(text)).toEqual(sidecar);
-    expect(() => parseLineageSidecar(text.replace('"version": 2', '"version": 1'))).toThrow(/requires keyProperty/);
+    // Before keyed lineage gained version 2, the released writer emitted this
+    // exact version-1-plus-keyProperty shape. Keep reading those artifacts,
+    // while createLineageSidecar upgrades all newly written keyed files to v2.
+    expect(parseLineageSidecar(text.replace('"version": 2', '"version": 1'))).toEqual({ ...sidecar, version: 1 });
     const plain = createLineageSidecar({ ...models, entries });
     expect(plain.version).toBe(1);
     expect(() => parseLineageSidecar(serializeLineageSidecar(plain).replace('"version": 1', '"version": 2'))).toThrow(/requires keyProperty/);

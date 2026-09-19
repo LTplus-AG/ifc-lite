@@ -180,8 +180,8 @@ export function validateLineageSidecar(value: unknown): string[] {
   if (sidecar.format !== LINEAGE_SIDECAR_FORMAT) errors.push(`format must be "${LINEAGE_SIDECAR_FORMAT}"`);
   if (sidecar.version !== LINEAGE_SIDECAR_VERSION && sidecar.version !== LINEAGE_SIDECAR_KEYED_VERSION) {
     errors.push(`version must be ${LINEAGE_SIDECAR_VERSION} or ${LINEAGE_SIDECAR_KEYED_VERSION}`);
-  } else if ((sidecar.keyProperty !== undefined) !== (sidecar.version === LINEAGE_SIDECAR_KEYED_VERSION)) {
-    errors.push(`version ${LINEAGE_SIDECAR_KEYED_VERSION} requires keyProperty and version ${LINEAGE_SIDECAR_VERSION} forbids it`);
+  } else if (sidecar.version === LINEAGE_SIDECAR_KEYED_VERSION && sidecar.keyProperty === undefined) {
+    errors.push(`version ${LINEAGE_SIDECAR_KEYED_VERSION} requires keyProperty`);
   }
   for (const side of ['base', 'head'] as const) errors.push(...validateModelIdentity(sidecar[side], side));
   errors.push(...validateCreated(sidecar.created));

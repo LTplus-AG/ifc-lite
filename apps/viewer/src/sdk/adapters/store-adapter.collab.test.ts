@@ -7,12 +7,14 @@ import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
+import { registerEntityMaps, registerStoreSlot } from '@/lib/collab/entity-paths.js';
 import { createStoreAdapter } from './store-adapter.js';
 import type { StoreApi } from './types.js';
 
 const MODEL = 'model';
 let dataStore: IfcDataStore;
 let ifc2x3Store: IfcDataStore;
+let reconstructedStore: IfcDataStore;
 
 before(async () => {
   const step = [
@@ -26,6 +28,13 @@ before(async () => {
   ].join('\n');
   const bytes = new TextEncoder().encode(step);
   dataStore = await new IfcParser().parseColumnar(bytes.slice().buffer);
+  reconstructedStore = await new IfcParser().parseColumnar(bytes.slice().buffer);
+  registerStoreSlot(reconstructedStore, { slotId: 'm0', pathPrefix: '/m0' });
+  registerEntityMaps(
+    reconstructedStore,
+    new Map([[2, '/m0/0room000000000000000000']]),
+    new Map([['/m0/0room000000000000000000', 2]]),
+  );
   const ifc2x3 = step.replace("FILE_SCHEMA(('IFC4'));", "FILE_SCHEMA(('IFC2X3'));");
   const ifc2x3Bytes = new TextEncoder().encode(ifc2x3);
   ifc2x3Store = await new IfcParser().parseColumnar(ifc2x3Bytes.slice().buffer);
@@ -119,21 +128,24 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.doesNotThrow(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes }));
   });
 
-  it('validates and transfers GlobalId claims before applying positional edits', () => {
+  it('rejects a GlobalId already claimed by a reconstructed room path', () => {
+    const { adapter, view } = fixture(true, reconstructedStore);
+    const count = view.getMutations().length;
+    assert.throws(() => adapter.addEntity(MODEL, {
+      type: 'IFCWALL',
+      attributes: ['0room000000000000000000', null, 'Duplicate room entity'],
+    }), /already exists/);
+    assert.equal(view.getMutations().length, count);
+  });
+
+  it('rejects GlobalId edits because room identity is path-keyed', () => {
     const { adapter, view } = fixture();
     const first = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes: [
       '0first00000000000000000', null, 'First', null, null, null, null, null, '.NOTDEFINED.',
     ] });
-    const second = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes: [
-      '0second0000000000000000', null, 'Second', null, null, null, null, null, '.NOTDEFINED.',
-    ] });
     const before = view.getMutations().length;
-    assert.throws(() => adapter.setPositionalAttribute(first, 0, '0second0000000000000000'), /already exists/);
+    assert.throws(() => adapter.setPositionalAttribute(first, 0, '0second0000000000000000'), /immutable/);
     assert.equal(view.getMutations().length, before, 'a rejected identity edit cannot mutate the overlay');
-
-    adapter.setPositionalAttribute(first, 0, '0third00000000000000000');
-    assert.doesNotThrow(() => adapter.setPositionalAttribute(second, 0, '0first00000000000000000'));
-    assert.throws(() => adapter.setPositionalAttribute(second, 0, '0third00000000000000000'), /already exists/);
   });
 
   it('preserves structured create and positional values on the collaboration wire', () => {

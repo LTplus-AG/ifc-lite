@@ -10,29 +10,40 @@ const STEP_REFERENCE = /^#([1-9]\d*)$/;
 
 export function referencedExpressIds(value: unknown, allowReferences: boolean, ids = new Set<number>()): Set<number> {
   if (!allowReferences) return ids;
-  if (typeof value === 'string') {
-    const match = STEP_REFERENCE.exec(value);
-    if (match) ids.add(Number(match[1]));
-  } else if (Array.isArray(value)) {
-    for (const item of value) referencedExpressIds(item, true, ids);
-  } else if (value && typeof value === 'object') {
-    for (const item of Object.values(value)) referencedExpressIds(item, true, ids);
+  const pending: unknown[] = [value];
+  const visited = new Set<object>();
+  while (pending.length > 0) {
+    const item = pending.pop();
+    if (typeof item === 'string') {
+      const match = STEP_REFERENCE.exec(item);
+      if (match) ids.add(Number(match[1]));
+    } else if (item && typeof item === 'object' && !visited.has(item)) {
+      visited.add(item);
+      pending.push(...(Array.isArray(item) ? item : Object.values(item)));
+    }
   }
   return ids;
 }
 
 /** Replace sender-local STEP references with stable room paths. */
-export function encodeRoomAttributeValue(store: IfcDataStore, value: unknown, allowReferences: boolean): unknown {
+export function encodeRoomAttributeValue(
+  store: IfcDataStore,
+  value: unknown,
+  allowReferences: boolean,
+  resolvePath: (expressId: number) => string | null = expressId => pathForEntity(store, expressId),
+): unknown {
   if (!allowReferences) return value;
   if (typeof value === 'string') {
     const match = STEP_REFERENCE.exec(value);
     if (!match) return value;
-    const path = pathForEntity(store, Number(match[1]));
+    const path = resolvePath(Number(match[1]));
     return path ? { [PATH_KEY]: path } : value;
   }
-  if (Array.isArray(value)) return value.map(item => encodeRoomAttributeValue(store, item, true));
+  if (Array.isArray(value)) return value.map(item => encodeRoomAttributeValue(store, item, true, resolvePath));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, encodeRoomAttributeValue(store, item, true)]));
+    return Object.fromEntries(Object.entries(value).map(
+      ([key, item]) => [key, encodeRoomAttributeValue(store, item, true, resolvePath)],
+    ));
   }
   return value;
 }

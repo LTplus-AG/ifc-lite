@@ -21,6 +21,7 @@ import type { StoreApi } from './types.js';
 const MODEL = 'model';
 let dataStore: IfcDataStore;
 let ifc2x3Store: IfcDataStore;
+let ifc5Store: IfcDataStore;
 let reconstructedStore: IfcDataStore;
 
 before(async () => {
@@ -45,6 +46,8 @@ before(async () => {
   const ifc2x3 = step.replace("FILE_SCHEMA(('IFC4'));", "FILE_SCHEMA(('IFC2X3'));");
   const ifc2x3Bytes = new TextEncoder().encode(ifc2x3);
   ifc2x3Store = await new IfcParser().parseColumnar(ifc2x3Bytes.slice().buffer);
+  ifc5Store = Object.create(dataStore) as IfcDataStore;
+  Object.defineProperty(ifc5Store, 'schemaVersion', { value: 'IFC5' });
 });
 
 type MirrorCall = { kind: 'create' | 'remove' | 'attribute'; args: unknown[] };
@@ -145,6 +148,15 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     const first = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes });
     assert.equal(adapter.removeEntity(first), true);
     assert.doesNotThrow(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes }));
+  });
+
+  it('allows a tombstoned source GlobalId to be reused', () => {
+    const { adapter } = fixture();
+    assert.equal(adapter.removeEntity({ modelId: MODEL, expressId: 2 }), true);
+    assert.doesNotThrow(() => adapter.addEntity(MODEL, {
+      type: 'IFCWALL',
+      attributes: ['0wall000000000000000000', null, 'Replacement', null, null, null, null, null, '.NOTDEFINED.'],
+    }));
   });
 
   it('allows GlobalId reuse after a peer removes the overlay entity', () => {
@@ -249,6 +261,33 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     const { adapter, calls } = fixture();
     adapter.addEntity(MODEL, { type: 'IFCRELAGGREGATES', attributes: [
       '0relation000000000000000', null, null, null, '#1', ['#2'],
+    ] });
+    const attributes = calls.find(call => call.kind === 'create')?.args[5] as Record<string, unknown>;
+    assert.deepEqual(attributes['bsi::ifc::prop::RelatingObject'], {
+      'ifc-lite::entityPath': '/0project000000000000000',
+    });
+    assert.deepEqual(attributes['bsi::ifc::prop::RelatedObjects'], [{
+      'ifc-lite::entityPath': '/0wall000000000000000000',
+    }]);
+  });
+
+  it('encodes entity-valued branches of mixed SELECT attributes', () => {
+    const { adapter, calls } = fixture(true, dataStore, () => true);
+    adapter.addEntity(MODEL, {
+      type: 'IFCAPPLIEDVALUE',
+      attributes: ['Rate', null, '#3', null, null, null, null, null, null, null],
+    });
+    const appliedValue = calls.at(-1);
+    assert.deepEqual(
+      (appliedValue?.args[5] as Record<string, unknown>)['bsi::ifc::prop::AppliedValue'],
+      { 'ifc-lite::entityPath': '/ifc-lite-ref-3' },
+    );
+  });
+
+  it('uses cross-schema reference metadata for IFC5 collaboration stores', () => {
+    const { adapter, calls } = fixture(true, ifc5Store);
+    adapter.addEntity(MODEL, { type: 'IFCRELAGGREGATES', attributes: [
+      '0relation000000000000001', null, null, null, '#1', ['#2'],
     ] });
     const attributes = calls.find(call => call.kind === 'create')?.args[5] as Record<string, unknown>;
     assert.deepEqual(attributes['bsi::ifc::prop::RelatingObject'], {

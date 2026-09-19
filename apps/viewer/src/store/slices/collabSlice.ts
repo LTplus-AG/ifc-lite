@@ -1212,10 +1212,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi || !placementApi || !geomApiRef) return;
     if (!get().canCollabEdit()) return;
-    // Overlay (runtime-created) entities aren't in the store's GUID maps, so
-    // derive the path from the new entity's GlobalId — in the store's room
-    // slot, like every seeded path — and register it so this (and later
-    // edits to it) resolve.
+    // Overlay entities aren't in the GUID maps; derive their room path and
+    // register it only after CRDT creation succeeds so failed writes can retry.
     let path = pathForEntity(store, entityId);
     let generatedPath = false;
     if (!path && guid) {

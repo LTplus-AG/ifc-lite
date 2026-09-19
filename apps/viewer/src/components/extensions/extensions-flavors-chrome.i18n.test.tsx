@@ -497,6 +497,36 @@ describe('FlavorMergeDialog localization (#4918)', () => {
     ]);
   });
 
+  it('uses localized canonical flavor names in merge summaries', async () => {
+    registerLocale('merge-canonical-name', {
+      'extensionsFlavors.flavorIndicator.defaultLabel': 'BASELINE LOCALISÉE',
+    });
+    setLocale('merge-canonical-name');
+    const host = new StubHost();
+    const shared = makeFlavor({
+      id: DEFAULT_FLAVOR_ID,
+      name: DEFAULT_FLAVOR_NAME,
+      description: DEFAULT_FLAVOR_DESCRIPTION,
+      settings: { demo: 'same' },
+    });
+    await host.flavors.put(shared);
+    await host.flavors.activate(DEFAULT_FLAVOR_ID);
+
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <FlavorMergeDialog open theirs={{ ...shared }} onClose={() => {}} />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(20);
+
+    const summary = r('extensionsFlavors.flavorMergeDialog.cleanMerge', {
+      theirs: 'BASELINE LOCALISÉE',
+      ours: 'BASELINE LOCALISÉE',
+    });
+    assert.ok(readableStrings().has(summary));
+    assert.doesNotMatch(document.body.textContent ?? '', new RegExp(`\\b${DEFAULT_FLAVOR_NAME}\\b`));
+  });
+
   it('translates a setting conflict: summary, resolve controls, and the chip labels', async () => {
     const host = new StubHost();
     const base = makeFlavor({ id: 'flv.m', name: 'Base', settings: { demo: 'A' } });

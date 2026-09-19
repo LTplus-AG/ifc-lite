@@ -37,6 +37,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { HelpHint } from './HelpHint';
 import { localizedFlavorName } from './localized-flavor-metadata';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 
 interface PrivacyPanelProps {
   onClose?: () => void;
@@ -228,8 +229,13 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
               <>
                 <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                   <ScrollText className="h-3 w-3" />
-                  {t('extensionsPanels.privacyPanel.editingOverlayFor')}{' '}
-                  <span className="font-medium text-foreground">{localizedFlavorName(activeFlavor, t)}</span>
+                  {styleInterpolatedValues(t, 'extensionsPanels.privacyPanel.editingOverlayFor', [
+                    ['name', (
+                      <span key="flavor-name" className="font-medium text-foreground">
+                        {localizedFlavorName(activeFlavor, t)}
+                      </span>
+                    )],
+                  ])}
                 </div>
                 <textarea
                   className="w-full min-h-[160px] rounded border bg-background p-2 font-mono text-[11px] leading-relaxed"

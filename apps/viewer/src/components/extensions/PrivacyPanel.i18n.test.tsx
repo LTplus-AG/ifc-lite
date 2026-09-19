@@ -223,6 +223,27 @@ describe('PrivacyPanel localization (#4918)', () => {
     assert.match(container.textContent ?? '', /BASELINE LOCALISÉE/);
   });
 
+  it('lets a locale place the active flavor inside the complete overlay message', async () => {
+    registerLocale('privacy-overlay-reordered', {
+      'extensionsFlavors.flavorIndicator.defaultLabel': 'BASELINE LOCALISÉE',
+      'extensionsPanels.privacyPanel.editingOverlayFor': '{name} — MODIFICATION DU CALQUE',
+    } as Catalogue);
+    setLocale('privacy-overlay-reordered');
+    const host = new StubExtensionHost();
+    await host.flavors.resetToDefaults();
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <PrivacyPanel />
+      </ExtensionHostContext.Provider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    assert.match(container.textContent ?? '', /BASELINE LOCALISÉE — MODIFICATION DU CALQUE/);
+  });
+
   it('translates every static key rendered across the no-flavor and active-flavor states', async () => {
     // Pass 1: no active flavor (the empty state + top-level chrome).
     const emptyHost = new StubExtensionHost();

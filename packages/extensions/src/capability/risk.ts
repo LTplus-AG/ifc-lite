@@ -60,7 +60,11 @@ export function computeRisk(cap: Capability): CapabilityRisk {
     }
   } else if (cap.target && hasInternalGlob(cap.target)) {
     // Glob inside (not universal) — bump green→yellow at most, leave others.
-    if (entry.baseRisk === 'green') tier = 'yellow';
+    if (entry.baseRisk === 'green') {
+      tier = 'yellow';
+      reasonCode = 'target-pattern-wildcard';
+      suffix = ' Target pattern contains a wildcard — risk is elevated.';
+    }
   }
 
   // network.fetch with a specific single host stays yellow (we surface
@@ -74,6 +78,8 @@ export function computeRisk(cap: Capability): CapabilityRisk {
       suffix = ' Host pattern contains a wildcard.';
     } else {
       tier = 'yellow';
+      reasonCode = 'specific-network-host';
+      suffix = ' Access is restricted to a specific host.';
     }
   }
 

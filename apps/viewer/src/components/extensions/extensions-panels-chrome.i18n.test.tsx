@@ -37,7 +37,7 @@ import type {
 } from '@ifc-lite/extensions';
 import type { ExtensionInstallSummary as HostInstallSummary } from '@/services/extensions/host';
 import { createBimContext } from '@ifc-lite/sdk';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, type as typeInput } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { extensionsPanelsEn } from '@/i18n/catalogues/extensions-panels.en';
 import { ExtensionHostService } from '@/services/extensions/host.js';
@@ -137,6 +137,9 @@ function addReadable(root: ParentNode, out: Set<string>): void {
     if (title) out.add(title);
     const placeholder = element.getAttribute('placeholder');
     if (placeholder) out.add(placeholder);
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      if (element.value) out.add(element.value);
+    }
     const ownText = [...element.childNodes]
       .filter((node) => node.nodeType === node.TEXT_NODE)
       .map((node) => node.textContent ?? '')
@@ -146,7 +149,7 @@ function addReadable(root: ParentNode, out: Set<string>): void {
   });
 }
 
-/** aria-labels, titles, placeholders, plain text, and (by focusing every
+/** aria-labels, titles, placeholders, field values, plain text, and (by focusing every
  *  button/input in turn) every reachable Radix `TooltipContent` string. */
 function readableStrings(container: HTMLElement): Set<string> {
   const out = new Set<string>();
@@ -324,7 +327,7 @@ async function mountFixture(): Promise<{ host: StubExtensionHost; container: HTM
         />
         <IdeasPanel />
         <PlanCard plan={planFixture()} onApprove={() => {}} onCancel={() => {}} />
-        <PromoteToolDialog open source="function run(ctx) { return 1; }" initialName="Fire-rating report" onClose={() => {}} />
+        <PromoteToolDialog open source="function run(ctx) { return 1; }" onClose={() => {}} />
         <RepairQueuePanel sdkVersion={SDK} onClose={() => {}} />
       </div>
     </ExtensionHostContext.Provider>,
@@ -399,6 +402,10 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
       'extensionsPanels.capabilityReview.capability.networkFetch': 'NETZWERK ABRUFEN',
       'extensionsPanels.capabilityReview.risk.universalWildcardTarget':
         '{description} ZIEL `{target}` IST GLOBAL',
+      'extensionsPanels.capabilityReview.risk.targetPatternWildcard':
+        '{description} MUSTER `{target}` ERHÖHT DAS RISIKO',
+      'extensionsPanels.capabilityReview.risk.specificNetworkHost':
+        '{description} NUR HOST `{target}`',
       'extensionsPanels.capabilityReview.risk.unknownCapability':
         'UNBEKANNTE FÄHIGKEIT {raw}',
       'extensionsPanels.capabilityReview.riskTier.green': 'GRÜN',
@@ -414,7 +421,13 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     host.revalidateSummary = { sdk: SDK, items: [item], needsRepair: [item] };
     const summary = {
       ...capabilitySummary(),
-      capabilities: ['model.read', 'network.fetch:*', 'model.unlisted'],
+      capabilities: [
+        'model.read',
+        'network.fetch:*',
+        'network.fetch:example.com',
+        'viewer.colorize:IfcW*',
+        'model.unlisted',
+      ],
     };
     const container = render(
       <ExtensionHostContext.Provider value={host}>
@@ -442,6 +455,8 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     const text = document.body.textContent ?? '';
     assert.match(text, /MODELLE LESEN/);
     assert.match(text, /NETZWERK ABRUFEN ZIEL `\*` IST GLOBAL/);
+    assert.match(text, /NETZWERK ABRUFEN NUR HOST `example\.com`/);
+    assert.match(text, /MUSTER `IfcW\*` ERHÖHT DAS RISIKO/);
     assert.match(text, /UNBEKANNTE FÄHIGKEIT model\.unlisted/);
     assert.match(text, /BEREICH \^1\.0\.0 PASST NICHT ZU SDK 2\.0\.0/);
     assert.match(text, /GRÜN/);
@@ -598,6 +613,10 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
   it('lets a locale reorder complete rich help messages without translating capability codes', async () => {
     registerLocale('extensions-help-reordered', {
       'extensionsPanels.auditLogPanel.helpExport': 'SNAPSHOT VIA {export}',
+      'extensionsPanels.ideasPanel.helpCuratedSubject': 'CURATED',
+      'extensionsPanels.ideasPanel.helpCurated': 'BUILT TODAY — {subject}',
+      'extensionsPanels.ideasPanel.helpRecurringSubject': 'RECURRING',
+      'extensionsPanels.ideasPanel.helpRecurring': 'AFTER REPEATED USE — {subject}',
       'extensionsPanels.ideasPanel.helpActions': '{customize} BEFORE {tryIt}',
       'extensionsPanels.promoteToolDialog.noCapabilitiesDetected':
         'ONLY {capability} IS REQUESTED',
@@ -618,8 +637,38 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
 
     const text = document.body.textContent ?? '';
     assert.match(text, /SNAPSHOT VIA Export/);
+    assert.match(text, /BUILT TODAY — CURATED/);
+    assert.match(text, /AFTER REPEATED USE — RECURRING/);
     assert.match(text, /Customize plan first… BEFORE Try it/);
     assert.match(text, /ONLY model\.read IS REQUESTED/);
+  });
+
+  it('localizes the untouched promoted-tool name without overwriting an edit', () => {
+    registerLocale('promote-name-a', {
+      'extensionsPanels.promoteToolDialog.defaultName': 'MON OUTIL',
+    } as Catalogue);
+    registerLocale('promote-name-b', {
+      'extensionsPanels.promoteToolDialog.defaultName': 'MEIN WERKZEUG',
+    } as Catalogue);
+    setLocale('promote-name-a');
+
+    const host = new StubExtensionHost();
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <PromoteToolDialog open source="function run(ctx) { return 1; }" onClose={() => {}} />
+      </ExtensionHostContext.Provider>,
+    );
+
+    const name = document.body.querySelector<HTMLInputElement>('#tool-name');
+    assert.ok(name);
+    assert.equal(name.value, 'MON OUTIL');
+
+    act(() => setLocale('promote-name-b'));
+    assert.equal(name.value, 'MEIN WERKZEUG');
+
+    typeInput(name, 'User-authored name');
+    act(() => setLocale('promote-name-a'));
+    assert.equal(name.value, 'User-authored name');
   });
 
   it('shows and accepts the same fixed high-risk confirmation token in every locale', () => {

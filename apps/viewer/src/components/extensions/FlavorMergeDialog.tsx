@@ -38,6 +38,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type UseTranslationResult } from '@/i18n';
+import { localizedFlavorName } from './localized-flavor-metadata';
 
 interface FlavorMergeDialogProps {
   open: boolean;
@@ -149,8 +150,8 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
           <div className="space-y-3">
             <div className="text-sm">
               {t('extensionsFlavors.flavorMergeDialog.cleanMerge', {
-                theirs: theirs.name,
-                ours: ours.name,
+                theirs: localizedFlavorName(theirs, t),
+                ours: localizedFlavorName(ours, t),
               })}
             </div>
             <div className="flex justify-end gap-2">
@@ -168,8 +169,8 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
             <div className="text-xs text-muted-foreground">
               {t('extensionsFlavors.flavorMergeDialog.conflictSummary', {
                 count: mergeResult.conflicts.length,
-                theirs: theirs.name,
-                ours: ours.name,
+                theirs: localizedFlavorName(theirs, t),
+                ours: localizedFlavorName(ours, t),
               })}
             </div>
 

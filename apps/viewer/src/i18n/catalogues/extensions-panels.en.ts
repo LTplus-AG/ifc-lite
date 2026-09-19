@@ -152,6 +152,10 @@ export const extensionsPanelsEn = {
     '{description} Target: `{target}`. Universal wildcard target — unrestricted scope.',
   'extensionsPanels.capabilityReview.risk.hostPatternWildcard':
     '{description} Target: `{target}`. Host pattern contains a wildcard.',
+  'extensionsPanels.capabilityReview.risk.targetPatternWildcard':
+    '{description} Target: `{target}`. Target pattern contains a wildcard — risk is elevated.',
+  'extensionsPanels.capabilityReview.risk.specificNetworkHost':
+    '{description} Target: `{target}`. Access is restricted to a specific host.',
   'extensionsPanels.capabilityReview.riskTier.green': 'Green',
   'extensionsPanels.capabilityReview.riskTier.yellow': 'Yellow',
   'extensionsPanels.capabilityReview.riskTier.red': 'Red',
@@ -168,11 +172,11 @@ export const extensionsPanelsEn = {
     other: '{count} suggestions · {events} events',
   },
   'extensionsPanels.ideasPanel.helpLabel': 'Ideas',
-  'extensionsPanels.ideasPanel.helpCuratedBold': 'Curated starter ideas',
-  'extensionsPanels.ideasPanel.helpCuratedBody': 'show what one-click tools you can build today.',
-  'extensionsPanels.ideasPanel.helpRecurringBold': 'Recurring suggestions',
-  'extensionsPanels.ideasPanel.helpRecurringBody':
-    'appear once a workflow shows up repeatedly in your local activity log (model loads, lens applies, exports). Thresholds relax while the log is sparse so something appears early; tightens as data accumulates.',
+  'extensionsPanels.ideasPanel.helpCuratedSubject': 'Curated starter ideas',
+  'extensionsPanels.ideasPanel.helpCurated': '{subject} show what one-click tools you can build today.',
+  'extensionsPanels.ideasPanel.helpRecurringSubject': 'Recurring suggestions',
+  'extensionsPanels.ideasPanel.helpRecurring':
+    '{subject} appear once a workflow shows up repeatedly in your local activity log (model loads, lens applies, exports). Thresholds relax while the log is sparse so something appears early; tightens as data accumulates.',
   'extensionsPanels.ideasPanel.helpActions':
     'Click {tryIt} to send the idea to the AI chat assistant — chat opens and you answer follow-ups. Click {customize} if you want to prune capabilities or rename the command before chat sees it.',
   'extensionsPanels.ideasPanel.helpPrivacy': 'The action log is local. Nothing here leaves your device.',
@@ -238,7 +242,7 @@ export const extensionsPanelsEn = {
     'Notes appended to the AI assistant’s system prompt for the active flavor. Use it for stable preferences ("write CSV exports with semicolons", "default to red color for IfcWall"). Capped at ~4000 tokens.',
   'extensionsPanels.privacyPanel.noActiveFlavor':
     'No active flavor. Activate or import one to attach overlay notes to it.',
-  'extensionsPanels.privacyPanel.editingOverlayFor': 'Editing overlay for',
+  'extensionsPanels.privacyPanel.editingOverlayFor': 'Editing overlay for {name}',
   'extensionsPanels.privacyPanel.overlayPlaceholder':
     'e.g. Always export CSV with semicolon separators. Default lens for IfcWall: by-fire-rating.',
   'extensionsPanels.privacyPanel.approxTokens': '{tokens} approx tokens',
@@ -274,6 +278,7 @@ export const extensionsPanelsEn = {
   'extensionsPanels.promoteToolDialog.description':
     'Turn this saved script into a persistent, sandboxed tool. The tool appears in the command palette and on the toolbar. It runs in the same sandbox as your scripts with only the capabilities you grant.',
   'extensionsPanels.promoteToolDialog.nameLabel': 'Name',
+  'extensionsPanels.promoteToolDialog.defaultName': 'My tool',
   'extensionsPanels.promoteToolDialog.namePlaceholder': 'Fire-rating report',
   'extensionsPanels.promoteToolDialog.hotkeyLabel': 'Hotkey (optional)',
   'extensionsPanels.promoteToolDialog.hotkeyPlaceholder': 'Ctrl+Alt+F',

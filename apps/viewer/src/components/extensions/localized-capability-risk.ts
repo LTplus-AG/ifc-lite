@@ -61,6 +61,16 @@ export function localizeCapabilityRisk(risk: CapabilityRisk, t: Translate): stri
         description,
         target: risk.capability.target?.raw ?? '',
       });
+    case 'target-pattern-wildcard':
+      return t('extensionsPanels.capabilityReview.risk.targetPatternWildcard', {
+        description,
+        target: risk.capability.target?.raw ?? '',
+      });
+    case 'specific-network-host':
+      return t('extensionsPanels.capabilityReview.risk.specificNetworkHost', {
+        description,
+        target: risk.capability.target?.raw ?? '',
+      });
     default: {
       const exhaustive: never = risk.reasonCode;
       return exhaustive;

@@ -111,7 +111,9 @@ export interface CapabilityRisk {
     | 'unknown-capability'
     | 'missing-required-target'
     | 'universal-wildcard-target'
-    | 'host-pattern-wildcard';
+    | 'host-pattern-wildcard'
+    | 'target-pattern-wildcard'
+    | 'specific-network-host';
   /** Plain-English diagnostic for logs, prompts, and non-localized consumers. */
   description: string;
 }

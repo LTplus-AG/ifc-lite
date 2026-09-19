@@ -173,12 +173,14 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
           )}
           <HelpHint label={t('extensionsPanels.ideasPanel.helpLabel')}>
             <p>
-              <strong>{t('extensionsPanels.ideasPanel.helpCuratedBold')}</strong>{' '}
-              {t('extensionsPanels.ideasPanel.helpCuratedBody')}
+              {styleInterpolatedValues(t, 'extensionsPanels.ideasPanel.helpCurated', [
+                ['subject', <strong key="curated">{t('extensionsPanels.ideasPanel.helpCuratedSubject')}</strong>],
+              ])}
             </p>
             <p>
-              <strong>{t('extensionsPanels.ideasPanel.helpRecurringBold')}</strong>{' '}
-              {t('extensionsPanels.ideasPanel.helpRecurringBody')}
+              {styleInterpolatedValues(t, 'extensionsPanels.ideasPanel.helpRecurring', [
+                ['subject', <strong key="recurring">{t('extensionsPanels.ideasPanel.helpRecurringSubject')}</strong>],
+              ])}
             </p>
             <p>
               {styleInterpolatedValues(t, 'extensionsPanels.ideasPanel.helpActions', [

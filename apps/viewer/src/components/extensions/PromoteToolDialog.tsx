@@ -14,7 +14,7 @@
  * `09-implementation-plan.md` P1.T11 / T12.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Sparkles, X } from 'lucide-react';
 import {
   inferCapabilities,
@@ -62,13 +62,25 @@ interface PromoteToolDialogProps {
 export function PromoteToolDialog({ open, source, initialName, onClose }: PromoteToolDialogProps) {
   const { t } = useTranslation();
   const host = useExtensionHost();
-  const [name, setName] = useState(initialName ?? 'My tool');
+  const defaultName = t('extensionsPanels.promoteToolDialog.defaultName');
+  const [name, setName] = useState(initialName ?? defaultName);
+  const nameEditedRef = useRef(false);
   const [hotkey, setHotkey] = useState('');
   const [icon, setIcon] = useState<string>('sparkles');
   const [pending, setPending] = useState<{ bytes: Uint8Array; summary: ExtensionInstallSummary } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const inference = useMemo(() => inferCapabilities(source), [source]);
+
+  useEffect(() => {
+    if (!open) {
+      nameEditedRef.current = false;
+      return;
+    }
+    if (!nameEditedRef.current) {
+      setName(initialName ?? defaultName);
+    }
+  }, [defaultName, initialName, open]);
 
   const handlePromote = async () => {
     if (busy) return;
@@ -152,7 +164,10 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
             <Input
               id="tool-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                nameEditedRef.current = true;
+                setName(e.target.value);
+              }}
               placeholder={t('extensionsPanels.promoteToolDialog.namePlaceholder')}
             />
           </div>

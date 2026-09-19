@@ -160,16 +160,10 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
           <h2 className="text-sm font-semibold">{t('extensionsPanels.privacyPanel.title')}</h2>
           <HelpHint label={t('extensionsPanels.privacyPanel.helpLabel')}>
             <p>
-              {t('extensionsPanels.privacyPanel.helpIntroPrefix')}{' '}
-              <strong>{t('extensionsPanels.privacyPanel.actionLogBold')}</strong>{' '}
-              {t('extensionsPanels.privacyPanel.helpIntroRest')}
+              {t('extensionsPanels.privacyPanel.helpIntro')}
             </p>
             <p>
-              {t('extensionsPanels.privacyPanel.helpOverlayPrefix')}{' '}
-              <strong>{t('extensionsPanels.privacyPanel.promptOverlayBold')}</strong>{' '}
-              {t('extensionsPanels.privacyPanel.helpOverlayRest')}{' '}
-              <strong>{t('extensionsPanels.privacyPanel.extractFromChat')}</strong>{' '}
-              {t('extensionsPanels.privacyPanel.helpExtractRest')}
+              {t('extensionsPanels.privacyPanel.helpOverlay')}
             </p>
           </HelpHint>
         </div>
@@ -187,9 +181,7 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
               {t('extensionsPanels.privacyPanel.storeHeading')}
             </h3>
             <p className="text-muted-foreground leading-relaxed">
-              {t('extensionsPanels.privacyPanel.storeBody1Prefix')}{' '}
-              <strong>{t('extensionsPanels.privacyPanel.actionLogBold')}</strong>{' '}
-              {t('extensionsPanels.privacyPanel.storeBody1Rest')}
+              {t('extensionsPanels.privacyPanel.storeBody1')}
             </p>
             <p className="text-muted-foreground leading-relaxed">
               {t('extensionsPanels.privacyPanel.storeBody2')}

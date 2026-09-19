@@ -434,4 +434,38 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(container.textContent ?? '', /1 suggestion \(fr\) · 17 événements/);
     assert.match(container.textContent ?? '', /1 test échoué \(fr\) :/);
   });
+
+  it('shows and accepts the same fixed high-risk confirmation token in every locale', () => {
+    registerLocale('fr', {
+      'extensionsPanels.capabilityReview.confirmInstruction':
+        'Saisissez {phrase} ci-dessous pour confirmer.',
+    } as Catalogue);
+    setLocale('fr');
+
+    render(
+      <CapabilityReview
+        open
+        summary={capabilitySummary()}
+        onApprove={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+
+    assert.match(document.body.textContent ?? '', /Saisissez approve ci-dessous/);
+    const input = document.body.querySelector<HTMLInputElement>('input[placeholder="approve"]');
+    assert.ok(input, 'the translated instruction exposes the exact validation token');
+    const install = [...document.body.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Install'),
+    );
+    assert.ok(install);
+    assert.equal(install.disabled, true);
+
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    assert.ok(setter);
+    act(() => {
+      setter.call(input, 'approve');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    assert.equal(install.disabled, false);
+  });
 });

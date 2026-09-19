@@ -122,12 +122,6 @@ export function CapabilityReview({
   const canApprove =
     !needsConfirm || confirmText.trim().toLowerCase() === APPROVE_PHRASE;
 
-  // Display-only translation of the confirmation word. The actual
-  // comparison above always checks the hardcoded English APPROVE_PHRASE —
-  // translating that comparison would silently break the friction check
-  // for any locale whose catalogue re-translates this key.
-  const approveWord = t('extensionsPanels.capabilityReview.approvePhrase');
-
   const toggle = (raw: string, checked: boolean) => {
     setGranted((prev) => {
       const next = new Set(prev);
@@ -293,16 +287,14 @@ export function CapabilityReview({
               {t('extensionsPanels.capabilityReview.highRiskTitle')}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t('extensionsPanels.capabilityReview.typePrefix')}{' '}
-              <code className="font-mono">{approveWord}</code>{' '}
-              {t('extensionsPanels.capabilityReview.confirmSuffix')}
+              {t('extensionsPanels.capabilityReview.confirmInstruction', { phrase: APPROVE_PHRASE })}
             </p>
             <Input
               className="mt-2"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              placeholder={approveWord}
-              aria-label={t('extensionsPanels.capabilityReview.confirmAriaLabel', { phrase: approveWord })}
+              placeholder={APPROVE_PHRASE}
+              aria-label={t('extensionsPanels.capabilityReview.confirmAriaLabel', { phrase: APPROVE_PHRASE })}
               autoFocus
             />
           </div>

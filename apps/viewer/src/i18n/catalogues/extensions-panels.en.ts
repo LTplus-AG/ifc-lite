@@ -36,11 +36,9 @@ import type { TranslationValue } from '../types';
  *  - `ICON_CHOICES` labels (`./icon-registry`) — a separate module outside
  *    this file list; not touched here.
  *
- * `APPROVE_PHRASE` in `CapabilityReview` stays the hardcoded English word
- * `'approve'` for the actual confirmation-text comparison (matching a
- * translated word would silently break the friction check for any locale
- * whose catalogue re-translates it); `capabilityReview.approvePhrase`
- * below is display-only (placeholder / instruction copy), same value.
+ * `APPROVE_PHRASE` in `CapabilityReview` stays the hardcoded English security
+ * token `'approve'`. It is interpolated into translated instruction/ARIA copy,
+ * so every locale tells the user the exact token the validator accepts.
  */
 export const extensionsPanelsEn = {
   // ── AuditLogPanel ──
@@ -110,9 +108,7 @@ export const extensionsPanelsEn = {
   'extensionsPanels.capabilityReview.unknownCapabilityDescription':
     'Unknown capability — treated as high-risk.',
   'extensionsPanels.capabilityReview.highRiskTitle': 'High-risk capability requested',
-  'extensionsPanels.capabilityReview.typePrefix': 'Type',
-  'extensionsPanels.capabilityReview.confirmSuffix': 'below to confirm.',
-  'extensionsPanels.capabilityReview.approvePhrase': 'approve',
+  'extensionsPanels.capabilityReview.confirmInstruction': 'Type {phrase} below to confirm.',
   'extensionsPanels.capabilityReview.confirmAriaLabel': 'Type {phrase} to confirm',
   'extensionsPanels.capabilityReview.cancelButton': 'Cancel',
   'extensionsPanels.capabilityReview.installButton': 'Install',
@@ -177,21 +173,15 @@ export const extensionsPanelsEn = {
   // ── PrivacyPanel ──
   'extensionsPanels.privacyPanel.title': 'Privacy',
   'extensionsPanels.privacyPanel.helpLabel': 'Privacy',
-  'extensionsPanels.privacyPanel.helpIntroPrefix': 'IFClite keeps a',
-  'extensionsPanels.privacyPanel.actionLogBold': 'content-free action log',
-  'extensionsPanels.privacyPanel.helpIntroRest':
-    'of intents you perform (model loads, lens applies, exports) — used by the pattern miner to suggest one-click tools. The log never records model content, chat content, file names, or API keys.',
-  'extensionsPanels.privacyPanel.helpOverlayPrefix': 'The',
-  'extensionsPanels.privacyPanel.promptOverlayBold': 'prompt overlay',
-  'extensionsPanels.privacyPanel.helpOverlayRest':
-    'on the active flavor is appended to every chat system prompt — use it for stable preferences.',
+  'extensionsPanels.privacyPanel.helpIntro':
+    'IFClite keeps a content-free action log of intents you perform (model loads, lens applies, exports) — used by the pattern miner to suggest one-click tools. The log never records model content, chat content, file names, or API keys.',
+  'extensionsPanels.privacyPanel.helpOverlay':
+    'The prompt overlay on the active flavor is appended to every chat system prompt — use it for stable preferences. Extract from chat scans the current session for explicit preferences and proposes them.',
   'extensionsPanels.privacyPanel.extractFromChat': 'Extract from chat',
-  'extensionsPanels.privacyPanel.helpExtractRest': 'scans the current session for explicit preferences and proposes them.',
   'extensionsPanels.privacyPanel.closeAriaLabel': 'Close',
   'extensionsPanels.privacyPanel.storeHeading': 'What we store locally',
-  'extensionsPanels.privacyPanel.storeBody1Prefix': 'ifc-lite keeps a content-free',
-  'extensionsPanels.privacyPanel.storeBody1Rest':
-    'of the high-level intents you perform (model loads, lens applies, exports). We use it to mine recurring patterns and surface one-click tool suggestions. The log never records model content, chat content, file names, or API keys.',
+  'extensionsPanels.privacyPanel.storeBody1':
+    'ifc-lite keeps a content-free action log of the high-level intents you perform (model loads, lens applies, exports). We use it to mine recurring patterns and surface one-click tool suggestions. The log never records model content, chat content, file names, or API keys.',
   'extensionsPanels.privacyPanel.storeBody2':
     "Suggestions, the audit log, the prompt overlay, and your flavor library are all stored in your browser's IndexedDB — nothing here is sent off device unless you explicitly export.",
   'extensionsPanels.privacyPanel.actionLogHeading': 'Action log',

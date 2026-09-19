@@ -1105,7 +1105,7 @@ export function Viewport({
               : single !== null ? [single] : [];
           if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
-            return;
+            return false;
           }
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
@@ -1141,9 +1141,9 @@ export function Viewport({
             }
           }
           if (min && max) {
-            return frameSelectionBounds(camera, renderer, min, max, durationMs, calculateScale);
+            return frameSelectionBounds(camera, renderer, min, max, durationMs, calculateScale).then(() => true);
           } else {
-            console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
+            console.warn('[Viewport] frameSelection: Could not get bounds for selected element'); return false;
           }
         },
         // Resolve ids to what the renderer can actually highlight (the SAME

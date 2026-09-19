@@ -143,7 +143,14 @@ export function focusClashGroup(
         return;
       }
       try {
-        Promise.resolve(frameSelection(0)).then(() => {
+        // The callback remains void-compatible for existing synchronous callers,
+        // while Viewport returns false specifically when it has no bounds.
+        const frameResult: unknown = frameSelection(0);
+        Promise.resolve(frameResult).then((didFrame) => {
+          if (didFrame === false) {
+            resolve(null);
+            return;
+          }
           resolve({ viewpoint: currentCameraViewpoint() });
         }, (error) => {
           console.error('[clash] Could not finish framing the manual clash group:', error);

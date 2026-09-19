@@ -279,4 +279,17 @@ describe('manual clash group focus (#4921)', () => {
     assert.equal(focusedCameraViewpointIsCurrent(framed), false,
       'capture must abort rather than accepting the pre-frame camera pose');
   });
+
+  it('does not capture when selection framing reports no renderable bounds (#4921)', async () => {
+    useViewerStore.setState({ cameraCallbacks: { frameSelection: () => false } });
+    const focused = focusClashGroup(
+      [clash('no-bounds', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    assert.equal(await focused.frameReady, null,
+      'a resolved entity without renderable geometry must not reuse the previous camera view');
+  });
 });

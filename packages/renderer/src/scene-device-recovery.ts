@@ -14,7 +14,7 @@ import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { createSceneBatchShell } from './scene-batch-upload.js';
 
-interface RecoveryBucket {
+export interface RecoveryBucket {
   key: string;
   meshData: MeshData[];
   batchedMesh: BatchedMesh | null;
@@ -109,7 +109,7 @@ function recoveryBlocker(host: SceneRecoveryHost): Exclude<SceneDeviceRecoveryPr
   return null;
 }
 
-export async function prepareSceneDeviceRecovery(host: SceneRecoveryHost): Promise<SceneDeviceRecoveryPreparation> {
+export function prepareSceneDeviceRecovery(host: SceneRecoveryHost): SceneDeviceRecoveryPreparation {
   const initialBlocker = recoveryBlocker(host);
   if (initialBlocker) return initialBlocker;
   // Cold buckets already carry GPU-free shells and remain provider-restorable.
@@ -166,6 +166,36 @@ function nextRecoveryBucketKey(host: SceneRecoveryHost, base: string): string {
   do key = `${base}#${host.nextSplitId++}`;
   while (host.buckets.has(key));
   return key;
+}
+
+/** Split a newly hydrated cold bucket against the replacement adapter limit
+ * before any GPU upload. Each returned shell can then restore independently. */
+export function repartitionHydratedRecoveryBucket(
+  host: SceneRecoveryHost, key: string, bucket: RecoveryBucket, shell: BatchedMesh,
+): string[] {
+  const chunks = splitMeshDataForBufferLimit(bucket.meshData, host.cachedMaxBufferSize);
+  if (chunks.length <= 1) return [key];
+  const hash = key.lastIndexOf('#'), baseKey = hash >= 0 ? key.slice(0, hash) : key;
+  const shells: BatchedMesh[] = [], keys: string[] = [];
+  host.buckets.delete(key);
+  for (let index = 0; index < chunks.length; index++) {
+    const targetKey = index === 0 ? key : nextRecoveryBucketKey(host, baseKey);
+    const parts = chunks[index];
+    const target = index === 0 ? bucket : { key: targetKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
+    const nextShell = host.modelTranslations.registerDrawable(
+      createSceneBatchShell(parts, shell, host.nextBatchId++, targetKey), parts[0].modelIndex ?? 0,
+    );
+    target.key = targetKey; target.meshData = parts; target.batchedMesh = nextShell;
+    target.vertexBytes = bucketVertexBytes(parts); host.buckets.set(targetKey, target);
+    for (const part of parts) host.meshDataBucket.set(part, target);
+    shells.push(nextShell); keys.push(targetKey);
+  }
+  const shellIndex = host.batchedMeshes.indexOf(shell);
+  if (shellIndex >= 0) host.batchedMeshes.splice(shellIndex, 1, ...shells);
+  else host.batchedMeshes.push(...shells);
+  host.lastDrawnFrame.delete(shell.id); host.activeBucketKey.set(baseKey, keys.at(-1)!);
+  host.appearanceBuckets?.forget();
+  return keys;
 }
 
 function restoreFlatBuckets(

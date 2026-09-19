@@ -20,7 +20,7 @@ function lostRenderer() {
   const renderer = new Renderer(canvas());
   renderer['deviceLost'] = true;
   renderer['deviceLostGeneration'] = renderer['initGeneration'];
-  renderer['scene']['prepareDeviceRecovery'] = async () => ({ ok: true });
+  renderer['scene']['prepareDeviceRecovery'] = () => ({ ok: true });
   renderer['scene']['discardGpuResourcesForRecovery'] = () => {};
   renderer['scene']['restoreGpuResourcesAfterRecovery'] = () => {};
   renderer['refreshPlacementBounds'] = () => {};

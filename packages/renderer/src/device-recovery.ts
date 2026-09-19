@@ -100,9 +100,9 @@ async function recoverRendererDeviceOnce(
   if (generation !== host.initGeneration || host.destroyed) {
     return { ok: false, reason: 'renderer-destroyed' };
   }
-  let prepared: Awaited<ReturnType<Scene['prepareDeviceRecovery']>>;
+  let prepared: ReturnType<Scene['prepareDeviceRecovery']>;
   try {
-    prepared = await host.scene.prepareDeviceRecovery();
+    prepared = host.scene.prepareDeviceRecovery();
   } catch (error) {
     console.error('[Renderer] Failed to prepare the CPU scene for device recovery:', error);
     return { ok: false, reason: 'cold-restore-failed', error };

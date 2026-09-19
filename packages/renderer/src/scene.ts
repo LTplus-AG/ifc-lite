@@ -59,7 +59,7 @@ import {
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
-import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
+import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -408,7 +408,7 @@ export class Scene {
   private geometryReleased: boolean = false;
   private ephemeralStreamingMode: boolean = false;
 
-  async prepareDeviceRecovery(): Promise<SceneDeviceRecoveryPreparation> { return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
+  prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
   discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
   restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
 
@@ -742,8 +742,8 @@ export class Scene {
         }
         if (members.length > 0) {
           this.coldBuckets.delete(key);
-          // Warm now — re-queue so the next restore tick rebuilds the GPU batch.
-          this.residencyRestoreQueue.add(key);
+          for (const restoredKey of repartitionHydratedRecoveryBucket(
+            this as unknown as SceneRecoveryHost, key, bucket, shell)) this.residencyRestoreQueue.add(restoredKey);
         } else {
           console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
         }

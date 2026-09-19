@@ -128,6 +128,30 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene['buckets'].get('cold')?.batchedMesh, shell);
   });
 
+  it('repartitions a lazy cold restore for a smaller replacement device', async () => {
+    const scene = new Scene(), shell = batch(3), first = triangle(3), second = triangle(3);
+    const key = scene['bucketBaseKey'](first);
+    shell.colorKey = key; shell.gpuResident = false;
+    shell.bounds = { min: [0, 0, 0], max: [1, 1, 1] };
+    scene['buckets'].set(key, { key, meshData: [], batchedMesh: shell, vertexBytes: 0 });
+    scene['batchedMeshes'] = [shell]; scene['coldBuckets'].add(key);
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [first, second] });
+
+    scene.restoreGpuResourcesAfterRecovery(
+      { limits: { maxBufferSize: 120 } } as unknown as GPUDevice,
+      {} as RenderPipeline,
+    );
+    scene.requestBatchResidency(shell);
+    assert.strictEqual(scene.processResidencyRestores({} as GPUDevice, {} as RenderPipeline), 0);
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+    const uploads: MeshData[][] = [];
+    scene['createBatchedMesh'] = (parts) => { uploads.push(parts); return batch(10 + uploads.length); };
+    assert.strictEqual(scene.processResidencyRestores({} as GPUDevice, {} as RenderPipeline, Infinity), 2);
+    assert.deepStrictEqual(uploads.map(parts => parts.map(part => part.expressId)), [[3], [3]]);
+    assert.strictEqual(scene['buckets'].size, 2);
+  });
+
   it('replaces flat GPU batches without losing their CPU pieces', () => {
     const scene = new Scene(), source = triangle(7), old = batch(1), replacement = batch(2);
     const bucketState = { key: 'flat', meshData: [source], batchedMesh: old, vertexBytes: source.positions.byteLength };

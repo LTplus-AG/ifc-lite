@@ -263,7 +263,7 @@ export function readMajorOffset(rootDir) {
   const reason = [reasonHistory, latestBreak].filter(Boolean).join(' ');
   const refs = Array.isArray(parsed.refs) ? parsed.refs.filter((r) => typeof r === 'string' && r.trim()) : [];
   if (majorOffset > 0) {
-    if (reason.length < 20) {
+    if (reasonHistory.length < 20) {
       throw offsetError(
         'NO_REASON',
         `${OFFSET_FILE_NAME} claims majorOffset ${majorOffset} but gives no "reason". A Rust-only major is a permanent claim about a published crate; say which crate's public API broke.`

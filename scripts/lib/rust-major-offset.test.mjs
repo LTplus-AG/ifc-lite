@@ -127,6 +127,18 @@ test('a non-zero offset must carry a reason and at least one ref', (t) => {
     () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 1, reason: 'x', refs: ['#1'] }) })),
     (err) => err.code === 'NO_REASON'
   );
+  for (const reason of [undefined, 'x']) {
+    assert.throws(
+      () => readMajorOffset(makeTree(t, { offsetFile: JSON.stringify({
+        majorOffset: 1,
+        reason,
+        latestBreak: 'A sufficiently detailed description of the newest break.',
+        refs: ['#1'],
+      }) })),
+      (err) => err.code === 'NO_REASON',
+      `expected latestBreak not to mask invalid historical reason ${JSON.stringify(reason)}`,
+    );
+  }
   assert.throws(
     () =>
       readMajorOffset(

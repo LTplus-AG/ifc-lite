@@ -98,6 +98,30 @@ reopen pill. The wall-split tool catalogue (`split-tool.en.ts`) covers
 remaining literal was added to the existing `section-tool.en.ts` catalogue
 rather than a new file.
 
+The saved-list builder catalogue (#4918 slice 6, lists) covers
+`ListBuilder.tsx`, `ListLibrary.tsx`, `ListGroupingBar.tsx`,
+`ListModelTagScopeEditor.tsx`, `ListResultsTable.tsx`, `ListPanel.tsx`,
+`ColumnHeaderMenu.tsx`, `ListScheduleTable.tsx`, and `ListErrorBox.tsx`
+(`lists.en.ts`, per-sub-area key prefixes: `lists.builder.*`,
+`lists.library.*`, `lists.panel.*`, `lists.resultsTable.*`,
+`lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
+`lists.columnMenu.*`, `lists.errorBox.*`).
+
+The 2D-section workspace catalogue (#4918 viewer-panels slice) covers
+`Section2DPanel.tsx`: header controls and overflow menus, drawing modes,
+annotation tools and guidance, export/print prompts, generation/error states,
+empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
+phase text and IFC/DXF data remain supplied by their owning systems.
+
+The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
+`GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
+`GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,
+`GanttWorkPlanSummary.tsx`, `GenerateAdvancedPanel.tsx`,
+`GanttDragTooltip.tsx`, `GanttPanel.tsx`, and `GanttTaskTree.tsx`
+(`schedule.en.ts`), a sibling to the narrower `gantt-work-calendar.en.ts`
+(#4830's single work-calendar toggle, prefix `gantt.workCalendar.*`) with
+no key overlap.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

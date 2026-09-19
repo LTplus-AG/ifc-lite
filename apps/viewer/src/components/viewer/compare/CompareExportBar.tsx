@@ -71,7 +71,7 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
       setMessage(identities.error);
       return;
     }
-    const read = readIdentityMapSidecar(await file.text(), identities);
+    const read = readIdentityMapSidecar(await file.text(), identities, result.keyProperty);
     if ('error' in read) {
       setMessage(read.error);
       return;

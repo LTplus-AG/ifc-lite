@@ -262,6 +262,7 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 |------|-------------|
 | `--type <T>` | Filter by IFC type (comma-separated) |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
+| `--select <selector>` | IfcOpenShell-style selector (classes union with `--type`; properties AND with `--where`) |
 | `--storey <name>` | Filter to elements in a storey |
 | `--props` | Include property sets in output |
 | `--quantities` | Include quantity sets in output |
@@ -285,9 +286,10 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 | `--offset <N>` | Skip first N results |
 | `--json` | JSON output |
 
-`--type` and `--where` are the CLI's own filter surface, not the IfcOpenShell
-selector syntax. See [Selector Syntax](selector-syntax.md) for how each selector
-construct is spelled here, and for what accepting selector text on the CLI would take.
+`--select` accepts selector text directly — a lossless subset of the IfcOpenShell
+grammar; unsupported constructs throw. `--type` and `--where` remain the CLI's own
+filter surface for everything else. See [Selector Syntax](selector-syntax.md) for
+how each selector construct is spelled across surfaces.
 
 ---
 
@@ -883,12 +885,15 @@ Reports:
 |------|-------------|
 | `--by-entity` | Compare every `IfcObjectDefinition` by GlobalId (added / removed / common) |
 | `--by-content` | Per-entity comparison via the `@ifc-lite/diff` engine, pairing re-GUIDed elements by content |
+| `--geometry` | Run the wasm mesh pass and attach world geometry hashes/boxes/volumes (implies `--by-content`; falls back to data-only with a warning if the wasm runtime isn't built) |
+| `--split-merge` | Opt into the split/merge detector (implies `--by-content`; needs `--geometry` to produce claims) |
+| `--successors` | Opt into the successor-match detector (implies `--by-content`; needs `--geometry` to produce claims) |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims so those elements are matched by key (implies `--by-content`) |
 | `--key-from <Tag\|Pset.Prop>` | Key the comparison on an authored identifier instead of GlobalId (implies `--by-content`) |
 | `--lineage-out <file>` | Write the lineage this comparison establishes, for `rekey` (implies `--by-content`) |
 | `--lineage-in <file>` | Replay a lineage's one-to-one entries and carry the rest forward (implies `--by-content`) |
-| `--accept <map.json>` | Fold a reviewed identity map into the lineage as `replaced` entries |
+| `--accept <map.json>` | Fold reviewed claims into lineage: `successor:*` reasons become `replaced`; other accepted identities become `identity` |
 | `--json` | JSON output |
 
 Both comparison modes cover the same entities: every `IfcObjectDefinition` in the file. See [what gets compared](#what-gets-compared) below.
@@ -905,7 +910,7 @@ ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
 ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
 ```
 
-The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. This path compares **data only** — the CLI has no geometry pipeline — so every unambiguous match reports as `renamed`. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
+The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. Without `--geometry` this path compares **data only**, so every unambiguous match reports as `renamed`; add `--geometry` (and `--split-merge` / `--successors`) to attach world geometry and tell `moved`/`reshaped` apart, and to produce split/merge and successor claims. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
 
 `--identity-out` and `--lineage-out` refuse to write over either input model.
 
@@ -1068,6 +1073,62 @@ ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
 | `--name <name>` | Override the manifest name during `ext init` |
 
 The full design lives in [Authoring Extensions](extension-authoring.md). For the security model — capability grammar, sandbox limits, signing semantics — see [the threat-model RFC](../architecture/ai-customization/02-security.md).
+
+---
+
+### `layer` — Layered Change Tracking
+
+Publish content-addressed layers with provenance manifests over a local layer store (`.ifc-lite/` of the cwd, override with `--store <dir>`), diff composed states, merge candidates into refs, and derive log/bake/revert/rebase from the same state-based op model.
+
+```bash
+ifc-lite layer create --base main --intent "Relocate fire doors"
+ifc-lite layer publish delta.ifcx --base main --intent "Relocate fire doors" --check requirements.ids=report.json
+ifc-lite layer diff main --against candidate-layer-id --json
+ifc-lite layer merge candidate-layer-id --into main --preview
+ifc-lite layer log main --json
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `publish <delta.ifcx>` | Publish a delta as a content-addressed layer. `--base <ref\|->`, `--intent "<text>"`, `--scope <claim>` (repeatable), `--check <spec.ids>=<report.json>` (repeatable), `--principal <id>`, `--kind human\|agent\|hybrid`, `--strict-scope`, `--json` |
+| `create` | Record a draft descriptor (`.ifc-lite/draft.json`). `--base <ref>`, `--intent "<text>"`, `--scope <claim>` |
+| `status` | Show the draft and whether its base ref moved |
+| `diff <side>` | Diff composed states; a side is a ref, layer id, or `.ifcx` file. `--against <side>`, `--components`, `--json` |
+| `merge <layer-id>` | Merge a candidate into a ref (fast-forward or three-way plan). `--into <ref>`, `--preview`, `--resolve ours\|theirs`, `--waive <spec> --reason "<text>"`, `--approved-by <principal>`, `--allow-unrelated`, `--json` |
+| `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>`, `--set-ref`, `--json` |
+| `log <ref>` | Provenance log, newest first. `--json` |
+| `bake <ref> -o <out>` | Materialize a tombstone-free flat document |
+| `revert <layer-id>` | Publish an inverse layer and append it to a ref. `--in <ref>`, `--resolve ours\|theirs`, `--json` |
+| `rebase <layer-id>` | Re-plan a candidate onto a ref's current stack and publish the rebased layer. `--onto <ref>`, `--json` |
+
+All subcommands honour `--store <dir>` (default `<cwd>/.ifc-lite`). Exit codes:
+0 clean, 2 conflicts, 3 policy failure, 4 scope violation (with `--strict-scope`),
+5 unrelated merge base (override with `--allow-unrelated`), and 1 generic errors.
+
+---
+
+### `ref` — Manage Named Refs
+
+Manage named refs (branch-like pointers onto a layer stack) in the layer store.
+
+```bash
+ifc-lite ref list --json
+ifc-lite ref create feature-x --from main
+ifc-lite ref protect main --require-check requirements.ids --require-human-approval
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `list` | List refs with layer counts and stack hashes. `--json`, `--store <dir>` |
+| `create <name>` | Create a ref, optionally copying another ref's layer stack (`--from <ref>`) |
+| `move <name>` | Point a ref at another ref's stack or at a comma-separated list of layer ids (`--to <target>`) |
+| `protect <name>` | Set merge policy on a ref. `--require-check <spec>` (repeatable), `--require-human-approval` |
+
+All subcommands honour `--store <dir>` (default `<cwd>/.ifc-lite`).
 
 ---
 

@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n/useTranslation';
 
 interface ColumnHeaderMenuProps {
   isNumeric: boolean;
@@ -37,11 +38,12 @@ export function ColumnHeaderMenu({
   isNumeric, isGroupedBy, groupedElsewhere, isSummed, active,
   onSort, onToggleGroup, onToggleSum, onColorBy,
 }: ColumnHeaderMenuProps) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          aria-label="Column options"
+          aria-label={t('lists.columnMenu.optionsAriaLabel')}
           onClick={(e) => e.stopPropagation()}
           className={cn(
             'shrink-0 rounded-sm p-0.5 transition-opacity hover:text-foreground',
@@ -55,18 +57,18 @@ export function ColumnHeaderMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-52">
         <DropdownMenuItem className="gap-2 text-xs" onClick={() => onSort('asc')}>
-          <ArrowUp className="h-3.5 w-3.5" /> Sort ascending
+          <ArrowUp className="h-3.5 w-3.5" /> {t('lists.columnMenu.sortAscending')}
         </DropdownMenuItem>
         <DropdownMenuItem className="gap-2 text-xs" onClick={() => onSort('desc')}>
-          <ArrowDown className="h-3.5 w-3.5" /> Sort descending
+          <ArrowDown className="h-3.5 w-3.5" /> {t('lists.columnMenu.sortDescending')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem className="gap-2 text-xs" onClick={onToggleGroup}>
           {isGroupedBy
-            ? (<><Ungroup className="h-3.5 w-3.5" /> Remove from grouping</>)
+            ? (<><Ungroup className="h-3.5 w-3.5" /> {t('lists.columnMenu.removeFromGrouping')}</>)
             : groupedElsewhere
-              ? (<><Group className="h-3.5 w-3.5" /> Add grouping level</>)
-              : (<><Group className="h-3.5 w-3.5" /> Group by this column</>)}
+              ? (<><Group className="h-3.5 w-3.5" /> {t('lists.columnMenu.addGroupingLevel')}</>)
+              : (<><Group className="h-3.5 w-3.5" /> {t('lists.columnMenu.groupByThisColumn')}</>)}
         </DropdownMenuItem>
         <DropdownMenuCheckboxItem
           className="text-xs"
@@ -76,12 +78,12 @@ export function ColumnHeaderMenu({
         >
           <span className="flex items-center gap-2">
             <Sigma className="h-3.5 w-3.5" />
-            {isNumeric ? 'Sum / total this column' : 'Sum (numeric only)'}
+            {isNumeric ? t('lists.columnMenu.sumThisColumn') : t('lists.columnMenu.sumNumericOnly')}
           </span>
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem className="gap-2 text-xs" onClick={onColorBy}>
-          <Palette className="h-3.5 w-3.5" /> Colour by this column
+          <Palette className="h-3.5 w-3.5" /> {t('lists.columnMenu.colourByThisColumn')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

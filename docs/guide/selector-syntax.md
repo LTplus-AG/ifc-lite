@@ -171,8 +171,17 @@ reported by name and never turned into a rule.
 
 ## Where else can I filter?
 
-Only the viewer's Filter tab accepts selector text today. The other surfaces have their
-own structured filters, and this is how the same intent is spelled in each:
+Selector text is accepted on every surface: the viewer's Filter tab, the CLI's
+`query --select "…"`, the MCP `query_entities` tool's `selector` parameter, and the
+SDK's `bim.query().select('…')`. The CLI, MCP and SDK route it through the same
+`@ifc-lite/query` parser and the `selectorToQueryDescriptor` adapter, which covers a
+**lossless subset** of the grammar above — class terms and comma unions, exact-name
+Pset/Qto comparisons with `=` `!=` `>` `>=` `<` `<=` `*=`, a `/regex/` value on `=`,
+and `!= NULL` — and throws `SelectorUnsupportedError` naming the construct for anything
+else (regex pset/property *names*, `!*=`, `!` class negation, `+` group unions,
+`parent=`, `query:`, `material=`, `classification=`, `location=`, attribute terms).
+The viewer's Filter tab keeps the full grammar. The structured filters each surface
+already had remain, and this is how the same intent is spelled in them:
 
 | Selector | CLI | MCP `query_entities` | SDK / sandbox |
 |---|---|---|---|
@@ -180,16 +189,12 @@ own structured filters, and this is how the same intent is spelled in each:
 | `Pset_WallCommon.FireRating=2HR` | `--where "Pset_WallCommon.FireRating=2HR"` | `property: { pset, name, op: '=', value }` | `.where('Pset_WallCommon','FireRating','=','2HR')` |
 | `…FireRating*=REI` | `--where "Pset_WallCommon.FireRating~REI"` | `op: 'contains'` | `.where(…, 'contains', 'REI')` |
 | `…FireRating != NULL` | `--where "Pset_WallCommon.FireRating"` | `op: 'exists'` | — |
-| `/Pset_.*Common/.FireRating` | — | — | `bim.query.property(entity, '/Pset_.*Common/', 'FireRating')` |
+| `/Pset_.*Common/.FireRating` | — (`--select` throws `SelectorUnsupportedError`) | — | `bim.query.property(entity, '/Pset_.*Common/', 'FireRating')` |
 | `IfcWall*` (a wildcard) | `--a "IfcWall*"` (clash selectors only) | — | — |
 
 Note the last row: the clash rule selectors (`ifc-lite clash --a "IfcDuct*|IfcPipe*"`) are
 a **different, older mini-language** with a suffix `*` glob. That grammar is unchanged and
 is not the one on this page.
-
-Accepting selector text in the CLI, MCP and the scripting API is tracked in #4094; the
-parser already lives in `@ifc-lite/query`, so those surfaces adapt the same AST rather
-than growing a second grammar.
 
 ## Parsing it yourself
 

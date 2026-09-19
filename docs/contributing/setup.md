@@ -8,8 +8,8 @@ Guide to setting up a development environment for IFClite.
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Node.js | 22.x | JavaScript runtime (`engines` in `package.json`) |
-| pnpm | 10.x (8.0+ minimum) | Package manager (pinned via `packageManager: pnpm@10.8.1`) |
+| Node.js | 22.13+ or 24.x | JavaScript runtime (`engines` in `package.json`) |
+| pnpm | 10.x (`engines` requires 10.0+) | Package manager (pinned via `packageManager: pnpm@10.8.1`) |
 | Rust | pinned nightly | WASM compilation; `rust-toolchain.toml` pins the nightly channel and the `wasm32-unknown-unknown` target, and rustup installs both automatically on first use in the repo |
 | wasm-pack | 0.12+ | WASM toolchain (only needed to rebuild WASM; see `pnpm build:wasm:fetch` below) |
 

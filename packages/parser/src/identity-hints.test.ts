@@ -42,6 +42,9 @@ DATA;
 #91= IFCPROPERTYSINGLEVALUE('AssetId',$,IFCLABEL('AST-0042'),$);
 #92= IFCPROPERTYSINGLEVALUE('Blank',$,IFCLABEL(''),$);
 #93= IFCRELDEFINESBYPROPERTIES('F000000000000000000000',$,$,$,(#70),#90);
+#94= IFCPROPERTYSINGLEVALUE('SecondOnly',$,IFCLABEL('SECOND'),$);
+#95= IFCPROPERTYSET('G000000000000000000000',$,'Pset_Asset',$,(#94));
+#96= IFCRELDEFINESBYPROPERTIES('H000000000000000000000',$,$,$,(#70),#95);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -121,5 +124,10 @@ describe('authoredKeyValue', () => {
     expect(authoredKeyValue(store, 70, parseAuthoredKeySpec('Pset_Asset.Blank')!)).toBeUndefined();
     expect(authoredKeyValue(store, 70, parseAuthoredKeySpec('Pset_Asset.Missing')!)).toBeUndefined();
     expect(authoredKeyValue(store, 71, parseAuthoredKeySpec('Pset_Asset.AssetId')!)).toBeUndefined();
+  });
+
+  it('reads from the second of two same-named property sets (#5005 review)', async () => {
+    const store = await load();
+    expect(authoredKeyValue(store, 70, parseAuthoredKeySpec('Pset_Asset.SecondOnly')!)).toBe('SECOND');
   });
 });

@@ -18,9 +18,9 @@ This prompts you to select packages, choose a bump type (`patch`/`minor`/`major`
 
 On each release, the following are published automatically:
 
-**npm (36 packages):** All `@ifc-lite/*` packages + `create-ifc-lite`
+**npm (46 packages):** All `@ifc-lite/*` packages + `create-ifc-lite`
 
-**crates.io (6 crates):** `ifc-lite-core`, `ifc-lite-geometry`, `ifc-lite-clash`, `ifc-lite-processing`, `ifc-lite-ffi`, `ifc-lite-wasm`
+**crates.io (7 crates):** `ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`
 
 **GitHub Release:** Version tag + server binaries for 6 platforms
 
@@ -58,13 +58,20 @@ A changeset states a bump level for **npm packages**. A change can be additive i
 `rust-major-offset.json` at the repo root is how that is said out loud:
 
 ```json
-{ "majorOffset": 1, "reason": "…which crate's public API broke…", "refs": ["#3210"] }
+{
+  "$comment": "schema and tooling guidance",
+  "majorOffset": 1,
+  "reason": "cumulative history of earlier Rust-only breaks",
+  "latestBreak": "the new break that spends this major",
+  "refs": ["#3210"]
+}
 ```
 
 `sync-versions.js` adds `majorOffset` to the **major** of the npm-derived version when it writes the Rust manifests. npm 6.1.0 with `majorOffset: 1` publishes the crates at 7.1.0; the npm packages, the root `package.json` and the `v*` tag stay on 6.1.0. At `majorOffset: 0` the two versions are the same string; for the current value, read `rust-major-offset.json`, and the crates run that many majors ahead of the npm packages.
 
 - Minor and patch keep tracking npm, so raising the offset is a **once per Rust-only major** edit, not a per-release chore.
-- A non-zero offset without a `reason` and at least one `refs` entry is a hard failure: a permanent major-version claim about a published crate has to say what broke.
+- For a new Rust-only major, increment `majorOffset` by exactly one, append the outgoing `latestBreak` verbatim to `reason`, replace `latestBreak` with a non-empty description of the newly measured break, and append the new issue/PR references to `refs` without removing or reordering its existing entries. On the first transition from the legacy schema there is no outgoing `latestBreak`, so `reason` remains unchanged. The release revert oracle enforces this exact rotation so neither history nor the newest account can disappear.
+- A non-zero offset without a non-empty `reason`, non-empty `latestBreak`, and at least one `refs` entry is a hard failure: a permanent major-version claim about a published crate has to say both what history led here and which break caused the latest increment.
 - `pnpm check:rust-major-offset` (run on every PR) fails when the committed manifests do not match what the offset implies. Whether the offset is **large enough** is a different question, answered by `scripts/check-rust-semver.mjs` against the crate live on crates.io.
 
 ### Workflow

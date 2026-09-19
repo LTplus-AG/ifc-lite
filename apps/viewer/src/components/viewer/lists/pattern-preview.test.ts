@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { previewSetPattern, formatMatchHint } from './pattern-preview';
+import { previewSetPattern, matchHintFacts } from './pattern-preview';
 
 const SETS = [
   'Qto_WallBaseQuantities',
@@ -83,17 +83,14 @@ describe('previewSetPattern', () => {
   });
 });
 
-describe('formatMatchHint', () => {
-  it('reads "matches 0 sets in loaded models" for no matches', () => {
-    assert.equal(formatMatchHint([]), 'matches 0 sets in loaded models');
-  });
-
-  it('singularises one match', () => {
-    assert.equal(formatMatchHint(['Qto_WallBaseQuantities']), 'matches 1 set: Qto_WallBaseQuantities');
-  });
-
-  it('lists up to the cap then " +N more"', () => {
-    assert.equal(formatMatchHint(['A', 'B']), 'matches 2 sets: A, B');
-    assert.equal(formatMatchHint(['A', 'B', 'C', 'D', 'E']), 'matches 5 sets: A, B, C +2 more');
+describe('matchHintFacts', () => {
+  it('returns locale-neutral facts for translated match hints', () => {
+    assert.deepEqual(matchHintFacts([]), { count: 0, shown: [], extra: 0 });
+    assert.deepEqual(matchHintFacts(['A']), { count: 1, shown: ['A'], extra: 0 });
+    assert.deepEqual(matchHintFacts(['A', 'B', 'C', 'D', 'E']), {
+      count: 5,
+      shown: ['A', 'B', 'C'],
+      extra: 2,
+    });
   });
 });

@@ -6,16 +6,20 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
+import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
+import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
+import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
+import { section2dEn } from './catalogues/section-2d.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
@@ -26,6 +30,7 @@ export const en = {
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,
   ...sectionToolEn,
+  ...section2dEn,
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...mainToolbarEn,
@@ -34,11 +39,14 @@ export const en = {
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
   ...chartsEn,
+  ...listsEn,
+  ...scheduleEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,
   ...documentEn,
   ...documentMenuEn,
+  ...compareKeyPropertyEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

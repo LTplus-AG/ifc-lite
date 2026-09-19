@@ -68,6 +68,13 @@ function makeTree(t, { npmVersion = '6.1.0', stale = '6.0.1', offsetFile, packag
     MEMBERS.map((m) => `[[package]]\nname = "ifc-lite-${m}"\nversion = "${stale}"\n`).join('\n') +
       `\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n`
   );
+  mkdirSync(join(root, 'rust', 'python'));
+  writeFileSync(
+    join(root, 'rust', 'python', 'Cargo.lock'),
+    `[[package]]\nname = "ifc-lite-python"\nversion = "4.5.0"\n\n` +
+      MEMBERS.map((m) => `[[package]]\nname = "ifc-lite-${m}"\nversion = "${stale}"\n`).join('\n') +
+      `\n[[package]]\nname = "ifc-lite-core"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n`
+  );
 
   if (offsetFile !== undefined) writeFileSync(join(root, 'rust-major-offset.json'), offsetFile);
   return root;
@@ -76,6 +83,7 @@ function makeTree(t, { npmVersion = '6.1.0', stale = '6.0.1', offsetFile, packag
 const OFFSET_1 = JSON.stringify({
   majorOffset: 1,
   reason: 'ifc-lite-geometry SubMeshCollection and ifc-lite-processing MeshData broke their public API in #3210 under an npm minor.',
+  latestBreak: 'The newest break changes SubMeshCollection and MeshData public fields.',
   refs: ['#3210'],
 });
 
@@ -104,6 +112,15 @@ test('offset 1 (the #3210 case): npm stays on its minor, the crates go to 7.1.0'
   const lock = readFileSync(join(root, 'Cargo.lock'), 'utf8');
   assert.equal((lock.match(/version = "7\.1\.0"/g) ?? []).length, MEMBERS.length);
   assert.match(lock, /name = "serde"\nversion = "1\.0\.0"/, 'a registry crate must not be rewritten');
+
+  const pythonLock = readFileSync(join(root, 'rust', 'python', 'Cargo.lock'), 'utf8');
+  assert.equal((pythonLock.match(/version = "7\.1\.0"/g) ?? []).length, MEMBERS.length);
+  assert.match(pythonLock, /name = "ifc-lite-python"\nversion = "4\.5\.0"/, 'the Python crate keeps its independent version');
+  assert.match(
+    pythonLock,
+    /name = "ifc-lite-core"\nversion = "1\.0\.0"\nsource =/,
+    'a registry package sharing a workspace crate name must not be rewritten',
+  );
 
   // The npm side is untouched by the offset — this is the whole point.
   assert.equal(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version, '6.1.0');

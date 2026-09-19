@@ -6,13 +6,19 @@
  * The list builder's MODEL scope by tag (#4215): which federated models the
  * list runs over, in the same four words search and clash use. Sits inside
  * the builder's Scope section, under the entity-type chips those models are
- * then filtered by. The operator labels are the advanced filter's own
- * (`OP_LABEL`), so "has any of" reads the same in a list as in a search rule.
+ * then filtered by. The operator labels read the same four words as the
+ * advanced filter's `OP_LABEL` ("has any of" etc.), but as this editor's
+ * own localized copy (`OP_LABEL_KEY`, #4918 review, PR #5004) rather than
+ * importing that shared, untranslated map — see the catalogue's own
+ * comment.
  *
  * A tag id the scope names but that no longer exists is drawn as an amber
  * "Unknown tag" chip, not hidden — the run refuses such a scope
  * (`lib/lists/model-tag-scope.ts`), so the user must be able to see which
- * chip to remove.
+ * chip to remove. `lib/lists/model-tag-scope.ts`'s own `describeListModelTagScope`
+ * (used only in that module's thrown-Error text, a distinct fix) stays
+ * English-only; this editor's on-screen "Runs over …" sentence is built
+ * locally instead (`RUNS_OVER_KEY`), independent of that helper.
  */
 
 import { useMemo } from 'react';
@@ -20,10 +26,29 @@ import { useShallow } from 'zustand/react/shallow';
 import type { ListModelTagScope } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import { MODEL_TAG_OPS, unresolvedModelTagIds, type ModelTagOp } from '@/lib/model-tags/types';
-import { describeListModelTagScope } from '@/lib/lists/model-tag-scope';
 import { ModelTagChip } from '@/components/viewer/hierarchy/ModelTagChip';
-import { OP_LABEL } from '../SearchModal.filter.editors.shared';
 import { Chip } from './ListBuilder.parts';
+import { useTranslation } from '@/i18n/useTranslation';
+import type { TranslationKey } from '@/i18n/en';
+
+/** Localized operator labels for this editor's own select (#4918 review,
+ *  PR #5004) — see the catalogue's own comment on why this is a local copy
+ *  rather than a shared-module rename. */
+const OP_LABEL_KEY: Record<ModelTagOp, TranslationKey> = {
+  hasAny: 'lists.modelTagScope.opHasAny',
+  hasAll: 'lists.modelTagScope.opHasAll',
+  hasNone: 'lists.modelTagScope.opHasNone',
+  untagged: 'lists.modelTagScope.opUntagged',
+};
+
+/** Translation key for the "Runs over …" sentence, one per operator so each
+ *  is a complete, independently-translatable message (not an English
+ *  description substituted into a generic wrapper). */
+const RUNS_OVER_KEY: Record<Exclude<ModelTagOp, 'untagged'>, TranslationKey> = {
+  hasAny: 'lists.modelTagScope.runsOverHasAny',
+  hasAll: 'lists.modelTagScope.runsOverHasAll',
+  hasNone: 'lists.modelTagScope.runsOverHasNone',
+};
 
 export interface ListModelTagScopeEditorProps {
   value: ListModelTagScope | undefined;
@@ -31,13 +56,13 @@ export interface ListModelTagScopeEditorProps {
 }
 
 export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEditorProps) {
+  const { t } = useTranslation();
   const { tags, assignments, models } = useViewerStore(
     useShallow((s) => ({ tags: s.modelTags, assignments: s.modelTagAssignments, models: s.models })),
   );
   const options = useMemo(() => [...tags.values()].sort((a, b) => a.name.localeCompare(b.name)), [tags]);
   const countFor = (tagId: string) => [...models.keys()].filter((m) => assignments.get(m)?.has(tagId)).length;
   const unresolved = value ? unresolvedModelTagIds(value, new Set(tags.keys())) : [];
-
   const setOp = (op: string) => {
     if (op === 'all') return onChange(undefined);
     onChange({ op: op as ModelTagOp, tagIds: value?.tagIds ?? [] });
@@ -54,16 +79,16 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
   return (
     <div className="mt-3 space-y-1.5" data-list-model-tag-scope>
       <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span className="shrink-0">Models</span>
+        <span className="shrink-0">{t('lists.modelTagScope.models')}</span>
         <select
-          aria-label="Model tag scope"
+          aria-label={t('lists.modelTagScope.selectAriaLabel')}
           value={value?.op ?? 'all'}
           onChange={(e) => setOp(e.target.value)}
           className="h-7 rounded-md border border-border bg-background px-1.5 text-xs text-foreground"
         >
-          <option value="all">all models</option>
+          <option value="all">{t('lists.modelTagScope.allModels')}</option>
           {MODEL_TAG_OPS.map((op) => (
-            <option key={op} value={op}>{OP_LABEL[op]}</option>
+            <option key={op} value={op}>{t(OP_LABEL_KEY[op])}</option>
           ))}
         </select>
       </label>
@@ -80,16 +105,19 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
         </div>
       )}
       {value && value.op !== 'untagged' && value.tagIds.length === 0 ? (
-        <p className="text-[10px] text-muted-foreground">Pick at least one tag, or the list runs over no model.</p>
+        <p className="text-[10px] text-muted-foreground">{t('lists.modelTagScope.pickAtLeastOneTag')}</p>
       ) : value && (
         <p className="text-[10px] text-muted-foreground" data-list-model-tag-scope-hint>
-          Runs over {describeListModelTagScope(value, tags)}.
+          {value.op === 'untagged'
+            ? t('lists.modelTagScope.runsOverUntagged')
+            : t(RUNS_OVER_KEY[value.op], {
+                names: value.tagIds.map((id) => tags.get(id)?.name ?? t('lists.modelTagScope.unknownTagName')).join(', ') || '—',
+              })}
         </p>
       )}
       {unresolved.length > 0 && (
         <p role="alert" className="text-[10px] text-amber-700 dark:text-amber-400">
-          {unresolved.length === 1 ? 'A tag in this scope' : `${unresolved.length} tags in this scope`} no longer
-          exist{unresolved.length === 1 ? 's' : ''}. The list will not run until {unresolved.length === 1 ? 'it is' : 'they are'} removed.
+          {t('lists.modelTagScope.unresolvedTagsWarning', { count: unresolved.length })}
         </p>
       )}
     </div>

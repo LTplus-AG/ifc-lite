@@ -48,8 +48,8 @@ Add support for IFC4X3 entities
 
 2. **When "Version Packages" PR is merged**:
    - All packages are automatically built
-   - npm packages are published to npm registry (35 `@ifc-lite/*` packages + `create-ifc-lite`)
-   - Rust crates are published to crates.io (`ifc-lite-core`, `ifc-lite-geometry`, `ifc-lite-clash`, `ifc-lite-processing`, `ifc-lite-ffi`, `ifc-lite-wasm`)
+   - npm packages are published to npm registry (45 `@ifc-lite/*` packages + `create-ifc-lite`)
+   - Rust crates are published to crates.io (`ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`)
    - GitHub Release is created with version tag
    - Server binaries are cross-compiled for 6 platforms (Linux x64/ARM64/musl, macOS x64/ARM64, Windows x64) and attached to the release
 
@@ -60,7 +60,7 @@ PR with changeset → Merge to main → "Version Packages" PR created
                                             ↓
                                     Review & Merge
                                             ↓
-                    Build → Publish npm (36 packages) → Publish Rust (6 crates)
+                    Build → Publish npm (46 packages) → Publish Rust (7 crates)
                                             ↓
                     Create GitHub Release → Build server binaries (6 platforms)
 ```
@@ -93,7 +93,7 @@ Packages are versioned independently:
 - **Independent versioning**: `@ifc-lite/*` packages only bump when they have their own changeset or when Changesets propagates an internal dependency update
 - **Automatic sync**: `scripts/sync-versions.js` syncs the root package version, `Cargo.toml` workspace version, and internal Rust workspace dependency versions to the highest released workspace package version
 - **Dependency propagation**: `updateInternalDependencies: "patch"` keeps dependents aligned when an internal package version changes
-- **Rust-only majors**: `rust-major-offset.json` holds one integer — how many majors ahead of npm the published crates run. `sync-versions.js` applies it to the major of the Rust manifests only; npm, the root `package.json` and the `v*` tag keep the version changesets chose. At `0` both sides carry the same string; for the current value, read `rust-major-offset.json`. Raise it when a change breaks a crate's public API under an npm minor or patch, and give it a `reason` and `refs` (both are required above `0`). `pnpm check:rust-major-offset` fails CI when the manifests and that file disagree; see [docs/contributing/release.md](docs/contributing/release.md#expressing-a-rust-only-major)
+- **Rust-only majors**: `rust-major-offset.json` records how many majors ahead of npm the published crates run. `sync-versions.js` applies `majorOffset` to the Rust manifests only; npm, the root `package.json` and the `v*` tag keep the version changesets chose. At `0` both sides carry the same string. For each new Rust-only major, increment the offset exactly once, append the previous `latestBreak` to `reason` with exactly one separating space, rotate `latestBreak` to the new break, and append its issue/PR references to `refs`. `pnpm check:rust-major-offset` fails CI when the manifests and that five-key metadata contract disagree; see [docs/contributing/release.md](docs/contributing/release.md#expressing-a-rust-only-major)
 
 ## Publish Authentication
 

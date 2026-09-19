@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { useTranslation } from '@/i18n';
 import type { GenerateScheduleOptions, SpatialGroupStrategy } from './generate-schedule';
 
 const TASK_TYPES = [
@@ -64,6 +65,7 @@ export function GenerateAdvancedPanel({
   workPlanName,
   onWorkPlanNameChange,
 }: GenerateAdvancedPanelProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border">
       <button
@@ -73,13 +75,13 @@ export function GenerateAdvancedPanel({
         aria-expanded={open}
       >
         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        Advanced
+        {t('schedule.generateAdvanced.toggle')}
       </button>
       {open && (
         <div className="grid gap-3 border-t p-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label htmlFor="gen-lag">Lag days (between groups)</Label>
+              <Label htmlFor="gen-lag">{t('schedule.generateAdvanced.lagDaysLabel')}</Label>
               <Input
                 id="gen-lag"
                 type="number"
@@ -93,7 +95,7 @@ export function GenerateAdvancedPanel({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="gen-type">PredefinedType</Label>
+              <Label htmlFor="gen-type">{t('schedule.generateAdvanced.predefinedTypeLabel')}</Label>
               <Select
                 value={predefinedType}
                 onValueChange={(v) => onChange('predefinedType', v)}
@@ -102,8 +104,8 @@ export function GenerateAdvancedPanel({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TASK_TYPES.map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  {TASK_TYPES.map(taskType => (
+                    <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -111,45 +113,45 @@ export function GenerateAdvancedPanel({
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="gen-name">Work schedule name</Label>
+            <Label htmlFor="gen-name">{t('schedule.generateAdvanced.scheduleNameLabel')}</Label>
             <Input
               id="gen-name"
               value={scheduleName}
               onChange={(e) => onChange('scheduleName', e.target.value)}
-              placeholder="Construction schedule"
+              placeholder={t('schedule.generateAdvanced.scheduleNamePlaceholder')}
             />
           </div>
 
           <ToggleRow
-            label="Link tasks with FS dependencies"
-            description="Adds IfcRelSequence edges between consecutive groups."
+            label={t('schedule.generateAdvanced.linkSequencesLabel')}
+            description={t('schedule.generateAdvanced.linkSequencesDescription')}
             checked={linkSequences}
             onChange={(v) => onChange('linkSequences', v)}
           />
           <ToggleRow
-            label="Skip empty groups"
+            label={t('schedule.generateAdvanced.skipEmptyLabel')}
             description={
               strategy === 'IfcElement'
-                ? 'Ignore Z slices with no elements.'
-                : 'Ignore storeys or buildings with no contained products.'
+                ? t('schedule.generateAdvanced.skipEmptyDescriptionElement')
+                : t('schedule.generateAdvanced.skipEmptyDescriptionSpatial')
             }
             checked={skipEmptyGroups}
             onChange={(v) => onChange('skipEmptyGroups', v)}
           />
           <ToggleRow
-            label="Add an IfcWorkPlan container"
-            description="A standalone plan entity that groups the generated schedule(s). The grouping survives export and re-import."
+            label={t('schedule.generateAdvanced.workPlanToggleLabel')}
+            description={t('schedule.generateAdvanced.workPlanToggleDescription')}
             checked={createWorkPlan}
             onChange={onCreateWorkPlanChange}
           />
           {createWorkPlan && (
             <div className="grid gap-1.5">
-              <Label htmlFor="gen-plan-name">Work plan name</Label>
+              <Label htmlFor="gen-plan-name">{t('schedule.generateAdvanced.workPlanNameLabel')}</Label>
               <Input
                 id="gen-plan-name"
                 value={workPlanName}
                 onChange={(e) => onWorkPlanNameChange(e.target.value)}
-                placeholder="Project plan"
+                placeholder={t('schedule.generateAdvanced.workPlanNamePlaceholder')}
               />
             </div>
           )}

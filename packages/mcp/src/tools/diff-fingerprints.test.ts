@@ -102,6 +102,7 @@ beforeAll(async () => {
   await load('sched', scheduleModel(guid('OLDT')));
   await load('walls', model(guid('OLDA'), guid('OLDB')));
   await load('walls-head', model(guid('NEWA'), guid('NEWB')));
+  await load('walls-head-twins', model(guid('NEWA'), guid('NEWB')).replace("'tagB'", "'tagA'"));
   await load('type-tags', typeTagModel());
   await load('rail-types', railTypeModel());
   await load('qty-mm', quantityModel('MILLIMETRE', 2000));
@@ -160,6 +161,23 @@ describe('buildModelFingerprints on an IFC2X3 file', () => {
     expect(content.duplicateAuthoredKeys).toEqual([]);
     expect(content.contentMatchCounts).toEqual({});
     expect((content.counts as { added: number; deleted: number })).toMatchObject({ added: 0, deleted: 0 });
+  });
+
+  it('falls back on both revisions when only the second has a duplicate authored key (#5005 review)', async () => {
+    const byTag = await diff({
+      a: 'walls',
+      b: 'walls-head-twins',
+      by_content: true,
+      key_from: 'Tag',
+    });
+    const content = byTag.contentDiff as Record<string, unknown> | null;
+    if (!content) throw new Error('by_content produced no contentDiff');
+
+    expect(content.duplicateAuthoredKeys).toEqual(['tagA']);
+    const matches = content.contentMatches as Array<{ base: string[]; head: string[] }>;
+    const keys = matches.flatMap((match) => [...match.base, ...match.head]);
+    expect(keys).toContain(guid('OLDA'));
+    expect(keys).not.toContain('prop:tagA');
   });
 
   it('reads an authored key through the session overlay, and a tombstoned twin no longer contests it', async () => {

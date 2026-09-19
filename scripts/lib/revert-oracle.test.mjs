@@ -527,6 +527,9 @@ test('classifyPath: ignored non-code', () => {
   assert.equal(classifyPath('.changeset/renderer-frame-timing.md'), 'ignored');
   assert.equal(classifyPath('README.md'), 'ignored');
   assert.equal(classifyPath('pnpm-lock.yaml'), 'ignored');
+  assert.equal(classifyPath('Cargo.lock'), 'ignored');
+  assert.equal(classifyPath('rust/python/Cargo.lock'), 'ignored');
+  assert.equal(classifyPath('rust/geometry/Cargo.lock'), 'production');
   assert.equal(classifyPath('.github/workflows/test.yml'), 'ignored');
   assert.equal(classifyPath('docs/guide/x.ts'), 'ignored');
 });

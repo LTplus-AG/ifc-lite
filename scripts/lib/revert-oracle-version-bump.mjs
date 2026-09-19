@@ -33,7 +33,8 @@
 const NPM_MANIFEST_RE = /(^|\/)package\.json$/;
 const CARGO_MANIFEST_RE = /(^|\/)Cargo\.toml$/;
 const RUST_MAJOR_OFFSET_PATH = 'rust-major-offset.json';
-const RUST_MAJOR_OFFSET_KEYS = ['$comment', 'majorOffset', 'reason', 'refs'];
+const LEGACY_RUST_MAJOR_OFFSET_KEYS = ['$comment', 'majorOffset', 'reason', 'refs'];
+const RUST_MAJOR_OFFSET_KEYS = ['$comment', 'majorOffset', 'reason', 'latestBreak', 'refs'];
 
 /** Split zero-context (`git diff -U0`) output into per-hunk removed/added line groups. */
 function extractHunks(diffText) {
@@ -109,13 +110,22 @@ function rustMajorOffsetOnly(beforeText, afterText) {
   const before = parseCanonicalJson(beforeText);
   const after = parseCanonicalJson(afterText);
   if (!before || !after || Array.isArray(before) || Array.isArray(after)) return false;
-  if (Object.keys(before).join('\0') !== RUST_MAJOR_OFFSET_KEYS.join('\0')) return false;
+  const beforeKeys = Object.keys(before).join('\0');
+  if (beforeKeys !== LEGACY_RUST_MAJOR_OFFSET_KEYS.join('\0')
+    && beforeKeys !== RUST_MAJOR_OFFSET_KEYS.join('\0')) return false;
   if (Object.keys(after).join('\0') !== RUST_MAJOR_OFFSET_KEYS.join('\0')) return false;
   if (before.$comment !== after.$comment) return false;
   if (!Number.isSafeInteger(before.majorOffset) || before.majorOffset < 0) return false;
   if (!Number.isSafeInteger(after.majorOffset) || after.majorOffset !== before.majorOffset + 1) return false;
   if (typeof before.reason !== 'string' || typeof after.reason !== 'string') return false;
-  if (!after.reason.startsWith(before.reason) || after.reason.length === before.reason.length) return false;
+  const expectedReason = 'latestBreak' in before
+    ? `${before.reason} ${before.latestBreak}`
+    : before.reason;
+  if (after.reason !== expectedReason) return false;
+  if (typeof after.latestBreak !== 'string' || after.latestBreak.trim().length === 0) return false;
+  if ('latestBreak' in before
+    && (typeof before.latestBreak !== 'string'
+      || before.latestBreak.trim() === after.latestBreak.trim())) return false;
   if (!Array.isArray(before.refs) || !Array.isArray(after.refs)) return false;
   if (after.refs.length <= before.refs.length) return false;
   if (!before.refs.every((ref, i) => typeof ref === 'string' && after.refs[i] === ref)) return false;

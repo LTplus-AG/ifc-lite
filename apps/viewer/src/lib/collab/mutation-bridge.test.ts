@@ -260,9 +260,20 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     createEntity(doc, '/value-b', { ifcClass: 'IfcCostValue' });
     const store = fakeStore(new Map([[1, '/item'], [2, '/value-a'], [3, '/value-b']]));
 
-    mirrorAttribute(api, fakeSession(doc), store, 1, 'CostValues', [2, 3]);
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'CostValues', ['#2', '#3']);
 
     assert.deepEqual(getAttribute(doc, '/item', 'CostValues'), ['/value-a', '/value-b']);
+  });
+
+  it('mirrors scalar cost references as peer-resolvable room paths (#4857)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/value', { ifcClass: 'IfcCostValue' });
+    createEntity(doc, '/basis', { ifcClass: 'IfcMeasureWithUnit' });
+    const store = fakeStore(new Map([[1, '/value'], [2, '/basis']]));
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'UnitBasis', '#2');
+
+    assert.equal(getAttribute(doc, '/value', 'UnitBasis'), '/basis');
   });
 
   it('mirrorAttribute no-ops when the entity is not in the doc', () => {
@@ -733,6 +744,20 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'Description', 'New Description'));
     assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','New Description',$,$,$,$,$);");
+  });
+
+  it('restores peer paths as STEP-tagged list and scalar references (#4857)', () => {
+    const itemStore = buildDataStore(1, 'IfcCostItem', "#1=IFCCOSTITEM('gid',$,'Item',$,$,$,.NOTDEFINED.,$,$);");
+    registerEntityPath(itemStore, 20, '/peer-value');
+    const itemLine = exportedLine(itemStore, (view) =>
+      applyRemoteAttribute(view, itemStore, 1, 'CostValues', ['/peer-value']));
+    assert.equal(itemLine, "#1=IFCCOSTITEM('gid',$,'Item',$,$,$,.NOTDEFINED.,(#20),$);");
+
+    const valueStore = buildDataStore(1, 'IfcCostValue', "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),$,$,$,$,$,$,$);");
+    registerEntityPath(valueStore, 30, '/peer-basis');
+    const valueLine = exportedLine(valueStore, (view) =>
+      applyRemoteAttribute(view, valueStore, 1, 'UnitBasis', '/peer-basis'));
+    assert.equal(valueLine, "#1=IFCCOSTVALUE('Rate',$,IFCMONETARYMEASURE(2.),#30,$,$,$,$,$,$);");
   });
 
   it('a remote peer explicitly clearing a STRING-typed attribute (CRDT null) exports as $, not present-and-empty', () => {

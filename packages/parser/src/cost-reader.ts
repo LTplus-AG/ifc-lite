@@ -145,7 +145,9 @@ export class CostEntityReader {
     if (!this.overlay) return ids;
     const retyped = this.retypes();
     const kept = ids.filter(id => !this.isDeleted(id) && (retyped.get(id) ?? wanted) === wanted);
-    const retypedIn = [...retyped].filter(([id, newType]) => newType === wanted && !this.isDeleted(id) && !ids.includes(id));
+    const createdIds = new Set(this.createdEntities().keys());
+    const retypedIn = [...retyped].filter(([id, newType]) =>
+      newType === wanted && !this.isDeleted(id) && !ids.includes(id) && !createdIds.has(id));
     const createdIn = [...this.createdEntities()]
       .filter(([id, entry]) => entry.type === wanted && !this.isDeleted(id))
       .map(([id]) => id);

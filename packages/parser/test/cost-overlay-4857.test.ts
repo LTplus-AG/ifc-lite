@@ -218,6 +218,20 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
       .toEqual([expect.objectContaining({ expressId: 20, Severity: 'warning' })]);
   });
 
+  it('lists an overlay-created entity once when its effective class is also retyped', () => {
+    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
+      overlay: overlay({
+        retypes: () => new Map([[60, 'IfcCostItem']]),
+        created: () => [{
+          expressId: 60,
+          type: 'IFCCOSTITEM',
+          text: "#60=IFCCOSTITEM('created-gid-0000000001',$,'Created item',$,$,$,.NOTDEFINED.,$,$);",
+        }],
+      }),
+    });
+    expect(graph.CostItems.filter(item => item.expressId === 60)).toHaveLength(1);
+  });
+
   it('an overlay that touches nothing returns the same graph as no overlay at all', () => {
     const plain = extractCostOnDemand(buildStoreFromStep(FIXTURE));
     const overlaid = extractCostOnDemand(buildStoreFromStep(FIXTURE), {

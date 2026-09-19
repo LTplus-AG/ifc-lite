@@ -14,6 +14,7 @@ import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
@@ -38,10 +39,11 @@ const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5
 
 /** Chart and image blocks share this "two-up" width picker (#4940). */
 function WidthEditor({ width, onChange }: { width: BlockWidth | undefined; onChange: (width: BlockWidth) => void }) {
+  const { t } = useTranslation();
   return (
-    <label className="inline-flex items-center gap-1 text-muted-foreground">Width
-      <select className={field} value={width ?? 'full'} onChange={(e) => onChange(e.target.value as BlockWidth)} aria-label="Block width" title="Half pairs with the next half chart/image into one row">
-        <option value="full">Full</option><option value="half">Half</option>
+    <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.widthLabel')}
+      <select className={field} value={width ?? 'full'} onChange={(e) => onChange(e.target.value as BlockWidth)} aria-label={t('document.block.widthAriaLabel')} title={t('document.block.widthTitle')}>
+        <option value="full">{t('document.block.widthFull')}</option><option value="half">{t('document.block.widthHalf')}</option>
       </select>
     </label>
   );
@@ -71,6 +73,7 @@ function useFieldOptions(bindings: BindingContext): Array<{ path: string; label:
 }
 
 function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings: BindingContext; onChange: (b: TextBlock) => void }) {
+  const { t } = useTranslation();
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const options = useFieldOptions(bindings);
   const insert = (path: string): void => {
@@ -86,8 +89,8 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
       <div className="flex flex-wrap items-center gap-2">
         <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">Style
           <select className={field} value={block.style} onChange={(e) => onChange({ ...block, style: e.target.value as TextBlock['style'] })} aria-label="Text style">
-            <option value="title">Title</option><option value="heading">Heading</option><option value="subheading">Subheading</option>
-            <option value="body">Body</option><option value="small">Small</option><option value="caption">Caption</option>
+            <option value="title">Title</option><option value="heading">Heading</option><option value="subheading">{t('document.block.textStyleSubheading')}</option>
+            <option value="body">Body</option><option value="small">{t('document.block.textStyleSmall')}</option><option value="caption">{t('document.block.textStyleCaption')}</option>
           </select>
         </label>
         <label className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-muted-foreground">Insert field
@@ -111,6 +114,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
 }
 
 export function BlockEditor({ block, index, count, bindings, topics, charts, onChange, onMove, onRemove }: BlockEditorProps) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const pickImage = async (file: File | undefined): Promise<void> => {
     if (!file || block.kind !== 'image') return;
@@ -181,7 +185,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
           <label className="inline-flex items-center gap-1 text-muted-foreground">
             <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> 3D snapshot
           </label>
-          <label className="inline-flex items-center gap-1 text-muted-foreground">Height (pt)
+          <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
             <input
               type="number"
               min={CHART_BLOCK_HEIGHT_MIN}
@@ -194,7 +198,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
                 const height = e.target.value === '' || !Number.isFinite(raw) ? undefined : Math.min(CHART_BLOCK_HEIGHT_MAX, Math.max(CHART_BLOCK_HEIGHT_MIN, raw));
                 onChange({ ...block, height });
               }}
-              aria-label="Chart height"
+              aria-label={t('document.block.chartHeightAriaLabel')}
             />
           </label>
           <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
@@ -202,8 +206,8 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
       )}
 
       {block.kind === 'spacer' && (
-        <label className="inline-flex items-center gap-1 text-muted-foreground">Height (pt)
-          <input type="number" min={4} max={400} className={`${field} w-16`} value={block.height} onChange={(e) => onChange({ ...block, height: Math.max(4, Number(e.target.value) || 4) })} aria-label="Spacer height" />
+        <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
+          <input type="number" min={4} max={400} className={`${field} w-16`} value={block.height} onChange={(e) => onChange({ ...block, height: Math.max(4, Number(e.target.value) || 4) })} aria-label={t('document.block.spacerHeightAriaLabel')} />
         </label>
       )}
 

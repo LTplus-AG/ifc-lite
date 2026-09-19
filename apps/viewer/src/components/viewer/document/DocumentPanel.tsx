@@ -15,6 +15,7 @@ import type { ReportPageSetup } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
@@ -50,6 +51,7 @@ export function ensureActiveDocument(): void {
 }
 
 export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
+  const { t } = useTranslation();
   const documents = useViewerStore((s) => s.documents);
   const activeDocumentId = useViewerStore((s) => s.activeDocumentId);
   const upsertDocument = useViewerStore((s) => s.upsertDocument);
@@ -170,7 +172,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('image')}>Image / logo</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('chart')}>Chart</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? 'No BCF topics loaded' : undefined}>BCF topic</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addBlock('spacer')}>Spacer</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || !document || document.blocks.length === 0} onClick={() => void exportPdf()} title="Print this page to a PDF" data-document-export>

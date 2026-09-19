@@ -78,6 +78,7 @@ function addReadable(root: ParentNode, out: Set<string>): void {
 function readableStrings(): Set<string> {
   const out = new Set<string>();
   addReadable(document.body, out);
+  out.add(document.title);
   return out;
 }
 
@@ -135,7 +136,8 @@ afterEach(() => {
 describe('mcp/playground chrome localization (#4918)', () => {
   it('McpPlayground translates its shell chrome', () => {
     runOracle('mcp-playground-shell', mcpPlaygroundEn, ['mcp.mcpPlayground.'], () => render(<McpPlayground />), [
-      'mcp.mcpPlayground.title', 'mcp.mcpPlayground.backToMcp', 'mcp.mcpPlayground.sampleModels',
+      'mcp.mcpPlayground.documentTitle', 'mcp.mcpPlayground.title', 'mcp.mcpPlayground.backToMcp',
+      'mcp.mcpPlayground.sampleModels',
     ]);
   });
 

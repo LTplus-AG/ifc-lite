@@ -54,9 +54,8 @@
 # removed. A hand-picked number fails; a shrink that landed in another PR
 # stays a note, and so does slack left on a row this change only lowered.
    524 apps/viewer-embed/src/bridge/handler.ts
-   481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
-   431 apps/viewer/src/components/extensions/FlavorDialog.tsx
-   428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
+   473 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
+   414 apps/viewer/src/components/extensions/FlavorDialog.tsx
    665 apps/viewer/src/components/mcp/data.ts
   1318 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx

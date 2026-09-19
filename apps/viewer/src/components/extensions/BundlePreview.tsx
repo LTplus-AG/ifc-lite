@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 const DECODER = new TextDecoder();
 
@@ -27,6 +28,7 @@ interface BundlePreviewProps {
 }
 
 export function BundlePreview({ bundle }: BundlePreviewProps) {
+  const { t } = useTranslation();
   const paths = useMemo(() => Array.from(bundle.files.keys()).sort(), [bundle]);
   const [selected, setSelected] = useState<string>(paths[0] ?? 'manifest.json');
 
@@ -48,14 +50,14 @@ export function BundlePreview({ bundle }: BundlePreviewProps) {
       <ul
         className="w-48 shrink-0 overflow-y-auto rounded border bg-muted/30 text-[11px]"
         role="listbox"
-        aria-label="Bundle files"
+        aria-label={t('extensionsFlavors.bundlePreview.bundleFilesAriaLabel')}
       >
         {paths.map((path) => (
           <li key={path} role="option" aria-selected={selected === path}>
             <button
               type="button"
               onClick={() => setSelected(path)}
-              aria-label={`View ${path}`}
+              aria-label={t('extensionsFlavors.bundlePreview.viewFileAriaLabel', { path })}
               className={cn(
                 'w-full text-left px-2 py-1 font-mono break-all transition-colors',
                 selected === path ? 'bg-primary/15 text-primary' : 'hover:bg-muted',
@@ -75,10 +77,10 @@ export function BundlePreview({ bundle }: BundlePreviewProps) {
             size="sm"
             variant="ghost"
             onClick={() => void handleCopy()}
-            aria-label="Copy file contents"
+            aria-label={t('extensionsFlavors.bundlePreview.copyAriaLabel')}
           >
             <Copy className="mr-1 h-3 w-3" />
-            Copy
+            {t('extensionsFlavors.bundlePreview.copyButton')}
           </Button>
         </div>
         <ScrollArea className="flex-1">

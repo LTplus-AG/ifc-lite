@@ -23,6 +23,7 @@ import { toast } from '@/components/ui/toast';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { downloadFile, buildExportFilename, normalizeExtension } from '@/lib/export/download';
+import { useTranslation } from '@/i18n';
 
 interface ExtensionExportSlotProps {
   /** Base name for the produced file, before the exporter's extension. */
@@ -30,6 +31,7 @@ interface ExtensionExportSlotProps {
 }
 
 export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
+  const { t } = useTranslation();
   const host = useOptionalExtensionHost();
   const contributions = useSlotContributions<ExporterContribution>('exportMenu');
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
     <div className="space-y-2">
       <Label className="flex items-center gap-2">
         <Puzzle className="h-4 w-4" />
-        From extensions
+        {t('extensionsFlavors.extensionExportSlot.fromExtensionsLabel')}
       </Label>
       <div className="flex flex-col gap-2">
         {contributions.map((c) => {

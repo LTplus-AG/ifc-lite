@@ -107,6 +107,16 @@ The saved-list builder catalogue (#4918 slice 6, lists) covers
 `lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
 `lists.columnMenu.*`, `lists.errorBox.*`).
 
+Slice 5 (#4918) covers `extensions/**` (a companion slice covers `mcp/**`,
+`sources/**`, `tours/**`, the components root, and `ui/`):
+
+- `extensions-flavors.en.ts` and `extensions-panels.en.ts` cover the
+  Extensions panel's own chrome across its dialogs, cards, and sub-panels
+  (flavor list/merge/import, capability review, audit log, privacy, ideas,
+  repair queue, promote-tool, widget host) — extension-CONTRIBUTED labels
+  (a flavor's own name/description, an idea's text, a plan's own copy) stay
+  as data, same reasoning as slice 2/3's extension-registry exclusions.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

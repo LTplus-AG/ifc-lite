@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 
 interface FlavorMergeDialogProps {
   open: boolean;
@@ -50,6 +51,7 @@ interface FlavorMergeDialogProps {
 type ConflictResolution = 'theirs' | 'ours' | 'base';
 
 export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMergeDialogProps) {
+  const { t } = useTranslation();
   const host = useExtensionHost();
   const [ours, setOurs] = useState<Flavor | null>(null);
   const [base, setBase] = useState<Flavor | null>(null);
@@ -129,38 +131,44 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GitMerge className="h-4 w-4" />
-            Merge flavor
+            {t('extensionsFlavors.flavorMergeDialog.title')}
           </DialogTitle>
         </DialogHeader>
 
         {!ours || !base ? (
           <div className="text-sm text-muted-foreground">
-            No active flavor — switch to a flavor first, then retry the merge.
+            {t('extensionsFlavors.flavorMergeDialog.noActiveFlavor')}
           </div>
         ) : !mergeResult ? (
-          <div className="text-sm text-muted-foreground">Computing merge…</div>
+          <div className="text-sm text-muted-foreground">
+            {t('extensionsFlavors.flavorMergeDialog.computing')}
+          </div>
         ) : mergeResult.conflicts.length === 0 ? (
           <div className="space-y-3">
             <div className="text-sm">
-              Clean merge — no conflicts between{' '}
-              <span className="font-medium">{theirs.name}</span> and{' '}
-              <span className="font-medium">{ours.name}</span>.
+              {t('extensionsFlavors.flavorMergeDialog.cleanMerge', {
+                theirs: theirs.name,
+                ours: ours.name,
+              })}
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+                {t('extensionsFlavors.flavorMergeDialog.cancelButton')}
+              </Button>
               <Button size="sm" onClick={() => void handleApply()} disabled={busy}>
                 <Check className="mr-1 h-3.5 w-3.5" />
-                Save merged flavor
+                {t('extensionsFlavors.flavorMergeDialog.saveButton')}
               </Button>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
             <div className="text-xs text-muted-foreground">
-              {mergeResult.conflicts.length} conflict
-              {mergeResult.conflicts.length === 1 ? '' : 's'} between{' '}
-              <span className="font-medium">{theirs.name}</span> (theirs) and{' '}
-              <span className="font-medium">{ours.name}</span> (ours).
+              {t('extensionsFlavors.flavorMergeDialog.conflictSummary', {
+                count: mergeResult.conflicts.length,
+                theirs: theirs.name,
+                ours: ours.name,
+              })}
             </div>
 
             <ul className="divide-y border rounded max-h-[420px] overflow-y-auto">
@@ -179,23 +187,26 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
                     <div
                       className={`grid gap-2 text-[11px] ${hasBase ? 'grid-cols-3' : 'grid-cols-2'}`}
                       role="radiogroup"
-                      aria-label={`Resolve ${conflict.kind} conflict on ${conflict.key}`}
+                      aria-label={t('extensionsFlavors.flavorMergeDialog.resolveAriaLabel', {
+                        kind: conflict.kind,
+                        key: conflict.key,
+                      })}
                     >
                       <ResolutionChip
-                        label="Theirs"
+                        label={t('extensionsFlavors.flavorMergeDialog.theirsLabel')}
                         value={conflict.theirs}
                         active={choice === 'theirs'}
                         onClick={() => setResolutions((r) => ({ ...r, [key]: 'theirs' }))}
                       />
                       <ResolutionChip
-                        label="Ours"
+                        label={t('extensionsFlavors.flavorMergeDialog.oursLabel')}
                         value={conflict.ours}
                         active={choice === 'ours'}
                         onClick={() => setResolutions((r) => ({ ...r, [key]: 'ours' }))}
                       />
                       {conflict.base !== undefined && (
                         <ResolutionChip
-                          label="Base"
+                          label={t('extensionsFlavors.flavorMergeDialog.baseLabel')}
                           value={conflict.base}
                           active={choice === 'base'}
                           onClick={() => setResolutions((r) => ({ ...r, [key]: 'base' }))}
@@ -210,11 +221,11 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
             <div className="flex items-center justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
                 <X className="mr-1 h-3.5 w-3.5" />
-                Cancel
+                {t('extensionsFlavors.flavorMergeDialog.cancelButton')}
               </Button>
               <Button size="sm" onClick={() => void handleApply()} disabled={busy}>
                 <Check className="mr-1 h-3.5 w-3.5" />
-                Save merged flavor
+                {t('extensionsFlavors.flavorMergeDialog.saveButton')}
               </Button>
             </div>
           </div>
@@ -235,13 +246,14 @@ function ResolutionChip({
   active: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={onClick}
       role="radio"
       aria-checked={active}
-      aria-label={`Pick ${label}`}
+      aria-label={t('extensionsFlavors.flavorMergeDialog.pickAriaLabel', { label })}
       className={`text-left rounded border px-2 py-1.5 transition-colors ${
         active
           ? 'border-primary bg-primary/10'

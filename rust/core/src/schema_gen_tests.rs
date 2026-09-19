@@ -96,11 +96,20 @@ fn test_attribute_value_conversion() {
 fn typed_value_name_decodes_to_the_express_spelling_4707() {
     // A typed-value name is a STEP keyword, so its case is not significant.
     // Every consumer matches the uppercase spelling, so decode folds it once.
-    for spelling in [&b"IFCPARAMETERVALUE"[..], b"ifcparametervalue", b"IfcParameterValue"] {
+    for spelling in [
+        &b"IFCPARAMETERVALUE"[..],
+        b"ifcparametervalue",
+        b"IfcParameterValue",
+    ] {
         let token = Token::TypedValue(spelling, vec![Token::Float(0.5)]);
         let attr = AttributeValue::from_token(&token);
         let items = attr.as_list().expect("typed value decodes to a list");
-        assert_eq!(items[0].as_string(), Some("IFCPARAMETERVALUE"), "{}", String::from_utf8_lossy(spelling));
+        assert_eq!(
+            items[0].as_string(),
+            Some("IFCPARAMETERVALUE"),
+            "{}",
+            String::from_utf8_lossy(spelling)
+        );
         assert_eq!(items[1].as_float(), Some(0.5));
     }
     // The payload is not a keyword: a typed string keeps its case.
@@ -205,7 +214,11 @@ mod ifc_types_catalog {
                 t,
                 "{name} did not round-trip"
             );
-            assert_eq!(IfcType::from_id(t.id()), t, "{name} did not round-trip by id");
+            assert_eq!(
+                IfcType::from_id(t.id()),
+                t,
+                "{name} did not round-trip by id"
+            );
         }
     }
 
@@ -259,10 +272,19 @@ mod ifc_types_catalog {
         );
         let by_name: std::collections::HashMap<&str, IfcType> =
             IFC_TYPES.iter().map(|t| (t.name(), *t)).collect();
-        for name in ["IfcWall", "IfcSlab", "IfcDoor", "IfcWindow", "IfcBuildingStorey"] {
+        for name in [
+            "IfcWall",
+            "IfcSlab",
+            "IfcDoor",
+            "IfcWindow",
+            "IfcBuildingStorey",
+        ] {
             let t = by_name[name];
             assert!(!t.is_abstract(), "{name} is instantiable");
-            assert!(t.is_subtype_of(by_name["IfcProduct"]), "{name} is a product");
+            assert!(
+                t.is_subtype_of(by_name["IfcProduct"]),
+                "{name} is a product"
+            );
         }
         assert!(by_name["IfcProduct"].is_abstract());
         assert_eq!(
@@ -379,7 +401,11 @@ mod attribute_names {
 #[test]
 fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
     for &ty in crate::IFC_TYPES {
-        for spelling in [ty.name().to_string(), ty.name().to_uppercase(), ty.name().to_lowercase()] {
+        for spelling in [
+            ty.name().to_string(),
+            ty.name().to_uppercase(),
+            ty.name().to_lowercase(),
+        ] {
             assert_eq!(IfcType::from_str(&spelling), ty, "{spelling}");
         }
     }
@@ -396,13 +422,20 @@ fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
     }
     // Unicode normalization may produce a KNOWN canonical keyword.
     assert_eq!(IfcType::from_str("IFCſPACE"), IfcType::IfcSpace);
-    // Legacy spelling stays a raw schema lookup here; legacy-aware remapping
-    // belongs to its existing wrapper, not this normalization optimization.
+    // Supported legacy schema spellings now preserve their exact variant;
+    // synthetic extension spellings remain Unknown and are handled by the
+    // legacy-aware classification wrapper.
     for &name in crate::legacy_entities::LEGACY_ENTITY_NAMES {
         let upper = name.to_uppercase();
-        let expected = crate::IFC_TYPES.iter().copied()
-            .find(|ty| ty.as_str() == upper)
-            .unwrap_or_else(|| IfcType::Unknown(crc32(upper.as_bytes())));
+        let expected = IfcType::from_str(name);
+        if matches!(
+            name,
+            "IFCSOLIDSTRATUM" | "IFCVOIDSTRATUM" | "IFCWATERSTRATUM"
+        ) {
+            assert!(matches!(expected, IfcType::Unknown(_)), "{name}");
+        } else {
+            assert_eq!(expected.as_str(), upper, "{name}");
+        }
         for spelling in [name.to_owned(), name.to_lowercase()] {
             assert_eq!(IfcType::from_str(&spelling), expected, "{spelling}");
         }
@@ -419,6 +452,10 @@ fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
         ("ifcé", "IFCÉ"),
         ("ifcı", "IFCI"),
     ] {
-        assert_eq!(IfcType::from_str(input), IfcType::Unknown(crc32(uppercase.as_bytes())), "{input}");
+        assert_eq!(
+            IfcType::from_str(input),
+            IfcType::Unknown(crc32(uppercase.as_bytes())),
+            "{input}"
+        );
     }
 }

@@ -20,7 +20,14 @@ node dist/cli.js schemas/IFC4_ADD2_TC1.exp --output ./generated/ifc4
 node dist/cli.js schemas/IFC4X3.exp --output ./generated/ifc4x3
 ```
 
-Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core).
+Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core). To generate
+one exact-name universe across supported releases while keeping the first schema authoritative
+for attributes, pass older schemas with `--rust-supplemental-schema`:
+
+```bash
+node dist/cli.js schemas/IFC4X3.exp --rust \
+  --rust-supplemental-schema schemas/IFC4_ADD2_TC1.exp schemas/IFC2X3_TC1.exp
+```
 
 Generated files (one per output directory, e.g. `./generated/ifc4`):
 

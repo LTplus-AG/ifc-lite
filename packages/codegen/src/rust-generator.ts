@@ -17,25 +17,25 @@ import { crc32, formatCRC32TableLiteral } from './crc32.js';
 import { getInheritanceChain } from './express-parser.js';
 import { generateSchemaQueries } from './rust-schema-queries.js';
 import { generateTypeNameParser } from './rust-type-name-parser.js';
+import { mergeTypeUniverse } from './rust-type-universe.js';
 
 export interface RustGeneratedCode {
   typeIds: string;
   schema: string;
 }
-
-/**
- * Generate all Rust code from EXPRESS schema
- */
-export function generateRust(schema: ExpressSchema): RustGeneratedCode {
+/** Generate all Rust code from the canonical and supplemental EXPRESS schemas. */
+export function generateRust(
+  schema: ExpressSchema,
+  supplementalSchemas: readonly ExpressSchema[] = []
+): RustGeneratedCode {
+  const typeUniverse = mergeTypeUniverse(schema, supplementalSchemas);
   return {
-    typeIds: generateTypeIdConstants(schema),
-    schema: generateIfcTypeEnum(schema),
+    typeIds: generateTypeIdConstants(typeUniverse),
+    schema: generateIfcTypeEnum(schema, typeUniverse),
   };
 }
 
-/**
- * Generate CRC32 type ID constants
- */
+/** Generate CRC32 type ID constants. */
 function generateTypeIdConstants(schema: ExpressSchema): string {
   let code = `// This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -70,7 +70,7 @@ function generateTypeIdConstants(schema: ExpressSchema): string {
 /**
  * Generate the main IfcType enum
  */
-function generateIfcTypeEnum(schema: ExpressSchema): string {
+function generateIfcTypeEnum(schema: ExpressSchema, typeUniverse: ExpressSchema): string {
   let code = `// This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
@@ -85,13 +85,13 @@ use std::fmt;
 
 /// IFC Entity Types
 ///
-/// All ${schema.entities.length} entity types from the ${schema.name} schema.
+/// All ${typeUniverse.entities.length} entity types from the supported schema universe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IfcType {
 `;
 
   // Group entities by category
-  const categories = categorizeEntities(schema);
+  const categories = categorizeEntities(typeUniverse);
 
   for (const [category, entities] of Object.entries(categories)) {
     code += `    // ${category}\n`;
@@ -110,14 +110,14 @@ pub enum IfcType {
 }
 
 impl IfcType {
-${generateTypeNameParser(schema)}
+${generateTypeNameParser(typeUniverse)}
     /// Parse from CRC32 type ID
     pub fn from_id(id: u32) -> Self {
         match id {
 `;
 
   // Generate match arms for CRC32 IDs
-  for (const entity of schema.entities) {
+  for (const entity of typeUniverse.entities) {
     const id = crc32(entity.name);
     code += `            ${id} => Self::${entity.name},\n`;
   }
@@ -131,7 +131,7 @@ ${generateTypeNameParser(schema)}
         match self {
 `;
 
-  for (const entity of schema.entities) {
+  for (const entity of typeUniverse.entities) {
     const id = crc32(entity.name);
     code += `            Self::${entity.name} => ${id},\n`;
   }
@@ -145,7 +145,7 @@ ${generateTypeNameParser(schema)}
         match self {
 `;
 
-  for (const entity of schema.entities) {
+  for (const entity of typeUniverse.entities) {
     code += `            Self::${entity.name} => "${entity.name.toUpperCase()}",\n`;
   }
 
@@ -158,7 +158,7 @@ ${generateTypeNameParser(schema)}
         match self {
 `;
 
-  for (const entity of schema.entities) {
+  for (const entity of typeUniverse.entities) {
     code += `            Self::${entity.name} => "${entity.name}",\n`;
   }
 
@@ -171,7 +171,7 @@ ${generateTypeNameParser(schema)}
         match self {
 `;
 
-  for (const entity of schema.entities) {
+  for (const entity of typeUniverse.entities) {
     if (entity.supertype) {
       code += `            Self::${entity.name} => Some(Self::${entity.supertype}),\n`;
     }
@@ -199,7 +199,7 @@ ${generateTypeNameParser(schema)}
         match self {
 `;
 
-  const abstractTypes = schema.entities.filter((e) => e.isAbstract);
+  const abstractTypes = typeUniverse.entities.filter((e) => e.isAbstract);
   for (const entity of abstractTypes) {
     code += `            Self::${entity.name} => true,\n`;
   }
@@ -208,7 +208,7 @@ ${generateTypeNameParser(schema)}
         }
     }
 
-${generateSchemaQueries(schema)}impl fmt::Display for IfcType {
+${generateSchemaQueries(schema, typeUniverse.entities)}impl fmt::Display for IfcType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }

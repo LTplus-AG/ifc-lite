@@ -24,21 +24,11 @@
  * on losing it. That is not the geometry/attribute divergence #1496 fixed;
  * nothing disagrees, so nothing looks wrong.
  *
- * `rust/export/src/merged.rs` states the method this gate mechanises: "Derived
- * by diffing `@ifc-lite/data`'s IFC2X3/IFC4/IFC4X3 entity tables against this
- * crate's IFC4X3-only schema ... Update by re-running that diff, not by ad hoc
- * inspection." A comment can only ask; this runs the diff.
- *
  * THE DEAD-KEY HALF is the other thing that went unnoticed for as long. The
  * table carried `"IFCELECTRICALDISTRIBUTIONPOINT"`, and no such IFC2X3 entity
  * exists — the real one has no "AL". The arm could never match a real file, and
  * a Rust test asserted `has_geometry_by_name` on the same misspelling, so the
  * table and its test certified each other while describing nothing.
- *
- * WHY A LINT AND NOT A TEST: this is a cross-language claim about two SOURCE
- * files, which is the shape `check-source-text-assertions.mjs` bans in test
- * files, for good reasons. Same call as
- * `check-clash-degenerate-reason-parity.mjs`.
  *
  * VACUITY GUARD: both extractors must come back non-empty, and the schema
  * tables must yield a plausible number of products. Two empty sets agree about
@@ -53,6 +43,9 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canonicalGeneratedNames, generatedNames } from './lib/rust-schema-names.mjs';
+
+export { canonicalGeneratedNames, generatedNames } from './lib/rust-schema-names.mjs';
 
 const rootFlag = process.argv.indexOf('--root');
 const ROOT =
@@ -112,14 +105,6 @@ export function legacyNameConst(rustSource) {
  * enlarge this set, and a name wrongly believed resolvable is a name this gate
  * stops demanding an arm for — the quiet direction.
  */
-export function generatedNames(schemaSource) {
-  const start = schemaSource.indexOf('pub fn from_str');
-  if (start === -1) return new Set();
-  const next = schemaSource.indexOf('pub fn ', start + 'pub fn from_str'.length);
-  const body = schemaSource.slice(start, next === -1 ? undefined : next);
-  return new Set([...body.matchAll(/^\s+"(IFC[A-Z0-9]+)" => Self::/gm)].map((m) => m[1]));
-}
-
 /**
  * `{ name, parent, abstract, attributes }` per row of a generated
  * `ENTITIES_*` table. The generator emits one row per line in a fixed shape,
@@ -185,10 +170,18 @@ export function droppableProducts(tables) {
   return found;
 }
 
-export function checkCoverage({ legacySource, schemaSource, oldTables, tableSizes, allTableNames }) {
+export function checkCoverage({
+  legacySource,
+  schemaSource,
+  oldTables,
+  tableSizes,
+  allTableNames,
+  legacyRemapsMayResolve = false,
+  canonicalKnown,
+}) {
   const failures = [];
   const keys = legacyKeys(legacySource);
-  const known = generatedNames(schemaSource);
+  const known = canonicalKnown ?? generatedNames(schemaSource);
   const droppable = droppableProducts(oldTables);
 
   // Vacuity: every extractor must find something, or "nothing is missing" is
@@ -258,11 +251,13 @@ export function checkCoverage({ legacySource, schemaSource, oldTables, tableSize
   // Checked here rather than only in Rust because both sets are DERIVED from
   // source: a 27th arm added to the table is picked up automatically, where a
   // hand-written key list in a test would stay green and silently under-cover.
-  for (const key of [...keys].sort()) {
-    if (!known.has(key)) continue;
-    failures.push(
-      `${LEGACY_REL} has an arm for "${key}", which ${SCHEMA_REL}'s from_str already resolves`,
-    );
+  if (!legacyRemapsMayResolve) {
+    for (const key of [...keys].sort()) {
+      if (!known.has(key)) continue;
+      failures.push(
+        `${LEGACY_REL} has an arm for "${key}", which ${SCHEMA_REL}'s from_str already resolves`,
+      );
+    }
   }
 
   for (const key of [...keys].sort()) {
@@ -297,6 +292,11 @@ function loadTree(root) {
     oldTables,
     tableSizes,
     allTableNames,
+    canonicalKnown: canonicalGeneratedNames(read(SCHEMA_REL)),
+    // #4203's generated union intentionally resolves older-schema variants;
+    // schema_helpers maps those exact variants to their stable processing base
+    // before the known-type short circuit.
+    legacyRemapsMayResolve: true,
   };
 }
 

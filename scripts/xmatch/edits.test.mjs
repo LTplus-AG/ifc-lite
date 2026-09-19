@@ -23,9 +23,10 @@ import {
   representationMapDigest,
   respecifyProperty,
 } from './successor-edits.mjs';
-import { donorPairKey, incomparableSwaps } from './geometry-bounds.mjs';
-import { mapDonors } from './successor-mutations.mjs';
+import * as successorMutations from './successor-mutations.mjs';
 import { parseStepFile, serializeStepFile, splitArgs } from './step-file.mjs';
+
+const { mapDonors } = successorMutations;
 
 function stepFile(body) {
   return `ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${body}\nENDSEC;\nEND-ISO-10303-21;\n`;
@@ -235,7 +236,7 @@ test('mapped donors remain eligible when canonical bounds are comparable (#4989)
     [200, 11],
   ]);
   assert.deepEqual(
-    [...mapDonors(indexModel(file), [100, 200], bounds, new Set([donorPairKey(100, 31)]))],
+    [...mapDonors(indexModel(file), [100, 200], bounds, new Set(['100:31']))],
     [[200, 11]],
   );
 });
@@ -247,5 +248,8 @@ test('post-mutation bounds reject a transformed donor that passed the base prefi
   const base = [{ ref: 100, aabb: box(1) }];
   const head = [{ ref: 900, aabb: box(3) }];
 
-  assert.deepEqual(incomparableSwaps(key, base, head), [{ base: 100, donorMap: 31, head: 900 }]);
+  assert.equal(typeof successorMutations.incomparableSwaps, 'function');
+  assert.deepEqual(successorMutations.incomparableSwaps(key, base, head), [
+    { base: 100, donorMap: 31, head: 900 },
+  ]);
 });

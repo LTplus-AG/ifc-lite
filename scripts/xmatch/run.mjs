@@ -27,8 +27,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fingerprintFile, GEOMETRY_HASH_TOLERANCE } from './fingerprints.mjs';
-import { donorPairKey, incomparableSwaps } from './geometry-bounds.mjs';
 import { mutateModel } from './mutate.mjs';
+import { donorPairKey, incomparableSwaps } from './successor-mutations.mjs';
 import {
   checkCorpusThresholds,
   checkThresholds,

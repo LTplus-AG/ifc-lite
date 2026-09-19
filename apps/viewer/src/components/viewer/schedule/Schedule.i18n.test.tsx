@@ -613,6 +613,31 @@ describe('GanttToolbar localization (#4918)', { skip: !HAS_CATALOGUE && 'schedul
     covered.add('schedule.toolbar.allTasks');
   });
 
+  it('formats a large discard count in the active locale while retaining numeric plural selection', () => {
+    registerLocale('de', {
+      'schedule.toolbar.discardPendingAriaLabel': {
+        one: '[{formattedCount} Aufgabe verwerfen]',
+        other: '[{formattedCount} Aufgaben verwerfen]',
+      },
+    });
+    act(() => setLocale('de'));
+    const scheduleData = makeScheduleData();
+    scheduleData.tasks = Array.from({ length: 1_000 }, (_, index) => ({
+      expressId: 0,
+      globalId: `generated-${index}`,
+      name: `Task ${index}`,
+      isMilestone: false,
+      childGlobalIds: [],
+      productExpressIds: [],
+      productGlobalIds: [],
+      controllingScheduleGlobalIds: [],
+    }));
+    useViewerStore.setState({ scheduleData });
+
+    const container = render(<GanttToolbar />);
+    assert.ok(container.querySelector('button[aria-label="[1.000 Aufgaben verwerfen]"]'));
+  });
+
   afterEach(() => {
     useViewerStore.setState({
       scheduleData: null,

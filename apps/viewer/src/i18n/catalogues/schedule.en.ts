@@ -40,16 +40,16 @@ export const scheduleEn = {
   'schedule.toolbar.redoScheduleEdit': 'Redo schedule edit',
   'schedule.toolbar.redoTooltip': 'Redo (Ctrl+Shift+Z)',
   'schedule.toolbar.discardedToast': {
-    one: 'Discarded {count} pending task.',
-    other: 'Discarded {count} pending tasks.',
+    one: 'Discarded {formattedCount} pending task.',
+    other: 'Discarded {formattedCount} pending tasks.',
   },
   'schedule.toolbar.discardPendingAriaLabel': {
-    one: 'Discard {count} pending generated task',
-    other: 'Discard {count} pending generated tasks',
+    one: 'Discard {formattedCount} pending generated task',
+    other: 'Discard {formattedCount} pending generated tasks',
   },
   'schedule.toolbar.discardPendingTooltip': {
-    one: 'Discard {count} pending schedule task',
-    other: 'Discard {count} pending schedule tasks',
+    one: 'Discard {formattedCount} pending schedule task',
+    other: 'Discard {formattedCount} pending schedule tasks',
   },
   'schedule.toolbar.closeGanttPanel': 'Close Gantt panel',
   'schedule.toolbar.noDates': 'No dates',

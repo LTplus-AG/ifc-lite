@@ -34,13 +34,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useViewerStore, countGeneratedTasks } from '@/store';
-import type { GanttTimeScale } from '@/store';
+import { useViewerStore, countGeneratedTasks, type GanttTimeScale } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { useTranslation } from '@/i18n';
-import type { TranslationKey } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatDateTime } from './schedule-utils';
 import { AnimationSettingsPopover } from './AnimationSettingsPopover';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface GanttToolbarProps {
   onClose?: () => void;
@@ -70,9 +69,10 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; labelKey: TranslationKey }> 
 // Radix Select rejects '' as a SelectItem value — use a sentinel for the
 // "All tasks" option and translate at the API boundary.
 const ALL_SCHEDULES_SENTINEL = '__all__';
+const localizedCount = (locale: string, count: number) => ({ count, formattedCount: formatLocaleNumber(locale, count) });
 
 export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
   const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
@@ -389,16 +389,16 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
               onClick={() => {
                 const removed = clearGeneratedSchedule();
                 if (removed > 0) {
-                  toast.success(t('schedule.toolbar.discardedToast', { count: removed }));
+                  toast.success(t('schedule.toolbar.discardedToast', localizedCount(locale, removed)));
                 }
               }}
-              aria-label={t('schedule.toolbar.discardPendingAriaLabel', { count: pendingGeneratedCount })}
+              aria-label={t('schedule.toolbar.discardPendingAriaLabel', localizedCount(locale, pendingGeneratedCount))}
               className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{t('schedule.toolbar.discardPendingTooltip', { count: pendingGeneratedCount })}</TooltipContent>
+          <TooltipContent>{t('schedule.toolbar.discardPendingTooltip', localizedCount(locale, pendingGeneratedCount))}</TooltipContent>
         </Tooltip>
       )}
 

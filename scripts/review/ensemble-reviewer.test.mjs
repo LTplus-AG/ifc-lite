@@ -20,7 +20,7 @@ import {
   MODEL_PRICES_PER_MTOK,
   REVIEW_ENSEMBLE_STRONG_MODEL,
 } from './ensemble-reviewer.mjs';
-import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
+import { DEFECT_CLASSES, MIN_WHY_CHARS } from './lib/defect-classes.mjs';
 import { addedLineRanges } from './build-review-input.mjs';
 
 const SENTINEL = 'ifc-lite-review-v1';
@@ -127,6 +127,48 @@ test('poolFindings returns null when nothing parsed', () => {
   assert.equal(poolFindings([{ model: 'a/one', text: 'garbage' }]), null);
 });
 
+// ============================================= finding-3: the sentinel is not repairable
+
+test('finding-3: a response with NO end sentinel is excluded from the pool, not replaced by one', () => {
+  const truncated = withFinding('a real defect here');
+  delete truncated.end;
+  const results = [
+    { model: 'a/one', text: JSON.stringify(clean()) },
+    { model: 'truncated/model', text: JSON.stringify(truncated) },
+  ];
+  const logged = [];
+  const origLog = console.log;
+  console.log = (...args) => logged.push(args.join(' '));
+  let pooled;
+  try {
+    pooled = poolFindings(results);
+  } finally {
+    console.log = origLog;
+  }
+  assert.equal(pooled.verdict, 'clean', 'the truncated model must not source a finding it never proved');
+  assert.equal(pooled.findings.length, 0);
+  assert.ok(
+    logged.some((l) => l.includes('truncated/model') && l.includes('sentinel')),
+    'the exclusion must be logged',
+  );
+});
+
+test('finding-3: a response with the WRONG end sentinel is excluded, same as a missing one', () => {
+  const wrongSentinel = { ...withFinding(), end: 'ifc-lite-review-v1-partial' };
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(clean()) },
+    { model: 'bad-end/model', text: JSON.stringify(wrongSentinel) },
+  ]);
+  assert.equal(pooled.verdict, 'clean');
+  assert.equal(pooled.findings.length, 0);
+});
+
+test('finding-3: a pool where ONLY a bad-sentinel model answered returns null', () => {
+  const truncated = withFinding();
+  delete truncated.end;
+  assert.equal(poolFindings([{ model: 'truncated/model', text: JSON.stringify(truncated) }]), null);
+});
+
 // ==================================================== finding-6/7/8: schema and class_pass
 
 /**
@@ -221,6 +263,44 @@ test('finding-7: the merge prefers "clear" over "not-applicable" when models dis
   ]);
   const row = pooled.class_pass.find((r) => r.class === cls);
   assert.equal(row.verdict, 'clear');
+});
+
+// ============================================ finding-5: merged class_pass must survive checkClassPass
+
+test('finding-5: a row with a `why` under MIN_WHY_CHARS is not merge-eligible, even if non-empty', () => {
+  const cls = DEFECT_CLASSES[0];
+  const shortWhy = cleanDocsAnswer();
+  shortWhy.class_pass = shortWhy.class_pass.map((r) => (r.class === cls ? { ...r, why: 'n/a' } : r));
+  assert.ok('n/a'.length < MIN_WHY_CHARS, 'fixture precondition: the short why must actually be too short');
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(shortWhy) },
+    { model: 'b/two', text: JSON.stringify(cleanDocsAnswer()) },
+  ]);
+  // Neither model has a MERGE-ELIGIBLE row for `cls` (one is too short, and
+  // "every contributing model" must pass), so the class is omitted rather
+  // than merged with a row `checkClassPass` would refuse downstream.
+  assert.ok(!pooled.class_pass.some((r) => r.class === cls), 'a too-short why must not source a merged row');
+});
+
+test('finding-5: two classes given the SAME why by different models get disambiguated, not merged as duplicates', () => {
+  const clsA = DEFECT_CLASSES[0];
+  const clsB = DEFECT_CLASSES[1];
+  const sameWhy = 'this class does not apply to a docs-only diff at all';
+  const a = cleanDocsAnswer();
+  a.class_pass = a.class_pass.map((r) => (r.class === clsA ? { ...r, why: sameWhy } : r));
+  const b = cleanDocsAnswer();
+  b.class_pass = b.class_pass.map((r) => (r.class === clsB ? { ...r, why: sameWhy } : r));
+  // Every OTHER class must still carry a distinct why so only clsA/clsB collide.
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(a) },
+    { model: 'b/two', text: JSON.stringify(b) },
+  ]);
+  const rowA = pooled.class_pass.find((r) => r.class === clsA);
+  const rowB = pooled.class_pass.find((r) => r.class === clsB);
+  assert.notEqual(rowA.why.trim().toLowerCase(), rowB.why.trim().toLowerCase(), 'the merge must not ship two identical why values');
+  const r = runRealValidator(pooled, DOCS_INPUT);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.classPass, true, 'a merge that disambiguates the collision must satisfy the real checkClassPass');
 });
 
 // ------------------------------------------------- finding-8: the REAL validator, end to end

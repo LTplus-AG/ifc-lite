@@ -52,7 +52,7 @@ import { stripFence } from './validate-findings.mjs';
 // must never source the pooled envelope's metadata.
 import { SENTINEL, checkSchema } from './lib/finding-schema.mjs';
 import { ValidateFindingsError } from './lib/validate-findings-error.mjs';
-import { DEFECT_CLASSES, CLASS_VERDICTS } from './lib/defect-classes.mjs';
+import { mergeClassPass } from './lib/merge-class-pass.mjs';
 import { classify as classifyPrRisk } from './classify-pr-risk.mjs';
 
 /** Reference chain for docs/PR description only -- see `resolveEnsembleModels` for why this is NOT a runtime fallback. */
@@ -161,55 +161,6 @@ export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, conc
 }
 
 /**
- * `class_pass` MERGE ACROSS MODELS (finding behind #4981's CLASS_PASS_INCOMPLETE
- * loop). `checkClassPass` in defect-classes.mjs only ever runs against ONE
- * model's answer, so it has no merge semantics of its own to reuse; this is the
- * ensemble-specific rule the PR description states: a class counts as passed
- * in the POOLED answer only when EVERY schema-valid contributing model shows a
- * valid row for it (present, a real `CLASS_VERDICTS` value, a non-empty `why`)
- * -- one model silently skipping a class is not covered up by the others having
- * covered it, because `checkClassPass` downstream is what actually decides
- * whether the resulting row set is complete enough to accept, and this must not
- * fabricate coverage that lets a class through it. A class no contributing
- * model shows validly is simply OMITTED from the merge (not invented), so
- * `checkClassPass` sees the true gap and fails exactly the way a single-model
- * run with that gap would.
- *
- * The merged verdict for a class prefers `clear`: if any contributing model
- * says a class is `clear`, that model is claiming it looked at real code for
- * that class and it held up, which is stronger evidence than another model's
- * `not-applicable`. Only when every contributing model says `not-applicable`
- * does the merged row stay `not-applicable`.
- *
- * @param {{model: string, obj: object}[]} parsed schema-valid answers only
- * @returns {object[]|undefined} a `class_pass` array, or `undefined` when no
- *   contributing model supplied one at all (an all-`findings` ensemble, where
- *   `class_pass` is never asked for and `validate()` never reads this field).
- */
-function mergeClassPass(parsed) {
-  const withClassPass = parsed.filter((p) => Array.isArray(p.obj?.class_pass));
-  if (withClassPass.length === 0) return undefined;
-
-  const rowFor = (obj, cls) => {
-    const row = obj.class_pass.find((r) => r && typeof r === 'object' && r.class === cls);
-    if (!row || !CLASS_VERDICTS.includes(row.verdict) || typeof row.why !== 'string' || row.why.trim() === '') {
-      return null;
-    }
-    return row;
-  };
-
-  const merged = [];
-  for (const cls of DEFECT_CLASSES) {
-    const rows = withClassPass.map(({ obj }) => rowFor(obj, cls));
-    if (rows.some((r) => r === null)) continue; // not every contributing model passed this class
-    const verdict = rows.some((r) => r.verdict === 'clear') ? 'clear' : 'not-applicable';
-    const why = rows.find((r) => r.verdict === verdict)?.why.trim() ?? rows[0].why.trim();
-    merged.push({ class: cls, verdict, why });
-  }
-  return merged;
-}
-
-/**
  * Parse every model's JSON answer, KEEP ONLY THE SCHEMA-VALID ONES, tag each
  * survivor's findings with `source`, and pool into ONE combined raw-review
  * envelope. Returns `null` when nothing usable survives, so the caller can
@@ -240,6 +191,22 @@ export function poolFindings(results) {
       obj = JSON.parse(stripFence(r.text).trim());
     } catch (error) {
       console.log(`ensemble: ${r.model} answer was not parseable JSON: ${error.message}`);
+      continue;
+    }
+    // THE TERMINAL SENTINEL IS CHECKED HERE TOO, not left to the real
+    // validator downstream. `poolFindings` re-serialises a SINGLE combined
+    // envelope with its OWN `end: SENTINEL` (below), so a per-model response
+    // missing the sentinel -- or carrying the wrong one -- would otherwise be
+    // silently repaired into a valid-looking one before the validator's own
+    // RESPONSE_TRUNCATED check ever saw it. That is the exact "stopped early
+    // yet still parses" shape `finding-schema.mjs`'s SENTINEL comment warns
+    // about, just laundered through this file instead. A model whose answer
+    // fails this check is excluded from the pool the same way a schema-invalid
+    // one is: logged, and counted as a per-model failure, not silently patched.
+    if (obj?.end !== SENTINEL) {
+      console.log(
+        `ensemble: ${r.model} answer has no valid terminal sentinel (RESPONSE_TRUNCATED-shaped); excluded from the pool.`,
+      );
       continue;
     }
     try {

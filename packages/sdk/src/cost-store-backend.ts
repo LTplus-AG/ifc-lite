@@ -246,6 +246,10 @@ function cascadeValuesForItem(
       [...(referrers.itemCostValues?.keys() ?? [])].some(id => id !== itemId)
       || (referrers.valueComponents?.size ?? 0) > 0
       || (referrers.valueAppliedValueRef?.size ?? 0) > 0
+      || (referrers.nestRelatedObjects?.size ?? 0) > 0
+      || (referrers.assignmentRelatedObjects?.size ?? 0) > 0
+      || (referrers.nestsAsParent?.length ?? 0) > 0
+      || (referrers.assignmentsAsControl?.length ?? 0) > 0
       || (referrers.otherRelationshipLists?.length ?? 0) > 0
       || (referrers.otherRelationships?.length ?? 0) > 0
       || (incoming.get(valueId) ?? []).some(id => !known.has(id));

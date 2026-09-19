@@ -407,6 +407,23 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(graph.CostValues.some(entry => entry.ref.expressId === value)).toBe(true);
   });
 
+  it('a surviving malformed cost relationship prevents cascading its referenced value', async () => {
+    const { storeCost, cost, view } = await session();
+    const value = storeCost.addCostValue('m', { Name: 'Relationship value' }).expressId;
+    const item = storeCost.addCostItem('m', { Name: 'Owner', CostValues: [value] }).expressId;
+    view.createEntity('IfcRelNests', [
+      '0malformedNest000000001', null, null, null, '#41', [`#${value}`],
+    ]);
+
+    storeCost.removeCostEntity('m', item);
+
+    const graph = cost.data('m');
+    expect(graph.CostItems.some(entry => entry.ref.expressId === item)).toBe(false);
+    expect(graph.CostValues.some(entry => entry.ref.expressId === value)).toBe(true);
+    expect(graph.Relationships.some(entry => entry.Type === 'IfcRelNests'
+      && entry.RelatedObjects?.some(ref => ref.expressId === value))).toBe(true);
+  });
+
   it('deleting a schedule that controls items tombstones the IfcRelAssignsToControl, not just the schedule', async () => {
     const { storeCost, cost } = await session();
     const schedule = storeCost.addCostSchedule('m', { Name: 'S' }).expressId;

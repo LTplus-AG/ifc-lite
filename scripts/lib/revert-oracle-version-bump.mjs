@@ -118,7 +118,10 @@ function rustMajorOffsetOnly(beforeText, afterText) {
   if (!Number.isSafeInteger(before.majorOffset) || before.majorOffset < 0) return false;
   if (!Number.isSafeInteger(after.majorOffset) || after.majorOffset !== before.majorOffset + 1) return false;
   if (typeof before.reason !== 'string' || typeof after.reason !== 'string') return false;
-  if (after.reason !== before.reason) return false;
+  const expectedReason = 'latestBreak' in before
+    ? `${before.reason} ${before.latestBreak}`
+    : before.reason;
+  if (after.reason !== expectedReason) return false;
   if (typeof after.latestBreak !== 'string' || after.latestBreak.trim().length === 0) return false;
   if ('latestBreak' in before
     && (typeof before.latestBreak !== 'string'

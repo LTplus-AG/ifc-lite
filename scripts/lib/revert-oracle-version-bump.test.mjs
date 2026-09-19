@@ -178,9 +178,14 @@ test('rust offset: the real trailing-comma shape is version-only by decoded stru
   assert.equal(classifyOffset(before, after), true);
 });
 
-test('rust offset: a subsequent increment replaces latestBreak without rewriting history', () => {
+test('rust offset: a subsequent increment archives latestBreak before replacing it', () => {
   const before = offsetText({ offset: 6, latestBreak: 'Previous break.', refs: ['#4685', '#4791'] });
-  const after = offsetText({ offset: 7, latestBreak: 'Next break.', refs: ['#4685', '#4791', '#4988'] });
+  const after = offsetText({
+    offset: 7,
+    reason: 'Existing reason. Previous break.',
+    latestBreak: 'Next break.',
+    refs: ['#4685', '#4791', '#4988'],
+  });
   assert.equal(classifyOffset(before, after), true);
 });
 
@@ -204,11 +209,17 @@ test('rust offset: only an exact one-step nonnegative safe-integer increment qua
   }
 });
 
-test('rust offset: historical reason must remain unchanged', () => {
+test('rust offset: a first increment preserves history and later increments append exactly the outgoing break', () => {
   const before = offsetText();
   for (const [offset, reason] of [[6, 'Replacement.'], [6, 'Existing'], [6, 'Existing reason. More.'], [5, 'Existing reason.']]) {
     const after = offsetText({ offset, reason, latestBreak: 'New break.', refs: ['#4685', '#4791'] });
     assert.equal(classifyOffset(before, after), false, `${offset}: ${reason}`);
+  }
+
+  const currentBefore = offsetText({ offset: 6, latestBreak: 'Current break.', refs: ['#4685', '#4791'] });
+  for (const reason of ['Existing reason.', 'Current break.', 'Existing reason. Altered break.']) {
+    const after = offsetText({ offset: 7, reason, latestBreak: 'Next break.', refs: ['#4685', '#4791', '#4988'] });
+    assert.equal(classifyOffset(currentBefore, after), false, reason);
   }
 });
 

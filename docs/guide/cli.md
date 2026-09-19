@@ -885,6 +885,10 @@ Reports:
 | `--by-content` | Per-entity comparison via the `@ifc-lite/diff` engine, pairing re-GUIDed elements by content |
 | `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
 | `--identity-in <file>` | Replay a sidecar's claims so those elements are matched by key (implies `--by-content`) |
+| `--key-from <Tag\|Pset.Prop>` | Key the comparison on an authored identifier instead of GlobalId (implies `--by-content`) |
+| `--lineage-out <file>` | Write the lineage this comparison establishes, for `rekey` (implies `--by-content`) |
+| `--lineage-in <file>` | Replay a lineage's one-to-one entries and carry the rest forward (implies `--by-content`) |
+| `--accept <map.json>` | Fold a reviewed identity map into the lineage as `replaced` entries |
 | `--json` | JSON output |
 
 Both comparison modes cover the same entities: every `IfcObjectDefinition` in the file. See [what gets compared](#what-gets-compared) below.
@@ -903,13 +907,50 @@ ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
 
 The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. This path compares **data only** — the CLI has no geometry pipeline — so every unambiguous match reports as `renamed`. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
 
-`--identity-out` refuses to write over either input model.
+`--identity-out` and `--lineage-out` refuse to write over either input model.
+
+#### Authored keys and lineage
+
+When the model maintains an identifier on purpose — an asset code in a property set, a stable `Tag` — `--key-from` keys the comparison on it, and a redrawn element keeps its key. `--lineage-out` writes the one-to-many record `rekey` consumes when an element was split or merged:
+
+```bash
+ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --lineage-out lineage.json
+```
+
+See [Stable Element Identity](stable-identity.md) for the workflow end to end.
 
 #### What gets compared
 
 Both `--by-entity` and `--by-content` compare every `IfcObjectDefinition` in the file — every `IfcObject` (products, but also tasks, actors, controls, resources and groups), plus `IfcTypeObject` and `IfcProject`. The other two `IfcRoot` branches are left out on purpose: an `IfcRelationship` is identified by its endpoints rather than in its own right, and a property set's contents are already part of its owner's comparison, so including it would report every edited property twice.
 
 Membership comes from the schema inheritance chain, so an entity that is not an `IfcRoot` at all — a material, a surface style, a classification, a projected CRS — is not compared under its name, and a schedule task or actor is compared even though it carries no geometry. The chain is read from every schema ifc-lite bundles (IFC2X3, IFC4 and IFC4X3), so a class that only one of them declares — `IfcMove` and `IfcSpaceProgram` in IFC2X3, `IfcRoad` and `IfcAlignment` in IFC4X3 — is classified as what it is, not as an unknown. One consequence is deliberate: a vendor-specific `IfcRoot` subtype that no IFC schema declares is not compared unless its class name ends in `Type`, because there is no chain to prove it is an object rather than a resource.
+
+---
+
+### `rekey` — Carry a Table Across a Revision
+
+Rewrite a CSV or JSON table keyed on one revision's element keys to the next revision, through a lineage `diff --lineage-out` (or the viewer) wrote.
+
+```bash
+# Split rows are copied to every piece; rows with nowhere to go are set aside.
+ifc-lite rekey costs.csv --lineage lineage.json --key-column GlobalId --out costs-v2.csv --orphans orphans.csv
+
+# Follow the largest volume share instead, on a JSON array of objects.
+ifc-lite rekey rows.json --lineage lineage.json --key-column id --policy largest-share --out rows-v2.json
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--lineage <file>` | The lineage sidecar (required) |
+| `--out <file>` | Where to write the rekeyed table (required) |
+| `--key-column <name>` | The column holding the old key (default `GlobalId`) |
+| `--policy <p>` | `copy-to-all` (default), `largest-share`, or `orphan-on-split` |
+| `--orphans <file>` | Where rows with nowhere to go are written (default `<out>.orphans.<ext>` when there are any) |
+| `--json` | JSON summary |
+
+A row whose key the lineage does not mention keeps its key unless the lineage's `deleted` list names it. The output gains `lineage_relation` and `lineage_from` columns. Orphans are never dropped. See [Stable Element Identity](stable-identity.md#step-3-carry-external-data-across-a-split).
 
 ---
 

@@ -93,6 +93,7 @@ export interface PendingOverlay {
    *  is not one this session created. */
   createdEntity(expressId: number): CreatedEntity | null;
   attributes(expressId: number): AttributeOverrides;
+  positionalAttributes(expressId: number): ReadonlyMap<number, unknown>;
   /** Every entity with a queued attribute write, keyed by expressId. For loops
    *  over a whole model: `attributes(id)` builds a map per call, which is fine
    *  for one entity and not for a million. */
@@ -208,6 +209,10 @@ class ViewOverlay implements PendingOverlay {
       out.set(name, value);
     }
     return out;
+  }
+
+  positionalAttributes(expressId: number): ReadonlyMap<number, unknown> {
+    return this.view.getPositionalMutationsForEntity(expressId) ?? new Map();
   }
 
   attributesByEntity(): ReadonlyMap<number, AttributeOverrides> {

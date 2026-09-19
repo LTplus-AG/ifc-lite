@@ -911,11 +911,12 @@ describe('containment over queued relationships', () => {
     const wall = { modelId: 'm', expressId: 72 };
 
     await call('entity_set_attribute', { global_id: guid('STOR'), attribute: 'Name', value: 'Level One' });
+    model.bim.store.setPositionalAttribute({ modelId: 'm', expressId: 41 }, 2, "'Positional Level'");
 
     const edge = model.bim.relationships(wall).relations?.find((candidate) =>
       candidate.relationshipId === 45 && candidate.entity.id === 41);
-    expect(edge?.entity.name).toBe('Level One');
-    expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('Level One');
+    expect(edge?.entity.name).toBe('Positional Level');
+    expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('Positional Level');
   }, 30_000);
 
   it('reports a queued exact relationship row and removes it after deletion', async () => {

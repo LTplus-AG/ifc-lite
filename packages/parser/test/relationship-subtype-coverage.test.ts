@@ -148,6 +148,31 @@ describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
 });
 
 describe('complete schema-derived relationship graph (#4205)', () => {
+  it('keeps a parsed header on the detected schema even when its identifier list is unavailable', async () => {
+    const source = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('schema declaration unavailable'),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+ENDSEC;
+DATA;
+#10=IFCWALL('wall',$,'Wall',$,$,$,$,$,$);
+#11=IFCWALL('surface',$,'Surface',$,$,$,$,$,$);
+#20=IFCRELADHERESTOELEMENT('rel',$,$,$,#10,(#11));
+ENDSEC;
+END-ISO-10303-21;`);
+    const refs = Array.from(new StepTokenizer(source).scanEntitiesFast()).map((ref) => ({
+      expressId: ref.expressId,
+      type: ref.type,
+      byteOffset: ref.offset,
+      byteLength: ref.length,
+      lineNumber: ref.line,
+    }));
+    const store = await new ColumnarParser().parseLite(source.buffer.slice(0) as ArrayBuffer, refs, {});
+
+    expect(store.schemaVersion).toBe('IFC4');
+    expect(store.relationships.forward.getEdges(10)).toEqual([]);
+  });
+
   it('indexes IFC2X3 IfcRelCoversSpaces from RelatedSpace to RelatedCoverings', async () => {
     const source = new TextEncoder().encode(`ISO-10303-21;
 HEADER;

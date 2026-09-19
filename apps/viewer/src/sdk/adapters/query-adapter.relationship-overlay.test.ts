@@ -27,6 +27,8 @@ DATA;
 #9=IFCRELVOIDSELEMENT('0000000000000000000009',$,$,$,#8,#7);
 #10=IFCGROUP('0000000000000000000010',$,'Factor group',$,$);
 #11=IFCRELASSIGNSTOGROUPBYFACTOR('0000000000000000000011',$,$,$,(#3),$,#10,0.5);
+#12=IFCDOORSTANDARDCASE('0000000000000000000012',$,'Exact door',$,$,$,$,$,$,$,$,$,$);
+#13=IFCRELAGGREGATES('0000000000000000000013',$,$,$,#1,(#12));
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -55,14 +57,24 @@ test('viewer exact relationship queries fold authored records and endpoint overr
     type: 'IfcRelAggregates',
     attributes: ["'0000000000000000000005'", null, null, null, '#2', ['#3']],
   });
+  const view = store.getState().mutationViews.get('__legacy__') ?? store.getState().mutationViews.get('default');
+  assert.ok(view);
 
   assert.deepEqual(query.relationships({ modelId: 'default', expressId: 3 }).groups, [
     { id: 10, name: 'Factor group', type: 'IfcGroup' },
   ]);
+  assert.equal(query.relationships({ modelId: 'default', expressId: 1 }).relations?.some((edge) =>
+    edge.relationshipId === 13 && edge.entity.type === 'IfcDoorStandardCase'), true);
 
   assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [{ modelId: 'default', expressId: 3 }]);
   assert.equal(query.relationships(building).relations?.some((edge) =>
     edge.relationshipId === relationship.expressId && edge.entity.id === 3 && edge.entity.name === 'First wall'), true);
+
+  writes.setPositionalAttribute({ modelId: 'default', expressId: 3 }, 2, "'Positional parsed wall'");
+  view.setAttribute(3, 'Name', 'Named parsed wall');
+  assert.equal(query.relationships(building).relations?.some((edge) =>
+    edge.relationshipId === relationship.expressId && edge.entity.id === 3
+    && edge.entity.name === 'Positional parsed wall'), true);
 
   writes.setPositionalAttribute(relationship, 5, ['#4']);
   assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [
@@ -73,8 +85,6 @@ test('viewer exact relationship queries fold authored records and endpoint overr
   assert.equal(rows.some((edge) => edge.relationshipId === relationship.expressId
     && edge.entity.id === 4 && edge.entity.name === 'Replacement wall'), true);
 
-  const view = store.getState().mutationViews.get('__legacy__') ?? store.getState().mutationViews.get('default');
-  assert.ok(view);
   view.setAttribute(relationship.expressId, 'RelatedObjects', '#3');
   // Positional overrides are serialized after named overrides, regardless of
   // authoring order, so pending query results must keep the positional target.

@@ -184,7 +184,7 @@ export async function parseColumnarInput(
         // Headerless synthetic inputs historically accepted the union of the
         // bundled schemas. Keep that compatibility while real IFC files use
         // their declared schema's relationship layouts.
-        const relationshipSchemaVersion = (sourceHeader?.schemaIdentifiers.length ?? 0) > 0
+        const relationshipSchemaVersion = sourceHeader
             ? schemaVersion
             : undefined;
 

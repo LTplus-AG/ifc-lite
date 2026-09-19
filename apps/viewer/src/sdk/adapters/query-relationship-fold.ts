@@ -25,7 +25,7 @@ export function foldRelationshipData(
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: edge.entity.type } }];
   });
   for (const edge of foldMutationRelationshipEdges(dataStore, view, ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;

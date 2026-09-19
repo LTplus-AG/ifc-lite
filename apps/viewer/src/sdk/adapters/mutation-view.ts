@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
 import type { EntityAttributeData, EntityData } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
 import { resolveBaseAttributeValue } from '../../utils/configureMutationView.js';
@@ -70,7 +70,8 @@ export function applyAttributeMutationsToEntityData(
   if (!mutationView) return data;
 
   const mutations = mutationView.getAttributeMutationsForEntity(expressId);
-  if (mutations.length === 0) return data;
+  const positional = mutationView.getPositionalMutationsForEntity(expressId);
+  if (mutations.length === 0 && !positional?.size) return data;
 
   const next = { ...data };
   for (const mutation of mutations) {
@@ -87,6 +88,22 @@ export function applyAttributeMutationsToEntityData(
       case 'ObjectType':
         next.objectType = mutation.value;
         break;
+    }
+  }
+  const state = store.getState();
+  const dataStore = getModelForRef(state, modelId)?.ifcDataStore;
+  if (dataStore && positional) {
+    const exactType = dataStore.entities.getTypeName(expressId) || data.type;
+    const names = getAttributeNamesForSchema(exactType, dataStore.schemaVersion);
+    for (const [index, value] of positional) {
+      if (typeof value !== 'string') continue;
+      const trimmed = value.trim();
+      const text = trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")
+        ? trimmed.slice(1, -1).replace(/''/g, "'")
+        : trimmed;
+      if (names[index] === 'Name') next.name = text;
+      else if (names[index] === 'Description') next.description = text;
+      else if (names[index] === 'ObjectType') next.objectType = text;
     }
   }
   return next;

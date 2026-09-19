@@ -61,7 +61,7 @@ import {
 import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode, matchesPropertyFilter } from '@ifc-lite/query';
 
-import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
+import type { CreatedEntity, PendingOverlay } from './overlay.js';
 import { foldRelationshipRows } from './backend-query-relationships.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
@@ -171,16 +171,27 @@ export function createQueryAdapter(
   function withOverrides(data: EntityData, pending: PendingOverlay | null, expressId: number): EntityData {
     if (!pending) return data;
     const overrides = pending.attributes(expressId);
-    if (overrides.size === 0) return data;
+    const positional = pending.positionalAttributes(expressId);
+    if (overrides.size === 0 && positional.size === 0) return data;
     // `EntityData` has a slot for exactly these three; anything else the session
     // wrote (`Tag`) reaches the caller through `attributes()` below, which
     // carries the whole map.
-    return {
+    const next = {
       ...data,
       name: overrides.get('Name') ?? data.name,
       description: overrides.get('Description') ?? data.description,
       objectType: overrides.get('ObjectType') ?? data.objectType,
     };
+    const exactType = store.entities.getTypeName(expressId) || data.type;
+    const names = attributeNamesForSchema(exactType, store.schemaVersion);
+    for (const [index, value] of positional) {
+      const authored = authoredValue(value);
+      if (typeof authored !== 'string') continue;
+      if (names[index] === 'Name') next.name = authored;
+      else if (names[index] === 'Description') next.description = authored;
+      else if (names[index] === 'ObjectType') next.objectType = authored;
+    }
+    return next;
   }
 
   function properties(ref: EntityRef, captured?: PendingOverlay | null): PropertySetData[] {

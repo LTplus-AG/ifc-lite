@@ -27,7 +27,7 @@
  *    wrong claim of identity.
  */
 
-import { EXPECTED_SUCCESSOR, scoreSplits, scoreSuccessors } from './score-claims.mjs';
+import { EXPECTED_SUCCESSOR, scoreMerges, scoreSplits, scoreSuccessors } from './score-claims.mjs';
 export { checkCorpusThresholds, checkThresholds, corpusTargetGaps, targetGaps } from './score-thresholds.mjs';
 
 /** Kinds whose {@link ContentMatch} asserts identity and retires the
@@ -212,6 +212,7 @@ export function scorePair(
 
   const successorScore = scoreSuccessors(key, successors, { expected, kindOf, insertedNearby });
   const splitScore = scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin });
+  const mergeScore = scoreMerges(key, splitMerges, { hasVolume, kindOf, headOrigin });
 
   const recallable = key.elements.filter((element) => EXPECTED_KIND[element.kind] !== undefined);
   const recallByKind = {};
@@ -323,6 +324,7 @@ export function scorePair(
     insertedNearby: insertedNearby.size,
     ...successorScore,
     ...splitScore,
+    ...mergeScore,
     moveDistance: {
       ...distanceChecked,
       agreement: ratio(distanceChecked.agreed, distanceChecked.checked),

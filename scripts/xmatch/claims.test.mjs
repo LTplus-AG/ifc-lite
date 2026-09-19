@@ -13,9 +13,20 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { indexModel } from './edits.mjs';
 import { unnamedNodesNormalised } from './guards.mjs';
+import * as scoreClaims from './score-claims.mjs';
 import { scoreSplits } from './score-claims.mjs';
 import { parseStepFile } from './step-file.mjs';
 import { representationMapDigest } from './successor-edits.mjs';
+
+// `scoreMerges` is a NEW export (issue #4989): checked INSIDE a `test()`, not
+// at module top level — a top-level `assert` that throws crashes the whole
+// file before any subtest registers, which reads identically to an import
+// SyntaxError to `node --test`'s output (and so to the revert oracle) as a
+// load failure rather than a real assertion red.
+test('score-claims.mjs exports scoreMerges (#4989)', () => {
+  assert.equal(typeof scoreClaims.scoreMerges, 'function');
+});
+const scoreMerges = (...args) => scoreClaims.scoreMerges(...args);
 
 const fp = (ref) => ({ ref, key: `k${ref}`, ifcType: 'IfcWall', dataHash: 'd' });
 
@@ -26,6 +37,51 @@ test('a split claim that repeats one piece is wrong, not correct', () => {
   assert.equal(scoreSplits(key, [claim([11, 12])], options).bySplit.correct, 1);
   assert.equal(scoreSplits(key, [claim([11, 11])], options).bySplit.correct, 0);
   assert.equal(scoreSplits(key, [claim([11, 11])], options).bySplit.wrong, 1);
+});
+
+test('scoreMerges (#4989): the piece set must equal the key\'s {a, b} exactly', () => {
+  // Two `key.elements` rows sharing one head — a primary (base 1) and its
+  // donor (base 2), both merged into head 21 — mirrors what `mutate.mjs`
+  // actually writes for a `merged` pair.
+  const key = {
+    elements: [
+      { base: 1, kind: 'merged', class: 'prismatic', head: [21] },
+      { base: 2, kind: 'merged', class: 'prismatic', head: [21] },
+    ],
+  };
+  const options = { hasVolume: new Set(), kindOf: new Map(), headOrigin: new Map() };
+  const claim = (whole, pieces, kind = 'merge') => ({
+    kind,
+    confidence: 'extent',
+    whole: fp(whole),
+    pieces: pieces.map(fp),
+  });
+
+  // Correct: exactly {1, 2}.
+  const correct = scoreMerges(key, [claim(21, [1, 2])], options).byMerge;
+  assert.equal(correct.correct, 1);
+  assert.equal(correct.recalled, 1);
+  assert.equal(correct.wrong, 0);
+
+  // Duplicate piece: `[1, 1]` has the right length but is not `{1, 2}`.
+  const duplicate = scoreMerges(key, [claim(21, [1, 1])], options).byMerge;
+  assert.equal(duplicate.correct, 0);
+  assert.equal(duplicate.wrong, 1);
+
+  // Missing piece: only one of the two real bases.
+  const missing = scoreMerges(key, [claim(21, [1])], options).byMerge;
+  assert.equal(missing.correct, 0);
+  assert.equal(missing.wrong, 1);
+
+  // Wrong whole: a head id the key never called `merged`.
+  const wrongWhole = scoreMerges(key, [claim(99, [1, 2])], options).byMerge;
+  assert.equal(wrongWhole.correct, 0);
+  assert.equal(wrongWhole.wrong, 1);
+
+  // A `split` claim is counted only informationally, never against byMerge.
+  const splitOnly = scoreMerges(key, [claim(1, [21], 'split')], options).byMerge;
+  assert.equal(splitOnly.claimed, 0);
+  assert.equal(splitOnly.splitClaims, 1);
 });
 
 test('the map digest walks a cyclic, deep subgraph without recursion', () => {

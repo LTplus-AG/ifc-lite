@@ -44,6 +44,7 @@ import {
   alwaysAbstainMatcher,
   alwaysMatchMatcher,
   overEagerMatcher,
+  mergeDropsAPieceMutant,
   overlapSuccessorMutant,
   respecifiedAsRenamedMutant,
   rotatedClaimsMutant,
@@ -64,29 +65,33 @@ const MAX_SWAP_ATTEMPTS = 16;
  */
 const CORPUS = [
   // Nine detached elements own an extruded rectangle outright (the footings
-  // and a few slabs); the split and the nearby control share them.
+  // and a few slabs); splitLength (4) and the nearby control's rectangle
+  // draw (5) already use the whole pool, so `merged` (#4989, same pool) is
+  // zeroed here rather than starving insertedNearby of the corpus-floor
+  // headroom it needs — rvt01 alone supplies `merged`'s population floor.
   {
     model: 'tests/models/ara3d/duplex.ifc',
     seed: 20260803,
-    plan: { splitLength: 4, insertedNearby: 5 },
+    plan: { splitLength: 4, merged: 0, insertedNearby: 5 },
   },
   // 126 keyed elements, of which 17 (annotations, virtual elements) can never
   // be matched. Every element a new role takes out of `renamed` moves that
   // stratum's recall towards its floor — 7 is the most the 0.777 floor
   // allows — so the #4955 roles are sized down here and the corpus-wide
   // population floors are carried by the two larger models. Its 15
-  // arbitrary-profile extrusions are not rectangles, so `thickened` and
-  // `splitLength` have nothing to take anyway; the one count that costs no
-  // recall is `insertedNearby`, which rides on elements already `deleted`
-  // (and needs a rectangle too, so it is 0 here). `swapped` is 0 because the
-  // only same-type donor maps in the model are the two window maps, and they
-  // are mirror images of one symmetric window: the swap changes the file and
-  // nothing about the world mesh, and the engine correctly pairs the result
-  // as `respecified`. That is not a successor case and would be scored as one.
+  // arbitrary-profile extrusions are not rectangles, so `thickened`,
+  // `splitLength` and `merged` (#4989, same pool) have nothing to take
+  // anyway; the one count that costs no recall is `insertedNearby`, which
+  // rides on elements already `deleted` (and needs a rectangle too, so it is
+  // 0 here). `swapped` is 0 because the only same-type donor maps in the
+  // model are the two window maps, and they are mirror images of one
+  // symmetric window: the swap changes the file and nothing about the world
+  // mesh, and the engine correctly pairs the result as `respecified`. That
+  // is not a successor case and would be scored as one.
   {
     model: 'tests/models/ara3d/AC20-FZK-Haus.ifc',
     seed: 20260804,
-    plan: { respecified: 4, thickened: 0, swapped: 0, splitLength: 0, insertedNearby: 0 },
+    plan: { respecified: 4, thickened: 0, swapped: 0, splitLength: 0, merged: 0, insertedNearby: 0 },
   },
   // The large model carries the #4955 population floors: 59 detached
   // rectangle extrusions, 104 mapped bodies with a donor, 633 owned psets.
@@ -114,40 +119,61 @@ async function buildPair(entry, api) {
     fail(`fixture missing: ${entry.model} — run \`pnpm fixtures\` first`);
   }
   const sourceText = readFileSync(modelPath, 'utf-8');
-  const base = await fingerprintFile(modelPath, api);
+  // Preliminary only: population / meshedIds / same-content groups for role
+  // ASSIGNMENT. The `merged` role (#4989) needs the actual BASE fingerprints
+  // to come from a possibly-mutated base text (see below) — this pass is not
+  // published as the pair's `base`.
+  const prelim = await fingerprintFile(modelPath, api);
 
   mkdirSync(OUT_DIR, { recursive: true });
   const headPath = join(OUT_DIR, `${entry.seed}-${entry.model.replaceAll('/', '_')}`);
   const geometryAabbs = new Map(
-    base.fingerprints
+    prelim.fingerprints
       .filter((fingerprint) => fingerprint.aabb)
       .map((fingerprint) => [fingerprint.ref, fingerprint.aabb]),
   );
   const excludedDonors = new Set();
-  // Base occurrence bounds are a cheap fail-closed prefilter. The generated
-  // head is still authoritative: mapping targets and placements can make the
-  // same map a different size at its recipient. Reject such a pair and replay
-  // the seeded mutation without it; every retry excludes at least one finite
-  // product/map pair, and the cap turns unexpected corpus drift into a loud
-  // fixture failure rather than a false-positive answer key.
+  // Base occurrence bounds are a cheap fail-closed prefilter (#4995). The
+  // generated head is still authoritative: mapping targets and placements
+  // can make the same map a different size at its recipient. Reject such a
+  // pair and replay the seeded mutation without it; every retry excludes at
+  // least one finite product/map pair, and the cap turns unexpected corpus
+  // drift into a loud fixture failure rather than a false-positive answer
+  // key. The regeneration re-fingerprints the MUTATED base text too (#4989):
+  // `merged` can produce one, and `incomparableSwaps` must compare against
+  // what was actually scored, not the pristine file it may have diverged from.
   for (let attempt = 1; attempt <= MAX_SWAP_ATTEMPTS; attempt++) {
-    const { text: headText, key } = mutateModel(sourceText, {
+    const { text: headText, baseText, key } = mutateModel(sourceText, {
       seed: entry.seed,
-      meshedIds: base.meshedIds,
-      population: base.fingerprints.map((fingerprint) => fingerprint.ref),
+      meshedIds: prelim.meshedIds,
+      population: prelim.fingerprints.map((fingerprint) => fingerprint.ref),
       geometryAabbs,
       excludedDonors,
-      sameContentGroups: sameContentGroups(base),
-      unitScale: base.unitScale,
+      sameContentGroups: sameContentGroups(prelim),
+      unitScale: prelim.unitScale,
       sourcePath: entry.model,
       plan: entry.plan,
     });
     writeFileSync(headPath, headText);
     const head = await fingerprintFile(headPath, api);
+
+    // `merged` (#4989) is the ONLY thing that ever touches base: for every
+    // other model (and every model with no `merged` role) `baseText` is
+    // `sourceText` verbatim, and `prelim` already IS the correct base — no
+    // second wasm pass. Only when it differs do we re-fingerprint the
+    // mutated base text, which is the actual pair being compared and scored.
+    let base = prelim;
+    let basePath;
+    if (baseText !== sourceText) {
+      basePath = join(OUT_DIR, `${entry.seed}-base-${entry.model.replaceAll('/', '_')}`);
+      writeFileSync(basePath, baseText);
+      base = await fingerprintFile(basePath, api);
+    }
+
     const invalid = incomparableSwaps(key, base.fingerprints, head.fingerprints);
     if (invalid.length === 0) {
-      const guards = runGuards(sourceText, headText, base, head, key);
-      return { key, base, head, guards, headPath };
+      const guards = runGuards(baseText, headText, base, head, key);
+      return { key, base, head, guards, headPath, basePath };
     }
     let added = 0;
     for (const swap of invalid) {
@@ -209,10 +235,11 @@ async function main() {
     'rotated-claims',
     'respecified-as-renamed',
     'silent-claims',
+    'merge-drops-a-piece',
   ];
 
   for (const entry of CORPUS) {
-    const { key, base, head, guards, headPath } = await buildPair(entry, api);
+    const { key, base, head, guards, headPath, basePath } = await buildPair(entry, api);
     const fixtureFailures = guardFailures(guards);
     const real = realMatcher(base.fingerprints, head.fingerprints);
     const { matches } = real;
@@ -251,6 +278,7 @@ async function main() {
         ['rotated-claims', rotatedClaimsMutant(head.fingerprints, real, key)],
         ['respecified-as-renamed', respecifiedAsRenamedMutant(real)],
         ['silent-claims', silentClaimsMutant(real, key)],
+        ['merge-drops-a-piece', mergeDropsAPieceMutant(real, key)],
       ];
       const survivors = [];
       for (const [name, mutant] of mutants) {
@@ -321,7 +349,7 @@ async function main() {
       applied: key.applied,
       score,
     });
-    if (!KEEP) rmSync(headPath, { force: true });
+    if (!KEEP) { rmSync(headPath, { force: true }); if (basePath) rmSync(basePath, { force: true }); }
   }
 
   const corpusFailures = checkCorpusThresholds(

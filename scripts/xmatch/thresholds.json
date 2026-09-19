@@ -99,6 +99,12 @@
       "precision": { "footprint": 0.98, "position": 0.98 }
     },
     "bySplit": { "recall": 0.98, "precision": 0.98, "kindAgreement": 0.98 },
+    "byMerge": {
+      "$comment": "Pre-registered (issue #4989), before re-measuring against #4995's AABB-based donor filter - gating floor starts EQUAL to the target, ratcheted down once measured.",
+      "recall": 0.8,
+      "precision": 0.98,
+      "kindAgreement": 0.9
+    },
     "byClass": {
       "prismatic": { "recall": 0.85, "precision": 0.98 },
       "curved": { "recall": 0.98, "precision": 0.98 },
@@ -138,6 +144,7 @@
       "thickened": 20,
       "swapped": 10,
       "splitLength": 10,
+      "merged": 8,
       "insertedNearby": 10
     },
     "tierPairs": {
@@ -156,6 +163,11 @@
       "agreement": 0.98
     },
     "bySplit": { "precision": 0.98, "recall": 0.98 },
+    "byMerge": {
+      "$comment": "Pre-registered (issue #4989), before the first measured run against #4995's AABB-based donor filter.",
+      "precision": 0.98,
+      "recall": 0.8
+    },
     "bySuccessor": {
       "footprint": { "recall": 0.98, "precision": 0.98 },
       "position": { "recall": 0.48, "precision": 0.98 }
@@ -196,6 +208,11 @@
       "precision": { "footprint": 0.98, "position": 0.98 }
     },
     "bySplit": { "recall": 0.8, "precision": 0.98, "kindAgreement": 0.9 },
+    "byMerge": {
+      "recall": 0.8,
+      "precision": 0.98,
+      "kindAgreement": 0.9
+    },
     "negativeControls": {
       "successorInsertedNearby": 0,
       "neighbourSuccessor": 0,

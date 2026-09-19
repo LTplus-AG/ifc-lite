@@ -134,3 +134,68 @@ export function permuteIds(file, random) {
   file.statements.sort((a, b) => a.id - b.id);
   return map;
 }
+
+/**
+ * Assign up to `count` whole same-content groups to the `movedGroup` role —
+ * moved out of `mutate.mjs` for the module-size house rule (AGENTS.md).
+ * Skips a group with fewer than 3 eligible members: tier 3's mutual-nearest
+ * pairing needs a genuine N:N residue, and 2 members moved apart is
+ * indistinguishable from two ordinary `moved` elements.
+ */
+export function assignGroups(groups, count, eligible, taken, roles) {
+  const ordinals = new Map();
+  let used = 0;
+  for (const group of groups) {
+    if (used >= count) break;
+    const members = group.filter((id) => !taken.has(id) && eligible(id));
+    if (members.length < 3) continue;
+    for (const [ordinal, id] of members.entries()) {
+      taken.add(id);
+      roles.set(id, 'movedGroup');
+      ordinals.set(id, ordinal);
+    }
+    used++;
+  }
+  return ordinals;
+}
+
+/**
+ * Draw `splitLength` and `merged` (issue #4989) from the SAME pool — a
+ * detached rectangle owner — interleaved (split, merge, split, merge, …)
+ * rather than one drained before the other starts. Moved out of
+ * `mutate.mjs` for the module-size house rule; the caller has the full
+ * story on why interleaving matters (review finding, 2026-09-19: draining
+ * one role first was measured to starve whichever population floor the
+ * corpus runs out of candidates for first).
+ *
+ * Mutates `taken` and `roles` in place, like `assign`/`assignGroups`
+ * elsewhere in this file. Reports (stderr, never throws) when the pool
+ * cannot supply both floors — a fixture-shape question, not something to
+ * paper over by silently lowering either count.
+ */
+export function interleaveSplitAndMerge(pool, taken, roles, eligible, plan, sourcePath) {
+  const candidates = pool.filter(eligible);
+  let splitCount = 0;
+  let mergedCount = 0;
+  let turn = 'splitLength';
+  for (const id of candidates) {
+    if (taken.has(id)) continue;
+    if (splitCount >= plan.splitLength && mergedCount >= plan.merged) break;
+    let role = turn;
+    if (role === 'splitLength' && splitCount >= plan.splitLength) role = 'merged';
+    else if (role === 'merged' && mergedCount >= plan.merged) role = 'splitLength';
+    if (role === 'splitLength' && splitCount >= plan.splitLength) continue;
+    if (role === 'merged' && mergedCount >= plan.merged) continue;
+    taken.add(id);
+    roles.set(id, role);
+    if (role === 'splitLength') splitCount++;
+    else mergedCount++;
+    turn = role === 'splitLength' ? 'merged' : 'splitLength';
+  }
+  if (candidates.length < plan.splitLength + plan.merged) {
+    process.stderr.write(
+      `xmatch: ${sourcePath || 'model'}: detached-rectangle pool is ${candidates.length}, ` +
+        `short of splitLength ${plan.splitLength} + merged ${plan.merged} = ${plan.splitLength + plan.merged}\n`,
+    );
+  }
+}

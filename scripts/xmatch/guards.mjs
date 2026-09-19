@@ -202,11 +202,17 @@ export function runGuards(sourceText, headText, base, head, key) {
     // claimed by two bases lets one wrong pair score as right, and a repeated
     // fingerprint ref makes the adapter's population disagree with the key's.
     duplicateKeyBaseIds: duplicates(key.elements.map((element) => element.base)).length,
+    // A `merged` head id is legitimately claimed by TWO base rows — the
+    // primary and its donor (issue #4989), the one place in the key where
+    // that is the honest answer rather than a corruption — so it is excluded
+    // here and checked on its own terms by `mergedHeadFanInWrong` below
+    // (every merged head id must have EXACTLY two, never more, never one).
     duplicateKeyHeadIds: duplicates([
-      ...key.elements.flatMap((element) => element.head),
+      ...key.elements.filter((element) => element.kind !== 'merged').flatMap((element) => element.head),
       ...key.insertedHeadIds,
       ...(key.insertedNearbyHeadIds ?? []),
     ]).length,
+    mergedHeadFanInWrong: mergedHeadFanInWrong(key),
     containersCompared,
     containersAgree,
     containersUnstable,
@@ -227,6 +233,20 @@ export function unnamedNodesNormalised(path) {
     .split('/')
     .map((segment) => (/^#\d+$/.test(segment) ? '#' : segment))
     .join('/');
+}
+
+/** Every `merged` head id must be claimed by EXACTLY two base rows — a
+ *  primary and its one donor (issue #4989). Zero is impossible (a `merged`
+ *  row always carries one), so this only ever catches more than two, which
+ *  would mean a donor got reused across pairs and its base-side row lies
+ *  about the pair it names. Returns the count of head ids that fail this. */
+function mergedHeadFanInWrong(key) {
+  const counts = new Map();
+  for (const element of key.elements) {
+    if (element.kind !== 'merged') continue;
+    for (const ref of element.head) counts.set(ref, (counts.get(ref) ?? 0) + 1);
+  }
+  return [...counts.values()].filter((count) => count !== 2).length;
 }
 
 /** Values appearing more than once. */
@@ -293,6 +313,9 @@ export function guardFailures(guards) {
     ['express ids among the head fingerprints', guards.duplicateHeadRefs],
   ]) {
     if (count > 0) failures.push(`${count} duplicate ${what}: the key does not describe this pair`);
+  }
+  if (guards.mergedHeadFanInWrong > 0) {
+    failures.push(`${guards.mergedHeadFanInWrong} merged head id(s) not claimed by exactly two base rows`);
   }
   if (!guards.baseHasGeometryHashes || !guards.headHasGeometryHashes) {
     failures.push('a revision carries no geometry hashes: the geometry tiers would abstain');

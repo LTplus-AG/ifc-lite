@@ -72,7 +72,7 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; labelKey: TranslationKey }> 
 const ALL_SCHEDULES_SENTINEL = '__all__';
 
 export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
   const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);

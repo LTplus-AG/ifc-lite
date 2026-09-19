@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModel } from './landXmlViewerModel.js';
@@ -122,5 +121,20 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       )),
       /Unsupported LandXML namespace/,
     );
+  });
+
+  it('rejects a LandXML 1.1 namespace even when the version attribute says 1.2', () => {
+    assert.throws(
+      () => parseLandXmlTin(LANDXML.replace(
+        'http://www.landxml.org/schema/LandXML-1.2',
+        'http://www.landxml.org/schema/LandXML-1.1',
+      )),
+      /Unsupported LandXML namespace/,
+    );
+  });
+
+  it('parses without the window-only DOMParser global used by the browser main thread', () => {
+    assert.equal(globalThis.DOMParser, undefined);
+    assert.equal(parseLandXmlTin(LANDXML).surfaces[0].name, 'Existing Ground');
   });
 });

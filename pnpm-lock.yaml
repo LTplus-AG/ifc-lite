@@ -272,6 +272,9 @@ importers:
       '@vercel/analytics':
         specifier: ^2.0.1
         version: 2.0.1(react@19.2.8)
+      '@xmldom/xmldom':
+        specifier: ^0.9.12
+        version: 0.9.12
       apache-arrow:
         specifier: ^21.2.0
         version: 21.2.0

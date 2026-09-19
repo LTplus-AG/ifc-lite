@@ -11,6 +11,12 @@
  * `landXmlIngest.ts`.
  */
 
+import {
+  DOMParser,
+  onErrorStopParsing,
+  type Element as XmlElement,
+} from '@xmldom/xmldom';
+
 export interface LandXmlPoint {
   id: string;
   northing: number;
@@ -49,28 +55,28 @@ const UNIT_SCALE_TO_METERS: Readonly<Record<string, number>> = {
   miles: 1609.344,
 };
 
-function elementChildren(parent: Element): Element[] {
-  const out: Element[] = [];
+function elementChildren(parent: XmlElement): XmlElement[] {
+  const out: XmlElement[] = [];
   for (const node of Array.from(parent.childNodes)) {
-    if (node.nodeType === 1) out.push(node as Element);
+    if (node.nodeType === 1) out.push(node as XmlElement);
   }
   return out;
 }
 
-function namedChildren(parent: Element, localName: string): Element[] {
+function namedChildren(parent: XmlElement, localName: string): XmlElement[] {
   return elementChildren(parent).filter(
     (child) => child.localName === localName && child.namespaceURI === parent.namespaceURI,
   );
 }
 
-function firstNamedChild(parent: Element, localName: string): Element | undefined {
+function firstNamedChild(parent: XmlElement, localName: string): XmlElement | undefined {
   return namedChildren(parent, localName)[0];
 }
 
-function descendants(parent: Element, localName: string): Element[] {
-  const out: Element[] = [];
+function descendants(parent: XmlElement, localName: string): XmlElement[] {
+  const out: XmlElement[] = [];
   const namespace = parent.namespaceURI;
-  const visit = (element: Element): void => {
+  const visit = (element: XmlElement): void => {
     for (const child of elementChildren(element)) {
       if (child.localName === localName && child.namespaceURI === namespace) out.push(child);
       visit(child);
@@ -80,7 +86,7 @@ function descendants(parent: Element, localName: string): Element[] {
   return out;
 }
 
-function requiredAttribute(element: Element, name: string, context: string): string {
+function requiredAttribute(element: XmlElement, name: string, context: string): string {
   const value = element.getAttribute(name)?.trim();
   if (!value) throw new Error(`LandXML ${context} is missing required ${name}`);
   return value;
@@ -112,7 +118,7 @@ function scaleFor(unit: string, context: string): number {
   return scale;
 }
 
-function parseUnits(root: Element): LandXmlTinDocument['units'] {
+function parseUnits(root: XmlElement): LandXmlTinDocument['units'] {
   const units = firstNamedChild(root, 'Units');
   if (!units) throw new Error('LandXML 1.2 document is missing Units');
   const declaration = elementChildren(units).find(
@@ -133,7 +139,7 @@ function parseUnits(root: Element): LandXmlTinDocument['units'] {
   };
 }
 
-function parseSurface(surface: Element): LandXmlTinSurface | null {
+function parseSurface(surface: XmlElement): LandXmlTinSurface | null {
   const name = requiredAttribute(surface, 'name', 'Surface');
   const definition = firstNamedChild(surface, 'Definition');
   if (!definition || definition.getAttribute('surfType') !== 'TIN') return null;
@@ -181,15 +187,20 @@ function parseSurface(surface: Element): LandXmlTinSurface | null {
 
 /** Parse the LandXML 1.2 TIN subset supported by the viewer. */
 export function parseLandXmlTin(xml: string): LandXmlTinDocument {
-  const document = new DOMParser().parseFromString(xml.replace(/^\uFEFF/, ''), 'application/xml');
-  const parserError = document.getElementsByTagName('parsererror')[0];
-  if (parserError) throw new Error(`Invalid LandXML XML: ${parserError.textContent?.trim() || 'parse error'}`);
+  let document;
+  try {
+    document = new DOMParser({ onError: onErrorStopParsing })
+      .parseFromString(xml.replace(/^\uFEFF/, ''), 'application/xml');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'parse error';
+    throw new Error(`Invalid LandXML XML: ${message}`);
+  }
   const root = document.documentElement;
   if (!root || root.localName !== 'LandXML') throw new Error('XML document is not LandXML');
 
   const declaredVersion = root.getAttribute('version')?.trim();
   const namespaceVersion = /LandXML-([\d.]+)\/?$/.exec(root.namespaceURI ?? '')?.[1];
-  if (root.namespaceURI && !namespaceVersion) {
+  if (root.namespaceURI && namespaceVersion !== '1.2') {
     throw new Error(`Unsupported LandXML namespace: ${root.namespaceURI}`);
   }
   const version = declaredVersion || namespaceVersion;

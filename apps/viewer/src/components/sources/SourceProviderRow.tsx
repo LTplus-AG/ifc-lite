@@ -10,6 +10,7 @@ import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
 import { Cloud, Loader2, LogIn, LogOut, Settings } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 interface SourceProviderRowProps {
   provider: FileSourceProvider;
@@ -80,6 +81,7 @@ export function SourceProviderRow({
   onBrowse,
   onIdentityChange,
 }: SourceProviderRowProps) {
+  const { t } = useTranslation();
   const { manifest } = provider;
   const iconUrl = safeIconUrl(manifest.iconUrl, manifest.permissions.network);
   const auth = useSourceAuth(provider, sourceHost);
@@ -112,11 +114,11 @@ export function SourceProviderRow({
   const hint = !canBrowse
     ? interactive
       ? auth.status === 'restoring'
-        ? 'Restoring session…'
+        ? t('sources.sourceProviderRow.restoringSession')
         : !prefsConfigured
-          ? 'Add the required settings, then sign in to browse'
-          : (auth.notice ?? 'Sign in to browse')
-      : 'Add the required settings to browse'
+          ? t('sources.sourceProviderRow.addSettingsThenSignIn')
+          : (auth.notice ?? t('sources.sourceProviderRow.signInToBrowse'))
+      : t('sources.sourceProviderRow.addRequiredSettings')
     : auth.notice;
 
   const identityLabel = auth.identity
@@ -155,11 +157,11 @@ export function SourceProviderRow({
             variant="ghost"
             size="sm"
             className="h-7 px-2"
-            aria-label={`Sign out of ${manifest.title}`}
+            aria-label={t('sources.sourceProviderRow.signOutAria', { title: manifest.title })}
             onClick={auth.signOut}
           >
             <LogOut className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            Sign out
+            {t('sources.sourceProviderRow.signOut')}
           </Button>
         )}
         {interactive && (auth.status === 'signed-out' || auth.status === 'busy' || auth.status === 'restoring') && (
@@ -167,7 +169,7 @@ export function SourceProviderRow({
             variant="outline"
             size="sm"
             className="h-7 px-2"
-            aria-label={`Sign in to ${manifest.title}`}
+            aria-label={t('sources.sourceProviderRow.signInAria', { title: manifest.title })}
             disabled={!canSignIn}
             onClick={auth.signIn}
           >
@@ -176,7 +178,7 @@ export function SourceProviderRow({
             ) : (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
             )}
-            Sign in
+            {t('sources.sourceProviderRow.signIn')}
           </Button>
         )}
 
@@ -184,7 +186,7 @@ export function SourceProviderRow({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          aria-label={`${manifest.title} settings`}
+          aria-label={t('sources.sourceProviderRow.settingsAria', { title: manifest.title })}
           onClick={onOpenSettings}
         >
           <Settings className="h-3.5 w-3.5" aria-hidden />
@@ -194,10 +196,10 @@ export function SourceProviderRow({
           size="sm"
           className="h-7"
           disabled={!canBrowse}
-          aria-label={`Browse ${manifest.title}`}
+          aria-label={t('sources.sourceProviderRow.browseAria', { title: manifest.title })}
           onClick={onBrowse}
         >
-          Browse
+          {t('sources.sourceProviderRow.browse')}
         </Button>
       </div>
       {hint && (

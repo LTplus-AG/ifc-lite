@@ -7,6 +7,7 @@ import type { SourceContainer } from '@ifc-lite/plugin-api';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { ChevronRight, Folder, Star } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 export interface ContainerTreeNode extends SourceContainer {
   children: ContainerTreeNode[];
@@ -86,6 +87,7 @@ export function SourceFolderTree({
   isFavourite,
   onToggleFavourite,
 }: SourceFolderTreeProps) {
+  const { t } = useTranslation();
   const tree = useMemo(() => buildContainerTree(containers, rootId), [containers, rootId]);
   const parentById = useMemo(
     () => buildContainerParentIndex(containers, rootId),
@@ -108,7 +110,7 @@ export function SourceFolderTree({
   if (tree.length === 0) {
     return (
       <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-        No subfolders
+        {t('sources.sourceFolderTree.noSubfolders')}
       </div>
     );
   }
@@ -161,6 +163,7 @@ function TreeRow({
   onToggleFavourite?: (container: SourceContainer) => void;
   onToggle: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const hasChildren = node.children.length > 0;
   const open = openIds.has(node.id);
   const isSelected = selectedId === node.id;
@@ -183,7 +186,13 @@ function TreeRow({
             'flex h-5 w-5 shrink-0 items-center justify-center rounded-sm',
             !hasChildren && 'invisible',
           )}
-          aria-label={hasChildren ? (open ? 'Collapse folder' : 'Expand folder') : undefined}
+          aria-label={
+            hasChildren
+              ? open
+                ? t('sources.sourceFolderTree.collapseFolderAria')
+                : t('sources.sourceFolderTree.expandFolderAria')
+              : undefined
+          }
           disabled={!hasChildren}
           onClick={() => hasChildren && onToggle(node.id)}
         >
@@ -208,7 +217,11 @@ function TreeRow({
               'shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground',
               favourited ? 'text-amber-500' : 'text-muted-foreground',
             )}
-            aria-label={`${favourited ? 'Remove' : 'Add'} favourite: ${node.name}`}
+            aria-label={
+              favourited
+                ? t('sources.sourceFolderTree.removeFavouriteAria', { name: node.name })
+                : t('sources.sourceFolderTree.addFavouriteAria', { name: node.name })
+            }
             aria-pressed={favourited}
             onClick={() => onToggleFavourite(node)}
           >

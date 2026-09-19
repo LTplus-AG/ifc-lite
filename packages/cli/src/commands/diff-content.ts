@@ -85,10 +85,13 @@ export interface ContentDiffOptions {
 
 export async function contentDiffCommand(options: ContentDiffOptions): Promise<void> {
   const { basePath, headPath } = options;
-  if (options.keyFrom !== undefined && !parseAuthoredKeySpec(options.keyFrom)) {
+  const keySpec = options.keyFrom === undefined ? undefined : parseAuthoredKeySpec(options.keyFrom);
+  if (options.keyFrom !== undefined && !keySpec) {
     fatal(`--key-from must be Tag or <PsetName>.<PropertyName>, got "${options.keyFrom}"`);
   }
-  const keyProperty = options.keyFrom?.trim();
+  // `Tag` is case-insensitive at the CLI boundary, but the persisted sidecar
+  // contract is canonical and shared with the viewer's compare UI.
+  const keyProperty = keySpec?.kind === 'tag' ? 'Tag' : options.keyFrom?.trim();
 
   // Before anything is read, and long before anything is written.
   await refuseOverwritingAnInput(options);

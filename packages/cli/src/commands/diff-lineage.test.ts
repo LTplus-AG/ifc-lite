@@ -102,6 +102,14 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     expect(result.contentMatches).toEqual([]);
   });
 
+  it('canonicalizes case-insensitive --key-from tag in output and persisted lineage (#5005 review)', async () => {
+    await contentDiffCommand({ basePath, headPath, keyFrom: ' tag ', lineageOut: lineagePath, json: true });
+
+    expect(stdoutJson().keyProperty).toBe('Tag');
+    const lineage = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(lineage.keyProperty).toBe('Tag');
+  });
+
   it('rejects a malformed --key-from', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('exit');

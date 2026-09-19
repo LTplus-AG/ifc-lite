@@ -56,7 +56,26 @@ export function rectangleOfCurve(index, curveId) {
     // in `IFCLINEINDEX`es — an arc index, or a reordering, is not a rectangle.
     if (parts[1] !== '$') {
       if (/IFCARCINDEX/.test(parts[1])) return undefined;
-      const walk = (parts[1].match(/\d+/g) ?? []).map(Number);
+      const lineIndex = /IFCLINEINDEX\s*\(\s*\(([^()]*)\)\s*\)/g;
+      const segments = [...parts[1].matchAll(lineIndex)].map((match) =>
+        match[1].split(',').map((value) => {
+          const index = value.trim();
+          return /^\d+$/.test(index) ? Number.parseInt(index, 10) : Number.NaN;
+        }),
+      );
+      // Reject unsupported segment syntax instead of silently extracting its
+      // digits. Parentheses and commas are only the aggregate wrappers around
+      // the IfcLineIndex values matched above.
+      const residue = parts[1].replace(lineIndex, '').replace(/[(),\s]/g, '');
+      if (segments.length === 0 || residue || segments.some((segment) =>
+        segment.length < 2 || segment.some((value) => !Number.isInteger(value)))) {
+        return undefined;
+      }
+      const walk = [...segments[0]];
+      for (const segment of segments.slice(1)) {
+        if (segment[0] !== walk.at(-1)) return undefined;
+        walk.push(...segment.slice(1));
+      }
       const expected = Array.from({ length: points.length }, (_, i) => i + 1);
       expected.push(1);
       const open = expected.slice(0, -1);

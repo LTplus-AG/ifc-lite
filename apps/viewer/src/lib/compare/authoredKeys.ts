@@ -15,6 +15,7 @@ import {
   parseAuthoredKeySpec,
   type IfcDataStore,
 } from '@ifc-lite/parser';
+import { findPropertyInSets } from '@ifc-lite/query';
 import type { EntityFingerprint } from '@ifc-lite/diff';
 import type { CompareRef } from './buildFingerprints.js';
 
@@ -45,10 +46,11 @@ export async function resolveAuthoredKeys(
   for (const localId of localIds) {
     let value: string | undefined;
     if (spec.kind === 'property') {
+      const { pset, property } = spec;
+      if (!pset || !property) continue;
       const sets = extractPropertiesOnDemand(store, localId);
       propertySetsById?.set(localId, sets);
-      const raw = sets.find((set) => set.name === spec.pset)
-        ?.properties.find((property) => property.name === spec.property)?.value;
+      const raw = findPropertyInSets(sets, pset, property)?.value;
       if (raw !== null && raw !== undefined) {
         const text = typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
         if (text.trim()) value = text.trim();

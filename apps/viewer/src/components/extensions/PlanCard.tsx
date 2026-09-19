@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { localizeCapabilityRisk } from './localized-capability-risk';
+import { localizeCapabilityRisk, localizeRiskTier } from './localized-capability-risk';
 
 interface PlanCardProps {
   /** The plan to show. Editable copy is stored in component state. */
@@ -217,6 +217,7 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
 }
 
 function RiskBadge({ tier }: { tier: RiskTier }) {
+  const { t } = useTranslation();
   return (
     <span className={cn(
       'inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide',
@@ -224,7 +225,7 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
       tier === 'yellow' && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
       tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
     )}>
-      {tier}
+      {localizeRiskTier(tier, t)}
     </span>
   );
 }

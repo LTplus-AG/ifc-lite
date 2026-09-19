@@ -185,7 +185,7 @@ function RepairRow({
             )}
             <code className="text-xs font-mono break-all">{item.extensionId}</code>
             <span className={`text-[10px] uppercase tracking-wide font-semibold ${tone}`}>
-              {item.outcome}
+              {localizeRevalidationOutcome(item.outcome, t)}
             </span>
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
@@ -210,6 +210,24 @@ function RepairRow({
       </div>
     </li>
   );
+}
+
+function localizeRevalidationOutcome(
+  outcome: RevalidationItem['outcome'],
+  t: UseTranslationResult['t'],
+): string {
+  switch (outcome) {
+    case 'pass':
+      return t('extensionsPanels.repairQueuePanel.outcome.pass');
+    case 'fail':
+      return t('extensionsPanels.repairQueuePanel.outcome.fail');
+    case 'skipped':
+      return t('extensionsPanels.repairQueuePanel.outcome.skipped');
+    default: {
+      const exhaustive: never = outcome;
+      return exhaustive;
+    }
+  }
 }
 
 function localizeCompatibilityReason(

@@ -33,6 +33,7 @@ import {
   type WallInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
+import { createCostStoreBackend } from '@ifc-lite/sdk';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
@@ -50,11 +51,15 @@ import type {
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
+import { createCostAdapter } from './cost-adapter.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
+  // Cost authoring reads through the model's OWN bim.cost adapter (mutation-
+  // aware), not a second cost-graph extraction — one read path, same as CLI.
+  const costAdapter = createCostAdapter(store);
 
   function resolveDataStore(modelId: string) {
     const state = store.getState();
@@ -197,5 +202,18 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const result = addMemberToStore(editor, anchor, params as MemberInStoreParams);
       return { modelId: normalizedModelId, expressId: result.memberId };
     },
+    // Cost / 5D authoring (#4857 PR A). `createCostStoreBackend` resolves the
+    // reparent/append/safe-delete bookkeeping from the same `bim.cost` graph
+    // the model's cost adapter reads, so a rel authored earlier this session
+    // is visible to the very next call.
+    ...createCostStoreBackend((modelId: string | undefined) => {
+      const requested = modelId ?? '';
+      const normalizedModelId = normalizeMutationModelId(store.getState(), requested);
+      const editor = getEditor(requested);
+      const dataStore = resolveDataStore(requested);
+      if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
+      const ownerHistoryId = dataStore.entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
+      return { modelId: normalizedModelId, store: dataStore, editor, ownerHistoryId };
+    }, costAdapter),
   };
 }

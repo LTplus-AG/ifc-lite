@@ -141,14 +141,14 @@ fn decode_string_list(arg: &str) -> Vec<String> {
         .collect()
 }
 
-/// Read only the first declared schema identifier from the complete header.
+/// Read all declared schema identifiers from the complete header.
 ///
 /// This is the uncapped schema-detection entry point. It shares this module's
 /// lexical and record parser, but does not widen [`parse_source_header`]'s
 /// public 64 KiB allocation contract. If a malformed header omits its own
 /// `ENDSEC;`, `DATA;` still stops the window before the model body. With no
 /// recognisable section boundary at all, the allocation remains capped.
-pub(crate) fn declared_schema(content: &[u8]) -> Option<String> {
+pub(crate) fn declared_schemas(content: &[u8]) -> Vec<String> {
     let boundary = [
         find_section_marker(content, b"ENDSEC"),
         find_section_marker(content, b"DATA"),
@@ -159,7 +159,17 @@ pub(crate) fn declared_schema(content: &[u8]) -> Option<String> {
     .unwrap_or_else(|| content.len().min(MAX_HEADER_BYTES));
     let text = String::from_utf8_lossy(&content[..boundary]);
     extract_record_args(&text, "FILE_SCHEMA")
-        .and_then(|record| decode_string_list(&record).into_iter().next())
+        .map(|record| decode_string_list(&record))
+        .unwrap_or_default()
+}
+
+/// Read the first declared schema identifier from the complete header.
+///
+/// STEP re-export preserves the declaration's first identifier. Consumers
+/// which need a supported schema (rather than exact header preservation) must
+/// inspect [`declared_schemas`] instead.
+pub(crate) fn declared_schema(content: &[u8]) -> Option<String> {
+    declared_schemas(content).into_iter().next()
 }
 
 /// Extract the argument substring inside the parentheses of `KEYWORD( ... )`.

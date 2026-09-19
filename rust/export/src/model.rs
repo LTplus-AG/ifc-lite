@@ -17,7 +17,7 @@ use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
 use ifc_lite_processing::prepass::{resolve_unit_scales, UnitScales};
 use rustc_hash::FxHashSet;
 
-use crate::source_header::declared_schema;
+use crate::source_header::declared_schemas;
 
 #[path = "model_options.rs"]
 mod options;
@@ -141,7 +141,14 @@ pub fn stream_export_model_with_options(
     // Attribute positions are schema-specific. Unlike STEP re-export, where
     // IFC4 is an established fallback for a missing declaration, attribute
     // export must fail closed rather than assign IFC4 names to unknown slots.
-    let source_schema = declared_schema(content);
+    let source_schema = declared_schemas(content).into_iter().find(|schema| {
+        // IfcProject exists in every bundled registry, so this is a schema
+        // recognition probe rather than an entity-specific fallback. IFC4X1
+        // is the one explicitly supported transitional declaration; its
+        // entity-level fallback remains in `render_attributes`.
+        schema.eq_ignore_ascii_case("IFC4X1")
+            || ifc_lite_core::attribute_names_for_schema(schema, "IFCPROJECT").is_some()
+    });
     // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
     // speed. Cap that cache so it can't grow without bound across millions of
     // products; clearing only forces a re-decode of a shared set, never affects

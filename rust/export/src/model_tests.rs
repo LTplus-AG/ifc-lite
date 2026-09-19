@@ -916,6 +916,26 @@ fn attribute_export_uses_the_source_schema_for_a_shared_entity() {
     assert_eq!(ifc4_names, vec!["Tag", "PredefinedType"]);
 }
 
+/// #4203: a valid FILE_SCHEMA population may list more than one identifier.
+/// An unsupported vendor identifier must not hide a later bundled schema and
+/// silently drop every positional attribute from export.
+#[test]
+fn attribute_export_uses_the_first_supported_declared_schema() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('VENDOR_SCHEMA','IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,'wall-tag',.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(ifc, &ModelOptions::default().with_attributes(true));
+    let names: Vec<_> = rows[0].attributes.iter().map(|value| value.name.as_str()).collect();
+
+    assert_eq!(names, vec!["Tag", "PredefinedType"]);
+}
+
 /// #4203: the data registry includes IFC4.1 transitional entities which are
 /// absent from both pinned IFC4 ADD2 and IFC4X3 EXPRESS inputs. Preserve their
 /// existing positional labels until a matching EXPRESS source is bundled.

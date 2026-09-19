@@ -139,13 +139,23 @@ export function resolveManualClashGroups(
     if (reviews) reviews.push(clash);
     else byReview.set(reviewKey, [clash]);
   }
+  // Reserve every still-valid occurrence before assigning durable-key
+  // fallbacks. Otherwise an earlier stale member can greedily steal a later
+  // group's exact clash when both share the same model-independent key.
+  const reservedExact = new Set<Clash>();
+  const exactAssignments = groups.map((definition) => definition.members.map((member) => {
+    const exact = (byOccurrence.get(member.occurrenceKey) ?? [])
+      .find((clash) => clashReviewKey(clash) === member.reviewKey && !reservedExact.has(clash));
+    if (exact) reservedExact.add(exact);
+    return exact;
+  }));
   const claimed = new Set<Clash>();
   return groups
-    .map((definition) => {
-      const entries = definition.members.flatMap((member) => {
-        const exact = (byOccurrence.get(member.occurrenceKey) ?? [])
-          .find((clash) => clashReviewKey(clash) === member.reviewKey && !claimed.has(clash));
-        const fallback = (byReview.get(member.reviewKey) ?? []).find((clash) => !claimed.has(clash));
+    .map((definition, groupIndex) => {
+      const entries = definition.members.flatMap((member, memberIndex) => {
+        const exact = exactAssignments[groupIndex][memberIndex];
+        const fallback = (byReview.get(member.reviewKey) ?? [])
+          .find((clash) => !claimed.has(clash) && !reservedExact.has(clash));
         const clash = exact ?? fallback;
         if (!clash) return [];
         claimed.add(clash);
@@ -173,9 +183,11 @@ export function removeResolvedManualClashMember(
     const index = current?.members.findIndex((member) => member.id === clash.id) ?? -1;
     const persisted = index >= 0 ? current?.memberDefinitions[index] : undefined;
     const usedFallback = persisted ? persisted.occurrenceKey !== manualClashOccurrenceKey(clash) : false;
+    const exactMembers = new Set(current?.memberDefinitions.filter((member, memberIndex) =>
+      member.occurrenceKey === manualClashOccurrenceKey(current.members[memberIndex])) ?? []);
     const members = persisted
       ? group.members.filter((member) => usedFallback
-        ? member.reviewKey !== persisted.reviewKey
+        ? member.reviewKey !== persisted.reviewKey || exactMembers.has(member)
         : member !== persisted)
       : group.members;
     return members.length > 0 ? [{ ...group, members }] : [];

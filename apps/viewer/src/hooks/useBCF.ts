@@ -351,6 +351,11 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         : null;
       const additionalSelectedRefs = opts.additionalSelectedRefs ?? focusedClash?.selectedRefs;
       const additionalColoredRefs = opts.additionalColoredRefs ?? focusedClash?.coloredRefs;
+      // Capture visibility in the same pre-await state as the drawing buffer.
+      // GPU completion below can yield long enough for another UI action to
+      // mutate the store; mixing that newer state with the older PNG makes a
+      // viewpoint reopen differently from its snapshot.
+      const visibilityState = includeHidden ? useViewerStore.getState() : undefined;
 
       // Snapshot FIRST, camera after: the PNG and the camera's `aspectRatio`
       // describe one frame, so they must come from one drawing buffer.
@@ -426,12 +431,13 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // Pure decision in hooks/bcf/visibility-capture.ts (#4509, #4529).
       let hiddenGuids: string[] | undefined;
       let visibleGuids: string[] | undefined;
-      if (includeHidden) {
-        // Focus/isolate can update the store immediately before an async
-        // snapshot capture. Read visibility now instead of using this hook's
-        // pre-focus render closure, so the PNG and BCF components agree.
-        const current = useViewerStore.getState();
-        const capture = captureVisibility(current.isolatedEntities, current.hiddenEntities, expressIdToGlobalId, isEntityPending);
+      if (visibilityState) {
+        const capture = captureVisibility(
+          visibilityState.isolatedEntities,
+          visibilityState.hiddenEntities,
+          expressIdToGlobalId,
+          isEntityPending,
+        );
         ({ visibleGuids, hiddenGuids } = capture);
         if (capture.notice) {
           const { unnameable, total, kind, omitted, pending, ids } = capture.notice;

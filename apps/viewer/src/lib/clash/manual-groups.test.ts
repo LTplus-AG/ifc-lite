@@ -65,6 +65,21 @@ describe('manual clash groups (#4921)', () => {
     );
   });
 
+  it('reserves later exact occurrences before assigning stale fallbacks (#4921 review)', () => {
+    const stale = clash('stale');
+    const exact = clash('exact');
+    exact.a = { ...stale.a, model: 'current-a' };
+    exact.b = { ...stale.b, model: 'current-b' };
+    const definitions = [
+      { id: 'stale-group', name: 'Stale', members: [manualClashMember(stale)] },
+      { id: 'exact-group', name: 'Exact', members: [manualClashMember(exact)] },
+    ];
+
+    const resolved = resolveManualClashGroups(definitions, [exact]);
+    assert.deepEqual(resolved.map((group) => group.definition.id), ['exact-group']);
+    assert.equal(resolved[0].members[0].id, 'exact');
+  });
+
   it('removes every stale duplicate claim after one ambiguous fallback (#4921 review)', () => {
     const first = clash('first');
     const second = clash('second');
@@ -80,6 +95,26 @@ describe('manual clash groups (#4921)', () => {
     assert.equal(resolved[0].members.length, 1, 'one stale record falls back to the only current clash');
     assert.deepEqual(removeResolvedManualClashMember(definitions, resolved, 'manual-1', rerun), [],
       'the sibling stale record cannot immediately claim the removed clash');
+  });
+
+  it('removes stale duplicate claims without deleting an exact sibling (#4921 review)', () => {
+    const stale = clash('stale');
+    const exact = clash('exact');
+    exact.a = { ...stale.a, model: 'exact-a' };
+    exact.b = { ...stale.b, model: 'exact-b' };
+    const fallback = clash('fallback');
+    fallback.a = { ...stale.a, model: 'fallback-a' };
+    fallback.b = { ...stale.b, model: 'fallback-b' };
+    const definitions = [{ id: 'manual-1', name: 'Copies', members: [
+      manualClashMember(stale), manualClashMember(exact),
+    ] }];
+    const resolved = resolveManualClashGroups(definitions, [fallback, exact]);
+    assert.deepEqual(resolved[0].members.map((member) => member.id), ['fallback', 'exact']);
+
+    assert.deepEqual(
+      removeResolvedManualClashMember(definitions, resolved, 'manual-1', fallback),
+      [{ id: 'manual-1', name: 'Copies', members: [manualClashMember(exact)] }],
+    );
   });
 
   it('repairs overlapping/corrupt storage into disjoint named groups', () => {

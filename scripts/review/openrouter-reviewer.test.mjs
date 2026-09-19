@@ -8,15 +8,38 @@ import {
   OPENROUTER_REVIEW_MODEL,
   OPENROUTER_REVIEW_MODELS_DEFAULT,
   OPENROUTER_JUDGE_MODELS_DEFAULT,
+  OPENROUTER_TIMEOUT_MS_DEFAULT,
   requestOpenRouterReview,
   requestOpenRouterReviewChain,
   responseText,
   parseModelChain,
   resolveModelChain,
+  resolveTimeoutMs,
   runOpenRouterFallback,
 } from './openrouter-reviewer.mjs';
 
 const reply = (body, { ok = true, status = 200 } = {}) => ({ ok, status, text: async () => JSON.stringify(body) });
+
+/**
+ * `AbortSignal.timeout()`'s internal timer is UNREF'D by design (Node docs),
+ * so it does not by itself keep the event loop alive. In production that is
+ * harmless -- a real stalled fetch holds an open socket, which is its own
+ * ref'd handle -- but a test whose fake `fetchImpl` never touches the network
+ * has NOTHING else keeping the loop open, so node can decide the loop is
+ * "done" and exit while the abort promise is still pending, with node:test
+ * reporting `cancelledByParent`/"Promise resolution is still pending" rather
+ * than the real assertion. A ref'd interval for the test's duration is the
+ * fix; it does not change what is being tested, only whether the process
+ * sticks around long enough for the real timer to fire.
+ */
+async function withEventLoopKeptAlive(fn) {
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    return await fn();
+  } finally {
+    clearInterval(keepAlive);
+  }
+}
 
 test('the chat completions endpoint receives the unchanged prompt as a single user message', async () => {
   let request;
@@ -175,4 +198,96 @@ test('every non-MODEL_USED child stderr line is forwarded to the parent log, eve
   }
   assert.ok(logged.some((l) => l.includes('a/one failed: HTTP 429')), 'the per-model failure must reach the parent log');
   assert.ok(!logged.some((l) => l.includes('MODEL_USED')), 'the MODEL_USED line is still stripped, not forwarded');
+});
+
+// ============================================ finding-3: OpenRouter timeouts
+
+test('resolveTimeoutMs: a valid override wins, an invalid/absent one falls back to the default', () => {
+  assert.equal(resolveTimeoutMs('45000'), 45000);
+  assert.equal(resolveTimeoutMs(undefined), OPENROUTER_TIMEOUT_MS_DEFAULT);
+  assert.equal(resolveTimeoutMs(''), OPENROUTER_TIMEOUT_MS_DEFAULT);
+  assert.equal(resolveTimeoutMs('not-a-number'), OPENROUTER_TIMEOUT_MS_DEFAULT);
+  assert.equal(resolveTimeoutMs('-5'), OPENROUTER_TIMEOUT_MS_DEFAULT);
+  assert.equal(resolveTimeoutMs('0'), OPENROUTER_TIMEOUT_MS_DEFAULT);
+  assert.equal(resolveTimeoutMs(undefined, 120000), 120000);
+});
+
+test('a stalled OpenRouter request on EVERY model is a named chain failure, not an unbounded hang', async () => {
+  // Simulates the exact bug: a fetch that never settles until aborted. Before
+  // `AbortSignal.timeout` was wired in, nothing in this file's request options
+  // could ever cause that fetch to reject, so this test would hang forever
+  // without it -- which is precisely the failure mode reported against the
+  // failover loop in production.
+  await withEventLoopKeptAlive(() => assert.rejects(
+    requestOpenRouterReviewChain({
+      prompt: 'p',
+      apiKey: 'k',
+      models: ['stalled/one', 'stalled/two'],
+      timeoutMs: 20,
+      fetchImpl: (url, init) => new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+      }),
+    }),
+    /Every OpenRouter model failed/,
+  ));
+});
+
+test('requestOpenRouterReviewWithUsage rejects once its AbortSignal fires, instead of hanging', async () => {
+  const controllerSeen = [];
+  await withEventLoopKeptAlive(() => assert.rejects(
+    requestOpenRouterReview({
+      prompt: 'p',
+      apiKey: 'k',
+      timeoutMs: 10,
+      fetchImpl: (url, init) => {
+        controllerSeen.push(init.signal);
+        return new Promise((resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+        });
+      },
+    }),
+  ));
+  assert.equal(controllerSeen.length, 1);
+  assert.ok(controllerSeen[0] instanceof AbortSignal);
+});
+
+test('requestOpenRouterReviewChain moves to the NEXT model when one aborts on timeout', async () => {
+  let calls = 0;
+  const result = await withEventLoopKeptAlive(() => requestOpenRouterReviewChain({
+    prompt: 'p',
+    apiKey: 'k',
+    models: ['slow/model', 'fast/model'],
+    timeoutMs: 10,
+    fetchImpl: (url, init) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise((resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'clean' } }] }) });
+    },
+  }));
+  assert.equal(result.model, 'fast/model');
+  assert.equal(result.text, 'clean');
+});
+
+test('runOpenRouterFallback sets a spawnSync timeout that covers the whole model chain, and forwards OPENROUTER_TIMEOUT_MS', () => {
+  let call;
+  runOpenRouterFallback({
+    prompt: 'p', apiKey: 'k', models: ['a/one', 'b/two'], timeoutMs: 1000,
+    spawn: (...args) => { call = args; return { status: 0, stdout: 'ok', stderr: '' }; },
+  });
+  assert.equal(call[2].timeout, 1000 * 2 + 30_000);
+  assert.equal(call[2].env.OPENROUTER_TIMEOUT_MS, '1000');
+});
+
+test('runOpenRouterFallback reports a killed child as a named timeout failure, not a bare exit code', () => {
+  assert.throws(
+    () => runOpenRouterFallback({
+      prompt: 'p', apiKey: 'k', models: ['a/one'], timeoutMs: 1000,
+      spawn: () => ({ status: null, signal: 'SIGTERM', stdout: '', stderr: '' }),
+    }),
+    /killed by signal SIGTERM/,
+  );
 });

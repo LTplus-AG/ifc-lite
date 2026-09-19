@@ -15,7 +15,10 @@
  * it starts working again with no code change.
  */
 
-import { runOpenRouterFallback, resolveModelChain, OPENROUTER_REVIEW_MODELS_DEFAULT } from './openrouter-reviewer.mjs';
+import {
+  runOpenRouterFallback, resolveModelChain, resolveTimeoutMs,
+  OPENROUTER_REVIEW_MODELS_DEFAULT, OPENROUTER_TIMEOUT_MS_DEFAULT,
+} from './openrouter-reviewer.mjs';
 import { runOpenAiFallback } from './openai-reviewer.mjs';
 
 /**
@@ -24,16 +27,22 @@ import { runOpenAiFallback } from './openai-reviewer.mjs';
  *   openRouterModelsEnvVar?: string,  name of the plural (comma-separated) env var
  *   openRouterModelEnvVar?: string,   name of the singular override env var
  *   openRouterDefaultModels?: string[],
+ *   openRouterTimeoutMsDefault?: number,  this caller's DEFAULT per-model timeout;
+ *     `env.OPENROUTER_TIMEOUT_MS`, if set, overrides it for either caller alike.
  * }} [opts]
  *   Reviewer and judge pass their OWN env-var names in here (`OPENROUTER_REVIEW_MODELS`/
  *   `OPENROUTER_REVIEW_MODEL` vs `OPENROUTER_JUDGE_MODELS`/`OPENROUTER_JUDGE_MODEL`) and
- *   their own default chain, so the two cannot silently share one knob.
+ *   their own default chain, so the two cannot silently share one knob. The judge
+ *   passes a SHORTER default timeout (120000 vs the reviewer's 300000): it is an
+ *   optional precision filter that must fail soft quickly rather than sit on the
+ *   job's clock the way the primary review path can afford to.
  * @returns {{ label: string, run: (prompt: string) => (string | { text: string, model?: string }) }[]}
  */
 export function resolveProviderFallbacks(env, {
   openRouterModelsEnvVar = 'OPENROUTER_REVIEW_MODELS',
   openRouterModelEnvVar = 'OPENROUTER_REVIEW_MODEL',
   openRouterDefaultModels = OPENROUTER_REVIEW_MODELS_DEFAULT,
+  openRouterTimeoutMsDefault = OPENROUTER_TIMEOUT_MS_DEFAULT,
 } = {}) {
   const providers = [];
   const openRouterKey = String(env.OPENROUTER_API_KEY ?? '').trim();
@@ -43,9 +52,10 @@ export function resolveProviderFallbacks(env, {
       modelRaw: env[openRouterModelEnvVar],
       defaults: openRouterDefaultModels,
     });
+    const timeoutMs = resolveTimeoutMs(env.OPENROUTER_TIMEOUT_MS, openRouterTimeoutMsDefault);
     providers.push({
       label: 'openrouter-fallback',
-      run: (prompt) => runOpenRouterFallback({ prompt, apiKey: openRouterKey, models }),
+      run: (prompt) => runOpenRouterFallback({ prompt, apiKey: openRouterKey, models, timeoutMs }),
     });
   }
   const openAiKey = String(env.OPENAI_API_KEY ?? '').trim();

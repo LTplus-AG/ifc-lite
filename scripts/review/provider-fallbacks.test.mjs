@@ -32,3 +32,30 @@ test('a blank secret is treated as absent, same as unset (mirrors resolveTokens)
   const providers = resolveProviderFallbacks({ OPENROUTER_API_KEY: '   ', OPENAI_API_KEY: '' });
   assert.deepEqual(providers, []);
 });
+
+// ============================================ finding-3: per-caller OpenRouter timeouts
+
+test('resolveProviderFallbacks accepts a caller-supplied OpenRouter timeout default and still builds the chain', () => {
+  // Full timing behaviour (the env override winning, the fetch-level abort, the
+  // spawnSync budget) is unit-tested against `resolveTimeoutMs`/
+  // `runOpenRouterFallback` directly in openrouter-reviewer.test.mjs, where a
+  // fake `spawn`/`fetchImpl` can be injected. This only proves the option
+  // reaches `resolveProviderFallbacks` without changing the shape of what it
+  // returns -- `runOpenRouterFallback`'s default `spawn` is the real
+  // `spawnSync`, which this file must not invoke.
+  const providers = resolveProviderFallbacks(
+    { OPENROUTER_API_KEY: 'k' },
+    { openRouterTimeoutMsDefault: 42 },
+  );
+  assert.equal(providers.length, 1);
+  assert.equal(providers[0].label, 'openrouter-fallback');
+  assert.equal(typeof providers[0].run, 'function');
+});
+
+test('an OPENROUTER_TIMEOUT_MS env override is accepted alongside a caller default without throwing', () => {
+  const providers = resolveProviderFallbacks(
+    { OPENROUTER_API_KEY: 'k', OPENROUTER_TIMEOUT_MS: '9999' },
+    { openRouterTimeoutMsDefault: 300000 },
+  );
+  assert.equal(providers.length, 1);
+});

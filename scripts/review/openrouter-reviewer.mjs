@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { redactSecrets } from './lib/redact-secrets.mjs';
 
 /**
  * A CHAIN, not a single model. OpenRouter fronts many providers behind one
@@ -24,6 +25,26 @@ export const OPENROUTER_JUDGE_MODELS_DEFAULT = ['openai/gpt-5.4-nano', 'anthropi
 
 /** Kept as a plain single-model constant: the first of the review chain. */
 export const OPENROUTER_REVIEW_MODEL = OPENROUTER_REVIEW_MODELS_DEFAULT[0];
+
+/**
+ * NO TIMEOUT WAS THE BUG. A `fetch` with no `signal` waits as long as the
+ * remote end (or a dead TCP connection) lets it, which on GitHub Actions is
+ * the job's own 20-minute ceiling -- and this call sits inside the Claude
+ * failover loop, so one stalled OpenRouter request did not just fail slowly,
+ * it blocked every OTHER credential and provider behind it from ever being
+ * tried. `resolveTimeoutMs` is exported so `provider-fallbacks.mjs` can
+ * compute the SAME value it hands to `runOpenRouterFallback`'s spawnSync
+ * budget below, and callers keep their own default: the reviewer waits longer
+ * per model (it is the primary path) than the judge (an optional filter that
+ * must fail soft quickly, not sit on the job's clock).
+ */
+export const OPENROUTER_TIMEOUT_MS_DEFAULT = 300_000;
+
+/** @param {unknown} raw `OPENROUTER_TIMEOUT_MS`, or any other override value. */
+export function resolveTimeoutMs(raw, fallback = OPENROUTER_TIMEOUT_MS_DEFAULT) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 /** Extract the model's text, whether it comes back as a string or an array of parts. */
 export function responseText(message) {
@@ -46,7 +67,9 @@ export function responseText(message) {
  * is the pre-existing, text-only contract every other caller and test already
  * depends on, so it stays a thin wrapper rather than changing shape.
  */
-export async function requestOpenRouterReviewWithUsage({ prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch }) {
+export async function requestOpenRouterReviewWithUsage({
+  prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT,
+}) {
   const response = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -61,12 +84,23 @@ export async function requestOpenRouterReviewWithUsage({ prompt, apiKey, model =
       max_tokens: 32768,
       reasoning: { effort: 'high' },
     }),
+    // A per-model failure, not a hang: `requestOpenRouterReviewChain` below
+    // already treats ANY thrown error here (HTTP, network, this abort) as
+    // "this model failed, try the next one", so timing out needs no new catch
+    // path -- it just needs to fire before the chain's caller's own timeout
+    // (the failover loop, ultimately the job) does.
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const body = await response.text();
   let parsed;
   try { parsed = JSON.parse(body); } catch { parsed = null; }
   if (!response.ok) {
-    const detail = String(parsed?.error?.message ?? body ?? '(empty)').slice(0, 2000);
+    // Redacted before it ever reaches an Error message: this string is logged
+    // verbatim (see requestOpenRouterReviewChain and runOpenRouterFallback's
+    // stderr forwarding), which lands in the public Actions log. OpenRouter is
+    // not expected to echo the Authorization header back in an error body, but
+    // this is the backstop for the day some upstream provider does.
+    const detail = redactSecrets(String(parsed?.error?.message ?? body ?? '(empty)').slice(0, 2000));
     throw new Error(`OpenRouter chat completions API returned HTTP ${response.status}: ${detail}`);
   }
   const text = responseText(parsed?.choices?.[0]?.message);
@@ -113,14 +147,14 @@ export function resolveModelChain({ modelsRaw, modelRaw, defaults }) {
  * reports it in the posted envelope rather than leaving "which model" a
  * mystery on a run that used the third choice.
  */
-export async function requestOpenRouterReviewChain({ prompt, apiKey, models, fetchImpl = fetch }) {
+export async function requestOpenRouterReviewChain({ prompt, apiKey, models, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT }) {
   if (!Array.isArray(models) || models.length === 0) {
     throw new Error('No OpenRouter model configured.');
   }
   const failures = [];
   for (const [i, model] of models.entries()) {
     try {
-      const text = await requestOpenRouterReview({ prompt, apiKey, model, fetchImpl });
+      const text = await requestOpenRouterReview({ prompt, apiKey, model, fetchImpl, timeoutMs });
       return { text, model };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -149,14 +183,30 @@ export async function requestOpenRouterReviewChain({ prompt, apiKey, models, fet
  * 35424837640). Forwarding here, not filtering to failures only, means a
  * partial chain success is diagnosable from the parent job log alone.
  */
-export function runOpenRouterFallback({ prompt, apiKey, models = OPENROUTER_REVIEW_MODELS_DEFAULT, spawn = spawnSync }) {
+export function runOpenRouterFallback({
+  prompt, apiKey, models = OPENROUTER_REVIEW_MODELS_DEFAULT, spawn = spawnSync, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT,
+}) {
+  // The PARENT-SIDE backstop. `timeoutMs` bounds each model's fetch INSIDE the
+  // child (via `AbortSignal.timeout`, wired through the env below and read by
+  // the child's own main-entry block), but the chain tries every model in
+  // `models` sequentially, so the child's own worst case is `timeoutMs *
+  // models.length`. Without a `spawnSync` `timeout` of at least that, a child
+  // that hangs for a reason the abort signal cannot see -- stuck DNS, a
+  // runaway event-loop task after the response, anything below `fetch` -- still
+  // blocks this synchronous call, and with it every credential and provider
+  // still queued behind it, for as long as the runner's job timeout allows.
+  const childTimeoutMs = timeoutMs * Math.max(models.length, 1) + 30_000;
   const result = spawn(process.execPath, [fileURLToPath(import.meta.url)], {
     input: prompt,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, OPENROUTER_API_KEY: apiKey, OPENROUTER_REVIEW_MODELS: models.join(',') },
+    timeout: childTimeoutMs,
+    env: { ...process.env, OPENROUTER_API_KEY: apiKey, OPENROUTER_REVIEW_MODELS: models.join(','), OPENROUTER_TIMEOUT_MS: String(timeoutMs) },
   });
   if (result.error) throw new Error(`Could not spawn OpenRouter fallback: ${result.error.message}`);
+  if (result.signal) {
+    throw new Error(`OpenRouter fallback was killed by signal ${result.signal} after exceeding its ${childTimeoutMs}ms budget.`);
+  }
   const stderr = String(result.stderr ?? '');
   for (const line of stderr.split('\n')) {
     if (line && !/^MODEL_USED:/.test(line)) console.log(`openrouter-fallback (child): ${line}`);
@@ -179,7 +229,8 @@ if (isMainEntry(import.meta.url)) {
       modelRaw: process.env.OPENROUTER_REVIEW_MODEL,
       defaults: OPENROUTER_REVIEW_MODELS_DEFAULT,
     });
-    const { text, model } = await requestOpenRouterReviewChain({ prompt: readFileSync(0, 'utf8'), apiKey, models });
+    const timeoutMs = resolveTimeoutMs(process.env.OPENROUTER_TIMEOUT_MS);
+    const { text, model } = await requestOpenRouterReviewChain({ prompt: readFileSync(0, 'utf8'), apiKey, models, timeoutMs });
     process.stderr.write(`MODEL_USED:${model}\n`);
     process.stdout.write(text);
   } catch (error) {

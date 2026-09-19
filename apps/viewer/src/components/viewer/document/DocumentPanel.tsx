@@ -99,6 +99,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         document,
         bindings: data.bindings,
         aggregations: data.aggregations,
+        chartMessages: data.chartMessages,
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
       }, seams);
@@ -207,7 +208,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">No blocks yet — "Add block" above.</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} topics={data.topics} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
+            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
           </div>
         </div>
       )}

@@ -248,7 +248,7 @@ describe('generateDocumentPdf', () => {
       ],
     };
     const { seams, calls } = recordingSeams();
-    const result = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map([['chart-1', agg]]), snapshotIds: () => [41, 42], topics: new Map([['topic-1', topic]]) }, seams);
+    const result = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map([['chart-1', agg]]), chartMessages: new Map(), snapshotIds: () => [41, 42], topics: new Map([['topic-1', topic]]) }, seams);
     assert.deepEqual(calls[0], { op: 'create', args: ['a3', 'landscape'] });
     const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
     assert.ok(texts.includes('Tower — 2026-09-12'), texts.join(' | '));
@@ -269,7 +269,7 @@ describe('generateDocumentPdf', () => {
 
   it('a blank document prints one page with its title binding resolved', async () => {
     const { seams, calls } = recordingSeams();
-    const result = await generateDocumentPdf({ document: blankDocument(), bindings: ctx, aggregations: new Map(), snapshotIds: () => [], topics: new Map() }, seams);
+    const result = await generateDocumentPdf({ document: blankDocument(), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map() }, seams);
     assert.equal(result.pages, 1);
     assert.ok(calls.some((c) => c.op === 'text' && c.args[0] === 'Tower'));
   });

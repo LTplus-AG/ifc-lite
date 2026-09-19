@@ -27,6 +27,11 @@ export interface DocumentPdfInput {
   bindings: BindingContext;
   /** Chart block id → its aggregation over the loaded model (`null`: cannot aggregate). */
   aggregations: Map<string, Aggregation | null>;
+  /** Chart block id → its filter's resolving/refused message (#4946), when
+   *  one applies — printed instead of the generic "No data" so a broken or
+   *  still-running filter cannot look like a selector that legitimately
+   *  matched nothing. */
+  chartMessages: Map<string, string>;
   /** Ids of the elements of a chart block's largest bucket, for the snapshot. */
   snapshotIds: (blockId: string) => readonly number[];
   /** BCF topics by GUID. */

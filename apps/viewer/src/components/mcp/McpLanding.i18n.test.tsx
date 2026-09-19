@@ -197,4 +197,16 @@ describe('McpLanding localization (#4918)', () => {
     assert.match(text, /PASTE BEFORE 01/);
     assert.match(text, /SHARE BEFORE viewer_ask/);
   });
+
+  it('translates the footer page links', () => {
+    registerLocale('en-x-mcp-footer-links', {
+      'mcp.mcpLanding.navPlayground': 'FOOTER PLAYGROUND',
+      'mcp.mcpLanding.navViewer': 'FOOTER VIEWER',
+    });
+    act(() => setLocale('en-x-mcp-footer-links'));
+    const container = render(<McpLanding />);
+    const footer = container.querySelector('footer');
+    assert.equal(footer?.querySelector('nav a[href="/mcp/playground"]')?.textContent, 'FOOTER PLAYGROUND');
+    assert.equal(footer?.querySelector('nav a[href="/"]')?.textContent, 'FOOTER VIEWER');
+  });
 });

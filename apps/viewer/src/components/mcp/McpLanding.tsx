@@ -1240,8 +1240,8 @@ function Footer(): ReactNode {
               { href: 'https://www.npmjs.com/package/@ifc-lite/mcp', label: 'npm' },
             ]} />
             <FooterCol heading={t('mcp.mcpLanding.footerColDocs')} links={[
-              { href: '/mcp/playground', label: 'Playground' },
-              { href: '/', label: 'Viewer' },
+              { href: '/mcp/playground', label: t('mcp.mcpLanding.navPlayground') },
+              { href: '/', label: t('mcp.mcpLanding.navViewer') },
             ]} />
             <FooterCol heading={t('mcp.mcpLanding.footerColSpec')} links={[
               { href: 'https://modelcontextprotocol.io', label: 'MCP' },

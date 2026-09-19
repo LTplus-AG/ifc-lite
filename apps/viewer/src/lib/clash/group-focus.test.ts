@@ -111,6 +111,44 @@ describe('manual clash group focus (#4921)', () => {
     ]), 'the same presentation expansion paints every renderable assembly part');
   });
 
+  it('expands a model-qualified aggregate even when another model owns its renderer id', () => {
+    const crossModel = clash('qualified-aggregate', 10, 10);
+    crossModel.b.model = 'room:r:m0';
+    const relationships = {
+      getRelated: (id: number, _type: unknown, direction: string) =>
+        id === 10 && direction === 'forward' ? [11, 12] : [],
+    };
+    useViewerStore.setState({
+      models: new Map([
+        ['model', { idOffset: 0, ifcDataStore: { entities: { getGlobalId: () => null } } }],
+        ['room:r:m0', {
+          idOffset: 0,
+          ifcDataStore: { entities: { getGlobalId: () => null }, relationships },
+        }],
+      ]) as unknown as ViewerState['models'],
+      cameraCallbacks: {
+        // Numeric id 10 appears renderable because the ordinary model owns a
+        // mesh there, so the legacy scalar resolver cannot see the room assembly.
+        resolveHighlightIds: (ids) => ids,
+      },
+    });
+    const applyFocusMode = mock.fn();
+
+    const focused = focusClashGroup(
+      [crossModel],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      applyFocusMode,
+      'isolate',
+    );
+
+    assert.ok(focused);
+    assert.deepEqual(applyFocusMode.mock.calls[0].arguments, [[10, 11, 12], 'isolate']);
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([10, 11, 12]));
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [10, CLASH_COLOR_A], [11, CLASH_COLOR_B], [12, CLASH_COLOR_B],
+    ]));
+  });
+
   it('reports when no objects resolve so callers cannot capture an unrelated selection', () => {
     useViewerStore.getState().setSelectedEntityIds([99]);
     const applyFocusMode = mock.fn();

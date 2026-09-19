@@ -9,6 +9,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { activeSectionPlane } from '@/store/section-active';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { collectAggregatedDescendants } from '@/utils/aggregation';
 import {
   resolvePresentationColorMap,
   resolvePresentationIds,
@@ -180,6 +181,26 @@ function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: 
   return [...guids];
 }
 
+/** Expand aggregates without collapsing two model-qualified refs onto one renderer id first. */
+function expandedAggregateRefs(
+  state: ReturnType<typeof useViewerStore.getState>,
+  refs: Iterable<SelectionRef>,
+): SelectionRef[] {
+  const expanded = new Map<string, SelectionRef>();
+  const add = (ref: SelectionRef) => expanded.set(`${ref.modelId}:${ref.expressId}`, ref);
+  for (const ref of refs) {
+    add(ref);
+    const relationships = state.models.size === 0
+      ? state.ifcDataStore?.relationships
+      : state.models.get(ref.modelId)?.ifcDataStore?.relationships;
+    if (!relationships) continue;
+    for (const expressId of collectAggregatedDescendants(relationships, ref.expressId)) {
+      add({ modelId: ref.modelId, expressId });
+    }
+  }
+  return [...expanded.values()];
+}
+
 /** True while the models, authored IFC, and rendered visibility still match the focused frame. */
 export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boolean {
   const state = useViewerStore.getState();
@@ -213,7 +234,6 @@ export function focusClashGroup(
   mode: ClashFocusMode,
 ): FocusedClashGroup | null {
   const state = useViewerStore.getState();
-  const globalIds = new Set<number>();
   const selectionKeys = new Set<string>();
   const refs: SelectionRef[] = [];
   const aRefs = new Map<string, SelectionRef>();
@@ -222,8 +242,6 @@ export function focusClashGroup(
     for (const [side, element] of [['a', clash.a], ['b', clash.b]] as const) {
       const resolved = resolve(element);
       if (!resolved) continue;
-      const globalId = toGlobalIdFromModels(state.models, resolved.modelId, resolved.expressId);
-      globalIds.add(globalId);
       const selectionKey = `${resolved.modelId}:${resolved.expressId}`;
       const sideRefs = side === 'a' ? aRefs : bRefs;
       if (!sideRefs.has(selectionKey)) sideRefs.set(selectionKey, resolved);
@@ -233,6 +251,13 @@ export function focusClashGroup(
     }
   }
   if (refs.length === 0) return null;
+  // An object on both sides gets one deterministic color, never two.
+  for (const key of aRefs.keys()) bRefs.delete(key);
+  const a = [...aRefs.values()], b = [...bRefs.values()];
+  const presentationARefs = expandedAggregateRefs(state, a);
+  const aPresentationKeys = new Set(presentationARefs.map(ref => `${ref.modelId}:${ref.expressId}`));
+  const presentationBRefs = expandedAggregateRefs(state, b)
+    .filter(ref => !aPresentationKeys.has(`${ref.modelId}:${ref.expressId}`));
   const hiddenParticipatingModelIds = [...new Set(refs.map(ref => ref.modelId))]
     .filter(modelId => state.models.get(modelId)?.visible === false);
   // A storey filter or exploded offsets would render only a transformed
@@ -269,9 +294,11 @@ export function focusClashGroup(
   // Renderer presentation channels match mesh ids. A geometry-less aggregate
   // therefore has to become its renderable parts through the same canonical
   // resolver used by framing, SDK visibility, and the other isolate paths.
+  const exactPresentationGlobalIds = [...presentationARefs, ...presentationBRefs]
+    .map(ref => toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
   const presentationGlobalIds = resolvePresentationIds(
     state.cameraCallbacks.resolveHighlightIds,
-    [...globalIds],
+    exactPresentationGlobalIds,
   );
   state.clearEntitySelection();
   state.clearClashFocus();
@@ -282,24 +309,21 @@ export function focusClashGroup(
   const frameReady = new Promise<FramedCamera | null>((resolve) => {
     scheduleClashFrame(waitForLevelDisplayReset, waitForPresentationReset, resolve);
   });
-  // An object on both sides gets one deterministic color, never two.
-  for (const key of aRefs.keys()) bRefs.delete(key);
-  const a = [...aRefs.values()], b = [...bRefs.values()];
   const presentationState = useViewerStore.getState();
   // BCF colors are keyed only by IFC GlobalId. If two loaded revisions expose
   // the same GlobalId on opposite sides, paint every occurrence amber (A wins)
   // instead of showing a split that the exported viewpoint cannot reproduce.
   const colorByGuid = new Map<string, RGBA>();
-  for (const ref of a) {
+  for (const ref of presentationARefs) {
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     if (guid) colorByGuid.set(guid, CLASH_COLOR_A);
   }
-  for (const ref of b) {
+  for (const ref of presentationBRefs) {
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     if (guid && !colorByGuid.has(guid)) colorByGuid.set(guid, CLASH_COLOR_B);
   }
   const clashColors = new Map<number, RGBA>();
-  for (const ref of a) {
+  for (const ref of presentationARefs) {
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     setClashColor(
       clashColors,
@@ -307,13 +331,13 @@ export function focusClashGroup(
       guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_A) : CLASH_COLOR_A,
     );
   }
-  for (const ref of b) {
+  for (const ref of presentationBRefs) {
     const globalId = toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId);
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     setClashColor(clashColors, globalId, guid ? (colorByGuid.get(guid) ?? CLASH_COLOR_B) : CLASH_COLOR_B);
   }
   const occurrences = loadedGuidOccurrences(presentationState, colorByGuid.keys());
-  for (const ref of [...a, ...b]) {
+  for (const ref of [...presentationARefs, ...presentationBRefs]) {
     const guid = resolveEntityRefGlobalIdFromState(presentationState, ref);
     if (!guid) continue;
     occurrences.get(guid)?.add(toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId));
@@ -323,9 +347,9 @@ export function focusClashGroup(
     presentationState.cameraCallbacks.resolveHighlightIds,
     clashColors,
   );
-  const renderedARefs = [...a];
+  const renderedARefs = [...presentationARefs];
   const renderedBRefs: SelectionRef[] = [];
-  for (const ref of b) {
+  for (const ref of presentationBRefs) {
     const globalId = toGlobalIdFromModels(presentationState.models, ref.modelId, ref.expressId);
     (presentationClashColors.get(globalId) === CLASH_COLOR_A ? renderedARefs : renderedBRefs).push(ref);
   }

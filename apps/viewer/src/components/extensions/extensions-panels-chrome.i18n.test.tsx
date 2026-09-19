@@ -490,6 +490,33 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(text, /__APP_VERSION__ UNKNOWN/);
   });
 
+  it('lets a locale reorder complete rich help messages without translating capability codes', async () => {
+    registerLocale('extensions-help-reordered', {
+      'extensionsPanels.auditLogPanel.helpExport': 'SNAPSHOT VIA {export}',
+      'extensionsPanels.ideasPanel.helpActions': '{customize} BEFORE {tryIt}',
+      'extensionsPanels.promoteToolDialog.noCapabilitiesDetected':
+        'ONLY {capability} IS REQUESTED',
+    } as Catalogue);
+    setLocale('extensions-help-reordered');
+
+    const host = new StubExtensionHost();
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <div>
+          <AuditLogPanel />
+          <IdeasPanel />
+          <PromoteToolDialog open source="function run(ctx) { return 1; }" onClose={() => {}} />
+        </div>
+      </ExtensionHostContext.Provider>,
+    );
+    openAllHelpHints(container);
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /SNAPSHOT VIA Export/);
+    assert.match(text, /Customize plan first… BEFORE Try it/);
+    assert.match(text, /ONLY model\.read IS REQUESTED/);
+  });
+
   it('shows and accepts the same fixed high-risk confirmation token in every locale', () => {
     registerLocale('fr', {
       'extensionsPanels.capabilityReview.confirmInstruction':

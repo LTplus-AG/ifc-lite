@@ -36,6 +36,7 @@ import { PlanCard } from './PlanCard';
 import { toast } from '@/components/ui/toast';
 import { HelpHint } from './HelpHint';
 import { formatExtensionDate } from './localized-date';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 
 interface IdeasPanelProps {
   /** Optional override for the approve action. Defaults to seeding the chat panel. */
@@ -180,11 +181,10 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
               {t('extensionsPanels.ideasPanel.helpRecurringBody')}
             </p>
             <p>
-              {t('extensionsPanels.ideasPanel.helpClickPrefix')}{' '}
-              <strong>{t('extensionsPanels.ideasPanel.tryItButton')}</strong>{' '}
-              {t('extensionsPanels.ideasPanel.helpTryItMid')}{' '}
-              <strong>{t('extensionsPanels.ideasPanel.customizePlanLink')}</strong>{' '}
-              {t('extensionsPanels.ideasPanel.helpCustomizeRest')}
+              {styleInterpolatedValues(t, 'extensionsPanels.ideasPanel.helpActions', [
+                ['tryIt', <strong key="try-it">{t('extensionsPanels.ideasPanel.tryItButton')}</strong>],
+                ['customize', <strong key="customize">{t('extensionsPanels.ideasPanel.customizePlanLink')}</strong>],
+              ])}
             </p>
             <p>{t('extensionsPanels.ideasPanel.helpPrivacy')}</p>
           </HelpHint>

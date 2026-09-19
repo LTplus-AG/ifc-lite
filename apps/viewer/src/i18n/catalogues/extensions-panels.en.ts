@@ -52,8 +52,7 @@ export const extensionsPanelsEn = {
     'Append-only ledger of every extension lifecycle event: install, update, enable, disable, activate, capability grant/revoke, runtime failures.',
   'extensionsPanels.auditLogPanel.helpPersistence':
     'Persists in IndexedDB across reloads. Filter by event kind via the chips below; when multiple extensions are installed, a second chip row scopes by extension id.',
-  'extensionsPanels.auditLogPanel.helpExportLabel': 'Export',
-  'extensionsPanels.auditLogPanel.helpExportDetail': 'downloads a JSON snapshot.',
+  'extensionsPanels.auditLogPanel.helpExport': '{export} downloads a JSON snapshot.',
   'extensionsPanels.auditLogPanel.exportButton': 'Export',
   'extensionsPanels.auditLogPanel.exportAriaLabel': 'Export audit log',
   'extensionsPanels.auditLogPanel.clearButton': 'Clear',
@@ -130,11 +129,8 @@ export const extensionsPanelsEn = {
   'extensionsPanels.ideasPanel.helpRecurringBold': 'Recurring suggestions',
   'extensionsPanels.ideasPanel.helpRecurringBody':
     'appear once a workflow shows up repeatedly in your local activity log (model loads, lens applies, exports). Thresholds relax while the log is sparse so something appears early; tightens as data accumulates.',
-  'extensionsPanels.ideasPanel.helpClickPrefix': 'Click',
-  'extensionsPanels.ideasPanel.helpTryItMid':
-    'to send the idea to the AI chat assistant — chat opens and you answer follow-ups. Click',
-  'extensionsPanels.ideasPanel.helpCustomizeRest':
-    'if you want to prune capabilities or rename the command before chat sees it.',
+  'extensionsPanels.ideasPanel.helpActions':
+    'Click {tryIt} to send the idea to the AI chat assistant — chat opens and you answer follow-ups. Click {customize} if you want to prune capabilities or rename the command before chat sees it.',
   'extensionsPanels.ideasPanel.helpPrivacy': 'The action log is local. Nothing here leaves your device.',
   'extensionsPanels.ideasPanel.remineAriaLabel': 'Re-mine now',
   'extensionsPanels.ideasPanel.remineButton': 'Re-mine',
@@ -240,9 +236,8 @@ export const extensionsPanelsEn = {
   'extensionsPanels.promoteToolDialog.iconLabel': 'Icon',
   'extensionsPanels.promoteToolDialog.iconGroupAriaLabel': 'Pick a toolbar icon',
   'extensionsPanels.promoteToolDialog.inferredCapabilitiesHeading': 'Inferred capabilities',
-  'extensionsPanels.promoteToolDialog.noCapabilitiesDetectedPrefix':
-    'No `bim.*` calls detected. The tool will request only',
-  'extensionsPanels.promoteToolDialog.modelReadCode': 'model.read',
+  'extensionsPanels.promoteToolDialog.noCapabilitiesDetected':
+    'No `bim.*` calls detected. The tool will request only {capability}.',
   'extensionsPanels.promoteToolDialog.unknownCallsWarning':
     'Unknown `bim.*` calls detected — review the source before approving.',
   'extensionsPanels.promoteToolDialog.parseErrorWarning': 'Script does not parse cleanly — promotion may fail.',

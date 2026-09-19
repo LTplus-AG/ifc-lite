@@ -592,8 +592,15 @@ export class Renderer {
         // Subscribe before the device exists so a loss during the first frames
         // is never missed — the handler is only invoked when `device.lost`
         // actually resolves (a real fault), long after init in practice.
-        this.device.onDeviceLost((info) => this.handleDeviceLost(info));
-        await this.device.init(this.canvas);
+        const initializingDevice = this.device;
+        initializingDevice.onDeviceLost((info) => {
+            // Recovery replaces the WebGPUDevice wrapper. A delayed `lost`
+            // settlement from the abandoned wrapper must not latch the new
+            // device as lost (#4885).
+            if (this.device !== initializingDevice) return;
+            this.handleDeviceLost(info);
+        });
+        await initializingDevice.init(this.canvas);
 
         // A `destroy()` (or a newer `init()`) landed while we were parked on the
         // device. Everything below allocates a full GPU stack — two pipelines,

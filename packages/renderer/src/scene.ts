@@ -436,6 +436,21 @@ export class Scene {
     | { ok: true }
     | { ok: false; reason: 'cpu-geometry-released' | 'scene-not-settled' | 'unsupported-authored-meshes' | 'cold-restore-failed' }
   > {
+    const initialBlocker = this.getDeviceRecoveryBlocker();
+    if (initialBlocker) return initialBlocker;
+    await this.drainColdTier();
+    // Cold restoration is asynchronous. Scene mutations remain public during
+    // that wait, so revalidate before recovery is allowed to discard GPU-only
+    // resources (#4885).
+    const lateBlocker = this.getDeviceRecoveryBlocker();
+    if (lateBlocker) return lateBlocker;
+    if (this.coldBuckets.size > 0) return { ok: false, reason: 'cold-restore-failed' };
+    return { ok: true };
+  }
+
+  private getDeviceRecoveryBlocker():
+    | { ok: false; reason: 'cpu-geometry-released' | 'scene-not-settled' | 'unsupported-authored-meshes' }
+    | null {
     if (this.geometryReleased || this.ephemeralStreamingMode) {
       return { ok: false, reason: 'cpu-geometry-released' };
     }
@@ -453,9 +468,7 @@ export class Scene {
     if (this.meshes.some((mesh) => !mesh.hydrated)) {
       return { ok: false, reason: 'unsupported-authored-meshes' };
     }
-    await this.drainColdTier();
-    if (this.coldBuckets.size > 0) return { ok: false, reason: 'cold-restore-failed' };
-    return { ok: true };
+    return null;
   }
 
   /**

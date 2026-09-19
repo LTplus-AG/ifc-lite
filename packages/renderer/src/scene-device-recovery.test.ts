@@ -26,6 +26,12 @@ function buffer(size = 16): FakeBuffer {
   return { size, destroyed: 0, getMappedRange: () => backing, unmap() {}, destroy() { this.destroyed++; } };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 function device() {
   const created: FakeBuffer[] = [], writes: Array<{ offset: number; data: Uint8Array }> = [];
   return {
@@ -132,6 +138,25 @@ describe('Scene device recovery (#4885)', () => {
     } finally {
       warning.mock.restore();
     }
+  });
+
+  it('rejects an authored mesh added while cold restoration is awaiting I/O', async () => {
+    const scene = new Scene(), gate = deferred<void>(), drainStarted = deferred<void>();
+    scene['drainColdTier'] = async () => {
+      drainStarted.resolve();
+      await gate.promise;
+    };
+
+    const preparation = scene.prepareDeviceRecovery();
+    await drainStarted.promise;
+    scene['meshes'] = [{ hydrated: false } as Mesh];
+    gate.resolve();
+
+    assert.deepStrictEqual(
+      await preparation,
+      { ok: false, reason: 'unsupported-authored-meshes' },
+      'a drawable with no CPU source must not be accepted and then silently discarded',
+    );
   });
 
   it('replaces flat GPU batches without losing their CPU pieces', () => {

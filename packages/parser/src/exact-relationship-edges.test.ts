@@ -39,4 +39,25 @@ describe('exact relationship edge display data (#4205)', () => {
       entity: { id: 10, type: 'IfcMaterial' },
     }]);
   });
+
+  it('keeps distinct legacy-server rows while suppressing compatibility aliases', () => {
+    const graph = new RelationshipGraphBuilder();
+    graph.addEdge(10, 20, RelationshipType.Aggregates, 0);
+    // A legacy-server IfcRelNests row occupies both buckets with id 0.
+    graph.addEdge(10, 20, RelationshipType.Aggregates, 0);
+    graph.addEdge(10, 20, RelationshipType.Nests, 0);
+    graph.addEdge(10, 20, RelationshipType.ConnectsElements, 0);
+    const entities = new EntityTableBuilder(0, new StringTable()).build();
+    const store = {
+      entities,
+      entityIndex: { byId: new Map(), byType: new Map() },
+      relationships: graph.build(),
+    } as unknown as IfcDataStore;
+
+    expect(extractExactRelationshipEdges(store, 10).map((edge) => edge.relationshipType)).toEqual([
+      'IfcRelAggregates',
+      'IfcRelNests',
+      'IfcRelConnectsElements',
+    ]);
+  });
 });

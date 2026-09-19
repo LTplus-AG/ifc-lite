@@ -121,6 +121,12 @@ interface BimRelationships {
   fills: Array<{ id: number; name?: string; type: string }>;
   groups: Array<{ id: number; name?: string }>;
   connections: Array<{ id: number; name?: string; type: string }>;
+  relations?: Array<{
+    relationshipId: number;
+    relationshipType: string;
+    direction: 'forward' | 'inverse';
+    entity: { id: number; name?: string; type: string };
+  }>;
 }
 
 interface BimModelInfo {

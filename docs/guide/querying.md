@@ -233,19 +233,33 @@ const fillings = query.entity(openingId).filledBy();
 
 ### Relationship Types
 
-| Relationship | Description |
-|--------------|-------------|
-| `IfcRelContainedInSpatialStructure` | Element → Spatial container |
-| `IfcRelAggregates` | Parent → Children (decomposition) |
-| `IfcRelVoidsElement` | Element → Opening |
-| `IfcRelFillsElement` | Opening → Filling (door/window) |
-| `IfcRelAssociatesMaterial` | Element → Material |
-| `IfcRelDefinesByProperties` | Element → Property sets |
-| `IfcRelDefinesByType` | Element → Type definition |
-| `IfcRelConnectsStructuralActivity` | Element → Structural activity |
-| `IfcRelConnectsStructuralMember` | Structural member → Structural connection |
-| `IfcRelConnectsWithEccentricity` | Structural member → Structural connection with eccentricity |
-| `IfcRelConnectsStructuralElement` | Element → Structural member (IFC2X3 only) |
+`related(ref, relationshipType, direction)` accepts the exact EXPRESS name of
+every concrete `IfcRelationship` subtype available in the model's IFC schema,
+not a shortened alias. For example, use `IfcRelContainedInSpatialStructure`,
+`IfcRelAggregates`, `IfcRelNests`, `IfcRelDefinesByObject`,
+`IfcRelAssociatesMaterial`, `IfcRelConnectsPorts`, `IfcRelSequence`, or
+`IfcRelPositions` (IFC4X3). `forward` follows the EXPRESS relating-to-related
+slots; `inverse` walks them in reverse.
+
+The SDK's `bim.query.relationships(ref)` also returns `relations`, alongside
+the convenience `voids`, `fills`, `groups`, and `connections` arrays. Each
+entry identifies one relationship record and its opposite endpoint:
+
+```typescript
+const { relations = [] } = bim.query.relationships(wallRef);
+for (const edge of relations) {
+  console.log(
+    edge.relationshipId,   // express id of the IfcRel* record
+    edge.relationshipType, // exact name, such as IfcRelVoidsElement
+    edge.direction,        // forward or inverse relative to wallRef
+    edge.entity,           // { id, type, name? } at the other end
+  );
+}
+```
+
+`relationshipId` distinguishes separate IFC relationship records even when
+they connect the same pair of entities. It is `0` only for payloads from an
+older server that did not provide relationship record ids.
 
 ## SQL Queries
 

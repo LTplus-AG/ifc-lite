@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { relationshipTypeName, resolvedTypeName } from '@ifc-lite/data';
+import { RelationshipType, relationshipTypeName, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { normalizeIfcTypeName } from './ifc-schema.js';
 
@@ -44,11 +44,37 @@ export function extractExactRelationshipEdges(
     };
     const append = (direction: 'forward' | 'inverse'): void => {
         const edges = direction === 'forward' ? store.relationships.forward : store.relationships.inverse;
-        for (const edge of edges.getEdges(entityId)) {
+        const touchingEdges = edges.getEdges(entityId);
+        // A pre-data-model-v6 server uses relationshipId=0 for every row. Two
+        // compatibility pairs occupy both a broad traversal bucket and an
+        // exact bucket; reserve one broad zero for each exact zero so the
+        // fallback keeps row cardinality without presenting aliases as records.
+        const aliasZeros = new Map<string, number>();
+        for (const edge of touchingEdges) {
+            const primaryType = edge.type === RelationshipType.Nests
+                ? RelationshipType.Aggregates
+                : edge.type === RelationshipType.AssignsToGroupByFactor
+                    ? RelationshipType.AssignsToGroup
+                    : undefined;
+            if (primaryType === undefined) continue;
+            const zeroCount = [edge.relationshipId, ...(edge.shadowedRelationshipIds ?? [])]
+                .filter((id) => id === 0).length;
+            if (zeroCount > 0) aliasZeros.set(`${edge.target}:${primaryType}`, zeroCount);
+        }
+        for (const edge of touchingEdges) {
             for (const relationshipId of [edge.relationshipId, ...(edge.shadowedRelationshipIds ?? [])]) {
-                const key = `${direction}:${relationshipId}:${edge.target}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
+                if (relationshipId === 0) {
+                    const aliasKey = `${edge.target}:${edge.type}`;
+                    const aliasesRemaining = aliasZeros.get(aliasKey) ?? 0;
+                    if (aliasesRemaining > 0) {
+                        aliasZeros.set(aliasKey, aliasesRemaining - 1);
+                        continue;
+                    }
+                } else {
+                    const key = `${direction}:${relationshipId}:${edge.target}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                }
                 result.push({
                     relationshipId,
                     relationshipType: resolvedTypeName(store.entities, relationshipId)

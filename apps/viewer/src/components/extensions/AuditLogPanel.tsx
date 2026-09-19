@@ -29,6 +29,7 @@ import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey, type UseTranslationResult } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
 
 /** Maps each event kind to its catalogue key — same data-table pattern
@@ -133,8 +134,9 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
             <p>{t('extensionsPanels.auditLogPanel.helpIntro')}</p>
             <p>{t('extensionsPanels.auditLogPanel.helpPersistence')}</p>
             <p>
-              <strong>{t('extensionsPanels.auditLogPanel.helpExportLabel')}</strong>{' '}
-              {t('extensionsPanels.auditLogPanel.helpExportDetail')}
+              {styleInterpolatedValues(t, 'extensionsPanels.auditLogPanel.helpExport', [
+                ['export', <strong key="export">{t('extensionsPanels.auditLogPanel.exportButton')}</strong>],
+              ])}
             </p>
           </HelpHint>
         </div>

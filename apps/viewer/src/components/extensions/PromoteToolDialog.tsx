@@ -42,6 +42,9 @@ import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+
+const MODEL_READ_CAPABILITY = 'model.read';
 
 interface PromoteToolDialogProps {
   open: boolean;
@@ -199,8 +202,9 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
             <div className="text-xs font-semibold mb-2">{t('extensionsPanels.promoteToolDialog.inferredCapabilitiesHeading')}</div>
             {inference.capabilities.length === 0 ? (
               <div className="text-xs text-muted-foreground">
-                {t('extensionsPanels.promoteToolDialog.noCapabilitiesDetectedPrefix')}
-                <code className="font-mono ml-1">{t('extensionsPanels.promoteToolDialog.modelReadCode')}</code>.
+                {styleInterpolatedValues(t, 'extensionsPanels.promoteToolDialog.noCapabilitiesDetected', [
+                  ['capability', <code key="capability" className="font-mono">{MODEL_READ_CAPABILITY}</code>],
+                ])}
               </div>
             ) : (
               <ul className="space-y-1">
@@ -254,7 +258,7 @@ async function synthesiseBundle(
   const slug = slugFromName(args.name);
   const id = `com.local.tools.${slug}`;
   const commandId = `${id}.run`;
-  const caps = args.capabilities.length > 0 ? args.capabilities : ['model.read'];
+  const caps = args.capabilities.length > 0 ? args.capabilities : [MODEL_READ_CAPABILITY];
   // Engine range MUST match the running SDK or the loader skips the
   // bundle on install — the tool then never appears as a toolbar
   // button. Pin to ">=<currentSdk>" using the live app version

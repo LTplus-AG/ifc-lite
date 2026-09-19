@@ -660,7 +660,10 @@ describe('GanttToolbar localization (#4918)', () => {
 
   it('formats the playback date and translated speed value with the active locale', () => {
     registerLocale('de', {
-      'schedule.toolbar.speedDaysPerSecond': '{value} Tage/Sek.',
+      'schedule.toolbar.speedDaysPerSecond': {
+        one: '{value} Tag/Sek.',
+        other: '{value} Tage/Sek.',
+      },
     });
     act(() => setLocale('de'));
     const playbackTime = Date.UTC(2026, 8, 19, 12);
@@ -676,6 +679,16 @@ describe('GanttToolbar localization (#4918)', () => {
     }).format(playbackTime);
     assert.ok((container.textContent ?? '').includes(date));
     assert.ok((container.textContent ?? '').includes('0,5 Tage/Sek.'));
+
+    cleanup();
+    useViewerStore.setState({ playbackSpeed: 1 });
+    const singular = render(<GanttToolbar />);
+    assert.ok((singular.textContent ?? '').includes('1 Tag/Sek.'));
+
+    cleanup();
+    useViewerStore.setState({ playbackSpeed: 3 });
+    const plural = render(<GanttToolbar />);
+    assert.ok((plural.textContent ?? '').includes('3 Tage/Sek.'));
   });
 
   afterEach(() => {

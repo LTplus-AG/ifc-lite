@@ -259,7 +259,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
           <SelectContent>
             {SPEED_OPTIONS.map(opt => (
               <SelectItem key={opt.value} value={String(opt.value)}>
-                {t(opt.labelKey, { value: formatLocaleNumber(locale, opt.quantity) })}
+                {t(opt.labelKey, { count: opt.quantity, value: formatLocaleNumber(locale, opt.quantity) })}
               </SelectItem>
             ))}
           </SelectContent>

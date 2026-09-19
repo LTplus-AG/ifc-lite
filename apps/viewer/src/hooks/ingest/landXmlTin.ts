@@ -55,6 +55,8 @@ const UNIT_SCALE_TO_METERS: Readonly<Record<string, number>> = {
   miles: 1609.344,
 };
 
+const LANDXML_12_NAMESPACE = 'http://www.landxml.org/schema/LandXML-1.2';
+
 function elementChildren(parent: XmlElement): XmlElement[] {
   const out: XmlElement[] = [];
   for (const node of Array.from(parent.childNodes)) {
@@ -199,11 +201,10 @@ export function parseLandXmlTin(xml: string): LandXmlTinDocument {
   if (!root || root.localName !== 'LandXML') throw new Error('XML document is not LandXML');
 
   const declaredVersion = root.getAttribute('version')?.trim();
-  const namespaceVersion = /LandXML-([\d.]+)\/?$/.exec(root.namespaceURI ?? '')?.[1];
-  if (root.namespaceURI && namespaceVersion !== '1.2') {
-    throw new Error(`Unsupported LandXML namespace: ${root.namespaceURI}`);
+  if (root.namespaceURI !== LANDXML_12_NAMESPACE) {
+    throw new Error(`Unsupported LandXML namespace: ${root.namespaceURI || 'missing'}`);
   }
-  const version = declaredVersion || namespaceVersion;
+  const version = declaredVersion || '1.2';
   if (version !== '1.2') {
     throw new Error(`Unsupported LandXML version: ${version || 'missing'} (expected 1.2)`);
   }

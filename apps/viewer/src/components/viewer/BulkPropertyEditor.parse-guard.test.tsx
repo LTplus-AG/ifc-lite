@@ -189,6 +189,7 @@ describe('BulkPropertyEditor — Real/Integer parse guard (buildAction / handleE
       'bulkPropertyEditor.invalidValue': '[LIVE {value} / {type}]',
     });
     act(() => setLocale('bulk-error-live'));
+    await advance(0);
     assert.match(document.body.textContent ?? '', /\[LIVE N\/A \/ \[decimal\]\]/);
     assert.doesNotMatch(document.body.textContent ?? '', /is not a valid Real value/);
   });

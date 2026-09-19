@@ -4,6 +4,7 @@
 
 import type { FilterOperator } from '@ifc-lite/mutations';
 import type { TranslationKey } from '@/i18n';
+import { selectPluralCategory } from '@/i18n/registry';
 
 /** Common IFC product types offered by the editor; patterns match canonical type names. */
 export const IFC_TYPE_MAP: Record<string, { labelKey: TranslationKey; pattern: string }> = {
@@ -47,9 +48,19 @@ export const IFC_ATTRIBUTE_LABELS = {
   objectType: 'ObjectType',
 } as const;
 
-export function appliedResultKey(mutations: number, entities: number): TranslationKey {
-  if (mutations === 1) {
-    return entities === 1 ? 'bulkPropertyEditor.appliedOneOne' : 'bulkPropertyEditor.appliedOneOther';
-  }
-  return entities === 1 ? 'bulkPropertyEditor.appliedOtherOne' : 'bulkPropertyEditor.appliedOtherOther';
+const PLURAL_SUFFIX = {
+  zero: 'Zero',
+  one: 'One',
+  two: 'Two',
+  few: 'Few',
+  many: 'Many',
+  other: 'Other',
+} as const;
+
+type AppliedResultKey = Extract<TranslationKey, `bulkPropertyEditor.applied${string}`>;
+
+export function appliedResultKey(locale: string, mutations: number, entities: number): AppliedResultKey {
+  const mutationCategory = PLURAL_SUFFIX[selectPluralCategory(locale, mutations)];
+  const entityCategory = PLURAL_SUFFIX[selectPluralCategory(locale, entities)];
+  return `bulkPropertyEditor.applied${mutationCategory}${entityCategory}` as AppliedResultKey;
 }

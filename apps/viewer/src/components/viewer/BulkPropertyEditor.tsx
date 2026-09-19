@@ -265,7 +265,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     return () => {
       if (initTimerRef.current) clearTimeout(initTimerRef.current);
     };
-  }, [open, selectedModel, t]);
+  }, [open, selectedModel, t, locale]);
 
   // Ensure mutation view exists for selected model — only when dialog is open
   useEffect(() => {

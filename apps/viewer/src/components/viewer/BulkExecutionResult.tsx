@@ -25,7 +25,7 @@ export function BulkExecutionResult({
 }) {
   const { t, locale } = useTranslation();
   const description = result.success
-    ? t(appliedResultKey(result.mutations.length, result.affectedEntityCount), {
+    ? t(appliedResultKey(locale, result.mutations.length, result.affectedEntityCount), {
         mutations: formatLocaleNumber(locale, result.mutations.length),
         entities: formatLocaleNumber(locale, result.affectedEntityCount),
       })

@@ -27,6 +27,7 @@ describe('manual clash group focus (#4921)', () => {
       cameraCallbacks: {}, lensAppliedColors: new Map(), models: new Map(),
       hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
       hiddenEntitiesByModel: new Map(), isolatedEntitiesByModel: new Map(), mutationVersion: 0,
+      colorPresentationRevision: 0,
     });
   });
 
@@ -207,6 +208,12 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().clearPendingColorUpdates();
     assert.equal(focusedSceneRevisionIsCurrent(beforePaintFlush), true,
       'flushing the one-shot GPU paint signal is part of a normal capture frame');
+
+    const beforeRecolor = focusClashGroup([clash('recolor', 10, 20)], resolve, mock.fn(), 'highlight');
+    assert.ok(beforeRecolor);
+    useViewerStore.getState().setPendingColorUpdates(new Map([[99, CLASH_COLOR_A]]));
+    assert.equal(focusedSceneRevisionIsCurrent(beforeRecolor), false,
+      'a new renderer color delivery is a competing presentation even after its queue later flushes');
   });
 
   it('exposes completion of the actual camera framing animation', async () => {

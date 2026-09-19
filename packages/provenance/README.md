@@ -5,7 +5,7 @@
 A certificate library for proof-carrying model changes, built against the
 frozen [node-hash-v0 specification](./SPEC.md).
 
-## Status: 0.1.x, format FROZEN (node-hash-v0 / 1.0.0, 2026-07-25)
+## Status: 0.2.x, format FROZEN (node-hash-v0 / 1.0.0, 2026-07-25)
 
 - The **node-hash-v0 wire format is FROZEN** as of 2026-07-25 (spec version
   `node-hash-v0` / 1.0.0, [`SPEC.md`](./SPEC.md)). **The freeze

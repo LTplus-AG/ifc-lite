@@ -65,6 +65,11 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_REVIEW_MODELS: ${{ vars.OPENROUTER_REVIEW_MODELS }}
+          # THE ENSEMBLE, so the canary exercises the SAME path production takes:
+          # run-reviewer.mjs tries the parallel cheap ensemble before the CLI
+          # whenever these are set, exactly as claude-review.yml's real steps do.
+          REVIEW_ENSEMBLE_MODELS: ${{ vars.REVIEW_ENSEMBLE_MODELS }}
+          REVIEW_ENSEMBLE_STRONG_ON_RISK: ${{ vars.REVIEW_ENSEMBLE_STRONG_ON_RISK }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e

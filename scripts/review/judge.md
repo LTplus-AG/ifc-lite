@@ -10,6 +10,19 @@ question the machinery cannot answer:
 
 **Would the author act on this, or spend five seconds dismissing it?**
 
+These findings may come from SEVERAL independent reviewers asked the same
+question in parallel, not always one. A record carrying a `source reviewer`
+line was pooled from a cheap parallel ensemble; a record with none was
+produced by a single reviewer, exactly as before. Two findings from different
+reviewers about the SAME line are not automatically two defects: if they
+describe the same underlying problem, keep only the ONE with the strongest
+evidence (the more specific `quoted from the diff`, the more concrete `says`,
+or a verified sibling over none) and drop the other as a duplicate, in its own
+verdict record with `why` naming which finding it duplicates. Two findings
+that happen to share a line but describe genuinely DIFFERENT problems are not
+duplicates; keep both. When in doubt whether two records describe the same
+defect, keep both rather than guess a merge that erases a real one.
+
 Keep a finding when it names a concrete failing input or a concrete bad
 outcome, and the quoted evidence supports it. Drop it when it is a general
 concern, a restatement of what the code does, a style preference, a claim that

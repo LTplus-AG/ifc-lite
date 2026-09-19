@@ -307,6 +307,13 @@ export function validate({ response, input, onWarn = null }) {
           },
         }
       : {}),
+    // CARRIED THROUGH, OPTIONALLY. `source` is not part of the model-facing
+    // schema -- no prompt ever asks for it -- it is stamped by
+    // ensemble-reviewer.mjs onto a finding it pooled from one of several
+    // parallel reviewers, so run-judge.mjs's prompt can tell the judge these
+    // findings may overlap across models. A single-reviewer run never sets it,
+    // and `undefined` is dropped by the spread rather than written as a key.
+    ...(isNonEmptyString(f.source) ? { source: sanitizeLabel(f.source) } : {}),
   }));
 
   // A finding whose body sanitises to nothing is DROPPED here rather than

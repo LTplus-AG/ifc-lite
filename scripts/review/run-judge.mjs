@@ -52,6 +52,11 @@ export function buildJudgePrompt(judgeRubric, findings) {
           ? `verified sibling: ${JSON.stringify(String(f.sibling.path))}:${f.sibling.line} ${JSON.stringify(String(f.sibling.quote ?? ''))}`
           : 'verified sibling: none',
         `class: ${JSON.stringify(String(f.class ?? 'unknown'))}`,
+        // ONLY PRESENT ON A POOLED ENSEMBLE RUN (ensemble-reviewer.mjs stamps
+        // it; a single-reviewer run never sets it). Told to the judge so it can
+        // recognise two findings from different models about the SAME line as
+        // duplicates to merge, rather than two independent defects.
+        ...(f.source ? [`source reviewer: ${JSON.stringify(String(f.source))}`] : []),
         // JSON.stringify'd like every other field. It was the ONE raw
         // interpolation, and the record delimiter above is a fixed, guessable
         // constant -- so a body containing a newline and `--- FINDING 0` wrote a

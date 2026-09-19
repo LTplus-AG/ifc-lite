@@ -303,6 +303,11 @@ jobs:
           # treats as absent.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_REVIEW_MODELS: ${{ vars.OPENROUTER_REVIEW_MODELS }}
+          # THE PARALLEL CHEAP ENSEMBLE. Unset (the default until this variable
+          # is deliberately set) means run-reviewer.mjs's ensemble step is a
+          # no-op and this step behaves exactly as it did before it existed.
+          REVIEW_ENSEMBLE_MODELS: ${{ vars.REVIEW_ENSEMBLE_MODELS }}
+          REVIEW_ENSEMBLE_STRONG_ON_RISK: ${{ vars.REVIEW_ENSEMBLE_STRONG_ON_RISK }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
@@ -382,9 +387,11 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           # The retry below re-invokes run-reviewer.mjs, so it needs the same
-          # provider chain as the first attempt.
+          # provider chain -- ensemble included -- as the first attempt.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_REVIEW_MODELS: ${{ vars.OPENROUTER_REVIEW_MODELS }}
+          REVIEW_ENSEMBLE_MODELS: ${{ vars.REVIEW_ENSEMBLE_MODELS }}
+          REVIEW_ENSEMBLE_STRONG_ON_RISK: ${{ vars.REVIEW_ENSEMBLE_STRONG_ON_RISK }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e

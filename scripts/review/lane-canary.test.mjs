@@ -171,6 +171,23 @@ test('#3808: the live canary passes every review fallback credential', () => {
   assert.match(step, /OPENROUTER_REVIEW_MODELS:\s*\$\{\{\s*vars\.OPENROUTER_REVIEW_MODELS\s*\}\}/);
 });
 
+test('the live canary passes the ensemble variables too, so it exercises that path when configured', () => {
+  const workflow = readFileSync(join(HERE, '..', '..', '.github/workflows/review-lane-canary.yml'), 'utf8');
+  const step = workflow.split('- name: Ask the reviewer for a known answer')[1]?.split('- name: Raise or update')[0] ?? '';
+  assert.match(step, /REVIEW_ENSEMBLE_MODELS:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_MODELS\s*\}\}/);
+  assert.match(step, /REVIEW_ENSEMBLE_STRONG_ON_RISK:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_STRONG_ON_RISK\s*\}\}/);
+});
+
+test('the reviewer and retry steps in the real workflow both pass the ensemble variables', () => {
+  const workflow = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const reviewerStep = workflow.split('- name: Run the reviewer')[1]?.split('- name: Validate the findings')[0] ?? '';
+  const validateStep = workflow.split('- name: Validate the findings')[1]?.split('- name: Judge the findings')[0] ?? '';
+  for (const step of [reviewerStep, validateStep]) {
+    assert.match(step, /REVIEW_ENSEMBLE_MODELS:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_MODELS\s*\}\}/);
+    assert.match(step, /REVIEW_ENSEMBLE_STRONG_ON_RISK:\s*\$\{\{\s*vars\.REVIEW_ENSEMBLE_STRONG_ON_RISK\s*\}\}/);
+  }
+});
+
 test('THE FIXTURE PASSES THE VALIDATOR THE LANE ACTUALLY RUNS, and it can still refuse', () => {
   // The canary's third failure was a fixture the pipeline refused before the
   // reviewer's verdict could be judged: `headSha` was `canary000...ca`, which

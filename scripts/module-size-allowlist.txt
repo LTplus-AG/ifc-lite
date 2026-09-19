@@ -369,7 +369,7 @@
   1165 scripts/lib/vitest-timeout-audit.mjs
    691 scripts/review/build-context-pack.mjs
    677 scripts/review/build-review-input.mjs
-   626 scripts/review/run-reviewer.mjs
+   559 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
   2165 scripts/test-wasm-contract.mjs

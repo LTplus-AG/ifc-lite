@@ -81,6 +81,7 @@ import { resolveProviderFallbacks, describeProviderFallbacks } from './provider-
 import { applicableClassesFromRaw, renderApplicableForPrompt } from './lib/class-applicability.mjs';
 import { RunReviewerError } from './lib/run-reviewer-error.mjs';
 import { checkToken, resolveTokens } from './lib/credentials.mjs';
+import { maybeRunEnsemble } from './ensemble-reviewer.mjs';
 
 export { RunReviewerError, checkToken, resolveTokens };
 
@@ -504,6 +505,12 @@ async function main() {
   const rubric = readFileSync(args.rubric, 'utf8');
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
   const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null, retryReason: args.retryReason ?? 'PROOF_OF_WORK_FAILED' }); // default: #3652 wording for an older caller with no --retry-reason
+
+  // THE PARALLEL CHEAP ENSEMBLE RUNS FIRST, before the Claude CLI -- see
+  // ensemble-reviewer.mjs, which owns the design and this feature's module-size
+  // budget. Unset/empty `REVIEW_ENSEMBLE_MODELS` is the unchanged path: `false`
+  // means every line below behaves exactly as it did before this existed.
+  if (await maybeRunEnsemble({ env: process.env, input, prompt, outPath: args.out })) return;
 
   const tokens = resolveTokens(process.env);
   if (tokens.length === 0) {

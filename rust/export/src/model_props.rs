@@ -102,7 +102,10 @@ pub(super) fn render_attributes(
                 .or_else(|| {
                     schema
                         .eq_ignore_ascii_case("IFC4X1")
-                        .then(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
+                        .then(|| {
+                            ifc_lite_core::attribute_names_for_schema("IFC4", raw_type_name)
+                                .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
+                        })
                         .flatten()
                 })
         })

@@ -937,6 +937,25 @@ fn attribute_export_preserves_transitional_ifc4_metadata() {
     assert_eq!(attributes[0].value, "alignment-tag");
 }
 
+/// #4203: IFC4.1 retained ordinary IFC4 entities in addition to its
+/// transitional-only classes, so those common entities keep their IFC4 slots.
+#[test]
+fn attribute_export_uses_ifc4_layout_for_common_ifc4x1_entities() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X1'));
+ENDSEC;
+DATA;
+#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,'wall-tag',.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(ifc, &ModelOptions::default().with_attributes(true));
+    let names: Vec<_> = rows[0].attributes.iter().map(|value| value.name.as_str()).collect();
+
+    assert_eq!(names, vec!["Tag", "PredefinedType"]);
+}
+
 /// #4203: transitional IFC4.1 metadata must not become a fallback schema for
 /// future or otherwise unsupported declarations.
 #[test]

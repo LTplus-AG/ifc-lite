@@ -301,6 +301,11 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.ok(dimensionSelect, 'expected the filter-dimension select');
     selectValue(dimensionSelect, 'zone');
 
+    const modeSelect = container.querySelector('select[aria-label="Zone display mode"]') as HTMLSelectElement;
+    const modeLabels = [...modeSelect.options].map((option) => option.textContent);
+    assert.ok(modeLabels.includes('Volume (mesh)'), 'the localized label must preserve the mesh basis');
+    assert.ok(modeLabels.includes('Volume breakdown (mesh)'), 'the localized label must preserve volume and mesh semantics');
+
     const zoneEnglish = readableStrings(container);
     registerLocale('list-builder-zone-row-pseudo', PSEUDO);
     act(() => setLocale('list-builder-zone-row-pseudo'));

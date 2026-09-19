@@ -223,7 +223,7 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
 
     act(() => setLocale('en'));
     typeInto(container.querySelector('input[placeholder="Filter results..."]') as HTMLInputElement, 'Wall A');
-    assert.equal(rowCountSpan!.textContent, '1 / 2 rows');
+    assert.equal(rowCountSpan!.textContent, '1 / 2 row');
   });
 
   it('translates the schedule (pivot) table once toggled from nested view', () => {

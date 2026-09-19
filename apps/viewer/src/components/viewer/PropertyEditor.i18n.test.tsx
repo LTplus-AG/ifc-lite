@@ -100,5 +100,14 @@ describe('Property editor localization (#4918)', () => {
     assert.match(text, /⟦Add Property⟧/);
     assert.match(text, /⟦Add a property to this IfcWall element\.⟧/);
     assert.match(text, /⟦Property Set⟧/);
+
+    const propertySetSelect = document.body.querySelector('[role="combobox"]');
+    assert.ok(propertySetSelect);
+    click(propertySetSelect);
+    assert.match(
+      document.body.textContent ?? '',
+      /⟦IFC standard property set: Pset_WallCommon⟧/,
+      'imported English suggestion prose must not leak into a contributed locale',
+    );
   });
 });

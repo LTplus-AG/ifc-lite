@@ -35,6 +35,7 @@ export const propertyEditorEn = {
   'propertyEditor.valueType.integerShort': 'Int',
   'propertyEditor.valueType.boolean': 'Boolean',
   'propertyEditor.valueType.booleanShort': 'Bool',
+  'propertyEditor.valueType.logical': 'Logical',
   'propertyEditor.shared.cancel': 'Cancel',
   'propertyEditor.shared.existing': 'existing',
   'propertyEditor.shared.new': 'new',
@@ -62,6 +63,8 @@ export const propertyEditorEn = {
   'propertyEditor.property.examplePlaceholder': 'e.g., FireRating',
   'propertyEditor.property.valuePlaceholder': 'Property value',
   'propertyEditor.property.invalid': '"{value}" is not a valid {type} value — property not added.',
+  'propertyEditor.property.standardSetDescription': 'IFC standard property set: {name}',
+  'propertyEditor.property.standardPropertyDescription': 'IFC standard property: {name}',
 
   'propertyEditor.classification.trigger': 'Add classification',
   'propertyEditor.classification.title': 'Add Classification',
@@ -75,6 +78,7 @@ export const propertyEditorEn = {
   'propertyEditor.classification.codeHelp': 'The classification code or reference number',
   'propertyEditor.classification.name': 'Name (optional)',
   'propertyEditor.classification.namePlaceholder': 'e.g., Cast-in-place concrete walls',
+  'propertyEditor.classification.standardSystemDescription': '{name} classification system',
 
   'propertyEditor.material.trigger': 'Add material',
   'propertyEditor.material.title': 'Add Material',
@@ -115,6 +119,8 @@ export const propertyEditorEn = {
   'propertyEditor.quantity.examplePlaceholder': 'e.g., Length',
   'propertyEditor.quantity.numericPlaceholder': 'Numeric value',
   'propertyEditor.quantity.invalid': '"{value}" is not a valid number — quantity not added.',
+  'propertyEditor.quantity.standardSetDescription': 'IFC standard quantity set: {name}',
+  'propertyEditor.quantity.standardQuantityDescription': 'IFC standard quantity: {name}',
 
   'propertyEditor.reassign.trigger': 'Reassign IFC class',
   'propertyEditor.reassign.action': 'Reassign',

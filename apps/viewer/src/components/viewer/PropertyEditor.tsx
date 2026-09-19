@@ -73,7 +73,7 @@ import {
   type QtoQuantityDef,
   type QtoDefinition,
 } from '@/lib/ifc4-qto-definitions';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { INLINE_VALUE_TYPES, MATERIAL_CATEGORIES } from './property-editor-options';
 
 // ── Edit-deck button styling ────────────────────────────────────────────────
@@ -144,7 +144,7 @@ export function PropertyEditor({
   const commitSave = useCallback(() => {
     const parsedValue = parseValue(value, valueType);
     if (parsedValue === PARSE_INVALID) {
-      return toast.error(t('propertyEditor.inline.invalid', { value, type: getTypeName(valueType) }));
+      return toast.error(t('propertyEditor.inline.invalid', { value, type: t(getTypeNameKey(valueType)) }));
     }
     // Normalize model ID for legacy models
     let normalizedModelId = modelId;
@@ -459,7 +459,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
 
     const parsedValue = parseValue(value, valueType);
     if (parsedValue === PARSE_INVALID) {
-      return toast.error(t('propertyEditor.property.invalid', { value, type: getTypeName(valueType) }));
+      return toast.error(t('propertyEditor.property.invalid', { value, type: t(getTypeNameKey(valueType)) }));
     }
     let normalizedModelId = modelId;
     if (modelId === 'legacy') {
@@ -594,7 +594,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                               <span className="font-medium">{def.name}</span>
                               <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{def.description}</span>
+                            <span className="text-[10px] text-zinc-400">{t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -620,9 +620,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{prop.name}</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{getTypeName(prop.type)}</Badge>
+                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t(getTypeNameKey(prop.type))}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{prop.description}</span>
+                          <span className="text-[10px] text-zinc-400">{t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -788,7 +788,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
                   <SelectItem key={cs.name} value={cs.name}>
                     <div className="flex flex-col">
                       <span className="font-medium">{cs.name}</span>
-                      <span className="text-[10px] text-zinc-400">{cs.description}</span>
+                      <span className="text-[10px] text-zinc-400">{t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -1167,7 +1167,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                               <span className="font-medium">{def.name}</span>
                               <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{def.description}</span>
+                            <span className="text-[10px] text-zinc-400">{t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -1195,7 +1195,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                             <span className="font-medium">{qty.name}</span>
                             <Badge variant="secondary" className="h-4 px-1 text-[9px]">{qty.unit}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{qty.description}</span>
+                          <span className="text-[10px] text-zinc-400">{t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -1692,16 +1692,15 @@ function detectValueType(value: unknown, fallback: PropertyValueType): PropertyV
   return fallback;
 }
 
-function getTypeName(type: PropertyValueType): string {
+function getTypeNameKey(type: PropertyValueType): TranslationKey {
   switch (type) {
-    case PropertyValueType.String: return 'String';
-    case PropertyValueType.Label: return 'Label';
-    case PropertyValueType.Identifier: return 'Identifier';
-    case PropertyValueType.Real: return 'Real';
-    case PropertyValueType.Integer: return 'Integer';
-    case PropertyValueType.Boolean: return 'Boolean';
-    case PropertyValueType.Logical: return 'Logical';
-    default: return 'String';
+    case PropertyValueType.Label: return 'propertyEditor.valueType.label';
+    case PropertyValueType.Identifier: return 'propertyEditor.valueType.identifier';
+    case PropertyValueType.Real: return 'propertyEditor.valueType.real';
+    case PropertyValueType.Integer: return 'propertyEditor.valueType.integer';
+    case PropertyValueType.Boolean: return 'propertyEditor.valueType.boolean';
+    case PropertyValueType.Logical: return 'propertyEditor.valueType.logical';
+    default: return 'propertyEditor.valueType.string';
   }
 }
 

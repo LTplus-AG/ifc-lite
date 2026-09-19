@@ -256,6 +256,25 @@ describe('nestCostItemsInStore', () => {
       .toThrow(/cannot also be one of childIds/);
   });
 
+  it('refuses nesting an existing ancestor below its descendant (#4857 review)', async () => {
+    const { editor: ed } = await editor();
+    const ancestor = addCostItemToStore(ed, ANCHOR, { Name: 'Ancestor' });
+    const descendant = addCostItemToStore(ed, ANCHOR, { Name: 'Descendant' });
+    const existing: ExistingRelatedList = {
+      relId: 900,
+      relatingId: ancestor,
+      relatedIds: [descendant],
+    };
+
+    expect(() => nestCostItemsInStore(
+      ed,
+      ANCHOR,
+      descendant,
+      [ancestor],
+      new Map([[descendant, [existing]]]),
+    )).toThrow(/would create a cycle/);
+  });
+
   it('refuses a parentId or childId that is not an IfcCostItem', async () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });

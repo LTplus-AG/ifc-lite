@@ -208,6 +208,8 @@ export function addCostQuantityToStore(editor: StoreEditor, anchor: CostAnchor, 
  *  never need to scan the store themselves — see the module header. */
 export interface ExistingRelatedList {
   relId: number;
+  /** The relationship's RelatingObject, when the caller is supplying a nesting graph. */
+  relatingId?: number;
   /** The relationship's current RelatedObjects (or Components), in file order. */
   relatedIds: readonly number[];
   /**
@@ -258,6 +260,29 @@ export function nestCostItemsInStore(
   // list IFC readers count members of.
   const uniqueChildIds = [...new Set(childIds)];
   for (const childId of uniqueChildIds) requireEntityType(editor, childId, 'IfcCostItem', 'childId', 'nestCostItems');
+  // Walk from the proposed parent toward its existing ancestors. If one of
+  // the requested children is already above it, adding parent -> child would
+  // close a cycle. `relatingId` is optional for compatibility with callers
+  // that only supply the relationship's member list; the high-level SDK
+  // supplies it for every existing IfcRelNests row.
+  const requested = new Set(uniqueChildIds);
+  const visitedAncestors = new Set<number>();
+  const ancestors = [parentId];
+  while (ancestors.length > 0) {
+    const current = ancestors.pop()!;
+    if (visitedAncestors.has(current)) continue;
+    visitedAncestors.add(current);
+    for (const membership of existingNestByChild.get(current) ?? []) {
+      if (membership.relatingId === undefined) continue;
+      if (requested.has(membership.relatingId)) {
+        throw new Error(
+          `nestCostItems: parentId #${parentId} is already a descendant of childId #${membership.relatingId} `
+          + 'in the existing nesting hierarchy — nesting it here would create a cycle.',
+        );
+      }
+      ancestors.push(membership.relatingId);
+    }
+  }
   // Detach every child of THIS call from every old rel it is a member of, one
   // rewrite per (rel, not per (rel, child)): two children reparented out of
   // the same old IfcRelNests in one call must both leave it, and re-filtering

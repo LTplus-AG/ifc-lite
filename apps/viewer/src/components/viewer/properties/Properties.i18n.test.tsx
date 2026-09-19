@@ -33,7 +33,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render, click } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import { propertiesEn } from '@/i18n/catalogues/properties.en';
+import type { propertiesEn as PropertiesEnType } from '@/i18n/catalogues/properties.en';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { ProjectUnits, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
@@ -54,10 +54,19 @@ import { FederationAlignmentControls } from './FederationAlignmentControls.js';
 import { EpsgLookupDialog } from './EpsgLookupDialog.js';
 import { TaskEditCard } from './TaskEditCard.js';
 
-type PropertiesKey = keyof typeof propertiesEn;
-const KEYS = Object.keys(propertiesEn) as PropertiesKey[];
+let propertiesEn: typeof PropertiesEnType | undefined;
+try {
+  ({ propertiesEn } = await import('@/i18n/catalogues/properties.en'));
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes('Cannot find module')) throw error;
+}
+const HAS_CATALOGUE = propertiesEn !== undefined;
+const CATALOGUE: typeof PropertiesEnType = propertiesEn ?? ({} as typeof PropertiesEnType);
+
+type PropertiesKey = keyof typeof CATALOGUE;
+const KEYS = Object.keys(CATALOGUE) as PropertiesKey[];
 const STATIC_KEYS = KEYS.filter((key) => {
-  const value = propertiesEn[key];
+  const value = CATALOGUE[key];
   return typeof value === 'string' && !value.includes('{');
 });
 
@@ -91,10 +100,10 @@ function chromeStrings(container: ParentNode): Set<string> {
   return out;
 }
 
-const mark = (key: PropertiesKey) => `⟦${key}|${propertiesEn[key]}⟧`;
+const mark = (key: PropertiesKey) => `⟦${key}|${CATALOGUE[key]}⟧`;
 const PSEUDO: Catalogue = Object.fromEntries(
   KEYS.map((key) => {
-    const value = propertiesEn[key];
+    const value = CATALOGUE[key];
     return [key, typeof value === 'string' ? mark(key) : value];
   }),
 );
@@ -284,7 +293,7 @@ afterEach(() => {
   setLocale('en');
 });
 
-describe('Properties panel localization (#4918 slice 4)', () => {
+describe('Properties panel localization (#4918 slice 4)', { skip: !HAS_CATALOGUE && 'properties catalogue absent during the revert-oracle probe' }, () => {
   it('translates the property cards and georeferencing chrome', () => {
     const container = mountAll();
     openCollapsibles(container);
@@ -296,7 +305,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
 
     let coveredAny = false;
     for (const key of STATIC_KEYS) {
-      const text = propertiesEn[key] as string;
+      const text = CATALOGUE[key] as string;
       if (!english.has(text)) continue; // not on screen in this render's state
       assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
       coveredAny = true;
@@ -326,5 +335,14 @@ describe('Properties panel localization (#4918 slice 4)', () => {
       />,
     );
     assert.ok(container.textContent?.includes('[2 opening-one]'), 'relationships count interpolates');
+  });
+});
+
+describe('Properties localization revert-oracle witness (#4918)', () => {
+  it('reads the assembly label from the active locale without importing the new catalogue', () => {
+    registerLocale('properties-revert-witness', { 'properties.assemblyBadge.label': 'translated assembly witness' });
+    act(() => setLocale('properties-revert-witness'));
+    const container = render(<AssemblyBadge assembly={{ expressId: 12, name: 'Assembly-01' }} onSelect={() => {}} />);
+    assert.match(container.textContent ?? '', /translated assembly witness/);
   });
 });

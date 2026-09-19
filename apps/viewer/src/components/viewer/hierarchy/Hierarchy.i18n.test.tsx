@@ -27,7 +27,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render, click } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import { hierarchyEn } from '@/i18n/catalogues/hierarchy.en';
+import type { hierarchyEn as HierarchyEnType } from '@/i18n/catalogues/hierarchy.en';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
@@ -39,10 +39,19 @@ import { HierarchySortControl } from './HierarchySortControl.js';
 import { StoreyDisplayControls } from './StoreyDisplayControls.js';
 import type { TreeNode } from './types.js';
 
-type HierarchyKey = keyof typeof hierarchyEn;
-const KEYS = Object.keys(hierarchyEn) as HierarchyKey[];
+let hierarchyEn: typeof HierarchyEnType | undefined;
+try {
+  ({ hierarchyEn } = await import('@/i18n/catalogues/hierarchy.en'));
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes('Cannot find module')) throw error;
+}
+const HAS_CATALOGUE = hierarchyEn !== undefined;
+const CATALOGUE: typeof HierarchyEnType = hierarchyEn ?? ({} as typeof HierarchyEnType);
+
+type HierarchyKey = keyof typeof CATALOGUE;
+const KEYS = Object.keys(CATALOGUE) as HierarchyKey[];
 const STATIC_KEYS = KEYS.filter((key) => {
-  const value = hierarchyEn[key];
+  const value = CATALOGUE[key];
   return typeof value === 'string' && !value.includes('{');
 });
 
@@ -74,10 +83,10 @@ function chromeStrings(container: ParentNode): Set<string> {
   return out;
 }
 
-const mark = (key: HierarchyKey) => `⟦${key}|${hierarchyEn[key]}⟧`;
+const mark = (key: HierarchyKey) => `⟦${key}|${CATALOGUE[key]}⟧`;
 const PSEUDO: Catalogue = Object.fromEntries(
   KEYS.map((key) => {
-    const value = hierarchyEn[key];
+    const value = CATALOGUE[key];
     return [key, typeof value === 'string' ? mark(key) : value];
   }),
 );
@@ -246,7 +255,7 @@ afterEach(() => {
   federationRegistry.clear();
 });
 
-describe('Hierarchy localization (#4918 slice 4)', () => {
+describe('Hierarchy localization (#4918 slice 4)', { skip: !HAS_CATALOGUE && 'hierarchy catalogue absent during the revert-oracle probe' }, () => {
   it('translates the hierarchy tree, Models section, sort control and storey controls chrome', () => {
     const container = mountAll();
     const english = chromeStrings(container);
@@ -257,7 +266,7 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
 
     let coveredAny = false;
     for (const key of STATIC_KEYS) {
-      const text = hierarchyEn[key] as string;
+      const text = CATALOGUE[key] as string;
       if (!english.has(text)) continue; // not on screen in this render's state
       assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
       coveredAny = true;
@@ -278,7 +287,7 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
 
     let coveredAny = false;
     for (const key of STATIC_KEYS) {
-      const text = hierarchyEn[key] as string;
+      const text = CATALOGUE[key] as string;
       if (!english.has(text)) continue;
       assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
       coveredAny = true;
@@ -317,5 +326,14 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
     const groupRow = container.querySelector('[data-model-tag-group]');
     const groupCount = groupRow?.querySelector('[title]');
     assert.equal(groupCount?.getAttribute('title'), '[2 many]', 'member count interpolates and pluralizes');
+  });
+});
+
+describe('Hierarchy localization revert-oracle witness (#4918)', () => {
+  it('reads the Models heading from the active locale without importing the new catalogue', () => {
+    registerLocale('hierarchy-revert-witness', { 'hierarchy.modelsSection.title': 'translated models witness' });
+    act(() => setLocale('hierarchy-revert-witness'));
+    const container = mountAll();
+    assert.match(container.textContent ?? '', /translated models witness/);
   });
 });

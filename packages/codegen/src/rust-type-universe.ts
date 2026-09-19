@@ -9,9 +9,9 @@ import type { EntityDefinition, ExpressSchema } from './express-parser.js';
  * Adapt the class-shaped rows in the IFC data catalog for Rust name generation.
  *
  * The IFC4 catalog also carries defined types, enums, and selects because IDS
- * audits need their names. Subtracting the data package's authoritative type
- * list keeps `IfcType` an entity enum while retaining IFC4X1 entities absent
- * from the bundled IFC4 ADD2 EXPRESS file.
+ * audits need their names. Requiring entity shape and subtracting the data
+ * package's authoritative type list keeps `IfcType` an entity enum while
+ * retaining IFC4X1 entities absent from the bundled IFC4 ADD2 EXPRESS file.
  */
 export function entityCatalogSchema(
   name: string,
@@ -20,7 +20,11 @@ export function entityCatalogSchema(
 ): ExpressSchema {
   const excludedNames = new Set(excludedTypes.map((type) => type.name.toUpperCase()));
   const entities: EntityDefinition[] = catalog
-    .filter((entity) => !excludedNames.has(entity.name.toUpperCase()))
+    .filter(
+      (entity) =>
+        !excludedNames.has(entity.name.toUpperCase()) &&
+        (entity.parent !== undefined || entity.abstract || entity.attributes.length > 0),
+    )
     .map((entity) => ({
       name: entity.name,
       isAbstract: entity.abstract,

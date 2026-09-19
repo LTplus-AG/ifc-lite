@@ -18,7 +18,6 @@
  * Extracted from `collabSlice.startCollab` as a dependency-injected factory
  * that can be driven against a real document without a websocket.
  */
-
 import type { BlobStore, CollabSession, LocalPlacement, ModelSlot, ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -36,17 +35,16 @@ import { pathInRoomSlot, roomModelIdFor, roomModelNameFor } from './model-slot-r
 import type { ParsedRoomStepSource } from './room-step-source';
 import { attachRoomStepSource } from './room-step-attach';
 import { cleanupRoomModels } from './room-reconstruct-cleanup';
+import { hydrateStructuredEntityAttributes } from './room-structured-attributes';
 /** The slice of the collab runtime the reconstruct needs (injected). */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'),
   'snapshotToIfcx' | 'listModelSlots' | 'getEntity' | 'entityToJSON'>;
-
 /** The store actions and reads the reconstruct goes through (a narrow view of `ViewerState`). */
 export type RoomReconstructState = Pick<
   ViewerState,
   'collabRoomId' | 'models' | 'upsertModel' | 'updateModel' | 'removeModel' | 'registerModelOffset'
 > &
   Parameters<typeof applyRoomModelData>[0];
-
 export interface RoomReconstructDeps {
   roomId: string;
   session: CollabSession;
@@ -69,7 +67,6 @@ export interface RoomReconstructDeps {
   /** The slice's live reconciler — moves one entity's mesh to `placement`. */
   reconcile: (modelId: string, store: IfcDataStore, entityId: number, placement: LocalPlacement) => void;
 }
-
 export interface RoomReconstructor {
   /** Re-derive every slot from the doc (no-op while a run is in flight). */
   reconstruct(): Promise<void>;
@@ -78,12 +75,10 @@ export interface RoomReconstructor {
   /** Stop listening and drop every model this reconstructor registered. */
   teardown(): void;
 }
-
 interface SlotState {
   modelId: string;
   created: boolean;
 }
-
 const LIVE_DEBOUNCE_MS = 800;
 
 export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstructor {
@@ -185,6 +180,11 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     // slot-qualified. Without this, recipient edits don't sync.
     if (payload.idToPath && payload.pathToId) {
       registerEntityMaps(payload.dataStore, payload.idToPath, payload.pathToId);
+      const diagnostics = hydrateStructuredEntityAttributes(payload.dataStore, payload.pathToId, path => {
+        const entity = collab.getEntity(session.doc, path);
+        return entity ? collab.entityToJSON(entity) : undefined;
+      });
+      for (const diagnostic of diagnostics) deps.notify(`Room attribute ${diagnostic}`);
     }
     registerStoreSlot(payload.dataStore, slot);
 

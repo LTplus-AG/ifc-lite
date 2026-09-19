@@ -91,6 +91,11 @@ export function ensureSourceRoomEntities(
   editor: StoreEditor,
   roots: Iterable<number>,
   dataStore: IfcDataStore,
+  pendingOverride?: {
+    expressId: number;
+    index: number;
+    value: Parameters<StoreEditor['setPositionalAttribute']>[2];
+  },
 ): boolean {
   const pending = Array.from(roots);
   const visited = new Set<number>();
@@ -115,6 +120,7 @@ export function ensureSourceRoomEntities(
     for (const [index, value] of mutationView?.getPositionalMutationsForEntity(expressId) ?? []) {
       values[index] = value;
     }
+    if (pendingOverride?.expressId === expressId) values[pendingOverride.index] = pendingOverride.value;
     const base = { expressId, type: entity.type, names, values };
     const roomKey = overlay
       ? roomKeyForOverlay(dataStore, base, claimedPaths)

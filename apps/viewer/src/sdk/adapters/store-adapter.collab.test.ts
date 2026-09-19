@@ -345,6 +345,31 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     }]);
   });
 
+  it('does not materialize a stale pending reference when the triggering edit replaces it', () => {
+    let available = false;
+    const retryStore = Object.create(dataStore) as IfcDataStore;
+    const { adapter, calls } = fixture(true, retryStore, () => available);
+    const referenced = adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Old component', null, 1, null, null, null, null, null, null, null],
+    });
+    const owner = adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Total', null, null, null, null, null, null, null, null, null],
+    });
+    adapter.setPositionalAttribute(owner, 9, [`#${referenced.expressId}`]);
+    const unavailableCallCount = calls.length;
+
+    available = true;
+    adapter.setPositionalAttribute(owner, 9, null);
+
+    const retryCalls = calls.slice(unavailableCallCount);
+    assert.ok(!retryCalls.some(call => call.kind === 'create' && call.args[1] === referenced.expressId));
+    assert.deepEqual(retryCalls.at(-1), {
+      kind: 'attribute', args: [MODEL, owner.expressId, 'bsi::ifc::prop::Components', null],
+    });
+  });
+
   it('suffixes a source materialization path already owned by a live room entity', () => {
     const collisionStore = Object.create(dataStore) as IfcDataStore;
     const { adapter, calls } = fixture(true, collisionStore, () => true);

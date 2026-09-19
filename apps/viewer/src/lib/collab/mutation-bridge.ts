@@ -26,7 +26,7 @@ import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import { entityForPath, pathForEntity } from './entity-paths';
 import { remoteEntityDefinition } from './remote-entity-definition';
 import { attributeNamesForStore } from './schema-attribute-names';
-import { decodeRoomAttributeValue } from './entity-reference-wire';
+import { decodeRoomAttributeValue, encodeRoomAttributeEdit } from './entity-reference-wire';
 
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
@@ -133,7 +133,7 @@ export function mirrorAttribute(
   const path = pathForEntity(store, entityId);
   if (!path || !api.hasEntity(session.doc, path)) return;
   session.transact(() => {
-    api.setAttribute(session.doc, path, attrName, value);
+    api.setAttribute(session.doc, path, attrName, encodeRoomAttributeEdit(store, entityId, attrName, value));
   });
 }
 

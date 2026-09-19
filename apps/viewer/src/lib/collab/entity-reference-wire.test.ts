@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { registerEntityMaps } from './entity-paths.js';
-import { decodeRoomAttributeValue, encodeRoomAttributeValue } from './entity-reference-wire.js';
+import { decodeRoomAttributeValue, encodeRoomAttributeEdit, encodeRoomAttributeValue } from './entity-reference-wire.js';
 
 test('structured room references resolve in the recipient ID space (#5008)', () => {
   const sender = {} as IfcDataStore, recipient = {} as IfcDataStore;
@@ -32,6 +32,20 @@ test('mixed SELECT scalar markers preserve reference-shaped text (#5008)', () =>
   registerEntityMaps(sender, new Map([[4, '/m0/target']]), new Map([['/m0/target', 4]]));
   const scalar = { typed: { type: 'IfcLabel', value: '#4' } };
   assert.deepEqual(encodeRoomAttributeValue(sender, scalar, true), scalar);
+});
+
+test('named outbound edits encode only schema-declared reference slots (#5008)', () => {
+  const sender = {
+    schemaVersion: 'IFC2X3',
+    entities: { getTypeName: (id: number) => id === 1 ? 'IfcApprovalRelationship' : 'IfcWall' },
+    getEntity: (id: number) => ({ expressId: id, type: id === 1 ? 'IfcApprovalRelationship' : 'IfcWall', attributes: [] }),
+  } as unknown as IfcDataStore;
+  registerEntityMaps(sender, new Map([[4, '/m0/target']]), new Map([['/m0/target', 4]]));
+
+  assert.deepEqual(encodeRoomAttributeEdit(sender, 1, 'RelatedApproval', '#4'), {
+    'ifc-lite::entityPath': '/m0/target',
+  });
+  assert.equal(encodeRoomAttributeEdit(sender, 2, 'Name', '#4'), '#4');
 });
 
 test('structured room transforms reject excessive nesting without recursion (#5008)', () => {

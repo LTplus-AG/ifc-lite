@@ -113,7 +113,10 @@ function fakeSession(doc: ReturnType<typeof createCollabDoc>): CollabSession {
 
 /** A store with no STEP index — placement paths come from the injected maps. */
 function fakeStore(idToPath: Map<number, string>): IfcDataStore {
-  const store = {} as IfcDataStore;
+  const store = {
+    schemaVersion: 'IFC4',
+    entities: { getTypeName: () => 'Unknown' },
+  } as unknown as IfcDataStore;
   const pathToId = new Map<string, number>();
   for (const [id, path] of idToPath) pathToId.set(path, id);
   registerEntityMaps(store, idToPath, pathToId);
@@ -266,6 +269,21 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     mirrorAttribute(api, fakeSession(doc), store, 1, 'bsi::ifc::prop::Layers', ['a', 'b', 3]);
 
     assert.deepEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), ['a', 'b', 3]);
+  });
+
+  it('mirrorAttribute writes schema reference slots as recipient-stable room paths (#5008)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/relationship', { ifcClass: 'IfcApprovalRelationship' });
+    createEntity(doc, '/target', { ifcClass: 'IfcApproval' });
+    const store = fakeStore(new Map([[1, '/relationship'], [4, '/target']]));
+    store.schemaVersion = 'IFC2X3';
+    store.entities.getTypeName = id => id === 1 ? 'IfcApprovalRelationship' : 'IfcApproval';
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'bsi::ifc::prop::RelatedApproval', '#4');
+
+    assert.deepEqual(getAttribute(doc, '/relationship', 'bsi::ifc::prop::RelatedApproval'), {
+      'ifc-lite::entityPath': '/target',
+    });
   });
 
   it('mirrorAttribute no-ops when the entity is not in the doc', () => {

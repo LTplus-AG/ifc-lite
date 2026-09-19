@@ -4,6 +4,7 @@
 
 import { isInstantiable, type IfcDataStore } from '@ifc-lite/parser';
 import { entityForPath, pathForEntity } from './entity-paths';
+import { attributeNamesForStore, referenceAttributeSlotsForStore } from './schema-attribute-names';
 
 const PATH_KEY = 'ifc-lite::entityPath';
 const STEP_REFERENCE = /^#([1-9]\d*)$/;
@@ -105,6 +106,27 @@ export function encodeRoomAttributeValue(
     }
   }
   return encoded;
+}
+
+/** Encode a named/positional outbound edit using the entity's schema slot metadata. */
+export function encodeRoomAttributeEdit(
+  store: IfcDataStore,
+  entityId: number,
+  attrName: string,
+  value: unknown,
+): unknown {
+  const plainName = attrName.startsWith('bsi::ifc::prop::')
+    ? attrName.slice('bsi::ifc::prop::'.length)
+    : attrName;
+  const sourceType = store.entities.getTypeName(entityId);
+  const entityType = sourceType && sourceType !== 'Unknown'
+    ? sourceType
+    : store.getEntity?.(entityId)?.type ?? sourceType;
+  const index = attributeNamesForStore(store, entityType).indexOf(plainName);
+  const allowsReferences = index >= 0
+    ? referenceAttributeSlotsForStore(store, entityType)[index] ?? false
+    : false;
+  return encodeRoomAttributeValue(store, value, allowsReferences);
 }
 
 /** Resolve stable room paths into this recipient's local STEP ID space. */

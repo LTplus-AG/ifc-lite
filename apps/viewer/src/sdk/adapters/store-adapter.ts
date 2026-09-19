@@ -186,7 +186,14 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
           value, type ? (referenceAttributeSlotsForStore(dataStore, type)[index] ?? false) : false,
         );
         referenced.add(ref.expressId);
-        roomReferencesReady = ensureSourceRoomEntities(store, ref.modelId, editor, referenced, dataStore);
+        roomReferencesReady = ensureSourceRoomEntities(
+          store, ref.modelId, editor, referenced, dataStore,
+          {
+            expressId: ref.expressId,
+            index,
+            value: value as Parameters<StoreEditor['setPositionalAttribute']>[2],
+          },
+        );
       }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
       if (name && roomReferencesReady) {

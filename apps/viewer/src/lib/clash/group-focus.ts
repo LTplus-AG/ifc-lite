@@ -15,6 +15,8 @@ interface SelectionRef {
 }
 
 export interface FocusedClashGroup {
+  /** Completes after the selected group has reached its final framed camera pose. */
+  frameReady: Promise<void>;
   selectedRefs: SelectionRef[];
   aRefs: SelectionRef[];
   bRefs: SelectionRef[];
@@ -96,7 +98,19 @@ export function focusClashGroup(
   state.setSelectedEntityIds([...globalIds]);
   state.addEntitiesToSelection(refs);
   applyFocusMode([...globalIds], mode);
-  requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+  const frameReady = new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      try {
+        Promise.resolve(useViewerStore.getState().cameraCallbacks.frameSelection?.()).then(() => resolve(), (error) => {
+          console.error('[clash] Could not finish framing the manual clash group:', error);
+          resolve();
+        });
+      } catch (error) {
+        console.error('[clash] Could not frame the manual clash group:', error);
+        resolve();
+      }
+    });
+  });
   // An object on both sides gets one deterministic color, never two.
   for (const key of aRefs.keys()) bRefs.delete(key);
   const a = [...aRefs.values()], b = [...bRefs.values()];
@@ -108,16 +122,23 @@ export function focusClashGroup(
     const globalId = toGlobalIdFromModels(state.models, ref.modelId, ref.expressId);
     if (!clashColors.has(globalId)) clashColors.set(globalId, CLASH_COLOR_B);
   }
+  const renderedARefs = [...a];
+  const renderedBRefs: SelectionRef[] = [];
+  for (const ref of b) {
+    const globalId = toGlobalIdFromModels(state.models, ref.modelId, ref.expressId);
+    (clashColors.get(globalId) === CLASH_COLOR_A ? renderedARefs : renderedBRefs).push(ref);
+  }
   state.setClashHighlightColors(clashColors);
   state.setPendingColorUpdates(clashColors);
   const focusedState = useViewerStore.getState();
   return {
+    frameReady,
     selectedRefs: refs,
     aRefs: a,
     bRefs: b,
     selectedGuids: resolvedGuids(state, refs),
-    aGuids: resolvedGuids(state, a),
-    bGuids: resolvedGuids(state, b),
+    aGuids: resolvedGuids(state, renderedARefs),
+    bGuids: resolvedGuids(state, renderedBRefs),
     modelIds: [...new Set(refs.map(ref => ref.modelId))],
     sceneRevision: {
       modelRevisions: new Map(focusedState.models),

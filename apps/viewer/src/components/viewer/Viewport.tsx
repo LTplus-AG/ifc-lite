@@ -1140,8 +1140,8 @@ export function Viewport({
             }
           }
           if (min && max) {
-            camera.frameBounds(min, max, 300);
             calculateScale();
+            return camera.frameBounds(min, max, 300);
           } else {
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }

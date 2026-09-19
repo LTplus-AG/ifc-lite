@@ -30,9 +30,11 @@ describe('manual clash group focus (#4921)', () => {
     });
   });
 
-  function payload(focused: FocusedClashGroup | null): Omit<FocusedClashGroup, 'sceneRevision'> | null {
+  function payload(
+    focused: FocusedClashGroup | null,
+  ): Omit<FocusedClashGroup, 'sceneRevision' | 'frameReady'> | null {
     if (!focused) return null;
-    const { sceneRevision: _sceneRevision, ...rest } = focused;
+    const { sceneRevision: _sceneRevision, frameReady: _frameReady, ...rest } = focused;
     return rest;
   }
 
@@ -129,6 +131,35 @@ describe('manual clash group focus (#4921)', () => {
     assert.ok(state.selectedEntitiesSet.has('room:r:m0:10'));
   });
 
+  it('serializes the color the renderer can show when model refs share one numeric id', () => {
+    const crossModel = clash('cross-model', 10, 10);
+    crossModel.b.model = 'room:r:m0';
+    useViewerStore.setState({
+      models: new Map([
+        ['model', {
+          idOffset: 0,
+          ifcDataStore: { entities: { getGlobalId: () => 'MODEL-A' } },
+        }],
+        ['room:r:m0', {
+          idOffset: 0,
+          ifcDataStore: { entities: { getGlobalId: () => 'ROOM-B' } },
+        }],
+      ]) as unknown as ViewerState['models'],
+    });
+
+    const focused = focusClashGroup(
+      [crossModel],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    assert.deepEqual(focused.aGuids, ['MODEL-A', 'ROOM-B']);
+    assert.deepEqual(focused.bGuids, [],
+      'the BCF coloring must not claim cyan for a renderer id painted amber');
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([[10, CLASH_COLOR_A]]));
+  });
+
   it('returns viewpoint refs only for objects that resolved in the current models', () => {
     const current = clash('current', 10, 20);
     const stale = clash('stale', 30, 40);
@@ -176,5 +207,28 @@ describe('manual clash group focus (#4921)', () => {
     useViewerStore.getState().clearPendingColorUpdates();
     assert.equal(focusedSceneRevisionIsCurrent(beforePaintFlush), true,
       'flushing the one-shot GPU paint signal is part of a normal capture frame');
+  });
+
+  it('exposes completion of the actual camera framing animation', async () => {
+    let finishFraming!: () => void;
+    useViewerStore.setState({
+      cameraCallbacks: {
+        frameSelection: () => new Promise<void>((resolve) => { finishFraming = resolve; }),
+      },
+    });
+    const focused = focusClashGroup(
+      [clash('framing', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    let frameReady = false;
+    void focused.frameReady.then(() => { frameReady = true; });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameReady, false, 'one animation frame is not the end of camera framing');
+    finishFraming();
+    await focused.frameReady;
+    assert.equal(frameReady, true);
   });
 });

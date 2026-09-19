@@ -36,4 +36,22 @@ describe('resolveGlobalId compatibility', () => {
       'exact model refs must not borrow a different model’s legacy store',
     );
   });
+
+  it('does not borrow a legacy GUID when the resolved federated store is hydrated', () => {
+    const storeWithoutGuid = {
+      entities: { getGlobalId: () => undefined },
+    } as unknown as IfcDataStore;
+    const legacyStore = {
+      entities: { getGlobalId: (expressId: number) => `WRONG-${expressId}` },
+    } as unknown as IfcDataStore;
+    useViewerStore.setState({
+      models: new Map([['federated', {
+        id: 'federated', idOffset: 0, maxExpressId: 100, ifcDataStore: storeWithoutGuid,
+      }]]) as unknown as ViewerState['models'],
+      ifcDataStore: legacyStore,
+    });
+
+    assert.equal(resolveGlobalId(7), null,
+      'a missing GUID in a hydrated model must not resolve to another model’s entity');
+  });
 });

@@ -68,6 +68,7 @@ beforeEach(async () => {
     clashReviews: new Map(),
     clashStatusFilter: new Set(['open', 'resolved', 'accepted']),
     bcfProject: null,
+    cameraCallbacks: {},
     fromGlobalId: (expressId: number) => ({ modelId: 'model', expressId }),
   });
   container = document.createElement('div');
@@ -121,10 +122,20 @@ describe('ClashPanel manual groups (#4921)', () => {
       author: 'reviewer@example.invalid',
     });
     concurrentProject.topics.set(concurrentTopic.guid, concurrentTopic);
+    let finishFraming!: () => void;
+    useViewerStore.setState({
+      cameraCallbacks: {
+        frameSelection: () => new Promise<void>((resolve) => { finishFraming = resolve; }),
+      },
+    });
     await act(async () => {
       createBcf.click();
       useViewerStore.setState({ bcfProject: concurrentProject });
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      assert.equal(useViewerStore.getState().bcfProject?.topics.size, 1,
+        'capture must not commit a topic at an intermediate animated camera pose');
+      finishFraming();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     });
     const topics = useViewerStore.getState().bcfProject?.topics;
     assert.equal(topics?.size, 2, 'a project created during capture is preserved when the group topic commits');

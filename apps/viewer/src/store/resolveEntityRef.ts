@@ -63,6 +63,9 @@ export function resolveGlobalId(globalId: number): string | null {
   const modelGlobalId = resolveEntityRefGlobalIdFromState(state, entityRef);
   if (modelGlobalId) return modelGlobalId;
 
+  const resolvedModel = entityRef.modelId === 'legacy' ? undefined : state.models.get(entityRef.modelId);
+  if (resolvedModel?.ifcDataStore) return null;
+
   // Preserve the public single-store compatibility path while a registered
   // model is still hydrating its own data store. Exact EntityRef callers must
   // remain model-bound and therefore deliberately do not use this fallback.

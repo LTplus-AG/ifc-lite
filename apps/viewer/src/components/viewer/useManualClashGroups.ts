@@ -174,8 +174,9 @@ export function useManualClashGroups({
         topicType: 'Clash',
         topicStatus: 'Open',
       });
-      // FRAME-WAIT-ALLOW(#2385): capture only after the group focus has painted.
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await focused.frameReady;
+      // FRAME-WAIT-ALLOW(#2385): paint the final animated camera pose before capture.
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       if (!focusedSceneRevisionIsCurrent(focused)) {
         toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
         return;

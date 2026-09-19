@@ -26,10 +26,12 @@ import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
 import { FlavorImportPreview } from './FlavorImportPreview';
-import * as toastText from './toast-helpers';
+import { flavorFailure, flavorSwitchPartial } from './flavor-dialog-feedback';
 import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { serializeClashConfig } from '@/lib/clash/persistence.flavor';
+import { localizedFlavorName } from './localized-flavor-metadata';
 
 /** Snapshot the current clash rule-set + detection settings for a flavor's
  *  `settings.clash` blob, so each profile carries its own clash config. */
@@ -52,6 +54,7 @@ interface FlavorDialogProps {
 }
 
 export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
+  const { t } = useTranslation();
   const host = useExtensionHost();
   const [flavors, setFlavors] = useState<Flavor[]>([]);
   const [activeId, setActiveId] = useState<string | undefined>();
@@ -62,6 +65,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
    *  not yet in active flavor" banner. */
   const liveLensCount = useViewerStore((s) => s.savedLenses.length);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const failure = (operation: string, err: unknown) => flavorFailure(t, operation, err);
 
   const refresh = useCallback(async () => {
     const [list, active] = await Promise.all([
@@ -99,9 +103,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       // downloadFile copies the (possibly ArrayBufferLike / Shared) bytes into a
       // fresh ArrayBuffer-backed view, so DOM Blob typings accept them.
       downloadFile(bytes, `${id || 'flavor'}.iflv`, 'application/octet-stream');
-      toast.success(toastText.flavorExported(`${id}.iflv`));
+      toast.success(t('extensionsFlavors.flavorDialog.toast.exported', { filename: `${id}.iflv` }));
     } catch (err) {
-      toast.error(toastText.failed('Export', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.export'), err));
     } finally {
       setBusy(false);
     }
@@ -122,25 +126,25 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       // `toast.error`, not `info`: something the user asked for did not
       // happen, and the longer dwell is what gets the reason read. (#3002)
       if (outcome.unapplied.length > 0) {
-        toast.error(toastText.flavorSwitchedPartially(id, outcome.unapplied));
+        toast.error(flavorSwitchPartial(t, id, outcome.unapplied));
       } else {
-        toast.success(toastText.flavorSwitched(id));
+        toast.success(t('extensionsFlavors.flavorDialog.toast.switched', { id }));
       }
     } catch (err) {
-      toast.error(toastText.failed('Activate', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.activate'), err));
     } finally {
       setBusy(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(`Delete flavor ${id}?`)) return;
+    if (!confirm(t('extensionsFlavors.flavorDialog.confirmDelete', { id }))) return;
     setBusy(true);
     try {
       await host.flavors.delete(id);
-      toast.success(toastText.flavorDeleted(id));
+      toast.success(t('extensionsFlavors.flavorDialog.toast.deleted', { id }));
     } catch (err) {
-      toast.error(toastText.failed('Delete', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.delete'), err));
     } finally {
       setBusy(false);
     }
@@ -161,7 +165,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     try {
       const target = await host.flavors.list().then((list) => list.find((f) => f.id === flavorId));
       if (!target) {
-        toast.error(`Flavor "${flavorId}" not found.`);
+        toast.error(t('extensionsFlavors.flavorDialog.toast.notFound', { id: flavorId }));
         return;
       }
       const savedLenses = useViewerStore.getState().savedLenses;
@@ -188,9 +192,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
-      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} + clash rules + sidebar layout into ${target.name}`);
+      toast.success(t('extensionsFlavors.flavorDialog.toast.captured', { count: lenses.length, name: localizedFlavorName(target, t) }));
     } catch (err) {
-      toast.error(toastText.failed('Capture', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.capture'), err));
     } finally {
       setBusy(false);
     }
@@ -221,8 +225,8 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         id,
         name: opts.name,
         description: opts.snapshot
-          ? 'Captured from current viewer state.'
-          : 'New empty flavor.',
+          ? t('extensionsFlavors.flavorDialog.snapshotDescription')
+          : t('extensionsFlavors.flavorDialog.emptyDescription'),
         createdAt: now,
         updatedAt: now,
         extensions: [],
@@ -238,9 +242,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       };
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');
       await host.flavors.activate(id);
-      toast.success(`Created "${opts.name}"${opts.snapshot ? ` with ${lenses.length} lens${lenses.length === 1 ? '' : 'es'}` : ''}.`);
+      toast.success(opts.snapshot ? t('extensionsFlavors.flavorDialog.toast.createdSnapshot', { name: opts.name, count: lenses.length }) : t('extensionsFlavors.flavorDialog.toast.createdEmpty', { name: opts.name }));
     } catch (err) {
-      toast.error(toastText.failed('Create', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.create'), err));
     } finally {
       setBusy(false);
     }
@@ -252,14 +256,14 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     try {
       const target = await host.flavors.list().then((list) => list.find((f) => f.id === id));
       if (!target) {
-        toast.error(`Flavor "${id}" not found.`);
+        toast.error(t('extensionsFlavors.flavorDialog.toast.notFound', { id }));
         return;
       }
       if (target.name === name) return;
       await host.flavors.put({ ...target, name, updatedAt: new Date().toISOString() }, `renamed to "${name}"`);
-      toast.success(`Renamed to "${name}".`);
+      toast.success(t('extensionsFlavors.flavorDialog.toast.renamed', { name }));
     } catch (err) {
-      toast.error(toastText.failed('Rename', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.rename'), err));
     } finally {
       setBusy(false);
     }
@@ -271,7 +275,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     try {
       const target = await host.flavors.list().then((list) => list.find((f) => f.id === id));
       if (!target) {
-        toast.error(`Flavor "${id}" not found.`);
+        toast.error(t('extensionsFlavors.flavorDialog.toast.notFound', { id }));
         return;
       }
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -280,27 +284,27 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       const clone: Flavor = {
         ...target,
         id: newId,
-        name: `${target.name} (copy)`,
+        name: t('extensionsFlavors.flavorDialog.duplicateName', { name: localizedFlavorName(target, t) }),
         createdAt: now,
         updatedAt: now,
       };
       await host.flavors.put(clone, `duplicated from ${target.id}`);
-      toast.success(`Duplicated as "${clone.name}".`);
+      toast.success(t('extensionsFlavors.flavorDialog.toast.duplicated', { name: clone.name }));
     } catch (err) {
-      toast.error(toastText.failed('Duplicate', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.duplicate'), err));
     } finally {
       setBusy(false);
     }
   };
 
   const handleReset = async () => {
-    if (!confirm('Reset to baseline flavor? Other flavors are preserved.')) return;
+    if (!confirm(t('extensionsFlavors.flavorDialog.confirmReset'))) return;
     setBusy(true);
     try {
       await host.flavors.resetToDefaults();
-      toast.success(toastText.flavorReset());
+      toast.success(t('extensionsFlavors.flavorDialog.toast.reset'));
     } catch (err) {
-      toast.error(toastText.failed('Reset', err));
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.reset'), err));
     } finally {
       setBusy(false);
     }
@@ -310,7 +314,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     if (!files || files.length === 0) return;
     const file = files[0];
     if (!file.name.toLowerCase().endsWith('.iflv')) {
-      toast.error(`Expected a .iflv flavor file, got ${file.name}.`);
+      toast.error(t('extensionsFlavors.flavorDialog.toast.expectedFile', { filename: file.name }));
       return;
     }
     try {
@@ -318,7 +322,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       const unpacked = await host.flavors.preview(bytes);
       setPreview({ bytes, unpacked });
     } catch (err) {
-      toast.error(`Preview failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.preview'), err));
     }
   };
 
@@ -327,15 +331,13 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     setBusy(true);
     try {
       const flavor = await host.flavors.importFlavor(preview.unpacked, { strategy });
-      toast.success(toastText.flavorImported(flavor.name));
+      toast.success(t('extensionsFlavors.flavorDialog.toast.imported', { name: localizedFlavorName(flavor, t) }));
       setPreview(null);
     } catch (err) {
       if (err && (err as { name?: string }).name === 'ExtensionStorageQuotaError') {
-        toast.error(
-          'Out of browser storage — delete a flavor or extension and try again.',
-        );
+        toast.error(t('extensionsFlavors.flavorDialog.toast.storageFull'));
       } else {
-        toast.error(toastText.failed('Import', err));
+        toast.error(failure(t('extensionsFlavors.flavorDialog.operation.import'), err));
       }
     } finally {
       setBusy(false);
@@ -348,31 +350,12 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
-            Flavors
-            <HelpHint label="Flavors" side="bottom-start">
-              <p>
-                A <strong>flavor</strong> bundles your installed
-                extensions, lenses, saved queries, layout, settings,
-                and prompt overlay into a switchable profile.
-              </p>
-              <p>
-                <strong>New flavor</strong> / <strong>Save current as
-                flavor</strong> creates one (empty or snapshotted from
-                your current viewer state).
-              </p>
-              <p>
-                Per-row: <strong>Activate</strong> switches to it
-                (lenses restore). <strong>Camera</strong> captures the
-                current viewer state into THAT flavor (not just the
-                active one). Click the name to rename.{' '}
-                <strong>Copy</strong> duplicates,{' '}
-                <strong>Download</strong> exports a <code>.iflv</code>.
-              </p>
-              <p>
-                <strong>Import</strong> previews a <code>.iflv</code>{' '}
-                then offers replace / save-as-new / three-way merge.{' '}
-                <strong>Reset</strong> restores the empty baseline.
-              </p>
+            {t('extensionsFlavors.flavorDialog.title')}
+            <HelpHint label={t('extensionsFlavors.flavorDialog.title')} side="bottom-start">
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p1')}</p>
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p2')}</p>
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p3')}</p>
+              <p>{t('extensionsFlavors.flavorDialog.helpHint.p4')}</p>
             </HelpHint>
           </DialogTitle>
         </DialogHeader>

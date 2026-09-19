@@ -17,12 +17,15 @@ import { useEffect, useState } from 'react';
 import { Palette } from 'lucide-react';
 import type { Flavor } from '@ifc-lite/extensions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { useTranslation } from '@/i18n';
+import { localizedFlavorDescription, localizedFlavorName } from './localized-flavor-metadata';
 
 interface FlavorIndicatorProps {
   onClick?: () => void;
 }
 
 export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
+  const { t } = useTranslation();
   const host = useOptionalExtensionHost();
   const [flavor, setFlavor] = useState<Flavor | undefined>();
 
@@ -49,7 +52,9 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
 
   if (!host) return null;
 
-  const label = flavor?.name ?? 'Default';
+  const name = flavor ? localizedFlavorName(flavor, t) : undefined;
+  const description = flavor ? localizedFlavorDescription(flavor, t) : undefined;
+  const label = name ?? t('extensionsFlavors.flavorIndicator.defaultLabel');
   // Slightly more emphasised treatment than the surrounding status
   // bar items so the entry to the flavor system is visible without
   // an animated walkthrough. Bordered chip + foreground text on
@@ -60,13 +65,16 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
       onClick={onClick}
       aria-label={
         flavor
-          ? `Active flavor: ${flavor.name}. Click to manage flavors.`
-          : 'No active flavor. Click to manage flavors.'
+          ? t('extensionsFlavors.flavorIndicator.activeAriaLabel', { name: name ?? flavor.name })
+          : t('extensionsFlavors.flavorIndicator.inactiveAriaLabel')
       }
       title={
         flavor
-          ? `Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: ${flavor.name}${flavor.description ? `\n${flavor.description}` : ''}\nClick to switch / export / import / merge.`
-          : 'Flavors — switchable profiles of your extensions, lenses, and settings.\nClick to manage.'
+          ? t('extensionsFlavors.flavorIndicator.activeTitle', {
+              name: name ?? flavor.name,
+              description: description ? `\n${description}` : '',
+            })
+          : t('extensionsFlavors.flavorIndicator.inactiveTitle')
       }
       className={
         flavor

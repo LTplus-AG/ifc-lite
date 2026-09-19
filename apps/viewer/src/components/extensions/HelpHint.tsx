@@ -27,6 +27,7 @@ import {
 import { createPortal } from 'react-dom';
 import { HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 interface HelpHintProps {
   /** Accessible label describing what the hint is for. */
@@ -62,6 +63,7 @@ export function HelpHint({
   side = 'bottom-end',
   docLink,
 }: HelpHintProps) {
+  const { t } = useTranslation();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -133,9 +135,9 @@ export function HelpHint({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label={`Help: ${label}`}
+        aria-label={t('extensionsFlavors.helpHint.ariaLabel', { label })}
         aria-expanded={open}
-        title={`Help: ${label}`}
+        title={t('extensionsFlavors.helpHint.ariaLabel', { label })}
         className={cn(
           'flex items-center justify-center h-6 w-6 rounded-full transition-colors',
           open
@@ -171,7 +173,7 @@ export function HelpHint({
                 rel="noreferrer"
                 className="block pt-1 mt-1 border-t text-primary hover:underline"
               >
-                {docLink.label ?? 'Learn more →'}
+                {docLink.label ?? t('extensionsFlavors.helpHint.learnMoreDefault')}
               </a>
             )}
           </div>,

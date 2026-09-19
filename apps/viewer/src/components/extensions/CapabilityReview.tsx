@@ -47,8 +47,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { ExtensionInstallSummary } from '@/services/extensions/host.js';
+import { localizeCapabilityRisk, localizeRiskTier } from './localized-capability-risk';
+import { formatExtensionDate } from './localized-date';
 
 interface CapabilityReviewProps {
   open: boolean;
@@ -77,6 +80,7 @@ export function CapabilityReview({
   onApprove,
   onCancel,
 }: CapabilityReviewProps) {
+  const { t, locale } = useTranslation();
   const rows = useMemo<CapabilityRow[]>(() => {
     return summary.capabilities.map((raw) => {
       const parsed = parseCapability(raw);
@@ -136,14 +140,13 @@ export function CapabilityReview({
           <div className="flex items-center gap-2">
             <RiskIcon tier={overall} />
             <DialogTitle>
-              Install <span className="font-mono text-base">{summary.id}</span> v{summary.version}?
+              {t('extensionsPanels.capabilityReview.installTitle', {
+                id: summary.id, version: summary.version,
+              })}
             </DialogTitle>
           </div>
           <DialogDescription>
-            Review the capabilities this extension is requesting. Uncheck any
-            you do not want to grant. Extensions that rely on a denied
-            capability will surface a clear error at runtime instead of running
-            silently with broader scope.
+            {t('extensionsPanels.capabilityReview.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -152,14 +155,15 @@ export function CapabilityReview({
             <KeyRound className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
             <div className="min-w-0">
               <div className="font-medium text-emerald-700 dark:text-emerald-400">
-                Signature verified
+                {t('extensionsPanels.capabilityReview.signatureVerifiedTitle')}
               </div>
               <div className="text-muted-foreground mt-0.5">
-                Signed by <code className="font-mono text-[10px]" title={summary.signature.fingerprint}>
+                {t('extensionsPanels.capabilityReview.signedByLabel')}{' '}
+                <code className="font-mono text-[10px]" title={summary.signature.fingerprint}>
                   {summary.signature.fingerprint.slice(0, 23)}…
                 </code>
                 {' · '}
-                {new Date(summary.signature.signedAt).toLocaleString()}
+                {formatExtensionDate(summary.signature.signedAt, locale)}
               </div>
             </div>
           </div>
@@ -168,11 +172,10 @@ export function CapabilityReview({
             <Unlock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <div>
               <div className="font-medium text-amber-700 dark:text-amber-400">
-                Unsigned bundle
+                {t('extensionsPanels.capabilityReview.unsignedTitle')}
               </div>
               <div className="text-muted-foreground mt-0.5">
-                This bundle has no signature. We cannot verify it came from a
-                specific publisher — install only if you trust the source.
+                {t('extensionsPanels.capabilityReview.unsignedBody')}
               </div>
             </div>
           </div>
@@ -181,11 +184,15 @@ export function CapabilityReview({
         {previousGrants && (newSinceUpgrade.size > 0 || droppedSinceUpgrade.length > 0) && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
             <div className="font-medium text-amber-700 dark:text-amber-400">
-              Capability changes since {previousVersion ?? 'the previous version'}
+              {t('extensionsPanels.capabilityReview.capabilityChangesSince', {
+                version: previousVersion ?? t('extensionsPanels.capabilityReview.previousVersionFallback'),
+              })}
             </div>
             {newSinceUpgrade.size > 0 && (
               <div className="mt-1">
-                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">New:</span>{' '}
+                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">
+                  {t('extensionsPanels.capabilityReview.newLabel')}
+                </span>{' '}
                 {[...newSinceUpgrade].map((c) => (
                   <code key={c} className="font-mono text-[10px] mr-1 bg-amber-500/20 rounded px-1 py-0.5">
                     {c}
@@ -195,7 +202,9 @@ export function CapabilityReview({
             )}
             {droppedSinceUpgrade.length > 0 && (
               <div className="mt-1">
-                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">Dropped:</span>{' '}
+                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">
+                  {t('extensionsPanels.capabilityReview.droppedLabel')}
+                </span>{' '}
                 {droppedSinceUpgrade.map((c) => (
                   <code key={c} className="font-mono text-[10px] mr-1 line-through opacity-70">
                     {c}
@@ -206,7 +215,7 @@ export function CapabilityReview({
           </div>
         )}
 
-        <div className="flex items-center gap-1 border-b" role="tablist" aria-label="Bundle inspection mode">
+        <div className="flex items-center gap-1 border-b" role="tablist" aria-label={t('extensionsPanels.capabilityReview.tabsAriaLabel')}>
           <button
             type="button"
             onClick={() => setTab('capabilities')}
@@ -220,7 +229,7 @@ export function CapabilityReview({
             )}
           >
             <ShieldCheck className="h-3.5 w-3.5" />
-            Capabilities
+            {t('extensionsPanels.capabilityReview.capabilitiesTab')}
           </button>
           <button
             type="button"
@@ -235,7 +244,7 @@ export function CapabilityReview({
             )}
           >
             <FileCode2 className="h-3.5 w-3.5" />
-            Source
+            {t('extensionsPanels.capabilityReview.sourceTab')}
           </button>
         </div>
 
@@ -246,7 +255,7 @@ export function CapabilityReview({
           <ul className="divide-y">
             {rows.length === 0 && (
               <li className="px-4 py-3 text-sm text-muted-foreground">
-                This extension requests no capabilities — viewer-only chrome.
+                {t('extensionsPanels.capabilityReview.noCapabilities')}
               </li>
             )}
             {rows.map((row) => (
@@ -256,7 +265,7 @@ export function CapabilityReview({
                   className="mt-1"
                   checked={granted.has(row.raw)}
                   onChange={(e) => toggle(row.raw, e.target.checked)}
-                  aria-label={`Grant capability ${row.raw}`}
+                  aria-label={t('extensionsPanels.capabilityReview.grantAriaLabel', { raw: row.raw })}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -264,7 +273,9 @@ export function CapabilityReview({
                     <RiskBadge tier={row.risk?.tier ?? 'red'} />
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {row.risk?.description ?? 'Unknown capability — treated as high-risk.'}
+                    {row.risk
+                      ? localizeCapabilityRisk(row.risk, t)
+                      : t('extensionsPanels.capabilityReview.unknownCapabilityDescription')}
                   </p>
                 </div>
               </li>
@@ -277,17 +288,17 @@ export function CapabilityReview({
           <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
             <div className="font-medium text-destructive flex items-center gap-2">
               <ShieldAlert className="h-4 w-4" />
-              High-risk capability requested
+              {t('extensionsPanels.capabilityReview.highRiskTitle')}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Type <code className="font-mono">{APPROVE_PHRASE}</code> below to confirm.
+              {t('extensionsPanels.capabilityReview.confirmInstruction', { phrase: APPROVE_PHRASE })}
             </p>
             <Input
               className="mt-2"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="approve"
-              aria-label="Type approve to confirm"
+              placeholder={APPROVE_PHRASE}
+              aria-label={t('extensionsPanels.capabilityReview.confirmAriaLabel', { phrase: APPROVE_PHRASE })}
               autoFocus
             />
           </div>
@@ -296,14 +307,14 @@ export function CapabilityReview({
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel}>
             <X className="mr-1 h-4 w-4" />
-            Cancel
+            {t('extensionsPanels.capabilityReview.cancelButton')}
           </Button>
           <Button
             disabled={!canApprove}
             onClick={() => onApprove(Array.from(granted))}
           >
             <CheckCircle2 className="mr-1 h-4 w-4" />
-            Install
+            {t('extensionsPanels.capabilityReview.installButton')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -318,6 +329,7 @@ function RiskIcon({ tier }: { tier: RiskTier }) {
 }
 
 function RiskBadge({ tier }: { tier: RiskTier }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -327,7 +339,7 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
         tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
       )}
     >
-      {tier}
+      {localizeRiskTier(tier, t)}
     </span>
   );
 }

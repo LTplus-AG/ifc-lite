@@ -73,6 +73,12 @@ function item(
       declared: status === 'permissive' ? '*' : '^1.0.0',
       sdk: SDK,
       status,
+      reasonCode:
+        status === 'compatible'
+          ? 'range-match'
+          : status === 'outdated'
+            ? 'range-mismatch'
+            : 'unsupported-range',
       reason: `${status} range`,
     },
   };

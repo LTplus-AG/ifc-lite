@@ -26,12 +26,14 @@ import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { resolveExtensionIcon } from './icon-registry';
+import { useTranslation } from '@/i18n';
 
 interface ExtensionToolbarSlotProps {
   slot: 'toolbar.left' | 'toolbar.right' | 'toolbar.center';
 }
 
 export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
+  const { t } = useTranslation();
   const host = useOptionalExtensionHost();
   // Loader enriches the toolbar payload with the linked command's
   // `icon` + `title` — see manifestToContributions in loader.ts.
@@ -97,7 +99,7 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
                 size="icon"
                 variant="ghost"
                 onClick={() => handleClick(cmd, c.extensionId)}
-                aria-label={`Run ${title}`}
+                aria-label={t('extensionsFlavors.extensionToolbarSlot.runAriaLabel', { title })}
               >
                 <Icon className="h-4 w-4" />
               </Button>

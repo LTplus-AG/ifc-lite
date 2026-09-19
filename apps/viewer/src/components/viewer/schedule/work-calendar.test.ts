@@ -152,6 +152,43 @@ describe('isWorkingDay (#4830)', () => {
     assert.equal(isWorkingDay(mixed, d('2024-06-08')), false); // still a non-working Saturday
     assert.equal(isWorkingDay(mixed, d('2024-06-05')), true); // still a working Wednesday
   });
+
+  it('a workingTimes array of ONLY a WEEKLY entry with an empty weekdayComponent has no constraint, not a total shutdown', () => {
+    // #4982 review: an earlier revision's `isRecognizedPattern` treated
+    // "recurrenceType is WEEKLY" as sufficient, without checking that
+    // `weekdayComponent` actually lists any weekday. `entryCoversDay`
+    // itself always returns false for an empty `weekdayComponent`
+    // (structurally unmatchable), so a `workingTimes` containing only such
+    // an entry read as "has a real pattern" (non-empty array) while never
+    // matching any day — every day non-working. Same bug class as the
+    // all-DAILY case above, different shape.
+    const emptyWeekdays: WorkCalendarInfo = {
+      ...MON_FRI_CALENDAR,
+      workingTimes: [{
+        name: 'Empty weekly',
+        recurrencePattern: {
+          recurrenceType: 'WEEKLY', dayComponent: [], weekdayComponent: [], monthComponent: [], timePeriods: [],
+        },
+      }],
+      exceptionTimes: [{ name: 'Shutdown', start: '2024-06-01', finish: '2024-06-30' }],
+    };
+    assert.equal(isWorkingDay(emptyWeekdays, d('2024-06-08')), true); // Saturday
+    assert.equal(isWorkingDay(emptyWeekdays, d('2024-06-15')), true); // inside the now-inert exception window too
+  });
+
+  it('a workingTimes array of ONLY a pattern-less entry with no start/finish has no constraint, not a total shutdown', () => {
+    // Same bug class again: a pattern-less `WorkTimeInfo` with neither
+    // `start` nor `finish` is a recognized SHAPE (no recurrence = a
+    // fixed-date entry) but structurally unmatchable per
+    // `entryCoversDay`'s own "only meaningful with explicit bounds" rule.
+    const unboundedNoPattern: WorkCalendarInfo = {
+      ...MON_FRI_CALENDAR,
+      workingTimes: [{ name: 'Unbounded, no recurrence' }],
+      exceptionTimes: [{ name: 'Shutdown', start: '2024-06-01', finish: '2024-06-30' }],
+    };
+    assert.equal(isWorkingDay(unboundedNoPattern, d('2024-06-08')), true); // Saturday
+    assert.equal(isWorkingDay(unboundedNoPattern, d('2024-06-15')), true); // inside the now-inert exception window too
+  });
 });
 
 describe('getNonWorkingDayStarts (#4830)', () => {

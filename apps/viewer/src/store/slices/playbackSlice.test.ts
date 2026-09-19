@@ -241,7 +241,7 @@ describe('playbackSlice', () => {
       assert.strictEqual(s.getState().playbackIsPlaying, true);
     });
 
-    it('gives up gracefully at range start, without hanging, when no working day exists anywhere in range', () => {
+    it('stops playback at range start, without hanging, when no working day exists anywhere in range (#4982 review)', () => {
       const totalShutdown: WorkCalendarInfo = {
         ...MON_FRI_CALENDAR,
         exceptionTimes: [{ name: 'Everything shut', start: '2024-06-01', finish: '2024-06-30' }],
@@ -258,7 +258,16 @@ describe('playbackSlice', () => {
       s.getState().playSchedule();
       s.getState().advancePlaybackBy(16);
       assert.strictEqual(s.getState().playbackTime, start);
-      assert.strictEqual(s.getState().playbackIsPlaying, true);
+      // An earlier revision left `playbackIsPlaying: true` here, which with
+      // `playbackLoop` true re-ran this exact same dead-end search on every
+      // rAF tick forever — there is nothing to animate, so playback must
+      // actually stop.
+      assert.strictEqual(s.getState().playbackIsPlaying, false);
+      // Confirm it really is a stop, not a one-frame fluke: a further tick
+      // does nothing (advancePlaybackBy no-ops while `playbackIsPlaying` is
+      // false).
+      s.getState().advancePlaybackBy(16);
+      assert.strictEqual(s.getState().playbackTime, start);
     });
   });
 });

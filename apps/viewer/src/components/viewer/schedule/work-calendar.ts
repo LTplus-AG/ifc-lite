@@ -116,10 +116,23 @@ function withinBounds(entry: WorkTimeInfo, dayStart: number): boolean {
   return true;
 }
 
-/** Is this entry's `RecurrencePattern` one this module knows how to interpret (WEEKLY, or none at all)? */
+/**
+ * Can this entry EVER match a day per `entryCoversDay`'s own rules —
+ * not just "is its recurrence type one we interpret"? A `WEEKLY` pattern
+ * with an empty `weekdayComponent`, or a pattern-less entry with no
+ * `start`/`finish`, is a recognized SHAPE but structurally unmatchable —
+ * `entryCoversDay` always returns false for it, the same as a genuinely
+ * unsupported recurrence type. Mirroring only the "is it WEEKLY / is it
+ * pattern-less" check here (an earlier revision did) let a `workingTimes`
+ * array containing ONLY such unmatchable entries read as "the calendar has
+ * a real pattern" — non-empty, so `isWorkingDay` fell through to its
+ * per-entry loop, which then matched nothing on any day: a total shutdown,
+ * the exact bug this whole check exists to prevent (#4982 review).
+ */
 function isRecognizedPattern(entry: WorkTimeInfo): boolean {
   const pattern = entry.recurrencePattern;
-  return !pattern || pattern.recurrenceType === 'WEEKLY';
+  if (!pattern) return entry.start !== undefined || entry.finish !== undefined;
+  return pattern.recurrenceType === 'WEEKLY' && pattern.weekdayComponent.length > 0;
 }
 
 /** Does this `WorkTimeInfo` entry cover `dayStart` — weekly-recurrence match, or (for exceptions) a bare date range? */

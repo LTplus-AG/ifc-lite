@@ -162,10 +162,18 @@ export const createPlaybackSlice: StateCreator<
             // start, not a continuation of the forward search that just
             // ran out.
             const loopedStart = skipToNextWorkingInstant(calendar, s.scheduleRange.start, s.scheduleRange.end);
-            // `null` here means the calendar has literally no working day
-            // anywhere in the range — nothing left to do but land on the
-            // range start as before rather than getting stuck retrying.
-            next = loopedStart ?? s.scheduleRange.start;
+            if (loopedStart === null) {
+              // The calendar has no working day ANYWHERE in the range —
+              // there is nothing to animate. Stop rather than landing on
+              // `scheduleRange.start` still "playing": with `playbackLoop`
+              // true that would re-run this exact same two-search dead end
+              // on every rAF tick forever (#4982 review). Position lands at
+              // the range start (the natural loop target), matching the
+              // non-looping branch's symmetric pause-at-range-end below.
+              set({ playbackTime: s.scheduleRange.start, playbackIsPlaying: false });
+              return;
+            }
+            next = loopedStart;
           } else {
             set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
             return;

@@ -15,6 +15,7 @@ import { IfcParser, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-li
 import type { BlobStore, LocalPlacement, ModelSlotRef, PropertyValue as CollabPropertyValue } from '@ifc-lite/collab';
 import { roomSlotPath } from './model-slot-ref';
 import type { RoomSymbolicSource } from './room-symbolic-source';
+import { portableEntityKey } from './portable-reference-entities';
 
 const CONTENT_HASH = /^[0-9a-f]{32}$/;
 const MAX_PORTABLE_STEP_SOURCE_BYTES = 96 * 1024 * 1024;
@@ -92,7 +93,7 @@ export async function loadRoomStepSource(
     // Match buildStepSeedSource exactly. Some synthetic/test sources use
     // non-canonical GlobalId strings, and the seeder deliberately preserves
     // those paths instead of rejecting an otherwise shareable model.
-    if (dataStore.entities.getGlobalId(expressId)) seededIds.add(expressId);
+    if (portableEntityKey(dataStore, expressId)) seededIds.add(expressId);
   }
   return { dataStore, source: dataStore.source, seededIds, resources };
 }
@@ -113,7 +114,7 @@ export function bindRoomStepSource(
   const structuredQuantities = new Map<number, StructuredEntityState['quantities']>();
   const structuredAttributes = new Map<number, StructuredEntityState['attributes']>();
   for (const expressId of parsed.seededIds) {
-    const guid = parsed.dataStore.entities.getGlobalId(expressId)!;
+    const guid = portableEntityKey(parsed.dataStore, expressId)!;
     const path = roomSlotPath(slot, guid);
     const targetId = roomPathToId.get(path);
     if (targetId !== undefined) ownerIds.set(expressId, targetId);

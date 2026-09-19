@@ -99,7 +99,12 @@ pub(super) fn render_attributes(
     let names: &[&str] = source_schema
         .and_then(|schema| {
             ifc_lite_core::attribute_names_for_schema(schema, raw_type_name)
-                .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
+                .or_else(|| {
+                    schema
+                        .eq_ignore_ascii_case("IFC4X1")
+                        .then(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
+                        .flatten()
+                })
         })
         .unwrap_or(&[]);
     let mut out = Vec::new();

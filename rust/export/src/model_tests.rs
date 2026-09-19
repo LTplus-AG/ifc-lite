@@ -937,6 +937,23 @@ fn attribute_export_preserves_transitional_ifc4_metadata() {
     assert_eq!(attributes[0].value, "alignment-tag");
 }
 
+/// #4203: transitional IFC4.1 metadata must not become a fallback schema for
+/// future or otherwise unsupported declarations.
+#[test]
+fn attribute_export_does_not_apply_ifc4x1_metadata_to_ifc5() {
+    let entity = DecodedEntity::new(
+        1,
+        IfcType::from_str("IFCALIGNMENTCURVE"),
+        vec![
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::String("must-not-be-labelled".to_string()),
+        ],
+    );
+
+    assert!(render_attributes(&entity, "IFCALIGNMENTCURVE", Some("IFC5")).is_empty());
+}
+
 /// #4203: positional labels require an explicit source schema. The STEP writer
 /// may default a missing declaration to IFC4, but attribute export must not
 /// silently apply IFC4 names to slots whose schema is unknown.

@@ -119,6 +119,23 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.doesNotThrow(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes }));
   });
 
+  it('validates and transfers GlobalId claims before applying positional edits', () => {
+    const { adapter, view } = fixture();
+    const first = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes: [
+      '0first00000000000000000', null, 'First', null, null, null, null, null, '.NOTDEFINED.',
+    ] });
+    const second = adapter.addEntity(MODEL, { type: 'IFCWALL', attributes: [
+      '0second0000000000000000', null, 'Second', null, null, null, null, null, '.NOTDEFINED.',
+    ] });
+    const before = view.getMutations().length;
+    assert.throws(() => adapter.setPositionalAttribute(first, 0, '0second0000000000000000'), /already exists/);
+    assert.equal(view.getMutations().length, before, 'a rejected identity edit cannot mutate the overlay');
+
+    adapter.setPositionalAttribute(first, 0, '0third00000000000000000');
+    assert.doesNotThrow(() => adapter.setPositionalAttribute(second, 0, '0first00000000000000000'));
+    assert.throws(() => adapter.setPositionalAttribute(second, 0, '0third00000000000000000'), /already exists/);
+  });
+
   it('preserves structured create and positional values on the collaboration wire', () => {
     const { adapter, calls } = fixture();
     const point = adapter.addEntity(MODEL, { type: 'IFCCARTESIANPOINT', attributes: [[1, 2, 3]] });
@@ -154,16 +171,38 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     });
 
     assert.deepEqual(calls[0]?.args[5], {
-      'bsi::ifc::prop::RelatedApproval': '#1',
-      'bsi::ifc::prop::RelatingApproval': '#2',
+      'bsi::ifc::prop::RelatedApproval': { 'ifc-lite::entityPath': '/0project000000000000000' },
+      'bsi::ifc::prop::RelatingApproval': { 'ifc-lite::entityPath': '/0wall000000000000000000' },
     });
     adapter.setPositionalAttribute(created, 0, '#2');
     adapter.setPositionalAttribute(created, 0, undefined);
     const edits = calls.filter(call => call.kind === 'attribute');
     assert.deepEqual(edits, [
-      { kind: 'attribute', args: [MODEL, created.expressId, 'bsi::ifc::prop::RelatedApproval', '#2'] },
+      {
+        kind: 'attribute',
+        args: [
+          MODEL,
+          created.expressId,
+          'bsi::ifc::prop::RelatedApproval',
+          { 'ifc-lite::entityPath': '/0wall000000000000000000' },
+        ],
+      },
       { kind: 'attribute', args: [MODEL, created.expressId, 'bsi::ifc::prop::RelatedApproval', null] },
     ]);
+  });
+
+  it('encodes STEP references as stable room paths before mirroring', () => {
+    const { adapter, calls } = fixture();
+    adapter.addEntity(MODEL, { type: 'IFCRELAGGREGATES', attributes: [
+      '0relation000000000000000', null, null, null, '#1', ['#2'],
+    ] });
+    const attributes = calls.find(call => call.kind === 'create')?.args[5] as Record<string, unknown>;
+    assert.deepEqual(attributes['bsi::ifc::prop::RelatingObject'], {
+      'ifc-lite::entityPath': '/0project000000000000000',
+    });
+    assert.deepEqual(attributes['bsi::ifc::prop::RelatedObjects'], [{
+      'ifc-lite::entityPath': '/0wall000000000000000000',
+    }]);
   });
 
   it('rejects read-only room writes before touching the local overlay', () => {

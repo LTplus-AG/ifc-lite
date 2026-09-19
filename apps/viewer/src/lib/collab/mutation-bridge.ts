@@ -12,12 +12,7 @@
  *                                                       │  (y-websocket)
  *   peer's Y.Doc update ─▶ observeDeep (txn.local=false) ─▶ apply to MutablePropertyView
  *
- * Entities are addressed by slot-qualified GUID path (`slotPath(slot, guid)`
- * — `/<slotId>/<guid>`, or the legacy `/<guid>` of a single-model room),
- * matching `seedFromStep` (#4444); the per-store expressId↔path registry
- * lives in `entity-paths.ts`. Inbound, the path itself names the slot, so the
- * observer resolves the store BY PATH and hands every handler the model the
- * edit belongs to. Inbound apply writes straight to the `MutablePropertyView`
+ * Slot-qualified GUID paths match `seedFromStep` (#4444); inbound paths select the model.
  * (not the slice's undo-tracked actions) so remote edits don't pollute the
  * local undo stack and can't echo back to the doc. The collab runtime is
  * injected (the module the caller already lazy-loaded) so this file pulls no
@@ -25,11 +20,13 @@
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
-import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import { entityForPath, pathForEntity } from './entity-paths';
 import { remoteEntityDefinition } from './remote-entity-definition';
+import { attributeNamesForStore } from './schema-attribute-names';
+import { decodeRoomAttributeValue } from './entity-reference-wire';
 
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
@@ -226,9 +223,12 @@ export function applyRemoteAttribute(
   const entityType = sourceType && sourceType !== 'Unknown'
     ? sourceType
     : view.getNewEntity(entityId)?.type ?? sourceType;
-  const index = getAttributeNamesAcrossSchemas(entityType).indexOf(plainName);
+  const index = attributeNamesForStore(store, entityType).indexOf(plainName);
   if (index >= 0) {
-    view.setPositionalAttribute(entityId, index, value as Parameters<MutablePropertyView['setPositionalAttribute']>[2]);
+    const decoded = decodeRoomAttributeValue(store, value);
+    if (decoded.ok) {
+      view.setPositionalAttribute(entityId, index, decoded.value as Parameters<MutablePropertyView['setPositionalAttribute']>[2]);
+    }
     return;
   }
   if (value !== null && value !== undefined) view.setAttribute(entityId, plainName, String(value));

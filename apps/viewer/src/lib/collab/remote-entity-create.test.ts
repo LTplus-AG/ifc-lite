@@ -12,7 +12,8 @@ import { deleteRemoteOverlayEntity } from './remote-entity-delete.js';
 
 const MODEL = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
-DATA;#1=IFCPROJECT('0000000000000000000001',$,'Project',$,$,$,$,$,$);ENDSEC;END-ISO-10303-21;`;
+DATA;#1=IFCPROJECT('0000000000000000000001',$,'Project',$,$,$,$,$,$);
+#2=IFCCARTESIANPOINT((1.,2.,3.));ENDSEC;END-ISO-10303-21;`;
 
 test('remote entity creation preserves path identity and rejects invalid IFC classes (#5008)', async () => {
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
@@ -24,7 +25,7 @@ test('remote entity creation preserves path identity and rejects invalid IFC cla
 
   assert.equal(createRemoteOverlayEntity(store, view, path, 'IfcWall', { Name: 'Remote wall' }), true);
   const created = view.getNewEntities()[0];
-  assert.equal(created.attributes[0], "'0000000000000000000002'");
+  assert.equal(created.attributes[0], '0000000000000000000002');
   assert.equal(entityForPath(store, path), created.expressId);
 
   assert.equal(deleteRemoteOverlayEntity(store, undefined, created.expressId), false);
@@ -32,4 +33,16 @@ test('remote entity creation preserves path identity and rejects invalid IFC cla
   assert.equal(deleteRemoteOverlayEntity(store, view, created.expressId), true);
   assert.equal(view.isDeleted(created.expressId), true);
   assert.equal(entityForPath(store, path), null);
+
+  const newEntityCount = view.getNewEntities().length;
+  const sourcePath = '/m0/ifc-lite-ref-2';
+  assert.equal(createRemoteOverlayEntity(store, view, sourcePath, 'IfcCartesianPoint', {
+    'bsi::ifc::prop::Coordinates': [4, 5, 6],
+  }), true);
+  assert.equal(entityForPath(store, sourcePath), 2);
+  assert.equal(
+    view.getNewEntities().length,
+    newEntityCount,
+    'materialization binds the existing source instead of duplicating it',
+  );
 });

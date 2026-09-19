@@ -10,6 +10,7 @@
  */
 
 import { StoreEditor } from '@ifc-lite/mutations';
+import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -77,27 +78,59 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     return editor;
   }
 
+  function assertCanEdit(operation: string): void {
+    if (!store.getState().canCollabEdit()) {
+      throw new Error(`bim.store.${operation}: collaboration is read-only for this participant`);
+    }
+  }
+
+  function mirrorCreatedEntity(modelId: string, editor: StoreEditor, expressId: number): void {
+    const entity = editor.getNewEntity(expressId);
+    if (!entity) return;
+    const names = getAttributeNamesAcrossSchemas(entity.type);
+    const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
+      ? entity.attributes[0]
+      : `ifc-lite-ref-${expressId}`;
+    const state = store.getState();
+    state.mirrorEntityCreate(modelId, expressId, entity.type, guid, null);
+    entity.attributes.forEach((value, index) => {
+      const name = names[index];
+      if (name) state.mirrorAttributeEdit(modelId, expressId, name, value);
+    });
+  }
+
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
+      assertCanEdit('addEntity');
       const normalizedId = normalizeMutationModelId(store.getState(), modelId);
       const editor = getEditor(modelId);
       if (!editor) {
         throw new Error(`bim.store.addEntity: no model loaded for id "${modelId}"`);
       }
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
+      mirrorCreatedEntity(modelId, editor, ref.expressId);
       return { modelId: normalizedId, expressId: ref.expressId };
     },
     removeEntity(ref: EntityRef): boolean {
+      assertCanEdit('removeEntity');
       const editor = getEditor(ref.modelId);
       if (!editor) return false;
-      return editor.removeEntity(ref.expressId);
+      const removed = editor.removeEntity(ref.expressId);
+      if (removed) store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
+      return removed;
     },
     setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
+      assertCanEdit('setPositionalAttribute');
       const editor = getEditor(ref.modelId);
       if (!editor) {
         throw new Error(`bim.store.setPositionalAttribute: no model loaded for id "${ref.modelId}"`);
       }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
+      const dataStore = resolveDataStore(ref.modelId);
+      const type = editor.getNewEntity(ref.expressId)?.type
+        ?? dataStore?.entities.getTypeName(ref.expressId);
+      const name = type ? getAttributeNamesAcrossSchemas(type)[index] : undefined;
+      if (name) store.getState().mirrorAttributeEdit(ref.modelId, ref.expressId, name, value);
     },
     addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
       const editor = getEditor(modelId);

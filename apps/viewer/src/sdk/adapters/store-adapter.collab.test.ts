@@ -228,14 +228,17 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     adapter.setPositionalAttribute({ modelId: MODEL, expressId: 3 }, 1, '#4');
 
     const creates = calls.filter(call => call.kind === 'create');
-    assert.equal(creates.length, 4);
-    assert.deepEqual(creates.slice(0, 2).map(call => call.args[5]), [{}, {}]);
+    assert.equal(creates.length, 2);
+    assert.deepEqual(creates.map(call => call.args[5]), [{}, {}]);
+    const attributes = calls.filter(call => call.kind === 'attribute');
     assert.deepEqual(
-      (creates[2]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::FirstOperand'],
+      attributes.find(call => call.args[1] === 3
+        && call.args[2] === 'bsi::ifc::prop::FirstOperand')?.args[3],
       { 'ifc-lite::entityPath': '/ifc-lite-ref-4' },
     );
     assert.deepEqual(
-      (creates[3]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::FirstOperand'],
+      attributes.find(call => call.args[1] === 4
+        && call.args[2] === 'bsi::ifc::prop::FirstOperand')?.args[3],
       { 'ifc-lite::entityPath': '/ifc-lite-ref-3' },
     );
   });
@@ -250,10 +253,12 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     adapter.setPositionalAttribute(point, 0, [7, 8, 9]);
 
     const creates = calls.filter(call => call.kind === 'create');
-    assert.equal(creates.length, 3);
+    assert.equal(creates.length, 2);
     assert.deepEqual(creates[0]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
     assert.deepEqual(creates[1]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
-    assert.deepEqual(creates[2]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
+    assert.ok(calls.some(call => call.kind === 'attribute'
+      && call.args[1] === 3
+      && call.args[2] === 'bsi::ifc::prop::Coordinates'));
   });
 
   it('uses IFC2X3 positional names and mirrors undefined as an explicit clear', () => {

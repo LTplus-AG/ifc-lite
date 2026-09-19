@@ -193,10 +193,8 @@ export type ScalarValue = string | number | boolean | null;
  * REJECTS the edit and the OLD source value survives untouched. There is no
  * single string sentinel valid for every declared attribute type.
  *
- * The fix routes `null` through the exporter's type-AGNOSTIC clearing path
- * instead: `MutablePropertyView.setPositionalAttribute(entityId, index,
- * null)`, the same mechanism `room-step-export.ts`'s `snapshotView` already
- * uses to clear a root attribute the room doc no longer carries.
+ * The fix routes `null` through the exporter's type-AGNOSTIC
+ * `setPositionalAttribute(entityId, index, null)` path, which `snapshotView` also
  * `serializeStepValue` (the positional serializer) returns the STEP null
  * marker `$` for a JS `null` UNCONDITIONALLY, before any type dispatch — so
  * it is correct for STRING, REAL, ENUM, SELECT and reference slots alike,
@@ -215,7 +213,7 @@ export function applyRemoteAttribute(
   entityId: number,
   attrName: string,
   value: unknown,
-): void {
+): string | null {
   const plainName = attrName.startsWith('bsi::ifc::prop::')
     ? attrName.slice('bsi::ifc::prop::'.length)
     : attrName;
@@ -228,10 +226,12 @@ export function applyRemoteAttribute(
     const decoded = decodeRoomAttributeValue(store, value);
     if (decoded.ok) {
       view.setPositionalAttribute(entityId, index, decoded.value as Parameters<MutablePropertyView['setPositionalAttribute']>[2]);
+      return null;
     }
-    return;
+    return decoded.reason;
   }
   if (value !== null && value !== undefined) view.setAttribute(entityId, plainName, String(value));
+  return null;
 }
 
 /**

@@ -848,17 +848,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       return;
     }
 
-    // Remote → local apply (plan §7.5): replay peers' property/attribute edits
-    // into the ROOM model's MutablePropertyView (no undo tracking, no echo).
-    //
-    // Resolve by room path, never activeModelId: expressIds are model-local.
-    // Direct view writes deliberately avoid local undo while remaining exportable.
-    // `roomEntityTargetForPath` returns null until the room model is
-    // registered, and every handler drops the event rather than falling back
-    // to another model; the next reconstruct rebuilds the whole model from
-    // the CRDT anyway. Each handler is handed the model the resolver named
-    // and re-gates on it (`roomStoreFor` / `roomMutationViewFor`), so a
-    // handler cannot be handed one model and write another.
+    // Replay peer edits into the named ROOM model without local undo or echo.
+    // Room paths, never activeModelId, select the model because expressIds are
+    // model-local. Resolution fails closed until registration; reconstruct then
+    // rebuilds from the CRDT.
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
       onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes) => {
         const view = roomMutationViewFor(get(), modelId);
@@ -890,7 +883,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       onAttribute: (modelId, entityId, attrName, value) => {
         const view = roomMutationViewFor(get(), modelId), store = roomStoreFor(get(), modelId);
         if (!view || !store) return;
-        applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
+        const rejected = applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
+        if (rejected) {
+          console.warn('[collab] rejected remote attribute:', rejected);
+          set({ collabGeometryNotice: `A collaborative attribute could not be applied: ${rejected}` });
+          return;
+        }
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer moved/rotated an entity: reflect it on the local mesh by

@@ -184,10 +184,15 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return;
     }
     for (const entry of entries) {
-      store.getState().mirrorEntityCreate(
-        modelId, entry.expressId, entry.type, entry.roomKey, null,
-        initialRoomAttributes(dataStore, entry.type, entry.names, entry.values, resolvePath),
+      const attributes = initialRoomAttributes(
+        dataStore, entry.type, entry.names, entry.values, resolvePath,
       );
+      // createEntity is deliberately idempotent, so a second create cannot
+      // fill the shell nodes registered above. Publish the second phase as
+      // incremental writes after every cyclic path is resolvable.
+      for (const [name, value] of Object.entries(attributes)) {
+        store.getState().mirrorAttributeEdit(modelId, entry.expressId, name, value);
+      }
     }
   }
 

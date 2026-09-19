@@ -48,7 +48,15 @@ import {
 // fails the assertions below for the right reason.
 import * as mutationBridge from './mutation-bridge.js';
 const { applyRemoteAttribute } = mutationBridge;
-import { pathForEntity, pathForGuid, registerEntityMaps, registerEntityPath, registerStoreSlot } from './entity-paths.js';
+import {
+  entityForPath,
+  pathForEntity,
+  pathForGuid,
+  registerEntityMaps,
+  registerEntityPath,
+  registerStoreSlot,
+  unregisterEntityPath,
+} from './entity-paths.js';
 
 /**
  * `yjs` is a transitive dependency (via `@ifc-lite/collab`), not a direct
@@ -137,6 +145,17 @@ describe('mutation-bridge entity-map registration', () => {
     teardown();
     assert.strictEqual(handlers.calls.length, 1, 'registerEntityPath must make the path resolvable inbound (entityForPath)');
     assert.deepEqual(handlers.calls[0], { fn: 'onAttribute', args: [MODEL, 42, 'bsi::ifc::prop::Name', 'New Wall'] });
+  });
+
+  it('does not remove a reverse path that was rebound to a live entity', () => {
+    const store = fakeStore(new Map());
+    registerEntityPath(store, 41, '/shared');
+    registerEntityPath(store, 42, '/shared');
+
+    unregisterEntityPath(store, 41);
+
+    assert.strictEqual(entityForPath(store, '/shared'), 42);
+    assert.strictEqual(pathForEntity(store, 42), '/shared');
   });
 });
 
@@ -784,6 +803,20 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
       view, dataStore, 1, 'bsi::ifc::prop::RelatedApproval', '#9',
     ));
     assert.strictEqual(line, '#1=IFCAPPROVALRELATIONSHIP(#9,#3);');
+  });
+
+  it('reports a rejected inbound room reference instead of silently accepting it', () => {
+    const dataStore = buildDataStore(
+      1, 'IfcApprovalRelationship', '#1=IFCAPPROVALRELATIONSHIP(#2,#3);', 'IFC2X3',
+    );
+    const view = new MutablePropertyView(null, 'room-model');
+
+    const reason = applyRemoteAttribute(
+      view, dataStore, 1, 'RelatedApproval', { 'ifc-lite::entityPath': '/missing' },
+    );
+
+    assert.strictEqual(reason, 'unresolved room reference: /missing');
+    assert.strictEqual(view.getMutations().length, 0);
   });
 
   it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for applyRemoteAttribute', () => {

@@ -124,7 +124,7 @@ export function ensureSourceRoomEntities(
     claimedPaths.add(path);
     entries.push({ ...base, roomKey });
     const referenceSlots = referenceAttributeSlotsForStore(dataStore, entity.type);
-    entity.attributes.forEach((value, index) => {
+    values.forEach((value, index) => {
       pending.push(...referencedExpressIds(value, referenceSlots[index] ?? false, new Set(), budget));
     });
   }

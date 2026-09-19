@@ -315,6 +315,36 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.equal(retryValue?.args[3], 2);
   });
 
+  it('materializes references introduced by pending positional overrides', () => {
+    let available = false;
+    const retryStore = Object.create(dataStore) as IfcDataStore;
+    const { adapter, calls } = fixture(true, retryStore, () => available);
+    const referenced = adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Base', null, 1, null, null, null, null, null, null, null],
+    });
+    const owner = adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Total', null, null, null, null, null, null, null, null, null],
+    });
+    adapter.setPositionalAttribute(owner, 9, [`#${referenced.expressId}`]);
+    const unavailableCallCount = calls.length;
+
+    available = true;
+    adapter.setPositionalAttribute(owner, 0, 'Renamed');
+
+    const retryCalls = calls.slice(unavailableCallCount);
+    const referencedCreate = retryCalls.find(call => call.kind === 'create'
+      && call.args[1] === referenced.expressId);
+    assert.ok(referencedCreate);
+    const components = retryCalls.find(call => call.kind === 'attribute'
+      && call.args[1] === owner.expressId
+      && call.args[2] === 'bsi::ifc::prop::Components');
+    assert.deepEqual(components?.args[3], [{
+      'ifc-lite::entityPath': pathForGuid(retryStore, referencedCreate.args[3] as string),
+    }]);
+  });
+
   it('suffixes a source materialization path already owned by a live room entity', () => {
     const collisionStore = Object.create(dataStore) as IfcDataStore;
     const { adapter, calls } = fixture(true, collisionStore, () => true);

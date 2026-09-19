@@ -35,6 +35,11 @@ export const hierarchyEn = {
   'hierarchy.node.nameAndSecondaryTitle': '{name} - {secondaryName}',
   'hierarchy.node.elevationTooltip': 'Elevation: {sign}{value}m',
   'hierarchy.node.elevationBadge': '{sign}{value}m',
+  'hierarchy.countBadge.elements': { one: '{formatted} element', other: '{formatted} elements' },
+  'hierarchy.countBadge.objects': { one: '{formatted} object', other: '{formatted} objects' },
+  'hierarchy.countBadge.loadingGeometry': 'geometry still loading — counting every object',
+  'hierarchy.countBadge.withoutGeometry': { one: '{formatted} element without geometry', other: '{formatted} elements without geometry' },
+  'hierarchy.countBadge.spacesNotCounted': { one: '{formatted} space (not counted)', other: '{formatted} spaces (not counted)' },
 
   // ModelTagGroupRow
   'hierarchy.modelTagGroup.memberCount': { one: '{count} model', other: '{count} models' },

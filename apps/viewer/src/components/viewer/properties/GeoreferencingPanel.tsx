@@ -36,7 +36,7 @@ import {
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
 // ── Field-specific assistance data ─────────────────────────────────────
 
@@ -46,33 +46,33 @@ const MAP_UNITS = ['METRE', 'FOOT', 'US SURVEY FOOT'];
 const COMMON_VERTICAL_DATUMS = ['MSL', 'NAVD88', 'EVRF2007', 'EVRF2019', 'AHD', 'ODN', 'LN02'];
 
 type FieldHint = {
-  placeholder?: string;
+  placeholderKey?: TranslationKey;
   suggestions?: string[];
   isSelect?: boolean;
-  helpText?: string;
+  helpTextKey?: TranslationKey;
 };
 
 function getFieldHint(entity: string, field: string): FieldHint {
   if (entity === 'projectedCRS') {
     switch (field) {
-      case 'name': return { placeholder: 'e.g. EPSG:4326', helpText: 'Use EPSG lookup to search' };
-      case 'description': return { placeholder: 'e.g. WGS 84 / UTM zone 32N' };
-      case 'geodeticDatum': return { placeholder: 'e.g. WGS84', suggestions: COMMON_DATUMS };
-      case 'verticalDatum': return { placeholder: 'e.g. MSL', suggestions: COMMON_VERTICAL_DATUMS };
-      case 'mapProjection': return { placeholder: 'e.g. Transverse Mercator', suggestions: COMMON_PROJECTIONS };
-      case 'mapZone': return { placeholder: 'e.g. 32N' };
+      case 'name': return { placeholderKey: 'properties.georef.hint.crsName', helpTextKey: 'properties.georef.hint.epsgLookup' };
+      case 'description': return { placeholderKey: 'properties.georef.hint.crsDescription' };
+      case 'geodeticDatum': return { placeholderKey: 'properties.georef.hint.geodeticDatum', suggestions: COMMON_DATUMS };
+      case 'verticalDatum': return { placeholderKey: 'properties.georef.hint.verticalDatum', suggestions: COMMON_VERTICAL_DATUMS };
+      case 'mapProjection': return { placeholderKey: 'properties.georef.hint.mapProjection', suggestions: COMMON_PROJECTIONS };
+      case 'mapZone': return { placeholderKey: 'properties.georef.hint.mapZone' };
       case 'mapUnit': return { isSelect: true, suggestions: MAP_UNITS };
       default: return {};
     }
   }
   if (entity === 'mapConversion') {
     switch (field) {
-      case 'eastings': return { placeholder: '0.0', helpText: 'X offset in map units' };
-      case 'northings': return { placeholder: '0.0', helpText: 'Y offset in map units' };
-      case 'orthogonalHeight': return { placeholder: '0.0', helpText: 'Z offset in metres' };
-      case 'xAxisAbscissa': return { placeholder: '1.0', helpText: 'cos(angle to grid north)' };
-      case 'xAxisOrdinate': return { placeholder: '0.0', helpText: 'sin(angle to grid north)' };
-      case 'scale': return { placeholder: '1.0', helpText: 'Usually 1.0 or close to it' };
+      case 'eastings': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.eastings' };
+      case 'northings': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.northings' };
+      case 'orthogonalHeight': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.height' };
+      case 'xAxisAbscissa': return { placeholderKey: 'properties.georef.hint.one', helpTextKey: 'properties.georef.hint.abscissa' };
+      case 'xAxisOrdinate': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.ordinate' };
+      case 'scale': return { placeholderKey: 'properties.georef.hint.one', helpTextKey: 'properties.georef.hint.scale' };
       default: return {};
     }
   }
@@ -188,7 +188,7 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
                     value={editValue}
                     onChange={e => setEditValue(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={hint.placeholder}
+                    placeholder={hint.placeholderKey ? t(hint.placeholderKey) : undefined}
                     className="flex-1 min-w-0 text-[11px] font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
                     autoFocus
                   />
@@ -215,8 +215,8 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
                 </div>
               )}
               {/* Help text */}
-              {hint.helpText && (
-                <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{hint.helpText}</span>
+              {hint.helpTextKey && (
+                <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{t(hint.helpTextKey)}</span>
               )}
             </div>
           ) : (

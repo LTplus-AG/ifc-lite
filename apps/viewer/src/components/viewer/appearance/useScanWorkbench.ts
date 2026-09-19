@@ -17,7 +17,16 @@ export type ScanWorkflowMessage =
   | { kind: 'raw'; text: string };
 const translated = (key: TranslationKey, params?: TranslationParameters): ScanWorkflowMessage => ({ kind: 'translated', key, params });
 const raw = (text: string): ScanWorkflowMessage => ({ kind: 'raw', text });
-export interface ScanSourceOption { id: string; modelId: string; selector: ScanSourceSelector; label: string }
+export interface ScanSourceOption {
+  id: string;
+  modelId: string;
+  selector: ScanSourceSelector;
+  modelName: string;
+  kind: 'surface' | 'points';
+  surfaceNumber?: number;
+  retainedCount?: number;
+  seenCount?: number;
+}
 
 export function useScanWorkbench() {
   const models = useViewerStore(s => s.models), mutationVersion = useViewerStore(s => s.mutationVersion);
@@ -26,9 +35,9 @@ export function useScanWorkbench() {
   const placement = useViewerStore(s => s.modelPlacement), room = useViewerStore(s => s.collabRoomId);
   // Textured GLB surfaces, then completely streamed point clouds whose retained sample can be aligned (#4381).
   const sources = useMemo((): ScanSourceOption[] => [...models.values()].flatMap(model => {
-    if (/\.glb$/i.test(model.sourceFile?.name ?? '')) return (model.geometryResult?.meshes ?? []).flatMap((mesh, index): ScanSourceOption[] => mesh.textureRef && mesh.uvs ? [{ id: `${model.id}:${index}`, modelId: model.id, selector: index, label: `${model.name} · Surface ${index + 1}` }] : []);
+    if (/\.glb$/i.test(model.sourceFile?.name ?? '')) return (model.geometryResult?.meshes ?? []).flatMap((mesh, index): ScanSourceOption[] => mesh.textureRef && mesh.uvs ? [{ id: `${model.id}:${index}`, modelId: model.id, selector: index, modelName: model.name, kind: 'surface', surfaceNumber: index + 1 }] : []);
     const retained = model.pointCloudHandleId === undefined || model.loadState === 'error' ? null : getPointCloudScanSample(model.pointCloudHandleId);
-    return retained && retained.count >= 4 ? [{ id: `${model.id}:points`, modelId: model.id, selector: 'points', label: `${model.name} · Point cloud (${retained.count.toLocaleString()} of ${retained.seen.toLocaleString()} points retained)` }] : [];
+    return retained && retained.count >= 4 ? [{ id: `${model.id}:points`, modelId: model.id, selector: 'points', modelName: model.name, kind: 'points', retainedCount: retained.count, seenCount: retained.seen }] : [];
   }), [models]);
   const targets = useMemo(() => [...models.values()].filter(model => model.ifcDataStore && !/\.glb$/i.test(model.sourceFile?.name ?? '')), [models]);
   const [sourceId, setSourceId] = useState(''), [targetId, setTargetId] = useState(''), [restart, setRestart] = useState(0);

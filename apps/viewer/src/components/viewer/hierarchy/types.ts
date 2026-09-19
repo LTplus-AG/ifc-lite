@@ -90,13 +90,6 @@ export interface TreeNode {
    */
   countSummary?: ObjectCountSummary;
   /**
-   * The badge's hover lines, ready to render — headline first, then only the
-   * breakdown lines that have something to say. Built here rather than in the
-   * component so the hover a user actually reads is part of the tree model and
-   * can be asserted through the same entry point as the number it explains.
-   */
-  countTooltipLines?: string[];
-  /**
    * The storey elevation badge, in metres, for DISPLAY only: the storey's
    * absolute height (world Z through the placement chain, or height above the
    * map datum when georeferenced), computed per model — see

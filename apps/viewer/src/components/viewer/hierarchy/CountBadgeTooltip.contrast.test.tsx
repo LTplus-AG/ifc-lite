@@ -25,11 +25,20 @@ import { render, cleanup } from '@/test/render.js';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.js';
 import { CountBadgeTooltip } from './CountBadgeTooltip.js';
 
+const summary = {
+  counted: 5,
+  rows: 6,
+  typeCounts: [['IfcWall', 3], ['IfcDoor', 2]] as Array<[string, number]>,
+  withoutGeometry: 0,
+  spacesNotCounted: 1,
+  geometryKnown: true,
+};
+
 afterEach(cleanup);
 
 describe('CountBadgeTooltip contrast', () => {
   it('renders the headline at text-xs', () => {
-    const container = render(<CountBadgeTooltip elementCount={5} lines={['5 objects', '3 Walls', '2 Doors']} />);
+    const container = render(<CountBadgeTooltip elementCount={5} summary={summary} />);
     const headline = container.querySelector('p');
     assert.equal(headline?.textContent, '5 objects');
     assert.equal(headline?.className, 'text-xs');
@@ -40,7 +49,7 @@ describe('CountBadgeTooltip contrast', () => {
       <Tooltip defaultOpen>
         <TooltipTrigger>5</TooltipTrigger>
         <TooltipContent>
-          <CountBadgeTooltip elementCount={5} lines={['5 objects', '3 Walls', '2 Doors']} />
+          <CountBadgeTooltip elementCount={5} summary={summary} />
         </TooltipContent>
       </Tooltip>,
     );

@@ -76,10 +76,52 @@ export type AttributeOverrides = ReadonlyMap<string, string>;
 export interface QueuedRelation {
   /** expressId of the queued `IfcRel…` record itself. */
   relationshipId: number;
+  /** Exact IfcRel* class as authored. */
+  relationshipType: string;
   /** The `Relating…` end — the container, whole, or type. */
   relating: number;
   /** The `Related…` end(s) — the contents, parts, or occurrences. */
   related: readonly number[];
+}
+
+export interface QueuedRelationshipEdge {
+  relationshipId: number;
+  relationshipType: string;
+  direction: 'forward' | 'inverse';
+  targetId: number;
+}
+
+/** Exact graph rows contributed by queued relationship records touching an entity. */
+export function queuedRelationshipEdges(
+  created: readonly CreatedEntity[],
+  deleted: ReadonlySet<number>,
+  expressId: number,
+): QueuedRelationshipEdge[] {
+  const out: QueuedRelationshipEdge[] = [];
+  for (const relations of indexQueuedRelations(created).values()) {
+    for (const relation of relations) {
+      if (deleted.has(relation.relationshipId)) continue;
+      if (relation.relating === expressId) {
+        for (const targetId of relation.related) {
+          if (!deleted.has(targetId)) out.push({
+            relationshipId: relation.relationshipId,
+            relationshipType: relation.relationshipType,
+            direction: 'forward',
+            targetId,
+          });
+        }
+      }
+      if (relation.related.includes(expressId) && !deleted.has(relation.relating)) {
+        out.push({
+          relationshipId: relation.relationshipId,
+          relationshipType: relation.relationshipType,
+          direction: 'inverse',
+          targetId: relation.relating,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /** The overlay's read surface, as every folding tool consumes it. */
@@ -274,7 +316,12 @@ function indexQueuedRelations(created: readonly CreatedEntity[]): Map<string, Qu
     }
     if (relating === undefined || related === undefined || related.length === 0) continue;
     const list = byType.get(upper);
-    const relation: QueuedRelation = { relationshipId: entity.expressId, relating, related };
+    const relation: QueuedRelation = {
+      relationshipId: entity.expressId,
+      relationshipType: entity.ifcType,
+      relating,
+      related,
+    };
     if (list) list.push(relation);
     else byType.set(upper, [relation]);
   }

@@ -39,6 +39,7 @@ import { GanttEmptyState } from './GanttEmptyState.js';
 import { AnimationSettingsPopover } from './AnimationSettingsPopover.js';
 import { GanttToolbar } from './GanttToolbar.js';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog.js';
+import { ScheduleSummaryLine } from './ScheduleSummaryLine.js';
 import type { FlattenedTask } from './schedule-utils.js';
 
 Object.assign(en, scheduleEn);
@@ -581,19 +582,15 @@ describe('GanttToolbar localization (#4918)', () => {
     registerLocale('gantt-toolbar-pseudo', PSEUDO);
     act(() => setLocale('gantt-toolbar-pseudo'));
     const after = visibleStrings(container);
-    // `allTasks` is skipped here: Radix `SelectValue`'s `placeholder` prop is
-    // only read on mount (it doesn't re-render on a live locale switch while
-    // no `SelectItem`'s text has been registered) — verified separately
-    // below with a cold mount under the pseudo locale instead.
-    checkCovered(english, after, 'schedule.toolbar.', ['schedule.toolbar.allTasks']);
+    checkCovered(english, after, 'schedule.toolbar.');
+    assert.ok(container.innerHTML.includes(mark('schedule.toolbar.allTasks')),
+      'All tasks option must follow a live locale switch');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.toolbar.discardedToast|') || s.startsWith('⟦schedule.toolbar.discardPendingAriaLabel|')), 'discard-pending plural not marked');
     covered.add('schedule.toolbar.scaleWeek');
   });
 
   it('translates the "All tasks" Select placeholder on a cold mount under the pseudo locale', () => {
-    // Live locale switches don't reach this text (see the reason above);
-    // this proves the `t('schedule.toolbar.allTasks')` call site itself is
-    // correct by mounting with the pseudo locale already active.
+    // Also prove the initial mount under a non-English locale.
     registerLocale('gantt-toolbar-cold-pseudo', PSEUDO);
     act(() => setLocale('gantt-toolbar-cold-pseudo'));
     useViewerStore.setState({
@@ -612,6 +609,23 @@ describe('GanttToolbar localization (#4918)', () => {
       scheduleUndoStack: [],
       scheduleRedoStack: [],
     });
+  });
+});
+
+describe('ScheduleSummaryLine localization (#4918)', () => {
+  it('preserves translator ordering while styling the three interpolated values', () => {
+    const container = render(<ScheduleSummaryLine groups={2} products={7} date="2030-01-02" />);
+    const summary = container.querySelector('p');
+    assert.ok(summary);
+    assert.equal(summary.querySelectorAll('span.font-semibold').length, 2,
+      'task and product counts stay emphasized');
+    assert.equal(summary.querySelectorAll('span.font-mono').length, 1,
+      'finish timestamp stays monospaced');
+
+    registerLocale('schedule-summary-pseudo', PSEUDO);
+    act(() => setLocale('schedule-summary-pseudo'));
+    assert.ok(summary.textContent?.startsWith('⟦schedule.generateDialog.summaryLine|'));
+    covered.add('schedule.generateDialog.summaryLine');
   });
 });
 
@@ -649,7 +663,6 @@ describe('GenerateScheduleDialog localization (#4918)', () => {
     const english = visibleStrings(container);
     assert.ok(english.has('Generate schedule'));
     assert.ok(english.has('Group by'));
-
     registerLocale('generate-dialog-pseudo', PSEUDO);
     act(() => setLocale('generate-dialog-pseudo'));
     const after = visibleStrings(container);

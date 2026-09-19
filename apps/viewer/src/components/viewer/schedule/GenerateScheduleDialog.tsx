@@ -43,6 +43,7 @@ import {
 import { formatDateTime, buildWorkPlanInfo, logGeneratedScheduleDebug } from './schedule-utils';
 import { HeightStrategyPanel } from './HeightStrategyPanel';
 import { GenerateAdvancedPanel } from './GenerateAdvancedPanel';
+import { ScheduleSummaryLine } from './ScheduleSummaryLine';
 
 interface GenerateScheduleDialogProps {
   open: boolean;
@@ -317,13 +318,11 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                     <span className="font-medium">{t('schedule.generateDialog.summaryHeading')}</span>
                     <span className="text-xs text-muted-foreground">{t('schedule.generateDialog.generatedLocally')}</span>
                   </div>
-                  <p>
-                    {t('schedule.generateDialog.summaryLine', {
-                      groups: preview.groupCount,
-                      products: preview.productCount,
-                      date: formatDateTime(new Date(preview.finishDate).getTime()),
-                    })}
-                  </p>
+                  <ScheduleSummaryLine
+                    groups={preview.groupCount}
+                    products={preview.productCount}
+                    date={formatDateTime(new Date(preview.finishDate).getTime())}
+                  />
                   {preview.groupCount > 0 && (
                     <p className="text-xs text-muted-foreground">
                       {t('schedule.generateDialog.firstTask', { name: preview.extraction.tasks[0]?.name ?? '' })}
@@ -387,4 +386,3 @@ function StrategyChoice({ icon, label, description, active, disabled, onSelect }
     </button>
   );
 }
-

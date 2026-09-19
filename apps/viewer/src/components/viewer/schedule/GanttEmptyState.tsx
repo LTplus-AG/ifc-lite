@@ -43,7 +43,7 @@ export function emptyStateHelperText(t: TFunction, canGenerate: boolean, canImpo
     return t('schedule.emptyState.helperGenerateOnly', { generate: generateHelp });
   }
   // Sentence-initial, so the import clause is capitalised on its own.
-  const capitalizedImportHelp = `${importHelp[0].toUpperCase()}${importHelp.slice(1)}`;
+  const capitalizedImportHelp = `${importHelp.charAt(0).toUpperCase()}${importHelp.slice(1)}`;
   return t('schedule.emptyState.helperImportOnly', { import: capitalizedImportHelp });
 }
 

@@ -64,7 +64,7 @@ export const scheduleEn = {
   'schedule.dragTooltip.shifting': 'Shifting',
   'schedule.dragTooltip.resizingStart': 'Resizing start',
   'schedule.dragTooltip.resizingFinish': 'Resizing finish',
-  'schedule.dragTooltip.start': 'Start  {value}',
+  'schedule.dragTooltip.start': 'Start {value}',
   'schedule.dragTooltip.finish': 'Finish {value}',
   'schedule.dragTooltip.duration': 'Duration {days}d',
   'schedule.dragTooltip.hint': 'Shift = no snap · Esc = cancel',
@@ -204,7 +204,7 @@ export const scheduleEn = {
   'schedule.animation.hideUpcomingDescription': "Don't render work that hasn't started yet.",
   'schedule.animation.hideUnscheduledLabel': 'Hide unscheduled products',
   'schedule.animation.hideUnscheduledDescription':
-    "Hide anything not assigned to a task — stops untaskd geometry rendering as material default (often pure white).",
+    "Hide anything not assigned to a task — stops untasked geometry rendering as material default (often pure white).",
   'schedule.animation.animateDemolitionLabel': 'Animate demolition',
   'schedule.animation.animateDemolitionDescription': 'Remove products when demolition tasks complete.',
   'schedule.animation.colourOverlaysLabel': 'Colour overlays',

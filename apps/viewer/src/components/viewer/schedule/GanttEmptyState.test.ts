@@ -44,6 +44,12 @@ describe('emptyStateHelperText', () => {
     assert.match(text, /^Import one from MS Project/);
   });
 
+  it('preserves a valid empty import-help translation without throwing', () => {
+    const emptyImport = (key: Parameters<typeof t>[0], params?: Parameters<typeof t>[1]) =>
+      key === 'schedule.emptyState.importHelp' ? '' : t(key, params);
+    assert.equal(emptyStateHelperText(emptyImport, false, true), '.');
+  });
+
   it('ends every variant as a single sentence', () => {
     for (const [canGenerate, canImport] of [[true, true], [true, false], [false, true]] as const) {
       const text = emptyStateHelperText(t, canGenerate, canImport);

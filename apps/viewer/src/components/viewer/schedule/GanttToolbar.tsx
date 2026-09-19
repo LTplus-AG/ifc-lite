@@ -101,17 +101,17 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
 
   const hasData = !!scheduleData && scheduleData.tasks.length > 0;
   const hasDates = !!scheduleRange && !scheduleRange.synthetic;
-
+  const allTasksLabel = t('schedule.toolbar.allTasks');
   const scheduleOptions = useMemo(() => {
     if (!scheduleData) return [];
     return [
-      { value: ALL_SCHEDULES_SENTINEL, label: t('schedule.toolbar.allTasks') },
+      { value: ALL_SCHEDULES_SENTINEL, label: allTasksLabel },
       ...scheduleData.workSchedules.filter(s => s.kind === 'WorkSchedule').map(s => ({ // 'WorkPlan' never controls tasks directly
         value: s.globalId,
         label: s.name || s.globalId,
       })),
     ];
-  }, [scheduleData, t]);
+  }, [scheduleData, allTasksLabel]);
 
   const selectedScheduleValue = activeWorkScheduleId || ALL_SCHEDULES_SENTINEL;
   const handleScheduleChange = useCallback((value: string) => {

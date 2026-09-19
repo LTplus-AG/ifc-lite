@@ -5,6 +5,7 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
+import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
@@ -45,6 +46,7 @@ export const en = {
   ...documentMenuEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...appearancePanelEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

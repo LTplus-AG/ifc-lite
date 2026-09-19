@@ -11,6 +11,7 @@ import type { PdfFidelityReport } from '@/lib/appearance/pdf/vector-types';
 import { AppearanceMeshPreview } from './AppearanceMeshPreview';
 import { PdfFidelityReportView, visibleOmissionCount } from './PdfFidelityReportView';
 import { selectCreatedAppearanceObject } from './select-created-object';
+import { useTranslation } from '@/i18n';
 
 const ignoreRegion = () => {};
 /** Fidelity-gated conversion (#4406): the canonical report decides whether the
@@ -19,6 +20,7 @@ const ignoreRegion = () => {};
 export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, disabled }: {
   referenceId: string; modelId: string; containerId?: number; Name: string; disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const [tolerance, setTolerance] = useState('0.001');
   const [report, setReport] = useState<{ verdict: PdfFidelityReport; userUnit: number } | null>(null);
   const [accepted, setAccepted] = useState(false);
@@ -53,7 +55,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   async function prepare() {
     if (!valid || disabled || room || operation.current || containerId === undefined) return;
     dropPrepared(); const controller = new AbortController(); operation.current = controller;
-    setBusy(true); setError(false); setMessage('Checking original PDF vectors…');
+    setBusy(true); setError(false); setMessage(t('appearance.pdfAnnotation.checkingVectors'));
     try {
       let current = check.current;
       if (!current) {
@@ -63,17 +65,21 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
         check.current = current; setReport({ verdict: current.report, userUnit: current.page.userUnit });
       }
       const verdict = current.report;
-      if (verdict.rasterOnly) { setError(true); setMessage('This page has no vector drawing content. Keep it as a raster reference and use the Image representation.'); return; }
+      if (verdict.rasterOnly) { setError(true); setMessage(t('appearance.pdfAnnotation.rasterOnly')); return; }
       if (!verdict.exact && !accepted) {
         const n = visibleOmissionCount(verdict);
-        setMessage(`Partial conversion: ${n} visible ${n === 1 ? 'omission' : 'omissions'}. Review the report and accept the partial conversion to prepare it.`); return;
+        setMessage(t('appearance.pdfAnnotation.partialSummary', { count: n })); return;
       }
-      setMessage('Preparing geometry…');
+      setMessage(t('appearance.pdfAnnotation.preparingGeometry'));
       const result = await current.prepare(modelId, containerId, { Name, acceptPartial: accepted, signal: controller.signal });
       if (controller.signal.aborted || operation.current !== controller) return;
       result.validate();
       retained.current = result; setPrepared(result);
-      setMessage(`Review ${result.regions} coloured regions${verdict.exact ? '' : ' of the accepted partial conversion'}. The original drawing remains available.`);
+      setMessage(
+        verdict.exact
+          ? t('appearance.pdfAnnotation.reviewRegionsExact', { count: result.regions })
+          : t('appearance.pdfAnnotation.reviewRegionsPartial', { count: result.regions }),
+      );
     } catch (failure) {
       if (!controller.signal.aborted && operation.current === controller) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
@@ -81,35 +87,34 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   async function create() {
     const result = retained.current, renderer = getGlobalRenderer(), exact = !!report?.verdict.exact;
     if (!result || !ready || busy || disabled || room) return;
-    if (!renderer) { setError(true); setMessage('Wait for the 3D view to be ready.'); return; }
+    if (!renderer) { setError(true); setMessage(t('appearance.pdfAnnotation.rendererNotReady')); return; }
     const controller = new AbortController(); operation.current = controller;
-    setBusy(true); setError(false); setMessage('Creating PDF annotation…');
+    setBusy(true); setError(false); setMessage(t('appearance.pdfAnnotation.creating'));
     try {
       const created = await result.create(renderer, { signal: controller.signal });
       if (controller.signal.aborted || operation.current !== controller) return;
       selectCreatedAppearanceObject(modelId, created); dropAll();
-      setMessage(exact ? 'PDF IfcAnnotation created and selected. Hide the drawing above to inspect it. Undo is available.'
-        : 'Partial PDF IfcAnnotation created and selected; the accepted omissions are recorded in its IfcLite_PdfVectorConversion property set. Undo is available.');
+      setMessage(exact ? t('appearance.pdfAnnotation.createdExact') : t('appearance.pdfAnnotation.createdPartial'));
     } catch (failure) {
       if (!controller.signal.aborted && operation.current === controller) { dropAll(); setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   return <div className="space-y-2" aria-busy={busy}>
-    <p className="text-[11px] text-muted-foreground">Convert supported fills and straight strokes into coloured IFC geometry. Curves are flattened within the tolerance below, measured in model metres after calibration. The page is checked first: text, images, clipping, transparency, patterns and other unsupported paint are reported, never silently dropped. User-cropped pages are not yet supported.</p>
-    <label className="block text-[11px]">Geometry tolerance (m)<Input aria-label="PDF geometry tolerance (m)" value={tolerance} disabled={busy || disabled}
+    <p className="text-[11px] text-muted-foreground">{t('appearance.pdfAnnotation.description')}</p>
+    <label className="block text-[11px]">{t('appearance.pdfAnnotation.toleranceLabel')}<Input aria-label={t('appearance.pdfAnnotation.toleranceAriaLabel')} value={tolerance} disabled={busy || disabled}
       onChange={event => setTolerance(event.target.value)} className="h-8 text-xs" /></label>
     {report && <PdfFidelityReportView report={report.verdict} userUnit={report.userUnit} />}
-    {partial && <label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" aria-label="Accept partial PDF conversion" className="mt-0.5" checked={accepted} disabled={busy || disabled}
-      onChange={event => { setAccepted(event.target.checked); dropPrepared(); }} />Create a partial conversion. The omissions listed above are left out and recorded with the annotation.</label>}
+    {partial && <label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" aria-label={t('appearance.pdfAnnotation.acceptPartialAriaLabel')} className="mt-0.5" checked={accepted} disabled={busy || disabled}
+      onChange={event => { setAccepted(event.target.checked); dropPrepared(); }} />{t('appearance.pdfAnnotation.acceptPartialLabel')}</label>}
     <Button type="button" variant="outline" size="sm" disabled={!valid || busy || disabled || !!room || !!report?.verdict.rasterOnly || (partial && !accepted)} onClick={() => { void prepare(); }}>
-      {partial ? 'Prepare partial conversion' : 'Prepare vector preview'}</Button>
+      {partial ? t('appearance.pdfAnnotation.preparePartial') : t('appearance.pdfAnnotation.prepareVector')}</Button>
     {prepared && <>
       <AppearanceMeshPreview mesh={prepared.meshes[0]} additionalMeshes={additionalMeshes} initialPlane={prepared.initialPlane} triangles={triangles} disabled={busy || disabled}
         regionControls={false} onRegion={ignoreRegion} onReady={setReady} onError={value => { setError(true); setMessage(value); }}
-        canvasLabel="PDF annotation geometry preview" instruction="Exact native vector geometry. Drag to orbit; scroll to zoom. Colours and empty regions are retained." />
-      <Button type="button" size="sm" disabled={!ready || busy || disabled || !!room} onClick={() => { void create(); }}>Create annotation</Button>
+        canvasLabel={t('appearance.pdfAnnotation.canvasLabel')} instruction={t('appearance.pdfAnnotation.previewInstruction')} />
+      <Button type="button" size="sm" disabled={!ready || busy || disabled || !!room} onClick={() => { void create(); }}>{t('appearance.pdfAnnotation.createAnnotation')}</Button>
     </>}
-    {busy && <Button type="button" size="sm" variant="ghost" onClick={() => { cancel(); dropAll(); setError(false); setMessage('PDF annotation preparation cancelled.'); }}>Cancel</Button>}
+    {busy && <Button type="button" size="sm" variant="ghost" onClick={() => { cancel(); dropAll(); setError(false); setMessage(t('appearance.pdfAnnotation.cancelled')); }}>{t('appearance.pdfAnnotation.cancel')}</Button>}
     {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
   </div>;
 }

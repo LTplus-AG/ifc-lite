@@ -14,7 +14,7 @@
  * which is the same path the 4D Gantt and playback loop already read from.
  */
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
 import { CalendarPlus, Layers, Building2, Ruler, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
@@ -168,6 +169,12 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       onOpenChange(false);
     });
   }, [preview, options, createWorkPlan, workPlanName, commitGeneratedSchedule, setGanttPanelVisible, setAnimationEnabled, onOpenChange, activeModelId, models]);
+
+  // Only read in the `preview && !preview.empty` branch below; computed
+  // here (not memoized — cheap string ops) so the JSX itself stays a
+  // single `styleInterpolatedValues` call per line instead of an IIFE.
+  const firstTaskName = preview?.extraction.tasks[0]?.name ?? '';
+  const lastTaskName = preview?.extraction.tasks.at(-1)?.name ?? '';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -325,8 +332,8 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                   />
                   {preview.groupCount > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      {t('schedule.generateDialog.firstTask', { name: preview.extraction.tasks[0]?.name ?? '' })}
-                      {preview.groupCount > 1 && <> · {t('schedule.generateDialog.lastTask', { name: preview.extraction.tasks.at(-1)?.name ?? '' })}</>}
+                      {styleInterpolatedValues(t('schedule.generateDialog.firstTask', { name: firstTaskName }), [[firstTaskName, <span key="first" className="font-medium">{firstTaskName}</span>]])}
+                      {preview.groupCount > 1 && <> · {styleInterpolatedValues(t('schedule.generateDialog.lastTask', { name: lastTaskName }), [[lastTaskName, <span key="last" className="font-medium">{lastTaskName}</span>]])}</>}
                     </p>
                   )}
                 </div>
@@ -352,7 +359,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
 }
 
 interface StrategyChoiceProps {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   description: string;
   active: boolean;

@@ -7,17 +7,8 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorkScheduleInfo } from '@ifc-lite/parser';
 import { cleanup, render } from '@/test/render.js';
-import { en } from '@/i18n/en';
-import { scheduleEn } from '@/i18n/catalogues/schedule.en';
 import { GanttWorkPlanSummary } from './GanttWorkPlanSummary.js';
 import { GanttEmptyState } from './GanttEmptyState.js';
-
-// Wires the schedule catalogue into the English fallback so `resolve()` can
-// find `schedule.*` keys under this direct render test — the shared
-// `en.ts` catalogue assembly is owned by the i18n sweep's integration pass,
-// not this slice (see AGENTS.md / #4918). `en` is a plain object at runtime
-// (only its TS type is `as const`), so this augmentation is safe.
-Object.assign(en, scheduleEn);
 
 function workSchedule(
   globalId: string,

@@ -5,16 +5,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { resolve } from '@/i18n/registry';
-import { scheduleEn } from '@/i18n/catalogues/schedule.en';
-import { en } from '@/i18n/en';
 import { emptyStateHelperText } from './GanttEmptyState.js';
 
-// Wires the schedule catalogue into the English fallback so `resolve()` can
-// find `schedule.*` keys under this direct (non-hook) test — the shared
-// `en.ts` catalogue assembly is owned by the i18n sweep's integration pass,
-// not this slice (see AGENTS.md / #4918). `en` is a plain object at runtime
-// (only its TS type is `as const`), so this augmentation is safe.
-Object.assign(en, scheduleEn);
+// `schedule.*` keys resolve straight off `en.ts`'s own registration now
+// (#4918 integration pass) — no per-test catalogue merge needed.
 const t = resolve;
 
 // The empty state renders whenever EITHER action is available

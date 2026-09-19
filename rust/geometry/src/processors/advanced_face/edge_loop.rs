@@ -14,6 +14,57 @@ use super::curves::{
 };
 use super::polyline::sample_curve_polyline;
 
+/// Sample one `IfcEdgeCurve` in edge traversal order, including both authored
+/// vertices. `orientation=true` walks EdgeStart to EdgeEnd; false walks the
+/// opposite direction. Kept here so face loops and standalone structural edge
+/// rendering share the same curve/sense implementation.
+pub(in crate::processors) fn sample_edge_curve_points(
+    edge_curve: &DecodedEntity,
+    orientation: bool,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+) -> Option<Vec<Point3<f64>>> {
+    let start_vertex = edge_curve
+        .get(0)
+        .and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
+    let end_vertex = edge_curve
+        .get(1)
+        .and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
+    let edge_start = start_vertex
+        .as_ref()
+        .and_then(|vertex| extract_vertex_coords(vertex, decoder));
+    let edge_end = end_vertex
+        .as_ref()
+        .and_then(|vertex| extract_vertex_coords(vertex, decoder));
+    let (walk_start, walk_end) = if orientation {
+        (edge_start, edge_end)
+    } else {
+        (edge_end, edge_start)
+    };
+    let start = walk_start?;
+    let end = walk_end?;
+    let same_sense = edge_curve.get(3).and_then(|attribute| attribute.as_enum())
+        .map(|value| value == "T" || value == "TRUE").unwrap_or(true);
+    let curve_forward = orientation == same_sense;
+    let geometry = edge_curve
+        .get(2)
+        .and_then(|attribute| decoder.resolve_ref(attribute).ok().flatten());
+    let mut points = geometry.as_ref().and_then(|geometry| {
+        sample_edge_geometry(
+            geometry,
+            &Some(start),
+            &Some(end),
+            curve_forward,
+            decoder,
+            quality,
+        )
+    }).unwrap_or_else(|| vec![start]);
+    if points.last().is_none_or(|point| point != &end) {
+        points.push(end);
+    }
+    Some(points)
+}
+
 /// Extract polygon points from an edge loop, sampling B-spline curve edges
 /// for intermediate points to preserve curvature.
 pub(super) fn extract_edge_loop_points(
@@ -65,64 +116,29 @@ pub(super) fn extract_edge_loop_points(
             }
         };
 
-        // IfcEdgeCurve: EdgeStart(0), EdgeEnd(1), EdgeGeometry(2), SameSense(3)
-        let edge_same_sense = edge_curve.get(3).and_then(|a| a.as_enum())
-            .map(|e| e == "T" || e == "TRUE").unwrap_or(true);
-
-        // Orientation determines which direction we walk the edge in the loop:
-        //   TRUE  → EdgeStart to EdgeEnd
-        //   FALSE → EdgeEnd to EdgeStart
-        // SameSense determines curve parameterization relative to edge direction:
-        //   TRUE  → curve t_min→t_max goes EdgeStart→EdgeEnd
-        //   FALSE → curve t_max→t_min goes EdgeStart→EdgeEnd
-        // Combined: traverse curve forward when orientation==edge_same_sense
-        let curve_forward = orientation == edge_same_sense;
-
-        // Get start and end vertices from EdgeCurve
-        let start_vertex = edge_curve
-            .get(0)
-            .and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
-        let end_vertex = edge_curve
-            .get(1)
-            .and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
-
-        let edge_start_pt = start_vertex.as_ref().and_then(|v| extract_vertex_coords(v, decoder));
-        let edge_end_pt = end_vertex.as_ref().and_then(|v| extract_vertex_coords(v, decoder));
-
-        // Walk direction is based on Orientation only (not SameSense):
-        //   Orientation TRUE  → we encounter EdgeStart first
-        //   Orientation FALSE → we encounter EdgeEnd first
-        let (walk_start, _walk_end) = if orientation {
-            (edge_start_pt, edge_end_pt)
+        if let Some(mut sampled) = sample_edge_curve_points(
+            &edge_curve,
+            orientation,
+            decoder,
+            quality,
+        ) {
+            // The next loop edge contributes this edge's terminal vertex.
+            // Keeping it out here avoids duplicating every shared corner.
+            sampled.pop();
+            polygon_points.extend(sampled);
         } else {
-            (edge_end_pt, edge_start_pt)
-        };
-
-        // Get the edge geometry to check if it's a curve
-        let edge_geometry = edge_curve
-            .get(2)
-            .and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
-
-        if let Some(geom) = edge_geometry {
-            if let Some(sampled) = sample_edge_geometry(
-                &geom,
-                &walk_start,
-                &_walk_end,
-                curve_forward,
-                decoder,
-                quality,
-            ) {
-                polygon_points.extend(sampled);
-                continue;
+            // Preserve the tolerant face-loop fallback for malformed edges
+            // with only the current traversal vertex available.
+            let vertex_index = if orientation { 0 } else { 1 };
+            let vertex = edge_curve
+                .get(vertex_index)
+                .and_then(|attribute| decoder.resolve_ref(attribute).ok().flatten());
+            if let Some(point) = vertex
+                .as_ref()
+                .and_then(|value| extract_vertex_coords(value, decoder))
+            {
+                polygon_points.push(point);
             }
-            // For IfcLine and other straight/unsupported curves: just use start
-            // vertex (the next edge contributes its own start, so straight lines
-            // are correctly represented by their two endpoints).
-        }
-
-        // Default: add start vertex only
-        if let Some(pt) = walk_start {
-            polygon_points.push(pt);
         }
     }
 

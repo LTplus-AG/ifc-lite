@@ -41,6 +41,7 @@ export interface RendererRecoveryHost {
     inFlight: Promise<DeviceRecoveryResult> | null;
     lostReferenceImages: boolean;
     quantizedBatchesRequested: boolean;
+    omissions: Set<DeviceRecoveryOmission>;
   };
   deviceLost: boolean;
   destroyed: boolean;
@@ -111,9 +112,9 @@ async function recoverRendererDeviceOnce(
     return { ok: false, reason: 'renderer-destroyed' };
   }
 
-  const omissions = host.overlays.recoveryOmissions();
-  if (host.recovery.lostReferenceImages) omissions.push('reference-images');
-  if (host.pointCloudRenderer?.hasAssets()) omissions.push('point-clouds');
+  for (const omission of host.overlays.recoveryOmissions()) host.recovery.omissions.add(omission);
+  if (host.recovery.lostReferenceImages) host.recovery.omissions.add('reference-images');
+  if (host.pointCloudRenderer?.hasAssets()) host.recovery.omissions.add('point-clouds');
 
   let phase: 'device' | 'scene' = 'scene';
   try {
@@ -147,6 +148,8 @@ async function recoverRendererDeviceOnce(
     host.deviceLost = false;
     host.deviceLostInfo = null;
     host.recovery.lostReferenceImages = false;
+    const omissions = [...host.recovery.omissions];
+    host.recovery.omissions.clear();
     host.markReady(generation);
     host.requestRender();
     return { ok: true, omissions };

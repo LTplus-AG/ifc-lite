@@ -85,6 +85,25 @@ describe('Renderer.recoverDevice (#4885)', () => {
     });
   });
 
+  it('preserves omissions when a failed replacement is retried (#4885)', async () => {
+    const renderer = lostRenderer();
+    let assetsPresent = true;
+    renderer['pointCloudRenderer'] = { hasAssets: () => assetsPresent } as never;
+    renderer['initOnce'] = async () => { assetsPresent = false; throw new Error('first replacement failed'); };
+    const error = mock.method(console, 'error', () => undefined);
+    try {
+      assert.strictEqual((await renderer.recoverDevice()).ok, false);
+      renderer['initOnce'] = async () => {
+        renderer['pipeline'] = {} as never;
+        const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
+        device.device = {} as GPUDevice; device.context = {} as GPUCanvasContext;
+      };
+      assert.deepStrictEqual(await renderer.recoverDevice(), { ok: true, omissions: ['point-clouds'] });
+    } finally {
+      error.mock.restore();
+    }
+  });
+
   it('recomputes bounds after omitted GPU-only layers are destroyed and before readiness', async () => {
     const renderer = lostRenderer();
     const order: string[] = [];

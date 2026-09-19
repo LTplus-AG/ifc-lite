@@ -26,7 +26,6 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { EntityRef } from '@/store/types';
 import {
   globalIdToExpressId as globalIdToExpressIdLookup,
-  expressIdToGlobalId as expressIdToGlobalIdLookup,
   resolveUniqueGlobalIds,
 } from './bcfIdLookup';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
@@ -311,15 +310,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     [models],
   );
 
-  /**
-   * Convert expressId (with model offset) to IFC GlobalId string
-   * Handles multi-model federation by finding the correct model and subtracting offset
-   */
-  const expressIdToGlobalId = useCallback(
-    (expressId: number): string | null =>
-      expressIdToGlobalIdLookup(expressId, models, ifcDataStore),
-    [models, ifcDataStore]
-  );
   /** A registered model whose metadata has not hydrated yet cannot name its entities YET (#4529). */
   const isEntityPending = useCallback(
     (globalId: number): boolean => {
@@ -358,9 +348,12 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         : null;
       const additionalSelectedRefs = opts.additionalSelectedRefs ?? focusedClash?.selectedRefs;
       const additionalColoredRefs = opts.additionalColoredRefs ?? focusedClash?.coloredRefs;
-      const resolveCapturedRef = (ref: ComponentRef): string | null => typeof ref === 'number'
-        ? expressIdToGlobalIdLookup(ref, componentState.models, componentState.ifcDataStore)
-        : resolveEntityRefGlobalIdFromState(componentState, ref);
+      const resolveCapturedRef = (ref: ComponentRef): string | null => {
+        if (typeof ref !== 'number') return resolveEntityRefGlobalIdFromState(componentState, ref);
+        const entityRef = componentState.resolveGlobalIdFromModels(ref)
+          ?? (componentState.models.size === 0 ? { modelId: 'legacy', expressId: ref } : null);
+        return entityRef ? resolveEntityRefGlobalIdFromState(componentState, entityRef) : null;
+      };
       // Bind component identity before snapshot capture can yield. A model
       // replacement may reuse the same local express id for another entity.
       const selectedRefs: ComponentRef[] = [];
@@ -434,7 +427,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         const capture = captureVisibility(
           visibilityState.isolatedEntities,
           visibilityState.hiddenEntities,
-          expressIdToGlobalId,
+          resolveCapturedRef,
           isEntityPending,
         );
         ({ visibleGuids, hiddenGuids } = capture);
@@ -466,7 +459,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       getCameraState,
       captureSnapshot,
       getBounds,
-      expressIdToGlobalId,
     ]
   );
 

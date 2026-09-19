@@ -343,7 +343,7 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
     );
   });
 
-  it('includes a StoreEditor-created clash member by its exact model ref (#4921)', async () => {
+  it('includes a StoreEditor-created clash member in selection, coloring, and isolation (#4921)', async () => {
     const overlayId = 900;
     const overlayGuid = 'AUTHORED00000000000001';
     await act(async () => {
@@ -355,6 +355,7 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
           }],
         ]) as unknown as ViewerState['models'],
         ifcDataStore: null,
+        isolatedEntities: new Set([overlayId]),
         mutationViews: new Map([
           ['ordinary', {
             getNewEntity: (expressId: number) => expressId === overlayId
@@ -377,6 +378,12 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
     assert.deepEqual(
       viewpoint?.components?.coloring?.[0]?.components.map((component) => component.ifcGuid),
       [overlayGuid],
+    );
+    assert.equal(viewpoint?.components?.visibility?.defaultVisibility, false);
+    assert.deepEqual(
+      viewpoint?.components?.visibility?.exceptions?.map((component) => component.ifcGuid),
+      [overlayGuid],
+      'the overlay-aware resolver must preserve an authored entity in the isolation allowlist',
     );
   });
 

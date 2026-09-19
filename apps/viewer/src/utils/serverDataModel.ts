@@ -29,7 +29,7 @@ import { StringTable } from '@ifc-lite/data';
 import type { SpatialIndex } from '@ifc-lite/spatial';
 import { buildEntityTable } from './serverEntityTable';
 import { buildSpatialHierarchy } from './serverSpatialHierarchy';
-import { buildRelationships, type ServerQuantitySet } from './serverRelationships';
+import { buildRelationships } from './serverRelationships';
 export type { ServerQuantitySet } from './serverRelationships';
 
 // ============================================================================

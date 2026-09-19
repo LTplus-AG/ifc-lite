@@ -201,6 +201,11 @@ afterEach(() => {
 /** Static-key keys this suite's render states cannot show, each for a stated
  *  reason. */
 const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
+  // No fixture in this file records a CLOSED polyline (`closed: true`) — the
+  // completed-polyline fixtures used throughout are all open runs, so the
+  // "closed" basis label never renders. `measure.polyline.basisLength`
+  // (the open-polyline case) is exercised.
+  'measure.polyline.basisPerimeterClosed',
   // Georeferenced rows never render without a model whose IfcMapConversion
   // resolves through useAnchorGeoreference — no model is loaded here.
   'measure.geoToggle.enabledTitle',
@@ -251,11 +256,12 @@ const NOT_RENDERED_PARAMS: MeasureKey[] = [
 ];
 
 /** Runs the shared static-key check for one (english-before, marked-after) pair.
- *  Keys already declared not-rendered are skipped here too: `polylineBasisLabel`
- *  (out of this file's scope) happens to return the bare word "Length" for an
- *  open polyline, which collides with `measure.qty.length`'s English text
- *  without that key's own component ever mounting — a coincidence, not
- *  evidence the key translated. */
+ *  Keys already declared not-rendered are skipped here too: `measure.polyline.basisLength`
+ *  (#4918 review, PR #5001 — `polylineBasisLabelKey` now returns a real
+ *  translation key rather than a bare string) happens to share its English
+ *  text "Length" with `measure.qty.length`, which never mounts in this
+ *  state; without the skip, that coincidence would look like unearned
+ *  coverage for a key whose own component was never rendered. */
 function assertStaticCoverage(english: Set<string>, after: Set<string>): void {
   for (const key of STATIC_KEYS) {
     if (NOT_RENDERED_IN_THIS_STATE.includes(key)) continue;
@@ -399,15 +405,21 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     assertStaticCoverage(english, after);
 
     // Interpolated / plural keys this state exercises. `polylineSoFar`'s
-    // `basis` param comes from `polylineBasisLabel` (out of this file's
-    // scope, not itself translated) — checked structurally (key + count
-    // substituted) rather than via `expectedMarked`, which would need to
-    // guess that function's return value.
+    // `basis` param is itself `t('measure.polyline.basisLength')` (#4918
+    // review, PR #5001), so under the pseudo locale it renders as ITS OWN
+    // marked+interpolated string nested inside polylineSoFar's — checked
+    // structurally (both marks present, count substituted) rather than via
+    // `expectedMarked`, which computes only ONE key's substitution.
     assertMarked(after, 'measure.polyline.inProgress', { count: 2 });
     assertMarked(after, 'measure.polyline.indexLabel', { index: 1 });
     assert.ok(
-      [...after].some((s) => s.startsWith('⟦measure.visuals.polylineSoFar|') && s.includes('so far - 2 pts')),
-      'measure.visuals.polylineSoFar must be translated with its {count} substituted',
+      [...after].some(
+        (s) =>
+          s.startsWith('⟦measure.visuals.polylineSoFar|') &&
+          s.includes(expectedMarked('measure.polyline.basisLength')) &&
+          s.includes('so far - 2 pts'),
+      ),
+      'measure.visuals.polylineSoFar must be translated with its {count} substituted and its {basis} param itself translated (not bare English)',
     );
     assertMarked(after, 'measure.angle.indexLabel', { index: 1 });
     assertMarked(after, 'measure.angle.inProgress', { picks: 1, required: 3 });

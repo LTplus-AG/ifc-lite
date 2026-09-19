@@ -205,6 +205,9 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
       'spaceSketch.options.boundary.centerTitle',
       'spaceSketch.options.boundary.innerTitle',
       'spaceSketch.options.boundary.outerTitle',
+      'spaceSketch.options.boundary.centerLabel',
+      'spaceSketch.options.boundary.innerLabel',
+      'spaceSketch.options.boundary.outerLabel',
       'spaceSketch.options.weldToleranceTitle',
       'spaceSketch.options.weldToleranceLabel',
       'spaceSketch.options.roomsBeforeAfterTitle',
@@ -317,7 +320,7 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
 const NOT_RENDERED_BY_A_REAL_COMPONENT: { key: Exclude<SpaceSketchKey, PluralKey>; params?: Record<string, string | number> }[] = [
   { key: 'spaceSketch.panel.pendingBadgeTitle' }, // needsConfirm requires a drafted room
   { key: 'spaceSketch.panel.pendingBadge', params: { count: 2 } }, // same gate
-  { key: 'spaceSketch.panel.floorsSuffix', params: { floors: 2 } }, // needs pendingStoreys > 1, itself gated on drafted rooms
+  { key: 'spaceSketch.panel.pendingBadgeMultiStorey', params: { count: 2, floors: 3 } }, // needs pendingStoreys > 1, itself gated on drafted rooms
   { key: 'spaceSketch.tools.footprintArmedTitle', params: { count: 1 } }, // needs rooms.length > 0 (a derive) and a prior footprint click
   { key: 'spaceSketch.footer.rectHint' }, // needs rectStartRef set by a real pointerdown, which onPointerDown short-circuits without a live session
   { key: 'spaceSketch.footer.drawHint' }, // same: onPointerDown returns early without `sessionRef.current?.alive`
@@ -369,6 +372,24 @@ describe('Space Sketch localization (#4918) — catalogue-level checks for wasm-
         assert.equal(ui.textContent, template.replace('{count}', String(count)), `${key} at count=${count}`);
         cleanup();
       }
+    }
+  });
+
+  it('resolves the multi-storey confirm-button plural key with BOTH its count and floors params substituted (#4918 review, PR #5001: one complete message, not a concatenated suffix)', () => {
+    const value = CATALOGUE['spaceSketch.footer.confirmButtonMultiStorey'] as PluralTranslation;
+    for (const [count, form] of [[1, 'one'], [5, 'other']] as const) {
+      function MultiStoreyProbe() {
+        const { t } = useTranslation();
+        return <div>{t('spaceSketch.footer.confirmButtonMultiStorey', { count, floors: 3 })}</div>;
+      }
+      const ui = render(<MultiStoreyProbe />);
+      const template = form === 'one' && value.one !== undefined ? value.one : value.other;
+      assert.equal(
+        ui.textContent,
+        template.replace('{count}', String(count)).replace('{floors}', '3'),
+        `confirmButtonMultiStorey at count=${count}`,
+      );
+      cleanup();
     }
   });
 });

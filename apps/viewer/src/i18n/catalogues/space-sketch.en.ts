@@ -25,7 +25,11 @@ export const spaceSketchEn = {
   'spaceSketch.panel.heading': 'Space Sketch',
   'spaceSketch.panel.pendingBadgeTitle': 'Spaces to create when you confirm, across all storeys',
   'spaceSketch.panel.pendingBadge': '{count} to confirm',
-  'spaceSketch.panel.floorsSuffix': ' · {floors} floors',
+  // Only rendered when pendingStoreys > 1, so "floors" is always plural in
+  // English — one complete message per case (#4918 review, PR #5001)
+  // rather than concatenating a separately-translated suffix, so a locale
+  // can reorder/re-punctuate the whole phrase.
+  'spaceSketch.panel.pendingBadgeMultiStorey': '{count} to confirm · {floors} floors',
   'spaceSketch.panel.helpTitle': 'How it works',
   'spaceSketch.panel.minimizeTitle': 'Minimize (drafts and 3D preview stay live)',
   'spaceSketch.panel.closeTitle': 'Close without creating (Esc)',
@@ -58,6 +62,14 @@ export const spaceSketchEn = {
   'spaceSketch.footer.confirmTitle': 'Create the drafted spaces on every storey and close',
   'spaceSketch.footer.closeToolTitle': 'Close the Space Sketch tool',
   'spaceSketch.footer.confirmButton': { other: 'Confirm {count} spaces', one: 'Confirm {count} space' },
+  // Only rendered when pendingStoreys > 1, so "floors" is always plural in
+  // English — one complete plural message with both {count} and {floors}
+  // (#4918 review, PR #5001) rather than appending a separately-translated
+  // suffix, so a locale can reorder/re-punctuate/re-agree the whole phrase.
+  'spaceSketch.footer.confirmButtonMultiStorey': {
+    other: 'Confirm {count} spaces across {floors} floors',
+    one: 'Confirm {count} space across {floors} floors',
+  },
   'spaceSketch.footer.doneButton': 'Done',
 
   // Canvas tooltip
@@ -70,6 +82,9 @@ export const spaceSketchEn = {
   'spaceSketch.options.boundary.centerTitle': 'Wall centreline',
   'spaceSketch.options.boundary.innerTitle': 'Inner (net) face',
   'spaceSketch.options.boundary.outerTitle': 'Outer (gross) face',
+  'spaceSketch.options.boundary.centerLabel': 'Center',
+  'spaceSketch.options.boundary.innerLabel': 'Inner',
+  'spaceSketch.options.boundary.outerLabel': 'Outer',
   'spaceSketch.options.weldToleranceTitle': 'How close two wall-rectangle corners must be to be welded into one when deriving rooms',
   'spaceSketch.options.weldToleranceLabel': 'Weld tolerance',
   'spaceSketch.options.roomsBeforeAfterTitle': 'Rooms before → after',

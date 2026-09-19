@@ -1329,7 +1329,7 @@ export function SpaceSketchOverlay() {
           {needsConfirm && (
             <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
               title={t('spaceSketch.panel.pendingBadgeTitle')}>
-              {t('spaceSketch.panel.pendingBadge', { count: pendingRooms })}{pendingStoreys > 1 ? t('spaceSketch.panel.floorsSuffix', { floors: pendingStoreys }) : ''}
+              {pendingStoreys > 1 ? t('spaceSketch.panel.pendingBadgeMultiStorey', { count: pendingRooms, floors: pendingStoreys }) : t('spaceSketch.panel.pendingBadge', { count: pendingRooms })}
             </span>
           )}
         </div>
@@ -1489,9 +1489,7 @@ export function SpaceSketchOverlay() {
             ? t('spaceSketch.footer.confirmTitle')
             : t('spaceSketch.footer.closeToolTitle')}>
           {needsConfirm && <Check className="h-4 w-4" />}
-          {needsConfirm
-            ? t('spaceSketch.footer.confirmButton', { count: pendingRooms }) + (pendingStoreys > 1 ? t('spaceSketch.panel.floorsSuffix', { floors: pendingStoreys }) : '')
-            : t('spaceSketch.footer.doneButton')}
+          {needsConfirm ? (pendingStoreys > 1 ? t('spaceSketch.footer.confirmButtonMultiStorey', { count: pendingRooms, floors: pendingStoreys }) : t('spaceSketch.footer.confirmButton', { count: pendingRooms })) : t('spaceSketch.footer.doneButton')}
         </button>
       </div>
 

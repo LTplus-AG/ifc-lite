@@ -13,7 +13,7 @@ import { SnapType, type SnapTarget } from '@ifc-lite/renderer';
 import { formatDistance } from './formatDistance';
 import { distanceComponents, formatAxisDeltas, formatHorizontalVertical } from './measure-modes/components';
 import { inclination, formatInclination } from './measure-modes/inclination';
-import { polylineOpenLength, polylineBasisLabel } from './measure-modes/polyline';
+import { polylineOpenLength, polylineBasisLabelKey } from './measure-modes/polyline';
 import { CLOSE_LOOP_SCREEN_RADIUS_PX } from '../measureHandlers';
 import { useTranslation } from '@/i18n/useTranslation';
 
@@ -179,7 +179,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               {/* Basis is printed alongside the number, never left implicit
                   (#2199 panel discipline: an open length and a closed
                   perimeter are different claims). */}
-              <div className="font-normal text-[10px] leading-tight opacity-80">{polylineBasisLabel(pl.closed)}</div>
+              <div className="font-normal text-[10px] leading-tight opacity-80">{t(polylineBasisLabelKey(pl.closed))}</div>
               {formatDistance(pl.length, unitDisplayOverrides)}
             </div>
           </div>
@@ -237,7 +237,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               style={{ left: last.screenX, top: last.screenY - 20 }}
             >
               <div className="font-normal text-[10px] leading-tight opacity-90">
-                {t('measure.visuals.polylineSoFar', { basis: polylineBasisLabel(false), count: points.length })}
+                {t('measure.visuals.polylineSoFar', { basis: t('measure.polyline.basisLength'), count: points.length })}
               </div>
               {formatDistance(runningLength, unitDisplayOverrides)}
             </div>

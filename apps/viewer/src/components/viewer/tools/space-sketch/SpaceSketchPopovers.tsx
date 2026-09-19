@@ -32,6 +32,16 @@ const BOUNDARY_MODE_LABEL_KEY: Record<BoundaryMode, TranslationKey> = {
   outer: 'spaceSketch.options.boundary.outerTitle',
 };
 
+// Short button-body label, distinct from the longer tooltip text above
+// (#4918 review, PR #5001): the button previously rendered the raw
+// `BoundaryMode` enum value (`center`/`inner`/`outer`) as its own text,
+// which stayed English in every locale even once the tooltip translated.
+const BOUNDARY_MODE_SHORT_LABEL_KEY: Record<BoundaryMode, TranslationKey> = {
+  center: 'spaceSketch.options.boundary.centerLabel',
+  inner: 'spaceSketch.options.boundary.innerLabel',
+  outer: 'spaceSketch.options.boundary.outerLabel',
+};
+
 export function OptionsPopover(props: OptionsPopoverProps) {
   const { t } = useTranslation();
   const {
@@ -47,9 +57,9 @@ export function OptionsPopover(props: OptionsPopoverProps) {
             const noWallData = !hasWallData && m !== 'center';
             return (
               <button key={m}
-                className={`rounded px-2 py-0.5 capitalize transition-colors disabled:opacity-40 ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
+                className={`rounded px-2 py-0.5 transition-colors disabled:opacity-40 ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
                 onClick={() => onBoundaryMode(m)} disabled={noWallData}
-                title={noWallData ? t('spaceSketch.options.boundary.noWallData') : t(BOUNDARY_MODE_LABEL_KEY[m])}>{m}</button>
+                title={noWallData ? t('spaceSketch.options.boundary.noWallData') : t(BOUNDARY_MODE_LABEL_KEY[m])}>{t(BOUNDARY_MODE_SHORT_LABEL_KEY[m])}</button>
             );
           })}
         </div>

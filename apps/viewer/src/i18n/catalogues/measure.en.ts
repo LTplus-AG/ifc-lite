@@ -80,6 +80,8 @@ export const measureEn = {
   },
   'measure.cancelEsc': 'Cancel (Esc)',
   'measure.polyline.indexLabel': 'Poly #{index}',
+  'measure.polyline.basisLength': 'Length',
+  'measure.polyline.basisPerimeterClosed': 'Perimeter (closed)',
   'measure.angle.indexLabel': 'Angle #{index}',
   'measure.angle.inProgress': 'Angle in progress · {picks}/{required} picks',
   'measure.angle.apexSetSuffix': ' · apex set',

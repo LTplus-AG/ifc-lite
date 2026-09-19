@@ -113,7 +113,7 @@ import {
   formatHorizontalVertical,
 } from './measure-modes/components';
 import { inclination, formatInclination } from './measure-modes/inclination';
-import { polylineBasisLabel } from './measure-modes/polyline';
+import { polylineBasisLabelKey } from './measure-modes/polyline';
 import {
   projectedEnh,
   useProjectedLatLon,
@@ -503,7 +503,7 @@ export function MeasureOverlay() {
                     <div key={pl.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground text-xs">
-                          {t('measure.polyline.indexLabel', { index: i + 1 })} · {polylineBasisLabel(pl.closed)}<StaleMeasurementBadge id={pl.id} />
+                          {t('measure.polyline.indexLabel', { index: i + 1 })} · {t(polylineBasisLabelKey(pl.closed))}<StaleMeasurementBadge id={pl.id} />
                         </span>
                         <span className="font-mono font-medium">{formatDistance(pl.length, unitDisplayOverrides)}</span>
                         <Button

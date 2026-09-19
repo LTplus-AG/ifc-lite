@@ -6,6 +6,7 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
+import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
@@ -47,6 +48,7 @@ export const en = {
   ...hierarchyEn,
   ...propertiesEn,
   ...appearancePanelEn,
+  ...appearanceWorkflowsEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

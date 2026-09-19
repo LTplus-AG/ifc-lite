@@ -180,7 +180,17 @@ pub(super) fn merge_rounding_split_buckets(
             continue;
         }
         let (nx, ny, nz, pz) = key;
-        for other in [(nx, ny, nz, pz - 1), (nx, ny, nz, pz + 1)] {
+        // `checked_sub`/`checked_add`, not `pz ± 1` (bot review, #3914): a
+        // far-from-origin model (georeferenced coordinates, #1474-style
+        // large `local_bounds`) can legitimately quantize to a `pz` near
+        // `i64::MIN`/`i64::MAX` at `POS_QUANT = 1e6`; a plain `pz - 1` /
+        // `pz + 1` there is a debug-build panic (`overflow-checks = true`
+        // in `cargo test`) and a silent release-build wraparound (this
+        // workspace's `[profile.release] overflow-checks = false`) into an
+        // unrelated, bogus candidate key. Skip the neighbour instead of
+        // wrapping into one.
+        let neighbours = [pz.checked_sub(1), pz.checked_add(1)];
+        for other in neighbours.into_iter().flatten().map(|p| (nx, ny, nz, p)) {
             if key >= other || absorbed.contains(&other) {
                 continue;
             }
@@ -206,4 +216,45 @@ pub(super) fn merge_rounding_split_buckets(
         }
     }
     merged_bucket_keys
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// #3914 bot review: a far-from-origin model (georeferenced coordinates)
+    /// can legitimately quantize to a `pz` at the very edge of `i64`'s range
+    /// (`qpos` saturates rather than overflowing on the float-to-int cast,
+    /// so `i64::MAX`/`i64::MIN` ARE reachable keys). The neighbour-candidate
+    /// step used to compute `pz - 1` / `pz + 1` directly, which is a
+    /// `debug_assert`-style panic in a debug build and a silent wraparound
+    /// (into an unrelated, bogus key) in this workspace's overflow-checks-off
+    /// release profile. Must not panic and must not wrap into a fabricated
+    /// neighbour at either boundary.
+    #[test]
+    fn a_bucket_key_at_the_i64_boundary_does_not_panic_or_wrap() {
+        let tri = |v: [Point3<f64>; 3]| -> PlaneTri {
+            PlaneTri {
+                v,
+                normal: Vector3::z(),
+                tag: None,
+            }
+        };
+        let v = [
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        ];
+        let mut buckets: BTreeMap<(i64, i64, i64, i64), Vec<PlaneTri>> = BTreeMap::new();
+        buckets.insert((0, 0, 0, i64::MAX), vec![tri(v)]);
+        buckets.insert((0, 0, 0, i64::MIN), vec![tri(v)]);
+        buckets.insert((0, 0, 0, 0), vec![tri(v)]);
+
+        // Must not panic (the regression this test pins) and must report no
+        // merges: none of these three buckets carry a validated tag, so
+        // `tag_consensus` returns `None` for each regardless of adjacency.
+        let merged = merge_rounding_split_buckets(&mut buckets);
+        assert!(merged.is_empty(), "untagged buckets must never merge");
+        assert_eq!(buckets.len(), 3, "no bucket should have been absorbed");
+    }
 }

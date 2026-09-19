@@ -312,12 +312,35 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
     Math.abs(bounds.min.x), Math.abs(bounds.min.y), Math.abs(bounds.min.z),
     Math.abs(bounds.max.x), Math.abs(bounds.max.y), Math.abs(bounds.max.z),
   );
+  const hasLargeCoordinates = maxAbs > 10_000;
+  const originShift = hasLargeCoordinates
+    ? {
+      x: (bounds.min.x + bounds.max.x) / 2,
+      y: (bounds.min.y + bounds.max.y) / 2,
+      z: (bounds.min.z + bounds.max.z) / 2,
+    }
+    : { x: 0, y: 0, z: 0 };
+  if (hasLargeCoordinates) {
+    // Keep every uploaded batch in the same camera-safe render frame. Mesh
+    // positions are already local to their f64 origin, so moving the origins
+    // retains their precision while avoiding a survey-scale f32 model
+    // translation in the vertex shader. coordinateInfo records the removed
+    // Y-up offset so measurements, federation and exports recover world space.
+    for (const mesh of meshes) {
+      const origin = mesh.origin ?? [0, 0, 0];
+      mesh.origin = [
+        origin[0] - originShift.x,
+        origin[1] - originShift.y,
+        origin[2] - originShift.z,
+      ];
+    }
+  }
   return {
     geometryResult: {
       meshes,
       totalVertices: stats.totalVertices,
       totalTriangles: stats.totalTriangles,
-      coordinateInfo: createCoordinateInfo(bounds, { x: 0, y: 0, z: 0 }, maxAbs > 10_000),
+      coordinateInfo: createCoordinateInfo(bounds, originShift, hasLargeCoordinates),
     },
     schemaVersion: 'IFC4',
     warnings,

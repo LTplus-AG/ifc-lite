@@ -74,7 +74,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(result.surfaceNames, ['Existing Ground']);
 
     const mesh = result.geometryResult.meshes[0];
-    assert.deepEqual(mesh.origin, [2_600_005, 101, -5_000_005]);
+    assert.deepEqual(mesh.origin, [0, 0, 0]);
     assert.deepEqual(Array.from(mesh.positions.slice(0, 9)), [
       -5, -1, 5,
       5, -1, 5,
@@ -83,6 +83,13 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(Array.from(mesh.indices), [0, 1, 2]);
     assert.ok(mesh.normals[1] > 0, 'terrain normal must face viewer-up');
     assert.equal(result.geometryResult.coordinateInfo.hasLargeCoordinates, true);
+    assert.deepEqual(result.geometryResult.coordinateInfo.originShift, {
+      x: 2_600_005, y: 101, z: -5_000_005,
+    });
+    assert.deepEqual(result.geometryResult.coordinateInfo.shiftedBounds, {
+      min: { x: -5, y: -1, z: -5 },
+      max: { x: 5, y: 1, z: 5 },
+    });
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.min.x, 2_600_000);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.z, -5_000_000);
   });
@@ -94,7 +101,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     );
     const result = parseLandXmlViewerModel(bytes(withOutlier));
     assert.equal(result.geometryResult.totalVertices, 3);
-    assert.deepEqual(result.geometryResult.meshes[0].origin, [2_600_005, 101, -5_000_005]);
+    assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
   });
 
@@ -110,7 +117,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     const result = parseLandXmlViewerModel(bytes(withDegenerateOutlier));
     assert.equal(result.geometryResult.totalVertices, 3);
     assert.equal(result.geometryResult.totalTriangles, 1);
-    assert.deepEqual(result.geometryResult.meshes[0].origin, [2_600_005, 101, -5_000_005]);
+    assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
     assert.ok(result.warnings.some((warning) => /Skipped 1 degenerate face/.test(warning)));
   });
 
@@ -135,10 +142,41 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.geometryResult.meshes.length, 2);
     assert.equal(result.geometryResult.totalVertices, 6);
     assert.equal(result.geometryResult.totalTriangles, 2);
-    assert.deepEqual(result.geometryResult.meshes[0].origin, [2_600_005, 101, -5_000_005]);
-    assert.deepEqual(result.geometryResult.meshes[1].origin, [800_000_000.5, 700_000_000, -900_000_000.5]);
+    const { originShift } = result.geometryResult.coordinateInfo;
+    assert.deepEqual(result.geometryResult.meshes[0].origin, [
+      2_600_005 - originShift.x,
+      101 - originShift.y,
+      -5_000_005 - originShift.z,
+    ]);
+    assert.deepEqual(result.geometryResult.meshes[1].origin, [
+      800_000_000.5 - originShift.x,
+      700_000_000 - originShift.y,
+      -900_000_000.5 - originShift.z,
+    ]);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 800_000_001);
     assert.equal(result.warnings.some((warning) => /degenerate face/.test(warning)), false);
+  });
+
+  it('removes the survey translation before GPU upload and retains it as frame metadata', () => {
+    const surveyOnly = LANDXML
+      .replaceAll('5000000', '900000000')
+      .replaceAll('5000010', '900000001')
+      .replaceAll('2600000', '800000000')
+      .replaceAll('2600010', '800000001');
+    const result = parseLandXmlViewerModel(bytes(surveyOnly));
+    const mesh = result.geometryResult.meshes[0];
+    const info = result.geometryResult.coordinateInfo;
+
+    assert.deepEqual(mesh.origin, [0, 0, 0], 'the uploaded model translation is render-frame local');
+    assert.deepEqual(info.originShift, { x: 800_000_000.5, y: 101, z: -900_000_000.5 });
+    assert.deepEqual(info.originalBounds, {
+      min: { x: 800_000_000, y: 100, z: -900_000_001 },
+      max: { x: 800_000_001, y: 102, z: -900_000_000 },
+    });
+    assert.deepEqual(info.shiftedBounds, {
+      min: { x: -0.5, y: -1, z: -0.5 },
+      max: { x: 0.5, y: 1, z: 0.5 },
+    });
   });
 
   it('rebases every valid face when a connected component exceeds one f32 frame', () => {

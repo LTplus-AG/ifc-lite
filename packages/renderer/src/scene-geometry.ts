@@ -286,7 +286,6 @@ export function originPreservesTriangleTopology(
     const nz = abx * acy - aby * acx;
     return nx * nx + ny * ny + nz * nz;
   };
-  const minimumAreaSquared = Number.EPSILON * Number.EPSILON;
   for (const mesh of meshes) {
     const p = mesh.positions;
     const ox = (mesh.origin?.[0] ?? 0) - origin[0];
@@ -299,13 +298,13 @@ export function originPreservesTriangleTopology(
         p[bi], p[bi + 1], p[bi + 2],
         p[ci], p[ci + 1], p[ci + 2],
       );
-      if (!(Number.isFinite(sourceArea) && sourceArea > minimumAreaSquared)) continue;
+      if (!(Number.isFinite(sourceArea) && sourceArea > 0)) continue;
       const shiftedArea = areaSquared(
         Math.fround(p[ai] + ox), Math.fround(p[ai + 1] + oy), Math.fround(p[ai + 2] + oz),
         Math.fround(p[bi] + ox), Math.fround(p[bi + 1] + oy), Math.fround(p[bi + 2] + oz),
         Math.fround(p[ci] + ox), Math.fround(p[ci + 1] + oy), Math.fround(p[ci + 2] + oz),
       );
-      if (!(Number.isFinite(shiftedArea) && shiftedArea > minimumAreaSquared)) return false;
+      if (!(Number.isFinite(shiftedArea) && shiftedArea > 0)) return false;
     }
   }
   return true;

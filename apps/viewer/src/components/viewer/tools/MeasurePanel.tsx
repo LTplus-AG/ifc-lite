@@ -9,6 +9,8 @@ import { StaleMeasurementBadge } from '../reposition/StaleMeasurementBadge';
 import { X, Trash2, Ruler, GripVertical, Globe, List, Crosshair, Boxes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, type Measurement } from '@/store';
+import { useTranslation } from '@/i18n/useTranslation';
+import type { TranslationKey } from '@/i18n/en';
 import { MeasurementOverlays } from './MeasurementVisuals';
 import { MeasurePointReadout } from './MeasurePointReadout';
 import { MeasureQuantities } from './MeasureQuantities';
@@ -33,23 +35,20 @@ import { fitRadius, formatRadius, type Point3 as RadiusPoint3 } from './measure-
  * "3/3" with a fourth pick still required - a progress indicator that says the
  * measurement is complete when it is not.
  */
-function angleHint(kind: AngleKind, placed: number): string {
-  const cancel = ' · Esc to cancel';
+function angleHintKey(kind: AngleKind, placed: number): TranslationKey {
   if (kind === 'faces') {
-    return placed === 0 ? 'Click the first face' : 'Click the second face' + cancel;
+    return placed === 0 ? 'measure.hint.faces.first' : 'measure.hint.faces.second';
   }
   if (kind === 'edges') {
     // Two picks per edge; naming which edge AND which end is the difference
     // between a hint and a hint that helps.
-    if (placed === 0) return 'Click the start of the first edge';
-    if (placed === 1) return 'Click the end of the first edge' + cancel;
-    if (placed === 2) return 'Click the start of the second edge' + cancel;
-    return 'Click the end of the second edge' + cancel;
+    if (placed === 0) return 'measure.hint.edges.firstStart';
+    if (placed === 1) return 'measure.hint.edges.firstEnd';
+    if (placed === 2) return 'measure.hint.edges.secondStart';
+    return 'measure.hint.edges.secondEnd';
   }
-  if (placed === 0) return 'Click the apex of the angle';
-  return placed === 1
-    ? 'Click the first direction' + cancel
-    : 'Click the second direction' + cancel;
+  if (placed === 0) return 'measure.hint.points.apex';
+  return placed === 1 ? 'measure.hint.points.first' : 'measure.hint.points.second';
 }
 
 /**
@@ -103,14 +102,10 @@ function formatRadiusPoints(
   return formatRadius(fitRadius(points), (m) => formatDistance(m, unitDisplayOverrides));
 }
 
-const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, string, string]> = [
-  ['points', '3-Point', 'Angle at an apex: click the corner first, then the two directions'],
-  [
-    'edges',
-    'Edges',
-    'Angle between two lines: click two points on the first, then two on the second. Four clicks, because snap metadata yields tessellation segments rather than whole edges',
-  ],
-  ['faces', 'Faces', 'Angle between two planes: click one face, then the other'],
+const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, TranslationKey, TranslationKey]> = [
+  ['points', 'measure.angleKind.points.label', 'measure.angleKind.points.hint'],
+  ['edges', 'measure.angleKind.edges.label', 'measure.angleKind.edges.hint'],
+  ['faces', 'measure.angleKind.faces.label', 'measure.angleKind.faces.hint'],
 ];
 import {
   distanceComponents,
@@ -138,13 +133,14 @@ import { useAnchorGeoreference, type AnchorGeoreference } from '@/lib/geo/useAnc
  */
 type PanelSection = 'list' | 'point' | 'quantities';
 
-const SECTIONS: ReadonlyArray<{ id: PanelSection; label: string; icon: typeof List; title: string }> = [
-  { id: 'list', label: 'List', icon: List, title: 'Measurements taken' },
-  { id: 'point', label: 'Point', icon: Crosshair, title: 'Coordinates of the picked point' },
-  { id: 'quantities', label: 'Qty', icon: Boxes, title: 'Quantities of the selected elements' },
+const SECTIONS: ReadonlyArray<{ id: PanelSection; labelKey: TranslationKey; icon: typeof List; titleKey: TranslationKey }> = [
+  { id: 'list', labelKey: 'measure.section.list.label', icon: List, titleKey: 'measure.section.list.title' },
+  { id: 'point', labelKey: 'measure.section.point.label', icon: Crosshair, titleKey: 'measure.section.point.title' },
+  { id: 'quantities', labelKey: 'measure.section.quantities.label', icon: Boxes, titleKey: 'measure.section.quantities.title' },
 ];
 
 export function MeasureOverlay() {
+  const { t } = useTranslation();
   const measurements = useViewerStore((s) => s.measurements);
   const pendingMeasurePoint = useViewerStore((s) => s.pendingMeasurePoint);
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
@@ -329,14 +325,14 @@ export function MeasureOverlay() {
           <div className="flex items-center gap-1 min-w-0">
             <span
               onMouseDown={drag.onDragStart}
-              title="Drag to move"
+              title={t('measure.dragToMove')}
               className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
             >
               <GripVertical className="h-3.5 w-3.5" />
             </span>
             <div className="flex items-center gap-2 px-2 py-1 min-w-0">
               <Ruler className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Measure</span>
+              <span className="font-medium text-sm">{t('measure.panelTitle')}</span>
               {totalItemCount > 0 && (
                 <span className="text-xs text-muted-foreground">({totalItemCount})</span>
               )}
@@ -344,11 +340,11 @@ export function MeasureOverlay() {
           </div>
           <div className="flex items-center gap-1">
             {totalItemCount > 0 && (
-              <Button variant="ghost" size="icon-sm" onClick={handleClear} title="Clear all">
+              <Button variant="ghost" size="icon-sm" onClick={handleClear} title={t('measure.clearAll')}>
                 <Trash2 className="h-3 w-3" />
               </Button>
             )}
-            <Button variant="ghost" size="icon-sm" onClick={handleClose} title="Close">
+            <Button variant="ghost" size="icon-sm" onClick={handleClose} title={t('measure.close')}>
               <X className="h-3 w-3" />
             </Button>
           </div>
@@ -368,19 +364,19 @@ export function MeasureOverlay() {
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
             }`}
-            title="Cycle measure mode - Distance (drag), Polyline (click to accumulate; double-click or Enter to finish, click the start to close), Angle (three clicks: apex first, then the two directions; Esc cancels), Radius (three or more clicks on a circular edge; double-click or Enter to finish; Esc cancels)"
+            title={t('measure.modeToggle.title')}
           >
             {measureMode === 'polyline'
-              ? 'Polyline'
+              ? t('measure.mode.polyline')
               : measureMode === 'angle'
-                ? 'Angle'
+                ? t('measure.mode.angle')
                 : measureMode === 'radius'
-                  ? 'Radius'
-                  : 'Distance'}
+                  ? t('measure.mode.radius')
+                  : t('measure.mode.distance')}
           </button>
           {measureMode === 'angle' && (
             <>
-              {ANGLE_KIND_LABELS.map(([kind, label, hint]) => (
+              {ANGLE_KIND_LABELS.map(([kind, labelKey, hintKey]) => (
                 <button
                   key={kind}
                   onClick={() => {
@@ -397,9 +393,9 @@ export function MeasureOverlay() {
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
                   }`}
-                  title={hint}
+                  title={t(hintKey)}
                 >
-                  {label}
+                  {t(labelKey)}
                 </button>
               ))}
             </>
@@ -411,9 +407,9 @@ export function MeasureOverlay() {
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
             }`}
-            title="Toggle snap (S key)"
+            title={t('measure.snapToggle.title')}
           >
-            Snap {snapEnabled ? 'On' : 'Off'}
+            {snapEnabled ? t('measure.snap.on') : t('measure.snap.off')}
           </button>
           {/* Geo XYZ stays visible even with no usable georef so the feature is
               discoverable; it disables with an explanatory tooltip instead of
@@ -428,23 +424,23 @@ export function MeasureOverlay() {
             }`}
             title={
               anchor
-                ? 'Toggle real-world XYZ (Eastings / Northings / Height)'
-                : 'Requires map georeferencing (IfcMapConversion) in the model'
+                ? t('measure.geoToggle.enabledTitle')
+                : t('measure.geoToggle.disabledTitle')
             }
           >
             <Globe className="h-3 w-3" />
-            Geo XYZ {geoReadoutEnabled && anchor ? 'On' : 'Off'}
+            {geoReadoutEnabled && anchor ? t('measure.geo.on') : t('measure.geo.off')}
           </button>
         </div>
 
         {/* Section selector — always visible so each readout is one click from
             the collapsed panel. Clicking the open section closes it. */}
         <div className="flex items-center gap-1.5 border-t px-2 py-2">
-          {SECTIONS.map(({ id, label, icon: Icon, title }) => (
+          {SECTIONS.map(({ id, labelKey, icon: Icon, titleKey }) => (
             <button
               key={id}
               onClick={() => setSection((prev) => (prev === id ? null : id))}
-              title={title}
+              title={t(titleKey)}
               aria-pressed={section === id}
               className={`flex items-center gap-1 px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
                 section === id
@@ -453,7 +449,7 @@ export function MeasureOverlay() {
               }`}
             >
               <Icon className="h-3 w-3" />
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </div>
@@ -475,14 +471,14 @@ export function MeasureOverlay() {
                   ))}
                   {measurements.length > 1 && (
                     <div className="flex items-center justify-between border-t pt-1 mt-1 text-xs font-medium">
-                      <span>Total (current)</span>
+                      <span>{t('measure.list.totalCurrent')}</span>
                       <span className="font-mono">{formatDistance(totalDistance, unitDisplayOverrides)}</span>
                     </div>
                   )}
                 </div>
               ) : totalItemCount === 0 ? (
                 <div className="text-center py-2 text-muted-foreground text-xs">
-                  No measurements
+                  {t('measure.list.empty')}
                 </div>
               ) : null}
 
@@ -494,9 +490,9 @@ export function MeasureOverlay() {
               {activePolyline && (
                 <div className="flex items-center justify-between bg-primary/10 rounded px-2 py-1 text-xs mt-2">
                   <span className="font-mono">
-                    Polyline in progress — {activePolyline.points.length} pt{activePolyline.points.length === 1 ? '' : 's'}
+                    {t('measure.polyline.inProgress', { count: activePolyline.points.length })}
                   </span>
-                  <Button variant="ghost" size="icon-sm" className="h-4 w-4" onClick={cancelPolyline} title="Cancel (Esc)">
+                  <Button variant="ghost" size="icon-sm" className="h-4 w-4" onClick={cancelPolyline} title={t('measure.cancelEsc')}>
                     <X className="h-2.5 w-2.5" />
                   </Button>
                 </div>
@@ -507,7 +503,7 @@ export function MeasureOverlay() {
                     <div key={pl.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground text-xs">
-                          Poly #{i + 1} · {polylineBasisLabel(pl.closed)}<StaleMeasurementBadge id={pl.id} />
+                          {t('measure.polyline.indexLabel', { index: i + 1 })} · {polylineBasisLabel(pl.closed)}<StaleMeasurementBadge id={pl.id} />
                         </span>
                         <span className="font-mono font-medium">{formatDistance(pl.length, unitDisplayOverrides)}</span>
                         <Button
@@ -528,7 +524,7 @@ export function MeasureOverlay() {
                   {angleMeasurements.map((a, i) => (
                     <div key={a.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-xs">Angle #{i + 1}<StaleMeasurementBadge id={a.id} /></span>
+                        <span className="text-muted-foreground text-xs">{t('measure.angle.indexLabel', { index: i + 1 })}<StaleMeasurementBadge id={a.id} /></span>
                         <span className="font-mono font-medium">
                           {/* Derived on render, never stored: a correction to
                               the maths retroactively fixes every measurement
@@ -550,13 +546,15 @@ export function MeasureOverlay() {
               )}
               {activeAngle && (
                 <div className="mt-2 rounded bg-primary/10 px-2 py-0.5 text-xs text-muted-foreground">
-                  Angle in progress · {activeAngle.picks.length}/
-                  {ANGLE_REQUIRED_PICKS[activeAngle.kind]} picks
+                  {t('measure.angle.inProgress', {
+                    picks: activeAngle.picks.length,
+                    required: ANGLE_REQUIRED_PICKS[activeAngle.kind],
+                  })}
                   {activeAngle.kind === 'points' && activeAngle.picks.length === 1
-                    ? ' · apex set'
+                    ? t('measure.angle.apexSetSuffix')
                     : ''}
                   {activeAngle.kind === 'edges' && activeAngle.picks.length === 2
-                    ? ' · first edge set'
+                    ? t('measure.angle.firstEdgeSetSuffix')
                     : ''}
                 </div>
               )}
@@ -570,7 +568,7 @@ export function MeasureOverlay() {
                   {radiusMeasurements.map((r, i) => (
                     <div key={r.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-muted-foreground text-xs shrink-0">Radius #{i + 1}<StaleMeasurementBadge id={r.id} /></span>
+                        <span className="text-muted-foreground text-xs shrink-0">{t('measure.radius.indexLabel', { index: i + 1 })}<StaleMeasurementBadge id={r.id} /></span>
                         <span className="font-mono font-medium text-right">
                           {/* Derived on render, never stored — a correction to
                               the fit retroactively fixes every measurement
@@ -598,15 +596,14 @@ export function MeasureOverlay() {
                         as the picks clear the module's gate, no separate
                         finish step required to SEE the reading (only to
                         record it). */}
-                    Radius in progress · {activeRadius.points.length} pick
-                    {activeRadius.points.length === 1 ? '' : 's'} · {formatRadiusPoints(activeRadius.points, unitDisplayOverrides)}
+                    {t('measure.radius.inProgress', { count: activeRadius.points.length })} · {formatRadiusPoints(activeRadius.points, unitDisplayOverrides)}
                   </span>
                   <Button
                     variant="ghost"
                     size="icon-sm"
                     className="h-4 w-4 shrink-0"
                     onClick={cancelRadius}
-                    title="Cancel (Esc)"
+                    title={t('measure.cancelEsc')}
                   >
                     <X className="h-2.5 w-2.5" />
                   </Button>
@@ -635,25 +632,25 @@ export function MeasureOverlay() {
         <span className="font-mono text-xs uppercase tracking-wide">
           {measureMode === 'polyline'
             ? activePolyline
-              ? 'Click to add point · dbl-click/Enter to finish · click start to close · Esc to cancel'
-              : 'Click to start polyline'
+              ? t('measure.hint.polylineActive')
+              : t('measure.hint.polylineStart')
             : measureMode === 'angle'
               ? // In angle mode `activeMeasurement` is ALWAYS null - the drag
                 // gate refuses to start one - so falling through to the drag
                 // branch below would permanently show "Drag to measure" in a
                 // mode that ignores drags entirely. The hint has to name the
                 // gesture that actually works, and which pick is next.
-                angleHint(angleKind, activeAngle?.picks.length ?? 0)
+                t(angleHintKey(angleKind, activeAngle?.picks.length ?? 0))
               : measureMode === 'radius'
                 ? // Same reasoning as angle above: radius is click-driven too,
                   // and unbounded rather than fixed-count, so the hint names
                   // the finish gesture explicitly instead of a pick count.
                   activeRadius
-                    ? 'Click to add a point on the arc · dbl-click/Enter to finish · Esc to cancel'
-                    : 'Click 3+ points on a circular edge'
+                    ? t('measure.hint.radiusActive')
+                    : t('measure.hint.radiusStart')
                 : activeMeasurement
-                  ? 'Release to complete'
-                  : 'Drag to measure'}
+                  ? t('measure.hint.dragActive')
+                  : t('measure.hint.dragStart')}
         </span>
       </div>
 
@@ -663,13 +660,13 @@ export function MeasureOverlay() {
           <div className="flex items-baseline gap-2">
             <Globe className="h-3 w-3 text-primary shrink-0 self-center" />
             <span className="font-mono text-[10px] uppercase tracking-wider text-primary shrink-0">
-              {activeMeasurement ? 'Live' : 'Last'}
+              {activeMeasurement ? t('measure.readout.live') : t('measure.readout.last')}
             </span>
             <div className="font-mono text-[11px] tabular-nums whitespace-nowrap">
-              <span>E {liveEnh.e}</span>
-              <span className="ml-2">N {liveEnh.n}</span>
-              <span className="ml-2">H {liveEnh.h}</span>
-              <span className="ml-2 text-muted-foreground">m</span>
+              <span>{t('measure.geo.easting')} {liveEnh.e}</span>
+              <span className="ml-2">{t('measure.geo.northing')} {liveEnh.n}</span>
+              <span className="ml-2">{t('measure.geo.height')} {liveEnh.h}</span>
+              <span className="ml-2 text-muted-foreground">{t('measure.unit.meters')}</span>
             </div>
           </div>
           <div className="font-mono text-[9px] text-muted-foreground mt-0.5 pl-5">
@@ -677,7 +674,7 @@ export function MeasureOverlay() {
           </div>
           {liveLatLon && (
             <div className="font-mono text-[10px] tabular-nums whitespace-nowrap text-muted-foreground mt-0.5 pl-5">
-              Lat {liveLatLon.lat.toFixed(6)} / Lon {liveLatLon.lon.toFixed(6)}
+              {t('measure.readout.latLon', { lat: liveLatLon.lat.toFixed(6), lon: liveLatLon.lon.toFixed(6) })}
             </div>
           )}
         </div>

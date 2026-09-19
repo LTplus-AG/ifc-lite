@@ -34,11 +34,13 @@ import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } fro
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { notifyWallSplit } from '../wallSplitNotice.js';
+import { useTranslation } from '@/i18n';
 
 const ACCENT = '#a855f7'; // purple-500
 const PANEL_OFFSET_PX = 32;
 
 export function SplitNumericInput() {
+  const { t } = useTranslation();
   const activeTool = useViewerStore((s) => s.activeTool);
   const splitMode = useViewerStore((s) => s.splitMode);
   const splitHoverPoint = useViewerStore((s) => s.splitHoverPoint);
@@ -160,7 +162,7 @@ export function SplitNumericInput() {
                 ? 'bg-purple-600 text-white'
                 : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
           >
-            m
+            {t('splitTool.modeMetres')}
           </button>
           <button
             type="button"
@@ -174,7 +176,7 @@ export function SplitNumericInput() {
           </button>
           <span className="flex-1" />
           <span className="text-[10px] font-mono text-zinc-500">
-            of {splitHoverLength?.toFixed(2)}m
+            {t('splitTool.ofLength', { length: (splitHoverLength ?? 0).toFixed(2) })}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -200,11 +202,11 @@ export function SplitNumericInput() {
             className="px-2 py-1 bg-purple-600 text-white text-[10px]
               font-medium rounded hover:bg-purple-700"
           >
-            Cut
+            {t('splitTool.cutButton')}
           </button>
         </div>
         <div className="flex items-center gap-1 text-[10px]">
-          <span className="text-zinc-500">Snap</span>
+          <span className="text-zinc-500">{t('splitTool.snapLabel')}</span>
           {[0.25, 0.5, 0.75].map((f) => (
             <button
               key={f}

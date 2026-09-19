@@ -77,6 +77,11 @@
 import { useMemo } from 'react';
 import { Boxes, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n/useTranslation';
+import type { TranslationKey } from '@/i18n/en';
+// Side-effect import: merges the measure catalogue into the runtime `en`
+// object so `t('measure.*')` resolves under the real 'en' locale (see that
+// module's own doc comment).
 import { useIfc } from '@/hooks/useIfc';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -115,17 +120,17 @@ import {
   type WeightOutcome,
 } from './measure-modes/weight';
 
-const QUANTITY_TYPE_LABEL: Record<number, string> = {
-  0: 'Length',
-  1: 'Area',
-  2: 'Volume',
-  4: 'Weight',
+const QUANTITY_TYPE_LABEL_KEY: Record<number, TranslationKey> = {
+  0: 'measure.qty.length',
+  1: 'measure.qty.area',
+  2: 'measure.qty.volume',
+  4: 'measure.qty.weight',
 };
 
-const BASIS_LABEL: Record<QuantityBasis, string> = {
-  net: 'net',
-  gross: 'gross',
-  unqualified: '',
+const BASIS_LABEL_KEY: Record<QuantityBasis, TranslationKey | null> = {
+  net: 'measure.basis.net',
+  gross: 'measure.basis.gross',
+  unqualified: null,
 };
 
 /**
@@ -142,16 +147,14 @@ const BASIS_LABEL: Record<QuantityBasis, string> = {
  * mass, and a row that said "Weight" beside a `MASSUNIT` total would leave the
  * reader to guess whether it meant a force.
  */
-const DERIVED_WEIGHT_LABEL: Record<Exclude<WeightBasis, 'declared'>, string> = {
-  'derived-ifc-density': 'Mass derived',
-  'derived-library-density': 'Mass estimated',
+const DERIVED_WEIGHT_LABEL_KEY: Record<Exclude<WeightBasis, 'declared'>, TranslationKey> = {
+  'derived-ifc-density': 'measure.weight.massDerived',
+  'derived-library-density': 'measure.weight.massEstimated',
 };
 
-const DERIVED_WEIGHT_TITLE: Record<Exclude<WeightBasis, 'declared'>, string> = {
-  'derived-ifc-density':
-    'Mass CALCULATED as the meshed geometry volume (after opening cuts) x the material density the file declares in Pset_MaterialCommon.MassDensity. Not an IFC-declared weight quantity. A mass, not a force.',
-  'derived-library-density':
-    'Mass ESTIMATED as the meshed geometry volume (after opening cuts) x a density from the project density library. The file does not declare this density. A mass, not a force.',
+const DERIVED_WEIGHT_TITLE_KEY: Record<Exclude<WeightBasis, 'declared'>, TranslationKey> = {
+  'derived-ifc-density': 'measure.weight.massDerivedTitle',
+  'derived-library-density': 'measure.weight.massEstimatedTitle',
 };
 
 /**
@@ -232,6 +235,7 @@ function quantitySetsFor(
 }
 
 export function MeasureQuantities() {
+  const { t } = useTranslation();
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntitiesSet = useViewerStore((s) => s.selectedEntitiesSet);
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
@@ -485,7 +489,7 @@ export function MeasureQuantities() {
   if (!summary) {
     return (
       <div className="border-t px-2 py-2 text-center text-[10px] text-muted-foreground">
-        Select elements to read their quantities
+        {t('measure.quantities.selectPrompt')}
       </div>
     );
   }
@@ -507,10 +511,10 @@ export function MeasureQuantities() {
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-primary">
           <Boxes className="h-3 w-3" />
-          Quantities
+          {t('measure.quantities.header')}
         </span>
         <span className="font-mono text-[9px] text-muted-foreground">
-          {elements} element{elements === 1 ? '' : 's'}
+          {t('measure.quantities.elementsCount', { count: elements })}
         </span>
       </div>
 
@@ -518,9 +522,7 @@ export function MeasureQuantities() {
         <div className="flex items-start gap-1.5 text-[10px] leading-tight text-muted-foreground">
           <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
           <span>
-            The selection declares no quantities, no enclosed volume could be
-            proved from its geometry, and no triangulated mesh area could be
-            measured either.
+            {t('measure.quantities.nothingFound')}
           </span>
         </div>
       ) : (
@@ -532,7 +534,8 @@ export function MeasureQuantities() {
               title={r.provenance.join('\n')}
             >
               <span className="w-[5.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                {QUANTITY_TYPE_LABEL[r.quantityType] ?? r.quantityType} {BASIS_LABEL[r.basis]}
+                {QUANTITY_TYPE_LABEL_KEY[r.quantityType] ? t(QUANTITY_TYPE_LABEL_KEY[r.quantityType]) : r.quantityType}{' '}
+                {BASIS_LABEL_KEY[r.basis] ? t(BASIS_LABEL_KEY[r.basis]!) : ''}
               </span>
               <span className="font-mono text-[11px] tabular-nums">{render(r.total, r.quantityType)}</span>
               {r.contributing < elements && (
@@ -546,10 +549,10 @@ export function MeasureQuantities() {
           {geometry.proved > 0 && (
             <div
               className="flex items-baseline gap-2 whitespace-nowrap"
-              title="Enclosed volume computed from the meshed geometry, after opening cuts. Not an IFC GrossVolume."
+              title={t('measure.quantities.volumeMeshTitle')}
             >
               <span className="w-[5.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                Volume mesh
+                {t('measure.quantities.volumeMeshLabel')}
               </span>
               <span className="font-mono text-[11px] tabular-nums">{render(geometry.total, 2)}</span>
               {geometry.unproved > 0 && (
@@ -563,10 +566,10 @@ export function MeasureQuantities() {
           {meshArea.withMesh > 0 && (
             <div
               className="flex items-baseline gap-2 whitespace-nowrap"
-              title="Total triangulated surface of the meshed geometry — every face, not one side. Not an IFC NetSideArea/GrossSideArea."
+              title={t('measure.quantities.areaMeshTitle')}
             >
               <span className="w-[5.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                Area mesh
+                {t('measure.quantities.areaMeshLabel')}
               </span>
               <span className="font-mono text-[11px] tabular-nums">{render(meshArea.total, 1)}</span>
               {meshArea.withoutMesh > 0 && (
@@ -587,10 +590,10 @@ export function MeasureQuantities() {
             <div
               key={r.basis}
               className="flex items-baseline gap-2 whitespace-nowrap"
-              title={[DERIVED_WEIGHT_TITLE[r.basis as Exclude<WeightBasis, 'declared'>], ...r.provenance].join('\n')}
+              title={[t(DERIVED_WEIGHT_TITLE_KEY[r.basis as Exclude<WeightBasis, 'declared'>]), ...r.provenance].join('\n')}
             >
               <span className="w-[5.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                {DERIVED_WEIGHT_LABEL[r.basis as Exclude<WeightBasis, 'declared'>]}
+                {t(DERIVED_WEIGHT_LABEL_KEY[r.basis as Exclude<WeightBasis, 'declared'>])}
               </span>
               <span className="font-mono text-[11px] tabular-nums">
                 {render(r.total, MEASURABLE_QUANTITY_TYPES.Weight)}
@@ -613,8 +616,7 @@ export function MeasureQuantities() {
           instead of quietly differing. */}
       {!nothing && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          net = openings excluded · gross = openings included · mesh = as built,
-          after opening cuts (volume) or total triangulated surface (area)
+          {t('measure.quantities.legend')}
         </div>
       )}
 
@@ -623,70 +625,51 @@ export function MeasureQuantities() {
           file authored, and the reader is told which density it used. */}
       {derivedWeights.length > 0 && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          mass derived = mesh volume × the file&apos;s Pset_MaterialCommon.MassDensity
           {derivedWeights.some((r) => r.basis === 'derived-library-density')
-            ? '; mass estimated = mesh volume × a project library density the file does not declare'
-            : ''}
-          . Not an IFC-declared weight quantity.
+            ? t('measure.quantities.massLegendWithEstimated')
+            : t('measure.quantities.massLegend')}
         </div>
       )}
       {weights.withheld['density-ambiguous'] > 0 && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          {weights.withheld['density-ambiguous']} element
-          {weights.withheld['density-ambiguous'] === 1 ? '' : 's'} declare
-          materials with different densities and no share of the volume to
-          apportion between them, so no mass was derived for
-          {weights.withheld['density-ambiguous'] === 1 ? ' it' : ' them'}.
+          {t('measure.quantities.densityAmbiguous', { count: weights.withheld['density-ambiguous'] })}
         </div>
       )}
       {weights.withheld['weight-unit-is-force'] > 0 && (
         <div className="flex items-start gap-1.5 font-mono text-[9px] leading-tight text-amber-600 dark:text-amber-500">
           <TriangleAlert className="mt-0.5 h-2.5 w-2.5 shrink-0" />
           <span>
-            {weights.withheld['weight-unit-is-force']} element
-            {weights.withheld['weight-unit-is-force'] === 1 ? '' : 's'} sit
-            {weights.withheld['weight-unit-is-force'] === 1 ? 's' : ''} in a model
-            whose MASSUNIT declares a force, not a mass. No mass was derived
-            rather than guessing whether the result should read as kilograms or
-            kilonewtons.
+            {t('measure.quantities.weightUnitIsForce', { count: weights.withheld['weight-unit-is-force'] })}
           </span>
         </div>
       )}
 
       {geometry.unproved > 0 && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          {geometry.unproved} element{geometry.unproved === 1 ? '' : 's'} had no
-          provable enclosed volume (open shell, layered or multi-part geometry).
+          {t('measure.quantities.unprovedVolume', { count: geometry.unproved })}
         </div>
       )}
       {meshArea.withoutMesh > 0 && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          {meshArea.withoutMesh} element{meshArea.withoutMesh === 1 ? '' : 's'} had
-          no triangulated mesh to measure (e.g. instanced-only geometry).
+          {t('measure.quantities.noMeshToMeasure', { count: meshArea.withoutMesh })}
         </div>
       )}
       {meshAreaIncomplete > 0 && (
         <div className="flex items-start gap-1.5 font-mono text-[9px] leading-tight text-amber-600 dark:text-amber-500">
           <TriangleAlert className="mt-0.5 h-2.5 w-2.5 shrink-0" />
           <span>
-            {meshAreaIncomplete} element{meshAreaIncomplete === 1 ? '' : 's'} included in
-            the mesh area total {meshAreaIncomplete === 1 ? 'has' : 'have'} a submesh with
-            invalid vertex data; {meshAreaIncomplete === 1 ? 'its' : 'their'} contribution
-            is a partial sum, not a complete measurement.
+            {t('measure.quantities.meshAreaIncomplete', { count: meshAreaIncomplete })}
           </span>
         </div>
       )}
       {rescaled > 0 && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          {rescaled} element{rescaled === 1 ? '' : 's'} sit{rescaled === 1 ? 's' : ''} in
-          a model federation alignment rescaled; {rescaled === 1 ? 'its' : 'their'} proved
-          volume no longer describes the geometry on screen and is withheld.
+          {t('measure.quantities.rescaledVolume', { count: rescaled })}
         </div>
       )}
       {withoutStore > 0 && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          {withoutStore} selected element{withoutStore === 1 ? '' : 's'} could not
-          be resolved to a loaded model.
+          {t('measure.quantities.unresolvedElements', { count: withoutStore })}
         </div>
       )}
     </div>

@@ -29,10 +29,7 @@ import { editError } from '@/lib/space-edit-error';
 import { pointerButton, isRemoveModifier } from '@/lib/space-interaction';
 import { type Room, type Boundary } from '@/lib/space-plate-session';
 import { wallRectsFromMeshes, type WallRect } from '@/lib/wall-rects-from-meshes';
-import {
-  polyArea, uniqueVerts, distToSeg, projectOnSeg,
-  sX, sY, wX, wY, PAD, type Pt,
-} from '@/lib/space-sketch-geometry';
+import { polyArea, uniqueVerts, distToSeg, projectOnSeg, sX, sY, wX, wY, PAD, type Pt } from '@/lib/space-sketch-geometry';
 import { type BoundaryMode } from '@ifc-lite/create';
 import { X, Undo2, Redo2, Layers, Maximize, Magnet, SlidersHorizontal, HelpCircle, Eraser, Square, PenLine, Frame, Check, Minus, Building2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
@@ -48,6 +45,7 @@ import { useSpaceSketchKeys } from './space-sketch/useSpaceSketchKeys';
 import { useSpaceBake } from './space-sketch/useSpaceBake';
 import { floorToFloorHeight } from './space-sketch/space-bake';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
+import { useTranslation } from '@/i18n';
 
 const PICK_PX = 12;
 const SNAP_PX = 10;
@@ -60,6 +58,7 @@ function orthoLock(anchor: Pt, p: Pt): Pt {
 }
 
 export function SpaceSketchOverlay() {
+  const { t } = useTranslation();
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const models = useViewerStore((s) => s.models);
@@ -1324,22 +1323,22 @@ export function SpaceSketchOverlay() {
 
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <Layers className="h-4 w-4 shrink-0 text-muted-foreground" /> Space Sketch
+          <Layers className="h-4 w-4 shrink-0 text-muted-foreground" /> {t('spaceSketch.panel.heading')}
           {/* Running total of spaces to create on confirm (all storeys), so the
               user always knows there is something to confirm before closing. */}
           {needsConfirm && (
             <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-              title="Spaces to create when you confirm, across all storeys">
-              {pendingRooms} to confirm{pendingStoreys > 1 ? ` · ${pendingStoreys} floors` : ''}
+              title={t('spaceSketch.panel.pendingBadgeTitle')}>
+              {t('spaceSketch.panel.pendingBadge', { count: pendingRooms })}{pendingStoreys > 1 ? t('spaceSketch.panel.floorsSuffix', { floors: pendingStoreys }) : ''}
             </span>
           )}
         </div>
         <div className="flex items-center gap-0.5">
           <button className={`${iconBtn} ${helpOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={helpOpen}
-            onClick={() => { setHelpOpen((v) => !v); setOptionsOpen(false); }} title="How it works"><HelpCircle className="h-4 w-4" /></button>
+            onClick={() => { setHelpOpen((v) => !v); setOptionsOpen(false); }} title={t('spaceSketch.panel.helpTitle')}><HelpCircle className="h-4 w-4" /></button>
           <button className={iconBtn} onClick={() => setMinimized(true)}
-            title="Minimize (drafts and 3D preview stay live)"><Minus className="h-4 w-4" /></button>
-          <button className={iconBtn} onClick={closeNow} title="Close without creating (Esc)"><X className="h-4 w-4" /></button>
+            title={t('spaceSketch.panel.minimizeTitle')}><Minus className="h-4 w-4" /></button>
+          <button className={iconBtn} onClick={closeNow} title={t('spaceSketch.panel.closeTitle')}><X className="h-4 w-4" /></button>
         </div>
       </div>
 
@@ -1347,13 +1346,13 @@ export function SpaceSketchOverlay() {
       <div className="flex items-center gap-2 mb-2">
         <select className="h-8 flex-1 min-w-0 rounded-md border bg-background px-2 text-xs" value={storeyId ?? ''}
           onChange={(e) => setStoreyId(Number(e.target.value))} disabled={!storeys.length}>
-          {storeys.length ? storeys.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : <option>no model</option>}
+          {storeys.length ? storeys.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : <option>{t('spaceSketch.panel.noModelOption')}</option>}
         </select>
         <button className={iconBtn} onClick={() => void deriveAllStoreys()} disabled={!sketchModelId || derivingAll}
-          title="Derive rooms on every storey. Drafts only until you confirm; storeys you already edited are kept.">
+          title={t('spaceSketch.panel.deriveAllTitle')}>
           <Building2 className="h-4 w-4" /></button>
         <span className="shrink-0 pr-0.5 text-[11px] tabular-nums text-muted-foreground">
-          {rooms.length} {rooms.length === 1 ? 'room' : 'rooms'} · {total.toFixed(1)} m²
+          {t('spaceSketch.panel.roomCount', { count: rooms.length })} · {total.toFixed(1)} m²
         </span>
       </div>
 
@@ -1362,35 +1361,35 @@ export function SpaceSketchOverlay() {
       <div className="flex items-center gap-1 mb-2">
         <button className={`${iconBtn} ${drawMode === 'free' ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
           onClick={() => selectDrawMode('free')} aria-pressed={drawMode === 'free'}
-          title="Edit / freeform: drag corners, split, merge, draw a polygon room"><PenLine className="h-4 w-4" /></button>
+          title={t('spaceSketch.tools.editTitle')}><PenLine className="h-4 w-4" /></button>
         <button className={`${iconBtn} ${drawMode === 'rect' ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
           onClick={() => selectDrawMode('rect')} aria-pressed={drawMode === 'rect'}
-          title="Rectangle room: click two opposite corners (Shift = square)"><Square className="h-4 w-4" /></button>
+          title={t('spaceSketch.tools.rectTitle')}><Square className="h-4 w-4" /></button>
         <button className={`${iconBtn} ${footprintArmed ? 'bg-destructive/15 text-destructive hover:bg-destructive/20' : ''}`}
           onClick={() => void addFootprint()} disabled={!sketchModelId}
           title={footprintArmed
-            ? `Click again to replace this storey's ${rooms.length} drafted room(s) with one footprint room`
-            : 'Footprint: one room over the whole storey outline (convex outline of its walls)'}><Frame className="h-4 w-4" /></button>
+            ? t('spaceSketch.tools.footprintArmedTitle', { count: rooms.length })
+            : t('spaceSketch.tools.footprintTitle')}><Frame className="h-4 w-4" /></button>
         <span className="mx-0.5 h-5 w-px bg-border" />
-        <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
-        <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"><Redo2 className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={undo} disabled={!canUndo} title={t('spaceSketch.tools.undoTitle')}><Undo2 className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={redo} disabled={!canRedo} title={t('spaceSketch.tools.redoTitle')}><Redo2 className="h-4 w-4" /></button>
         <span className="mx-0.5 h-5 w-px bg-border" />
         <button className={`${iconBtn} ${snapToBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
           onClick={() => setSnapToBuilding((v) => !v)} aria-pressed={snapToBuilding}
-          title={snapToBuilding ? 'Snap to walls + corners: on' : 'Snap to walls + corners: off'}><Magnet className="h-4 w-4" /></button>
+          title={snapToBuilding ? t('spaceSketch.tools.snapOnTitle') : t('spaceSketch.tools.snapOffTitle')}><Magnet className="h-4 w-4" /></button>
         <button className={`${iconBtn} relative ${optionsOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={optionsOpen}
-          onClick={() => { setOptionsOpen((v) => !v); setHelpOpen(false); }} title="Options: boundary, corner tolerance, underlay, generate all storeys">
+          onClick={() => { setOptionsOpen((v) => !v); setHelpOpen(false); }} title={t('spaceSketch.tools.optionsTitle')}>
           <SlidersHorizontal className="h-4 w-4" />
           {(boundaryMode !== 'center' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
         </button>
         <button className={iconBtn} onClick={cleanupOrphans}
-          disabled={!rooms.length} title="Clean up: remove orphaned inner walls and redundant nodes (room shapes unchanged)"><Eraser className="h-4 w-4" /></button>
+          disabled={!rooms.length} title={t('spaceSketch.tools.cleanupTitle')}><Eraser className="h-4 w-4" /></button>
         <button className={`${iconBtn} ml-auto`} onClick={() => fitToPoints(
             rooms.length > 0
               ? rooms.flatMap((r) => r.outline)
               : (lastBuildRef.current?.rects ?? []).flatMap((r) => r.corners),
           )}
-          disabled={derivedStorey == null} title="Fit plan to canvas (reset zoom & pan)"><Maximize className="h-4 w-4" /></button>
+          disabled={derivedStorey == null} title={t('spaceSketch.tools.fitTitle')}><Maximize className="h-4 w-4" /></button>
       </div>
 
       {/* Click-away backdrop for the disclosure popovers (panel-local). */}
@@ -1458,10 +1457,10 @@ export function SpaceSketchOverlay() {
         {(drawPts.length > 0 || splitPick || rectStartRef.current) && (
           <div className="text-[11px] leading-tight text-primary">
             {rectStartRef.current
-              ? 'Click the opposite corner · Shift = square · Esc cancels.'
+              ? t('spaceSketch.footer.rectHint')
               : drawPts.length > 0
-                ? 'Click corners · Enter / double-click / first dot to close · Shift = straight · Esc cancels.'
-                : 'Click another wall or corner to finish the cut · Esc cancels.'}
+                ? t('spaceSketch.footer.drawHint')
+                : t('spaceSketch.footer.cutHint')}
           </div>
         )}
         {status && drawPts.length === 0 && !splitPick && !rectStartRef.current && (
@@ -1469,14 +1468,14 @@ export function SpaceSketchOverlay() {
         )}
         {unboundedCount > 0 && (
           <div className="text-[11px] leading-tight text-amber-600 dark:text-amber-500">
-            {unboundedCount} room(s) unchanged by “{boundaryMode}” (dashed) — no wall offset.
+            {t('spaceSketch.footer.unboundedNotice', { count: unboundedCount, boundaryMode })}
           </div>
         )}
         {showDiagnostics && (
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
-            <span className="text-emerald-600 dark:text-emerald-500">▬ bounds a room</span>
-            <span className="text-red-500">╌ bounds nothing ({leakCount})</span>
-            <span className="text-red-500">▦ failed to close ({badCount})</span>
+            <span className="text-emerald-600 dark:text-emerald-500">{t('spaceSketch.footer.diag.bounds')}</span>
+            <span className="text-red-500">{t('spaceSketch.footer.diag.leak', { count: leakCount })}</span>
+            <span className="text-red-500">{t('spaceSketch.footer.diag.failed', { count: badCount })}</span>
           </div>
         )}
         <button
@@ -1487,12 +1486,12 @@ export function SpaceSketchOverlay() {
           }`}
           onClick={needsConfirm ? confirmCreate : closeNow}
           title={needsConfirm
-            ? 'Create the drafted spaces on every storey and close'
-            : 'Close the Space Sketch tool'}>
+            ? t('spaceSketch.footer.confirmTitle')
+            : t('spaceSketch.footer.closeToolTitle')}>
           {needsConfirm && <Check className="h-4 w-4" />}
           {needsConfirm
-            ? `Confirm ${pendingRooms} ${pendingRooms === 1 ? 'space' : 'spaces'}${pendingStoreys > 1 ? ` · ${pendingStoreys} floors` : ''}`
-            : 'Done'}
+            ? t('spaceSketch.footer.confirmButton', { count: pendingRooms }) + (pendingStoreys > 1 ? t('spaceSketch.panel.floorsSuffix', { floors: pendingStoreys }) : '')
+            : t('spaceSketch.footer.doneButton')}
         </button>
       </div>
 
@@ -1500,7 +1499,7 @@ export function SpaceSketchOverlay() {
           put (hit ⤢ to reframe). */}
       <div
         {...resizeHandlers}
-        title="Drag to resize the panel"
+        title={t('spaceSketch.panel.resizeTitle')}
         className="absolute bottom-1 right-1 h-3.5 w-3.5 cursor-nwse-resize text-muted-foreground/50 hover:text-foreground"
         style={{ touchAction: 'none' }}>
         <svg viewBox="0 0 10 10" className="h-full w-full" pointerEvents="none"><path d="M9 2 L2 9 M9 6 L6 9" stroke="currentColor" strokeWidth={1.2} fill="none" /></svg>

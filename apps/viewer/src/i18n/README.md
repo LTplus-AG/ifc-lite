@@ -86,6 +86,18 @@ under its module-size budget. Recent-file names, script-template labels,
 tour titles, and extension-contributed labels stay uncatalogued, same
 reasoning as slice 2: each is runtime content, not a literal in this repo.
 
+The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx`,
+`MeasureQuantities.tsx`, `MeasurePointReadout.tsx`, `MeasurementVisuals.tsx`,
+and the shared georeferenced readout `measure-modes/geo-readout.tsx`
+(`measure.en.ts`). Measurement unit *symbols* (`m`, `m²`, `mm`, `°`) stay
+literal in these files by this slice's own scope, distinct from the gate's
+allowlist. The Space Sketch tool catalogue (`space-sketch.en.ts`) covers
+`SpaceSketchOverlay.tsx` and its `space-sketch/` popovers, canvas, and
+reopen pill. The wall-split tool catalogue (`split-tool.en.ts`) covers
+`SplitNumericInput.tsx` and `SplitOverlay.tsx`. `SectionPanel.tsx`'s one
+remaining literal was added to the existing `section-tool.en.ts` catalogue
+rather than a new file.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

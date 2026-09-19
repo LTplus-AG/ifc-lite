@@ -298,6 +298,30 @@ export class StoreEditor {
   }
 
   /**
+   * The entity's CURRENT IFC class — canonical, from whichever layer is
+   * authoritative: a pending retype, an overlay-created entity's authored
+   * type, or the source record's declared type — or `undefined` when the id
+   * is deleted or resolves to nothing at all. The one place a builder that
+   * takes "an id of a specific class" (e.g. `bim.store.addCostValue`'s
+   * `UnitBasis`) checks what it actually got, rather than trusting the
+   * caller.
+   */
+  getEntityType(expressId: number): string | undefined {
+    if (this.view.isDeleted(expressId)) return undefined;
+    const retype = this.view.getEntityTypeMutation(expressId);
+    if (retype) return retype.newType;
+    const created = this.view.getNewEntity(expressId);
+    if (created) return created.type;
+    // Deferred property atoms occupy express ids too (see
+    // `computeMaxExistingId`) and are absent from `entityIndex.byId` —
+    // without this fallback a valid, non-deleted deferred entity id reads as
+    // "does not exist" here even though `hasEntity` (which already checks
+    // `deferredEntityIndex`) says it does.
+    return this.store.entityIndex.byId.get(expressId)?.type
+      ?? this.store.deferredEntityIndex?.get(expressId)?.type;
+  }
+
+  /**
    * Attach a quantity set to an entity via the property view, so it surfaces in
    * the properties panel (`getQuantitiesForEntity`) AND exports to
    * IfcElementQuantity — the single source the rest of the app reads. Prefer

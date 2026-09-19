@@ -26,7 +26,6 @@ export const propertiesEn = {
   // Shared field-row labels, reused across ClassificationCard, DocumentCard
   // and any other card rendering the same generic "label / value" row.
   'properties.field.identification': 'Identification',
-  'properties.field.name': 'Name',
   'properties.field.system': 'System',
   'properties.field.location': 'Location',
   'properties.field.path': 'Path',

@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { FileText } from 'lucide-react';
 import type { DocumentInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
+import { EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 
 export function DocumentCard({ document }: { document: DocumentInfo }) {
   const { t } = useTranslation();
@@ -39,7 +40,7 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
           )}
           {document.name && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{t('properties.field.name')}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_NAME_ATTRIBUTE}</span>
               <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.name}</span>
             </div>
           )}

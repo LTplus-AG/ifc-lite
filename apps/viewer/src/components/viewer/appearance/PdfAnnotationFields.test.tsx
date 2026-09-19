@@ -16,6 +16,7 @@ import type { AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/ap
 import type { PdfFillAnnotationPlan } from '@/lib/appearance/pdf/fill-plan-types';
 import type { PreparedPdfVectorPage } from '@/lib/appearance/pdf/vector-types';
 import { PdfAnnotationFields } from './PdfAnnotationFields';
+import { registerLocale, setLocale } from '@/i18n';
 
 type NativeApi = { preparePdfVectorPage(json: string): Uint8Array; planPdfFillAnnotation(source: Uint8Array, json: string): Uint8Array; free(): void };
 const HELVETICA = '/Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >>';
@@ -117,6 +118,13 @@ test('partial pages show the report, need explicit acceptance and record their o
     click(button('Prepare partial conversion')!);
     await until(() => !!button('Create annotation') && !button('Create annotation')!.disabled);
     assert.match(ui.textContent ?? '', /Review 2 coloured regions of the accepted partial conversion/);
+    registerLocale('pdf-status-pseudo', {
+      'appearance.pdfAnnotation.reviewRegionsPartial': 'MARKED review {count} PDF regions',
+    });
+    act(() => setLocale('pdf-status-pseudo'));
+    assert.match(ui.textContent ?? '', /MARKED review 2 PDF regions/,
+      'a completed PDF status must re-resolve after a live locale switch');
+    act(() => setLocale('en'));
     assert.equal(partial.view.getNewEntities().length, 0, 'the preview publishes nothing');
     click(button('Create annotation')!);
     await until(() => button('Create annotation') === undefined && partial.view.getNewEntities().length > 0);

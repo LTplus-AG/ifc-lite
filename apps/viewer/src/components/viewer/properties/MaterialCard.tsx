@@ -12,6 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Layers } from 'lucide-react';
 import type { MaterialInfo } from '@ifc-lite/parser';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 
 const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
   Material: 'properties.material.typeLabel.material',
@@ -77,7 +78,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
                     )}
                     {layer.name && (
                       <>
-                        <span className="text-zinc-400">{t('properties.field.name')}</span>
+                        <span className="text-zinc-400">{EXPRESS_NAME_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{layer.name}</span>
                       </>
                     )}
@@ -119,7 +120,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
                     )}
                     {profile.name && (
                       <>
-                        <span className="text-zinc-400">{t('properties.field.name')}</span>
+                        <span className="text-zinc-400">{EXPRESS_NAME_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{profile.name}</span>
                       </>
                     )}

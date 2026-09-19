@@ -306,6 +306,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
       assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
       coveredAny = true;
     }
+    assert.ok(after.has('Name'), 'canonical IFC Name field labels must remain literal across locale changes');
     assert.ok(coveredAny, 'this render must exercise at least one static properties key');
   });
 

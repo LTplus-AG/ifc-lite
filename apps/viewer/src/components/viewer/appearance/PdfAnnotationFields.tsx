@@ -11,9 +11,10 @@ import type { PdfFidelityReport } from '@/lib/appearance/pdf/vector-types';
 import { AppearanceMeshPreview } from './AppearanceMeshPreview';
 import { PdfFidelityReportView, visibleOmissionCount } from './PdfFidelityReportView';
 import { selectCreatedAppearanceObject } from './select-created-object';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
 
 const ignoreRegion = () => {};
+type PdfMessage = { key: TranslationKey; params?: TranslationParameters } | { text: string } | null;
 /** Fidelity-gated conversion (#4406): the canonical report decides whether the
  * page converts exactly. A partial page needs explicit acceptance of the listed
  * omissions before geometry is prepared; a raster-only page never converts. */
@@ -29,7 +30,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   const retained = useRef<PreparedPdfReferenceAnnotation | null>(null);
   const operation = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
-  const [message, setMessage] = useState(''), [error, setError] = useState(false);
+  const [message, setMessage] = useState<PdfMessage>(null), [error, setError] = useState(false);
   const models = useViewerStore(state => state.models), references = useViewerStore(state => state.appearanceReferences);
   const version = useViewerStore(state => state.mutationVersion), placement = useViewerStore(state => state.modelPlacement);
   const room = useViewerStore(state => state.collabRoomId);
@@ -37,14 +38,14 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   const dropPrepared = () => { retained.current = null; setPrepared(null); setReady(false); };
   const dropAll = () => { dropPrepared(); check.current?.dispose(); check.current = null; setReport(null); setAccepted(false); };
   // The report binds the original page and metric tolerance; the IFC target and Name bind only the prepared plan.
-  useEffect(() => { cancel(); dropAll(); setError(false); setMessage(''); }, [referenceId, tolerance]);
-  useEffect(() => { cancel(); dropPrepared(); setError(false); setMessage(''); }, [modelId, containerId, Name]);
+  useEffect(() => { cancel(); dropAll(); setError(false); setMessage(null); }, [referenceId, tolerance]);
+  useEffect(() => { cancel(); dropPrepared(); setError(false); setMessage(null); }, [modelId, containerId, Name]);
   useEffect(() => () => { cancel(); dropAll(); }, []);
   useEffect(() => {
     if (disabled || room) { cancel(); dropAll(); return; }
     if (operation.current) return; // The command validates its own asynchronous publication fence.
     try { retained.current?.validate(); check.current?.validate(); }
-    catch (failure) { dropAll(); setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
+    catch (failure) { dropAll(); setError(true); setMessage({ text: failure instanceof Error ? failure.message : String(failure) }); }
   }, [disabled, room, models, references, version, placement]);
   const triangles = useMemo(() => prepared ? Array.from({ length: prepared.meshes[0].indices.length / 3 }, (_, i) => i) : [], [prepared]);
   const additionalMeshes = useMemo(() => prepared?.meshes.slice(1) ?? [], [prepared]);
@@ -55,7 +56,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   async function prepare() {
     if (!valid || disabled || room || operation.current || containerId === undefined) return;
     dropPrepared(); const controller = new AbortController(); operation.current = controller;
-    setBusy(true); setError(false); setMessage(t('appearance.pdfAnnotation.checkingVectors'));
+    setBusy(true); setError(false); setMessage({ key: 'appearance.pdfAnnotation.checkingVectors' });
     try {
       let current = check.current;
       if (!current) {
@@ -65,38 +66,40 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
         check.current = current; setReport({ verdict: current.report, userUnit: current.page.userUnit });
       }
       const verdict = current.report;
-      if (verdict.rasterOnly) { setError(true); setMessage(t('appearance.pdfAnnotation.rasterOnly')); return; }
+      if (verdict.rasterOnly) { setError(true); setMessage({ key: 'appearance.pdfAnnotation.rasterOnly' }); return; }
       if (!verdict.exact && !accepted) {
         const n = visibleOmissionCount(verdict);
-        setMessage(t('appearance.pdfAnnotation.partialSummary', { count: n })); return;
+        setMessage({ key: 'appearance.pdfAnnotation.partialSummary', params: { count: n } }); return;
       }
-      setMessage(t('appearance.pdfAnnotation.preparingGeometry'));
+      setMessage({ key: 'appearance.pdfAnnotation.preparingGeometry' });
       const result = await current.prepare(modelId, containerId, { Name, acceptPartial: accepted, signal: controller.signal });
       if (controller.signal.aborted || operation.current !== controller) return;
       result.validate();
       retained.current = result; setPrepared(result);
-      setMessage(
+      setMessage({
+        key:
         verdict.exact
-          ? t('appearance.pdfAnnotation.reviewRegionsExact', { count: result.regions })
-          : t('appearance.pdfAnnotation.reviewRegionsPartial', { count: result.regions }),
-      );
+          ? 'appearance.pdfAnnotation.reviewRegionsExact'
+          : 'appearance.pdfAnnotation.reviewRegionsPartial',
+        params: { count: result.regions },
+      });
     } catch (failure) {
-      if (!controller.signal.aborted && operation.current === controller) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
+      if (!controller.signal.aborted && operation.current === controller) { setError(true); setMessage({ text: failure instanceof Error ? failure.message : String(failure) }); }
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   async function create() {
     const result = retained.current, renderer = getGlobalRenderer(), exact = !!report?.verdict.exact;
     if (!result || !ready || busy || disabled || room) return;
-    if (!renderer) { setError(true); setMessage(t('appearance.pdfAnnotation.rendererNotReady')); return; }
+    if (!renderer) { setError(true); setMessage({ key: 'appearance.pdfAnnotation.rendererNotReady' }); return; }
     const controller = new AbortController(); operation.current = controller;
-    setBusy(true); setError(false); setMessage(t('appearance.pdfAnnotation.creating'));
+    setBusy(true); setError(false); setMessage({ key: 'appearance.pdfAnnotation.creating' });
     try {
       const created = await result.create(renderer, { signal: controller.signal });
       if (controller.signal.aborted || operation.current !== controller) return;
       selectCreatedAppearanceObject(modelId, created); dropAll();
-      setMessage(exact ? t('appearance.pdfAnnotation.createdExact') : t('appearance.pdfAnnotation.createdPartial'));
+      setMessage({ key: exact ? 'appearance.pdfAnnotation.createdExact' : 'appearance.pdfAnnotation.createdPartial' });
     } catch (failure) {
-      if (!controller.signal.aborted && operation.current === controller) { dropAll(); setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
+      if (!controller.signal.aborted && operation.current === controller) { dropAll(); setError(true); setMessage({ text: failure instanceof Error ? failure.message : String(failure) }); }
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   return <div className="space-y-2" aria-busy={busy}>
@@ -110,11 +113,11 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
       {partial ? t('appearance.pdfAnnotation.preparePartial') : t('appearance.pdfAnnotation.prepareVector')}</Button>
     {prepared && <>
       <AppearanceMeshPreview mesh={prepared.meshes[0]} additionalMeshes={additionalMeshes} initialPlane={prepared.initialPlane} triangles={triangles} disabled={busy || disabled}
-        regionControls={false} onRegion={ignoreRegion} onReady={setReady} onError={value => { setError(true); setMessage(value); }}
+        regionControls={false} onRegion={ignoreRegion} onReady={setReady} onError={value => { setError(true); setMessage({ text: value }); }}
         canvasLabel={t('appearance.pdfAnnotation.canvasLabel')} instruction={t('appearance.pdfAnnotation.previewInstruction')} />
       <Button type="button" size="sm" disabled={!ready || busy || disabled || !!room} onClick={() => { void create(); }}>{t('appearance.pdfAnnotation.createAnnotation')}</Button>
     </>}
-    {busy && <Button type="button" size="sm" variant="ghost" onClick={() => { cancel(); dropAll(); setError(false); setMessage(t('appearance.pdfAnnotation.cancelled')); }}>{t('appearance.pdfAnnotation.cancel')}</Button>}
-    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
+    {busy && <Button type="button" size="sm" variant="ghost" onClick={() => { cancel(); dropAll(); setError(false); setMessage({ key: 'appearance.pdfAnnotation.cancelled' }); }}>{t('appearance.pdfAnnotation.cancel')}</Button>}
+    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{'key' in message ? t(message.key, message.params) : message.text}</p>}
   </div>;
 }

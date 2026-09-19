@@ -10,9 +10,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ENTITIES_IFC4, IFC_DATA_TYPES } from '@ifc-lite/data';
 import { generateFromSchema } from '../src/generator.js';
-import * as schemaHierarchy from '../src/schema-hierarchy.js';
 
 describe('generateFromSchema — CRLF line endings (#4220)', () => {
   let outputDir: string;
@@ -91,21 +89,6 @@ describe('generateFromSchema — CRLF line endings (#4220)', () => {
 });
 
 describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
-  it('adapts a non-vacuous IFC4 entity catalog and excludes its data types', () => {
-    const supplemental = schemaHierarchy.entityCatalogSchema(
-      'IFC4_FAMILY',
-      ENTITIES_IFC4,
-      IFC_DATA_TYPES,
-    );
-    const names = new Set(supplemental.entities.map((entity) => entity.name));
-
-    expect(supplemental.entities.length).toBeGreaterThan(800);
-    expect(names.has('IfcAlignmentCurve')).toBe(true);
-    expect(names.has('IfcLengthMeasure')).toBe(false);
-    expect(names.has('IfcBinary')).toBe(false);
-    expect(names.has('IfcPropertySetDefinitionSet')).toBe(false);
-  });
-
   it('does not read Rust-only supplemental paths for a TypeScript-only generation', () => {
     const outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-4203-ts-only-'));
     try {

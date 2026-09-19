@@ -59,3 +59,46 @@ test('an OPENROUTER_TIMEOUT_MS env override is accepted alongside a caller defau
   );
   assert.equal(providers.length, 1);
 });
+
+// ================================== finding-1/finding-4: behavioural timeout, real code path
+
+/**
+ * REPLACES A SOURCE-TEXT ASSERTION. This drives `resolveProviderFallbacks` --
+ * the actual function both run-judge.mjs and run-reviewer.mjs call -- with the
+ * judge's own options object, and observes the timeout each provider actually
+ * hands its child process via an injected `spawn`. No `spawnSync` and no
+ * network are invoked: `spawn` is swapped out through the same test-only
+ * option `runOpenRouterFallback`/`runOpenAiFallback` already accept, so what
+ * is asserted is real wiring, not a string pinned in run-judge.mjs's source.
+ */
+test('#finding-1/#finding-4: the judge\'s OpenRouter AND OpenAI fallbacks get a 120000ms timeout; the reviewer\'s get 300000ms', () => {
+  const seenOpenRouterEnv = [];
+  const seenOpenAiEnv = [];
+  const fakeSpawn = (_cmd, _args, opts) => {
+    if (opts.env.OPENROUTER_TIMEOUT_MS !== undefined) seenOpenRouterEnv.push(opts.env.OPENROUTER_TIMEOUT_MS);
+    if (opts.env.OPENAI_TIMEOUT_MS !== undefined) seenOpenAiEnv.push(opts.env.OPENAI_TIMEOUT_MS);
+    return { status: 0, stdout: 'MODEL_USED:x\n', stderr: '' };
+  };
+
+  const env = { OPENROUTER_API_KEY: 'or-key', OPENAI_API_KEY: 'oai-key' };
+
+  // The judge's own options, straight out of run-judge.mjs.
+  const judgeProviders = resolveProviderFallbacks(env, {
+    openRouterModelsEnvVar: 'OPENROUTER_JUDGE_MODELS',
+    openRouterModelEnvVar: 'OPENROUTER_JUDGE_MODEL',
+    openRouterTimeoutMsDefault: 120_000,
+    spawn: fakeSpawn,
+  });
+  for (const p of judgeProviders) {
+    try { p.run('prompt'); } catch { /* the fake spawn's stdout is not a real OpenAI response; only the env matters here */ }
+  }
+
+  // The reviewer takes NO override at all -- its own real call site.
+  const reviewerProviders = resolveProviderFallbacks(env, { spawn: fakeSpawn });
+  for (const p of reviewerProviders) {
+    try { p.run('prompt'); } catch { /* same */ }
+  }
+
+  assert.deepEqual(seenOpenRouterEnv, ['120000', '300000'], 'OpenRouter: judge first (120000), then reviewer (300000)');
+  assert.deepEqual(seenOpenAiEnv, ['120000', '300000'], 'OpenAI: judge first (120000), then reviewer (300000)');
+});

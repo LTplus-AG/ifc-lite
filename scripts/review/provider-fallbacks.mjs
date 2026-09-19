@@ -21,14 +21,29 @@ import {
 } from './openrouter-reviewer.mjs';
 import { runOpenAiFallback } from './openai-reviewer.mjs';
 
+// The single reviewer test never exercises this, and the change belongs beside
+// the doc comment below rather than repeated at each call site: the fallback
+// TIMEOUT BUDGET IS ONE KNOB FOR THE WHOLE CHAIN, not an OpenRouter-only
+// setting that direct OpenAI happens to lack (#4981 finding-4). Both
+// providers in the chain are optional, best-effort fallbacks behind the same
+// caller policy -- "the judge must fail soft quickly, the reviewer can afford
+// to wait longer" -- so both take the SAME resolved `timeoutMs`, computed
+// once here regardless of which provider(s) actually end up configured.
+
 /**
  * @param {NodeJS.ProcessEnv} env
  * @param {{
  *   openRouterModelsEnvVar?: string,  name of the plural (comma-separated) env var
  *   openRouterModelEnvVar?: string,   name of the singular override env var
  *   openRouterDefaultModels?: string[],
- *   openRouterTimeoutMsDefault?: number,  this caller's DEFAULT per-model timeout;
+ *   openRouterTimeoutMsDefault?: number,  this caller's DEFAULT per-model timeout,
+ *     applied to BOTH providers in the chain, OpenRouter and direct OpenAI alike;
  *     `env.OPENROUTER_TIMEOUT_MS`, if set, overrides it for either caller alike.
+ *   spawn?: Function,  test-only override forwarded to BOTH providers' own
+ *     `spawn` parameter, so a test can observe the timeout each one actually
+ *     hands its child process without invoking a real `spawnSync` or network
+ *     call. Production never sets this; each provider's own default (the real
+ *     `spawnSync`) is used instead.
  * }} [opts]
  *   Reviewer and judge pass their OWN env-var names in here (`OPENROUTER_REVIEW_MODELS`/
  *   `OPENROUTER_REVIEW_MODEL` vs `OPENROUTER_JUDGE_MODELS`/`OPENROUTER_JUDGE_MODEL`) and
@@ -43,8 +58,13 @@ export function resolveProviderFallbacks(env, {
   openRouterModelEnvVar = 'OPENROUTER_REVIEW_MODEL',
   openRouterDefaultModels = OPENROUTER_REVIEW_MODELS_DEFAULT,
   openRouterTimeoutMsDefault = OPENROUTER_TIMEOUT_MS_DEFAULT,
+  spawn = undefined,
 } = {}) {
   const providers = [];
+  // Resolved ONCE, ahead of either provider, so both take the same budget
+  // regardless of which one(s) end up configured -- see the module doc
+  // comment above.
+  const timeoutMs = resolveTimeoutMs(env.OPENROUTER_TIMEOUT_MS, openRouterTimeoutMsDefault);
   const openRouterKey = String(env.OPENROUTER_API_KEY ?? '').trim();
   if (openRouterKey) {
     const models = resolveModelChain({
@@ -52,17 +72,16 @@ export function resolveProviderFallbacks(env, {
       modelRaw: env[openRouterModelEnvVar],
       defaults: openRouterDefaultModels,
     });
-    const timeoutMs = resolveTimeoutMs(env.OPENROUTER_TIMEOUT_MS, openRouterTimeoutMsDefault);
     providers.push({
       label: 'openrouter-fallback',
-      run: (prompt) => runOpenRouterFallback({ prompt, apiKey: openRouterKey, models, timeoutMs }),
+      run: (prompt) => runOpenRouterFallback({ prompt, apiKey: openRouterKey, models, timeoutMs, ...(spawn ? { spawn } : {}) }),
     });
   }
   const openAiKey = String(env.OPENAI_API_KEY ?? '').trim();
   if (openAiKey) {
     providers.push({
       label: 'openai-fallback',
-      run: (prompt) => runOpenAiFallback({ prompt, apiKey: openAiKey }),
+      run: (prompt) => runOpenAiFallback({ prompt, apiKey: openAiKey, timeoutMs, ...(spawn ? { spawn } : {}) }),
     });
   }
   return providers;

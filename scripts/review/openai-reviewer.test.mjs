@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OPENAI_REVIEW_MODEL, requestOpenAiReview, responseText, runOpenAiFallback } from './openai-reviewer.mjs';
+import { OPENAI_REVIEW_MODEL, OPENAI_TIMEOUT_MS_DEFAULT, requestOpenAiReview, responseText, runOpenAiFallback } from './openai-reviewer.mjs';
 
 const reply = (body, { ok = true, status = 200 } = {}) => ({ ok, status, text: async () => JSON.stringify(body) });
 
@@ -58,4 +58,41 @@ test('child wrapper passes the key only through env and returns text', () => {
   assert.equal(call[2].input, 'p');
   assert.equal(call[2].env.OPENAI_API_KEY, 'secret');
   assert.doesNotMatch(JSON.stringify(call.slice(0, 2)), /secret/);
+});
+
+// ============================================ finding-4: the same timeout plumbing as OpenRouter
+
+test('requestOpenAiReview aborts the fetch via the timeoutMs it is given', async () => {
+  let seenSignal;
+  await requestOpenAiReview({
+    prompt: 'p',
+    apiKey: 'k',
+    timeoutMs: 5000,
+    fetchImpl: async (_url, init) => {
+      seenSignal = init.signal;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ status: 'completed', output_text: 'ok' }) };
+    },
+  });
+  assert.ok(seenSignal instanceof AbortSignal, 'the request must carry an AbortSignal');
+});
+
+test('runOpenAiFallback threads timeoutMs to the child as OPENAI_TIMEOUT_MS and bounds spawnSync itself', () => {
+  let call;
+  runOpenAiFallback({
+    prompt: 'p',
+    apiKey: 'k',
+    timeoutMs: 5000,
+    spawn: (...args) => {
+      call = args;
+      return { status: 0, stdout: 'ok', stderr: '' };
+    },
+  });
+  assert.equal(call[2].env.OPENAI_TIMEOUT_MS, '5000');
+  assert.equal(call[2].timeout, 5000 + 30_000, 'the parent-side spawnSync budget must exceed the child fetch timeout');
+});
+
+test('runOpenAiFallback defaults timeoutMs to OPENAI_TIMEOUT_MS_DEFAULT when not given', () => {
+  let call;
+  runOpenAiFallback({ prompt: 'p', apiKey: 'k', spawn: (...args) => { call = args; return { status: 0, stdout: 'ok', stderr: '' }; } });
+  assert.equal(call[2].env.OPENAI_TIMEOUT_MS, String(OPENAI_TIMEOUT_MS_DEFAULT));
 });

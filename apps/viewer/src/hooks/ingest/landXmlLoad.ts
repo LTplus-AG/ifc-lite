@@ -4,7 +4,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { federationFrameInfo, ifcToViewerAxes, totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import { federationFrameInfo, totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { toast } from '../../components/ui/toast.js';
 import { useViewerStore } from '../../store/index.js';
@@ -54,7 +54,12 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, frame: Coordina
     mesh.origin = [origin[0] + delta.x, origin[1] + delta.y, origin[2] + delta.z];
   }
   const worldBounds = geometry.coordinateInfo.originalBounds;
-  const rtcYup = ifcToViewerAxes(frame.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
+  const shift = frame.originShift ?? { x: 0, y: 0, z: 0 };
+  const rtcYup = {
+    x: targetOffset.x - shift.x,
+    y: targetOffset.y - shift.y,
+    z: targetOffset.z - shift.z,
+  };
   geometry.coordinateInfo = {
     ...geometry.coordinateInfo,
     originShift: { ...frame.originShift },

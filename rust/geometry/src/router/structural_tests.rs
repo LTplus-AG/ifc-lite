@@ -50,6 +50,13 @@ fn bspline_surface_member_with_hole() -> String {
     )
 }
 
+fn advanced_surface_member() -> String {
+    surface_member(true, false).replace(
+        "#15=IFCFACESURFACE((#6),#14,.T.);",
+        "#15=IFCADVANCEDFACE((#6),#14,.T.,.F.);",
+    )
+}
+
 fn signed_xy_area(mesh: &crate::Mesh) -> f64 {
     mesh.indices
         .chunks_exact(3)
@@ -181,6 +188,25 @@ fn structural_surface_polyloop_preserves_hole_and_same_sense() {
     assert!(
         (signed_xy_area(&reversed_mesh) + 96.0).abs() < 1e-5,
         "IfcFaceSurface.SameSense=.F. must reverse the emitted winding"
+    );
+}
+
+#[test]
+fn structural_surface_routes_planar_advanced_face_subtype() {
+    let source = advanced_surface_member();
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(18).unwrap();
+    let mesh = GeometryRouter::new()
+        .process_element(&entity, &mut decoder)
+        .unwrap();
+
+    assert!(
+        !mesh.is_empty(),
+        "planar IfcAdvancedFace must use the face processor"
+    );
+    assert!(
+        (signed_xy_area(&mesh) - 100.0).abs() < 1e-5,
+        "the 10x10 advanced face must retain its complete planar boundary"
     );
 }
 

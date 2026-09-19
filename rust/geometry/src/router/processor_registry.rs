@@ -40,7 +40,7 @@ pub(super) const TYPES: [&[IfcType]; 20] = [
     &[IfcType::IfcCsgSolid],
     &[IfcType::IfcAlignment],
     &[IfcType::IfcEdge],
-    &[IfcType::IfcFaceSurface],
+    &[IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace],
 ];
 
 fn slot(ifc_type: IfcType) -> Option<usize> {
@@ -64,7 +64,7 @@ fn slot(ifc_type: IfcType) -> Option<usize> {
         IfcType::IfcCsgSolid => 16,
         IfcType::IfcAlignment => 17,
         IfcType::IfcEdge => 18,
-        IfcType::IfcFaceSurface => 19,
+        IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => 19,
         _ => return None,
     })
 }

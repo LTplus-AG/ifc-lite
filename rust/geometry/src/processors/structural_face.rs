@@ -63,6 +63,6 @@ impl GeometryProcessor for IfcFaceSurfaceProcessor {
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcFaceSurface]
+        vec![IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace]
     }
 }

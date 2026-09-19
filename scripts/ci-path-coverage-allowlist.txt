@@ -74,6 +74,7 @@ scripts/check-tla-chunk-await.test.mjs apps/landing/** # same walk, in the harne
 scripts/check-test-wiring.mjs apps/landing/** # walks apps/ for test suites; apps/landing has none
 scripts/typecheck-tests.test.mjs apps/landing/** # apps/landing is not a tsconfig project
 scripts/check-workflow-report-paths.mjs apps/landing/** # walks apps/ only for package.json; apps/landing contains no package manifest
+scripts/check-i18n-literals.test.mjs apps/landing/** # `apps` is a synthetic fixture-directory literal (join(dir, 'apps', 'viewer', 'src', 'components') in makeTree(), dir a mkdtemp path) mirroring the production scan root's own path, not a real read -- every CLI-harness call passes --root <tempdir>, so the checker never walks the real tree
 
 # ---------------------------------------------------------------------------
 # 3. OTHER WORKFLOWS. Real holes, in workflows this change does not own.

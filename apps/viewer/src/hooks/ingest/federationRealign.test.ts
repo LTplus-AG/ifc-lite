@@ -26,6 +26,7 @@ import {
   restorePreAlignment,
   type RealignableModel,
 } from './federationRealign.js';
+import { appendGeometryBatchPatch } from '../../store/slices/dataSlice.appendGeometryBatch.js';
 
 function coordinateInfo(over?: Partial<CoordinateInfo>): CoordinateInfo {
   return {
@@ -565,5 +566,147 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const result = await realign(models, 'X');
     assert.deepStrictEqual(result.movedModelIds, [], 'an identity alignment moves nothing');
     assert.equal(result.counts.aligned, 1, 'it still counts as handled');
+  });
+});
+
+/**
+ * #4970: a mesh appended onto a model that already carries a `preAlignment`
+ * snapshot (`dataSlice.appendGeometryBatch.ts`, e.g. `addWall`/`addSlab`, a
+ * split's two halves, or a delete-undo restore via `mutation-mesh-stash.ts`)
+ * used to get no baseline slot. `restorePreAlignment` restores BY INDEX and
+ * silently skips anything past the snapshot's length, so the appended mesh
+ * survived its first post-append bake (nothing to restore yet) but was
+ * double-transformed on the SECOND — every align after that compounds
+ * further.
+ *
+ * Each case below drives three rounds against the real
+ * `realignFederationModels` + `capturePreAlignment`/`restorePreAlignment`
+ * pair, and appends through the REAL `appendGeometryBatchPatch` (the exact
+ * function `dataSlice.ts`'s `appendGeometryBatch` store action calls) rather
+ * than reaching into the snapshot machinery directly — so these tests keep
+ * observing a real behavioural change even under a blunt whole-file
+ * production revert, instead of failing to load: round 1 captures X's
+ * snapshot and bakes it into A; the mesh(es) are appended via
+ * `appendGeometryBatchPatch`, exactly as `addWall`/a split/the undo-restore
+ * stash do; round 2 gives the appended mesh its first bake (T2, into B —
+ * indistinguishable from a correct restore, since there is nothing to
+ * restore yet); round 3 (T3, back into A) is where a missing slot would
+ * compound. The appended mesh's final world position must equal a SIBLING
+ * mesh that carried the same pristine local coordinates from the very start
+ * and was never appended — the ground truth neither bug nor fix can fake.
+ */
+describe('appendGeometryBatch growing the preAlignment snapshot (#4970)', () => {
+  const EPS = 1e-6;
+
+  function assertClose(actual: Float32Array, expected: Float32Array, label: string): void {
+    assert.equal(actual.length, expected.length, `${label}: length mismatch`);
+    for (let i = 0; i < actual.length; i += 1) {
+      assert.ok(
+        Math.abs(actual[i] - expected[i]) < EPS,
+        `${label}: index ${i} — ${actual[i]} vs ${expected[i]}`,
+      );
+    }
+  }
+
+  /** A third model, distinct enough from A that aligning to it is a different transform (T2/T3 vs T1). */
+  function extraAnchor(): TestModel {
+    const theta = Math.PI / 5;
+    return model(
+      [boxMesh(91, [2, 0, 1])],
+      coordinateInfo({ originShift: { x: 40, y: 0, z: -10 } }),
+      georef({ eastings: 1200, northings: -400, xAxisAbscissa: Math.cos(theta), xAxisOrdinate: Math.sin(theta) }),
+    );
+  }
+
+  /** The `models` shape `appendGeometryBatchPatch` actually asks for. Its
+   *  runtime use of a model record is exactly what `TestModel` provides
+   *  (`geometryResult`, `preAlignment`); the wider `FederatedModel` fields
+   *  the type otherwise requires are load-bearing nowhere this function
+   *  reads, so the fixture stands in for them the same way `dataSlice.test.ts`
+   *  already does for this same call. */
+  type AppendState = Parameters<typeof appendGeometryBatchPatch>[0];
+
+  /**
+   * Appends `appended` (in X's pristine frame, exactly as every real caller
+   * hands meshes to `appendGeometryBatch`) onto X immediately after round 1,
+   * through the REAL `appendGeometryBatchPatch`, then runs the two more
+   * rounds needed to expose a stale slot.
+   */
+  async function roundTripAppended(appended: MeshData[]): Promise<TestModel> {
+    const { models, x } = federation();
+    models.set('B', extraAnchor());
+
+    // Round 1: X captures its snapshot and bakes into A (T1).
+    await realign(models, 'A');
+    assert.ok(x.preAlignment, 'fixture: X must have a snapshot after round 1');
+
+    // Append through the production entry point, not the snapshot internals
+    // directly — this is what `dataSlice.ts`'s `appendGeometryBatch` action
+    // calls for every authoring/undo-restore/streaming caller.
+    const patch = appendGeometryBatchPatch(
+      {
+        activeModelId: null,
+        models: models as unknown as AppendState['models'],
+        geometryResult: null,
+        geometryUpdateTick: 0,
+      },
+      'X',
+      appended,
+    );
+    const grownX = patch.models?.get('X') as unknown as TestModel | undefined;
+    assert.ok(grownX, 'appendGeometryBatchPatch must return an updated record for X');
+    models.set('X', grownX);
+
+    assert.equal(
+      grownX.preAlignment?.positions.length,
+      grownX.geometryResult!.meshes.length,
+      'the snapshot must be index-aligned with geometryResult.meshes right after the append',
+    );
+
+    // Round 2: anchor moves to B (T2) — the appended mesh's first bake.
+    await realign(models, 'B');
+    // Round 3: anchor moves back to A (T3) — the second bake, where a
+    // missing slot compounds onto the first.
+    await realign(models, 'A');
+
+    return models.get('X')!;
+  }
+
+  it('an authored mesh (addWall/addSlab) matches a never-appended sibling with the same pristine coordinates', async () => {
+    // Same pristine local coordinates as X's own mesh 12 ([10, 0, 5]), which
+    // stays in the fixture untouched — the ground truth.
+    const appendedMesh = boxMesh(101, [10, 0, 5]);
+    const x = await roundTripAppended([appendedMesh]);
+
+    const sibling = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
+    const appendedResult = x.geometryResult!.meshes.find((m) => m.expressId === 101)!;
+    assertClose(appendedResult.positions, sibling.positions, 'authored mesh world position vs sibling');
+  });
+
+  it('a split\'s two halves each match a never-appended sibling with the same pristine coordinates', async () => {
+    // Two meshes appended in the same batch, as a split hands both halves to
+    // `appendGeometryBatch` together.
+    const leftHalf = boxMesh(102, [10, 0, 5]);
+    const rightHalf = boxMesh(103, [0, 0, 0]);
+    const x = await roundTripAppended([leftHalf, rightHalf]);
+
+    const siblingLeft = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
+    const siblingRight = x.geometryResult!.meshes.find((m) => m.expressId === 11)!;
+    const left = x.geometryResult!.meshes.find((m) => m.expressId === 102)!;
+    const right = x.geometryResult!.meshes.find((m) => m.expressId === 103)!;
+    assertClose(left.positions, siblingLeft.positions, 'split left half vs sibling');
+    assertClose(right.positions, siblingRight.positions, 'split right half vs sibling');
+  });
+
+  it('a delete-undo-restored mesh (#4925 stash path) matches a never-appended sibling', async () => {
+    // `mutation-mesh-stash.ts` hands `appendGeometryBatch` the PRISTINE
+    // (unrotated/unaligned) frame it stashed at delete time — the exact same
+    // shape an authored mesh arrives in, so the same growth path applies.
+    const restoredMesh = boxMesh(104, [10, 0, 5]);
+    const x = await roundTripAppended([restoredMesh]);
+
+    const sibling = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
+    const restored = x.geometryResult!.meshes.find((m) => m.expressId === 104)!;
+    assertClose(restored.positions, sibling.positions, 'undo-restored mesh world position vs sibling');
   });
 });

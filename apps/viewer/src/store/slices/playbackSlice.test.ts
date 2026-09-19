@@ -30,12 +30,15 @@ const makeStore = (
 const DAY = 86_400_000;
 
 // Deliberately not imported from `work-calendar.ts` (kept import-free of the
-// production module under test here): `Date.parse` on an explicit UTC
-// midnight literal is already day-aligned, so no helper is needed, and it
-// keeps this test file loadable — and its assertions live — if a revert
-// removes `work-calendar.ts` but not this file (`check-test-revert-oracle`).
+// production module under test here, see the file-header note on
+// `check-test-revert-oracle`): builds a LOCAL midnight directly, matching
+// `work-calendar.ts`'s `localDayStart` basis (itself matching
+// `schedule-utils.ts`'s `computeTicks`) — NOT UTC, so calendar weekday
+// matching (`isWorkingDay`'s `getDay()`) lines up regardless of the
+// runner's timezone offset sign.
 function d(iso: string): number {
-  return Date.parse(`${iso}T00:00:00Z`);
+  const [y, m, day] = iso.split('-').map(Number);
+  return new Date(y, m - 1, day).getTime();
 }
 
 /** Mon-Fri weekly calendar, same shape as `work-calendar.test.ts` (#4830). */
@@ -220,6 +223,42 @@ describe('playbackSlice', () => {
       s.getState().playSchedule();
       s.getState().advancePlaybackBy(1000);
       assert.strictEqual(s.getState().playbackTime, FRIDAY_NOON + RAW_TICK_SIMULATED_MS);
+    });
+
+    it('loop-wraps to a working day when scheduleRange.start itself is non-working (#4982 review)', () => {
+      const start = d('2024-06-08'); // Saturday — non-working under MON_FRI_CALENDAR
+      const end = d('2024-06-14'); // Friday
+      const s = makeStore({ start, end, synthetic: false }, scheduleWithCalendar());
+      s.getState().setPlaybackSpeed(7);
+      s.getState().setPlaybackLoop(true);
+      s.getState().seekSchedule(end - 1); // 1ms from the end, next tick overshoots
+      s.getState().playSchedule();
+      s.getState().advancePlaybackBy(16);
+      // An earlier revision landed directly on `scheduleRange.start` here
+      // (the non-working Saturday) and relied on the NEXT tick to notice —
+      // the wrapped landing itself must already be a working day.
+      assert.strictEqual(s.getState().playbackTime, d('2024-06-10')); // Monday
+      assert.strictEqual(s.getState().playbackIsPlaying, true);
+    });
+
+    it('gives up gracefully at range start, without hanging, when no working day exists anywhere in range', () => {
+      const totalShutdown: WorkCalendarInfo = {
+        ...MON_FRI_CALENDAR,
+        exceptionTimes: [{ name: 'Everything shut', start: '2024-06-01', finish: '2024-06-30' }],
+      };
+      const data: ScheduleExtraction = {
+        hasSchedule: true, workCalendars: [totalShutdown], workSchedules: [], tasks: [], sequences: [],
+      };
+      const start = d('2024-06-03');
+      const end = d('2024-06-14');
+      const s = makeStore({ start, end, synthetic: false }, data);
+      s.getState().setPlaybackSpeed(7);
+      s.getState().setPlaybackLoop(true);
+      s.getState().seekSchedule(end - 1);
+      s.getState().playSchedule();
+      s.getState().advancePlaybackBy(16);
+      assert.strictEqual(s.getState().playbackTime, start);
+      assert.strictEqual(s.getState().playbackIsPlaying, true);
     });
   });
 });

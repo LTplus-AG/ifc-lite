@@ -12,14 +12,20 @@
  * (#4830, PR #4835), but round-tripping and displaying a badge is where
  * that PR deliberately stopped — nothing derives working-day-aware dates
  * from the calendar. This module is that derivation, scoped to what the
- * Gantt UI needs: "is this UTC day a working day" and "advance playback
- * time past a non-working span."
+ * Gantt UI needs: "is this calendar day a working day" and "advance
+ * playback time past a non-working span."
  *
- * All dates are handled as UTC calendar days. `IfcDate`/`IfcDateTime`
- * strings from the extractor (`WorkTimeInfo.start`/`finish`,
- * `ScheduleTaskTimeInfo.scheduleStart`/...) parse via `Date.parse`, which
- * treats a bare `YYYY-MM-DD` as UTC midnight — consistent day boundaries
- * regardless of the viewer's local timezone, and deterministic for tests.
+ * Dates are handled as LOCAL calendar days, matching `schedule-utils.ts`'s
+ * `computeTicks` (the timeline's own day/week tick generator, which uses
+ * local `Date` getters/setters, e.g. `new Date(y, m, d)` /
+ * `.setDate(.getDate() + 1)`). Using a different basis here (an earlier
+ * revision floored to UTC midnight) would put shading and playback out of
+ * step with the displayed tick grid by a full timezone offset outside UTC
+ * — review caught this on #4982. `localDayStart`/`nextLocalDayStart` below
+ * step via `Date` field setters rather than `+= 86_400_000` so a DST
+ * transition day (23h or 25h long) still lands on the correct next
+ * midnight; `work-calendar.test.ts` has a `TZ=America/Los_Angeles` case
+ * spanning a DST boundary.
  *
  * Semantics (IFC4/IFC4X3 `IfcWorkCalendar`):
  *  - `workingTimes` define the calendar's normal working pattern. Only a
@@ -35,40 +41,85 @@
  *    `start`/`finish` range when there's no recurrence, or by the same
  *    `WEEKLY` weekday match when there is) is always non-working,
  *    regardless of what the working pattern says.
- *  - A calendar with NO `workingTimes` patterns at all carries no
- *    constraint — every day is treated as working, since there is nothing
- *    to derive a Mon-Fri-style pattern from (matches "absent calendar
- *    data" behaving as a no-op everywhere else in this pipeline).
+ *  - A calendar with NO usable working pattern carries NO constraint at
+ *    all — every day is working, exceptions included. This covers two
+ *    cases the same way, both caught on review:
+ *      1. `workingTimes` is empty outright.
+ *      2. every `workingTimes` entry uses a recurrence type this module
+ *         doesn't interpret (`DAILY`, `MONTHLY_*`, ...). Rejecting those
+ *         entries while still treating a non-empty `workingTimes` as "the
+ *         calendar constrains something" would read an unsupported
+ *         pattern as a total shutdown — worse than not deriving anything.
+ *    A `workingTimes` array that mixes one `WEEKLY` entry with an
+ *    unsupported one is NOT this case: the `WEEKLY` entry still
+ *    constrains normally, and the unsupported entry simply never matches
+ *    (see `entryCoversDay`) — a no-op for that one entry, not a shutdown.
  */
 
 import type { ScheduleExtraction, WorkCalendarInfo, WorkTimeInfo } from '@ifc-lite/parser';
 
 export const MS_PER_DAY = 86_400_000;
 
-/** IFC `IfcDayInWeekNumber`: 1=Monday..7=Sunday. Convert a UTC epoch ms to it. */
+/** IFC `IfcDayInWeekNumber`: 1=Monday..7=Sunday. Convert a local epoch ms to it. */
 function ifcWeekday(epochMs: number): number {
-  const jsDay = new Date(epochMs).getUTCDay(); // 0=Sunday..6=Saturday
+  const jsDay = new Date(epochMs).getDay(); // 0=Sunday..6=Saturday, LOCAL
   return jsDay === 0 ? 7 : jsDay;
 }
 
-/** UTC midnight for the day containing `epochMs`. */
-export function utcDayStart(epochMs: number): number {
-  return Math.floor(epochMs / MS_PER_DAY) * MS_PER_DAY;
+/** Local midnight for the day containing `epochMs` (same basis as `computeTicks`'s day/week ticks). */
+export function localDayStart(epochMs: number): number {
+  const d = new Date(epochMs);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-function parseIfcDateUtc(s: string | undefined): number | undefined {
+/**
+ * The next local midnight after `dayStartMs` (which must already be a
+ * local-midnight instant). Steps via `Date` field setters, not
+ * `+ MS_PER_DAY` — the calendar day spanning a DST transition is 23h or
+ * 25h long, and `setDate` accounts for that the same way `computeTicks`
+ * does; a flat millisecond add would land mid-day or double-count.
+ */
+export function nextLocalDayStart(dayStartMs: number): number {
+  const d = new Date(dayStartMs);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+}
+
+/**
+ * `WorkTimeInfo.start`/`finish` are `IfcDate` — a bare civil date with no
+ * timezone (`'2024-08-01'`). Per the ECMAScript spec a date-only string
+ * parses as UTC midnight; bucketing that instant into a LOCAL calendar day
+ * (for consistency with `isWorkingDay`'s other local-day arithmetic) can
+ * shift the effective bound back one day in a negative-UTC-offset
+ * timezone (`America/*`), since UTC midnight there is still the previous
+ * local evening. `isWorkingDay`'s primary inputs — the epoch instants
+ * `GanttTimeline`/`playbackSlice` pass in — don't have this issue: they
+ * come from `parseIsoDate`, which normalizes a TZ-less *datetime* to UTC
+ * for cross-machine stability, so both sides of every real comparison go
+ * through the same UTC-anchor-then-local-bucket path. Only a WorkTime
+ * bound compared against those instants can disagree by a day at a
+ * negative offset — a real residual edge case, flagged rather than fixed
+ * silently, since fixing it means deciding what a timezone-less IFC date
+ * means in an arbitrary-timezone viewer, which is bigger than this PR.
+ */
+function parseIfcDateLocal(s: string | undefined): number | undefined {
   if (!s) return undefined;
   const ms = Date.parse(s);
-  return Number.isFinite(ms) ? utcDayStart(ms) : undefined;
+  return Number.isFinite(ms) ? localDayStart(ms) : undefined;
 }
 
-/** Does `dayStart` (a UTC-midnight epoch) fall within `entry`'s start/finish bounds, if any are set? */
+/** Does `dayStart` (a local-midnight epoch) fall within `entry`'s start/finish bounds, if any are set? */
 function withinBounds(entry: WorkTimeInfo, dayStart: number): boolean {
-  const start = parseIfcDateUtc(entry.start);
-  const finish = parseIfcDateUtc(entry.finish);
+  const start = parseIfcDateLocal(entry.start);
+  const finish = parseIfcDateLocal(entry.finish);
   if (start !== undefined && dayStart < start) return false;
   if (finish !== undefined && dayStart > finish) return false;
   return true;
+}
+
+/** Is this entry's `RecurrencePattern` one this module knows how to interpret (WEEKLY, or none at all)? */
+function isRecognizedPattern(entry: WorkTimeInfo): boolean {
+  const pattern = entry.recurrencePattern;
+  return !pattern || pattern.recurrenceType === 'WEEKLY';
 }
 
 /** Does this `WorkTimeInfo` entry cover `dayStart` — weekly-recurrence match, or (for exceptions) a bare date range? */
@@ -85,21 +136,25 @@ function entryCoversDay(entry: WorkTimeInfo, dayStart: number): boolean {
     return withinBounds(entry, dayStart);
   }
   // Other recurrence kinds (DAILY, MONTHLY_*, ...) are out of scope — same
-  // "WEEKLY only" cut the module doc above states.
+  // "WEEKLY only" cut the module doc above states. `isWorkingDay` decides
+  // separately whether an all-unsupported `workingTimes` means "no
+  // constraint" rather than reading this as "never matches -> shutdown."
   return false;
 }
 
 /**
- * Is `epochMs`'s UTC calendar day a working day per `calendar`?
+ * Is `epochMs`'s local calendar day a working day per `calendar`?
  * `calendar === undefined` means "no calendar constraint" — every day works.
  */
 export function isWorkingDay(calendar: WorkCalendarInfo | undefined, epochMs: number): boolean {
   if (!calendar) return true;
-  const dayStart = utcDayStart(epochMs);
+  // No usable working pattern -> no constraint at all, exceptions included
+  // (see the module doc's "no usable working pattern" case).
+  if (!calendar.workingTimes.some(isRecognizedPattern)) return true;
+  const dayStart = localDayStart(epochMs);
   for (const exception of calendar.exceptionTimes) {
     if (entryCoversDay(exception, dayStart)) return false;
   }
-  if (calendar.workingTimes.length === 0) return true;
   for (const working of calendar.workingTimes) {
     if (entryCoversDay(working, dayStart)) return true;
   }
@@ -115,10 +170,16 @@ export function isWorkingDay(calendar: WorkCalendarInfo | undefined, epochMs: nu
  *
  *  1. The calendar assigned to the active (filtered) work schedule, if one
  *     is selected and carries a `calendarGlobalIds` entry that resolves.
- *  2. Otherwise, the first calendar referenced by any task's
- *     `calendarGlobalIds`, in task order.
- *  3. Otherwise, the first entry in `data.workCalendars`.
- *  4. Otherwise `undefined` — no calendar in the file, so every day works.
+ *  2. Otherwise, when a work-schedule filter IS active, the first calendar
+ *     assigned to one of THAT schedule's own tasks (via
+ *     `controllingScheduleGlobalIds`) — not any task in the file. An
+ *     earlier revision scanned every task regardless of the filter, so a
+ *     Gantt filtered to one schedule could shade/skip using an unrelated
+ *     schedule's working week (caught on review).
+ *  3. Otherwise (no filter active, or nothing found under it), the first
+ *     calendar referenced by any task's `calendarGlobalIds`, in task order.
+ *  4. Otherwise, the first entry in `data.workCalendars`.
+ *  5. Otherwise `undefined` — no calendar in the file, so every day works.
  */
 export function resolveActiveCalendar(
   data: ScheduleExtraction | null | undefined,
@@ -126,38 +187,54 @@ export function resolveActiveCalendar(
 ): WorkCalendarInfo | undefined {
   if (!data || !data.workCalendars || data.workCalendars.length === 0) return undefined;
   const byGlobalId = new Map(data.workCalendars.map(c => [c.globalId, c] as const));
+  const resolve = (gids: string[] | undefined): WorkCalendarInfo | undefined => {
+    for (const gid of gids ?? []) {
+      const cal = byGlobalId.get(gid);
+      if (cal) return cal;
+    }
+    return undefined;
+  };
 
   if (activeWorkScheduleGlobalId) {
     const schedule = data.workSchedules.find(s => s.globalId === activeWorkScheduleGlobalId);
-    for (const gid of schedule?.calendarGlobalIds ?? []) {
-      const cal = byGlobalId.get(gid);
-      if (cal) return cal;
+    const viaSchedule = resolve(schedule?.calendarGlobalIds);
+    if (viaSchedule) return viaSchedule;
+    for (const task of data.tasks) {
+      if (!task.controllingScheduleGlobalIds.includes(activeWorkScheduleGlobalId)) continue;
+      const viaTask = resolve(task.calendarGlobalIds);
+      if (viaTask) return viaTask;
     }
+    return data.workCalendars[0];
   }
 
   for (const task of data.tasks) {
-    for (const gid of task.calendarGlobalIds ?? []) {
-      const cal = byGlobalId.get(gid);
-      if (cal) return cal;
-    }
+    const viaTask = resolve(task.calendarGlobalIds);
+    if (viaTask) return viaTask;
   }
-
   return data.workCalendars[0];
 }
 
 /**
- * Bound on how many non-working days a single shading/skip computation
- * will walk. Real construction calendars span months to a few years of
- * schedule range; this generously covers a decade while guaranteeing the
- * loops below terminate even on a malformed/huge `range`.
+ * Absolute sanity ceiling on how many calendar days a single search may
+ * step through, purely to bound file-supplied/malformed input (a reversed
+ * or absurd range) per AGENTS.md's "work budget" walk-bounding guidance —
+ * NOT a real-world schedule-length limit. ~200 years, so no legitimate
+ * construction schedule or shutdown period ever hits it (an earlier
+ * revision used a ~10-year cap tied to the same constant that also
+ * bounded `getNonWorkingDayStarts`'s legitimate range walk, silently
+ * truncating a schedule or shutdown longer than that — caught on review;
+ * see `getNonWorkingDayStarts`, which now bounds itself by the requested
+ * range instead).
  */
-const MAX_DAYS_WALKED = 3660;
+const SANITY_SPAN_MS = 200 * 365 * MS_PER_DAY;
 
 /**
- * UTC-midnight starts of every non-working day in `[rangeStart, rangeEnd]`,
+ * Local-midnight starts of every non-working day in `[rangeStart, rangeEnd]`,
  * for shading the Gantt timeline background. Returns an empty array when
  * there's no calendar constraint (see `isWorkingDay`) or the range is
- * degenerate.
+ * degenerate. Bounded by the requested range itself (not a fixed day
+ * count) plus `SANITY_SPAN_MS` as a pure malformed-input backstop, so a
+ * legitimately long schedule is never silently truncated.
  */
 export function getNonWorkingDayStarts(
   calendar: WorkCalendarInfo | undefined,
@@ -166,10 +243,12 @@ export function getNonWorkingDayStarts(
 ): number[] {
   if (!calendar || rangeEnd <= rangeStart) return [];
   const out: number[] = [];
-  let day = utcDayStart(rangeStart);
-  const end = utcDayStart(rangeEnd);
-  for (let i = 0; day <= end && i < MAX_DAYS_WALKED; i++, day += MS_PER_DAY) {
+  const end = localDayStart(rangeEnd);
+  const sanityEnd = rangeStart + SANITY_SPAN_MS;
+  let day = localDayStart(rangeStart);
+  while (day <= end && day <= sanityEnd) {
     if (!isWorkingDay(calendar, day)) out.push(day);
+    day = nextLocalDayStart(day);
   }
   return out;
 }
@@ -181,16 +260,26 @@ export function getNonWorkingDayStarts(
  * auto-play doesn't sit animating nothing across a weekend/holiday.
  *
  * Idempotent on an already-working instant (returns `epochMs` unchanged).
- * Bounded by `MAX_DAYS_WALKED` so a calendar with no working days at all
- * (pathological, but file-supplied data is untrusted per AGENTS.md) can't
- * hang the rAF loop — it returns `epochMs` unchanged in that case.
+ * `boundMs` caps the search — callers with a natural horizon (the
+ * schedule's own range end) should pass it; it defaults to
+ * `SANITY_SPAN_MS` out, a pure malformed-input backstop, when omitted.
+ * Returns `null`, never the stale input instant, when no working day
+ * exists in `[epochMs, boundMs]` — an earlier revision returned `epochMs`
+ * unchanged in that case, which a caller could mistake for "already
+ * working" (caught on review). Callers decide what "no working day ahead"
+ * means for them (`playbackSlice.ts` treats it like reaching the range end).
  */
-export function skipToNextWorkingInstant(calendar: WorkCalendarInfo | undefined, epochMs: number): number {
-  if (!calendar || isWorkingDay(calendar, epochMs)) return epochMs;
-  let day = utcDayStart(epochMs);
-  for (let i = 0; i < MAX_DAYS_WALKED; i++) {
-    day += MS_PER_DAY;
+export function skipToNextWorkingInstant(
+  calendar: WorkCalendarInfo | undefined,
+  epochMs: number,
+  boundMs: number = epochMs + SANITY_SPAN_MS,
+): number | null {
+  if (!calendar) return epochMs;
+  if (isWorkingDay(calendar, epochMs)) return epochMs;
+  let day = localDayStart(epochMs);
+  for (;;) {
+    day = nextLocalDayStart(day);
+    if (day > boundMs) return null;
     if (isWorkingDay(calendar, day)) return day;
   }
-  return epochMs;
 }

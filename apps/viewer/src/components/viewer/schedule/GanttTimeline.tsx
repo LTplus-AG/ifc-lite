@@ -27,7 +27,7 @@ import { useGanttBarDrag } from './useGanttBarDrag';
 import { GanttTaskBar } from './GanttTaskBar';
 import { GanttDependencyArrows } from './GanttDependencyArrows';
 import { GanttDragTooltip } from './GanttDragTooltip';
-import { resolveActiveCalendar, getNonWorkingDayStarts, MS_PER_DAY } from './work-calendar';
+import { resolveActiveCalendar, getNonWorkingDayStarts, nextLocalDayStart } from './work-calendar';
 
 // Alias kept for local readability; binds to the shared constant so the
 // timeline header and the task-tree header stay the same height.
@@ -256,7 +256,7 @@ export const GanttTimeline = memo(function GanttTimeline({
             row highlights and bars all draw on top of it. */}
         {nonWorkingDayStarts.map((dayStart) => {
           const x0 = timeToX(dayStart, range.start, range.end, pixelWidth);
-          const x1 = timeToX(dayStart + MS_PER_DAY, range.start, range.end, pixelWidth);
+          const x1 = timeToX(nextLocalDayStart(dayStart), range.start, range.end, pixelWidth);
           return (
             <rect
               key={`nwd-${dayStart}`}

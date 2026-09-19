@@ -145,17 +145,33 @@ export const createPlaybackSlice: StateCreator<
     if (s.respectWorkCalendar) {
       const calendar = resolveActiveCalendar(s.scheduleData, s.activeWorkScheduleId);
       if (calendar) {
-        const skipped = skipToNextWorkingInstant(calendar, next);
-        // Skipping forward can itself cross the range end (e.g. the last
-        // working day ends the range, the calendar's non-working tail
-        // doesn't). Re-apply the same end-of-range handling rather than
-        // emitting a `playbackTime` past `scheduleRange.end`.
-        next = skipped > s.scheduleRange.end
-          ? (s.playbackLoop ? s.scheduleRange.start : s.scheduleRange.end)
-          : skipped;
-        if (!s.playbackLoop && skipped > s.scheduleRange.end) {
-          set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
-          return;
+        // Bound the search at the range end — `skipToNextWorkingInstant`
+        // returns `null` rather than `next` unchanged when nothing working
+        // remains before that bound (e.g. a shutdown running to the very
+        // end of the schedule), so "ran out of working days" and "ran out
+        // of range" are handled identically below rather than the caller
+        // mistaking a stale `next` for an already-working instant.
+        const skipped = skipToNextWorkingInstant(calendar, next, s.scheduleRange.end);
+        if (skipped === null) {
+          if (s.playbackLoop) {
+            // Loop back to the start — but the start itself can open on a
+            // non-working day (a schedule that begins mid-shutdown), so
+            // resolve THAT too rather than landing playback on a
+            // non-working instant until the next tick fixes it (#4982
+            // review). Search the whole range again: the wrap is a fresh
+            // start, not a continuation of the forward search that just
+            // ran out.
+            const loopedStart = skipToNextWorkingInstant(calendar, s.scheduleRange.start, s.scheduleRange.end);
+            // `null` here means the calendar has literally no working day
+            // anywhere in the range — nothing left to do but land on the
+            // range start as before rather than getting stuck retrying.
+            next = loopedStart ?? s.scheduleRange.start;
+          } else {
+            set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
+            return;
+          }
+        } else {
+          next = skipped;
         }
       }
     }

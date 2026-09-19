@@ -396,7 +396,7 @@ interface NewPropertyDialogProps {
 /** Schema-aware dialog for adding new properties: filters available property
  *  sets by IFC entity type and suggests correctly-typed IFC4 properties. */
 export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets, schemaVersion }: NewPropertyDialogProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const setProperty = useViewerStore((s) => s.setProperty);
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -594,7 +594,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                               <span className="font-medium">{def.name}</span>
                               <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
+                            <span className="text-[10px] text-zinc-400">{locale === 'en' ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -622,7 +622,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                             <span className="font-medium">{prop.name}</span>
                             <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t(getTypeNameKey(prop.type))}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
+                          <span className="text-[10px] text-zinc-400">{locale === 'en' ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -717,7 +717,7 @@ interface AddClassificationDialogProps {
 /** Dialog for adding a classification reference (Uniclass, OmniClass,
  *  MasterFormat, etc.), stored as a special property set for mutation tracking. */
 export function AddClassificationDialog({ modelId, entityId, entityType }: AddClassificationDialogProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
@@ -788,7 +788,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
                   <SelectItem key={cs.name} value={cs.name}>
                     <div className="flex flex-col">
                       <span className="font-medium">{cs.name}</span>
-                      <span className="text-[10px] text-zinc-400">{t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
+                      <span className="text-[10px] text-zinc-400">{locale === 'en' ? cs.description : t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -981,7 +981,7 @@ interface AddQuantityDialogProps {
 /** Schema-aware dialog for adding quantities: filters available quantity
  *  sets by IFC entity type and suggests correctly-typed IFC4 quantities. */
 export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos }: AddQuantityDialogProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const setProperty = useViewerStore((s) => s.setProperty);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -1167,7 +1167,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                               <span className="font-medium">{def.name}</span>
                               <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
+                            <span className="text-[10px] text-zinc-400">{locale === 'en' ? def.description : t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -1195,7 +1195,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                             <span className="font-medium">{qty.name}</span>
                             <Badge variant="secondary" className="h-4 px-1 text-[9px]">{qty.unit}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
+                          <span className="text-[10px] text-zinc-400">{locale === 'en' ? qty.description : t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
                         </div>
                       </SelectItem>
                     ))}

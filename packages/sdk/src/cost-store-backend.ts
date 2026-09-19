@@ -75,7 +75,11 @@ function findNests(graph: CostGraphData) {
   const byChild = new Map<number, ExistingRelatedList[]>();
   for (const rel of graph.Relationships) {
     if (rel.Type !== 'IfcRelNests' || !rel.RelatingObject || !rel.RelatedObjects) continue;
-    const entry: ExistingRelatedList = { relId: rel.ref.expressId, relatedIds: rel.RelatedObjects.map(r => r.expressId) };
+    const entry: ExistingRelatedList = {
+      relId: rel.ref.expressId,
+      relatingId: rel.RelatingObject.expressId,
+      relatedIds: rel.RelatedObjects.map(r => r.expressId),
+    };
     const parentEntries = byParent.get(rel.RelatingObject.expressId);
     if (parentEntries) parentEntries.push(entry);
     else byParent.set(rel.RelatingObject.expressId, [entry]);

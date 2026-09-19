@@ -33,6 +33,7 @@ import {
   type WallInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
+import { createCostStoreBackend } from '@ifc-lite/sdk';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
@@ -50,11 +51,13 @@ import type {
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
+import { createCostAdapter } from './cost-adapter.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
+  const costAdapter = createCostAdapter(store);
 
   function resolveDataStore(modelId: string) {
     const state = store.getState();
@@ -197,5 +200,16 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const result = addMemberToStore(editor, anchor, params as MemberInStoreParams);
       return { modelId: normalizedModelId, expressId: result.memberId };
     },
+    ...createCostStoreBackend((modelId: string | undefined) => {
+      const requested = modelId ?? '';
+      const editor = getEditor(requested);
+      const dataStore = resolveDataStore(requested);
+      if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
+      const ownerHistoryId = dataStore.entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
+      const normalized = normalizeMutationModelId(store.getState(), requested);
+      const mutationView = store.getState().getMutationView(normalized);
+      if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
+      return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
+    }, costAdapter),
   };
 }

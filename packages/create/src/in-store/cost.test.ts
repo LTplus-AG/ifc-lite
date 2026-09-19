@@ -273,14 +273,14 @@ describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', ()
     expect(rel.attributes[6]).toBe(`#${item}`);
   });
 
-  it('refuses self-assignment and a related id that is not an IfcProduct/IfcProcess/IfcCostItem', async () => {
+  it('refuses self-assignment and a related id that is not an IfcObject', async () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [item]))
       .toThrow(/relatingControlId #\d+ cannot also be one of relatedObjectIds/);
     // #1 (IfcProject, in the fixture) is none of IfcProduct/IfcProcess/IfcCostItem.
     expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [1]))
-      .toThrow(/relatedObjectIds #1 \(IFCPROJECT\) must be an IfcProduct or an IfcProcess or an IfcCostItem/);
+      .toThrow(/relatedObjectIds #1 \(IFCPROJECT\) must be an IfcObject/);
   });
 
   it('de-duplicates relatedObjectIds when creating a fresh IfcRelAssignsToControl', async () => {

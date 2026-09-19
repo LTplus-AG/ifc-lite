@@ -94,12 +94,8 @@ export class CostEntityReader {
   private createdEntities(): ReadonlyMap<number, { type: string; text: string }> {
     if (!this.created) {
       const created = new Map<number, { type: string; text: string }>();
-      // `created()` is a required interface member (cost-overlay.ts), but a
-      // third-party or previously-compiled `CostMutationOverlay` built
-      // against an older copy of that interface may not implement it — treat
-      // that exactly like "no overlay-created entities" rather than throwing
-      // on a call to `undefined`.
-      const entries = typeof this.overlay?.created === 'function' ? this.overlay.created() : [];
+      // A pre-authoring overlay may omit the optional `created()` capability.
+      const entries = this.overlay?.created?.() ?? [];
       for (const entry of entries) {
         if (entry.error !== undefined) {
           this.diagnostics?.push({

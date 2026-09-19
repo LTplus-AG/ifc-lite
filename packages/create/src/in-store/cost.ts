@@ -11,26 +11,17 @@
  * one entry point is illegal from the other), different serialization —
  * `StoreEditor.addEntity` takes a typed attribute array, not raw STEP text.
  *
- * Pure: no I/O, no read of the store's OWN existing graph — this module DOES
- * import `@ifc-lite/parser`'s `getInheritanceChainAcrossSchemas` (a static
- * schema lookup, `IfcTask` → `[IfcTask, IfcProcess, ...]`, no store access),
- * used to validate `assignObjectsToCostItemInStore`'s `objectIds` against
- * the IfcRelAssignsToControl rule (`IfcProduct` / `IfcProcess` /
- * `IfcCostItem`). `nestCostItemsInStore` (reparenting) and
- * `removeCostEntityInStore` (safe-delete / cascade) still need to know what
- * ALREADY references an entity, which only a graph READ can answer —
- * `@ifc-lite/create` cannot depend on `@ifc-lite/parser`'s cost READER
- * without a package cycle, so the caller (the SDK's `bim.store` backend,
- * which already reads the cost graph for `bim.cost`) resolves referrers
- * first and hands them in. This mirrors `spatial-zone.ts`'s "operates
- * entirely through the editor" contract: the editor is still the only
- * mutable thing these functions touch.
+ * Pure: no I/O, no parser access, no read of the store's OWN existing graph.
+ * `nestCostItemsInStore` (reparenting) and `removeCostEntityInStore`
+ * (safe-delete / cascade) both need to know what ALREADY references an
+ * entity, which only a graph READ can answer — the caller resolves referrers
+ * first and hands them in. The editor is the only mutable thing touched.
  */
 
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import type { StoreEditor, IfcAttributeValue } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
+import { requireAssignableIfcObject } from './cost-reference-validation.js';
 import {
   ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
   assertCostSchema, assertOneOf, requireRef, validateRefList, validateTypedValue,
@@ -347,31 +338,20 @@ function assignToControlInStore(
   context: string,
   controlType: string,
   relatedType?: string,
-  options: { rejectSelfAssignment?: boolean; relatedAllowedSupertypes?: readonly string[] } = {},
 ): number {
   const schema = schemaOf(anchor);
   assertCostSchema(schema, context);
   validateRefList(relatedObjectIds, 'relatedObjectIds', context);
   requireRef(relatingControlId, 'relatingControlId', context);
   requireEntityType(editor, relatingControlId, controlType, 'relatingControlId', context);
-  if (options.rejectSelfAssignment && relatedObjectIds.includes(relatingControlId)) {
-    throw new Error(`${context}: relatingControlId #${relatingControlId} cannot also be one of relatedObjectIds (an item cannot control itself)`);
-  }
   // De-duplicated once so a repeated id in the caller's list can't write a
   // repeated #N into RelatedObjects — a caller-visible malformed member list.
   const uniqueRelated = [...new Set(relatedObjectIds)];
   for (const id of uniqueRelated) {
-    if (relatedType) {
+    if (relatedType === 'IfcObject') {
+      requireAssignableIfcObject(editor, id, relatingControlId, context);
+    } else if (relatedType) {
       requireEntityType(editor, id, relatedType, 'relatedObjectIds', context);
-    } else if (options.relatedAllowedSupertypes) {
-      const actual = editor.getEntityType(id);
-      if (actual === undefined) throw new Error(`${context}: relatedObjectIds #${id} does not exist in this model`);
-      const chain = getInheritanceChainAcrossSchemas(actual);
-      if (!options.relatedAllowedSupertypes.some(supertype => chain.includes(supertype))) {
-        throw new Error(
-          `${context}: relatedObjectIds #${id} (${actual}) must be an ${options.relatedAllowedSupertypes.join(' or an ')} — `
-          + `the IfcRelAssignsToControl rule this assignment follows.`);
-      }
     } else if (!editor.hasEntity(id)) {
       throw new Error(`${context}: relatedObjectIds #${id} does not exist in this model`);
     }
@@ -408,28 +388,16 @@ export function assignCostItemsToScheduleInStore(
   );
 }
 
-/** `IfcRelAssignsToControl.RelatedObjects` admits any `IfcObjectDefinition`;
- *  the cost domain's actual use of it — what a cost item legitimately
- *  controls — narrows to these three: the products it prices, the
- *  processes/tasks it schedules, and nested cost items. */
-const COST_CONTROLLED_OBJECT_SUPERTYPES: readonly string[] = ['IfcProduct', 'IfcProcess', 'IfcCostItem'];
-
 /**
- * Assign `objectIds` (products AND/OR tasks, or nested cost items) to
- * `costItemId` (IfcCostItem) as the objects it controls. Not type-checked
- * against ONE class — that is the point of "products AND tasks are legal" —
- * but every id must resolve to an `IfcProduct`, `IfcProcess`, or
- * `IfcCostItem` (the IfcRelAssignsToControl rule this assignment follows),
- * and `costItemId` cannot assign itself (an item cannot control itself).
+ * Assign IFC objects (products, tasks, resources, etc.) to a cost item.
+ * The controlling item itself is not a legal related member.
  */
 export function assignObjectsToCostItemInStore(
   editor: StoreEditor, anchor: CostAnchor, costItemId: number, objectIds: number[],
   existingAssignment?: ExistingRelatedList,
 ): number {
-  return assignToControlInStore(
-    editor, anchor, costItemId, objectIds, existingAssignment, 'assignToCostItem', 'IfcCostItem', undefined,
-    { rejectSelfAssignment: true, relatedAllowedSupertypes: COST_CONTROLLED_OBJECT_SUPERTYPES },
-  );
+  return assignToControlInStore(editor, anchor, costItemId, objectIds, existingAssignment,
+    'assignToCostItem', 'IfcCostItem', 'IfcObject');
 }
 
 /**

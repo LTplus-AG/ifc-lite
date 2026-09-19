@@ -45,8 +45,9 @@
 /**
  * A loaded model's pending edits, as the cost read model observes them. The
  * SDK builds one from a `MutablePropertyView` over `@ifc-lite/export`'s
- * `effectiveSourceRecord`; every member is required, so an overlay cannot
- * quietly omit an edit kind.
+ * `effectiveSourceRecord`. `created` is optional for backwards compatibility
+ * with overlays compiled against the pre-authoring contract; omitting it
+ * means that the overlay has no created entities to project.
  */
 export interface CostMutationOverlay {
   /** True when `expressId` is tombstoned — deleted, pending export. */
@@ -81,7 +82,7 @@ export interface CostMutationOverlay {
    * and the reader reports it as a diagnostic rather than treating the entity
    * as absent from the source it never had.
    */
-  created(): readonly CostCreatedRecord[];
+  created?(): readonly CostCreatedRecord[];
 }
 
 /** One overlay-created entity as `CostMutationOverlay.created()` reports it. */

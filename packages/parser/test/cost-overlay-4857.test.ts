@@ -226,20 +226,14 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
     expect(JSON.stringify(overlaid)).toBe(JSON.stringify(plain));
   });
 
-  // #4857 PR A review: `created()` is a REQUIRED interface member, but a
-  // third-party or previously-compiled `CostMutationOverlay` built against
-  // an older copy of the interface (before `created()` existed) would not
-  // implement it at runtime even though TypeScript requires it at compile
-  // time — `as CostMutationOverlay` below is exactly that gap. Calling
-  // `.created()` unconditionally on such an object throws "not a function";
-  // it must degrade to "no overlay-created entities" instead.
+  // #4857 PR A review: an older/third-party overlay has no created() member.
   it('an overlay missing created() at runtime (an older/third-party implementation) degrades to no created entities, not a throw', () => {
-    const legacyOverlay = {
+    const legacyOverlay: CostMutationOverlay = {
       isDeleted: () => false,
       retypes: () => new Map(),
       effectiveRecord: (_id: number, text: string) => ({ text, notWritten: [] }),
       // `created` deliberately absent.
-    } as unknown as CostMutationOverlay;
+    };
     expect(() => extractCostOnDemand(buildStoreFromStep(FIXTURE), { overlay: legacyOverlay })).not.toThrow();
     const withLegacyOverlay = extractCostOnDemand(buildStoreFromStep(FIXTURE), { overlay: legacyOverlay });
     const withNoOverlay = extractCostOnDemand(buildStoreFromStep(FIXTURE));

@@ -6,6 +6,7 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
+import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -14,6 +15,7 @@ import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
+import { propertyEditorEn } from './catalogues/property-editor.en';
 import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
@@ -27,6 +29,7 @@ import { splitToolEn } from './catalogues/split-tool.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...bulkPropertyEditorEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,
@@ -35,6 +38,7 @@ export const en = {
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...mainToolbarEn,
+  ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
   ...ganttWorkCalendarEn,

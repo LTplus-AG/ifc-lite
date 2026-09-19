@@ -39,7 +39,7 @@ import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import { AppearanceCapturePanel } from './AppearanceCapturePanel.js';
 import { AppearanceScanPanel } from './AppearanceScanPanel.js';
-import { PdfFidelityReportView } from './PdfFidelityReportView.js';
+import { omissionLabel, PdfFidelityReportView } from './PdfFidelityReportView.js';
 import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
@@ -240,6 +240,22 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
       omittedPaints: 0, summary: [], omissions: [], omissionsTruncated: false,
     }} userUnit={1} />);
     assert.match(rasterOnly.textContent ?? '', /\[raster only\]/);
+  });
+
+  catalogueIt('renders prototype-named unknown PDF omission kinds verbatim', () => {
+    assert.equal(omissionLabel('toString', (key) => key), 'toString');
+    const container = render(<PdfFidelityReportView report={{
+      sha256: 'prototype-name',
+      algorithm: 'ifclite-pdf-fidelity-v1',
+      exact: false,
+      rasterOnly: false,
+      convertiblePaths: 1,
+      omittedPaints: 1,
+      summary: [{ kind: 'toString', count: 1, visibleCount: 1, bboxPdf: null }],
+      omissions: [],
+      omissionsTruncated: false,
+    }} userUnit={1} />);
+    assert.match(container.textContent ?? '', /toString/);
   });
 
   catalogueIt('keeps the complete partial PDF verdict reorderable', () => {

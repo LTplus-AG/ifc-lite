@@ -31,10 +31,13 @@ const ROW_KEYS: Readonly<Record<string, { simple: TranslationKey; region: Transl
   hidden: { simple: 'appearance.pdfFidelity.row.hidden', region: 'appearance.pdfFidelity.row.hiddenRegion' },
   annotation: { simple: 'appearance.pdfFidelity.row.annotation', region: 'appearance.pdfFidelity.row.annotationRegion' },
 };
+function ownValue<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
 /** `t` is threaded in explicitly: this is a plain (non-component) helper, so
  *  it cannot call the `useTranslation` hook itself. */
 export function omissionLabel(kind: string, t: (key: TranslationKey, params?: TranslationParameters) => string): string {
-  const key = LABEL_KEYS[kind];
+  const key = ownValue(LABEL_KEYS, kind);
   if (key) return t(key);
   return kind.startsWith('unsupported:')
     ? t('appearance.pdfFidelity.unsupportedOperator', { operator: kind.slice('unsupported:'.length) })
@@ -56,7 +59,7 @@ function regionParameters(box: PdfPageRect, userUnit: number): TranslationParame
 }
 function OmissionRow({ entry, userUnit }: { entry: PdfOmissionSummary; userUnit: number }) {
   const { t } = useTranslation();
-  const keys = ROW_KEYS[entry.kind];
+  const keys = ownValue(ROW_KEYS, entry.kind);
   const params = { count: entry.visibleCount, ...(entry.bboxPdf ? regionParameters(entry.bboxPdf, userUnit) : {}) };
   if (keys) return <li>{t(entry.bboxPdf ? keys.region : keys.simple, params)}</li>;
   if (entry.kind.startsWith('unsupported:')) {

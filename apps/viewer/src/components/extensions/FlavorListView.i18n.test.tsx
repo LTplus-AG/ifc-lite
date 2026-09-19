@@ -28,7 +28,11 @@ import type { Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { extensionsFlavorsEn } from '@/i18n/catalogues/extensions-flavors.en';
 import type { TranslationValue, PluralTranslation, TranslationParameters } from '@/i18n';
-import type { Flavor } from '@ifc-lite/extensions';
+import { DEFAULT_FLAVOR_ID, type Flavor } from '@ifc-lite/extensions';
+import {
+  DEFAULT_FLAVOR_DESCRIPTION,
+  DEFAULT_FLAVOR_NAME,
+} from '@/services/extensions/default-flavor-metadata';
 import { FlavorListView } from './FlavorListView.js';
 
 // `resolve()` is typed against the real (wired-in) `TranslationKey` union;
@@ -173,6 +177,35 @@ afterEach(() => {
 });
 
 describe('FlavorListView localization (#4918)', () => {
+  it('localizes only untouched default metadata and preserves user edits', () => {
+    const baseline = makeFlavor({
+      id: DEFAULT_FLAVOR_ID,
+      name: DEFAULT_FLAVOR_NAME,
+      description: DEFAULT_FLAVOR_DESCRIPTION,
+    });
+    const container = render(<FlavorListView {...baseProps()} flavors={[baseline]} />);
+    act(() => setLocale(PSEUDO_LOCALE));
+
+    assert.match(
+      container.textContent ?? '',
+      new RegExp(r('extensionsFlavors.flavorIndicator.defaultLabel').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    );
+    assert.match(
+      container.textContent ?? '',
+      new RegExp(r('extensionsFlavors.flavorIndicator.defaultDescription').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    );
+
+    cleanup();
+    const renamed = { ...baseline, name: 'My baseline', description: 'My description' };
+    const renamedContainer = render(<FlavorListView {...baseProps()} flavors={[renamed]} />);
+    assert.match(renamedContainer.textContent ?? '', /My baseline/);
+    assert.match(renamedContainer.textContent ?? '', /My description/);
+    assert.doesNotMatch(
+      renamedContainer.textContent ?? '',
+      new RegExp(r('extensionsFlavors.flavorIndicator.defaultLabel').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    );
+  });
+
   it('translates the default list + row chrome, including per-row interpolated names', () => {
     const container = render(<FlavorListView {...baseProps()} />);
     const englishDom = readableStrings(container);

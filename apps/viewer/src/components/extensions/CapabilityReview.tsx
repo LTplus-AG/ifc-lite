@@ -51,6 +51,7 @@ import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { ExtensionInstallSummary } from '@/services/extensions/host.js';
 import { localizeCapabilityRisk, localizeRiskTier } from './localized-capability-risk';
+import { formatExtensionDate } from './localized-date';
 
 interface CapabilityReviewProps {
   open: boolean;
@@ -79,7 +80,7 @@ export function CapabilityReview({
   onApprove,
   onCancel,
 }: CapabilityReviewProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const rows = useMemo<CapabilityRow[]>(() => {
     return summary.capabilities.map((raw) => {
       const parsed = parseCapability(raw);
@@ -162,7 +163,7 @@ export function CapabilityReview({
                   {summary.signature.fingerprint.slice(0, 23)}…
                 </code>
                 {' · '}
-                {new Date(summary.signature.signedAt).toLocaleString()}
+                {formatExtensionDate(summary.signature.signedAt, locale)}
               </div>
             </div>
           </div>

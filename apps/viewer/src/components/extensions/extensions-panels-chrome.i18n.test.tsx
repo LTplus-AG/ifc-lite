@@ -538,6 +538,41 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.equal(formatExtensionDate(date, 'de-CH'), date.toLocaleString('de-CH'));
   });
 
+  it('uses the active locale for audit and signature timestamps', () => {
+    registerLocale('de-CH', {});
+    setLocale('de-CH');
+    const host = new StubExtensionHost();
+    host.audit.append({ kind: 'install', extensionId: 'com.example.audit' });
+    const [auditEvent] = host.audit.list();
+    const signedAt = '2026-01-02T13:45:00Z';
+    const signedSummary: HostInstallSummary = {
+      ...capabilitySummary(),
+      signed: true,
+      signature: {
+        algorithm: 'ed25519',
+        publicKeyBytes: new Uint8Array(32),
+        fingerprint: '00:11:22:33:44:55:66:77:88:99:aa:bb',
+        contentHash: 'a'.repeat(64),
+        signedAt,
+      },
+    };
+
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <AuditLogPanel />
+        <CapabilityReview
+          open
+          summary={signedSummary}
+          onApprove={() => {}}
+          onCancel={() => {}}
+        />
+      </ExtensionHostContext.Provider>,
+    );
+
+    assert.match(container.textContent ?? '', new RegExp(formatExtensionDate(auditEvent.ts, 'de-CH').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(document.body.textContent ?? '', new RegExp(formatExtensionDate(signedAt, 'de-CH').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  });
+
   it('lets a locale reorder complete repair help and unknown-SDK messages', async () => {
     registerLocale('repair-help-reordered', {
       'extensionsPanels.repairQueuePanel.helpIntro': '{engineRange} INTRO',

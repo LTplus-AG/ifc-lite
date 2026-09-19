@@ -31,6 +31,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey, type UseTranslationResult } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
+import { formatExtensionDate } from './localized-date';
 
 /** Maps each event kind to its catalogue key — same data-table pattern
  *  `shared-commands.en.ts`'s export/camera registries use: the record
@@ -75,7 +76,7 @@ interface AuditLogPanelProps {
 }
 
 export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [filter, setFilter] = useState<AuditEventKind | 'all'>('all');
@@ -207,7 +208,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
                 <div className="flex-1 min-w-0">
                   <div className="font-mono text-[11px] break-all">{event.extensionId}</div>
                   <div className="text-[10px] text-muted-foreground">
-                    {new Date(event.ts).toLocaleString()}
+                    {formatExtensionDate(event.ts, locale)}
                     {event.version ? t('extensionsPanels.auditLogPanel.versionSuffix', { version: event.version }) : ''}
                     {extraDetail(event, t)}
                   </div>

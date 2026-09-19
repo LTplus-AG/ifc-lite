@@ -40,7 +40,7 @@ import { StoreyDisplayControls } from './StoreyDisplayControls.js';
 import type { TreeNode } from './types.js';
 
 const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('hierarchy.')));
-const HAS_CATALOGUE = Object.keys(CATALOGUE).length > 0;
+const HAS_CATALOGUE = 'hierarchy.modelsSection.title' in en;
 
 type HierarchyKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as HierarchyKey[];

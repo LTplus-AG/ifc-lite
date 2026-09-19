@@ -44,7 +44,7 @@ import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
 const MERGED_EN: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('appearance.')));
-const HAS_CATALOGUE = Object.keys(MERGED_EN).length > 0;
+const HAS_CATALOGUE = 'appearance.panelView.applyToIfc' in en;
 type AppearanceKey = keyof typeof MERGED_EN;
 const KEYS = Object.keys(MERGED_EN) as AppearanceKey[];
 const ALL_STATIC_KEYS = KEYS.filter((key) => {

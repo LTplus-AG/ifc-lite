@@ -55,7 +55,7 @@ import { EpsgLookupDialog } from './EpsgLookupDialog.js';
 import { TaskEditCard } from './TaskEditCard.js';
 
 const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('properties.')));
-const HAS_CATALOGUE = Object.keys(CATALOGUE).length > 0;
+const HAS_CATALOGUE = 'properties.assemblyBadge.label' in en;
 
 type PropertiesKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as PropertiesKey[];

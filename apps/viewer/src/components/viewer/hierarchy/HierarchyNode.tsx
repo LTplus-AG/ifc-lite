@@ -2,24 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import {
-  Move3D,
-  ChevronRight,
-  Layers,
-  Eye,
-  EyeOff,
-  FileBox,
-  RefreshCw,
-  X,
-} from 'lucide-react';
+import { ChevronRight, Layers, Eye, EyeOff, FileBox } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { openRepositionModels } from '@/lib/model-placement/commands';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { isNoGeometryNode, isSpatialContainer, type TreeNode } from './types';
 import { CountBadgeTooltip } from './CountBadgeTooltip';
 import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
-import { ModelRowTags } from './ModelRowTags';
 import { ModelTagGroupRow } from './ModelTagGroupRow';
+import { ModelHeaderRow } from './ModelHeaderRow';
 
 /**
  * Resolve the Material Symbols code point for a given IFC type string.
@@ -73,6 +64,7 @@ export function HierarchyNode({
   sourceBacked = false,
   sourceSyncing = false,
 }: HierarchyNodeProps) {
+  const { t } = useTranslation();
   const resolvedType = node.ifcType || node.type;
   // Use Lucide icon for non-IFC structural nodes, Material Symbols for IFC classes
   const LucideIcon = NODE_TYPE_ICONS[node.type];
@@ -97,132 +89,19 @@ export function HierarchyNode({
   if (node.type === 'model-tag-group') return <ModelTagGroupRow node={node} virtualRow={virtualRow} />;
   // Model header nodes (for visibility control and expansion)
   if (node.type === 'model-header' && node.id.startsWith('model-')) {
-    const modelId = node.modelIds[0];
-
     return (
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: `${virtualRow.size}px`,
-          transform: `translateY(${virtualRow.start}px)`,
-        }}
-      >
-        <div
-          className={cn(
-            'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group',
-            'hover:bg-zinc-50 dark:hover:bg-zinc-900',
-            'border-transparent',
-            !modelVisible && 'opacity-50',
-            node.hasChildren && 'cursor-pointer'
-          )}
-          style={{ paddingLeft: '8px' }}
-          onClick={() => onModelHeaderClick(modelId, node.id, node.hasChildren)}
-        >
-          {/* Expand/collapse chevron */}
-          {node.hasChildren ? (
-            <ChevronRight
-              className={cn(
-                'h-3.5 w-3.5 text-zinc-400 transition-transform shrink-0',
-                node.isExpanded && 'rotate-90'
-              )}
-            />
-          ) : (
-            <div className="w-3.5" />
-          )}
-
-          <FileBox className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span className="flex-1 text-sm truncate ml-1.5 text-zinc-900 dark:text-zinc-100">
-            {node.name}
-          </span>
-
-          {node.elementCount !== undefined && (
-            <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400 rounded-none">
-              {node.elementCount.toLocaleString()}
-            </span>
-          )}
-          <ModelRowTags modelId={modelId} modelName={node.name} />
-
-          <button className="p-0.5" aria-label={`Reposition model ${node.name}`} title="Reposition model"
-            onClick={(event) => { event.stopPropagation(); openRepositionModels([modelId]); }}>
-            <Move3D className="h-3.5 w-3.5" />
-          </button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onModelVisibilityToggle(modelId, e);
-                }}
-                aria-label={modelVisible ? `Hide model ${node.name}` : `Show model ${node.name}`}
-                className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                {modelVisible ? (
-                  <Eye className="h-3.5 w-3.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
-                ) : (
-                  <EyeOff className="h-3.5 w-3.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="text-xs">{modelVisible ? 'Hide model' : 'Show model'}</p>
-            </TooltipContent>
-          </Tooltip>
-
-          {sourceBacked && onSyncSourceModel && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSyncSourceModel(modelId, e);
-                  }}
-                  aria-label={`Sync model ${node.name} from source`}
-                  className={cn(
-                    'p-0.5 opacity-0 group-hover:opacity-100 transition-opacity',
-                    sourceSyncing && 'opacity-100',
-                  )}
-                  disabled={sourceSyncing}
-                >
-                  <RefreshCw
-                    className={cn(
-                      'h-3.5 w-3.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100',
-                      sourceSyncing && 'animate-spin',
-                    )}
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">
-                  {sourceSyncing ? 'Syncing model…' : 'Sync from source'}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-
-          {modelsCount > 1 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveModel(modelId, e);
-                  }}
-                  aria-label={`Remove model ${node.name}`}
-                  className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="h-3.5 w-3.5 text-zinc-400 hover:text-red-500" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">Remove model</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </div>
+      <ModelHeaderRow
+        node={node}
+        virtualRow={virtualRow}
+        modelsCount={modelsCount}
+        modelVisible={modelVisible}
+        onModelVisibilityToggle={onModelVisibilityToggle}
+        onRemoveModel={onRemoveModel}
+        onSyncSourceModel={onSyncSourceModel}
+        onModelHeaderClick={onModelHeaderClick}
+        sourceBacked={sourceBacked}
+        sourceSyncing={sourceSyncing}
+      />
     );
   }
 
@@ -276,7 +155,11 @@ export function HierarchyNode({
               e.stopPropagation();
               onToggleExpand(node.id);
             }}
-            aria-label={node.isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
+            aria-label={
+              node.isExpanded
+                ? t('hierarchy.node.collapseAriaLabel', { name: node.name })
+                : t('hierarchy.node.expandAriaLabel', { name: node.name })
+            }
             aria-expanded={node.isExpanded}
             className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-none mr-1"
           >
@@ -300,7 +183,11 @@ export function HierarchyNode({
                   e.stopPropagation();
                   onVisibilityToggle(node);
                 }}
-                aria-label={node.isVisible ? `Hide ${node.name}` : `Show ${node.name}`}
+                aria-label={
+                  node.isVisible
+                    ? t('hierarchy.node.hideAriaLabel', { name: node.name })
+                    : t('hierarchy.node.showAriaLabel', { name: node.name })
+                }
                 className={cn(
                   'p-0.5 opacity-0 group-hover:opacity-100 transition-opacity mr-1',
                   nodeHidden && 'opacity-100'
@@ -315,7 +202,7 @@ export function HierarchyNode({
             </TooltipTrigger>
             <TooltipContent>
               <p className="text-xs">
-                {node.isVisible ? 'Hide' : 'Show'}
+                {node.isVisible ? t('hierarchy.node.hide') : t('hierarchy.node.show')}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -346,7 +233,7 @@ export function HierarchyNode({
         {node.secondaryName ? (
           <span
             className="flex-1 min-w-0 flex items-baseline text-sm ml-1.5"
-            title={`${node.name} - ${node.secondaryName}`}
+            title={t('hierarchy.node.nameAndSecondaryTitle', { name: node.name, secondaryName: node.secondaryName ?? '' })}
           >
             <span className={cn('shrink-0 max-w-[55%] truncate', primaryNameClass, strikeWhenHidden)}>
               {node.name}
@@ -372,11 +259,19 @@ export function HierarchyNode({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-none">
-                {node.storeyDisplayElevation >= 0 ? '+' : ''}{node.storeyDisplayElevation.toFixed(2)}m
+                {t('hierarchy.node.elevationBadge', {
+                  sign: node.storeyDisplayElevation >= 0 ? '+' : '',
+                  value: node.storeyDisplayElevation.toFixed(2),
+                })}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">Elevation: {node.storeyDisplayElevation >= 0 ? '+' : ''}{node.storeyDisplayElevation.toFixed(2)}m</p>
+              <p className="text-xs">
+                {t('hierarchy.node.elevationTooltip', {
+                  sign: node.storeyDisplayElevation >= 0 ? '+' : '',
+                  value: node.storeyDisplayElevation.toFixed(2),
+                })}
+              </p>
             </TooltipContent>
           </Tooltip>
         )}

@@ -27,12 +27,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  ClipboardList, ChevronDown, Diamond, Plus, Minus, Trash2, Info,
-} from 'lucide-react';
+import { ClipboardList, ChevronDown, Diamond, Plus, Minus, Trash2, Info } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
+import { useTranslation } from '@/i18n';
+import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';
 
 /** IfcTaskTypeEnum values — same list as the Generate dialog. */
 const TASK_TYPES: readonly string[] = [
@@ -49,6 +49,7 @@ interface TaskEditCardProps {
 }
 
 export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEditCardProps) {
+  const { t } = useTranslation();
   // Pull the current task + sibling store actions in a single selector so
   // re-renders stay predictable.
   const {
@@ -163,11 +164,11 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-primary/10 text-left transition-colors overflow-hidden">
         <ClipboardList className="h-3.5 w-3.5 text-primary shrink-0" />
         <span className="font-bold text-xs text-primary truncate flex-1 min-w-0">
-          Edit task
+          {t('properties.taskEdit.heading')}
         </span>
         {scheduleIsEdited && (
           <span className="text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0">
-            ● Pending
+            {t('properties.taskEdit.pendingBadge')}
           </span>
         )}
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -177,21 +178,21 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
         <div className="border-t-2 border-primary/40 p-3 grid gap-3">
           {/* Identity */}
           <div className="grid gap-1.5">
-            <Label htmlFor="task-name" className="text-[11px]">Name</Label>
+            <Label htmlFor="task-name" className="text-[11px]">{EXPRESS_NAME_ATTRIBUTE}</Label>
             <Input
               id="task-name"
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
               onBlur={onCommitName}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
-              placeholder="Untitled task"
+              placeholder={t('properties.taskEdit.namePlaceholder')}
               className="h-8 text-sm"
             />
           </div>
 
           <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
             <div className="grid gap-1.5">
-              <Label htmlFor="task-type" className="text-[11px]">Predefined type</Label>
+              <Label htmlFor="task-type" className="text-[11px]">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</Label>
               <Select
                 value={task.predefinedType || 'NOTDEFINED'}
                 onValueChange={(v) => updateTask(taskGlobalId, { predefinedType: v })}
@@ -207,7 +208,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               </Select>
             </div>
             <ToggleRow
-              label="Milestone"
+              label={t('properties.taskEdit.milestoneLabel')}
               icon={<Diamond className="h-3 w-3" />}
               checked={task.isMilestone}
               onChange={(v) => updateTask(taskGlobalId, { isMilestone: v })}
@@ -220,7 +221,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               input enough room to render the browser's picker UI. */}
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="grid gap-1">
-              <Label htmlFor="task-start" className="text-[10px]">Start</Label>
+              <Label htmlFor="task-start" className="text-[10px]">{t('properties.taskEdit.startLabel')}</Label>
               <Input
                 id="task-start"
                 type="datetime-local"
@@ -239,7 +240,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               />
             </div>
             <div className="grid gap-1">
-              <Label htmlFor="task-finish" className="text-[10px]">Finish</Label>
+              <Label htmlFor="task-finish" className="text-[10px]">{t('properties.taskEdit.finishLabel')}</Label>
               <Input
                 id="task-finish"
                 type="datetime-local"
@@ -259,7 +260,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               />
             </div>
             <div className="grid gap-1">
-              <Label htmlFor="task-dur" className="text-[10px]">Duration (days)</Label>
+              <Label htmlFor="task-dur" className="text-[10px]">{t('properties.taskEdit.durationLabel')}</Label>
               <Input
                 id="task-dur"
                 type="number"
@@ -282,7 +283,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               />
               <p className="text-[10px] text-muted-foreground flex items-start gap-1">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
-                Editing start or duration keeps finish consistent; editing finish keeps start consistent.
+                {t('properties.taskEdit.timeConsistencyHelp')}
               </p>
             </div>
           </div>
@@ -290,10 +291,8 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           {/* Products */}
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="flex items-center justify-between">
-              <Label className="text-[11px]">Products</Label>
-              <span className="text-[11px] font-mono text-muted-foreground">
-                {task.productExpressIds.length} assigned
-              </span>
+              <Label className="text-[11px]">{t('properties.taskEdit.productsLabel')}</Label>
+              <span className="text-[11px] font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { count: task.productExpressIds.length })}</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <Tooltip>
@@ -306,13 +305,11 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                     className="gap-1 h-7 text-xs"
                   >
                     <Plus className="h-3 w-3" />
-                    Add {viewport3DCount > 0 ? `(${viewport3DCount})` : ''}
+                    {viewport3DCount > 0 ? t('properties.taskEdit.addButtonWithCount', { count: viewport3DCount }) : t('properties.taskEdit.addButton')}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {viewport3DCount > 0
-                    ? `Add the ${viewport3DCount} object(s) currently selected in the 3D viewport to this task.`
-                    : 'Select objects in the 3D viewport first.'}
+                  {viewport3DCount > 0 ? t('properties.taskEdit.addTooltipWithCount', { count: viewport3DCount }) : t('properties.taskEdit.addTooltipEmpty')}
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
@@ -325,11 +322,11 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                     className="gap-1 h-7 text-xs"
                   >
                     <Minus className="h-3 w-3" />
-                    Remove {viewport3DCount > 0 ? `(${viewport3DCount})` : ''}
+                    {viewport3DCount > 0 ? t('properties.taskEdit.removeButtonWithCount', { count: viewport3DCount }) : t('properties.taskEdit.removeButton')}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Remove the selected 3D objects from this task.
+                  {t('properties.taskEdit.removeTooltip')}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -342,12 +339,12 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
             className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronDown className={`h-3 w-3 transition-transform ${showDetails ? '' : '-rotate-90'}`} />
-            Details
+            {t('properties.taskEdit.detailsToggle')}
           </button>
           {showDetails && (
             <div className="grid gap-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="task-ident" className="text-[11px]">Identification</Label>
+                <Label htmlFor="task-ident" className="text-[11px]">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</Label>
                 <Input
                   id="task-ident"
                   value={identDraft}
@@ -359,7 +356,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-[11px]">Global ID</Label>
+                <Label className="text-[11px]">{EXPRESS_GLOBAL_ID_ATTRIBUTE}</Label>
                 <div className="text-[10px] font-mono text-muted-foreground truncate" title={task.globalId}>
                   {task.globalId}
                 </div>
@@ -377,18 +374,20 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                 className="gap-1 h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-3 w-3" />
-                Delete task
+                {t('properties.taskEdit.deleteTaskButton')}
               </Button>
             ) : (
               <>
-                <span className="text-[11px] text-muted-foreground">Delete{task.childGlobalIds.length > 0 ? ` + ${task.childGlobalIds.length} descendants` : ''}?</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {task.childGlobalIds.length > 0 ? t('properties.taskEdit.confirmDeleteWithDescendants', { count: task.childGlobalIds.length }) : t('properties.taskEdit.confirmDelete')}
+                </span>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setConfirmDelete(false)}
                   className="h-7 text-xs"
                 >
-                  Cancel
+                  {t('properties.taskEdit.cancel')}
                 </Button>
                 <Button
                   size="sm"
@@ -399,7 +398,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                   }}
                   className="h-7 text-xs"
                 >
-                  Delete
+                  {t('properties.taskEdit.delete')}
                 </Button>
               </>
             )}

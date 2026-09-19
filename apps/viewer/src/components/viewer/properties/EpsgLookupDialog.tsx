@@ -25,6 +25,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useTranslation, type TranslationKey } from '@/i18n';
+import { EpsgLookupError } from './EpsgLookupError';
 
 export interface EpsgResult {
   code: string;
@@ -209,11 +211,12 @@ interface EpsgLookupDialogProps {
 }
 
 export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<EpsgResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -229,21 +232,19 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     setQuery('');
     setResults([]);
     setLoading(false);
-    setError(null);
+    setErrorKey(null);
   }, []);
 
-  const localIndex = useMemo(() => {
-    return COMMON_CRS.map(crs => ({
-      ...crs,
-      _s: `${crs.code} ${crs.name} ${crs.area} ${crs.datum ?? ''} ${crs.projection ?? ''}`.toLowerCase(),
-    }));
-  }, []);
+  const localIndex = useMemo(
+    () => COMMON_CRS.map(crs => ({ ...crs, _s: `${crs.code} ${crs.name} ${crs.area} ${crs.datum ?? ''} ${crs.projection ?? ''}`.toLowerCase() })),
+    [],
+  );
 
   const search = useCallback(async (searchQuery: string) => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
       setResults([]);
-      setError(null);
+      setErrorKey(null);
       return;
     }
 
@@ -261,7 +262,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
-    setError(null);
+    setErrorKey(null);
 
     try {
       const resolved = isCode
@@ -284,16 +285,16 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
 
       if (dedupedResults.length > 0) {
         setResults(dedupedResults);
-        setError(null);
+        setErrorKey(null);
       } else if (localMatches.length === 0) {
         setResults([]);
-        setError('No coordinate reference systems found');
+        setErrorKey('properties.epsgLookup.noResults');
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('[EPSG Lookup] Local search failed', err);
       if (localMatches.length === 0) {
-        setError('Search unavailable');
+        setErrorKey('properties.epsgLookup.searchUnavailable');
       }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
@@ -323,12 +324,12 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
       .then(starterResults => {
         if (cancelled) return;
         setResults(starterResults);
-        setError(null);
+        setErrorKey(null);
       })
       .catch(() => {
         if (cancelled) return;
         setResults(COMMON_CRS.slice(0, MAX_STARTER_RESULTS));
-        setError(null);
+        setErrorKey(null);
       });
 
     return () => {
@@ -358,7 +359,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
             className="flex items-center gap-1 text-[10px] font-mono text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50"
           >
             <Search className="h-2.5 w-2.5" />
-            EPSG
+            {t('properties.epsgLookup.triggerButton')}
           </button>
         )}
       </DialogTrigger>
@@ -366,16 +367,16 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
         <DialogHeader className="px-4 pt-4 pb-3">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Globe className="h-4 w-4 text-teal-500" />
-            EPSG Lookup
+            {t('properties.epsgLookup.title')}
           </DialogTitle>
           <DialogDescription className="text-[11px] text-muted-foreground">
-            Search by code, name, country, or datum
+            {t('properties.epsgLookup.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="px-4 pb-3">
           <Input
-            placeholder="e.g. 2056, UTM, Switzerland, Tokyo..."
+            placeholder={t('properties.epsgLookup.searchPlaceholder')}
             value={query}
             onChange={handleInputChange}
             leftIcon={loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
@@ -384,9 +385,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
           />
         </div>
 
-        {error && (
-          <p className="text-[11px] text-muted-foreground px-4 pb-2">{error}</p>
-        )}
+        <EpsgLookupError errorKey={errorKey} />
 
         {results.length > 0 && (
           <div className="border-t overflow-y-auto max-h-[280px]">

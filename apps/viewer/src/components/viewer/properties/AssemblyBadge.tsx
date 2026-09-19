@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Box } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 export interface AssemblyParentInfo {
   expressId: number;
@@ -19,6 +20,7 @@ export function AssemblyBadge({ assembly, onSelect }: {
   assembly: AssemblyParentInfo | null;
   onSelect: (expressId: number) => void;
 }) {
+  const { t } = useTranslation();
   if (!assembly) return null;
 
   return (
@@ -26,10 +28,10 @@ export function AssemblyBadge({ assembly, onSelect }: {
       type="button"
       onClick={() => onSelect(assembly.expressId)}
       className="flex items-center gap-2 text-xs border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/10 px-2 py-1.5 text-indigo-800 dark:text-indigo-400 min-w-0 w-full text-left hover:bg-indigo-100/60 dark:hover:bg-indigo-900/20 transition-colors"
-      title="Select the parent assembly"
+      title={t('properties.assemblyBadge.tooltip')}
     >
       <Box className="h-3.5 w-3.5 shrink-0" />
-      <span className="font-bold uppercase tracking-wide shrink-0">Part of Assembly</span>
+      <span className="font-bold uppercase tracking-wide shrink-0">{t('properties.assemblyBadge.label')}</span>
       <span className="truncate min-w-0 flex-1 font-mono">{assembly.name || `#${assembly.expressId}`}</span>
     </button>
   );

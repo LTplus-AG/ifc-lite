@@ -1,0 +1,238 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+
+import type { TranslationValue } from '../types';
+
+/**
+ * The Appearance panel's own chrome, part 1 (#4918 slice 4): the mesh/
+ * point previews, PDF annotation/crop/fidelity, calibration, the face-mask
+ * picker, and the panel-level view/annotation/mapping field groups. Split
+ * from `appearance-panel.en.ts` (part 2) purely to stay under the module-
+ * size budget; both halves share the same `appearance.*` key namespace.
+ */
+export const appearancePanelEn = {
+  // AppearanceMembershipChanges
+  'appearance.membershipChanges.summary': 'Inspect changed GlobalIds',
+  'appearance.membershipChanges.added': 'Added: {GlobalId}',
+  'appearance.membershipChanges.removed': 'Removed: {GlobalId}',
+  'appearance.membershipChanges.renumbered': 'Renumbered: {GlobalId} → #{expressId}',
+  'appearance.membershipChanges.previous': 'Previous changes',
+  'appearance.membershipChanges.next': 'Next changes',
+
+  // AppearancePointPreview
+  'appearance.pointPreview.reload': 'Reload preview',
+  'appearance.pointPreview.canvasAriaLabel': 'Scan point preview',
+  'appearance.pointPreview.instruction': 'Click a scan point, then its matching point in the main IFC view. Drag to orbit; scroll to zoom.',
+
+  // PdfAnnotationFields
+  'appearance.pdfAnnotation.description':
+    'Convert supported fills and straight strokes into coloured IFC geometry. Curves are flattened within the tolerance below, measured in model metres after calibration. The page is checked first: text, images, clipping, transparency, patterns and other unsupported paint are reported, never silently dropped. User-cropped pages are not yet supported.',
+  'appearance.pdfAnnotation.toleranceLabel': 'Geometry tolerance (m)',
+  'appearance.pdfAnnotation.toleranceAriaLabel': 'PDF geometry tolerance (m)',
+  'appearance.pdfAnnotation.acceptPartialAriaLabel': 'Accept partial PDF conversion',
+  'appearance.pdfAnnotation.acceptPartialLabel':
+    'Create a partial conversion. The omissions listed above are left out and recorded with the annotation.',
+  'appearance.pdfAnnotation.preparePartial': 'Prepare partial conversion',
+  'appearance.pdfAnnotation.prepareVector': 'Prepare vector preview',
+  'appearance.pdfAnnotation.canvasLabel': 'PDF annotation geometry preview',
+  'appearance.pdfAnnotation.previewInstruction': 'Exact native vector geometry. Drag to orbit; scroll to zoom. Colours and empty regions are retained.',
+  'appearance.pdfAnnotation.createAnnotation': 'Create annotation',
+  'appearance.pdfAnnotation.cancel': 'Cancel',
+  'appearance.pdfAnnotation.checkingVectors': 'Checking original PDF vectors…',
+  'appearance.pdfAnnotation.rasterOnly': 'This page has no vector drawing content. Keep it as a raster reference and use the Image representation.',
+  'appearance.pdfAnnotation.partialSummary': {
+    one: 'Partial conversion: {count} visible omission. Review the report and accept the partial conversion to prepare it.',
+    other: 'Partial conversion: {count} visible omissions. Review the report and accept the partial conversion to prepare it.',
+  },
+  'appearance.pdfAnnotation.preparingGeometry': 'Preparing geometry…',
+  'appearance.pdfAnnotation.reviewRegionsExact': {
+    one: 'Review {count} coloured region. The original drawing remains available.',
+    other: 'Review {count} coloured regions. The original drawing remains available.',
+  },
+  'appearance.pdfAnnotation.reviewRegionsPartial': {
+    one: 'Review {count} coloured region of the accepted partial conversion. The original drawing remains available.',
+    other: 'Review {count} coloured regions of the accepted partial conversion. The original drawing remains available.',
+  },
+  'appearance.pdfAnnotation.rendererNotReady': 'Wait for the 3D view to be ready.',
+  'appearance.pdfAnnotation.creating': 'Creating PDF annotation…',
+  'appearance.pdfAnnotation.createdExact': 'PDF IfcAnnotation created and selected. Hide the drawing above to inspect it. Undo is available.',
+  'appearance.pdfAnnotation.createdPartial':
+    'Partial PDF IfcAnnotation created and selected; the accepted omissions are recorded in its IfcLite_PdfVectorConversion property set. Undo is available.',
+  'appearance.pdfAnnotation.cancelled': 'PDF annotation preparation cancelled.',
+
+  // AppearanceMeshPreview
+  'appearance.meshPreview.reload': 'Reload preview',
+  'appearance.meshPreview.pickFaces': 'Pick faces',
+  'appearance.meshPreview.selectRegion': 'Select region',
+  'appearance.meshPreview.allFaces': 'All faces',
+  'appearance.meshPreview.entireSurface': 'Entire surface',
+  'appearance.meshPreview.canvasAriaLabel': 'Captured surface preview',
+  'appearance.meshPreview.instructionFaceSelecting': 'Drag a rectangle to add whole faces by their centres, or click one face to toggle it. Hold Alt to remove.',
+  'appearance.meshPreview.instructionFaceIdle': 'Drag to orbit. Scroll to zoom. Turn on Pick faces to restrict the image to part of this surface.',
+  'appearance.meshPreview.instructionRegionSelecting': 'Drag a rectangle. Whole triangles are selected by their centres, through the surface.',
+  'appearance.meshPreview.instructionRegionIdle': 'Drag to orbit. Scroll to zoom. Select region to keep part of this surface.',
+
+  // AppearancePdfCrop
+  'appearance.pdfCrop.marginNameMm': '{name} (mm)',
+  'appearance.pdfCrop.previewAriaLabel': 'PDF crop preview',
+  'appearance.pdfCrop.pageAlt': 'Page {pageNumber} of {documentName}',
+  'appearance.pdfCrop.dragToCrop': 'Drag over the page to crop. Escape cancels the selection.',
+  'appearance.pdfCrop.pageCropLabel': 'Page crop',
+  'appearance.pdfCrop.useFullPage': 'Use full page',
+  'appearance.pdfCrop.marginsAriaLabel': 'PDF crop paper margins',
+  'appearance.pdfCrop.marginsNote': 'Margins use paper millimetres. Drawing scale is calibrated separately.',
+  'appearance.pdfCrop.marginLeft': 'Left',
+  'appearance.pdfCrop.marginLeftAriaLabel': 'PDF crop left margin (mm)',
+  'appearance.pdfCrop.marginTop': 'Top',
+  'appearance.pdfCrop.marginTopAriaLabel': 'PDF crop top margin (mm)',
+  'appearance.pdfCrop.marginRight': 'Right',
+  'appearance.pdfCrop.marginRightAriaLabel': 'PDF crop right margin (mm)',
+  'appearance.pdfCrop.marginBottom': 'Bottom',
+  'appearance.pdfCrop.marginBottomAriaLabel': 'PDF crop bottom margin (mm)',
+
+  // AppearanceCalibrationFields
+  'appearance.calibration.legend': 'Drawing scale',
+  'appearance.calibration.description': 'Choose two known points, then enter their distance in the building. The same scale applies across all selected objects.',
+  'appearance.calibration.pointLabel': 'Point {letter}',
+  'appearance.calibration.landmarksAriaLabel': 'Choose calibration landmarks on page',
+  'appearance.calibration.sourceImageAlt': 'Source image to calibrate',
+  'appearance.calibration.helpText': 'Click to place A and B. With the page focused, use arrow keys to move the cursor and Enter to place a point.',
+  'appearance.calibration.distanceLabel': 'Distance A–B (m)',
+  'appearance.calibration.invalidMessage': 'Choose two distinct points and enter a positive measured distance.',
+  'appearance.calibration.letterA': 'A',
+  'appearance.calibration.letterB': 'B',
+
+  // face-mask/FaceMaskTargets
+  'appearance.faceMask.ifcObject': 'IFC object',
+  'appearance.faceMask.someSelected': '{count} of {total} faces selected',
+  'appearance.faceMask.allSelectedSummary': 'all {total} faces',
+  'appearance.faceMask.allFaces': 'All faces',
+  'appearance.faceMask.done': 'Done',
+  'appearance.faceMask.selectFaces': 'Select faces',
+  'appearance.faceMask.editorAriaLabel': 'Face selection for {label}',
+  'appearance.faceMask.pickingInModel': 'Picking in model',
+  'appearance.faceMask.pickInModel': 'Pick in model',
+  'appearance.faceMask.pickingStatus': 'Click visible faces in the main view. The tool stays active.',
+  'appearance.faceMask.previewCanvasLabel': 'Face selection preview for {label}',
+  'appearance.faceMask.editorNote': "Selected faces receive the image; the rest of the surface keeps its current style. The selection binds to this exact evaluated surface.",
+  'appearance.faceMask.selectionsAriaLabel': 'Face selections',
+  'appearance.faceMask.diagnosticsAriaLabel': 'Face selection diagnostics',
+
+  // AppearancePanelView
+  'appearance.panelView.invalidFieldsMessage': 'Enter valid numbers in the highlighted fields before applying.',
+  'appearance.panelView.status.idle': 'Choose an image and scope to preview appearance.',
+  'appearance.panelView.status.preparing': 'Preparing preview… You can keep adjusting the controls.',
+  'appearance.panelView.status.readyShowingOriginal': 'Showing original appearance.',
+  'appearance.panelView.status.readyPreview': 'Preview ready. Apply to save this appearance to the model.',
+  'appearance.panelView.status.applying': 'Applying appearance…',
+  'appearance.panelView.status.stale': 'The model changed. Refresh the preview before applying.',
+  'appearance.panelView.status.error': 'Could not prepare appearance. Adjust the settings and try again.',
+  'appearance.panelView.sourceActionAriaLabel': 'Source action',
+  'appearance.panelView.applyToIfc': 'Apply to IFC',
+  'appearance.panelView.placeAsReference': 'Place as reference',
+  'appearance.panelView.createFromScan': 'Create from scan',
+  'appearance.panelView.alignScan': 'Align scan',
+  'appearance.panelView.workspaceAriaLabel': 'Appearance workspace',
+  'appearance.panelView.heading': 'Appearance',
+  'appearance.panelView.descriptionPdf': 'Images and PDF pages across the surfaces you choose.',
+  'appearance.panelView.descriptionImageOnly': 'One image, across the surfaces you choose.',
+  'appearance.panelView.showPreview': 'Show preview',
+  'appearance.panelView.compareOriginal': 'Compare original',
+  'appearance.panelView.discard': 'Discard',
+  'appearance.panelView.saveRegistration': 'Save registration',
+  'appearance.panelView.placeReference': 'Place reference',
+  'appearance.panelView.apply': 'Apply',
+
+  // AppearanceAnnotationFields
+  'appearance.annotationFields.rendererNotReady': 'Wait for the 3D view to be ready.',
+  'appearance.annotationFields.creating': 'Creating textured annotation…',
+  'appearance.annotationFields.created': 'Textured IfcAnnotation created and selected. Undo is available.',
+  'appearance.annotationFields.summary': 'Save into model',
+  'appearance.annotationFields.description': "Save an IfcAnnotation at this drawing’s position. The workspace reference remains available.",
+  'appearance.annotationFields.representationLabel': 'Representation',
+  'appearance.annotationFields.representationAriaLabel': 'Annotation representation',
+  'appearance.annotationFields.representationImage': 'Image',
+  'appearance.annotationFields.representationPdfVectors': 'PDF vectors',
+  'appearance.annotationFields.modelLabel': 'Model',
+  'appearance.annotationFields.modelAriaLabel': 'Annotation model',
+  'appearance.annotationFields.noEligibleModel': 'Load an editable IFC4 model',
+  'appearance.annotationFields.containerLabel': 'Container',
+  'appearance.annotationFields.containerAriaLabel': 'Annotation container',
+  'appearance.annotationFields.noContainer': 'No spatial container available',
+  'appearance.annotationFields.containerFallbackName': '#{expressId}',
+  'appearance.annotationFields.nameLabel': 'Name',
+  'appearance.annotationFields.nameAriaLabel': 'Annotation Name',
+  'appearance.annotationFields.createAnnotation': 'Create annotation',
+  'appearance.annotationFields.leaveRoomNotice': 'Leave the shared room to create an annotation, then share the saved model.',
+  'appearance.annotationFields.cancelled': 'Annotation creation cancelled.',
+  'appearance.annotationFields.cancelCreation': 'Cancel creation',
+
+  // AppearanceMappingFields
+  'appearance.mapping.legend': 'Mapping',
+  'appearance.mapping.kindAriaLabel': 'Texture mapping',
+  'appearance.mapping.kindExistingUv': 'Existing UV coordinates',
+  'appearance.mapping.kindPlanar': 'Planar projection',
+  'appearance.mapping.kindBox': 'Box projection',
+  'appearance.mapping.hintCalibrated': 'Place point A at the model coordinates below. Drawing scale comes from the measured span.',
+  'appearance.mapping.hintUv': "Keep the surface’s UV layout. Repeat values are multipliers.",
+  'appearance.mapping.hintTile': 'Consistent physical tile size across objects, in IFC world coordinates.',
+  'appearance.mapping.projectionPlaneLabel': 'Projection plane',
+  'appearance.mapping.planeXy': 'XY · horizontal',
+  'appearance.mapping.planeXz': 'XZ · vertical',
+  'appearance.mapping.planeYz': 'YZ · vertical',
+  'appearance.mapping.repeatU': 'Repeat U (×)',
+  'appearance.mapping.repeatV': 'Repeat V (×)',
+  'appearance.mapping.tileXm': 'Tile X (m)',
+  'appearance.mapping.tileWidthM': 'Tile width (m)',
+  'appearance.mapping.tileYm': 'Tile Y (m)',
+  'appearance.mapping.tileHeightM': 'Tile height (m)',
+  'appearance.mapping.tileZm': 'Tile Z (m)',
+  'appearance.mapping.alignment': 'Alignment',
+  'appearance.mapping.alignmentAndTiling': 'Alignment and tiling',
+  'appearance.mapping.rotationDegrees': 'Rotation (°)',
+  'appearance.mapping.pointAX': 'Point A · X (m)',
+  'appearance.mapping.offsetUUv': 'Offset U (UV)',
+  'appearance.mapping.offsetXm': 'Offset X (m)',
+  'appearance.mapping.offsetUm': 'Offset U (m)',
+  'appearance.mapping.pointAY': 'Point A · Y (m)',
+  'appearance.mapping.offsetVUv': 'Offset V (UV)',
+  'appearance.mapping.offsetYm': 'Offset Y (m)',
+  'appearance.mapping.offsetVm': 'Offset V (m)',
+  'appearance.mapping.pointAZ': 'Point A · Z (m)',
+  'appearance.mapping.offsetZm': 'Offset Z (m)',
+  'appearance.mapping.tileU': 'Tile U',
+  'appearance.mapping.tileV': 'Tile V',
+
+  // PdfFidelityReportView
+  'appearance.pdfFidelity.omission.text': 'Text runs',
+  'appearance.pdfFidelity.omission.image': 'Images',
+  'appearance.pdfFidelity.omission.clip': 'Clipped content',
+  'appearance.pdfFidelity.omission.transparency': 'Transparent content',
+  'appearance.pdfFidelity.omission.pattern': 'Patterns and shadings',
+  'appearance.pdfFidelity.omission.dash': 'Dashed strokes',
+  'appearance.pdfFidelity.omission.roundCapJoin': 'Round caps or joins',
+  'appearance.pdfFidelity.omission.curvedStroke': 'Curved strokes',
+  'appearance.pdfFidelity.omission.hairline': 'Hairline strokes',
+  'appearance.pdfFidelity.omission.hidden': 'Hidden optional content',
+  'appearance.pdfFidelity.omission.annotation': 'Annotation appearances',
+  'appearance.pdfFidelity.unsupportedOperator': 'Unsupported operator {operator}',
+  'appearance.pdfFidelity.regionExtent': 'x {x0}–{x1}, y {y0}–{y1} pt',
+  'appearance.pdfFidelity.rasterOnlyNotice': 'This page has no vector drawing content — raster reference only. Use the Image representation; it is not presented as editable vectors.',
+  'appearance.pdfFidelity.exactSummary': { one: 'Exact conversion: {count} convertible path; nothing visible is omitted.', other: 'Exact conversion: {count} convertible paths; nothing visible is omitted.' },
+  'appearance.pdfFidelity.omissionRowSimple': '{count} × {label}',
+  'appearance.pdfFidelity.omissionRowWithRegion': '{count} × {label} — region {region}',
+  'appearance.pdfFidelity.partialSummaryOneOmissionOnePath':
+    'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} path converts.',
+  'appearance.pdfFidelity.partialSummaryOneOmissionManyPaths':
+    'Partial conversion: {omissionCount} visible omission would be left out; {pathCount} paths convert.',
+  'appearance.pdfFidelity.partialSummaryManyOmissionsOnePath':
+    'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} path converts.',
+  'appearance.pdfFidelity.partialSummaryManyOmissionsManyPaths':
+    'Partial conversion: {omissionCount} visible omissions would be left out; {pathCount} paths convert.',
+  'appearance.pdfFidelity.omissionsAriaLabel': 'PDF omissions',
+  'appearance.pdfFidelity.invisibleItemsNote': { one: '{count} further item is not visible on the page and does not affect the conversion.', other: '{count} further items are not visible on the page and do not affect the conversion.' },
+  'appearance.pdfFidelity.truncatedNote': 'The detailed list is truncated; these counts are complete.',
+
+} as const satisfies Record<string, TranslationValue>;

@@ -6,20 +6,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { PdfRect } from '@/lib/appearance/pdf/types.js';
 import type { AppearancePdfControls } from './pdf-controls.js';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
 const mmPerPoint = 25.4 / 72;
 const displayMm = (points: number) => String(Math.round(points * mmPerPoint * 1000) / 1000);
 
-function Margin({ name, value, maximum, onChange, onInvalid }: {
-  name: string; value: number; maximum: number; onChange(value: number): void;
+function Margin({ name, nameKey, ariaLabelKey, value, maximum, onChange, onInvalid }: {
+  name: string; nameKey: TranslationKey; ariaLabelKey: TranslationKey; value: number; maximum: number; onChange(value: number): void;
   onInvalid(name: string, invalid: boolean): void;
 }) {
+  const { t } = useTranslation();
   const [text, setText] = useState(displayMm(value));
   const invalid = text.trim() === '' || !Number.isFinite(Number(text)) || Number(text) < 0 || Number(text) >= maximum * mmPerPoint;
   useEffect(() => { setText(displayMm(value)); onInvalid(name, false); }, [value, name, onInvalid]);
   useEffect(() => () => onInvalid(name, false), [name, onInvalid]);
-  return <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{name} (mm)</span>
-    <Input aria-label={`PDF crop ${name.toLowerCase()} margin (mm)`} type="number" min="0" step="any"
+  return <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.pdfCrop.marginNameMm', { name: t(nameKey) })}</span>
+    <Input aria-label={t(ariaLabelKey)} type="number" min="0" step="any"
       value={text} aria-invalid={invalid} className="h-8 text-xs aria-[invalid=true]:border-destructive" onChange={event => {
         const next = event.currentTarget.value;
         const points = Number(next) / mmPerPoint;
@@ -33,6 +35,7 @@ function Margin({ name, value, maximum, onChange, onInvalid }: {
 export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
   pdf: AppearancePdfControls; disabled: boolean; onInvalid(name: string, invalid: boolean): void;
 }) {
+  const { t } = useTranslation();
   const [reset, setReset] = useState(0);
   const [drag, setDrag] = useState<{ id: number; start: [number, number]; end: [number, number] } | null>(null);
   const [width, height] = pdf.pageSizePoints;
@@ -49,7 +52,7 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
   const shown = drag ? rectangle(drag.start, drag.end) : pdf.cropPoints;
   return <div className="space-y-2">
     {pdf.pagePreviewUrl && <div className="rounded-md border bg-muted/40 p-2">
-      <div role="group" aria-label="PDF crop preview" tabIndex={0}
+      <div role="group" aria-label={t('appearance.pdfCrop.previewAriaLabel')} tabIndex={0}
         className={`relative mx-auto w-full overflow-hidden bg-white outline-none focus-visible:ring-2 focus-visible:ring-ring ${disabled ? 'opacity-60' : 'cursor-crosshair'}`}
         style={{ aspectRatio: `${width}/${height}`, maxWidth: 240 * width / height, touchAction: disabled ? 'auto' : 'none' }}
         onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setDrag(null); } }}
@@ -71,23 +74,23 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
           if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
           setDrag(null);
         }}>
-        <img src={pdf.pagePreviewUrl} alt={`Page ${pdf.pageNumber} of ${pdf.documentName}`} draggable={false} className="pointer-events-none block h-full w-full select-none" />
+        <img src={pdf.pagePreviewUrl} alt={t('appearance.pdfCrop.pageAlt', { pageNumber: pdf.pageNumber, documentName: pdf.documentName })} draggable={false} className="pointer-events-none block h-full w-full select-none" />
         <div aria-hidden="true" className="pointer-events-none absolute border-2 border-primary bg-primary/5"
           style={{ left: `${shown[0] / width * 100}%`, top: `${shown[1] / height * 100}%`, width: `${shown[2] / width * 100}%`, height: `${shown[3] / height * 100}%`, boxShadow: '0 0 0 999px rgb(0 0 0 / 35%)' }} />
       </div>
-      <p className="mt-2 text-[10px] text-muted-foreground">Drag over the page to crop. Escape cancels the selection.</p>
+      <p className="mt-2 text-[10px] text-muted-foreground">{t('appearance.pdfCrop.dragToCrop')}</p>
     </div>}
     <div className="flex items-center justify-between gap-2">
-      <span className="text-[11px] font-medium">Page crop</span>
+      <span className="text-[11px] font-medium">{t('appearance.pdfCrop.pageCropLabel')}</span>
       <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[11px]" disabled={disabled}
-        onClick={() => { setReset(value => value + 1); pdf.onCropChange([0, 0, width, height]); }}>Use full page</Button>
+        onClick={() => { setReset(value => value + 1); pdf.onCropChange([0, 0, width, height]); }}>{t('appearance.pdfCrop.useFullPage')}</Button>
     </div>
-    <fieldset disabled={disabled} className="grid grid-cols-2 gap-2" aria-label="PDF crop paper margins">
-      <Margin key={`${reset}:Left`} name="Left" value={left} maximum={width - right} onInvalid={onInvalid} onChange={value => pdf.onCropChange([value, top, width - value - right, cropHeight])} />
-      <Margin key={`${reset}:Top`} name="Top" value={top} maximum={height - bottom} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, value, cropWidth, height - value - bottom])} />
-      <Margin key={`${reset}:Right`} name="Right" value={right} maximum={width - left} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, width - left - value, cropHeight])} />
-      <Margin key={`${reset}:Bottom`} name="Bottom" value={bottom} maximum={height - top} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, cropWidth, height - top - value])} />
+    <fieldset disabled={disabled} className="grid grid-cols-2 gap-2" aria-label={t('appearance.pdfCrop.marginsAriaLabel')}>
+      <Margin key={`${reset}:Left`} name="Left" nameKey="appearance.pdfCrop.marginLeft" ariaLabelKey="appearance.pdfCrop.marginLeftAriaLabel" value={left} maximum={width - right} onInvalid={onInvalid} onChange={value => pdf.onCropChange([value, top, width - value - right, cropHeight])} />
+      <Margin key={`${reset}:Top`} name="Top" nameKey="appearance.pdfCrop.marginTop" ariaLabelKey="appearance.pdfCrop.marginTopAriaLabel" value={top} maximum={height - bottom} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, value, cropWidth, height - value - bottom])} />
+      <Margin key={`${reset}:Right`} name="Right" nameKey="appearance.pdfCrop.marginRight" ariaLabelKey="appearance.pdfCrop.marginRightAriaLabel" value={right} maximum={width - left} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, width - left - value, cropHeight])} />
+      <Margin key={`${reset}:Bottom`} name="Bottom" nameKey="appearance.pdfCrop.marginBottom" ariaLabelKey="appearance.pdfCrop.marginBottomAriaLabel" value={bottom} maximum={height - top} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, cropWidth, height - top - value])} />
     </fieldset>
-    <p className="text-[10px] leading-relaxed text-muted-foreground">Margins use paper millimetres. Drawing scale is calibrated separately.</p>
+    <p className="text-[10px] leading-relaxed text-muted-foreground">{t('appearance.pdfCrop.marginsNote')}</p>
   </div>;
 }

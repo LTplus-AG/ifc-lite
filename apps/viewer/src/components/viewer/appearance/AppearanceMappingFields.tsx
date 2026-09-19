@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { appearanceSelectClass } from './AppearanceSourceFields.js';
 import type { AppearanceDraftSettings } from './types.js';
+import { useTranslation } from '@/i18n';
 
 function NumberField({ name, label, value, positive, onChange, onInvalid }: {
   name: string; label: string; value: number; positive?: boolean;
@@ -29,43 +30,44 @@ export function AppearanceMappingFields({ settings: s, onChange, disabled, onInv
   settings: AppearanceDraftSettings; onChange(patch: Partial<AppearanceDraftSettings>): void;
   calibrated?: boolean; disabled: boolean; onInvalid(name: string, invalid: boolean): void;
 }) {
+  const { t } = useTranslation();
   const uv = !calibrated && s.kind === 'existingUv';
   const box = !calibrated && s.kind === 'box';
   const field = (name: keyof AppearanceDraftSettings, label: string, positive = false) => <NumberField
     key={`${s.kind}:${name}`} name={name} label={label} value={Number(s[name])} positive={positive}
     onChange={value => onChange({ [name]: value })} onInvalid={onInvalid} />;
   return <fieldset disabled={disabled} className="space-y-2">
-    <legend className="mb-2 text-xs font-medium">Mapping</legend>
-    {!calibrated && <select aria-label="Texture mapping" className={appearanceSelectClass} value={s.kind} onChange={event => {
+    <legend className="mb-2 text-xs font-medium">{t('appearance.mapping.legend')}</legend>
+    {!calibrated && <select aria-label={t('appearance.mapping.kindAriaLabel')} className={appearanceSelectClass} value={s.kind} onChange={event => {
       const kind = event.target.value;
       if (kind === 'existingUv' || kind === 'planar' || kind === 'box') onChange({ kind });
     }}>
-      <option value="existingUv">Existing UV coordinates</option>
-      <option value="planar">Planar projection</option>
-      <option value="box">Box projection</option>
+      <option value="existingUv">{t('appearance.mapping.kindExistingUv')}</option>
+      <option value="planar">{t('appearance.mapping.kindPlanar')}</option>
+      <option value="box">{t('appearance.mapping.kindBox')}</option>
     </select>}
-    <p className="text-[10px] leading-relaxed text-muted-foreground">{calibrated ? 'Place point A at the model coordinates below. Drawing scale comes from the measured span.' : uv ? 'Keep the surface’s UV layout. Repeat values are multipliers.' : 'Consistent physical tile size across objects, in IFC world coordinates.'}</p>
-    {(calibrated || s.kind === 'planar') && <label className="block space-y-1 text-[11px] text-muted-foreground"><span>Projection plane</span>
-      <select aria-label="Projection plane" className={appearanceSelectClass} value={s.plane} onChange={event => {
+    <p className="text-[10px] leading-relaxed text-muted-foreground">{calibrated ? t('appearance.mapping.hintCalibrated') : uv ? t('appearance.mapping.hintUv') : t('appearance.mapping.hintTile')}</p>
+    {(calibrated || s.kind === 'planar') && <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.mapping.projectionPlaneLabel')}</span>
+      <select aria-label={t('appearance.mapping.projectionPlaneLabel')} className={appearanceSelectClass} value={s.plane} onChange={event => {
         const plane = event.target.value;
         if (plane === 'xy' || plane === 'xz' || plane === 'yz') onChange({ plane });
-      }}><option value="xy">XY · horizontal</option><option value="xz">XZ · vertical</option><option value="yz">YZ · vertical</option></select>
+      }}><option value="xy">{t('appearance.mapping.planeXy')}</option><option value="xz">{t('appearance.mapping.planeXz')}</option><option value="yz">{t('appearance.mapping.planeYz')}</option></select>
     </label>}
     {!calibrated && <div className="grid grid-cols-2 gap-2">
-      {uv ? <>{field('repeatU', 'Repeat U (×)', true)}{field('repeatV', 'Repeat V (×)', true)}</> :
-        <>{field('tileWidth', box ? 'Tile X (m)' : 'Tile width (m)', true)}{field('tileHeight', box ? 'Tile Y (m)' : 'Tile height (m)', true)}{box && field('tileDepth', 'Tile Z (m)', true)}</>}
+      {uv ? <>{field('repeatU', t('appearance.mapping.repeatU'), true)}{field('repeatV', t('appearance.mapping.repeatV'), true)}</> :
+        <>{field('tileWidth', box ? t('appearance.mapping.tileXm') : t('appearance.mapping.tileWidthM'), true)}{field('tileHeight', box ? t('appearance.mapping.tileYm') : t('appearance.mapping.tileHeightM'), true)}{box && field('tileDepth', t('appearance.mapping.tileZm'), true)}</>}
     </div>}
     <details className="rounded-md border px-2.5 py-2">
-      <summary className="cursor-pointer text-[11px] font-medium">{calibrated ? 'Alignment' : 'Alignment and tiling'}</summary>
+      <summary className="cursor-pointer text-[11px] font-medium">{calibrated ? t('appearance.mapping.alignment') : t('appearance.mapping.alignmentAndTiling')}</summary>
       <div className="mt-2 grid grid-cols-2 gap-2">
-        {!box && field('rotationDegrees', 'Rotation (°)')}
-        {field('offsetU', calibrated ? 'Point A · X (m)' : uv ? 'Offset U (UV)' : box ? 'Offset X (m)' : 'Offset U (m)')}
-        {field('offsetV', calibrated ? 'Point A · Y (m)' : uv ? 'Offset V (UV)' : box ? 'Offset Y (m)' : 'Offset V (m)')}
-        {(box || calibrated) && field('offsetW', calibrated ? 'Point A · Z (m)' : 'Offset Z (m)')}
+        {!box && field('rotationDegrees', t('appearance.mapping.rotationDegrees'))}
+        {field('offsetU', calibrated ? t('appearance.mapping.pointAX') : uv ? t('appearance.mapping.offsetUUv') : box ? t('appearance.mapping.offsetXm') : t('appearance.mapping.offsetUm'))}
+        {field('offsetV', calibrated ? t('appearance.mapping.pointAY') : uv ? t('appearance.mapping.offsetVUv') : box ? t('appearance.mapping.offsetYm') : t('appearance.mapping.offsetVm'))}
+        {(box || calibrated) && field('offsetW', calibrated ? t('appearance.mapping.pointAZ') : t('appearance.mapping.offsetZm'))}
       </div>
       {!calibrated && <div className="mt-3 flex gap-4 text-[11px]">
-        <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.repeatS} onChange={event => onChange({ repeatS: event.target.checked })} />Tile U</label>
-        <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.repeatT} onChange={event => onChange({ repeatT: event.target.checked })} />Tile V</label>
+        <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.repeatS} onChange={event => onChange({ repeatS: event.target.checked })} />{t('appearance.mapping.tileU')}</label>
+        <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.repeatT} onChange={event => onChange({ repeatT: event.target.checked })} />{t('appearance.mapping.tileV')}</label>
       </div>}
     </details>
   </fieldset>;

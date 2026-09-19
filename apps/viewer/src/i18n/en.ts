@@ -5,6 +5,8 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { chartsEn } from './catalogues/charts.en';
+import { appearancePanelEn } from './catalogues/appearance-panel.en';
+import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -12,10 +14,12 @@ import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
+import { hierarchyEn } from './catalogues/hierarchy.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
+import { propertiesEn } from './catalogues/properties.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
@@ -42,6 +46,10 @@ export const en = {
   ...splitToolEn,
   ...documentEn,
   ...documentMenuEn,
+  ...hierarchyEn,
+  ...propertiesEn,
+  ...appearancePanelEn,
+  ...appearanceWorkflowsEn,
   ...compareKeyPropertyEn,
 } as const;
 

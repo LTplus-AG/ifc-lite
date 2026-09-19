@@ -121,14 +121,14 @@ describe('McpLanding localization (#4918)', () => {
     // catalogue's own English text under its own locale name, rather than
     // relying on the real `en` fallback, keeps this oracle independent of
     // that integration step landing first.
-    registerLocale('mcp-landing-en-baseline', mcpEn as unknown as Catalogue);
-    act(() => setLocale('mcp-landing-en-baseline'));
+    registerLocale('en-x-mcp-baseline', mcpEn as unknown as Catalogue);
+    act(() => setLocale('en-x-mcp-baseline'));
     const container = render(<McpLanding />);
     openInteractiveChrome(container);
     const english = readableStrings();
 
-    registerLocale('mcp-landing-pseudo', PSEUDO);
-    act(() => setLocale('mcp-landing-pseudo'));
+    registerLocale('en-x-mcp-pseudo', PSEUDO);
+    act(() => setLocale('en-x-mcp-pseudo'));
     const after = readableStrings();
 
     for (const key of STATIC_KEYS) {
@@ -169,5 +169,16 @@ describe('McpLanding localization (#4918)', () => {
     const heading = container.querySelector('#tools h2');
 
     assert.ok(heading?.textContent?.includes(`tools typed: ${CATALOG.tools.length}`));
+  });
+
+  it('lets translators reorder each complete hero statistic (#5000 review)', () => {
+    registerLocale('en-x-mcp-stat', {
+      'mcp.mcpLanding.statTypedTools': { one: 'tool BEFORE {countDisplay}', other: 'tools BEFORE {countDisplay}' },
+    });
+    act(() => setLocale('en-x-mcp-stat'));
+    const container = render(<McpLanding />);
+    const statistic = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('tools BEFORE'));
+
+    assert.equal(statistic?.textContent?.trim(), `tools BEFORE ${CATALOG.tools.length}`);
   });
 });

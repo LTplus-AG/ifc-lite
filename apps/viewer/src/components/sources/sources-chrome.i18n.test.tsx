@@ -242,11 +242,26 @@ describe('SourceBrowserHeader localization', () => {
     assert.ok(
       readableStrings().has(
         expectedMarked('sources.sourceBrowserHeader.syncedAt', {
-          time: expectedMarked('sources.sourceBrowserHeader.syncedHoursAgo', { hours: 1 }),
+          time: expectedMarked('sources.sourceBrowserHeader.syncedHoursAgo', { count: 1 }),
         }),
       ),
       'syncedAt must nest the translated syncedHoursAgo text',
     );
+  });
+
+  it('selects singular and plural minute and hour messages (#5000 review)', () => {
+    registerLocale('sources-sync-plurals', {
+      'sources.sourceBrowserHeader.syncedMinutesAgo': { one: 'one minute', other: '{count} minutes' },
+      'sources.sourceBrowserHeader.syncedHoursAgo': { one: 'one hour', other: '{count} hours' },
+    });
+    act(() => setLocale('sources-sync-plurals'));
+    const now = Date.now();
+    const cases = [[now - 60_000, 'one minute'], [now - 120_000, '2 minutes'], [now - 3_600_000, 'one hour'], [now - 7_200_000, '2 hours']] as const;
+    for (const [catalogUpdatedAt, expected] of cases) {
+      cleanup();
+      render(<SourceBrowserHeader step="folders" providerTitle="Provider" selectedProject={{ id: 'p', name: 'Project' }} selectedFileArea={{ id: 'a', name: 'Area' }} catalogUpdatedAt={catalogUpdatedAt} syncing={false} busy={false} onBack={() => {}} onSync={() => {}} />);
+      assert.ok(document.body.textContent?.includes(expected), `expected sync age "${expected}"`);
+    }
   });
 });
 

@@ -53,8 +53,8 @@ import {
   mirrorPropertyDelete,
   type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
-import { pathForEntity, pathForGuid, registerEntityPath, unregisterEntityPath } from '@/lib/collab/entity-paths';
-import { createRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
+import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
+import { createRemoteOverlayEntity, deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
@@ -915,7 +915,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       onEntityDelete: (modelId, entityId) => {
         const store = roomStoreFor(get(), modelId);
         if (!store) return;
-        roomMutationViewFor(get(), modelId)?.deleteEntity(entityId); unregisterEntityPath(store, entityId);
+        if (!deleteRemoteOverlayEntity(store, roomMutationViewFor(get(), modelId), entityId)) return;
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
         get().hideEntities([globalId]);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));

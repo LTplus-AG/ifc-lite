@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { getInheritanceChainAcrossSchemas, isInstantiable, type IfcDataStore } from '@ifc-lite/parser';
 import { entityForPath, registerEntityPath } from './entity-paths';
 import { applyRemoteAttribute } from './mutation-bridge';
+export { deleteRemoteOverlayEntity } from './remote-entity-delete';
 
 export function createRemoteOverlayEntity(
   store: IfcDataStore,
@@ -15,7 +16,10 @@ export function createRemoteOverlayEntity(
   attributes: Readonly<Record<string, unknown>>,
 ): boolean {
   if (entityForPath(store, entityPath) !== null) return false;
-  const created = new StoreEditor(store, view).addEntity(ifcClass, []);
+  if (!isInstantiable(ifcClass)) return false;
+  const guid = entityPath.slice(entityPath.lastIndexOf('/') + 1);
+  const initial = getInheritanceChainAcrossSchemas(ifcClass).includes('IfcRoot') ? [`'${guid.replace(/'/g, "''")}'`] : [];
+  const created = new StoreEditor(store, view).addEntity(ifcClass, initial);
   registerEntityPath(store, created.expressId, entityPath);
   for (const [name, value] of Object.entries(attributes)) {
     applyRemoteAttribute(view, store, created.expressId, name, value);

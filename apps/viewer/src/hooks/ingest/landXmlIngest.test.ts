@@ -223,6 +223,18 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Math.abs(info.max.y - (102 * 0.3048)) < 1e-5);
   });
 
+  it('uses the declared linear unit for elevations when elevationUnit is omitted', () => {
+    const imperial = LANDXML
+      .replace('<Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter"\n      temperatureUnit="celsius" pressureUnit="milliBars" elevationUnit="meter"/>',
+        '<Imperial areaUnit="squareFoot" linearUnit="foot" volumeUnit="cubicFeet" temperatureUnit="fahrenheit" pressureUnit="inchHG"/>')
+      .replace('<P id="10">5000000 2600000 100</P>', '<P id="10">0 0 3</P>')
+      .replace('<P id="20">5000000 2600010 100</P>', '<P id="20">0 3 3</P>')
+      .replace('<P id="30">5000010 2600000 102</P>', '<P id="30">3 0 6</P>');
+    const result = parseLandXmlViewerModel(bytes(imperial));
+    const info = result.geometryResult.coordinateInfo.originalBounds;
+    assert.ok(Math.abs(info.max.y - 1.8288) < 1e-12, 'elevation uses the same foot scale as X/Z');
+  });
+
   it('rejects prototype property names as unsupported units', () => {
     const inheritedUnit = LANDXML.replace('linearUnit="meter"', 'linearUnit="constructor"');
     assert.throws(

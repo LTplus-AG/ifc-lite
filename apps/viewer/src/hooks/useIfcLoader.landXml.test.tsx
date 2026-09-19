@@ -65,7 +65,7 @@ afterEach(async () => {
 
 describe('useIfcLoader LandXML route (#4937)', () => {
   it('loads and federates TIN meshes through the canonical model finalizer', async () => {
-    const primary = landXmlFile('terrain.xml', 0);
+    const primary = landXmlFile('terrain.xml', 800_000_000);
     assert.equal(isSupportedModelFile(primary), true, '.xml must be offered by every canonical picker');
     await act(async () => hookApi!.loadFile(primary, { kind: 'primary' }));
 
@@ -78,7 +78,7 @@ describe('useIfcLoader LandXML route (#4937)', () => {
     assert.equal(useViewerStore.getState().error, null);
 
     await act(async () => hookApi!.loadFile(
-      landXmlFile('terrain-federated.xml', 100),
+      landXmlFile('terrain-federated.xml', 800_000_100),
       { kind: 'federated', modelId: 'landxml-federated' },
     ));
     const second = useViewerStore.getState().models.get('landxml-federated');
@@ -86,5 +86,11 @@ describe('useIfcLoader LandXML route (#4937)', () => {
     assert.ok(second.idOffset > first.maxExpressId);
     assert.equal(second.geometryResult.meshes[0].expressId, 1 + second.idOffset);
     assert.equal(second.loadPath, 'landxml');
+    assert.deepEqual(second.geometryResult.coordinateInfo.originShift, first.geometryResult?.coordinateInfo.originShift);
+    const firstOrigin = first.geometryResult?.meshes[0].origin;
+    const secondOrigin = second.geometryResult.meshes[0].origin;
+    assert.ok(firstOrigin && secondOrigin);
+    assert.deepEqual(secondOrigin.map((value, axis) => value - firstOrigin[axis]), [100, 0, -100],
+      'federated LandXML keeps survey separation inside one shared render frame');
   });
 });

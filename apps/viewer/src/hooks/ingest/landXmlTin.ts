@@ -131,10 +131,9 @@ function parseUnits(root: XmlElement): LandXmlTinDocument['units'] {
   );
   if (!declaration) throw new Error('LandXML Units must contain Metric or Imperial');
   const linearUnit = requiredAttribute(declaration, 'linearUnit', 'Units');
-  // LandXML 1.2 declares `meter` as the schema default for elevationUnit on
-  // both Metric and Imperial. Honour that exact default rather than guessing
-  // from linearUnit.
-  const elevationUnit = declaration.getAttribute('elevationUnit')?.trim() || 'meter';
+  // Point coordinates share the declared linear unit. Some exporters repeat
+  // it as elevationUnit, but omission must not turn only Z into metres.
+  const elevationUnit = declaration.getAttribute('elevationUnit')?.trim() || linearUnit;
   return {
     linearUnit,
     elevationUnit,

@@ -15,12 +15,13 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, after } from 'node:test';
+import { describe, it, beforeEach, afterEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store/index.js';
+import { registerLocale, setLocale } from '@/i18n';
 import { MeasureOverlay } from './MeasurePanel.js';
 import { handleRadiusClick } from '../selectionHandlers.js';
 import type { MouseHandlerContext } from '../mouseHandlerTypes.js';
@@ -211,5 +212,36 @@ describe('radius mode, driven through the shipped panel (#2737 item 2)', () => {
     );
     // Not yet recorded — still an in-progress sequence.
     assert.equal(useViewerStore.getState().radiusMeasurements.length, 0);
+  });
+});
+
+/**
+ * Revert-oracle witness (#4918): a small, independent proof that the
+ * panel TITLE is actually wired to `t()` rather than a hardcoded "Measure"
+ * string, using only pre-existing public i18n API (`registerLocale` /
+ * `setLocale` from `@/i18n`, no import of the new `measure.en.ts` catalogue
+ * module). Deliberately kept separate from `Measure.i18n.test.tsx`'s
+ * pseudo-locale oracle: that file imports the catalogue module directly,
+ * so reverting the catalogue itself (a brand-new file) makes it fail to
+ * LOAD rather than fail an assertion — the exact INCONCLUSIVE case
+ * `check-test-revert-oracle.mjs` warns about for brand-new modules. This
+ * witness reverts cleanly to a RED assertion instead, because it never
+ * imports the new file.
+ */
+describe('MeasureOverlay panel title is localized (#4918 revert-oracle witness)', () => {
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  it('renders a registered locale override for the panel title instead of the hardcoded English string', () => {
+    registerLocale('measure-witness', { 'measure.panelTitle': 'MEASURE-WITNESS-TITLE' });
+    setLocale('measure-witness');
+    const container = renderNode(<MeasureOverlay />);
+    const text = container.textContent ?? '';
+    assert.match(
+      text,
+      /MEASURE-WITNESS-TITLE/,
+      'panel title must come from the active locale (t("measure.panelTitle")), not a hardcoded "Measure" string',
+    );
   });
 });

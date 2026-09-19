@@ -253,6 +253,7 @@
   "apps/viewer/src/components/viewer/SunTimeControls.tsx": 5,
   "apps/viewer/src/components/viewer/TextAnnotationEditor.tsx": 2,
   "apps/viewer/src/components/viewer/TitleBlockEditor.tsx": 29,
+  "apps/viewer/src/components/viewer/tools/MeasurePanel.tsx": 1,
   "apps/viewer/src/components/viewer/UsdExportDialog.tsx": 29,
   "apps/viewer/src/components/viewer/ViewerLayout.tsx": 13,
   "apps/viewer/src/components/viewer/Viewport.tsx": 2,

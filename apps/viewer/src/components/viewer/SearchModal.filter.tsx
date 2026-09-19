@@ -33,7 +33,8 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
+import { evaluateFilterGroupsFederated } from '@/lib/search/filter-evaluate-groups';
+import { totalRuleCount } from '@/lib/search/filter-groups';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
@@ -48,6 +49,7 @@ import { selectionKeyColumnIndex } from '@/lib/search/selection-key-column';
 import type { ListDefinition } from '@/lib/lists';
 import { toast } from '@/components/ui/toast';
 import { SearchModalFilterBuilder } from './SearchModal.filter.builder';
+import { RuleSummary } from './SearchModal.filter.ruleSummary';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
 const RESULT_ROW_HEIGHT = 28;
@@ -115,6 +117,7 @@ export function SearchModalFilter() {
   const activeModel = activeModelId ? models.get(activeModelId) : undefined;
   const activeStore = activeModel?.ifcDataStore ?? null;
   const multiModel = models.size > 1;
+  const filterRuleCount = totalRuleCount(searchFilter.groups);
 
   // ── Run lifecycle: progress, cancel, limit-hit badge ──────────────────
   const runController = useRef<AbortController | null>(null);
@@ -123,7 +126,7 @@ export function SearchModalFilter() {
 
   const runFilter = useCallback(async () => {
     if (searchFilterRunning) return;
-    if (searchFilter.rules.length === 0) {
+    if (totalRuleCount(searchFilter.groups) === 0) {
       setSearchFilterError('Add at least one rule before running.');
       return;
     }
@@ -180,10 +183,9 @@ export function SearchModalFilter() {
       }
 
       const limit = searchFilter.limit > 0 ? searchFilter.limit : DEFAULT_LIMIT;
-      const matched = await evaluateFilterRulesFederated(
+      const matched = await evaluateFilterGroupsFederated(
         modelArgs,
-        searchFilter.rules,
-        searchFilter.combinator,
+        searchFilter.groups,
         {
           limit,
           definedModelTagIds: definedModelTagIdsOf(useViewerStore.getState()),
@@ -242,7 +244,7 @@ export function SearchModalFilter() {
   useEffect(() => {
     if (!autoRunPending) return;
     setAutoRunPending(false);
-    if (searchFilter.rules.length === 0) {
+    if (totalRuleCount(searchFilter.groups) === 0) {
       // Hierarchy cleared the last rule — drop the stale table rather than
       // run an empty filter (which the runner rejects anyway).
       setSearchFilterResult(null);
@@ -251,7 +253,7 @@ export function SearchModalFilter() {
     }
   }, [
     autoRunPending,
-    searchFilter.rules.length,
+    searchFilter.groups,
     searchFilterRunning,
     setAutoRunPending,
     setSearchFilterResult,
@@ -330,7 +332,7 @@ export function SearchModalFilter() {
       (r) => r.modelId === rowModelId && r.expressId === expressId,
     );
     if (cycleIndex >= 0) {
-      enterVimCycle(`filter: ${searchFilter.rules.length} rule${searchFilter.rules.length === 1 ? '' : 's'}`, cycleResults, cycleIndex);
+      enterVimCycle(`filter: ${filterRuleCount} rule${filterRuleCount === 1 ? '' : 's'}`, cycleResults, cycleIndex);
     }
     // Close the modal so the framing is actually visible. The dialog overlay
     // is `fixed inset-0 bg-black/80` (ui/dialog.tsx:23), so without this the
@@ -343,7 +345,7 @@ export function SearchModalFilter() {
     // (store/index.ts:544), never on close, so reopening shows the same table
     // without re-running the filter.
     setSearchModalOpen(false);
-  }, [activeModelId, cameraCallbacks, cycleResults, enterVimCycle, models, modelIdColumnIndex, searchFilter.rules.length, selectionKeyIndex, setSearchModalOpen, setSelectedEntity, setSelectedEntityId, setSelectedEntityIds]);
+  }, [activeModelId, cameraCallbacks, cycleResults, enterVimCycle, models, modelIdColumnIndex, filterRuleCount, selectionKeyIndex, setSearchModalOpen, setSelectedEntity, setSelectedEntityId, setSelectedEntityIds]);
 
   const handleExport = useCallback((format: 'csv' | 'json') => {
     if (!searchFilterResult || searchFilterResult.rows.length === 0) return;
@@ -534,7 +536,7 @@ export function SearchModalFilter() {
       { id: 'attr-class', source: 'attribute', propertyName: 'Class', label: 'Class' },
     ];
     const seenCol = new Set<string>();
-    for (const rule of searchFilter.rules) {
+    for (const rule of searchFilter.groups.flatMap((g) => g.rules)) {
       if (rule.kind === 'property' && rule.setName && rule.propertyName) {
         const key = `property:${rule.setName}:${rule.propertyName}`;
         if (seenCol.has(key)) continue;
@@ -574,7 +576,7 @@ export function SearchModalFilter() {
     setPendingListDraft(draft);
     setListPanelVisible(true);
     setSearchModalOpen(false);
-  }, [searchFilterResult, searchFilter.rules, activeModelId, setPendingListDraft, setListPanelVisible, setSearchModalOpen]);
+  }, [searchFilterResult, searchFilter.groups, activeModelId, setPendingListDraft, setListPanelVisible, setSearchModalOpen]);
 
   if (!activeStore) {
     return (
@@ -584,7 +586,7 @@ export function SearchModalFilter() {
     );
   }
 
-  const canRun = searchFilter.rules.length > 0;
+  const canRun = filterRuleCount > 0;
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -598,8 +600,9 @@ export function SearchModalFilter() {
       {/* ── Run bar: status · run/cancel · export ──────────────────────── */}
       <div className="flex items-center gap-2 border-b px-3 py-2 text-[11px]">
         <RuleSummary
-          ruleCount={searchFilter.rules.length}
-          combinator={searchFilter.combinator}
+          ruleCount={filterRuleCount}
+          groupCount={searchFilter.groups.length}
+          combinator={searchFilter.groups[0]?.combinator ?? 'AND'}
           limit={searchFilter.limit}
         />
 
@@ -726,35 +729,6 @@ export function SearchModalFilter() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────
-
-function RuleSummary({
-  ruleCount,
-  combinator,
-  limit,
-}: {
-  ruleCount: number;
-  combinator: 'AND' | 'OR';
-  limit: number;
-}) {
-  if (ruleCount === 0) {
-    return (
-      <span className="text-muted-foreground italic">No rules — add one to run.</span>
-    );
-  }
-  return (
-    <span className="text-muted-foreground">
-      <span className="font-mono text-foreground">{ruleCount}</span>{' '}
-      rule{ruleCount === 1 ? '' : 's'}
-      <span className="mx-1">·</span>
-      <span className="font-mono">{combinator}</span>
-      <span className="mx-1">·</span>
-      limit{' '}
-      <span className="font-mono text-foreground">
-        {limit > 0 ? limit.toLocaleString() : '∞'}
-      </span>
-    </span>
-  );
-}
 
 function FilterErrorBox({ raw }: { raw: string }) {
   return (

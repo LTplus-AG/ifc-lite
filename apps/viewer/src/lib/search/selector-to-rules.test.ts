@@ -229,20 +229,54 @@ describe('selectorToFilterRules — the documented examples', () => {
     ]);
   });
 
-  it('15. a union keeps the FIRST group and names the rest', () => {
+  it('15. a `+` union produces TWO real groups, OR across them, AND within each (#4904)', () => {
     const out = adapt('IfcSlab, material=concrete + IfcDoor');
-    assert.deepEqual(out.rules, [Rule.ifcType(SLABS, 'in'), Rule.material('eq', 'concrete')]);
-    assert.equal(out.unsupported.length, 1);
-    assert.ok(out.unsupported[0]?.includes('IfcDoor'), out.unsupported[0]);
-    assert.match(out.unsupported[0] ?? '', /\+/);
+    assert.equal(out.unsupported.length, 0);
+    assert.equal(out.groups.length, 2);
+    assert.deepEqual(out.groups[0], {
+      rules: [Rule.ifcType(SLABS, 'in'), Rule.material('eq', 'concrete')],
+      combinator: 'AND',
+    });
+    assert.deepEqual(out.groups[1], { rules: [Rule.ifcType(DOORS, 'in')], combinator: 'AND' });
+    // `rules`/`combinator` stay a convenience alias for group 0, for the one
+    // caller (the builder's "add search query as rule" button) that only
+    // ever edits a single active group and has no union concept.
+    assert.deepEqual(out.rules, out.groups[0].rules);
   });
 
-  it('16. two dropped groups produce two entries, each quoting its own filters', () => {
+  it('16. a three-group union produces three real groups, none of them dropped', () => {
     const out = adapt(`IfcDoor, IfcWindow + IfcWall, IfcSlab, material=concrete + ${GUID}`);
-    assert.deepEqual(out.rules, [Rule.ifcType([...DOORS, 'IfcWindow', 'IfcWindowStandardCase'], 'in')]);
-    assert.equal(out.unsupported.length, 2);
-    assert.ok(out.unsupported[0]?.includes('IfcWall, IfcSlab, material=concrete'), out.unsupported[0]);
-    assert.ok(out.unsupported[1]?.includes(GUID), out.unsupported[1]);
+    assert.equal(out.unsupported.length, 0);
+    assert.equal(out.groups.length, 3);
+    assert.deepEqual(out.groups[0].rules, [Rule.ifcType([...DOORS, 'IfcWindow', 'IfcWindowStandardCase'], 'in')]);
+    assert.deepEqual(out.groups[1].rules, [
+      Rule.ifcType([...WALLS, ...SLABS], 'in'),
+      Rule.material('eq', 'concrete'),
+    ]);
+    assert.deepEqual(out.groups[2].rules, [Rule.globalId([GUID], 'in')]);
+  });
+
+  it('a `+` union refuses the WHOLE query when ANY group has an unsupported construct', () => {
+    // `query:` is refused permanently (#4094 decision) — group 2 here can
+    // never produce a rule, so the readable group 1 (`IfcWall`) must not be
+    // applied alone: that would silently narrow what the union matches.
+    const out = adapt('IfcWall + query:types.count=0');
+    assert.equal(out.groups.length, 0);
+    assert.deepEqual(out.rules, []);
+    assert.equal(out.unsupported.length, 1);
+    assert.match(out.unsupported[0] ?? '', /group 2 of 2/);
+    assert.match(out.unsupported[0] ?? '', /query:types\.count=0/);
+  });
+
+  it('a single-group selector keeps the pre-#4904 partial-apply-and-warn behaviour', () => {
+    // Not a union (one group only) — an unsupported construct inside it is
+    // still applied-with-warning, the long-standing #4091 policy this test
+    // pins so the `+`-union refusal above doesn't quietly widen to affect it.
+    const out = adapt('IfcWall, query:types.count=0');
+    assert.equal(out.groups.length, 1);
+    assert.deepEqual(out.rules, [Rule.ifcType(WALLS, 'in')]);
+    assert.equal(out.unsupported.length, 1);
+    assert.match(out.unsupported[0] ?? '', /query:types\.count=0/);
   });
 
   it('17. location reaches a storey by name — and only that far, see filter-evaluate.test.ts', () => {
@@ -528,10 +562,11 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
   });
 
   it('every unsupported entry quotes the text the user typed', () => {
-    // Only the dropped "+ IfcDoor" group remains unsupported here — the
-    // GlobalId subtraction, Description=x, type=WT01 AND parent=Foo now all
-    // become rules (#4094, #4903).
-    const out = adapt(`IfcWall, ! ${GUID}, type=WT01, parent=Foo, Description=x + IfcDoor`);
+    // Nothing is unsupported here any more — the GlobalId subtraction,
+    // Description=x, type=WT01, parent=Foo AND the "+ IfcDoor" union all
+    // become real rules/groups (#4094, #4903, #4904). Use a construct that
+    // genuinely has no rule (`query:`) to keep this test meaningful.
+    const out = adapt(`IfcWall, ! ${GUID}, type=WT01, parent=Foo, Description=x, query:types.count=0`);
     assert.equal(out.unsupported.length, 1);
     for (const entry of out.unsupported) {
       assert.match(entry, /^"/, `entry does not start with the quoted source: ${entry}`);

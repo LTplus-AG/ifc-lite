@@ -12,6 +12,13 @@ import {
   __internal,
 } from './saved-filters.js';
 import { Rule } from './filter-rules.js';
+import type { Combinator, FilterRule } from './filter-rules.js';
+
+/** Test-only shim for the old 3-arg `saveFilter` — this suite predates
+ *  `groups: FilterGroup[]` (#4904) and every call here is single-group. */
+function save(name: string, combinator: Combinator, rules: readonly FilterRule[]) {
+  return saveFilter(name, [{ rules: [...rules], combinator }]);
+}
 
 interface MemoryStorageLike {
   getItem(key: string): string | null;
@@ -38,12 +45,12 @@ describe('saved-filters', () => {
   });
 
   it('saves a preset and reads it back sorted by name', () => {
-    const bravo = saveFilter('Bravo', 'AND', [Rule.ifcType(['IfcWall'])]);
+    const bravo = save('Bravo', 'AND', [Rule.ifcType(['IfcWall'])]);
     // An ordinary save actually reaches storage: `persisted` must be true here,
     // not merely absent-of-false, or the flag could be hardcoded `false` and a
     // check that only looks for `false` elsewhere would still pass. (#2089)
     assert.strictEqual(bravo.persisted, true);
-    saveFilter('Alpha', 'OR', [Rule.name('contains', 'EXT')]);
+    save('Alpha', 'OR', [Rule.name('contains', 'EXT')]);
     const list = loadSavedFilters();
     assert.deepStrictEqual(list.map((p) => p.name), ['Alpha', 'Bravo']);
     assert.strictEqual(list[0].combinator, 'OR');
@@ -51,8 +58,8 @@ describe('saved-filters', () => {
   });
 
   it('overwrites an existing preset by case-insensitive name match', () => {
-    saveFilter('External Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
-    saveFilter('external walls', 'OR', [Rule.ifcType(['IfcDoor'])]);
+    save('External Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
+    save('external walls', 'OR', [Rule.ifcType(['IfcDoor'])]);
     const list = loadSavedFilters();
     assert.strictEqual(list.length, 1);
     assert.strictEqual(list[0].combinator, 'OR');
@@ -60,15 +67,15 @@ describe('saved-filters', () => {
   });
 
   it('drops empty / whitespace / over-length names', () => {
-    saveFilter('', 'AND', []);
-    saveFilter('   ', 'AND', []);
-    saveFilter('x'.repeat(__internal.MAX_NAME_LEN + 1), 'AND', []);
+    save('', 'AND', []);
+    save('   ', 'AND', []);
+    save('x'.repeat(__internal.MAX_NAME_LEN + 1), 'AND', []);
     assert.deepStrictEqual(loadSavedFilters(), []);
   });
 
   it('takes a defensive copy of the rules array', () => {
     const rules = [Rule.ifcType(['IfcWall'])];
-    saveFilter('Walls', 'AND', rules);
+    save('Walls', 'AND', rules);
     rules[0] = Rule.ifcType(['IfcDoor']);
     const loaded = loadSavedFilters()[0];
     // The mutation to the caller's array must not leak into storage.
@@ -80,23 +87,78 @@ describe('saved-filters', () => {
   });
 
   it('deleteSavedFilter removes the named preset', () => {
-    saveFilter('Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
-    saveFilter('Doors', 'AND', [Rule.ifcType(['IfcDoor'])]);
+    save('Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
+    save('Doors', 'AND', [Rule.ifcType(['IfcDoor'])]);
     deleteSavedFilter('walls');
     const list = loadSavedFilters();
     assert.deepStrictEqual(list.map((p) => p.name), ['Doors']);
   });
 
   it('deleteSavedFilter is a no-op for unknown names', () => {
-    saveFilter('Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
+    save('Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
     deleteSavedFilter('Nope');
     assert.strictEqual(loadSavedFilters().length, 1);
   });
 
   it('clearSavedFilters wipes the catalog', () => {
-    saveFilter('Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
+    save('Walls', 'AND', [Rule.ifcType(['IfcWall'])]);
     clearSavedFilters();
     assert.deepStrictEqual(loadSavedFilters(), []);
+  });
+
+  // ── schema-version edge cases (#4987 review) ──────────────────────────
+
+  it('a v2 entry saves and reads back its real groups (round-trip)', () => {
+    saveFilter('Union', [
+      { rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' },
+      { rules: [Rule.ifcType(['IfcDoor'])], combinator: 'AND' },
+    ]);
+    const [preset] = loadSavedFilters();
+    assert.strictEqual(preset.groups.length, 2);
+    assert.deepStrictEqual(preset.groups[1].rules, [Rule.ifcType(['IfcDoor'])]);
+  });
+
+  it('a literal schemaVersion 1 reads as the legacy single-group shape (#4987 review)', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'Old export', schemaVersion: 1, combinator: 'OR', rules: [Rule.ifcType(['IfcWall'])] }]),
+    );
+    const [preset] = loadSavedFilters();
+    assert.ok(preset, 'the legacy preset is readable');
+    assert.strictEqual(preset.groups.length, 1);
+    assert.strictEqual(preset.groups[0].combinator, 'OR');
+    assert.deepStrictEqual(preset.groups[0].rules, [Rule.ifcType(['IfcWall'])]);
+  });
+
+  it('a STRING schemaVersion ("2") is unreadable, not silently read as an empty v1 preset', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'Bad version', schemaVersion: '2', combinator: 'AND', rules: [] }]),
+    );
+    // Must not appear at all — reading it as v1 would silently show an
+    // EMPTY filter under the preset's real name, which then looks saved
+    // and gets re-saved as an empty query the next time someone clicks it.
+    assert.deepStrictEqual(loadSavedFilters(), []);
+  });
+
+  it('an unrecognised FUTURE schemaVersion (3) is unreadable, not routed through the v2 groups parser', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'From the future', schemaVersion: 3, groups: [{ rules: [], combinator: 'AND' }] }]),
+    );
+    assert.deepStrictEqual(loadSavedFilters(), []);
+  });
+
+  it('an entry with an unreadable group blocks writes rather than being silently dropped on the next save', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      __internal.STORAGE_KEY,
+      JSON.stringify([{ name: 'Corrupt v2', schemaVersion: 2, groups: [{ rules: [], combinator: 'XOR' }] }]),
+    );
+    assert.deepStrictEqual(loadSavedFilters(), []); // not shown...
+    const result = save('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    // ...but the write that would have permanently erased it is refused,
+    // exactly like the existing whole-catalog-corruption protection (#2085).
+    assert.strictEqual(result.persisted, false);
   });
 
   it('drops malformed payloads in storage', () => {
@@ -170,7 +232,7 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
     const nonArray = '{"presets":[{"name":"Important"}]}';
     ls.setItem(__internal.STORAGE_KEY, nonArray);
     loadSavedFilters();
-    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    save('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
     assert.ok(
       [...ls.store.values()].includes(nonArray),
       'the non-array catalog was destroyed by the save that followed the failed read',
@@ -180,7 +242,7 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
   it('does not overwrite the stored catalog with the save that follows', () => {
     ls.setItem(__internal.STORAGE_KEY, CORRUPT);
     loadSavedFilters();
-    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    save('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
     assert.ok(survives(), 'the unreadable catalog was destroyed by the save');
   });
 
@@ -190,7 +252,7 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
     ls.setItem(__internal.STORAGE_KEY, CORRUPT);
     loadSavedFilters();
 
-    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    save('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
     assert.deepStrictEqual(loadSavedFilters().map((p) => p.name), ['New preset']);
 
     // A user-initiated delete still deletes.
@@ -202,7 +264,7 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
   it('clearSavedFilters still wipes everything, preserved copy included', () => {
     ls.setItem(__internal.STORAGE_KEY, CORRUPT);
     loadSavedFilters();
-    saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    save('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
     clearSavedFilters();
     assert.deepStrictEqual(loadSavedFilters(), []);
     assert.strictEqual(ls.store.size, 0, 'an explicit wipe leaves nothing behind');
@@ -239,7 +301,7 @@ describe('saved-filters: an unreadable catalog is never deleted', () => {
     g.localStorage = full;
 
     loadSavedFilters();
-    const result = saveFilter('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
+    const result = save('New preset', 'AND', [Rule.ifcType(['IfcSlab'])]);
     assert.strictEqual(full.getItem(__internal.STORAGE_KEY), CORRUPT);
     // The write never reached storage: the caller must be told, not left to
     // infer it from the returned catalog still looking populated. (#2089)

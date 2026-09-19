@@ -13,7 +13,7 @@ import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
-import { Rule, addHierarchyStoreyToRule, type FilterRule } from '@/lib/search/filter-rules';
+import { Rule, addHierarchyStoreyToRule, activeGroupRules, type FilterRule } from '@/lib/search/filter-rules';
 import { toast } from '@/components/ui/toast';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
@@ -327,8 +327,8 @@ export function HierarchyPanel() {
   // makes two ifcType rules match nothing. Pass `null` to clear the dimension.
   const upsertSearchRule = useCallback(
     (matches: (r: FilterRule) => boolean, rule: FilterRule | null) => {
-      const rules = useViewerStore.getState().searchFilter.rules;
-      const idx = rules.findIndex(matches);
+      const hs = useViewerStore.getState(); // targets the ACTIVE group only (#4904)
+      const idx = activeGroupRules(hs.searchFilter.groups, hs.searchFilterActiveGroup).findIndex(matches);
       if (rule === null) {
         if (idx < 0) return; // nothing to clear — don't arm an empty run
         removeFilterRule(idx);
@@ -598,8 +598,8 @@ export function HierarchyPanel() {
       if (e.ctrlKey || e.metaKey) {
         // Add to storey filter selection
         setStoreysSelection([...Array.from(selectedStoreys), ...storeyIds]);
-        // Mirror to the advanced filter — accumulate the storey name (issue #1107).
-        const cur = useViewerStore.getState().searchFilter.rules.find((r) => r.kind === 'storey' && r.op === 'in');
+        // Mirror to the advanced filter's ACTIVE group — accumulate the storey name (issue #1107, #4904).
+        const cur = activeGroupRules(useViewerStore.getState().searchFilter.groups, useViewerStore.getState().searchFilterActiveGroup).find((r) => r.kind === 'storey' && r.op === 'in');
         upsertSearchRule(
           (r) => r.kind === 'storey' && r.op === 'in',
           addHierarchyStoreyToRule(cur && cur.kind === 'storey' ? cur : undefined, node.name, storeyRefs),

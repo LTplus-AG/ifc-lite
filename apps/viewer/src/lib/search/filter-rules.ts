@@ -388,3 +388,6 @@ export const Rule = {
 // stay under the module size cap; re-exported so existing imports of this
 // module keep working.
 export { isFilterRule, parseFilterRules } from './filter-rule-guards.js';
+// Re-exported so existing `from './filter-rules.js'` imports (HierarchyPanel,
+// etc.) can pull in the groups helper too without a second import line (#4904).
+export { activeGroupRules } from './filter-groups.js';

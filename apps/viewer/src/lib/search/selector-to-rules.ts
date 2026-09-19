@@ -12,9 +12,12 @@
  * so a construct this adapter has no rule for has to come back as text the
  * user can read, with the original spelling they typed.
  *
- * The follow-up (#4094) adds the rule kinds and the union support that would
- * empty most of the `unsupported` list; a second adapter onto the CLI/MCP/SDK
- * query descriptor reads the same AST rather than a second grammar.
+ * `+` unions (`IfcSlab + IfcDoor`) adapt into real `FilterGroup[]` — one
+ * group per `+`-separated clause, OR'd together, AND within each group —
+ * rather than being desugared into several searches unioned in UI glue
+ * (#4904); see `SelectorAdaptResult.groups`. A second adapter onto the
+ * CLI/MCP/SDK query descriptor reads the same AST rather than a second
+ * grammar (#4094).
  */
 
 import { expandTypes, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
@@ -28,6 +31,7 @@ import type {
   SelectorValue,
 } from '@ifc-lite/query';
 import { Rule, type FilterRule } from './filter-rules.js';
+import { type FilterGroup } from './filter-groups.js';
 import {
   VALUE_OPS,
   NUMERIC_OPS,
@@ -52,10 +56,32 @@ export interface SelectorAdaptOptions {
 }
 
 export interface SelectorAdaptResult {
+  /**
+   * One `FilterGroup` per `+`-separated group in the selector text (#4904).
+   * Groups OR together; each group's own filters narrow left to right, the
+   * AND combinator. Length 1 for the (overwhelmingly common) union-free case.
+   * Empty when the query was refused — see `unsupported`.
+   */
+  groups: FilterGroup[];
+  /**
+   * Convenience alias for `groups[0]?.rules ?? []` — the first group, AND
+   * combinator. For callers that only ever edit ONE active group (the
+   * "add search query as a rule" button appends into whichever group is
+   * currently open in the builder) and were written before groups existed;
+   * a caller that needs the real union reads `groups` instead.
+   */
+  rules: FilterRule[];
   /** Filters within a group narrow left to right, which is the AND combinator. */
   combinator: 'AND';
-  rules: FilterRule[];
-  /** One entry per construct that produced no rule, quoting what was typed. */
+  /**
+   * One entry per construct that produced no rule, quoting what was typed.
+   * When the selector used `+` (more than one group) and ANY group has an
+   * unsupported construct, the WHOLE query is refused — `groups` and `rules`
+   * come back empty — rather than silently dropping that OR branch: an
+   * omitted branch of a union changes what it matches exactly as much as an
+   * omitted AND term would, and a union has no single-group warning banner
+   * precedent to fall back on.
+   */
   unsupported: string[];
   /** No rule came out and every term is an unknown class or a non-filterable
    *  attribute — what a plain search term (`IFC-Export`, `Level=1`) parses
@@ -94,15 +120,47 @@ export function selectorToFilterRules(
   query: SelectorQuery,
   options: SelectorAdaptOptions = {},
 ): SelectorAdaptResult {
-  const unsupported: string[] = [];
-  const [group, ...extraGroups] = query.groups;
+  const perGroup = query.groups.map((g) => adaptOneGroup(g.filters, options));
+  const isUnion = query.groups.length > 1;
 
-  for (const extra of extraGroups) {
-    unsupported.push(
-      `${quote(extra.filters.map((f) => f.text).join(', '))}: unioning groups with "+" is not supported yet, run it as a second filter`,
+  // A `+` union refuses the WHOLE query when any branch has an unsupported
+  // construct — see the `unsupported` doc on `SelectorAdaptResult`. A
+  // single group keeps the pre-#4904 behaviour: apply what adapted, name
+  // the rest.
+  if (isUnion && perGroup.some((g) => g.unsupported.length > 0)) {
+    const unsupported = perGroup.flatMap((g, i) =>
+      g.unsupported.map((u) => `group ${i + 1} of ${perGroup.length}: ${u}`),
     );
+    return { groups: [], rules: [], combinator: 'AND', unsupported, readsAsPlainText: false };
   }
 
+  const groups: FilterGroup[] = perGroup
+    .filter((g) => g.rules.length > 0)
+    .map((g) => ({ rules: g.rules, combinator: 'AND' as const }));
+  const unsupported = perGroup.flatMap((g) => g.unsupported);
+  const readsAsPlainText =
+    groups.length === 0 &&
+    !isUnion &&
+    (query.groups[0]?.filters ?? []).every(isPlainTextTerm);
+
+  return {
+    groups,
+    rules: groups[0]?.rules ?? [],
+    combinator: 'AND',
+    unsupported,
+    readsAsPlainText,
+  };
+}
+
+/** Adapt one `+`-separated group's filters into an AND rule list, naming
+ *  every construct that did not produce a rule. Pulled out of
+ *  `selectorToFilterRules` so it can run once per group (#4904) instead of
+ *  only ever reading `query.groups[0]`. */
+function adaptOneGroup(
+  filters: readonly SelectorFilter[],
+  options: SelectorAdaptOptions,
+): { rules: FilterRule[]; unsupported: string[] } {
+  const unsupported: string[] = [];
   const classAdds: string[] = [];
   const classAddTexts: string[] = [];
   const classSubtracts: string[] = [];
@@ -116,7 +174,7 @@ export function selectorToFilterRules(
   const globalIdSubtracts: string[] = [];
   const rules: FilterRule[] = [];
 
-  for (const filter of group?.filters ?? []) {
+  for (const filter of filters) {
     if (filter.kind === 'class') {
       if (!isKnownType(filter.name)) {
         unsupported.push(`${quote(filter.text)}: not an entity name in IFC2X3, IFC4 or IFC4X3`);
@@ -164,9 +222,7 @@ export function selectorToFilterRules(
   if (classSubtracts.length > 0) head.push(Rule.ifcType(expandClasses(classSubtracts, options), 'notIn'));
   if (globalIdSubtracts.length > 0) head.push(Rule.globalId(globalIdSubtracts, 'notIn'));
 
-  const all = [...head, ...rules];
-  const readsAsPlainText = all.length === 0 && extraGroups.length === 0 && (group?.filters ?? []).every(isPlainTextTerm);
-  return { combinator: 'AND', rules: all, unsupported, readsAsPlainText };
+  return { rules: [...head, ...rules], unsupported };
 }
 
 /** A term carrying nothing selector-specific: a class name no schema knows

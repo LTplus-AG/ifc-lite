@@ -14,11 +14,16 @@ import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { listsEn } from './catalogues/lists.en';
+import { mcpEn } from './catalogues/mcp.en';
+import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
+import { sourcesEn } from './catalogues/sources.en';
+import { toursEn } from './catalogues/tours.en';
+import { viewerShellEn } from './catalogues/viewer-shell.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 
@@ -36,6 +41,11 @@ export const en = {
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
   ...chartsEn,
+  ...mcpEn,
+  ...mcpPlaygroundEn,
+  ...sourcesEn,
+  ...toursEn,
+  ...viewerShellEn,
   ...listsEn,
   ...measureEn,
   ...spaceSketchEn,

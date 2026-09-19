@@ -14,6 +14,7 @@
 import { createPortal } from 'react-dom';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import { cancelPrereq, confirmPrereqWithDemo } from '@/lib/tours/controller';
 import { getTour } from '@/lib/tours/registry';
 import { useTourStore } from '@/lib/tours/tour-store';
@@ -22,30 +23,31 @@ import { TourSpotlight } from './TourSpotlight';
 import { TourStepCard } from './TourStepCard';
 
 function PrereqCard({ tour }: { tour: TourDefinition }) {
+  const { t } = useTranslation();
   const demoLoading = useTourStore((s) => s.demoLoading);
   const needsSecond = Boolean(tour.prerequisites?.secondModel);
   const needsStack = Boolean(tour.prerequisites?.layerStack);
   return (
     <div
       role="dialog"
-      aria-label={`${tour.title}: prerequisites`}
+      aria-label={t('tours.tourHost.prereqAriaLabel', { title: tour.title })}
       className="pointer-events-auto fixed left-1/2 top-1/2 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg"
     >
       <div className="text-sm font-semibold">{tour.title}</div>
       <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
         {needsStack
-          ? 'This tour needs a composed layer stack. Load the demo stack (three tiny layers) to follow along.'
+          ? t('tours.tourHost.prereqLayerStack')
           : needsSecond
-            ? 'This tour needs two loaded revisions of a model. Load the demo project to follow along.'
-            : 'This tour needs a loaded model. Load the demo project to follow along, or open your own IFC file first.'}
+            ? t('tours.tourHost.prereqSecondModel')
+            : t('tours.tourHost.prereqModel')}
       </p>
       <div className="mt-3 flex items-center justify-end gap-1.5">
         <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={cancelPrereq} disabled={demoLoading}>
-          Cancel
+          {t('tours.tourHost.cancel')}
         </Button>
         <Button size="sm" disabled={demoLoading} onClick={() => void confirmPrereqWithDemo()}>
           {demoLoading && <Loader2 className="animate-spin" />}
-          {needsStack ? 'Load demo stack' : 'Load demo project'}
+          {needsStack ? t('tours.tourHost.loadDemoStack') : t('tours.tourHost.loadDemoProject')}
         </Button>
       </div>
     </div>

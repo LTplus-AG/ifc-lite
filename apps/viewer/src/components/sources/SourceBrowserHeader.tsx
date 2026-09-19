@@ -5,8 +5,10 @@
 import type { SourceContainer, SourceProject } from '@ifc-lite/plugin-api';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, Loader2, RefreshCw } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 type Step = 'projects' | 'file-areas' | 'folders';
+type Translate = ReturnType<typeof useTranslation>['t'];
 
 interface SourceBrowserHeaderProps {
   step: Step;
@@ -20,11 +22,17 @@ interface SourceBrowserHeaderProps {
   onSync: () => void;
 }
 
-function formatSyncTime(timestamp: number): string {
+function formatSyncTime(t: Translate, timestamp: number): string {
   const deltaMs = Math.max(0, Date.now() - timestamp);
-  if (deltaMs < 60_000) return 'just now';
-  if (deltaMs < 3_600_000) return `${Math.floor(deltaMs / 60_000)}m ago`;
-  return `${Math.floor(deltaMs / 3_600_000)}h ago`;
+  if (deltaMs < 60_000) return t('sources.sourceBrowserHeader.syncedJustNow');
+  if (deltaMs < 3_600_000) {
+    return t('sources.sourceBrowserHeader.syncedMinutesAgo', {
+      count: Math.floor(deltaMs / 60_000),
+    });
+  }
+  return t('sources.sourceBrowserHeader.syncedHoursAgo', {
+    count: Math.floor(deltaMs / 3_600_000),
+  });
 }
 
 export function SourceBrowserHeader({
@@ -38,9 +46,16 @@ export function SourceBrowserHeader({
   onBack,
   onSync,
 }: SourceBrowserHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 border-b px-3 py-2">
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBack} aria-label="Back">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        onClick={onBack}
+        aria-label={t('sources.sourceBrowserHeader.backAria')}
+      >
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <span className="truncate text-sm font-medium">
@@ -52,7 +67,7 @@ export function SourceBrowserHeader({
         <div className="ml-auto flex items-center gap-2">
           {catalogUpdatedAt != null && (
             <span className="text-xs text-muted-foreground">
-              Synced {formatSyncTime(catalogUpdatedAt)}
+              {t('sources.sourceBrowserHeader.syncedAt', { time: formatSyncTime(t, catalogUpdatedAt) })}
             </span>
           )}
           <Button
@@ -67,7 +82,7 @@ export function SourceBrowserHeader({
             ) : (
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
             )}
-            Sync
+            {t('sources.sourceBrowserHeader.sync')}
           </Button>
         </div>
       )}

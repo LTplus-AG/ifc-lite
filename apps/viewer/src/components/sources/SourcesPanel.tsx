@@ -14,6 +14,7 @@ import type { SourceFavourite } from '@/lib/sources/favourites';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { AlertCircle, Cloud, X } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
 import { sanitizeFilename } from '@/lib/export/download';
@@ -24,12 +25,47 @@ interface SourcesPanelProps {
   onClose: () => void;
 }
 
+type Translate = ReturnType<typeof useTranslation>['t'];
+
+/** Build one complete, locale-orderable source revision notice. */
+export function revisionSyncMessage(t: Translate, changed: number, deleted: number): string {
+  if (changed > 0 && deleted > 0) {
+    const key = changed === 1
+      ? deleted === 1
+        ? 'sources.sourcesPanel.revisionChangedOneDeletedOne'
+        : 'sources.sourcesPanel.revisionChangedOneDeletedMany'
+      : deleted === 1
+        ? 'sources.sourcesPanel.revisionChangedManyDeletedOne'
+        : 'sources.sourcesPanel.revisionChangedManyDeletedMany';
+    return t(key, { changed, deleted });
+  }
+  if (changed > 0) {
+    return t('sources.sourcesPanel.revisionChangedOnly', { count: changed });
+  }
+  if (deleted > 0) {
+    return t('sources.sourcesPanel.revisionDeletedOnly', { count: deleted });
+  }
+  return '';
+}
+
+export function RegistrationFailureMessage({ provider, reason }: { provider: string; reason: string }) {
+  const { t } = useTranslation();
+  const marker = '\uE000provider\uE001';
+  const message = t('sources.sourcesPanel.failedToRegister', { provider: marker, reason });
+  const segments = message.split(marker);
+  if (segments.length === 1) return message;
+  return segments.flatMap((segment, index) => index === segments.length - 1
+    ? [segment]
+    : [segment, <span key={index} className="font-medium">{provider}</span>]);
+}
+
 interface SourceDownloadSelection {
   readonly projectId: string;
   readonly files: readonly PluginSourceFile[];
 }
 
 export function SourcesPanel({ onClose }: SourcesPanelProps) {
+  const { t } = useTranslation();
   const sourceHost = useSourceHost();
   const providers = useMemo(() => sourceHost.list(), [sourceHost]);
   const registrationFailures = useMemo(
@@ -91,17 +127,14 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         if (controller.signal.aborted || updates.length === 0) return;
         const deleted = updates.filter((u) => u.event.deleted).length;
         const changed = updates.length - deleted;
-        const parts: string[] = [];
-        if (changed > 0) parts.push(`${changed} loaded model${changed === 1 ? ' has' : 's have'} a newer revision`);
-        if (deleted > 0) parts.push(`${deleted} source file${deleted === 1 ? ' is' : 's are'} gone upstream`);
-        toast.info(`${parts.join('; ')} — use Sync to update.`);
+        toast.info(revisionSyncMessage(t, changed, deleted));
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
         console.warn('[sources] Background revision check failed', err);
       });
     return () => controller.abort();
-  }, [sourceHost]);
+  }, [sourceHost, t]);
 
   const handleSavePrefs = useCallback(
     (values: Record<string, string>) => {
@@ -129,14 +162,16 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
 
   const handleTestConnection = useCallback(
     async (values: Record<string, string>): Promise<ConnectionTestResult> => {
-      if (!settingsProvider) return { ok: false, message: 'No provider' };
+      if (!settingsProvider) {
+        return { ok: false, message: t('sources.sourcesPanel.noProviderMessage') };
+      }
       const ctx = sourceHost.createContext(settingsProvider.manifest, values);
       if (settingsProvider.testConnection) {
         return settingsProvider.testConnection(ctx);
       }
-      return { ok: false, message: 'Provider does not support connection testing' };
+      return { ok: false, message: t('sources.sourcesPanel.connectionTestUnsupported') };
     },
-    [settingsProvider, sourceHost],
+    [settingsProvider, sourceHost, t],
   );
 
   // Downloads run one file at a time and each finished file is dispatched
@@ -189,8 +224,8 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
             if (controller.signal.aborted) break;
             toast.error(
               err instanceof Error
-                ? `${f.name}: ${err.message}`
-                : `Failed to download ${f.name} from ${providerTitle}`,
+                ? t('sources.sourcesPanel.downloadFailedWithMessage', { name: f.name, message: err.message })
+                : t('sources.sourcesPanel.downloadFailedGeneric', { name: f.name, title: providerTitle }),
             );
           }
         }
@@ -199,7 +234,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         setDownloading(false);
       }
     },
-    [activeProvider, browsing, closeBrowser, sourceHost],
+    [activeProvider, browsing, closeBrowser, sourceHost, t],
   );
 
   const browsingCtx = useMemo(() => {
@@ -237,12 +272,12 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-3 py-2">
-        <span className="text-sm font-medium">Cloud Sources</span>
+        <span className="text-sm font-medium">{t('sources.sourcesPanel.title')}</span>
         <Button
           variant="ghost"
           size="sm"
           className="h-7 w-7 p-0 rounded-sm"
-          aria-label="Close"
+          aria-label={t('sources.sourcesPanel.closeAria')}
           onClick={onClose}
         >
           <X className="h-4 w-4" aria-hidden />
@@ -253,7 +288,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         {providers.length === 0 && registrationFailures.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-sm text-muted-foreground">
             <Cloud className="h-8 w-8" aria-hidden />
-            <span>No source providers configured</span>
+            <span>{t('sources.sourcesPanel.noProviders')}</span>
           </div>
         )}
 
@@ -282,7 +317,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         {registrationFailures.length > 0 && (
           <div className="border-t px-3 py-2">
             <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-              Unavailable providers
+              {t('sources.sourcesPanel.unavailableProviders')}
             </div>
             <ul className="flex flex-col gap-1.5">
               {registrationFailures.map((failure) => (
@@ -292,8 +327,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
                 >
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>
-                    <span className="font-medium">{failure.provider}</span> failed to register:{' '}
-                    {failure.reason}
+                    <RegistrationFailureMessage provider={failure.provider} reason={failure.reason} />
                   </span>
                 </li>
               ))}

@@ -98,6 +98,28 @@ reopen pill. The wall-split tool catalogue (`split-tool.en.ts`) covers
 remaining literal was added to the existing `section-tool.en.ts` catalogue
 rather than a new file.
 
+Slice 5 (#4918) covers `mcp/**`, `sources/**`, `tours/**`, the components
+root, and `ui/` (a companion slice covers `extensions/**`):
+
+- `mcp.en.ts` / `mcp-playground.en.ts` cover the `/mcp` landing page and
+  playground's own chrome (hero copy, playground shell, chat UI). Chat
+  transcript content and general tool-call output are runtime data, not
+  covered. The dispatcher is a narrow exception: its viewer-owned WebGL
+  refusal result carries live `textKey` / `hintKey` metadata so that specific
+  host-generated status remains localized when the locale changes.
+- `sources.en.ts` covers the Cloud Sources panel across all ten
+  `sources/` components. Real file/folder/project names from a connected
+  source stay as interpolation params, never literal text.
+- `tours.en.ts` covers the tour UI's own chrome (Learn tab, per-panel
+  launcher, prerequisite card, first-run invite, step card controls).
+  `tour.title` / `description` / `step.title` / `step.body` /
+  `step.action.label` come from `TOUR_REGISTRY` (`@/lib/tours/registry`,
+  outside this slice) — authored tour content, not UI copy in these
+  components, so they are deliberately NOT catalogued, same reasoning as
+  the command-palette catalogue's tour entries.
+- `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
+  fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
+
 The saved-list builder catalogue (#4918 slice 6, lists) covers
 `ListBuilder.tsx`, `ListLibrary.tsx`, `ListGroupingBar.tsx`,
 `ListModelTagScopeEditor.tsx`, `ListResultsTable.tsx`, `ListPanel.tsx`,

@@ -35,6 +35,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation, type TranslationKey } from '@/i18n';
+import { resolveLiveMessage, type LiveTranslationMessage } from './live-translation-message.js';
 import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
 import {
   getPlaygroundModel,
@@ -94,7 +96,7 @@ Downloads (very important):
 
 // ── message model ──────────────────────────────────────────────────────────
 
-interface ChatToolCall {
+export interface ChatToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
@@ -107,9 +109,9 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  displayTextKey?: TranslationKey;
   toolCalls?: ChatToolCall[];
-  /** True while we're still streaming + looping tool calls. */
-  pending?: boolean;
+  /** True while we're still streaming + looping tool calls. */ pending?: boolean;
 }
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -123,7 +125,7 @@ export function PlaygroundChat({
    *  tool call so viewer_* tools can drive the inline canvas. */
   dispatchContext?: () => DispatchContext;
 }): ReactNode {
-  const [keys, setKeys] = useState<ApiKeyConfig>(() => getApiKeys());
+  const { t } = useTranslation(); const [keys, setKeys] = useState<ApiKeyConfig>(() => getApiKeys());
   useEffect(() => subscribeApiKeys(() => setKeys(getApiKeys())), []);
 
   // Selected Claude model (Anthropic only — the playground driver uses
@@ -140,7 +142,7 @@ export function PlaygroundChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LiveTranslationMessage | null>(null); const errorText = resolveLiveMessage(t, error);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -201,11 +203,11 @@ export function PlaygroundChat({
   const send = useCallback(
     async (prompt: string, attached: UploadedFile[]) => {
       if (!model) {
-        setError('Load a sample model first.');
+        setError({ key: 'mcp.playgroundChat.placeholderNoModel' });
         return;
       }
       if (!keys.anthropicKey) {
-        setError('Set an Anthropic key (top right).');
+        setError({ key: 'mcp.playgroundChat.anthropicKeyRequired' });
         return;
       }
       setError(null);
@@ -247,11 +249,18 @@ export function PlaygroundChat({
         setMessages((m) =>
           m.map((msg) =>
             msg.id === assistantMessage.id
-              ? { ...msg, pending: false, text: msg.text || '— request failed —' }
+              ? msg.text
+                ? { ...msg, pending: false }
+                : {
+                    ...msg,
+                    pending: false,
+                    text: t('mcp.playgroundChat.requestFailed'),
+                    displayTextKey: 'mcp.playgroundChat.requestFailed',
+                  }
               : msg,
           ),
         );
-        setError(anthropicErrorMessage(err, credentials.workspaceId));
+        setError({ text: anthropicErrorMessage(err, credentials.workspaceId) });
       } finally {
         setStreaming(false);
       }
@@ -274,14 +283,14 @@ export function PlaygroundChat({
     for (const f of Array.from(files)) {
       // 25 MB cap so a small IFC fits, but blocks rogue gigabyte drops.
       if (f.size > 25 * 1024 * 1024) {
-        setError(`${f.name} is over 25 MB — too large for chat attachments. Use the sample picker instead.`);
+        setError({ key: 'mcp.playgroundChat.fileTooLarge', params: { name: f.name } });
         continue;
       }
       try {
         const entry = await playgroundUploads.add(f);
         list.push(entry);
       } catch (err) {
-        setError(`Failed to read ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+        setError({ key: 'mcp.playgroundChat.failedToReadFile', params: { name: f.name, error: err instanceof Error ? err.message : String(err) } });
       }
     }
     if (list.length > 0) {
@@ -355,7 +364,7 @@ export function PlaygroundChat({
 
       {error && (
         <div className="mx-5 mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
-          {error}
+          {errorText}
         </div>
       )}
 
@@ -389,7 +398,7 @@ export function PlaygroundChat({
                     setPendingNames((prev) => prev.filter((n) => n !== f.name));
                   }}
                   className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white"
-                  aria-label={`Remove ${f.name}`}
+                  aria-label={t('mcp.playgroundChat.removeFile', { name: f.name })}
                 >
                   <X size={10} />
                 </button>
@@ -404,7 +413,7 @@ export function PlaygroundChat({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-white/55 hover:bg-white/5 hover:text-white"
-            title="Attach a file (.ids, .xml, …)"
+            title={t('mcp.playgroundChat.attachFileTitle')}
           >
             <Paperclip size={14} />
           </button>
@@ -432,12 +441,12 @@ export function PlaygroundChat({
             }}
             placeholder={
               !model
-                ? 'Load a sample model first.'
+                ? t('mcp.playgroundChat.placeholderNoModel')
                 : !keys.anthropicKey
-                  ? 'Set an Anthropic key first.'
+                  ? t('mcp.playgroundChat.placeholderNoKey')
                   : pendingAttachments.length > 0
-                    ? 'Add a note (or just send to validate the attached file)…'
-                    : 'Ask the agent — drop a .ids onto the chat to validate it.'
+                    ? t('mcp.playgroundChat.placeholderAddNote')
+                    : t('mcp.playgroundChat.placeholderDefault')
             }
             disabled={!model || isStreaming}
             rows={1}
@@ -448,20 +457,22 @@ export function PlaygroundChat({
             type="submit"
             disabled={(!input.trim() && pendingAttachments.length === 0) || isStreaming || !model || !keys.anthropicKey}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#d6ff3f] text-[#0a0a0c] transition-opacity disabled:opacity-30"
-            aria-label="Send"
+            aria-label={t('mcp.playgroundChat.send')}
           >
             {isStreaming ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={14} strokeWidth={2.5} />}
           </button>
         </div>
         <p className="mt-1.5 text-[10px] text-white/40">
-          BYOK · {tools.length} tools · {uploads.length > 0 ? `${uploads.length} attached file${uploads.length === 1 ? '' : 's'} · ` : ''}enter to send · ⇧+enter for newline · drop files to attach
+          {uploads.length > 0
+            ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
+            : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
         </p>
         {dragOver && (
           <div
             className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-md border-2 border-dashed text-[12px]"
             style={{ borderColor: '#d6ff3f', color: '#d6ff3f', background: 'rgba(214,255,63,0.05)', fontFamily: '"JetBrains Mono", monospace' }}
           >
-            release to attach
+            {t('mcp.playgroundChat.releaseToAttach')}
           </div>
         )}
       </form>
@@ -486,7 +497,7 @@ function PlaygroundHeader({
   anthropicModels: ReturnType<typeof getByokModelsForSource>;
   onChangeModel: (modelId: string) => void;
 }): ReactNode {
-  return (
+  const { t } = useTranslation(); return (
     <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2.5">
       <div className="flex items-center gap-2">
         <span
@@ -497,7 +508,7 @@ function PlaygroundHeader({
           className="text-[10px] uppercase tracking-[0.22em] text-white/60"
           style={{ fontFamily: '"JetBrains Mono", monospace' }}
         >
-          ifc-lite/mcp · agent
+          {t('mcp.playgroundChat.brand')}
         </span>
       </div>
 
@@ -508,15 +519,15 @@ function PlaygroundHeader({
         <label
           className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/[0.03] px-1.5 py-1 text-[10.5px] text-white/70"
           style={{ fontFamily: '"JetBrains Mono", monospace' }}
-          title="Anthropic model used for tool-calling agent loops"
+          title={t('mcp.playgroundChat.modelTooltip')}
         >
-          <span className="text-white/40">model</span>
+          <span className="text-white/40">{t('mcp.playgroundChat.modelLabel')}</span>
           <select
             value={selectedModel}
             onChange={(e) => onChangeModel(e.target.value)}
             className="bg-transparent text-[10.5px] outline-none [&>option]:bg-[#0a0a0c] [&>option]:text-white"
             style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            aria-label="Select Claude model"
+            aria-label={t('mcp.playgroundChat.selectModelAria')}
           >
             {anthropicModels.map((m) => (
               <option key={m.id} value={m.id}>
@@ -537,10 +548,10 @@ function PlaygroundHeader({
               : 'border-orange-400/40 text-orange-300 hover:bg-orange-400/5',
           )}
           style={{ fontFamily: '"JetBrains Mono", monospace' }}
-          aria-label={hasKey ? 'Manage Anthropic API key' : 'Add Anthropic API key'}
+          aria-label={hasKey ? t('mcp.playgroundChat.manageKeyAria') : t('mcp.playgroundChat.addKeyAria')}
         >
           <KeyRound size={11} />
-          {hasKey ? `key set · ${maskedKey}` : 'set Anthropic key'}
+          {hasKey ? t('mcp.playgroundChat.keySetLabel', { masked: maskedKey }) : t('mcp.playgroundChat.setKeyLabel')}
         </button>
       </div>
     </div>
@@ -549,14 +560,6 @@ function PlaygroundHeader({
 
 // ── welcome ───────────────────────────────────────────────────────────────
 
-const STARTER_PROMPTS = [
-  'Run model_audit and tell me the score. Then list any issues.',
-  'How many IfcWall vs IfcWindow vs IfcDoor are in this model?',
-  'Find every IfcWall where Pset_WallCommon.IsExternal = true. Tell me their GlobalIds.',
-  'Look up Pset_WallCommon in bSDD and list its canonical properties.',
-  'Group the entities by storey. Which storey has the most elements?',
-];
-
 function Welcome({
   model,
   onPickPrompt,
@@ -564,6 +567,8 @@ function Welcome({
   model: LoadedPlaygroundModel | null;
   onPickPrompt: (p: string) => void;
 }): ReactNode {
+  const { t } = useTranslation();
+  const STARTER_PROMPTS = [t('mcp.playgroundChat.starterPrompt1'), t('mcp.playgroundChat.starterPrompt2'), t('mcp.playgroundChat.starterPrompt3'), t('mcp.playgroundChat.starterPrompt4'), t('mcp.playgroundChat.starterPrompt5')];
   return (
     <div className="flex h-full flex-col items-start justify-center gap-4">
       <div>
@@ -571,16 +576,16 @@ function Welcome({
           className="text-[28px] leading-none tracking-tight"
           style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
         >
-          {model ? `Ask the agent about ${model.name}.` : 'Load a model. Ask the agent.'}
+          {model ? t('mcp.playgroundChat.askAboutModel', { name: model.name }) : t('mcp.playgroundChat.loadModelAskAgent')}
         </h2>
         <p className="mt-2 max-w-md text-[13.5px] leading-snug text-white/60">
-          Claude drives the same {anthropicToolDefinitions().length} tools the stdio MCP exposes — query, mutate, validate, BCF, export. Tool calls render inline.
+          {t('mcp.playgroundChat.toolsIntro', { count: anthropicToolDefinitions().length })}
         </p>
       </div>
       {model && (
         <div className="mt-2 flex flex-col gap-1.5">
           <span className="text-[10px] uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-            try
+            {t('mcp.playgroundChat.try')}
           </span>
           <div className="flex flex-col gap-1.5">
             {STARTER_PROMPTS.map((p) => (
@@ -602,7 +607,7 @@ function Welcome({
 // ── message render ────────────────────────────────────────────────────────
 
 function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
-  if (msg.role === 'user') {
+  const { t } = useTranslation(); if (msg.role === 'user') {
     return (
       <div className="flex flex-col items-end">
         <div className="max-w-[85%] rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-[13.5px] leading-snug">
@@ -639,22 +644,23 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
       {msg.text && (
         <div className="prose-playground max-w-[95%] text-[13.5px] leading-relaxed text-white/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-            {msg.text}
+            {msg.displayTextKey ? t(msg.displayTextKey) : msg.text}
           </ReactMarkdown>
           {msg.pending && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-[#d6ff3f]" />}
         </div>
       )}
       {msg.pending && !msg.text && msg.toolCalls && msg.toolCalls.length > 0 && (
-        <div className="text-[11px] text-white/40">… composing answer …</div>
+        <div className="text-[11px] text-white/40">{t('mcp.playgroundChat.composingAnswer')}</div>
       )}
       {msg.pending && !msg.text && (!msg.toolCalls || msg.toolCalls.length === 0) && (
-        <div className="text-[11px] text-white/40">… thinking …</div>
+        <div className="text-[11px] text-white/40">{t('mcp.playgroundChat.thinking')}</div>
       )}
     </div>
   );
 }
 
-function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showDownload?: boolean }): ReactNode {
+export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showDownload?: boolean }): ReactNode {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const isErr = call.result?.isError;
   const ms = call.finishedAt ? call.finishedAt - call.startedAt : null;
@@ -680,7 +686,7 @@ function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showD
             <Loader2 size={10} className="animate-spin" />
           ) : (
             <>
-              {ms != null && <span style={{ fontFamily: '"JetBrains Mono", monospace' }}>{ms} ms</span>}
+              {ms != null && <span style={{ fontFamily: '"JetBrains Mono", monospace' }}>{t('mcp.playgroundChat.msSuffix', { ms })}</span>}
               <span
                 className={cn(
                   'rounded px-1 py-px uppercase tracking-[0.15em]',
@@ -688,7 +694,7 @@ function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showD
                 )}
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >
-                {isErr ? call.result.errorCode ?? 'error' : 'ok'}
+                {isErr ? call.result.errorCode ?? t('mcp.playgroundChat.statusError') : t('mcp.playgroundChat.statusOk')}
               </span>
             </>
           )}
@@ -704,7 +710,7 @@ function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showD
           {Object.keys(call.args).length > 0 && (
             <>
               <div className="mb-1 text-[10px] uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                args
+                {t('mcp.playgroundChat.argsLabel')}
               </div>
               <pre
                 className="mb-3 overflow-x-auto rounded bg-black/40 p-2 text-[11px]"
@@ -717,7 +723,7 @@ function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showD
           {call.result && (
             <>
               <div className="mb-1 text-[10px] uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                result
+                {t('mcp.playgroundChat.resultLabel')}
               </div>
               <pre
                 className={cn(
@@ -726,10 +732,12 @@ function ToolCallView({ call, showDownload = true }: { call: ChatToolCall; showD
                 )}
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >
-                {call.result.text}
+                {call.result.textKey ? t(call.result.textKey) : call.result.text}
               </pre>
               {call.result.hint && (
-                <p className="mt-1.5 text-[10.5px] italic text-white/50">{call.result.hint}</p>
+                <p className="mt-1.5 text-[10.5px] italic text-white/50">
+                  {call.result.hintKey ? t(call.result.hintKey) : call.result.hint}
+                </p>
               )}
             </>
           )}
@@ -1041,6 +1049,7 @@ function InlineDownload({
 }: {
   download: NonNullable<ToolDispatchResult['download']>;
 }): ReactNode {
+  const { t } = useTranslation();
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const justSaved = savedAt != null && Date.now() - savedAt < 2000;
   useEffect(() => {
@@ -1076,7 +1085,7 @@ function InlineDownload({
               className="truncate text-[13px] font-semibold"
               style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
             >
-              {justSaved ? 'Saved — click again to re-download' : download.label}
+              {justSaved ? t('mcp.playgroundChat.savedLabel') : download.label}
             </span>
             <span
               className={cn('truncate text-[10.5px]', justSaved ? 'text-white/50' : 'text-black/55')}
@@ -1158,27 +1167,18 @@ const MARKDOWN_COMPONENTS = {
     <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-[12px] leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />
   ),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  table: (props: any) => (
-    <div className="my-2 overflow-x-auto rounded border border-white/10">
-      <table className="w-full border-collapse text-[12.5px]" {...props} />
-    </div>
-  ),
+  table: (props: any) => <div className="my-2 overflow-x-auto rounded border border-white/10">
+    <table className="w-full border-collapse text-[12.5px]" {...props} />
+  </div>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   thead: (props: any) => <thead className="bg-white/[0.04]" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  th: (props: any) => (
-    <th
-      className="border-b border-white/10 px-2.5 py-1.5 text-left text-[10.5px] uppercase tracking-[0.18em] text-white/70"
-      style={{ fontFamily: '"JetBrains Mono", monospace' }}
-      {...props}
-    />
-  ),
+  th: (props: any) => <th className="border-b border-white/10 px-2.5 py-1.5 text-left text-[10.5px] uppercase tracking-[0.18em] text-white/70"
+    style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   td: (props: any) => <td className="border-b border-white/5 px-2.5 py-1.5 align-top" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  blockquote: (props: any) => (
-    <blockquote className="my-2 border-l-2 border-white/20 pl-3 italic text-white/70" {...props} />
-  ),
+  blockquote: (props: any) => <blockquote className="my-2 border-l-2 border-white/20 pl-3 italic text-white/70" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   hr: (props: any) => <hr className="my-3 border-white/10" {...props} />,
 };

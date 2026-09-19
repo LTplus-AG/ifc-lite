@@ -930,11 +930,31 @@ fn attribute_export_preserves_transitional_ifc4_metadata() {
             ifc_lite_core::AttributeValue::String("alignment-tag".to_string()),
         ],
     );
-    let attributes = render_attributes(&entity, "IFCALIGNMENTCURVE", "IFC4X1");
+    let attributes = render_attributes(&entity, "IFCALIGNMENTCURVE", Some("IFC4X1"));
 
     assert_eq!(attributes.len(), 1);
     assert_eq!(attributes[0].name, "Tag");
     assert_eq!(attributes[0].value, "alignment-tag");
+}
+
+/// #4203: positional labels require an explicit source schema. The STEP writer
+/// may default a missing declaration to IFC4, but attribute export must not
+/// silently apply IFC4 names to slots whose schema is unknown.
+#[test]
+fn attribute_export_fails_closed_without_a_declared_schema() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-4203'),'2;1');
+ENDSEC;
+DATA;
+#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,'unknown-slot',.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(ifc, &ModelOptions::default().with_attributes(true));
+
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].attributes.is_empty());
 }
 
 /// #4203: when a known canonical IFC4X3 entity is absent from the declared

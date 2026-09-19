@@ -94,10 +94,13 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
 /// references, `$`, derived `*`) is omitted rather than emitted as a dangling
 /// `#123`. Order follows the schema's attribute order, which is stable.
 pub(super) fn render_attributes(
-    entity: &DecodedEntity, raw_type_name: &str, source_schema: &str,
+    entity: &DecodedEntity, raw_type_name: &str, source_schema: Option<&str>,
 ) -> Vec<PropValue> {
-    let names: &[&str] = ifc_lite_core::attribute_names_for_schema(source_schema, raw_type_name)
-        .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
+    let names: &[&str] = source_schema
+        .and_then(|schema| {
+            ifc_lite_core::attribute_names_for_schema(schema, raw_type_name)
+                .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
+        })
         .unwrap_or(&[]);
     let mut out = Vec::new();
     for (i, name) in names.iter().enumerate() {

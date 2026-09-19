@@ -71,7 +71,6 @@ export const measureEn = {
   // Bare "m" as a JSX text node (not a `hint="m"` prop, which the sweep's own
   // scanner does not flag) trips the literal scanner despite the sweep's
   // unit-symbol exception — keyed to satisfy the gate mechanically.
-  'measure.unit.meters': 'm',
 
   'measure.list.empty': 'No measurements',
   'measure.list.totalCurrent': 'Total (current)',

@@ -261,5 +261,6 @@
   "apps/viewer/src/components/viewer/sidebar/ActivityBar.tsx": 13,
   "apps/viewer/src/components/viewer/sidebar/CustomizeSidebar.tsx": 17,
   "apps/viewer/src/components/viewer/sidebar/SidebarDock.tsx": 1,
-  "apps/viewer/src/components/viewer/sidebar/SidebarPanelHost.tsx": 9
+  "apps/viewer/src/components/viewer/sidebar/SidebarPanelHost.tsx": 9,
+  "apps/viewer/src/components/viewer/tools/MeasurePanel.tsx": 1
 }

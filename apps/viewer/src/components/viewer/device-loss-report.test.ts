@@ -413,12 +413,35 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     assert.equal(captures.length, 2, 'each recovered device starts a new reportable loss episode');
   });
 
+  it('cancels an active point-cloud ingest before starting recovery', async () => {
+    const h = makeSource();
+    const order: string[] = [];
+    useViewerStore.setState({
+      activeStreamCanceller: () => { order.push('cancel'); },
+    });
+    h.source.recoverDevice = async () => {
+      order.push('recover');
+      return { ok: true, omissions: ['point-clouds'] };
+    };
+    const unsubscribe = subscribeViewportHealth(h.source);
+    try {
+      h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'unknown' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      assert.deepStrictEqual(order, ['cancel', 'recover']);
+      assert.strictEqual(useViewerStore.getState().activeStreamCanceller, null);
+    } finally {
+      unsubscribe();
+      useViewerStore.getState().setActiveStreamCanceller(null);
+    }
+  });
+
   it('invalidates deviation results when recovery omits point clouds (#4885)', async () => {
     const h = makeSource();
     h.source.recoverDevice = async () => ({ ok: true, omissions: ['point-clouds'] });
     useViewerStore.setState({
       models: new Map([['scan', { id: 'scan', pointCloudHandleId: 7 } as never]]),
       pointCloudDeviationComputed: true,
+      pointCloudAssetCount: 1,
     });
     const unsubscribe = subscribeViewportHealth(h.source);
     try {
@@ -428,9 +451,10 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
       const state = useViewerStore.getState();
       assert.strictEqual(state.models.get('scan')?.pointCloudHandleId, undefined);
       assert.strictEqual(state.pointCloudDeviationComputed, false);
+      assert.strictEqual(state.pointCloudAssetCount, 0);
     } finally {
       unsubscribe();
-      useViewerStore.setState({ models: new Map(), pointCloudDeviationComputed: false });
+      useViewerStore.setState({ models: new Map(), pointCloudDeviationComputed: false, pointCloudAssetCount: 0 });
     }
   });
 

@@ -34,6 +34,33 @@ function lostRenderer() {
 }
 
 describe('Renderer.recoverDevice (#4885)', () => {
+  it('invalidates an in-flight point-cloud stream across GPU teardown', () => {
+    const renderer = new Renderer(canvas());
+    const handle = { id: 41 };
+    let oldAppends = 0, replacementAppends = 0, replacementRemovals = 0;
+    renderer['pointCloudRenderer'] = {
+      beginAsset: () => handle,
+      appendChunk: () => { oldAppends++; },
+      clear: () => {},
+    } as never;
+    const issued = renderer.beginPointCloudStream({ expressId: 7 });
+    renderer['teardown'](false);
+    renderer['pointCloudRenderer'] = {
+      appendChunk: () => { replacementAppends++; },
+      removeAsset: () => { replacementRemovals++; },
+    } as never;
+
+    assert.throws(
+      () => renderer.appendPointCloudChunk(issued, {} as never),
+      { name: 'RendererDeviceLostError' },
+      'a worker callback from the old stream must reject instead of targeting the replacement',
+    );
+    renderer.removePointCloudAsset(issued);
+    assert.strictEqual(oldAppends, 0);
+    assert.strictEqual(replacementAppends, 0);
+    assert.strictEqual(replacementRemovals, 0, 'stale cleanup must not remove a replacement asset with the same id');
+  });
+
   it('rejects a healthy renderer without touching its scene', async () => {
     const renderer = new Renderer(canvas());
     const discard = mock.method(renderer['scene'], 'discardGpuResourcesForRecovery');

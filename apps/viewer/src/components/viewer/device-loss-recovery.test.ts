@@ -26,6 +26,20 @@ describe('device-loss recovery coordinator (#4885)', () => {
     assert.strictEqual(modelsWithoutOmittedPointCloudHandles({ ok: true, omissions: [] }, models), null);
   });
 
+  it('invalidates the model memo for CPU-backed IFCx point clouds', () => {
+    const pointClouds = [{ chunk: { pointCount: 1 } }] as never;
+    const ifcx = { id: 'ifcx', geometryResult: { pointClouds } } as unknown as FederatedModel;
+    const models = new Map([['ifcx', ifcx]]);
+    const next = modelsWithoutOmittedPointCloudHandles(
+      { ok: true, omissions: ['point-clouds'] },
+      models,
+    );
+
+    assert.ok(next);
+    assert.notStrictEqual(next.get('ifcx'), ifcx, 'the merged point-cloud memo must rerun');
+    assert.strictEqual(next.get('ifcx')?.geometryResult?.pointClouds, pointClouds);
+  });
+
   it('reports an immediate recovery once', async () => {
     let calls = 0, recovered = 0, failed = 0;
     const run = startDeviceLossRecovery(

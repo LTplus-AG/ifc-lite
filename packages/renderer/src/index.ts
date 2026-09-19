@@ -189,7 +189,7 @@ import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleId
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
-import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+import { PointCloudRenderer, type PointCloudAssetHandle } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
@@ -260,6 +260,9 @@ export class Renderer {
         highQuality: true,
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
+    /** Invalidates streamed handles whenever their owning GPU stack is torn down. */
+    private pointCloudStreamEpoch = 0;
+    private pointCloudStreamEpochs = new WeakMap<PointCloudAssetHandle, number>();
     /**
      * Set true at the end of the LATEST `init()`; gates `whenReady()` and
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
@@ -1018,30 +1021,42 @@ export class Renderer {
      * `appendPointCloudChunk`. Call `endPointCloudStream` when no more
      * chunks will arrive (currently a no-op but kept for symmetry).
      */
-    beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle {
+    beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): PointCloudAssetHandle {
+        if (this.deviceLost) throw rendererDeviceLostError();
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
-        return this.pointCloudRenderer.beginAsset(meta);
+        const handle = this.pointCloudRenderer.beginAsset(meta);
+        this.pointCloudStreamEpochs.set(handle, this.pointCloudStreamEpoch);
+        return handle;
+    }
+
+    private currentPointCloudStreamRenderer(handle: PointCloudAssetHandle): PointCloudRenderer {
+        if (
+            this.deviceLost
+            || !this.pointCloudRenderer
+            || this.pointCloudStreamEpochs.get(handle) !== this.pointCloudStreamEpoch
+        ) throw rendererDeviceLostError();
+        return this.pointCloudRenderer;
     }
 
     appendPointCloudChunk(
-        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        handle: PointCloudAssetHandle,
         chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
     ): void {
-        if (!this.pointCloudRenderer) return;
-        this.pointCloudRenderer.appendChunk(handle, chunk);
+        this.currentPointCloudStreamRenderer(handle).appendChunk(handle, chunk);
         this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
 
-    endPointCloudStream(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
-        this.pointCloudRenderer?.endAsset(handle);
+    endPointCloudStream(handle: PointCloudAssetHandle): void {
+        this.currentPointCloudStreamRenderer(handle).endAsset(handle);
         this.requestRender();
     }
 
-    removePointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+    removePointCloudAsset(handle: PointCloudAssetHandle): void {
+        if (this.pointCloudStreamEpochs.get(handle) !== this.pointCloudStreamEpoch) return;
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
@@ -3701,6 +3716,7 @@ export class Renderer {
         this.referenceImages.destroy();
 
         // Point cloud GPU resources
+        this.pointCloudStreamEpoch++;
         this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;
 

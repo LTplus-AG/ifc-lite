@@ -281,21 +281,34 @@ export function modelsWithoutOmittedPointCloudHandles(
   let changed = false;
   const next = new Map<string, FederatedModel>();
   for (const [id, model] of models) {
-    if (model.pointCloudHandleId === undefined) {
+    const hasInlinePointClouds = (model.geometryResult?.pointClouds?.length ?? 0) > 0;
+    if (model.pointCloudHandleId === undefined && !hasInlinePointClouds) {
       next.set(id, model);
       continue;
     }
     changed = true;
+    // Streamed handles are gone permanently; IFCx point data is CPU-backed,
+    // so cloning its owning model invalidates ViewportContainer's merged
+    // point-cloud memo and makes usePointCloudSync upload it to the replacement.
     next.set(id, { ...model, pointCloudHandleId: undefined });
   }
   return changed ? next : null;
 }
 
 function reportDeviceRecovery(result: DeviceRecoveryResult): void {
-  const models = modelsWithoutOmittedPointCloudHandles(result, useViewerStore.getState().models);
+  const state = useViewerStore.getState();
+  const models = modelsWithoutOmittedPointCloudHandles(result, state.models);
   const pointCloudsOmitted = result.ok && result.omissions.includes('point-clouds');
   if (models || pointCloudsOmitted) {
-    useViewerStore.setState({ ...(models ? { models } : {}), pointCloudDeviationComputed: false });
+    const legacyGeometry = pointCloudsOmitted && state.models.size === 0 && state.geometryResult?.pointClouds?.length
+      ? { ...state.geometryResult, pointClouds: [...state.geometryResult.pointClouds] }
+      : undefined;
+    useViewerStore.setState({
+      ...(models ? { models } : {}),
+      ...(legacyGeometry ? { geometryResult: legacyGeometry } : {}),
+      pointCloudAssetCount: 0,
+      pointCloudDeviationComputed: false,
+    });
   }
   // A successful replacement owns a new loss lifecycle. Re-arm the report so
   // a later replacement-device loss is visible instead of being hidden by the
@@ -369,6 +382,19 @@ export function subscribeViewportHealth(
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
     // must describe the moment the device died, not the Viewport mount.
     renderer.onDeviceLost((info) => {
+      const store = useViewerStore.getState();
+      const cancelStream = store.activeStreamCanceller;
+      if (cancelStream) {
+        // A streamed scan does not publish its model handle until `done`.
+        // Cancel before recovery tears down the old point-cloud renderer so
+        // that late completion cannot publish a handle for a vanished asset.
+        store.setActiveStreamCanceller(null);
+        try {
+          cancelStream();
+        } catch (error) {
+          console.warn('[Viewport] failed to cancel point-cloud ingest during device loss:', error);
+        }
+      }
       reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
       if (!recovery && renderer.recoverDevice) {
         const run = startDeviceLossRecovery(

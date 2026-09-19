@@ -60,7 +60,13 @@ export function resolveEntityRef(globalId: number): EntityRef {
 export function resolveGlobalId(globalId: number): string | null {
   const state = useViewerStore.getState();
   const entityRef = resolveEntityRefFromState(state, globalId);
-  return resolveEntityRefGlobalId(entityRef);
+  const modelGlobalId = resolveEntityRefGlobalIdFromState(state, entityRef);
+  if (modelGlobalId) return modelGlobalId;
+
+  // Preserve the public single-store compatibility path while a registered
+  // model is still hydrating its own data store. Exact EntityRef callers must
+  // remain model-bound and therefore deliberately do not use this fallback.
+  return state.ifcDataStore?.entities.getGlobalId(entityRef.expressId) ?? null;
 }
 
 /** Resolve an exact model-space ref without losing identity to overlapping

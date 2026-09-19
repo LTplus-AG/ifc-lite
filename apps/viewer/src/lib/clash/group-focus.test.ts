@@ -7,6 +7,7 @@ import { beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import { useViewerStore, type ViewerState } from '@/store';
+import { CLASH_COLOR_A, CLASH_COLOR_B } from './clash-colors.js';
 import { focusClashGroup, focusedSceneRevisionIsCurrent, type FocusedClashGroup } from './group-focus.js';
 
 function clash(id: string, a: number, b: number): Clash {
@@ -59,6 +60,10 @@ describe('manual clash group focus (#4921)', () => {
     const state = useViewerStore.getState();
     assert.deepEqual(state.selectedEntityIds, new Set([110, 120, 130]));
     assert.deepEqual(state.selectedEntitiesSet, new Set(['model:110', 'model:120', 'model:130']));
+    assert.deepEqual(state.clashHighlightColors, new Map([
+      [110, CLASH_COLOR_A], [120, CLASH_COLOR_A], [130, CLASH_COLOR_B],
+    ]), 'the rendered group uses the same deterministic A/B colors serialized into BCF');
+    assert.deepEqual(state.pendingColorUpdates, state.clashHighlightColors);
     assert.equal(applyFocusMode.mock.callCount(), 1);
     assert.deepEqual(applyFocusMode.mock.calls[0].arguments, [[110, 120, 130], 'ghost']);
     await new Promise((resolveFrame) => requestAnimationFrame(resolveFrame));
@@ -152,5 +157,18 @@ describe('manual clash group focus (#4921)', () => {
     assert.ok(beforeVisibility);
     useViewerStore.setState({ hiddenEntities: new Set([99]) });
     assert.equal(focusedSceneRevisionIsCurrent(beforeVisibility), false);
+  });
+
+  it('invalidates capture when another selection or presentation replaces the focused group', () => {
+    const resolve = (element: ClashElementRef) => ({ modelId: element.model, expressId: element.ref });
+    const beforeSelection = focusClashGroup([clash('selection', 10, 20)], resolve, mock.fn(), 'highlight');
+    assert.ok(beforeSelection);
+    useViewerStore.getState().setSelectedEntityIds([99]);
+    assert.equal(focusedSceneRevisionIsCurrent(beforeSelection), false);
+
+    const beforePresentation = focusClashGroup([clash('presentation', 10, 20)], resolve, mock.fn(), 'highlight');
+    assert.ok(beforePresentation);
+    useViewerStore.getState().setPendingColorUpdates(new Map([[99, CLASH_COLOR_A]]));
+    assert.equal(focusedSceneRevisionIsCurrent(beforePresentation), false);
   });
 });

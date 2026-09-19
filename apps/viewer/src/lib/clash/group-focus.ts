@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useViewerStore } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
+import { CLASH_COLOR_A, CLASH_COLOR_B, type RGBA } from './clash-colors';
 
 interface SelectionRef {
   modelId: string;
@@ -29,6 +30,9 @@ export interface FocusedClashGroup {
     ghostExceptEntities: ReadonlySet<number> | null;
     hiddenEntitiesByModel: ReadonlyMap<string, ReadonlySet<number>>;
     isolatedEntitiesByModel: ReadonlyMap<string, ReadonlySet<number>>;
+    selectionRevision: number;
+    clashHighlightColors: ViewerState['clashHighlightColors'];
+    pendingColorUpdates: ViewerState['pendingColorUpdates'];
   };
 }
 
@@ -54,7 +58,10 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && state.isolatedEntities === revision.isolatedEntities
     && state.ghostExceptEntities === revision.ghostExceptEntities
     && state.hiddenEntitiesByModel === revision.hiddenEntitiesByModel
-    && state.isolatedEntitiesByModel === revision.isolatedEntitiesByModel;
+    && state.isolatedEntitiesByModel === revision.isolatedEntitiesByModel
+    && state.selectionRevision === revision.selectionRevision
+    && state.clashHighlightColors === revision.clashHighlightColors
+    && state.pendingColorUpdates === revision.pendingColorUpdates;
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -95,6 +102,16 @@ export function focusClashGroup(
   // An object on both sides gets one deterministic color, never two.
   for (const key of aRefs.keys()) bRefs.delete(key);
   const a = [...aRefs.values()], b = [...bRefs.values()];
+  const clashColors = new Map<number, RGBA>();
+  for (const ref of a) {
+    clashColors.set(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId), CLASH_COLOR_A);
+  }
+  for (const ref of b) {
+    const globalId = toGlobalIdFromModels(state.models, ref.modelId, ref.expressId);
+    if (!clashColors.has(globalId)) clashColors.set(globalId, CLASH_COLOR_B);
+  }
+  state.setClashHighlightColors(clashColors);
+  state.setPendingColorUpdates(clashColors);
   const focusedState = useViewerStore.getState();
   return {
     selectedRefs: refs,
@@ -112,6 +129,9 @@ export function focusClashGroup(
       ghostExceptEntities: focusedState.ghostExceptEntities,
       hiddenEntitiesByModel: focusedState.hiddenEntitiesByModel,
       isolatedEntitiesByModel: focusedState.isolatedEntitiesByModel,
+      selectionRevision: focusedState.selectionRevision,
+      clashHighlightColors: focusedState.clashHighlightColors,
+      pendingColorUpdates: focusedState.pendingColorUpdates,
     },
   };
 }

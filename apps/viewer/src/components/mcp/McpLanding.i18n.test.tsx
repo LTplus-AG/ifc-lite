@@ -93,6 +93,7 @@ function addReadable(root: ParentNode, out: Set<string>): void {
 function readableStrings(): Set<string> {
   const out = new Set<string>();
   addReadable(document.body, out);
+  out.add(document.title);
   return out;
 }
 

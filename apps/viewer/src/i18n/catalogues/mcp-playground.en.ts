@@ -22,6 +22,7 @@ import type { TranslationValue } from '../types';
  */
 export const mcpPlaygroundEn = {
   // ── McpPlayground: sidebar + shell ──
+  'mcp.mcpPlayground.documentTitle': '@ifc-lite/mcp · playground',
   'mcp.mcpPlayground.title': 'Playground.',
   'mcp.mcpPlayground.subtitle':
     'Pick a sample IFC. Then chat. The agent drives the same {count} tools the stdio MCP exposes — query, mutate, validate, BCF, export. Models stay in your browser.',

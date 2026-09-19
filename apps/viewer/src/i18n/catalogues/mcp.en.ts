@@ -21,6 +21,7 @@ import type { TranslationValue } from '../types';
  */
 export const mcpEn = {
   // ── McpLanding: top bar ──
+  'mcp.mcpLanding.documentTitle': '@ifc-lite/mcp — drive an IFC from any LLM',
   'mcp.mcpLanding.brand': 'ifc-lite',
   'mcp.mcpLanding.navBadge': '/ mcp · {version}',
   'mcp.mcpLanding.navViewer': 'Viewer',

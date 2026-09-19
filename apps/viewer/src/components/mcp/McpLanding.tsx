@@ -93,10 +93,10 @@ const mono: CSSProperties = {
 };
 
 export function McpLanding(): ReactNode {
-  useFonts(
+  const { t } = useTranslation(); useFonts(
     'https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&display=swap',
   );
-  useDocumentMeta('@ifc-lite/mcp — drive an IFC from any LLM', NIGHT);
+  useDocumentMeta(t('mcp.mcpLanding.documentTitle'), NIGHT);
 
   return (
     <main style={stage} className="relative min-h-screen overflow-hidden antialiased">

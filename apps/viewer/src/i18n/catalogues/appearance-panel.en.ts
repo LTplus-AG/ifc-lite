@@ -47,8 +47,14 @@ export const appearancePanelEn = {
     other: 'Partial conversion: {count} visible omissions. Review the report and accept the partial conversion to prepare it.',
   },
   'appearance.pdfAnnotation.preparingGeometry': 'Preparing geometry…',
-  'appearance.pdfAnnotation.reviewRegionsExact': 'Review {count} coloured regions. The original drawing remains available.',
-  'appearance.pdfAnnotation.reviewRegionsPartial': 'Review {count} coloured regions of the accepted partial conversion. The original drawing remains available.',
+  'appearance.pdfAnnotation.reviewRegionsExact': {
+    one: 'Review {count} coloured region. The original drawing remains available.',
+    other: 'Review {count} coloured regions. The original drawing remains available.',
+  },
+  'appearance.pdfAnnotation.reviewRegionsPartial': {
+    one: 'Review {count} coloured region of the accepted partial conversion. The original drawing remains available.',
+    other: 'Review {count} coloured regions of the accepted partial conversion. The original drawing remains available.',
+  },
   'appearance.pdfAnnotation.rendererNotReady': 'Wait for the 3D view to be ready.',
   'appearance.pdfAnnotation.creating': 'Creating PDF annotation…',
   'appearance.pdfAnnotation.createdExact': 'PDF IfcAnnotation created and selected. Hide the drawing above to inspect it. Undo is available.',
@@ -222,7 +228,7 @@ export const appearancePanelEn = {
   'appearance.pdfFidelity.omissionWord': { one: 'omission', other: 'omissions' },
   'appearance.pdfFidelity.pathConvertsWord': { one: 'path converts', other: 'paths convert' },
   'appearance.pdfFidelity.omissionsAriaLabel': 'PDF omissions',
-  'appearance.pdfFidelity.invisibleItemsNote': { one: '{count} further item is not visible on the page and do not affect the conversion.', other: '{count} further items are not visible on the page and do not affect the conversion.' },
+  'appearance.pdfFidelity.invisibleItemsNote': { one: '{count} further item is not visible on the page and does not affect the conversion.', other: '{count} further items are not visible on the page and do not affect the conversion.' },
   'appearance.pdfFidelity.truncatedNote': 'The detailed list is truncated; these counts are complete.',
 
 } as const satisfies Record<string, TranslationValue>;

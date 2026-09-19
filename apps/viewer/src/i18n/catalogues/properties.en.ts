@@ -20,6 +20,7 @@ export const propertiesEn = {
 
   // SpatialLocationBadge
   'properties.spatialLocation.elevationDisplay': '{sign}{value}m',
+  'properties.spatialLocation.heightDisplay': '{value}m',
   'properties.spatialLocation.elevationTooltip': 'Elevation: {sign}{value}m from ground',
   'properties.spatialLocation.heightTooltip': 'Height: {value}m to next storey',
 
@@ -172,7 +173,7 @@ export const propertiesEn = {
   'properties.bsdd.loadFailed': 'Could not load bSDD data: {error}',
   'properties.bsdd.noData': 'No bSDD data available for {entityType}',
   'properties.bsdd.editedCount': '{count} added · Edit in Properties',
-  'properties.bsdd.addAllTooltip': 'Add all {count} properties',
+  'properties.bsdd.addAllTooltip': { one: 'Add all {count} property', other: 'Add all {count} properties' },
   'properties.bsdd.addToElementTooltip': 'Add to element',
   'properties.bsdd.viewOnBsdd': 'View on bSDD',
 
@@ -258,7 +259,10 @@ export const propertiesEn = {
   'properties.taskEdit.productsAssignedCount': '{count} assigned',
   'properties.taskEdit.addButton': 'Add',
   'properties.taskEdit.addButtonWithCount': 'Add ({count})',
-  'properties.taskEdit.addTooltipWithCount': 'Add the {count} object(s) currently selected in the 3D viewport to this task.',
+  'properties.taskEdit.addTooltipWithCount': {
+    one: 'Add the {count} object currently selected in the 3D viewport to this task.',
+    other: 'Add the {count} objects currently selected in the 3D viewport to this task.',
+  },
   'properties.taskEdit.addTooltipEmpty': 'Select objects in the 3D viewport first.',
   'properties.taskEdit.removeButton': 'Remove',
   'properties.taskEdit.removeButtonWithCount': 'Remove ({count})',
@@ -267,7 +271,7 @@ export const propertiesEn = {
   'properties.taskEdit.globalIdLabel': 'Global ID',
   'properties.taskEdit.deleteTaskButton': 'Delete task',
   'properties.taskEdit.confirmDelete': 'Delete?',
-  'properties.taskEdit.confirmDeleteWithDescendants': 'Delete + {count} descendants?',
+  'properties.taskEdit.confirmDeleteWithDescendants': { one: 'Delete + {count} descendant?', other: 'Delete + {count} descendants?' },
   'properties.taskEdit.cancel': 'Cancel',
   'properties.taskEdit.delete': 'Delete',
 

@@ -33,7 +33,7 @@ function ReviewBinding({ row, controller, base }: { row: AppearanceAssignment; c
     <label className="block">{t('appearance.assignments.originalSourceLabel')}<select className="mt-1 w-full rounded border bg-background p-1" value={sourceId}
       disabled={controller.busy} onChange={event => controller.setBinding(row.id, { sourceId: event.currentTarget.value })}>
       <option value="">{t('appearance.assignments.chooseOriginalSource')}</option>
-      {!base.sources.some(source => source.id === sourceId) && sourceId && <option value={sourceId} disabled>{t('appearance.assignments.unavailableModel', { name: row.source.name })}</option>}
+      {!base.sources.some(source => source.id === sourceId) && sourceId && <option value={sourceId} disabled>{t('appearance.assignments.unavailableSource', { name: row.source.name })}</option>}
       {base.sources.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}
     </select></label>
     <Button size="sm" variant="outline" disabled={controller.busy || !controller.canReview(row.id)} onClick={() => controller.reviewRow(row.id)}>{t('appearance.assignments.reviewCurrentScope')}</Button>

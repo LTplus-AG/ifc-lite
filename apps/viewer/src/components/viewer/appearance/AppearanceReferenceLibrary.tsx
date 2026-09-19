@@ -17,6 +17,14 @@ export interface AppearanceReferenceLibraryProps {
   disabled?: boolean;
 }
 
+type LibraryError = { key: TranslationKey } | { text: string } | null;
+
+class LocalizedReferenceError extends Error {
+  constructor(readonly key: TranslationKey) {
+    super(key);
+  }
+}
+
 /** Registered drawings live inside the Appearance workspace; they never select IFC entities. */
 export function AppearanceReferenceLibrary({ onEdit, disabled = false }: AppearanceReferenceLibraryProps) {
   const { t } = useTranslation();
@@ -32,7 +40,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
   const pending = useRef<AbortController | undefined>(undefined);
   const mounted = useRef(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<LibraryError>(null);
   const [noticeKey, setNoticeKey] = useState<TranslationKey>();
   useEffect(() => {
     mounted.current = true;
@@ -44,19 +52,23 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
   const blocked = disabled || busy;
   function perform(action: () => void): void {
     if (blocked) return;
-    setError(undefined); setNoticeKey(undefined);
+    setError(null); setNoticeKey(undefined);
     try { action(); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+    catch (failure) { setError({ text: failure instanceof Error ? failure.message : String(failure) }); }
   }
   async function fileOperation(action: (signal: AbortSignal) => Promise<TranslationKey>): Promise<void> {
     pending.current?.abort();
     const controller = new AbortController(); pending.current = controller;
-    setBusy(true); setError(undefined); setNoticeKey(undefined);
+    setBusy(true); setError(null); setNoticeKey(undefined);
     try {
       const notice = await action(controller.signal);
       if (!controller.signal.aborted && mounted.current) setNoticeKey(notice);
     } catch (failure) {
-      if (!controller.signal.aborted && mounted.current) setError(failure instanceof Error ? failure.message : String(failure));
+      if (!controller.signal.aborted && mounted.current) {
+        setError(failure instanceof LocalizedReferenceError
+          ? { key: failure.key }
+          : { text: failure instanceof Error ? failure.message : String(failure) });
+      }
     } finally {
       if (pending.current === controller && mounted.current) { pending.current = undefined; setBusy(false); }
     }
@@ -64,10 +76,10 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
   function importFile(file: File): void {
     const before = useViewerStore.getState().appearanceReferences;
     void fileOperation(async signal => {
-      if (file.size > 2_000_000) throw new Error(t('appearance.referenceLibrary.tooLarge'));
+      if (file.size > 2_000_000) throw new LocalizedReferenceError('appearance.referenceLibrary.tooLarge');
       const text = await file.text();
-      if (signal.aborted) throw new DOMException(t('appearance.referenceLibrary.importCancelled'), 'AbortError');
-      if (useViewerStore.getState().appearanceReferences !== before) throw new Error(t('appearance.referenceLibrary.changedWhileOpening'));
+      if (signal.aborted) throw new LocalizedReferenceError('appearance.referenceLibrary.importCancelled');
+      if (useViewerStore.getState().appearanceReferences !== before) throw new LocalizedReferenceError('appearance.referenceLibrary.changedWhileOpening');
       useViewerStore.getState().importAppearanceReferences(text);
       return 'appearance.referenceLibrary.importedNotice';
     });
@@ -143,7 +155,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
     {busy && <div className="flex items-center justify-between text-[11px] text-muted-foreground" role="status">
       <span>{t('appearance.referenceLibrary.openingFile')}</span><Button type="button" variant="ghost" size="sm" onClick={() => { pending.current?.abort(); pending.current = undefined; setBusy(false); }}>{t('appearance.referenceLibrary.cancelFileOperation')}</Button>
     </div>}
-    {error && <p role="alert" className="text-[11px] leading-relaxed text-destructive">{error}</p>}
+    {error && <p role="alert" className="text-[11px] leading-relaxed text-destructive">{'key' in error ? t(error.key) : error.text}</p>}
     {noticeKey && <p role="status" className="text-[11px] leading-relaxed text-muted-foreground">{t(noticeKey)}</p>}
   </section>;
 }

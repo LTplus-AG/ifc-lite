@@ -234,7 +234,8 @@ function mountAll(): HTMLElement {
 function openCollapsibles(container: ParentNode): void {
   for (const wanted of ['Details', 'Projected CRS']) {
     const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes(wanted));
-    if (button) click(button);
+    assert.ok(button, `${wanted} trigger must render for the localization oracle`);
+    click(button);
   }
 }
 

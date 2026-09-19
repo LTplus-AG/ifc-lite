@@ -139,3 +139,18 @@ test('a retained success notice follows active catalogue replacement (#4918)', a
   act(() => registerLocale('notice-test', { 'appearance.referenceLibrary.exportedNotice': 'Exported B' }));
   assert.equal(ui.querySelector('[role="status"]')?.textContent, 'Exported B');
 });
+
+test('a retained validation error follows active catalogue replacement (#4918)', async () => {
+  registerLocale('error-test', { 'appearance.referenceLibrary.tooLarge': 'Too large A' });
+  act(() => setLocale('error-test'));
+  const ui = render(<AppearanceReferenceLibrary />);
+  await choose(
+    ui,
+    'Drawing registration file',
+    new File([new Uint8Array(2_000_001)], 'oversized.json', { type: 'application/json' }),
+  );
+  assert.equal(ui.querySelector('[role="alert"]')?.textContent, 'Too large A');
+
+  act(() => registerLocale('error-test', { 'appearance.referenceLibrary.tooLarge': 'Too large B' }));
+  assert.equal(ui.querySelector('[role="alert"]')?.textContent, 'Too large B');
+});

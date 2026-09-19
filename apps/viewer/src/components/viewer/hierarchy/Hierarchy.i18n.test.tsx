@@ -229,14 +229,14 @@ function mountAll(): HTMLElement {
  *  dialog (also portaled) so both surfaces' content reaches the DOM. */
 function openPortaledSurfaces(container: ParentNode): void {
   const sortTrigger = container.querySelector('button[aria-haspopup]');
-  if (sortTrigger) {
-    act(() => sortTrigger.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true })));
-    act(() => sortTrigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
-  }
+  assert.ok(sortTrigger, 'sort-control trigger must render for the localization oracle');
+  act(() => sortTrigger.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true })));
+  act(() => sortTrigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
   const editTagsButton = [...container.querySelectorAll('button')].find(
     (b) => b.getAttribute('aria-label')?.startsWith('Edit tags for model'),
   );
-  if (editTagsButton) click(editTagsButton);
+  assert.ok(editTagsButton, 'model-tag editor trigger must render for the localization oracle');
+  click(editTagsButton);
 }
 
 beforeEach(() => {

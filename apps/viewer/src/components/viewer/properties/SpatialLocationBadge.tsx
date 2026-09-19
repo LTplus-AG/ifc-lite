@@ -50,10 +50,10 @@ export function SpatialLocationBadge({ spatialInfo }: { spatialInfo: SpatialLoca
               <span className="flex items-center gap-1 text-emerald-500/60 dark:text-emerald-400/60 font-mono text-[10px] whitespace-nowrap">
                 <ArrowUpDown className="h-2.5 w-2.5 shrink-0" />
                 <span className="hidden sm:inline">
-                  {t('properties.spatialLocation.elevationDisplay', { sign: '', value: spatialInfo.height.toFixed(2) })}
+                  {t('properties.spatialLocation.heightDisplay', { value: spatialInfo.height.toFixed(2) })}
                 </span>
                 <span className="sm:hidden">
-                  {t('properties.spatialLocation.elevationDisplay', { sign: '', value: spatialInfo.height.toFixed(1) })}
+                  {t('properties.spatialLocation.heightDisplay', { value: spatialInfo.height.toFixed(1) })}
                 </span>
               </span>
             </TooltipTrigger>

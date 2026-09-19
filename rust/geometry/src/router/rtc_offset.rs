@@ -325,6 +325,18 @@ impl GeometryRouter {
             let pt_id = polygon.first()?.as_entity_ref()?;
             return decoder.get_cartesian_point_fast(pt_id);
         }
+        if loop_entity.ifc_type == IfcType::IfcEdgeLoop {
+            let edge_id = loop_entity.get(0)?.as_list()?.first()?.as_entity_ref()?;
+            let oriented = decoder.decode_by_id(edge_id).ok()?;
+            let edge = oriented
+                .get(2)
+                .and_then(|attr| decoder.resolve_ref(attr).ok().flatten())?;
+            let vertex = edge
+                .get(0)
+                .and_then(|attr| decoder.resolve_ref(attr).ok().flatten())?;
+            let point_id = vertex.get_ref(0)?;
+            return decoder.get_cartesian_point_fast(point_id);
+        }
         None
     }
 

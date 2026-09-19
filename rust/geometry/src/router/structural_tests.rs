@@ -57,6 +57,33 @@ fn advanced_surface_member() -> String {
     )
 }
 
+fn edge_loop_surface_member() -> String {
+    "#1=IFCCARTESIANPOINT((5000000.,5000000.,0.));
+     #2=IFCCARTESIANPOINT((5000000.125,5000000.,0.));
+     #3=IFCCARTESIANPOINT((5000000.125,5000000.125,0.));
+     #4=IFCCARTESIANPOINT((5000000.,5000000.125,0.));
+     #5=IFCVERTEXPOINT(#1);#6=IFCVERTEXPOINT(#2);
+     #7=IFCVERTEXPOINT(#3);#8=IFCVERTEXPOINT(#4);
+     #9=IFCDIRECTION((0.,0.,1.));#10=IFCDIRECTION((1.,0.,0.));
+     #11=IFCAXIS2PLACEMENT3D(#1,#9,#10);#12=IFCPLANE(#11);
+     #13=IFCLINE(#1,#20);#14=IFCLINE(#2,#21);
+     #15=IFCLINE(#3,#22);#16=IFCLINE(#4,#23);
+     #20=IFCVECTOR(#24,1.);#21=IFCVECTOR(#25,1.);
+     #22=IFCVECTOR(#26,1.);#23=IFCVECTOR(#27,1.);
+     #24=IFCDIRECTION((1.,0.,0.));#25=IFCDIRECTION((0.,1.,0.));
+     #26=IFCDIRECTION((-1.,0.,0.));#27=IFCDIRECTION((0.,-1.,0.));
+     #30=IFCEDGECURVE(#5,#6,#13,.T.);#31=IFCEDGECURVE(#6,#7,#14,.T.);
+     #32=IFCEDGECURVE(#7,#8,#15,.T.);#33=IFCEDGECURVE(#8,#5,#16,.T.);
+     #40=IFCORIENTEDEDGE(*,*,#30,.T.);#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+     #42=IFCORIENTEDEDGE(*,*,#32,.T.);#43=IFCORIENTEDEDGE(*,*,#33,.T.);
+     #50=IFCEDGELOOP((#40,#41,#42,#43));#51=IFCFACEOUTERBOUND(#50,.T.);
+     #52=IFCFACESURFACE((#51),#12,.T.);
+     #53=IFCTOPOLOGYREPRESENTATION($,'Reference','Face',(#52));
+     #54=IFCPRODUCTDEFINITIONSHAPE($,$,(#53));
+     #55=IFCSTRUCTURALSURFACEMEMBER('0000000000000000000000',$,'Surface',$,$,$,#54,.SHELL.,0.2);"
+        .to_string()
+}
+
 fn signed_xy_area(mesh: &crate::Mesh) -> f64 {
     mesh.indices
         .chunks_exact(3)
@@ -240,6 +267,20 @@ fn structural_surface_rebases_raw_coordinates_before_f32_conversion() {
         assert_eq!((min_y, max_y), (0.0, 0.125));
         assert!((signed_xy_area(&mesh) - 0.015625).abs() < 1e-9);
     }
+}
+
+#[test]
+fn structural_edge_loop_surface_rebases_before_f32_conversion() {
+    let source = edge_loop_surface_member();
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(55).unwrap();
+    let mut router = GeometryRouter::new();
+    router.set_rtc_offset((5_000_000.0, 5_000_000.0, 0.0));
+    let mesh = router.process_element(&entity, &mut decoder).unwrap();
+
+    assert!(!mesh.is_empty());
+    assert!((signed_xy_area(&mesh) - 0.015625).abs() < 1e-9);
+    assert!(mesh.positions.iter().all(|coordinate| coordinate.abs() <= 0.125));
 }
 
 #[test]

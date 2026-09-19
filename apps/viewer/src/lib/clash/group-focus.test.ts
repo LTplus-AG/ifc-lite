@@ -33,7 +33,7 @@ describe('manual clash group focus (#4921)', () => {
 
     assert.deepEqual(
       focusClashGroup([clash('c1', 10, 20), clash('c2', 20, 30)], resolve, applyFocusMode, 'ghost'),
-      { selectedRefs: [110, 120, 130], aRefs: [110, 120], bRefs: [130] },
+      { selectedRefs: [110, 120, 130], aRefs: [110, 120], bRefs: [130], modelIds: ['model'] },
     );
 
     const state = useViewerStore.getState();
@@ -58,11 +58,11 @@ describe('manual clash group focus (#4921)', () => {
   it('keeps equal numeric refs from distinct models as distinct selections', () => {
     const first = clash('first', 10, 20);
     const second = clash('second', 10, 30);
-    second.a.model = 'other-model';
+    second.a.model = 'room:r:m0';
     useViewerStore.setState({
       models: new Map([
         ['model', { idOffset: 1_000 }],
-        ['other-model', { idOffset: 2_000 }],
+        ['room:r:m0', { idOffset: 2_000 }],
       ]) as ViewerState['models'],
     });
     const applyFocusMode = mock.fn();
@@ -72,12 +72,13 @@ describe('manual clash group focus (#4921)', () => {
       selectedRefs: [1_010, 1_020, 2_010, 1_030],
       aRefs: [1_010, 2_010],
       bRefs: [1_020, 1_030],
+      modelIds: ['model', 'room:r:m0'],
     });
 
     const state = useViewerStore.getState();
     assert.deepEqual(state.selectedEntityIds, new Set([1_010, 1_020, 2_010, 1_030]));
     assert.ok(state.selectedEntitiesSet.has('model:10'));
-    assert.ok(state.selectedEntitiesSet.has('other-model:10'));
+    assert.ok(state.selectedEntitiesSet.has('room:r:m0:10'));
   });
 
   it('returns viewpoint refs only for objects that resolved in the current models', () => {
@@ -92,6 +93,7 @@ describe('manual clash group focus (#4921)', () => {
       selectedRefs: [10, 20],
       aRefs: [10],
       bRefs: [20],
+      modelIds: ['model'],
     });
   });
 });

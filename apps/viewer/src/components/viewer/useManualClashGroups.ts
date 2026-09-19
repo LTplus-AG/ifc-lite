@@ -189,7 +189,7 @@ export function useManualClashGroups({
           { color: clashColorToBcfArgb(CLASH_COLOR_B), refs: bRefs },
         ].filter((entry) => entry.refs.length > 0),
       });
-      const header = headerFilesForViewpoints(viewpoint ? [viewpoint] : [], topic.creationDate);
+      const header = headerFilesForViewpoints(viewpoint ? [viewpoint] : [], topic.creationDate, focused.modelIds);
       if (header.length > 0) topic.header = header;
       addTopic(topic);
       if (viewpoint) addViewpoint(topic.guid, viewpoint);

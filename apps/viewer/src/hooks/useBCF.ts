@@ -87,6 +87,7 @@ interface UseBCFResult {
   headerFilesForViewpoints: (
     viewpoints: readonly BCFViewpoint[],
     date?: string,
+    exactModelIds?: readonly string[],
   ) => BCFHeaderFile[];
   /** Apply a viewpoint to the viewer */
   applyViewpoint: (viewpoint: BCFViewpoint, animate?: boolean) => void;
@@ -481,8 +482,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
    * a lone-model topic still records its source file.
    */
   const headerFilesForViewpoints = useCallback(
-    (viewpoints: readonly BCFViewpoint[], date?: string): BCFHeaderFile[] => {
-      const modelIds = new Set<string>();
+    (viewpoints: readonly BCFViewpoint[], date?: string, exactModelIds?: readonly string[]): BCFHeaderFile[] => {
+      const modelIds = new Set(exactModelIds);
 
       // Primary source: the live selection's model ids. A topic is created from
       // the current selection, and the selection knows each element's model
@@ -491,7 +492,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // federations), collapsing every component onto the first match.
       const selected = useViewerStore.getState().selectedEntitiesSet;
       for (const key of selected) {
-        const modelId = key.slice(0, key.indexOf(':'));
+        const modelId = key.slice(0, key.lastIndexOf(':'));
         if (modelId) modelIds.add(modelId);
       }
 

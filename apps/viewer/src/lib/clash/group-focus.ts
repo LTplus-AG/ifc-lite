@@ -16,6 +16,7 @@ export interface FocusedClashGroup {
   selectedRefs: number[];
   aRefs: number[];
   bRefs: number[];
+  modelIds: string[];
 }
 
 /** Focus the distinct objects in a manual group through the normal selection channel. */
@@ -54,5 +55,10 @@ export function focusClashGroup(
   requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
   // An object on both sides gets one deterministic color, never two.
   for (const ref of aRefs) bRefs.delete(ref);
-  return { selectedRefs: [...globalIds], aRefs: [...aRefs], bRefs: [...bRefs] };
+  return {
+    selectedRefs: [...globalIds],
+    aRefs: [...aRefs],
+    bRefs: [...bRefs],
+    modelIds: [...new Set(refs.map(ref => ref.modelId))],
+  };
 }

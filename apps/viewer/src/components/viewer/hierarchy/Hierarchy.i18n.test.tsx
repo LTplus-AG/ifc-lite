@@ -43,7 +43,7 @@ let hierarchyEn: typeof HierarchyEnType | undefined;
 try {
   ({ hierarchyEn } = await import('@/i18n/catalogues/hierarchy.en'));
 } catch (error) {
-  if (!(error instanceof Error) || !error.message.includes('Cannot find module')) throw error;
+  if (!(error instanceof Error) || !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
 }
 const HAS_CATALOGUE = hierarchyEn !== undefined;
 const CATALOGUE: typeof HierarchyEnType = hierarchyEn ?? ({} as typeof HierarchyEnType);

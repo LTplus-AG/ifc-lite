@@ -50,7 +50,7 @@ try {
   ({ appearancePanelEn } = await import('@/i18n/catalogues/appearance-panel.en'));
   ({ appearanceWorkflowsEn } = await import('@/i18n/catalogues/appearance-workflows.en'));
 } catch (error) {
-  if (!(error instanceof Error) || !error.message.includes('Cannot find module')) throw error;
+  if (!(error instanceof Error) || !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
 }
 const HAS_CATALOGUE = appearancePanelEn !== undefined && appearanceWorkflowsEn !== undefined;
 const MERGED_EN = {

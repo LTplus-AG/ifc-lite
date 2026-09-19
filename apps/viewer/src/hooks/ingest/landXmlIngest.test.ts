@@ -41,6 +41,17 @@ function bytes(text: string): ArrayBuffer {
   return new TextEncoder().encode(text).buffer;
 }
 
+function utf16LeBytes(text: string): ArrayBuffer {
+  const bytes = new Uint8Array(2 + text.length * 2);
+  bytes.set([0xff, 0xfe]);
+  for (let i = 0; i < text.length; i++) {
+    const codeUnit = text.charCodeAt(i);
+    bytes[2 + i * 2] = codeUnit & 0xff;
+    bytes[3 + i * 2] = codeUnit >>> 8;
+  }
+  return bytes.buffer;
+}
+
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
   it('parses schema point order and ignores invisible/non-TIN faces', () => {
     const parsed = parseLandXmlTin(LANDXML);
@@ -58,7 +69,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     const result = parseLandXmlViewerModel(bytes(LANDXML));
     assert.equal(result.geometryResult.meshes.length, 1);
     assert.equal(result.geometryResult.totalTriangles, 1);
-    assert.equal(result.geometryResult.totalVertices, 4);
+    assert.equal(result.geometryResult.totalVertices, 3);
     assert.deepEqual(result.surfaceNames, ['Existing Ground']);
 
     const mesh = result.geometryResult.meshes[0];
@@ -73,6 +84,24 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.geometryResult.coordinateInfo.hasLargeCoordinates, true);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.min.x, 2_600_000);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.z, -5_000_000);
+  });
+
+  it('excludes points unused by visible faces from vertex and camera bounds', () => {
+    const withOutlier = LANDXML.replace(
+      '</Pnts>',
+      '<P id="99">900000000 800000000 700000000</P></Pnts>',
+    );
+    const result = parseLandXmlViewerModel(bytes(withOutlier));
+    assert.equal(result.geometryResult.totalVertices, 3);
+    assert.deepEqual(result.geometryResult.meshes[0].origin, [2_600_005, 101, -5_000_005]);
+    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
+  });
+
+  it('decodes XML-required UTF-16 input before parsing', () => {
+    const utf16 = LANDXML.replace('encoding="UTF-8"', 'encoding="UTF-16"');
+    const result = parseLandXmlViewerModel(utf16LeBytes(utf16));
+    assert.equal(result.geometryResult.totalTriangles, 1);
+    assert.deepEqual(result.surfaceNames, ['Existing Ground']);
   });
 
   it('applies the declared horizontal and elevation units independently', () => {

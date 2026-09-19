@@ -23,16 +23,44 @@ interface WorldPoint {
   z: number;
 }
 
+function xmlEncoding(bytes: Uint8Array): string {
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be';
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le';
+  if (bytes[0] === 0x00 && bytes[1] === 0x3c && bytes[2] === 0x00 && bytes[3] === 0x3f) {
+    return 'utf-16be';
+  }
+  if (bytes[0] === 0x3c && bytes[1] === 0x00 && bytes[2] === 0x3f && bytes[3] === 0x00) {
+    return 'utf-16le';
+  }
+  const declaration = Array.from(bytes.subarray(0, 256), (byte) => (
+    byte < 0x80 ? String.fromCharCode(byte) : ' '
+  )).join('');
+  return /<\?xml\s[^>]*encoding\s*=\s*(['"])([^'"]+)\1/i.exec(declaration)?.[2] || 'utf-8';
+}
+
+function decodeXml(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const encoding = xmlEncoding(bytes);
+  try {
+    return new TextDecoder(encoding, { fatal: true }).decode(bytes);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Cannot decode LandXML as ${encoding}: ${message}`);
+  }
+}
+
 function buildSurfaceMesh(
   surface: LandXmlTinSurface,
   expressId: number,
   linearScale: number,
   elevationScale: number,
 ): { mesh: MeshData | null; degenerateFaces: number } {
+  const referencedPointIds = new Set(surface.faces.flatMap((face) => face));
+  const retainedPoints = surface.points.filter((point) => referencedPointIds.has(point.id));
   const worldById = new Map<string, WorldPoint>();
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (const point of surface.points) {
+  for (const point of retainedPoints) {
     // LandXML: northing/easting/elevation (Z-up). Viewer: X east, Y up,
     // Z south. This is the same Z-up -> Y-up convention used by IFC and the
     // point-cloud ingest path.
@@ -54,9 +82,9 @@ function buildSurfaceMesh(
     (minY + maxY) / 2,
     (minZ + maxZ) / 2,
   ];
-  const positions = new Float32Array(surface.points.length * 3);
+  const positions = new Float32Array(retainedPoints.length * 3);
   const indexById = new Map<string, number>();
-  surface.points.forEach((point, index) => {
+  retainedPoints.forEach((point, index) => {
     const world = worldById.get(point.id)!;
     indexById.set(point.id, index);
     positions[index * 3] = world.x - origin[0];
@@ -125,13 +153,7 @@ function buildSurfaceMesh(
 
 /** Parse LandXML 1.2 TIN surfaces into the viewer's canonical mesh payload. */
 export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayload {
-  let xml: string;
-  try {
-    xml = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-  } catch (error) {
-    throw new Error(`LandXML must be UTF-8: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const parsed = parseLandXmlTin(xml);
+  const parsed = parseLandXmlTin(decodeXml(buffer));
   const warnings = [...parsed.warnings];
   const meshes: MeshData[] = [];
   const surfaceNames: string[] = [];

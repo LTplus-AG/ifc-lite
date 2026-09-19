@@ -46,7 +46,6 @@
   "apps/viewer/src/components/viewer/BCFPanel.tsx": 11,
   "apps/viewer/src/components/viewer/BasketPresentationDock.tsx": 25,
   "apps/viewer/src/components/viewer/BottomStrip.tsx": 1,
-  "apps/viewer/src/components/viewer/BulkPropertyEditor.tsx": 63,
   "apps/viewer/src/components/viewer/CesiumOverlay.tsx": 1,
   "apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx": 35,
   "apps/viewer/src/components/viewer/ChatPanel.tsx": 43,

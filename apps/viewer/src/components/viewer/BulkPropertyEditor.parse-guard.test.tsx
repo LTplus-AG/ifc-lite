@@ -24,7 +24,9 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { render, cleanup, click, advance } from '@/test/render.js';
+import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -157,6 +159,7 @@ async function fillSetPropertyAndExecute(newValue: string, typeLabel: string): P
 describe('BulkPropertyEditor — Real/Integer parse guard (buildAction / handleExecute)', () => {
   afterEach(() => {
     cleanup();
+    setLocale('en');
   });
 
   it('a non-numeric Real value writes nothing to ANY matched entity (all-or-nothing, not half-applied)', async () => {
@@ -179,6 +182,15 @@ describe('BulkPropertyEditor — Real/Integer parse guard (buildAction / handleE
     // pattern it already uses for a failed execute — not a new UI.
     const errorAlert = [...document.body.querySelectorAll('*')].find((el) => el.textContent === 'Error');
     assert.ok(errorAlert, 'the Error alert must render, explaining the value did not parse');
+    assert.match(document.body.textContent ?? '', /“N\/A” is not a valid Real value/);
+
+    registerLocale('bulk-error-live', {
+      'bulkPropertyEditor.real': '[decimal]',
+      'bulkPropertyEditor.invalidValue': '[LIVE {value} / {type}]',
+    });
+    act(() => setLocale('bulk-error-live'));
+    assert.match(document.body.textContent ?? '', /\[LIVE N\/A \/ \[decimal\]\]/);
+    assert.doesNotMatch(document.body.textContent ?? '', /is not a valid Real value/);
   });
 
   it('a non-numeric Integer value writes nothing to any matched entity', async () => {

@@ -218,9 +218,13 @@ describe('manual clash group focus (#4921)', () => {
 
   it('exposes completion of the actual camera framing animation', async () => {
     let finishFraming!: () => void;
+    let requestedDuration: number | undefined;
     useViewerStore.setState({
       cameraCallbacks: {
-        frameSelection: () => new Promise<void>((resolve) => { finishFraming = resolve; }),
+        frameSelection: (durationMs) => {
+          requestedDuration = durationMs;
+          return new Promise<void>((resolve) => { finishFraming = resolve; });
+        },
       },
     });
     const focused = focusClashGroup(
@@ -233,6 +237,7 @@ describe('manual clash group focus (#4921)', () => {
     let frameReady = false;
     void focused.frameReady.then(() => { frameReady = true; });
     await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(requestedDuration, 1, 'capture uses immediate framing, not the interactive 300 ms animation');
     assert.equal(frameReady, false, 'one animation frame is not the end of camera framing');
     finishFraming();
     await focused.frameReady;

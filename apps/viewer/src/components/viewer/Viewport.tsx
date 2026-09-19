@@ -1085,7 +1085,7 @@ export function Viewport({
         rotateRight: () => {
           animateHorizontalRotation(Math.PI / 2);
         },
-        frameSelection: () => {
+        frameSelection: (durationMs = 300) => {
           // Frame the current selection. Prefer the full multi-selection set
           // (Ctrl-click, box-select, a clash pair) so the camera encloses EVERY
           // selected element; fall back to the single primary id. The set is
@@ -1141,7 +1141,7 @@ export function Viewport({
           }
           if (min && max) {
             calculateScale();
-            return camera.frameBounds(min, max, 300);
+            return camera.frameBounds(min, max, durationMs);
           } else {
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }

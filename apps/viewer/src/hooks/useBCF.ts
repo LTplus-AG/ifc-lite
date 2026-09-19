@@ -82,6 +82,8 @@ interface CreateViewpointOptions {
   additionalColoredRefs?: { color: string; refs: ComponentRef[] }[];
   /** Coloring already bound to a validated model revision by the caller. */
   additionalColoredGuids?: { color: string; guids: string[] }[];
+  /** Model-bound GUIDs that supplement an active numeric isolation allowlist. */
+  additionalVisibleGuids?: string[];
   /** Abort when caller-owned scene identity changes while snapshot capture yields. */
   isCaptureStillValid?: () => boolean;
   /** Exact source models represented by the visibility state bound for this capture. */
@@ -431,6 +433,9 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           isEntityPending,
         );
         ({ visibleGuids, hiddenGuids } = capture);
+        if (visibleGuids && opts.additionalVisibleGuids) {
+          visibleGuids = [...new Set([...visibleGuids, ...opts.additionalVisibleGuids])];
+        }
         if (capture.notice) {
           const { unnameable, total, kind, omitted, pending, ids } = capture.notice;
           console.warn(

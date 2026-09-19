@@ -310,6 +310,7 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
           ['room:r:m0', model('room:r:m0', roomGuid)],
         ]) as unknown as ViewerState['models'],
         ifcDataStore: null,
+        isolatedEntities: new Set([CLASH_A_ID]),
       });
     });
 
@@ -323,6 +324,7 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
         { color: 'FFFF8000', refs: [ordinaryRef] },
         { color: 'FF00D1FF', refs: [roomRef] },
       ],
+      additionalVisibleGuids: [ordinaryGuid, roomGuid],
     });
 
     assert.ok(viewpoint, 'a viewpoint must be produced');
@@ -340,6 +342,11 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
         { color: 'FFFF8000', guids: [ordinaryGuid] },
         { color: 'FF00D1FF', guids: [roomGuid] },
       ],
+    );
+    assert.deepEqual(
+      viewpoint.components?.visibility?.exceptions?.map((component) => component.ifcGuid),
+      [ordinaryGuid, roomGuid],
+      'model-bound group GUIDs survive a collapsed numeric isolation id',
     );
   });
 

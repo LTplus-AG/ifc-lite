@@ -193,6 +193,7 @@ export function useManualClashGroups({
           { color: clashColorToBcfArgb(CLASH_COLOR_A), guids: focused.aGuids },
           { color: clashColorToBcfArgb(CLASH_COLOR_B), guids: focused.bGuids },
         ].filter((entry) => entry.guids.length > 0),
+        additionalVisibleGuids: focusMode === 'isolate' ? focused.selectedGuids : undefined,
       });
       if (!focusedSceneRevisionIsCurrent(focused)) {
         toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');

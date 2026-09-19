@@ -179,20 +179,31 @@ export function isWorkingDay(calendar: WorkCalendarInfo | undefined, epochMs: nu
  * animation purposes. A file can assign different calendars per task, but
  * the timeline background and playback clock are single, project-wide
  * concerns, so this resolves ONE representative calendar rather than
- * per-row:
+ * per-row.
  *
- *  1. The calendar assigned to the active (filtered) work schedule, if one
- *     is selected and carries a `calendarGlobalIds` entry that resolves.
- *  2. Otherwise, when a work-schedule filter IS active, the first calendar
- *     assigned to one of THAT schedule's own tasks (via
- *     `controllingScheduleGlobalIds`) — not any task in the file. An
- *     earlier revision scanned every task regardless of the filter, so a
- *     Gantt filtered to one schedule could shade/skip using an unrelated
- *     schedule's working week (caught on review).
- *  3. Otherwise (no filter active, or nothing found under it), the first
- *     calendar referenced by any task's `calendarGlobalIds`, in task order.
- *  4. Otherwise, the first entry in `data.workCalendars`.
- *  5. Otherwise `undefined` — no calendar in the file, so every day works.
+ * With a work-schedule filter active (`activeWorkScheduleGlobalId` set):
+ *  1. The calendar assigned to that schedule directly, if its
+ *     `calendarGlobalIds` resolves.
+ *  2. Otherwise, the first calendar assigned to one of THAT schedule's own
+ *     tasks (via `controllingScheduleGlobalIds`) — not any task in the
+ *     file. An earlier revision scanned every task regardless of the
+ *     filter, so a Gantt filtered to one schedule could shade/skip using
+ *     an unrelated schedule's working week (#4982 review).
+ *  3. Otherwise `undefined` — deliberately, NOT a file-wide fallback.
+ *     Falling back to `data.workCalendars[0]` here would pick some OTHER
+ *     schedule's calendar (or a calendar assigned to nothing) whenever the
+ *     filtered schedule happens to have none of its own; that reads as
+ *     "this schedule's working week" while actually being an unrelated
+ *     guess. "No calendar resolved" (every day works, no shading) is the
+ *     honest answer when scoped to a specific schedule (also #4982 review
+ *     — an earlier revision fell through to `workCalendars[0]` here too).
+ *
+ * With NO filter active:
+ *  1. The first calendar referenced by any task's `calendarGlobalIds`, in
+ *     task order — there's no specific schedule to stay honest about, so a
+ *     project-wide "does ANY calendar apply" guess is reasonable.
+ *  2. Otherwise, the first entry in `data.workCalendars`.
+ *  3. Otherwise `undefined` — no calendar in the file, so every day works.
  */
 export function resolveActiveCalendar(
   data: ScheduleExtraction | null | undefined,
@@ -217,7 +228,7 @@ export function resolveActiveCalendar(
       const viaTask = resolve(task.calendarGlobalIds);
       if (viaTask) return viaTask;
     }
-    return data.workCalendars[0];
+    return undefined;
   }
 
   for (const task of data.tasks) {

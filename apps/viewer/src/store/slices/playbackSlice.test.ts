@@ -225,6 +225,25 @@ describe('playbackSlice', () => {
       assert.strictEqual(s.getState().playbackTime, FRIDAY_NOON + RAW_TICK_SIMULATED_MS);
     });
 
+    it('does not apply the calendar to a synthetic (undated) schedule range (#4982 review)', () => {
+      // Synthetic ranges are day-0-relative placeholders, not real
+      // calendar dates — evaluating MON_FRI_CALENDAR's 2024-dated bounds
+      // against 1970-epoch instants would make every entry's
+      // withinBounds check fail, reading as a total shutdown and
+      // stalling playback dead. respectWorkCalendar must be a no-op here
+      // even though a calendar resolves.
+      const start = 0;
+      const end = 100 * DAY;
+      const s = makeStore({ start, end, synthetic: true }, scheduleWithCalendar());
+      s.getState().setPlaybackSpeed(7);
+      s.getState().setPlaybackLoop(false);
+      s.getState().seekSchedule(0);
+      s.getState().playSchedule();
+      s.getState().advancePlaybackBy(16);
+      assert.strictEqual(s.getState().playbackTime, 16 * 7 * 86_400); // plain, un-skipped advance
+      assert.strictEqual(s.getState().playbackIsPlaying, true);
+    });
+
     it('loop-wraps to a working day when scheduleRange.start itself is non-working (#4982 review)', () => {
       const start = d('2024-06-08'); // Saturday — non-working under MON_FRI_CALENDAR
       const end = d('2024-06-14'); // Friday

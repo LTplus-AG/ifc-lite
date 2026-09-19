@@ -142,7 +142,16 @@ export const createPlaybackSlice: StateCreator<
         return;
       }
     }
-    if (s.respectWorkCalendar) {
+    // Synthetic ranges (`ScheduleTimeRange.synthetic`, `scheduleSlice.ts`)
+    // are day-0-relative placeholders for schedules with no real dates
+    // (day 0 .. sum-of-durations) — NOT calendar dates. A real
+    // `IfcWorkCalendar`'s WEEKLY pattern and start/finish bounds are
+    // written against real years, so evaluating one against 1970-epoch
+    // instants makes every entry's `withinBounds` check fail: every
+    // simulated day reads as non-working and playback stops dead (#4982
+    // review). Calendar-aware skipping only makes sense once the schedule
+    // has a real calendar basis.
+    if (s.respectWorkCalendar && !s.scheduleRange.synthetic) {
       const calendar = resolveActiveCalendar(s.scheduleData, s.activeWorkScheduleId);
       if (calendar) {
         // Bound the search at the range end — `skipToNextWorkingInstant`

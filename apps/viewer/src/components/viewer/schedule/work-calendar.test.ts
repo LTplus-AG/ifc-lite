@@ -341,13 +341,27 @@ describe('resolveActiveCalendar (#4830)', () => {
     // #4982 review: the fallback used to scan every task in the file
     // regardless of `activeWorkScheduleGlobalId`. task-b is controlled by
     // sched-other, not the active sched-gid, and neither the active
-    // schedule nor task-a carries a calendar — the file-wide first-entry
-    // fallback should win, not task-b's calendar.
+    // schedule nor task-a carries a calendar — task-b's calendar must NOT
+    // be picked up.
     const data = scheduleWith({
       workCalendars: [MON_FRI_CALENDAR, OTHER_CALENDAR],
       taskBCalendarGlobalIds: ['cal-other'],
     });
-    assert.equal(resolveActiveCalendar(data, 'sched-gid')?.globalId, 'cal-gid'); // file-wide first entry, not cal-other
+    assert.equal(resolveActiveCalendar(data, 'sched-gid')?.globalId, undefined);
+  });
+
+  it('returns undefined (not a file-wide guess) when a schedule filter is active and NOTHING in its scope carries a calendar', () => {
+    // #4982 review, second pass: the previous fix (above) still fell back
+    // to `data.workCalendars[0]` — some OTHER schedule's calendar, or one
+    // assigned to nothing — which is just as much an unrelated guess as
+    // task-b's calendar was. Scoped to a specific schedule, "no calendar
+    // resolved" (undefined -> no shading) is the honest answer; only the
+    // UNFILTERED path may guess a project-wide default.
+    const data = scheduleWith({ workCalendars: [MON_FRI_CALENDAR, OTHER_CALENDAR] });
+    assert.equal(resolveActiveCalendar(data, 'sched-gid'), undefined);
+    // Confirm the unfiltered path is unaffected — it's still allowed to
+    // guess the file-wide first entry.
+    assert.equal(resolveActiveCalendar(data, undefined)?.globalId, 'cal-gid');
   });
 
   it('DOES use a calendar assigned to a task that the active schedule itself controls', () => {

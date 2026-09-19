@@ -176,7 +176,6 @@ export function checkCoverage({
   oldTables,
   tableSizes,
   allTableNames,
-  legacyRemapsMayResolve = false,
   canonicalKnown,
 }) {
   const failures = [];
@@ -238,28 +237,6 @@ export function checkCoverage({
       );
   }
 
-  // An arm whose key `IfcType::from_str` ALREADY resolves.
-  //
-  // `legacy_aware_ifc_type_from_record` (schema_helpers.rs) short-circuits on
-  // `!matches!(decoded, IfcType::Unknown(_))` and only then consults this
-  // table. That is equivalent to the native path ONLY while every key here is
-  // a name the generated enum does not know. If a schema regeneration ever
-  // emits an arm for one of these keys, the short-circuit fires, the remap is
-  // skipped, and the browser diverges from the native path again -- which is
-  // exactly the defect #3179 was filed for.
-  //
-  // Checked here rather than only in Rust because both sets are DERIVED from
-  // source: a 27th arm added to the table is picked up automatically, where a
-  // hand-written key list in a test would stay green and silently under-cover.
-  if (!legacyRemapsMayResolve) {
-    for (const key of [...keys].sort()) {
-      if (!known.has(key)) continue;
-      failures.push(
-        `${LEGACY_REL} has an arm for "${key}", which ${SCHEMA_REL}'s from_str already resolves`,
-      );
-    }
-  }
-
   for (const key of [...keys].sort()) {
     if (allTableNames.has(key)) continue;
     if (KEYS_ABSENT_FROM_EVERY_BUNDLED_TABLE.has(key)) continue;
@@ -293,10 +270,6 @@ function loadTree(root) {
     tableSizes,
     allTableNames,
     canonicalKnown: canonicalGeneratedNames(read(SCHEMA_REL)),
-    // #4203's generated union intentionally resolves older-schema variants;
-    // schema_helpers maps those exact variants to their stable processing base
-    // before the known-type short circuit.
-    legacyRemapsMayResolve: true,
   };
 }
 

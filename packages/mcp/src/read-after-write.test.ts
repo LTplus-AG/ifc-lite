@@ -939,6 +939,14 @@ describe('containment over queued relationships', () => {
         entity: expect.objectContaining({ id: 41, type: 'IfcBuildingStorey' }),
       }));
 
+    await call('entity_set_attribute', {
+      global_id: guid('RELZ'), attribute: 'RelatedElements', value: '#73',
+    });
+    expect(model.bim.related({ modelId: 'm', expressId: 73 }, 'IfcRelContainedInSpatialStructure', 'inverse'))
+      .toContainEqual(expect.objectContaining({ ref: { modelId: 'm', expressId: 41 } }));
+    expect(model.bim.related({ modelId: 'm', expressId: wall.expressId }, 'IfcRelContainedInSpatialStructure', 'inverse'))
+      .toEqual([]);
+
     await call('entity_delete', { global_id: guid('RELZ') });
     expect(model.bim.relationships({ modelId: 'm', expressId: wall.expressId }).relations?.some(
       (edge) => edge.relationshipId === relationship.expressId,

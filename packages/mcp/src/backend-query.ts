@@ -463,15 +463,12 @@ export function createQueryAdapter(
         seen.add(expressId);
         out.push(expressId);
       };
-      const isDeleted = pending ? (id: number) => pending.deleted.has(id) : () => false;
+      const isDeleted = pending
+        ? (id: number) => pending.deleted.has(id) || pending.supersededRelationshipIds.has(id)
+        : () => false;
       for (const id of extractExactRelatedIds(store, ref.expressId, relType, direction, isDeleted)) take(id);
-      for (const relation of pending?.queuedRelations(relType) ?? []) {
-        if (direction === 'forward') {
-          if (relation.relating !== ref.expressId) continue;
-          for (const target of relation.related) take(target);
-        } else if (relation.related.includes(ref.expressId)) {
-          take(relation.relating);
-        }
+      for (const edge of pending?.relationshipEdges(ref.expressId, relType) ?? []) {
+        if (edge.direction === direction) take(edge.targetId);
       }
       return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
     },

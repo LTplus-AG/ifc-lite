@@ -18,7 +18,6 @@ import type {
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { EntityNode, findAllPropertiesInSets, compareFilterValue } from '@ifc-lite/query';
-import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { getModelForRef, getAllModelEntries } from './model-compat.js';
 import {
   extractAllEntityAttributes,
@@ -30,36 +29,15 @@ import {
   extractExactRelatedIds,
   expandTypes,
   QUERY_REL_TYPE_MAP,
+  getAttributeNamesForSchema,
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttributeMutations } from './mutation-view.js';
-import { foldMutationRelated, foldMutationRelationshipEdges } from './query-overlay-relations.js';
+import { effectiveMutationRelationships, foldMutationRelated } from './query-overlay-relations.js';
+import { foldRelationshipData } from './query-relationship-fold.js';
+import { isProductType } from './query-entity-filter.js';
 import { evaluateFilterGroups } from '../../lib/search/filter-evaluate-groups.js';
 import { totalRuleCount } from '../../lib/search/filter-groups.js';
 import { definedModelTagIdsOf } from '../../lib/model-tags/evaluator-models.js';
-
-/**
- * Check if a type name represents a product/spatial entity.
- *
- * Uses IfcTypeEnum as a whitelist — only known IFC types pass.
- * Excludes relationships, properties, quantities, element quantities,
- * and type objects (IfcWallType, IfcDoorType, etc.).
- *
- * Type names from entityIndex.byType are UPPERCASE (e.g. IFCWALLSTANDARDCASE).
- */
-function isProductType(type: string): boolean {
-  const enumVal = IfcTypeEnumFromString(type);
-  // Unknown = not a recognized product/spatial type (geometry definitions, placements, etc.)
-  if (enumVal === IfcTypeEnum.Unknown) return false;
-  // Exclude relationships, properties, quantities
-  const upper = type.toUpperCase();
-  if (upper.startsWith('IFCREL')) return false;
-  if (upper.startsWith('IFCPROPERTY')) return false;
-  if (upper.startsWith('IFCQUANTITY')) return false;
-  if (upper === 'IFCELEMENTQUANTITY') return false;
-  // Exclude type objects (IfcWallType, IfcDoorType, etc.) — metadata, not instances
-  if (upper.endsWith('TYPE')) return false;
-  return true;
-}
 
 function normalizePropertyValue(value: unknown): string | number | boolean | null {
   if (value == null) return null;
@@ -79,6 +57,40 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     const model = getModelForRef(state, ref.modelId);
     if (!model?.ifcDataStore) return null;
 
+    const view = getMutationViewForModel(store, ref.modelId);
+    if (view?.isDeleted(ref.expressId)) return null;
+    const created = view?.getNewEntity(ref.expressId);
+    if (created) {
+      const names = getAttributeNamesForSchema(created.type, model.ifcDataStore.schemaVersion);
+      const attributes: unknown[] = [...created.attributes];
+      for (const { name, value } of view.getAttributeMutationsForEntity(ref.expressId)) {
+        const index = names.indexOf(name);
+        if (index >= 0) attributes[index] = value;
+      }
+      for (const [index, value] of view.getPositionalMutationsForEntity(ref.expressId) ?? []) attributes[index] = value;
+      for (const mutation of view.getMutationsForEntity(ref.expressId)) {
+        const key = mutation.attributeName ?? '';
+        if (key.startsWith('@')) {
+          const index = Number(key.slice(1));
+          const value = view.getPositionalMutationsForEntity(ref.expressId)?.get(index);
+          if (value !== undefined) attributes[index] = value;
+        } else {
+          const current = view.getAttributeMutationsForEntity(ref.expressId).find(attribute => attribute.name === key);
+          const index = names.indexOf(key);
+          if (current && index >= 0) attributes[index] = current.value;
+        }
+      }
+      const text = (name: string): string => {
+        const value = attributes[names.indexOf(name)];
+        if (typeof value !== 'string' || value === '$' || value === '*') return '';
+        const trimmed = value.trim();
+        return trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")
+          ? trimmed.slice(1, -1).replace(/''/g, "'")
+          : trimmed;
+      };
+      return { ref, globalId: text('GlobalId'), name: text('Name'), type: created.type,
+        description: text('Description'), objectType: text('ObjectType') };
+    }
     const node = new EntityNode(model.ifcDataStore, ref.expressId);
     return applyAttributeMutationsToEntityData(store, ref.modelId, ref.expressId, {
       ref,
@@ -183,35 +195,9 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     if (!model?.ifcDataStore) {
       return { voids: [], fills: [], groups: [], connections: [] };
     }
-    const result = extractRelationshipsOnDemand(model.ifcDataStore, ref.expressId);
     const view = getMutationViewForModel(store, ref.modelId);
-    if (!view) return result;
-    if (view.isDeleted(ref.expressId)) return { ...result, relations: [] };
-
-    const seen = new Set<string>();
-    const relations = (result.relations ?? []).flatMap((edge) => {
-      if (view.isDeleted(edge.relationshipId) || view.isDeleted(edge.entity.id)) return [];
-      const target = getEntityData({ modelId: ref.modelId, expressId: edge.entity.id });
-      if (!target) return [];
-      const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
-      if (seen.has(key)) return [];
-      seen.add(key);
-      return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
-    });
-    for (const edge of foldMutationRelationshipEdges(view, ref.expressId)) {
-      const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
-      if (seen.has(key)) continue;
-      const target = getEntityData({ modelId: ref.modelId, expressId: edge.targetId });
-      if (!target) continue;
-      seen.add(key);
-      relations.push({
-        relationshipId: edge.relationshipId,
-        relationshipType: edge.relationshipType,
-        direction: edge.direction,
-        entity: { id: edge.targetId, name: target.name || undefined, type: target.type },
-      });
-    }
-    return { ...result, relations };
+    if (!view) return extractRelationshipsOnDemand(model.ifcDataStore, ref.expressId);
+    return foldRelationshipData(model.ifcDataStore, view, ref, getEntityData);
   }
 
   function queryEntities(descriptor: QueryDescriptor): EntityData[] {
@@ -391,8 +377,10 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
         seen.add(expressId);
         targets.push(expressId);
       };
-      for (const target of extractExactRelatedIds(model.ifcDataStore, ref.expressId, relType, direction)) take(target);
-      if (view) for (const target of foldMutationRelated(view, relType, direction, ref.expressId)) take(target);
+      const effective = view ? effectiveMutationRelationships(model.ifcDataStore, view) : null;
+      for (const target of extractExactRelatedIds(model.ifcDataStore, ref.expressId, relType, direction,
+        id => view?.isDeleted(id) === true || effective?.supersededSourceIds.has(id) === true)) take(target);
+      if (view) for (const target of foldMutationRelated(model.ifcDataStore, view, relType, direction, ref.expressId)) take(target);
       return targets.map((expressId) => ({ modelId: ref.modelId, expressId }));
     },
   };

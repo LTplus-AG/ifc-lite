@@ -2,23 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { extractRelationshipsOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityData, EntityRef, EntityRelationshipsData } from '@ifc-lite/sdk';
-import type { PendingOverlay } from './overlay.js';
+import { effectiveMutationRelationships, foldMutationRelationshipEdges } from './query-overlay-relations.js';
 
-/** Apply queued relationship creates/deletes and endpoint metadata edits. */
-export function foldRelationshipRows(
-  result: EntityRelationshipsData,
-  pending: PendingOverlay,
+export function foldRelationshipData(
+  dataStore: IfcDataStore,
+  view: MutablePropertyView,
   ref: EntityRef,
   entityData: (ref: EntityRef) => EntityData | null,
 ): EntityRelationshipsData {
-  if (pending.deleted.has(ref.expressId)) {
-    return { voids: [], fills: [], groups: [], connections: [], relations: [] };
-  }
+  const result = extractRelationshipsOnDemand(dataStore, ref.expressId);
+  if (view.isDeleted(ref.expressId)) return { voids: [], fills: [], groups: [], connections: [], relations: [] };
+  const effective = effectiveMutationRelationships(dataStore, view);
   const seen = new Set<string>();
   const relations = (result.relations ?? []).flatMap((edge) => {
-    if (pending.deleted.has(edge.relationshipId) || pending.supersededRelationshipIds.has(edge.relationshipId)
-      || pending.deleted.has(edge.entity.id)) return [];
+    if (view.isDeleted(edge.relationshipId) || effective.supersededSourceIds.has(edge.relationshipId)
+      || view.isDeleted(edge.entity.id)) return [];
     const target = entityData({ modelId: ref.modelId, expressId: edge.entity.id });
     if (!target) return [];
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
@@ -26,18 +27,14 @@ export function foldRelationshipRows(
     seen.add(key);
     return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
   });
-  for (const edge of pending.relationshipEdges(ref.expressId)) {
+  for (const edge of foldMutationRelationshipEdges(dataStore, view, ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
     if (seen.has(key)) continue;
     const target = entityData({ modelId: ref.modelId, expressId: edge.targetId });
     if (!target) continue;
     seen.add(key);
-    relations.push({
-      relationshipId: edge.relationshipId,
-      relationshipType: edge.relationshipType,
-      direction: edge.direction,
-      entity: { id: edge.targetId, name: target.name || undefined, type: target.type },
-    });
+    relations.push({ relationshipId: edge.relationshipId, relationshipType: edge.relationshipType,
+      direction: edge.direction, entity: { id: edge.targetId, name: target.name || undefined, type: target.type } });
   }
   const entities = (type: string, directions: readonly ('forward' | 'inverse')[]) => relations
     .filter(edge => edge.relationshipType.toUpperCase() === type && directions.includes(edge.direction))

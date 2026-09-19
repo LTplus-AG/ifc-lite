@@ -21,6 +21,10 @@ DATA;
 #2=IFCBUILDING('0000000000000000000002',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
 #3=IFCWALL('0000000000000000000003',$,'First wall',$,$,$,$,$,$);
 #4=IFCWALL('0000000000000000000004',$,'Replacement wall',$,$,$,$,$,$);
+#5=IFCRELAGGREGATES('0000000000000000000005',$,$,$,#2,(#3));
+#7=IFCOPENINGELEMENT('0000000000000000000007',$,'Opening',$,$,$,$,$,$);
+#8=IFCWALL('0000000000000000000008',$,'Host',$,$,$,$,$,$);
+#9=IFCRELVOIDSELEMENT('0000000000000000000009',$,$,$,#8,#7);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -55,9 +59,43 @@ test('viewer exact relationship queries fold authored records and endpoint overr
     edge.relationshipId === relationship.expressId && edge.entity.id === 3 && edge.entity.name === 'First wall'), true);
 
   writes.setPositionalAttribute(relationship, 5, ['#4']);
-  assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [{ modelId: 'default', expressId: 4 }]);
+  assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [
+    { modelId: 'default', expressId: 3 }, { modelId: 'default', expressId: 4 },
+  ]);
   const rows = query.relationships(building).relations ?? [];
   assert.equal(rows.some((edge) => edge.relationshipId === relationship.expressId && edge.entity.id === 3), false);
   assert.equal(rows.some((edge) => edge.relationshipId === relationship.expressId
     && edge.entity.id === 4 && edge.entity.name === 'Replacement wall'), true);
+
+  const view = store.getState().mutationViews.get('__legacy__') ?? store.getState().mutationViews.get('default');
+  assert.ok(view);
+  view.setAttribute(relationship.expressId, 'RelatedObjects', '#3');
+  assert.equal(query.relationships(building).relations?.some((edge) =>
+    edge.relationshipId === relationship.expressId && edge.entity.id === 3), true);
+
+  // Endpoint edits on parsed relationships replace, rather than augment, the immutable graph.
+  view.setAttribute(5, 'RelatedObjects', '#4');
+  assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [
+    { modelId: 'default', expressId: 3 }, { modelId: 'default', expressId: 4 },
+  ]);
+  const sourceRows = query.relationships(building).relations?.filter(edge => edge.relationshipId === 5) ?? [];
+  assert.deepEqual(sourceRows.map(edge => edge.entity.id), [4]);
+
+  const createdWall = writes.addEntity('default', {
+    type: 'IfcWall',
+    attributes: ["'0000000000000000000006'", null, "'Overlay wall'", null, null, null, null, null, null],
+  });
+  const createdRelationship = writes.addEntity('default', {
+    type: 'IfcRelAggregates',
+    attributes: ["'0000000000000000000007'", null, null, null, '#2', [`#${createdWall.expressId}`]],
+  });
+  assert.equal(query.relationships(building).relations?.some(edge =>
+    edge.relationshipId === createdRelationship.expressId && edge.entity.name === 'Overlay wall'), true);
+
+  const host = { modelId: 'default', expressId: 8 };
+  assert.deepEqual(query.relationships(host).voids.map(entity => entity.id), [7]);
+  writes.removeEntity({ modelId: 'default', expressId: 9 });
+  assert.deepEqual(query.relationships(host).voids, []);
+  writes.removeEntity(host);
+  assert.deepEqual(query.relationships(host), { voids: [], fills: [], groups: [], connections: [], relations: [] });
 });

@@ -18,6 +18,7 @@ export { findPropertyInSets, findQuantityInSets, findAllPropertiesInSets, findAl
 export { normalizeBooleanValue, compareFilterValue, type FilterComparisonOp } from './filter-predicate.js';
 export { matchesPropertyFilter } from './property-filter-match.js';
 export { parseSelector } from './selector/parse.js';
+export { trimSelectorWhitespace } from './selector/tokenize.js';
 export {
   selectorToQueryDescriptor,
   SelectorUnsupportedError,

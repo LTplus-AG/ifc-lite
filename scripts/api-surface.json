@@ -7782,7 +7782,8 @@
     "matchesPropertyFilter: function",
     "normalizeBooleanValue: function",
     "parseSelector: function",
-    "selectorToQueryDescriptor: function"
+    "selectorToQueryDescriptor: function",
+    "trimSelectorWhitespace: function"
   ],
   "@ifc-lite/regex-guard": [
     "MAX_GUARDED_REGEX_PATTERN_LENGTH: const",

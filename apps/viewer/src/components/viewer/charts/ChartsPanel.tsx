@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Plus, X } from 'lucide-react';
+import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { elementFieldColumnId, type Aggregation, type ChartScope, type ChartSpec, type DashboardLayoutItem, type DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
@@ -160,7 +161,8 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const renderCard = useCallback((id: string) => {
     const spec = dashboard?.charts.find((c) => c.id === id);
     if (!spec) return null;
-    const filterText = spec.filter?.selector;
+    // Trimmed-empty is no filter, consistent with ChartCard (review finding).
+    const filterText = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
     return (
       <ChartCard
         spec={spec}

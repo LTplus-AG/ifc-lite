@@ -18,6 +18,7 @@
  * reading's message as a thrown `Error`, which is what the resolution hook
  * (`useChartSourceFilters`) turns into the card's error state.
  */
+import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { readSelector } from '@/lib/search/selector-to-rules';
 import { evaluateFilterRulesFederated, type EvaluatorModel } from '@/lib/search/filter-evaluate';
 import type { Combinator, FilterRule } from '@/lib/search/filter-rules';
@@ -32,7 +33,7 @@ export type ChartFilterReading =
  *  `text` is trimmed; an all-whitespace string is never passed in by a
  *  caller (both the editor and the resolver skip an empty filter). */
 export function readChartFilter(text: string, options: { schemaVersion?: string } = {}): ChartFilterReading {
-  const query = text.trim();
+  const query = trimSelectorWhitespace(text);
   const reading = readSelector(query, options);
   if (!reading.ok) return { ok: false, message: describeSelectorParseError(query, reading.error) };
   if (reading.rules.length === 0) {
@@ -77,7 +78,7 @@ export async function resolveChartFilter(
   toGlobalId: (modelId: string, expressId: number) => number,
   options: ResolveChartFilterOptions = {},
 ): Promise<Set<number> | null> {
-  if (!filter || filter.selector.trim().length === 0) return null;
+  if (!filter || trimSelectorWhitespace(filter.selector).length === 0) return null;
   const reading = readChartFilter(filter.selector, { schemaVersion: options.schemaVersion });
   if (!reading.ok) throw new Error(reading.message);
   const matched = await evaluateFilterRulesFederated(models, reading.rules, reading.combinator, {

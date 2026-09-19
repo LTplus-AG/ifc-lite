@@ -13,9 +13,12 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
 import { quantitySetsFor } from './filter-evaluate-mutations.js';
+import { evaluateFilterRulesFederated } from './filter-evaluate.js';
+import { Rule } from './filter-rules.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -82,5 +85,55 @@ describe('quantitySetsFor: a mutationView with no quantity base merges in the un
     assert.deepEqual(names, ['Length', 'NetSideArea'], 'both quantities are present');
     assert.equal(sets[0].quantities.find((q) => q.name === 'NetSideArea')?.value, 99, 'the edit applies');
     assert.equal(sets[0].quantities.find((q) => q.name === 'Length')?.value, 3, 'the untouched sibling did not vanish');
+  });
+});
+
+// #4946 review (PR #4984): a property edited on the defining TYPE object
+// (not the occurrence) must also change what an occurrence's selector rule
+// matches, in the SAME session, without a reload — `getInheritedTypePsets`
+// in filter-evaluate.ts now runs its base type-pset read through
+// `typePropertySetsFor`, the same overlay `element-field-reader.ts`'s
+// `typeSetsFor` applies for the Elements chart's own field column.
+const TYPE_FIXTURE = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#100=IFCWALL('Wall00000000000000001A',$,'Wall-A',$,$,$,$,$,.SOLIDWALL.);
+#110=IFCWALL('Wall00000000000000001B',$,'Wall-B',$,$,$,$,$,.SOLIDWALL.);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,$,(#210),$,$,$,.STANDARD.);
+#210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211));
+#211=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
+#230=IFCRELDEFINESBYTYPE('Rdbt00000000000000001A',$,$,$,(#100,#110),#200);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+describe('getInheritedTypePsets (via evaluateFilterRulesFederated): editing a property on the TYPE changes the occurrence filter result', () => {
+  it('IsExternal edited on the IfcWallType stops matching an occurrence that only inherits it', async () => {
+    const bytes = new TextEncoder().encode(TYPE_FIXTURE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    // Scoped to IfcWall so the assertion isn't diluted by the type object
+    // itself: a property mutation recorded against entity 200 gives ITS OWN
+    // occurrence-style read a synthesized pset too (correct — `setProperty`
+    // doesn't care whether the id is a type or an occurrence), which a bare
+    // property rule with no ifcType filter would also pick up in a full
+    // table scan.
+    const wallsOnly = Rule.ifcType(['IfcWall']);
+    const rules = [wallsOnly, Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')];
+
+    const before = await evaluateFilterRulesFederated([{ id: 'm1', store }], rules, 'AND');
+    assert.deepEqual(before.map((r) => r.expressId).sort((a, b) => a - b), [100, 110], 'both walls inherit IsExternal=true from the type before any edit');
+
+    const view = new MutablePropertyView(store.properties, 'm1');
+    view.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    view.setProperty(200, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
+
+    const after = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], rules, 'AND');
+    assert.deepEqual(after, [], 'the type edit is live: neither wall matches IsExternal=true anymore, no reload needed');
+
+    const afterFalse = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView: view }], [wallsOnly, Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'false')], 'AND');
+    assert.deepEqual(afterFalse.map((r) => r.expressId).sort((a, b) => a - b), [100, 110], 'and both now match the edited value');
   });
 });

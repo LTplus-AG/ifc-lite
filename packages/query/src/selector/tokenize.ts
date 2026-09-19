@@ -62,6 +62,19 @@ function isSpace(ch: string): boolean {
   return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f' || ch === '\v';
 }
 
+/** `String.trim()` strips every Unicode space character, including U+00A0
+ *  (no-break space) — which this tokenizer treats as ordinary WORD content,
+ *  not whitespace (#4946 review). Trim only the six characters `isSpace`
+ *  recognizes, so a selector carrying an NBSP is not silently rewritten
+ *  into a different one before it ever reaches the parser. */
+export function trimSelectorWhitespace(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isSpace(text[start] as string)) start += 1;
+  while (end > start && isSpace(text[end - 1] as string)) end -= 1;
+  return text.slice(start, end);
+}
+
 function fail(message: string, offset: number): TokenizeResult {
   return { ok: false, error: { message, offset } };
 }

@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Crosshair, Pencil, X } from 'lucide-react';
+import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
@@ -81,7 +82,11 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   // Colours are kept by label across re-aggregations; the previous palette lives here.
   const paletteRef = useRef<PaletteAssignment | undefined>(undefined);
 
-  const filterSelector = spec.filter?.selector;
+  // Trimmed-empty is treated as no filter, consistent with every other
+  // reader of `spec.filter.selector` (`resolveChartFilter`, `validate.ts`
+  // now also refuses it outright) — a malformed saved/imported dashboard
+  // must not strand the card on "Resolving filter…" forever (review finding).
+  const filterSelector = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
   // Resolving or erred: an EMPTY dataset, never the unfiltered rows under a
   // filter (#4946) — a card must not flash the whole model's numbers while
   // its filter is still running, or keep showing them after it fails.

@@ -43,7 +43,7 @@ import {
   type IfcDataStore,
   type ClassificationInfo,
 } from '@ifc-lite/parser';
-import { ownPropertySetsFor, quantitySetsFor, attributesFor } from './filter-evaluate-mutations.js';
+import { ownPropertySetsFor, typePropertySetsFor, quantitySetsFor, attributesFor } from './filter-evaluate-mutations.js';
 
 import { RelationshipType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -459,12 +459,10 @@ function getInheritedTypePsets(ctx: EvalContext, expressId: number): TypePsetLis
   const cached = ctx.typePsetCache.get(typeId);
   if (cached !== undefined) return cached;
 
-  let resolved: TypePsetList;
-  if (ctx.store.source && ctx.store.source.length > 0) {
-    resolved = extractTypePropertiesOnDemand(ctx.store, expressId)?.properties ?? [];
-  } else {
-    resolved = (ctx.store.properties?.getForEntity?.(typeId) ?? []) as unknown as TypePsetList;
-  }
+  const base: TypePsetList = ctx.store.source && ctx.store.source.length > 0
+    ? extractTypePropertiesOnDemand(ctx.store, expressId)?.properties ?? []
+    : (ctx.store.properties?.getForEntity?.(typeId) ?? []) as unknown as TypePsetList;
+  const resolved = typePropertySetsFor(base, typeId, ctx.mutationView); // #4946, mutation-aware
   ctx.typePsetCache.set(typeId, resolved);
   return resolved;
 }

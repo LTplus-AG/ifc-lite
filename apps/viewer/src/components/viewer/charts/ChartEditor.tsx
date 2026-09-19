@@ -9,6 +9,7 @@
  */
 import { useMemo, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
+import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { CHART_FILTER_NOT_APPLICABLE_SOURCES, elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -78,7 +79,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   // `null` means "no filter typed" — always valid; a real reading is either
   // ok or a refusal message (#4946's all-or-nothing rule, `readChartFilter`).
   const filterReading = useMemo(
-    () => (filterApplicable && filterText.trim().length > 0 ? readChartFilter(filterText, { schemaVersion }) : null),
+    () => (filterApplicable && trimSelectorWhitespace(filterText).length > 0 ? readChartFilter(filterText, { schemaVersion }) : null),
     [filterApplicable, filterText, schemaVersion],
   );
   const filterValid = filterReading === null || filterReading.ok;
@@ -153,7 +154,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
           return;
         }
         if (!valid) return;
-        const filter = filterApplicable && filterText.trim().length > 0 ? { selector: filterText.trim() } : undefined;
+        const filter = filterApplicable && trimSelectorWhitespace(filterText).length > 0 ? { selector: trimSelectorWhitespace(filterText) } : undefined;
         onSave({ ...draft, title: draft.title.trim(), filter });
       }}
     >

@@ -18,8 +18,9 @@
  * matches computed against a model that has since been reloaded.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { trimSelectorWhitespace } from '@ifc-lite/query';
 import type { ChartSpec } from '@ifc-lite/charts';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { evaluatorModelsFromState, definedModelTagIdsOf } from '@/lib/model-tags/evaluator-models';
 import { resolveChartFilter } from '@/lib/charts/source-filter';
@@ -53,7 +54,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
     const set = new Set<string>();
     for (const chart of charts) {
       const raw = chart.filter?.selector;
-      if (raw && raw.trim().length > 0) set.add(raw);
+      if (raw && trimSelectorWhitespace(raw).length > 0) set.add(raw);
     }
     return [...set];
   }, [charts]);
@@ -61,7 +62,33 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
   const [state, setState] = useState<ChartSourceFilters>(EMPTY);
   const runId = useRef(0);
 
+  // The inputs `state` was actually computed from. Set at the START of the
+  // effect below — synchronously, before the async resolve — so it always
+  // matches the render that scheduled it. A render that lands BETWEEN an
+  // input changing and that effect running (React can commit more than one
+  // render before an effect fires) would otherwise return the PREVIOUS
+  // `state`, whose ids were matched against the previous federation/tags/
+  // mutation snapshot; that render must never hand a chart ids computed
+  // for a dataset it no longer has (review finding).
+  const inputsOf = useRef<{
+    selectors: readonly string[]; models: ViewerState['models']; modelTags: ViewerState['modelTags'];
+    modelTagAssignments: ViewerState['modelTagAssignments']; mutationVersion: number; schemaVersion: string | undefined;
+  } | null>(null);
+  const inputsMatchState = inputsOf.current !== null
+    && inputsOf.current.selectors === selectors
+    && inputsOf.current.models === models
+    && inputsOf.current.modelTags === modelTags
+    && inputsOf.current.modelTagAssignments === modelTagAssignments
+    && inputsOf.current.mutationVersion === mutationVersion
+    && inputsOf.current.schemaVersion === schemaVersion;
+  const resolvingForSelectors = useMemo(() => {
+    const m = new Map<string, ChartSourceFilterState>();
+    for (const text of selectors) m.set(text, { status: 'resolving' });
+    return m;
+  }, [selectors]);
+
   useEffect(() => {
+    inputsOf.current = { selectors, models, modelTags, modelTagAssignments, mutationVersion, schemaVersion };
     if (selectors.length === 0) {
       setState((prev) => (prev.size === 0 ? prev : EMPTY));
       return;
@@ -71,11 +98,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
     // run (review finding): the federation, tags or a mutation just changed
     // — that is why this effect re-ran — so a stale match set could select
     // or filter by ids from a model that has since been replaced or edited.
-    setState(() => {
-      const next = new Map<string, ChartSourceFilterState>();
-      for (const text of selectors) next.set(text, { status: 'resolving' });
-      return next;
-    });
+    setState(resolvingForSelectors);
 
     const live = useViewerStore.getState();
     const evaluatorModels = evaluatorModelsFromState(live);
@@ -115,5 +138,6 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
     return () => { cancelled = true; controller.abort(); };
   }, [selectors, models, modelTags, modelTagAssignments, mutationVersion, schemaVersion]);
 
+  if (!inputsMatchState) return selectors.length === 0 ? EMPTY : resolvingForSelectors;
   return state;
 }

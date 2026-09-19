@@ -9,6 +9,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { BulkParseResult } from './bulk-property-value';
 import { appliedResultKey } from './bulk-property-editor-options';
+import { hasActiveTranslation, resolveEnglish } from '@/i18n/registry';
 
 export type BulkRuntimeFailure =
   | { kind: 'entity'; id: number; detail: string }
@@ -24,11 +25,16 @@ export function BulkExecutionResult({
   runtimeFailures: readonly BulkRuntimeFailure[];
 }) {
   const { t, locale } = useTranslation();
+  const successParams = {
+    mutations: formatLocaleNumber(locale, result.mutations.length),
+    entities: formatLocaleNumber(locale, result.affectedEntityCount),
+  };
+  const activeResultKey = appliedResultKey(locale, result.mutations.length, result.affectedEntityCount);
+  const successDescription = hasActiveTranslation(activeResultKey)
+    ? t(activeResultKey, successParams)
+    : resolveEnglish(appliedResultKey('en', result.mutations.length, result.affectedEntityCount), successParams);
   const description = result.success
-    ? t(appliedResultKey(locale, result.mutations.length, result.affectedEntityCount), {
-        mutations: formatLocaleNumber(locale, result.mutations.length),
-        entities: formatLocaleNumber(locale, result.affectedEntityCount),
-      })
+    ? successDescription
     : validationFailure
       ? t('bulkPropertyEditor.invalidValue', {
           value: validationFailure.input,

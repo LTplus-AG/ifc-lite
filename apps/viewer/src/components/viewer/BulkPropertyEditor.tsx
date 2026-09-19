@@ -155,7 +155,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     }
 
     return list;
-  }, [open, models, legacyIfcDataStore, t]);
+  }, [open, models, legacyIfcDataStore, t, locale]);
 
   // Auto-select first model when dialog opens
   useEffect(() => {
@@ -179,7 +179,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       };
     }
     return models.get(selectedModelId);
-  }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t]);
+  }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t, locale]);
 
   // Loading state for initial dialog open computation
   const [isInitializing, setIsInitializing] = useState(false);

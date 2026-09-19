@@ -184,11 +184,11 @@ describe('BulkPropertyEditor — Real/Integer parse guard (buildAction / handleE
     assert.ok(errorAlert, 'the Error alert must render, explaining the value did not parse');
     assert.match(document.body.textContent ?? '', /“N\/A” is not a valid Real value/);
 
-    registerLocale('bulk-error-live', {
+    registerLocale('en-x-bulk-error', {
       'bulkPropertyEditor.real': '[decimal]',
       'bulkPropertyEditor.invalidValue': '[LIVE {value} / {type}]',
     });
-    act(() => setLocale('bulk-error-live'));
+    act(() => setLocale('en-x-bulk-error'));
     await advance(0);
     assert.match(document.body.textContent ?? '', /\[LIVE N\/A \/ \[decimal\]\]/);
     assert.doesNotMatch(document.body.textContent ?? '', /is not a valid Real value/);

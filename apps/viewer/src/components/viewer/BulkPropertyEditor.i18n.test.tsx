@@ -13,6 +13,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import { BulkPropertyEditor, parseBulkSetPropertyValue } from './BulkPropertyEditor.js';
 import { appliedResultKey } from './bulk-property-editor-options.js';
+import { BulkExecutionResult } from './BulkExecutionResult.js';
 
 afterEach(() => {
   cleanup();
@@ -51,11 +52,11 @@ describe('BulkPropertyEditor localization (#4918)', () => {
   });
 
   it('resolves validation messages from the active catalogue at action time', () => {
-    registerLocale('bulk-validation', {
+    registerLocale('en-x-bulk-validation', {
       'bulkPropertyEditor.real': '[decimal]',
       'bulkPropertyEditor.invalidValue': '[{value} is no {type}]',
     });
-    act(() => setLocale('bulk-validation'));
+    act(() => setLocale('en-x-bulk-validation'));
     const result = parseBulkSetPropertyValue('abc', PropertyValueType.Real);
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.message, '[abc is no [decimal]]');
@@ -65,14 +66,14 @@ describe('BulkPropertyEditor localization (#4918)', () => {
     useViewerStore.setState(fixtureModels(fixtureModel('model-a', {
       entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall A' }],
     })));
-    registerLocale('bulk-live-label', { 'bulkPropertyEditor.type.wall': '[Mauer]' });
+    registerLocale('en-x-bulk-live-label', { 'bulkPropertyEditor.type.wall': '[Mauer]' });
 
     const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
     click(container.querySelector('button')!);
     await advance(0);
     assert.match(document.body.textContent ?? '', /Wall/);
 
-    act(() => setLocale('bulk-live-label'));
+    act(() => setLocale('en-x-bulk-live-label'));
     await advance(0);
     assert.match(document.body.textContent ?? '', /\[Mauer\]/);
   });
@@ -81,5 +82,36 @@ describe('BulkPropertyEditor localization (#4918)', () => {
     assert.equal(appliedResultKey('ar', 2, 2), 'bulkPropertyEditor.appliedTwoTwo');
     assert.equal(appliedResultKey('ar', 5, 5), 'bulkPropertyEditor.appliedFewFew');
     assert.equal(appliedResultKey('pl', 5, 1), 'bulkPropertyEditor.appliedManyOne');
+  });
+
+  it('uses English plural rules when a partial locale falls back to English', () => {
+    registerLocale('fr', { 'bulkPropertyEditor.success': '[Succès]' });
+    setLocale('fr');
+    const ui = render(<BulkExecutionResult
+      result={{ success: true, mutations: [], affectedEntityCount: 0 }}
+      validationFailure={null}
+      runtimeFailures={[]}
+    />);
+    assert.match(ui.textContent ?? '', /Applied 0 mutations to 0 entities/);
+    assert.doesNotMatch(ui.textContent ?? '', /Applied 0 mutation to 0 entity/);
+  });
+
+  it('recomputes the legacy current-model label on a live locale switch', async () => {
+    const legacy = fixtureModel('legacy-model', {
+      entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall A' }],
+    });
+    useViewerStore.setState({
+      models: new Map(),
+      ifcDataStore: legacy.ifcDataStore,
+      geometryResult: legacy.geometryResult,
+    });
+    registerLocale('en-x-bulk-legacy-live', { 'bulkPropertyEditor.currentModel': '[Aktuelles Modell]' });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    click(container.querySelector('button')!);
+    await advance(0);
+    assert.match(document.body.textContent ?? '', /Current Model/);
+    act(() => setLocale('en-x-bulk-legacy-live'));
+    await advance(0);
+    assert.match(document.body.textContent ?? '', /\[Aktuelles Modell\]/);
   });
 });

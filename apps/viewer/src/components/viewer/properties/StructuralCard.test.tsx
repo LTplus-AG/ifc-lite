@@ -150,21 +150,24 @@ describe(`StructuralCard against structural_analysis_curve.ifc${skipMsg}`, () =>
 });
 
 describe('StructuralCard synthetic boundary-condition invariants', () => {
-  it('keeps the direct Thickness attribute label canonical', () => {
+  it('keeps direct IFC attribute labels canonical', () => {
     registerLocale('en-x-schema-label', {
       'properties.structural.thickness': '[translated thickness]',
+      'properties.structural.predefined': '[translated predefined]',
     } as Catalogue);
     setLocale('en-x-schema-label');
     const data: StructuralExtraction = {
       analysisModels: [],
-      members: [{ expressId: 10, globalId: 'member', type: 'IfcStructuralSurfaceMember', thickness: 0.25,
+      members: [{ expressId: 10, globalId: 'member', type: 'IfcStructuralSurfaceMember', thickness: 0.25, predefinedType: 'SHELL',
         connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }],
       connections: [], activities: [], loadGroups: [], resultGroups: [], hasStructural: true, loadsTruncated: false,
     };
 
     const text = render(<StructuralCard structuralData={data} selectedExpressId={10} selectedGlobalId="member" />);
     assert.ok(text.includes('Thickness'));
+    assert.ok(text.includes('PredefinedType'));
     assert.ok(!text.includes('[translated thickness]'));
+    assert.ok(!text.includes('[translated predefined]'));
   });
 
   it('reports numeric stiffness as elastic instead of fixed', () => {

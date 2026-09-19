@@ -20,7 +20,7 @@ import { useMemo } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert } from 'lucide-react';
 import { useTranslation } from '@/i18n';
-import { EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
+import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
   StructuralExtraction,
   StructuralMemberInfo,
@@ -109,7 +109,7 @@ export function StructuralCard({
             <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-[11px]">
               {member.predefinedType && (
                 <>
-                  <span className="text-muted-foreground">{t('properties.structural.predefined')}</span>
+                  <span className="text-muted-foreground">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</span>
                   <span className="font-mono text-foreground/90">{member.predefinedType}</span>
                 </>
               )}

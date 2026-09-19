@@ -42,6 +42,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   const live = useRef(new Map<string, CapturedAssignment>());
   const worker = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
   const pending = useRef<AbortController | null>(null), mounted = useRef(true);
+  const roomBlocked = useRef(false);
   const draft = useRef<{ preparation: Prepared; preview: Preview; owner: AppearanceAssetOwner } | null>(null);
   const [status, setStatus] = useState<AppearancePanelViewProps['status']>('idle');
   const [notice, setNotice] = useState<LocalizedMessage>(() => translatedMessage('appearance.assignments.status.addScopes'));
@@ -85,8 +86,12 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   useEffect(() => { if (!enabled) cancel(); }, [enabled]);
   useEffect(() => {
     if (!rows.length || status === 'applying') return;
+    if (room) {
+      roomBlocked.current = true; releasePreview(); setStatus('stale');
+      setNotice(translatedMessage('appearance.assignments.status.leaveRoom'));
+      return;
+    }
     try {
-      if (room) throw new Error('Leave the shared room before editing assignments.');
       const stale: string[] = [];
       for (const row of rows) {
         try { live.current.get(row.id)?.validate(); }
@@ -94,7 +99,11 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
       }
       if (stale.length) { setVersion(v => v + 1); throw new Error(stale[0]); }
       draft.current?.preparation.validate();
-    } catch (error) { releasePreview(); setStatus('stale'); setNotice(translatedMessage('appearance.assignments.status.stale', { reason: message(error) })); }
+      if (roomBlocked.current) {
+        roomBlocked.current = false; setStatus('idle');
+        setNotice(translatedMessage('appearance.assignments.status.changed'));
+      }
+    } catch (error) { roomBlocked.current = false; releasePreview(); setStatus('stale'); setNotice(translatedMessage('appearance.assignments.status.stale', { reason: message(error) })); }
   }, [models, revision, sources, room]);
 
   function save(next: AppearanceAssignment[]) {

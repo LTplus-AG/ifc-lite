@@ -19,6 +19,32 @@ function queryLabel(row: AppearanceAssignment, t: (key: TranslationKey, params?:
   return query.kind === 'model' ? t('appearance.assignments.queryWholeModel') : query.kind === 'selection' ? t('appearance.assignments.querySelectedObjects')
     : query.kind === 'class' ? query.ifcClass : query.kind === 'filter' ? t('appearance.assignments.queryFilter', { name: query.query.name }) : t('appearance.assignments.queryIfcType', { globalId: query.GlobalId });
 }
+const summaryKeys = {
+  row: {
+    model: 'appearance.assignments.rowSummaryModel', selection: 'appearance.assignments.rowSummarySelection',
+    class: 'appearance.assignments.rowSummaryClass', filter: 'appearance.assignments.rowSummaryFilter',
+    type: 'appearance.assignments.rowSummaryIfcType',
+  },
+  mapped: {
+    model: 'appearance.assignments.rowSummaryMappedModel', selection: 'appearance.assignments.rowSummaryMappedSelection',
+    class: 'appearance.assignments.rowSummaryMappedClass', filter: 'appearance.assignments.rowSummaryMappedFilter',
+    type: 'appearance.assignments.rowSummaryMappedIfcType',
+  },
+  review: {
+    model: 'appearance.assignments.reviewRowSummaryModel', selection: 'appearance.assignments.reviewRowSummarySelection',
+    class: 'appearance.assignments.reviewRowSummaryClass', filter: 'appearance.assignments.reviewRowSummaryFilter',
+    type: 'appearance.assignments.reviewRowSummaryIfcType',
+  },
+} as const;
+function summaryMessage(row: AppearanceAssignment, variant: keyof typeof summaryKeys) {
+  const query = row.query;
+  const key = summaryKeys[variant][query.kind];
+  const base = { modelName: row.model.name };
+  if (query.kind === 'class') return { key, params: { ...base, ifcClass: query.ifcClass } };
+  if (query.kind === 'filter') return { key, params: { ...base, name: query.query.name } };
+  if (query.kind === 'type') return { key, params: { ...base, globalId: query.GlobalId } };
+  return { key, params: base };
+}
 function ReviewBinding({ row, controller, base }: { row: AppearanceAssignment; controller: Controller; base: AppearancePanelViewProps }) {
   const { t } = useTranslation();
   const { modelId, sourceId } = controller.binding(row);
@@ -53,15 +79,14 @@ export function AppearanceAssignments({ controller: c, base, formValid = true }:
       <AppearanceAssignmentList rows={c.resolved} disabled={c.busy} objectName={objectName}
         onMove={c.move} onRemove={c.remove} onExclude={(id, GlobalId, excluded) => c.change(id, row => ({ ...row,
           excludedGlobalIds: excluded ? [...row.excludedGlobalIds, GlobalId] : row.excludedGlobalIds.filter(guid => guid !== GlobalId) }))} />
-      {c.rows.map(row => c.bound(row.id) ? <p key={row.id} className="text-[11px] text-muted-foreground">{t(row.settings.representationPolicy === 'evaluatedOccurrence'
-        ? 'appearance.assignments.rowSummaryMapped' : 'appearance.assignments.rowSummary', {
-          modelName: row.model.name,
-          queryLabel: queryLabel(row, t),
-        })}</p>
+      {c.rows.map(row => c.bound(row.id) ? <p key={row.id} className="text-[11px] text-muted-foreground">{(() => {
+        const summary = summaryMessage(row, row.settings.representationPolicy === 'evaluatedOccurrence' ? 'mapped' : 'row');
+        return t(summary.key, summary.params);
+      })()}</p>
         : <ReviewBinding key={row.id} row={row} controller={c} base={base} />)}
       {c.review && <div role="region" aria-label={t('appearance.assignments.reviewAriaLabel')} className="space-y-2 rounded border bg-muted/30 p-2 text-xs">
         {c.review.map(item => <div key={item.proposed.assignment.id}>
-          <p>{t('appearance.assignments.reviewRowSummary', { modelName: item.proposed.assignment.model.name, queryLabel: queryLabel(item.proposed.assignment, t) })}</p>
+          <p>{(() => { const summary = summaryMessage(item.proposed.assignment, 'review'); return t(summary.key, summary.params); })()}</p>
           <p>{t('appearance.assignments.reviewChanges', { added: item.changes.added.length, removed: item.changes.removed.length, renumbered: item.changes.renumbered.length })}</p>
           <AppearanceMembershipChanges review={item} />
           {item.sourceModelChanged && <p>{t('appearance.assignments.sourceModelChanged')}</p>}

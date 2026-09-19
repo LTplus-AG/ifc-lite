@@ -58,10 +58,10 @@ fn pair_midpoint(mesh: &MeshData, first: usize) -> [f64; 3] {
     ]
 }
 
-fn member_mesh<'a>(
-    result: &'a ifc_lite_processing::ProcessingResult,
+fn member_mesh(
+    result: &ifc_lite_processing::ProcessingResult,
     id: u32,
-) -> &'a MeshData {
+) -> &MeshData {
     let meshes: Vec<_> = result
         .meshes
         .iter()

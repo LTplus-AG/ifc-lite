@@ -21,7 +21,7 @@
  * catalogue's tour entries.
  */
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';

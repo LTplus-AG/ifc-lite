@@ -71,19 +71,12 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     return entity?.allAttributes?.map(attribute => attribute.name) ?? getAttributeNamesAcrossSchemas(type);
   }
 
-  function toRoomValue(value: unknown): unknown {
-    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      return value;
-    }
-    return Array.isArray(value) ? JSON.stringify(value) : String(value);
-  }
-
   function initialRoomAttributes(names: string[], values: unknown[]): Record<string, unknown> {
     const attributes: Record<string, unknown> = {};
     values.forEach((value, index) => {
       const name = names[index];
       if (name && name !== 'GlobalId' && value !== undefined) {
-        attributes[`bsi::ifc::prop::${name}`] = toRoomValue(value);
+        attributes[`bsi::ifc::prop::${name}`] = value;
       }
     });
     return attributes;
@@ -139,6 +132,27 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     );
   }
 
+  function ensureSourceRoomEntity(
+    modelId: string,
+    editor: StoreEditor,
+    expressId: number,
+    dataStore: IfcDataStore,
+  ): void {
+    if (editor.getNewEntity(expressId) || dataStore.entities.getGlobalId(expressId)) return;
+    const entity = dataStore.getEntity?.(expressId);
+    if (!entity) return;
+    const names = attributeNames(dataStore, entity.type);
+    let roomKey = `ifc-lite-ref-${expressId}`;
+    let suffix = 0;
+    while (dataStore.entities.getExpressIdByGlobalId(roomKey) >= 0) {
+      roomKey = `ifc-lite-ref-${expressId}-${++suffix}`;
+    }
+    store.getState().mirrorEntityCreate(
+      modelId, expressId, entity.type, roomKey, null,
+      initialRoomAttributes(names, entity.attributes),
+    );
+  }
+
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
       assertCanEdit('addEntity');
@@ -169,8 +183,19 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       assertCanEdit('removeEntity');
       const editor = getEditor(ref.modelId);
       if (!editor) return false;
+      const dataStore = resolveDataStore(ref.modelId);
+      if (!dataStore) return false;
+      const overlay = editor.getNewEntity(ref.expressId);
+      const overlayNames = overlay ? attributeNames(dataStore, overlay.type) : [];
+      const overlayGlobalId = overlayNames[0] === 'GlobalId' && typeof overlay?.attributes[0] === 'string'
+        ? overlay.attributes[0]
+        : null;
+      ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
       const removed = editor.removeEntity(ref.expressId);
-      if (removed) store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
+      if (removed) {
+        if (overlayGlobalId) createdGlobalIds.get(dataStore)?.delete(overlayGlobalId);
+        store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
+      }
       return removed;
     },
     setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
@@ -181,15 +206,17 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
       const dataStore = resolveDataStore(ref.modelId);
+      if (dataStore) ensureSourceRoomEntity(ref.modelId, editor, ref.expressId, dataStore);
       const type = editor.getNewEntity(ref.expressId)?.type
+        ?? dataStore?.getEntity?.(ref.expressId)?.type
         ?? dataStore?.entities.getTypeName(ref.expressId);
       const name = type && dataStore ? attributeNames(dataStore, type)[index] : undefined;
-      if (name && value !== undefined) {
+      if (name) {
         store.getState().mirrorAttributeEdit(
           ref.modelId,
           ref.expressId,
           `bsi::ifc::prop::${name}`,
-          value,
+          value ?? null,
         );
       }
     },

@@ -371,7 +371,13 @@ export function assignObjectsToCostItemInStore(
  * REQUIRED, not optional: an empty array is how a caller CLEARS the list,
  * written as `$` — never `()`, which `[1:?]` forbids.
  */
-export function attachCostValuesToItemInStore(editor: StoreEditor, itemId: number, valueIds: readonly number[]): void {
+export function attachCostValuesToItemInStore(
+  editor: StoreEditor,
+  anchor: CostAnchor,
+  itemId: number,
+  valueIds: readonly number[],
+): void {
+  assertCostSchema(schemaOf(anchor), 'setCostItemValues');
   requireEntityType(editor, itemId, 'IfcCostItem', 'itemId', 'setCostItemValues');
   for (const id of valueIds) {
     requireRef(id, 'CostValues', 'setCostItemValues');

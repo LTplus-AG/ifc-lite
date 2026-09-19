@@ -8,8 +8,8 @@ import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export'
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
-function referencedTargetIds(text: string, targetIds: ReadonlySet<number>): Set<number> {
-  const found = new Set<number>();
+function referencedTargetCounts(text: string, targetIds: ReadonlySet<number>): Map<number, number> {
+  const found = new Map<number, number>();
   let inString = false;
   let inComment = false;
   for (let i = 0; i < text.length; i++) {
@@ -41,7 +41,7 @@ function referencedTargetIds(text: string, targetIds: ReadonlySet<number>): Set<
       value = value * 10 + Number(text[cursor]);
       cursor++;
     }
-    if (targetIds.has(value)) found.add(value);
+    if (targetIds.has(value)) found.set(value, (found.get(value) ?? 0) + 1);
     i = cursor - 1;
   }
   return found;
@@ -54,22 +54,22 @@ function referencedTargetIds(text: string, targetIds: ReadonlySet<number>): Set<
  * Non-relationship SELECT references such as
  * `IfcMetric.DataValue -> IfcCostValue` therefore cannot be orphaned.
  */
-export function effectiveCostReferrers(
+export function effectiveCostReferenceOccurrences(
   store: IfcDataStore,
   view: MutablePropertyView,
   targetIds: ReadonlySet<number>,
-): Map<number, number[]> {
-  const referrers = new Map<number, number[]>();
+): Map<number, Map<number, number>> {
+  const referrers = new Map<number, Map<number, number>>();
   const seen = new Set<number>();
   const visitSource = (id: number, ref: { byteOffset: number; byteLength: number; type: string }) => {
     if (targetIds.has(id) || seen.has(id) || view.isDeleted(id)) return;
     seen.add(id);
     const sourceText = store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
     const record = effectiveSourceRecord(view, id, sourceText, ref.type, store.schemaVersion);
-    for (const targetId of referencedTargetIds(record.text, targetIds)) {
-      const incoming = referrers.get(targetId);
-      if (incoming) incoming.push(id);
-      else referrers.set(targetId, [id]);
+    for (const [targetId, count] of referencedTargetCounts(record.text, targetIds)) {
+      const incoming = referrers.get(targetId) ?? new Map<number, number>();
+      incoming.set(id, count);
+      referrers.set(targetId, incoming);
     }
   };
   for (const [id, ref] of store.entityIndex.byId) visitSource(id, ref);
@@ -78,11 +78,22 @@ export function effectiveCostReferrers(
     if (targetIds.has(entity.expressId) || seen.has(entity.expressId)) continue;
     const record = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
     if (!record) continue;
-    for (const targetId of referencedTargetIds(record.text, targetIds)) {
-      const incoming = referrers.get(targetId);
-      if (incoming) incoming.push(entity.expressId);
-      else referrers.set(targetId, [entity.expressId]);
+    for (const [targetId, count] of referencedTargetCounts(record.text, targetIds)) {
+      const incoming = referrers.get(targetId) ?? new Map<number, number>();
+      incoming.set(entity.expressId, count);
+      referrers.set(targetId, incoming);
     }
   }
   return referrers;
+}
+
+export function effectiveCostReferrers(
+  store: IfcDataStore,
+  view: MutablePropertyView,
+  targetIds: ReadonlySet<number>,
+): Map<number, number[]> {
+  return new Map(
+    [...effectiveCostReferenceOccurrences(store, view, targetIds)]
+      .map(([targetId, occurrences]) => [targetId, [...occurrences.keys()]]),
+  );
 }

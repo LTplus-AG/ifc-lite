@@ -29,7 +29,8 @@ import type { EntityRef } from './types.js';
 import type { CostStoreBackendMethods } from './store-cost-types.js';
 import type { CostBackendMethods } from './cost-types.js';
 import type { CostGraphData } from './cost-types.js';
-import { effectiveCostReferrers } from './cost-reference-scan.js';
+import { effectiveCostReferenceOccurrences, effectiveCostReferrers } from './cost-reference-scan.js';
+import { knownReferenceCount, knownReferrerIds } from './cost-removal-reference-guard.js';
 
 /** What a host resolves per call: the model's store, its `StoreEditor` (already
  *  wired to the same `MutablePropertyView` `bim.cost` reads), and its owner history. */
@@ -207,20 +208,6 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
   };
 }
 
-function knownReferrerIds(referrers: CostRemovalReferrers): Set<number> {
-  return new Set([
-    ...(referrers.itemCostValues?.keys() ?? []),
-    ...(referrers.valueComponents?.keys() ?? []),
-    ...(referrers.valueAppliedValueRef?.keys() ?? []),
-    ...(referrers.nestRelatedObjects?.keys() ?? []),
-    ...(referrers.assignmentRelatedObjects?.keys() ?? []),
-    ...(referrers.nestsAsParent ?? []),
-    ...(referrers.assignmentsAsControl ?? []),
-    ...(referrers.otherRelationshipLists ?? []).map(ref => ref.relId),
-    ...(referrers.otherRelationships ?? []),
-  ]);
-}
-
 /** The cost-graph kind `expressId` names, or `undefined` when it is not a cost entity at all. */
 function costKindOf(graph: CostGraphData, expressId: number): 'IfcCostSchedule' | 'IfcCostItem' | 'IfcCostValue' | undefined {
   if (graph.CostSchedules.some(s => s.ref.expressId === expressId)) return 'IfcCostSchedule';
@@ -345,16 +332,12 @@ export function createCostStoreBackend(
     },
     setCostItemValues(modelId: string, itemExpressId: number, valueExpressIds: number[]): void {
       const resolved = resolve(modelId);
+      const uniqueValueExpressIds = [...new Set(valueExpressIds)];
       const current = graphOf(resolved.modelId).CostItems.find(item => item.ref.expressId === itemExpressId);
       const currentIds = (current?.CostValues ?? []).map(value => value.expressId);
-      // Compare against the SAME de-duplicated list attachCostValuesToItemInStore
-      // actually writes (setCostItemValues([v, v]) writes just [v]) — comparing
-      // against the raw, possibly-duplicated argument here would either miss a
-      // genuine no-op or falsely report a change that the write itself collapses.
-      const uniqueIds = [...new Set(valueExpressIds)];
-      if (current && currentIds.length === uniqueIds.length
-        && currentIds.every((id, index) => id === uniqueIds[index])) return;
-      attachCostValuesToItemInStore(resolved.editor, itemExpressId, valueExpressIds);
+      if (current && currentIds.length === uniqueValueExpressIds.length
+        && currentIds.every((id, index) => id === uniqueValueExpressIds[index])) return;
+      attachCostValuesToItemInStore(resolved.editor, anchorOf(resolved), itemExpressId, uniqueValueExpressIds);
       onRelationshipMutation?.(resolved.modelId);
     },
     removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void {
@@ -374,8 +357,13 @@ export function createCostStoreBackend(
       const incoming = effectiveCostReferrers(
         resolved.store, resolved.mutationView, new Set([expressId, ...itemValueIds]),
       );
+      const occurrences = effectiveCostReferenceOccurrences(
+        resolved.store, resolved.mutationView, new Set([expressId]),
+      );
       const known = knownReferrerIds(referrers);
-      const unexpected = (incoming.get(expressId) ?? []).filter(id => !known.has(id));
+      const unexpected = [...(occurrences.get(expressId) ?? [])]
+        .filter(([id, count]) => !known.has(id) || count > knownReferenceCount(referrers, expressId, id))
+        .map(([id]) => id);
       if (unexpected.length > 0) {
         throw new Error(
           `removeCostEntity: #${expressId} is still referenced by unsupported entity `

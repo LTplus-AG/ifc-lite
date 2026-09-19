@@ -332,7 +332,7 @@ describe('attachCostValuesToItemInStore', () => {
     const { editor: ed, view } = await editor();
     const value = addCostValueToStore(ed, ANCHOR, { Name: 'V' });
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [value] });
-    attachCostValuesToItemInStore(ed, item, []);
+    attachCostValuesToItemInStore(ed, ANCHOR, item, []);
     expect(view.getPositionalMutationsForEntity(item)?.get(7)).toBeNull();
   });
 
@@ -341,7 +341,7 @@ describe('attachCostValuesToItemInStore', () => {
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     const v1 = addCostValueToStore(ed, ANCHOR, { Name: 'V1' });
     const v2 = addCostValueToStore(ed, ANCHOR, { Name: 'V2' });
-    attachCostValuesToItemInStore(ed, item, [v1, v2]);
+    attachCostValuesToItemInStore(ed, ANCHOR, item, [v1, v2]);
     expect(view.getPositionalMutationsForEntity(item)?.get(7)).toEqual([`#${v1}`, `#${v2}`]);
   });
 
@@ -349,8 +349,8 @@ describe('attachCostValuesToItemInStore', () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     const value = addCostValueToStore(ed, ANCHOR, { Name: 'V' });
-    expect(() => attachCostValuesToItemInStore(ed, 100, [value])).toThrow(/itemId #100 must be an IfcCostItem, got IFCWALL/);
-    expect(() => attachCostValuesToItemInStore(ed, item, [100])).toThrow(/CostValues #100 must be an IfcCostValue, got IFCWALL/);
+    expect(() => attachCostValuesToItemInStore(ed, ANCHOR, 100, [value])).toThrow(/itemId #100 must be an IfcCostItem, got IFCWALL/);
+    expect(() => attachCostValuesToItemInStore(ed, ANCHOR, item, [100])).toThrow(/CostValues #100 must be an IfcCostValue, got IFCWALL/);
   });
 
   // #4985 review: setCostItemValues([v, v]) must not write a duplicate
@@ -360,8 +360,15 @@ describe('attachCostValuesToItemInStore', () => {
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     const v1 = addCostValueToStore(ed, ANCHOR, { Name: 'V1' });
     const v2 = addCostValueToStore(ed, ANCHOR, { Name: 'V2' });
-    attachCostValuesToItemInStore(ed, item, [v1, v2, v1]);
+    attachCostValuesToItemInStore(ed, ANCHOR, item, [v1, v2, v1]);
     expect(view.getPositionalMutationsForEntity(item)?.get(7)).toEqual([`#${v1}`, `#${v2}`]);
+  });
+
+  it('refuses IFC2X3 before writing its incompatible slot layout', async () => {
+    const { editor: ed } = await editor();
+    expect(() => attachCostValuesToItemInStore(
+      ed, { ownerHistoryId: null, schema: 'IFC2X3' }, 41, [],
+    )).toThrow(/not supported for IFC2X3/);
   });
 });
 

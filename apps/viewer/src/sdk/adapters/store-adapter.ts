@@ -9,7 +9,8 @@
  * coherently into a single export.
  */
 
-import { StoreEditor } from '@ifc-lite/mutations';
+import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
+import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -251,12 +252,18 @@ function withCostMutationTracking(
       throw new Error('Editing is disabled for your role in this shared session');
     }
   };
-  const wrapCreate = <A extends unknown[]>(
+  const wrapCreate = <A extends [string, ...unknown[]]>(
     ifcType: string, fn: (...args: A) => EntityRef,
   ) => (...args: A): EntityRef => {
     assertCanEdit();
+    const modelId = args[0];
+    const view = store.getState().getMutationView(modelId);
+    const beforeNew = new Set(view?.getNewEntities().map(entity => entity.expressId) ?? []);
+    const beforeDeleted = view?.getTombstones() ?? new Set<number>();
+    const beforePositions = snapshotPositionalMutations(view);
     const ref = fn(...args);
     store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, ifcType);
+    mirrorCostOverlayDelta(store, ref.modelId, beforeNew, beforeDeleted, beforePositions);
     return ref;
   };
   // `modelId` is always the wrapped method's own first argument.
@@ -264,7 +271,14 @@ function withCostMutationTracking(
     fn: (...args: A) => R,
   ) => (...args: A): R => {
     assertCanEdit();
-    return fn(...args);
+    const modelId = args[0];
+    const view = store.getState().getMutationView(modelId);
+    const beforeNew = new Set(view?.getNewEntities().map(entity => entity.expressId) ?? []);
+    const beforeDeleted = view?.getTombstones() ?? new Set<number>();
+    const beforePositions = snapshotPositionalMutations(view);
+    const result = fn(...args);
+    mirrorCostOverlayDelta(store, modelId, beforeNew, beforeDeleted, beforePositions);
+    return result;
   };
   return {
     ...methods,
@@ -278,4 +292,64 @@ function withCostMutationTracking(
     setCostItemValues: wrapRelationshipMutation(methods.setCostItemValues),
     removeCostEntity: wrapRelationshipMutation(methods.removeCostEntity),
   };
+}
+
+function snapshotPositionalMutations(
+  view: MutablePropertyView | null,
+): Map<number, string> {
+  const snapshot = new Map<number, string>();
+  if (!view) return snapshot;
+  const ids = new Set([
+    ...view.getNewEntities().map(entity => entity.expressId),
+    ...view.getMutations().map(mutation => mutation.entityId),
+  ]);
+  for (const id of ids) {
+    const entries = [...(view.getPositionalMutationsForEntity(id) ?? [])];
+    if (entries.length > 0) snapshot.set(id, JSON.stringify(entries));
+  }
+  return snapshot;
+}
+
+function mirrorCostOverlayDelta(
+  store: StoreApi,
+  modelId: string,
+  beforeNew: ReadonlySet<number>,
+  beforeDeleted: ReadonlySet<number>,
+  beforePositions: ReadonlyMap<number, string>,
+): void {
+  const state = store.getState();
+  const view = state.getMutationView(modelId);
+  if (!view) return;
+  const model = getModelForRef(state, modelId === 'legacy' ? LEGACY_MODEL_ID : modelId);
+  const dataStore = model?.ifcDataStore;
+  if (!dataStore) return;
+  for (const entity of view.getNewEntities()) {
+    if (beforeNew.has(entity.expressId)) continue;
+    const names = getAttributeNamesAcrossSchemas(entity.type);
+    const globalId = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
+      ? entity.attributes[0]
+      : `ifc-lite-cost-${entity.expressId}`;
+    state.mirrorEntityCreate(modelId, entity.expressId, entity.type, globalId, null);
+    entity.attributes.forEach((value, index) => {
+      const name = names[index];
+      if (name) state.mirrorAttributeEdit(modelId, entity.expressId, name, value);
+    });
+  }
+  for (const id of view.getTombstones()) {
+    if (!beforeDeleted.has(id)) state.mirrorEntityRemove(modelId, id);
+  }
+  const ids = new Set([
+    ...view.getNewEntities().map(entity => entity.expressId),
+    ...view.getMutations().map(mutation => mutation.entityId),
+  ]);
+  for (const id of ids) {
+    const positions = view.getPositionalMutationsForEntity(id);
+    if (!positions || JSON.stringify([...positions]) === beforePositions.get(id)) continue;
+    const type = view.getNewEntity(id)?.type ?? dataStore.entities.getTypeName(id);
+    const names = getAttributeNamesAcrossSchemas(type);
+    for (const [index, value] of positions) {
+      const name = names[index];
+      if (name) state.mirrorAttributeEdit(modelId, id, name, value);
+    }
+  }
 }

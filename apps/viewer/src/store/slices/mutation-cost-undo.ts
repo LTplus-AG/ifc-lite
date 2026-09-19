@@ -13,10 +13,8 @@
  *
  * Deliberately just the undo/redo/dirty/version slice of what
  * `runInStoreElementBuilder`/`addColumn` do: no spatial-hierarchy
- * registration, no renderer-frame mesh, no collab mirror — a cost entity has
- * no geometry and no storey, so none of those apply. A cost authoring action
- * is undoable and marks the model dirty; it does not yet appear in the
- * spatial tree or mirror to collab peers (unlike a geometric element).
+ * registration or renderer-frame mesh — a cost entity has no geometry and no
+ * storey, so neither applies. The adapter mirrors its overlay delta separately.
  */
 
 import type { Mutation } from '@ifc-lite/mutations';

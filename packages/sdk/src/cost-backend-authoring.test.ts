@@ -216,6 +216,14 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(exportedItem.CostValues ?? []).toEqual([]);
   });
 
+  it('deduplicates repeated CostValues before writing (#4985 review)', async () => {
+    const { storeCost, cost } = await session();
+    const value = storeCost.addCostValue('m', { Name: 'V', AppliedValue: { Type: 'IfcMonetaryMeasure', Value: 4 } }).expressId;
+    storeCost.setCostItemValues('m', 41, [value, value]);
+    const item = cost.data('m').CostItems.find(entry => entry.ref.expressId === 41)!;
+    expect(item.CostValues?.map(entry => entry.expressId)).toEqual([value]);
+  });
+
   it('refuses a CostValue as AppliedValueRef because it is not an IfcAppliedValueSelect entity branch', async () => {
     const { storeCost } = await session();
     const target = storeCost.addCostValue('m', { Name: 'Target' }).expressId;
@@ -317,6 +325,16 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     ]).expressId;
     expect(() => storeCost.removeCostEntity('m', value, { detach: true }))
       .toThrow(new RegExp(`still referenced by unsupported entity #${metric}`));
+    expect(view.isDeleted(value)).toBe(false);
+  });
+
+  it('refuses detach when one item references the value through both CostValues and an unsupported slot', async () => {
+    const { storeCost, view } = await session();
+    const value = storeCost.addCostValue('m', { Name: 'Mixed reference' }).expressId;
+    storeCost.setCostItemValues('m', 41, [value]);
+    view.setPositionalAttribute(41, 8, [`#${value}`]);
+    expect(() => storeCost.removeCostEntity('m', value, { detach: true }))
+      .toThrow(/still referenced by unsupported entity #41/);
     expect(view.isDeleted(value)).toBe(false);
   });
 

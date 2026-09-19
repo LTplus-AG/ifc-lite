@@ -29,6 +29,7 @@ async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
   store: StoreApi;
   undoCalls: Array<{ modelId: string; entityId: number; ifcType: string }>;
   relationshipMutationCalls: string[];
+  mirrorCalls: Array<{ kind: string; entityId: number; detail?: string }>;
 }> {
   const bytes = new TextEncoder().encode(STEP);
   const dataStore = await new IfcParser().parseColumnar(
@@ -38,6 +39,7 @@ async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
   const mutationViews = new Map<string, MutablePropertyView>();
   const undoCalls: Array<{ modelId: string; entityId: number; ifcType: string }> = [];
   const relationshipMutationCalls: string[] = [];
+  const mirrorCalls: Array<{ kind: string; entityId: number; detail?: string }> = [];
   const model = { id: 'm', name: 't.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 100 };
   const state = {
     activeModelId: 'm',
@@ -50,9 +52,18 @@ async function makeStore(canCollabEdit: () => boolean = () => true): Promise<{
     },
     markCostRelationshipMutation: (modelId: string) => { relationshipMutationCalls.push(modelId); },
     canCollabEdit,
+    mirrorEntityCreate: (_modelId: string, entityId: number, ifcType: string) => {
+      mirrorCalls.push({ kind: 'create', entityId, detail: ifcType });
+    },
+    mirrorAttributeEdit: (_modelId: string, entityId: number, name: string) => {
+      mirrorCalls.push({ kind: 'attribute', entityId, detail: name });
+    },
+    mirrorEntityRemove: (_modelId: string, entityId: number) => {
+      mirrorCalls.push({ kind: 'remove', entityId });
+    },
   };
   const store = { getState: () => state, subscribe: () => () => {} } as unknown as StoreApi;
-  return { store, undoCalls, relationshipMutationCalls };
+  return { store, undoCalls, relationshipMutationCalls, mirrorCalls };
 }
 
 describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
@@ -71,6 +82,19 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
     adapter.addCostValue('m', { Name: 'V' });
     adapter.addCostQuantity('m', { Kind: 'IfcQuantityLength', Name: 'Q', Value: 1 });
     assert.deepEqual(undoCalls.map(c => c.ifcType), ['IFCCOSTSCHEDULE', 'IFCCOSTVALUE', 'IFCPHYSICALSIMPLEQUANTITY']);
+  });
+
+  it('mirrors created cost entities and relationship rewrites/removals to collaboration peers', async () => {
+    const { store, mirrorCalls } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const item = adapter.addCostItem('m', { Name: 'I' });
+    const value = adapter.addCostValue('m', { Name: 'V' });
+    adapter.setCostItemValues('m', item.expressId, [value.expressId]);
+    adapter.removeCostEntity('m', value.expressId, { detach: true });
+    assert.ok(mirrorCalls.some(call => call.kind === 'create' && call.entityId === item.expressId));
+    assert.ok(mirrorCalls.some(call => call.kind === 'create' && call.entityId === value.expressId));
+    assert.ok(mirrorCalls.some(call => call.kind === 'attribute' && call.entityId === item.expressId && call.detail === 'CostValues'));
+    assert.ok(mirrorCalls.some(call => call.kind === 'remove' && call.entityId === value.expressId));
   });
 
   it('nestCostItems / assign* / setCostItemValues / removeCostEntity mark the model dirty via markCostRelationshipMutation', async () => {

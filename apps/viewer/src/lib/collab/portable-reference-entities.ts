@@ -42,10 +42,15 @@ export function isPortableReferenceRootType(type: string): boolean {
 }
 
 export function localReferenceId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
   if (typeof value !== 'string') return null;
   const match = /^#([1-9]\d*)$/.exec(value);
   return match ? Number(match[1]) : null;
+}
+
+/** Parsed IFC reference slots use numeric ids; callers must establish the slot is a reference first. */
+export function explicitReferenceId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
+  return localReferenceId(value);
 }
 
 function referencedIds(store: IfcDataStore, entityId: number, inspectAll: boolean): number[] {
@@ -58,11 +63,11 @@ function referencedIds(store: IfcDataStore, entityId: number, inspectAll: boolea
     if (!name) return;
     if ((inspectAll || isPortableReferenceList(name)) && Array.isArray(value)) {
       for (const member of value) {
-        const id = localReferenceId(member);
+        const id = isPortableReferenceList(name) ? explicitReferenceId(member) : localReferenceId(member);
         if (id !== null) ids.push(id);
       }
     } else if (inspectAll || isPortableReferenceScalar(name)) {
-      const id = localReferenceId(value);
+      const id = isPortableReferenceScalar(name) ? explicitReferenceId(value) : localReferenceId(value);
       if (id !== null) ids.push(id);
     }
   });

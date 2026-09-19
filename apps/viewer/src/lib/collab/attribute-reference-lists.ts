@@ -5,7 +5,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { entityForPath, pathForEntity } from './entity-paths';
-import { isPortableReferenceList, isPortableReferenceScalar, localReferenceId } from './portable-reference-entities';
+import { explicitReferenceId, isPortableReferenceList, isPortableReferenceScalar } from './portable-reference-entities';
 
 export function isReferenceListAttribute(attrName: string): boolean {
   return isPortableReferenceList(attrName);
@@ -24,7 +24,7 @@ export function referenceListToPaths(
   if (!isReferenceListAttribute(attrName) || !Array.isArray(value)) return undefined;
   const paths: string[] = [];
   for (const ref of value) {
-    const id = localReferenceId(ref);
+    const id = explicitReferenceId(ref);
     if (id === null) return null;
     const path = pathForEntity(store, id);
     if (!path) return null;
@@ -57,7 +57,7 @@ export function referenceScalarToPath(
   value: unknown,
 ): string | null | undefined {
   if (!isReferenceScalarAttribute(attrName)) return undefined;
-  const id = localReferenceId(value);
+  const id = explicitReferenceId(value);
   if (id === null) return undefined;
   return pathForEntity(store, id);
 }

@@ -87,6 +87,8 @@ describe('portable room STEP source (#4604)', () => {
       ? peerOutput.content : new TextDecoder().decode(peerOutput.content);
     assert.match(peerText, /#1=IFCCOSTITEM\([^\n]*\(#3\),\$\);/,
       'a fresh recipient exports the CRDT snapshot without needing a local mutation');
+    assert.doesNotMatch(peerText, /#2=IFCCOSTVALUE\([^\n]*,#\d+/,
+      'a numeric AppliedValue must never collide with a reconstructed room entity id');
     const view = new MutablePropertyView(model.ifcDataStore.properties, model.id);
     view.setPositionalAttribute(itemId, 7, [`#${valueId}`]);
     const portable = roomStepExportSource(model.ifcDataStore, view, model.id);

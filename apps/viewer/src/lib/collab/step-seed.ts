@@ -30,6 +30,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { ModelSlotRef, StepSeedEntity, StepSeedSource } from '@ifc-lite/collab';
 import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
 import {
+  explicitReferenceId,
   isPortableReferenceList,
   isPortableReferenceRootType,
   isPortableReferenceScalar,
@@ -168,14 +169,18 @@ export function buildStepSeedSource(
           if ((includeOrdinary || isPortableReferenceList(name)) && Array.isArray(value)) {
             const paths: unknown[] = [];
             for (const member of value) {
-              const id = localReferenceId(member);
+              const id = isPortableReferenceList(name)
+                ? explicitReferenceId(member)
+                : localReferenceId(member);
               const path = id === null ? null : portableEntityPath(store, id, slot);
               if (path) paths.push(path);
               else if (includeOrdinary) paths.push(member);
             }
             wireValue = paths;
           } else if (includeOrdinary || isPortableReferenceScalar(name)) {
-            const id = localReferenceId(value);
+            const id = isPortableReferenceScalar(name)
+              ? explicitReferenceId(value)
+              : localReferenceId(value);
             const path = id === null ? null : portableEntityPath(store, id, slot);
             if (path) wireValue = path;
           } else if (!includeOrdinary) {

@@ -10,6 +10,7 @@ describe('capture framing (#4921)', () => {
   it('requests a canvas render after applying a synchronous camera frame', async () => {
     let pose = 'old';
     let renderRequestedAtPose: string | null = null;
+    let scaleCalculatedAtPose: string | null = null;
     const frameReady = frameSelectionBounds(
       {
         frameBounds: async () => { pose = 'framed'; },
@@ -20,11 +21,14 @@ describe('capture framing (#4921)', () => {
       { x: 0, y: 0, z: 0 },
       { x: 1, y: 1, z: 1 },
       0,
+      () => { scaleCalculatedAtPose = pose; },
     );
 
     assert.equal(pose, 'framed', 'duration-0 framing must apply before invalidating the canvas');
     assert.equal(renderRequestedAtPose, 'framed',
       'the paint wait must contain a frame rendered from the captured camera pose');
     await frameReady;
+    assert.equal(scaleCalculatedAtPose, 'framed',
+      'pose-dependent scale UI must update after framing completes');
   });
 });

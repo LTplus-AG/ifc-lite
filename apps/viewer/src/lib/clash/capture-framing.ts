@@ -9,15 +9,16 @@ type RenderInvalidator = Pick<Renderer, 'requestRender'>;
 type FrameMin = Parameters<Camera['frameBounds']>[0];
 type FrameMax = Parameters<Camera['frameBounds']>[1];
 
-/** Frame selection bounds and dirty the canvas when no animation tick will do it. */
+/** Frame selection bounds, dirty immediate frames, then publish pose-dependent UI. */
 export function frameSelectionBounds(
   camera: FrameBoundsCamera,
   renderer: RenderInvalidator,
   min: FrameMin,
   max: FrameMax,
   durationMs: number,
+  onFramed: () => void,
 ): Promise<void> {
   const frameReady = camera.frameBounds(min, max, durationMs);
   if (durationMs <= 0) renderer.requestRender();
-  return frameReady;
+  return frameReady.then(onFramed);
 }

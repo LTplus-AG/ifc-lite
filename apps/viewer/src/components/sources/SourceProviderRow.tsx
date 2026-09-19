@@ -11,6 +11,7 @@ import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
 import { Cloud, Loader2, LogIn, LogOut, Settings } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { resolveLiveMessage } from '@/i18n/live-message';
 
 interface SourceProviderRowProps {
   provider: FileSourceProvider;
@@ -111,15 +112,16 @@ export function SourceProviderRow({
   // Interactive providers can still require preferences (e.g. a client id for
   // the OAuth app registration) — sign-in is pointless until those exist.
   const canSignIn = auth.status === 'signed-out' && prefsConfigured;
+  const notice = resolveLiveMessage(t, auth.notice);
   const hint = !canBrowse
     ? interactive
       ? auth.status === 'restoring'
         ? t('sources.sourceProviderRow.restoringSession')
         : !prefsConfigured
           ? t('sources.sourceProviderRow.addSettingsThenSignIn')
-          : (auth.notice ?? t('sources.sourceProviderRow.signInToBrowse'))
+          : (auth.notice ? notice : t('sources.sourceProviderRow.signInToBrowse'))
       : t('sources.sourceProviderRow.addRequiredSettings')
-    : auth.notice;
+    : notice;
 
   const identityLabel = auth.identity
     ? (auth.identity.displayName ?? auth.identity.email ?? auth.identity.id)

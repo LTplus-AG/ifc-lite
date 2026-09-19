@@ -651,6 +651,7 @@ describe('SourceProjectsStep localization', () => {
 class AuthProviderFixture implements FileSourceProvider {
   readonly manifest: PluginManifest;
   private release: ((identity: SourceIdentity | null) => void) | null = null;
+  private rejectRestore: ((reason: unknown) => void) | null = null;
 
   constructor(title: string, opts: { requiredMissing?: boolean } = {}) {
     this.manifest = makeManifest({
@@ -665,8 +666,9 @@ class AuthProviderFixture implements FileSourceProvider {
 
   readonly auth = {
     restore: (): Promise<SourceIdentity | null> =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         this.release = resolve;
+        this.rejectRestore = reject;
       }),
     signIn: (): Promise<SourceIdentity> => Promise.reject(new Error('not exercised')),
     signOut: (): Promise<void> => Promise.resolve(),
@@ -675,6 +677,10 @@ class AuthProviderFixture implements FileSourceProvider {
 
   settle(identity: SourceIdentity | null): void {
     this.release?.(identity);
+  }
+
+  failRestore(reason: unknown): void {
+    this.rejectRestore?.(reason);
   }
 
   listProjects(): Promise<Page<SourceProject>> {
@@ -715,6 +721,17 @@ describe('SourceProviderRow localization', () => {
       ['sources.sourceProviderRow.signIn'],
       ['sources.sourceProviderRow.signInToBrowse'],
     ]);
+  });
+
+  it('translates an expired-session notice live after the async restore fails', async () => {
+    const provider = new AuthProviderFixture('Expired Provider');
+    render(
+      <SourceProviderRow provider={provider} sourceHost={new SourceHost()} prefsVersion={0} onOpenSettings={() => {}} onBrowse={() => {}} />,
+    );
+    await act(async () => { provider.failRestore(new Error('provider diagnostic')); await Promise.resolve(); });
+    await pump();
+
+    assertLocalized([['sources.sourceProviderRow.sessionExpired']]);
   });
 
   it('translates the sign-out button once restore settles signed-in', async () => {

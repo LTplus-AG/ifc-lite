@@ -29,7 +29,7 @@ import {
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import { resolveLiveMessage, type LiveTranslationMessage } from './live-translation-message.js';
+import { resolveLiveMessage, type LiveTranslationMessage } from '@/i18n/live-message';
 import { useThreeScene } from './useThreeScene';
 import { createScene } from './playground-scene';
 import type { SceneHandle, ViewerController } from './playground-viewer-types';

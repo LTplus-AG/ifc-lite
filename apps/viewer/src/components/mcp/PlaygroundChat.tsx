@@ -36,7 +36,7 @@ import remarkGfm from 'remark-gfm';
 import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { resolveLiveMessage, type LiveTranslationMessage } from './live-translation-message.js';
+import { resolveLiveMessage, type LiveTranslationMessage } from '@/i18n/live-message';
 import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
 import {
   getPlaygroundModel,

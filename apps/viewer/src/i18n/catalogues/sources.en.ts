@@ -102,6 +102,8 @@ export const sourcesEn = {
   'sources.sourceProviderRow.restoringSession': 'Restoring session…',
   'sources.sourceProviderRow.addSettingsThenSignIn': 'Add the required settings, then sign in to browse',
   'sources.sourceProviderRow.signInToBrowse': 'Sign in to browse',
+  'sources.sourceProviderRow.sessionExpired': 'Your session expired. Please sign in again.',
+  'sources.sourceProviderRow.signInFailed': 'Sign-in failed. Please try again.',
   'sources.sourceProviderRow.addRequiredSettings': 'Add the required settings to browse',
 
   // ── SourceSettingsDialog ──

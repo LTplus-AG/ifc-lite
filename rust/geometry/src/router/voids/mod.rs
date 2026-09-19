@@ -17,6 +17,7 @@ mod bool2d_path;
 mod coaxial_union;
 pub(crate) mod geom;
 mod malformed_opening_repair;
+mod local_frame;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
@@ -32,6 +33,7 @@ use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
     translate_cutter_mesh, world_host_bounds, OpeningBox,
 };
+use local_frame::vertical_depth_wall_frame;
 use sweep::{drop_faces_outside_host, mesh_to_keep};
 mod sweep;
 
@@ -83,6 +85,7 @@ struct OpeningFrame {
     depth: Vector3<f64>,
     cross_a: Vector3<f64>,
     cross_b: Vector3<f64>,
+    depth_is_authored: bool,
 }
 
 impl OpeningFrame {
@@ -99,6 +102,7 @@ impl OpeningFrame {
             depth,
             cross_a,
             cross_b,
+            depth_is_authored: true,
         })
     }
 
@@ -804,7 +808,8 @@ impl GeometryRouter {
             .iter()
             .filter_map(depth_of)
             .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
-            .and_then(wall_frame_from_depth)?;
+            .and_then(wall_frame_from_depth)
+            .or_else(|| vertical_depth_wall_frame(mesh, &ctx.merged_openings))?;
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a
         // plan-rotated wall never has them (they'd be diagonal), so bail.
@@ -1738,3 +1743,5 @@ mod batch_cutter_tests;
 mod cut_effect_count_tests;
 #[cfg(test)]
 mod single_cut_outcome_tests;
+#[cfg(test)]
+mod issue_3977_tests;

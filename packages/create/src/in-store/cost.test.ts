@@ -334,6 +334,13 @@ describe('attachCostValuesToItemInStore', () => {
 });
 
 describe('removeCostEntityInStore', () => {
+  it('refuses to remove an unrelated model entity through the public builder', async () => {
+    const { editor: ed } = await editor();
+    expect(() => removeCostEntityInStore(ed, ANCHOR, 100, {}))
+      .toThrow(/expressId #100 must be one of .* got IFCWALL/);
+    expect(ed.hasEntity(100)).toBe(true);
+  });
+
   it('refuses to delete a value still listed in an IfcCostItem.CostValues', async () => {
     const { editor: ed } = await editor();
     const value = addCostValueToStore(ed, ANCHOR, { Name: 'V' });

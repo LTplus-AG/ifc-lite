@@ -79,6 +79,7 @@ function requireEntityTypeOneOf(editor: StoreEditor, id: number, allowedTypes: R
 const APPLIED_VALUE_ENTITY_TYPES: ReadonlySet<string> = new Set(['IFCCOSTVALUE', 'IFCAPPLIEDVALUE']);
 /** The entity branches of IFC4/IFC4X3 IfcAppliedValueSelect. */
 const APPLIED_VALUE_REF_TYPES: ReadonlySet<string> = new Set(['IFCMEASUREWITHUNIT', 'IFCREFERENCE']);
+const REMOVABLE_COST_ENTITY_TYPES = new Set(['IFCCOSTSCHEDULE', 'IFCCOSTITEM', 'IFCCOSTVALUE']);
 /** `IfcCostItem.CostQuantities`: every `IfcPhysicalSimpleQuantity` subtype `addCostQuantityToStore` can write. */
 const COST_QUANTITY_ENTITY_TYPES: ReadonlySet<string> = new Set([
   'IFCQUANTITYLENGTH', 'IFCQUANTITYAREA', 'IFCQUANTITYVOLUME', 'IFCQUANTITYWEIGHT',
@@ -478,6 +479,7 @@ export function removeCostEntityInStore(
   options: { detach?: boolean; cascadeValueIds?: readonly number[] } = {},
 ): void {
   assertCostSchema(schemaOf(anchor), 'removeCostEntity');
+  requireEntityTypeOneOf(editor, expressId, REMOVABLE_COST_ENTITY_TYPES, 'expressId', 'removeCostEntity');
   const blockers: string[] = [];
   for (const [itemId, values] of referrers.itemCostValues ?? []) {
     if (values.includes(expressId)) blockers.push(`IfcCostItem #${itemId}.CostValues`);

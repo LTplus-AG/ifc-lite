@@ -548,10 +548,10 @@ Each entry is `{ base: string[], head: string[], relation, reason, shares? }` wi
 
 | `relation` | source | arity |
 |---|---|---|
-| `identity` | a content match the engine committed to, or an alias the diff was run with (carried forward so a replayed lineage does not erode) | 1:1 |
+| `identity` | a content match the engine committed to, a plain identity-map alias, or an `identity` lineage entry replayed as an alias | 1:1 |
 | `split` | `ModelDiff.splitMerges`, reason `split:<confidence>` | 1:k |
 | `merge` | `ModelDiff.splitMerges`, reason `merge:<confidence>` | k:1 |
-| `replaced` | successor claims passed in as **accepted**, reason `successor:<confidence>` | 1:1 |
+| `replaced` | successor claims passed in as **accepted**, or a `replaced` lineage entry replayed as an alias; its free-form reason is preserved | 1:1 |
 
 `shares` — each piece's fraction of the pieces' total volume, in key order — is present only when every piece carried a proved volume (never on an `extent` claim). Every key appears in at most one entry per side; the engine guarantees that by construction, and the sidecar refuses a document where it does not hold.
 

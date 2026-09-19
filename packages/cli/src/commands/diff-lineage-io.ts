@@ -16,12 +16,15 @@ import {
   parseLineageSidecar,
   type IdentityMapSidecar,
   type LineageEntry,
+  type LineageRelation,
   type LineageSidecar,
   type ModelDiff,
   type ModelIdentity,
 } from '@ifc-lite/diff';
 import { fatal } from '../output.js';
 import type { DiffRef } from './diff-engine.js';
+
+type AliasLineageRelation = Extract<LineageRelation, 'identity' | 'replaced'>;
 
 /** Union of two alias maps; a head key the two disagree about is dropped. */
 export function mergeAliases(
@@ -55,13 +58,21 @@ export function mergeLineage(
   accepted: IdentityMapSidecar | undefined,
 ): { entries: LineageEntry[]; deleted: string[] } {
   const aliasReasons = new Map<string, string>();
+  const aliasRelations = new Map<string, AliasLineageRelation>();
   for (const entry of incomingLineage?.entries ?? []) {
-    if (entry.head.length === 1 && !aliasReasons.has(entry.head[0])) aliasReasons.set(entry.head[0], entry.reason);
+    if (entry.head.length !== 1 || (entry.relation !== 'identity' && entry.relation !== 'replaced')) continue;
+    if (!aliasReasons.has(entry.head[0])) {
+      aliasReasons.set(entry.head[0], entry.reason);
+      aliasRelations.set(entry.head[0], entry.relation);
+    }
   }
   for (const entry of incomingMap?.entries ?? []) {
-    if (!aliasReasons.has(entry.here)) aliasReasons.set(entry.here, entry.reason);
+    if (!aliasReasons.has(entry.here)) {
+      aliasReasons.set(entry.here, entry.reason);
+      aliasRelations.set(entry.here, 'identity');
+    }
   }
-  const { entries } = lineageOfDiff(diff, { aliasReasons });
+  const { entries } = lineageOfDiff(diff, { aliasReasons, aliasRelations });
   const taken = new Set<string>();
   for (const entry of entries) for (const key of [...entry.base, ...entry.head]) taken.add(key);
 

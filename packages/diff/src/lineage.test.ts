@@ -149,13 +149,22 @@ describe('lineageFromDiff', () => {
     expect(lineageFromDiff(second)[0].reason).toBe('alias:replayed');
   });
 
-  it('keeps replayed successor provenance as replaced (#4989)', () => {
+  it('keeps an explicit replayed relation without inferring it from the reason (#4989)', () => {
     const base = [entity({ key: 'OLD', dataHash: 'old', geometryHash: 'g', aabb: WHOLE })];
     const head = [entity({ key: 'NEW', dataHash: 'new', geometryHash: 'g', aabb: WHOLE })];
     const diff = diffModels(base, head, { keyAliases: new Map([['NEW', 'OLD']]) });
 
-    expect(lineageFromDiff(diff, { aliasReasons: new Map([['NEW', 'successor:footprint']]) })).toEqual([
-      { base: ['OLD'], head: ['NEW'], relation: 'replaced', reason: 'successor:footprint' },
+    expect(lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'reviewed by Alice']]),
+      aliasRelations: new Map([['NEW', 'replaced']]),
+    })).toEqual([
+      { base: ['OLD'], head: ['NEW'], relation: 'replaced', reason: 'reviewed by Alice' },
+    ]);
+    expect(lineageFromDiff(diff, {
+      aliasReasons: new Map([['NEW', 'successor:custom']]),
+      aliasRelations: new Map([['NEW', 'identity']]),
+    })).toEqual([
+      { base: ['OLD'], head: ['NEW'], relation: 'identity', reason: 'successor:custom' },
     ]);
   });
 });

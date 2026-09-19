@@ -33,11 +33,12 @@
  * does not hold — a key with two lineages is a document that has not decided.
  */
 
-import { identityMapFromContentMatches, identityMapFromSuccessors, SUCCESSOR_REASON_PREFIX } from './identity-map.js';
+import { identityMapFromContentMatches, identityMapFromSuccessors } from './identity-map.js';
 import { compareCodeUnits } from './sidecar-common.js';
 import type { ModelDiff, SplitMergeClaim, SuccessorClaim } from './types.js';
 
 export type LineageRelation = 'identity' | 'split' | 'merge' | 'replaced';
+type AliasLineageRelation = Extract<LineageRelation, 'identity' | 'replaced'>;
 
 /**
  * One lineage entry. `base` and `head` are key lists; exactly one of them has
@@ -85,6 +86,11 @@ export interface LineageFromDiffOptions<TRef> {
    * `alias:replayed`.
    */
   aliasReasons?: ReadonlyMap<string, string>;
+  /**
+   * The explicit relation for each replayed 1:1 alias, keyed by head key.
+   * Relations are sidecar data, not encoded in free-form reason strings.
+   */
+  aliasRelations?: ReadonlyMap<string, AliasLineageRelation>;
 }
 
 function sharesOf<TRef>(claim: SplitMergeClaim<TRef>): number[] | undefined {
@@ -111,8 +117,9 @@ function compareEntries(a: LineageEntry, b: LineageEntry): number {
  * Applied aliases are carried forward using their provenance: a diff run with
  * a replayed map classifies those pairs by key, so they never reach the
  * content pass and would otherwise vanish from a `--lineage-in x --lineage-out
- * x` round trip, the file shrinking on every run. A `successor:` reason stays
- * `replaced`; all other aliases are `identity`.
+ * x` round trip, the file shrinking on every run. Callers replaying a lineage
+ * pass its explicit 1:1 relation through `aliasRelations`; a bare alias is
+ * `identity` regardless of its free-form reason.
  */
 export function lineageFromDiff<TRef>(
   diff: ModelDiff<TRef>,
@@ -153,7 +160,7 @@ function lineageEntriesOf<TRef>(
     entries.push({
       base: [base],
       head: [here],
-      relation: reason.startsWith(SUCCESSOR_REASON_PREFIX) ? 'replaced' : 'identity',
+      relation: options.aliasRelations?.get(here) ?? 'identity',
       reason,
     });
   }

@@ -129,6 +129,16 @@ describe('ifc-lite diff --key-from and the lineage loop', () => {
     expect(stdoutJson().contentMatches).toEqual([]);
     expect(await readFile(lineagePath, 'utf-8')).toBe(before);
 
+    // The relation is typed sidecar data, not a convention encoded in the
+    // free-form reason: preserve both counterexamples through the CLI replay.
+    lineage.entries[0] = { ...lineage.entries[0], relation: 'replaced', reason: 'reviewed by Alice' };
+    lineage.entries[1] = { ...lineage.entries[1], relation: 'identity', reason: 'successor:custom' };
+    await writeFile(lineagePath, `${JSON.stringify(lineage, null, 2)}\n`, 'utf-8');
+    stdoutSpy.mockClear();
+    await contentDiffCommand({ basePath, headPath, lineageIn: lineagePath, lineageOut: lineagePath, json: true });
+    const replayed = JSON.parse(await readFile(lineagePath, 'utf-8'));
+    expect(replayed.entries).toEqual(lineage.entries);
+
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('exit');
     });

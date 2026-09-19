@@ -26,7 +26,8 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor, IfcAttributeValue } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
 import {
-  assertCostSchema, requireRef, validateRefList, validateTypedValue,
+  ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES,
+  assertCostSchema, assertOneOf, requireRef, validateRefList, validateTypedValue,
   type CostSchema, type CostTypedValueInput,
 } from '../cost-authoring-rules.js';
 import type {
@@ -71,6 +72,7 @@ export function addCostScheduleToStore(editor: StoreEditor, anchor: CostAnchor, 
   if (typeof params.Name !== 'string' || params.Name.length === 0) {
     throw new Error('addCostSchedule: Name is required');
   }
+  assertOneOf(params.PredefinedType, COST_SCHEDULE_TYPES, 'PredefinedType', 'addCostSchedule');
   return editor.addEntity('IfcCostSchedule', [
     generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
@@ -98,6 +100,7 @@ export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, para
   if (typeof params.Name !== 'string' || params.Name.length === 0) {
     throw new Error('addCostItem: Name is required');
   }
+  assertOneOf(params.PredefinedType, COST_ITEM_TYPES, 'PredefinedType', 'addCostItem');
   validateRefList(params.CostValues, 'CostValues', 'addCostItem');
   validateRefList(params.CostQuantities, 'CostQuantities', 'addCostItem');
   return editor.addEntity('IfcCostItem', [
@@ -127,6 +130,7 @@ export function addCostValueToStore(editor: StoreEditor, anchor: CostAnchor, par
   if (params.AppliedValue !== undefined && params.AppliedValueRef !== undefined) {
     throw new Error('addCostValue: AppliedValue and AppliedValueRef are the two branches of one SELECT — give at most one');
   }
+  assertOneOf(params.ArithmeticOperator, ARITHMETIC_OPERATORS, 'ArithmeticOperator', 'addCostValue');
   let applied: IfcAttributeValue = null;
   if (params.AppliedValue !== undefined) {
     applied = typedAttrValue(params.AppliedValue, schema, 'addCostValue');
@@ -174,7 +178,7 @@ export function addCostQuantityToStore(editor: StoreEditor, anchor: CostAnchor, 
     params.Name,
     params.Description ?? null,
     params.Unit === undefined ? null : `#${params.Unit}`,
-    isInteger ? { real: params.Value } : params.Value,
+    isInteger ? params.Value : { real: params.Value },
     params.Formula ?? null,
   ]).expressId;
 }
@@ -208,10 +212,17 @@ export function nestCostItemsInStore(
   assertCostSchema(schema, 'nestCostItems');
   validateRefList(childIds, 'childIds', 'nestCostItems');
   requireRef(parentId, 'parentId', 'nestCostItems');
+  // Detach every child of THIS call from its old rel in one rewrite per rel,
+  // not one rewrite per child: two children reparented out of the same old
+  // IfcRelNests in one call must both leave it, and re-filtering the
+  // ORIGINAL (unchanged) relatedIds on each iteration would make the second
+  // child's rewrite silently undo the first child's removal.
+  const detachedRelIds = new Set<number>();
   for (const childId of childIds) {
     const existing = existingNestByChild.get(childId);
-    if (!existing || existing.relId === existingTargetNest?.relId) continue;
-    const remaining = existing.relatedIds.filter(id => id !== childId);
+    if (!existing || existing.relId === existingTargetNest?.relId || detachedRelIds.has(existing.relId)) continue;
+    detachedRelIds.add(existing.relId);
+    const remaining = existing.relatedIds.filter(id => !childIds.includes(id));
     if (remaining.length === 0) editor.removeEntity(existing.relId);
     else editor.setPositionalAttribute(existing.relId, 5, remaining.map(id => `#${id}`));
   }
@@ -302,6 +313,21 @@ export interface CostRemovalReferrers {
   nestRelatedObjects?: ReadonlyMap<number, readonly number[]>;
   /** `IfcRelAssignsToControl.RelatedObjects` lists containing the target, keyed by the rel's expressId. */
   assignmentRelatedObjects?: ReadonlyMap<number, readonly number[]>;
+  /**
+   * `IfcRelNests` ids where the target IS `RelatingObject` — the target is a
+   * NESTING PARENT. `RelatingObject` is a required (non-optional) attribute,
+   * so the rel cannot be "detached" the way a `RelatedObjects` member can:
+   * removing its parent leaves it referring to a tombstoned id, so the whole
+   * rel is removed too.
+   */
+  nestsAsParent?: readonly number[];
+  /**
+   * `IfcRelAssignsToControl` ids where the target IS `RelatingControl` — the
+   * target CONTROLS these objects (a schedule controlling items, or an item
+   * controlling assigned products/tasks). Same reasoning as `nestsAsParent`:
+   * `RelatingControl` is required, so the rel is removed, not rewritten.
+   */
+  assignmentsAsControl?: readonly number[];
 }
 
 /**
@@ -359,6 +385,12 @@ export function removeCostEntityInStore(
     if (remaining.length === 0) editor.removeEntity(relId);
     else editor.setPositionalAttribute(relId, 4, remaining.map(id => `#${id}`));
   }
+  // The target is the RELATING (required) endpoint of these rels — a
+  // schedule losing the items it controls, or an item losing its nested
+  // children / controlled objects. Nothing to rewrite the list down to:
+  // the rel's own anchor is gone, so the rel goes with it.
+  for (const relId of referrers.nestsAsParent ?? []) editor.removeEntity(relId);
+  for (const relId of referrers.assignmentsAsControl ?? []) editor.removeEntity(relId);
   for (const cascadeId of options.cascadeValueIds ?? []) {
     editor.removeEntity(cascadeId);
   }

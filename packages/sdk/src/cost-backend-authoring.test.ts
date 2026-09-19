@@ -133,6 +133,24 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(exportedItem.CostValues ?? []).toEqual([]);
   });
 
+  it('refuses to remove a non-cost entity (a wall) through removeCostEntity', async () => {
+    const { storeCost } = await session();
+    // #1 is IFCWALL in the fixture — not IfcCostSchedule/IfcCostItem/IfcCostValue.
+    expect(() => storeCost.removeCostEntity('m', 1)).toThrow(/not an IfcCostSchedule\/IfcCostItem\/IfcCostValue/);
+  });
+
+  it('deleting a schedule that controls items tombstones the IfcRelAssignsToControl, not just the schedule', async () => {
+    const { storeCost, cost } = await session();
+    const schedule = storeCost.addCostSchedule('m', { Name: 'S' }).expressId;
+    const item = storeCost.addCostItem('m', { Name: 'I' }).expressId;
+    const relId = storeCost.assignCostItemsToSchedule('m', schedule, [item]).expressId;
+    storeCost.removeCostEntity('m', schedule);
+    const graph = cost.data('m');
+    expect(graph.CostSchedules.some(s => s.ref.expressId === schedule)).toBe(false);
+    expect(graph.Relationships.some(r => r.ref.expressId === relId)).toBe(false);
+    expect(graph.CostItems.some(i => i.ref.expressId === item)).toBe(true); // the item itself survives
+  });
+
   it('includeMutations:false still reports the on-disk graph, unaffected by pending authoring', async () => {
     const { storeCost, cost } = await session();
     storeCost.addCostItem('m', { Name: 'Not on disk' });

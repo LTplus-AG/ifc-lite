@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
-  addCostItemToStore, addCostScheduleToStore, addCostValueToStore,
+  addCostItemToStore, addCostQuantityToStore, addCostScheduleToStore, addCostValueToStore,
   assignCostItemsToScheduleInStore, assignObjectsToCostItemInStore,
   attachCostValuesToItemInStore, nestCostItemsInStore, removeCostEntityInStore,
   type CostAnchor, type ExistingRelatedList,
@@ -89,6 +89,33 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
     expect(() => addCostValueToStore(ed, ANCHOR, { AppliedValue: { Type: 'IfcInteger', Value: 1.5 } }))
       .toThrow(/integer/);
   });
+
+  it('refuses a PredefinedType outside the enum, on a schedule, an item, and an ArithmeticOperator on a value', async () => {
+    const { editor: ed } = await editor();
+    expect(() => addCostScheduleToStore(ed, ANCHOR, { Name: 'S', PredefinedType: 'BOGUS' as never }))
+      .toThrow(/PredefinedType/);
+    expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', PredefinedType: 'BOGUS' as never }))
+      .toThrow(/PredefinedType/);
+    expect(() => addCostValueToStore(ed, ANCHOR, { ArithmeticOperator: 'BOGUS' as never }))
+      .toThrow(/ArithmeticOperator/);
+  });
+});
+
+describe('addCostQuantityToStore', () => {
+  it('IFC4X3 IfcQuantityCount serializes as an INTEGER literal, not a REAL one', async () => {
+    const { editor: ed } = await editor();
+    const id = addCostQuantityToStore(ed, { ownerHistoryId: null, schema: 'IFC4X3' }, { Kind: 'IfcQuantityCount', Name: 'N', Value: 5 });
+    // The `{ real }` overlay marker always forces a trailing decimal point
+    // (`5.`), which is what IFC4X3's INTEGER-typed IfcCountMeasure must NOT
+    // get — a bare `5` is the correct STEP token here.
+    expect(ed.getNewEntity(id)!.attributes[3]).toBe(5);
+  });
+
+  it('a non-count (or non-IFC4X3) quantity still forces a REAL literal even for a whole number', async () => {
+    const { editor: ed } = await editor();
+    const id = addCostQuantityToStore(ed, ANCHOR, { Kind: 'IfcQuantityLength', Name: 'N', Value: 5 });
+    expect(ed.getNewEntity(id)!.attributes[3]).toEqual({ real: 5 });
+  });
 });
 
 describe('nestCostItemsInStore', () => {
@@ -129,6 +156,26 @@ describe('nestCostItemsInStore', () => {
     // The old (overlay-only) rel had exactly one member, so emptying it removes it outright.
     expect(ed.getNewEntity(oldNestId)).toBeNull();
     expect(ed.getNewEntities().some(e => e.expressId === oldNestId)).toBe(false);
+  });
+
+  it('reparents TWO children out of the SAME old nest in one call without resurrecting the first', async () => {
+    const { editor: ed } = await editor();
+    const oldParent = addCostItemToStore(ed, ANCHOR, { Name: 'Old' });
+    const newParent = addCostItemToStore(ed, ANCHOR, { Name: 'New' });
+    const childA = addCostItemToStore(ed, ANCHOR, { Name: 'A' });
+    const childB = addCostItemToStore(ed, ANCHOR, { Name: 'B' });
+    const oldNestId = nestCostItemsInStore(ed, ANCHOR, oldParent, [childA, childB], new Map());
+    const oldNest: ExistingRelatedList = { relId: oldNestId, relatedIds: [childA, childB] };
+
+    nestCostItemsInStore(
+      ed, ANCHOR, newParent, [childA, childB],
+      new Map([[childA, oldNest], [childB, oldNest]]),
+    );
+    // Both children left; the old rel is emptied and tombstoned, not left
+    // holding one of them back from a filter that only looked at ONE child
+    // per rewrite (the bug: re-filtering the unchanged original list on the
+    // second child's iteration would undo the first child's removal).
+    expect(ed.hasEntity(oldNestId)).toBe(false);
   });
 });
 
@@ -218,5 +265,27 @@ describe('removeCostEntityInStore', () => {
     const { editor: ed } = await editor();
     expect(() => removeCostEntityInStore(ed, { ownerHistoryId: null, schema: 'IFC2X3' }, 1, {}))
       .toThrow(/IFC2X3/);
+  });
+
+  it('tombstones an IfcRelNests where the target is the (required) nesting parent, not a related object', async () => {
+    const { editor: ed } = await editor();
+    const parent = addCostItemToStore(ed, ANCHOR, { Name: 'Parent' });
+    const child = addCostItemToStore(ed, ANCHOR, { Name: 'Child' });
+    const nestId = nestCostItemsInStore(ed, ANCHOR, parent, [child], new Map());
+    removeCostEntityInStore(ed, ANCHOR, parent, { nestsAsParent: [nestId] });
+    expect(ed.hasEntity(nestId)).toBe(false);
+    expect(ed.hasEntity(parent)).toBe(false);
+    expect(ed.hasEntity(child)).toBe(true); // the child itself is untouched, only the now-orphaned rel is
+  });
+
+  it('tombstones an IfcRelAssignsToControl where the target is the (required) RelatingControl', async () => {
+    const { editor: ed } = await editor();
+    const schedule = addCostScheduleToStore(ed, ANCHOR, { Name: 'S' });
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    const relId = assignCostItemsToScheduleInStore(ed, ANCHOR, schedule, [item]);
+    removeCostEntityInStore(ed, ANCHOR, schedule, { assignmentsAsControl: [relId] });
+    expect(ed.hasEntity(relId)).toBe(false);
+    expect(ed.hasEntity(schedule)).toBe(false);
+    expect(ed.hasEntity(item)).toBe(true);
   });
 });

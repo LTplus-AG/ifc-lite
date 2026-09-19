@@ -208,12 +208,16 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     // is visible to the very next call.
     ...createCostStoreBackend((modelId: string | undefined) => {
       const requested = modelId ?? '';
-      const normalizedModelId = normalizeMutationModelId(store.getState(), requested);
       const editor = getEditor(requested);
       const dataStore = resolveDataStore(requested);
       if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
       const ownerHistoryId = dataStore.entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
-      return { modelId: normalizedModelId, store: dataStore, editor, ownerHistoryId };
+      // The PUBLIC id, not `normalizeMutationModelId`'s internal mutation-view
+      // alias (`__legacy__`): this feeds `bim.cost.data(modelId)` through
+      // `createCostStoreBackend`, and the model's own cost adapter resolves
+      // model ids the same way every other `bim.cost` caller does — it does
+      // not know the mutation-view alias and would reject it as unknown.
+      return { modelId: requested, store: dataStore, editor, ownerHistoryId };
     }, costAdapter),
   };
 }

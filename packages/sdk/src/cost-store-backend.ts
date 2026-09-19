@@ -84,13 +84,30 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
   }
   const nestRelatedObjects = new Map<number, readonly number[]>();
   const assignmentRelatedObjects = new Map<number, readonly number[]>();
+  const nestsAsParent: number[] = [];
+  const assignmentsAsControl: number[] = [];
   for (const rel of graph.Relationships) {
     const related = (rel.RelatedObjects ?? []).map(r => r.expressId);
-    if (!related.includes(expressId)) continue;
-    if (rel.Type === 'IfcRelNests') nestRelatedObjects.set(rel.ref.expressId, related);
-    else if (rel.Type === 'IfcRelAssignsToControl') assignmentRelatedObjects.set(rel.ref.expressId, related);
+    if (rel.Type === 'IfcRelNests') {
+      if (related.includes(expressId)) nestRelatedObjects.set(rel.ref.expressId, related);
+      if (rel.RelatingObject?.expressId === expressId) nestsAsParent.push(rel.ref.expressId);
+    } else if (rel.Type === 'IfcRelAssignsToControl') {
+      if (related.includes(expressId)) assignmentRelatedObjects.set(rel.ref.expressId, related);
+      if (rel.RelatingControl?.expressId === expressId) assignmentsAsControl.push(rel.ref.expressId);
+    }
   }
-  return { itemCostValues, valueComponents, nestRelatedObjects, assignmentRelatedObjects };
+  return {
+    itemCostValues, valueComponents, nestRelatedObjects, assignmentRelatedObjects,
+    nestsAsParent, assignmentsAsControl,
+  };
+}
+
+/** The cost-graph kind `expressId` names, or `undefined` when it is not a cost entity at all. */
+function costKindOf(graph: CostGraphData, expressId: number): 'IfcCostSchedule' | 'IfcCostItem' | 'IfcCostValue' | undefined {
+  if (graph.CostSchedules.some(s => s.ref.expressId === expressId)) return 'IfcCostSchedule';
+  if (graph.CostItems.some(i => i.ref.expressId === expressId)) return 'IfcCostItem';
+  if (graph.CostValues.some(v => v.ref.expressId === expressId)) return 'IfcCostValue';
+  return undefined;
 }
 
 /** Values referenced ONLY by `itemId`'s own `CostValues` — the cascade-delete set for removing that item. */
@@ -160,9 +177,14 @@ export function createCostStoreBackend(
     removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void {
       const resolved = resolve(modelId);
       const graph = graphOf(resolved.modelId);
+      const kind = costKindOf(graph, expressId);
+      if (!kind) {
+        throw new Error(
+          `removeCostEntity: #${expressId} is not an IfcCostSchedule/IfcCostItem/IfcCostValue in this model's cost `
+          + 'graph — this method only removes cost entities; use bim.store.removeEntity for anything else.');
+      }
       const referrers = buildRemovalReferrers(graph, expressId);
-      const isItem = graph.CostItems.some(i => i.ref.expressId === expressId);
-      const cascadeValueIds = isItem ? cascadeValuesForItem(graph, expressId) : [];
+      const cascadeValueIds = kind === 'IfcCostItem' ? cascadeValuesForItem(graph, expressId) : [];
       removeCostEntityInStore(resolved.editor, anchorOf(resolved), expressId, referrers, { detach: options?.detach, cascadeValueIds });
     },
   };

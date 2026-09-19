@@ -51,7 +51,9 @@ See the template itself (`Cost report (5D)` in the script editor's template list
 
 ## Authoring from scripts
 
-**The panel itself stays read-only** — every write goes through `bim.store`, from a script (SDK, CLI, or MCP), not through the panel UI. `bim.store` gains cost-authoring methods alongside the existing element builders (`addWall`, `addColumn`, ...): `addCostSchedule`, `addCostItem`, `addCostValue`, `addCostQuantity`, `nestCostItems`, `assignCostItemsToSchedule`, `assignToCostItem`, `setCostItemValues`, and `removeCostEntity`. A value authored this way is visible to `bim.cost.data()` immediately — before the model is ever exported — and is written into the file the next time `bim.export.ifc({ applyMutations: true })` runs.
+**The panel itself stays read-only** — every write goes through `bim.store`, from a script (SDK or CLI), not through the panel UI. `bim.store` gains cost-authoring methods alongside the existing element builders (`addWall`, `addColumn`, ...): `addCostSchedule`, `addCostItem`, `addCostValue`, `addCostQuantity`, `nestCostItems`, `assignCostItemsToSchedule`, `assignToCostItem`, `setCostItemValues`, and `removeCostEntity`. A value authored this way is visible to `bim.cost.data()` immediately — before the model is ever exported — and is written into the file the next time `bim.export.ifc({ applyMutations: true })` runs.
+
+MCP's headless backend does not implement these nine methods (its v0.1 convention for every `bim.store.add*` builder — they throw `not supported in MCP v0.1; use entity_create`); author cost entities there through the generic `entity_create` tool instead. `bim.cost` reads still observe whatever `entity_create` authors, on MCP as everywhere else.
 
 ```typescript
 const schedule = bim.store.addCostSchedule('default', { Name: 'Tender schedule', PredefinedType: 'TENDER' })

@@ -30,53 +30,12 @@ import { contentMatchingRan } from '@/lib/compare/contentMatches';
 import { acceptedForPair, keyAliasesFromAccepted } from '@/lib/compare/acceptedIdentity';
 import { compareRunPayload } from '@/lib/compare/runTelemetry';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
+import { isCurrentFor, readGeometryContentVersion, type BuiltPair } from './compare/comparePairCache';
 
-/** Read the live mesh-content version. A FUNCTION, not a captured number: the
- *  whole point is to observe the value moving across an extraction's awaits, so
- *  a caller that snapshots it once defeats the guard it feeds. */
-export const readGeometryContentVersion = (): number =>
-  useViewerStore.getState().geometryContentVersion;
-
-type Side = EntityFingerprint<CompareRef>[];
-interface BuiltPair {
-  baseModelId: string;
-  headModelId: string;
-  baseName: string;
-  headName: string;
-  base: Side;
-  head: Side;
-  /**
-   * `geometryContentVersion` the fingerprints were extracted at (#1891).
-   *
-   * The A/B model ids are NOT enough to key this cache. Federation re-alignment
-   * re-frames vertices and their world `geometryAabb`s IN PLACE, under the same
-   * ids and the same `geometryResult` object, so fingerprints built before it
-   * carry pre-alignment boxes while the meshes carry post-alignment ones — and
-   * every move distance the engine derives from them is then measured between
-   * two coordinate frames. That store counter is bumped by exactly one caller,
-   * `realignFederation`, and only when something actually moved, so it is the
-   * precise "mesh content was mutated under you" signal this cache was missing.
-   */
-  contentVersion: number;
-}
-
-/** Are these fingerprints the ones for this A/B pair, extracted from the mesh
- *  content the store holds NOW? (Ids compared field-wise rather than through a
- *  joined key string, so two ids can never alias.)
- *
- *  THE staleness predicate for the compare path — asked before a cached pair is
- *  reused, again after the extraction's awaits, and again before a cheap
- *  re-diff. One definition, so the three cannot drift apart. */
-export function isCurrentFor(
-  built: Pick<BuiltPair, 'baseModelId' | 'headModelId' | 'contentVersion'>,
-  baseModelId: string,
-  headModelId: string,
-  contentVersion: number,
-): boolean {
-  return built.baseModelId === baseModelId
-    && built.headModelId === headModelId
-    && built.contentVersion === contentVersion;
-}
+// Re-exported so existing consumers (`useCompare.test.ts`) see no change —
+// the cache key itself moved to `compare/comparePairCache.ts` for the
+// module-size house rule (AGENTS.md).
+export { isCurrentFor, readGeometryContentVersion };
 
 /** Canonical, order-independent signature of a blacklist so a re-render with a
  *  fresh-but-equivalent array reference doesn't trigger a re-diff. Compared
@@ -198,6 +157,10 @@ function publishCompareResult(built: BuiltPair): {
     placementOnlyGeometry,
     excludedHiddenIds: collectExcludedHiddenIds(built, excludedTypes),
     diff,
+    // #4989: the scheme THIS extraction ran under, not whatever the store
+    // holds now — see the doc comment on `BuiltPair.keyProperty`.
+    keyProperty: built.keyProperty,
+    duplicateAuthoredKeys: built.duplicateAuthoredKeys.size > 0 ? built.duplicateAuthoredKeys : undefined,
   };
   store.setCompareResult(result);
   // Completed-comparison signal for baseline consumers (compare tour). An
@@ -274,6 +237,11 @@ export function useCompare() {
       return;
     }
 
+    // Captured with the pair, before any await (#4989): this drives what the
+    // fingerprints extracted below are keyed on, and must not drift mid-run
+    // — see the doc comment on `BuiltPair.keyProperty`.
+    const keyProperty = store.compareKeyProperty;
+
     const baseModel = store.models.get(baseId);
     const headModel = store.models.get(headId);
     if (!baseModel?.ifcDataStore || !baseModel.geometryResult) {
@@ -325,40 +293,53 @@ export function useCompare() {
       const built = await buildAtCurrentVersion<BuiltPair>({
         readVersion: readGeometryContentVersion,
         cached: builtRef.current,
-        isCurrent: (candidate, version) => isCurrentFor(candidate, baseId, headId, version),
-        extract: async (contentVersion) => ({
-          baseModelId: baseId,
-          headModelId: headId,
-          contentVersion,
-          baseName: baseModel.name,
-          headName: headModel.name,
-          base: await buildEntityFingerprints({
-            modelId: baseId,
-            store: baseStore,
-            meshes: baseGeometry.meshes,
-            instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
-            instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
-            instancedGeometryVolumes: baseGeometry.instancedGeometryVolumes,
-            // #1993: a re-baked model's volumes describe a size that is no
-            // longer on screen, and nothing on this side can re-measure them.
-            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
-              baseModel.federationAlignmentStatus,
-            ),
-            idOffset: baseModel.idOffset,
-          }),
-          head: await buildEntityFingerprints({
-            modelId: headId,
-            store: headStore,
-            meshes: headGeometry.meshes,
-            instancedGeometryHashes: headGeometry.instancedGeometryHashes,
-            instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
-            instancedGeometryVolumes: headGeometry.instancedGeometryVolumes,
-            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
-              headModel.federationAlignmentStatus,
-            ),
-            idOffset: headModel.idOffset,
-          }),
-        }),
+        isCurrent: (candidate, version) => isCurrentFor(candidate, baseId, headId, version, keyProperty),
+        extract: async (contentVersion) => {
+          // ONE map for both sides (#4989): a value duplicated between the
+          // base and head model (not just within one) must still fall back
+          // to GlobalId on both, and a single shared map is how
+          // `resolveAuthoredKeys` sees that across the two calls.
+          const duplicateAuthoredKeys = new Map<string, number[]>();
+          return {
+            baseModelId: baseId,
+            headModelId: headId,
+            contentVersion,
+            keyProperty,
+            duplicateAuthoredKeys,
+            baseName: baseModel.name,
+            headName: headModel.name,
+            base: await buildEntityFingerprints({
+              modelId: baseId,
+              store: baseStore,
+              meshes: baseGeometry.meshes,
+              instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
+              instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
+              instancedGeometryVolumes: baseGeometry.instancedGeometryVolumes,
+              // #1993: a re-baked model's volumes describe a size that is no
+              // longer on screen, and nothing on this side can re-measure them.
+              geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+                baseModel.federationAlignmentStatus,
+              ),
+              idOffset: baseModel.idOffset,
+              keyProperty,
+              duplicateAuthoredKeys,
+            }),
+            head: await buildEntityFingerprints({
+              modelId: headId,
+              store: headStore,
+              meshes: headGeometry.meshes,
+              instancedGeometryHashes: headGeometry.instancedGeometryHashes,
+              instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
+              instancedGeometryVolumes: headGeometry.instancedGeometryVolumes,
+              geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+                headModel.federationAlignmentStatus,
+              ),
+              idOffset: headModel.idOffset,
+              keyProperty,
+              duplicateAuthoredKeys,
+            }),
+          };
+        },
       });
       if (!built) {
         // Never silently: `finally` clears the running flag, so returning with
@@ -455,7 +436,7 @@ export function useCompare() {
   useEffect(() => {
     const built = builtRef.current;
     if (!result || !built) return;
-    if (!isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion)) return;
+    if (!isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion, result.keyProperty)) return;
     const sameScope = result.scope === scope;
     const sameExcluded =
       excludedSignature(result.diff.excludedTypes) === excludedSignature(excludedTypes);

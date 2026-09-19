@@ -43,3 +43,18 @@ export function resolveAuthoredKeys(
   }
   return keys;
 }
+
+/**
+ * The Compare panel's note for a non-empty `duplicateAuthoredKeys` map: how
+ * many authored values fell back to GlobalId, and the first few so the user
+ * can see whether it's a real collision or an obviously-blank sentinel value
+ * repeated across the model. `null` when the map is empty (nothing to say).
+ */
+export function duplicateAuthoredKeyNote(duplicates: ReadonlyMap<string, number[]>): string | null {
+  if (duplicates.size === 0) return null;
+  const values = [...duplicates.keys()];
+  const shown = values.slice(0, 5).join(', ');
+  const more = values.length > 5 ? ', …' : '';
+  const count = duplicates.size;
+  return `${count} authored value${count === 1 ? '' : 's'} shared by several elements fell back to GlobalId: ${shown}${more}`;
+}

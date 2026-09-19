@@ -31,6 +31,7 @@ import { focusRefs } from './compare/focusRefs';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
 import { productTypeSplit, typeObjectHint } from '@/lib/compare/productTypeCounts';
+import { duplicateAuthoredKeyNote } from '@/lib/compare/authoredKeys';
 import type { DiffState, DiffEntry } from '@ifc-lite/diff';
 
 interface ComparePanelProps {
@@ -51,6 +52,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const scope = useViewerStore((s) => s.compareScope);
   const showUnchanged = useViewerStore((s) => s.compareShowUnchanged);
   const matchByContent = useViewerStore((s) => s.compareMatchByContent);
+  const keyProperty = useViewerStore((s) => s.compareKeyProperty);
   const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
   const selectedKey = useViewerStore((s) => s.compareSelectedKey);
   const setBaseModelId = useViewerStore((s) => s.setCompareBaseModelId);
@@ -58,6 +60,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const setScope = useViewerStore((s) => s.setCompareScope);
   const setShowUnchanged = useViewerStore((s) => s.setCompareShowUnchanged);
   const setMatchByContent = useViewerStore((s) => s.setCompareMatchByContent);
+  const setKeyProperty = useViewerStore((s) => s.setCompareKeyProperty);
   const addExcludedType = useViewerStore((s) => s.addCompareExcludedType);
   const removeExcludedType = useViewerStore((s) => s.removeCompareExcludedType);
   const clearExcludedTypes = useViewerStore((s) => s.clearCompareExcludedTypes);
@@ -243,6 +246,11 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onShowUnchanged={setShowUnchanged}
                 matchByContent={matchByContent}
                 onMatchByContent={setMatchByContent}
+                keyProperty={keyProperty}
+                onKeyProperty={setKeyProperty}
+                duplicateAuthoredKeyNote={
+                  result?.duplicateAuthoredKeys ? duplicateAuthoredKeyNote(result.duplicateAuthoredKeys) : null
+                }
                 canRun={canRun}
                 running={running}
                 onRun={() => void runComparison()}

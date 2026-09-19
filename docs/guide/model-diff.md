@@ -737,6 +737,14 @@ What you see when a match is found:
 
 The report's `counts` gained `matched` and `needsReview` for the same reason the badge exists: a retiring match lowers `added` and `deleted`, and a reader who cannot see why would take the lower numbers at face value. `Match` and `MatchedGlobalId` are appended after `Model`, so a consumer reading the first six CSV columns positionally is unaffected.
 
+### Comparing on an authored key
+
+The run controls also carry a **Key on** field, next to the content-matching checkbox: an authored `Tag` or `Pset.Property` to compare on instead of GlobalId (see [Authored keys](#authored-keys-lineage-and-rekey) for the same spec on the CLI's `--key-from`). Leave it empty for the default, GlobalId. An entity carrying a non-empty, unique value under the spec is keyed `prop:<value>`; every other entity — and every entity when the value collides between two or more elements — keeps its GlobalId, and the panel shows a note naming the first few colliding values so a real collision is easy to tell apart from a blank sentinel repeated across the model.
+
+Because the key scheme decides what a fingerprint's identity even *is*, changing it re-extracts both sides rather than re-running the cheap in-place re-diff a scope or blacklist change gets — press **Run comparison** again after changing it. An invalid spec (anything that is not `Tag` or `Pset.Property`) shows an inline note and is never applied; the panel keeps comparing under whatever scheme was last valid.
+
+Suggestions accepted, identity maps exported/imported, and telemetry are all scoped to the scheme the run used: an identity map exported under an authored key writes the sidecar's `keyProperty` field (format version 2), and an import is refused — with the mismatch shown — unless the panel's current scheme matches exactly, GlobalId included. A pair accepted while comparing on GlobalId does not silently reappear once the panel is keyed on `Pset_Asset.AssetId`; it has to be reviewed again under the new scheme.
+
 ### Suggestions and accepting identity
 
 Compare mode also runs `detectSplitMerge` and `detectSuccessors`, and lists what they found under **Suggestions**. Nothing there recolours the scene or changes a count: every participant keeps its add or delete colour, because these are [claims](#split-and-merge-detection) the engine reports and will not decide.

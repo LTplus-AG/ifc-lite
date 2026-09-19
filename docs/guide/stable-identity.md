@@ -24,7 +24,7 @@ A GlobalId is the default key because every `IfcRoot` has one. It is also the on
 ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --json
 ```
 
-An element carrying a non-empty, unique value under that spec is keyed `prop:<value>`; every other element keeps its GlobalId. A value two elements share is refused for both (they fall back to GlobalId and the command warns), because a key that names two things is not a key. The viewer's Compare adapter and the MCP `model_diff` tool (`key_from`) take the same spec.
+An element carrying a non-empty, unique value under that spec is keyed `prop:<value>`; every other element keeps its GlobalId. A value two elements share is refused for both (they fall back to GlobalId and the command warns), because a key that names two things is not a key. The viewer's Compare panel has the same option — a **Key on** field in the run controls, next to the content-matching checkbox (see [Comparing on an authored key](model-diff.md#comparing-on-an-authored-key)) — and the MCP `model_diff` tool (`key_from`) takes the same spec.
 
 Every identity map and lineage records the scheme it was written under, and replaying one under a different scheme is refused like a digest mismatch. A map written under authored keys is stamped format version 2, so an older reader refuses it outright rather than applying it under GlobalId.
 

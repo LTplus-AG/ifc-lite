@@ -88,6 +88,10 @@ export function downloadIdentityMapSidecar(
     ...identities,
     entries: accepted,
     created: new Date().toISOString(),
+    // #4989: writes format version 2 when the panel was keyed on an
+    // authored property, so a v1 consumer refuses rather than silently
+    // replaying claims taken under a scheme it never compared under.
+    keyProperty: result.keyProperty,
   });
   downloadBlob(
     new Blob([serializeIdentityMapSidecar(sidecar)], { type: 'application/json;charset=utf-8;' }),
@@ -131,7 +135,13 @@ export function downloadLineageSidecar(
   accepted: readonly IdentityMapEntry[],
 ): void {
   const { entries, deleted } = lineageForExport(result, accepted);
-  const sidecar = createLineageSidecar({ ...identities, entries, deleted, created: new Date().toISOString() });
+  const sidecar = createLineageSidecar({
+    ...identities,
+    entries,
+    deleted,
+    created: new Date().toISOString(),
+    keyProperty: result.keyProperty,
+  });
   downloadBlob(
     new Blob([serializeLineageSidecar(sidecar)], { type: 'application/json;charset=utf-8;' }),
     sidecarFilename(result, 'lineage'),
@@ -146,6 +156,10 @@ export function downloadLineageSidecar(
 export function readIdentityMapSidecar(
   text: string,
   identities: { base: ModelIdentity; head: ModelIdentity },
+  // #4989: the panel's current key scheme, so a map keyed on a DIFFERENT
+  // scheme (or GlobalId vs an authored one) is refused with the mismatch
+  // rather than silently applied under the wrong reading of `base`/`here`.
+  keyProperty?: string,
 ): { entries: IdentityMapEntry[] } | { error: string } {
   let sidecar;
   try {
@@ -153,7 +167,7 @@ export function readIdentityMapSidecar(
   } catch (err) {
     return { error: (err as Error).message };
   }
-  const mismatches = identityMapSidecarMismatches(sidecar, identities);
+  const mismatches = identityMapSidecarMismatches(sidecar, { ...identities, keyProperty });
   if (mismatches.length > 0) return { error: `Sidecar refused: ${mismatches.join('; ')}` };
   return { entries: sidecar.entries };
 }

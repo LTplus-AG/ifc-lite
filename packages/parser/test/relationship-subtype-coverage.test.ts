@@ -148,6 +148,34 @@ describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
 });
 
 describe('complete schema-derived relationship graph (#4205)', () => {
+  it('indexes IFC2X3 IfcRelCoversSpaces from RelatedSpace to RelatedCoverings', async () => {
+    const source = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#10=IFCSPACE('space',$,'Space',$,$,$,$,$,.ELEMENT.,$,$);
+#11=IFCCOVERING('covering',$,'Covering',$,$,$,$,$,.FLOORING.);
+#20=IFCRELCOVERSSPACES('rel',$,$,$,#10,(#11));
+ENDSEC;
+END-ISO-10303-21;`);
+    const refs = Array.from(new StepTokenizer(source).scanEntitiesFast()).map((ref) => ({
+      expressId: ref.expressId,
+      type: ref.type,
+      byteOffset: ref.offset,
+      byteLength: ref.length,
+      lineNumber: ref.line,
+    }));
+    const store = await new ColumnarParser().parseLite(source.buffer.slice(0) as ArrayBuffer, refs, {});
+
+    expect(store.schemaVersion).toBe('IFC2X3');
+    expect(store.relationships.forward.getEdges(10, RelationshipType.CoversSpaces)).toEqual([
+      { target: 11, type: RelationshipType.CoversSpaces, relationshipId: 20 },
+    ]);
+  });
+
   it('indexes and exposes every concrete relationship with a relating/related slot pair', async () => {
     const cases = [...getAllConcreteRelationshipTypes()]
       .map((type) => ({ type, plan: getRelationshipSlotPlan(type) }))

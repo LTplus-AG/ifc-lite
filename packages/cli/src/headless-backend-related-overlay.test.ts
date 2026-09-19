@@ -125,4 +125,29 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward'))
       .not.toContainEqual(replacementChild.ref);
   });
+
+  it('keeps legacy relationship projections in sync with overlay deletes and creates', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [host, target] = backend.query.entities({ types: ['IfcWall'] });
+    expect(host).toBeDefined();
+    expect(target).toBeDefined();
+
+    const relationship = backend.store.addEntity('default', {
+      type: 'IfcRelVoidsElement',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${host.ref.expressId}`, `#${target.ref.expressId}`],
+    });
+    expect(backend.query.relationships(host.ref).voids).toContainEqual(expect.objectContaining({
+      id: target.ref.expressId,
+      type: 'IfcWall',
+    }));
+
+    backend.store.removeEntity(relationship);
+    expect(backend.query.relationships(host.ref).voids.some(entity => entity.id === target.ref.expressId)).toBe(false);
+
+    backend.store.removeEntity(host.ref);
+    expect(backend.query.relationships(host.ref)).toEqual({
+      voids: [], fills: [], groups: [], connections: [], relations: [],
+    });
+  });
 });

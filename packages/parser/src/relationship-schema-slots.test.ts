@@ -49,6 +49,14 @@ describe('relationship-schema-slots (#4205)', () => {
     expect(plan).toEqual({ relating: { index: 0, isList: false }, related: { index: 1, isList: true } });
   });
 
+  it('derives the IFC2X3 IfcRelCoversSpaces endpoint names from that schema', () => {
+    expect(getRelationshipSlotPlan('IFCRELCOVERSSPACES', 'IFC2X3')).toEqual({
+      relating: { index: 0, isList: false },
+      related: { index: 1, isList: true },
+    });
+    expect(getRelationshipSlotPlan('IFCRELPOSITIONS', 'IFC2X3')).toBeUndefined();
+  });
+
   it('resolves the structural connection slots and keeps the IFC2X3-only class version-scoped', () => {
     for (const type of [
       'IFCRELCONNECTSSTRUCTURALACTIVITY',

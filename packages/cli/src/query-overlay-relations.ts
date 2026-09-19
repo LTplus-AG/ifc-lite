@@ -8,6 +8,7 @@ import {
   resolveEffectiveRelationshipOverlay,
   type IfcDataStore,
 } from '@ifc-lite/parser';
+import type { EntityData, EntityRef, EntityRelationshipsData } from '@ifc-lite/sdk';
 
 function effective(store: IfcDataStore, view: MutablePropertyView) {
   return resolveEffectiveRelationshipOverlay(store, {
@@ -20,8 +21,55 @@ function effective(store: IfcDataStore, view: MutablePropertyView) {
   });
 }
 
-export function foldQueuedRelationshipEdges(store: IfcDataStore, view: MutablePropertyView, expressId: number) {
-  return effectiveRelationshipEdges(effective(store, view), id => view.isDeleted(id), expressId);
+/** Apply queued relationship creates, endpoint edits and deletes to every
+ * relationship projection exposed by the public CLI backend. */
+export function foldQueuedRelationshipData(
+  store: IfcDataStore,
+  view: MutablePropertyView,
+  result: EntityRelationshipsData,
+  ref: EntityRef,
+  entityData: (ref: EntityRef) => EntityData | null,
+): EntityRelationshipsData {
+  if (view.isDeleted(ref.expressId)) {
+    return { voids: [], fills: [], groups: [], connections: [], relations: [] };
+  }
+  const overlay = effective(store, view);
+  const seen = new Set<string>();
+  const relations = (result.relations ?? []).flatMap((edge) => {
+    if (view.isDeleted(edge.relationshipId) || overlay.supersededSourceIds.has(edge.relationshipId)
+      || view.isDeleted(edge.entity.id)) return [];
+    const target = entityData({ modelId: ref.modelId, expressId: edge.entity.id });
+    if (!target) return [];
+    const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
+  });
+  for (const edge of effectiveRelationshipEdges(overlay, id => view.isDeleted(id), ref.expressId)) {
+    const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
+    if (seen.has(key)) continue;
+    const target = entityData({ modelId: ref.modelId, expressId: edge.targetId });
+    if (!target) continue;
+    seen.add(key);
+    relations.push({
+      relationshipId: edge.relationshipId,
+      relationshipType: edge.relationshipType,
+      direction: edge.direction,
+      entity: { id: edge.targetId, name: target.name || undefined, type: target.type },
+    });
+  }
+  const entities = (type: string, directions: readonly ('forward' | 'inverse')[]) => relations
+    .filter(edge => edge.relationshipType.toUpperCase() === type && directions.includes(edge.direction))
+    .map(edge => edge.entity);
+  return {
+    voids: entities('IFCRELVOIDSELEMENT', ['forward']),
+    fills: entities('IFCRELFILLSELEMENT', ['inverse']),
+    groups: entities('IFCRELASSIGNSTOGROUP', ['inverse']).map(({ id, name }) => ({ id, name })),
+    connections: entities('IFCRELCONNECTSPATHELEMENTS', ['forward', 'inverse'])
+      .filter((entity, index, all) => entity.id !== ref.expressId
+        && all.findIndex(other => other.id === entity.id) === index),
+    relations,
+  };
 }
 
 export function foldQueuedRelated(

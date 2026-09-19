@@ -25,7 +25,18 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { render, cleanup, click } from '@/test/render';
+import { en } from '@/i18n/en';
+import { splitToolEn } from '@/i18n/catalogues/split-tool.en';
 import { SplitNumericInput } from './SplitNumericInput.js';
+
+// `split-tool.en.ts` is a new catalogue not yet imported into `en.ts`
+// (#4918 integration pass wires it in later, in one place, to avoid
+// concurrent edits to the shared file). Until then the default 'en'
+// locale doesn't know these keys, so `t()` inside SplitNumericInput
+// would throw when this test renders it. Merge the catalogue onto the
+// live `en` object at runtime (it isn't frozen) — verification-only,
+// touches no file on disk.
+Object.assign(en, splitToolEn);
 
 /** The panel's commit control. Labelled "Cut" — the Enter key runs the same `commitAt`. */
 function cutButton(container: HTMLElement): HTMLButtonElement {

@@ -12,10 +12,13 @@ import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
+import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
+import { spaceSketchEn } from './catalogues/space-sketch.en';
+import { splitToolEn } from './catalogues/split-tool.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
@@ -31,6 +34,9 @@ export const en = {
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
   ...chartsEn,
+  ...measureEn,
+  ...spaceSketchEn,
+  ...splitToolEn,
   ...documentEn,
   ...documentMenuEn,
 } as const;

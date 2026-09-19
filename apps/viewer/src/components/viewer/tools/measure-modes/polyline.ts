@@ -13,6 +13,8 @@
  * storing it.
  */
 
+import type { TranslationKey } from '@/i18n/en';
+
 export interface Point3 {
   x: number;
   y: number;
@@ -50,8 +52,11 @@ export function polylineLength(points: readonly Point3[], closed: boolean): numb
   return open + pointDistance(points[points.length - 1], points[0]);
 }
 
-/** Human label for the basis a polyline's `length` was computed under —
- *  read alongside the number rather than leaving the convention implicit. */
-export function polylineBasisLabel(closed: boolean): string {
-  return closed ? 'Perimeter (closed)' : 'Length';
+/** Translation key for the basis a polyline's `length` was computed under —
+ *  read alongside the number rather than leaving the convention implicit.
+ *  Returns a key, not a string: this is a plain data module (no React
+ *  import), so the caller resolves it with `t()` — same pattern as
+ *  `bottom-panels.ts`'s `labelKey` rows (#4918 review, PR #5001). */
+export function polylineBasisLabelKey(closed: boolean): TranslationKey {
+  return closed ? 'measure.polyline.basisPerimeterClosed' : 'measure.polyline.basisLength';
 }

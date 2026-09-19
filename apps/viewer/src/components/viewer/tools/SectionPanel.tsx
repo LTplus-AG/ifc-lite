@@ -240,7 +240,7 @@ export function SectionOverlay() {
               {isCustom && (
                 <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-muted-foreground bg-muted/50 rounded px-2 py-1">
                   <span title={t('sectionTool.normalTitle')}>
-                    n=({sectionPlane.custom!.normal.map((v) => v.toFixed(2)).join(', ')})
+                    {t('sectionTool.normalPrefix')}({sectionPlane.custom!.normal.map((v) => v.toFixed(2)).join(', ')})
                   </span>
                   <Button
                     variant="ghost"

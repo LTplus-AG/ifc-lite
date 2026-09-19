@@ -16,6 +16,7 @@ import { sX, sY, centroid, polyArea, uniqueVerts, type Fit, type Pt } from '@/li
 import type { SnapKind } from '@/lib/space-snap';
 import type { BoundaryMode } from '@ifc-lite/create';
 import type { Hover, SplitTarget, Intent, IntentTone } from './types';
+import { useTranslation } from '@/i18n';
 
 const EPS = 1e-6;
 const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#a855f7', '#ef4444'];
@@ -76,6 +77,7 @@ export interface SpaceSketchCanvasProps {
 }
 
 export function SpaceSketchCanvas(props: SpaceSketchCanvasProps) {
+  const { t } = useTranslation();
   const {
     svgRef, width, height, cursor, fit: f, gridLines, underlay, rooms, boundaryInfo,
     boundaryMode, mergeFaces, diagnostics, hover, splitPick, previewEnd, splitHover,
@@ -126,7 +128,7 @@ export function SpaceSketchCanvas(props: SpaceSketchCanvasProps) {
               <polygon points={pts} fill={bad ? '#ef4444' : color} fillOpacity={lit ? 0.42 : bad ? 0.3 : 0.16}
                 stroke={bad ? '#ef4444' : color} strokeWidth={lit ? 3 : 2}
                 strokeDasharray={unbounded && !bad ? '5 4' : undefined}>
-                {unbounded && <title>Boundary “{boundaryMode}” made no change to this room — no wall offset applies (no wall runs along its edges, or it's fully internal in Outer mode).</title>}
+                {unbounded && <title>{t('spaceSketch.canvas.unboundedBoundaryTitle', { boundaryMode })}</title>}
               </polygon>
               <text x={cx} y={cy - 5} textAnchor="middle" fontSize={12} fontWeight={600} fill="currentColor" className="pointer-events-none">{area.toFixed(2)}</text>
               <text x={cx} y={cy + 9} textAnchor="middle" fontSize={9} fill="currentColor" opacity={0.55} className="pointer-events-none">m²</text>

@@ -10,6 +10,7 @@
  */
 
 import { Layers, ChevronDown } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 interface SpaceSketchReopenPillProps {
   /** Pending draft rooms across ALL storeys, so the user knows how much work
@@ -19,18 +20,19 @@ interface SpaceSketchReopenPillProps {
 }
 
 export function SpaceSketchReopenPill({ pendingCount, onReopen }: SpaceSketchReopenPillProps) {
+  const { t } = useTranslation();
   return (
     <div className="absolute left-1/2 top-4 z-30 -translate-x-1/2 pointer-events-auto">
       <button
         onClick={onReopen}
         className="flex items-center gap-2 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur hover:bg-muted"
-        title="Reopen the Space Sketch panel"
+        title={t('spaceSketch.reopenPill.title')}
       >
         <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-        <span>Space Sketch</span>
+        <span>{t('spaceSketch.reopenPill.label')}</span>
         {pendingCount > 0 && (
           <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-            {pendingCount} to confirm
+            {t('spaceSketch.reopenPill.toConfirm', { count: pendingCount })}
           </span>
         )}
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />

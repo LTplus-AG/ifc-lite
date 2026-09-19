@@ -22,6 +22,7 @@ export const sectionToolEn = {
   'sectionTool.pick.label': 'Pick face',
   'sectionTool.axisPrompt': 'or pick an axis',
   'sectionTool.normalTitle': 'Custom plane normal (world-space unit vector)',
+  'sectionTool.normalPrefix': 'n=',
   'sectionTool.resetAxisTitle': 'Reset to nearest cardinal axis',
   'sectionTool.distanceLabel': 'Distance (m)',
   'sectionTool.positionLabel': 'Position',

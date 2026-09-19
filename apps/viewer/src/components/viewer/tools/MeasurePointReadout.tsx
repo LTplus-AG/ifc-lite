@@ -42,6 +42,10 @@
 import { Crosshair, Globe, MapPin, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n/useTranslation';
+// Side-effect import: merges the measure catalogue into the runtime `en`
+// object so `t('measure.*')` resolves under the real 'en' locale (see that
+// module's own doc comment).
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { useAnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import {
@@ -67,6 +71,7 @@ function CoordRow({ label, value, hint }: { label: string; value: string; hint?:
 }
 
 export function MeasurePointReadout() {
+  const { t } = useTranslation();
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
   const measurements = useViewerStore((s) => s.measurements);
   const geoReadoutEnabled = useViewerStore((s) => s.geoReadoutEnabled);
@@ -89,7 +94,7 @@ export function MeasurePointReadout() {
   if (!livePoint) {
     return (
       <div className="border-t px-2 py-2 text-center text-[10px] text-muted-foreground">
-        Measure a point to read its coordinates
+        {t('measure.point.emptyPrompt')}
       </div>
     );
   }
@@ -115,13 +120,13 @@ export function MeasurePointReadout() {
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-primary">
           <Crosshair className="h-3 w-3" />
-          {activeMeasurement ? 'Live point' : 'Last point'}
+          {activeMeasurement ? t('measure.point.live') : t('measure.point.last')}
         </span>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon-sm"
-            title="Set this point as the relative-coordinate reference"
+            title={t('measure.point.setReferenceTitle')}
             onClick={() => setReferencePoint({ x: livePoint.x, y: livePoint.y, z: livePoint.z })}
           >
             <MapPin className="h-3 w-3" />
@@ -130,7 +135,7 @@ export function MeasurePointReadout() {
             <Button
               variant="ghost"
               size="icon-sm"
-              title="Clear the reference point"
+              title={t('measure.point.clearReferenceTitle')}
               onClick={() => setReferencePoint(null)}
             >
               <XCircle className="h-3 w-3" />
@@ -141,18 +146,18 @@ export function MeasurePointReadout() {
 
       <div className="overflow-x-auto">
         <CoordRow
-          label={frame.rebased ? 'Anchor' : 'Model'}
+          label={frame.rebased ? t('measure.point.rowAnchor') : t('measure.point.rowModel')}
           value={formatCoordinateTriple(coords.world)}
           hint="m"
         />
         {/* Only when the pipeline actually shifted the model — otherwise this
             is the Model row again under a different name. */}
         {coords.shifted && (
-          <CoordRow label="Render" value={formatCoordinateTriple(coords.local)} hint="m" />
+          <CoordRow label={t('measure.point.rowRender')} value={formatCoordinateTriple(coords.local)} hint="m" />
         )}
         {datum && (
           <CoordRow
-            label="Datum"
+            label={t('measure.point.rowDatum')}
             // A position, not a delta — same frame, same formatter, same
             // unlabelled metres as the Model row, because reading the two
             // against each other is the point of showing it at all.
@@ -162,7 +167,7 @@ export function MeasurePointReadout() {
         )}
         {offset && (
           <CoordRow
-            label="Relative"
+            label={t('measure.point.rowRelative')}
             // dx/dy/dz are a LENGTH DELTA, not a raw model coordinate — unlike
             // the Model/Render/Map rows above, this triple must honour the
             // same LENGTHUNIT override as the trailing distance hint, or the
@@ -172,11 +177,15 @@ export function MeasurePointReadout() {
           />
         )}
         {enh && (
-          <CoordRow label="Map" value={`E ${enh.e}  N ${enh.n}  H ${enh.h}`} hint="m" />
+          <CoordRow
+            label={t('measure.point.rowMap')}
+            value={`${t('measure.geo.easting')} ${enh.e}  ${t('measure.geo.northing')} ${enh.n}  ${t('measure.geo.height')} ${enh.h}`}
+            hint="m"
+          />
         )}
         {latLon && (
           <CoordRow
-            label="Lat / Lon"
+            label={t('measure.point.rowLatLon')}
             value={`${latLon.lat.toFixed(6)}  ${latLon.lon.toFixed(6)}`}
           />
         )}
@@ -184,9 +193,9 @@ export function MeasurePointReadout() {
 
       {frame.rebased && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground">
-          Federation alignment re-based one or more models into
-          {frame.anchorName ? ` ${frame.anchorName}` : ' the anchor model'}'s frame,
-          so these are anchor coordinates, not necessarily the picked file's own.
+          {t('measure.point.rebasedNote', {
+            name: frame.anchorName ? frame.anchorName : t('measure.point.anchorModelFallback'),
+          })}
         </div>
       )}
 

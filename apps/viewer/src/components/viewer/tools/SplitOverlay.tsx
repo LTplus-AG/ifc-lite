@@ -28,6 +28,7 @@ import { useViewerStore } from '@/store';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { Slice as KnifeIcon } from 'lucide-react';
 import { formatSplitHoverLabel } from './formatDistance';
+import { useTranslation } from '@/i18n';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -42,6 +43,7 @@ function ifc2dToRendererWorld(p: [number, number], storeyElevation: number): Vec
 }
 
 export function SplitOverlay() {
+  const { t } = useTranslation();
   const activeTool = useViewerStore((s) => s.activeTool);
   const splitMode = useViewerStore((s) => s.splitMode);
   const splitHoverPoint = useViewerStore((s) => s.splitHoverPoint);
@@ -79,7 +81,7 @@ export function SplitOverlay() {
         role="status"
       >
         <KnifeIcon className="h-3.5 w-3.5" />
-        <span>Move the cursor to set the cut point on the selected element — Esc to exit</span>
+        <span>{t('splitTool.hintChip')}</span>
       </div>
     );
   }

@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { polylineOpenLength, polylineLength, polylineBasisLabel } from './polyline.js';
+import { polylineOpenLength, polylineLength, polylineBasisLabelKey } from './polyline.js';
 
 describe('polylineOpenLength', () => {
   it('sums consecutive segment lengths', () => {
@@ -62,10 +62,10 @@ describe('polylineLength', () => {
   });
 });
 
-describe('polylineBasisLabel', () => {
-  it('names the basis explicitly rather than leaving it implicit', () => {
-    assert.equal(polylineBasisLabel(false), 'Length');
-    assert.equal(polylineBasisLabel(true), 'Perimeter (closed)');
-    assert.notEqual(polylineBasisLabel(false), polylineBasisLabel(true));
+describe('polylineBasisLabelKey', () => {
+  it('names the basis explicitly rather than leaving it implicit (#4918: returns a translation key, not English text — the caller resolves it with t())', () => {
+    assert.equal(polylineBasisLabelKey(false), 'measure.polyline.basisLength');
+    assert.equal(polylineBasisLabelKey(true), 'measure.polyline.basisPerimeterClosed');
+    assert.notEqual(polylineBasisLabelKey(false), polylineBasisLabelKey(true));
   });
 });

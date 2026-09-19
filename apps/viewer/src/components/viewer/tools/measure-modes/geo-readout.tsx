@@ -20,6 +20,10 @@ import {
   reprojectionInputKey,
   type LatLon,
 } from '@/lib/geo/reproject';
+import { useTranslation } from '@/i18n/useTranslation';
+// Side-effect import: merges the measure catalogue into the runtime `en`
+// object so `t('measure.*')` resolves under the real 'en' locale (see that
+// module's own doc comment).
 
 export interface Vec3Like { x: number; y: number; z: number }
 export interface Enh { e: string; n: string; h: string }
@@ -43,12 +47,13 @@ export function projectedEnh(point: Vec3Like, anchor: AnchorGeoreference): Enh {
 
 /** One compact monospace E/N/H line, optionally labelled (A/B endpoints). */
 export function EnhLine({ label, enh }: { label?: string; enh: Enh }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
       {label && <span className="text-muted-foreground w-3 shrink-0">{label}</span>}
-      <span>E {enh.e}</span>
-      <span>N {enh.n}</span>
-      <span>H {enh.h}</span>
+      <span>{t('measure.geo.easting')} {enh.e}</span>
+      <span>{t('measure.geo.northing')} {enh.n}</span>
+      <span>{t('measure.geo.height')} {enh.h}</span>
     </div>
   );
 }

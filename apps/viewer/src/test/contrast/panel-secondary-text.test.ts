@@ -238,7 +238,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'MeasurePointReadout projected-CRS readout',
       file: MEASURE_POINT_READOUT,
-      anchor: "ly the picked file's own.\n        </div>\n      )}\n\n      {enh && anchor && (\n        <div ",
+      anchor: "          })}\n        </div>\n      )}\n\n      {enh && anchor && (\n        <div ",
       surface: 'bg-background',
     },
     // #4792 follow-up (files the original PR named but did not verify):

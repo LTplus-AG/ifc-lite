@@ -86,6 +86,7 @@ function overlay(parts: Partial<CostMutationOverlay>): CostMutationOverlay {
     isDeleted: () => false,
     retypes: () => new Map(),
     effectiveRecord: (_id, text) => ({ text, notWritten: [] }),
+    created: () => [],
     ...parts,
   };
 }

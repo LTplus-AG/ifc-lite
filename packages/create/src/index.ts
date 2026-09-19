@@ -56,6 +56,18 @@ export {
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
 export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';
+export {
+  addCostScheduleToStore, addCostItemToStore, addCostValueToStore, addCostQuantityToStore,
+  nestCostItemsInStore, assignCostItemsToScheduleInStore, assignObjectsToCostItemInStore,
+  attachCostValuesToItemInStore, removeCostEntityInStore,
+  type CostAnchor, type ExistingRelatedList, type CostRemovalReferrers,
+} from './in-store/cost.js';
+export {
+  assertOneOf, assertCostSchema as assertCostSchemaAuthorable, isIntegerMeasure, validateTypedValue,
+  validateRefList, requireRef as requireCostRef,
+  MEASURE_TYPES, QUANTITY_KINDS, ARITHMETIC_OPERATORS, COST_SCHEDULE_TYPES, COST_ITEM_TYPES,
+  type CostSchema as CostAuthoringSchema, type CostTypedValueInput,
+} from './cost-authoring-rules.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
 export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';

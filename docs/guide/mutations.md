@@ -490,6 +490,8 @@ const col = bim.store.addColumn('default', storey, {
 
 The sandbox gates `bim.store.*` behind a `store: true` permission (default `false`, mirrors the existing `mutate` permission). The viewer opts in.
 
+**Cost / 5D authoring (#4857)** — `addCostSchedule`, `addCostItem`, `addCostValue`, `addCostQuantity`, `nestCostItems`, `assignCostItemsToSchedule`, `assignToCostItem`, `setCostItemValues`, `removeCostEntity` — is scripting-only; the viewer's cost panel stays read-only by design (see [Cost Panel → Authoring from scripts](cost-panel.md#authoring-from-scripts)). An authored `IfcCostItem`/`IfcCostValue` is visible to `bim.cost.data()` immediately, before export.
+
 ### Viewer UI
 
 The viewer surfaces store-level edits in three places — see [Viewer Integration](#viewer-integration) below for the full UX:

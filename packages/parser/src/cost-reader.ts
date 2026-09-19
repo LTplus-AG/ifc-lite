@@ -57,6 +57,7 @@ export class CostEntityReader {
   private readonly lexemeCache = new Map<number, string[]>();
   private readonly recordCache = new Map<number, string | null | undefined>();
   private retyped: ReadonlyMap<number, string> | undefined;
+  private created: ReadonlyMap<number, { type: string; text: string }> | undefined;
 
   constructor(
     private readonly store: IfcDataStore,
@@ -82,6 +83,32 @@ export class CostEntityReader {
       this.retyped = retyped;
     }
     return this.retyped;
+  }
+
+  /**
+   * Overlay-CREATED entities (#4857 PR A), keyed by expressId, UPPERCASE
+   * class. An entry the overlay could not lay out (`error` set instead of
+   * `type`/`text`) surfaces as a `PENDING_EDIT_NOT_APPLIED` diagnostic here,
+   * once, rather than at every call site that would otherwise re-check it.
+   */
+  private createdEntities(): ReadonlyMap<number, { type: string; text: string }> {
+    if (!this.created) {
+      const created = new Map<number, { type: string; text: string }>();
+      for (const entry of this.overlay?.created() ?? []) {
+        if (entry.error !== undefined) {
+          this.diagnostics?.push({
+            Code: 'PENDING_EDIT_NOT_APPLIED', Severity: 'warning', expressId: entry.expressId,
+            Message: `Newly authored entity #${entry.expressId} is not readable here: ${entry.error}`,
+          });
+          continue;
+        }
+        if (entry.type !== undefined && entry.text !== undefined) {
+          created.set(entry.expressId, { type: entry.type.toUpperCase(), text: entry.text });
+        }
+      }
+      this.created = created;
+    }
+    return this.created;
   }
 
   /**
@@ -117,8 +144,11 @@ export class CostEntityReader {
     const retyped = this.retypes();
     const kept = ids.filter(id => !this.isDeleted(id) && (retyped.get(id) ?? wanted) === wanted);
     const retypedIn = [...retyped].filter(([id, newType]) => newType === wanted && !this.isDeleted(id) && !ids.includes(id));
-    if (retypedIn.length === 0) return kept;
-    return [...kept, ...retypedIn.map(([id]) => id)].sort((a, b) => a - b);
+    const createdIn = [...this.createdEntities()]
+      .filter(([id, entry]) => entry.type === wanted && !this.isDeleted(id))
+      .map(([id]) => id);
+    if (retypedIn.length === 0 && createdIn.length === 0) return kept;
+    return [...kept, ...retypedIn.map(([id]) => id), ...createdIn].sort((a, b) => a - b);
   }
 
   get schemaVersion(): IfcDataStore['schemaVersion'] {
@@ -128,18 +158,26 @@ export class CostEntityReader {
   get(expressId: number): IfcEntity | null {
     const cached = this.cache.get(expressId);
     if (cached !== undefined) return cached;
-    const record = this.overlaidRecord(expressId);
+    const createdEntry = this.isDeleted(expressId) ? undefined : this.createdEntities().get(expressId);
     let entity: IfcEntity | null;
-    if (record === undefined) {
-      const ref = getEntityRefFromStore(this.store, expressId);
-      entity = ref ? this.extractor.extractEntity(ref) : null;
-    } else if (record === null) {
-      entity = null;
-    } else {
-      const bytes = new TextEncoder().encode(record);
+    if (createdEntry) {
+      const bytes = new TextEncoder().encode(createdEntry.text);
       entity = new EntityExtractor(bytes).extractEntity({
-        expressId, type: this.typeOf(expressId) ?? '', byteOffset: 0, byteLength: bytes.byteLength, lineNumber: 0,
+        expressId, type: createdEntry.type, byteOffset: 0, byteLength: bytes.byteLength, lineNumber: 0,
       });
+    } else {
+      const record = this.overlaidRecord(expressId);
+      if (record === undefined) {
+        const ref = getEntityRefFromStore(this.store, expressId);
+        entity = ref ? this.extractor.extractEntity(ref) : null;
+      } else if (record === null) {
+        entity = null;
+      } else {
+        const bytes = new TextEncoder().encode(record);
+        entity = new EntityExtractor(bytes).extractEntity({
+          expressId, type: this.typeOf(expressId) ?? '', byteOffset: 0, byteLength: bytes.byteLength, lineNumber: 0,
+        });
+      }
     }
     this.cache.set(expressId, entity);
     return entity;
@@ -147,6 +185,10 @@ export class CostEntityReader {
 
   typeOf(expressId: number): string | undefined {
     if (this.isDeleted(expressId)) return undefined;
+    if (this.overlay) {
+      const created = this.createdEntities().get(expressId);
+      if (created) return created.type;
+    }
     const type = getEntityRefFromStore(this.store, expressId)?.type.toUpperCase();
     if (type === undefined || !this.overlay) return type;
     return this.retypes().get(expressId) ?? type;
@@ -155,9 +197,15 @@ export class CostEntityReader {
   attributeLexeme(expressId: number, index: number): string | undefined {
     let lexemes = this.lexemeCache.get(expressId);
     if (!lexemes) {
-      const record = this.overlaidRecord(expressId);
-      const ref = record === undefined ? getEntityRefFromStore(this.store, expressId) : undefined;
-      const text = record ?? (ref ? this.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength) : undefined);
+      const createdEntry = this.isDeleted(expressId) ? undefined : this.createdEntities().get(expressId);
+      let text: string | undefined;
+      if (createdEntry) {
+        text = createdEntry.text;
+      } else {
+        const record = this.overlaidRecord(expressId);
+        const ref = record === undefined ? getEntityRefFromStore(this.store, expressId) : undefined;
+        text = record ?? (ref ? this.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength) : undefined);
+      }
       lexemes = text === undefined ? [] : splitCostAttributeLexemes(text);
       this.lexemeCache.set(expressId, lexemes);
     }

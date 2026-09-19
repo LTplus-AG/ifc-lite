@@ -23,12 +23,13 @@ import {
   type CostAnchor, type CostItemParams, type CostQuantityParams, type CostRemovalReferrers,
   type CostScheduleParams, type CostValueParams, type ExistingRelatedList,
 } from '@ifc-lite/create';
-import type { StoreEditor } from '@ifc-lite/mutations';
+import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef } from './types.js';
 import type { CostStoreBackendMethods } from './store-cost-types.js';
 import type { CostBackendMethods } from './cost-types.js';
 import type { CostGraphData } from './cost-types.js';
+import { effectiveCostReferrers } from './cost-reference-scan.js';
 
 /** What a host resolves per call: the model's store, its `StoreEditor` (already
  *  wired to the same `MutablePropertyView` `bim.cost` reads), and its owner history. */
@@ -36,6 +37,7 @@ export interface CostStoreModelResolution {
   modelId: string;
   store: IfcDataStore;
   editor: StoreEditor;
+  mutationView: MutablePropertyView;
   ownerHistoryId: number | null;
 }
 
@@ -147,6 +149,7 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
   const assignmentRelatedObjects = new Map<number, readonly number[]>();
   const nestsAsParent: number[] = [];
   const assignmentsAsControl: number[] = [];
+  const otherRelationshipLists: NonNullable<CostRemovalReferrers['otherRelationshipLists']>[number][] = [];
   const otherRelationships: number[] = [];
   for (const rel of graph.Relationships) {
     const related = (rel.RelatedObjects ?? []).map(r => r.expressId);
@@ -164,23 +167,43 @@ function buildRemovalReferrers(graph: CostGraphData, expressId: number): CostRem
     // (IfcRelAssignsToProduct, IfcRelAssignsToProcess, IfcRelDeclares,
     // IfcRelAssociatesAppliedValue, IfcRelSchedulesCostItems,
     // IfcAppliedValueRelationship, and any future subtype the reader adds) —
-    // walked generically over every reference-bearing field `graph.Relationships`
-    // already exposes, not a hand list of types, so a new subtype the cost
-    // reader starts enumerating is covered automatically rather than silently
-    // missed. See CostRemovalReferrers.otherRelationships for why these are
-    // never partially rewritten.
+    // is scanned over every reference-bearing field. Required scalar endpoints
+    // remove the relationship; required lists retain their surviving members.
     const scalarRefs = [
       rel.RelatingObject, rel.RelatingControl, rel.RelatingProduct, rel.RelatingProcess,
       rel.RelatingContext, rel.RelatingAppliedValue, rel.ComponentOfTotal,
     ];
-    const listRefs = [...related, ...(rel.RelatedDefinitions ?? []).map(r => r.expressId), ...(rel.Components ?? []).map(r => r.expressId)];
-    const references = scalarRefs.some(r => r?.expressId === expressId) || listRefs.includes(expressId);
-    if (references) otherRelationships.push(rel.ref.expressId);
+    if (scalarRefs.some(r => r?.expressId === expressId)) {
+      otherRelationships.push(rel.ref.expressId);
+      continue;
+    }
+    const list = rel.Type === 'IfcRelDeclares'
+      ? { attributeIndex: 5, relatedIds: (rel.RelatedDefinitions ?? []).map(r => r.expressId) }
+      : rel.Type === 'IfcAppliedValueRelationship'
+        ? { attributeIndex: 1, relatedIds: (rel.Components ?? []).map(r => r.expressId) }
+        : { attributeIndex: 4, relatedIds: related };
+    if (list.relatedIds.includes(expressId)) {
+      otherRelationshipLists.push({ relId: rel.ref.expressId, ...list });
+    }
   }
   return {
     itemCostValues, valueComponents, valueAppliedValueRef, nestRelatedObjects, assignmentRelatedObjects,
-    nestsAsParent, assignmentsAsControl, otherRelationships,
+    nestsAsParent, assignmentsAsControl, otherRelationshipLists, otherRelationships,
   };
+}
+
+function knownReferrerIds(referrers: CostRemovalReferrers): Set<number> {
+  return new Set([
+    ...(referrers.itemCostValues?.keys() ?? []),
+    ...(referrers.valueComponents?.keys() ?? []),
+    ...(referrers.valueAppliedValueRef?.keys() ?? []),
+    ...(referrers.nestRelatedObjects?.keys() ?? []),
+    ...(referrers.assignmentRelatedObjects?.keys() ?? []),
+    ...(referrers.nestsAsParent ?? []),
+    ...(referrers.assignmentsAsControl ?? []),
+    ...(referrers.otherRelationshipLists ?? []).map(ref => ref.relId),
+    ...(referrers.otherRelationships ?? []),
+  ]);
 }
 
 /** The cost-graph kind `expressId` names, or `undefined` when it is not a cost entity at all. */
@@ -202,16 +225,24 @@ function costKindOf(graph: CostGraphData, expressId: number): 'IfcCostSchedule' 
  * (`otherRelationships`) — missing any of those would cascade-delete a value
  * something else still points at, leaving a dangling reference.
  */
-function cascadeValuesForItem(graph: CostGraphData, itemId: number): number[] {
+function cascadeValuesForItem(
+  graph: CostGraphData,
+  incoming: ReadonlyMap<number, readonly number[]>,
+  itemId: number,
+): number[] {
   const item = graph.CostItems.find(i => i.ref.expressId === itemId);
   const ownValues = (item?.CostValues ?? []).map(r => r.expressId);
   return ownValues.filter((valueId) => {
     const referrers = buildRemovalReferrers(graph, valueId);
+    const known = knownReferrerIds(referrers);
+    known.add(itemId);
     const referencedElsewhere =
       [...(referrers.itemCostValues?.keys() ?? [])].some(id => id !== itemId)
       || (referrers.valueComponents?.size ?? 0) > 0
       || (referrers.valueAppliedValueRef?.size ?? 0) > 0
-      || (referrers.otherRelationships?.length ?? 0) > 0;
+      || (referrers.otherRelationshipLists?.length ?? 0) > 0
+      || (referrers.otherRelationships?.length ?? 0) > 0
+      || (incoming.get(valueId) ?? []).some(id => !known.has(id));
     return !referencedElsewhere;
   });
 }
@@ -316,7 +347,24 @@ export function createCostStoreBackend(
           + 'graph — this method only removes cost entities; use bim.store.removeEntity for anything else.');
       }
       const referrers = buildRemovalReferrers(graph, expressId);
-      const cascadeValueIds = kind === 'IfcCostItem' ? cascadeValuesForItem(graph, expressId) : [];
+      const itemValueIds = kind === 'IfcCostItem'
+        ? (graph.CostItems.find(item => item.ref.expressId === expressId)?.CostValues ?? [])
+          .map(value => value.expressId)
+        : [];
+      const incoming = effectiveCostReferrers(
+        resolved.store, resolved.mutationView, new Set([expressId, ...itemValueIds]),
+      );
+      const known = knownReferrerIds(referrers);
+      const unexpected = (incoming.get(expressId) ?? []).filter(id => !known.has(id));
+      if (unexpected.length > 0) {
+        throw new Error(
+          `removeCostEntity: #${expressId} is still referenced by unsupported entity `
+          + `${unexpected.map(id => `#${id}`).join(', ')}; no safe detach rewrite is available.`,
+        );
+      }
+      const cascadeValueIds = kind === 'IfcCostItem'
+        ? cascadeValuesForItem(graph, incoming, expressId)
+        : [];
       removeCostEntityInStore(resolved.editor, anchorOf(resolved), expressId, referrers, { detach: options?.detach });
       // `cascadeValueIds` is derived from the mutation-aware cost graph above
       // and deliberately stays inside this backend. Exposing it through the

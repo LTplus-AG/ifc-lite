@@ -648,7 +648,7 @@ export class HeadlessBackend implements BimBackend {
         (modelId) => {
           assertModel(modelId ?? '');
           const ownerHistoryId = dataStore().entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
-          return { modelId: MODEL_ID, store: dataStore(), editor: get(), ownerHistoryId };
+          return { modelId: MODEL_ID, store: dataStore(), editor: get(), mutationView: this.getOrCreateMutationView(), ownerHistoryId };
         },
         { data: (modelId, options) => this.cost.data(modelId, options) },
       ),

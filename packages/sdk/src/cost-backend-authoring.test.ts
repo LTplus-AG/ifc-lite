@@ -63,7 +63,9 @@ async function session() {
   const view = new MutablePropertyView(null, 'm');
   const editor = new StoreEditor(store, view);
   const cost = createCostBackend(() => ({ modelId: 'm', store, mutationView: view }));
-  const resolution: CostStoreModelResolution = { modelId: 'm', store, editor, ownerHistoryId: null };
+  const resolution: CostStoreModelResolution = {
+    modelId: 'm', store, editor, mutationView: view, ownerHistoryId: null,
+  };
   const storeCost = createCostStoreBackend(() => resolution, cost);
   const exportedGraph = async (): Promise<CostGraphData> => {
     const exported = new StepExporter(store, view).export({ schema: store.schemaVersion, applyMutations: true });
@@ -213,14 +215,14 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
   it('the generic relationship scan also covers IfcRelDeclares and IfcRelAssignsToProduct, not just IfcRelNests/IfcRelAssignsToControl', async () => {
     const { storeCost, cost, view } = await session();
     const item = storeCost.addCostItem('m', { Name: 'Declared item' }).expressId;
-    // Neither rel type is one `removeCostEntityInStore` knows a positional
-    // slot for — CostRemovalReferrers.otherRelationships is what has to pick
-    // these up (walking every reference field, not a hand list of two types).
+    const survivingItem = storeCost.addCostItem('m', { Name: 'Survivor' }).expressId;
+    // Both relationship kinds carry required lists. Detach must rewrite those
+    // lists, not delete the relationship and silently detach the survivor.
     const declares = view.createEntity('IfcRelDeclares', [
-      '0decl000000000000000001', null, null, null, '#1', [`#${item}`],
+      '0decl000000000000000001', null, null, null, '#1', [`#${item}`, `#${survivingItem}`],
     ]).expressId;
     const assignsToProduct = view.createEntity('IfcRelAssignsToProduct', [
-      '0prod000000000000000002', null, null, null, [`#${item}`], null, '#1',
+      '0prod000000000000000002', null, null, null, [`#${item}`, `#${survivingItem}`], null, '#1',
     ]).expressId;
 
     expect(() => storeCost.removeCostEntity('m', item)).toThrow(/still referenced by relationship/);
@@ -228,18 +230,22 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     storeCost.removeCostEntity('m', item, { detach: true });
     const graph = cost.data('m');
     expect(graph.CostItems.some(i => i.ref.expressId === item)).toBe(false);
-    expect(graph.Relationships.some(r => r.ref.expressId === declares)).toBe(false);
-    expect(graph.Relationships.some(r => r.ref.expressId === assignsToProduct)).toBe(false);
+    expect(graph.Relationships.find(r => r.ref.expressId === declares)?.RelatedDefinitions)
+      .toEqual([{ modelId: 'm', expressId: survivingItem }]);
+    expect(graph.Relationships.find(r => r.ref.expressId === assignsToProduct)?.RelatedObjects)
+      .toEqual([{ modelId: 'm', expressId: survivingItem }]);
   });
 
   it('refuses to author cost entities into an IFC5 model, the same as IFC2X3', async () => {
-    const { store, editor, cost } = await session();
+    const { store, editor, view, cost } = await session();
     // `CostAnchor['schema']` only admits IFC2X3/IFC4/IFC4X3 — a real but
     // unsupported schema previously got cast straight through, silently
     // writing entities extractCostOnDemand would then report
     // UNSUPPORTED_SCHEMA for and never read back.
     const ifc5Store = { ...store, schemaVersion: 'IFC5' as unknown as typeof store.schemaVersion };
-    const resolution: CostStoreModelResolution = { modelId: 'm', store: ifc5Store, editor, ownerHistoryId: null };
+    const resolution: CostStoreModelResolution = {
+      modelId: 'm', store: ifc5Store, editor, mutationView: view, ownerHistoryId: null,
+    };
     const ifc5StoreCost = createCostStoreBackend(() => resolution, cost);
     expect(() => ifc5StoreCost.addCostItem('m', { Name: 'I' })).toThrow(/schema 'IFC5' is not supported/);
   });
@@ -250,6 +256,38 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(() => storeCost.removeCostEntity('m', 1)).toThrow(/not an IfcCostSchedule\/IfcCostItem\/IfcCostValue/);
   });
 
+  it('refuses a non-relationship IfcMetric.DataValue referrer even with detach', async () => {
+    const { storeCost, view } = await session();
+    const value = storeCost.addCostValue('m', { Name: 'Measured value' }).expressId;
+    const metric = view.createEntity('IfcMetric', [
+      'Cost threshold', null, '.NOTDEFINED.', null, null, null, null,
+      '.EQUALTO.', null, `#${value}`, null,
+    ]).expressId;
+    expect(() => storeCost.removeCostEntity('m', value, { detach: true }))
+      .toThrow(new RegExp(`still referenced by unsupported entity #${metric}`));
+    expect(view.isDeleted(value)).toBe(false);
+  });
+
+  it('finds an on-disk IfcMetric.DataValue referrer outside the cost graph', async () => {
+    const lines = [
+      ...STEP_LINES.slice(0, -2),
+      "#50=IFCCOSTVALUE('Measured value',$,$,$,$,$,$,$,$,$);",
+      "#51=IFCMETRIC('Cost threshold',$,.NOTDEFINED.,$,$,$,$,.EQUALTO.,$,#50,$);",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ];
+    const store = await parse(lines.join('\n'));
+    const view = new MutablePropertyView(null, 'm');
+    const editor = new StoreEditor(store, view);
+    const cost = createCostBackend(() => ({ modelId: 'm', store, mutationView: view }));
+    const storeCost = createCostStoreBackend(() => ({
+      modelId: 'm', store, editor, mutationView: view, ownerHistoryId: null,
+    }), cost);
+    expect(() => storeCost.removeCostEntity('m', 50, { detach: true }))
+      .toThrow(/still referenced by unsupported entity #51/);
+    expect(view.isDeleted(50)).toBe(false);
+  });
+
   it('deleting a cost item cascades only its otherwise-unreferenced cost values', async () => {
     const { storeCost, cost } = await session();
     const value = storeCost.addCostValue('m', { Name: 'Owned value' }).expressId;
@@ -258,6 +296,20 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     const graph = cost.data('m');
     expect(graph.CostItems.some(entry => entry.ref.expressId === item)).toBe(false);
     expect(graph.CostValues.some(entry => entry.ref.expressId === value)).toBe(false);
+  });
+
+  it('an IfcMetric reference prevents an item removal from cascading its value', async () => {
+    const { storeCost, cost, view } = await session();
+    const value = storeCost.addCostValue('m', { Name: 'Shared value' }).expressId;
+    const item = storeCost.addCostItem('m', { Name: 'I', CostValues: [value] }).expressId;
+    view.createEntity('IfcMetric', [
+      'Cost threshold', null, '.NOTDEFINED.', null, null, null, null,
+      '.EQUALTO.', null, `#${value}`, null,
+    ]);
+    storeCost.removeCostEntity('m', item);
+    const graph = cost.data('m');
+    expect(graph.CostItems.some(entry => entry.ref.expressId === item)).toBe(false);
+    expect(graph.CostValues.some(entry => entry.ref.expressId === value)).toBe(true);
   });
 
   it('deleting a schedule that controls items tombstones the IfcRelAssignsToControl, not just the schedule', async () => {
@@ -294,7 +346,9 @@ describe('bim.store cost authoring against the canonical manifest fixture (#4857
     const view = new MutablePropertyView(null, 'm');
     const editor = new StoreEditor(store, view);
     const cost = createCostBackend(() => ({ modelId: 'm', store, mutationView: view }));
-    const resolution: CostStoreModelResolution = { modelId: 'm', store, editor, ownerHistoryId: null };
+    const resolution: CostStoreModelResolution = {
+      modelId: 'm', store, editor, mutationView: view, ownerHistoryId: null,
+    };
     const storeCost = createCostStoreBackend(() => resolution, cost);
 
     const scheduleId = cost.data('m').CostSchedules[0]?.ref.expressId;

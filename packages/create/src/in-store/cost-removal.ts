@@ -20,7 +20,13 @@ export interface CostRemovalReferrers {
   assignmentRelatedObjects?: ReadonlyMap<number, readonly number[]>;
   nestsAsParent?: readonly number[];
   assignmentsAsControl?: readonly number[];
-  /** Relationships without a stable positional member slot are removed whole. */
+  /** Other relationship list attributes that can retain their surviving members. */
+  otherRelationshipLists?: readonly {
+    relId: number;
+    attributeIndex: number;
+    relatedIds: readonly number[];
+  }[];
+  /** Relationships where the target occupies a required scalar endpoint. */
   otherRelationships?: readonly number[];
 }
 
@@ -47,6 +53,9 @@ export function removeCostEntityInStore(
   for (const [valueId, ref] of referrers.valueAppliedValueRef ?? []) {
     if (ref === expressId) blockers.push(`IfcCostValue #${valueId}.AppliedValue (AppliedValueRef)`);
   }
+  for (const ref of referrers.otherRelationshipLists ?? []) {
+    if (ref.relatedIds.includes(expressId)) blockers.push(`relationship #${ref.relId}`);
+  }
   for (const relId of referrers.otherRelationships ?? []) blockers.push(`relationship #${relId}`);
   if (blockers.length > 0 && !options.detach) {
     throw new Error(
@@ -67,6 +76,14 @@ export function removeCostEntityInStore(
     }
     for (const [valueId, ref] of referrers.valueAppliedValueRef ?? []) {
       if (ref === expressId) editor.setPositionalAttribute(valueId, 2, null);
+    }
+    for (const ref of referrers.otherRelationshipLists ?? []) {
+      if (!ref.relatedIds.includes(expressId)) continue;
+      const remaining = ref.relatedIds.filter(id => id !== expressId);
+      if (remaining.length === 0) editor.removeEntity(ref.relId);
+      else editor.setPositionalAttribute(
+        ref.relId, ref.attributeIndex, remaining.map(id => `#${id}`),
+      );
     }
     for (const relId of referrers.otherRelationships ?? []) editor.removeEntity(relId);
   }

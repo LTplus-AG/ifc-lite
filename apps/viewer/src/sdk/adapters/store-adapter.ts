@@ -225,7 +225,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       // `createCostStoreBackend`, and the model's own cost adapter resolves
       // model ids the same way every other `bim.cost` caller does — it does
       // not know the mutation-view alias and would reject it as unknown.
-      return { modelId: requested, store: dataStore, editor, ownerHistoryId };
+      const mutationView = store.getState().getMutationView(requested);
+      if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
+      return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
     }, costAdapter, modelId => store.getState().markCostRelationshipMutation(modelId)), store),
   };
 }

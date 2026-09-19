@@ -7,8 +7,9 @@
 //! files; these synthetic entities isolate routing guards, face winding and
 //! holes, plus edge degeneracy and perpendicular fallback behavior.
 
-use super::GeometryRouter;
-use ifc_lite_core::{EntityDecoder, IfcType};
+use super::{GeometryProcessor, GeometryRouter};
+use crate::{Mesh, Result, TessellationQuality};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 fn member(edge_start: &str, edge_end: &str, rep_type: &str) -> String {
     format!(
@@ -219,6 +220,20 @@ fn structural_surface_polyloop_preserves_hole_and_same_sense() {
 }
 
 #[test]
+fn structural_surface_infers_outer_bound_independent_of_set_order() {
+    let source = surface_member(true, true)
+        .replace("#6=IFCFACEOUTERBOUND", "#6=IFCFACEBOUND")
+        .replace("((#6,#12),#14", "((#12,#6),#14");
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(18).unwrap();
+    let mesh = GeometryRouter::new()
+        .process_element(&entity, &mut decoder)
+        .unwrap();
+
+    assert!((signed_xy_area(&mesh) - 96.0).abs() < 1e-5);
+}
+
+#[test]
 fn structural_surface_routes_planar_advanced_face_subtype() {
     let source = advanced_surface_member();
     let mut decoder = EntityDecoder::new(&source);
@@ -337,6 +352,50 @@ fn rotated_structural_surface_rebases_in_world_frame() {
     assert_eq!((min_x, max_x), (-0.125, 0.0));
     assert_eq!((min_y, max_y), (0.0, 0.125));
     assert!((signed_xy_area(&mesh) - 0.015625).abs() < 1e-9);
+}
+
+struct RegisteredFace;
+
+impl GeometryProcessor for RegisteredFace {
+    fn process(
+        &self,
+        _entity: &DecodedEntity,
+        _decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        _quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        let mut mesh = Mesh::new();
+        mesh.positions = vec![
+            5_000_000.0, 5_000_000.0, 0.0, 5_000_001.0, 5_000_000.0, 0.0, 5_000_000.0,
+            5_000_001.0, 0.0,
+        ];
+        mesh.indices = vec![0, 1, 2];
+        Ok(mesh)
+    }
+
+    fn supported_types(&self) -> Vec<IfcType> {
+        vec![IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace]
+    }
+}
+
+#[test]
+fn structural_face_rtc_path_honors_registered_processor() {
+    let source = surface_member(true, false)
+        .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+        .replace("(10.,0.,0.)", "(5000001.,5000000.,0.)")
+        .replace("(10.,10.,0.)", "(5000001.,5000001.,0.)")
+        .replace("(0.,10.,0.)", "(5000000.,5000001.,0.)");
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(18).unwrap();
+    let mut router = GeometryRouter::with_rtc((5_000_000.0, 5_000_000.0, 0.0));
+    router.register(Box::new(RegisteredFace));
+    let mesh = router.process_element(&entity, &mut decoder).unwrap();
+
+    assert_eq!(
+        mesh.positions,
+        vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    );
+    assert_eq!(mesh.indices, vec![0, 1, 2]);
 }
 
 #[test]

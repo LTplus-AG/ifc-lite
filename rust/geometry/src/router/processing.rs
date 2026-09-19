@@ -636,7 +636,8 @@ impl GeometryRouter {
         if !matches!(
             item.ifc_type,
             IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace
-        ) || !self.has_rtc_offset()
+        ) || self.processors.has_override(item.ifc_type)
+            || !self.has_rtc_offset()
             || !self.representation_item_uses_raw_large_coordinates(item, decoder)
         {
             return Ok(None);
@@ -808,6 +809,7 @@ impl GeometryRouter {
         // Rebase their f64 loop coordinates before the planar tessellator
         // narrows them to f32; subtracting after processor output is too late.
         if matches!(item.ifc_type, IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace)
+            && !self.processors.has_override(item.ifc_type)
             && self.has_rtc_offset()
             && self.representation_item_uses_raw_large_coordinates(item, decoder)
         {

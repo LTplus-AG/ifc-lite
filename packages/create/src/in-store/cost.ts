@@ -21,7 +21,7 @@
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor, IfcAttributeValue } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
-import { requireAssignableIfcObject } from './cost-reference-validation.js';
+import { requireAssignableIfcObject, requireEntitySubtype } from './cost-reference-validation.js';
 import {
   ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
   assertCostSchema, assertOneOf, requireRef, validateRefList, validateTypedValue,
@@ -77,8 +77,8 @@ function requireEntityTypeOneOf(editor: StoreEditor, id: number, allowedTypes: R
 
 /** `IfcCostValue.Components` / `IfcAppliedValueSelect`'s entity branches: another cost/applied value. */
 const APPLIED_VALUE_ENTITY_TYPES: ReadonlySet<string> = new Set(['IFCCOSTVALUE', 'IFCAPPLIEDVALUE']);
-/** `IfcAppliedValueSelect`'s entity branches admitted for `AppliedValueRef` — a literal measure, or another value. */
-const APPLIED_VALUE_REF_TYPES: ReadonlySet<string> = new Set(['IFCMEASUREWITHUNIT', ...APPLIED_VALUE_ENTITY_TYPES]);
+/** The entity branches of IFC4/IFC4X3 IfcAppliedValueSelect. */
+const APPLIED_VALUE_REF_TYPES: ReadonlySet<string> = new Set(['IFCMEASUREWITHUNIT', 'IFCREFERENCE']);
 /** `IfcCostItem.CostQuantities`: every `IfcPhysicalSimpleQuantity` subtype `addCostQuantityToStore` can write. */
 const COST_QUANTITY_ENTITY_TYPES: ReadonlySet<string> = new Set([
   'IFCQUANTITYLENGTH', 'IFCQUANTITYAREA', 'IFCQUANTITYVOLUME', 'IFCQUANTITYWEIGHT',
@@ -139,7 +139,7 @@ export function addCostItemToStore(editor: StoreEditor, anchor: CostAnchor, para
   assertOneOf(params.PredefinedType, COST_ITEM_TYPES, 'PredefinedType', 'addCostItem');
   validateRefList(params.CostValues, 'CostValues', 'addCostItem');
   validateRefList(params.CostQuantities, 'CostQuantities', 'addCostItem');
-  for (const id of params.CostValues ?? []) requireEntityTypeOneOf(editor, id, APPLIED_VALUE_ENTITY_TYPES, 'CostValues', 'addCostItem');
+  for (const id of params.CostValues ?? []) requireEntityType(editor, id, 'IfcCostValue', 'CostValues', 'addCostItem');
   for (const id of params.CostQuantities ?? []) requireEntityTypeOneOf(editor, id, COST_QUANTITY_ENTITY_TYPES, 'CostQuantities', 'addCostItem');
   return editor.addEntity('IfcCostItem', [
     generateIfcGuid(anchor.guidRandom),
@@ -218,11 +218,7 @@ export function addCostQuantityToStore(editor: StoreEditor, anchor: CostAnchor, 
   }
   if (params.Unit !== undefined) {
     requireRef(params.Unit, 'Unit', 'addCostQuantity');
-    // Not narrowed to one class: IfcUnit is a broad SELECT (IfcSIUnit,
-    // IfcConversionBasedUnit, IfcContextDependentUnit, ...) with no single
-    // discriminating IFC type all its members share — existence is what
-    // this can check without re-deriving that whole SELECT.
-    if (!editor.hasEntity(params.Unit)) throw new Error(`addCostQuantity: Unit #${params.Unit} does not exist in this model`);
+    requireEntitySubtype(editor, params.Unit, 'IfcNamedUnit', 'Unit', 'addCostQuantity');
   }
   const isInteger = params.Kind === 'IfcQuantityCount' && schema === 'IFC4X3';
   if (isInteger && !Number.isInteger(params.Value)) {

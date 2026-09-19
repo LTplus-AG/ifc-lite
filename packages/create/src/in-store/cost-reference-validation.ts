@@ -5,6 +5,17 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 
+/** Require a live entity that descends from one IFC schema supertype. */
+export function requireEntitySubtype(
+  editor: StoreEditor, id: number, supertype: string, attribute: string, context: string,
+): void {
+  const actual = editor.getEntityType(id);
+  if (actual === undefined) throw new Error(`${context}: ${attribute} #${id} does not exist in this model`);
+  if (!getInheritanceChainAcrossSchemas(actual).includes(supertype)) {
+    throw new Error(`${context}: ${attribute} #${id} must be an ${supertype}, got ${actual}`);
+  }
+}
+
 /** Validate one cost-control relationship member against the IFC hierarchy. */
 export function requireAssignableIfcObject(
   editor: StoreEditor, id: number, relatingControlId: number, context: string,
@@ -12,10 +23,5 @@ export function requireAssignableIfcObject(
   if (id === relatingControlId) {
     throw new Error(`${context}: relatingControlId #${id} cannot also be one of relatedObjectIds`);
   }
-  const actual = editor.getEntityType(id);
-  if (actual === undefined) throw new Error(`${context}: relatedObjectIds #${id} does not exist in this model`);
-  const isIfcObject = getInheritanceChainAcrossSchemas(actual).includes('IfcObject');
-  if (!isIfcObject) {
-    throw new Error(`${context}: relatedObjectIds #${id} (${actual}) must be an IfcObject`);
-  }
+  requireEntitySubtype(editor, id, 'IfcObject', 'relatedObjectIds', context);
 }

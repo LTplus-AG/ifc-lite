@@ -192,19 +192,11 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(exportedItem.CostValues ?? []).toEqual([]);
   });
 
-  it('refuses to delete an IfcCostValue still referenced via another value\'s AppliedValueRef, and detach:true clears it', async () => {
-    const { storeCost, cost } = await session();
-    // AppliedValueRef's target is normally an IfcMeasureWithUnit, but the
-    // SELECT also admits another IfcAppliedValue/IfcCostValue — and that
-    // target IS a recognised cost kind, so it is the one `removeCostEntity`
-    // will actually let past the kind check to exercise the referrer guard.
+  it('refuses a CostValue as AppliedValueRef because it is not an IfcAppliedValueSelect entity branch', async () => {
+    const { storeCost } = await session();
     const target = storeCost.addCostValue('m', { Name: 'Target' }).expressId;
-    const value = storeCost.addCostValue('m', { Name: 'V', AppliedValueRef: target }).expressId;
-    expect(() => storeCost.removeCostEntity('m', target)).toThrow(/still referenced/);
-
-    storeCost.removeCostEntity('m', target, { detach: true });
-    const pendingValue = cost.data('m').CostValues.find(v => v.ref.expressId === value)!;
-    expect(pendingValue.AppliedValue).toBeUndefined();
+    expect(() => storeCost.addCostValue('m', { Name: 'V', AppliedValueRef: target }))
+      .toThrow(/AppliedValueRef .* must be one of IFCMEASUREWITHUNIT, IFCREFERENCE/);
   });
 
   it('the generic relationship scan also covers IfcRelDeclares and IfcRelAssignsToProduct, not just IfcRelNests/IfcRelAssignsToControl', async () => {

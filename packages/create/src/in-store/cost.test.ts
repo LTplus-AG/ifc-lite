@@ -102,7 +102,10 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
   it('resolves constructor references before writing them: addCostItem.CostValues/CostQuantities, addCostValue.AppliedValueRef/UnitBasis/Components, addCostQuantity.Unit', async () => {
     const { editor: ed } = await editor();
     expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [100] }))
-      .toThrow(/CostValues #100 must be one of IFCCOSTVALUE, IFCAPPLIEDVALUE, got IFCWALL/);
+      .toThrow(/CostValues #100 must be an IfcCostValue, got IFCWALL/);
+    const applied = ed.addEntity('IfcAppliedValue', [null, null, null, null, null, null, null, null, null, null]).expressId;
+    expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [applied] }))
+      .toThrow(/must be an IfcCostValue, got IfcAppliedValue/);
     expect(() => addCostItemToStore(ed, ANCHOR, { Name: 'I', CostQuantities: [100] }))
       .toThrow(/CostQuantities #100 must be one of/);
     expect(() => addCostValueToStore(ed, ANCHOR, { AppliedValueRef: 100 }))
@@ -113,6 +116,8 @@ describe('addCostScheduleToStore / addCostItemToStore / addCostValueToStore', ()
       .toThrow(/Components #100 must be one of/);
     expect(() => addCostQuantityToStore(ed, ANCHOR, { Kind: 'IfcQuantityLength', Name: 'Q', Value: 1, Unit: 99999 }))
       .toThrow(/Unit #99999 does not exist/);
+    expect(() => addCostQuantityToStore(ed, ANCHOR, { Kind: 'IfcQuantityLength', Name: 'Q', Value: 1, Unit: 100 }))
+      .toThrow(/Unit #100 must be an IfcNamedUnit, got IFCWALL/);
   });
 
   it('refuses a PredefinedType outside the enum, on a schedule, an item, and an ArithmeticOperator on a value', async () => {
@@ -278,9 +283,9 @@ describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', ()
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [item]))
       .toThrow(/relatingControlId #\d+ cannot also be one of relatedObjectIds/);
-    // #1 (IfcProject, in the fixture) is none of IfcProduct/IfcProcess/IfcCostItem.
+    // #1 (IfcProject, in the fixture) is IfcContext, not IfcObject.
     expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [1]))
-      .toThrow(/relatedObjectIds #1 \(IFCPROJECT\) must be an IfcObject/);
+      .toThrow(/relatedObjectIds #1 must be an IfcObject, got IFCPROJECT/);
   });
 
   it('de-duplicates relatedObjectIds when creating a fresh IfcRelAssignsToControl', async () => {

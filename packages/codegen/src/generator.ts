@@ -177,7 +177,7 @@ export * from './serializers.js';
 mod type_ids;
 mod schema;
 
-${options.rustCratePrivate ? '' : 'pub use type_ids::*;\n'}${options.rustCratePrivate ? 'pub(crate)' : 'pub'} use schema::*;
+${options.rustCratePrivate ? '// The full generated ID universe is intentionally available to sibling modules.\n#[allow(unused_imports)]\npub(crate) use type_ids::*;\n' : 'pub use type_ids::*;\n'}${options.rustCratePrivate ? 'pub(crate)' : 'pub'} use schema::*;
 `;
     writeFileSync(`${rustDir}/mod.rs`, modContent);
     console.log(`  ✓ ${rustDir}/mod.rs`);

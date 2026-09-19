@@ -11,4 +11,7 @@
 mod type_ids;
 mod schema;
 
+// The full generated ID universe is intentionally available to sibling modules.
+#[allow(unused_imports)]
+pub(crate) use type_ids::*;
 pub(crate) use schema::*;

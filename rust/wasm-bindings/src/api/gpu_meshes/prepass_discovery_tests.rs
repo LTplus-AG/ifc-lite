@@ -58,9 +58,7 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
     // `rfind`, not `find`: the fixture has two `ENDSEC;` markers (one
     // closing HEADER, one closing DATA) -- the injected entity must
     // land inside the DATA section, right before its `ENDSEC;`.
-    let endsec_pos = content
-        .rfind("ENDSEC;")
-        .expect("fixture must have an ENDSEC;");
+    let endsec_pos = content.rfind("ENDSEC;").expect("fixture must have an ENDSEC;");
     content.insert_str(endsec_pos, injected);
     let bytes = content.as_bytes();
 
@@ -75,10 +73,7 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
     // does before handing the columns to the host.
     let (records, classes, handoff) =
         ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
-    assert!(
-        handoff.is_none(),
-        "single shard must cover the whole fixture"
-    );
+    assert!(handoff.is_none(), "single shard must cover the whole fixture");
 
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
@@ -91,9 +86,7 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
             .iter()
             .position(|&(_, s, e)| {
                 keyword_at(bytes, s, e) == "IFCBUILDINGSTOREY"
-                    && bytes[s..e]
-                        .windows(global_id.len())
-                        .any(|w| w == global_id.as_bytes())
+                    && bytes[s..e].windows(global_id.len()).any(|w| w == global_id.as_bytes())
             })
             .unwrap_or_else(|| panic!("fixture must contain a storey with GlobalId {global_id}"))
     };
@@ -150,7 +143,8 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
 #[test]
 fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
-    let (records, classes, _) = ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let (records, classes, _) =
+        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
     // Every record start shifted past the end of the buffer.
@@ -162,10 +156,7 @@ fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
         classes[beam_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0,
         "sanity: the walk must reach keyword_at for this record"
     );
-    let starts: Vec<u32> = records
-        .iter()
-        .map(|&(_, s, _)| (s + bytes.len()) as u32)
-        .collect();
+    let starts: Vec<u32> = records.iter().map(|&(_, s, _)| (s + bytes.len()) as u32).collect();
 
     assert_eq!(keyword_at(bytes, bytes.len() + 10, bytes.len() + 20), "");
 
@@ -195,7 +186,8 @@ fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
 #[test]
 fn a_short_column_ends_the_walk_instead_of_panicking() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
-    let (records, classes, _) = ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let (records, classes, _) =
+        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
@@ -204,29 +196,24 @@ fn a_short_column_ends_the_walk_instead_of_panicking() {
     let full = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
     let last_id = *ids.last().expect("fixture has records");
     assert!(
-        full.buffered_jobs
-            .iter()
-            .any(|&(id, _, _, _)| id == last_id),
+        full.buffered_jobs.iter().any(|&(id, _, _, _)| id == last_id),
         "sanity: the last record (the beam) is a geometry job when every column is whole"
     );
 
     let short = &classes[..classes.len() - 1];
     let truncated = discover_from_columns(bytes, &ids, &starts, &lengths, short, &disabled);
     assert!(
-        truncated
-            .buffered_jobs
-            .iter()
-            .all(|&(id, _, _, _)| id != last_id),
+        truncated.buffered_jobs.iter().all(|&(id, _, _, _)| id != last_id),
         "the record past the short column is not walked"
     );
 }
 
-// The geometry-JOB fixture. `IFCBEAMSTANDARDCASE` is an IFC4 entity that
-// IFC4X3 removed, and `has_geometry_by_name` admits it, so it reaches the
-// geometry-job branch directly. Declared IFC4 because that is the schema
-// the entity belongs to; nothing on this path reads FILE_SCHEMA, but a
-// header contradicting its own content misleads the next reader.
-const LEGACY_JOB_FIXTURE: &str = r#"ISO-10303-21;
+    // The geometry-JOB fixture. `IFCBEAMSTANDARDCASE` is an IFC4 entity that
+    // IFC4X3 removed, and `has_geometry_by_name` admits it, so it reaches the
+    // geometry-job branch directly. Declared IFC4 because that is the schema
+    // the entity belongs to; nothing on this path reads FILE_SCHEMA, but a
+    // header contradicting its own content misleads the next reader.
+    const LEGACY_JOB_FIXTURE: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
 FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');
@@ -285,10 +272,7 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
 
     let (records, classes, handoff) =
         ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
-    assert!(
-        handoff.is_none(),
-        "single shard must cover the whole fixture"
-    );
+    assert!(handoff.is_none(), "single shard must cover the whole fixture");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
@@ -337,10 +321,7 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
 
     let (records, classes, handoff) =
         ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
-    assert!(
-        handoff.is_none(),
-        "single shard must cover the whole fixture"
-    );
+    assert!(handoff.is_none(), "single shard must cover the whole fixture");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
@@ -381,17 +362,12 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
 #[test]
 fn a_disabled_type_is_skipped_in_any_keyword_case() {
     let disabled: rustc_hash::FxHashSet<String> =
-        ["IFCSPACE".to_string(), "IFCOPENINGELEMENT".to_string()]
-            .into_iter()
-            .collect();
+        ["IFCSPACE".to_string(), "IFCOPENINGELEMENT".to_string()].into_iter().collect();
     for kw in ["IFCSPACE", "ifcspace", "IfcSpace", "IfcOpeningElement"] {
         assert!(is_disabled(&disabled, kw), "{kw} is in the skip set");
     }
     for kw in ["IFCWALL", "ifcwall", "IFCSPACETYPE"] {
         assert!(!is_disabled(&disabled, kw), "{kw} is not in the skip set");
     }
-    assert!(
-        !is_disabled(&rustc_hash::FxHashSet::default(), "ifcspace"),
-        "empty set skips nothing"
-    );
+    assert!(!is_disabled(&rustc_hash::FxHashSet::default(), "ifcspace"), "empty set skips nothing");
 }

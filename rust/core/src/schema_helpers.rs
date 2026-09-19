@@ -60,22 +60,13 @@ struct TypeClassification {
 fn classifications() -> &'static FxHashMap<&'static str, TypeClassification> {
     static TABLE: OnceLock<FxHashMap<&'static str, TypeClassification>> = OnceLock::new();
     TABLE.get_or_init(|| {
-        crate::generated::IFC_TYPES
-            .iter()
-            .map(IfcType::as_str)
+        crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
             .chain(crate::legacy_entities::LEGACY_ENTITY_NAMES.iter().copied())
-            .map(|name| {
-                (
-                    name,
-                    TypeClassification {
-                        has_geometry: compute_has_geometry(name),
-                        representationless_spatial: compute_is_representationless_spatial_container(
-                            name,
-                        ),
-                        simple_geometry: compute_is_simple(name),
-                    },
-                )
-            })
+            .map(|name| (name, TypeClassification {
+                has_geometry: compute_has_geometry(name),
+                representationless_spatial: compute_is_representationless_spatial_container(name),
+                simple_geometry: compute_is_simple(name),
+            }))
             .collect()
     })
 }
@@ -102,8 +93,7 @@ fn classifications() -> &'static FxHashMap<&'static str, TypeClassification> {
 pub fn has_geometry_by_name(type_name: &str) -> bool {
     let upper = normalise_uppercase(type_name);
     classifications().get(upper.as_ref()).map_or_else(
-        || compute_has_geometry(upper.as_ref()),
-        |class| class.has_geometry,
+        || compute_has_geometry(upper.as_ref()), |class| class.has_geometry,
     )
 }
 
@@ -117,10 +107,7 @@ pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
         || {
             let geometry = compute_has_geometry(upper.as_ref());
             // These predicates are disjoint, including legacy and unknown names.
-            (
-                geometry,
-                !geometry && compute_is_representationless_spatial_container(upper.as_ref()),
-            )
+            (geometry, !geometry && compute_is_representationless_spatial_container(upper.as_ref()))
         },
         |class| (class.has_geometry, class.representationless_spatial),
     )
@@ -238,8 +225,7 @@ fn compute_is_representationless_spatial_container(upper: &str) -> bool {
 pub fn is_simple_geometry_type(type_name: &str) -> bool {
     let upper = normalise_uppercase(type_name);
     classifications().get(upper.as_ref()).map_or_else(
-        || compute_is_simple(upper.as_ref()),
-        |class| class.simple_geometry,
+        || compute_is_simple(upper.as_ref()), |class| class.simple_geometry,
     )
 }
 
@@ -279,9 +265,7 @@ pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
 ///
 /// `type_name` is the raw STEP keyword as the scanner read it, in whatever case the file wrote it.
 pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
-    if !crate::parser::keyword_ends_with(type_name, "TYPE")
-        && !crate::parser::keyword_ends_with(type_name, "STYLE")
-    {
+    if !crate::parser::keyword_ends_with(type_name, "TYPE") && !crate::parser::keyword_ends_with(type_name, "STYLE") {
         return None;
     }
     let ty = legacy_aware_ifc_type(type_name);

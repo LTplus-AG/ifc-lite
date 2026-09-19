@@ -30,6 +30,7 @@ const clean = () => ({
   files_reviewed: ['a.ts'],
   riskiest_change: { path: 'a.ts', quoted_line: 'const x = 1;' },
   findings: [],
+  class_pass: DEFECT_CLASSES.map((c) => ({ class: c, verdict: 'clear', why: `checked every hunk for ${c}, nothing found` })),
   end: SENTINEL,
 });
 const withFinding = (body = 'a real defect here') => ({
@@ -167,6 +168,61 @@ test('finding-3: a pool where ONLY a bad-sentinel model answered returns null', 
   const truncated = withFinding();
   delete truncated.end;
   assert.equal(poolFindings([{ model: 'truncated/model', text: JSON.stringify(truncated) }]), null);
+});
+
+// ============================== round 3: roster, incomplete clean, verdict normalisation
+
+test('round-3: a model whose files_reviewed is not the roster sent is excluded, the other model sources the metadata', () => {
+  const short = withFinding('from the model that stopped early');
+  short.files_reviewed = ['a.ts'];
+  const full = clean();
+  full.files_reviewed = ['a.ts', 'b.ts'];
+  const pooled = poolFindings(
+    [
+      { model: 'short/one', text: JSON.stringify(short) },
+      { model: 'full/two', text: JSON.stringify(full) },
+    ],
+    ['a.ts', 'b.ts'],
+  );
+  assert.deepEqual(pooled.files_reviewed, ['a.ts', 'b.ts']);
+  assert.equal(pooled.findings.length, 0, 'the early-stopped model contributes nothing');
+  assert.equal(pooled.verdict, 'clean');
+});
+
+test('round-3: without a roster the caller passes nothing and every schema-valid model still pools', () => {
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(withFinding('finding from a')) },
+    { model: 'b/two', text: JSON.stringify(clean()) },
+  ]);
+  assert.equal(pooled.findings.length, 1);
+});
+
+test('round-3: a clean answer WITHOUT class_pass is excluded, so an all-such pool returns null', () => {
+  const incomplete = clean();
+  delete incomplete.class_pass;
+  assert.equal(poolFindings([{ model: 'a/one', text: JSON.stringify(incomplete) }]), null);
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(incomplete) },
+    { model: 'b/two', text: JSON.stringify(clean()) },
+  ]);
+  assert.equal(pooled.verdict, 'clean');
+  assert.ok(Array.isArray(pooled.class_pass));
+});
+
+test('round-3: verdict follows the merged findings, so "findings" with an empty array cannot poison a clean pool', () => {
+  const emptyFindings = withFinding();
+  emptyFindings.findings = [];
+  const pooled = poolFindings([
+    { model: 'a/one', text: JSON.stringify(emptyFindings) },
+    { model: 'b/two', text: JSON.stringify(clean()) },
+  ]);
+  assert.equal(pooled.findings.length, 0);
+  assert.equal(pooled.verdict, 'clean');
+  const withOne = poolFindings([
+    { model: 'a/one', text: JSON.stringify(withFinding('one real defect')) },
+    { model: 'b/two', text: JSON.stringify(clean()) },
+  ]);
+  assert.equal(withOne.verdict, 'findings');
 });
 
 // ==================================================== finding-6/7/8: schema and class_pass

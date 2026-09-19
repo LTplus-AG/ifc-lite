@@ -183,8 +183,9 @@ export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, conc
  * supplies it, and mechanical validation downstream still checks that set
  * against the diff we actually sent, not against anything asserted here.
  */
-export function poolFindings(results) {
+export function poolFindings(results, expectedFiles = null) {
   const parsed = [];
+  const expected = Array.isArray(expectedFiles) ? new Set(expectedFiles) : null;
   for (const r of results) {
     let obj;
     try {
@@ -222,6 +223,26 @@ export function poolFindings(results) {
       console.log(`ensemble: ${r.model} answer failed schema validation (${reason}): ${error.message}`);
       continue;
     }
+    // PER-MODEL PROOF OF WORK, when the caller knows the roster it sent. The
+    // pooled envelope takes ONE model's `files_reviewed`; if that model stopped
+    // early its roster would fail the real validator's PROOF_OF_WORK_FAILED and
+    // discard the whole pool, even though another model listed every file.
+    if (expected) {
+      const claimed = new Set(Array.isArray(obj.files_reviewed) ? obj.files_reviewed : []);
+      const mismatch = [...expected].some((f) => !claimed.has(f)) || [...claimed].some((f) => !expected.has(f));
+      if (mismatch) {
+        console.log(`ensemble: ${r.model} files_reviewed is not the set that was sent (PROOF_OF_WORK-shaped); excluded from the pool.`);
+        continue;
+      }
+    }
+    // A CLEAN VERDICT WITHOUT A CLASS PASS IS AN INCOMPLETE REVIEW, and the
+    // validator's CLASS_PASS_INCOMPLETE would reject it alone. Pooled with a
+    // complete one it would be laundered into a posted clean, so it is
+    // excluded here instead of silently dropped by mergeClassPass.
+    if (obj.verdict === 'clean' && !Array.isArray(obj.class_pass)) {
+      console.log(`ensemble: ${r.model} said clean without a class_pass (CLASS_PASS_INCOMPLETE-shaped); excluded from the pool.`);
+      continue;
+    }
     parsed.push({ model: r.model, obj });
   }
   if (parsed.length === 0) return null;
@@ -234,14 +255,15 @@ export function poolFindings(results) {
       }
     }
   }
-  // CLEAN ONLY WHEN EVERY SCHEMA-VALID MODEL SAID CLEAN. A model that reported
-  // findings is not outvoted by two that reported clean: a real defect one
-  // cheap model caught is not erased by two that missed it.
-  const allClean = parsed.every((p) => p.obj?.verdict === 'clean');
+  // THE POOLED VERDICT FOLLOWS THE MERGED FINDINGS. A model that reported a
+  // finding is not outvoted by two that reported clean, because its finding is
+  // in the merged list; a model that said `findings` with an empty array
+  // contributes nothing and must not turn an otherwise clean pool into a
+  // `findings` envelope with no findings (VALIDATION_EMPTY downstream).
   const first = parsed[0].obj ?? {};
   const classPass = mergeClassPass(parsed);
   return {
-    verdict: findings.length > 0 || !allClean ? 'findings' : 'clean',
+    verdict: findings.length > 0 ? 'findings' : 'clean',
     files_reviewed: Array.isArray(first.files_reviewed) ? first.files_reviewed : [],
     riskiest_change: first.riskiest_change ?? null,
     findings,
@@ -260,10 +282,10 @@ export function poolFindings(results) {
  *
  * @returns {Promise<{text: string, models: string[], failed: {model: string, error: string}[]} | null>}
  */
-export async function runEnsembleReview({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch }) {
+export async function runEnsembleReview({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch, expectedFiles = null }) {
   const { results, failures } = await runEnsemble({ prompt, apiKey, models, minSuccess, concurrency, fetchImpl });
   if (results.length < minSuccess) return null;
-  const pooled = poolFindings(results);
+  const pooled = poolFindings(results, expectedFiles);
   if (!pooled) return null;
   return {
     text: JSON.stringify(pooled),
@@ -318,7 +340,10 @@ export async function maybeRunEnsemble({ env, input, prompt, outPath }) {
   const plan = resolveEnsemblePlan(env, input);
   if (!plan) return false;
   console.log(`ensemble: asking ${plan.models.join(', ')} in parallel.`);
-  const outcome = await runEnsembleReview({ prompt, apiKey: plan.apiKey, models: plan.models, minSuccess: 1 });
+  // `input.files` here is the raw review-input.json array (path objects), the
+  // same roster `checkProofOfWork` later compares against.
+  const expectedFiles = Array.isArray(input?.files) ? input.files.map((f) => f.path) : null;
+  const outcome = await runEnsembleReview({ prompt, apiKey: plan.apiKey, models: plan.models, minSuccess: 1, expectedFiles });
   if (!outcome) {
     console.log('ensemble: no model produced a usable answer; falling through to the CLI/failover chain.');
     return false;

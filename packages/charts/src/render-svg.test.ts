@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { aggregate } from './aggregate.js';
-import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption, truncateMiddle, type EChartsOptionObject } from './echarts-option.js';
+import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption, type EChartsOptionObject } from './echarts-option.js';
+
+// `truncateMiddle` is imported dynamically (#4940 revert-oracle finding): a *static*
+// `import { truncateMiddle }` fails ES module resolution outright when production is reverted to
+// a state that does not export it yet, crashing this entire file's load — not just the one test
+// that needs it. A dynamic import degrades to `undefined` instead, so only that test skips.
+const truncateMiddle: typeof import('./echarts-option.js').truncateMiddle | undefined = (await import('./echarts-option.js')).truncateMiddle;
 import { renderChartSvg } from './render-svg.js';
 import { validateDashboardSpec } from './validate.js';
 import { migrateDashboardSpec } from './migrate.js';
@@ -109,10 +115,10 @@ describe('buildEChartsOption', () => {
     expect(occurrences.length).toBeLessThanOrEqual(1);
   });
 
-  it('truncates a long axis label from the middle, not the tail, so IFC classes sharing a prefix stay distinguishable (#4940 review: headed-Chrome finding — IfcSlab/IfcSpace/IfcSpatialZone all read "IfcS…")', () => {
-    expect(truncateMiddle('IfcSlab', 10)).toBe('IfcSlab');
-    expect(truncateMiddle('IfcSpatialZone', 8)).toBe('IfcSp…ne');
-    expect(truncateMiddle('IfcSpatialZone', 3)).toBe('If…');
+  it.skipIf(!truncateMiddle)('truncates a long axis label from the middle, not the tail, so IFC classes sharing a prefix stay distinguishable (#4940 review: headed-Chrome finding — IfcSlab/IfcSpace/IfcSpatialZone all read "IfcS…")', () => {
+    expect(truncateMiddle!('IfcSlab', 10)).toBe('IfcSlab');
+    expect(truncateMiddle!('IfcSpatialZone', 8)).toBe('IfcSp…ne');
+    expect(truncateMiddle!('IfcSpatialZone', 3)).toBe('If…');
 
     const threeClasses: ChartDataset = { ...ds, rows: [{ ids: [1], values: ['IfcSlab', 'L1'] }, { ids: [2], values: ['IfcSpace', 'L1'] }, { ids: [3], values: ['IfcSpatialZone', 'L1'] }] };
     const agg = aggregate(bar, threeClasses);

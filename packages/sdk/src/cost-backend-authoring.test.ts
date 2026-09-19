@@ -250,6 +250,16 @@ describe('bim.store cost authoring round-trips through bim.cost and StepExporter
     expect(() => storeCost.removeCostEntity('m', 1)).toThrow(/not an IfcCostSchedule\/IfcCostItem\/IfcCostValue/);
   });
 
+  it('deleting a cost item cascades only its otherwise-unreferenced cost values', async () => {
+    const { storeCost, cost } = await session();
+    const value = storeCost.addCostValue('m', { Name: 'Owned value' }).expressId;
+    const item = storeCost.addCostItem('m', { Name: 'I', CostValues: [value] }).expressId;
+    storeCost.removeCostEntity('m', item);
+    const graph = cost.data('m');
+    expect(graph.CostItems.some(entry => entry.ref.expressId === item)).toBe(false);
+    expect(graph.CostValues.some(entry => entry.ref.expressId === value)).toBe(false);
+  });
+
   it('deleting a schedule that controls items tombstones the IfcRelAssignsToControl, not just the schedule', async () => {
     const { storeCost, cost } = await session();
     const schedule = storeCost.addCostSchedule('m', { Name: 'S' }).expressId;

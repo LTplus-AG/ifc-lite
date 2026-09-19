@@ -277,9 +277,7 @@ describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', ()
   it('assigns a product AND a task to a cost item as legal RelatedObjects', async () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
-    // #100 (IfcWall, the fixture's product) and a freshly authored IfcTask —
-    // assignObjectsToCostItemInStore does not type-check RelatedObjects
-    // (products AND tasks are legal), but it does now require they EXIST.
+    // #100 (IfcWall, the fixture's product) and a freshly authored IfcTask.
     const task = ed.addEntity('IfcTask', ['0task00000000000000001', null, 'T', null, null, null, null, null, '.NOTDEFINED.', null, null, null]).expressId;
     const relId = assignObjectsToCostItemInStore(ed, ANCHOR, item, [100, task]);
     const rel = ed.getNewEntity(relId)!;
@@ -287,14 +285,28 @@ describe('assignCostItemsToScheduleInStore / assignObjectsToCostItemInStore', ()
     expect(rel.attributes[6]).toBe(`#${item}`);
   });
 
-  it('refuses self-assignment and a related id that is not an IfcObject', async () => {
+  it('assigns IfcTypeProduct, IfcTypeProcess, and IfcTypeResource members', async () => {
+    const { editor: ed } = await editor();
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    const wallType = ed.addEntity('IfcWallType', []).expressId;
+    const taskType = ed.addEntity('IfcTaskType', []).expressId;
+    const resourceType = ed.addEntity('IfcConstructionEquipmentResourceType', []).expressId;
+    const relId = assignObjectsToCostItemInStore(
+      ed, ANCHOR, item, [wallType, taskType, resourceType],
+    );
+    expect(ed.getNewEntity(relId)!.attributes[4]).toEqual([
+      `#${wallType}`, `#${taskType}`, `#${resourceType}`,
+    ]);
+  });
+
+  it('refuses self-assignment and a related id that is not an IfcObjectDefinition', async () => {
     const { editor: ed } = await editor();
     const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
     expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [item]))
       .toThrow(/relatingControlId #\d+ cannot also be one of relatedObjectIds/);
-    // #1 (IfcProject, in the fixture) is IfcContext, not IfcObject.
-    expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [1]))
-      .toThrow(/relatedObjectIds #1 must be an IfcObject, got IFCPROJECT/);
+    const point = ed.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
+    expect(() => assignObjectsToCostItemInStore(ed, ANCHOR, item, [point]))
+      .toThrow(/relatedObjectIds #\d+ must be an IfcObjectDefinition, got IfcCartesianPoint/);
   });
 
   it('de-duplicates relatedObjectIds when creating a fresh IfcRelAssignsToControl', async () => {
@@ -385,13 +397,15 @@ describe('removeCostEntityInStore', () => {
     expect(ed.hasEntity(assignId)).toBe(true); // untouched: the item was RelatingControl there, not RelatedObjects
   });
 
-  it('cascades to values referenced only by the removed item', async () => {
+  it('does not expose a cascade list that can delete an unrelated entity', async () => {
     const { editor: ed } = await editor();
-    const value = addCostValueToStore(ed, ANCHOR, { Name: 'V' });
-    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I', CostValues: [value] });
-    removeCostEntityInStore(ed, ANCHOR, item, {}, { cascadeValueIds: [value] });
+    const item = addCostItemToStore(ed, ANCHOR, { Name: 'I' });
+    const unsafeOptions: { detach?: boolean } & { cascadeValueIds: readonly number[] } = {
+      cascadeValueIds: [100],
+    };
+    removeCostEntityInStore(ed, ANCHOR, item, {}, unsafeOptions);
     expect(ed.hasEntity(item)).toBe(false);
-    expect(ed.hasEntity(value)).toBe(false);
+    expect(ed.hasEntity(100)).toBe(true);
   });
 
   it('refuses IFC2X3', async () => {

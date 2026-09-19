@@ -33,7 +33,7 @@ export function removeCostEntityInStore(
   anchor: CostAnchor,
   expressId: number,
   referrers: CostRemovalReferrers,
-  options: { detach?: boolean; cascadeValueIds?: readonly number[] } = {},
+  options: { detach?: boolean } = {},
 ): void {
   assertCostSchema(anchor.schema ?? 'IFC4', 'removeCostEntity');
   requireEntityTypeOneOf(editor, expressId, REMOVABLE_COST_ENTITY_TYPES, 'expressId', 'removeCostEntity');
@@ -84,6 +84,5 @@ export function removeCostEntityInStore(
   }
   for (const relId of referrers.nestsAsParent ?? []) editor.removeEntity(relId);
   for (const relId of referrers.assignmentsAsControl ?? []) editor.removeEntity(relId);
-  for (const cascadeId of options.cascadeValueIds ?? []) editor.removeEntity(cascadeId);
   editor.removeEntity(expressId);
 }

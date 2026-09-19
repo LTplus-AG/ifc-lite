@@ -22,7 +22,7 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor, IfcAttributeValue } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
 import {
-  requireAssignableIfcObject, requireEntitySubtype, requireEntityType, requireEntityTypeOneOf,
+  requireAssignableIfcObjectDefinition, requireEntitySubtype, requireEntityType, requireEntityTypeOneOf,
 } from './cost-reference-validation.js';
 import {
   ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
@@ -313,8 +313,8 @@ function assignToControlInStore(
   // repeated #N into RelatedObjects — a caller-visible malformed member list.
   const uniqueRelated = [...new Set(relatedObjectIds)];
   for (const id of uniqueRelated) {
-    if (relatedType === 'IfcObject') {
-      requireAssignableIfcObject(editor, id, relatingControlId, context);
+    if (relatedType === 'IfcObjectDefinition') {
+      requireAssignableIfcObjectDefinition(editor, id, relatingControlId, context);
     } else if (relatedType) {
       requireEntityType(editor, id, relatedType, 'relatedObjectIds', context);
     } else if (!editor.hasEntity(id)) {
@@ -363,7 +363,7 @@ export function assignObjectsToCostItemInStore(
   existingAssignment?: ExistingRelatedList,
 ): number {
   return assignToControlInStore(editor, anchor, costItemId, objectIds, existingAssignment,
-    'assignToCostItem', 'IfcCostItem', 'IfcObject');
+    'assignToCostItem', 'IfcCostItem', 'IfcObjectDefinition');
 }
 
 /**

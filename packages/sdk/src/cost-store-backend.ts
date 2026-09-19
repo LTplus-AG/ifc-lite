@@ -317,7 +317,11 @@ export function createCostStoreBackend(
       }
       const referrers = buildRemovalReferrers(graph, expressId);
       const cascadeValueIds = kind === 'IfcCostItem' ? cascadeValuesForItem(graph, expressId) : [];
-      removeCostEntityInStore(resolved.editor, anchorOf(resolved), expressId, referrers, { detach: options?.detach, cascadeValueIds });
+      removeCostEntityInStore(resolved.editor, anchorOf(resolved), expressId, referrers, { detach: options?.detach });
+      // `cascadeValueIds` is derived from the mutation-aware cost graph above
+      // and deliberately stays inside this backend. Exposing it through the
+      // public builder options let direct callers delete arbitrary entities.
+      for (const valueId of cascadeValueIds) resolved.editor.removeEntity(valueId);
       onRelationshipMutation?.(resolved.modelId);
     },
   };

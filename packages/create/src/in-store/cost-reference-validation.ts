@@ -39,11 +39,11 @@ export function requireEntitySubtype(
 }
 
 /** Validate one cost-control relationship member against the IFC hierarchy. */
-export function requireAssignableIfcObject(
+export function requireAssignableIfcObjectDefinition(
   editor: StoreEditor, id: number, relatingControlId: number, context: string,
 ): void {
   if (id === relatingControlId) {
     throw new Error(`${context}: relatingControlId #${id} cannot also be one of relatedObjectIds`);
   }
-  requireEntitySubtype(editor, id, 'IfcObject', 'relatedObjectIds', context);
+  requireEntitySubtype(editor, id, 'IfcObjectDefinition', 'relatedObjectIds', context);
 }

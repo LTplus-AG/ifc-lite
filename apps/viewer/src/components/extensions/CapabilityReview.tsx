@@ -50,7 +50,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { ExtensionInstallSummary } from '@/services/extensions/host.js';
-import { localizeCapabilityRisk } from './localized-capability-risk';
+import { localizeCapabilityRisk, localizeRiskTier } from './localized-capability-risk';
 
 interface CapabilityReviewProps {
   open: boolean;
@@ -328,6 +328,7 @@ function RiskIcon({ tier }: { tier: RiskTier }) {
 }
 
 function RiskBadge({ tier }: { tier: RiskTier }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -337,7 +338,7 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
         tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
       )}
     >
-      {tier}
+      {localizeRiskTier(tier, t)}
     </span>
   );
 }

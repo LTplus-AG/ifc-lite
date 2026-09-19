@@ -152,6 +152,9 @@ export const extensionsPanelsEn = {
     '{description} Target: `{target}`. Universal wildcard target — unrestricted scope.',
   'extensionsPanels.capabilityReview.risk.hostPatternWildcard':
     '{description} Target: `{target}`. Host pattern contains a wildcard.',
+  'extensionsPanels.capabilityReview.riskTier.green': 'Green',
+  'extensionsPanels.capabilityReview.riskTier.yellow': 'Yellow',
+  'extensionsPanels.capabilityReview.riskTier.red': 'Red',
   'extensionsPanels.capabilityReview.highRiskTitle': 'High-risk capability requested',
   'extensionsPanels.capabilityReview.confirmInstruction': 'Type {phrase} below to confirm.',
   'extensionsPanels.capabilityReview.confirmAriaLabel': 'Type {phrase} to confirm',
@@ -312,6 +315,9 @@ export const extensionsPanelsEn = {
   'extensionsPanels.repairQueuePanel.noCheckRun': 'No compatibility check has run for this session.',
   'extensionsPanels.repairQueuePanel.noInstalledExtensions': 'No installed extensions',
   'extensionsPanels.repairQueuePanel.rangeLabel': 'Range',
+  'extensionsPanels.repairQueuePanel.outcome.pass': 'Pass',
+  'extensionsPanels.repairQueuePanel.outcome.fail': 'Fail',
+  'extensionsPanels.repairQueuePanel.outcome.skipped': 'Skipped',
   'extensionsPanels.repairQueuePanel.compatibility.invalidSdkVersion':
     'Could not parse SDK version "{sdk}".',
   'extensionsPanels.repairQueuePanel.compatibility.unsupportedRange':

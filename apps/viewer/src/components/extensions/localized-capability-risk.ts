@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CapabilityRisk } from '@ifc-lite/extensions';
+import type { CapabilityRisk, RiskTier } from '@ifc-lite/extensions';
 import type { TranslationKey, UseTranslationResult } from '@/i18n';
 
 const DESCRIPTION_KEY_BY_CAPABILITY_ID: Readonly<Record<string, TranslationKey>> = {
@@ -63,6 +63,21 @@ export function localizeCapabilityRisk(risk: CapabilityRisk, t: Translate): stri
       });
     default: {
       const exhaustive: never = risk.reasonCode;
+      return exhaustive;
+    }
+  }
+}
+
+export function localizeRiskTier(tier: RiskTier, t: Translate): string {
+  switch (tier) {
+    case 'green':
+      return t('extensionsPanels.capabilityReview.riskTier.green');
+    case 'yellow':
+      return t('extensionsPanels.capabilityReview.riskTier.yellow');
+    case 'red':
+      return t('extensionsPanels.capabilityReview.riskTier.red');
+    default: {
+      const exhaustive: never = tier;
       return exhaustive;
     }
   }

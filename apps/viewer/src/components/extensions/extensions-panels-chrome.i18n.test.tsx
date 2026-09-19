@@ -112,7 +112,9 @@ const SCOPE_KEYS = ALL_KEYS.filter((key) => COVERED_PREFIXES.some((p) => key.sta
 const DATA_DRIVEN_COPY_PREFIXES = [
   'extensionsPanels.capabilityReview.capability.',
   'extensionsPanels.capabilityReview.risk.',
+  'extensionsPanels.capabilityReview.riskTier.',
   'extensionsPanels.repairQueuePanel.compatibility.',
+  'extensionsPanels.repairQueuePanel.outcome.',
 ];
 const STATIC_KEYS = SCOPE_KEYS.filter((key) => {
   const value = extensionsPanelsEn[key];
@@ -399,8 +401,11 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
         '{description} ZIEL `{target}` IST GLOBAL',
       'extensionsPanels.capabilityReview.risk.unknownCapability':
         'UNBEKANNTE FÄHIGKEIT {raw}',
+      'extensionsPanels.capabilityReview.riskTier.green': 'GRÜN',
+      'extensionsPanels.capabilityReview.riskTier.red': 'ROT',
       'extensionsPanels.repairQueuePanel.compatibility.rangeMismatch':
         'BEREICH {declared} PASST NICHT ZU SDK {sdk}',
+      'extensionsPanels.repairQueuePanel.outcome.fail': 'FEHLER',
     } as Catalogue);
     setLocale('extensions-diagnostics-de');
 
@@ -439,6 +444,10 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(text, /NETZWERK ABRUFEN ZIEL `\*` IST GLOBAL/);
     assert.match(text, /UNBEKANNTE FÄHIGKEIT model\.unlisted/);
     assert.match(text, /BEREICH \^1\.0\.0 PASST NICHT ZU SDK 2\.0\.0/);
+    assert.match(text, /GRÜN/);
+    assert.match(text, /ROT/);
+    assert.match(text, /FEHLER/);
+    assert.doesNotMatch(text, /\bgreen\b|\bred\b|\bfail\b/);
     assert.doesNotMatch(text, /Read entities, properties, and geometry/);
     assert.doesNotMatch(text, /Fetch from URLs matching/);
     assert.doesNotMatch(text, /outdated range/);

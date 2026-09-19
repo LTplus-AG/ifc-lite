@@ -11,6 +11,7 @@ import {
   type ReferenceTraversalBudget,
 } from '@/lib/collab/entity-reference-wire.js';
 import { entityForPath, pathForEntity, pathForGuid, unregisterEntityPath } from '@/lib/collab/entity-paths.js';
+import { getMutationViewForModel } from './mutation-view.js';
 import type { StoreApi } from './types.js';
 
 const MAX_SOURCE_REFERENCE_ENTITIES = 10_000;
@@ -97,6 +98,7 @@ export function ensureSourceRoomEntities(
   const claimedPaths = new Set<string>();
   const entries: MaterializedEntry[] = [];
   const budget: ReferenceTraversalBudget = { remainingNodes: MAX_SOURCE_REFERENCE_WORK };
+  const mutationView = getMutationViewForModel(store, modelId);
   while (pending.length > 0) {
     const expressId = pending.pop();
     if (expressId === undefined || visited.has(expressId)) continue;
@@ -109,7 +111,11 @@ export function ensureSourceRoomEntities(
     const entity = overlay ?? dataStore.getEntity?.(expressId);
     if (!entity) continue;
     const names = attributeNamesForStore(dataStore, entity.type);
-    const base = { expressId, type: entity.type, names, values: entity.attributes };
+    const values = [...entity.attributes];
+    for (const [index, value] of mutationView?.getPositionalMutationsForEntity(expressId) ?? []) {
+      values[index] = value;
+    }
+    const base = { expressId, type: entity.type, names, values };
     const roomKey = overlay
       ? roomKeyForOverlay(dataStore, base, claimedPaths)
       : availableSyntheticRoomKey(dataStore, expressId, claimedPaths);

@@ -284,6 +284,37 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     }]);
   });
 
+  it('attempts to publish a new entity even when its referenced room entity is unavailable', () => {
+    const retryStore = Object.create(dataStore) as IfcDataStore;
+    const { adapter, calls } = fixture(true, retryStore, () => false);
+
+    const created = adapter.addEntity(MODEL, {
+      type: 'IFCAPPLIEDVALUE',
+      attributes: ['Total', null, '#3', null, null, null, null, null, null, null],
+    });
+
+    assert.ok(calls.some(call => call.kind === 'create' && call.args[1] === created.expressId));
+  });
+
+  it('publishes pending positional overrides when retrying overlay materialization', () => {
+    let available = false;
+    const retryStore = Object.create(dataStore) as IfcDataStore;
+    const { adapter, calls } = fixture(true, retryStore, () => available);
+    const created = adapter.addEntity(MODEL, {
+      type: 'IFCCOSTVALUE',
+      attributes: ['Original', null, 1, null, null, null, null, null, null, null],
+    });
+    adapter.setPositionalAttribute(created, 2, 2);
+
+    available = true;
+    adapter.setPositionalAttribute(created, 0, 'Renamed');
+
+    const retryValue = calls.filter(call => call.kind === 'attribute'
+      && call.args[1] === created.expressId
+      && call.args[2] === 'bsi::ifc::prop::AppliedValue').at(-1);
+    assert.equal(retryValue?.args[3], 2);
+  });
+
   it('suffixes a source materialization path already owned by a live room entity', () => {
     const collisionStore = Object.create(dataStore) as IfcDataStore;
     const { adapter, calls } = fixture(true, collisionStore, () => true);

@@ -148,9 +148,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       def.attributes.forEach((value, index) => referencedExpressIds(
         value, referenceSlots[index] ?? false, referenced,
       ));
-      const roomReferencesReady = ensureSourceRoomEntities(store, modelId, editor, referenced, dataStore);
+      ensureSourceRoomEntities(store, modelId, editor, referenced, dataStore);
       const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-      if (roomReferencesReady) mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
+      mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
       return { modelId: normalizedId, expressId: ref.expressId };
     },
     removeEntity(ref: EntityRef): boolean {

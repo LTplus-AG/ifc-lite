@@ -369,7 +369,7 @@ pub fn stream_export_model_with_options(
             property_sets,
             quantity_sets,
             attributes: if opts.attributes {
-                render_attributes(&entity, type_name, &source_schema, ty)
+                render_attributes(&entity, type_name, &source_schema)
             } else {
                 Vec::new()
             },
@@ -438,7 +438,7 @@ pub fn stream_export_model_with_options(
                 decoder
                     .decode_by_id(cand.express_id)
                     .ok()
-                    .map(|t| render_attributes(&t, &cand.type_name, &source_schema, cand.ifc_type))
+                    .map(|t| render_attributes(&t, &cand.type_name, &source_schema))
                     .unwrap_or_default()
             } else {
                 Vec::new()

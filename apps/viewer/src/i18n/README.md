@@ -347,6 +347,26 @@ sibling to the unrelated `merge-layers-banner.en.ts` (the multilayer-wall
 geometry-merge setting's reload banner), not the same feature under a new
 name.
 
+The Search Modal / Search Inline catalogue (#4918 search-modal slice) covers
+the SearchModal family and the always-visible toolbar field: the dialog
+shell (`SearchModal.tsx`), the Search tab's chip filters, result list and
+footer batch actions (`SearchModal.text.tsx`), the Filter tab's run bar,
+progress/limit badges, error box and result table (`SearchModal.filter.tsx`),
+the chip-editing builder and preset menu (`SearchModal.filter.builder.tsx`),
+every per-kind rule chip editor (`SearchModal.filter.editors.tsx` and its
+split-out `.elevation.tsx` / `.identity.tsx` siblings), the selector text
+field (`SearchModal.filter.selector.tsx`), and `SearchInline.tsx`'s field,
+vim-cycle hint, recents popover and results popover (`search-modal.en.ts`
+covers the shell/text/filter-run/inline sub-areas; `search-filters.en.ts`
+covers the filter-builder/filter-editors/filter-selector sub-areas — split
+purely to stay under the module-size budget, both share the `searchModal.*`
+prefix). GlobalIds, IFC type names, and entity/property/model NAMES stay
+literal throughout — model content, not view chrome. A created list's
+default `name: 'Filter result'` and its seeded column `label`s ('Name',
+'Class') also stay literal: the moment `handleCreateList` runs they become
+persisted, user-renamable list data, same reasoning as a BCF topic title or
+document name elsewhere in this sweep.
+
 The Compare panel catalogue (#4918 compare slice, `compare-panel.en.ts`,
 keys prefixed `comparePanel.<component>.*`) covers `ComparePanel.tsx`'s own
 header/empty-state/BCF-compose-strip chrome and its `compare/` components:

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, type RefObject } from 'react';
+import type { Renderer } from '@ifc-lite/renderer';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '../store/index.js';
 
@@ -48,4 +49,17 @@ export function useLandXmlOverlayLines(): Float32Array {
     }
     return new Float32Array(vertices);
   }, [models, selectedSource]);
+}
+
+/** Keep the renderer's terrain channel synchronized with authored LandXML lines. */
+export function useLandXmlRendererOverlay(
+  rendererRef: RefObject<Renderer | null>,
+  isInitialized: boolean,
+): void {
+  const vertices = useLandXmlOverlayLines();
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.setLineOverlay('terrain', vertices.length === 0 ? null : vertices);
+  }, [vertices, isInitialized, rendererRef]);
 }

@@ -74,6 +74,7 @@ import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
+import { listExportModels, resolveExportModel } from './export-model-selection';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -156,29 +157,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const isIfc5 = schema === 'IFC5';
 
   const exportModelLabels = useMemo(() => modelDisplayLabels(models, 32), [models]);
-  // Get list of models with data stores - includes both federated models and legacy single-model
-  const modelList = useMemo(() => {
-    const list = Array.from(models.values()).map((m) => ({
-      id: m.id,
-      name: m.name,
-      isDirty: dirtyModels.has(m.id),
-      schemaVersion: m.schemaVersion,
-      sourceSchema: m.sourceSchema,
-    }));
-
-    // If no models in Map but legacy data exists, add a synthetic entry
-    if (list.length === 0 && legacyIfcDataStore) {
-      list.push({
-        id: '__legacy__',
-        name: 'Current Model',
-        isDirty: false,
-        schemaVersion: legacyIfcDataStore.schemaVersion,
-        sourceSchema: undefined,
-      });
-    }
-
-    return list;
-  }, [models, dirtyModels, legacyIfcDataStore]);
+  const modelList = useMemo(
+    () => listExportModels(models, dirtyModels, legacyIfcDataStore),
+    [models, dirtyModels, legacyIfcDataStore],
+  );
 
   // Keep a removed selection from stranding the dialog. The open handler below
   // deliberately re-seeds from the active model each time: authoring commands
@@ -194,23 +176,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     setOpen(next);
   }, [modelList, activeModelId]);
 
-  // Get selected model's data - supports both federated and legacy mode
-  const selectedModel = useMemo(() => {
-    if (selectedModelId === '__legacy__' && legacyIfcDataStore && legacyGeometryResult) {
-      // Return a synthetic FederatedModel-like object for legacy mode
-      return {
-        id: '__legacy__',
-        name: 'Current Model',
-        ifcDataStore: legacyIfcDataStore,
-        geometryResult: legacyGeometryResult,
-        visible: true,
-        collapsed: false,
-        schemaVersion: legacyIfcDataStore.schemaVersion,
-        sourceSchema: undefined,
-      };
-    }
-    return models.get(selectedModelId);
-  }, [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult]);
+  const selectedModel = useMemo(
+    () => resolveExportModel(models, selectedModelId, legacyIfcDataStore, legacyGeometryResult),
+    [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult],
+  );
   const selectedRoomView = selectedModelId ? getMutationView(selectedModelId) ?? undefined : undefined;
   const selectedLandXml = selectedModel?.sourceSchema === 'LandXML-1.2';
   const mergedLandXml = exportScope === 'merged'

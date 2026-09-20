@@ -41,10 +41,7 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
-  unionEntityBounds,
-  getThemeClearColor,
-  hasPendingMeasurementState,
-  type BoundingBox3D,
+  unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
@@ -68,7 +65,7 @@ import {
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
-import { useLandXmlOverlayLines } from '../../hooks/useLandXmlOverlayLines.js';
+import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
@@ -1516,15 +1513,7 @@ export function Viewport({
     uploadDxfLines3DGuarded(renderer, dxfLines3D);
   }, [dxfLines3D, isInitialized]);
 
-  // LandXML source overlays are independent of IFC symbolic geometry. The
-  // hook uses each federated model's own published frame, so equal local
-  // source IDs in two terrain files cannot collide or drift on reframe.
-  const landXmlLines3D = useLandXmlOverlayLines();
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-    renderer.setLineOverlay('terrain', landXmlLines3D.length === 0 ? null : landXmlLines3D);
-  }, [landXmlLines3D, isInitialized]);
+  useLandXmlRendererOverlay(rendererRef, isInitialized);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput

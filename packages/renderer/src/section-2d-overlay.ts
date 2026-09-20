@@ -18,9 +18,8 @@
  * bind-group layout, one bind group, one uniform buffer holding a 160-byte
  * record per draw site) plus the published API over it: one
  * `setLineOverlay`/`hasLineOverlay`/`drawLineOverlay` trio covering every
- * standalone line channel, and the section cut's own upload/draw. Splitting that
- * further means giving those shared resources a second owner, which is the cut
- * #2456 explicitly refuses. Do not "fix" the line count by doing it.
+ * standalone line channel and the section cut's own upload/draw. Splitting further gives
+ * shared resources a second owner, which #2456 explicitly refuses.
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';

@@ -208,6 +208,41 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene['meshDataBucket'].get(second)?.meshData[0], second);
   });
 
+  it('keeps a source bucket complete when a later repartition upload fails', () => {
+    const scene = new Scene(), first = triangle(27), second = triangle(28), old = batch(1), partial = batch(2);
+    const bucketState = { key: 'flat', meshData: [first, second], batchedMesh: old, vertexBytes: 168 };
+    scene['buckets'].set('flat', bucketState);
+    scene['meshDataBucket'].set(first, bucketState);
+    scene['meshDataBucket'].set(second, bucketState);
+    scene['meshDataMap'].set(27, [first]);
+    scene['meshDataMap'].set(28, [second]);
+    scene['batchedMeshes'] = [old];
+    scene.discardGpuResourcesForRecovery();
+
+    let upload = 0;
+    scene['createBatchedMesh'] = () => {
+      if (upload++ === 0) return partial;
+      throw new Error('second partition failed');
+    };
+    const smaller = { limits: { maxBufferSize: 120 } } as unknown as GPUDevice;
+    assert.throws(
+      () => scene.restoreGpuResourcesAfterRecovery(smaller, {} as RenderPipeline),
+      /second partition failed/,
+    );
+
+    assert.strictEqual(partial.vertexBuffer.destroyed, 1, 'the unreachable staged upload is released');
+    assert.strictEqual(scene['buckets'].size, 1);
+    assert.strictEqual(scene['buckets'].get('flat'), bucketState);
+    assert.deepStrictEqual(bucketState.meshData, [first, second]);
+    assert.strictEqual(scene['meshDataBucket'].get(first), bucketState);
+    assert.strictEqual(scene['meshDataBucket'].get(second), bucketState);
+
+    const restored: MeshData[][] = [];
+    scene['createBatchedMesh'] = (parts) => { restored.push(parts); return batch(10 + restored.length); };
+    assert.doesNotThrow(() => scene.restoreGpuResourcesAfterRecovery(smaller, {} as RenderPipeline));
+    assert.deepStrictEqual(restored, [[first], [second]], 'retry restores every source piece');
+  });
+
   it('invalidates and releases a detached authored transaction before recovery', () => {
     const scene = new Scene(), first = device();
     const pipeline = {

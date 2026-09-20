@@ -280,7 +280,12 @@ describe('Renderer.recoverDevice (#4885)', () => {
   it('serializes a newer public init behind recovery so it owns the final GPU stack', async () => {
     const renderer = lostRenderer(), gate = deferred<void>(), started = deferred<void>();
     const replacementPipeline = { owner: 'newer-init' };
-    let calls = 0;
+    let calls = 0, preservedScene = true, publicInitSawClearedScene = false;
+    renderer['teardown'] = (clearScene = true) => {
+      renderer['ready'] = false;
+      renderer['pipeline'] = null;
+      if (clearScene) preservedScene = false;
+    };
     renderer['initOnce'] = async (generation) => {
       calls++;
       if (calls === 1) {
@@ -288,6 +293,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
         await gate.promise;
         return;
       }
+      publicInitSawClearedScene = !preservedScene;
       const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
       device.device = {} as GPUDevice;
       device.context = {} as GPUCanvasContext;
@@ -307,5 +313,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
     await initialization;
     assert.strictEqual(renderer['pipeline'], replacementPipeline);
     assert.strictEqual(renderer.isReady(), true);
+    assert.strictEqual(publicInitSawClearedScene, true,
+      'the superseded recovery cannot strand its preserved CPU buckets in the ordinary init');
   });
 });

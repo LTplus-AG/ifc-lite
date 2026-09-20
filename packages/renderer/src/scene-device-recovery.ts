@@ -234,32 +234,46 @@ function restoreFlatBuckets(
     repartitioned = true;
     const evicted = bucket.batchedMesh?.gpuResident === false;
     const evictedShell = bucket.batchedMesh;
-    const dirty = host.dirtyBuckets.delete(originalKey);
+    const dirty = host.dirtyBuckets.has(originalKey);
     const hash = originalKey.lastIndexOf('#');
     const baseKey = hash >= 0 ? originalKey.slice(0, hash) : originalKey;
+    const staged: Array<{ key: string; parts: MeshData[]; batch: BatchedMesh }> = [];
+    try {
+      for (const parts of chunks) {
+        const key = nextRecoveryBucketKey(host, baseKey);
+        const batch = evicted
+          ? host.modelTranslations.registerDrawable(
+              createSceneBatchShell(parts, evictedShell!, host.nextBatchId++, key),
+              parts[0].modelIndex ?? 0,
+            )
+          : host.createBatchedMesh(parts, parts[0].color, device, pipeline, key);
+        staged.push({ key, parts, batch });
+      }
+    } catch (error) {
+      // None of the staged batches is reachable from the scene yet, so the
+      // outer recovery cleanup cannot see it. Release successful allocations
+      // here and leave the original CPU bucket intact for the automatic retry.
+      if (!evicted) for (const entry of staged) destroyGpuResources(entry.batch);
+      throw error;
+    }
+
+    // Commit only after every replacement exists. Until this point the source
+    // bucket and every meshDataBucket edge still describe the complete model.
     host.buckets.delete(originalKey);
-    let activeKey = originalKey;
-    for (let index = 0; index < chunks.length; index++) {
-      const parts = chunks[index];
-      const key = nextRecoveryBucketKey(host, baseKey);
+    host.dirtyBuckets.delete(originalKey);
+    for (let index = 0; index < staged.length; index++) {
+      const { key, parts, batch } = staged[index];
       const target = index === 0 ? bucket : { key, meshData: [], batchedMesh: null, vertexBytes: 0 };
       target.key = key;
       target.meshData = parts;
       target.vertexBytes = bucketVertexBytes(parts);
-      const batch = evicted
-        ? host.modelTranslations.registerDrawable(
-            createSceneBatchShell(parts, evictedShell!, host.nextBatchId++, key),
-            parts[0].modelIndex ?? 0,
-          )
-        : host.createBatchedMesh(parts, parts[0].color, device, pipeline, key);
       target.batchedMesh = batch;
       host.buckets.set(key, target);
       for (const part of parts) host.meshDataBucket.set(part, target);
       if (dirty) host.dirtyBuckets.add(key);
       restored.push(batch);
-      activeKey = key;
     }
-    host.activeBucketKey.set(baseKey, activeKey);
+    host.activeBucketKey.set(baseKey, staged.at(-1)!.key);
   }
   if (repartitioned) host.appearanceBuckets?.forget();
 }

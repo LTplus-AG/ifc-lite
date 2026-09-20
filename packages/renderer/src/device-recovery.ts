@@ -124,7 +124,13 @@ async function recoverRendererDeviceOnce(
     phase = 'device';
     await host.initOnce(generation, { clearDeviceLost: false, publishReady: false });
     if (generation !== host.initGeneration || host.destroyed) {
-      host.teardown(false);
+      // A newer public init/destroy owns the next lifecycle. Recovery already
+      // discarded the old scene's GPU handles, and teardown(false) would also
+      // null the replacement pipeline; the queued init would then skip its
+      // normal scene-clearing teardown and inherit stale CPU buckets. Give the
+      // superseding ordinary lifecycle the same empty-scene starting point it
+      // gets when it replaces any completed init.
+      host.teardown(true);
       return { ok: false, reason: 'renderer-destroyed' };
     }
     if (host.deviceLossSequence !== lossSequence) {
@@ -150,7 +156,7 @@ async function recoverRendererDeviceOnce(
     // caller to mutate the scene.
     await Promise.resolve();
     if (generation !== host.initGeneration || host.destroyed) {
-      host.teardown(false);
+      host.teardown(true);
       return { ok: false, reason: 'renderer-destroyed' };
     }
     if (host.deviceLossSequence !== lossSequence) {

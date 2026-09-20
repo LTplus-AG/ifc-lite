@@ -84,7 +84,7 @@ nul
 # Local test models (private, never committed)
 tests/models/local
 
-# IFC test fixtures are fetched on demand via `pnpm fixtures` and listed in
+# Model test fixtures are fetched on demand via `pnpm fixtures` and listed in
 # tests/models/manifest.json. They must NOT be committed to the repo. The
 # fixture directories themselves are ignored too: in a worktree they may be
 # machine-local symlinks into the primary checkout.
@@ -95,6 +95,8 @@ tests/models/**/*.ifc
 tests/models/**/*.IFC
 tests/models/**/*.ifcx
 tests/models/**/*.ifczip
+tests/models/**/*.xml
+tests/models/**/*.XML
 # Partial downloads from the fetcher.
 tests/models/**/*.part
 

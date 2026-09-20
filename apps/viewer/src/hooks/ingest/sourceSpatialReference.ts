@@ -14,6 +14,7 @@ export interface SourceSpatialMetadata {
   format: SpatialSourceFormat;
   horizontalId?: string;
   verticalId?: string;
+  wkt?: string;
   provenance: string;
 }
 
@@ -27,6 +28,7 @@ function metadata(
     format,
     ...(horizontal ? { horizontalId: horizontal } : {}),
     ...(vertical ? { verticalId: vertical } : {}),
+    ...(text ? { wkt: text } : {}),
     provenance,
   };
 }
@@ -97,7 +99,10 @@ export function spatialReferenceFromSourceMetadata(metadata: SourceSpatialMetada
       xAxisAbscissa: 1, xAxisOrdinate: 0, scaleX: 1, scaleY: 1, scaleZ: 1,
     },
     confidence: metadata.horizontalId && metadata.verticalId ? 'declared' : 'unknown',
-    sourceMetadata: { format: metadata.format, crsProvenance: metadata.provenance },
+    sourceMetadata: {
+      format: metadata.format, crsProvenance: metadata.provenance,
+      ...(metadata.wkt ? { wkt: metadata.wkt } : {}),
+    },
   };
 }
 

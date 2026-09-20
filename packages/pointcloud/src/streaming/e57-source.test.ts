@@ -274,14 +274,18 @@ describe('E57StreamingSource', () => {
     const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
     const info = await new E57StreamingSource(blob).open();
     expect(info.spatialMetadata).toEqual({
-      horizontalId: 'EPSG:2056', verticalId: 'EPSG:5729', provenance: 'E57 coordinateMetadata',
+      horizontalId: 'EPSG:2056', verticalId: 'EPSG:5729',
+      wkt: 'PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]',
+      provenance: 'E57 coordinateMetadata',
     });
   });
 
   it('preflights CRS metadata without decoding a point chunk (#5048)', async () => {
     const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
     await expect(inspectE57SpatialMetadata(blob)).resolves.toEqual({
-      horizontalId: 'EPSG:2056', verticalId: 'EPSG:5729', provenance: 'E57 coordinateMetadata',
+      horizontalId: 'EPSG:2056', verticalId: 'EPSG:5729',
+      wkt: 'PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]',
+      provenance: 'E57 coordinateMetadata',
     });
   });
 

@@ -8,6 +8,8 @@ import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 export interface PointSourceSpatialMetadata {
   horizontalId?: string;
   verticalId?: string;
+  /** Source WKT retained verbatim even when it declares only one CRS component. */
+  wkt?: string;
   provenance: string;
 }
 

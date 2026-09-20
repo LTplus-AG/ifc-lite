@@ -14,7 +14,7 @@ export const MAX_E57_XML_METADATA_BYTES = 16 << 20;
 export function spatialMetadataFromE57Xml(xml: string): PointSourceSpatialMetadata | undefined {
   const text = /<\s*(?:\w+:)?coordinateMetadata\b[^>]*>([\s\S]*?)<\/\s*(?:\w+:)?coordinateMetadata\s*>/i.exec(xml)?.[1];
   if (!text) return undefined;
-  return { ...extractWktCrsIdentifiers(text), provenance: 'E57 coordinateMetadata' };
+  return { ...extractWktCrsIdentifiers(text), wkt: text, provenance: 'E57 coordinateMetadata' };
 }
 
 function assertBoundedXml(xmlLength: number, logicalSize: number): void {

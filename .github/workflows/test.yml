@@ -345,6 +345,10 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # Fixture discovery walks this subtree from the manifest. Keep
+              # the Node-owned path-coverage gate reachable if a future
+              # rights-clear LandXML fixture is ever committed directly.
+              - 'tests/models/landxml/**'
               - '.github/workflows/test.yml'
               # scripts/generate-coverage-ledger.mjs and its test read these
               # two paths directly (the sample fixture set and the generated

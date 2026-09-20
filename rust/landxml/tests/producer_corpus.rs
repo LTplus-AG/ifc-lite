@@ -70,9 +70,10 @@ fn issue_5051_canonical_producers_refuse_non_tin_exports_without_inventing_geome
             contains_ascii(&bytes, &format!(r#"linearUnit="{unit}""#)),
             "{path} must retain its declared unit token"
         );
-        let error = parse_landxml_tin(&bytes)
-            .expect_err("#5051 must not fabricate a TIN from an alignment/profile-only export");
-        assert_eq!(error.code, LandXmlDiagnosticCode::InvalidSemantic, "{path}");
+        let document = parse_landxml_tin(&bytes)
+            .expect("canonical LandXML remains a valid durable source record without terrain");
+        assert!(document.surfaces.is_empty(), "{path}: no TIN may be fabricated");
+        assert!(!document.capabilities.renderable_tin, "{path}");
     }
 }
 

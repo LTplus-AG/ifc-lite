@@ -5,7 +5,6 @@
 /**
  * Shared types for the viewer store
  */
-
 // ============================================================================
 // Measurement Types
 // ============================================================================
@@ -207,10 +206,8 @@ export interface EdgeLockState {
 // ============================================================================
 // Section Plane Types
 // ============================================================================
-
 /** Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience */
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
-
 // Re-export the renderer's canonical cap-styling types so the viewer store and
 // the WebGPU renderer share a single source of truth. Adding a new hatch
 // pattern only requires editing `packages/renderer/src/section-cap-style.ts`.
@@ -220,7 +217,7 @@ import type { SectionCapStyle } from '@ifc-lite/renderer';
 // at the renderer's `Camera`, so the store shares the renderer's own type.
 export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
-
+import type { LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
  * `normal` + `distance` directly and ignores `axis` / `position`. The
@@ -502,7 +499,6 @@ export type MetadataLoadState =
   | 'error';
 
 export type ModelSourceFile = File;
-
 /** Complete model container for federation */
 /**
  * A federated model's geometry as it stood before alignment re-baked it.
@@ -561,6 +557,10 @@ export interface FederatedModel extends ModelLoadReportFields {
   sourceContentHash?: string; // Full-content identity for workspace placements.
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
+  /** Non-IFC source semantics, kept outside the IFC data store by design. */
+  landXmlDocument?: LandXmlTinDocument;
+  /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
+  sourceSchema?: 'LandXML-1.2';
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
   geometryResult: GeometryResult | null;
   /** Model-level visibility toggle */

@@ -9,10 +9,9 @@
  *
  * Extracted from useIfc.ts for better separation of concerns
  */
-
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useViewerStore, type FederatedModel } from '@/store';
+import { type FederatedModel, useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
@@ -47,7 +46,6 @@ import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/lo
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { type GeometryData } from '@ifc-lite/cache';
-
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
@@ -56,7 +54,6 @@ import {
   calculateStoreyHeights,
 } from '../utils/localParsingUtils.js';
 import { applyColorUpdatesToMeshes } from './meshColorUpdates.js';
-
 // Cache hook
 import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 
@@ -88,7 +85,6 @@ import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
 import { formatLoadError } from '../lib/load-error-message.js';
-
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
  * from the user's geometry-fidelity mode (`fast` vs `exact`, see
@@ -155,7 +151,6 @@ function getGeometryStreamWatchdogMs(
     fileSizeMB,
   });
 }
-
 /**
  * Upper bound on the "let the last batch paint" frame wait at stream complete.
  * Generous on purpose: on a heavy final batch a *visible* tab's next frame can
@@ -503,7 +498,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2' } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -600,6 +595,7 @@ export function useIfcLoader() {
             for (const mesh of geometryResult.meshes) {
               applyFederationOffsetToMesh(mesh, idOffset);
             }
+            for (const mesh of patch?.landXmlDocument?.rendering.meshProvenance ?? []) mesh.meshExpressId += idOffset;
             for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
             // #924/#1912: instanced-ONLY entities (no flat mesh, so the loop
             // above never touches them) carry the same RAW ids the worker
@@ -634,6 +630,8 @@ export function useIfcLoader() {
             name: target.name ?? file.name,
             sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity,
             ifcDataStore: dataStore,
+            landXmlDocument: patch?.landXmlDocument,
+            sourceSchema: patch?.sourceSchema,
             geometryResult,
             visible: target.visible ?? true,
             collapsed: target.collapsed ?? (useViewerStore.getState().models.size > 0),
@@ -676,6 +674,8 @@ export function useIfcLoader() {
 
         updateModel(modelId, {
           ifcDataStore: dataStore,
+          landXmlDocument: patch?.landXmlDocument,
+          sourceSchema: patch?.sourceSchema,
           geometryResult,
           schemaVersion,
           idOffset,

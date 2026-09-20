@@ -8,7 +8,44 @@
 //! callers from accidentally decoding UTF-16 source as JavaScript text first.
 
 use super::IfcAPI;
-use wasm_bindgen::prelude::*;
+use serde::Serialize;
+use wasm_bindgen::{prelude::*, JsCast};
+
+#[wasm_bindgen]
+extern "C" {
+    /// The serialized semantic source record emitted by `parseLandXmlTinBytes`.
+    #[wasm_bindgen(typescript_type = "LandXmlTinDocumentJs")]
+    pub type LandXmlTinDocumentJs;
+}
+
+#[wasm_bindgen(typescript_custom_section)]
+const LANDXML_TYPES: &str = r#"
+export interface LandXmlTinDocumentJs {
+  format: "landxml";
+  schema: "LandXML-1.2";
+  capabilities: { renderable_tin: boolean; preserved_only_surfaces: number; unknown_extensions: number };
+  version: string;
+  /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
+  units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number };
+  surfaces: LandXmlSurfaceJs[];
+  extensions: LandXmlExtensionJs[];
+  warnings: string[];
+}
+export interface LandXmlSurfaceJs {
+  source_id: string; ordinal: number; source_path: string;
+  properties: Record<string, string>; definition_properties: Record<string, string>;
+  name: string; kind: "tin" | "grid" | "volume" | "other";
+  render_state: "rendered" | "preserved_only" | "unsupported";
+  points: LandXmlPointJs[]; source_data_points: LandXmlSourcePointJs[];
+  faces: [string, string, string][]; face_source_ids: string[]; face_visibility: boolean[];
+  hidden_face_count: number; boundaries: LandXmlPolylineJs[]; breaklines: LandXmlPolylineJs[]; contours: LandXmlPolylineJs[];
+}
+export interface LandXmlPointJs { source_id: string; id: string; northing: number; easting: number; elevation: number; }
+export interface LandXmlSourcePointJs { source_id: string; ordinal: number; source_path: string; coordinate_dimension: 2 | 3; coordinates: number[]; }
+/** serde_wasm_bindgen omits absent Rust Option fields rather than serializing null. */
+export interface LandXmlPolylineJs { source_id: string; ordinal: number; name?: string; kind?: string; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }
+export interface LandXmlExtensionJs { namespace: string; local_name: string; path: string; }
+"#;
 
 #[wasm_bindgen]
 impl IfcAPI {
@@ -17,11 +54,16 @@ impl IfcAPI {
     /// The object is an owned serialization of the semantic document. Errors
     /// deliberately use `LandXmlError::Display`, including its stable LXML code.
     #[wasm_bindgen(js_name = parseLandXmlTinBytes)]
-    pub fn parse_landxml_tin_bytes(&self, data: &[u8]) -> Result<JsValue, JsValue> {
+    pub fn parse_landxml_tin_bytes(&self, data: &[u8]) -> Result<LandXmlTinDocumentJs, JsValue> {
         let document = ifc_lite_landxml::parse_landxml_tin(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        serde_wasm_bindgen::to_value(&document).map_err(|error| {
-            JsValue::from_str(&format!("LandXML result serialization failed: {error}"))
-        })
+        let serializer =
+            serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        document
+            .serialize(&serializer)
+            .map(|value| value.unchecked_into())
+            .map_err(|error| {
+                JsValue::from_str(&format!("LandXML result serialization failed: {error}"))
+            })
     }
 }

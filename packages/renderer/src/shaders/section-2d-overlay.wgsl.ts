@@ -52,12 +52,12 @@ export const SECTION_2D_UNIFORM_BYTES = SECTION_2D_UNIFORM_FLOATS * 4;
 /**
  * One uniform slot per draw site.
  *
- * The overlay renderer issues up to six draws into a **single** render pass —
- * the section cut cap plus five world-space line families — and every one of
+ * The overlay renderer issues up to seven draw sites into a **single** render pass —
+ * the section cut cap plus six world-space line families — and every one of
  * them needs a different `lineColor` (and, for the cap, a different
  * `planeOffset` and the whole cap-style tail). With one record shared between
  * them the last `queue.writeBuffer` before submit is what the GPU sees for all
- * six: `writeBuffer` is a *queue* operation, so it is applied before the
+ * seven: `writeBuffer` is a *queue* operation, so it is applied before the
  * command buffer that references it executes, no matter where in the encoding
  * it was issued. Every earlier draw therefore rendered with the last draw's
  * uniforms — most visibly, the clash box's colour bleeding onto the annotation,
@@ -65,7 +65,7 @@ export const SECTION_2D_UNIFORM_BYTES = SECTION_2D_UNIFORM_FLOATS * 4;
  * hatch to the zeroed tail the line draws write.
  *
  * Each site owning a fixed slot, addressed with a dynamic bind-group offset,
- * is what makes the six draws independent while keeping the buffer, the layout
+ * is what makes the seven draw sites independent while keeping the buffer, the layout
  * and the bind group under the single owner issue #2456 insisted on. A slot per
  * site (rather than a bump allocator) needs no per-frame reset hook: each site
  * draws at most once per pass.
@@ -77,7 +77,8 @@ export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   alignment: 2,
   grid: 3,
   dxf: 4,
-  clashBox: 5,
+  terrain: 5,
+  clashBox: 6,
 } as const;
 
 /** How many uniform records the shared buffer holds — one per entry above. */

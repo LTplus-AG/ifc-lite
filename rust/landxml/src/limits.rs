@@ -48,7 +48,10 @@ pub struct LandXmlLimits {
     pub max_character_references: usize,
     /// Maximum LandXML `Surface` records, including non-TIN surfaces we skip.
     pub max_surfaces: usize,
-    /// Maximum point records across the whole source document.
+    /// Maximum preserved roots from foreign XML namespaces.
+    pub max_extensions: usize,
+    /// Maximum coordinate records across the whole source document, including
+    /// Definition points, SourceData point lists and overlay vertices.
     pub max_points: usize,
     /// Maximum visible face records across the whole source document.
     pub max_faces: usize,
@@ -67,6 +70,7 @@ impl Default for LandXmlLimits {
             max_text_bytes: 1024 * 1024,
             max_character_references: 100_000,
             max_surfaces: 100_000,
+            max_extensions: 100_000,
             max_points: 5_000_000,
             max_faces: 10_000_000,
             max_references: 30_000_000,

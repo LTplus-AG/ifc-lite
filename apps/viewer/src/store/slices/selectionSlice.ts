@@ -11,6 +11,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { EntityRef } from '../types.js';
+import type { LandXmlSourceRef } from '../../hooks/ingest/landXmlSemantics.js';
 import { entityRefToString, stringToEntityRef } from '../types.js';
 
 export interface SelectionSlice {
@@ -41,6 +42,8 @@ export interface SelectionSlice {
   selectedEntities: EntityRef[];
   /** Selected model ID for metadata display (when clicking top-level model in hierarchy) */
   selectedModelId: string | null;
+  /** Selected non-IFC LandXML source record; never enters IFC entity selection. */
+  selectedLandXmlSource: LandXmlSourceRef | null;
 
   // Actions (legacy - single model, maintained for backward compatibility)
   setSelectedEntityId: (id: number | null) => void;
@@ -82,6 +85,7 @@ export interface SelectionSlice {
   setSelectedEntities: (refs: EntityRef[]) => void;
   /** Set selected model for metadata display */
   setSelectedModelId: (modelId: string | null) => void;
+  setSelectedLandXmlSource: (ref: LandXmlSourceRef | null) => void;
 }
 
 export const createSelectionSlice: StateCreator<SelectionSlice, [], [], SelectionSlice> = (set, get) => ({
@@ -97,6 +101,7 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
   selectedEntitiesSet: new Set(),
   selectedEntities: [],
   selectedModelId: null,
+  selectedLandXmlSource: null,
 
   // Actions (legacy - maintained for backward compatibility)
   setSelectedEntityId: (selectedEntityId) => set((state) => ({
@@ -104,6 +109,7 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
     selectionRevision: state.selectionRevision + 1,
     // Clear model selection when an entity is selected (but not when clearing selection)
     selectedModelId: selectedEntityId !== null ? null : state.selectedModelId,
+    selectedLandXmlSource: null,
   })),
 
   toggleStoreySelection: (id) => set((state) => {
@@ -274,6 +280,7 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
     selectedEntityId: null,
     selectedEntityIds: new Set(),
     selectedModelId: null,
+    selectedLandXmlSource: null,
     selectionRevision: state.selectionRevision + 1,
   })),
 
@@ -305,6 +312,18 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
     selectedModelId: modelId,
     // Clear other selection when selecting a model
     selectedEntity: null,
+    selectedEntities: [],
+    selectedEntityId: null,
+    selectedEntityIds: new Set(),
+    selectedLandXmlSource: null,
+    selectionRevision: state.selectionRevision + 1,
+  })),
+
+  setSelectedLandXmlSource: (ref) => set((state) => ({
+    selectedLandXmlSource: ref,
+    selectedModelId: ref?.modelId ?? state.selectedModelId,
+    selectedEntity: null,
+    selectedEntitiesSet: new Set(),
     selectedEntities: [],
     selectedEntityId: null,
     selectedEntityIds: new Set(),

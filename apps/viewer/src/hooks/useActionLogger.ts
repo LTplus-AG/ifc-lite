@@ -28,7 +28,7 @@ import { useViewerStore } from '@/store';
  * importing the full store type.
  */
 export interface ActionLoggerStateShape {
-  models: ReadonlyMap<string, { schemaVersion: string; ifcDataStore: { entityCount?: number } | null; fileSize: number }>;
+  models: ReadonlyMap<string, { schemaVersion: string; sourceSchema?: string; ifcDataStore: { entityCount?: number } | null; fileSize: number }>;
   activeLensId: string | null;
   selectedEntities: readonly unknown[];
   sectionPlane?: { enabled?: boolean };
@@ -56,7 +56,7 @@ export function detectActions(
       out.push({
         intent: 'model.load',
         params: {
-          schema: model.schemaVersion,
+          schema: model.sourceSchema ?? model.schemaVersion,
           entityCount: model.ifcDataStore?.entityCount,
           sizeBytes: model.fileSize,
         },

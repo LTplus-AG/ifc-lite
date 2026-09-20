@@ -11,6 +11,34 @@ export interface RtcFrame {
 
 
 
+export interface LandXmlTinDocumentJs {
+    format: "landxml";
+    schema: "LandXML-1.2";
+    capabilities: { renderable_tin: boolean; preserved_only_surfaces: number; unknown_extensions: number };
+    version: string;
+    /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
+    units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number };
+    surfaces: LandXmlSurfaceJs[];
+    extensions: LandXmlExtensionJs[];
+    warnings: string[];
+}
+export interface LandXmlSurfaceJs {
+    source_id: string; ordinal: number; source_path: string;
+    properties: Record<string, string>; definition_properties: Record<string, string>;
+    name: string; kind: "tin" | "grid" | "volume" | "other";
+    render_state: "rendered" | "preserved_only" | "unsupported";
+    points: LandXmlPointJs[]; source_data_points: LandXmlSourcePointJs[];
+    faces: [string, string, string][]; face_source_ids: string[]; face_visibility: boolean[];
+    hidden_face_count: number; boundaries: LandXmlPolylineJs[]; breaklines: LandXmlPolylineJs[]; contours: LandXmlPolylineJs[];
+}
+export interface LandXmlPointJs { source_id: string; id: string; northing: number; easting: number; elevation: number; }
+export interface LandXmlSourcePointJs { source_id: string; ordinal: number; source_path: string; coordinate_dimension: 2 | 3; coordinates: number[]; }
+/** serde_wasm_bindgen omits absent Rust Option fields rather than serializing null. */
+export interface LandXmlPolylineJs { source_id: string; ordinal: number; name?: string; kind?: string; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }
+export interface LandXmlExtensionJs { namespace: string; local_name: string; path: string; }
+
+
+
 /**
  * The overlap solid of one clashing pair, or the reason there is none.
  */
@@ -660,7 +688,7 @@ export class IfcAPI {
      * The object is an owned serialization of the semantic document. Errors
      * deliberately use `LandXmlError::Display`, including its stable LXML code.
      */
-    parseLandXmlTinBytes(data: Uint8Array): any;
+    parseLandXmlTinBytes(data: Uint8Array): LandXmlTinDocumentJs;
     /**
      * Parse IFC file and extract symbolic representations (Plan,
      * Annotation, FootPrint, Axis). These are 2D curves used for

@@ -56,7 +56,7 @@ pub(crate) fn units(attributes: &Attributes) -> Result<LandXmlUnits> {
     let linear = required(attributes, "linearUnit", "Units")?.to_owned();
     let elevation = attr(attributes, "elevationUnit")
         .filter(|unit| !unit.trim().is_empty())
-        .unwrap_or(&linear)
+        .unwrap_or("meter")
         .to_owned();
     Ok(LandXmlUnits {
         linear_scale_to_meters: scale(&linear)?,

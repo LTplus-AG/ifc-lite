@@ -4,20 +4,7 @@
 
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
-import {
-  Copy,
-  Check,
-  Building2,
-  Layers,
-  Layers2,
-  FileText,
-  Calculator,
-  Tag,
-  MousePointer2,
-  PenLine,
-  Crosshair,
-  Box,
-} from 'lucide-react';
+import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
@@ -49,6 +36,7 @@ import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
 import { QuantitySetCard } from './properties/QuantitySetCard';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
+import { useLandXmlSourceInspector } from './properties/useLandXmlSourceInspector';
 import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
@@ -1225,6 +1213,9 @@ export function PropertiesPanel() {
   }, [renderedAttributes]);
 
   // Model metadata display (when clicking top-level model in hierarchy)
+  const landXmlInspector = useLandXmlSourceInspector(models);
+  if (landXmlInspector) return landXmlInspector;
+
   if (selectedModelId) {
     const selectedModel = models.get(selectedModelId);
     if (selectedModel) {

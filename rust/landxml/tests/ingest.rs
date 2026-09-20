@@ -80,14 +80,155 @@ fn parses_raw_bytes_into_durable_semantic_source_records() -> Result<(), Box<dyn
 {
     let parsed = parse(&document("grade"))?;
     assert_eq!(parsed.version, "1.2");
-    assert_eq!(parsed.units.linear_scale_to_meters, 1.0);
+    assert_eq!(
+        parsed
+            .units
+            .as_ref()
+            .expect("fixture has units")
+            .linear_scale_to_meters,
+        1.0
+    );
     assert_eq!(parsed.surfaces.len(), 1);
-    assert_eq!(parsed.surfaces[0].source_id.0, "landxml:surface:1:grade");
+    assert_eq!(parsed.surfaces[0].source_id.0, "landxml:surface:1");
     assert_eq!(
         parsed.surfaces[0].faces,
         vec![["1".to_owned(), "2".to_owned(), "3".to_owned()]]
     );
     Ok(())
+}
+
+#[test]
+fn retains_source_terrain_records_without_guessing_grid_topology(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(
+        r#"
+<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:vendor="urn:survey-vendor" version="1.2">
+  <Units><Metric linearUnit="meter"/></Units>
+  <Surfaces>
+    <Surface name="EG"><Definition surfType="TIN"><Pnts>
+      <P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P>
+    </Pnts><Faces><F>1 2 3</F><F i="true">1 3 2</F></Faces>
+    </Definition><SourceData><DataPoints><PntList3D>0 0 0 0 1 0</PntList3D></DataPoints>
+    <Boundaries><Boundary name="Outer" bndType="outer" edgeTrim="true"><PntList3D>0 0 0 0 1 0</PntList3D></Boundary></Boundaries>
+    <Breaklines><Breakline name="Crown" brkType="standard"><PntList2D>0 0 1 1</PntList2D></Breakline></Breaklines>
+    <Contours><Contour name="Index" contType="major"><PntList3D>0 0 0 1 0 0</PntList3D></Contour></Contours>
+    </SourceData></Surface>
+    <Surface name="Grid"><Definition surfType="GRID"/></Surface>
+  </Surfaces>
+  <vendor:ProducerSetting value="kept-as-a-record"/>
+</LandXML>"#
+    );
+    let parsed = parse(xml.as_bytes())?;
+    let tin = &parsed.surfaces[0];
+    assert_eq!(tin.source_id.0, "landxml:surface:1");
+    assert_eq!(tin.ordinal, 1);
+    assert_eq!(tin.source_path, "LandXML/Surfaces/Surface[1]");
+    assert_eq!(tin.properties.get("name").map(String::as_str), Some("EG"));
+    assert_eq!(
+        tin.definition_properties
+            .get("surfType")
+            .map(String::as_str),
+        Some("TIN")
+    );
+    assert_eq!(tin.points[0].source_id.0, "landxml:surface:1:point:1");
+    assert_eq!(tin.face_source_ids[0].0, "landxml:surface:1:face:1");
+    assert_eq!(tin.hidden_face_count, 1);
+    assert_eq!(tin.face_visibility, vec![true, false]);
+    assert_eq!(tin.source_data_points.len(), 2);
+    assert_eq!(
+        tin.source_data_points[0].source_id.0,
+        "landxml:surface:1:source-point:1"
+    );
+    assert_eq!(
+        tin.boundaries[0].source_id.0,
+        "landxml:surface:1:boundary:1"
+    );
+    assert_eq!(tin.boundaries[0].name.as_deref(), Some("Outer"));
+    assert_eq!(tin.boundaries[0].kind.as_deref(), Some("outer"));
+    assert_eq!(
+        tin.boundaries[0]
+            .properties
+            .get("edgeTrim")
+            .map(String::as_str),
+        Some("true")
+    );
+    assert_eq!(
+        tin.breaklines[0].source_id.0,
+        "landxml:surface:1:breakline:1"
+    );
+    assert_eq!(tin.breaklines[0].name.as_deref(), Some("Crown"));
+    assert_eq!(tin.breaklines[0].coordinate_dimension, 2);
+    assert_eq!(
+        tin.breaklines[0].point_source_ids[0].0,
+        "landxml:surface:1:breakline:1:point:1"
+    );
+    assert_eq!(tin.contours[0].source_id.0, "landxml:surface:1:contour:1");
+    assert_eq!(tin.contours[0].kind.as_deref(), Some("major"));
+    assert_eq!(
+        parsed.surfaces[1].render_state,
+        ifc_lite_landxml::LandXmlRenderState::PreservedOnly
+    );
+    assert_eq!(parsed.extensions[0].namespace, "urn:survey-vendor");
+    assert_eq!(parsed.extensions[0].path, "LandXML/ProducerSetting");
+    assert!(parsed
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("1 unknown vendor extension")));
+    assert!(parsed.capabilities.renderable_tin);
+    assert_eq!(parsed.capabilities.preserved_only_surfaces, 1);
+    Ok(())
+}
+
+#[test]
+fn retains_geometry_free_documents_as_honest_source_records(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="survey-only"><Definition surfType="VOLUME"/></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(xml.as_bytes())?;
+    assert!(parsed.units.is_none());
+    assert_eq!(parsed.surfaces.len(), 1);
+    assert_eq!(
+        parsed.surfaces[0].render_state,
+        ifc_lite_landxml::LandXmlRenderState::PreservedOnly
+    );
+    Ok(())
+}
+
+#[test]
+fn bounds_preserved_vendor_extension_roots() {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Units><Metric linearUnit="meter"/></Units><v:One/><v:Two/></LandXML>"#
+    );
+    let limits = LandXmlLimits {
+        max_extensions: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(xml.as_bytes(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded,
+    );
+}
+
+#[test]
+fn bounds_source_data_and_overlay_vertices_with_the_global_point_limit() {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>0 0 0 1 1 1</PntList3D></DataPoints><Breaklines><Breakline><PntList2D>0 0 1 1</PntList2D></Breakline></Breaklines></SourceData></Surface></Surfaces></LandXML>"#
+    );
+    for max_points in [1, 2, 3] {
+        let error = parse_landxml_tin_with_cancel(
+            xml.as_bytes(),
+            &LandXmlLimits {
+                max_points,
+                ..LandXmlLimits::default()
+            },
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, LandXmlDiagnosticCode::LimitExceeded);
+    }
 }
 
 #[test]
@@ -196,6 +337,130 @@ fn allows_an_xml_stylesheet_processing_instruction_before_the_root() {
     let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
     let input = format!("<?xml-stylesheet type=\"text/xsl\" href=\"terrain.xsl\"?>{valid}");
     assert_eq!(parse(input.as_bytes()).unwrap().surfaces.len(), 1);
+}
+
+#[test]
+fn issue_5084_refuses_multiple_roots_and_non_whitespace_outside_the_root() {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    for (index, input) in [
+        format!("{valid}{valid}"),
+        format!("outside-before{valid}"),
+        format!("{valid}outside-after"),
+        format!("\u{a0}{valid}"),
+        format!("&#32;{valid}"),
+        format!("{valid}<![CDATA[ ]]>"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let error = parse(input.as_bytes()).expect_err(&format!("input {index}: {input}"));
+        assert_eq!(error.code, LandXmlDiagnosticCode::InvalidXml);
+    }
+    let misc = format!(" \n<?xml-stylesheet type=\"text/xsl\" href=\"terrain.xsl\"?>{valid}<!-- legal misc after root --><?post-root ok?>\t");
+    assert_eq!(parse(misc.as_bytes()).unwrap().surfaces.len(), 1);
+}
+
+#[test]
+fn issue_5084_keeps_cdata_literal_in_numeric_captures() {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    let literal_reference = valid.replace(
+        r#"<P id="1">0 0 0</P>"#,
+        r#"<P id="1"><![CDATA[&#49; 2 3]]></P>"#,
+    );
+    // Treating CDATA as ordinary text would expand `&#49;` and incorrectly
+    // accept this as coordinates. CDATA itself is intentionally literal.
+    assert_eq!(
+        parse(literal_reference.as_bytes()).unwrap_err().code,
+        LandXmlDiagnosticCode::InvalidSemantic,
+    );
+}
+
+#[test]
+fn issue_5084_ignores_foreign_ancestors_with_landxml_named_coordinate_lists(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="VOLUME"/><v:SourceData><DataPoints><PntList3D>0 0 0 1 1 1</PntList3D><PntList2D>2 2 3 3</PntList2D></DataPoints><Boundaries><Boundary><PntList3D>0 0 0 1 1 1</PntList3D></Boundary></Boundaries><Breaklines><Breakline><PntList2D>0 0 1 1</PntList2D></Breakline></Breaklines><Contours><Contour><PntList3D>0 0 0 1 1 1</PntList3D></Contour></Contours></v:SourceData></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(xml.as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    assert!(
+        surface.source_data_points.is_empty(),
+        "foreign SourceData must not supply PntList3D or PntList2D"
+    );
+    assert!(
+        surface.boundaries.is_empty(),
+        "foreign Boundaries must not become terrain rings"
+    );
+    assert!(
+        surface.breaklines.is_empty(),
+        "foreign Breaklines must not become terrain lines"
+    );
+    assert!(
+        surface.contours.is_empty(),
+        "foreign Contours must not become terrain contours"
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5084_refuses_foreign_descendant_text_for_point_and_face_captures() {
+    let point_from_foreign_descendant = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="TIN"><Pnts><P id="1"><v:coords>0 0 0</v:coords></P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#
+    );
+    assert_eq!(
+        parse(point_from_foreign_descendant.as_bytes())
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::InvalidSemantic,
+    );
+    let face_from_foreign_descendant = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F><v:refs>1 2 3</v:refs></F></Faces></Definition></Surface></Surfaces></LandXML>"#
+    );
+    assert_eq!(
+        parse(face_from_foreign_descendant.as_bytes())
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::InvalidSemantic,
+    );
+}
+
+#[test]
+fn issue_5084_coordinate_list_paths_include_every_sibling_ancestor(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="first"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>0 0 0</PntList3D><PntList3D>1 1 1</PntList3D></DataPoints><Boundaries><Boundary><PntList3D>0 0 0 1 1 1</PntList3D></Boundary></Boundaries><Boundaries><Boundary><PntList3D>2 2 2 3 3 3</PntList3D></Boundary></Boundaries></SourceData><SourceData><DataPoints><PntList3D>2 2 2</PntList3D></DataPoints></SourceData></Surface><Surface name="second"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>3 3 3</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(xml.as_bytes())?;
+    let source_paths: Vec<&str> = parsed.surfaces[0]
+        .source_data_points
+        .iter()
+        .map(|point| point.source_path.as_str())
+        .collect();
+    assert_eq!(
+        source_paths,
+        vec![
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/DataPoints[1]/PntList3D[1]",
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/DataPoints[1]/PntList3D[2]",
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[2]/DataPoints[1]/PntList3D[1]",
+        ],
+    );
+    let boundary_paths: Vec<&str> = parsed.surfaces[0]
+        .boundaries
+        .iter()
+        .map(|line| line.source_path.as_str())
+        .collect();
+    assert_eq!(
+        boundary_paths,
+        vec![
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/Boundaries[1]/Boundary[1]/PntList3D[1]",
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/Boundaries[2]/Boundary[1]/PntList3D[1]",
+        ],
+    );
+    assert_eq!(
+        parsed.surfaces[1].source_data_points[0].source_path,
+        "LandXML/Surfaces[1]/Surface[2]/SourceData[1]/DataPoints[1]/PntList3D[1]",
+    );
+    Ok(())
 }
 
 #[test]
@@ -393,4 +658,28 @@ fn rejects_repeated_or_mixed_unit_declarations() {
         parse(mixed.as_bytes()).unwrap_err().code,
         LandXmlDiagnosticCode::InvalidSemantic
     );
+}
+
+#[test]
+fn issue_5042_uses_the_schema_default_for_omitted_elevation_units() {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Imperial linearUnit="foot"/></Units></LandXML>"#
+    );
+    let document = parse(source.as_bytes()).expect("valid LandXML");
+    let units = document.units.expect("units");
+
+    assert_eq!(units.linear_unit, "foot");
+    assert_eq!(units.linear_scale_to_meters, 0.3048);
+    assert_eq!(units.elevation_unit, "meter");
+    assert_eq!(units.elevation_scale_to_meters, 1.0);
+}
+
+#[test]
+fn issue_5042_rejects_empty_or_whitespace_only_documents() {
+    for input in [b"".as_slice(), b" \n\t".as_slice()] {
+        assert_eq!(
+            parse(input).unwrap_err().code,
+            LandXmlDiagnosticCode::InvalidXml
+        );
+    }
 }

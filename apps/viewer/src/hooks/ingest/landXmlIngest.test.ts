@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
 import { connectedFaceComponents } from './landXmlIngest.js';
+import { findLandXmlSourceRecord } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
 import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
@@ -98,17 +99,70 @@ describe('LandXML content dispatch (#5041)', () => {
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
-  it('parses schema point order and ignores invisible/non-TIN faces', async () => {
+  it('parses schema point order while retaining hidden faces and non-TIN surfaces', async () => {
     const parsed = await parseDocument(LANDXML);
     assert.equal(parsed.version, '1.2');
-    assert.equal(parsed.surfaces.length, 1);
+    assert.equal(parsed.surfaces.length, 2);
     assert.equal(parsed.surfaces[0].name, 'Existing Ground');
-    assert.equal(parsed.surfaces[0].sourceId, 'landxml:surface:1:Existing Ground');
+    assert.equal(parsed.surfaces[0].sourceId, 'landxml:surface:1');
     assert.deepEqual(parsed.surfaces[0].points[0], {
-      id: '10', northing: 5_000_000, easting: 2_600_000, elevation: 100,
+      sourceId: 'landxml:surface:1:point:10', id: '10', northing: 5_000_000, easting: 2_600_000, elevation: 100,
     });
-    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30'], ['20', '40', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faceVisibility, [true, false]);
+    assert.equal(parsed.surfaces[0].hiddenFaceCount, 1);
+    assert.equal(parsed.surfaces[1].kind, 'grid');
+    assert.equal(parsed.surfaces[1].renderState, 'preserved_only');
     assert.match(parsed.warnings[0], /Unsupported Grid/);
+  });
+
+  it('keeps source selection stable after geometry is partitioned (#5042)', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      '</Faces>',
+      '</Faces><Boundaries><Boundary><PntList3D>1 2 3 4 5 6</PntList3D></Boundary></Boundaries>',
+    ));
+    const point = findLandXmlSourceRecord(parsed, 'landxml:surface:1:point:10');
+    assert.equal(point?.kind, 'point');
+    const face = findLandXmlSourceRecord(parsed, 'landxml:surface:1:face:1');
+    assert.deepEqual(face?.kind === 'face' ? face.pointIds : null, ['10', '20', '30']);
+    const boundary = findLandXmlSourceRecord(parsed, 'landxml:surface:1:boundary:1');
+    assert.equal(boundary?.kind, 'boundary');
+  });
+
+  it('loads a geometry-free source without fabricating IFC entities (#5042)', async () => {
+    const sourceOnly = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Surfaces><Surface name="Survey volume"><Definition surfType="VOLUME"/></Surface></Surfaces>
+    </LandXML>`;
+    const result = await parseViewer(bytes(sourceOnly));
+    assert.equal(result.dataStore.entityCount, 0);
+    assert.equal(result.geometryResult.meshes.length, 0);
+    assert.equal(result.semanticDocument.surfaces[0].renderState, 'preserved_only');
+  });
+
+  it('derives a finite frame for very large finite source overlays (#5042)', async () => {
+    const sourceOnly = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+      <Surfaces><Surface name="Extreme"><Definition surfType="VOLUME"/><SourceData>
+        <Boundaries><Boundary><PntList3D>1e308 1e308 1e308 1e308 1e308 1e308</PntList3D></Boundary></Boundaries>
+      </SourceData></Surface></Surfaces>
+    </LandXML>`;
+    const result = await parseViewer(bytes(sourceOnly));
+    const frame = result.geometryResult.coordinateInfo;
+    assert.equal(result.semanticDocument.surfaces[0].boundaries.length, 1);
+    assert.equal(frame.originShift.x, 1e308);
+    assert.ok(Object.values(frame.originShift).every(Number.isFinite));
+    assert.ok(Object.values(frame.shiftedBounds.min).every(Number.isFinite));
+    assert.ok(Object.values(frame.shiftedBounds.max).every(Number.isFinite));
+  });
+
+  it('preserves an empty or fully hidden TIN without requiring render units (#5042)', async () => {
+    const hiddenWithoutUnits = LANDXML
+      .replace(/\s*<Units>[\s\S]*?<\/Units>/, '')
+      .replace('<F>10 20 30</F>', '<F i="true">10 20 30</F>');
+    const result = await parseViewer(bytes(hiddenWithoutUnits));
+    assert.equal(result.geometryResult.meshes.length, 0);
+    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].hiddenFaces, 2);
+    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].renderedFaces, 0);
   });
 
   it('produces a rebased Y-up render mesh without losing survey coordinates', async () => {
@@ -215,6 +269,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010, 'skipped components do not stretch the frame bounds');
     assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) whose full Y-up bounds exceed 1000 km/.test(warning)));
+    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].droppedReframeFaces, 1);
   });
 
   it('removes the survey translation before GPU upload and retains it as frame metadata', async () => {
@@ -293,7 +348,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Math.abs(info.max.y - (102 * 0.3048)) < 1e-5);
   });
 
-  it('uses the declared linear unit for elevations when elevationUnit is omitted', async () => {
+  it('uses the LandXML meter default when elevationUnit is omitted (#5042)', async () => {
     const imperial = LANDXML
       .replace('<Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter"\n      temperatureUnit="celsius" pressureUnit="milliBars" elevationUnit="meter"/>',
         '<Imperial areaUnit="squareFoot" linearUnit="foot" volumeUnit="cubicFeet" temperatureUnit="fahrenheit" pressureUnit="inchHG"/>')
@@ -302,7 +357,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       .replace('<P id="30">5000010 2600000 102</P>', '<P id="30">3 0 6</P>');
     const result = await parseViewer(bytes(imperial));
     const info = result.geometryResult.coordinateInfo.originalBounds;
-    assert.ok(Math.abs(info.max.y - 1.8288) < 1e-12, 'elevation uses the same foot scale as X/Z');
+    assert.ok(Math.abs(info.max.y - 6) < 1e-12, 'elevation uses the schema-default meter scale');
   });
 
   it('preserves the stable Rust error code for unsupported units', async () => {
@@ -325,7 +380,8 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       .replace('<P id="10">', '<P id="+0010">')
       .replace('<F>10 20 30</F>', '<F>00010 +20 030</F>'));
     assert.equal(parsed.surfaces[0].points[0].id, '10');
-    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30'], ['20', '40', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faceVisibility, [true, false]);
   });
 
   it('ignores extension elements that reuse LandXML local names', async () => {
@@ -336,7 +392,9 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       </ext:Surface></Surfaces>`,
     );
     const parsed = await parseDocument(withExtensionSurface);
-    assert.deepEqual(parsed.surfaces.map((surface) => surface.name), ['Existing Ground']);
+    assert.deepEqual(parsed.surfaces.map((surface) => surface.name), ['Existing Ground', 'Unsupported Grid']);
+    assert.equal(parsed.surfaces.some((surface) => surface.name === 'Not terrain'), false);
+    assert.equal(parsed.extensions.some((extension) => extension.namespace === 'urn:vendor-extension' && extension.localName === 'Surface'), true);
   });
 
   it('preserves the stable namespace diagnostic', async () => {

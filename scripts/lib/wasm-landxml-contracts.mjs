@@ -9,7 +9,12 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
   <Units><Metric linearUnit="meter"/></Units>
   <Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts>
     <P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P>
-  </Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>
+  </Pnts><Faces><F>1 2 3</F></Faces><Breaklines><Breakline><PntList3D>0 0 0 1 1 1</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces>
+</LandXML>`;
+
+const XML_WITHOUT_UNITS = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Surfaces><Surface name="preserved"><Definition surfType="VOLUME"/></Surface></Surfaces>
 </LandXML>`;
 
 function utf16Le(text) {
@@ -29,8 +34,17 @@ export function runLandXmlContracts(api, test) {
     const utf8 = api.parseLandXmlTinBytes(new TextEncoder().encode(XML));
     const utf16 = api.parseLandXmlTinBytes(utf16Le(XML.replace('UTF-8', 'UTF-16')));
     assert.equal(utf8.surfaces[0].name, 'grade');
+    assert.deepEqual(utf8.surfaces[0].properties, { name: 'grade' });
+    assert.deepEqual(utf8.surfaces[0].definition_properties, { surfType: 'TIN' });
     assert.deepEqual(utf8.surfaces[0].faces, [['1', '2', '3']]);
+    assert.equal(utf8.surfaces[0].breaklines[0].name, undefined, 'serde_wasm_bindgen omits absent Option fields');
+    assert.equal(utf8.surfaces[0].breaklines[0].kind, undefined, 'the TypeScript declaration must not promise null');
     assert.equal(utf16.surfaces[0].name, 'grade');
+  });
+
+  test('LandXML raw-byte parser omits optional Units rather than returning null', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(XML_WITHOUT_UNITS));
+    assert.equal(document.units, undefined);
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

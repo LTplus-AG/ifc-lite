@@ -25,7 +25,7 @@
  * zero-copy: it is shared, never cloned or transferred.
  */
 
-import { GeometryProcessor, type RtcFrame } from '@ifc-lite/geometry';
+import type { GeometryProcessor, RtcFrame } from '@ifc-lite/geometry';
 import { sourceBytesFromTransferable, type IfcSourceTransfer } from '@ifc-lite/parser';
 import { buildParseReply, buildProfilesReply, buildSymbolicReply } from './reply.js';
 import {
@@ -173,11 +173,18 @@ let queue: Promise<void> = Promise.resolve();
  * recover from cheaply: the processor failing to be constructed at all.
  * Production always uses the default.
  */
-let createProcessor = (): GeometryProcessor => new GeometryProcessor();
+type ProcessorFactory = () => GeometryProcessor | Promise<GeometryProcessor>;
+
+const createDefaultProcessor: ProcessorFactory = async () => {
+  const { GeometryProcessor } = await import('@ifc-lite/geometry');
+  return new GeometryProcessor();
+};
+
+let createProcessor: ProcessorFactory = createDefaultProcessor;
 
 /** Tests only. Pass null to restore the real factory. */
-export function __setProcessorFactoryForTest(factory: (() => GeometryProcessor) | null): void {
-  createProcessor = factory ?? ((): GeometryProcessor => new GeometryProcessor());
+export function __setProcessorFactoryForTest(factory: ProcessorFactory | null): void {
+  createProcessor = factory ?? createDefaultProcessor;
 }
 
 export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<void> {
@@ -195,7 +202,7 @@ export async function handle(event: MessageEvent<OverlayParseRequest>): Promise<
     // whole point of posting an envelope: the worker is disposable and its
     // memory goes away with it, whereas the main thread's does not.
     const source = sourceBytesFromTransferable(sourceTransfer).materialize();
-    processor = createProcessor();
+    processor = await createProcessor();
     await processor.init();
     // Every buffer below is a fresh JS-heap allocation, never a view into
     // linear memory, so transferring is safe and saves a structured clone.

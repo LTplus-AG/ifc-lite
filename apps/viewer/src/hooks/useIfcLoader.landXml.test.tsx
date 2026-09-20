@@ -17,6 +17,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { isSupportedModelFile } from '@/services/supported-model-files';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { useIfcLoader } from './useIfcLoader.js';
 
 function landXmlFile(name: string, offsets: number | readonly number[]): File {
@@ -33,6 +34,17 @@ function landXmlFile(name: string, offsets: number | readonly number[]): File {
         </Pnts>
         <Faces><F>1 2 3</F></Faces>
       </Definition></Surface>`).join('')}</Surfaces>
+    </LandXML>`;
+  return new File([xml], name, { type: 'application/xml' });
+}
+
+function overlayOnlyLandXmlFile(name: string, offset: number): File {
+  const xml = `<?xml version="1.0"?>
+    <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+      <Surfaces><Surface name="Survey breakline"><Definition surfType="VOLUME"><Breaklines>
+        <Breakline><PntList3D>${offset} ${offset} 0 ${offset + 10} ${offset + 10} 0</PntList3D></Breakline>
+      </Breaklines></Definition></Surface></Surfaces>
     </LandXML>`;
   return new File([xml], name, { type: 'application/xml' });
 }
@@ -66,6 +78,26 @@ afterEach(async () => {
 });
 
 describe('useIfcLoader LandXML route (#4937)', () => {
+  for (const [overlayFirst, name] of [[true, 'overlay first'], [false, 'TIN first']] as const) {
+    it(`shares an authored frame with a geometry-free LandXML overlay when ${name} (#5042)`, async () => {
+      const overlay = overlayOnlyLandXmlFile('survey-lines.xml', 2_600_000);
+      const tin = landXmlFile('terrain.xml', 2_600_000);
+      const first = overlayFirst ? overlay : tin;
+      const second = overlayFirst ? tin : overlay;
+      await act(async () => hookApi!.loadFile(first, { kind: 'primary' }));
+      const firstModel = Array.from(useViewerStore.getState().models.values())[0];
+      assert.ok(firstModel?.geometryResult);
+      await act(async () => hookApi!.loadFile(second, { kind: 'federated', modelId: 'second-landxml' }));
+      const secondModel = useViewerStore.getState().models.get('second-landxml');
+      assert.ok(secondModel?.geometryResult);
+      assert.deepEqual(
+        totalYupOffset(secondModel.geometryResult.coordinateInfo),
+        totalYupOffset(firstModel.geometryResult.coordinateInfo),
+        'the geometry-free overlay and terrain use the same source-derived render frame',
+      );
+    });
+  }
+
   it('loads and federates TIN meshes through the canonical model finalizer', async () => {
     const primary = landXmlFile('terrain.xml', 800_000_000);
     assert.equal(isSupportedModelFile(primary), true, '.xml must be offered by every canonical picker');
@@ -144,6 +176,12 @@ describe('useIfcLoader LandXML route (#4937)', () => {
       'discarded bounds must not survive in the registered model metadata');
     assert.ok(model.geometryResult.coordinateInfo.shiftedBounds.max.x < 1_000_000,
       'the camera-fit bounds must describe only the retained component');
+    const retainedCounts = model.landXmlDocument?.rendering.surfaceCounts;
+    assert.ok(retainedCounts);
+    assert.deepEqual(retainedCounts.map((counts) => counts.renderedFaces), [1, 0],
+      'source inspection counts describe only mesh components that survived federation framing');
+    assert.deepEqual(retainedCounts.map((counts) => counts.droppedReframeFaces), [0, 1],
+      'the dropped source face remains accounted for as a frame rejection, not rendered geometry');
     assert.ok(messages.some((warning) => /Skipped 1 LandXML surface component.*full Y-up bounds/.test(warning)));
   });
 });

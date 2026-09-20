@@ -40,12 +40,7 @@ import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
-import {
-  unionEntityBounds,
-  getThemeClearColor,
-  hasPendingMeasurementState,
-  type BoundingBox3D,
-} from '../../utils/viewportUtils.js';
+import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
@@ -68,6 +63,8 @@ import {
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
+import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
+import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
@@ -200,6 +197,7 @@ export function Viewport({
     }
 
     const globalId = pickResult.expressId;
+    if (selectLandXmlViewportPick(currentState, globalId)) return;
     const resolvedRef = resolveEntityRef(globalId);
 
     // Set globalId for renderer (highlighting uses globalIds directly)
@@ -1514,6 +1512,8 @@ export function Viewport({
     // underlay on failure instead of drawing from a half-uploaded buffer.
     uploadDxfLines3DGuarded(renderer, dxfLines3D);
   }, [dxfLines3D, isInitialized]);
+
+  useLandXmlRendererOverlay(rendererRef, isInitialized);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput

@@ -56,4 +56,7 @@ export const exportDialogEn = {
   'exportDialog.cancelButton': 'Cancel',
   'exportDialog.exportingLabel': 'Exporting...',
   'exportDialog.exportButton': 'Export',
+  'exportDialog.landXml.title': 'LandXML cannot be exported as IFC',
+  'exportDialog.landXml.description': 'Its terrain records remain in their original source format; no IFC entities are synthesized for export.',
+  'exportDialog.landXml.error': 'LandXML is source geometry, not IFC. Export the original LandXML file instead.',
 } as const satisfies Record<string, TranslationValue>;

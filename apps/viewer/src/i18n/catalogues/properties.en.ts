@@ -227,6 +227,7 @@ export const propertiesEn = {
 
   // ModelMetadataPanel
   'properties.modelMetadata.ifcModel': 'IFC Model',
+  'properties.modelMetadata.sourceModel': 'Source Model',
   'properties.modelMetadata.fileInformationHeading': 'File Information',
   'properties.modelMetadata.fileSize': 'File Size',
   'properties.modelMetadata.loadedAt': 'Loaded At',
@@ -401,7 +402,6 @@ export const propertiesEn = {
     'Off by default: OrthogonalHeight is treated as orthometric and the geoid undulation is added so the model is not buried under terrain.',
   'properties.georef.setOrthogonalHeightTooltip': 'Set OrthogonalHeight to sampled terrain height ({value} m)',
   'properties.georef.setOrthogonalHeightTooltipViaSource': 'Set OrthogonalHeight to sampled terrain height ({value} m via {source})',
-
   // PropertiesPanel: empty state
   'properties.panel.title': 'Inspector',
   'properties.panel.emptyTitle': 'No Selection',

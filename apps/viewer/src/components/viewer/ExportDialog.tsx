@@ -74,6 +74,7 @@ import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
+import { listExportModels, resolveExportModel } from './export-model-selection';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -156,27 +157,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const isIfc5 = schema === 'IFC5';
 
   const exportModelLabels = useMemo(() => modelDisplayLabels(models, 32), [models]);
-  // Get list of models with data stores - includes both federated models and legacy single-model
-  const modelList = useMemo(() => {
-    const list = Array.from(models.values()).map((m) => ({
-      id: m.id,
-      name: m.name,
-      isDirty: dirtyModels.has(m.id),
-      schemaVersion: m.schemaVersion,
-    }));
-
-    // If no models in Map but legacy data exists, add a synthetic entry
-    if (list.length === 0 && legacyIfcDataStore) {
-      list.push({
-        id: '__legacy__',
-        name: 'Current Model',
-        isDirty: false,
-        schemaVersion: legacyIfcDataStore.schemaVersion,
-      });
-    }
-
-    return list;
-  }, [models, dirtyModels, legacyIfcDataStore]);
+  const modelList = useMemo(
+    () => listExportModels(models, dirtyModels, legacyIfcDataStore),
+    [models, dirtyModels, legacyIfcDataStore],
+  );
 
   // Keep a removed selection from stranding the dialog. The open handler below
   // deliberately re-seeds from the active model each time: authoring commands
@@ -192,23 +176,17 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     setOpen(next);
   }, [modelList, activeModelId]);
 
-  // Get selected model's data - supports both federated and legacy mode
-  const selectedModel = useMemo(() => {
-    if (selectedModelId === '__legacy__' && legacyIfcDataStore && legacyGeometryResult) {
-      // Return a synthetic FederatedModel-like object for legacy mode
-      return {
-        id: '__legacy__',
-        name: 'Current Model',
-        ifcDataStore: legacyIfcDataStore,
-        geometryResult: legacyGeometryResult,
-        visible: true,
-        collapsed: false,
-        schemaVersion: legacyIfcDataStore.schemaVersion,
-      };
-    }
-    return models.get(selectedModelId);
-  }, [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult]);
+  const selectedModel = useMemo(
+    () => resolveExportModel(models, selectedModelId, legacyIfcDataStore, legacyGeometryResult),
+    [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult],
+  );
   const selectedRoomView = selectedModelId ? getMutationView(selectedModelId) ?? undefined : undefined;
+  const selectedLandXml = selectedModel?.sourceSchema === 'LandXML-1.2';
+  const mergedLandXml = exportScope === 'merged'
+    && Array.from(models.values()).some((model) => model.sourceSchema === 'LandXML-1.2');
+  const canExportIfc = !selectedLandXml && !mergedLandXml;
+  // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
+  const exportAllowed = canExportIfc || (changesOnly && !isIfc5);
   const portableRoomStore = selectedModel?.ifcDataStore
     && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
     ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore
@@ -353,6 +331,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const handleExport = useCallback(async () => {
     if (!schema) return;
     if (exportScope === 'single' && !selectedModel) return;
+    if (!exportAllowed) {
+      const message = t('exportDialog.landXml.error');
+      setExportResult({ success: false, message });
+      toast.error(message);
+      return;
+    }
 
     // Action log: content-free emit so the miner can spot
     // "load → export" patterns. Format label only — no path / data.
@@ -603,7 +587,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -673,7 +657,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
                   const displayName = exportModelLabels.get(m.id) ?? m.name;
                   return (
                   <SelectItem key={m.id} value={m.id} title={m.name}>
-                    {displayName}{m.isDirty ? ' *' : ''}{m.schemaVersion ? ` (${m.schemaVersion})` : ''}
+                    {displayName}{m.isDirty ? ' *' : ''}{m.sourceSchema ? ` (${m.sourceSchema})` : m.schemaVersion ? ` (${m.schemaVersion})` : ''}
                   </SelectItem>
                   );
                 })}
@@ -683,6 +667,13 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           )}
 
           {/* Schema selector — this drives the output format */}
+          {!exportAllowed && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{t('exportDialog.landXml.title')}</AlertTitle>
+              <AlertDescription>{t('exportDialog.landXml.description')}</AlertDescription>
+            </Alert>
+          )}
           <div className="flex items-center gap-4">
             <Label className="w-32">{t('exportDialog.schemaLabel')}</Label>
             <Select value={schema} onValueChange={(v) => setSchema(v as SchemaVersion)}>
@@ -828,7 +819,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             {t('exportDialog.cancelButton')}
           </Button>
-          <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema}>
+          <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !exportAllowed}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

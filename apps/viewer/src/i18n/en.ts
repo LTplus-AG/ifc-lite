@@ -37,6 +37,7 @@ import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
 import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
+import { landXmlEn } from './catalogues/landxml.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
@@ -75,6 +76,7 @@ export const en = {
   ...addElementEn,
   ...annotationsEn,
   ...anonymizedExportEn,
+  ...exportDialogEn,
   ...bulkPropertyEditorEn,
   ...cesiumGeoEn,
   ...mergeLayersBannerEn,
@@ -110,6 +112,7 @@ export const en = {
   ...keyboardShortcutsEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...landXmlEn,
   ...structuralPropertiesEn,
   ...appearancePanelEn,
   ...appearancePickersEn,
@@ -129,7 +132,6 @@ export const en = {
   ...searchModalEn,
   ...searchFiltersEn,
   ...repositionPanelEn,
-  ...exportDialogEn,
   ...webgpuTroubleshootingEn,
   ...scriptPanelEn,
   ...zonesPanelEn,

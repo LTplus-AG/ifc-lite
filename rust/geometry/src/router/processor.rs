@@ -91,3 +91,103 @@ pub trait GeometryProcessor {
     /// above (nothing buffered, nothing to discard).
     fn truncate_bool_failures_to(&self, _since: usize) {}
 }
+
+// The RTC-hook regression lives beside the trait on purpose: a test-only
+// override implementing `process_in_rtc_frame` cannot compile against a tree
+// where the hook does not exist, so a whole-file production revert (the CI
+// revert oracle) must take this test with it rather than break the build.
+#[cfg(test)]
+mod rtc_hook_tests {
+    use super::GeometryProcessor;
+    use crate::router::structural_tests::surface_member;
+    use crate::router::GeometryRouter;
+    use crate::{Mesh, Result, TessellationQuality};
+    use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+
+    /// An override that reads its coordinates in f64 and rebases through the
+    /// router's RTC hook, so sub-ULP detail at national-grid magnitude survives.
+    struct RtcAwareFace;
+
+    impl GeometryProcessor for RtcAwareFace {
+        fn process(
+            &self,
+            entity: &DecodedEntity,
+            decoder: &mut EntityDecoder,
+            schema: &IfcSchema,
+            quality: TessellationQuality,
+        ) -> Result<Mesh> {
+            crate::router::structural_tests::RegisteredFace
+                .process(entity, decoder, schema, quality)
+        }
+
+        fn process_in_rtc_frame(
+            &self,
+            _entity: &DecodedEntity,
+            _decoder: &mut EntityDecoder,
+            _schema: &IfcSchema,
+            _quality: TessellationQuality,
+            rtc_file_units: (f64, f64, f64),
+        ) -> Option<Result<Mesh>> {
+            // A 0.125 m triangle at (5,000,000 + 0.0625, 5,000,000): only
+            // representable once the offset is removed in f64.
+            let corners: [[f64; 3]; 3] = [
+                [5_000_000.062_5, 5_000_000.0, 0.0],
+                [5_000_000.187_5, 5_000_000.0, 0.0],
+                [5_000_000.062_5, 5_000_000.125, 0.0],
+            ];
+            let mut mesh = Mesh::new();
+            for corner in corners {
+                mesh.positions.push((corner[0] - rtc_file_units.0) as f32);
+                mesh.positions.push((corner[1] - rtc_file_units.1) as f32);
+                mesh.positions.push((corner[2] - rtc_file_units.2) as f32);
+            }
+            mesh.indices = vec![0, 1, 2];
+            mesh.rtc_applied = true;
+            Some(Ok(mesh))
+        }
+
+        fn supported_types(&self) -> Vec<IfcType> {
+            vec![IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace]
+        }
+    }
+
+    #[test]
+    fn registered_face_override_rebases_in_f64_through_the_rtc_hook() {
+        let source = format!(
+        "{}{}",
+        surface_member(true, false)
+            .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+            .replace("(10.,0.,0.)", "(5000001.,5000000.,0.)")
+            .replace("(10.,10.,0.)", "(5000001.,5000001.,0.)")
+            .replace("(0.,10.,0.)", "(5000000.,5000001.,0.)")
+            .replace("$,$,#17", "$,#33,#17"),
+        "#30=IFCCARTESIANPOINT((0.,0.,0.));#31=IFCDIRECTION((0.,0.,1.));         #32=IFCDIRECTION((0.,1.,0.));#34=IFCAXIS2PLACEMENT3D(#30,#31,#32);         #33=IFCLOCALPLACEMENT($,#34);"
+    );
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(18).unwrap();
+        let mut router = GeometryRouter::with_rtc((-5_000_000.0, 5_000_000.0, 0.0));
+        router.register(Box::new(RtcAwareFace));
+        let mesh = router.process_element(&entity, &mut decoder).unwrap();
+
+        // The narrowing to f32 happened AFTER the rebase, so the 0.125 m extent
+        // survives (a plain `process` override would have collapsed all three
+        // corners onto 5,000,000.0 and the router could only subtract from that).
+        let xs: Vec<f32> = mesh.positions.chunks_exact(3).map(|p| p[0]).collect();
+        let ys: Vec<f32> = mesh.positions.chunks_exact(3).map(|p| p[1]).collect();
+        assert!(
+            (xs.iter().cloned().fold(f32::MIN, f32::max)
+                - xs.iter().cloned().fold(f32::MAX, f32::min)
+                - 0.125)
+                .abs()
+                < 1e-6
+                || (ys.iter().cloned().fold(f32::MIN, f32::max)
+                    - ys.iter().cloned().fold(f32::MAX, f32::min)
+                    - 0.125)
+                    .abs()
+                    < 1e-6,
+            "sub-ULP extent must survive an RTC-aware override: {:?}",
+            mesh.positions
+        );
+        assert_eq!(mesh.indices, vec![0, 1, 2]);
+    }
+}

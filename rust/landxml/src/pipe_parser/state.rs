@@ -29,6 +29,12 @@ pub(super) struct NetworkBuilder {
     pub(super) pipes: Vec<PipeBuilder>,
     pub(super) structure_ordinal: usize,
     pub(super) pipe_ordinal: usize,
+    pub(super) structure_collection: usize,
+    pub(super) pipe_collection: usize,
+    pub(super) structures_in_collection: usize,
+    pub(super) pipes_in_collection: usize,
+    pub(super) saw_structs: bool,
+    pub(super) saw_pipes: bool,
 }
 
 #[derive(Clone)]
@@ -46,6 +52,7 @@ pub(super) struct StructureBuilder {
     pub(super) source_path: String,
     pub(super) name: Option<String>,
     pub(super) properties: LandXmlPipeProperties,
+    pub(super) units: Option<RawUnits>,
     pub(super) center: Option<PositionInput>,
     pub(super) part: Option<PartInput>,
     pub(super) inverts: Vec<InvertInput>,
@@ -61,6 +68,7 @@ pub(super) struct PipeBuilder {
     pub(super) start_ref: Option<String>,
     pub(super) end_ref: Option<String>,
     pub(super) properties: LandXmlPipeProperties,
+    pub(super) units: Option<RawUnits>,
     pub(super) part: Option<PartInput>,
     pub(super) center: Option<PositionInput>,
     pub(super) flow: Option<FlowInput>,

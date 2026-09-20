@@ -139,6 +139,8 @@ pub struct LandXmlPipeStructure {
     pub source_path: String,
     pub name: String,
     pub properties: LandXmlPipeProperties,
+    /// Units effective at this record's exact `Structs` collection position.
+    pub units: LandXmlPipeUnits,
     pub center: LandXmlPipePosition,
     pub part: LandXmlStructurePart,
     pub rim_elevation: Option<LandXmlPipeMeasure>,
@@ -172,6 +174,8 @@ pub struct LandXmlPipe {
     pub source_path: String,
     pub name: String,
     pub properties: LandXmlPipeProperties,
+    /// Units effective at this record's exact `Pipes` collection position.
+    pub units: LandXmlPipeUnits,
     pub connectivity: LandXmlPipeConnectivity,
     pub part: LandXmlPipePart,
     pub geometry: LandXmlPipeGeometry,

@@ -396,3 +396,45 @@ fn issue_5047_distinguishes_flow_records_and_refuses_duplicates() {
         .iter()
         .any(|refusal| refusal.message.contains("StructFlow requires")));
 }
+
+#[test]
+fn issue_5047_scopes_repeated_collections_units_and_source_paths() {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0</Center><CircStruct diameter="1"/></Struct></Structs><Structs><Units><Imperial linearUnit="foot"/></Units><Struct name="B"><Center>0 1</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P-1" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes><Pipes><Units><Imperial linearUnit="foot"/></Units><Pipe name="P-2" refStart="A" refEnd="B" length="1"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>"#
+    );
+    let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("repeated collections");
+    let network = &parsed.networks[0];
+    assert_eq!(network.structures[0].units.linear_unit, "meter");
+    assert_eq!(network.structures[1].units.linear_unit, "foot");
+    assert_eq!(network.pipes[0].units.linear_unit, "meter");
+    assert_eq!(network.pipes[1].units.linear_unit, "foot");
+    assert_eq!(
+        network.structures[0].source_path,
+        "LandXML/PipeNetworks[1]/PipeNetwork[1]/Structs[1]/Struct[1]"
+    );
+    assert_eq!(
+        network.structures[1].source_path,
+        "LandXML/PipeNetworks[1]/PipeNetwork[1]/Structs[2]/Struct[1]"
+    );
+    assert_eq!(
+        network.pipes[1].source_path,
+        "LandXML/PipeNetworks[1]/PipeNetwork[1]/Pipes[2]/Pipe[1]"
+    );
+    assert_eq!(
+        network.pipes[1]
+            .length
+            .as_ref()
+            .map(|measure| measure.meters),
+        Some(0.3048)
+    );
+
+    let missing = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs/></PipeNetwork></PipeNetworks></LandXML>"#
+    );
+    let parsed = parse_landxml_pipe_networks(missing.as_bytes()).expect("network refusal");
+    assert!(parsed.networks.is_empty());
+    assert!(parsed
+        .refusals
+        .iter()
+        .any(|refusal| refusal.message.contains("requires Structs and Pipes")));
+}

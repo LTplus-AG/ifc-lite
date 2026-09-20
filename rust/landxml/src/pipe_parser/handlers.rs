@@ -10,7 +10,7 @@ use crate::{
 use super::{
     state::{
         CaptureOwner, FlowInput, FlowKind, InvertInput, PartInput, PipeBuilder, PositionCapture,
-        PositionInput, RawUnits, StructureBuilder,
+        PositionInput, StructureBuilder,
     },
     PipeParser,
 };
@@ -73,12 +73,18 @@ impl PipeParser<'_> {
         let network = self.network.as_mut().expect("structure path has network");
         network.structure_ordinal += 1;
         let ordinal = network.structure_ordinal;
-        let source_path = format!("{}/Structs[1]/Struct[{ordinal}]", network.source_path);
+        network.structures_in_collection += 1;
+        let collection = network.structure_collection;
+        let source_path = format!(
+            "{}/Structs[{collection}]/Struct[{}]",
+            network.source_path, network.structures_in_collection
+        );
         self.structure = Some(StructureBuilder {
             source_id: LandXmlSourceId(format!("{}:structure:{ordinal}", network.source_id.0)),
             source_path,
             name: attr(attributes, "name").map(str::to_owned),
             properties,
+            units: network.structure_units.clone(),
             center: None,
             part: None,
             inverts: Vec::new(),
@@ -98,7 +104,12 @@ impl PipeParser<'_> {
         let network = self.network.as_mut().expect("pipe path has network");
         network.pipe_ordinal += 1;
         let ordinal = network.pipe_ordinal;
-        let source_path = format!("{}/Pipes[1]/Pipe[{ordinal}]", network.source_path);
+        network.pipes_in_collection += 1;
+        let collection = network.pipe_collection;
+        let source_path = format!(
+            "{}/Pipes[{collection}]/Pipe[{}]",
+            network.source_path, network.pipes_in_collection
+        );
         self.pipe = Some(PipeBuilder {
             source_id: LandXmlSourceId(format!("{}:pipe:{ordinal}", network.source_id.0)),
             source_path,
@@ -106,70 +117,12 @@ impl PipeParser<'_> {
             start_ref: attr(attributes, "refStart").map(str::to_owned),
             end_ref: attr(attributes, "refEnd").map(str::to_owned),
             properties,
+            units: network.pipe_units.clone(),
             part: None,
             center: None,
             flow: None,
             invalid_reason: None,
         });
-        Ok(())
-    }
-
-    pub(super) fn record_units(&mut self, properties: LandXmlPipeProperties) -> Result<()> {
-        let units = RawUnits { properties };
-        if self.is_path(&["LandXML", "Units", "Metric"])
-            || self.is_path(&["LandXML", "Units", "Imperial"])
-        {
-            if self.root_units.replace(units).is_some() {
-                return Err(crate::xml::error(
-                    Code::InvalidSemantic,
-                    "LandXML may declare root units only once",
-                ));
-            }
-        } else if self.is_path(&[
-            "LandXML",
-            "PipeNetworks",
-            "PipeNetwork",
-            "Structs",
-            "Units",
-            "Metric",
-        ]) || self.is_path(&[
-            "LandXML",
-            "PipeNetworks",
-            "PipeNetwork",
-            "Structs",
-            "Units",
-            "Imperial",
-        ]) {
-            let network = self.network.as_mut().expect("units path has network");
-            if network.structure_units.replace(units).is_some() {
-                return Err(crate::xml::error(
-                    Code::InvalidSemantic,
-                    "Structs may declare units only once",
-                ));
-            }
-        } else if self.is_path(&[
-            "LandXML",
-            "PipeNetworks",
-            "PipeNetwork",
-            "Pipes",
-            "Units",
-            "Metric",
-        ]) || self.is_path(&[
-            "LandXML",
-            "PipeNetworks",
-            "PipeNetwork",
-            "Pipes",
-            "Units",
-            "Imperial",
-        ]) {
-            let network = self.network.as_mut().expect("units path has network");
-            if network.pipe_units.replace(units).is_some() {
-                return Err(crate::xml::error(
-                    Code::InvalidSemantic,
-                    "Pipes may declare units only once",
-                ));
-            }
-        }
         Ok(())
     }
 

@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use crate::{
     xml::{error, Result},
     LandXmlDiagnosticCode as Code, LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeGeometry,
-    LandXmlPipeInvert, LandXmlPipeNetwork, LandXmlPipeNetworkDocument, LandXmlPipeStructure,
-    LandXmlPipeUnits, LandXmlSourceId,
+    LandXmlPipeInvert, LandXmlPipeNetwork, LandXmlPipeStructure, LandXmlPipeUnits, LandXmlSourceId,
 };
 
 use super::{
@@ -17,7 +16,13 @@ use super::{
     PipeParser,
 };
 
+mod document;
 mod helpers;
+
+type StructureConversion = (
+    Vec<LandXmlPipeStructure>,
+    Vec<(Vec<InvertInput>, LandXmlPipeUnits)>,
+);
 
 impl PipeParser<'_> {
     pub(super) fn finish_network(&mut self, network: super::state::NetworkBuilder) -> Result<()> {
@@ -31,108 +36,67 @@ impl PipeParser<'_> {
             self.refuse(source_id, source_path, "PipeNetwork is missing pipeNetType")?;
             return Ok(());
         };
-        let structure_source_units = network.structure_units.clone().or(self.root_units.clone());
-        let pipe_source_units = network.pipe_units.clone().or(self.root_units.clone());
-        let structure_units =
-            match self.convert_units(structure_source_units.as_ref(), &source_id, &source_path)? {
-                Some(units) => units,
-                None => return Ok(()),
-            };
-        let pipe_units =
-            match self.convert_units(pipe_source_units.as_ref(), &source_id, &source_path)? {
-                Some(units) => units,
-                None => return Ok(()),
-            };
+        if !network.saw_structs || !network.saw_pipes {
+            self.refuse(
+                source_id,
+                source_path,
+                "PipeNetwork requires Structs and Pipes collections",
+            )?;
+            return Ok(());
+        }
+        let root_units = self.root_units.clone();
         let (structures, structure_inputs) =
-            self.convert_structures(network.structures, &structure_units)?;
+            self.convert_structures(network.structures, root_units.as_ref())?;
         let structure_names = helpers::unique_names(
             structures
                 .iter()
                 .map(|structure| (&structure.name, &structure.source_id)),
         );
         let (pipes, pipe_names) =
-            self.convert_pipes(network.pipes, &pipe_units, &structure_names)?;
+            self.convert_pipes(network.pipes, root_units.as_ref(), &structure_names)?;
         let pipe_connectivity = pipes
             .iter()
             .map(|pipe| (pipe.source_id.clone(), pipe.connectivity.clone()))
             .collect::<HashMap<_, _>>();
         let mut structures = structures;
-        for (structure, inverts) in structures.iter_mut().zip(structure_inputs) {
+        for (structure, (inverts, units)) in structures.iter_mut().zip(structure_inputs) {
             structure.inverts = self.convert_inverts(
                 inverts,
-                &structure_units,
+                &units,
                 &pipe_names,
                 &structure.source_id,
                 &pipe_connectivity,
             )?;
         }
+        let structure_units = self.convert_units(
+            network.structure_units.as_ref().or(root_units.as_ref()),
+            &source_id,
+            &source_path,
+        )?;
+        let pipe_units = self.convert_units(
+            network.pipe_units.as_ref().or(root_units.as_ref()),
+            &source_id,
+            &source_path,
+        )?;
         self.networks.push(LandXmlPipeNetwork {
             source_id,
             source_path,
             name,
             pipe_network_type,
             properties: network.properties,
-            structure_units: Some(structure_units),
-            pipe_units: Some(pipe_units),
+            structure_units,
+            pipe_units,
             structures,
             pipes,
         });
         Ok(())
     }
 
-    pub(super) fn finish(mut self) -> Result<LandXmlPipeNetworkDocument> {
-        if self.pipe_networks_seen == 0 {
-            return Err(error(
-                Code::InvalidSemantic,
-                "document contains no PipeNetwork records",
-            ));
-        }
-        for network in std::mem::take(&mut self.pending_networks) {
-            self.check_cancel_and_work(1)?;
-            self.finish_network(network)?;
-        }
-        let root_units = self
-            .root_units
-            .as_ref()
-            .map(convert::units)
-            .transpose()
-            .map_err(|message| error(Code::InvalidSemantic, message))?;
-        Ok(LandXmlPipeNetworkDocument {
-            version: "1.2".to_owned(),
-            root_units,
-            networks: self.networks,
-            refusals: self.refusals,
-        })
-    }
-
-    fn convert_units(
-        &mut self,
-        units: Option<&super::state::RawUnits>,
-        source_id: &LandXmlSourceId,
-        source_path: &str,
-    ) -> Result<Option<LandXmlPipeUnits>> {
-        let Some(units) = units else {
-            self.refuse(
-                source_id.clone(),
-                source_path.to_owned(),
-                "pipe-network element requires Units",
-            )?;
-            return Ok(None);
-        };
-        match convert::units(units) {
-            Ok(units) => Ok(Some(units)),
-            Err(message) => {
-                self.refuse(source_id.clone(), source_path.to_owned(), &message)?;
-                Ok(None)
-            }
-        }
-    }
-
     fn convert_structures(
         &mut self,
         inputs: Vec<StructureBuilder>,
-        units: &LandXmlPipeUnits,
-    ) -> Result<(Vec<LandXmlPipeStructure>, Vec<Vec<InvertInput>>)> {
+        root_units: Option<&super::state::RawUnits>,
+    ) -> Result<StructureConversion> {
         let duplicates =
             helpers::duplicate_names(inputs.iter().filter_map(|input| input.name.as_deref()));
         let mut structures = Vec::new();
@@ -147,9 +111,17 @@ impl PipeParser<'_> {
                 self.refuse(input.source_id, input.source_path, "duplicate Struct name")?;
                 continue;
             }
-            if let Some((structure, pending)) = self.convert_structure(input, units)? {
+            let Some(units) = self.convert_units(
+                input.units.as_ref().or(root_units),
+                &input.source_id,
+                &input.source_path,
+            )?
+            else {
+                continue;
+            };
+            if let Some((structure, pending)) = self.convert_structure(input, &units)? {
                 structures.push(structure);
-                inverts.push(pending);
+                inverts.push((pending, units));
             }
         }
         Ok((structures, inverts))
@@ -194,6 +166,7 @@ impl PipeParser<'_> {
                 source_path: source_path.clone(),
                 name,
                 properties: input.properties,
+                units: units.clone(),
                 center,
                 part,
                 rim_elevation,
@@ -219,7 +192,7 @@ impl PipeParser<'_> {
     fn convert_pipes(
         &mut self,
         inputs: Vec<PipeBuilder>,
-        units: &LandXmlPipeUnits,
+        root_units: Option<&super::state::RawUnits>,
         structures: &HashMap<String, LandXmlSourceId>,
     ) -> Result<(Vec<LandXmlPipe>, HashMap<String, LandXmlSourceId>)> {
         let duplicates =
@@ -233,8 +206,18 @@ impl PipeParser<'_> {
                 .is_some_and(|name| duplicates.contains(name))
             {
                 self.refuse(input.source_id, input.source_path, "duplicate Pipe name")?;
-            } else if let Some(pipe) = self.convert_pipe(input, units, structures)? {
-                pipes.push(pipe);
+            } else {
+                let Some(units) = self.convert_units(
+                    input.units.as_ref().or(root_units),
+                    &input.source_id,
+                    &input.source_path,
+                )?
+                else {
+                    continue;
+                };
+                if let Some(pipe) = self.convert_pipe(input, &units, structures)? {
+                    pipes.push(pipe);
+                }
             }
         }
         let names = helpers::unique_names(pipes.iter().map(|pipe| (&pipe.name, &pipe.source_id)));
@@ -285,6 +268,7 @@ impl PipeParser<'_> {
                 source_path: source_path.clone(),
                 name,
                 properties: input.properties,
+                units: units.clone(),
                 connectivity: LandXmlPipeConnectivity {
                     start_structure_source_id: start,
                     end_structure_source_id: end,

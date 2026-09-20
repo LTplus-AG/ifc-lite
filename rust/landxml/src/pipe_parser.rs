@@ -24,6 +24,7 @@ mod convert;
 mod finalize;
 mod handlers;
 mod state;
+mod units;
 struct PipeParser<'a> {
     limits: &'a LandXmlLimits,
     cancelled: Option<&'a dyn LandXmlCancellation>,
@@ -214,7 +215,27 @@ impl PipeParser<'_> {
                     pipes: Vec::new(),
                     structure_ordinal: 0,
                     pipe_ordinal: 0,
+                    structure_collection: 0,
+                    pipe_collection: 0,
+                    structures_in_collection: 0,
+                    pipes_in_collection: 0,
+                    saw_structs: false,
+                    saw_pipes: false,
                 });
+            }
+            "Structs" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs"]) => {
+                let network = self.network.as_mut().expect("Structs has network");
+                network.structure_collection += 1;
+                network.structures_in_collection = 0;
+                network.structure_units = None;
+                network.saw_structs = true;
+            }
+            "Pipes" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes"]) => {
+                let network = self.network.as_mut().expect("Pipes has network");
+                network.pipe_collection += 1;
+                network.pipes_in_collection = 0;
+                network.pipe_units = None;
+                network.saw_pipes = true;
             }
             "Struct"
                 if self.is_path(&[

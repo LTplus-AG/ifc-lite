@@ -22,6 +22,8 @@ import { lookupEpsgByCode } from '@ifc-lite/data';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { ifcToViewerAxes } from './coordinate-frame';
+import { wellKnownCrsCode } from './well-known-crs';
+import { isGeographicProj4, utmProj4String } from './proj4-utils';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { PRECISION_GRIDS, resolvePrecisionDef } from './precision-grids';
@@ -62,84 +64,6 @@ function extractEpsgCode(crs: ProjectedCRS): string | null {
  * national grid; covering the common ones lets ifc-lite resolve a projection
  * for files that omit the "EPSG:" prefix entirely.
  */
-const WELL_KNOWN_CRS: Record<string, string> = {
-  // Global / generic
-  'wgs 84': '4326',
-  'wgs84': '4326',
-  'wgs-84': '4326',
-  'nad83': '4269',
-  'nad27': '4267',
-  'etrs89': '4258',
-  'gcs_wgs_1984': '4326',        // ArcGIS / Revit export alias
-  'gcs_north_american_1983': '4269',
-
-  // Netherlands — Rijksdriehoeksmeting (RD New, EPSG:28992)
-  'rd': '28992',
-  'rd new': '28992',
-  'amersfoort / rd new': '28992',
-  'amersfoort rd new': '28992',
-  'stelsel van de rijksdriehoeksmeting': '28992',
-  'rijksdriehoeksmeting': '28992',
-  'nl_rd': '28992',
-  // RD/NAP compound (horizontal RD + vertical NAP)
-  'rd new + nap height': '7415',
-  'amersfoort / rd new + nap height': '7415',
-
-  // United Kingdom — Ordnance Survey GB (BNG, EPSG:27700)
-  'osgb 1936 / british national grid': '27700',
-  'osgb36 / british national grid': '27700',
-  'british national grid': '27700',
-  'bng': '27700',
-
-  // Germany — DHDN / Gauss-Kruger zones + ETRS89 / UTM (most common)
-  'dhdn / gauss-kruger zone 2': '31466',
-  'dhdn / gauss-kruger zone 3': '31467',
-  'dhdn / gauss-kruger zone 4': '31468',
-  'dhdn / gauss-kruger zone 5': '31469',
-  'etrs89 / utm zone 32n': '25832',
-  'etrs89 / utm zone 33n': '25833',
-
-  // Austria — MGI Lambert / Austrian Grid (EPSG:31287)
-  'mgi / austria lambert': '31287',
-  'austria lambert': '31287',
-
-  // Switzerland — CH1903+ / LV95 (EPSG:2056) and legacy LV03 (EPSG:21781)
-  'ch1903+ / lv95': '2056',
-  'lv95': '2056',
-  'ch1903 / lv03': '21781',
-  'lv03': '21781',
-
-  // Belgium — Lambert 2008 (EPSG:3812) and legacy Lambert 72 (EPSG:31370)
-  'belge 1972 / belgian lambert 72': '31370',
-  'belgian lambert 72': '31370',
-  'etrs89 / belgian lambert 2008': '3812',
-
-  // France — RGF93 / Lambert-93 (EPSG:2154)
-  'rgf93 / lambert-93': '2154',
-  'rgf93 v1 / lambert-93': '2154',
-  'lambert-93': '2154',
-  'lambert 93': '2154',
-};
-
-/**
- * Check if a proj4 definition is a geographic (longlat) CRS rather than a projected one.
- * Geographic CRS coordinates are in degrees, not metres.
- */
-function isGeographicProj4(def: string): boolean {
-  return /\+proj=longlat\b/.test(def);
-}
-
-/**
- * Build a proj4 definition string for a UTM zone.
- */
-function utmProj4String(zone: string): string | null {
-  const match = zone.match(/^(\d{1,2})([NS])$/i);
-  if (!match) return null;
-  const zoneNum = parseInt(match[1], 10);
-  const isNorth = match[2].toUpperCase() === 'N';
-  if (zoneNum < 1 || zoneNum > 60) return null;
-  return `+proj=utm +zone=${zoneNum}${isNorth ? '' : ' +south'} +datum=WGS84 +units=m +no_defs`;
-}
 
 /**
  * Datum-keyed +towgs84 approximations for CRSs whose canonical definition
@@ -318,7 +242,12 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
         projDefCache.set(code, precisionDef);
         return precisionDef;
       }
+      // A listed precision grid is a required operation for placement. Its
+      // bundled Helmert may still be useful for a map preview, but is never an
+      // exact cached result and `resolveProjectionId` must refuse it by default.
+      approximateProjectionCodes.add(code);
     } catch (error) {
+      approximateProjectionCodes.add(code);
       console.warn(`[reproject] precision grid resolution failed for EPSG:${code}, falling back`, error);
     }
   }
@@ -339,8 +268,7 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
 
   // 3. Well-known CRS name → EPSG code (handles "WGS 84", "NAD83", "RD New", etc.)
   if (!code) {
-    const normalised = crs.name?.trim().toLowerCase() ?? '';
-    const wellKnownCode = WELL_KNOWN_CRS[normalised];
+    const wellKnownCode = wellKnownCrsCode(crs.name ?? '');
     if (wellKnownCode) {
       code = wellKnownCode;
       if (projDefCache.has(code)) {

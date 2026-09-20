@@ -657,32 +657,7 @@ export interface FederatedModel extends ModelLoadReportFields {
  * a published API is free to fail loudly at the corruption site. Keep the
  * two in step on *bugs*, not on contract.
  */
-export function entityRefToString(ref: EntityRef): string {
-  return `${ref.modelId}:${ref.expressId}`;
-}
-
-/** Parse string back to EntityRef */
-export function stringToEntityRef(str: string): EntityRef {
-  const colonIndex = str.indexOf(':');
-  if (colonIndex === -1) {
-    // Invalid format - return a sentinel value
-    return { modelId: '', expressId: -1 };
-  }
-  const modelId = str.substring(0, colonIndex);
-  const expressId = parseInt(str.substring(colonIndex + 1), 10);
-  // Handle NaN case (malformed expressId)
-  if (Number.isNaN(expressId)) {
-    return { modelId, expressId: -1 };
-  }
-  return { modelId, expressId };
-}
-
-/** Check if two EntityRefs are equal */
-export function entityRefEquals(a: EntityRef | null, b: EntityRef | null): boolean {
-  if (a === null && b === null) return true;
-  if (a === null || b === null) return false;
-  return a.modelId === b.modelId && a.expressId === b.expressId;
-}
+export { entityRefEquals, entityRefToString, stringToEntityRef } from './entity-ref.js';
 
 /**
  * Type guard to check if a data store has IFC5 schema version.

@@ -13,10 +13,12 @@ import {
 
 describe('non-IFC source spatial metadata (#5048)', () => {
   it('accepts only explicit LandXML CoordinateSystem EPSG declarations', () => {
-    const declared = spatialMetadataFromLandXml('<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"><CoordinateSystem horizontalDatum="EPSG:2056" verticalDatum="EPSG:5729"/></LandXML>');
+    const declared = spatialMetadataFromLandXml({ coordinateSystem: { horizontalDatum: 'EPSG:2056', verticalDatum: 'EPSG:5729' } });
     assert.deepEqual(declared, { format: 'landxml', horizontalId: 'EPSG:2056', verticalId: 'EPSG:5729', provenance: 'LandXML CoordinateSystem' });
-    assert.equal(spatialMetadataFromLandXml('<LandXML/>').horizontalId, undefined);
-    assert.equal(spatialMetadataFromLandXml('<LandXML xmlns="urn:vendor"><CoordinateSystem horizontalDatum="EPSG:2056" verticalDatum="EPSG:5729"/></LandXML>').horizontalId, undefined);
+    assert.equal(spatialMetadataFromLandXml({}).horizontalId, undefined);
+    // Namespace filtering is performed by the bounded Rust parser; this
+    // adapter consumes only its structured CoordinateSystem result.
+    assert.equal(spatialMetadataFromLandXml({ coordinateSystem: {} }).horizontalId, undefined);
   });
 
   it('reads an E57 coordinateMetadata WKT and leaves absent metadata unknown', () => {
@@ -40,6 +42,28 @@ describe('non-IFC source spatial metadata (#5048)', () => {
     assert.equal(declared.horizontalId, 'EPSG:32632');
     assert.equal(declared.verticalId, 'EPSG:5773');
     assert.equal(spatialMetadataFromLasVlrs(new Uint8Array(227), 'laz').horizontalId, undefined);
+  });
+
+  it('uses a CRS node authority rather than nested base IDs and gives WKT2 precedence (#5048)', () => {
+    const bytes = new Uint8Array(1024);
+    const view = new DataView(bytes.buffer);
+    view.setUint16(94, 227, true);
+    view.setUint32(100, 2, true);
+    const encoder = new TextEncoder();
+    const write = (offset: number, id: number, value: string): number => {
+      bytes.set(encoder.encode('LASF_Projection'), offset + 2);
+      view.setUint16(offset + 18, id, true);
+      const encoded = encoder.encode(value);
+      view.setUint16(offset + 20, encoded.length, true);
+      bytes.set(encoded, offset + 54);
+      return offset + 54 + encoded.length;
+    };
+    const next = write(227, 2111, 'PROJCS["old",AUTHORITY["EPSG","2056"]]');
+    write(next, 2112, 'COMPOUNDCRS["x",PROJCRS["new",BASEGEOGCRS["base",ID["EPSG",4326]],ID["EPSG",2056]],VERTCRS["h",ID["EPSG",5729]]]');
+    const declared = spatialMetadataFromLasVlrs(bytes, 'las');
+    assert.equal(declared.horizontalId, 'EPSG:2056');
+    assert.equal(declared.verticalId, 'EPSG:5729');
+    assert.equal(declared.provenance, 'LAS VLR 2112');
   });
 
   it('makes missing vertical metadata explicit-unknown so federation cannot carry height through', () => {

@@ -19,7 +19,6 @@ import {
 import {
   localViewerToProjected,
   projectedToLocalViewer,
-  resolveSpatialPlacement,
   type CoordinateInfo,
   type ModelSpatialReference,
 } from '@ifc-lite/geometry';
@@ -27,6 +26,7 @@ import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
 import { resolveProjectionId } from '../../lib/geo/reproject.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
+import { buildSpatialAlignmentTransform, isIdentitySpatialTransform } from './federationSpatialTransform.js';
 import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import {
   alignEntityWorldAabbs,
@@ -106,33 +106,6 @@ function updateBounds(bounds: ReturnType<typeof emptyBounds>, x: number, y: numb
   return true;
 }
 
-function buildSpatialAlignmentTransform(
-  source: ModelSpatialPlacement,
-  reference: ModelSpatialPlacement,
-): AffineTransform3D | null {
-  const resolved = resolveSpatialPlacement(source.spatialReference, reference.spatialReference, {
-    sourceFrameOffset: totalYupOffset(source.coordinateInfo),
-    targetFrameOffset: totalYupOffset(reference.coordinateInfo),
-  });
-  return resolved.ok ? resolved.placement.sourceToFederation : null;
-}
-
-function isIdentityTransform(transform: AffineTransform3D): boolean {
-  const eps = 1e-7;
-  return Math.abs(transform.m00 - 1) < eps
-    && Math.abs(transform.m01) < eps
-    && Math.abs(transform.m02) < eps
-    && Math.abs(transform.tx) < eps
-    && Math.abs(transform.m10) < eps
-    && Math.abs(transform.m11 - 1) < eps
-    && Math.abs(transform.m12) < eps
-    && Math.abs(transform.ty) < eps
-    && Math.abs(transform.m20) < eps
-    && Math.abs(transform.m21) < eps
-    && Math.abs(transform.m22 - 1) < eps
-    && Math.abs(transform.tz) < eps;
-}
-
 function applyAlignmentTransformAndUpdateBounds(
   geometry: FederatedGeometryResult,
   transform: AffineTransform3D,
@@ -194,32 +167,33 @@ function applyAlignmentTransformAndUpdateBounds(
     const staged = new Float32Array(positions.length);
     const entityBox = mesh.geometryAabb ? entityBoundsFor(entityBounds, mesh.expressId) : null;
     for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      const z = positions[i + 2];
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      const localX = positions[i];
+      const localY = positions[i + 1];
+      const localZ = positions[i + 2];
+      if (!Number.isFinite(localX) || !Number.isFinite(localY) || !Number.isFinite(localZ)) {
         restoreSourceFrame();
         console.warn('[ifc-lite] Same-CRS alignment refused: source contains a non-finite vertex.');
         return false;
       }
 
-      // Inlined `applyAffineTransform` — this runs per vertex and must not
-      // allocate a tuple each time. Keep the two in step; the aligned-box
-      // tests in federationAlign.test.ts assert against these very positions.
+      // Transform the WORLD vertex, then subtract a separately transformed
+      // local origin. Applying the affine to `position` alone cancels the
+      // source origin (and loses the exact 2.6Mm+centimetre scan case).
+      const x = localX + ox, y = localY + oy, z = localZ + oz;
       const alignedX = transform.m00 * x + transform.m01 * y + transform.m02 * z + transform.tx;
       const alignedY = transform.m10 * x + transform.m11 * y + transform.m12 * z + transform.ty;
       const alignedZ = transform.m20 * x + transform.m21 * y + transform.m22 * z + transform.tz;
-      const localX = Math.fround(alignedX - transformedOrigin[0]);
-      const localY = Math.fround(alignedY - transformedOrigin[1]);
-      const localZ = Math.fround(alignedZ - transformedOrigin[2]);
-      if (!Number.isFinite(localX) || !Number.isFinite(localY) || !Number.isFinite(localZ)) {
+      const residualX = Math.fround(alignedX - transformedOrigin[0]);
+      const residualY = Math.fround(alignedY - transformedOrigin[1]);
+      const residualZ = Math.fround(alignedZ - transformedOrigin[2]);
+      if (!Number.isFinite(residualX) || !Number.isFinite(residualY) || !Number.isFinite(residualZ)) {
         restoreSourceFrame();
         console.warn('[ifc-lite] Same-CRS alignment refused: f32 output would overflow.');
         return false;
       }
-      staged[i] = localX;
-      staged[i + 1] = localY;
-      staged[i + 2] = localZ;
+      staged[i] = residualX;
+      staged[i + 1] = residualY;
+      staged[i + 2] = residualZ;
       found = updateBounds(
         bounds,
         transformedOrigin[0] + staged[i],
@@ -553,7 +527,7 @@ export async function alignGeometryToReference(
   if (source.spatialReference.horizontal?.id === reference.spatialReference.horizontal?.id) {
     const transform = buildSpatialAlignmentTransform(source, reference);
     if (!transform) return 'failed';
-    if (isIdentityTransform(transform)) return 'identity';
+    if (isIdentitySpatialTransform(transform)) return 'identity';
     const applied = applyAlignmentTransformAndUpdateBounds(
       geometry,
       transform,

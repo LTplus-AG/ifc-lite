@@ -17,8 +17,11 @@ export interface LandXmlViewerModel extends LandXmlGeometryPayload {
 function attachSyntheticStore(
   payload: LandXmlGeometryPayload,
   fileSize: number,
-  spatialReference?: ModelSpatialReference,
 ): LandXmlViewerModel {
+  const metadata = spatialMetadataFromLandXml(payload);
+  const spatialReference = metadata.horizontalId && metadata.verticalId
+    ? spatialReferenceFromSourceMetadata(metadata)
+    : undefined;
   return {
     ...payload,
     // LandXML is not IFC. This typed, entity-less store exists only so the
@@ -41,18 +44,11 @@ export function parseLandXmlViewerModelAsync(
   buffer: LandXmlSourceBuffer,
   isCurrent: () => boolean = () => true,
 ): Promise<LandXmlViewerModel> {
-  // This metadata is read from the source document, not fabricated onto the
-  // synthetic IFC store. Only a complete horizontal+vertical declaration may
-  // enter federation; otherwise the source stays explicit-unknown.
-  const metadata = spatialMetadataFromLandXml(new TextDecoder().decode(buffer));
-  const spatialReference = metadata.horizontalId && metadata.verticalId
-    ? spatialReferenceFromSourceMetadata(metadata)
-    : undefined;
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
     return parseLandXmlTinInCurrentRealm(buffer).then((parsed) => {
       if (!isCurrent()) throw new Error('LandXML parsing cancelled');
-      return attachSyntheticStore(parseLandXmlGeometry(parsed), buffer.byteLength, spatialReference);
+      return attachSyntheticStore(parseLandXmlGeometry(parsed), buffer.byteLength);
     });
   }
   const fileSize = buffer.byteLength;
@@ -76,7 +72,7 @@ export function parseLandXmlViewerModelAsync(
       | { ok: false; error: string }
     >) => {
       if (!finish()) return;
-      if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, fileSize, spatialReference));
+      if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, fileSize));
       else reject(new Error(event.data.error));
     };
     worker.onerror = (event) => {

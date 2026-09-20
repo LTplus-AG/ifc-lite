@@ -64,7 +64,7 @@ import { useIfcServer } from './useIfcServer.js';
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlContent, isLandXmlFileName } from './ingest/landXmlSniff.js';
-import { loadLandXmlModel } from './ingest/landXmlLoad.js';
+import { loadLandXmlModel, reframeLandXmlGeometry } from './ingest/landXmlLoad.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import {
@@ -501,7 +501,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2'; spatialReference?: ModelSpatialReference } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2'; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -587,6 +587,13 @@ export function useIfcLoader() {
             }
           } else if (parsedPlacement) {
             federationAlignmentStatus = 'anchor';
+          }
+          if (patch?.postAlignmentReframe && referencePlacement?.coordinateInfo) {
+            // Source-neutral placement is complete at this point. Only now is
+            // the terrain eligible for the anchor's finite render frame.
+            if (patch.landXmlDocument) {
+              reframeLandXmlGeometry(geometryResult, patch.landXmlDocument, referencePlacement.coordinateInfo);
+            }
           }
 
           // Federation registry: transform expressIds to globally-unique ids.

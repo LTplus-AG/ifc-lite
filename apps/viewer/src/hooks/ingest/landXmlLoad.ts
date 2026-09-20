@@ -4,11 +4,10 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, ModelSpatialReference } from '@ifc-lite/geometry';
-import { federationFrameInfo, totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { toast } from '../../components/ui/toast.js';
-import { useViewerStore } from '../../store/index.js';
 import { parseLandXmlViewerModelAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
@@ -34,6 +33,7 @@ interface LandXmlLoadOptions {
       landXmlDocument?: LandXmlTinDocument;
       sourceSchema?: 'LandXML-1.2';
       spatialReference?: ModelSpatialReference;
+      postAlignmentReframe?: boolean;
     },
   ): Promise<void>;
   onError(message: string): void;
@@ -161,15 +161,15 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
     if (!options.isCurrent()) return;
-    const frame = options.targetKind === 'federated'
-      ? federationFrameInfo(useViewerStore.getState().models.values())
-      : null;
-    if (frame) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, result.semanticDocument, frame));
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
       loadPath: 'landxml',
       landXmlDocument: result.semanticDocument,
       sourceSchema: result.semanticDocument.schema,
+      // Reframing has to run after neutral spatial alignment. Doing it here
+      // first clips a correctly georeferenced Swiss TIN against an unrelated
+      // local IFC render frame before it can be brought into that frame.
+      ...(options.targetKind === 'federated' ? { postAlignmentReframe: true } : {}),
       ...(result.spatialReference ? { spatialReference: result.spatialReference } : {}),
     });
     if (!options.isCurrent()) return;

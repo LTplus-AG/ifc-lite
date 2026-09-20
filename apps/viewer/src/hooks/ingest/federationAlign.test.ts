@@ -166,6 +166,16 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, { min: [2500, 0, 0], max: [2501, 2, 3] }, 1e-3, 'translated');
   });
 
+  it('transforms local-origin world coordinates without cancelling centimetre residuals (#5048)', async () => {
+    const mesh = boxMesh(32, [2_600_000.01, 0.02, 0.03], [2_600_000.01, 0.02, 0.03], [2_600_000, 0, 0]);
+    const status = await alignGeometryToReference(
+      geometry([mesh]), georef({ eastings: 10 }), georef({}),
+    );
+    assert.equal(status, 'same-crs');
+    assert.ok(Math.abs((mesh.origin?.[0] ?? 0) + mesh.positions[0] - 2_600_010.01) < 1e-4);
+    assert.ok(Math.abs(mesh.positions[0] - 0.01) < 1e-4, 'centimetre residual stays local f32');
+  });
+
   it('maps unequal source axis factors into the reference frame (#4615)', async () => {
     const mesh = boxMesh(12, [1, 2, 3], [1, 2, 3]);
     mesh.normals = new Float32Array([Math.SQRT1_2, Math.SQRT1_2, 0]);

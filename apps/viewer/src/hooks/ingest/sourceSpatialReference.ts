@@ -5,6 +5,8 @@
 /** Format-specific CRS metadata adapters for non-IFC federation sources. */
 
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
+import { extractWktCrsIdentifiers } from '@ifc-lite/pointcloud';
+import type { LandXmlTinDocument } from './landXmlIngest.js';
 
 export type SpatialSourceFormat = 'landxml' | 'las' | 'laz' | 'e57';
 
@@ -15,35 +17,31 @@ export interface SourceSpatialMetadata {
   provenance: string;
 }
 
-function epsg(text: string | undefined): string | undefined {
-  const match = /EPSG[^0-9]{0,12}(\d+)/i.exec(text ?? '');
-  return match ? `EPSG:${match[1]}` : undefined;
-}
-
 function metadata(
   format: SpatialSourceFormat,
   text: string,
   provenance: string,
 ): SourceSpatialMetadata {
-  // WKT's vertical CRS follows VERTCRS/VERTICALCRS; format metadata with a
-  // simple `verticalDatum` attribute is also common in LandXML exports.
-  const vertical = /(?:VERT(?:ICAL)?CRS|vertical(?:Datum|Crs)?)[\s\S]*?EPSG[^0-9]{0,12}(\d+)/i.exec(text);
+  const { horizontalId: horizontal, verticalId: vertical } = extractWktCrsIdentifiers(text);
   return {
     format,
-    ...(epsg(text) ? { horizontalId: epsg(text) } : {}),
-    ...(vertical ? { verticalId: `EPSG:${vertical[1]}` } : {}),
+    ...(horizontal ? { horizontalId: horizontal } : {}),
+    ...(vertical ? { verticalId: vertical } : {}),
     provenance,
   };
 }
 
 /** Extract only explicit EPSG declarations from a LandXML CoordinateSystem. */
-export function spatialMetadataFromLandXml(text: string): SourceSpatialMetadata {
-  // Match the same supported LandXML 1.2 namespace as the bounded Rust
-  // parser. An extension element merely named CoordinateSystem is not source
-  // CRS metadata and must not influence federation placement.
-  const root = /<\s*(?:\w+:)?LandXML\b[^>]*\bxmlns(?:\s*:\s*\w+)?\s*=\s*["']http:\/\/www\.landxml\.org\/schema\/LandXML-1\.2["'][^>]*>/i.exec(text)?.[0];
-  const coordinateSystem = root ? /<\s*CoordinateSystem\b[^>]*>/i.exec(text)?.[0] ?? '' : '';
-  return metadata('landxml', coordinateSystem, 'LandXML CoordinateSystem');
+export function spatialMetadataFromLandXml(document: Pick<LandXmlTinDocument, 'coordinateSystem'>): SourceSpatialMetadata {
+  const declared = (value: string | undefined) => /^EPSG\s*:\s*(\d+)$/i.exec(value?.trim() ?? '')?.[1];
+  const horizontal = declared(document.coordinateSystem?.horizontalDatum);
+  const vertical = declared(document.coordinateSystem?.verticalDatum);
+  return {
+    format: 'landxml',
+    ...(horizontal ? { horizontalId: `EPSG:${horizontal}` } : {}),
+    ...(vertical ? { verticalId: `EPSG:${vertical}` } : {}),
+    provenance: 'LandXML CoordinateSystem',
+  };
 }
 
 /** Extract WKT/GeoTIFF CRS text from LAS VLR bytes; unknown is deliberate. */
@@ -54,6 +52,8 @@ export function spatialMetadataFromLasVlrs(bytes: Uint8Array, format: 'las' | 'l
   const count = view.getUint32(100, true);
   let offset = headerSize;
   const decoder = new TextDecoder();
+  let wkt2111: string | undefined;
+  let wkt2112: string | undefined;
   for (let index = 0; index < count && offset + 54 <= bytes.length; index += 1) {
     const userId = decoder.decode(bytes.subarray(offset + 2, offset + 18)).replace(/\0+$/, '');
     const recordId = view.getUint16(offset + 18, true);
@@ -63,11 +63,16 @@ export function spatialMetadataFromLasVlrs(bytes: Uint8Array, format: 'las' | 'l
     // LASF_Projection WKT records 2111/2112 are the only unambiguous
     // horizontal+vertical declaration. GeoTIFF keys require a full key parser
     // and are intentionally treated as unknown rather than guessed.
-    if (userId === 'LASF_Projection' && (recordId === 2111 || recordId === 2112)) {
-      return metadata(format, decoder.decode(bytes.subarray(offset + 54, end)), `LAS VLR ${recordId}`);
+    if (userId === 'LASF_Projection' && recordId === 2111) {
+      wkt2111 = decoder.decode(bytes.subarray(offset + 54, end));
+    } else if (userId === 'LASF_Projection' && recordId === 2112) {
+      // LAS 1.4's WKT2 record supersedes WKT1 regardless of VLR ordering.
+      wkt2112 = decoder.decode(bytes.subarray(offset + 54, end));
     }
     offset = end;
   }
+  if (wkt2112) return metadata(format, wkt2112, 'LAS VLR 2112');
+  if (wkt2111) return metadata(format, wkt2111, 'LAS VLR 2111');
   return { format, provenance: 'LAS VLR CRS absent' };
 }
 

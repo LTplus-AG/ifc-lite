@@ -47,6 +47,7 @@ export interface LandXmlTinDocument {
     linearScaleToMeters: number;
     elevationScaleToMeters: number;
   } | null;
+  coordinateSystem?: { horizontalDatum?: string; verticalDatum?: string };
   surfaces: LandXmlTinSurface[];
   extensions: Array<{ namespace: string; localName: string; path: string }>;
   warnings: string[];

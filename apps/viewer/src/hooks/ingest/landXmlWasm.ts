@@ -160,6 +160,9 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
   const raw = record(value, 'document');
   const units = raw.units === null || raw.units === undefined ? null : record(raw.units, 'units');
   const capabilities = record(raw.capabilities, 'capabilities');
+  const coordinateSystem = raw.coordinate_system === undefined || raw.coordinate_system === null
+    ? undefined
+    : record(raw.coordinate_system, 'coordinate system');
   return {
     format: string(raw.format, 'format') === 'landxml' ? 'landxml' : (() => { throw new Error('LandXML WASM returned an invalid format'); })(),
     schema: string(raw.schema, 'schema') === 'LandXML-1.2' ? 'LandXML-1.2' : (() => { throw new Error('LandXML WASM returned an invalid schema'); })(),
@@ -175,6 +178,12 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
       linearScaleToMeters: finite(units.linear_scale_to_meters, 'linear scale'),
       elevationScaleToMeters: finite(units.elevation_scale_to_meters, 'elevation scale'),
     },
+    ...(coordinateSystem ? {
+      coordinateSystem: {
+        ...(typeof coordinateSystem.horizontal_datum === 'string' ? { horizontalDatum: coordinateSystem.horizontal_datum } : {}),
+        ...(typeof coordinateSystem.vertical_datum === 'string' ? { verticalDatum: coordinateSystem.vertical_datum } : {}),
+      },
+    } : {}),
     surfaces: array(raw.surfaces, 'surfaces').map(surface),
     extensions: array(raw.extensions, 'extensions').map((extension, index) => {
       const parsed = record(extension, `extension ${index}`);

@@ -130,6 +130,7 @@ impl Parser<'_> {
             },
             version: self.version,
             units: self.units,
+            coordinate_system: self.coordinate_system,
             surfaces: self.surfaces,
             extensions: self.extensions,
             warnings: self.warnings,

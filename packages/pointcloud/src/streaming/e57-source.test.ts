@@ -292,6 +292,14 @@ describe('E57StreamingSource', () => {
     await expect(inspectE57SpatialMetadata(blob, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
   });
 
+  it('refuses a hostile declared XML length before allocating or decoding (#5048)', async () => {
+    const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    // Header is inside page 0, and xmlLogicalLength is u64 at byte 32.
+    new DataView(bytes.buffer).setBigUint64(32, 1024n * 1024n * 1024n, true);
+    await expect(inspectE57SpatialMetadata(new Blob([bytes]))).rejects.toThrow('safety limit');
+  });
+
   it('streams positions + colours identical to the whole-file decoder', async () => {
     const { blob, physical } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
     const reference = decodeE57(physical);

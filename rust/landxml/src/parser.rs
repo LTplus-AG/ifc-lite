@@ -13,6 +13,7 @@ use crate::{
     LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
     LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId,
     LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits,
+    LandXmlCoordinateSystem,
 };
 use quick_xml::{
     events::{BytesStart, Event},
@@ -39,6 +40,7 @@ struct Parser<'a> {
     faces_seen: usize,
     frames: Vec<Frame>,
     units: Option<LandXmlUnits>,
+    coordinate_system: Option<LandXmlCoordinateSystem>,
     surface: Option<SurfaceBuilder>,
     capture: Option<Capture>,
     surfaces: Vec<LandXmlSurface>,
@@ -77,6 +79,7 @@ pub fn parse_landxml_tin_with_cancel(
         faces_seen: 0,
         frames: Vec::new(),
         units: None,
+        coordinate_system: None,
         surface: None,
         capture: None,
         surfaces: Vec::new(),
@@ -227,6 +230,15 @@ impl Parser<'_> {
             return Ok(());
         }
         match local {
+            "CoordinateSystem" if self.is_path(&["LandXML", "CoordinateSystem"]) => {
+                if self.coordinate_system.is_some() {
+                    return Err(error(Code::InvalidSemantic, "LandXML may declare CoordinateSystem only once"));
+                }
+                self.coordinate_system = Some(LandXmlCoordinateSystem {
+                    horizontal_datum: attr(&attributes, "horizontalDatum").map(|value| value.to_owned()),
+                    vertical_datum: attr(&attributes, "verticalDatum").map(|value| value.to_owned()),
+                });
+            }
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {
                 if self.surfaces_seen >= self.limits.max_surfaces {
                     return Err(error(Code::LimitExceeded, "surface limit exceeded"));

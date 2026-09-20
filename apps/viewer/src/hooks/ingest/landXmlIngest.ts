@@ -323,7 +323,7 @@ function placeComponentsInRenderFrame(
     mergeBounds(bounds, component.bounds);
   }
   if (placed.length < components.length) {
-    warnings.push(`Skipped ${components.length - placed.length} surface component(s) whose full bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the model render frame because they cannot be placed precisely`);
+    warnings.push(`Skipped ${components.length - placed.length} surface component(s) whose full Y-up bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the model render frame because they cannot be placed precisely`);
   }
   return { placed, bounds, originShift, hasLargeCoordinates };
 }
@@ -377,7 +377,7 @@ export function parseLandXmlGeometry(buffer: LandXmlSourceBuffer): LandXmlGeomet
 
   const { placed, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
   if (placed.length === 0) {
-    throw new Error(`LandXML document has no surface components within the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km render-frame limit`);
+    throw new Error(`LandXML document has no surface components whose full Y-up bounds fit within the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km render-frame limit`);
   }
   const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
   const surfaceNames = [...new Set(placed.map((component) => component.surfaceName))];

@@ -104,13 +104,13 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, frame: Coordina
   const retained = geometry.meshes.filter(meshFitsRenderFrame);
   const skipped = geometry.meshes.length - retained.length;
   if (retained.length === 0) {
-    throw new Error(`LandXML model cannot be federated: every surface component exceeds the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km shared render-frame limit`);
+    throw new Error(`LandXML model cannot be federated: every surface component's full Y-up bounds exceed the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km shared render-frame limit`);
   }
   geometry.meshes = retained;
   updateRetainedGeometry(geometry, frame);
   return skipped === 0
     ? []
-    : [`Skipped ${skipped} LandXML surface component(s) whose full bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the shared federation render frame`];
+    : [`Skipped ${skipped} LandXML surface component(s) whose full Y-up bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the shared federation render frame`];
 }
 
 /** Own the format-specific branch while `loadFile` retains lifecycle ownership. */

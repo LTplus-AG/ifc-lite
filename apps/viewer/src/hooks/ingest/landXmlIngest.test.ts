@@ -192,7 +192,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
     assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010, 'skipped components do not stretch the frame bounds');
-    assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) more than 1000 km/.test(warning)));
+    assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) whose full Y-up bounds exceed 1000 km/.test(warning)));
   });
 
   it('removes the survey translation before GPU upload and retains it as frame metadata', () => {
@@ -217,7 +217,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     });
   });
 
-  it('rebases every valid face when a connected component exceeds one f32 frame', () => {
+  it('rejects a connected component whose full Y-up bounds exceed one f32 frame', () => {
     const connectedAcrossSurveyRange = LANDXML
       .replace(
         '</Pnts>',
@@ -227,12 +227,11 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
          <P id="60">900001000 800001000 700000100</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F><F>30 50 60</F></Faces>');
-    const result = parseLandXmlViewerModel(bytes(connectedAcrossSurveyRange));
-    assert.equal(result.warnings.some((warning) => /degenerate face|render precision/.test(warning)), false, 'no face is lost to local-frame recovery');
-    // Local-frame recovery keeps every face representable, but the pieces end
-    // up 900 Mm apart: only the ones the shared render frame can place stay.
-    assert.equal(result.geometryResult.totalTriangles, 2, 'the dominant piece anchors the render frame');
-    assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) more than 1000 km/.test(warning)));
+    assert.throws(
+      () => parseLandXmlViewerModel(bytes(connectedAcrossSurveyRange)),
+      /no surface components whose full Y-up bounds fit within the 1000 km render-frame limit/,
+      'a connected component cannot be partially registered after its full extent exceeds one f32 frame',
+    );
   });
 
   it('walks a high-valence face fan without rescanning its shared point adjacency (#4937)', () => {

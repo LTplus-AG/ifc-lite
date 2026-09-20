@@ -117,7 +117,7 @@ describe('useIfcLoader LandXML route (#4937)', () => {
       assert.equal(state.models.size, 1, 'a refused federated terrain is never partially registered');
       assert.equal(state.models.get(anchor.id), anchor, 'the established model remains unchanged');
       assert.equal(state.models.has('outside-frame'), false);
-      assert.match(state.error ?? '', /every surface component exceeds the 1000 km shared render-frame limit/);
+      assert.match(state.error ?? '', /every surface component's full Y-up bounds exceed the 1000 km shared render-frame limit/);
     });
   }
 
@@ -144,6 +144,6 @@ describe('useIfcLoader LandXML route (#4937)', () => {
       'discarded bounds must not survive in the registered model metadata');
     assert.ok(model.geometryResult.coordinateInfo.shiftedBounds.max.x < 1_000_000,
       'the camera-fit bounds must describe only the retained component');
-    assert.ok(messages.some((warning) => /Skipped 1 LandXML surface component/.test(warning)));
+    assert.ok(messages.some((warning) => /Skipped 1 LandXML surface component.*full Y-up bounds/.test(warning)));
   });
 });

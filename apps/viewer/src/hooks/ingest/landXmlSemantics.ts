@@ -61,6 +61,8 @@ export interface LandXmlParcel {
   sourceId: string; ordinal: number; name: string | null; code: string | null; description: string | null;
   title: string | null; declaredArea: number | null; declaredPerimeter: number | null; declaredAreaUnit: string | null;
   properties: Record<string, string>; loops: LandXmlPlanGeometry[][]; preservationReason: string | null;
+  /** Precomputed at WASM-adapter ingestion; enables direct late-loop paging. */
+  loopOffsets: number[];
 }
 export interface LandXmlParcelProbe {
   sourceId: string;
@@ -83,6 +85,8 @@ export interface LandXmlPlanDocument {
   parcelProbes: LandXmlParcelProbe[];
   resolvedMonuments: LandXmlResolvedMonument[];
   resolvedGeometry: LandXmlResolvedGeometry[];
+  /** An ingestion-built lookup makes source selection independent of record position. */
+  sourceRecords?: ReadonlyMap<string, LandXmlSourceRecord>;
 }
 
 export interface LandXmlTinDocument {
@@ -169,6 +173,22 @@ export type LandXmlSourceRecord =
   | { kind: 'plan-geometry'; geometry: LandXmlPlanGeometry };
 
 export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
+
+/** Build the one-time plan lookup while adapting WASM, never during UI selection. */
+export function indexLandXmlPlanRecords(plan: LandXmlPlanDocument): ReadonlyMap<string, LandXmlSourceRecord> {
+  const records = new Map<string, LandXmlSourceRecord>();
+  for (const point of plan.cogoPoints) records.set(point.sourceId, { kind: 'cogo-point', point });
+  for (const monument of plan.monuments) records.set(monument.sourceId, { kind: 'monument', monument });
+  for (const feature of plan.planFeatures) {
+    records.set(feature.sourceId, { kind: 'plan-feature', feature });
+    for (const geometry of feature.geometry) records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
+  }
+  for (const parcel of plan.parcels) {
+    records.set(parcel.sourceId, { kind: 'parcel', parcel });
+    for (const loop of parcel.loops) for (const geometry of loop) records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
+  }
+  return records;
+}
 
 /** The federation resolver capability needed to turn a renderer id into a source model. */
 export interface LandXmlPickFederation {
@@ -261,6 +281,37 @@ export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: 
   return index.records.get(sourceId) ?? null;
 }
 
+/** Return one direct, bounded geometry page for a plan feature or parcel. */
+export function landXmlPlanChildPage(record: Extract<LandXmlSourceRecord, { kind: 'plan-feature' | 'parcel' }>, offset: number, limit: number): NavigationPage {
+  const start = Math.max(0, offset);
+  if (limit <= 0) return { total: 0, sourceIds: [] };
+  if (record.kind === 'plan-feature') {
+    return { total: record.feature.geometry.length, sourceIds: record.feature.geometry.slice(start, start + limit).map((geometry) => geometry.sourceId) };
+  }
+  const offsets = record.parcel.loopOffsets;
+  const lastLoop = record.parcel.loops.length - 1;
+  const total = lastLoop < 0 ? 0 : offsets[lastLoop] + record.parcel.loops[lastLoop].length;
+  if (start >= total) return { total, sourceIds: [] };
+  let lower = 0;
+  let upper = offsets.length;
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    if (offsets[middle] <= start) lower = middle + 1;
+    else upper = middle;
+  }
+  let loopIndex = lower - 1;
+  let index = start - offsets[loopIndex];
+  const sourceIds: string[] = [];
+  while (loopIndex < record.parcel.loops.length && sourceIds.length < limit) {
+    const loop = record.parcel.loops[loopIndex];
+    const take = Math.min(limit - sourceIds.length, loop.length - index);
+    for (const geometry of loop.slice(index, index + take)) sourceIds.push(geometry.sourceId);
+    loopIndex += 1;
+    index = 0;
+  }
+  return { total, sourceIds };
+}
+
 /**
  * Return one bounded page of top-level plan records. Geometry remains nested
  * beneath its feature or parcel, so opening the source navigator never
@@ -270,7 +321,7 @@ export function landXmlPlanSourcePage(
   document: LandXmlTinDocument,
   offset: number,
   limit: number,
-): { total: number; sourceIds: string[] } {
+): NavigationPage {
   const plan = document.plan;
   if (!plan || limit <= 0) return { total: 0, sourceIds: [] };
   const records = [plan.cogoPoints, plan.monuments, plan.planFeatures, plan.parcels] as const;
@@ -288,6 +339,8 @@ export function landXmlPlanSourcePage(
   }
   return { total, sourceIds };
 }
+
+interface NavigationPage { total: number; sourceIds: string[] }
 
 /** Federation-safe semantic lookup. Source IDs are document-local by design. */
 export function findLandXmlModelSourceRecord(

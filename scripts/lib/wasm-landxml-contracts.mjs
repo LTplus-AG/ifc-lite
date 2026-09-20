@@ -34,6 +34,13 @@ const PLAN_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <Parcels><Parcel name="retraced"><CoordGeom><Line><Start pntRef="control"/><End>11 20 0</End></Line><Line><Start>11 20 0</Start><End pntRef="control"/></Line></CoordGeom></Parcel></Parcels>
 </LandXML>`;
 
+const MALFORMED_PARCEL_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units><Metric linearUnit="meter"/></Units><CgPoints><CgPoint name="safe">1 2</CgPoint></CgPoints>
+  <Parcels><Parcel name="bad"><CoordGeom><Line><Start/><End>1 0</End></Line><Line><Start>0 0</Start><Start>0 0</Start><End>1 0</End></Line></CoordGeom></Parcel>
+  <Parcel name="good"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End>0 0</End></Line></CoordGeom></Parcel></Parcels>
+</LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -74,6 +81,15 @@ export function runLandXmlContracts(api, test) {
       kind: 'preserved_only', reason: 'self-intersecting boundary',
     });
     assert.ok(document.plan.source_batches[0].source_ids.includes('landxml:PlanFeature:1:road:CoordGeom:1'));
+  });
+
+  test('LandXML plan adapter isolates malformed parcel children in the real WASM parser (#5046)', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(MALFORMED_PARCEL_XML));
+    assert.equal(document.plan.cogo_points.length, 1);
+    assert.equal(document.plan.parcels.length, 2);
+    assert.equal(document.plan.parcels[0].loops[0].length, 0, 'bad Start/duplicate Start do not escape their parcel');
+    assert.equal(document.plan.parcel_probes[0].state.kind, 'preserved_only');
+    assert.equal(document.plan.parcel_probes[1].state.kind, 'analytic');
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

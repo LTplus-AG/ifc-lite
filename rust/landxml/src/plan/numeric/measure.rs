@@ -17,6 +17,11 @@ pub(super) fn arc_delta(
         Some("cw") => Some(-((start - end).rem_euclid(tau))),
         _ => None,
     }?;
+    // A closed point pair has no signed sweep under either rotation. Treating
+    // it as an analytic arc fabricates a zero-length/zero-area primitive.
+    if primary.abs() <= EPSILON {
+        return None;
+    }
     if let Some(length) = declared_length {
         let tolerance = EPSILON * radius.max(length).max(1.0);
         if (radius * primary.abs() - length).abs() > tolerance {

@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { FederationRegistry } from '@ifc-lite/renderer';
-import { findLandXmlModelSourceRecord, findLandXmlSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, landXmlPlanSourcePage, type LandXmlProfile, type LandXmlTinDocument } from './landXmlSemantics.js';
+import { findLandXmlModelSourceRecord, findLandXmlSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, landXmlPlanChildPage, landXmlPlanSourcePage, type LandXmlProfile, type LandXmlTinDocument } from './landXmlSemantics.js';
 
 function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
   return {
@@ -127,5 +127,31 @@ describe('LandXML semantic selection (#5042)', () => {
       total: 2_000,
       sourceIds: ['point-998', 'point-999', 'monument-0', 'monument-1'],
     });
+  });
+
+  it('reads a late parcel child page from offsets without preceding-loop scans (#5046)', () => {
+    const geometry = (sourceId: string) => ({ sourceId, ordinal: 1, kind: 'line' as const, pointScopeId: null,
+      start: { kind: 'coordinates' as const, point: { northing: 0, easting: 0, elevation: null }, pntRef: null }, end: { kind: 'coordinates' as const, point: { northing: 1, easting: 1, elevation: null }, pntRef: null }, center: null, pi: null, intermediatePoints: [], rotation: null, radius: null, declaredLength: null, properties: {} });
+    const loops = Array.from({ length: 2_000 }, (_, index) => [geometry(`child-${index}`)]);
+    for (let index = 0; index < 1_998; index++) {
+      Object.defineProperty(loops, index, {
+        get() { throw new Error(`late page touched preceding loop ${index}`); },
+      });
+    }
+    const parcel = { sourceId: 'parcel', ordinal: 1, name: null, code: null, description: null, title: null,
+      declaredArea: null, declaredPerimeter: null, declaredAreaUnit: null, properties: {}, loops,
+      loopOffsets: Array.from({ length: loops.length }, (_, index) => index), preservationReason: null };
+    assert.deepEqual(landXmlPlanChildPage({ kind: 'parcel', parcel }, 1_998, 2), {
+      total: 2_000, sourceIds: ['child-1998', 'child-1999'],
+    });
+    const terrain = document('face');
+    terrain.plan = {
+      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [], cogoPoints: [], monuments: [], planFeatures: [], parcels: [parcel],
+      sourceBatches: [], parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [],
+      sourceRecords: new Map([['child-1999', { kind: 'plan-geometry' as const, geometry: loops[1_999][0] }]]),
+    };
+    assert.equal(findLandXmlModelSourceRecord(new Map([['model', { landXmlDocument: terrain }]]), {
+      modelId: 'model', sourceId: 'child-1999',
+    })?.kind, 'plan-geometry', 'indexed selection does not inspect preceding terrain or parcel records');
   });
 });

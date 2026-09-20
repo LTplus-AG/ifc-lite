@@ -11,10 +11,10 @@ mod measure;
 mod references;
 mod topology;
 use measure::{arc_delta, cross, distance, finite_measure, finite_point, finite_sum, same_point};
-use topology::{geometry_edges, segments_intersect};
+use topology::segments_intersect;
 
 const EPSILON: f64 = 1e-9;
-type GeometryMeasure = (f64, f64, (LandXmlPlanPoint, LandXmlPlanPoint));
+type GeometryMeasure = (f64, f64, Vec<(LandXmlPlanPoint, LandXmlPlanPoint)>);
 
 pub(super) struct TopologyBudget<'a> {
     pub(super) work: usize,
@@ -141,6 +141,9 @@ impl LandXmlPlanDocument {
         if parcel.loops.is_empty() {
             return Ok(preserved(parcel, "missing CoordGeom boundary"));
         }
+        if twice_area == 0.0 {
+            return Ok(preserved(parcel, "zero-area boundary"));
+        }
         let area = finite_measure(twice_area.abs() * 0.5)?;
         let (perimeter_in_meters, area_in_square_meters) = match &self.units {
             Some(units) => (
@@ -224,14 +227,14 @@ fn probe_loop(
             return Ok(None);
         }
         let origin = *area_origin.get_or_insert(start);
-        let Some((length, integral, chord)) =
+        let Some((length, integral, edges)) =
             geometry_measure(document, item, start, end, origin, budget)?
         else {
             return Ok(None);
         };
         perimeter = finite_sum(perimeter, length)?;
         twice_area = finite_sum(twice_area, integral)?;
-        segments.extend(geometry_edges(item, start, end, chord));
+        segments.extend(edges);
         previous_end = Some(end);
     }
     let (Some(first), Some(last)) = (
@@ -273,7 +276,7 @@ fn geometry_measure(
         super::LandXmlGeometryKind::Line => Ok(Some((
             distance(start, end)?,
             cross(start, end, area_origin)?,
-            (start, end),
+            vec![(start, end)],
         ))),
         super::LandXmlGeometryKind::IrregularLine => {
             let mut points = Vec::with_capacity(geometry.intermediate_points.len() + 2);
@@ -289,7 +292,8 @@ fn geometry_measure(
                 length = finite_sum(length, distance(pair[0], pair[1])?)?;
                 integral = finite_sum(integral, cross(pair[0], pair[1], area_origin)?)?;
             }
-            Ok(Some((length, integral, (start, end))))
+            let edges = points.windows(2).map(|pair| (pair[0], pair[1])).collect();
+            Ok(Some((length, integral, edges)))
         }
         super::LandXmlGeometryKind::Curve => {
             let Some(center_location) = geometry.center.as_ref() else {
@@ -307,7 +311,7 @@ fn geometry_measure(
                 return Ok(None);
             }
             let radius = geometry.radius.unwrap_or(distance(center, start)?);
-            if radius <= 0.0
+            if radius <= EPSILON
                 || !radius.is_finite()
                 || (distance(center, start)? - radius).abs() > EPSILON
                 || (distance(center, end)? - radius).abs() > EPSILON
@@ -335,11 +339,39 @@ fn geometry_measure(
             let integral = center_easting * (end_northing - start_northing)
                 - center_northing * (end_easting - start_easting)
                 + radius * radius * delta;
+            let edges = curve_edges(center, start, end, radius, start_angle, delta);
             Ok(Some((
                 finite_measure(radius * delta.abs())?,
                 finite_measure(integral)?,
-                (start, end),
+                edges,
             )))
         }
     }
+}
+
+/// A bounded, deterministic polyline is used only for topology intersection
+/// checks; analytic perimeter and area remain the exact circular formulae.
+fn curve_edges(
+    center: LandXmlPlanPoint,
+    start: LandXmlPlanPoint,
+    end: LandXmlPlanPoint,
+    radius: f64,
+    start_angle: f64,
+    delta: f64,
+) -> Vec<(LandXmlPlanPoint, LandXmlPlanPoint)> {
+    const MAX_SEGMENTS: usize = 64;
+    let count = ((delta.abs() / std::f64::consts::TAU * MAX_SEGMENTS as f64).ceil() as usize)
+        .clamp(1, MAX_SEGMENTS);
+    let mut points = Vec::with_capacity(count + 1);
+    points.push(start);
+    for index in 1..count {
+        let angle = start_angle + delta * index as f64 / count as f64;
+        points.push(LandXmlPlanPoint {
+            northing: center.northing + radius * angle.sin(),
+            easting: center.easting + radius * angle.cos(),
+            elevation: None,
+        });
+    }
+    points.push(end);
+    points.windows(2).map(|pair| (pair[0], pair[1])).collect()
 }

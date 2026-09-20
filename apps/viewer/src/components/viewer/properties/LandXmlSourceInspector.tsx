@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/i18n';
 import {
   findLandXmlModelSourceRecord,
+  landXmlPlanChildPage,
   type LandXmlSourceModel,
   type LandXmlSourceRecord,
   type LandXmlSourceRef,
@@ -131,26 +132,10 @@ function planProperties(record: PlanRecord): Record<string, string> {
   }
 }
 
-function planNavigationCount(record: LandXmlSourceRecord): number {
-  if (record.kind === 'plan-feature') return record.feature.geometry.length;
-  if (record.kind === 'parcel') return record.parcel.loops.reduce((count, loop) => count + loop.length, 0);
-  return 0;
-}
-
-function planNavigationAt(record: LandXmlSourceRecord, itemIndex: number): NavigationItem {
-  if (record.kind === 'plan-feature') {
-    const geometry = record.feature.geometry[itemIndex];
-    if (geometry) return { label: `${geometry.kind} ${geometry.ordinal}`, sourceId: geometry.sourceId };
-  }
-  if (record.kind === 'parcel') {
-    let index = itemIndex;
-    for (const loop of record.parcel.loops) {
-      const geometry = loop[index];
-      if (geometry) return { label: `${geometry.kind} ${geometry.ordinal}`, sourceId: geometry.sourceId };
-      index -= loop.length;
-    }
-  }
-  throw new Error(`LandXML plan navigation index ${itemIndex} is outside the retained source records`);
+function planNavigation(record: LandXmlSourceRecord, offset: number): { total: number; items: NavigationItem[] } {
+  if (record.kind !== 'plan-feature' && record.kind !== 'parcel') return { total: 0, items: [] };
+  const page = landXmlPlanChildPage(record, offset, NAVIGATION_PAGE_SIZE);
+  return { total: page.total, items: page.sourceIds.map((sourceId) => ({ label: `Geometry ${sourceId}`, sourceId })) };
 }
 
 function pointText(point: { northing: number; easting: number; elevation: number | null }): string {
@@ -210,16 +195,14 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
     </div>;
   }
   const sourceCount = terrain ? document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId) : undefined;
-  const planCount = planNavigationCount(record);
-  const itemCount = terrain ? navigationCount(record.surface) : planCount;
+  const plannedNavigation = planNavigation(record, navigationPage * NAVIGATION_PAGE_SIZE);
+  const itemCount = terrain ? navigationCount(record.surface) : plannedNavigation.total;
   const pages = itemCount === 0 ? 0 : Math.ceil(itemCount / NAVIGATION_PAGE_SIZE);
   const page = pages === 0 ? 0 : Math.min(navigationPage, pages - 1);
-  const navigation = Array.from(
+  const navigation = terrain ? Array.from(
     { length: Math.min(NAVIGATION_PAGE_SIZE, itemCount - page * NAVIGATION_PAGE_SIZE) },
-    (_, index) => terrain
-      ? navigationAt(record.surface, page * NAVIGATION_PAGE_SIZE + index)
-      : planNavigationAt(record, page * NAVIGATION_PAGE_SIZE + index),
-  );
+    (_, index) => navigationAt(record.surface, page * NAVIGATION_PAGE_SIZE + index),
+  ) : planNavigation(record, page * NAVIGATION_PAGE_SIZE).items;
   const probe = record.kind === 'parcel'
     ? document?.plan?.parcelProbes.find((candidate) => candidate.sourceId === record.parcel.sourceId)
     : undefined;

@@ -231,6 +231,50 @@ fn issue_5046_preserves_malformed_parcel_coordinates_without_losing_valid_docume
 }
 
 #[test]
+fn issue_5046_isolates_empty_and_duplicate_parcel_points_without_aborting_document() {
+    let parsed = parse(&document(
+        r#"<CgPoints><CgPoint name="safe">1 2</CgPoint></CgPoints><Parcels>
+          <Parcel name="bad"><CoordGeom>
+            <Line><Start/><End>1 0</End></Line>
+            <Line><Start>0 0</Start><Start>0 0</Start><End>1 0</End></Line>
+          </CoordGeom></Parcel>
+          <Parcel name="good"><CoordGeom>
+            <Line><Start>0 0</Start><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End>0 0</End></Line>
+          </CoordGeom></Parcel>
+        </Parcels>"#,
+    ));
+    assert_eq!(parsed.cogo_points().len(), 1, "preceding COGO survives");
+    assert!(
+        parsed.parcels[0].loops.iter().all(Vec::is_empty),
+        "only malformed primitives are discarded"
+    );
+    assert!(matches!(
+        parsed.probe_parcel(&parsed.parcels[0]).state,
+        LandXmlParcelState::PreservedOnly { .. }
+    ));
+    assert_eq!(
+        parsed.probe_parcel(&parsed.parcels[1]).state,
+        LandXmlParcelState::Analytic
+    );
+}
+
+#[test]
+fn issue_5046_refuses_zero_sweep_and_curve_crossing_from_analytic_probe() {
+    for boundary in [
+        r#"<Curve rot="ccw" radius="1"><Start>1 0</Start><Center>0 0</Center><End>1 0</End></Curve>"#,
+        r#"<Curve rot="ccw" radius="1"><Start>1 0</Start><Center>0 0</Center><End>-1 0</End></Curve><Line><Start>-1 0</Start><End>0 2</End></Line><Line><Start>0 2</Start><End>1 0</End></Line>"#,
+    ] {
+        let parsed = parse(&document(&format!(
+            "<Parcels><Parcel><CoordGeom>{boundary}</CoordGeom></Parcel></Parcels>"
+        )));
+        assert!(matches!(
+            parsed.probe_parcel(&parsed.parcels[0]).state,
+            LandXmlParcelState::PreservedOnly { .. }
+        ));
+    }
+}
+
+#[test]
 fn issue_5046_rebases_huge_finite_parcel_coordinates_and_refuses_overflowed_measurements() {
     let rebased = parse(&document(
         r#"<Parcels><Parcel><CoordGeom><Line><Start>1e100 1e100</Start><End>1.0000000001e100 1e100</End></Line><Line><Start>1.0000000001e100 1e100</Start><End>1.0000000001e100 1.0000000001e100</End></Line><Line><Start>1.0000000001e100 1.0000000001e100</Start><End>1e100 1.0000000001e100</End></Line><Line><Start>1e100 1.0000000001e100</Start><End>1e100 1e100</End></Line></CoordGeom></Parcel></Parcels>"#,

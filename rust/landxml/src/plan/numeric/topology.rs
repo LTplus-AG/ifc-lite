@@ -4,30 +4,6 @@
 
 use super::*;
 
-pub(super) fn geometry_edges(
-    geometry: &LandXmlPlanGeometry,
-    start: LandXmlPlanPoint,
-    end: LandXmlPlanPoint,
-    chord: (LandXmlPlanPoint, LandXmlPlanPoint),
-) -> Vec<(LandXmlPlanPoint, LandXmlPlanPoint)> {
-    if geometry.kind == crate::LandXmlGeometryKind::Curve {
-        // A chord is not the analytic curve. In particular, its endpoints
-        // coincide with a legal closing line of a curved parcel, so it must
-        // not participate in the line-segment retrace test.
-        return Vec::new();
-    }
-    if geometry.kind != crate::LandXmlGeometryKind::IrregularLine {
-        return vec![chord];
-    }
-    std::iter::once(start)
-        .chain(geometry.intermediate_points.iter().copied())
-        .chain(std::iter::once(end))
-        .collect::<Vec<_>>()
-        .windows(2)
-        .map(|pair| (pair[0], pair[1]))
-        .collect()
-}
-
 pub(super) fn segments_intersect(
     previous: &[(LandXmlPlanPoint, LandXmlPlanPoint)],
     segments: &[(LandXmlPlanPoint, LandXmlPlanPoint)],

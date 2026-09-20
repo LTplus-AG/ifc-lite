@@ -28,7 +28,7 @@ function document(pointCount = 1): LandXmlTinDocument {
       version: '1.2', areaUnit: 'squareMeter', areaScaleToSquareMeters: 1,
       cogoPoints: [], monuments: [{ sourceId: 'monument', pointScopeId: null, ordinal: 1, name: 'corner', code: null, description: null, pntRef: 'control', point: null, properties: {} }],
       planFeatures: [{ sourceId: 'feature', ordinal: 1, name: 'road', code: null, description: null, properties: {}, locations: [], geometry: [{ sourceId: 'feature-line', ordinal: 1, kind: 'line', pointScopeId: null, start: { kind: 'coordinates', point: { northing: 1, easting: 2, elevation: null }, pntRef: null }, end: { kind: 'coordinates', point: { northing: 3, easting: 4, elevation: null }, pntRef: null }, center: null, pi: null, intermediatePoints: [], rotation: null, radius: null, declaredLength: null, properties: {} }] }],
-      parcels: [{ sourceId: 'parcel', ordinal: 1, name: 'lot', code: null, description: null, title: 'DEED-123', declaredArea: null, declaredPerimeter: null, declaredAreaUnit: null, properties: {}, loops: [[{ sourceId: 'parcel-curve', ordinal: 1, kind: 'curve', pointScopeId: null, start: { kind: 'coordinates', point: { northing: 0, easting: 1, elevation: null }, pntRef: null }, end: { kind: 'coordinates', point: { northing: 0, easting: -1, elevation: null }, pntRef: null }, center: { kind: 'coordinates', point: { northing: 0, easting: 0, elevation: null }, pntRef: null }, pi: null, intermediatePoints: [], rotation: 'ccw', radius: 1, declaredLength: null, properties: {} }]], preservationReason: null }], warnings: [],
+      parcels: [{ sourceId: 'parcel', ordinal: 1, name: 'lot', code: null, description: null, title: 'DEED-123', declaredArea: null, declaredPerimeter: null, declaredAreaUnit: null, properties: {}, loops: [[{ sourceId: 'parcel-curve', ordinal: 1, kind: 'curve', pointScopeId: null, start: { kind: 'coordinates', point: { northing: 0, easting: 1, elevation: null }, pntRef: null }, end: { kind: 'coordinates', point: { northing: 0, easting: -1, elevation: null }, pntRef: null }, center: { kind: 'coordinates', point: { northing: 0, easting: 0, elevation: null }, pntRef: null }, pi: null, intermediatePoints: [], rotation: 'ccw', radius: 1, declaredLength: null, properties: {} }]], loopOffsets: [0], preservationReason: null }], warnings: [],
       sourceBatches: [{ sourceIds: ['feature-line', 'parcel-curve'] }],
       parcelProbes: [{ sourceId: 'parcel', state: { kind: 'analytic' }, perimeterInDeclaredLinearUnits: 5.14, areaInDeclaredSquareUnits: 1.57, declaredArea: null, declaredPerimeter: null, perimeterInMeters: 5.14, areaInSquareMeters: 1.57 }],
       resolvedMonuments: [{ sourceId: 'monument', point: { northing: 1, easting: 2, elevation: 3 } }],
@@ -164,7 +164,7 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.match(parcel.textContent ?? '', /DEED-123/);
     assert.match(parcel.textContent ?? '', /Status: analytic/);
     assert.match(parcel.textContent ?? '', /Probe: perimeter 5.14, area 1.57/);
-    assert.ok([...parcel.querySelectorAll('button')].some((button) => button.textContent === 'curve 1'));
+    assert.ok([...parcel.querySelectorAll('button')].some((button) => button.textContent === 'Geometry parcel-curve'));
     cleanup();
 
     const curve = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'plan', sourceId: 'parcel-curve' }} onSelect={() => {}} />);

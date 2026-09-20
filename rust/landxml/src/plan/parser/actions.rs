@@ -74,19 +74,22 @@ impl Parser<'_> {
             "IrregularLine" => LandXmlGeometryKind::IrregularLine,
             _ => unreachable!("element is matched above"),
         };
-        if kind == LandXmlGeometryKind::Curve {
-            let valid_rotation = matches!(attr(&attributes, "rot"), Some("cw" | "ccw"));
-            if !valid_rotation {
-                return self.preserve_malformed_parcel("Curve rot must be cw or ccw");
-            }
-        }
+        let mut invalid_reason = (kind == LandXmlGeometryKind::Curve
+            && !matches!(attr(&attributes, "rot"), Some("cw" | "ccw")))
+        .then_some("Curve rot must be cw or ccw".to_owned());
         let radius = match optional_positive(&attributes, "radius", local) {
             Ok(radius) => radius,
-            Err(error) => return self.preserve_malformed_parcel(&error.message),
+            Err(error) => {
+                invalid_reason.get_or_insert(error.message);
+                None
+            }
         };
         let declared_length = match optional_finite(&attributes, "length", local) {
             Ok(length) => length,
-            Err(error) => return self.preserve_malformed_parcel(&error.message),
+            Err(error) => {
+                invalid_reason.get_or_insert(error.message);
+                None
+            }
         };
         self.geometry = Some(GeometryBuilder {
             kind,
@@ -104,7 +107,11 @@ impl Parser<'_> {
             center: None,
             pi: None,
             intermediate_points: Vec::new(),
+            invalid: invalid_reason.is_some(),
         });
+        if let Some(reason) = invalid_reason {
+            self.preserve_malformed_parcel(&reason)?;
+        }
         Ok(())
     }
     pub(super) fn finish_capture(&mut self) -> Result<()> {
@@ -179,17 +186,15 @@ impl Parser<'_> {
                 ..
             } => {
                 let location = if text.trim().is_empty() {
-                    let pnt_ref = pnt_ref.ok_or_else(|| {
-                        error(
-                            Code::InvalidSemantic,
-                            "point is missing coordinates and pntRef",
-                        )
-                    })?;
+                    let Some(pnt_ref) = pnt_ref else {
+                        return self
+                            .reject_malformed_geometry("point is missing coordinates and pntRef");
+                    };
                     LandXmlPlanPointLocation::PointReference { pnt_ref }
                 } else {
                     let point = match point(&text) {
                         Ok(point) => point,
-                        Err(error) => return self.preserve_malformed_parcel(&error.message),
+                        Err(error) => return self.reject_malformed_geometry(&error.message),
                     };
                     self.reserve_vertices(1)?;
                     LandXmlPlanPointLocation::Coordinates { point, pnt_ref }
@@ -204,15 +209,15 @@ impl Parser<'_> {
                 let geometry = self.geometry.as_mut().ok_or_else(|| {
                     error(Code::InvalidSemantic, "point outside CoordGeom primitive")
                 })?;
-                let target = match role.as_str() {
-                    "Start" => &mut geometry.start,
-                    "End" => &mut geometry.end,
-                    "Center" => &mut geometry.center,
-                    "PI" => &mut geometry.pi,
+                let duplicate = match role.as_str() {
+                    "Start" => geometry.start.replace(location).is_some(),
+                    "End" => geometry.end.replace(location).is_some(),
+                    "Center" => geometry.center.replace(location).is_some(),
+                    "PI" => geometry.pi.replace(location).is_some(),
                     _ => return Err(error(Code::InvalidSemantic, "unknown CoordGeom point")),
                 };
-                if target.replace(location).is_some() {
-                    return Err(error(Code::InvalidSemantic, "duplicate CoordGeom point"));
+                if duplicate {
+                    return self.reject_malformed_geometry("duplicate CoordGeom point");
                 }
             }
             Capture::PointList {
@@ -224,17 +229,15 @@ impl Parser<'_> {
                     self.limits.max_vertices - self.vertices,
                 ) {
                     Ok(points) => points,
-                    Err(error) => return self.preserve_malformed_parcel(&error.message),
+                    Err(error) => return self.reject_malformed_geometry(&error.message),
                 };
                 self.reserve_vertices(points.len())?;
                 let geometry = self.geometry.as_mut().ok_or_else(|| {
                     error(Code::InvalidSemantic, "PntList outside CoordGeom primitive")
                 })?;
                 if geometry.kind != LandXmlGeometryKind::IrregularLine {
-                    return Err(error(
-                        Code::InvalidSemantic,
-                        "PntList is supported only by IrregularLine",
-                    ));
+                    return self
+                        .reject_malformed_geometry("PntList is supported only by IrregularLine");
                 }
                 geometry.intermediate_points.extend(points);
             }
@@ -248,6 +251,9 @@ impl Parser<'_> {
     }
     pub(super) fn finish_geometry(&mut self) -> Result<()> {
         let geometry = self.geometry.take().expect("geometry depth checked");
+        if geometry.invalid {
+            return Ok(());
+        }
         let Some(start) = geometry.start else {
             return self.preserve_malformed_parcel("CoordGeom primitive is missing Start");
         };
@@ -323,6 +329,12 @@ impl Parser<'_> {
             return Ok(());
         }
         Err(error(Code::InvalidSemantic, reason))
+    }
+    fn reject_malformed_geometry(&mut self, reason: &str) -> Result<()> {
+        if let Some(geometry) = self.geometry.as_mut() {
+            geometry.invalid = true;
+        }
+        self.preserve_malformed_parcel(reason)
     }
     pub(super) fn add_property(&mut self, attributes: &Attributes) -> Result<()> {
         let key = attr(attributes, "label")

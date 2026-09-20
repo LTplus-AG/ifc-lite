@@ -75,6 +75,9 @@ pub(super) struct GeometryBuilder {
     pub(super) center: Option<LandXmlPlanPointLocation>,
     pub(super) pi: Option<LandXmlPlanPointLocation>,
     pub(super) intermediate_points: Vec<LandXmlPlanPoint>,
+    /// Keep consuming a malformed parcel primitive through its closing tag so
+    /// one bad child cannot desynchronise the enclosing document parser.
+    pub(super) invalid: bool,
 }
 
 pub(super) fn properties(attributes: &Attributes) -> super::super::model::LandXmlProperties {

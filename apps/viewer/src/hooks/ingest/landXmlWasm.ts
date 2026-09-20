@@ -6,7 +6,7 @@
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
-import { indexLandXmlSourceRecords } from './landXmlSemantics.js';
+import { indexLandXmlPlanRecords, indexLandXmlSourceRecords } from './landXmlSemantics.js';
 import type {
   LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
   LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
@@ -247,10 +247,17 @@ function plan(value: unknown): LandXmlPlanDocument {
   });
   const parcels: LandXmlParcel[] = array(raw.parcels, 'parcels').map((parcel, index) => {
     const parsed = record(parcel, `parcel ${index}`);
+    const loops = array(parsed.loops, `parcel ${index} loops`).map((loop, loopIndex) => array(loop, `parcel ${index} loop ${loopIndex}`).map((geometry, item) => planGeometry(geometry, `parcel ${index} loop ${loopIndex} geometry ${item}`)));
+    let geometryOffset = 0;
+    const loopOffsets = loops.map((loop) => {
+      const offset = geometryOffset;
+      geometryOffset += loop.length;
+      return offset;
+    });
     return {
       sourceId: string(parsed.source_id, `parcel ${index} source id`), ordinal: finite(parsed.ordinal, `parcel ${index} ordinal`), name: nullableString(parsed.name, `parcel ${index} name`), code: nullableString(parsed.code, `parcel ${index} code`), description: nullableString(parsed.description, `parcel ${index} description`), title: nullableString(parsed.title, `parcel ${index} title`),
       declaredArea: nullableFinite(parsed.declared_area, `parcel ${index} area`), declaredPerimeter: nullableFinite(parsed.declared_perimeter, `parcel ${index} perimeter`), declaredAreaUnit: nullableString(parsed.declared_area_unit, `parcel ${index} area unit`), properties: properties(parsed.properties, `parcel ${index} properties`),
-      loops: array(parsed.loops, `parcel ${index} loops`).map((loop, loopIndex) => array(loop, `parcel ${index} loop ${loopIndex}`).map((geometry, item) => planGeometry(geometry, `parcel ${index} loop ${loopIndex} geometry ${item}`))),
+      loops, loopOffsets,
       preservationReason: nullableString(parsed.preservation_reason, `parcel ${index} preservation reason`),
     };
   });
@@ -279,7 +286,7 @@ function plan(value: unknown): LandXmlPlanDocument {
     const resolved = (field: 'start' | 'end' | 'center' | 'pi'): LandXmlPlanPoint | null => parsed[field] === null || parsed[field] === undefined ? null : planPoint(parsed[field], `resolved geometry ${index} ${field}`);
     return { sourceId: string(parsed.source_id, `resolved geometry ${index} source id`), start: resolved('start'), end: resolved('end'), center: resolved('center'), pi: resolved('pi') };
   });
-  return {
+  const result: LandXmlPlanDocument = {
     version: string(raw.version, 'plan version'), areaUnit: nullableString(raw.area_unit, 'plan area unit'), areaScaleToSquareMeters: nullableFinite(raw.area_scale_to_square_meters, 'plan area scale'),
     cogoPoints, monuments, planFeatures: features, parcels,
     warnings: array(raw.warnings, 'plan warnings').map((warning, index) => string(warning, `plan warning ${index}`)),
@@ -289,6 +296,7 @@ function plan(value: unknown): LandXmlPlanDocument {
     }),
     parcelProbes, resolvedMonuments, resolvedGeometry,
   };
+  return { ...result, sourceRecords: indexLandXmlPlanRecords(result) };
 }
 
 function polylines(value: unknown, context: string): LandXmlPolyline[] {

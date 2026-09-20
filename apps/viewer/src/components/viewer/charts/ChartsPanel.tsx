@@ -16,6 +16,7 @@ import { BarChart3, Plus, X } from 'lucide-react';
 import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { elementFieldColumnId, type Aggregation, type ChartScope, type ChartSpec, type DashboardLayoutItem, type DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
 import { DASHBOARD_PRESETS, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
@@ -60,6 +61,7 @@ export function ensureActiveDashboard(): void {
 }
 
 export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps) {
+  const { t } = useTranslation();
   const dashboards = useViewerStore((s) => s.dashboards);
   const activeDashboardId = useViewerStore((s) => s.activeDashboardId);
   const setActiveDashboardId = useViewerStore((s) => s.setActiveDashboardId);
@@ -197,7 +199,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
               setActiveDashboardId(e.target.value);
             }
           }}
-          aria-label="Dashboard"
+          aria-label={t('chartsPanel.dashboardAriaLabel')}
         >
           {dashboards.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           <optgroup label="New from preset">
@@ -206,34 +208,34 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
         </select>
         <DashboardMenu dashboard={dashboard} onUpsert={upsertDashboard} onDelete={deleteDashboard} onActivate={setActiveDashboardId} />
         <label className="inline-flex items-center gap-1 text-muted-foreground">
-          Scope
-          <select className={select} value={scope.kind} onChange={(e) => setScope(e.target.value as ChartScope['kind'])} aria-label="Scope">
+          {t('chartsPanel.scopeLabel')}
+          <select className={select} value={scope.kind} onChange={(e) => setScope(e.target.value as ChartScope['kind'])} aria-label={t('chartsPanel.scopeAriaLabel')}>
             {(['all', 'visible', 'basket'] as const).map((k) => <option key={k} value={k}>{SCOPE_LABEL[k]}</option>)}
           </select>
         </label>
-        <label className="inline-flex items-center gap-1 text-muted-foreground" title="How a clicked bucket is shown in 3D">
-          On click
-          <select className={select} value={focusMode} onChange={(e) => setFocusMode(e.target.value as ChartFocusMode)} aria-label="Focus mode">
+        <label className="inline-flex items-center gap-1 text-muted-foreground" title={t('chartsPanel.focusModeTitle')}>
+          {t('chartsPanel.onClickLabel')}
+          <select className={select} value={focusMode} onChange={(e) => setFocusMode(e.target.value as ChartFocusMode)} aria-label={t('chartsPanel.focusModeAriaLabel')}>
             {(Object.keys(FOCUS_LABEL) as ChartFocusMode[]).map((m) => <option key={m} value={m}>{FOCUS_LABEL[m]}</option>)}
           </select>
         </label>
-        <label className="inline-flex items-center gap-1 cursor-pointer text-muted-foreground" title="Colour the model by the first chart's buckets">
+        <label className="inline-flex items-center gap-1 cursor-pointer text-muted-foreground" title={t('chartsPanel.colorIn3DTitle')}>
           <input type="checkbox" checked={colorIn3D} onChange={(e) => setColorIn3D(e.target.checked)} className="accent-[#7aa2f7]" />
-          Colour in 3D
+          {t('chartsPanel.colorIn3DLabel')}
         </label>
         {chartSlice && (
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={link.clearSelection} title="Clear the chart selection and show the whole scope again">
-            Clear slice ({chartSlice.size})
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={link.clearSelection} title={t('chartsPanel.clearSliceTitle')}>
+            {t('chartsPanel.clearSliceButton', { count: chartSlice.size })}
           </Button>
         )}
         <div className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setEditing(newChartSpec())} disabled={!dashboard}>
             <Plus className="h-3.5 w-3.5 mr-1" />
-            Add chart
+            {t('chartsPanel.addChartButton')}
           </Button>
           <ReportExportDialog dashboard={dashboard} aggregations={aggregations} onSaveReportSetup={upsertDashboard} seams={reportSeams} />
           {onClose && (
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label="Close charts">
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label={t('chartsPanel.closeAriaLabel')}>
               <X className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -255,11 +257,11 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
 
       <div className="flex-1 min-h-0 overflow-auto p-2">
         {modelCount === 0 ? (
-          <div className="h-full flex items-center justify-center text-muted-foreground">Load a model to chart it.</div>
+          <div className="h-full flex items-center justify-center text-muted-foreground">{t('chartsPanel.loadModelEmptyState')}</div>
         ) : !dashboard || dashboard.charts.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <span>No charts yet.</span>
-            <Button size="sm" className="h-7 px-2 text-xs" onClick={() => setEditing(newChartSpec())}>Add a chart</Button>
+            <span>{t('chartsPanel.noChartsEmptyState')}</span>
+            <Button size="sm" className="h-7 px-2 text-xs" onClick={() => setEditing(newChartSpec())}>{t('chartsPanel.addChartEmptyStateButton')}</Button>
           </div>
         ) : (
           <DashboardGrid layout={dashboard.layout} ids={chartIds} renderItem={renderCard} onLayoutChange={setLayout} />

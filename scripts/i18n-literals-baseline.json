@@ -141,7 +141,6 @@
   "apps/viewer/src/components/viewer/IDSAuditSummary.tsx": 8,
   "apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx": 22,
   "apps/viewer/src/components/viewer/IDSExportDialog.tsx": 22,
-  "apps/viewer/src/components/viewer/IDSPanel.tsx": 71,
   "apps/viewer/src/components/viewer/IDSReportExportButton.tsx": 8,
   "apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx": 37,
   "apps/viewer/src/components/viewer/KmzExportDialog.tsx": 21,

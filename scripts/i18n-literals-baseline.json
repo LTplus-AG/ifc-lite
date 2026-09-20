@@ -19,7 +19,6 @@
   "apps/viewer/src/components/extensions/RepairQueuePanel.tsx": 23,
   "apps/viewer/src/components/extensions/widget/WidgetErrorBoundary.tsx": 1,
   "apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx": 5,
-  "apps/viewer/src/components/viewer/AddElementPanel.tsx": 49,
   "apps/viewer/src/components/viewer/AxisHelper.tsx": 3,
   "apps/viewer/src/components/viewer/BCFPanel.tsx": 11,
   "apps/viewer/src/components/viewer/BasketPresentationDock.tsx": 25,

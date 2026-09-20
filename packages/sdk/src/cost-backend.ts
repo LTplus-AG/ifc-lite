@@ -7,7 +7,7 @@ import {
   type CostAppliedValue, type CostDiagnostic, type CostEvaluationResult,
   type CostGraphExtraction, type CostMutationOverlay, type CostRelationshipInfo, type IfcDataStore,
 } from '@ifc-lite/parser';
-import { effectiveSourceRecord } from '@ifc-lite/export';
+import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EntityRef } from './types.js';
 import type {
@@ -38,6 +38,19 @@ function costOverlay(view: MutablePropertyView, store: IfcDataStore): CostMutati
     isDeleted: id => view.isDeleted(id),
     retypes: () => new Map([...view.getTypeMutations()].map(([id, mutation]) => [id, mutation.newType])),
     effectiveRecord: (id, text, type) => effectiveSourceRecord(view, id, text, type, store.schemaVersion),
+    created: () => view.getNewEntities().map(entity => {
+      try {
+        const effective = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
+        return effective
+          ? { expressId: entity.expressId, ...effective }
+          : { expressId: entity.expressId, error: `Created entity #${entity.expressId} disappeared from the mutation overlay` };
+      } catch (error) {
+        return {
+          expressId: entity.expressId,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }),
   };
 }
 export type CostModelResolver = (modelId?: string) => ResolvedCostModel;

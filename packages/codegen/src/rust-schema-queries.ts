@@ -10,11 +10,60 @@
  * answers questions ABOUT the enum stay separable.
  */
 
-import type { ExpressSchema } from './express-parser.js';
+import type { IfcEntityInfo } from '@ifc-lite/data';
+import type { EntityDefinition, ExpressSchema } from './express-parser.js';
 import { getAllAttributes } from './express-parser.js';
 
+/** Adapt class-shaped IFC catalog rows into a name-only EXPRESS supplement. */
+export function entityCatalogSchema(
+  name: string,
+  catalog: readonly IfcEntityInfo[],
+  excludedTypes: readonly { readonly name: string }[],
+): ExpressSchema {
+  const excludedNames = new Set(excludedTypes.map((type) => type.name.toUpperCase()));
+  const entities: EntityDefinition[] = catalog
+    .filter(
+      (entity) =>
+        !excludedNames.has(entity.name.toUpperCase()) &&
+        (entity.parent !== undefined || entity.abstract || entity.attributes.length > 0),
+    )
+    .map((entity) => ({
+      name: entity.name,
+      isAbstract: entity.abstract,
+      supertype: entity.parent,
+      attributes: [],
+    }));
+  return { name, entities, types: [], enums: [], selects: [] };
+}
+
+/** Merge exact names while preserving canonical positional metadata. */
+export function mergeTypeUniverse(
+  canonical: ExpressSchema,
+  supplemental: readonly ExpressSchema[],
+): ExpressSchema {
+  const entities = [...canonical.entities];
+  const names = new Set(entities.map((entity) => entity.name.toUpperCase()));
+  for (const schema of supplemental) {
+    for (const entity of schema.entities) {
+      if (!names.has(entity.name.toUpperCase())) {
+        entities.push(entity);
+        names.add(entity.name.toUpperCase());
+      }
+    }
+  }
+  return {
+    ...canonical,
+    name: [canonical, ...supplemental].map((item) => item.name).join(' + '),
+    entities,
+  };
+}
+
 /** Emitted inside `impl IfcType { … }`, closing the impl block. */
-export function generateSchemaQueries(schema: ExpressSchema): string {
+export function generateSchemaQueries(
+  schema: ExpressSchema,
+  typeUniverse: readonly EntityDefinition[] = schema.entities
+): string {
+  const canonicalNames = new Set(schema.entities.map((entity) => entity.name));
   return `    /// This entity's attributes, in STEP declaration order.
     ///
     /// Supertype attributes come FIRST, which is what makes the position here
@@ -28,7 +77,9 @@ export function generateSchemaQueries(schema: ExpressSchema): string {
     /// as authoritative for it.
     pub fn attribute_names(&self) -> &'static [&'static str] {
         match self {
-${schema.entities.map((e) => `            Self::${e.name} => &[${getAllAttributes(e, schema).map((a) => `"${a.name}"`).join(', ')}],`).join('\n')}
+${typeUniverse.map((e) => canonicalNames.has(e.name)
+    ? `            Self::${e.name} => &[${getAllAttributes(e, schema).map((a) => `"${a.name}"`).join(', ')}],`
+    : `            Self::${e.name} => &[],`).join('\n')}
             Self::Unknown(_) => &[],
         }
     }

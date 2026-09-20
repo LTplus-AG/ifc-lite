@@ -2,44 +2,103 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfFidelityReport, PdfOmissionSummary, PdfPageRect } from '@/lib/appearance/pdf/vector-types';
+import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 
-/** Human labels for the canonical omission kinds (#4406). Unknown kinds show verbatim. */
-const LABELS: Readonly<Record<string, string>> = {
-  text: 'Text runs', image: 'Images', clip: 'Clipped content', transparency: 'Transparent content',
-  pattern: 'Patterns and shadings', dash: 'Dashed strokes', roundCapJoin: 'Round caps or joins',
-  curvedStroke: 'Curved strokes', hairline: 'Hairline strokes', hidden: 'Hidden optional content',
-  annotation: 'Annotation appearances',
+const ROW_KEYS: Readonly<Record<string, { simple: TranslationKey; region: TranslationKey }>> = {
+  text: { simple: 'appearance.pdfFidelity.row.text', region: 'appearance.pdfFidelity.row.textRegion' },
+  image: { simple: 'appearance.pdfFidelity.row.image', region: 'appearance.pdfFidelity.row.imageRegion' },
+  clip: { simple: 'appearance.pdfFidelity.row.clip', region: 'appearance.pdfFidelity.row.clipRegion' },
+  transparency: { simple: 'appearance.pdfFidelity.row.transparency', region: 'appearance.pdfFidelity.row.transparencyRegion' },
+  pattern: { simple: 'appearance.pdfFidelity.row.pattern', region: 'appearance.pdfFidelity.row.patternRegion' },
+  dash: { simple: 'appearance.pdfFidelity.row.dash', region: 'appearance.pdfFidelity.row.dashRegion' },
+  roundCapJoin: { simple: 'appearance.pdfFidelity.row.roundCapJoin', region: 'appearance.pdfFidelity.row.roundCapJoinRegion' },
+  curvedStroke: { simple: 'appearance.pdfFidelity.row.curvedStroke', region: 'appearance.pdfFidelity.row.curvedStrokeRegion' },
+  hairline: { simple: 'appearance.pdfFidelity.row.hairline', region: 'appearance.pdfFidelity.row.hairlineRegion' },
+  hidden: { simple: 'appearance.pdfFidelity.row.hidden', region: 'appearance.pdfFidelity.row.hiddenRegion' },
+  annotation: { simple: 'appearance.pdfFidelity.row.annotation', region: 'appearance.pdfFidelity.row.annotationRegion' },
 };
-export function omissionLabel(kind: string): string {
-  return LABELS[kind] ?? (kind.startsWith('unsupported:') ? `Unsupported operator ${kind.slice('unsupported:'.length)}` : kind);
+function ownValue<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
 }
 export function visibleOmissionCount(report: PdfFidelityReport): number {
   return report.summary.reduce((count, entry) => count + entry.visibleCount, 0);
 }
+const PARTIAL_SUMMARY_KEYS = {
+  zero: 'appearance.pdfFidelity.partialSummaryZeroPaths',
+  one: 'appearance.pdfFidelity.partialSummaryOnePath',
+  two: 'appearance.pdfFidelity.partialSummaryTwoPaths',
+  few: 'appearance.pdfFidelity.partialSummaryFewPaths',
+  many: 'appearance.pdfFidelity.partialSummaryManyPaths',
+  other: 'appearance.pdfFidelity.partialSummaryOtherPaths',
+} as const satisfies Record<Intl.LDMLPluralRule, TranslationKey>;
+
+function partialSummaryKey(locale: string, pathCount: number): TranslationKey {
+  return PARTIAL_SUMMARY_KEYS[selectPluralCategory(locale, pathCount)];
+}
 /** Extent in unrotated PDF user space (CropBox coordinates) shown in points:
  * one user-space unit is `UserUnit` points (ISO 32000-1 §14.11.5), so a page
  * with `/UserUnit 2` reports twice the raw coordinate. */
-export function omissionRegion(box: PdfPageRect, userUnit: number): string {
+export function omissionRegion(box: PdfPageRect, userUnit: number, t: (key: TranslationKey, params?: TranslationParameters) => string): string {
   const point = (value: number) => { const pt = value * userUnit; return Number.isInteger(pt) ? String(pt) : pt.toFixed(1); };
-  return `x ${point(box[0])}–${point(box[2])}, y ${point(box[1])}–${point(box[3])} pt`;
+  return t('appearance.pdfFidelity.regionExtent', { x0: point(box[0]), x1: point(box[2]), y0: point(box[1]), y1: point(box[3]) });
+}
+function regionParameters(box: PdfPageRect, userUnit: number): TranslationParameters {
+  const point = (value: number) => { const pt = value * userUnit; return Number.isInteger(pt) ? String(pt) : pt.toFixed(1); };
+  return { x0: point(box[0]), x1: point(box[2]), y0: point(box[1]), y1: point(box[3]) };
 }
 function OmissionRow({ entry, userUnit }: { entry: PdfOmissionSummary; userUnit: number }) {
-  return <li>{entry.visibleCount} × {omissionLabel(entry.kind)}{entry.bboxPdf ? ` — region ${omissionRegion(entry.bboxPdf, userUnit)}` : ''}</li>;
+  const { t, locale } = useTranslation();
+  const keys = ownValue(ROW_KEYS, entry.kind);
+  const params = {
+    count: entry.visibleCount,
+    itemCount: formatLocaleNumber(locale, entry.visibleCount),
+    ...(entry.bboxPdf ? regionParameters(entry.bboxPdf, userUnit) : {}),
+  };
+  if (keys) return <li>{t(entry.bboxPdf ? keys.region : keys.simple, params)}</li>;
+  if (entry.kind.startsWith('unsupported:')) {
+    return <li>{t(entry.bboxPdf ? 'appearance.pdfFidelity.row.unsupportedRegion' : 'appearance.pdfFidelity.row.unsupported', {
+      ...params, operator: entry.kind.slice('unsupported:'.length),
+    })}</li>;
+  }
+  return <li>{t(entry.bboxPdf ? 'appearance.pdfFidelity.row.unknownRegion' : 'appearance.pdfFidelity.row.unknown', {
+    ...params, kind: entry.kind,
+  })}</li>;
 }
 /** The canonical page verdict, shown before any geometry is prepared. `userUnit` is the page's /UserUnit. */
 export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelityReport; userUnit: number }) {
+  const { t, locale } = useTranslation();
   if (report.rasterOnly) {
-    return <p role="alert" className="text-[11px] text-destructive">This page has no vector drawing content — raster reference only. Use the Image representation; it is not presented as editable vectors.</p>;
+    return <p role="alert" className="text-[11px] text-destructive">{t('appearance.pdfFidelity.rasterOnlyNotice')}</p>;
   }
   if (report.exact) {
-    return <p role="status" className="text-[11px] text-green-700 dark:text-green-400">Exact conversion: {report.convertiblePaths} convertible {report.convertiblePaths === 1 ? 'path' : 'paths'}; nothing visible is omitted.</p>;
+    return <p role="status" className="text-[11px] text-green-700 dark:text-green-400">{t('appearance.pdfFidelity.exactSummary', {
+      count: report.convertiblePaths, pathCount: formatLocaleNumber(locale, report.convertiblePaths),
+    })}</p>;
   }
   const visible = report.summary.filter(entry => entry.visibleCount > 0);
   const invisible = report.summary.reduce((count, entry) => count + entry.count - entry.visibleCount, 0);
+  const omissions = visibleOmissionCount(report);
+  const summaryParams = {
+    count: omissions,
+    omissionCount: formatLocaleNumber(locale, omissions),
+    pathCount: formatLocaleNumber(locale, report.convertiblePaths),
+  };
+  const activeSummaryKey = partialSummaryKey(locale, report.convertiblePaths);
+  const summary = hasActiveTranslation(activeSummaryKey)
+    ? t(activeSummaryKey, summaryParams)
+    : resolveEnglish(partialSummaryKey('en', report.convertiblePaths), {
+        count: omissions,
+        omissionCount: formatLocaleNumber('en', omissions),
+        pathCount: formatLocaleNumber('en', report.convertiblePaths),
+      });
   return <div role="status" className="space-y-1 text-[11px]">
-    <p className="text-amber-700 dark:text-amber-400">Partial conversion: {visibleOmissionCount(report)} visible {visibleOmissionCount(report) === 1 ? 'omission' : 'omissions'} would be left out; {report.convertiblePaths} {report.convertiblePaths === 1 ? 'path converts' : 'paths convert'}.</p>
-    <ul className="list-disc pl-4" aria-label="PDF omissions">{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} userUnit={userUnit} />)}</ul>
-    {invisible > 0 && <p className="text-muted-foreground">{invisible} further {invisible === 1 ? 'item is' : 'items are'} not visible on the page and do not affect the conversion.</p>}
-    {report.omissionsTruncated && <p className="text-muted-foreground">The detailed list is truncated; these counts are complete.</p>}
+    <p className="text-amber-700 dark:text-amber-400">{summary}</p>
+    <ul className="list-disc pl-4" aria-label={t('appearance.pdfFidelity.omissionsAriaLabel')}>{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} userUnit={userUnit} />)}</ul>
+    {invisible > 0 && <p className="text-muted-foreground">{t('appearance.pdfFidelity.invisibleItemsNote', {
+      count: invisible, itemCount: formatLocaleNumber(locale, invisible),
+    })}</p>}
+    {report.omissionsTruncated && <p className="text-muted-foreground">{t('appearance.pdfFidelity.truncatedNote')}</p>}
   </div>;
 }

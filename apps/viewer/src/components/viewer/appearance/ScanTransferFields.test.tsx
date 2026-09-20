@@ -8,6 +8,8 @@ import { readFileSync } from 'node:fs';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { cleanup, render, type } from '@/test/render';
+import { registerLocale, setLocale } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import type { MeshTransferPlan } from '@/lib/appearance/scan/transfer-types';
 import type { ScanRegistrationReport } from '@/lib/appearance/scan/types';
@@ -15,7 +17,7 @@ import { ScanTransferFields } from './ScanTransferFields';
 import { useScanTransfer } from './useScanTransfer';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(initial); });
+afterEach(() => { cleanup(); useViewerStore.setState(initial); setLocale('en'); });
 let read: ReturnType<typeof useScanTransfer> | undefined;
 function Harness({ coverage, pointSource }: { coverage?: MeshTransferPlan['transfer']; pointSource?: boolean }) {
   const transfer = useScanTransfer({ targetId: 'target', session: null, result: null, stale: false, busy: false, applyAppearance: async () => {} });
@@ -49,7 +51,7 @@ test('coverage report names samples refused behind the surface beside the other 
     items: [{ ...counts, productId: 10, geometryItemId: 3 }], exclusions: [], diagnostics: [] });
   const report = ui.querySelector('[aria-label="Scan transfer coverage"]');
   assert.ok(report);
-  const n = (value: number) => value.toLocaleString();
+  const n = (value: number) => formatLocaleNumber('en', value); // the ACTIVE locale, not the machine's
   assert.ok(report.textContent!.includes(`Unknown: 0 too far · ${n(4212)} incompatible normals · 38 ambiguous · 748 behind the surface.`), report.textContent!);
   assert.ok(report.textContent!.includes(`${n(3426)} observed samples of ${n(8424)}.`));
   assert.ok(!report.textContent!.includes('too sparse') && !report.textContent!.includes('orientation'), 'mesh sources report no point-only reasons');
@@ -62,7 +64,7 @@ test('point sources expose their fit controls and report sparse samples and the 
   const { registration } = { registration: (JSON.parse(readFileSync(new URL('../../../../../../docs/architecture/evidence/scan-alignment-workbench/good.json', import.meta.url), 'utf8')) as { result: { report: ScanRegistrationReport } }).result.report };
   const ui = mount({ preparedSha256: 'prepared', source: { kind: 'points', orientation: 'target-referenced', pointCount: 465029 }, budget: { workUsed: 43537518, workLimit: 128_000_000 }, registrationSha256: 'registration', registration, applicable: true, coverage: counts,
     items: [{ ...counts, productId: 216, geometryItemId: 3 }], exclusions: [], diagnostics: [] }, true);
-  const n = (value: number) => value.toLocaleString();
+  const n = (value: number) => formatLocaleNumber('en', value); // the ACTIVE locale, not the machine's
   const inputs = pointLabels.map(pointLabel => ui.querySelector<HTMLInputElement>(`input[aria-label="${pointLabel}"]`));
   assert.ok(inputs.every(Boolean), 'all four point fit controls are offered');
   assert.equal(inputs[0]!.value, String(read!.settings.neighborhoodRadiusMetres));
@@ -80,4 +82,19 @@ test('point sources expose their fit controls and report sparse samples and the 
   const oriented = mount({ preparedSha256: 'prepared', source: { kind: 'points', orientation: 'source-normals', pointCount: 465029 }, budget: { workUsed: 1, workLimit: 128_000_000 }, registrationSha256: 'registration', registration, applicable: true, coverage: counts,
     items: [], exclusions: [], diagnostics: [] }, true);
   assert.ok(oriented.textContent!.includes('sample orientation from the capture’s own oriented normals'));
+});
+
+test('coverage metrics use the active application locale rather than the browser locale (#4918)', () => {
+  registerLocale('ar-EG-u-nu-arab', {});
+  setLocale('ar-EG-u-nu-arab');
+  const counts = { centroidSamples: 2, observedCentroidSamples: 1, rasterInteriorTexels: 4096, observedRasterInteriorTexels: 1800, samples: 8424, observedSamples: 3426,
+    unknownDistanceSamples: 0, unknownNormalSamples: 4212, unknownAmbiguousSamples: 38, unknownBehindSamples: 748, unknownSparseSamples: 0, observedAreaEstimateM2: 0.813, unknownAreaEstimateM2: 1.187 };
+  const { registration } = { registration: (JSON.parse(readFileSync(new URL('../../../../../../docs/architecture/evidence/scan-alignment-workbench/good.json', import.meta.url), 'utf8')) as { result: { report: ScanRegistrationReport } }).result.report };
+  const ui = mount({ preparedSha256: 'prepared', source: { kind: 'mesh', orientation: null, pointCount: null }, budget: { workUsed: 1, workLimit: 128_000_000 }, registrationSha256: 'registration', registration, applicable: true, coverage: counts,
+    items: [{ ...counts, productId: 10, geometryItemId: 3 }], exclusions: [], diagnostics: [] });
+  const report = ui.querySelector('[aria-label="Scan transfer coverage"]');
+  assert.ok(report);
+  const localized = new Intl.NumberFormat('ar-EG-u-nu-arab').format(counts.observedSamples);
+  assert.ok(report.textContent!.includes(localized), report.textContent!);
+  assert.ok(!report.textContent!.includes(counts.observedSamples.toLocaleString()), 'browser-locale digits must not leak into the active Arabic locale');
 });

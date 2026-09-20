@@ -11,9 +11,12 @@ import { AppearanceCalibrationFields } from './AppearanceCalibrationFields.js';
 import { AppearanceReferenceLibrary } from './AppearanceReferenceLibrary.js';
 import { AppearanceMappingFields } from './AppearanceMappingFields.js';
 import type { AppearancePanelViewProps } from './types.js';
+import { useTranslation } from '@/i18n';
+import { resolveLocalizedMessage } from './localized-message.js';
 
 /** Controlled dock content. Preview, selection, asset lifetimes and commands live in the controller. */
 export function AppearancePanelView(props: AppearancePanelViewProps) {
+  const { t } = useTranslation();
   const [inputReset, setInputReset] = useState(0);
   const [invalidFields, setInvalidFields] = useState<ReadonlySet<string>>(new Set());
   const onInvalid = useCallback((name: string, invalid: boolean) => {
@@ -29,28 +32,29 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;
   const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || (!reference && !props.modelId) || !props.sourceId;
   const applyDisabled = !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
-  const message = !props.assignmentMode && invalidFields.size ? 'Enter valid numbers in the highlighted fields before applying.' :
-    props.unavailableReason ?? props.statusMessage ?? ({
-      idle: 'Choose an image and scope to preview appearance.',
-      preparing: 'Preparing preview… You can keep adjusting the controls.',
-      ready: props.showingOriginal ? 'Showing original appearance.' : 'Preview ready. Apply to save this appearance to the model.',
-      applying: 'Applying appearance…',
-      stale: 'The model changed. Refresh the preview before applying.',
-      error: 'Could not prepare appearance. Adjust the settings and try again.',
+  const controllerMessage = resolveLocalizedMessage(props.unavailableReason ?? props.statusMessage, t);
+  const message = !props.assignmentMode && invalidFields.size ? t('appearance.panelView.invalidFieldsMessage') :
+    controllerMessage ?? ({
+      idle: t('appearance.panelView.status.idle'),
+      preparing: t('appearance.panelView.status.preparing'),
+      ready: props.showingOriginal ? t('appearance.panelView.status.readyShowingOriginal') : t('appearance.panelView.status.readyPreview'),
+      applying: t('appearance.panelView.status.applying'),
+      stale: t('appearance.panelView.status.stale'),
+      error: t('appearance.panelView.status.error'),
     }[props.status]);
   const sourceActions = <>
-      {props.onIntentChange && <div className="grid grid-cols-1 gap-1 rounded-md border p-1" role="group" aria-label="Source action">
-        <Button type="button" variant={props.intent === 'apply' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'apply'} onClick={() => props.onIntentChange?.('apply')}>Apply to IFC</Button>
-        <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>Place as reference</Button>
-        <Button type="button" variant={props.intent === 'capture' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'capture'} onClick={() => props.onIntentChange?.('capture')}>Create from scan</Button>
-        <Button type="button" variant={props.intent === 'scan' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'scan'} onClick={() => props.onIntentChange?.('scan')}>Align scan</Button>
+      {props.onIntentChange && <div className="grid grid-cols-1 gap-1 rounded-md border p-1" role="group" aria-label={t('appearance.panelView.sourceActionAriaLabel')}>
+        <Button type="button" variant={props.intent === 'apply' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'apply'} onClick={() => props.onIntentChange?.('apply')}>{t('appearance.panelView.applyToIfc')}</Button>
+        <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>{t('appearance.panelView.placeAsReference')}</Button>
+        <Button type="button" variant={props.intent === 'capture' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'capture'} onClick={() => props.onIntentChange?.('capture')}>{t('appearance.panelView.createFromScan')}</Button>
+        <Button type="button" variant={props.intent === 'scan' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'scan'} onClick={() => props.onIntentChange?.('scan')}>{t('appearance.panelView.alignScan')}</Button>
       </div>}
   </>;
-  if (props.intent === 'scan') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label="Appearance workspace">{sourceActions}{props.scan}</div>;
-  if (props.intent === 'capture') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label="Appearance workspace">{sourceActions}{props.capture}</div>;
-  return <div className="flex h-full min-h-0 flex-col bg-background" aria-label="Appearance workspace" aria-busy={!!busy}>
+  if (props.intent === 'scan') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label={t('appearance.panelView.workspaceAriaLabel')}>{sourceActions}{props.scan}</div>;
+  if (props.intent === 'capture') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label={t('appearance.panelView.workspaceAriaLabel')}>{sourceActions}{props.capture}</div>;
+  return <div className="flex h-full min-h-0 flex-col bg-background" aria-label={t('appearance.panelView.workspaceAriaLabel')} aria-busy={!!busy}>
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
-      <div><h2 className="text-sm font-semibold">Appearance</h2><p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{props.allowPdf ? 'Images and PDF pages across the surfaces you choose.' : 'One image, across the surfaces you choose.'}</p></div>
+      <div><h2 className="text-sm font-semibold">{t('appearance.panelView.heading')}</h2><p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{props.allowPdf ? t('appearance.panelView.descriptionPdf') : t('appearance.panelView.descriptionImageOnly')}</p></div>
       {sourceActions}
       <AppearanceSourceFields {...props} disabled={applying} />
       {props.pdfPassword && <AppearancePdfPassword key={props.pdfPassword.documentName} prompt={props.pdfPassword} disabled={applying} />}
@@ -70,11 +74,11 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       </div>
       {!reference && <Button type="button" variant="ghost" size="sm" className="w-full" aria-pressed={props.showingOriginal}
         disabled={!props.hasPreview || applying} onClick={() => props.onCompareChange(!props.showingOriginal)}>
-        <Eye aria-hidden="true" />{props.showingOriginal ? 'Show preview' : 'Compare original'}
+        <Eye aria-hidden="true" />{props.showingOriginal ? t('appearance.panelView.showPreview') : t('appearance.panelView.compareOriginal')}
       </Button>}
       <div className="grid grid-cols-2 gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>Discard</Button>
-        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />{reference ? props.editingReference ? 'Save registration' : 'Place reference' : 'Apply'}</Button>
+        <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>{t('appearance.panelView.discard')}</Button>
+        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />{reference ? (props.editingReference ? t('appearance.panelView.saveRegistration') : t('appearance.panelView.placeReference')) : t('appearance.panelView.apply')}</Button>
       </div>
     </footer>
   </div>;

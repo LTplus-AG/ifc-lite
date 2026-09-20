@@ -23,6 +23,13 @@ import type { AppearanceCatalog, AppearancePlan } from '@/lib/appearance/planner
 import type { AppearanceAssetOwner } from '@/lib/appearance/assets.js';
 import type { AppearancePanelViewProps, AppearanceScope, AppearanceDraftSettings } from './types.js';
 import { useFaceMasks } from './face-mask/useFaceMasks.js';
+import { rawMessage, translatedMessage, type LocalizedMessage } from './localized-message.js';
+
+class AppearanceValidationError extends Error {
+  constructor(readonly key: Parameters<typeof translatedMessage>[0]) { super(key); }
+}
+const appearanceErrorMessage = (error: unknown): LocalizedMessage => error instanceof AppearanceValidationError
+  ? translatedMessage(error.key) : rawMessage(error);
 
 interface Draft {
   modelId: string;
@@ -33,7 +40,6 @@ interface Draft {
   owner: AppearanceAssetOwner;
   source: ReturnType<typeof captureAppearanceSource>;
 }
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function discardDraft(draft: Draft | null): void {
   if (!draft) return;
   try { draft.session?.cancel(); }
@@ -58,8 +64,8 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     : { kind: selection.size || primarySelection !== null ? 'selection' : 'model' });
   const [settings, setSettings] = useState<AppearanceDraftSettings>({ ...(savedDraft?.settings ?? DEFAULT_APPEARANCE_SETTINGS) });
   const [status, setStatus] = useState<AppearancePanelViewProps['status']>('idle');
-  const [statusMessage, setStatusMessage] = useState<string | undefined>(savedDraft && !savedDraft.previewEnabled
-    ? 'Adjust the mapping to preview another appearance.' : undefined);
+  const [statusMessage, setStatusMessage] = useState<LocalizedMessage | undefined>(savedDraft && !savedDraft.previewEnabled
+    ? translatedMessage('appearance.controller.adjustMapping') : undefined);
   const [sourceBusy, setSourceBusy] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [counts, setCounts] = useState({ affected: 0, excluded: 0, reasons: [] as string[] });
@@ -84,17 +90,18 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   const owners = useMemo(() => appearanceOwners(useViewerStore.getState(), modelId ?? ''),
     [models, modelId, selection, primarySelection, mutationVersion]);
   const scopeResult = appearanceScope(catalogState?.modelId === modelId ? catalogState.catalog : null, owners.selectedProductIds, scope);
-  const unavailableReason = roomId ? 'Leave the shared room to edit appearance, then share the finished model.'
-    : !target?.ifcDataStore ? 'Open an IFC model to apply appearance.'
-    : target.schemaVersion === 'IFC2X3' || target.schemaVersion === 'IFC5' ? 'Appearance authoring currently needs an IFC4 or IFC4X3 model.'
-    : target.loadState && target.loadState !== 'complete' ? 'Wait for the model to finish loading.' : undefined;
+  const unavailableReason = useMemo(() => roomId ? translatedMessage('appearance.controller.leaveRoom')
+    : !target?.ifcDataStore ? translatedMessage('appearance.controller.openIfc')
+    : target.schemaVersion === 'IFC2X3' || target.schemaVersion === 'IFC5' ? translatedMessage('appearance.controller.requiresIfc4')
+    : target.loadState && target.loadState !== 'complete' ? translatedMessage('appearance.controller.waitForModel') : undefined,
+  [roomId, target?.ifcDataStore, target?.schemaVersion, target?.loadState]);
 
   const pdfSource = usePdfAppearanceSource(selectedSource, id => {
     setSourceId(id); setSettings(current => ({ ...current, kind: 'planar', repeatS: false, repeatT: false }));
     setPreviewEnabled(true);
   }, error => {
     pendingAbort.current?.abort(); planner.current?.cancel();
-    setStatus('error'); setStatusMessage(message(error));
+    setStatus('error'); setStatusMessage(rawMessage(error));
   });
 
   useEffect(() => {
@@ -139,11 +146,12 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     let adopted = false;
     supported.current = []; setConvertedObjects([]);
     setCounts({ affected: 0, excluded: 0, reasons: [] });
-    setStatus('preparing'); setStatusMessage(previewEnabled && sourceId ? 'Preparing appearance preview…' : 'Preparing model scope…');
+    setStatus('preparing'); setStatusMessage(translatedMessage(previewEnabled && sourceId
+      ? 'appearance.controller.preparingPreview' : 'appearance.controller.preparingScope'));
     const timer = setTimeout(() => { void (async () => {
       try {
         const worker = planner.current;
-        if (!worker) throw new Error('The appearance worker is unavailable.');
+        if (!worker) throw new AppearanceValidationError('appearance.controller.workerUnavailable');
         const currentSnapshot = await prepareAppearanceSnapshot(snapshot.current, modelId, owners.productIds, worker, controller.signal);
         if (controller.signal.aborted || !mounted.current) return;
         snapshot.current = currentSnapshot;
@@ -152,15 +160,15 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
           setCounts({ affected: 0, excluded: 0, reasons: [] });
           setStatus('idle');
           setStatusMessage(!sourceId ? undefined : appliedRevision.current
-            ? appliedRevision.current === currentSnapshot.revision ? 'Appearance applied. Undo is available.'
-              : 'Model updated. Adjust the mapping to preview again.'
-            : 'Preview discarded. Adjust the mapping to preview again.');
+            ? appliedRevision.current === currentSnapshot.revision ? translatedMessage('appearance.controller.applied')
+              : translatedMessage('appearance.controller.modelUpdated')
+            : translatedMessage('appearance.controller.discardedAdjust'));
           return;
         }
         const currentScope = await resolveAppearanceScope(currentSnapshot, owners.selectedProductIds, scope, controller.signal);
-        if (!currentScope.productIds.length) throw new Error('Choose a scope containing model surfaces.');
+        if (!currentScope.productIds.length) throw new AppearanceValidationError('appearance.controller.emptyScope');
         const renderer = getGlobalRenderer();
-        if (!renderer) throw new Error('The renderer is not ready to preview appearance.');
+        if (!renderer) throw new AppearanceValidationError('appearance.controller.rendererNotReady');
         const { source, schema, nextExpressId, bytes } = currentSnapshot;
         const assetId = selectedSource?.assetId ?? sourceId;
         // Face masks are a request-shape fault under any other policy; a
@@ -182,20 +190,23 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         // A stale or spent face selection is dropped here with its diagnostic; the
         // mask change re-runs this effect, so this plan is not staged.
         if (faceMasks.reconcile(plan, modelId, id => `IFC object #${id}`).diagnostics.length) {
-          setStatusMessage('A face selection changed. Refreshing the preview…'); return;
+          setStatusMessage(translatedMessage('appearance.controller.faceSelectionChanged')); return;
         }
         const state = useViewerStore.getState();
-        if (!plan.items.length) throw new Error(plan.exclusions[0]?.reason ?? 'No surfaces in this scope support the chosen mapping.');
+        if (!plan.items.length) {
+          if (plan.exclusions[0]?.reason) throw new Error(plan.exclusions[0].reason);
+          throw new AppearanceValidationError('appearance.controller.noSupportedSurfaces');
+        }
         // Exclusions must be acknowledged explicitly before the narrower scope applies.
         supported.current = [...new Set(plan.items.map(item => item.productId))];
         if (plan.exclusions.length) {
           setCounts({ affected: new Set(plan.items.map(item => item.productId)).size,
             excluded: plan.exclusions.length, reasons: [...new Set(plan.exclusions.map(item => item.reason))] });
-          throw new Error('Some objects cannot receive this appearance. Use the supported objects to continue.');
+          throw new AppearanceValidationError('appearance.controller.partialExclusions');
         }
         const previous = draft.current; draft.current = null;
         discardDraft(previous);
-        if (!bitmap) throw new Error('The projected surfaces have no image.');
+        if (!bitmap) throw new AppearanceValidationError('appearance.controller.noProjectedImage');
         const groups = bindAppearancePreview(state, renderer, modelId, plan, bitmap, imageUri,
           settings.repeatS, settings.repeatT, expandAppearanceCorners, page?.itemImages);
         const session = new AppearancePreviewSession(renderer);
@@ -204,9 +215,9 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         adopted = true;
         setCounts({ affected: groups.length, excluded: 0, reasons: [] });
         setConvertedObjects((plan.conversions ?? []).map(item => ({ productId: item.productId, name: `IFC object #${item.productId}` })));
-        setShowingOriginal(false); setStatus('ready'); setStatusMessage('Preview ready. Apply to save this appearance in the IFC model.');
+        setShowingOriginal(false); setStatus('ready'); setStatusMessage(translatedMessage('appearance.controller.previewReady'));
       } catch (error) {
-        if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(message(error)); }
+        if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(appearanceErrorMessage(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
@@ -236,7 +247,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         // An older scope/preview job must not overwrite the upload failure with
         // its later success message. Keep the previous committed appearance.
         pendingAbort.current?.abort(); planner.current?.cancel();
-        setStatus('error'); setStatusMessage(message(error));
+        setStatus('error'); setStatusMessage(rawMessage(error));
       }
     } finally {
       // A subscriber may throw after publication; the catalog still owns that
@@ -258,7 +269,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const previous = draft.current; draft.current = null;
     discardDraft(previous);
     faceMasks.reset();
-    setConvertedObjects([]); setShowingOriginal(false); setStatus('idle'); setStatusMessage('Preview discarded.');
+    setConvertedObjects([]); setShowingOriginal(false); setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.discarded'));
   }
   function compare(original: boolean): void {
     const current = draft.current;
@@ -268,7 +279,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
       if (original) { current.session?.cancel(); current.session = null; }
       else { const session = new AppearancePreviewSession(renderer); session.stage(current.groups); current.session = session; }
       setShowingOriginal(original);
-    } catch (error) { setStatus('error'); setStatusMessage(message(error)); }
+    } catch (error) { setStatus('error'); setStatusMessage(rawMessage(error)); }
   }
   async function apply(): Promise<void> {
     const current = draft.current;
@@ -279,15 +290,16 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     try {
       await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, current.session, current.groups, current.source, {
         signal: controller.signal,
-        onProgress: phase => { if (mounted.current) setStatusMessage(phase === 'preparing' ? 'Preparing IFC changes…' : 'Saving appearance…'); },
+        onProgress: phase => { if (mounted.current) setStatusMessage(translatedMessage(phase === 'preparing'
+          ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
       });
       setPreviewEnabled(false); setConvertedObjects([]);
       faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
-      setStatus('idle'); setStatusMessage('Appearance applied. Undo is available.');
-    } catch (error) { if (mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(message(error)); } }
+      setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
+    } catch (error) { if (mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
     finally { if (applyAbort.current === controller) applyAbort.current = null; }
   }
   return {

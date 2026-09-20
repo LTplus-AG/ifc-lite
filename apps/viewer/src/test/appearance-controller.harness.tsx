@@ -20,6 +20,7 @@ import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-
 import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client.js';
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse, AppearancePlan } from '@/lib/appearance/planner-types.js';
 import { fixtureModel } from './store-fixture.js';
+import { registerLocale, setLocale } from '@/i18n';
 
 export const controllerPng = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='), c => c.charCodeAt(0));
 const MODEL = 'strict-appearance';
@@ -62,7 +63,7 @@ class ControlledWorker implements AppearanceWorker {
     this.lateMessage = this.onmessage;
   }
   terminate() { this.terminations++; }
-  complete(late = false): void {
+  complete(late = false, exclusions: AppearancePlan['exclusions'] = []): void {
     const message = this.message;
     check(message, 'worker did not receive a request');
     const next = message.request.nextExpressId;
@@ -75,7 +76,7 @@ class ControlledWorker implements AppearanceWorker {
         { expressId: next + 3, type: 'IfcSurfaceStyleWithTextures', attributes: [[`#${next}`]] },
         { expressId: next + 4, type: 'IfcSurfaceStyle', attributes: [null, '.BOTH.', [`#${next + 3}`]] },
         { expressId: next + 5, type: 'IfcStyledItem', attributes: ['#11', [`#${next + 4}`], null] },
-      ], edits: [], removed: [], exclusions: [], items: [{ productId: 25, geometryItemId: 11,
+      ], edits: [], removed: [], exclusions, items: [{ productId: 25, geometryItemId: 11,
         texCoords: [[0, 0], [1, 0], [0, 1]], texCoordIndex: [[1, 2, 3]], sourceIndices: [0, 1, 2],
         targetIndices: [0, 1, 2], previewCornerUvs: [0, 0, 1, 0, 0, 1],
         targetVertexCount: 3, targetCornerNormals: [0, 0, 1, 0, 0, 1, 0, 0, 1] }],
@@ -86,7 +87,7 @@ class ControlledWorker implements AppearanceWorker {
 
 /** Shared by Node/HappyDOM and an isolated real-browser lab; never run in a user's model session. */
 export async function runAppearanceControllerScenario(
-  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure',
+  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion',
   imageBytes = controllerPng,
 ): Promise<{ scenario: string; requests: number; terminations: number; stages: number; nativeBitmaps: number }> {
   const initial = useViewerStore.getState();
@@ -222,6 +223,16 @@ END-ISO-10303-21;`);
         await act(async () => { workers[0].complete(true); });
         await advance(300);
         check(stages === 0, 'late cancelled worker response installed a preview');
+      } else if (scenario === 'partial-exclusion') {
+        await act(async () => { workers[0].complete(false, [{ productId: 26, reason: 'fixture exclusion' }]); });
+        await until(() => container.querySelector('[role=alert]')?.textContent?.includes('Some objects cannot receive this appearance') ?? false,
+          'partial exclusion did not report the repository-owned validation message');
+        registerLocale('en-x-appearance-validation', {
+          'appearance.controller.partialExclusions': '[translated partial exclusion]',
+        });
+        await act(async () => { setLocale('en-x-appearance-validation'); });
+        check(container.querySelector('[role=alert]')?.textContent === '[translated partial exclusion]',
+          'partial exclusion did not retranslate live from its retained key');
       } else {
         await act(async () => { workers[0].complete(); });
         await until(() => !button('Apply').disabled, `preview never became ready: ${container.textContent}`);
@@ -258,6 +269,7 @@ END-ISO-10303-21;`);
     check(allWorkers.every(worker => worker.terminations === 1), 'catalog or preview worker leaked after unmount');
     return { scenario, requests: workers.length, terminations: workers.reduce((sum, worker) => sum + worker.terminations, 0), stages, nativeBitmaps };
   } finally {
+    setLocale('en');
     await act(async () => { root?.unmount(); });
     for (const worker of allWorkers) if (!worker.terminations) worker.terminate();
     container.remove();

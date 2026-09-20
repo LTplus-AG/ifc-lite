@@ -355,11 +355,11 @@ describe('Properties panel localization (#4918 slice 4)', () => {
       'properties.georef.doubleGeorefBody': 'VERSATZ {displacement}.',
       'properties.georef.rotationOverrideNote': 'DREHUNG.',
       'properties.georef.distanceKilometres': 'DISTANZ {value} KM',
-      'properties.georef.scaleOverrideReasonOther': 'SKALIERUNG {fields}.',
+      'properties.georef.scaleOverrideReason': { other: 'SKALIERUNG {fields}.' },
       'properties.georef.correctionOffsets': 'OFFSET NULL',
       'properties.georef.correctionAngle': 'WINKEL NULL',
       'properties.georef.correctionScale': 'MASSSTAB {value}',
-      'properties.georef.rawValuesCorrectionFactorOther': 'KORREKTUR {edits}; FAKTOREN {factors}.',
+      'properties.georef.rawValuesCorrectionFactor': { other: 'KORREKTUR {edits}; FAKTOREN {factors}.' },
     });
     act(() => setLocale('de'));
     const coordinateInfo: CoordinateInfo = {

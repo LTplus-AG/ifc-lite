@@ -5,9 +5,8 @@
 /**
  * Selection handler functions extracted from useMouseControls.
  * Handles click/double-click selection and context menu interactions.
- * Pure functions that operate on a MouseHandlerContext — no React dependency.
+ * Pure functions operating on a MouseHandlerContext — no React dependency.
  */
-
 import { isTouchSelectionClick, selectViewportTarget } from './referenceSelection.js';
 import type { PickResult } from '@ifc-lite/renderer';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
@@ -21,6 +20,7 @@ import { raycastForPolylinePoint, isNearPolylineStart,
 } from './measureHandlers.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
+import { resolve as translate } from '@/i18n/registry';
 import { fromRenderTranslation, toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame } from '@/lib/model-placement/rotation.js';
 
@@ -48,7 +48,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
 
   if (tool === 'appearance-face') {
     const message = viewportFacePickError(pickViewportAppearanceFace(renderer.raycastScene(x, y, ctx.getPickOptions())?.intersection ?? null));
-    if (message) toast.error(message);
+    if (message) toast.error(translate(message));
     return;
   }
 

@@ -7,7 +7,7 @@
  * and IfcMapConversion entities with field-specific editing assistance.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
@@ -44,8 +44,7 @@ const MAP_UNITS = ['METRE', 'FOOT', 'US SURVEY FOOT'];
 const COMMON_VERTICAL_DATUMS = ['MSL', 'NAVD88', 'EVRF2007', 'EVRF2019', 'AHD', 'ODN', 'LN02'];
 
 type FieldHint = {
-  placeholderKey?: TranslationKey; suggestions?: string[];
-  isSelect?: boolean; helpTextKey?: TranslationKey;
+  placeholderKey?: TranslationKey; suggestions?: string[]; isSelect?: boolean; helpTextKey?: TranslationKey;
 };
 function getFieldHint(entity: string, field: string): FieldHint {
   if (entity === 'projectedCRS') {
@@ -93,21 +92,22 @@ interface GeorefRowProps {
 
 function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMutated, fieldEntity, fieldName, onSave, children }: GeorefRowProps) {
   const { t, locale } = useTranslation();
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
+  const [editing, setEditing] = useState(false), [editValue, setEditValue] = useState('');
+  const seededValue = useRef(''); // a commit still equal to the seed is a no-op, never a re-parse of a rounded display string
 
   const hint = useMemo(() => getFieldHint(fieldEntity ?? '', fieldName ?? ''), [fieldEntity, fieldName]);
 
   const startEdit = useCallback(() => {
     if (!editable || isComputed) return;
-    setEditValue(typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12, useGrouping: false }) : String(value ?? '')); // locale-formatted seed (#4918), commitEdit parses via parseLocaleNumber
+    seededValue.current = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 20, useGrouping: false }) : String(value ?? ''); // locale-formatted seed (#4918), commitEdit parses via parseLocaleNumber
+    setEditValue(seededValue.current);
     setEditing(true);
   }, [value, editable, isComputed, locale]);
 
   const commitEdit = useCallback((overrideValue?: string) => {
     if (!onSave) { setEditing(false); return; }
     const trimmed = (overrideValue ?? editValue).trim();
-    if (!trimmed && !hint.isSelect) { setEditing(false); return; }
+    if ((!trimmed && !hint.isSelect) || trimmed === seededValue.current.trim()) { setEditing(false); return; }
     if (isNumber) {
       const num = parseLocaleNumber(locale, trimmed);
       if (num === null) { setEditing(false); return; }

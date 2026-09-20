@@ -347,6 +347,37 @@ sibling to the unrelated `merge-layers-banner.en.ts` (the multilayer-wall
 geometry-merge setting's reload banner), not the same feature under a new
 name.
 
+The Annotate tool catalogue (#4918 slice: annotations, `annotations.en.ts`)
+covers the canvas-overlay pin (`AnnotationPin.tsx`), the DOM-billboard layer
+that projects pins into screen space (`AnnotationLayer.tsx`), the read/edit
+popover for an existing pin (`AnnotationPopover.tsx`), and the inline
+commit-or-cancel input shown while dropping a fresh pin
+(`AnnotationDropInput.tsx`), including the relative-time phrasing
+(`just now` / `{count}m ago` / `{count}h ago` / `{count}d ago`) both the
+popover and (via a shared word) its own hints use. An annotation's own note
+TEXT and its resolved entity TYPE NAME are model/runtime content and stay
+out of the catalogue; only the surrounding labels, hints, and time phrasing
+are translated here.
+
+The anonymized-export catalogue (#4918 slice: anonymized export,
+`anonymized-export.en.ts`) covers `AnonymizedExportDialog.tsx`'s own chrome
+(title, description, seed-exclusion warnings, result count, export/error
+status, and footer controls) and its four sub-panels: the anonymization
+toggle rows (`AnonymizationOptionsPanel.tsx`, whose `ROWS` table carries a
+`labelKey`/`effectKey` per row the same way `sectionConstants.ts`'s
+`AXIS_INFO` does), the relationship-expansion toggles
+(`RelationTogglePanel.tsx`), the checkable seed/related-entity list
+(`RelatedEntityList.tsx`), and the per-IFC-class chip bar
+(`TypeCategoryBar.tsx`). IFC class NAMES (`c.typeName`), entity NAMES/ids,
+and the relationship/role identifiers used to build a group's label are
+model content and stay out of the catalogue; only the surrounding labels,
+hints, and status messages are translated here. `AnonymizedExportDialog.tsx`
+distinguishing "entities" and warnings uses fixed-plural English wording for
+the secondary count in a message (the `{warnings}` clause in
+`exportedEntitiesWithWarnings`), the same simplification the layers
+catalogue's `checkEvidence.summary` already accepts for a message with two
+independent counts.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

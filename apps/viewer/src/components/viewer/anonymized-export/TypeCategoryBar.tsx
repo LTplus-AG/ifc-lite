@@ -14,6 +14,7 @@
  */
 
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import type { TypeCategory } from './useAnonymizedExportSet';
 
 interface TypeCategoryBarProps {
@@ -22,27 +23,39 @@ interface TypeCategoryBarProps {
 }
 
 export function TypeCategoryBar({ categories, onToggle }: TypeCategoryBarProps) {
+  const { t } = useTranslation();
   if (categories.length === 0) return null;
   const excludedCount = categories.filter((c) => c.excluded).length;
+  const heading = t('anonymizedExport.typeCategoryBar.heading');
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Categories in export
+          {heading}
         </div>
         <div className="text-[11px] text-muted-foreground">
-          {excludedCount > 0 ? `${excludedCount} blocked · ` : ''}click a category to block it
+          {excludedCount > 0 ? t('anonymizedExport.typeCategoryBar.blockedCountPrefix', { count: excludedCount }) : ''}
+          {t('anonymizedExport.typeCategoryBar.clickToBlockHint')}
         </div>
       </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Categories in export">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={heading}>
         {categories.map((c) => (
           <button
             key={c.typeName}
             type="button"
             disabled={c.locked}
             aria-pressed={c.excluded}
-            aria-label={`${c.excluded ? 'Unblock' : 'Block'} ${c.typeName}`}
-            title={c.locked ? 'Always included (selection or spatial chain)' : c.excluded ? 'Blocked — click to include' : 'Included — click to block'}
+            aria-label={t(
+              c.excluded ? 'anonymizedExport.typeCategoryBar.unblockAriaLabel' : 'anonymizedExport.typeCategoryBar.blockAriaLabel',
+              { typeName: c.typeName },
+            )}
+            title={
+              c.locked
+                ? t('anonymizedExport.typeCategoryBar.alwaysIncludedTitle')
+                : c.excluded
+                  ? t('anonymizedExport.typeCategoryBar.blockedTitle')
+                  : t('anonymizedExport.typeCategoryBar.includedTitle')
+            }
             onClick={() => onToggle(c.typeName, !c.excluded)}
             className={cn(
               'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors',

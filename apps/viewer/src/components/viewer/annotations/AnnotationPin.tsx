@@ -13,6 +13,7 @@
 
 import { forwardRef } from 'react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 export interface AnnotationPinProps {
   /** Index in the rendered list — 1-based. Shown inside the dot when ≤ 9. */
@@ -31,6 +32,7 @@ export interface AnnotationPinProps {
 
 export const AnnotationPin = forwardRef<HTMLButtonElement, AnnotationPinProps>(
   function AnnotationPin({ index, selected, preview, onClick, onContextMenu, variant = 'idle' }, ref) {
+    const { t } = useTranslation();
     // 1-character glyph: the index for ≤ 9, ellipsis otherwise. Keeps
     // the pin readable at 14px without feeling crowded.
     const glyph = index <= 9 ? String(index) : '·';
@@ -40,7 +42,11 @@ export const AnnotationPin = forwardRef<HTMLButtonElement, AnnotationPinProps>(
         ref={ref}
         type="button"
         title={preview}
-        aria-label={preview ? `Annotation ${index}: ${preview}` : `Annotation ${index}`}
+        aria-label={
+          preview
+            ? t('annotations.pin.ariaLabelWithPreview', { index, preview })
+            : t('annotations.pin.ariaLabelNoPreview', { index })
+        }
         onClick={onClick}
         onContextMenu={onContextMenu}
         className={cn(

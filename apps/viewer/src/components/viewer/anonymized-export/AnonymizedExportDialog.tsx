@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
@@ -73,6 +74,7 @@ interface AnonymizedExportDialogProps {
 }
 
 export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps) {
+  const { t } = useTranslation();
   const [localOpen, setLocalOpen] = useState(false);
   // Only the trigger-less host instance (ViewerLayout's "Global Overlays")
   // responds to the store flag; a triggered instance (the export dropdown)
@@ -143,7 +145,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
     setExportResult(null);
     try {
       const dataStore = await ensureModelExportReady(set.targetModelId);
-      if (!dataStore) throw new Error('Model data is unavailable for export');
+      if (!dataStore) throw new Error(t('anonymizedExport.dialog.modelDataUnavailableError'));
       const result = runAnonymizedExport({
         store: dataStore,
         fileStem,
@@ -152,8 +154,9 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
       });
       setLastResult(result);
       const warningCount = result.stats.warnings.length;
-      const msg = `Exported ${result.stats.entityCount} entities`
-        + (warningCount > 0 ? ` (${warningCount} warning${warningCount === 1 ? '' : 's'})` : '');
+      const msg = warningCount > 0
+        ? t('anonymizedExport.dialog.exportedEntitiesWithWarnings', { count: result.stats.entityCount, warnings: warningCount })
+        : t('anonymizedExport.dialog.exportedEntities', { count: result.stats.entityCount });
       setExportResult({ success: true, message: msg });
       toast.success(msg);
 
@@ -180,13 +183,15 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
         anonymize_currency: toggles.currency,
       });
     } catch (error) {
-      const msg = `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const msg = t('anonymizedExport.dialog.exportFailedMessage', {
+        message: error instanceof Error ? error.message : t('anonymizedExport.dialog.unknownError'),
+      });
       setExportResult({ success: false, message: msg });
       toast.error(msg);
     } finally {
       setIsExporting(false);
     }
-  }, [set, toggles, fileStem]);
+  }, [set, toggles, fileStem, t]);
 
   return (
     // Non-modal on purpose: the right ~60% of the 99vw content is a
@@ -209,29 +214,27 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
           <DialogHeader className="px-5 pt-4 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <EyeOff className="h-5 w-5" />
-              Export Anonymized Subset
+              {t('anonymizedExport.dialog.title')}
             </DialogTitle>
             <DialogDescription>
-              Objects highlighted in the 3D view on the right are what gets exported —
-              every project-identifying signal removed, local transformations kept.
+              {t('anonymizedExport.dialog.description')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 px-5 py-2 flex-1 min-h-0 overflow-y-auto">
             {set.otherModelSeedCount > 0 && (
               <p className="text-xs text-muted-foreground">
-                {set.otherModelSeedCount} selected object{set.otherModelSeedCount === 1 ? '' : 's'} in other models not included
+                {t('anonymizedExport.dialog.otherModelSeedsExcluded', { count: set.otherModelSeedCount })}
               </p>
             )}
             {set.droppedOverlaySeedCount > 0 && (
               <p className="text-xs text-muted-foreground">
-                {set.droppedOverlaySeedCount} selected object{set.droppedOverlaySeedCount === 1 ? '' : 's'} created in this
-                session {set.droppedOverlaySeedCount === 1 ? 'has' : 'have'} no source record and cannot be included
+                {t('anonymizedExport.dialog.droppedOverlaySeedsExcluded', { count: set.droppedOverlaySeedCount })}
               </p>
             )}
             {!set.hasSelection && (
               <p className="text-sm text-muted-foreground">
-                Select one or more objects in the 3D view, then reopen this dialog.
+                {t('anonymizedExport.dialog.noSelectionPrompt')}
               </p>
             )}
 
@@ -241,13 +244,17 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium">
-                    Result: {set.includedIds.size} entit{set.includedIds.size === 1 ? 'y' : 'ies'}
+                    {t('anonymizedExport.dialog.resultCount', { count: set.includedIds.size })}
                     {set.related?.truncated && (
-                      <Badge variant="destructive" className="ml-2 align-middle">Truncated</Badge>
+                      <Badge variant="destructive" className="ml-2 align-middle">
+                        {t('anonymizedExport.dialog.truncatedBadge')}
+                      </Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground">Preview in 3D</Label>
+                    <Label className="text-xs text-muted-foreground">
+                      {t('anonymizedExport.dialog.previewIn3dLabel')}
+                    </Label>
                     <Switch checked={previewEnabled} onCheckedChange={setPreviewEnabled} />
                   </div>
                 </div>
@@ -270,14 +277,16 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
             {isExporting && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Exporting…
+                {t('anonymizedExport.dialog.exportingStatus')}
               </div>
             )}
 
             {exportResult && (
               <Alert variant={exportResult.success ? 'default' : 'destructive'}>
                 {exportResult.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                <AlertTitle>{exportResult.success ? 'Success' : 'Error'}</AlertTitle>
+                <AlertTitle>
+                  {exportResult.success ? t('anonymizedExport.dialog.successTitle') : t('anonymizedExport.dialog.errorTitle')}
+                </AlertTitle>
                 <AlertDescription>{exportResult.message}</AlertDescription>
               </Alert>
             )}
@@ -285,7 +294,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
             {lastResult && lastResult.stats.warnings.length > 0 && (
               <details className="text-xs text-muted-foreground border rounded p-2">
                 <summary className="cursor-pointer select-none">
-                  {lastResult.stats.warnings.length} warning{lastResult.stats.warnings.length === 1 ? '' : 's'}
+                  {t('anonymizedExport.dialog.warningsSummary', { count: lastResult.stats.warnings.length })}
                 </summary>
                 <ul className="list-disc pl-4 mt-1 space-y-0.5">
                   {lastResult.stats.warnings.map((w, i) => (
@@ -298,7 +307,9 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
 
           <DialogFooter className="px-5 pb-4 pt-3 border-t sm:items-center gap-2">
             <div className="flex items-center gap-2 flex-1 sm:mr-auto">
-              <Label htmlFor="anon-file-stem" className="text-sm shrink-0">File name</Label>
+              <Label htmlFor="anon-file-stem" className="text-sm shrink-0">
+                {t('anonymizedExport.dialog.fileNameLabel')}
+              </Label>
               <Input
                 id="anon-file-stem"
                 value={fileStem}
@@ -309,21 +320,23 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
                 autoComplete="off"
                 spellCheck={false}
               />
-              <span className="text-sm text-muted-foreground">.ifc</span>
+              <span className="text-sm text-muted-foreground">
+                {t('anonymizedExport.dialog.ifcExtensionSuffix')}
+              </span>
             </div>
             <Button variant="outline" onClick={() => handleOpenChange(false)}>
-              Cancel
+              {t('anonymizedExport.dialog.cancelButton')}
             </Button>
             <Button onClick={() => void handleExport()} disabled={isExporting || !set.hasSelection || set.includedIds.size === 0}>
               {isExporting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Exporting...
+                  {t('anonymizedExport.dialog.exportingButton')}
                 </>
               ) : (
                 <>
                   <Download className="h-4 w-4 mr-2" />
-                  Export .ifc
+                  {t('anonymizedExport.dialog.exportButtonLabel')}
                 </>
               )}
             </Button>
@@ -334,7 +347,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
         <div className="relative pointer-events-none min-h-0">
           {set.hasSelection && (
             <div className="absolute top-2 left-2 rounded-md border bg-background/80 backdrop-blur px-2 py-1 text-xs text-muted-foreground">
-              3D preview — {set.includedIds.size} highlighted object{set.includedIds.size === 1 ? '' : 's'} will be exported
+              {t('anonymizedExport.dialog.previewCaption', { count: set.includedIds.size })}
             </div>
           )}
         </div>

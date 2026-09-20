@@ -19,6 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 
 interface RelationTogglePanelProps {
   options: RelatedEntityOptions;
@@ -40,6 +42,7 @@ function groupCount(related: RelatedEntities | null, relationships: readonly str
 const CONNECT_DEPTH_CHOICES = [1, 2, 3] as const;
 
 export function RelationTogglePanel({ options, onChange, related }: RelationTogglePanelProps) {
+  const { t } = useTranslation();
   const voidsOn = options.IfcRelVoidsElement ?? true;
   const fillsOn = options.IfcRelFillsElement ?? true;
   const aggregatesOn = (options.IfcRelAggregates ?? 'both') !== 'none';
@@ -48,36 +51,36 @@ export function RelationTogglePanel({ options, onChange, related }: RelationTogg
   const psetsOn = options.IfcRelDefinesByProperties ?? false;
   const connectDepth = options.IfcRelConnectsPathElementsDepth ?? 0;
 
-  const rows: { key: string; label: string; on: boolean; count: number; onToggle: (checked: boolean) => void }[] = [
+  const rows: { key: string; labelKey: TranslationKey; on: boolean; count: number; onToggle: (checked: boolean) => void }[] = [
     {
-      key: 'voids', label: 'Openings', on: voidsOn,
+      key: 'voids', labelKey: 'anonymizedExport.relations.openingsLabel', on: voidsOn,
       count: groupCount(related, ['IfcRelVoidsElement']),
       onToggle: (checked) => onChange({ IfcRelVoidsElement: checked }),
     },
     {
-      key: 'fills', label: 'Fillings & host', on: fillsOn,
+      key: 'fills', labelKey: 'anonymizedExport.relations.fillingsLabel', on: fillsOn,
       count: groupCount(related, ['IfcRelFillsElement']),
       onToggle: (checked) => onChange({ IfcRelFillsElement: checked }),
     },
     {
-      key: 'aggregates', label: 'Aggregates & nesting (parents/children)', on: aggregatesOn,
+      key: 'aggregates', labelKey: 'anonymizedExport.relations.aggregatesLabel', on: aggregatesOn,
       count: groupCount(related, ['IfcRelAggregates', 'IfcRelNests']),
       onToggle: (checked) => onChange(
         checked ? { IfcRelAggregates: 'both', IfcRelNests: 'down' } : { IfcRelAggregates: 'none', IfcRelNests: 'none' },
       ),
     },
     {
-      key: 'type', label: 'Type objects', on: typeOn,
+      key: 'type', labelKey: 'anonymizedExport.relations.typeObjectsLabel', on: typeOn,
       count: groupCount(related, ['IfcRelDefinesByType']),
       onToggle: (checked) => onChange({ IfcRelDefinesByType: checked }),
     },
     {
-      key: 'material', label: 'Materials', on: materialOn,
+      key: 'material', labelKey: 'anonymizedExport.relations.materialsLabel', on: materialOn,
       count: groupCount(related, ['IfcRelAssociatesMaterial']),
       onToggle: (checked) => onChange({ IfcRelAssociatesMaterial: checked }),
     },
     {
-      key: 'psets', label: 'Property sets (source)', on: psetsOn,
+      key: 'psets', labelKey: 'anonymizedExport.relations.propertySetsSourceLabel', on: psetsOn,
       count: groupCount(related, ['IfcRelDefinesByProperties']),
       onToggle: (checked) => onChange({ IfcRelDefinesByProperties: checked }),
     },
@@ -86,27 +89,30 @@ export function RelationTogglePanel({ options, onChange, related }: RelationTogg
   return (
     <div className="space-y-3">
       <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        Expand with related
+        {t('anonymizedExport.relations.heading')}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-        {rows.map((row) => (
-          <label key={row.key} className="flex items-center justify-between gap-2 min-w-0">
-            <span className="flex items-center gap-2 min-w-0">
-              <Switch checked={row.on} onCheckedChange={row.onToggle} aria-label={row.label} />
-              <span className="text-sm truncate">{row.label}</span>
-            </span>
-            <span className="text-xs text-muted-foreground tabular-nums shrink-0">{row.count}</span>
-          </label>
-        ))}
+        {rows.map((row) => {
+          const label = t(row.labelKey);
+          return (
+            <label key={row.key} className="flex items-center justify-between gap-2 min-w-0">
+              <span className="flex items-center gap-2 min-w-0">
+                <Switch checked={row.on} onCheckedChange={row.onToggle} aria-label={label} />
+                <span className="text-sm truncate">{label}</span>
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0">{row.count}</span>
+            </label>
+          );
+        })}
 
         <div className="flex items-center justify-between gap-2 sm:col-span-2">
           <span className="flex items-center gap-2 min-w-0">
             <Switch
               checked={connectDepth > 0}
               onCheckedChange={(checked) => onChange({ IfcRelConnectsPathElementsDepth: checked ? 1 : 0 })}
-              aria-label="Connected elements"
+              aria-label={t('anonymizedExport.relations.connectedAriaLabel')}
             />
-            <span className="text-sm">Connected, depth</span>
+            <span className="text-sm">{t('anonymizedExport.relations.connectedDepthLabel')}</span>
             <Select
               value={String(connectDepth > 0 ? connectDepth : 1)}
               onValueChange={(v) => onChange({ IfcRelConnectsPathElementsDepth: Number(v) })}

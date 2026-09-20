@@ -156,7 +156,10 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * include the version, so old entries reparse once rather than invent provenance. */
 /** v20: optional exact WASM RTC frame provenance in CoordinateInfo. Older
  * records remain readable with that provenance absent. */
-export const FORMAT_VERSION = 20;
+/** v21: relationship indexing covers every schema-resolvable exact IfcRel*
+ * class (#4205). The bytes are unchanged, but cache keys must miss v20 graphs
+ * that were produced before those buckets existed. */
+export const FORMAT_VERSION = 21;
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a

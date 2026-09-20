@@ -58,7 +58,9 @@ export const GEOMETRY_TYPES = new Set([
 ]);
 
 // Map IFC relationship type strings to RelationshipType enum
-// MUST cover ALL RelationshipType enum values (15 types total)
+// Every schema-resolvable concrete IfcRelationship class has an exact bucket.
+// The schema-union completeness test below this module's callers prevents a
+// newly generated class from silently falling through (#4205).
 export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELCONTAINEDINSPATIALSTRUCTURE': RelationshipType.ContainsElements,
     'IFCRELAGGREGATES': RelationshipType.Aggregates,
@@ -72,9 +74,15 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELNESTS': RelationshipType.Aggregates,
     'IFCRELDEFINESBYPROPERTIES': RelationshipType.DefinesByProperties,
     'IFCRELDEFINESBYTYPE': RelationshipType.DefinesByType,
+    'IFCRELDEFINESBYOBJECT': RelationshipType.DefinesByObject,
+    'IFCRELDEFINESBYTEMPLATE': RelationshipType.DefinesByTemplate,
+    'IFCRELOVERRIDESPROPERTIES': RelationshipType.OverridesProperties,
     'IFCRELASSOCIATESMATERIAL': RelationshipType.AssociatesMaterial,
     'IFCRELASSOCIATESCLASSIFICATION': RelationshipType.AssociatesClassification,
     'IFCRELASSOCIATESDOCUMENT': RelationshipType.AssociatesDocument,
+    'IFCRELASSOCIATESAPPLIEDVALUE': RelationshipType.AssociatesAppliedValue,
+    'IFCRELASSOCIATESPROFILEDEF': RelationshipType.AssociatesProfileDef,
+    'IFCRELASSOCIATESPROFILEPROPERTIES': RelationshipType.AssociatesProfileProperties,
     'IFCRELVOIDSELEMENT': RelationshipType.VoidsElement,
     'IFCRELFILLSELEMENT': RelationshipType.FillsElement,
     'IFCRELCONNECTSPATHELEMENTS': RelationshipType.ConnectsPathElements,
@@ -84,11 +92,15 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELCONNECTSSTRUCTURALACTIVITY': RelationshipType.ConnectsStructuralActivity,
     'IFCRELCONNECTSSTRUCTURALMEMBER': RelationshipType.ConnectsStructuralMember,
     'IFCRELCONNECTSWITHECCENTRICITY': RelationshipType.ConnectsWithEccentricity,
+    'IFCRELCONNECTSWITHREALIZINGELEMENTS': RelationshipType.ConnectsWithRealizingElements,
     // IfcRelConnectsStructuralElement exists only in IFC2X3. Its distinct
     // structural-member endpoint and relationship identity must not be
     // folded into IfcRelConnectsStructuralMember.
     'IFCRELCONNECTSSTRUCTURALELEMENT': RelationshipType.ConnectsStructuralElement,
     'IFCRELSPACEBOUNDARY': RelationshipType.SpaceBoundary,
+    'IFCRELSPACEBOUNDARY1STLEVEL': RelationshipType.SpaceBoundary1stLevel,
+    'IFCRELSPACEBOUNDARY2NDLEVEL': RelationshipType.SpaceBoundary2ndLevel,
+    'IFCRELINTERACTIONREQUIREMENTS': RelationshipType.InteractionRequirements,
     'IFCRELASSIGNSTOGROUP': RelationshipType.AssignsToGroup,
     // Subtype of IfcRelAssignsToGroup (adds a Factor); same RelatingGroup /
     // RelatedObjects membership semantics, so it shares this PRIMARY edge
@@ -99,7 +111,11 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     // Factor value up on the relationship entity itself (#4205).
     'IFCRELASSIGNSTOGROUPBYFACTOR': RelationshipType.AssignsToGroup,
     'IFCRELASSIGNSTOPRODUCT': RelationshipType.AssignsToProduct,
+    'IFCRELASSIGNSTASKS': RelationshipType.AssignsTasks,
+    'IFCRELASSIGNSTOPROJECTORDER': RelationshipType.AssignsToProjectOrder,
+    'IFCRELSCHEDULESCOSTITEMS': RelationshipType.SchedulesCostItems,
     'IFCRELREFERENCEDINSPATIALSTRUCTURE': RelationshipType.ReferencedInSpatialStructure,
+    'IFCRELOCCUPIESSPACES': RelationshipType.OccupiesSpaces,
     // Previously not indexed at all (#4205) — each gets its own dedicated
     // edge type since no existing consumer folded it into a broader bucket
     // to preserve; the slot positions come from `getRelationshipSlotPlan`,

@@ -11,6 +11,7 @@
 
 import { skipCommas, readRefList } from './columnar-parser-attributes.js';
 import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
+import type { IfcDataStore } from './columnar-parser.js';
 
 /**
  * Extract relatingObject and relatedObjects from a relationship entity using
@@ -30,8 +31,9 @@ export function extractRelFast(
     byteOffset: number,
     byteLength: number,
     typeUpper: string,
+    schemaVersion?: IfcDataStore['schemaVersion'],
 ): { relatingObject: number; relatedObjects: number[] } | null {
-    const plan = getRelationshipSlotPlan(typeUpper);
+    const plan = getRelationshipSlotPlan(typeUpper, schemaVersion);
     if (!plan) return null;
 
     const end = byteOffset + byteLength;

@@ -101,21 +101,20 @@ describe('drop census (#4208)', () => {
         expect(census.unindexedRelClasses.find(c => c.type === 'IFCRELASSIGNSTOPROCESS')).toBeUndefined();
     });
 
-    it('keeps a schema-known relationship without a RelationshipType visible as unindexed (#4205)', async () => {
-        // HIERARCHY_REL_TYPES now admits every concrete relationship subtype,
-        // but the scoped remainder still has no REL_TYPE_MAP entry and the
-        // parser consequently emits no graph edge. The census must report the
-        // emitted reality, not mistake admission to relationshipRefs for an
-        // edge. IfcRelDefinesByObject is one of the named remainder classes.
+    it('keeps the sole non-binary concrete relationship visible as unindexed (#4205)', async () => {
+        // IFC2X3 permits a bare IfcRelAssociates. Unlike every resolvable
+        // concrete subtype, it has RelatedObjects but no Relating* attribute,
+        // so it cannot form the graph's requested binary edge. The census must
+        // keep that explicit exception visible rather than treating admission
+        // to relationshipRefs as successful indexing.
         const ifc = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
-#2=IFCRELDEFINESBYOBJECT('rel-guid',#1,$,$,(#3),#4);
-#3=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);
-#4=IFCWALL('w2',#1,'Wall2',$,$,$,$,$);`;
+#2=IFCRELASSOCIATES('rel-guid',#1,$,$,(#3));
+#3=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);`;
         const store = await parseSource(ifc);
         const census = store.dropCensus!;
         expect(census.relClassesSeen).toBe(1);
         expect(census.relClassesIndexed).toBe(0);
-        expect(census.unindexedRelClasses.map(c => c.type)).toContain('IFCRELDEFINESBYOBJECT');
+        expect(census.unindexedRelClasses.map(c => c.type)).toContain('IFCRELASSOCIATES');
     });
 
     it('counts every mapped structural connection as indexed, including eccentricity and the IFC2X3-only type (#4205)', async () => {

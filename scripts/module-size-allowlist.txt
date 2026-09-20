@@ -186,7 +186,6 @@
    497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
-   457 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    405 apps/viewer/vite.config.ts
@@ -271,8 +270,7 @@
    416 packages/lens/src/types.ts
    812 packages/lists/src/engine.ts
    412 packages/lists/src/types.ts
-   484 packages/mcp/src/backend-query.ts
-   420 packages/mcp/src/overlay.ts
+   479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    439 packages/mcp/src/tools/diff-fingerprints.ts
    470 packages/mcp/src/tools/layer-review.ts

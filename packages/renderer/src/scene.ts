@@ -1002,20 +1002,17 @@ export class Scene {
       // Fall through to the normal multi-piece merge below
     }
 
-    // A singular return can only represent one local precision frame and one
-    // batch decision. Joining pieces from different origins without rebasing
-    // their vertices silently loses the frame; choosing one of several source
-    // buckets would likewise invent a quantization provenance. Return the
-    // first stable piece and direct callers to the explicitly multi-piece
-    // accessor instead.
+    // A singular result needs one real batch frame.  Separate precision
+    // buckets cannot be represented faithfully in one Float32Array, so make
+    // callers opt into the lossless pieces accessor instead of dropping one.
     const firstOrigin = pieces[0].origin;
-    const sameFrame = pieces.every(piece => piece.origin?.[0] === firstOrigin?.[0]
-      && piece.origin?.[1] === firstOrigin?.[1] && piece.origin?.[2] === firstOrigin?.[2]);
     const firstSource = this.derivedMeshProvenance.placedSourceFor(pieces[0], this.modelTranslations);
     const firstBucket = this.meshDataBucket.get(firstSource);
     const sameBucket = pieces.every(piece => this.meshDataBucket.get(this.derivedMeshProvenance.placedSourceFor(piece, this.modelTranslations)) === firstBucket);
-    if (!sameFrame || !sameBucket) return pieces[0];
-
+    const sameFrame = pieces.every(piece => piece.origin?.[0] === firstOrigin?.[0]
+      && piece.origin?.[1] === firstOrigin?.[1] && piece.origin?.[2] === firstOrigin?.[2]);
+    if (!sameBucket || (!firstBucket && !sameFrame)) return undefined;
+    const mergedOrigin: [number, number, number] = firstBucket?.batchedMesh?.origin ?? firstBucket?.frameOrigin ?? firstOrigin ?? [0, 0, 0];
     // Check if all pieces have the same color (within tolerance)
     // This handles multi-material elements like windows (frame vs glass)
     const firstColor = pieces[0].color;
@@ -1052,12 +1049,17 @@ export class Scene {
     let posOffset = 0;
     let idxOffset = 0;
     let vertexOffset = 0;
-
     for (const piece of pieces) {
-      // Copy positions and normals
-      mergedPositions.set(piece.positions, posOffset);
+      // Rebase local coordinates into the proven-safe batch frame (#5010).
+      const ox = (piece.origin?.[0] ?? 0) - mergedOrigin?.[0];
+      const oy = (piece.origin?.[1] ?? 0) - mergedOrigin?.[1];
+      const oz = (piece.origin?.[2] ?? 0) - mergedOrigin?.[2];
+      for (let i = 0; i < piece.positions.length; i += 3) {
+        mergedPositions[posOffset + i] = piece.positions[i] + ox;
+        mergedPositions[posOffset + i + 1] = piece.positions[i + 1] + oy;
+        mergedPositions[posOffset + i + 2] = piece.positions[i + 2] + oz;
+      }
       mergedNormals.set(piece.normals, posOffset);
-
       // Copy indices with offset
       for (let i = 0; i < piece.indices.length; i++) {
         mergedIndices[idxOffset + i] = piece.indices[i] + vertexOffset;
@@ -1077,7 +1079,7 @@ export class Scene {
       indices: mergedIndices,
       color: firstColor,
       ifcType: pieces[0].ifcType,
-      origin: firstOrigin,
+      origin: mergedOrigin,
     };
     // The common frame is explicit above.  Keep a source only when every part
     // belongs to the same live bucket; an arbitrary source would give a merged

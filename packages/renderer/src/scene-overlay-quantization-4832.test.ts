@@ -215,7 +215,7 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
     assert.strictEqual(scene.getBatchedMeshes().length, 2, 'a later safe append still succeeds');
   });
 
-  it('does not invent a singular provenance across separately framed pieces (#5010)', () => {
+  it('preserves every separately framed piece instead of silently dropping one (#5010)', () => {
     const scene = new Scene();
     const { device } = fakeDevice();
     scene.appendToBatches([
@@ -225,8 +225,24 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
 
     const pieces = scene.getMeshDataPieces(9)!;
     assert.strictEqual(pieces.length, 2, 'precision routing made two source frames');
-    assert.strictEqual(scene.getMeshData(9), pieces[0],
-      'the singular accessor refuses a frame-losing multi-piece merge');
+    assert.strictEqual(scene.getMeshData(9), undefined,
+      'the singular accessor refuses an unrepresentable Float32 merge');
+    assert.equal(scene.raycast({ x: 0.2, y: 0.2, z: 2 }, { x: 0, y: 0, z: -1 })?.expressId, 9);
+    assert.equal(scene.raycast({ x: 800_000_000.2, y: 0.2, z: 2 }, { x: 0, y: 0, z: -1 })?.expressId, 9,
+      'the distant triangle remains available to the real CPU raycast');
+  });
+
+  it('rebases same-bucket pieces into their shared frame without losing triangles (#5010)', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.appendToBatches([triangle(9, [0, 0, 0]), triangle(9, [5, 0, 0])], device, fakePipeline);
+
+    const merged = scene.getMeshData(9)!;
+    assert.equal(merged.indices.length, 6, 'both source triangles survive the singular merge');
+    const worldX = Array.from(merged.positions, (value, index) => index % 3 === 0 ? value + merged.origin![0] : null)
+      .filter((value): value is number => value !== null);
+    assert.ok(worldX.some(value => Math.abs(value) < 0.001));
+    assert.ok(worldX.some(value => Math.abs(value - 5) < 0.001));
   });
 
   it('precision-partitions distant same-colour components when chunks are disabled (#4937)', () => {

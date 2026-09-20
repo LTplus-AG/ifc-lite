@@ -39,7 +39,7 @@ pub(super) enum Capture {
         dimension: usize,
         text: String,
     },
-    Label {
+    Title {
         depth: usize,
         text: String,
     },
@@ -51,7 +51,7 @@ impl Capture {
             | Self::Monument { depth, .. }
             | Self::Point { depth, .. }
             | Self::PointList { depth, .. }
-            | Self::Label { depth, .. } => *depth,
+            | Self::Title { depth, .. } => *depth,
         }
     }
 }
@@ -64,6 +64,7 @@ pub(super) enum Active {
 pub(super) struct GeometryBuilder {
     pub(super) kind: LandXmlGeometryKind,
     pub(super) depth: usize,
+    pub(super) loop_ordinal: Option<usize>,
     pub(super) properties: super::super::model::LandXmlProperties,
     pub(super) rotation: Option<String>,
     pub(super) radius: Option<f64>,

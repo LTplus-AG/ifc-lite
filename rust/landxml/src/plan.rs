@@ -15,6 +15,6 @@ mod parser;
 pub use model::{
     LandXmlCgPoint, LandXmlGeometryKind, LandXmlMonument, LandXmlParcel, LandXmlParcelProbe,
     LandXmlParcelState, LandXmlPlanDocument, LandXmlPlanFeature, LandXmlPlanGeometry,
-    LandXmlPlanPoint, LandXmlPlanPointLocation,
+    LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanSourceBatch,
 };
 pub use parser::{parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlPlanLimits};

@@ -7,9 +7,90 @@ use super::{
     LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
 };
 
+mod topology;
+use topology::{geometry_edges, segments_intersect};
+
 const EPSILON: f64 = 1e-9;
 
+pub(super) struct TopologyBudget<'a> {
+    pub(super) work: usize,
+    pub(super) max_work: usize,
+    pub(super) cancelled: Option<&'a dyn crate::LandXmlCancellation>,
+}
+impl TopologyBudget<'_> {
+    pub(super) fn check(&mut self) -> std::result::Result<(), crate::LandXmlError> {
+        if self
+            .cancelled
+            .is_some_and(crate::LandXmlCancellation::is_cancelled)
+        {
+            return Err(crate::LandXmlError::new(
+                crate::LandXmlDiagnosticCode::Cancelled,
+                "parcel probe cancelled",
+            ));
+        }
+        self.work = self.work.checked_add(1).ok_or_else(|| {
+            crate::LandXmlError::new(
+                crate::LandXmlDiagnosticCode::LimitExceeded,
+                "parcel topology work limit exceeded",
+            )
+        })?;
+        if self.work > self.max_work {
+            return Err(crate::LandXmlError::new(
+                crate::LandXmlDiagnosticCode::LimitExceeded,
+                "parcel topology work limit exceeded",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn point_matches(point: &super::LandXmlCgPoint, reference: &str) -> bool {
+    point.name.as_deref() == Some(reference)
+        || point
+            .properties
+            .get("oID")
+            .is_some_and(|id| id == reference)
+        || point.ordinal.to_string() == reference
+        || point.source_id.0 == reference
+}
+
 impl LandXmlPlanDocument {
+    /// Partition plan-source identities without coupling semantic records to a
+    /// renderer allocation or introducing a second model-load path.
+    pub fn source_batches(&self, max_records: usize) -> Vec<super::LandXmlPlanSourceBatch> {
+        if max_records == 0 {
+            return Vec::new();
+        }
+        let source_ids: Vec<_> = self
+            .cogo_points
+            .iter()
+            .map(|point| point.source_id.clone())
+            .chain(
+                self.monuments
+                    .iter()
+                    .map(|monument| monument.source_id.clone()),
+            )
+            .chain(self.plan_features.iter().flat_map(|feature| {
+                feature
+                    .geometry
+                    .iter()
+                    .map(|geometry| geometry.source_id.clone())
+            }))
+            .chain(self.parcels.iter().flat_map(|parcel| {
+                parcel
+                    .loops
+                    .iter()
+                    .flatten()
+                    .map(|geometry| geometry.source_id.clone())
+            }))
+            .collect();
+        source_ids
+            .chunks(max_records)
+            .map(|source_ids| super::LandXmlPlanSourceBatch {
+                source_ids: source_ids.to_vec(),
+            })
+            .collect()
+    }
     /// Resolve a COGO reference in its producer scope, falling back only when
     /// the document has one unambiguous name match.
     pub fn resolve_point(
@@ -18,25 +99,50 @@ impl LandXmlPlanDocument {
         location: &LandXmlPlanPointLocation,
     ) -> Option<LandXmlPlanPoint> {
         match location {
-            LandXmlPlanPointLocation::Coordinates { point } => Some(*point),
+            LandXmlPlanPointLocation::Coordinates { point, .. } => Some(*point),
             LandXmlPlanPointLocation::PointReference { pnt_ref } => {
-                let scoped = self.cogo_points.iter().filter(|point| {
-                    scope_id.is_some_and(|scope| point.scope_id == *scope)
-                        && point.name.as_deref() == Some(pnt_ref)
-                });
-                let mut scoped = scoped.map(|point| point.point);
-                if let Some(point) = scoped.next() {
-                    return scoped.next().is_none().then_some(point);
-                }
-                let mut points = self
-                    .cogo_points
-                    .iter()
-                    .filter(|point| point.name.as_deref() == Some(pnt_ref))
-                    .map(|point| point.point);
-                let point = points.next()?;
-                points.next().is_none().then_some(point)
+                self.resolve_reference(scope_id, pnt_ref, &mut Vec::new(), self.cogo_points.len())
             }
         }
+    }
+
+    fn resolve_reference(
+        &self,
+        scope_id: Option<&crate::LandXmlSourceId>,
+        reference: &str,
+        visited: &mut Vec<usize>,
+        budget: usize,
+    ) -> Option<LandXmlPlanPoint> {
+        if budget == 0 {
+            return None;
+        }
+        let candidates: Vec<usize> = self
+            .cogo_points
+            .iter()
+            .enumerate()
+            .filter_map(|(index, point)| {
+                (scope_id.is_none_or(|scope| point.scope_id == *scope)
+                    && point_matches(point, reference))
+                .then_some(index)
+            })
+            .collect();
+        if candidates.len() != 1 {
+            return None;
+        }
+        let index = candidates[0];
+        if visited.contains(&index) {
+            return None;
+        }
+        visited.push(index);
+        let point = &self.cogo_points[index];
+        point.point.or_else(|| {
+            self.resolve_reference(
+                Some(&point.scope_id),
+                point.pnt_ref.as_deref()?,
+                visited,
+                budget - 1,
+            )
+        })
     }
 
     /// Resolve a monument's direct coordinate or its scoped `pntRef`.
@@ -56,31 +162,60 @@ impl LandXmlPlanDocument {
         })
     }
 
-    /// Probe a parcel in authored units. Invalid, open, self-intersecting and
-    /// unresolved loops remain source records and receive no invented fill.
+    /// Probe a parcel in authored units with the default topology work bound.
     pub fn probe_parcel(&self, parcel: &LandXmlParcel) -> LandXmlParcelProbe {
+        self.probe_parcel_with_cancel(parcel, 1_000_000, None)
+            .unwrap_or_else(|error| preserved(parcel, &error.message))
+    }
+
+    /// Probe a parcel while polling cancellation inside pairwise topology work.
+    pub fn probe_parcel_with_cancel(
+        &self,
+        parcel: &LandXmlParcel,
+        max_topology_work: usize,
+        cancelled: Option<&dyn crate::LandXmlCancellation>,
+    ) -> std::result::Result<LandXmlParcelProbe, crate::LandXmlError> {
+        let mut budget = TopologyBudget {
+            work: 0,
+            max_work: max_topology_work,
+            cancelled,
+        };
+        if let Some(reason) = &parcel.preservation_reason {
+            return Ok(preserved(parcel, reason));
+        }
         let mut perimeter = 0.0;
         let mut twice_area = 0.0;
+        let mut all_segments = Vec::new();
         for loop_geometry in &parcel.loops {
-            let Some(loop_probe) = probe_loop(self, loop_geometry) else {
-                return preserved(parcel, "open or unresolved boundary");
+            let Some(loop_probe) = probe_loop(self, loop_geometry, &mut budget)? else {
+                return Ok(preserved(parcel, "open or unresolved boundary"));
             };
             if loop_probe.self_intersects {
-                return preserved(parcel, "self-intersecting boundary");
+                return Ok(preserved(parcel, "self-intersecting boundary"));
             }
             perimeter += loop_probe.perimeter;
             twice_area += loop_probe.twice_area;
+            if segments_intersect(&all_segments, &loop_probe.segments, &mut budget)? {
+                return Ok(preserved(parcel, "cross-loop or retraced boundary"));
+            }
+            all_segments.extend(loop_probe.segments);
         }
         if parcel.loops.is_empty() {
-            return preserved(parcel, "missing CoordGeom boundary");
+            return Ok(preserved(parcel, "missing CoordGeom boundary"));
         }
-        LandXmlParcelProbe {
+        let area = twice_area.abs() * 0.5;
+        Ok(LandXmlParcelProbe {
             state: LandXmlParcelState::Analytic,
             perimeter_in_declared_linear_units: Some(perimeter),
-            area_in_declared_square_units: Some(twice_area.abs() * 0.5),
+            area_in_declared_square_units: Some(area),
             declared_area: parcel.declared_area,
             declared_perimeter: parcel.declared_perimeter,
-        }
+            perimeter_in_meters: self
+                .units
+                .as_ref()
+                .map(|units| perimeter * units.linear_scale_to_meters),
+            area_in_square_meters: self.area_scale_to_square_meters.map(|scale| area * scale),
+        })
     }
 }
 
@@ -88,6 +223,7 @@ struct LoopProbe {
     perimeter: f64,
     twice_area: f64,
     self_intersects: bool,
+    segments: Vec<(LandXmlPlanPoint, LandXmlPlanPoint)>,
 }
 
 fn preserved(parcel: &LandXmlParcel, reason: &str) -> LandXmlParcelProbe {
@@ -99,13 +235,16 @@ fn preserved(parcel: &LandXmlParcel, reason: &str) -> LandXmlParcelProbe {
         area_in_declared_square_units: None,
         declared_area: parcel.declared_area,
         declared_perimeter: parcel.declared_perimeter,
+        perimeter_in_meters: None,
+        area_in_square_meters: None,
     }
 }
 
 fn probe_loop(
     document: &LandXmlPlanDocument,
     geometry: &[LandXmlPlanGeometry],
-) -> Option<LoopProbe> {
+    budget: &mut TopologyBudget<'_>,
+) -> std::result::Result<Option<LoopProbe>, crate::LandXmlError> {
     // A full curve/curve intersection solver belongs in the future renderer
     // adapter. Until then, only a single analytic arc plus its closing chord
     // receives a fill-capable probe; richer curved loops stay preserved-only.
@@ -114,22 +253,29 @@ fn probe_loop(
             .iter()
             .any(|item| item.kind == super::LandXmlGeometryKind::Curve)
     {
-        return None;
+        return Ok(None);
     }
     let mut segments = Vec::with_capacity(geometry.len());
     let mut perimeter = 0.0;
     let mut twice_area = 0.0;
     let mut previous_end = None;
     for item in geometry {
-        let start = document.resolve_point(item.point_scope_id.as_ref(), &item.start)?;
-        let end = document.resolve_point(item.point_scope_id.as_ref(), &item.end)?;
+        budget.check()?;
+        let Some(start) = document.resolve_point(item.point_scope_id.as_ref(), &item.start) else {
+            return Ok(None);
+        };
+        let Some(end) = document.resolve_point(item.point_scope_id.as_ref(), &item.end) else {
+            return Ok(None);
+        };
         if previous_end.is_some_and(|previous| !same_point(previous, start)) {
-            return None;
+            return Ok(None);
         }
-        let (length, integral, chord) = geometry_measure(document, item, start, end)?;
+        let Some((length, integral, chord)) = geometry_measure(document, item, start, end) else {
+            return Ok(None);
+        };
         perimeter += length;
         twice_area += integral;
-        segments.push(chord);
+        segments.extend(geometry_edges(item, start, end, chord));
         previous_end = Some(end);
     }
     let (Some(first), Some(last)) = (
@@ -138,16 +284,17 @@ fn probe_loop(
             .and_then(|item| document.resolve_point(item.point_scope_id.as_ref(), &item.start)),
         previous_end,
     ) else {
-        return None;
+        return Ok(None);
     };
     if !same_point(first, last) {
-        return None;
+        return Ok(None);
     }
-    Some(LoopProbe {
+    Ok(Some(LoopProbe {
         perimeter,
         twice_area,
-        self_intersects: segments_intersect(&segments),
-    })
+        self_intersects: segments_intersect(&[], &segments, budget)?,
+        segments,
+    }))
 }
 
 fn geometry_measure(
@@ -187,24 +334,44 @@ fn geometry_measure(
                 return None;
             }
             let start_angle =
-                (start.easting - center.easting).atan2(start.northing - center.northing);
-            let end_angle = (end.easting - center.easting).atan2(end.northing - center.northing);
-            let delta = arc_delta(start_angle, end_angle, geometry.rotation.as_deref())?;
-            let integral = center.northing * (end.easting - start.easting)
-                - center.easting * (end.northing - start.northing)
+                (start.northing - center.northing).atan2(start.easting - center.easting);
+            let end_angle = (end.northing - center.northing).atan2(end.easting - center.easting);
+            let delta = arc_delta(
+                start_angle,
+                end_angle,
+                geometry.rotation.as_deref(),
+                geometry.declared_length,
+                radius,
+            )?;
+            let integral = center.easting * (end.northing - start.northing)
+                - center.northing * (end.easting - start.easting)
                 + radius * radius * delta;
             Some((radius * delta.abs(), integral, (start, end)))
         }
     }
 }
 
-fn arc_delta(start: f64, end: f64, rotation: Option<&str>) -> Option<f64> {
+fn arc_delta(
+    start: f64,
+    end: f64,
+    rotation: Option<&str>,
+    declared_length: Option<f64>,
+    radius: f64,
+) -> Option<f64> {
     let tau = std::f64::consts::TAU;
-    match rotation {
+    let primary = match rotation {
         Some("ccw") => Some((end - start).rem_euclid(tau)),
         Some("cw") => Some(-((start - end).rem_euclid(tau))),
         _ => None,
+    };
+    let primary = primary?;
+    if let Some(length) = declared_length {
+        let tolerance = EPSILON * radius.max(length).max(1.0);
+        if (radius * primary.abs() - length).abs() > tolerance {
+            return None;
+        }
     }
+    Some(primary)
 }
 
 fn same_point(left: LandXmlPlanPoint, right: LandXmlPlanPoint) -> bool {
@@ -214,47 +381,5 @@ fn distance(left: LandXmlPlanPoint, right: LandXmlPlanPoint) -> f64 {
     (left.northing - right.northing).hypot(left.easting - right.easting)
 }
 fn cross(left: LandXmlPlanPoint, right: LandXmlPlanPoint) -> f64 {
-    left.northing * right.easting - left.easting * right.northing
-}
-
-fn segments_intersect(segments: &[(LandXmlPlanPoint, LandXmlPlanPoint)]) -> bool {
-    for (index, left) in segments.iter().enumerate() {
-        for (other_index, right) in segments.iter().enumerate().skip(index + 1) {
-            if other_index == index + 1 || (index == 0 && other_index + 1 == segments.len()) {
-                continue;
-            }
-            if intersects(*left, *right) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn intersects(
-    (a, b): (LandXmlPlanPoint, LandXmlPlanPoint),
-    (c, d): (LandXmlPlanPoint, LandXmlPlanPoint),
-) -> bool {
-    let orientation = |p: LandXmlPlanPoint, q: LandXmlPlanPoint, r: LandXmlPlanPoint| {
-        (q.northing - p.northing) * (r.easting - p.easting)
-            - (q.easting - p.easting) * (r.northing - p.northing)
-    };
-    let ab_c = orientation(a, b, c);
-    let ab_d = orientation(a, b, d);
-    let cd_a = orientation(c, d, a);
-    let cd_b = orientation(c, d, b);
-    if ab_c * ab_d < -EPSILON && cd_a * cd_b < -EPSILON {
-        return true;
-    }
-    (ab_c.abs() <= EPSILON && on_segment(a, c, b))
-        || (ab_d.abs() <= EPSILON && on_segment(a, d, b))
-        || (cd_a.abs() <= EPSILON && on_segment(c, a, d))
-        || (cd_b.abs() <= EPSILON && on_segment(c, b, d))
-}
-
-fn on_segment(start: LandXmlPlanPoint, point: LandXmlPlanPoint, end: LandXmlPlanPoint) -> bool {
-    point.northing >= start.northing.min(end.northing) - EPSILON
-        && point.northing <= start.northing.max(end.northing) + EPSILON
-        && point.easting >= start.easting.min(end.easting) - EPSILON
-        && point.easting <= start.easting.max(end.easting) + EPSILON
+    left.easting * right.northing - left.northing * right.easting
 }

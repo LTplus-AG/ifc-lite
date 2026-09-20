@@ -2,47 +2,38 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use super::super::{
-    LandXmlGeometryKind, LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
-};
+use super::super::{LandXmlGeometryKind, LandXmlPlanGeometry, LandXmlPlanPointLocation};
 use super::state::properties;
+use super::value::{optional_finite, optional_positive, point, points_limited, source_id};
 use super::*;
 
 impl Parser<'_> {
     pub(super) fn begin_feature(&mut self, attributes: Attributes) -> Result<()> {
-        if self.features.len() >= self.limits.max_plan_features {
+        if self.feature_ordinal >= self.limits.max_plan_features {
             return Err(error(Code::LimitExceeded, "PlanFeature limit exceeded"));
         }
-        if self.active.is_some() {
-            return Err(error(
-                Code::InvalidSemantic,
-                "nested PlanFeature or Parcel is not valid",
-            ));
-        }
-        let ordinal = self.features.len() + 1;
-        self.active = Some(Active::Feature(LandXmlPlanFeature {
+        self.feature_ordinal += 1;
+        let ordinal = self.feature_ordinal;
+        self.active.push(Active::Feature(LandXmlPlanFeature {
             source_id: source_id("PlanFeature", ordinal, &attributes),
             ordinal,
             name: attr(&attributes, "name").map(str::to_owned),
             code: attr(&attributes, "code").map(str::to_owned),
             description: attr(&attributes, "desc").map(str::to_owned),
+            title: None,
             properties: properties(&attributes),
             geometry: Vec::new(),
+            locations: Vec::new(),
         }));
         Ok(())
     }
     pub(super) fn begin_parcel(&mut self, attributes: Attributes) -> Result<()> {
-        if self.parcels.len() >= self.limits.max_parcels {
+        if self.parcel_ordinal >= self.limits.max_parcels {
             return Err(error(Code::LimitExceeded, "Parcel limit exceeded"));
         }
-        if self.active.is_some() {
-            return Err(error(
-                Code::InvalidSemantic,
-                "nested PlanFeature or Parcel is not valid",
-            ));
-        }
-        let ordinal = self.parcels.len() + 1;
-        self.active = Some(Active::Parcel(LandXmlParcel {
+        self.parcel_ordinal += 1;
+        let ordinal = self.parcel_ordinal;
+        self.active.push(Active::Parcel(LandXmlParcel {
             source_id: source_id("Parcel", ordinal, &attributes),
             ordinal,
             name: attr(&attributes, "name").map(str::to_owned),
@@ -50,9 +41,10 @@ impl Parser<'_> {
             description: attr(&attributes, "desc").map(str::to_owned),
             declared_area: optional_finite(&attributes, "area", "Parcel")?,
             declared_perimeter: optional_finite(&attributes, "perimeter", "Parcel")?,
+            declared_area_unit: attr(&attributes, "areaUnit").map(str::to_owned),
             properties: properties(&attributes),
             loops: Vec::new(),
-            labels: Vec::new(),
+            preservation_reason: None,
         }));
         Ok(())
     }
@@ -71,19 +63,30 @@ impl Parser<'_> {
             _ => unreachable!("element is matched above"),
         };
         if kind == LandXmlGeometryKind::Curve {
-            let rotation = attr(&attributes, "rot")
-                .ok_or_else(|| error(Code::InvalidSemantic, "Curve is missing rot"))?;
-            if !matches!(rotation, "cw" | "ccw") {
-                return Err(error(Code::InvalidSemantic, "Curve rot must be cw or ccw"));
+            let valid_rotation = matches!(attr(&attributes, "rot"), Some("cw" | "ccw"));
+            if !valid_rotation {
+                return self.preserve_malformed_parcel("Curve rot must be cw or ccw");
             }
         }
+        let radius = match optional_positive(&attributes, "radius", local) {
+            Ok(radius) => radius,
+            Err(error) => return self.preserve_malformed_parcel(&error.message),
+        };
+        let declared_length = match optional_finite(&attributes, "length", local) {
+            Ok(length) => length,
+            Err(error) => return self.preserve_malformed_parcel(&error.message),
+        };
         self.geometry = Some(GeometryBuilder {
             kind,
             depth: self.frames.len(),
+            loop_ordinal: match self.active.last() {
+                Some(Active::Parcel(parcel)) => Some(parcel.loops.len()),
+                _ => None,
+            },
             properties: properties(&attributes),
             rotation: attr(&attributes, "rot").map(str::to_owned),
-            radius: optional_positive(&attributes, "radius", local)?,
-            declared_length: optional_finite(&attributes, "length", local)?,
+            radius,
+            declared_length,
             start: None,
             end: None,
             center: None,
@@ -104,11 +107,18 @@ impl Parser<'_> {
                 if self.cogo_points.len() >= self.limits.max_cogo_points {
                     return Err(error(Code::LimitExceeded, "CgPoint limit exceeded"));
                 }
-                self.reserve_vertices(1)?;
+                let pnt_ref = attr(&attributes, "pntRef").map(str::to_owned);
+                let point = (!text.trim().is_empty())
+                    .then(|| point(&text))
+                    .transpose()?;
+                if point.is_some() {
+                    self.reserve_vertices(1)?;
+                }
                 self.cogo_ordinal += 1;
                 let scope_id = self
-                    .scope_id
-                    .clone()
+                    .scope_stack
+                    .last()
+                    .map(|(_, scope)| scope.clone())
                     .ok_or_else(|| error(Code::InvalidSemantic, "CgPoint outside CgPoints"))?;
                 self.cogo_points.push(LandXmlCgPoint {
                     source_id: source_id("CgPoint", self.cogo_ordinal, &attributes),
@@ -117,7 +127,8 @@ impl Parser<'_> {
                     name: attr(&attributes, "name").map(str::to_owned),
                     code: attr(&attributes, "code").map(str::to_owned),
                     description: attr(&attributes, "desc").map(str::to_owned),
-                    point: point(&text)?,
+                    point,
+                    pnt_ref,
                     properties: properties(&attributes),
                 });
             }
@@ -128,12 +139,6 @@ impl Parser<'_> {
                     return Err(error(Code::LimitExceeded, "Monument limit exceeded"));
                 }
                 let pnt_ref = attr(&attributes, "pntRef").map(str::to_owned);
-                if pnt_ref.is_some() && !text.trim().is_empty() {
-                    return Err(error(
-                        Code::InvalidSemantic,
-                        "Monument must use coordinates or pntRef, not both",
-                    ));
-                }
                 let point = if text.trim().is_empty() {
                     None
                 } else {
@@ -143,7 +148,7 @@ impl Parser<'_> {
                 self.monument_ordinal += 1;
                 self.monuments.push(LandXmlMonument {
                     source_id: source_id("Monument", self.monument_ordinal, &attributes),
-                    point_scope_id: self.scope_id.clone(),
+                    point_scope_id: self.reference_scope.clone(),
                     ordinal: self.monument_ordinal,
                     name: attr(&attributes, "name").map(str::to_owned),
                     code: attr(&attributes, "code").map(str::to_owned),
@@ -159,20 +164,28 @@ impl Parser<'_> {
                 text,
                 ..
             } => {
-                let location = if let Some(pnt_ref) = pnt_ref {
-                    if !text.trim().is_empty() {
-                        return Err(error(
+                let location = if text.trim().is_empty() {
+                    let pnt_ref = pnt_ref.ok_or_else(|| {
+                        error(
                             Code::InvalidSemantic,
-                            "point must use coordinates or pntRef, not both",
-                        ));
-                    }
+                            "point is missing coordinates and pntRef",
+                        )
+                    })?;
                     LandXmlPlanPointLocation::PointReference { pnt_ref }
                 } else {
                     self.reserve_vertices(1)?;
                     LandXmlPlanPointLocation::Coordinates {
                         point: point(&text)?,
+                        pnt_ref,
                     }
                 };
+                if role == "__location" {
+                    if let Some(Active::Feature(feature)) = self.active.last_mut() {
+                        feature.locations.push(location);
+                        return Ok(());
+                    }
+                    return Err(error(Code::InvalidSemantic, "Location outside PlanFeature"));
+                }
                 let geometry = self.geometry.as_mut().ok_or_else(|| {
                     error(Code::InvalidSemantic, "point outside CoordGeom primitive")
                 })?;
@@ -190,7 +203,8 @@ impl Parser<'_> {
             Capture::PointList {
                 dimension, text, ..
             } => {
-                let points = points(&text, dimension)?;
+                let points =
+                    points_limited(&text, dimension, self.limits.max_vertices - self.vertices)?;
                 self.reserve_vertices(points.len())?;
                 let geometry = self.geometry.as_mut().ok_or_else(|| {
                     error(Code::InvalidSemantic, "PntList outside CoordGeom primitive")
@@ -203,12 +217,9 @@ impl Parser<'_> {
                 }
                 geometry.intermediate_points.extend(points);
             }
-            Capture::Label { text, .. } => {
-                if let Some(Active::Parcel(parcel)) = &mut self.active {
-                    let text = text.trim();
-                    if !text.is_empty() {
-                        parcel.labels.push(text.to_owned());
-                    }
+            Capture::Title { text, .. } => {
+                if let Some(Active::Feature(feature)) = self.active.last_mut() {
+                    feature.title = Some(text.trim().to_owned());
                 }
             }
         }
@@ -216,19 +227,16 @@ impl Parser<'_> {
     }
     pub(super) fn finish_geometry(&mut self) -> Result<()> {
         let geometry = self.geometry.take().expect("geometry depth checked");
-        let start = geometry.start.ok_or_else(|| {
-            error(
-                Code::InvalidSemantic,
-                "CoordGeom primitive is missing Start",
-            )
-        })?;
-        let end = geometry
-            .end
-            .ok_or_else(|| error(Code::InvalidSemantic, "CoordGeom primitive is missing End"))?;
+        let Some(start) = geometry.start else {
+            return self.preserve_malformed_parcel("CoordGeom primitive is missing Start");
+        };
+        let Some(end) = geometry.end else {
+            return self.preserve_malformed_parcel("CoordGeom primitive is missing End");
+        };
         if geometry.kind == LandXmlGeometryKind::Curve && geometry.center.is_none() {
-            return Err(error(Code::InvalidSemantic, "Curve is missing Center"));
+            return self.preserve_malformed_parcel("Curve is missing Center");
         }
-        let (owner, ordinal) = match self.active.as_ref() {
+        let (owner, ordinal) = match self.active.last() {
             Some(Active::Feature(feature)) => (&feature.source_id, feature.geometry.len() + 1),
             Some(Active::Parcel(parcel)) => (
                 &parcel.source_id,
@@ -241,11 +249,18 @@ impl Parser<'_> {
                 ))
             }
         };
+        let loop_identity = geometry
+            .loop_ordinal
+            .map(|value| format!(":loop:{value}"))
+            .unwrap_or_default();
         let record = LandXmlPlanGeometry {
-            source_id: LandXmlSourceId(format!("{}:CoordGeom:{}", owner.0, ordinal)),
+            source_id: LandXmlSourceId(format!(
+                "{}{}:CoordGeom:{}",
+                owner.0, loop_identity, ordinal
+            )),
             ordinal,
             kind: geometry.kind,
-            point_scope_id: self.scope_id.clone(),
+            point_scope_id: self.reference_scope.clone(),
             start,
             end,
             center: geometry.center,
@@ -256,7 +271,7 @@ impl Parser<'_> {
             declared_length: geometry.declared_length,
             properties: geometry.properties,
         };
-        match self.active.as_mut() {
+        match self.active.last_mut() {
             Some(Active::Feature(feature)) => feature.geometry.push(record),
             Some(Active::Parcel(parcel)) => parcel
                 .loops
@@ -270,12 +285,42 @@ impl Parser<'_> {
     pub(super) fn finish_active(&mut self) -> Result<()> {
         match self
             .active
-            .take()
+            .pop()
             .ok_or_else(|| error(Code::InvalidSemantic, "missing plan source record"))?
         {
             Active::Feature(feature) => self.features.push(feature),
             Active::Parcel(parcel) => self.parcels.push(parcel),
         };
+        Ok(())
+    }
+    fn preserve_malformed_parcel(&mut self, reason: &str) -> Result<()> {
+        if let Some(Active::Parcel(parcel)) = self.active.last_mut() {
+            parcel
+                .preservation_reason
+                .get_or_insert_with(|| reason.to_owned());
+            return Ok(());
+        }
+        Err(error(Code::InvalidSemantic, reason))
+    }
+    pub(super) fn add_property(&mut self, attributes: &Attributes) -> Result<()> {
+        let key = attr(attributes, "label")
+            .or_else(|| attr(attributes, "name"))
+            .ok_or_else(|| error(Code::InvalidSemantic, "Property is missing label"))?;
+        let value = attr(attributes, "value").unwrap_or_default().to_owned();
+        match self.active.last_mut() {
+            Some(Active::Feature(feature)) => {
+                feature.properties.insert(key.to_owned(), value);
+            }
+            Some(Active::Parcel(parcel)) => {
+                parcel.properties.insert(key.to_owned(), value);
+            }
+            None => {
+                return Err(error(
+                    Code::InvalidSemantic,
+                    "Property outside plan source record",
+                ))
+            }
+        }
         Ok(())
     }
     pub(super) fn reserve_vertices(&mut self, added: usize) -> Result<()> {
@@ -300,6 +345,8 @@ impl Parser<'_> {
         LandXmlPlanDocument {
             version: self.version,
             units: self.units,
+            area_unit: self.area_unit,
+            area_scale_to_square_meters: self.area_scale_to_square_meters,
             cogo_points: self.cogo_points,
             monuments: self.monuments,
             plan_features: self.features,
@@ -307,88 +354,4 @@ impl Parser<'_> {
             warnings: Vec::new(),
         }
     }
-}
-
-fn source_id(element: &str, ordinal: usize, attributes: &Attributes) -> LandXmlSourceId {
-    let identity = attr(attributes, "oID")
-        .or_else(|| attr(attributes, "name"))
-        .unwrap_or("unnamed");
-    LandXmlSourceId(format!("landxml:{element}:{ordinal}:{identity}"))
-}
-fn optional_finite(attributes: &Attributes, name: &str, context: &str) -> Result<Option<f64>> {
-    attr(attributes, name)
-        .map(|value| finite(value, context))
-        .transpose()
-}
-fn optional_positive(attributes: &Attributes, name: &str, context: &str) -> Result<Option<f64>> {
-    optional_finite(attributes, name, context)?
-        .map(|value| {
-            if value > 0.0 {
-                Ok(value)
-            } else {
-                Err(error(
-                    Code::InvalidSemantic,
-                    format!("{context} {name} must be positive"),
-                ))
-            }
-        })
-        .transpose()
-}
-fn finite(value: &str, context: &str) -> Result<f64> {
-    let value = value.parse::<f64>().map_err(|_| {
-        error(
-            Code::InvalidSemantic,
-            format!("{context} has invalid numeric value"),
-        )
-    })?;
-    if value.is_finite() {
-        Ok(value)
-    } else {
-        Err(error(
-            Code::InvalidSemantic,
-            format!("{context} requires a finite numeric value"),
-        ))
-    }
-}
-fn point(text: &str) -> Result<LandXmlPlanPoint> {
-    let values: Vec<f64> = text
-        .split_ascii_whitespace()
-        .map(|value| finite(value, "coordinate"))
-        .collect::<Result<_>>()?;
-    match values.as_slice() {
-        [northing, easting] => Ok(LandXmlPlanPoint {
-            northing: *northing,
-            easting: *easting,
-            elevation: None,
-        }),
-        [northing, easting, elevation] => Ok(LandXmlPlanPoint {
-            northing: *northing,
-            easting: *easting,
-            elevation: Some(*elevation),
-        }),
-        _ => Err(error(
-            Code::InvalidSemantic,
-            "coordinate requires northing easting [elevation]",
-        )),
-    }
-}
-fn points(text: &str, dimension: usize) -> Result<Vec<LandXmlPlanPoint>> {
-    let values: Vec<f64> = text
-        .split_ascii_whitespace()
-        .map(|value| finite(value, "PntList coordinate"))
-        .collect::<Result<_>>()?;
-    if values.len() < dimension * 2 || !values.len().is_multiple_of(dimension) {
-        return Err(error(
-            Code::InvalidSemantic,
-            "PntList requires at least two complete coordinates",
-        ));
-    }
-    Ok(values
-        .chunks_exact(dimension)
-        .map(|value| LandXmlPlanPoint {
-            northing: value[0],
-            easting: value[1],
-            elevation: (dimension == 3).then_some(value[2]),
-        })
-        .collect())
 }

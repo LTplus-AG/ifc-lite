@@ -42,5 +42,5 @@ pub use plan::{
     parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint, LandXmlGeometryKind,
     LandXmlMonument, LandXmlParcel, LandXmlParcelProbe, LandXmlParcelState, LandXmlPlanDocument,
     LandXmlPlanFeature, LandXmlPlanGeometry, LandXmlPlanLimits, LandXmlPlanPoint,
-    LandXmlPlanPointLocation,
+    LandXmlPlanPointLocation, LandXmlPlanSourceBatch,
 };

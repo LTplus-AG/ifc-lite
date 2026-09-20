@@ -22,8 +22,15 @@ pub struct LandXmlPlanPoint {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LandXmlPlanPointLocation {
-    Coordinates { point: LandXmlPlanPoint },
-    PointReference { pnt_ref: String },
+    Coordinates {
+        point: LandXmlPlanPoint,
+        /// A legal `pntRef` retained alongside authored coordinates. Numeric
+        /// consumers use the coordinates; the reference remains inspectable.
+        pnt_ref: Option<String>,
+    },
+    PointReference {
+        pnt_ref: String,
+    },
 }
 
 /// A COGO point's namespace-local identity is distinct from its display name.
@@ -35,7 +42,8 @@ pub struct LandXmlCgPoint {
     pub name: Option<String>,
     pub code: Option<String>,
     pub description: Option<String>,
-    pub point: LandXmlPlanPoint,
+    pub point: Option<LandXmlPlanPoint>,
+    pub pnt_ref: Option<String>,
     pub properties: LandXmlProperties,
 }
 
@@ -87,7 +95,9 @@ pub struct LandXmlPlanFeature {
     pub name: Option<String>,
     pub code: Option<String>,
     pub description: Option<String>,
+    pub title: Option<String>,
     pub properties: LandXmlProperties,
+    pub locations: Vec<LandXmlPlanPointLocation>,
     pub geometry: Vec<LandXmlPlanGeometry>,
 }
 
@@ -100,10 +110,13 @@ pub struct LandXmlParcel {
     pub description: Option<String>,
     pub declared_area: Option<f64>,
     pub declared_perimeter: Option<f64>,
+    pub declared_area_unit: Option<String>,
     pub properties: LandXmlProperties,
     /// Each `CoordGeom` is a distinct legal boundary loop.
     pub loops: Vec<Vec<LandXmlPlanGeometry>>,
-    pub labels: Vec<String>,
+    /// Set when a source primitive is malformed. The parcel remains
+    /// inspectable but is never promoted to a filled analytic boundary.
+    pub preservation_reason: Option<String>,
 }
 
 /// Whether a parcel can be probed without inventing a filled boundary.
@@ -122,6 +135,17 @@ pub struct LandXmlParcelProbe {
     pub area_in_declared_square_units: Option<f64>,
     pub declared_area: Option<f64>,
     pub declared_perimeter: Option<f64>,
+    pub perimeter_in_meters: Option<f64>,
+    pub area_in_square_meters: Option<f64>,
+}
+
+/// Bounded native hand-off records for the #5084 durable-document adapter.
+///
+/// This intentionally contains no mesh or loader behavior: the one canonical
+/// loader will join these source ids to the terrain document when #5084 lands.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlPlanSourceBatch {
+    pub source_ids: Vec<LandXmlSourceId>,
 }
 
 /// Native-only source records awaiting the #5084 durable-document adapter.
@@ -129,6 +153,8 @@ pub struct LandXmlParcelProbe {
 pub struct LandXmlPlanDocument {
     pub version: String,
     pub units: Option<LandXmlUnits>,
+    pub area_unit: Option<String>,
+    pub area_scale_to_square_meters: Option<f64>,
     pub cogo_points: Vec<LandXmlCgPoint>,
     pub monuments: Vec<LandXmlMonument>,
     pub plan_features: Vec<LandXmlPlanFeature>,

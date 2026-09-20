@@ -252,14 +252,14 @@ describe('ExtensionsPanel localization (#4918)', () => {
     assertAllTranslate([
       {
         key: 'extensionsFlavors.extensionsPanel.row.stats',
-        params: { version: '1.0.0', count: 5, date: installedAtText },
+        params: { version: '1.0.0', count: 5, countDisplay: '5', date: installedAtText },
       },
       { key: 'extensionsFlavors.extensionsPanel.row.forkAriaLabel', params: { id: 'ext.demo' } },
       { key: 'extensionsFlavors.extensionsPanel.row.forkTitle' },
       { key: 'extensionsFlavors.extensionsPanel.row.runTestsAriaLabel', params: { id: 'ext.demo' } },
       { key: 'extensionsFlavors.extensionsPanel.row.disableAriaLabel' },
       { key: 'extensionsFlavors.extensionsPanel.row.uninstallAriaLabel', params: { id: 'ext.demo' } },
-      { key: 'extensionsFlavors.extensionsPanel.row.moreCapabilities', params: { count: 1 } },
+      { key: 'extensionsFlavors.extensionsPanel.row.moreCapabilities', params: { count: '1' } },
     ]);
   });
 
@@ -588,7 +588,7 @@ describe('FlavorMergeDialog localization (#4918)', () => {
     assertAllTranslate([
       {
         key: 'extensionsFlavors.flavorMergeDialog.conflictSummary',
-        params: { count: 1, theirs: 'Theirs', ours: 'Ours' },
+        params: { count: 1, countDisplay: '1', theirs: 'Theirs', ours: 'Ours' },
       },
       {
         key: 'extensionsFlavors.flavorMergeDialog.conflictKind.setting',

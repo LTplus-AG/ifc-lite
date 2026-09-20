@@ -68,12 +68,12 @@ export const extensionsPanelsEn = {
   'extensionsPanels.auditLogPanel.metadataDetail': '{date} · {detail}',
   'extensionsPanels.auditLogPanel.metadataVersionDetail': '{date} · v{version} · {detail}',
   'extensionsPanels.auditLogPanel.capabilityGrants': {
-    one: '{count} capability grant',
-    other: '{count} capability grants',
+    one: '{countDisplay} capability grant',
+    other: '{countDisplay} capability grants',
   },
   'extensionsPanels.auditLogPanel.mutationEntities': {
-    one: '{count} entity',
-    other: '{count} entities',
+    one: '{countDisplay} entity',
+    other: '{countDisplay} entities',
   },
   'extensionsPanels.auditLogPanel.networkFetch': '{host} ({bytes} bytes)',
   'extensionsPanels.auditLogPanel.reasonSuffix': '{reason}',
@@ -251,8 +251,8 @@ export const extensionsPanelsEn = {
   'extensionsPanels.privacyPanel.approxTokens': '{tokens} approx tokens',
   'extensionsPanels.privacyPanel.saveOverlayButton': 'Save overlay',
   'extensionsPanels.privacyPanel.candidatePreferenceCount': {
-    one: '{count} candidate preference',
-    other: '{count} candidate preferences',
+    one: '{countDisplay} candidate preference',
+    other: '{countDisplay} candidate preferences',
   },
   'extensionsPanels.privacyPanel.ruleBasedWarning':
     'Rule-based scan — review each line before saving. The extractor uses a heuristic blocklist; it is not a guarantee that no content slips through.',
@@ -264,12 +264,12 @@ export const extensionsPanelsEn = {
   'extensionsPanels.privacyPanel.clearLogToast': 'Action log cleared.',
   'extensionsPanels.privacyPanel.noPreferencesToast': 'No stable preferences detected in this session yet.',
   'extensionsPanels.privacyPanel.foundPreferencesToast': {
-    one: 'Found {count} candidate preference.',
-    other: 'Found {count} candidate preferences.',
+    one: 'Found {countDisplay} candidate preference.',
+    other: 'Found {countDisplay} candidate preferences.',
   },
   'extensionsPanels.privacyPanel.addedPreferencesToast': {
-    one: 'Added {count} preference to the overlay. Save to keep them.',
-    other: 'Added {count} preferences to the overlay. Save to keep them.',
+    one: 'Added {countDisplay} preference to the overlay. Save to keep them.',
+    other: 'Added {countDisplay} preferences to the overlay. Save to keep them.',
   },
   'extensionsPanels.privacyPanel.noActiveFlavorError': 'No active flavor — switch to one before editing its overlay.',
   'extensionsPanels.privacyPanel.overlayClampedToast': 'Overlay clamped to ~{tokens} tokens.',

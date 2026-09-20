@@ -241,7 +241,7 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
 
 function auditMetadata(event: AuditEvent, t: UseTranslationResult['t'], locale: string): string {
   const date = formatExtensionDate(event.ts, locale);
-  const detail = extraDetail(event, t);
+  const detail = extraDetail(event, t, locale);
   if (event.version && detail) {
     return t('extensionsPanels.auditLogPanel.metadataVersionDetail', { date, version: event.version, detail });
   }
@@ -250,17 +250,26 @@ function auditMetadata(event: AuditEvent, t: UseTranslationResult['t'], locale: 
   return t('extensionsPanels.auditLogPanel.metadataDate', { date });
 }
 
-function extraDetail(event: AuditEvent, t: UseTranslationResult['t']): string {
+function extraDetail(event: AuditEvent, t: UseTranslationResult['t'], locale: string): string {
   switch (event.kind) {
     case 'install':
     case 'update':
       return event.grantedCapabilities
-        ? t('extensionsPanels.auditLogPanel.capabilityGrants', { count: event.grantedCapabilities.length })
+        ? t('extensionsPanels.auditLogPanel.capabilityGrants', {
+            count: event.grantedCapabilities.length,
+            countDisplay: formatLocaleNumber(locale, event.grantedCapabilities.length),
+          })
         : '';
     case 'mutation_summary':
-      return t('extensionsPanels.auditLogPanel.mutationEntities', { count: event.entityCount });
+      return t('extensionsPanels.auditLogPanel.mutationEntities', {
+        count: event.entityCount,
+        countDisplay: formatLocaleNumber(locale, event.entityCount),
+      });
     case 'network_fetch':
-      return t('extensionsPanels.auditLogPanel.networkFetch', { host: event.host, bytes: event.bytes });
+      return t('extensionsPanels.auditLogPanel.networkFetch', {
+        host: event.host,
+        bytes: formatLocaleNumber(locale, event.bytes),
+      });
     case 'unhealthy':
     case 'killed':
       return t('extensionsPanels.auditLogPanel.reasonSuffix', { reason: event.reason });

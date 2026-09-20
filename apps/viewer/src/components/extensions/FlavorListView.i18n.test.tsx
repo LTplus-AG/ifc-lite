@@ -220,8 +220,8 @@ describe('FlavorListView localization (#4918)', () => {
       { key: 'extensionsFlavors.flavorListView.renameAriaLabel', params: { name: 'Alpha' } },
       { key: 'extensionsFlavors.flavorListView.clickToRenameTitle' },
       { key: 'extensionsFlavors.flavorListView.activeBadge' },
-      { key: 'extensionsFlavors.flavorListView.uncapturedTitle', params: { count: 1 } },
-      { key: 'extensionsFlavors.flavorListView.uncapturedBadge', params: { count: 1 } },
+      { key: 'extensionsFlavors.flavorListView.uncapturedTitle', params: { count: 1, countDisplay: '1' } },
+      { key: 'extensionsFlavors.flavorListView.uncapturedBadge', params: { count: '1' } },
       {
         key: 'extensionsFlavors.flavorListView.statsLine',
         params: { ext: 0, lens: 1, qry: 0, clash: 0, date: dateA },
@@ -229,7 +229,7 @@ describe('FlavorListView localization (#4918)', () => {
       { key: 'extensionsFlavors.flavorListView.captureAriaLabel', params: { name: 'Alpha' } },
       {
         key: 'extensionsFlavors.flavorListView.captureTitleUncaptured',
-        params: { name: 'Alpha', count: 1 },
+        params: { name: 'Alpha', count: '1' },
       },
       { key: 'extensionsFlavors.flavorListView.renameTitle' },
       { key: 'extensionsFlavors.flavorListView.duplicateAriaLabel', params: { name: 'Alpha' } },
@@ -272,7 +272,7 @@ describe('FlavorListView localization (#4918)', () => {
 
     let englishDom = readableStrings(container);
     const snapshotOccurrences: Occurrence[] = [
-      { key: 'extensionsFlavors.flavorListView.nameSnapshotLabel', params: { count: 2 } },
+      { key: 'extensionsFlavors.flavorListView.nameSnapshotLabel', params: { count: 2, countDisplay: '2' } },
       { key: 'extensionsFlavors.flavorListView.placeholderSnapshot' },
       { key: 'extensionsFlavors.flavorListView.switchToEmptyTitle' },
       { key: 'extensionsFlavors.flavorListView.modeLabelSnapshot' },

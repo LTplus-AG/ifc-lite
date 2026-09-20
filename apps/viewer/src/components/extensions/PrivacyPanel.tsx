@@ -115,7 +115,10 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
     if (next.length === 0) {
       toast.info(t('extensionsPanels.privacyPanel.noPreferencesToast'));
     } else {
-      toast.success(t('extensionsPanels.privacyPanel.foundPreferencesToast', { count: next.length }));
+      toast.success(t('extensionsPanels.privacyPanel.foundPreferencesToast', {
+        count: next.length,
+        countDisplay: formatLocaleNumber(locale, next.length),
+      }));
     }
   };
 
@@ -124,7 +127,10 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
     setOverlayDraft(next);
     setDirty(true);
     setProposals([]);
-    toast.success(t('extensionsPanels.privacyPanel.addedPreferencesToast', { count: proposals.length }));
+    toast.success(t('extensionsPanels.privacyPanel.addedPreferencesToast', {
+      count: proposals.length,
+      countDisplay: formatLocaleNumber(locale, proposals.length),
+    }));
   };
 
   const handleSaveOverlay = async () => {
@@ -142,9 +148,13 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
       setOverlayDraft(clamped.overlay.content);
       setDirty(false);
       if (clamped.truncated) {
-        toast.info(t('extensionsPanels.privacyPanel.overlayClampedToast', { tokens: clamped.estimatedTokens }));
+        toast.info(t('extensionsPanels.privacyPanel.overlayClampedToast', {
+          tokens: formatLocaleNumber(locale, clamped.estimatedTokens),
+        }));
       } else {
-        toast.success(t('extensionsPanels.privacyPanel.overlaySavedToast', { tokens: clamped.estimatedTokens }));
+        toast.success(t('extensionsPanels.privacyPanel.overlaySavedToast', {
+          tokens: formatLocaleNumber(locale, clamped.estimatedTokens),
+        }));
       }
     } catch (err) {
       toast.error(t('extensionsPanels.privacyPanel.saveFailedToast', {
@@ -252,7 +262,9 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
                 />
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-[10px] text-muted-foreground">
-                    {t('extensionsPanels.privacyPanel.approxTokens', { tokens: Math.ceil(overlayDraft.length / 4) })}
+                    {t('extensionsPanels.privacyPanel.approxTokens', {
+                      tokens: formatLocaleNumber(locale, Math.ceil(overlayDraft.length / 4)),
+                    })}
                   </span>
                   <div className="flex items-center gap-1">
                     <Button size="sm" variant="outline" onClick={handleExtractMemory} disabled={chatMessages.length === 0}>
@@ -269,7 +281,10 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
                 {proposals.length > 0 && (
                   <div className="rounded border bg-muted/30 px-3 py-2 space-y-2">
                     <div className="text-[11px] font-medium">
-                      {t('extensionsPanels.privacyPanel.candidatePreferenceCount', { count: proposals.length })}
+                      {t('extensionsPanels.privacyPanel.candidatePreferenceCount', {
+                        count: proposals.length,
+                        countDisplay: formatLocaleNumber(locale, proposals.length),
+                      })}
                     </div>
                     <div className="text-[10px] text-amber-700 dark:text-amber-400 italic">
                       {t('extensionsPanels.privacyPanel.ruleBasedWarning')}

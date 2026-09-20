@@ -38,6 +38,7 @@ import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 import { useViewerStore } from '@/store';
 import { HelpHint } from './HelpHint';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { formatExtensionDate } from './localized-date';
 import { localizedFlavorName } from './localized-flavor-metadata';
 import { useActiveFlavor } from './use-active-flavor';
@@ -370,6 +371,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                       {t('extensionsFlavors.extensionsPanel.row.stats', {
                         version: record.version,
                         count: record.grantedCapabilities.length,
+                        countDisplay: formatLocaleNumber(locale, record.grantedCapabilities.length),
                         date: formatExtensionDate(record.installedAt, locale, true),
                       })}
                     </div>
@@ -442,7 +444,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     {record.grantedCapabilities.length > 4 && (
                       <span className="text-[10px] text-muted-foreground self-center">
                         {t('extensionsFlavors.extensionsPanel.row.moreCapabilities', {
-                          count: record.grantedCapabilities.length - 4,
+                          count: formatLocaleNumber(locale, record.grantedCapabilities.length - 4),
                         })}
                       </span>
                     )}

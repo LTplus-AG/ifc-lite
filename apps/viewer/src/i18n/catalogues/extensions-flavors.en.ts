@@ -36,8 +36,8 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorListView.resetTitle': 'Recreate the Default baseline flavor',
   'extensionsFlavors.flavorListView.resetButton': 'Reset',
   'extensionsFlavors.flavorListView.nameSnapshotLabel': {
-    one: 'Name this flavor (will snapshot {count} lens)',
-    other: 'Name this flavor (will snapshot {count} lenses)',
+    one: 'Name this flavor (will snapshot {countDisplay} lens)',
+    other: 'Name this flavor (will snapshot {countDisplay} lenses)',
   },
   'extensionsFlavors.flavorListView.nameEmptyLabel': 'Name this new empty flavor',
   'extensionsFlavors.flavorListView.placeholderSnapshot': 'Cost estimating',
@@ -56,8 +56,8 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorListView.clickToRenameTitle': 'Click to rename',
   'extensionsFlavors.flavorListView.activeBadge': 'Active',
   'extensionsFlavors.flavorListView.uncapturedTitle': {
-    one: '{count} lens in viewer not yet captured',
-    other: '{count} lenses in viewer not yet captured',
+    one: '{countDisplay} lens in viewer not yet captured',
+    other: '{countDisplay} lenses in viewer not yet captured',
   },
   'extensionsFlavors.flavorListView.uncapturedBadge': '{count} uncaptured',
   'extensionsFlavors.flavorListView.statsLine':
@@ -106,8 +106,8 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionsPanel.emptyState.cliHint':
     'All extensions run in a sandbox with explicit capability grants. Build one from the CLI with ifc-lite ext init.',
   'extensionsFlavors.extensionsPanel.row.stats': {
-    one: 'v{version} · {count} capability · {date}',
-    other: 'v{version} · {count} capabilities · {date}',
+    one: 'v{version} · {countDisplay} capability · {date}',
+    other: 'v{version} · {countDisplay} capabilities · {date}',
   },
   'extensionsFlavors.extensionsPanel.row.forkAriaLabel': 'Fork {id}',
   'extensionsFlavors.extensionsPanel.row.forkTitle': 'Fork: edit this extension in the chat',
@@ -190,12 +190,12 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorDialog.toast.deleted': 'Deleted {id}',
   'extensionsFlavors.flavorDialog.toast.notFound': 'Flavor "{id}" not found.',
   'extensionsFlavors.flavorDialog.toast.captured': {
-    one: 'Captured {count} lens + clash rules + sidebar layout into {name}',
-    other: 'Captured {count} lenses + clash rules + sidebar layout into {name}',
+    one: 'Captured {countDisplay} lens + clash rules + sidebar layout into {name}',
+    other: 'Captured {countDisplay} lenses + clash rules + sidebar layout into {name}',
   },
   'extensionsFlavors.flavorDialog.toast.createdSnapshot': {
-    one: 'Created "{name}" with {count} lens.',
-    other: 'Created "{name}" with {count} lenses.',
+    one: 'Created "{name}" with {countDisplay} lens.',
+    other: 'Created "{name}" with {countDisplay} lenses.',
   },
   'extensionsFlavors.flavorDialog.toast.createdEmpty': 'Created "{name}".',
   'extensionsFlavors.flavorDialog.toast.renamed': 'Renamed to "{name}".',
@@ -216,8 +216,8 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorMergeDialog.cancelButton': 'Cancel',
   'extensionsFlavors.flavorMergeDialog.saveButton': 'Save merged flavor',
   'extensionsFlavors.flavorMergeDialog.conflictSummary': {
-    one: '{count} conflict between {theirs} (theirs) and {ours} (ours).',
-    other: '{count} conflicts between {theirs} (theirs) and {ours} (ours).',
+    one: '{countDisplay} conflict between {theirs} (theirs) and {ours} (ours).',
+    other: '{countDisplay} conflicts between {theirs} (theirs) and {ours} (ours).',
   },
   'extensionsFlavors.flavorMergeDialog.resolveAriaLabel': 'Resolve {kind} conflict on {key}',
   'extensionsFlavors.flavorMergeDialog.conflictKind.extensionVersion': 'Extension version',

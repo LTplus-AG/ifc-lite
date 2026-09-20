@@ -38,6 +38,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type UseTranslationResult } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedFlavorName } from './localized-flavor-metadata';
 
 interface FlavorMergeDialogProps {
@@ -52,7 +53,7 @@ interface FlavorMergeDialogProps {
 type ConflictResolution = 'theirs' | 'ours' | 'base';
 
 export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMergeDialogProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const [ours, setOurs] = useState<Flavor | null>(null);
   const [base, setBase] = useState<Flavor | null>(null);
@@ -169,6 +170,7 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
             <div className="text-xs text-muted-foreground">
               {t('extensionsFlavors.flavorMergeDialog.conflictSummary', {
                 count: mergeResult.conflicts.length,
+                countDisplay: formatLocaleNumber(locale, mergeResult.conflicts.length),
                 theirs: localizedFlavorName(theirs, t),
                 ours: localizedFlavorName(ours, t),
               })}

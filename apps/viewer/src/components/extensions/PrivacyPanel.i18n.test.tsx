@@ -329,4 +329,25 @@ describe('PrivacyPanel localization (#4918)', () => {
     assert.match(container.textContent ?? '', /1 événements · \d+,\d Kio \(fr\)/);
     assert.match(container.textContent ?? '', /1 préférence candidate \(fr\)/);
   });
+
+  it('formats token and candidate-preference counts with the active locale, not raw JS numbers', async () => {
+    registerLocale('ar-EG', {});
+    setLocale('ar-EG');
+
+    const host = new StubExtensionHost();
+    const container = await mountActiveFlavorFixture(host);
+    await revealProposals(container);
+
+    // `overlayDraft` seeds from `flavorFixture('Existing overlay notes.')`
+    // (23 chars -> Math.ceil(23 / 4) === 6 approx tokens) and the chat
+    // fixture in `revealProposals` yields exactly one candidate preference.
+    // Both interpolate a plain JS number into a translated message; per
+    // `apps/viewer/src/i18n/README.md`, the display value must go through
+    // `formatLocaleNumber`, not the raw number, so ar-EG renders
+    // Arabic-Indic digits rather than ASCII ones.
+    assert.match(container.textContent ?? '', /٦ approx tokens/);
+    assert.doesNotMatch(container.textContent ?? '', /\b6 approx tokens\b/);
+    assert.match(container.textContent ?? '', /١ candidate preference/);
+    assert.doesNotMatch(container.textContent ?? '', /\b1 candidate preference/);
+  });
 });

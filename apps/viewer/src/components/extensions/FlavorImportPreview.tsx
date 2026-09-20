@@ -15,6 +15,7 @@ import { FilePlus, GitMerge } from 'lucide-react';
 import type { UnpackedFlavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import {
   localizedFlavorDescription,
   localizedFlavorName,
@@ -37,7 +38,7 @@ export function FlavorImportPreview({
   onSaveAsNew,
   onReplace,
 }: FlavorImportPreviewProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const name = localizedFlavorName(unpacked.flavor, t);
   const description = localizedFlavorDescription(unpacked.flavor, t);
   return (
@@ -57,9 +58,9 @@ export function FlavorImportPreview({
         )}
         <div className="text-muted-foreground">
           {t('extensionsFlavors.flavorImportPreview.statsLine', {
-            extensions: unpacked.flavor.extensions.length,
-            lenses: unpacked.flavor.lenses.length,
-            queries: unpacked.flavor.savedQueries.length,
+            extensions: formatLocaleNumber(locale, unpacked.flavor.extensions.length),
+            lenses: formatLocaleNumber(locale, unpacked.flavor.lenses.length),
+            queries: formatLocaleNumber(locale, unpacked.flavor.savedQueries.length),
           })}
         </div>
         {unpacked.summary && (

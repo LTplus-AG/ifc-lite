@@ -30,6 +30,7 @@ import { flavorFailure, flavorSwitchPartial } from './flavor-dialog-feedback';
 import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { serializeClashConfig } from '@/lib/clash/persistence.flavor';
 import { localizedFlavorName } from './localized-flavor-metadata';
 
@@ -192,7 +193,11 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
-      toast.success(t('extensionsFlavors.flavorDialog.toast.captured', { count: lenses.length, name: localizedFlavorName(target, t) }));
+      toast.success(t('extensionsFlavors.flavorDialog.toast.captured', {
+        count: lenses.length,
+        countDisplay: formatLocaleNumber(locale, lenses.length),
+        name: localizedFlavorName(target, t),
+      }));
     } catch (err) {
       toast.error(failure(t('extensionsFlavors.flavorDialog.operation.capture'), err));
     } finally {
@@ -242,7 +247,13 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       };
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');
       await host.flavors.activate(id);
-      toast.success(opts.snapshot ? t('extensionsFlavors.flavorDialog.toast.createdSnapshot', { name: opts.name, count: lenses.length }) : t('extensionsFlavors.flavorDialog.toast.createdEmpty', { name: opts.name }));
+      toast.success(opts.snapshot
+        ? t('extensionsFlavors.flavorDialog.toast.createdSnapshot', {
+            name: opts.name,
+            count: lenses.length,
+            countDisplay: formatLocaleNumber(locale, lenses.length),
+          })
+        : t('extensionsFlavors.flavorDialog.toast.createdEmpty', { name: opts.name }));
     } catch (err) {
       toast.error(failure(t('extensionsFlavors.flavorDialog.operation.create'), err));
     } finally {

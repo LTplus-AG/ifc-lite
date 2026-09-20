@@ -153,7 +153,10 @@ export function FlavorListView({
         <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
           <label className="text-xs font-medium block mb-1">
             {creating.mode === 'snapshot'
-              ? t('extensionsFlavors.flavorListView.nameSnapshotLabel', { count: liveLensCount })
+              ? t('extensionsFlavors.flavorListView.nameSnapshotLabel', {
+                  count: liveLensCount,
+                  countDisplay: formatLocaleNumber(locale, liveLensCount),
+                })
               : t('extensionsFlavors.flavorListView.nameEmptyLabel')}
           </label>
           <div className="flex items-center gap-2">
@@ -216,6 +219,7 @@ export function FlavorListView({
             const isActive = flavor.id === activeId;
             const isRenaming = renamingId === flavor.id;
             const hasUncaptured = isActive && liveLensCount > flavor.lenses.length;
+            const uncapturedCount = liveLensCount - flavor.lenses.length;
             const displayName = localizedFlavorName(flavor, t);
             const displayDescription = localizedFlavorDescription(flavor, t);
             return (
@@ -274,11 +278,12 @@ export function FlavorListView({
                           <span
                             className="text-[10px] uppercase tracking-wide bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded px-1.5 py-0.5 font-semibold"
                             title={t('extensionsFlavors.flavorListView.uncapturedTitle', {
-                              count: liveLensCount - flavor.lenses.length,
+                              count: uncapturedCount,
+                              countDisplay: formatLocaleNumber(locale, uncapturedCount),
                             })}
                           >
                             {t('extensionsFlavors.flavorListView.uncapturedBadge', {
-                              count: liveLensCount - flavor.lenses.length,
+                              count: formatLocaleNumber(locale, uncapturedCount),
                             })}
                           </span>
                         )}
@@ -323,7 +328,7 @@ export function FlavorListView({
                     title={hasUncaptured
                       ? t('extensionsFlavors.flavorListView.captureTitleUncaptured', {
                           name: displayName,
-                          count: liveLensCount - flavor.lenses.length,
+                          count: formatLocaleNumber(locale, uncapturedCount),
                         })
                       : t('extensionsFlavors.flavorListView.captureTitleSnapshot', { name: displayName })}
                   >

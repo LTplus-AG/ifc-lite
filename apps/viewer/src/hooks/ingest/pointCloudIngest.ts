@@ -23,7 +23,7 @@ import {
   type StreamHandle,
   type PointSourceSpatialMetadata,
 } from '@ifc-lite/pointcloud';
-import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult, ModelSpatialReference, PointCloudAsset } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
@@ -148,6 +148,8 @@ export interface PointCloudIngestOptions {
    *  (aligned) — matches the issue's "on by default" requirement. Only
    *  consulted when `alignment` is provided. */
   alignmentEnabled?: boolean;
+  /** Declared scan CRS retained even when no compatible anchor exists yet. */
+  spatialReference?: ModelSpatialReference;
 }
 
 /**
@@ -335,12 +337,19 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // (originally LAS/LAZ-only; extended to E57/PLY/PCD/PTS/XYZ), so the
   // matrix is valid for any format here — no gate needed.
   const alignment = opts.alignment;
+  const alignmentEnabled = opts.alignmentEnabled ?? true;
+  // Register every scan, even before a compatible anchor exists. The registry
+  // retains its explicit source CRS and can atomically realign it when an IFC
+  // anchor loads later; omitting raw scans made model-after-scan order depend
+  // on a manual reload.
+  registerPointCloudAlignment(handle, alignment, alignmentEnabled, {
+    sourceSpatialReference: opts.spatialReference,
+    sourceUnit: opts.format === 'las' || opts.format === 'laz' ? 'mapUnit' : 'metre',
+  });
   if (alignment) {
-    registerPointCloudAlignment(handle, alignment, opts.alignmentEnabled ?? true);
-    const enabled = opts.alignmentEnabled ?? true;
     opts.renderer.setPointCloudTransform(
       handle,
-      enabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
+      alignmentEnabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
     );
   }
 

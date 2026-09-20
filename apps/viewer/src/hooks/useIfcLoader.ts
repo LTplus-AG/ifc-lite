@@ -80,6 +80,7 @@ import { extractModelSpatialPlacement, alignGeometryToReference, findReferenceSp
 import { capturePreAlignment } from './ingest/federationRealign.js';
 import type { PreAlignmentSnapshot } from '../store/index.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
+import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
@@ -661,6 +662,19 @@ export function useIfcLoader() {
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
+          // The registry also holds scans that arrived before any compatible
+          // anchor. Once this model is visible to `findReferenceSpatialModel`,
+          // recompute all scan matrices atomically against the live anchor.
+          // A renderer failure is contained to the scan operation: its registry
+          // transaction restores every prior GPU transform, while this valid
+          // IFC model remains loaded and the user gets an actionable warning.
+          try {
+            realignPointCloudsToAnchor(getGlobalRenderer(), findReferenceSpatialModel()?.placement ?? null);
+            useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+          } catch (error) {
+            console.error('[useIfc] point-cloud anchor realignment failed:', error);
+            toast.error('Point-cloud realignment failed; existing scan transforms were restored.');
+          }
           // Spatial index AFTER id offset + alignment (final ids + world positions)
           // and AFTER addModel so it attaches to THIS model, not the active slot.
           buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
@@ -872,6 +886,7 @@ export function useIfcLoader() {
           onAssetCountDelta: incCount,
           alignment: alignment ?? undefined,
           alignmentEnabled,
+          spatialReference: sourceSpatialReference,
           onSpatialMetadata: (metadata) => {
             if ((format !== 'las' && format !== 'laz' && format !== 'e57')
               || !metadata?.horizontalId || !metadata.verticalId) return;

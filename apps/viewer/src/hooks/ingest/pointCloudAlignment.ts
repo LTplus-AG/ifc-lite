@@ -350,4 +350,5 @@ export function computePointCloudAlignment(
 
 export { registerPointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment,
   applyPointCloudAlignmentToggle, retargetPointCloudDecodeOrigin,
-  type PointCloudTransformTarget } from './pointCloudAlignmentRegistry';
+  realignRegisteredPointClouds,
+  type PointCloudAlignmentRegistration, type PointCloudTransformTarget } from './pointCloudAlignmentRegistry';

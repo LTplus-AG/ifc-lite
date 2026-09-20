@@ -69,7 +69,7 @@ describe('manual clash group focus (#4921)', () => {
         ],
         aRefs: [{ modelId: 'model', expressId: 110 }, { modelId: 'model', expressId: 120 }],
         bRefs: [{ modelId: 'model', expressId: 130 }],
-        selectedGuids: [], aGuids: [], bGuids: [],
+        selectedGuids: [], visibleGuids: [], aGuids: [], bGuids: [],
         modelIds: ['model'],
       },
     );
@@ -324,6 +324,7 @@ describe('manual clash group focus (#4921)', () => {
       aRefs: [{ modelId: 'model', expressId: 10 }, { modelId: 'room:r:m0', expressId: 10 }],
       bRefs: [{ modelId: 'model', expressId: 20 }, { modelId: 'model', expressId: 30 }],
       selectedGuids: ['MODEL-10', 'MODEL-20', 'ROOM-10', 'MODEL-30'],
+      visibleGuids: ['MODEL-10', 'ROOM-10', 'MODEL-20', 'MODEL-30'],
       aGuids: ['MODEL-10', 'ROOM-10'],
       bGuids: ['MODEL-20', 'MODEL-30'],
       modelIds: ['model', 'room:r:m0'],
@@ -453,6 +454,58 @@ describe('manual clash group focus (#4921)', () => {
     ]), 'a collision promotes every occurrence of the B GUID to the renderer-visible A color');
     assert.deepEqual(focused.aGuids, ['GUID-A', 'GUID-B']);
     assert.deepEqual(focused.bGuids, []);
+  });
+
+  it('serializes the parts of every loaded occurrence of a geometry-less aggregate (#4921 review)', () => {
+    // The group names assembly GUID-ASM in `model`; `revision-b` carries the
+    // same assembly with differently identified parts. The PNG paints both
+    // sets of parts, so the BCF colouring and isolation must name both too.
+    const crossRevision = clash('aggregate-occurrences', 10, 20);
+    const guidsFor = (byId: Record<number, string>) => ({
+      getGlobalId: (id: number) => byId[id],
+      getExpressIdByGlobalId: (guid: string) => Number(Object.keys(byId).find(id => byId[Number(id)] === guid) ?? -1),
+    });
+    const relationships = (parent: number, parts: number[]) => ({
+      getRelated: (id: number, _type: unknown, direction: string) =>
+        id === parent && direction === 'forward' ? parts : [],
+    });
+    useViewerStore.setState({
+      models: new Map([
+        ['model', {
+          idOffset: 0,
+          ifcDataStore: {
+            entities: guidsFor({ 10: 'GUID-ASM', 11: 'PART-A1', 12: 'PART-A2', 20: 'GUID-PIPE' }),
+            relationships: relationships(10, [11, 12]),
+          },
+        }],
+        ['revision-b', {
+          idOffset: 1000,
+          ifcDataStore: {
+            entities: guidsFor({ 30: 'GUID-ASM', 31: 'PART-B1', 32: 'PART-B2' }),
+            relationships: relationships(30, [31, 32]),
+          },
+        }],
+      ]) as unknown as ViewerState['models'],
+    });
+
+    const focused = focusClashGroup(
+      [crossRevision],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'isolate',
+    );
+    assert.ok(focused);
+    assert.deepEqual(useViewerStore.getState().clashHighlightColors, new Map([
+      [10, CLASH_COLOR_A], [11, CLASH_COLOR_A], [12, CLASH_COLOR_A],
+      [1030, CLASH_COLOR_A], [1031, CLASH_COLOR_A], [1032, CLASH_COLOR_A],
+      [20, CLASH_COLOR_B],
+    ]));
+    assert.deepEqual(focused.aGuids, ['GUID-ASM', 'PART-A1', 'PART-A2', 'PART-B1', 'PART-B2'],
+      "the second revision's parts are coloured on screen, so BCF must address them by their own GUIDs");
+    assert.deepEqual(focused.bGuids, ['GUID-PIPE']);
+    assert.deepEqual(focused.selectedGuids, ['GUID-ASM', 'GUID-PIPE']);
+    assert.deepEqual(focused.visibleGuids, ['GUID-ASM', 'PART-A1', 'PART-A2', 'GUID-PIPE', 'PART-B1', 'PART-B2'],
+      'an isolate viewpoint must keep every painted part visible when reopened');
   });
 
   it('colors StoreEditor-created occurrences addressed by the exported BCF GlobalId', () => {

@@ -37,6 +37,8 @@ export interface FocusedClashGroup {
   aRefs: SelectionRef[];
   bRefs: SelectionRef[];
   selectedGuids: string[];
+  /** Every GlobalId the focused scene shows, including aggregated parts of each loaded occurrence. */
+  visibleGuids: string[];
   aGuids: string[];
   bGuids: string[];
   modelIds: string[];
@@ -367,14 +369,31 @@ export function focusClashGroup(
   state.setClashHighlightColors(presentationClashColors);
   state.setPendingColorUpdates(presentationClashColors);
   const focusedState = useViewerStore.getState();
+  // Parts painted under another loaded occurrence of a group GUID take that
+  // GUID's reconciled colour; BCF addresses them by their own GlobalId.
+  const withOccurrenceParts = (guids: string[], color: RGBA | null): string[] => {
+    const out = new Set(guids);
+    for (const [guid, partGuids] of loadedOccurrences.descendantGuidsByGuid) {
+      if (color !== null && colorByGuid.get(guid) !== color) continue;
+      for (const partGuid of partGuids) out.add(partGuid);
+    }
+    return [...out];
+  };
+  const selectedGuids = resolvedGuids(presentationState, refs);
+  const aGuids = withOccurrenceParts(resolvedGuids(presentationState, renderedARefs), CLASH_COLOR_A);
+  const bGuids = withOccurrenceParts(resolvedGuids(presentationState, renderedBRefs), CLASH_COLOR_B)
+    .filter(guid => !aGuids.includes(guid));
   return {
     frameReady,
     selectedRefs: refs,
     aRefs: a,
     bRefs: b,
-    selectedGuids: resolvedGuids(presentationState, refs),
-    aGuids: resolvedGuids(presentationState, renderedARefs),
-    bGuids: resolvedGuids(presentationState, renderedBRefs),
+    selectedGuids,
+    visibleGuids: withOccurrenceParts(
+      resolvedGuids(presentationState, [...presentationARefs, ...presentationBRefs]), null,
+    ),
+    aGuids,
+    bGuids,
     modelIds: [...participatingModelIds],
     sceneRevision: {
       modelRevisions: new Map(focusedState.models),

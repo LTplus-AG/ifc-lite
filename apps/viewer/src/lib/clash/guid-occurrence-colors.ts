@@ -4,6 +4,7 @@
 
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { collectAggregatedDescendants } from '@/utils/aggregation';
 import { CLASH_COLOR_A, CLASH_COLOR_B, type RGBA } from './clash-colors';
@@ -12,12 +13,21 @@ export function setClashColor(colors: Map<number, RGBA>, rendererId: number, col
   if (color === CLASH_COLOR_A || !colors.has(rendererId)) colors.set(rendererId, color);
 }
 
-/** Find every loaded source or live-overlay occurrence BCF will address by IFC GlobalId. */
+/** Find every loaded source or live-overlay occurrence BCF will address by IFC GlobalId.
+ * `descendantGuidsByGuid` carries the aggregated parts painted under each occurrence:
+ * BCF Coloring addresses components by their own GlobalId and never inherits an
+ * aggregate parent's colour, so a second revision whose parts carry different
+ * GUIDs would otherwise reopen uncoloured while the captured PNG shows them painted. */
 export function loadedGuidOccurrences(
   state: ReturnType<typeof useViewerStore.getState>,
   guids: Iterable<string>,
-): { rendererIdsByGuid: Map<string, Set<number>>; modelIds: Set<string> } {
+): {
+  rendererIdsByGuid: Map<string, Set<number>>;
+  descendantGuidsByGuid: Map<string, Set<string>>;
+  modelIds: Set<string>;
+} {
   const occurrences = new Map([...guids].map(guid => [guid, new Set<number>()]));
+  const descendantGuidsByGuid = new Map([...occurrences.keys()].map(guid => [guid, new Set<string>()]));
   const modelIds = new Set<string>();
   for (const [modelId, model] of state.models) {
     const entities = model.ifcDataStore?.entities;
@@ -54,6 +64,8 @@ export function loadedGuidOccurrences(
         if (!relationships) continue;
         for (const descendantId of collectAggregatedDescendants(relationships, expressId)) {
           rendererIds.add(toGlobalIdFromModels(state.models, modelId, descendantId));
+          const descendantGuid = resolveEntityRefGlobalIdFromState(state, { modelId, expressId: descendantId });
+          if (descendantGuid) descendantGuidsByGuid.get(guid)!.add(descendantGuid);
         }
       }
     }
@@ -63,7 +75,7 @@ export function loadedGuidOccurrences(
     rendererIds.clear();
     for (const rendererId of expanded) rendererIds.add(rendererId);
   }
-  return { rendererIdsByGuid: occurrences, modelIds };
+  return { rendererIdsByGuid: occurrences, descendantGuidsByGuid, modelIds };
 }
 
 /** Reconcile BCF GUID colors with renderer-ID collisions, with deterministic A precedence. */

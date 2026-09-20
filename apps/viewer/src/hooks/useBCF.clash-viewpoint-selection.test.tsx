@@ -402,6 +402,7 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
         isolatedEntities: new Set([overlayId]),
         mutationViews: new Map([
           ['ordinary', {
+            getAttributeMutationsForEntity: () => [],
             getNewEntity: (expressId: number) => expressId === overlayId
               ? { attributes: [overlayGuid] }
               : null,

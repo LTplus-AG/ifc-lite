@@ -171,6 +171,26 @@ function quantizedChunkedScene(): Scene {
 }
 
 describe('overlay batches stay depth-coincident with their base batches (#4832)', () => {
+  it('precision-partitions distant same-colour components when chunks are disabled (#4937)', () => {
+    const scene = new Scene();
+    const { device, bytes } = fakeDevice();
+    const west = triangle(1, [-398_700_000, 0, 0]);
+    const east = triangle(2, [398_700_000, 0, 0]);
+    const westRed = triangle(3, [-398_699_995, 0, 0], RED);
+    scene.appendToBatches([west, westRed, east], device, fakePipeline);
+
+    assert.strictEqual(scene.getBatchedMeshes().length, 3,
+      'an unsafe automatic midpoint must split the grey components even without spatial chunks');
+    assert.deepStrictEqual(baseBatchFor(scene, 1).origin, baseBatchFor(scene, 3).origin,
+      'safe adjacent colour buckets retain the shared seam frame');
+    for (const id of [1, 2, 3]) {
+      const batch = baseBatchFor(scene, id);
+      const positions = gpuPositionsByEntity(batch, bytes).get(id);
+      assert.ok(positions);
+      assert.strictEqual(new Set(positions).size, 3, `component ${id} retains its triangle`);
+    }
+  });
+
   it('keeps distant survey chunks in precision-local GPU frames (#4937)', () => {
     const scene = new Scene();
     scene.setSpatialChunking({ cellSize: 32 });

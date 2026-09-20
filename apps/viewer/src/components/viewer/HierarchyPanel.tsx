@@ -902,10 +902,8 @@ export function HierarchyPanel() {
   const groupFilterChips = groupingMode === 'groups' ? (
     <div className="flex gap-1 mt-2">
       {([
-        ['all', 'hierarchy.panel.groupFilter.all'],
-        ['systems', 'hierarchy.panel.groupFilter.systems'],
-        ['zones', 'hierarchy.panel.groupFilter.zones'],
-        ['other', 'hierarchy.panel.groupFilter.other'],
+        ['all', 'hierarchy.panel.groupFilter.all'], ['systems', 'hierarchy.panel.groupFilter.systems'],
+        ['zones', 'hierarchy.panel.groupFilter.zones'], ['other', 'hierarchy.panel.groupFilter.other'],
       ] as const).map(([value, labelKey]) => (
         <Button
           key={value}

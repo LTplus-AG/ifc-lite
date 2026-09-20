@@ -1,6 +1,6 @@
 # Test fixtures
 
-This directory holds the IFC / IFCX models used by tests, examples,
+This directory holds the IFC / IFCX / LandXML models used by tests, examples,
 benchmarks, and helper scripts. The files themselves are **not stored in
 this repository** — they are fetched on demand from a GitHub Release.
 
@@ -10,6 +10,11 @@ records:
 - relative path under `tests/models/`,
 - SHA-256 of the file contents,
 - size in bytes.
+
+Manifest v1 remains the catalogue for the existing historical IFC corpus.
+Reviewed LandXML provenance is per entry, so a new producer fixture cannot
+bypass review by retaining the legacy root version. Manifest v2 is also
+accepted and may contain both historical IFC rows and reviewed LandXML rows.
 
 ## Quick start
 
@@ -117,3 +122,59 @@ the on-disk file matches the manifest's `sha256`, it's left alone. This means:
 
 `tests/models/local/` is explicitly **never** managed by the manifest — it's
 reserved for private fixtures contributors keep on their own machine.
+
+## Reviewed LandXML producer provenance
+
+Every LandXML entry (`.xml` or `.landxml`) must add the following fields beside
+`path`, `sha256`, and `size`. Historical non-LandXML rows may remain minimal,
+whether the root manifest is v1 or v2:
+
+- `provenance.source`: immutable commit-pinned blob URL, 40-character commit,
+  source-byte SHA-256, and the fetch date;
+- `provenance.license`: SPDX identifier, license URL, and the exact required
+  attribution; `provenance.modification` says whether bytes changed, and
+  `provenance.no_customer_data` is an explicit review attestation;
+- `producer`: producer name, exact version, and export settings;
+- `landxml`: schema version, namespace, declared units, and CRS (write
+  `not-declared` where the source genuinely omits one — never infer it);
+- `feature_inventory`: feature/capability pairs using `rendered`,
+  `preserved-only`, `unsupported`, or `refused`.
+
+The validator requires an immutable GitHub HTTPS blob URL whose commit path
+segment exactly equals the recorded commit. For unmodified fixtures its source
+SHA-256 must equal the released asset SHA-256. `pnpm fixtures`, `pnpm fixtures:check`, and
+`pnpm fixtures:upload` reject malformed LandXML entries before downloading or
+publishing anything.
+
+`pnpm fixtures:manifest` preserves a LandXML entry's reviewed metadata only while
+its path, byte size, and SHA-256 are unchanged. To add or alter a LandXML fixture,
+first add its complete reviewed entry to `manifest.json`, then regenerate and
+upload. This deliberately fails closed: regeneration must never erase
+attribution or convert an unreviewed local file into a public release asset.
+
+### LandXML candidates verified for review
+
+The following are candidate rows, not release assets yet. Their repository-root
+licenses are CC-BY-4.0 and the raw bytes below were checked at the pinned
+commits on 2026-09-20. When adding one, copy its attribution requirements into
+the reviewed LandXML entry; do not substitute a branch URL or silently normalize the XML.
+
+| Source and coverage | Source SHA-256 | Bytes |
+| --- | --- | ---: |
+| [3D-Win 6.6.4 road alignment/profile, GK21 EPSG:3875](https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/0000_Alignments/M3_RS-CL.tg.xml) | `65d14a5934da307600ee9cd119972fddcca5720cd9f229135cb5cbcc08245c92` | 7,119 |
+| [3D-Win 6.6.4 terrain, SourceData/Breaklines/Pnts/Faces, GK21 EPSG:3875](https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/9004_Terrain_models/M3_Rockbed_survey.mm.xml) | `8a32a56fceffc494e4270d482d4034d376b54e860ecb63195cb767e2845f02c1` | 385,964 |
+| [3D-Win 6.6.4 CgPoints, GK21 EPSG:3875](https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/3300_Lighting/Lightning_columns.xy.xml) | `1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1` | 7,417 |
+| [Aplitop MDT 8.0 alignment/profile](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-Aplitop-1/UT-Alignment-Aplitop-1.xml) | `895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16` | 5,491 |
+| [Trimble Novapoint 21.354 drainage PipeNetworks, EPSG:3878](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/DrainageSystem-1/DrainageSystem-1-1.xml) | `bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6` | 13,446 |
+
+The applicable license evidence is the pinned
+[InfraModel LICENCE](https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/LICENCE)
+and [IFC-infra-unit-test LICENSE.txt](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/LICENSE.txt).
+These candidates do not close the Civil 3D, TBC-native, OpenRoads, or
+IFC+LandXML+point-cloud federation requirements in #5051. Those remain blocked
+until an author provides a clear redistribution grant and independent control
+points where required.
+
+Historical LandXML XSDs are provenance-only until their original redistribution
+terms are verified. Record their official URLs and source hashes in a fixture's
+metadata if relevant; do not vendor them or upload them to the fixture release.

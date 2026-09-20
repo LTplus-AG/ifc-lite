@@ -1443,11 +1443,7 @@ export function PropertiesPanel() {
                   <div className="flex items-start gap-1.5">
                     <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider w-[34px] shrink-0 pt-px">{t('properties.panel.sizeLabel')}</span>
                     <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
-                      {t('properties.panel.sizeDisplay', {
-                        x: (entityCoordinates.local.max.x - entityCoordinates.local.min.x).toFixed(2),
-                        y: (entityCoordinates.local.max.y - entityCoordinates.local.min.y).toFixed(2),
-                        z: (entityCoordinates.local.max.z - entityCoordinates.local.min.z).toFixed(2),
-                      })}
+                      {t('properties.panel.sizeDisplay', { x: (entityCoordinates.local.max.x - entityCoordinates.local.min.x).toFixed(2), y: (entityCoordinates.local.max.y - entityCoordinates.local.min.y).toFixed(2), z: (entityCoordinates.local.max.z - entityCoordinates.local.min.z).toFixed(2) })}
                     </span>
                   </div>
                 </div>
@@ -1869,17 +1865,7 @@ export function PropertiesPanel() {
 }
 
 /** Inline attribute editor — pen icon to enter edit mode, input + save/cancel */
-function AttributeEditorField({
-  modelId,
-  entityId,
-  attrName,
-  currentValue,
-}: {
-  modelId: string;
-  entityId: number;
-  attrName: string;
-  currentValue: string;
-}) {
+function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { modelId: string; entityId: number; attrName: string; currentValue: string }) {
   const { t } = useTranslation();
   const setAttribute = useViewerStore((s) => s.setAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -2127,10 +2113,7 @@ function EntityDataSection({
           </div>
           {elevationInfo !== null && (
             <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
-              {t('properties.panel.multiEntity.elevationMeters', {
-                sign: elevationInfo >= 0 ? '+' : '',
-                value: elevationInfo.toFixed(2),
-              })}
+              {t('properties.panel.multiEntity.elevationMeters', { sign: elevationInfo >= 0 ? '+' : '', value: elevationInfo.toFixed(2) })}
             </span>
           )}
         </div>

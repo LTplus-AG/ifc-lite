@@ -26,6 +26,7 @@ import { exportDialogEn } from './catalogues/export-dialog.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
 import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
+import { geometryExportDialogsEn } from './catalogues/geometry-export-dialogs.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
@@ -113,6 +114,7 @@ export const en = {
   ...searchFiltersEn,
   ...repositionPanelEn,
   ...exportDialogEn,
+  ...geometryExportDialogsEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -712,11 +712,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
                 {schemaConversion === 'upgrade' ? t('exportDialog.schemaUpgradeTitle') : t('exportDialog.schemaDowngradeTitle')}
               </AlertTitle>
               <AlertDescription>
-                {t('exportDialog.conversionSummary', { source: sourceSchema, target: schema })}
-                {' '}
-                {schemaConversion === 'downgrade'
-                  ? t('exportDialog.schemaDowngradeNote')
-                  : t('exportDialog.schemaUpgradeNote')}
+                {t('exportDialog.conversionSummary', { source: sourceSchema, target: schema })}{' '}
+                {schemaConversion === 'downgrade' ? t('exportDialog.schemaDowngradeNote') : t('exportDialog.schemaUpgradeNote')}
               </AlertDescription>
             </Alert>
           )}
@@ -796,10 +793,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
                   {exportProgress.phase}
                 </span>
                 <span>
-                  {t('exportDialog.progressCount', {
-                    processed: exportProgress.entitiesProcessed.toLocaleString(),
-                    total: exportProgress.entitiesTotal.toLocaleString(),
-                  })}
+                  {t('exportDialog.progressCount', { processed: exportProgress.entitiesProcessed.toLocaleString(), total: exportProgress.entitiesTotal.toLocaleString() })}
                 </span>
               </div>
               <Progress value={exportProgress.percent * 100} />

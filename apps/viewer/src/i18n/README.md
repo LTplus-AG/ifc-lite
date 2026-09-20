@@ -175,6 +175,15 @@ The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 (#4830's single work-calendar toggle, prefix `gantt.workCalendar.*`) with
 no key overlap.
 
+Slice 5 (#4918) covers `extensions/**` (a companion slice covers `mcp/**`,
+`sources/**`, `tours/**`, the components root, and `ui/`):
+
+- `extensions-flavors.en.ts` and `extensions-panels.en.ts` cover the
+  Extensions panel's own chrome across its dialogs, cards, and sub-panels
+  (flavor list/merge/import, capability review, audit log, privacy, ideas,
+  repair queue, promote-tool, widget host) — extension-CONTRIBUTED labels
+  (a flavor's own name/description, an idea's text, a plan's own copy) stay
+  as data, same reasoning as slice 2/3's extension-registry exclusions.
 Slice 5 (#4918) covers `mcp/**`, `sources/**`, `tours/**`, the components
 root, and `ui/` (a companion slice covers `extensions/**`):
 

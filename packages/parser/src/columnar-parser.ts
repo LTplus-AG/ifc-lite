@@ -181,6 +181,12 @@ export async function parseColumnarInput(
         // from a substring scan of the raw bytes — exporter product names in
         // FILE_NAME free text carry schema tokens too (issue #3278).
         const schemaVersion = detectSchemaVersion(uint8Buffer, sourceHeader);
+        // Headerless synthetic inputs historically accepted the union of the
+        // bundled schemas. Keep that compatibility while real IFC files use
+        // their declared schema's relationship layouts.
+        const relationshipSchemaVersion = sourceHeader
+            ? schemaVersion
+            : undefined;
 
         // Initialize builders (entity table capacity set after categorization below)
         const strings = new StringTable();
@@ -303,7 +309,7 @@ export async function parseColumnarInput(
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
             const ref = relationshipRefs[i];
             const typeUpper = getTypeUpper(ref.type);
-            const rel = extractRelFast(uint8Buffer, ref.byteOffset, ref.byteLength, typeUpper);
+            const rel = extractRelFast(uint8Buffer, ref.byteOffset, ref.byteLength, typeUpper, relationshipSchemaVersion);
             if (rel) {
                 const relType = REL_TYPE_MAP[typeUpper];
                 if (relType) {
@@ -815,6 +821,7 @@ export {
     extractTypeQuantitiesOnDemand,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
+    extractExactRelatedIds,
     extractGroupMembersOnDemand,
     extractGroupAssignmentFactorOnDemand,
     extractGeoreferencingOnDemand,

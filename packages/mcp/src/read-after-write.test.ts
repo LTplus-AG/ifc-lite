@@ -72,6 +72,7 @@ interface EntityShape {
   globalId: string;
   name: string;
   type: string;
+  description?: string;
   attributes?: Array<{ name: string; value: string | number | boolean }>;
   properties?: Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>;
   pendingMutations?: number;
@@ -247,6 +248,28 @@ describe('get_entity after an edit', () => {
     // entity is not really there.
     expect(entity.attributes?.find((a) => a.name === 'GlobalId')?.value).toBe(guid('WALC'));
     expect(entity.attributes?.find((a) => a.name === 'Tag')?.value).toBe('tagC');
+  }, 30_000);
+});
+
+describe('get_entity on a created entity that was then edited', () => {
+  it('returns the edited attributes, agreeing with entities() and attributes() (#5009 review)', async () => {
+    await session();
+    const created = await structured<{ expressId: number }>('entity_create', {
+      type: 'IfcWall',
+      attributes: [`'${guid('WALD')}'`, null, "'untitled'", null, null, '#40', null, "'tagD'", null],
+    });
+    await call('entity_set_attribute', { express_id: created.expressId, attribute: 'Name', value: 'Wall D' });
+    await call('entity_set_attribute', { express_id: created.expressId, attribute: 'Description', value: 'Edited after create' });
+
+    const entity = await structured<EntityShape>('get_entity', {
+      global_id: guid('WALD'), include: ['attributes'],
+    });
+    expect(entity.name).toBe('Wall D');
+    expect(entity.description).toBe('Edited after create');
+    expect(entity.attributes?.find((a) => a.name === 'Name')?.value).toBe('Wall D');
+    expect(entity.attributes?.find((a) => a.name === 'Description')?.value).toBe('Edited after create');
+    const walls = await structured<QueryShape>('query_entities', { type: 'IfcWall' });
+    expect(walls.entities.find((w) => w.globalId === guid('WALD'))?.name).toBe('Wall D');
   }, 30_000);
 });
 
@@ -903,6 +926,106 @@ describe('containment over queued relationships', () => {
     });
     return created.expressId;
   }
+
+  it('rehydrates parsed relationship endpoint metadata from the overlay', async () => {
+    await session();
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+    const wall = { modelId: 'm', expressId: 72 };
+
+    await call('entity_set_attribute', { global_id: guid('STOR'), attribute: 'Name', value: 'Level One' });
+    model.bim.store.setPositionalAttribute({ modelId: 'm', expressId: 41 }, 2, "'Positional Level'");
+
+    const edge = model.bim.relationships(wall).relations?.find((candidate) =>
+      candidate.relationshipId === 45 && candidate.entity.id === 41);
+    expect(edge?.entity.name).toBe('Positional Level');
+    expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('Positional Level');
+    expect(model.bim.attributes({ modelId: 'm', expressId: 41 })
+      .find((attribute) => attribute.name === 'Name')?.value).toBe('Positional Level');
+
+    model.bim.store.setPositionalAttribute({ modelId: 'm', expressId: 41 }, 2, '$');
+    const cleared = model.bim.relationships(wall).relations?.find((candidate) =>
+      candidate.relationshipId === 45 && candidate.entity.id === 41);
+    expect(cleared?.entity.name).toBeUndefined();
+    expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('');
+    expect(model.bim.attributes({ modelId: 'm', expressId: 41 })
+      .some((attribute) => attribute.name === 'Name')).toBe(false);
+  }, 30_000);
+
+  it('reports a queued exact relationship row and removes it after deletion', async () => {
+    await session();
+    const wall = await structured<{ expressId: number }>('entity_create', {
+      type: 'IfcWall',
+      attributes: [`'${guid('WALC')}'`, null, "'Wall C'", null, null, '#40', null, "'tagC'", null],
+    });
+    const relationship = await structured<{ expressId: number }>('entity_create', {
+      type: 'IfcRelContainedInSpatialStructure',
+      attributes: [`'${guid('RELZ')}'`, null, null, null, [`#${wall.expressId}`], '#41'],
+    });
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+
+    expect(model.bim.relationships({ modelId: 'm', expressId: wall.expressId }).relations)
+      .toContainEqual(expect.objectContaining({
+        relationshipId: relationship.expressId,
+        relationshipType: 'IfcRelContainedInSpatialStructure',
+        direction: 'inverse',
+        entity: expect.objectContaining({ id: 41, type: 'IfcBuildingStorey' }),
+      }));
+
+    const wallRef = { modelId: 'm', expressId: wall.expressId };
+    model.bim.store.setPositionalAttribute(wallRef, 2, "'Wall C renamed'");
+    await call('entity_set_attribute', {
+      express_id: wall.expressId, attribute: 'Name', value: 'Later named wall',
+    });
+    expect(model.bim.relationships({ modelId: 'm', expressId: 41 }).relations)
+      .toContainEqual(expect.objectContaining({
+        relationshipId: relationship.expressId,
+        direction: 'forward',
+        entity: expect.objectContaining({ id: wall.expressId, name: 'Wall C renamed' }),
+      }));
+    expect(model.bim.entity(wallRef)?.name).toBe('Wall C renamed');
+
+    await call('entity_set_attribute', {
+      global_id: guid('RELZ'), attribute: 'RelatedElements', value: '#73',
+    });
+    expect(model.bim.related({ modelId: 'm', expressId: 73 }, 'IfcRelContainedInSpatialStructure', 'inverse'))
+      .toContainEqual(expect.objectContaining({ ref: { modelId: 'm', expressId: 41 } }));
+    expect(model.bim.related({ modelId: 'm', expressId: wall.expressId }, 'IfcRelContainedInSpatialStructure', 'inverse'))
+      .toEqual([]);
+
+    await call('entity_delete', { global_id: guid('RELZ') });
+    expect(model.bim.relationships({ modelId: 'm', expressId: wall.expressId }).relations?.some(
+      (edge) => edge.relationshipId === relationship.expressId,
+    )).toBe(false);
+  }, 30_000);
+
+  it('keeps exact duplicate records without duplicating legacy void/fill endpoints (#5009)', async () => {
+    await session();
+    for (const [type, prefix] of [
+      ['IfcRelVoidsElement', 'VOID'],
+      ['IfcRelFillsElement', 'FILL'],
+    ] as const) {
+      for (const suffix of ['A', 'B']) {
+        await call('entity_create', {
+          type,
+          attributes: [`'${guid(`${prefix}${suffix}`)}'`, null, null, null, '#72', '#73'],
+        });
+      }
+    }
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+
+    const hostRelationships = model.bim.relationships({ modelId: 'm', expressId: 72 });
+    expect(hostRelationships.voids.map(entity => entity.id)).toEqual([73]);
+    expect(hostRelationships.relations?.filter(edge =>
+      edge.relationshipType === 'IfcRelVoidsElement' && edge.entity.id === 73)).toHaveLength(2);
+
+    const fillRelationships = model.bim.relationships({ modelId: 'm', expressId: 73 });
+    expect(fillRelationships.fills.map(entity => entity.id)).toEqual([72]);
+    expect(fillRelationships.relations?.filter(edge =>
+      edge.relationshipType === 'IfcRelFillsElement' && edge.entity.id === 72)).toHaveLength(2);
+  }, 30_000);
 
   it('keeps a session-placed entity in an in_storey query', async () => {
     await session();

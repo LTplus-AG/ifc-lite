@@ -12,10 +12,11 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { registerLocale, setLocale } from '@/i18n';
 import { WidgetErrorBoundary } from './WidgetErrorBoundary.js';
 
 function ThrowingWidget(): never {
@@ -152,6 +153,47 @@ describe('WidgetErrorBoundary', () => {
       const html = container.innerHTML;
       assert.match(html, /ext-c\/widget-c crashed while rendering/);
       assert.match(html, /widget A blew up/);
+    } finally {
+      await act(async () => {
+        root?.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  it('reads the crash label from the active locale (#4918)', async () => {
+    // Registers a pseudo-locale for the boundary's own catalogue key by
+    // NAME (not by importing extensions-panels.en.ts — this file predates
+    // that catalogue and stays independent of it) and asserts the fallback
+    // actually re-renders through `t()` rather than a hardcoded string.
+    registerLocale('widget-error-boundary-pseudo', {
+      'extensionsPanels.widgetErrorBoundary.crashed': '{label} MARKED-CRASH-TEXT',
+    });
+    act(() => setLocale('widget-error-boundary-pseudo'));
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    let root: Root | undefined;
+
+    try {
+      await act(async () => {
+        root = createRoot(container);
+        root.render(
+          <WidgetErrorBoundary key="ext-d/widget-d" label="ext-d/widget-d">
+            <ThrowingWidget />
+          </WidgetErrorBoundary>,
+        );
+      });
+
+      assert.match(
+        container.innerHTML,
+        /ext-d\/widget-d MARKED-CRASH-TEXT/,
+        'the crash label must come from the active locale catalogue, not a hardcoded string',
+      );
     } finally {
       await act(async () => {
         root?.unmount();

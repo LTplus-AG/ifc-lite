@@ -29,13 +29,32 @@
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { IfcParser } from '@ifc-lite/parser';
 import { loadIfcFile } from './loader.js';
 import { HeadlessBackend } from './headless-backend.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = join(__dirname, '../../../apps/viewer/public/samples/building-architecture.ifc');
+const EXACT_TYPE_IFC = `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCPROJECT('0000000000000000000001',$,'Project',$,$,$,$,$,$);
+#3=IFCWALL('0000000000000000000003',$,'Unrelated',$,$,$,$,$,$);
+#12=IFCDOORSTANDARDCASE('0000000000000000000012',$,'Exact door',$,$,$,$,$,$,$,$,$,$);
+#13=IFCRELAGGREGATES('0000000000000000000013',$,$,$,#1,(#12));
+ENDSEC;END-ISO-10303-21;`;
 
 describe('HeadlessBackend query.related() overlay visibility', () => {
+  it('preserves parsed endpoint subtype names after an unrelated edit', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(EXACT_TYPE_IFC).buffer as ArrayBuffer);
+    const backend = new HeadlessBackend(store, 'exact-types.ifc');
+    backend.mutate.setAttribute({ modelId: 'default', expressId: 3 }, 'Name', 'Unrelated edit');
+    const row = backend.query.relationships({ modelId: 'default', expressId: 1 }).relations
+      ?.find((edge) => edge.entity.id === 12);
+    expect(row).toBeDefined();
+    expect(row?.entity.type).toBe('IfcDoorStandardCase');
+  });
+
   it('sees a queued IfcRelAggregates both ways in the same session', async () => {
     const store = await loadIfcFile(SAMPLE_IFC);
     const backend = new HeadlessBackend(store, 'building-architecture.ifc');
@@ -49,7 +68,7 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward')).toEqual([]);
     expect(backend.query.related(child.ref, 'IfcRelAggregates', 'inverse')).toEqual([]);
 
-    backend.store.addEntity('default', {
+    const relationship = backend.store.addEntity('default', {
       type: 'IfcRelAggregates',
       attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${parent.ref.expressId}`, [`#${child.ref.expressId}`]],
     });
@@ -61,6 +80,25 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     // inverse: the child's queued parent resolves back to the parent.
     const inverse = backend.query.related(child.ref, 'IfcRelAggregates', 'inverse');
     expect(inverse.some((r) => r.expressId === parent.ref.expressId)).toBe(true);
+
+    // The detailed relationship surface must describe the same effective graph.
+    expect(backend.query.relationships(parent.ref).relations).toContainEqual(expect.objectContaining({
+      relationshipId: relationship.expressId,
+      relationshipType: 'IfcRelAggregates',
+      direction: 'forward',
+      entity: expect.objectContaining({ id: child.ref.expressId, type: 'IfcWall' }),
+    }));
+    expect(backend.query.relationships(child.ref).relations).toContainEqual(expect.objectContaining({
+      relationshipId: relationship.expressId,
+      relationshipType: 'IfcRelAggregates',
+      direction: 'inverse',
+      entity: expect.objectContaining({ id: parent.ref.expressId, type: 'IfcWall' }),
+    }));
+
+    backend.store.removeEntity(relationship);
+    expect(backend.query.relationships(parent.ref).relations?.some(
+      (edge) => edge.relationshipId === relationship.expressId,
+    )).toBe(false);
   });
 
   it('a deleted entity relates to nothing, even via a queued relationship', async () => {
@@ -77,5 +115,136 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
 
     const forward = backend.query.related(parent.ref, 'IfcRelAggregates', 'forward');
     expect(forward.some((r) => r.expressId === child.ref.expressId)).toBe(false);
+  });
+
+  it('uses positional endpoint overrides on a queued relationship', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [parent, originalChild, replacementChild] = backend.query.entities({ types: ['IfcWall'] });
+
+    const relationship = backend.store.addEntity('default', {
+      type: 'IfcRelAggregates',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${parent.ref.expressId}`, [`#${originalChild.ref.expressId}`]],
+    });
+    backend.store.setPositionalAttribute(relationship, 5, [`#${replacementChild.ref.expressId}`]);
+
+    const related = backend.query.related(parent.ref, 'IfcRelAggregates', 'forward');
+    expect(related.some((ref) => ref.expressId === originalChild.ref.expressId)).toBe(false);
+    expect(related.some((ref) => ref.expressId === replacementChild.ref.expressId)).toBe(true);
+    const rows = backend.query.relationships(parent.ref).relations ?? [];
+    expect(rows.some((edge) => edge.relationshipId === relationship.expressId
+      && edge.entity.id === originalChild.ref.expressId)).toBe(false);
+    expect(rows.some((edge) => edge.relationshipId === relationship.expressId
+      && edge.entity.id === replacementChild.ref.expressId)).toBe(true);
+
+    // Export applies positional overrides after named overrides. Readback must
+    // describe that same eventual file even when the named write happened last.
+    backend.mutate.setAttribute(relationship, 'RelatedObjects', `#${originalChild.ref.expressId}`);
+    expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward'))
+      .not.toContainEqual(originalChild.ref);
+    expect(backend.query.related(parent.ref, 'IfcRelAggregates', 'forward'))
+      .toContainEqual(replacementChild.ref);
+  });
+
+  it('keeps legacy relationship projections in sync with overlay deletes and creates', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [host, target] = backend.query.entities({ types: ['IfcWall'] });
+    expect(host).toBeDefined();
+    expect(target).toBeDefined();
+
+    const relationship = backend.store.addEntity('default', {
+      type: 'IfcRelVoidsElement',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${host.ref.expressId}`, `#${target.ref.expressId}`],
+    });
+    const duplicate = backend.store.addEntity('default', {
+      type: 'IfcRelVoidsElement',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzy'", null, null, null, `#${host.ref.expressId}`, `#${target.ref.expressId}`],
+    });
+    expect(backend.query.relationships(host.ref).voids).toContainEqual(expect.objectContaining({
+      id: target.ref.expressId,
+      type: 'IfcWall',
+    }));
+    expect(backend.query.relationships(host.ref).voids).toHaveLength(1);
+    expect(backend.query.relationships(host.ref).relations?.filter(
+      edge => edge.relationshipType === 'IfcRelVoidsElement' && edge.entity.id === target.ref.expressId,
+    )).toHaveLength(2);
+
+    backend.store.removeEntity(relationship);
+    expect(backend.query.relationships(host.ref).voids).toHaveLength(1);
+    backend.store.removeEntity(duplicate);
+    expect(backend.query.relationships(host.ref).voids).toEqual([]);
+
+    backend.store.removeEntity(host.ref);
+    expect(backend.query.relationships(host.ref)).toEqual({
+      voids: [], fills: [], groups: [], connections: [], relations: [],
+    });
+  });
+
+  it('keeps factor-weighted assignments in the legacy groups projection', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [member, group] = backend.query.entities({ types: ['IfcWall'] });
+    backend.store.addEntity('default', {
+      type: 'IfcRelAssignsToGroupByFactor',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzy'", null, null, null,
+        [`#${member.ref.expressId}`], null, `#${group.ref.expressId}`, 0.5],
+    });
+
+    expect(backend.query.relationships(member.ref).groups).toContainEqual({
+      id: group.ref.expressId,
+      name: group.name,
+      type: group.type,
+    });
+  });
+
+  it('hydrates positional metadata edits on a created relationship endpoint', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [member] = backend.query.entities({ types: ['IfcWall'] });
+    const group = backend.store.addEntity('default', {
+      type: 'IfcGroup',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzx'", null, "'Initial group'", null, null],
+    });
+    backend.store.addEntity('default', {
+      type: 'IfcRelAssignsToGroup',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzw'", null, null, null,
+        [`#${member.ref.expressId}`], null, `#${group.expressId}`],
+    });
+    backend.store.setPositionalAttribute(group, 2, "'Renamed group'");
+
+    expect(backend.query.relationships(member.ref).groups).toContainEqual({
+      id: group.expressId,
+      name: 'Renamed group',
+      type: 'IfcGroup',
+    });
+
+    backend.mutate.setAttribute(group, 'Name', 'Later named edit');
+    expect(backend.query.relationships(member.ref).groups).toContainEqual({
+      id: group.expressId,
+      name: 'Renamed group',
+      type: 'IfcGroup',
+    });
+  });
+
+  it('hydrates parsed endpoint edits with export precedence', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [parent, child] = backend.query.entities({ types: ['IfcWall'] });
+    backend.store.addEntity('default', {
+      type: 'IfcRelAggregates',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzv'", null, null, null, `#${parent.ref.expressId}`, [`#${child.ref.expressId}`]],
+    });
+
+    backend.mutate.setAttribute(child.ref, 'Name', 'Named endpoint');
+    expect(backend.query.relationships(parent.ref).relations).toContainEqual(expect.objectContaining({
+      entity: expect.objectContaining({ id: child.ref.expressId, name: 'Named endpoint' }),
+    }));
+
+    backend.store.setPositionalAttribute(child.ref, 2, "'Positional endpoint'");
+    backend.mutate.setAttribute(child.ref, 'Name', 'Later named endpoint');
+    expect(backend.query.relationships(parent.ref).relations).toContainEqual(expect.objectContaining({
+      entity: expect.objectContaining({ id: child.ref.expressId, name: 'Positional endpoint' }),
+    }));
   });
 });

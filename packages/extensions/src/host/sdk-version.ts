@@ -42,7 +42,13 @@ export interface CompatibilityResult {
   /** The current SDK version we evaluated against. */
   sdk: string;
   status: Compatibility;
-  /** Human-readable reason — useful in audit logs and the repair UI. */
+  /** Stable explanation for programmatic handling and UI localization. */
+  reasonCode:
+    | 'invalid-sdk-version'
+    | 'unsupported-range'
+    | 'range-mismatch'
+    | 'range-match';
+  /** Plain-English diagnostic for logs, prompts, and non-localized consumers. */
   reason: string;
 }
 
@@ -144,6 +150,7 @@ export function evaluateCompatibility(
       declared,
       sdk,
       status: 'permissive',
+      reasonCode: 'invalid-sdk-version',
       reason: `Could not parse SDK version "${sdk}".`,
     };
   }
@@ -154,6 +161,7 @@ export function evaluateCompatibility(
       declared,
       sdk,
       status: 'permissive',
+      reasonCode: 'unsupported-range',
       reason: 'Range too loose to evaluate — re-run tests to confirm.',
     };
   }
@@ -164,6 +172,7 @@ export function evaluateCompatibility(
         declared,
         sdk,
         status: 'outdated',
+        reasonCode: 'range-mismatch',
         reason: `Range "${declared}" no longer matches SDK ${sdk}.`,
       };
     }
@@ -173,6 +182,7 @@ export function evaluateCompatibility(
     declared,
     sdk,
     status: 'compatible',
+    reasonCode: 'range-match',
     reason: `Range "${declared}" still matches SDK ${sdk}.`,
   };
 }

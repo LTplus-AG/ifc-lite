@@ -14,6 +14,12 @@
 import { FilePlus, GitMerge } from 'lucide-react';
 import type { UnpackedFlavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
+import {
+  localizedFlavorDescription,
+  localizedFlavorName,
+} from './localized-flavor-metadata';
 
 interface FlavorImportPreviewProps {
   unpacked: UnpackedFlavor;
@@ -32,25 +38,30 @@ export function FlavorImportPreview({
   onSaveAsNew,
   onReplace,
 }: FlavorImportPreviewProps) {
+  const { t, locale } = useTranslation();
+  const name = localizedFlavorName(unpacked.flavor, t);
+  const description = localizedFlavorDescription(unpacked.flavor, t);
   return (
     <div className="space-y-3">
-      <div className="text-sm font-medium">Import preview</div>
+      <div className="text-sm font-medium">{t('extensionsFlavors.flavorImportPreview.title')}</div>
       <div className="rounded border bg-muted/30 p-3 text-xs space-y-1">
         <div>
-          <span className="text-muted-foreground">Name:</span>{' '}
-          <span className="font-medium">{unpacked.flavor.name}</span>
+          <span className="text-muted-foreground">{t('extensionsFlavors.flavorImportPreview.nameLabel')}</span>{' '}
+          <span className="font-medium">{name}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">ID:</span>{' '}
+          <span className="text-muted-foreground">{t('extensionsFlavors.flavorImportPreview.idLabel')}</span>{' '}
           <code className="font-mono">{unpacked.flavor.id}</code>
         </div>
-        {unpacked.flavor.description && (
-          <div className="text-muted-foreground">{unpacked.flavor.description}</div>
+        {description && (
+          <div className="text-muted-foreground">{description}</div>
         )}
         <div className="text-muted-foreground">
-          {unpacked.flavor.extensions.length} extensions ·{' '}
-          {unpacked.flavor.lenses.length} lenses ·{' '}
-          {unpacked.flavor.savedQueries.length} queries
+          {t('extensionsFlavors.flavorImportPreview.statsLine', {
+            extensions: formatLocaleNumber(locale, unpacked.flavor.extensions.length),
+            lenses: formatLocaleNumber(locale, unpacked.flavor.lenses.length),
+            queries: formatLocaleNumber(locale, unpacked.flavor.savedQueries.length),
+          })}
         </div>
         {unpacked.summary && (
           <div className="italic text-muted-foreground border-l-2 border-muted pl-2 mt-1">
@@ -60,18 +71,18 @@ export function FlavorImportPreview({
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-          Cancel
+          {t('extensionsFlavors.flavorImportPreview.cancelButton')}
         </Button>
         <Button variant="ghost" size="sm" onClick={onMerge} disabled={busy}>
           <GitMerge className="mr-1 h-3.5 w-3.5" />
-          Merge…
+          {t('extensionsFlavors.flavorImportPreview.mergeButton')}
         </Button>
         <Button variant="outline" size="sm" onClick={onSaveAsNew} disabled={busy}>
           <FilePlus className="mr-1 h-3.5 w-3.5" />
-          Save as new
+          {t('extensionsFlavors.flavorImportPreview.saveAsNewButton')}
         </Button>
         <Button size="sm" onClick={onReplace} disabled={busy}>
-          Replace existing
+          {t('extensionsFlavors.flavorImportPreview.replaceButton')}
         </Button>
       </div>
     </div>

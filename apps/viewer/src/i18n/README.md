@@ -483,6 +483,38 @@ source/target pick role are internal enums whose display words moved to
 the same data-table `labelKey` pattern `sectionConstants.ts`'s
 `AXIS_INFO` and slice 2's command registries use.
 
+The WebGPU-troubleshooting catalogue (#4918 slice: webgpu/script,
+`webgpu-troubleshooting.en.ts`) covers `WebGpuTroubleshooting.tsx` in full:
+the empty-state disabled-file caption, the category-branched banner
+headline, the collapsible troubleshooting steps for each
+`WebGPUUnavailableReason` category (insecure origin, browser not exposing
+WebGPU, and the blocklist/Firefox/Safari/verify-status block), and the
+always-shown CLI/MCP fallback notice. The banner headline is resolved by a
+plain function, not a component, so it takes a `t: typeof resolve = resolve`
+default parameter straight from the locale registry (`@/i18n/registry`)
+instead of the `useTranslation()` hook — the same non-hook translator shape
+`bulk-property-value.ts` already uses. Browser flag names, config paths, and
+CLI incantations are catalogued like every other literal in this file even
+though a translator is expected to leave them unchanged, the same reasoning
+the clash-tools catalogue documents for a composite IFC class-selector
+pattern.
+
+The Script-tool chrome catalogue (#4918 slice: webgpu/script,
+`script-panel.en.ts`) covers `ScriptPanel.tsx`'s own chrome: the header
+(default title, saved-script selector, AI-chat toggle, close), the
+post-authoring "install as tool" banner, the run/save/save-as-tool/undo/
+redo/new-script/reset-sandbox toolbar and its tooltips, the execution
+status indicators, the output console (the QuickJS sandbox hint, "Fix with
+LLM", the return-value label, and the empty state), and the delete
+confirmation dialog. `useScriptState` (the consolidated Zustand selector)
+and `formatLogArgs` (a pure log-argument formatter) moved to a sibling
+`scriptPanelState.ts` purely to keep `ScriptPanel.tsx` under its
+module-size budget after localizing its JSX — neither needs `useTranslation()`,
+since neither renders anything. `'Untitled Script'`, the default name a
+newly created script gets, stays literal: the moment it is saved it becomes
+persisted, user-renamable data, the same reasoning the search-modal
+catalogue documents for a created list's default `name: 'Filter result'`.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

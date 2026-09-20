@@ -33,8 +33,8 @@ import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { parseLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
-import { parseRotationDegrees } from '@/lib/model-placement/rotation';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
+import { parseLocalizedRotationDegrees } from './georeference-angle';
 
 // ── Field-specific assistance data ─────────────────────────────────────
 
@@ -100,9 +100,9 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
 
   const startEdit = useCallback(() => {
     if (!editable || isComputed) return;
-    setEditValue(value != null ? String(value) : '');
+    setEditValue(typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12, useGrouping: false }) : String(value ?? '')); // locale-formatted seed (#4918), commitEdit parses via parseLocaleNumber
     setEditing(true);
-  }, [value, editable, isComputed]);
+  }, [value, editable, isComputed, locale]);
 
   const commitEdit = useCallback((overrideValue?: string) => {
     if (!onSave) { setEditing(false); return; }
@@ -253,20 +253,20 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const [editValue, setEditValue] = useState('');
   const startEdit = useCallback(() => {
     if (!editable) return;
-    setEditValue(angle != null ? angle.toFixed(6) : '');
+    setEditValue(angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6, useGrouping: false }) : ''); // locale-formatted seed (#4918), see GeorefRow.startEdit
     setEditing(true);
-  }, [angle, editable]);
+  }, [angle, editable, locale]);
 
   const commitEdit = useCallback(() => {
     if (!onAngleChange) return;
     let rad: number;
-    try { rad = parseRotationDegrees(editValue); } catch (error) {
+    try { rad = parseLocalizedRotationDegrees(locale, editValue); } catch (error) {
       if (error instanceof Error) return;
       throw error;
     }
     onAngleChange(Math.cos(rad), Math.sin(rad));
     setEditing(false);
-  }, [editValue, onAngleChange]);
+  }, [editValue, locale, onAngleChange]);
 
   const cancelEdit = useCallback(() => setEditing(false), []);
 

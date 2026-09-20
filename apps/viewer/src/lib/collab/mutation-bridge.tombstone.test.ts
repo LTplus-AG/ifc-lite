@@ -15,6 +15,23 @@ import { applyRemoteAttribute } from './mutation-bridge.js';
  * only needs `applyRemoteAttribute` and a bare `MutablePropertyView`, so it
  * stays free of that dependency and can run wherever the wasm build is
  * unavailable.
+ *
+ * WHY THE GUARD EXISTS (rationale for the `view.isDeleted(entityId)` check at
+ * the top of `applyRemoteAttribute` in `mutation-bridge.ts`): without it,
+ * `setPositionalAttribute` records the inbound write in
+ * `positionalAttrMutations`/`mutationHistory` regardless of tombstone state.
+ * `effective-changes.ts` filters such a record out of the derived change list
+ * at READ time via `snapshot.tombstones.has(c.entityId)`, but that is a
+ * read-time suppression, not a purge — the record survives underneath. So a
+ * later `restoreFromTombstone` (undoing the local delete) makes that record
+ * effective again, resurrecting the entity carrying a peer's value in a slot
+ * the local user never edited. The first two tests below pin exactly this:
+ * no positional override survives to be resurrected.
+ *
+ * WHY NOT IN `setPositionalAttribute` ITSELF: `StoreEditor`/authoring paths
+ * and undo/redo replay of `UPDATE_POSITIONAL_ATTRIBUTE` mutations
+ * (`mutationSlice.ts`) call that primitive unconditionally and do not expect
+ * a tombstone to block them — a blanket refusal there would break replay.
  */
 
 /** A minimal fake IfcDataStore with one entity, enough for attribute-name resolution. */

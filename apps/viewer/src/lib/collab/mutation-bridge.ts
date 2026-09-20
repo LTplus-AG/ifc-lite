@@ -184,13 +184,10 @@ export type ScalarValue = string | number | boolean | null;
  * pins a doc attribute legitimately holding `null` as a state this bridge
  * must round-trip.
  *
- * An earlier revision here wrote the literal string `'$'` for every `null`,
- * which matches `serializeStringSlot`'s own absence sentinel for STRING slots
- * (#4931) but is wrong for a REAL-typed slot such as `IfcMapConversion
- * .Scale`: `serializeNamedAttribute` feeds a REAL slot through
- * `Number(value.trim())`, and `Number('$')` is `NaN`, so the named pipeline
- * REJECTS the edit and the OLD source value survives untouched. There is no
- * single string sentinel valid for every declared attribute type.
+ * An earlier revision wrote the literal string `'$'` for every `null` —
+ * matching `serializeStringSlot`'s STRING sentinel (#4931) but wrong for a
+ * REAL slot like `IfcMapConversion.Scale`, where `Number('$')` is `NaN` and
+ * the named pipeline REJECTS the edit, leaving the OLD value in place.
  *
  * The fix routes `null` through the exporter's type-AGNOSTIC
  * `setPositionalAttribute(entityId, index, null)` path, which `snapshotView` also
@@ -202,24 +199,8 @@ export type ScalarValue = string | number | boolean | null;
  * order (`getAttributeNamesAcrossSchemas`); a name that does not resolve to a
  * known slot is skipped, matching that file's own `if (index >= 0)` guard.
  *
- * Not `MutablePropertyView.removeAttributeMutation`: that discards the
- * pending edit and falls back to the room model's last full-reconstruct
- * value, a stale PRIOR value, not "absent".
- *
- * Refuses a write to a locally tombstoned entity, mirroring the inbound
- * create path's own `!view.isDeleted(currentOwner)` guard
- * (`remote-entity-create.ts`). Without this, `setPositionalAttribute` records
- * the write in `positionalAttrMutations` and `mutationHistory` regardless of
- * tombstone state — `effective-changes.ts` filters it out of the derived
- * change list at read time via `snapshot.tombstones.has(c.entityId)`, but
- * that is a read-time suppression, not a purge. The record survives, so
- * `restoreFromTombstone` (undo of the local delete) makes it effective again:
- * undoing a delete would resurrect the entity carrying a peer's value in a
- * slot the local user never edited. `setPositionalAttribute` itself is not
- * the right place for this check — `StoreEditor`/authoring paths and
- * undo/redo replay of `UPDATE_POSITIONAL_ATTRIBUTE` mutations
- * (`mutationSlice.ts`) call it unconditionally and do not expect a tombstone
- * to block them.
+ * Not `MutablePropertyView.removeAttributeMutation`: that falls back to the
+ * room model's last full-reconstruct value, a stale PRIOR value, not "absent".
  */
 export function applyRemoteAttribute(
   view: MutablePropertyView,
@@ -228,6 +209,8 @@ export function applyRemoteAttribute(
   attrName: string,
   value: unknown,
 ): string | null {
+  // Refuses a write to a locally tombstoned entity; rationale in
+  // mutation-bridge.tombstone.test.ts (why here, not in setPositionalAttribute).
   if (view.isDeleted(entityId)) return `entity ${entityId} is locally deleted`;
   const plainName = attrName.startsWith('bsi::ifc::prop::')
     ? attrName.slice('bsi::ifc::prop::'.length)

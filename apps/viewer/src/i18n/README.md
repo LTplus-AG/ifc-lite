@@ -663,6 +663,35 @@ NAMES from the imported drawing remain model or registry runtime data and
 stay out of the catalogue; the `mm` unit suffix is routed through `t()`
 without translation, same reasoning as the `F12` key name above.
 
+The viewport/lighting catalogue (#4918 slice: viewport/lighting,
+`viewport-lighting.en.ts`) covers the 3D-viewport chrome and the Sun & Sky
+lighting controls across seven files: `ViewportContainer.tsx` (the no-model
+welcome/empty state, its WebGPU-unavailable banner, and the loaded-model
+"Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
+cluster, the selected-storey count, and the per-model basepoint toggle),
+`Viewport.tsx`'s own renderer-init failure fallback, `FlySpeedIndicator.tsx`'s
+fly-mode HUD, and the Sun & Sky panel's own chrome plus its two sub-panels
+(`SunSkyPanel.tsx`, `ShadowControls.tsx`, `SunTimeControls.tsx`).
+`SunSkyPanel.tsx`'s `CONTEXT_SOURCES`/`SWEEP_MODES` select-option tables
+moved their `label`/`hint` fields to `labelKey`/`hintKey`, the same
+data-table-plus-`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and
+this sweep's other select tables use — component `label` props are not
+policed by the ending gate below, but leaving those two dropdowns hardcoded
+while the rest of the panel translated would read as two languages in one
+panel. `ShadowControls.tsx`'s `resolutionLabel` takes the same non-hook
+`t: typeof resolve = resolve` default parameter `bulk-property-value.ts`
+already uses, since it is a plain formatting function, not a component. The
+pluralized "Drop to federate with N existing model(s)" and "N storeys"
+states are single templated messages selected by count, never assembled
+fragments, the same reasoning this sweep's other counted states already
+document. `ViewportContainer.tsx`'s inline `<style>{`@keyframes…`}`</style>`
+CSS moved to a module-level `FLOAT_SLOW_KEYFRAMES` constant — plain CSS, not
+translatable prose, but the AST gate cannot tell a keyframe declaration from
+JSX text sitting in a `{'…'}` child position, so it stayed a false positive
+until moved out of that position entirely. A selected storey's own NAME, and
+a loaded model's own displayed name, remain runtime content and stay out of
+the catalogue.
+
 The grab-bag catalogue (#4918 slice: standalone panels, part 1,
 `misc-panels-a.en.ts`) bundles five otherwise-unrelated one-off dialogs/panels
 under their own key prefixes purely for PR-count efficiency:

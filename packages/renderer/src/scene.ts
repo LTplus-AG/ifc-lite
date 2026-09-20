@@ -35,7 +35,7 @@ import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
-import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization, type RebuiltBucket } from './scene-derived-batches.js';
+import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization } from './scene-derived-batches.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
@@ -43,7 +43,8 @@ import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from 
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
-import { extractEntityFromMergedMesh } from './merged-mesh-extract.js';
+import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
+import { rebuildSceneBatches } from './scene-batch-rebuild.js';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
   dropPartialCacheForBatch as dropPartialCacheForBatchIn,
@@ -191,11 +192,7 @@ export class Scene {
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
   private buckets: Map<string, BatchBucket> = new Map();            // bucketKey -> consolidated bucket state
   private meshDataBucket: Map<MeshData, BatchBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
-  /** Geometry materialized from a merged/source piece is not itself a bucket
-   * member. Keep its owner so highlights and picker uploads inherit the live
-   * batch frame and quantization decision instead of guessing from its local
-   * coordinates. Weak ownership deliberately does not extend derived life. */
-  private derivedMeshSources = new WeakMap<MeshData, MeshData>();
+  private derivedMeshProvenance = new DerivedMeshProvenance();
   private modelTranslations = new ModelTranslations();
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
@@ -256,27 +253,6 @@ export class Scene {
   }
   placeAppearanceSource(mesh: MeshData): MeshData { return this.modelTranslations.placeMesh(mesh); }
   appearanceSourceMesh(mesh: MeshData): MeshData { return this.modelTranslations.sourceFromPlaced(mesh); }
-
-  /** Follow extraction/merge provenance to the resident source piece. */
-  private sourceForDerivedMesh(meshData: MeshData): MeshData {
-    let source = meshData;
-    let parent: MeshData | undefined;
-    while ((parent = this.derivedMeshSources.get(source))) source = parent;
-    return source;
-  }
-
-  /** Resolve provenance before placement.  `ModelTranslations` then returns
-   * the exact placed identity held in `meshDataBucket`, including after a
-   * model translation or cold-bucket restoration. */
-  private placedSourceForDerivedMesh(meshData: MeshData): MeshData {
-    return this.modelTranslations.placeMesh(this.sourceForDerivedMesh(meshData));
-  }
-
-  private extractEntityMesh(merged: MeshData, expressId: number): MeshData | undefined {
-    const extracted = extractEntityFromMergedMesh(merged, expressId);
-    if (extracted) this.derivedMeshSources.set(extracted, this.sourceForDerivedMesh(merged));
-    return extracted;
-  }
 
   /** Stage one new IFC owner with all its coloured or textured geometry parts. */
   prepareAuthoredOwner(parts: readonly MeshData[], device: GPUDevice, pipeline: RenderPipeline) {
@@ -468,7 +444,7 @@ export class Scene {
    *  the first batch is built). Per-mesh highlight/picker VBOs replicate the
    *  batch's exact f32 path against this so they render bit-coincident. */
   getSharedFrameOrigin(modelIndex = 0, meshData?: MeshData): [number, number, number] | null {
-    const placed = meshData ? this.placedSourceForDerivedMesh(meshData) : undefined;
+    const placed = meshData ? this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations) : undefined;
     const bucket = placed ? this.meshDataBucket.get(placed) : undefined;
     return bucket?.batchedMesh?.origin ?? bucket?.frameOrigin ?? this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? null;
   }
@@ -622,7 +598,7 @@ export class Scene {
    *  lattice snap in createMeshFromData (an f32 batch must NOT snap). Same rule
    *  as overlay/partial batches; global flag while unbucketed. */
   isMeshQuantized(meshData: MeshData): boolean {
-    const source = this.placedSourceForDerivedMesh(meshData);
+    const source = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations);
     return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(source)?.batchedMesh) !== 'off';
   }
 
@@ -1003,7 +979,7 @@ export class Scene {
       // this expressId so selection highlighting is per-entity, not the
       // entire merged batch.
       if (single.entityIds) {
-        return this.extractEntityMesh(single, expressId);
+        return this.derivedMeshProvenance.extract(single, expressId);
       }
       return single;
     }
@@ -1014,7 +990,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = this.extractEntityMesh(piece, expressId);
+          const ex = this.derivedMeshProvenance.extract(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -1035,9 +1011,9 @@ export class Scene {
     const firstOrigin = pieces[0].origin;
     const sameFrame = pieces.every(piece => piece.origin?.[0] === firstOrigin?.[0]
       && piece.origin?.[1] === firstOrigin?.[1] && piece.origin?.[2] === firstOrigin?.[2]);
-    const firstSource = this.placedSourceForDerivedMesh(pieces[0]);
+    const firstSource = this.derivedMeshProvenance.placedSourceFor(pieces[0], this.modelTranslations);
     const firstBucket = this.meshDataBucket.get(firstSource);
-    const sameBucket = pieces.every(piece => this.meshDataBucket.get(this.placedSourceForDerivedMesh(piece)) === firstBucket);
+    const sameBucket = pieces.every(piece => this.meshDataBucket.get(this.derivedMeshProvenance.placedSourceFor(piece, this.modelTranslations)) === firstBucket);
     if (!sameFrame || !sameBucket) return pieces[0];
 
     // Check if all pieces have the same color (within tolerance)
@@ -1107,7 +1083,7 @@ export class Scene {
     // belongs to the same live bucket; an arbitrary source would give a merged
     // result the wrong quantization/frame after a re-batch.
     if (firstBucket) {
-      this.derivedMeshSources.set(merged, firstSource);
+      this.derivedMeshProvenance.remember(merged, firstSource);
     }
     return merged;
   }
@@ -1177,7 +1153,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = this.extractEntityMesh(piece, expressId);
+          const ex = this.derivedMeshProvenance.extract(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -1295,62 +1271,15 @@ export class Scene {
     this.rebuildPendingBatches(device, pipeline);
   }
 
-  /**
-   * Rebuild all pending batches (call this after streaming completes)
-   *
-   * Each bucket key already maps to data that fits within the GPU buffer
-   * limit (enforced at accumulation time by resolveActiveBucket), so no
-   * splitting is needed here — just create one batch per key.
-   */
+  /** Rebuild pending buckets after streaming or a geometry mutation. */
   rebuildPendingBatches(device: GPUDevice, pipeline: RenderPipeline): void {
     if (this.pendingBatchKeys.size === 0) return;
+    const rebuilt = rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets,
+      create: (meshes, color, target, renderPipeline, key) => this.createBatchedMesh(meshes, color, target, renderPipeline, key),
+      dropPartial: batch => this.dropPartialCacheForBatch(batch),
+    }, device, pipeline);
 
-    const rebuilt: RebuiltBucket[] = [];
-    const staged: Array<{ key: string; bucket: BatchBucket | undefined; previousQuantized: boolean; replacement?: BatchedMesh }> = [];
-    try {
-      for (const key of this.pendingBatchKeys) {
-      const bucket = this.buckets.get(key);
-      const previousQuantized = bucket?.batchedMesh?.quantized !== undefined;
-      if (!bucket || bucket.meshData.length === 0) {
-        staged.push({ key, bucket, previousQuantized });
-        continue;
-      }
-      const color = bucket.meshData[0].color;
-      staged.push({ key, bucket, previousQuantized,
-        replacement: this.createBatchedMesh(bucket.meshData, color, device, pipeline, key) });
-      }
-    } catch (error) {
-      for (const entry of staged) if (entry.replacement) destroyGpuResources(entry.replacement);
-      throw error;
-    }
-
-    for (const entry of staged) {
-      const { key, bucket, replacement, previousQuantized } = entry;
-      if (!bucket || !replacement) {
-        if (bucket?.batchedMesh) {
-          this.dropPartialCacheForBatch(bucket.batchedMesh);
-          destroyGpuResources(bucket.batchedMesh);
-        }
-        this.buckets.delete(key);
-        continue;
-      }
-      if (bucket.batchedMesh) {
-        this.dropPartialCacheForBatch(bucket.batchedMesh);
-        destroyGpuResources(bucket.batchedMesh);
-      }
-      bucket.batchedMesh = replacement;
-      bucket.frameOrigin = replacement.origin;
-      rebuilt.push({ bucket, previousQuantized });
-    }
-
-    // Rebuild the flat render array from all buckets (148 max batches — not perf critical)
-    this.batchedMeshes = [];
-    for (const bucket of this.buckets.values()) {
-      if (bucket.batchedMesh) {
-        this.batchedMeshes.push(bucket.batchedMesh);
-      }
-    }
-
+    this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
     this.pendingBatchKeys.clear();
     // Overlays follow their depth writers only when one actually changed under
     // them (flip / bucket move, #4832); finalize re-applies once itself.

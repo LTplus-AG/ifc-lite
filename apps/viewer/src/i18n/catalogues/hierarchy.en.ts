@@ -42,7 +42,7 @@ export const hierarchyEn = {
   'hierarchy.countBadge.spacesNotCounted': { one: '{formatted} space (not counted)', other: '{formatted} spaces (not counted)' },
 
   // ModelTagGroupRow
-  'hierarchy.modelTagGroup.memberCount': { one: '{count} model', other: '{count} models' },
+  'hierarchy.modelTagGroup.memberCount': { one: '{formatted} model', other: '{formatted} models' },
   'hierarchy.modelTagGroup.hideAriaLabel': 'Hide models tagged {name}',
   'hierarchy.modelTagGroup.showAriaLabel': 'Show models tagged {name}',
   'hierarchy.modelTagGroup.hideTooltip': 'Hide these models',
@@ -60,13 +60,13 @@ export const hierarchyEn = {
 
   // ModelTagEditor
   'hierarchy.modelTagEditor.title': 'Model tags',
-  'hierarchy.modelTagEditor.descriptionAll': 'Labels for all {count} models. Tags are organisation only — they never change the IFC file.',
+  'hierarchy.modelTagEditor.descriptionAll': 'Labels for all {countDisplay} models. Tags are organisation only — they never change the IFC file.',
   'hierarchy.modelTagEditor.descriptionNamed': 'Labels for {name}. Tags are organisation only — they never change the IFC file.',
   'hierarchy.modelTagEditor.descriptionThisModel': 'Labels for this model. Tags are organisation only — they never change the IFC file.',
-  'hierarchy.modelTagEditor.descriptionCount': { one: 'Labels for {count} model. Tags are organisation only — they never change the IFC file.', other: 'Labels for {count} models. Tags are organisation only — they never change the IFC file.' },
+  'hierarchy.modelTagEditor.descriptionCount': { one: 'Labels for {countDisplay} model. Tags are organisation only — they never change the IFC file.', other: 'Labels for {countDisplay} models. Tags are organisation only — they never change the IFC file.' },
   'hierarchy.modelTagEditor.applyToAriaLabel': 'Apply to',
   'hierarchy.modelTagEditor.selected': 'Selected',
-  'hierarchy.modelTagEditor.allModels': 'All {count} models',
+  'hierarchy.modelTagEditor.allModels': 'All {countDisplay} models',
   'hierarchy.modelTagEditor.addPlaceholder': 'Add a tag… (Enter)',
   'hierarchy.modelTagEditor.addAriaLabel': 'Add a tag',
   'hierarchy.modelTagEditor.assign': 'Assign',
@@ -74,9 +74,8 @@ export const hierarchyEn = {
   'hierarchy.modelTagEditor.matchingTagsAriaLabel': 'Matching tags',
   'hierarchy.modelTagEditor.allTagsAriaLabel': 'All tags',
   'hierarchy.modelTagEditor.emptyState': 'No tags yet — type one above.',
-  'hierarchy.modelTagEditor.toggleAriaLabel': '{action} tag {name}',
-  'hierarchy.modelTagEditor.toggleActionRemove': 'Remove',
-  'hierarchy.modelTagEditor.toggleActionAssign': 'Assign',
+  'hierarchy.modelTagEditor.removeTagAriaLabel': 'Remove tag {name}',
+  'hierarchy.modelTagEditor.assignTagAriaLabel': 'Assign tag {name}',
   'hierarchy.modelTagEditor.renameAriaLabel': 'Rename tag {name}',
   'hierarchy.modelTagEditor.saveNameAriaLabel': 'Save name for {name}',
   'hierarchy.modelTagEditor.deleteAriaLabel': 'Delete tag {name}',

@@ -29,6 +29,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { ProjectUnits } from '@ifc-lite/parser';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { QuantitySetCard } from './QuantitySetCard.js';
+import { registerLocale, setLocale } from '@/i18n';
 
 const UNITS = ProjectUnits.empty();
 
@@ -50,6 +51,7 @@ afterEach(() => {
   host?.remove();
   root = null;
   host = null;
+  setLocale('en');
 });
 
 describe('QuantitySetCard quantity-type tooltip contrast', () => {
@@ -76,5 +78,25 @@ describe('QuantitySetCard quantity-type tooltip contrast', () => {
     const secondary = tooltip!.querySelector('span');
     assert.equal(secondary?.textContent, 'Length');
     assert.equal(secondary?.className, 'text-muted-foreground', 'secondary text derives from the popover surface, not primary-foreground');
+  });
+
+  it('localizes the unnamed heading, type tooltip, count, and numeric value (#4918)', () => {
+    registerLocale('ar-EG-x-quantity-card', {
+      'properties.quantitySet.unnamed': '[مجموعة بلا اسم]',
+      'properties.quantitySet.type.length': '[طول]',
+    });
+    setLocale('ar-EG-x-quantity-card');
+    render(
+      <QuantitySetCard
+        qset={{ name: '', quantities: [{ name: 'Length', value: 1234.5, type: 0 }] }}
+        projectUnits={UNITS}
+      />,
+    );
+    assert.match(document.body.textContent ?? '', /\[مجموعة بلا اسم\]/);
+    assert.match(document.body.textContent ?? '', new RegExp(new Intl.NumberFormat('ar-EG-x-quantity-card', { maximumFractionDigits: 3 }).format(1234.5)));
+    const trigger = Array.from(document.querySelectorAll('span')).find((el) => el.textContent === 'Length');
+    assert.ok(trigger);
+    act(() => { (trigger as HTMLElement).focus(); });
+    assert.match(document.body.textContent ?? '', /\[طول\]/);
   });
 });

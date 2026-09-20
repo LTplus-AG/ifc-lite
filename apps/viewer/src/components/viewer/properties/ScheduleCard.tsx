@@ -23,6 +23,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { CalendarClock, Diamond, Flag } from 'lucide-react';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface ScheduleCardProps {
   /** Schedule data from the viewer's slice (parsed or generated). */
@@ -46,7 +47,7 @@ export function ScheduleCard({
   selectedGlobalId,
   isGenerated,
 }: ScheduleCardProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const tasks = useMemo(
     () => findControllingTasks(scheduleData, selectedExpressId, selectedGlobalId),
     [scheduleData, selectedExpressId, selectedGlobalId],
@@ -78,7 +79,10 @@ export function ScheduleCard({
           </span>
         )}
         <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
-          {t('properties.schedule.taskCount', { count: tasks.length })}
+          {t('properties.schedule.taskCount', {
+            count: tasks.length,
+            countDisplay: formatLocaleNumber(locale, tasks.length),
+          })}
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -90,7 +94,7 @@ export function ScheduleCard({
           )}
           <div className="divide-y divide-sky-100 dark:divide-sky-900/30">
             {tasks.map((task) => (
-              <TaskRow key={task.globalId} task={task} scheduleNames={scheduleNames} />
+              <TaskRow key={task.globalId} task={task} scheduleNames={scheduleNames} locale={locale} />
             ))}
           </div>
         </div>
@@ -102,12 +106,13 @@ export function ScheduleCard({
 interface TaskRowProps {
   task: ScheduleTaskInfo;
   scheduleNames: Map<string, string>;
+  locale: string;
 }
 
-function TaskRow({ task, scheduleNames }: TaskRowProps) {
+function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
   const { t } = useTranslation();
-  const start = formatDate(task.taskTime?.scheduleStart);
-  const finish = formatDate(task.taskTime?.scheduleFinish);
+  const start = formatDate(task.taskTime?.scheduleStart, locale);
+  const finish = formatDate(task.taskTime?.scheduleFinish, locale);
   const duration = task.taskTime?.scheduleDuration;
   const completion = task.taskTime?.completion;
   const isCritical = task.taskTime?.isCritical === true;
@@ -217,11 +222,11 @@ function buildScheduleNameLookup(data: ScheduleExtraction | null): Map<string, s
   return map;
 }
 
-function formatDate(iso: string | undefined): string | undefined {
+function formatDate(iso: string | undefined, locale: string): string | undefined {
   if (!iso) return undefined;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return iso;
-  return new Date(t).toLocaleDateString(undefined, {
+  return new Date(t).toLocaleDateString(locale, {
     year: 'numeric', month: 'short', day: 'numeric',
   });
 }

@@ -24,7 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useTranslation } from '@/i18n';
+import { formatLocaleNumber, localeCount, useTranslation } from '@/i18n';
 import { normalizeModelTagName, type ModelTag } from '@/lib/model-tags/types';
 import { ModelTagChip } from './ModelTagChip';
 
@@ -39,7 +39,7 @@ export interface ModelTagEditorProps {
 type Membership = 'all' | 'some' | 'none';
 
 export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: ModelTagEditorProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { modelTags, assignments, models, createModelTag, renameModelTag, deleteModelTag, assignModelTags, unassignModelTags } =
     useViewerStore(
       useShallow((s) => ({
@@ -95,12 +95,12 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
   };
 
   const description = bulk
-    ? t('hierarchy.modelTagEditor.descriptionAll', { count: modelIds.length })
+    ? t('hierarchy.modelTagEditor.descriptionAll', { countDisplay: formatLocaleNumber(locale, modelIds.length) })
     : modelName
       ? t('hierarchy.modelTagEditor.descriptionNamed', { name: modelName })
       : modelIds.length === 1
         ? t('hierarchy.modelTagEditor.descriptionThisModel')
-        : t('hierarchy.modelTagEditor.descriptionCount', { count: modelIds.length });
+        : t('hierarchy.modelTagEditor.descriptionCount', localeCount(locale, modelIds.length));
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -122,7 +122,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
               {modelName ?? t('hierarchy.modelTagEditor.selected')}
             </button>
             <button type="button" onClick={() => setBulk(true)} className={cn('px-2 py-0.5', bulk && 'bg-muted font-medium')}>
-              {t('hierarchy.modelTagEditor.allModels', { count: models.size })}
+              {t('hierarchy.modelTagEditor.allModels', { countDisplay: formatLocaleNumber(locale, models.size) })}
             </button>
           </div>
         )}
@@ -166,11 +166,10 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                   type="button"
                   role="checkbox"
                   aria-checked={membership === 'all' ? 'true' : membership === 'some' ? 'mixed' : 'false'}
-                  aria-label={t('hierarchy.modelTagEditor.toggleAriaLabel', {
-                    action:
-                      membership === 'all'
-                        ? t('hierarchy.modelTagEditor.toggleActionRemove')
-                        : t('hierarchy.modelTagEditor.toggleActionAssign'),
+                  aria-label={t(
+                    membership === 'all'
+                      ? 'hierarchy.modelTagEditor.removeTagAriaLabel'
+                      : 'hierarchy.modelTagEditor.assignTagAriaLabel', {
                     name: tag.name,
                   })}
                   onClick={() => toggle(tag)}

@@ -31,6 +31,7 @@ import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { LevelDisplayMode } from '@/store/slices/levelDisplaySlice';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 
 /** The related "which storeys show" pair: a single Stacked / Solo toggle. */
 const SHOW_MODES: Array<{
@@ -178,7 +179,9 @@ export function StoreyDisplayControls() {
         <div className="mt-1 text-[10px] leading-tight text-muted-foreground">
           {levelDisplayMode === 'solo' ? (
             activeInfo ? (
-              t('hierarchy.storeyControls.soloHintWithStorey', { name: activeInfo.name })
+              styleInterpolatedValues(t, 'hierarchy.storeyControls.soloHintWithStorey', [
+                ['name', <span key="name" className="font-medium text-foreground">{activeInfo.name}</span>],
+              ])
             ) : (
               t('hierarchy.storeyControls.soloHintNoStorey')
             )

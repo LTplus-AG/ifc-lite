@@ -31,7 +31,7 @@ installLayout();
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render, click } from '@/test/render.js';
+import { cleanup, render, click, press, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
@@ -385,6 +385,113 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.match(text, /SKALIERUNG Scale, FactorX und FactorY/);
     assert.match(text, /KORREKTUR OFFSET NULL, WINKEL NULL und MASSSTAB 1; FAKTOREN FactorX und FactorY/);
     assert.doesNotMatch(text, /not applied|not editable|The file's own values|about/);
+  });
+
+  catalogueIt('formats the grid-north angle with the active locale', () => {
+    act(() => setLocale('de'));
+    const radians = 12.345678 * Math.PI / 180;
+    const container = render(
+      <GeoreferencingPanel
+        georef={{
+          hasGeoreference: true,
+          mapConversion: { ...MAP_CONVERSION, xAxisAbscissa: Math.cos(radians), xAxisOrdinate: Math.sin(radians) },
+          projectedCRS: PROJECTED_CRS,
+          source: 'mapConversion',
+        }}
+        schemaVersion="IFC4"
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    assert.match(container.textContent ?? '', /12,345678/);
+    assert.doesNotMatch(container.textContent ?? '', /12\.345678/);
+  });
+
+  catalogueIt('formats coordinate and terrain measurements with the active locale', () => {
+    registerLocale('de-DE', {});
+    act(() => {
+      setLocale('de-DE');
+      useViewerStore.setState({
+        cesiumEnabled: true,
+        cesiumSourceModelId: 'A',
+        cesiumTerrainHeight: 1234.5,
+        cesiumTerrainSaveHeight: 1234.5,
+      });
+    });
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    assert.match(container.textContent ?? '', /311\.988.*5\.996\.149/);
+    assert.match(container.textContent ?? '', /1\.234,5 m/);
+    assert.doesNotMatch(container.textContent ?? '', /1234\.5 m/);
+  });
+
+  catalogueIt('parses a decimal-comma georeference edit before saving it', () => {
+    registerLocale('de-DE', {});
+    act(() => setLocale('de-DE'));
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
+    assert.ok(scaleLabel?.parentElement);
+    click(scaleLabel.parentElement);
+    const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
+    assert.ok(input);
+    type(input, '0,001');
+    press(input, 'Enter');
+    assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, 0.001);
+  });
+
+  catalogueIt('formats spatial and schedule values with the active locale', () => {
+    registerLocale('ar-EG', {});
+    act(() => setLocale('ar-EG'));
+    const tasks = [1, 2].map((id) => ({
+      expressId: id,
+      globalId: `task${id}`,
+      name: `Task ${id}`,
+      isMilestone: false,
+      childGlobalIds: [],
+      productGlobalIds: ['g1'],
+      productExpressIds: [1],
+      controllingScheduleGlobalIds: [],
+      taskTime: { scheduleStart: '2024-01-02T00:00:00Z', scheduleFinish: '2024-02-03T00:00:00Z' },
+    }));
+    const container = render(
+      <div>
+        <SpatialLocationBadge spatialInfo={{ storeyName: 'Level 1', elevation: 1234.5, height: 12.5 }} />
+        <MaterialCard material={{ type: 'MaterialConstituentSet', constituents: [{ name: 'A', fraction: 0.125 }] }} />
+        <MaterialCard material={{ type: 'MaterialLayerSet', layers: [{ materialName: 'A', thickness: 0.1 }] }} />
+        <RelationshipsCard relationships={{ voids: [{ id: 1, type: 'IfcOpeningElement' }, { id: 2, type: 'IfcOpeningElement' }], fills: [], groups: [], connections: [] }} />
+        <ScheduleCard
+          scheduleData={{ tasks, workSchedules: [], sequences: [], hasSchedule: true }}
+          selectedExpressId={1}
+          selectedGlobalId="g1"
+          isGenerated={false}
+        />
+      </div>,
+    );
+    const text = container.textContent ?? '';
+    assert.match(text, /١٬٢٣٤٫٥٠/);
+    assert.match(text, /١٢٫٥%/);
+    assert.match(text, /١٠٠٫٠ mm/);
+    assert.match(text, /Openings \(٢\)/);
+    assert.match(text, /٢ tasks/);
+    assert.match(text, /٢ يناير ٢٠٢٤/);
+    assert.doesNotMatch(text, /1234\.50|Jan 2, 2024/);
   });
 
   catalogueIt('resolves a retained EPSG search error in the current locale', () => {

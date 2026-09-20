@@ -22,13 +22,13 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
 import { buildKmzForResolvedGeoref } from '@/lib/geo/kmz-export';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter';
 import type { InstancedModelRange } from '@/utils/instancedExport';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import {
   probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
   getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
@@ -102,7 +102,7 @@ export function LocationMap({
   lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
   instancedModelRange = null,
 }: LocationMapProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<InstanceType<typeof import('maplibre-gl').Map> | null>(null);
   const markerRef = useRef<InstanceType<typeof import('maplibre-gl').Marker> | null>(null);
@@ -648,7 +648,7 @@ export function LocationMap({
         </span>
         {latLon && !searchOpen && (
           <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60">
-            {latLon.lat.toFixed(5)}, {latLon.lon.toFixed(5)}
+            {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
         {editable && (
@@ -774,18 +774,18 @@ export function LocationMap({
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono mb-2">
                 <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.latLon')}</div>
                 <div className="text-purple-700 dark:text-purple-300 text-right">
-                  {pickedLatLon.lat.toFixed(6)}, {pickedLatLon.lon.toFixed(6)}
+                  {formatLocaleNumber(locale, pickedLatLon.lat, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}, {formatLocaleNumber(locale, pickedLatLon.lon, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                 </div>
 
                 {projectedCoords && (
                   <>
                     <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.easting')}</div>
                     <div className="text-purple-700 dark:text-purple-300 text-right tabular-nums">
-                      {projectedCoords.easting.toFixed(3)}
+                      {formatLocaleNumber(locale, projectedCoords.easting, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
                     <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.northing')}</div>
                     <div className="text-purple-700 dark:text-purple-300 text-right tabular-nums">
-                      {projectedCoords.northing.toFixed(3)}
+                      {formatLocaleNumber(locale, projectedCoords.northing, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
                   </>
                 )}
@@ -798,7 +798,7 @@ export function LocationMap({
                   {elevationLoading ? (
                     <Loader2 className="h-2.5 w-2.5 animate-spin inline" />
                   ) : pickedElevation !== null ? (
-                    t('properties.locationMap.elevationMeters', { value: pickedElevation.toFixed(1) })
+                    t('properties.locationMap.elevationMeters', { value: formatLocaleNumber(locale, pickedElevation, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
                   ) : (
                     <span className="text-zinc-400">—</span>
                   )}

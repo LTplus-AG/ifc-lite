@@ -4,7 +4,7 @@
 
 import type { useTranslation } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
-import { trimFloat, type DoubleGeoreference } from '@/lib/geo/double-georeference';
+import type { DoubleGeoreference } from '@/lib/geo/double-georeference';
 
 type Translate = ReturnType<typeof useTranslation>['t'];
 
@@ -33,7 +33,7 @@ export function localizedRawValuesNote(t: Translate, locale: string, found: Doub
     t('properties.georef.correctionAngle'),
     ...(found.scaleForExport === null
       ? []
-      : [t('properties.georef.correctionScale', { value: trimFloat(found.scaleForExport) })]),
+      : [t('properties.georef.correctionScale', { value: formatLocaleNumber(locale, found.scaleForExport, { maximumFractionDigits: 12 }) })]),
   ];
   const params = {
     count: found.factorsForExport.length,

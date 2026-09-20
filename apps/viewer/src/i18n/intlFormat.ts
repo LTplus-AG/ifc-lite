@@ -16,6 +16,31 @@ export function formatLocaleNumber(locale: string, value: number, options?: Intl
   return new Intl.NumberFormat(supportedLocale(locale), options).format(value);
 }
 
+export function localeCount(locale: string, count: number): { count: number; countDisplay: string } {
+  return { count, countDisplay: formatLocaleNumber(locale, count) };
+}
+
+/** Parse a number written with the active locale's digits and separators. */
+export function parseLocaleNumber(locale: string, input: string): number | null {
+  const canonicalLocale = supportedLocale(locale);
+  const formatter = new Intl.NumberFormat(canonicalLocale, { useGrouping: true });
+  const parts = formatter.formatToParts(-12345.6);
+  const group = parts.find((part) => part.type === 'group')?.value;
+  const decimal = parts.find((part) => part.type === 'decimal')?.value ?? '.';
+  const minus = parts.find((part) => part.type === 'minusSign')?.value ?? '-';
+  const digitFormatter = new Intl.NumberFormat(canonicalLocale, { useGrouping: false });
+  const digits = new Map(
+    Array.from({ length: 10 }, (_, digit) => [digitFormatter.format(digit), String(digit)]),
+  );
+  let normalized = input.trim().replace(/[\u200e\u200f\u061c]/g, '');
+  for (const [localized, ascii] of digits) normalized = normalized.replaceAll(localized, ascii);
+  if (group) normalized = normalized.replaceAll(group, '');
+  normalized = normalized.replaceAll(decimal, '.').replaceAll(minus, '-');
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(normalized)) return null;
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : null;
+}
+
 export function formatLocaleList(locale: string, values: readonly string[]): string {
   return new Intl.ListFormat(supportedLocale(locale), { style: 'long', type: 'conjunction' }).format(values);
 }

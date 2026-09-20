@@ -6,6 +6,7 @@ import { ChevronRight, Layers, Eye, EyeOff, FileBox } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { isNoGeometryNode, isSpatialContainer, type TreeNode } from './types';
 import { CountBadgeTooltip } from './CountBadgeTooltip';
 import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
@@ -64,7 +65,7 @@ export function HierarchyNode({
   sourceBacked = false,
   sourceSyncing = false,
 }: HierarchyNodeProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const resolvedType = node.ifcType || node.type;
   // Use Lucide icon for non-IFC structural nodes, Material Symbols for IFC classes
   const LucideIcon = NODE_TYPE_ICONS[node.type];
@@ -261,7 +262,7 @@ export function HierarchyNode({
               <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-none">
                 {t('hierarchy.node.elevationBadge', {
                   sign: node.storeyDisplayElevation >= 0 ? '+' : '',
-                  value: node.storeyDisplayElevation.toFixed(2),
+                  value: formatLocaleNumber(locale, node.storeyDisplayElevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 })}
               </span>
             </TooltipTrigger>
@@ -269,7 +270,7 @@ export function HierarchyNode({
               <p className="text-xs">
                 {t('hierarchy.node.elevationTooltip', {
                   sign: node.storeyDisplayElevation >= 0 ? '+' : '',
-                  value: node.storeyDisplayElevation.toFixed(2),
+                  value: formatLocaleNumber(locale, node.storeyDisplayElevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 })}
               </p>
             </TooltipContent>
@@ -281,7 +282,7 @@ export function HierarchyNode({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-none">
-                {node.elementCount.toLocaleString()}
+                {formatLocaleNumber(locale, node.elementCount)}
               </span>
             </TooltipTrigger>
             <TooltipContent>

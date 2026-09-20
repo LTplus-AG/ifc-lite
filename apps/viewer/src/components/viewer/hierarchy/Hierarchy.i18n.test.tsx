@@ -32,6 +32,7 @@ import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { HierarchyNode } from './HierarchyNode.js';
+import { ModelHeaderRow } from './ModelHeaderRow.js';
 import { ModelTagGroupRow } from './ModelTagGroupRow.js';
 import { ModelRowTags } from './ModelRowTags.js';
 import { ModelsSectionHeader } from './ModelsSectionHeader.js';
@@ -293,16 +294,16 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
   });
 
   catalogueIt('interpolates the storey elevation badge and the model-tag member count', () => {
-    registerLocale('pseudothree', {
+    registerLocale('de-DE', {
       'hierarchy.node.elevationBadge': '[{sign}{value}]',
-      'hierarchy.modelTagGroup.memberCount': { one: '[{count} one]', other: '[{count} many]' },
+      'hierarchy.modelTagGroup.memberCount': { one: '[{formatted} one]', other: '[{formatted} many]' },
     });
-    act(() => setLocale('pseudothree'));
+    act(() => setLocale('de-DE'));
 
     const container = render(
       <div>
         <HierarchyNode
-          node={elementNode({ storeyDisplayElevation: -1.25 })}
+          node={elementNode({ storeyDisplayElevation: -1.25, elementCount: 1234 })}
           virtualRow={virtualRow}
           isSelected={false}
           nodeHidden={false}
@@ -315,14 +316,82 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
           onRemoveModel={() => {}}
           onModelHeaderClick={() => {}}
         />
-        <ModelTagGroupRow node={tagGroupNode()} virtualRow={virtualRow} />
+        <ModelHeaderRow
+          node={modelHeaderNode('A', { elementCount: 1234 })}
+          virtualRow={virtualRow}
+          modelsCount={1}
+          modelVisible
+          onModelVisibilityToggle={() => {}}
+          onRemoveModel={() => {}}
+          onModelHeaderClick={() => {}}
+        />
+        <ModelTagGroupRow
+          node={{ ...tagGroupNode(), modelIds: Array.from({ length: 1234 }, (_, index) => `model-${index}`) }}
+          virtualRow={virtualRow}
+        />
       </div>,
     );
 
-    assert.ok(container.textContent?.includes('[-1.25]'), 'elevation badge interpolates sign+value');
+    assert.ok(container.textContent?.includes('[-1,25]'), 'elevation badge uses the active locale');
+    assert.equal((container.textContent?.match(/1\.234/g) ?? []).length, 3, 'ordinary, model-header, and tag-group counts use the active locale');
     const groupRow = container.querySelector('[data-model-tag-group]');
     const groupCount = groupRow?.querySelector('[title]');
-    assert.equal(groupCount?.getAttribute('title'), '[2 many]', 'member count interpolates and pluralizes');
+    assert.equal(groupCount?.getAttribute('title'), '[1.234 many]', 'member count formats and pluralizes with the active locale');
+  });
+
+  catalogueIt('preserves the emphasized storey when a locale reorders the Solo hint', () => {
+    const store = {
+      spatialHierarchy: {
+        byStorey: new Map([[7, []], [8, []]]),
+        storeyElevations: new Map([[7, 0], [8, 3]]),
+      },
+      entities: { getName: (id: number) => id === 7 ? 'Ground floor' : 'First floor' },
+    } as unknown as NonNullable<FederatedModel['ifcDataStore']>;
+    useViewerStore.setState({
+      models: new Map([['A', { ...model('A'), ifcDataStore: store }]]),
+      levelDisplayMode: 'solo',
+      activeStorey: { modelId: 'A', expressId: 7 },
+    });
+    registerLocale('solo-hint-reordered', {
+      'hierarchy.storeyControls.soloHintWithStorey': 'SWITCH AFTER {name} BEFORE',
+    });
+    act(() => setLocale('solo-hint-reordered'));
+    const container = render(<StoreyDisplayControls />);
+    const emphasized = container.querySelector('.font-medium.text-foreground');
+    assert.equal(emphasized?.textContent, 'Ground floor');
+    assert.match(container.textContent ?? '', /SWITCH AFTER Ground floor BEFORE/);
+  });
+
+  catalogueIt('uses complete messages for tag assignment and removal actions', () => {
+    const tagId = useViewerStore.getState().createModelTag('Structure');
+    assert.ok(tagId);
+    registerLocale('tag-actions', {
+      'hierarchy.modelTagEditor.assignTagAriaLabel': '[Structure assigned action]',
+      'hierarchy.modelTagEditor.removeTagAriaLabel': '[Structure removed action]',
+    });
+    act(() => setLocale('tag-actions'));
+    render(<ModelTagEditor modelIds={['A']} modelName="A.ifc" onClose={() => {}} />);
+    const toggle = document.body.querySelector<HTMLButtonElement>(`[data-tag-row="${tagId}"] [role="checkbox"]`);
+    assert.equal(toggle?.getAttribute('aria-label'), '[Structure assigned action]');
+    click(toggle!);
+    assert.equal(toggle?.getAttribute('aria-label'), '[Structure removed action]');
+  });
+
+  catalogueIt('formats every model-tag editor count with the active locale', () => {
+    const models = new Map(Array.from({ length: 1234 }, (_, index) => {
+      const id = `model-${index}`;
+      return [id, model(id)] as const;
+    }));
+    useViewerStore.setState({ models });
+    registerLocale('ar-EG', {
+      'hierarchy.modelTagEditor.descriptionAll': '[bulk {countDisplay}]',
+      'hierarchy.modelTagEditor.allModels': '[all {countDisplay}]',
+    });
+    act(() => setLocale('ar-EG'));
+    render(<ModelTagEditor modelIds={['model-0', 'model-1']} onClose={() => {}} />);
+    assert.match(document.body.textContent ?? '', /\[bulk ١٬٢٣٤\]/);
+    assert.match(document.body.textContent ?? '', /\[all ١٬٢٣٤\]/);
+    assert.doesNotMatch(document.body.textContent ?? '', /\[bulk 1234\]|\[all 1234\]/);
   });
 
   catalogueIt('resolves a retained tag-rename error after active catalogue replacement', () => {

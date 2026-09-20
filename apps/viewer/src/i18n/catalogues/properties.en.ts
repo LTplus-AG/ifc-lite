@@ -14,6 +14,14 @@ import type { TranslationValue } from '../types';
  * content, not literals, and stay out of this catalogue.
  */
 export const propertiesEn = {
+  'properties.propertySet.unnamed': 'Unnamed Property Set',
+  'properties.quantitySet.unnamed': 'Unnamed Quantity Set',
+  'properties.quantitySet.type.length': 'Length',
+  'properties.quantitySet.type.area': 'Area',
+  'properties.quantitySet.type.volume': 'Volume',
+  'properties.quantitySet.type.count': 'Count',
+  'properties.quantitySet.type.weight': 'Weight',
+  'properties.quantitySet.type.time': 'Time',
   // AssemblyBadge
   'properties.assemblyBadge.tooltip': 'Select the parent assembly',
   'properties.assemblyBadge.label': 'Part of Assembly',
@@ -45,23 +53,13 @@ export const propertiesEn = {
 
   // RelationshipsCard
   'properties.relationships.heading': 'Relationships',
-  'properties.relationships.openings': 'Openings ({count})',
-  'properties.relationships.fills': 'Fills ({count})',
-  'properties.relationships.groupsAndZones': 'Groups & Zones ({count})',
-  'properties.relationships.connections': 'Connections ({count})',
+  'properties.relationships.openings': 'Openings ({countDisplay})',
+  'properties.relationships.fills': 'Fills ({countDisplay})',
+  'properties.relationships.groupsAndZones': 'Groups & Zones ({countDisplay})',
+  'properties.relationships.connections': 'Connections ({countDisplay})',
   'properties.relationships.groupFallbackName': 'Group #{id}',
   'properties.relationships.showGroupAttributesTooltip': "Show this group's attributes",
   'properties.relationships.isolateGroupMembersTooltip': "Isolate this group's members in 3D",
-
-  // StructuralCard
-  'properties.structural.heading': 'Structural Analysis',
-  'properties.structural.loadsTruncatedTooltip':
-    'One or more applied loads were bounded during extraction — this member may carry more load data than shown',
-  'properties.structural.truncatedBadge': 'Truncated',
-  'properties.structural.predefined': 'Predefined',
-  'properties.structural.model': 'Model',
-  'properties.structural.connections': 'Connections ({count})',
-  'properties.structural.appliedLoads': 'Applied loads ({count})',
 
   // FederationAlignmentControls
   'properties.federationAlignment.anchor': 'Federation anchor',
@@ -163,16 +161,16 @@ export const propertiesEn = {
   'properties.bsdd.fetchFailed': 'Failed to fetch bSDD data',
   'properties.bsdd.addedSingleWithFollowUp': 'Added "{name}" — open Properties to set its value',
   'properties.bsdd.addedSingle': 'Added "{name}"',
-  'properties.bsdd.addedMany': { one: 'Added {count} {pset} property', other: 'Added {count} {pset} properties' },
+  'properties.bsdd.addedMany': { one: 'Added {countDisplay} {pset} property', other: 'Added {countDisplay} {pset} properties' },
   'properties.bsdd.addedManyWithFollowUp': {
-    one: 'Added {count} {pset} property — open Properties to set values',
-    other: 'Added {count} {pset} properties — open Properties to set values',
+    one: 'Added {countDisplay} {pset} property — open Properties to set values',
+    other: 'Added {countDisplay} {pset} properties — open Properties to set values',
   },
   'properties.bsdd.loading': 'Loading bSDD data for {entityType}...',
   'properties.bsdd.loadFailed': 'Could not load bSDD data: {error}',
   'properties.bsdd.noData': 'No bSDD data available for {entityType}',
-  'properties.bsdd.editedCount': '{count} added · Edit in Properties',
-  'properties.bsdd.addAllTooltip': { one: 'Add all {count} property', other: 'Add all {count} properties' },
+  'properties.bsdd.editedCount': '{countDisplay} added · Edit in Properties',
+  'properties.bsdd.addAllTooltip': { one: 'Add all {countDisplay} property', other: 'Add all {countDisplay} properties' },
   'properties.bsdd.addToElementTooltip': 'Add to element',
   'properties.bsdd.viewOnBsdd': 'View on bSDD',
 
@@ -180,7 +178,7 @@ export const propertiesEn = {
   'properties.schedule.heading': 'Construction Schedule',
   'properties.schedule.pendingTooltip': 'Pending schedule edits — included on IFC export',
   'properties.schedule.pendingBadge': 'Pending',
-  'properties.schedule.taskCount': { one: '{count} task', other: '{count} tasks' },
+  'properties.schedule.taskCount': { one: '{countDisplay} task', other: '{countDisplay} tasks' },
   'properties.schedule.generatedLocallyNote': 'Generated locally — will be spliced into the next IFC export.',
   'properties.schedule.start': 'Start',
   'properties.schedule.finish': 'Finish',
@@ -252,22 +250,22 @@ export const propertiesEn = {
   'properties.taskEdit.timeConsistencyHelp':
     'Editing start or duration keeps finish consistent; editing finish keeps start consistent.',
   'properties.taskEdit.productsLabel': 'Products',
-  'properties.taskEdit.productsAssignedCount': '{count} assigned',
+  'properties.taskEdit.productsAssignedCount': '{countDisplay} assigned',
   'properties.taskEdit.addButton': 'Add',
-  'properties.taskEdit.addButtonWithCount': 'Add ({count})',
+  'properties.taskEdit.addButtonWithCount': 'Add ({countDisplay})',
   'properties.taskEdit.addTooltipWithCount': {
-    one: 'Add the {count} object currently selected in the 3D viewport to this task.',
-    other: 'Add the {count} objects currently selected in the 3D viewport to this task.',
+    one: 'Add the {countDisplay} object currently selected in the 3D viewport to this task.',
+    other: 'Add the {countDisplay} objects currently selected in the 3D viewport to this task.',
   },
   'properties.taskEdit.addTooltipEmpty': 'Select objects in the 3D viewport first.',
   'properties.taskEdit.removeButton': 'Remove',
-  'properties.taskEdit.removeButtonWithCount': 'Remove ({count})',
+  'properties.taskEdit.removeButtonWithCount': 'Remove ({countDisplay})',
   'properties.taskEdit.removeTooltip': 'Remove the selected 3D objects from this task.',
   'properties.taskEdit.detailsToggle': 'Details',
   'properties.taskEdit.globalIdLabel': 'Global ID',
   'properties.taskEdit.deleteTaskButton': 'Delete task',
   'properties.taskEdit.confirmDelete': 'Delete?',
-  'properties.taskEdit.confirmDeleteWithDescendants': { one: 'Delete + {count} descendant?', other: 'Delete + {count} descendants?' },
+  'properties.taskEdit.confirmDeleteWithDescendants': { one: 'Delete + {countDisplay} descendant?', other: 'Delete + {countDisplay} descendants?' },
   'properties.taskEdit.cancel': 'Cancel',
   'properties.taskEdit.delete': 'Delete',
 
@@ -326,12 +324,13 @@ export const propertiesEn = {
   'properties.georef.angleToGridNorth': 'Angle to Grid North',
   'properties.georef.degUnit': 'deg',
   'properties.georef.angleSetsAxesNote': 'Sets XAxisAbscissa = cos(angle), XAxisOrdinate = sin(angle)',
-
   // GeoreferencingPanel: main panel
   'properties.georef.noGeoreferencing': 'No georeferencing',
   'properties.georef.addGeoreferencing': 'Add Georeferencing',
   'properties.georef.reloadPrompt': 'Georeference saved. Reload loaded models to recompute 3D alignment?',
   'properties.georef.reloadModels': 'Reload models',
+  'properties.georef.reloadMissingSource': 'Cannot reload {name}: source file is not available', 'properties.georef.reloadPartial': 'Reloaded {loaded} of {total} models. Could not reload: {failed}.',
+  'properties.georef.reloadSuccess': 'Reloaded models for edited georeferencing', 'properties.georef.reloadFailedWithMessage': 'Reload failed: {message}', 'properties.georef.reloadFailed': 'Reload failed',
   'properties.georef.later': 'Later',
   'properties.georef.legacySiteNotice': 'Showing legacy IfcSite geolocation from IFC2X3. This view is read-only.',
   'properties.georef.unsupportedSchemaNotice': 'Georeferencing editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.',

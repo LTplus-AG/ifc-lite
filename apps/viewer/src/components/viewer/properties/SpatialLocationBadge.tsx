@@ -5,6 +5,7 @@
 import { Layers, ArrowUpDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 export interface SpatialLocationInfo {
   storeyName: string;
@@ -16,7 +17,7 @@ export interface SpatialLocationInfo {
  *  Extracted out of PropertiesPanel.tsx as a plain presentational sibling —
  *  it owns no state of its own, it only renders `spatialInfo`. */
 export function SpatialLocationBadge({ spatialInfo }: { spatialInfo: SpatialLocationInfo | null }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   if (!spatialInfo) return null;
 
   return (
@@ -30,7 +31,7 @@ export function SpatialLocationBadge({ spatialInfo }: { spatialInfo: SpatialLoca
               <span className="text-emerald-600/70 dark:text-emerald-500/70 font-mono whitespace-nowrap">
                 {t('properties.spatialLocation.elevationDisplay', {
                   sign: spatialInfo.elevation >= 0 ? '+' : '',
-                  value: spatialInfo.elevation.toFixed(2),
+                  value: formatLocaleNumber(locale, spatialInfo.elevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 })}
               </span>
             </TooltipTrigger>
@@ -38,7 +39,7 @@ export function SpatialLocationBadge({ spatialInfo }: { spatialInfo: SpatialLoca
               <p className="text-xs">
                 {t('properties.spatialLocation.elevationTooltip', {
                   sign: spatialInfo.elevation >= 0 ? '+' : '',
-                  value: spatialInfo.elevation.toFixed(2),
+                  value: formatLocaleNumber(locale, spatialInfo.elevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 })}
               </p>
             </TooltipContent>
@@ -50,16 +51,16 @@ export function SpatialLocationBadge({ spatialInfo }: { spatialInfo: SpatialLoca
               <span className="flex items-center gap-1 text-emerald-500/60 dark:text-emerald-400/60 font-mono text-[10px] whitespace-nowrap">
                 <ArrowUpDown className="h-2.5 w-2.5 shrink-0" />
                 <span className="hidden sm:inline">
-                  {t('properties.spatialLocation.heightDisplay', { value: spatialInfo.height.toFixed(2) })}
+                  {t('properties.spatialLocation.heightDisplay', { value: formatLocaleNumber(locale, spatialInfo.height, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
                 </span>
                 <span className="sm:hidden">
-                  {t('properties.spatialLocation.heightDisplay', { value: spatialInfo.height.toFixed(1) })}
+                  {t('properties.spatialLocation.heightDisplay', { value: formatLocaleNumber(locale, spatialInfo.height, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
                 </span>
               </span>
             </TooltipTrigger>
             <TooltipContent>
               <p className="text-xs">
-                {t('properties.spatialLocation.heightTooltip', { value: spatialInfo.height.toFixed(2) })}
+                {t('properties.spatialLocation.heightTooltip', { value: formatLocaleNumber(locale, spatialInfo.height, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
               </p>
             </TooltipContent>
           </Tooltip>

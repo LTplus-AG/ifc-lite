@@ -26,6 +26,7 @@ import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { SectionHeader } from './SectionHeader';
 import type { TreeNode } from './types';
 import { applyModelTagView, isModelTagFilterActive, modelIdsMatchingTagView } from './modelTagView';
@@ -45,7 +46,7 @@ const chipClass = (active: boolean) =>
   );
 
 export function ModelsSectionHeader({ count }: { count: number }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { view, tags, assignments, models, setModelTagView, isolateModels } = useViewerStore(
     useShallow((s) => ({
       view: s.modelTagView,
@@ -151,7 +152,7 @@ export function ModelsSectionHeader({ count }: { count: number }) {
                 {t('hierarchy.modelsSection.clear')}
               </Button>
               <span className="ml-auto text-[10px] font-mono text-zinc-500" data-model-tag-filter-count>
-                {t('hierarchy.modelsSection.matchingCount', { matching: matching.length, total: models.size })}
+                {t('hierarchy.modelsSection.matchingCount', { matching: formatLocaleNumber(locale, matching.length), total: formatLocaleNumber(locale, models.size) })}
               </span>
             </>
           )}

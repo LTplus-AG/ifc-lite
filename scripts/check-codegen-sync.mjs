@@ -200,7 +200,7 @@ export function runCodegenCli(root, schemaPath, outDir, rustDir, options = {}) {
     // deterministic final generation step before byte comparison; comparing
     // pre-format text would report formatting noise, while normalising either
     // side would let a hand edit through (#5054).
-    execFileSync('rustfmt', [join(rustDir, 'schema.rs'), join(rustDir, 'type_ids.rs')], {
+    execFileSync('rustfmt', ['+stable', join(rustDir, 'schema.rs'), join(rustDir, 'type_ids.rs')], {
       cwd: root,
       stdio: 'pipe',
       encoding: 'utf8',

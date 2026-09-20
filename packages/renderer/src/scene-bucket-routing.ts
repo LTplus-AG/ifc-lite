@@ -48,12 +48,20 @@ export function resolvePrecisionBucket(
 
   let target = state.buckets.get(key);
   if (!target) {
+    const frameOrigin = topologySafeBatchOrigin([mesh], undefined, state.sharedOrigin);
+    // Never publish a bucket which cannot be uploaded without collapsing a
+    // valid triangle.  In particular, leaving this undefined used to defer the
+    // failure until `mergeGeometry`, after callers had already mutated scene
+    // state (and sometimes destroyed the previous batch).
+    if (!frameOrigin) {
+      throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
+    }
     target = {
       key,
       meshData: [],
       batchedMesh: null,
       vertexBytes: 0,
-      frameOrigin: topologySafeBatchOrigin([mesh], undefined, state.sharedOrigin),
+      frameOrigin,
     };
     state.buckets.set(key, target);
   }

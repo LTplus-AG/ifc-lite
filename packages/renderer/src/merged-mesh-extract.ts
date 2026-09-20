@@ -70,6 +70,11 @@ export function extractEntityFromMergedMesh(merged: MeshData, targetId: number):
 
   return {
     expressId: targetId,
+    // A merged batch may contain identically-numbered entities from multiple
+    // federated models only when the caller did not scope the lookup.  This
+    // extraction is always from one source mesh, so retain that source's model
+    // identity for the highlight/pick upload that follows.
+    modelIndex: merged.modelIndex,
     positions: outPos,
     normals: outNorm,
     indices: new Uint32Array(tmpIdx),

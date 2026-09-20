@@ -171,6 +171,64 @@ function quantizedChunkedScene(): Scene {
 }
 
 describe('overlay batches stay depth-coincident with their base batches (#4832)', () => {
+  it('keeps extracted merged geometry attached to its live source frame (#5010)', () => {
+    const scene = quantizedChunkedScene();
+    const { device } = fakeDevice();
+    const nearby = triangle(1, [0, 0, 0]);
+    const merged = { ...triangle(7, [800_000_000, 0, 0]), modelIndex: 4,
+      entityIds: new Uint32Array([7, 7, 7]) } as MeshData;
+    scene.appendToBatches([nearby, merged], device, fakePipeline);
+
+    const extracted = scene.getMeshDataPieces(7, 4)![0];
+    const sourceBatch = baseBatchFor(scene, 7);
+    assert.strictEqual(extracted.modelIndex, 4, 'merged extraction retains federated model scope');
+    assert.deepStrictEqual(scene.getSharedFrameOrigin(extracted.modelIndex, extracted), sourceBatch.origin,
+      'derived highlight/pick geometry resolves its owning bucket, not the model-wide fallback');
+    assert.strictEqual(scene.isMeshQuantized(extracted), sourceBatch.quantized !== undefined,
+      'derived geometry inherits the source batch quantization decision');
+
+    scene.setModelTranslation(4, [25, 0, 0]);
+    assert.deepStrictEqual(scene.getSharedFrameOrigin(extracted.modelIndex, extracted), sourceBatch.origin,
+      'provenance resolves through the placed source after a model translation');
+  });
+
+  it('rejects an exhausted frame before upload and preserves the prior scene (#5010)', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    const safe = triangle(1, [0, 0, 0]);
+    scene.appendToBatches([safe], device, fakePipeline);
+    const prior = scene.getBatchedMeshes()[0];
+    let uploads = 0;
+    const originalCreateBuffer = device.createBuffer.bind(device);
+    (device as unknown as { createBuffer(desc: GPUBufferDescriptor): GPUBuffer }).createBuffer = (desc) => {
+      uploads++;
+      return originalCreateBuffer(desc);
+    };
+
+    const impossible = triangle(2, [Number.MAX_VALUE, 0, 0]);
+    assert.throws(() => scene.appendToBatches([impossible], device, fakePipeline), /topology-safe GPU frame/);
+    assert.strictEqual(uploads, 0, 'the rejected append reaches no GPU allocation');
+    assert.deepStrictEqual(scene.getBatchedMeshes(), [prior], 'the prior drawable stays published');
+    assert.strictEqual(scene.getMeshDataPieces(2), undefined, 'the rejected owner was never published');
+
+    scene.appendToBatches([triangle(3, [5, 0, 0], RED)], device, fakePipeline);
+    assert.strictEqual(scene.getBatchedMeshes().length, 2, 'a later safe append still succeeds');
+  });
+
+  it('does not invent a singular provenance across separately framed pieces (#5010)', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.appendToBatches([
+      triangle(9, [0, 0, 0]),
+      triangle(9, [800_000_000, 0, 0]),
+    ], device, fakePipeline);
+
+    const pieces = scene.getMeshDataPieces(9)!;
+    assert.strictEqual(pieces.length, 2, 'precision routing made two source frames');
+    assert.strictEqual(scene.getMeshData(9), pieces[0],
+      'the singular accessor refuses a frame-losing multi-piece merge');
+  });
+
   it('precision-partitions distant same-colour components when chunks are disabled (#4937)', () => {
     const scene = new Scene();
     const { device, bytes } = fakeDevice();

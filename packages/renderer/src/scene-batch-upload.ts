@@ -23,7 +23,8 @@ export function createSceneBatch(
   options: {
     id: number;
     colorKey: string;
-    origin?: [number, number, number];
+    /** Already validated by Scene before this GPU allocation boundary. */
+    origin: [number, number, number];
     /** See `BatchQuantization`; derived batches pass their source's decision (#4832). */
     quantized: BatchQuantization;
     lod: boolean;

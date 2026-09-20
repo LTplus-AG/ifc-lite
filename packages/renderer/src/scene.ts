@@ -191,6 +191,11 @@ export class Scene {
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
   private buckets: Map<string, BatchBucket> = new Map();            // bucketKey -> consolidated bucket state
   private meshDataBucket: Map<MeshData, BatchBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
+  /** Geometry materialized from a merged/source piece is not itself a bucket
+   * member. Keep its owner so highlights and picker uploads inherit the live
+   * batch frame and quantization decision instead of guessing from its local
+   * coordinates. Weak ownership deliberately does not extend derived life. */
+  private derivedMeshSources = new WeakMap<MeshData, MeshData>();
   private modelTranslations = new ModelTranslations();
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
@@ -251,6 +256,27 @@ export class Scene {
   }
   placeAppearanceSource(mesh: MeshData): MeshData { return this.modelTranslations.placeMesh(mesh); }
   appearanceSourceMesh(mesh: MeshData): MeshData { return this.modelTranslations.sourceFromPlaced(mesh); }
+
+  /** Follow extraction/merge provenance to the resident source piece. */
+  private sourceForDerivedMesh(meshData: MeshData): MeshData {
+    let source = meshData;
+    let parent: MeshData | undefined;
+    while ((parent = this.derivedMeshSources.get(source))) source = parent;
+    return source;
+  }
+
+  /** Resolve provenance before placement.  `ModelTranslations` then returns
+   * the exact placed identity held in `meshDataBucket`, including after a
+   * model translation or cold-bucket restoration. */
+  private placedSourceForDerivedMesh(meshData: MeshData): MeshData {
+    return this.modelTranslations.placeMesh(this.sourceForDerivedMesh(meshData));
+  }
+
+  private extractEntityMesh(merged: MeshData, expressId: number): MeshData | undefined {
+    const extracted = extractEntityFromMergedMesh(merged, expressId);
+    if (extracted) this.derivedMeshSources.set(extracted, this.sourceForDerivedMesh(merged));
+    return extracted;
+  }
 
   /** Stage one new IFC owner with all its coloured or textured geometry parts. */
   prepareAuthoredOwner(parts: readonly MeshData[], device: GPUDevice, pipeline: RenderPipeline) {
@@ -442,7 +468,7 @@ export class Scene {
    *  the first batch is built). Per-mesh highlight/picker VBOs replicate the
    *  batch's exact f32 path against this so they render bit-coincident. */
   getSharedFrameOrigin(modelIndex = 0, meshData?: MeshData): [number, number, number] | null {
-    const placed = meshData ? this.modelTranslations.placeMesh(meshData) : undefined;
+    const placed = meshData ? this.placedSourceForDerivedMesh(meshData) : undefined;
     const bucket = placed ? this.meshDataBucket.get(placed) : undefined;
     return bucket?.batchedMesh?.origin ?? bucket?.frameOrigin ?? this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? null;
   }
@@ -596,7 +622,8 @@ export class Scene {
    *  lattice snap in createMeshFromData (an f32 batch must NOT snap). Same rule
    *  as overlay/partial batches; global flag while unbucketed. */
   isMeshQuantized(meshData: MeshData): boolean {
-    return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(meshData)?.batchedMesh) !== 'off';
+    const source = this.placedSourceForDerivedMesh(meshData);
+    return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(source)?.batchedMesh) !== 'off';
   }
 
   /** Set (or clear) the HOST budget in bytes for bucket CPU geometry. */
@@ -976,7 +1003,7 @@ export class Scene {
       // this expressId so selection highlighting is per-entity, not the
       // entire merged batch.
       if (single.entityIds) {
-        return extractEntityFromMergedMesh(single, expressId);
+        return this.extractEntityMesh(single, expressId);
       }
       return single;
     }
@@ -987,7 +1014,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = extractEntityFromMergedMesh(piece, expressId);
+          const ex = this.extractEntityMesh(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -998,6 +1025,20 @@ export class Scene {
       pieces = extracted;
       // Fall through to the normal multi-piece merge below
     }
+
+    // A singular return can only represent one local precision frame and one
+    // batch decision. Joining pieces from different origins without rebasing
+    // their vertices silently loses the frame; choosing one of several source
+    // buckets would likewise invent a quantization provenance. Return the
+    // first stable piece and direct callers to the explicitly multi-piece
+    // accessor instead.
+    const firstOrigin = pieces[0].origin;
+    const sameFrame = pieces.every(piece => piece.origin?.[0] === firstOrigin?.[0]
+      && piece.origin?.[1] === firstOrigin?.[1] && piece.origin?.[2] === firstOrigin?.[2]);
+    const firstSource = this.placedSourceForDerivedMesh(pieces[0]);
+    const firstBucket = this.meshDataBucket.get(firstSource);
+    const sameBucket = pieces.every(piece => this.meshDataBucket.get(this.placedSourceForDerivedMesh(piece)) === firstBucket);
+    if (!sameFrame || !sameBucket) return pieces[0];
 
     // Check if all pieces have the same color (within tolerance)
     // This handles multi-material elements like windows (frame vs glass)
@@ -1052,7 +1093,7 @@ export class Scene {
     }
 
     // Return merged MeshData (all pieces have same color)
-    return {
+    const merged = {
       expressId,
       modelIndex: pieces[0].modelIndex,  // Preserve modelIndex for multi-model support
       positions: mergedPositions,
@@ -1060,7 +1101,15 @@ export class Scene {
       indices: mergedIndices,
       color: firstColor,
       ifcType: pieces[0].ifcType,
+      origin: firstOrigin,
     };
+    // The common frame is explicit above.  Keep a source only when every part
+    // belongs to the same live bucket; an arbitrary source would give a merged
+    // result the wrong quantization/frame after a re-batch.
+    if (firstBucket) {
+      this.derivedMeshSources.set(merged, firstSource);
+    }
+    return merged;
   }
 
   /**
@@ -1128,7 +1177,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = extractEntityFromMergedMesh(piece, expressId);
+          const ex = this.extractEntityMesh(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -1164,8 +1213,18 @@ export class Scene {
    * when streaming completes to do one O(N) full merge.
    */
   appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false): void {
-    if (this.appearanceController) for (const part of meshDataArray) this.appearanceController.cancelFor(part.expressId);
     meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
+    // Validate every input before cancelling appearance work, publishing a
+    // bucket, or touching GPU state. A single impossible f32 frame must leave
+    // an already-valid scene usable and allow the next safe append.
+    for (const meshData of meshDataArray) {
+      const modelIndex = meshData.modelIndex ?? 0;
+      const shared = this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex);
+      if (!topologySafeBatchOrigin([meshData], undefined, shared)) {
+        throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
+      }
+    }
+    if (this.appearanceController) for (const part of meshDataArray) this.appearanceController.cancelFor(part.expressId);
     // Cache max buffer size on first call
     if (this.cachedMaxBufferSize === 0) {
       this.cachedMaxBufferSize = this.getMaxBufferSize(device);
@@ -1247,32 +1306,40 @@ export class Scene {
     if (this.pendingBatchKeys.size === 0) return;
 
     const rebuilt: RebuiltBucket[] = [];
-    for (const key of this.pendingBatchKeys) {
+    const staged: Array<{ key: string; bucket: BatchBucket | undefined; previousQuantized: boolean; replacement?: BatchedMesh }> = [];
+    try {
+      for (const key of this.pendingBatchKeys) {
       const bucket = this.buckets.get(key);
       const previousQuantized = bucket?.batchedMesh?.quantized !== undefined;
-
-      // Destroy old GPU batch if it exists
-      if (bucket?.batchedMesh) {
-        // Slot keys embed the batch id and the replacement gets a fresh one, so
-        // drop this batch's cached sub-batch clones first or they are stranded
-        // with live GPU buffers. Every other batch-destroying path already
-        // clears the cache (eviction per batch; finalize/release/clear wholesale).
-        this.dropPartialCacheForBatch(bucket.batchedMesh);
-        destroyGpuResources(bucket.batchedMesh);
-        bucket.batchedMesh = null;
-      }
-
       if (!bucket || bucket.meshData.length === 0) {
-        // Bucket is empty — clean up
+        staged.push({ key, bucket, previousQuantized });
+        continue;
+      }
+      const color = bucket.meshData[0].color;
+      staged.push({ key, bucket, previousQuantized,
+        replacement: this.createBatchedMesh(bucket.meshData, color, device, pipeline, key) });
+      }
+    } catch (error) {
+      for (const entry of staged) if (entry.replacement) destroyGpuResources(entry.replacement);
+      throw error;
+    }
+
+    for (const entry of staged) {
+      const { key, bucket, replacement, previousQuantized } = entry;
+      if (!bucket || !replacement) {
+        if (bucket?.batchedMesh) {
+          this.dropPartialCacheForBatch(bucket.batchedMesh);
+          destroyGpuResources(bucket.batchedMesh);
+        }
         this.buckets.delete(key);
         continue;
       }
-
-      // Create new batch with all accumulated meshes for this bucket
-      const color = bucket.meshData[0].color;
-      const batchedMesh = this.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
-      bucket.batchedMesh = batchedMesh;
-      bucket.frameOrigin = batchedMesh.origin;
+      if (bucket.batchedMesh) {
+        this.dropPartialCacheForBatch(bucket.batchedMesh);
+        destroyGpuResources(bucket.batchedMesh);
+      }
+      bucket.batchedMesh = replacement;
+      bucket.frameOrigin = replacement.origin;
       rebuilt.push({ bucket, previousQuantized });
     }
 
@@ -2567,14 +2634,16 @@ export class Scene {
     // every GPU allocation before publishing Scene state.
     const modelIndex = meshes[0]?.modelIndex ?? 0;
     const offset = this.modelTranslations.get(modelIndex);
+    const origin = topologySafeBatchOrigin(
+      meshes,
+      frameOrigin ?? this.meshDataBucket.get(meshes[0])?.batchedMesh?.origin,
+      this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
+      this.meshDataBucket.get(meshes[0])?.frameOrigin,
+    );
+    if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const result = createSceneBatch(meshes, color, device, pipeline, {
       id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
-      origin: topologySafeBatchOrigin(
-        meshes,
-        frameOrigin ?? this.meshDataBucket.get(meshes[0])?.batchedMesh?.origin,
-        this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
-        this.meshDataBucket.get(meshes[0])?.frameOrigin,
-      ),
+      origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);
     this.nextBatchId++;

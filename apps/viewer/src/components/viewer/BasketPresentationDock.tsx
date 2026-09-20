@@ -23,6 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import {
@@ -35,6 +36,7 @@ import {
 import { getSmartBasketInputFromStore, isBasketIsolationActiveFromStore } from '@/store/basketVisibleSet';
 
 export function BasketPresentationDock() {
+  const { t } = useTranslation();
   const [savingThumbnail, setSavingThumbnail] = useState(false);
   const [editingViewId, setEditingViewId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -143,9 +145,7 @@ export function BasketPresentationDock() {
     return Math.max(150, Math.min(15000, Math.round(value)));
   }, []);
 
-  const wait = useCallback((ms: number) => new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
-  }), []);
+  const wait = useCallback((ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms)), []);
 
   const stopPlayAll = useCallback(() => {
     stopPlayRef.current = true;
@@ -239,7 +239,7 @@ export function BasketPresentationDock() {
           className="pointer-events-auto shadow-lg gap-2"
           onClick={() => setBasketPresentationVisible(true)}
         >
-          Presentation
+          {t('basketPresentationDock.presentationLabel')}
           <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
             {basketViews.length}
           </span>
@@ -259,26 +259,26 @@ export function BasketPresentationDock() {
           <div className="flex items-center gap-2 min-w-0">
             <span
               onMouseDown={drag.onDragStart}
-              title="Drag to move"
+              title={t('basketPresentationDock.dragToMoveTitle')}
               className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
             >
               <GripVertical className="h-4 w-4" />
             </span>
-            <div className="text-sm font-semibold">Presentation</div>
+            <div className="text-sm font-semibold">{t('basketPresentationDock.presentationLabel')}</div>
             <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
-              {pinboardEntities.size} in basket
+              {t('basketPresentationDock.inBasketCount', { count: pinboardEntities.size })}
             </span>
             <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
-              {basketViews.length} views
+              {t('basketPresentationDock.viewsCount', { count: basketViews.length })}
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
             <div className="flex items-center gap-1 rounded-md border bg-background/70 p-1">
-              <Button type="button" variant="outline" size="icon-sm" onClick={() => applySource('set')} title="Set basket from current context">
+              <Button type="button" variant="outline" size="icon-sm" onClick={() => applySource('set')} title={t('basketPresentationDock.setFromContextTitle')}>
                 <Equal className="h-4 w-4" />
               </Button>
-              <Button type="button" variant="outline" size="icon-sm" onClick={() => applySource('add')} title="Add current context to basket">
+              <Button type="button" variant="outline" size="icon-sm" onClick={() => applySource('add')} title={t('basketPresentationDock.addToBasketTitle')}>
                 <Plus className="h-4 w-4" />
               </Button>
               <Button
@@ -287,7 +287,7 @@ export function BasketPresentationDock() {
                 size="icon-sm"
                 onClick={() => applySource('remove')}
                 disabled={pinboardEntities.size === 0}
-                title="Remove current context from basket"
+                title={t('basketPresentationDock.removeFromBasketTitle')}
               >
                 <Minus className="h-4 w-4" />
               </Button>
@@ -302,7 +302,7 @@ export function BasketPresentationDock() {
                   else showPinboard();
                 }}
                 disabled={pinboardEntities.size === 0}
-                title={basketIsVisible ? 'Hide active basket' : 'Show active basket'}
+                title={basketIsVisible ? t('basketPresentationDock.hideActiveBasketTitle') : t('basketPresentationDock.showActiveBasketTitle')}
               >
                 {basketIsVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </Button>
@@ -312,7 +312,7 @@ export function BasketPresentationDock() {
                 size="icon-sm"
                 onClick={executeBasketClear}
                 disabled={pinboardEntities.size === 0}
-                title="Clear active basket"
+                title={t('basketPresentationDock.clearActiveBasketTitle')}
               >
                 <RotateCcw className="h-4 w-4" />
               </Button>
@@ -323,7 +323,7 @@ export function BasketPresentationDock() {
               size="icon-sm"
               onClick={handleSaveCurrent}
               disabled={pinboardEntities.size === 0 || savingThumbnail}
-              title="Save current basket as presentation view"
+              title={t('basketPresentationDock.saveCurrentViewTitle')}
             >
               <Save className="h-4 w-4" />
             </Button>
@@ -333,7 +333,7 @@ export function BasketPresentationDock() {
               size="icon-sm"
               onClick={playingAll ? stopPlayAll : (e) => { void startPlayAll(e.shiftKey); }}
               disabled={basketViews.length === 0}
-              title={playingAll ? 'Stop playback' : 'Play all saved views (Shift+Click to loop)'}
+              title={playingAll ? t('basketPresentationDock.stopPlaybackTitle') : t('basketPresentationDock.playAllTitle')}
             >
               {playingAll ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
@@ -344,7 +344,7 @@ export function BasketPresentationDock() {
               className="ml-1 text-xs"
               onClick={() => setBasketPresentationVisible(false)}
             >
-              Hide
+              {t('basketPresentationDock.hideButton')}
             </Button>
           </div>
         </div>
@@ -356,7 +356,7 @@ export function BasketPresentationDock() {
             size="icon-sm"
             onClick={() => scrollStrip(-280)}
             disabled={basketViews.length <= 1}
-            title="Scroll left"
+            title={t('basketPresentationDock.scrollLeftTitle')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -368,7 +368,7 @@ export function BasketPresentationDock() {
             <div className="flex items-stretch gap-2 pr-1">
               {basketViews.length === 0 && (
                 <div className="h-[102px] min-w-[340px] rounded-md border border-dashed text-xs text-muted-foreground px-3 py-2 flex items-center">
-                  Save basket views here. Click any card to restore both visibility and viewpoint.
+                  {t('basketPresentationDock.emptyStripHint')}
                 </div>
               )}
 
@@ -397,7 +397,7 @@ export function BasketPresentationDock() {
 
                     {activeBasketViewId === view.id && (
                       <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
-                        Active
+                        {t('basketPresentationDock.activeBadge')}
                       </div>
                     )}
 
@@ -431,8 +431,8 @@ export function BasketPresentationDock() {
                       <>
                         <div className="text-[12px] font-medium truncate">{view.name}</div>
                         <div className="text-[10px] opacity-80">
-                          {view.entityRefs.length} objects
-                          {view.transitionMs ? ` · ${(view.transitionMs / 1000).toFixed(1)}s` : ''}
+                          {t('basketPresentationDock.objectsCount', { count: view.entityRefs.length })}
+                          {view.transitionMs ? t('basketPresentationDock.transitionSuffix', { duration: (view.transitionMs / 1000).toFixed(1) }) : ''}
                         </div>
                       </>
                     )}
@@ -443,7 +443,7 @@ export function BasketPresentationDock() {
                     variant="secondary"
                     size="icon-xs"
                     className="absolute top-1 right-7"
-                    title="Rename view"
+                    title={t('basketPresentationDock.renameViewTitle')}
                     onClick={(e) => {
                       e.stopPropagation();
                       startRename(view.id, view.name);
@@ -456,7 +456,7 @@ export function BasketPresentationDock() {
                     variant="secondary"
                     size="icon-xs"
                     className="absolute top-1 right-[3.25rem]"
-                    title="Set transition duration"
+                    title={t('basketPresentationDock.setTransitionTitle')}
                     onClick={(e) => {
                       e.stopPropagation();
                       setViewTransitionDuration(view.id, view.transitionMs);
@@ -469,7 +469,7 @@ export function BasketPresentationDock() {
                     variant="secondary"
                     size="icon-xs"
                     className="absolute top-1 right-1"
-                    title="Delete view"
+                    title={t('basketPresentationDock.deleteViewTitle')}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (playingAll) stopPlayAll();
@@ -490,7 +490,7 @@ export function BasketPresentationDock() {
             size="icon-sm"
             onClick={() => scrollStrip(280)}
             disabled={basketViews.length <= 1}
-            title="Scroll right"
+            title={t('basketPresentationDock.scrollRightTitle')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -500,7 +500,7 @@ export function BasketPresentationDock() {
         <div
           className="absolute top-0 right-0 h-full w-2 cursor-ew-resize rounded-r-xl hover:bg-primary/20 transition-colors"
           onMouseDown={handleResizeStart}
-          title="Drag to resize width"
+          title={t('basketPresentationDock.resizeWidthTitle')}
         />
       </div>
     </div>

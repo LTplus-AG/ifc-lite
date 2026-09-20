@@ -11,6 +11,8 @@
 
 mod ifc2x3;
 mod ifc4;
+mod ifc4x1;
+mod ifc4x2;
 pub mod legacy_attribute_names;
 mod schema;
 pub(crate) mod schema_registry;

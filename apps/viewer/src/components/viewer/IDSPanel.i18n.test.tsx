@@ -12,7 +12,6 @@ import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
 import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationReport } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
-import { IDSValidationProgress } from './IDSPanelStates.js';
 
 const initial = useViewerStore.getState();
 
@@ -121,9 +120,26 @@ describe('IDSPanel localization (#4918)', () => {
       totalEntities: 1,
       percentage: 100,
     };
-    assert.match(render(<IDSValidationProgress progress={progress} />).textContent ?? '', /CHECK ONE/);
+    // Drive the progress bar through the mounted <IDSPanel/>, not the extracted
+    // IDSValidationProgress component directly: the revert oracle reverses this
+    // PR's whole production diff at once, which deletes IDSPanelStates.tsx (a
+    // file this PR introduces) and would make a direct import fail to load
+    // rather than fail an assertion (#5030 CI run 35479371310, job
+    // 105994868586). Going through IDSPanel keeps the import resolvable
+    // against both head and reverted production, so the revert makes the
+    // rendered text go back to English instead of the import breaking.
+    useViewerStore.setState({
+      idsDocument: documentFixture,
+      idsValidationReport: null,
+      idsAuditReport: null,
+      idsError: null,
+      idsLoading: true,
+      idsProgress: progress,
+    });
+    assert.match(render(<IDSPanel />).textContent ?? '', /CHECK ONE/);
     cleanup();
-    assert.match(render(<IDSValidationProgress progress={{ ...progress, phase: 'filtering' }} />).textContent ?? '', /SCAN ONE/);
+    useViewerStore.setState({ idsProgress: { ...progress, phase: 'filtering' } });
+    assert.match(render(<IDSPanel />).textContent ?? '', /SCAN ONE/);
     cleanup();
 
     const entity = reportFixture.specificationResults[0].entityResults[0];
@@ -294,5 +310,31 @@ describe('IDSPanel localization (#4918)', () => {
       true,
       'the missing compound key falls back wholly to English, despite a translated status key',
     );
+  });
+
+  it('localizes the stable "no model loaded" resolver error under a non-English locale (#5030)', () => {
+    // resolveValidationTarget.ts returns a TranslatableMessage (labelKey +
+    // params), never a literal string, so the render site — this error
+    // banner, not the resolver — is what has to translate it. Exercise the
+    // real no-model branch through runValidation() rather than asserting on
+    // the resolver's return shape directly: that is the only way to prove
+    // the WHOLE path (resolver -> idsError -> t()) actually retranslates.
+    registerLocale('ru-x-ids-no-model', { 'idsPanel.error.noModelLoaded': 'НЕТ МОДЕЛИ' });
+    setLocale('ru-x-ids-no-model');
+    useViewerStore.setState({
+      idsDocument: documentFixture,
+      idsValidationReport: null,
+      idsAuditReport: null,
+      idsError: null,
+      idsLoading: false,
+      idsProgress: null,
+    });
+    const ui = render(<IDSPanel />);
+    const runButton = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Run Validation'));
+    assert.ok(runButton, 'expected the Run Validation button with no model loaded and no report yet');
+    click(runButton!);
+    const text = ui.textContent ?? '';
+    assert.match(text, /НЕТ МОДЕЛИ/, 'the resolver error renders through the active locale catalogue, not hardcoded English');
+    assert.doesNotMatch(text, /No IFC model loaded/, 'the English literal must not reach the DOM under a non-English locale');
   });
 });

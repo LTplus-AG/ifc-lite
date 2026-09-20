@@ -128,6 +128,14 @@ The existing `IDSAuditSummary`, correction, report-export, and BCF-export
 dialogs remain separate follow-up surfaces. IDS document titles/descriptions,
 specification names, entity names/types/GlobalIds, requirement descriptions,
 and failure details remain model/document content supplied by the IDS engine.
+The stable model-resolution errors `resolveValidationTarget.ts` can return
+("Model … is not loaded", "The selected model has no parsed IFC data to
+validate", "No IFC model loaded") are catalogued too: that pure function
+returns a `TranslatableMessage` (`labelKey` + optional `params`, `@/i18n/types.ts`)
+rather than a literal string — it never calls `t()` itself — and `useIDS.ts`
+stores that value verbatim in `idsError`; `IDSPanel.tsx`'s error banner is the
+one place that resolves it with `t()`, at render time, so it retranslates on
+a live locale switch like every other catalogued string here (#5030).
 
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,

@@ -80,4 +80,7 @@ export const idsPanelEn = {
   'idsPanel.loadNew': 'Load New IDS',
   'idsPanel.clear': 'Clear IDS',
   'idsPanel.close': 'Close',
+  'idsPanel.error.modelNotLoaded': 'Model "{modelId}" is not loaded',
+  'idsPanel.error.modelNoData': 'The selected model has no parsed IFC data to validate',
+  'idsPanel.error.noModelLoaded': 'No IFC model loaded',
 } as const;

@@ -213,7 +213,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
         <div className="p-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
           <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{error}</span>
+            <span>{typeof error === 'string' ? error : t(error.labelKey, error.params)}</span>
           </div>
         </div>
       )}

@@ -32,8 +32,10 @@ import { geometryExportDialogsEn } from './catalogues/geometry-export-dialogs.en
 import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
+import { drawingUnderlayEn } from './catalogues/drawing-underlay.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
+import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
@@ -102,6 +104,8 @@ export const en = {
   ...splitToolEn,
   ...documentEn,
   ...documentMenuEn,
+  ...drawingUnderlayEn,
+  ...keyboardShortcutsEn,
   ...hierarchyEn,
   ...propertiesEn,
   ...structuralPropertiesEn,

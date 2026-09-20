@@ -184,7 +184,7 @@ import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleId
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
-import { PointCloudRenderer, type PointCloudAssetHandle } from './pointcloud/point-cloud-renderer.js';
+import { PointCloudRenderer, type PointCloudAssetHandle, type ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
@@ -355,6 +355,7 @@ export class Renderer {
     private deviceLossSequence = 0;
     private readonly recovery = {
         inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(),
+        pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null,
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
     private readonly deviationComputer = new DeviationComputer();

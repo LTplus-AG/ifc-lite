@@ -4,7 +4,7 @@
 
 import { WebGPUDevice } from './device.js';
 import type { RenderPipeline } from './pipeline.js';
-import type { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+import type { PointCloudRenderer, ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
 import type { Scene } from './scene.js';
 
 /** GPU-only content that cannot be reconstructed after a device loss. */
@@ -43,6 +43,8 @@ export interface RendererRecoveryHost {
     lostReferenceImages: boolean;
     quantizedBatchesRequested: boolean;
     omissions: Set<DeviceRecoveryOmission>;
+    /** Point-cloud presentation captured before the first attempt tore the renderer down. */
+    pointCloudOptions: Readonly<ResolvedPointCloudRenderOptions> | null;
   };
   deviceLost: boolean;
   destroyed: boolean;
@@ -120,8 +122,10 @@ async function recoverRendererDeviceOnce(
   // durable UI state. The replacement renderer must receive the old options
   // before the viewer re-uploads its CPU-backed IFCx point clouds; its sync
   // effect depends on preference values and will not rerun merely because the
-  // renderer instance changed.
-  const pointCloudOptions = host.pointCloudRenderer?.getOptions();
+  // renderer instance changed. A failed attempt tears the old renderer down,
+  // so the snapshot lives in recovery state until an attempt succeeds.
+  const pointCloudOptions = host.pointCloudRenderer?.getOptions() ?? host.recovery.pointCloudOptions;
+  host.recovery.pointCloudOptions = pointCloudOptions ?? null;
 
   let phase: 'device' | 'scene' = 'scene';
   try {
@@ -185,6 +189,7 @@ async function recoverRendererDeviceOnce(
     host.deviceLost = false;
     host.deviceLostInfo = null;
     host.recovery.lostReferenceImages = false;
+    host.recovery.pointCloudOptions = null;
     const omissions = [...host.recovery.omissions];
     host.recovery.omissions.clear();
     host.markReady(generation);

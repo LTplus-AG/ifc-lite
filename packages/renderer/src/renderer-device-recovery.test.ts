@@ -150,6 +150,40 @@ describe('Renderer.recoverDevice (#4885)', () => {
     assert.deepStrictEqual(replacementOptions, options);
   });
 
+  it('replays point-cloud options when only the retried replacement succeeds (#4885)', async () => {
+    const renderer = lostRenderer();
+    const options = { colorMode: 'height' as const, pointSize: 7, previewStride: 3 };
+    renderer['pointCloudRenderer'] = {
+      hasAssets: () => true,
+      getOptions: () => options,
+      setOptions: () => {},
+    } as never;
+    // The first attempt fails after teardown(false) already dropped the old point-cloud renderer.
+    renderer['teardown'] = () => { renderer['ready'] = false; renderer['pipeline'] = null; renderer['pointCloudRenderer'] = null; };
+    renderer['initOnce'] = async () => { throw new Error('first replacement failed'); };
+    const error = mock.method(console, 'error', () => undefined);
+    let replacementOptions: typeof options | undefined;
+    try {
+      assert.strictEqual((await renderer.recoverDevice()).ok, false);
+      assert.strictEqual(renderer['pointCloudRenderer'], null);
+      renderer['initOnce'] = async () => {
+        renderer['pipeline'] = {} as never;
+        const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
+        device.device = {} as GPUDevice; device.context = {} as GPUCanvasContext;
+        renderer['pointCloudRenderer'] = {
+          hasAssets: () => false,
+          getOptions: () => ({}),
+          setOptions: (next: typeof options) => { replacementOptions = next; },
+        } as never;
+      };
+      assert.deepStrictEqual(await renderer.recoverDevice(), { ok: true, omissions: ['point-clouds'] });
+      assert.deepStrictEqual(replacementOptions, options);
+      assert.strictEqual(renderer['recovery'].pointCloudOptions, null, 'snapshot is released once recovery succeeds');
+    } finally {
+      error.mock.restore();
+    }
+  });
+
   it('preserves omissions when a failed replacement is retried (#4885)', async () => {
     const renderer = lostRenderer();
     let assetsPresent = true;

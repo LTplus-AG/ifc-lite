@@ -537,6 +537,20 @@ fn rejects_repeated_or_mixed_unit_declarations() {
 }
 
 #[test]
+fn issue_5042_uses_the_schema_default_for_omitted_elevation_units() {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Imperial linearUnit="foot"/></Units></LandXML>"#
+    );
+    let document = parse(source.as_bytes()).expect("valid LandXML");
+    let units = document.units.expect("units");
+
+    assert_eq!(units.linear_unit, "foot");
+    assert_eq!(units.linear_scale_to_meters, 0.3048);
+    assert_eq!(units.elevation_unit, "meter");
+    assert_eq!(units.elevation_scale_to_meters, 1.0);
+}
+
+#[test]
 fn issue_5042_rejects_empty_or_whitespace_only_documents() {
     for input in [b"".as_slice(), b" \n\t".as_slice()] {
         assert_eq!(

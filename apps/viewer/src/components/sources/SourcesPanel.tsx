@@ -17,11 +17,16 @@ import { AlertCircle, Cloud, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TranslationKey } from '@/i18n';
+import { getLocale, hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
 import { sanitizeFilename } from '@/lib/export/download';
 import { clearAllSourceData } from '@/lib/sources/persistence';
-import { claimRevisionWatchSlot, watchSourceRevisions } from '@/lib/sources/revisionWatch';
+import {
+  claimRevisionWatchSlot,
+  watchSourceRevisions,
+  type SourceRevisionUpdate,
+} from '@/lib/sources/revisionWatch';
 
 interface SourcesPanelProps {
   onClose: () => void;
@@ -41,12 +46,20 @@ const REVISION_BOTH_KEYS: Record<Intl.LDMLPluralRule, TranslationKey> = {
 
 export function revisionSyncMessage(t: Translate, locale: string, changed: number, deleted: number): string {
   if (changed > 0 && deleted > 0) {
-    const category = new Intl.PluralRules(locale).select(changed);
-    return t(REVISION_BOTH_KEYS[category], {
+    const localeKey = REVISION_BOTH_KEYS[selectPluralCategory(locale, changed)];
+    const params = {
       count: deleted,
       changed: formatLocaleNumber(locale, changed),
       deleted: formatLocaleNumber(locale, deleted),
-    });
+    };
+    // Locale catalogues are partial (#4785): falling back to English text
+    // under the *active locale's* plural category (e.g. Russian "one" for
+    // 21) can pick an English form that count doesn't have (English's
+    // "one" is only for exactly 1) — reselect with English plural rules
+    // first so the fallback text and its count agree grammatically.
+    return hasActiveTranslation(localeKey)
+      ? t(localeKey, params)
+      : resolveEnglish(REVISION_BOTH_KEYS[selectPluralCategory('en', changed)], params);
   }
   if (changed > 0) {
     return t('sources.sourcesPanel.revisionChangedOnly', { count: changed });
@@ -55,6 +68,19 @@ export function revisionSyncMessage(t: Translate, locale: string, changed: numbe
     return t('sources.sourcesPanel.revisionDeletedOnly', { count: deleted });
   }
   return '';
+}
+
+/**
+ * Builds and shows the background revision-sync toast. Reads the active
+ * locale live via `getLocale()` rather than accepting it as a parameter:
+ * the one-shot, slot-gated effect below can still be pending when the
+ * app's async startup locale activates, so a closed-over value could be
+ * stale by the time this resolves (#5000 review).
+ */
+export function notifyRevisionSync(t: Translate, updates: readonly SourceRevisionUpdate[]): void {
+  const deleted = updates.filter((u) => u.event.deleted).length;
+  const changed = updates.length - deleted;
+  toast.info(revisionSyncMessage(t, getLocale(), changed, deleted));
 }
 
 export function RegistrationFailureMessage({ provider, reason }: { provider: string; reason: string }) {
@@ -75,7 +101,7 @@ interface SourceDownloadSelection {
 }
 
 export function SourcesPanel({ onClose }: SourcesPanelProps) {
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
   const sourceHost = useSourceHost();
   const providers = useMemo(() => sourceHost.list(), [sourceHost]);
   const registrationFailures = useMemo(
@@ -135,9 +161,14 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     void watchSourceRevisions(sourceHost, tags, controller.signal)
       .then((updates) => {
         if (controller.signal.aborted || updates.length === 0) return;
-        const deleted = updates.filter((u) => u.event.deleted).length;
-        const changed = updates.length - deleted;
-        toast.info(revisionSyncMessage(t, locale, changed, deleted));
+        // `notifyRevisionSync` reads the locale live (`getLocale()`) rather
+        // than a value closed over here: this is a one-shot, slot-gated
+        // check that can still be pending when the startup locale finishes
+        // loading and activates, so a render-time snapshot could be stale
+        // by the time this resolves (#5000 review). `locale` is
+        // deliberately not a dependency of this effect — adding it would
+        // abort and restart the one-shot check on every switch.
+        notifyRevisionSync(t, updates);
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;

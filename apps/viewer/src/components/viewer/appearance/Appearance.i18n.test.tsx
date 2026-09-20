@@ -44,7 +44,6 @@ import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
 const MERGED_EN: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('appearance.')));
-const HAS_CATALOGUE = 'appearance.panelView.applyToIfc' in en;
 type AppearanceKey = keyof typeof MERGED_EN;
 const KEYS = Object.keys(MERGED_EN) as AppearanceKey[];
 const ALL_STATIC_KEYS = KEYS.filter((key) => {
@@ -160,9 +159,17 @@ afterEach(() => {
   setLocale('en');
 });
 
-const catalogueIt = HAS_CATALOGUE ? it : it.skip;
+// Every test below reads the merged `en` catalogue; an un-registered
+// appearance catalogue must fail loudly here, never skip the suite.
+const catalogueIt = it;
 
 describe('Appearance panel localization (#4918 slice 4)', () => {
+  it('registers the appearance catalogues in the merged English catalogue', () => {
+    assert.ok('appearance.panelView.applyToIfc' in en, 'appearance-panel catalogue is not spread into en.ts');
+    assert.ok('appearance.scan.fitCount' in en, 'appearance-workflows catalogue is not spread into en.ts');
+    assert.ok(KEYS.length > 0);
+  });
+
   catalogueIt('translates the apply-intent panel chrome (source, PDF, scope, mapping, calibration, assignments)', () => {
     const container = render(<AppearancePanelView {...panelViewProps({
       renderAssignments: (formValid) => <AssignmentsHarness formValid={formValid} />,
@@ -220,6 +227,19 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
       coveredAny = true;
     }
     assert.ok(coveredAny, 'the capture/scan panels must exercise at least one static appearance key');
+  });
+
+  catalogueIt('formats the scan panel fit/check landmark counts with the active locale digits (#4918)', () => {
+    registerLocale('ar-EG-x-scan-counts', {});
+    act(() => setLocale('ar-EG-x-scan-counts'));
+    const container = render(<AppearanceScanPanel />);
+    const buttons = [...container.querySelectorAll('button')];
+    const fit = buttons.find((button) => button.textContent?.startsWith('Fit'));
+    const check = buttons.find((button) => button.textContent?.startsWith('Check'));
+    assert.ok(fit && check, 'fit/check partition buttons must render');
+    assert.match(fit.textContent ?? '', /٠/, 'fit count must render Arabic-Indic digits');
+    assert.match(check.textContent ?? '', /٠/, 'check count must render Arabic-Indic digits');
+    assert.doesNotMatch(`${fit.textContent}${check.textContent}`, /[0-9]/, 'no Latin digits in the localized counts');
   });
 
   catalogueIt('translates PdfFidelityReportView across its exact and raster-only verdicts, and interpolates the exact-conversion plural', () => {

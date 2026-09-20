@@ -12,7 +12,7 @@ import { ScanTransferFields } from './ScanTransferFields';
 import { useScanTransfer } from './useScanTransfer';
 import { useScanWorkbench } from './useScanWorkbench';
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleNumber, localeCount } from '@/i18n/intlFormat';
 const ignoreRegion = () => {};
 /** `t` is threaded in explicitly: this is a plain (non-component) helper, so
  *  it cannot call the `useTranslation` hook itself. */
@@ -52,8 +52,8 @@ export function AppearanceScanPanel() {
     {mesh && meshSource && <AppearanceMeshPreview mesh={mesh} assetId={meshSource.assetId} triangles={triangles} disabled={previewDisabled} regionControls={false} onRegion={ignoreRegion} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={hit => work.pickSource(sourceLandmark(meshSource.mesh, hit, meshSource.meshOrdinal))} markers={markers} canvasLabel={t('appearance.scan.canvasLabel')} instruction={previewInstruction ?? t('appearance.scan.defaultInstruction')} />}
     {points && pointSource && <AppearancePointPreview source={pointSource} positions={points} disabled={previewDisabled} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={index => work.pickSource(pointLandmark(pointSource, index))} markers={markers} canvasLabel={t('appearance.scan.canvasLabel')} instruction={previewInstruction} />}
     <div role="group" aria-label={t('appearance.scan.purposeAriaLabel')} className="grid grid-cols-2 gap-2">
-      <Button size="sm" variant={work.partition === 'fit' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'fit'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('fit')}>{t('appearance.scan.fitCount', { count: fit })}</Button>
-      <Button size="sm" variant={work.partition === 'check' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'check'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('check')}>{t('appearance.scan.checkCount', { count: checks })}</Button>
+      <Button size="sm" variant={work.partition === 'fit' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'fit'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('fit')}>{t('appearance.scan.fitCount', localeCount(locale, fit))}</Button>
+      <Button size="sm" variant={work.partition === 'check' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'check'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('check')}>{t('appearance.scan.checkCount', localeCount(locale, checks))}</Button>
     </div>
     <p className="text-xs text-muted-foreground">{t('appearance.scan.fitCheckNote')}</p>
     {work.pairs.length > 0 && <ol className="max-h-48 space-y-1 overflow-y-auto" aria-label={t('appearance.scan.pairsAriaLabel')}>{work.pairs.map((pair, index) => {

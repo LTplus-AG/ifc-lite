@@ -156,6 +156,7 @@ fn resolved_geometry<'a>(
 }
 
 fn plan_adapter<'a>(plan: &'a ifc_lite_landxml::LandXmlPlanDocument) -> LandXmlPlanDocumentJs<'a> {
+    let mut monument_resolution = std::collections::HashMap::new();
     LandXmlPlanDocumentJs {
         version: &plan.version,
         area_unit: &plan.area_unit,
@@ -179,9 +180,19 @@ fn plan_adapter<'a>(plan: &'a ifc_lite_landxml::LandXmlPlanDocument) -> LandXmlP
         resolved_monuments: plan
             .monuments
             .iter()
-            .map(|monument| LandXmlResolvedMonumentJs {
-                source_id: &monument.source_id,
-                point: plan.resolve_monument_point(monument),
+            .map(|monument| {
+                let point = monument.point.or_else(|| {
+                    monument.pnt_ref.as_ref().and_then(|reference| {
+                        let key = (monument.point_scope_id.clone(), reference.clone());
+                        *monument_resolution
+                            .entry(key)
+                            .or_insert_with(|| plan.resolve_monument_point(monument))
+                    })
+                });
+                LandXmlResolvedMonumentJs {
+                    source_id: &monument.source_id,
+                    point,
+                }
             })
             .collect(),
         resolved_geometry: resolved_geometry(plan),

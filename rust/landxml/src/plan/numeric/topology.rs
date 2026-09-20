@@ -24,7 +24,12 @@ pub(super) fn segments_intersect(
             // Adjacent edges are not exempt as a pair: a two-line retrace
             // shares both endpoints and must be rejected. `intersects` only
             // accepts the one endpoint that adjoining legal edges share.
-            if intersects(*left, *right) {
+            let adjacent = own_segment
+                && (local_index.abs_diff(index) == 1
+                    || (segments.len() > 2
+                        && ((local_index == 0 && index + 1 == segments.len())
+                            || (index == 0 && local_index + 1 == segments.len()))));
+            if intersects(*left, *right, adjacent) {
                 return Ok(true);
             }
         }
@@ -35,13 +40,17 @@ pub(super) fn segments_intersect(
 pub(super) fn intersects(
     (a, b): (LandXmlPlanPoint, LandXmlPlanPoint),
     (c, d): (LandXmlPlanPoint, LandXmlPlanPoint),
+    adjacent: bool,
 ) -> bool {
     let shared = shared_endpoints((a, b), (c, d));
     if shared == 2 {
         return true;
     }
-    if shared == 1 {
+    if shared == 1 && adjacent {
         return overlaps_beyond_shared_endpoint((a, b), (c, d));
+    }
+    if shared == 1 {
+        return true;
     }
     let orientation = |p: LandXmlPlanPoint, q: LandXmlPlanPoint, r: LandXmlPlanPoint| {
         (q.northing - p.northing) * (r.easting - p.easting)
@@ -55,8 +64,8 @@ pub(super) fn intersects(
         && ab_d.is_finite()
         && cd_a.is_finite()
         && cd_b.is_finite()
-        && ab_c * ab_d < -EPSILON
-        && cd_a * cd_b < -EPSILON
+        && opposite(ab_c, ab_d)
+        && opposite(cd_a, cd_b)
     {
         return true;
     }
@@ -64,6 +73,10 @@ pub(super) fn intersects(
         || (ab_d.abs() <= EPSILON && on_segment(a, d, b))
         || (cd_a.abs() <= EPSILON && on_segment(c, a, d))
         || (cd_b.abs() <= EPSILON && on_segment(c, b, d))
+}
+
+fn opposite(left: f64, right: f64) -> bool {
+    (left < 0.0 && right > 0.0) || (left > 0.0 && right < 0.0)
 }
 
 fn shared_endpoints(

@@ -87,6 +87,9 @@ export interface LandXmlPlanDocument {
   resolvedGeometry: LandXmlResolvedGeometry[];
   /** An ingestion-built lookup makes source selection independent of record position. */
   sourceRecords?: ReadonlyMap<string, LandXmlSourceRecord>;
+  parcelProbesBySource?: ReadonlyMap<string, LandXmlParcelProbe>;
+  resolvedMonumentsBySource?: ReadonlyMap<string, LandXmlResolvedMonument>;
+  resolvedGeometryBySource?: ReadonlyMap<string, LandXmlResolvedGeometry>;
 }
 
 export interface LandXmlTinDocument {

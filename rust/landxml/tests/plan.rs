@@ -275,6 +275,22 @@ fn issue_5046_refuses_zero_sweep_and_curve_crossing_from_analytic_probe() {
 }
 
 #[test]
+fn issue_5046_rejects_small_crossings_and_nonadjacent_repeated_vertices() {
+    for boundary in [
+        r#"<Line><Start>0 0</Start><End>.003 .003</End></Line><Line><Start>.003 .003</Start><End>0 .003</End></Line><Line><Start>0 .003</Start><End>.002 0</End></Line><Line><Start>.002 0</Start><End>0 0</End></Line>"#,
+        r#"<Line><Start>0 0</Start><End>0 2</End></Line><Line><Start>0 2</Start><End>2 2</End></Line><Line><Start>2 2</Start><End>0 0</End></Line><Line><Start>0 0</Start><End>-3 0</End></Line><Line><Start>-3 0</Start><End>-3 -3</End></Line><Line><Start>-3 -3</Start><End>0 0</End></Line>"#,
+    ] {
+        let parsed = parse(&document(&format!(
+            "<Parcels><Parcel><CoordGeom>{boundary}</CoordGeom></Parcel></Parcels>"
+        )));
+        assert!(matches!(
+            parsed.probe_parcel(&parsed.parcels[0]).state,
+            LandXmlParcelState::PreservedOnly { .. }
+        ));
+    }
+}
+
+#[test]
 fn issue_5046_rebases_huge_finite_parcel_coordinates_and_refuses_overflowed_measurements() {
     let rebased = parse(&document(
         r#"<Parcels><Parcel><CoordGeom><Line><Start>1e100 1e100</Start><End>1.0000000001e100 1e100</End></Line><Line><Start>1.0000000001e100 1e100</Start><End>1.0000000001e100 1.0000000001e100</End></Line><Line><Start>1.0000000001e100 1.0000000001e100</Start><End>1e100 1.0000000001e100</End></Line><Line><Start>1e100 1.0000000001e100</Start><End>1e100 1e100</End></Line></CoordGeom></Parcel></Parcels>"#,

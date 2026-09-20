@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
+import { type Bounds3D } from '../../utils/localParsingUtils.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
+import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
@@ -26,65 +27,6 @@ interface WorldPoint {
   z: number;
 }
 
-/**
- * Geometry-free LandXML still has an authored coordinate frame: line overlays
- * and preserved-only surface points are later rendered from these source
- * coordinates. Establishing that frame here lets a following federated load
- * use it as a meaningful anchor instead of treating a survey at millions of
- * metres as an origin-centred empty model.
- */
-function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult['coordinateInfo'] {
-  if (parsed.units === null) return createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });
-  const bounds = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
-  const add = (northing: number, easting: number, elevation: number | undefined): void => {
-    if (elevation === undefined) return;
-    const point = {
-      x: easting * parsed.units!.linearScaleToMeters,
-      y: elevation * parsed.units!.elevationScaleToMeters,
-      z: -northing * parsed.units!.linearScaleToMeters,
-    };
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) return;
-    bounds.min.x = Math.min(bounds.min.x, point.x); bounds.min.y = Math.min(bounds.min.y, point.y); bounds.min.z = Math.min(bounds.min.z, point.z);
-    bounds.max.x = Math.max(bounds.max.x, point.x); bounds.max.y = Math.max(bounds.max.y, point.y); bounds.max.z = Math.max(bounds.max.z, point.z);
-  };
-  for (const surface of parsed.surfaces) {
-    for (const point of surface.points) add(point.northing, point.easting, point.elevation);
-    for (const line of [...surface.boundaries, ...surface.breaklines, ...surface.contours]) {
-      const contourElevation = line.coordinateDimension === 2 && line.properties.elev !== undefined
-        ? Number(line.properties.elev)
-        : undefined;
-      for (const [northing, easting, elevation] of line.points) add(northing, easting, elevation ?? contourElevation);
-    }
-  }
-  // COGO documents commonly have no terrain at all. Their plan geometry is
-  // still rendered through the same shared line overlay, so it must establish
-  // the federation frame instead of becoming an origin-centred zero-mesh load.
-  for (const point of parsed.plan?.cogoPoints ?? []) {
-    if (point.point) add(point.point.northing, point.point.easting, point.point.elevation ?? 0);
-  }
-  for (const monument of parsed.plan?.resolvedMonuments ?? []) {
-    if (monument.point) add(monument.point.northing, monument.point.easting, monument.point.elevation ?? 0);
-  }
-  for (const geometry of parsed.plan?.resolvedGeometry ?? []) {
-    for (const point of [geometry.start, geometry.end, geometry.center, geometry.pi]) {
-      if (point) add(point.northing, point.easting, point.elevation ?? 0);
-    }
-  }
-  if (!Number.isFinite(bounds.min.x)) return createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });
-  const maxAbs = Math.max(
-    Math.abs(bounds.min.x), Math.abs(bounds.min.y), Math.abs(bounds.min.z),
-    Math.abs(bounds.max.x), Math.abs(bounds.max.y), Math.abs(bounds.max.z),
-  );
-  const hasLargeCoordinates = maxAbs > 10_000;
-  const originShift = hasLargeCoordinates
-    ? {
-        x: bounds.min.x / 2 + bounds.max.x / 2,
-        y: bounds.min.y / 2 + bounds.max.y / 2,
-        z: bounds.min.z / 2 + bounds.max.z / 2,
-      }
-    : { x: 0, y: 0, z: 0 };
-  return createCoordinateInfo(bounds, originShift, hasLargeCoordinates);
-}
 
 export function connectedFaceComponents(
   faces: LandXmlTinSurface['faces'],

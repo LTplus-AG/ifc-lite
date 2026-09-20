@@ -204,13 +204,16 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
     (_, index) => navigationAt(record.surface, page * NAVIGATION_PAGE_SIZE + index),
   ) : planNavigation(record, page * NAVIGATION_PAGE_SIZE).items;
   const probe = record.kind === 'parcel'
-    ? document?.plan?.parcelProbes.find((candidate) => candidate.sourceId === record.parcel.sourceId)
+    ? document?.plan?.parcelProbesBySource?.get(record.parcel.sourceId)
+      ?? document?.plan?.parcelProbes.find((candidate) => candidate.sourceId === record.parcel.sourceId)
     : undefined;
   const resolvedMonument = record.kind === 'monument'
-    ? document?.plan?.resolvedMonuments.find((candidate) => candidate.sourceId === record.monument.sourceId)?.point
+    ? (document?.plan?.resolvedMonumentsBySource?.get(record.monument.sourceId)
+      ?? document?.plan?.resolvedMonuments.find((candidate) => candidate.sourceId === record.monument.sourceId))?.point
     : undefined;
   const resolvedGeometry = record.kind === 'plan-geometry'
-    ? document?.plan?.resolvedGeometry.find((candidate) => candidate.sourceId === record.geometry.sourceId)
+    ? document?.plan?.resolvedGeometryBySource?.get(record.geometry.sourceId)
+      ?? document?.plan?.resolvedGeometry.find((candidate) => candidate.sourceId === record.geometry.sourceId)
     : undefined;
   const properties = surfacePropertyRows(terrain ? record.surface.properties : planProperties(record));
   const definitionProperties = surfacePropertyRows(terrain ? record.surface.definitionProperties : {});

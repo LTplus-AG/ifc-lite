@@ -145,6 +145,14 @@ impl LandXmlPlanDocument {
             return Ok(preserved(parcel, "zero-area boundary"));
         }
         let area = finite_measure(twice_area.abs() * 0.5)?;
+        // Declared parcel area is expressed in the document `areaUnit`, while
+        // analytic geometry is expressed in the linear coordinate unit. Keep
+        // both truthful and still validate the declared-unit conversion.
+        if let (Some(declared), Some(scale)) =
+            (parcel.declared_area, self.area_scale_to_square_meters)
+        {
+            finite_measure(declared * scale)?;
+        }
         let (perimeter_in_meters, area_in_square_meters) = match &self.units {
             Some(units) => (
                 Some(finite_measure(perimeter * units.linear_scale_to_meters)?),

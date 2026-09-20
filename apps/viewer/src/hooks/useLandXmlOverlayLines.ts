@@ -55,6 +55,15 @@ function planGeometryBySource(document: LandXmlTinDocument): Map<string, LandXml
   return geometry;
 }
 
+function planGeometryOwners(document: LandXmlTinDocument): Map<string, string> {
+  const owners = new Map<string, string>();
+  const plan = document.plan;
+  if (!plan) return owners;
+  for (const feature of plan.planFeatures) for (const geometry of feature.geometry) owners.set(geometry.sourceId, feature.sourceId);
+  for (const parcel of plan.parcels) for (const loop of parcel.loops) for (const geometry of loop) owners.set(geometry.sourceId, parcel.sourceId);
+  return owners;
+}
+
 function planPolyline(
   geometry: LandXmlPlanGeometry,
   resolved: { start: LandXmlPlanPoint | null; end: LandXmlPlanPoint | null; center: LandXmlPlanPoint | null },
@@ -192,6 +201,7 @@ export function useLandXmlOverlayLines(): Float32Array {
       const plan = document.plan;
       if (!plan) continue;
       const geometryBySource = planGeometryBySource(document);
+      const ownerByGeometry = planGeometryOwners(document);
       const resolvedBySource = new Map(plan.resolvedGeometry.map((geometry) => [geometry.sourceId, geometry]));
       const cogoBySource = new Map(plan.cogoPoints.map((point) => [point.sourceId, point.point]));
       const monumentBySource = new Map(plan.resolvedMonuments.map((monument) => [monument.sourceId, monument.point]));
@@ -212,7 +222,8 @@ export function useLandXmlOverlayLines(): Float32Array {
       for (const batch of plan.sourceBatches) for (const sourceId of batch.sourceIds) {
         const geometry = geometryBySource.get(sourceId);
         const resolved = resolvedBySource.get(sourceId);
-        if (selectedSource && (selectedSource.modelId !== model.id || selectedSource.sourceId !== sourceId)) continue;
+        if (selectedSource && (selectedSource.modelId !== model.id
+          || (selectedSource.sourceId !== sourceId && selectedSource.sourceId !== ownerByGeometry.get(sourceId)))) continue;
         const marker = cogoBySource.get(sourceId) ?? monumentBySource.get(sourceId);
         if (marker) {
           appendMarker(marker);

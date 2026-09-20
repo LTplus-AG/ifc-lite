@@ -296,7 +296,13 @@ function plan(value: unknown): LandXmlPlanDocument {
     }),
     parcelProbes, resolvedMonuments, resolvedGeometry,
   };
-  return { ...result, sourceRecords: indexLandXmlPlanRecords(result) };
+  return {
+    ...result,
+    sourceRecords: indexLandXmlPlanRecords(result),
+    parcelProbesBySource: new Map(parcelProbes.map((probe) => [probe.sourceId, probe])),
+    resolvedMonumentsBySource: new Map(resolvedMonuments.map((monument) => [monument.sourceId, monument])),
+    resolvedGeometryBySource: new Map(resolvedGeometry.map((geometry) => [geometry.sourceId, geometry])),
+  };
 }
 
 function polylines(value: unknown, context: string): LandXmlPolyline[] {

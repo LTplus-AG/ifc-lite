@@ -163,17 +163,17 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 text-xs">
-        <div className={`min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none ${GRID_DRAG_HANDLE_CLASS}`} title="Drag to move the card">
+        <div className={`min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none ${GRID_DRAG_HANDLE_CLASS}`} title={t('chartCard.dragToMoveTitle')}>
           <div className="font-medium truncate" title={spec.title}>{spec.title}</div>
           <div className="text-[10px] text-muted-foreground truncate" data-chart-subtitle>{subtitle}</div>
         </div>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Frame the selected buckets (or the whole chart) in 3D" onClick={frame} aria-label={`Frame ${spec.title}`}>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title={t('chartCard.frameTitle')} onClick={frame} aria-label={t('chartCard.frameAriaLabel', { title: spec.title })}>
           <Crosshair className="h-3.5 w-3.5" />
         </Button>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Edit chart" onClick={onEdit} aria-label={`Edit ${spec.title}`}>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title={t('chartCard.editChartTitle')} onClick={onEdit} aria-label={t('chartCard.editAriaLabel', { title: spec.title })}>
           <Pencil className="h-3.5 w-3.5" />
         </Button>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Remove chart" onClick={onRemove} aria-label={`Remove ${spec.title}`}>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title={t('chartCard.removeChartTitle')} onClick={onRemove} aria-label={t('chartCard.removeAriaLabel', { title: spec.title })}>
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -187,7 +187,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
                 ? filterSelector
                   ? t('chartCard.noSourceFilterMatches')
                   : EMPTY_HINTS[spec.source]
-                : 'Nothing to bucket — every row is without a value for this dimension.'}
+                : t('chartCard.nothingToBucket')}
           </div>
         )}
       </div>

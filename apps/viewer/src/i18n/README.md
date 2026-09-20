@@ -259,6 +259,24 @@ root, and `ui/` (a companion slice covers `extensions/**`):
 - `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
   fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
 
+The Charts panel catalogue (`charts.en.ts`) covers the `charts/` directory's
+own chrome: `ChartCard.tsx`'s title-bar controls (drag/frame/edit/remove) and
+its empty-bucket message, `ChartEditor.tsx`'s field labels, aria-labels, and
+the row-count/no-rows Source states (plus the pre-existing `chartEditor.
+sourceFilter*` field from #4946), `ChartsPanel.tsx`'s header controls and
+both empty states, `DashboardMenu.tsx`'s dropdown items, `ElementFieldPicker
+.tsx`'s family/set/field controls and "(unavailable)" fallbacks, and
+`ReportExportDialog.tsx`'s page-setup dialog. Chart TITLES, dashboard NAMES,
+and field/column/set NAMES are runtime data chosen by the user, not
+literals, and stay out of the catalogue. `ChartCard.tsx`'s computed
+aggregation subtitle (`subtitleFor`, `describeAggregation`, `EMPTY_HINTS`),
+the `TYPE_LABELS`/`SOURCE_LABELS`/`FOCUS_LABEL`/`SCOPE_LABEL`/
+`FAMILY_LABELS` select-option data tables, and `DashboardMenu.tsx`'s
+`window.prompt`/toast copy and `ReportExportDialog.tsx`'s toast/error copy
+and title-block field table are out of scope for this slice — none of them
+are hardcoded JSX text or a policed attribute the ending gate below flags —
+and remain for a later slice.
+
 The BCF-panel catalogue (#4918 slice: BCF) covers `BCFPanel.tsx`'s own
 header/dialogs and its nine `bcf/` components: the topic create/edit form
 (`BCFCreateTopicForm.tsx`), the OpenCDE server sign-in dialog and its connect

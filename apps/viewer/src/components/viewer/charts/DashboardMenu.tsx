@@ -13,6 +13,7 @@ import type { DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n/useTranslation';
 import { DASHBOARD_FILE_SUFFIX, exportDashboard, importDashboard } from '@/lib/charts/persistence';
 import { freshId } from '@/lib/charts/presets';
 
@@ -24,6 +25,7 @@ export interface DashboardMenuProps {
 }
 
 export function DashboardMenu({ dashboard, onUpsert, onDelete, onActivate }: DashboardMenuProps) {
+  const { t } = useTranslation();
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const rename = (): void => {
@@ -64,17 +66,17 @@ export function DashboardMenu({ dashboard, onUpsert, onDelete, onActivate }: Das
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" aria-label="Dashboard actions" title="Rename, duplicate, delete, export or import a dashboard">
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" aria-label={t('dashboardMenu.actionsAriaLabel')} title={t('dashboardMenu.actionsTitle')}>
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-48 text-xs">
-          <DropdownMenuItem disabled={!dashboard} onSelect={rename}><Pencil className="h-3.5 w-3.5 mr-2" />Rename</DropdownMenuItem>
-          <DropdownMenuItem disabled={!dashboard} onSelect={duplicate}><Copy className="h-3.5 w-3.5 mr-2" />Duplicate</DropdownMenuItem>
-          <DropdownMenuItem disabled={!dashboard} onSelect={remove}><Trash2 className="h-3.5 w-3.5 mr-2" />Delete</DropdownMenuItem>
+          <DropdownMenuItem disabled={!dashboard} onSelect={rename}><Pencil className="h-3.5 w-3.5 mr-2" />{t('dashboardMenu.renameItem')}</DropdownMenuItem>
+          <DropdownMenuItem disabled={!dashboard} onSelect={duplicate}><Copy className="h-3.5 w-3.5 mr-2" />{t('dashboardMenu.duplicateItem')}</DropdownMenuItem>
+          <DropdownMenuItem disabled={!dashboard} onSelect={remove}><Trash2 className="h-3.5 w-3.5 mr-2" />{t('dashboardMenu.deleteItem')}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem disabled={!dashboard} onSelect={() => dashboard && exportDashboard(dashboard)}><Download className="h-3.5 w-3.5 mr-2" />Export file…</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload className="h-3.5 w-3.5 mr-2" />Import file…</DropdownMenuItem>
+          <DropdownMenuItem disabled={!dashboard} onSelect={() => dashboard && exportDashboard(dashboard)}><Download className="h-3.5 w-3.5 mr-2" />{t('dashboardMenu.exportFileItem')}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload className="h-3.5 w-3.5 mr-2" />{t('dashboardMenu.importFileItem')}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <input

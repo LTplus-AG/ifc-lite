@@ -84,19 +84,21 @@ export function useLandXmlOverlayLines(): Float32Array {
           const planarContourElevation = lineKind === 'contour' ? contourElevation(line) : null;
           if (line.coordinateDimension !== 3 && planarContourElevation === null) continue;
           for (let index = 1; index < line.points.length; index++) {
+            const renderedA = line.renderedPoints?.[index - 1];
+            const renderedB = line.renderedPoints?.[index];
             const [northA, eastA, pointElevationA] = line.points[index - 1];
             const [northB, eastB, pointElevationB] = line.points[index];
             const elevationA = pointElevationA ?? planarContourElevation;
             const elevationB = pointElevationB ?? planarContourElevation;
-            if (elevationA === null || elevationB === null) continue;
-            const localA = {
+            if ((!renderedA && elevationA === null) || (!renderedB && elevationB === null)) continue;
+            const localA = renderedA ? { x: renderedA[0], y: renderedA[1], z: renderedA[2] } : {
               x: eastA * units.linearScaleToMeters - offset.x,
-              y: elevationA * units.elevationScaleToMeters - offset.y,
+              y: elevationA! * units.elevationScaleToMeters - offset.y,
               z: -northA * units.linearScaleToMeters - offset.z,
             };
-            const localB = {
+            const localB = renderedB ? { x: renderedB[0], y: renderedB[1], z: renderedB[2] } : {
               x: eastB * units.linearScaleToMeters - offset.x,
-              y: elevationB * units.elevationScaleToMeters - offset.y,
+              y: elevationB! * units.elevationScaleToMeters - offset.y,
               z: -northB * units.linearScaleToMeters - offset.z,
             };
             if (![localA.x, localA.y, localA.z, localB.x, localB.y, localB.z].every(Number.isFinite)) continue;

@@ -13,6 +13,9 @@ export interface LandXmlPolyline {
   coordinateDimension: 2 | 3;
   points: number[][];
   pointSourceIds: string[];
+  /** Derived renderer E/U/S metre coordinates after federation reprojection.
+   * Authored `points` remain untouched for inspection/export. */
+  renderedPoints?: number[][];
 }
 
 export interface LandXmlTinSurface {

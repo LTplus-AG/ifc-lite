@@ -7,8 +7,10 @@ use super::{
     LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
 };
 
+mod measure;
 mod references;
 mod topology;
+use measure::{arc_delta, cross, distance, finite_measure, finite_point, finite_sum, same_point};
 use topology::{geometry_edges, segments_intersect};
 
 const EPSILON: f64 = 1e-9;
@@ -129,8 +131,8 @@ impl LandXmlPlanDocument {
             if loop_probe.self_intersects {
                 return Ok(preserved(parcel, "self-intersecting boundary"));
             }
-            perimeter += loop_probe.perimeter;
-            twice_area += loop_probe.twice_area;
+            perimeter = finite_sum(perimeter, loop_probe.perimeter)?;
+            twice_area = finite_sum(twice_area, loop_probe.twice_area)?;
             if segments_intersect(&all_segments, &loop_probe.segments, &mut budget)? {
                 return Ok(preserved(parcel, "cross-loop or retraced boundary"));
             }
@@ -139,21 +141,22 @@ impl LandXmlPlanDocument {
         if parcel.loops.is_empty() {
             return Ok(preserved(parcel, "missing CoordGeom boundary"));
         }
-        let area = twice_area.abs() * 0.5;
+        let area = finite_measure(twice_area.abs() * 0.5)?;
+        let (perimeter_in_meters, area_in_square_meters) = match &self.units {
+            Some(units) => (
+                Some(finite_measure(perimeter * units.linear_scale_to_meters)?),
+                Some(finite_measure(area * units.linear_scale_to_meters.powi(2))?),
+            ),
+            None => (None, None),
+        };
         Ok(LandXmlParcelProbe {
             state: LandXmlParcelState::Analytic,
             perimeter_in_declared_linear_units: Some(perimeter),
             area_in_declared_square_units: Some(area),
             declared_area: parcel.declared_area,
             declared_perimeter: parcel.declared_perimeter,
-            perimeter_in_meters: self
-                .units
-                .as_ref()
-                .map(|units| perimeter * units.linear_scale_to_meters),
-            area_in_square_meters: self
-                .units
-                .as_ref()
-                .map(|units| area * units.linear_scale_to_meters.powi(2)),
+            perimeter_in_meters,
+            area_in_square_meters,
         })
     }
 }
@@ -198,6 +201,7 @@ fn probe_loop(
     let mut perimeter = 0.0;
     let mut twice_area = 0.0;
     let mut previous_end = None;
+    let mut area_origin = None;
     for item in geometry {
         budget.check()?;
         let Some(start) = document.resolve_point_with_budget(
@@ -213,15 +217,20 @@ fn probe_loop(
         else {
             return Ok(None);
         };
+        if !finite_point(start) || !finite_point(end) {
+            return Ok(None);
+        }
         if previous_end.is_some_and(|previous| !same_point(previous, start)) {
             return Ok(None);
         }
-        let Some((length, integral, chord)) = geometry_measure(document, item, start, end, budget)?
+        let origin = *area_origin.get_or_insert(start);
+        let Some((length, integral, chord)) =
+            geometry_measure(document, item, start, end, origin, budget)?
         else {
             return Ok(None);
         };
-        perimeter += length;
-        twice_area += integral;
+        perimeter = finite_sum(perimeter, length)?;
+        twice_area = finite_sum(twice_area, integral)?;
         segments.extend(geometry_edges(item, start, end, chord));
         previous_end = Some(end);
     }
@@ -257,12 +266,13 @@ fn geometry_measure(
     geometry: &LandXmlPlanGeometry,
     start: LandXmlPlanPoint,
     end: LandXmlPlanPoint,
+    area_origin: LandXmlPlanPoint,
     budget: &mut TopologyBudget<'_>,
 ) -> std::result::Result<Option<GeometryMeasure>, crate::LandXmlError> {
     match geometry.kind {
         super::LandXmlGeometryKind::Line => Ok(Some((
-            distance(start, end),
-            cross(start, end),
+            distance(start, end)?,
+            cross(start, end, area_origin)?,
             (start, end),
         ))),
         super::LandXmlGeometryKind::IrregularLine => {
@@ -270,15 +280,15 @@ fn geometry_measure(
             points.push(start);
             points.extend(geometry.intermediate_points.iter().copied());
             points.push(end);
-            let (length, integral) =
-                points
-                    .windows(2)
-                    .fold((0.0, 0.0), |(length, integral), pair| {
-                        (
-                            length + distance(pair[0], pair[1]),
-                            integral + cross(pair[0], pair[1]),
-                        )
-                    });
+            let mut length = 0.0;
+            let mut integral = 0.0;
+            for pair in points.windows(2) {
+                if !finite_point(pair[0]) || !finite_point(pair[1]) {
+                    return Ok(None);
+                }
+                length = finite_sum(length, distance(pair[0], pair[1])?)?;
+                integral = finite_sum(integral, cross(pair[0], pair[1], area_origin)?)?;
+            }
             Ok(Some((length, integral, (start, end))))
         }
         super::LandXmlGeometryKind::Curve => {
@@ -293,10 +303,14 @@ fn geometry_measure(
             else {
                 return Ok(None);
             };
-            let radius = geometry.radius.unwrap_or_else(|| distance(center, start));
+            if !finite_point(center) {
+                return Ok(None);
+            }
+            let radius = geometry.radius.unwrap_or(distance(center, start)?);
             if radius <= 0.0
-                || (distance(center, start) - radius).abs() > EPSILON
-                || (distance(center, end) - radius).abs() > EPSILON
+                || !radius.is_finite()
+                || (distance(center, start)? - radius).abs() > EPSILON
+                || (distance(center, end)? - radius).abs() > EPSILON
             {
                 return Ok(None);
             }
@@ -312,43 +326,20 @@ fn geometry_measure(
             ) else {
                 return Ok(None);
             };
-            let integral = center.easting * (end.northing - start.northing)
-                - center.northing * (end.easting - start.easting)
+            let center_easting = center.easting - area_origin.easting;
+            let center_northing = center.northing - area_origin.northing;
+            let start_northing = start.northing - area_origin.northing;
+            let start_easting = start.easting - area_origin.easting;
+            let end_northing = end.northing - area_origin.northing;
+            let end_easting = end.easting - area_origin.easting;
+            let integral = center_easting * (end_northing - start_northing)
+                - center_northing * (end_easting - start_easting)
                 + radius * radius * delta;
-            Ok(Some((radius * delta.abs(), integral, (start, end))))
+            Ok(Some((
+                finite_measure(radius * delta.abs())?,
+                finite_measure(integral)?,
+                (start, end),
+            )))
         }
     }
-}
-
-fn arc_delta(
-    start: f64,
-    end: f64,
-    rotation: Option<&str>,
-    declared_length: Option<f64>,
-    radius: f64,
-) -> Option<f64> {
-    let tau = std::f64::consts::TAU;
-    let primary = match rotation {
-        Some("ccw") => Some((end - start).rem_euclid(tau)),
-        Some("cw") => Some(-((start - end).rem_euclid(tau))),
-        _ => None,
-    };
-    let primary = primary?;
-    if let Some(length) = declared_length {
-        let tolerance = EPSILON * radius.max(length).max(1.0);
-        if (radius * primary.abs() - length).abs() > tolerance {
-            return None;
-        }
-    }
-    Some(primary)
-}
-
-fn same_point(left: LandXmlPlanPoint, right: LandXmlPlanPoint) -> bool {
-    distance(left, right) <= EPSILON
-}
-fn distance(left: LandXmlPlanPoint, right: LandXmlPlanPoint) -> f64 {
-    (left.northing - right.northing).hypot(left.easting - right.easting)
-}
-fn cross(left: LandXmlPlanPoint, right: LandXmlPlanPoint) -> f64 {
-    left.easting * right.northing - left.northing * right.easting
 }

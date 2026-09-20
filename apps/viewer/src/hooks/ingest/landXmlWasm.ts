@@ -14,6 +14,7 @@ import type {
   LandXmlVerticalCurve,
   LandXmlCgPoint, LandXmlMonument, LandXmlParcel, LandXmlPlanDocument, LandXmlPlanFeature,
   LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
+  LandXmlParcelProbe, LandXmlResolvedGeometry, LandXmlResolvedMonument,
 } from './landXmlSemantics.js';
 
 interface NodeModuleApi {
@@ -253,10 +254,40 @@ function plan(value: unknown): LandXmlPlanDocument {
       preservationReason: nullableString(parsed.preservation_reason, `parcel ${index} preservation reason`),
     };
   });
+  const parcelProbes: LandXmlParcelProbe[] = array(raw.parcel_probes, 'parcel probes').map((probe, index) => {
+    const parsed = record(probe, `parcel probe ${index}`);
+    const state = record(parsed.state, `parcel probe ${index} state`);
+    const kind = string(state.kind, `parcel probe ${index} state kind`);
+    if (kind !== 'analytic' && kind !== 'preserved_only') throw new Error(`LandXML WASM returned an invalid parcel probe ${index} state`);
+    return {
+      sourceId: string(parsed.source_id, `parcel probe ${index} source id`),
+      state: kind === 'analytic' ? { kind } : { kind, reason: string(state.reason, `parcel probe ${index} reason`) },
+      perimeterInDeclaredLinearUnits: nullableFinite(parsed.perimeter_in_declared_linear_units, `parcel probe ${index} perimeter`),
+      areaInDeclaredSquareUnits: nullableFinite(parsed.area_in_declared_square_units, `parcel probe ${index} area`),
+      declaredArea: nullableFinite(parsed.declared_area, `parcel probe ${index} declared area`),
+      declaredPerimeter: nullableFinite(parsed.declared_perimeter, `parcel probe ${index} declared perimeter`),
+      perimeterInMeters: nullableFinite(parsed.perimeter_in_meters, `parcel probe ${index} metre perimeter`),
+      areaInSquareMeters: nullableFinite(parsed.area_in_square_meters, `parcel probe ${index} square metre area`),
+    };
+  });
+  const resolvedMonuments: LandXmlResolvedMonument[] = array(raw.resolved_monuments, 'resolved monuments').map((monument, index) => {
+    const parsed = record(monument, `resolved monument ${index}`);
+    return { sourceId: string(parsed.source_id, `resolved monument ${index} source id`), point: parsed.point === null || parsed.point === undefined ? null : planPoint(parsed.point, `resolved monument ${index} point`) };
+  });
+  const resolvedGeometry: LandXmlResolvedGeometry[] = array(raw.resolved_geometry, 'resolved geometry').map((geometry, index) => {
+    const parsed = record(geometry, `resolved geometry ${index}`);
+    const resolved = (field: 'start' | 'end' | 'center' | 'pi'): LandXmlPlanPoint | null => parsed[field] === null || parsed[field] === undefined ? null : planPoint(parsed[field], `resolved geometry ${index} ${field}`);
+    return { sourceId: string(parsed.source_id, `resolved geometry ${index} source id`), start: resolved('start'), end: resolved('end'), center: resolved('center'), pi: resolved('pi') };
+  });
   return {
     version: string(raw.version, 'plan version'), areaUnit: nullableString(raw.area_unit, 'plan area unit'), areaScaleToSquareMeters: nullableFinite(raw.area_scale_to_square_meters, 'plan area scale'),
     cogoPoints, monuments, planFeatures: features, parcels,
     warnings: array(raw.warnings, 'plan warnings').map((warning, index) => string(warning, `plan warning ${index}`)),
+    sourceBatches: array(raw.source_batches, 'plan source batches').map((batch, index) => {
+      const parsed = record(batch, `plan source batch ${index}`);
+      return { sourceIds: array(parsed.source_ids, `plan source batch ${index} source ids`).map((sourceId, item) => string(sourceId, `plan source batch ${index} source id ${item}`)) };
+    }),
+    parcelProbes, resolvedMonuments, resolvedGeometry,
   };
 }
 

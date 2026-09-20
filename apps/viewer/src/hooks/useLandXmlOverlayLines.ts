@@ -11,6 +11,7 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state'
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
 import { runGpuUpload } from '@/components/viewer/gpu-upload-guard';
+import type { LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
 
 export interface LandXmlOverlayUploadTarget {
   setLineOverlay(channel: 'terrain', vertices: Float32Array | null): void;
@@ -43,6 +44,23 @@ export function contourElevation(line: { coordinateDimension: 2 | 3; properties:
   if (authored === undefined || authored.trim() === '') return null;
   const elevation = Number(authored);
   return Number.isFinite(elevation) ? elevation : null;
+}
+
+function planGeometryBySource(document: LandXmlTinDocument): Map<string, LandXmlPlanGeometry> {
+  const geometry = new Map<string, LandXmlPlanGeometry>();
+  const plan = document.plan;
+  if (!plan) return geometry;
+  for (const feature of plan.planFeatures) for (const item of feature.geometry) geometry.set(item.sourceId, item);
+  for (const parcel of plan.parcels) for (const loop of parcel.loops) for (const item of loop) geometry.set(item.sourceId, item);
+  return geometry;
+}
+
+function planPolyline(
+  geometry: LandXmlPlanGeometry,
+  resolved: { start: LandXmlPlanPoint | null; end: LandXmlPlanPoint | null },
+): LandXmlPlanPoint[] | null {
+  if (!resolved.start || !resolved.end || geometry.kind === 'curve') return null;
+  return [resolved.start, ...(geometry.kind === 'irregular_line' ? geometry.intermediatePoints : []), resolved.end];
 }
 
 /**
@@ -114,6 +132,31 @@ export function useLandXmlOverlayLines(): Float32Array {
             }, { x: 0, y: 0, z: 0 })) continue;
             vertices.push(a.x, a.y, a.z, b.x, b.y, b.z);
           }
+        }
+      }
+      const plan = document.plan;
+      if (!plan) continue;
+      const geometryBySource = planGeometryBySource(document);
+      const resolvedBySource = new Map(plan.resolvedGeometry.map((geometry) => [geometry.sourceId, geometry]));
+      // Rust partitions records into bounded source batches. The renderer
+      // consumes every batch into this one line buffer: large COGO plans do
+      // not create a GPU resource for every source primitive.
+      for (const batch of plan.sourceBatches) for (const sourceId of batch.sourceIds) {
+        const geometry = geometryBySource.get(sourceId);
+        const resolved = resolvedBySource.get(sourceId);
+        if (!geometry || !resolved || (selectedSource && (selectedSource.modelId !== model.id || selectedSource.sourceId !== sourceId))) continue;
+        const points = planPolyline(geometry, resolved);
+        if (!points) continue;
+        for (let index = 1; index < points.length; index++) {
+          const previous = points[index - 1];
+          const next = points[index];
+          const localA = { x: previous.easting * units.linearScaleToMeters - offset.x, y: (previous.elevation ?? 0) * units.elevationScaleToMeters - offset.y, z: -previous.northing * units.linearScaleToMeters - offset.z };
+          const localB = { x: next.easting * units.linearScaleToMeters - offset.x, y: (next.elevation ?? 0) * units.elevationScaleToMeters - offset.y, z: -next.northing * units.linearScaleToMeters - offset.z };
+          if (![localA.x, localA.y, localA.z, localB.x, localB.y, localB.z].every(Number.isFinite)) continue;
+          const [ax, ay, az] = place(localA);
+          const [bx, by, bz] = place(localB);
+          if (![ax, ay, az, bx, by, bz].every(Number.isFinite)) continue;
+          vertices.push(ax, ay, az, bx, by, bz);
         }
       }
     }

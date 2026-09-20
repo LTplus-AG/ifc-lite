@@ -41,7 +41,13 @@ export interface LandXmlPlanDocumentJs {
   version: string; area_unit?: string; area_scale_to_square_meters?: number;
   cogo_points: LandXmlCgPointJs[]; monuments: LandXmlMonumentJs[];
   plan_features: LandXmlPlanFeatureJs[]; parcels: LandXmlParcelJs[]; warnings: string[];
+  source_batches: LandXmlPlanSourceBatchJs[]; parcel_probes: LandXmlParcelProbeJs[];
+  resolved_monuments: LandXmlResolvedMonumentJs[]; resolved_geometry: LandXmlResolvedGeometryJs[];
 }
+export interface LandXmlPlanSourceBatchJs { source_ids: string[]; }
+export interface LandXmlParcelProbeJs { source_id: string; state: { kind: "analytic" } | { kind: "preserved_only"; reason: string }; perimeter_in_declared_linear_units?: number; area_in_declared_square_units?: number; declared_area?: number; declared_perimeter?: number; perimeter_in_meters?: number; area_in_square_meters?: number; }
+export interface LandXmlResolvedMonumentJs { source_id: string; point?: LandXmlPlanPointJs; }
+export interface LandXmlResolvedGeometryJs { source_id: string; start?: LandXmlPlanPointJs; end?: LandXmlPlanPointJs; center?: LandXmlPlanPointJs; pi?: LandXmlPlanPointJs; }
 export interface LandXmlPlanPointJs { northing: number; easting: number; elevation?: number; }
 export interface LandXmlCgPointJs { source_id: string; scope_id: string; ordinal: number; name?: string; code?: string; description?: string; point?: LandXmlPlanPointJs; pnt_ref?: string; properties: Record<string, string>; }
 export interface LandXmlMonumentJs { source_id: string; point_scope_id?: string; ordinal: number; name?: string; code?: string; description?: string; pnt_ref?: string; point?: LandXmlPlanPointJs; properties: Record<string, string>; }
@@ -77,6 +83,111 @@ export interface LandXmlCapabilityDiagnosticJs { code: string; source_id?: strin
 export interface LandXmlPreservedOnlyExtensionJs { source_id: string; parent_source_id?: string; local_name: string; source_path: string; kind: "corridor" | "string_line"; }
 "#;
 
+#[derive(Serialize)]
+struct LandXmlDocumentJs<'a> {
+    #[serde(flatten)]
+    terrain: &'a ifc_lite_landxml::LandXmlTinDocument,
+    plan: LandXmlPlanDocumentJs<'a>,
+}
+
+#[derive(Serialize)]
+struct LandXmlPlanDocumentJs<'a> {
+    version: &'a str,
+    area_unit: &'a Option<String>,
+    area_scale_to_square_meters: Option<f64>,
+    cogo_points: &'a [ifc_lite_landxml::LandXmlCgPoint],
+    monuments: &'a [ifc_lite_landxml::LandXmlMonument],
+    plan_features: &'a [ifc_lite_landxml::LandXmlPlanFeature],
+    parcels: &'a [ifc_lite_landxml::LandXmlParcel],
+    warnings: &'a [String],
+    source_batches: Vec<ifc_lite_landxml::LandXmlPlanSourceBatch>,
+    parcel_probes: Vec<LandXmlParcelProbeJs<'a>>,
+    resolved_monuments: Vec<LandXmlResolvedMonumentJs<'a>>,
+    resolved_geometry: Vec<LandXmlResolvedGeometryJs<'a>>,
+}
+
+#[derive(Serialize)]
+struct LandXmlParcelProbeJs<'a> {
+    source_id: &'a ifc_lite_landxml::LandXmlSourceId,
+    #[serde(flatten)]
+    probe: ifc_lite_landxml::LandXmlParcelProbe,
+}
+
+#[derive(Serialize)]
+struct LandXmlResolvedMonumentJs<'a> {
+    source_id: &'a ifc_lite_landxml::LandXmlSourceId,
+    point: Option<ifc_lite_landxml::LandXmlPlanPoint>,
+}
+
+#[derive(Serialize)]
+struct LandXmlResolvedGeometryJs<'a> {
+    source_id: &'a ifc_lite_landxml::LandXmlSourceId,
+    start: Option<ifc_lite_landxml::LandXmlPlanPoint>,
+    end: Option<ifc_lite_landxml::LandXmlPlanPoint>,
+    center: Option<ifc_lite_landxml::LandXmlPlanPoint>,
+    pi: Option<ifc_lite_landxml::LandXmlPlanPoint>,
+}
+
+fn resolved_geometry<'a>(
+    plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
+) -> Vec<LandXmlResolvedGeometryJs<'a>> {
+    plan.plan_features
+        .iter()
+        .flat_map(|feature| feature.geometry.iter())
+        .chain(
+            plan.parcels
+                .iter()
+                .flat_map(|parcel| parcel.loops.iter().flatten()),
+        )
+        .map(|geometry| LandXmlResolvedGeometryJs {
+            source_id: &geometry.source_id,
+            start: plan.resolve_point(geometry.point_scope_id.as_ref(), &geometry.start),
+            end: plan.resolve_point(geometry.point_scope_id.as_ref(), &geometry.end),
+            center: geometry
+                .center
+                .as_ref()
+                .and_then(|point| plan.resolve_point(geometry.point_scope_id.as_ref(), point)),
+            pi: geometry
+                .pi
+                .as_ref()
+                .and_then(|point| plan.resolve_point(geometry.point_scope_id.as_ref(), point)),
+        })
+        .collect()
+}
+
+fn plan_adapter<'a>(plan: &'a ifc_lite_landxml::LandXmlPlanDocument) -> LandXmlPlanDocumentJs<'a> {
+    LandXmlPlanDocumentJs {
+        version: &plan.version,
+        area_unit: &plan.area_unit,
+        area_scale_to_square_meters: plan.area_scale_to_square_meters,
+        cogo_points: plan.cogo_points(),
+        monuments: &plan.monuments,
+        plan_features: &plan.plan_features,
+        parcels: &plan.parcels,
+        warnings: &plan.warnings,
+        // The host consumes these canonical batches through one shared line
+        // overlay, never a GPU resource per plan source record.
+        source_batches: plan.source_batches(128),
+        parcel_probes: plan
+            .parcels
+            .iter()
+            .map(|parcel| LandXmlParcelProbeJs {
+                source_id: &parcel.source_id,
+                probe: plan.probe_parcel(parcel),
+            })
+            .collect(),
+        resolved_monuments: plan
+            .monuments
+            .iter()
+            .map(|monument| LandXmlResolvedMonumentJs {
+                source_id: &monument.source_id,
+                point: plan.resolve_monument_point(monument),
+            })
+            .collect(),
+        resolved_geometry: resolved_geometry(plan),
+    }
+}
+
 #[wasm_bindgen]
 impl IfcAPI {
     /// Parse a LandXML 1.2 TIN document from its original bytes.
@@ -87,8 +198,12 @@ impl IfcAPI {
     pub fn parse_landxml_tin_bytes(&self, data: &[u8]) -> Result<LandXmlTinDocumentJs, JsValue> {
         let document = ifc_lite_landxml::parse_landxml_document(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let result = LandXmlDocumentJs {
+            terrain: &document.terrain,
+            plan: plan_adapter(&document.plan),
+        };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        document
+        result
             .serialize(&serializer)
             .map(|value| value.unchecked_into())
             .map_err(|error| {

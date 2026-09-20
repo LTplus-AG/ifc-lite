@@ -131,6 +131,32 @@ function planProperties(record: PlanRecord): Record<string, string> {
   }
 }
 
+function planNavigationCount(record: LandXmlSourceRecord): number {
+  if (record.kind === 'plan-feature') return record.feature.geometry.length;
+  if (record.kind === 'parcel') return record.parcel.loops.reduce((count, loop) => count + loop.length, 0);
+  return 0;
+}
+
+function planNavigationAt(record: LandXmlSourceRecord, itemIndex: number): NavigationItem {
+  if (record.kind === 'plan-feature') {
+    const geometry = record.feature.geometry[itemIndex];
+    if (geometry) return { label: `${geometry.kind} ${geometry.ordinal}`, sourceId: geometry.sourceId };
+  }
+  if (record.kind === 'parcel') {
+    let index = itemIndex;
+    for (const loop of record.parcel.loops) {
+      const geometry = loop[index];
+      if (geometry) return { label: `${geometry.kind} ${geometry.ordinal}`, sourceId: geometry.sourceId };
+      index -= loop.length;
+    }
+  }
+  throw new Error(`LandXML plan navigation index ${itemIndex} is outside the retained source records`);
+}
+
+function pointText(point: { northing: number; easting: number; elevation: number | null }): string {
+  return `${point.northing}, ${point.easting}, ${point.elevation ?? ''}`;
+}
+
 /** Inspect retained LandXML source records without pretending they are IFC entities. */
 export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSourceInspectorProps) {
   const { t } = useTranslation();
@@ -184,12 +210,25 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
     </div>;
   }
   const sourceCount = terrain ? document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId) : undefined;
-  const pages = terrain ? Math.ceil(navigationCount(record.surface) / NAVIGATION_PAGE_SIZE) : 0;
-  const page = Math.min(navigationPage, pages - 1);
-  const navigation = terrain ? Array.from(
-    { length: Math.min(NAVIGATION_PAGE_SIZE, navigationCount(record.surface) - page * NAVIGATION_PAGE_SIZE) },
-    (_, index) => navigationAt(record.surface, page * NAVIGATION_PAGE_SIZE + index),
-  ) : [];
+  const planCount = planNavigationCount(record);
+  const itemCount = terrain ? navigationCount(record.surface) : planCount;
+  const pages = itemCount === 0 ? 0 : Math.ceil(itemCount / NAVIGATION_PAGE_SIZE);
+  const page = pages === 0 ? 0 : Math.min(navigationPage, pages - 1);
+  const navigation = Array.from(
+    { length: Math.min(NAVIGATION_PAGE_SIZE, itemCount - page * NAVIGATION_PAGE_SIZE) },
+    (_, index) => terrain
+      ? navigationAt(record.surface, page * NAVIGATION_PAGE_SIZE + index)
+      : planNavigationAt(record, page * NAVIGATION_PAGE_SIZE + index),
+  );
+  const probe = record.kind === 'parcel'
+    ? document?.plan?.parcelProbes.find((candidate) => candidate.sourceId === record.parcel.sourceId)
+    : undefined;
+  const resolvedMonument = record.kind === 'monument'
+    ? document?.plan?.resolvedMonuments.find((candidate) => candidate.sourceId === record.monument.sourceId)?.point
+    : undefined;
+  const resolvedGeometry = record.kind === 'plan-geometry'
+    ? document?.plan?.resolvedGeometry.find((candidate) => candidate.sourceId === record.geometry.sourceId)
+    : undefined;
   const properties = surfacePropertyRows(terrain ? record.surface.properties : planProperties(record));
   const definitionProperties = surfacePropertyRows(terrain ? record.surface.definitionProperties : {});
   return (
@@ -204,7 +243,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           {t('properties.landXmlSource.pickLimitation')}
         </p>
       )}
-      {terrain && <div className="border-b border-zinc-200 dark:border-zinc-800">
+      {itemCount > 0 && <div className="border-b border-zinc-200 dark:border-zinc-800">
         <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.navigation')}</p>
         <div className="divide-y divide-zinc-100 py-2 dark:divide-zinc-900">
           {navigation.map((item) => (
@@ -237,8 +276,19 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
         {(record.kind === 'boundary' || record.kind === 'breakline' || record.kind === 'contour') && (
           <p><span className="font-semibold">{t('properties.landXmlSource.points')}:</span> {record.line.points.length}</p>
         )}
-        {record.kind === 'cogo-point' && record.point.point && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.point.northing}, {record.point.point.easting}, {record.point.point.elevation ?? ''}</p>}
-        {record.kind === 'monument' && record.monument.point && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.monument.point.northing}, {record.monument.point.easting}, {record.monument.point.elevation ?? ''}</p>}
+        {record.kind === 'cogo-point' && record.point.point && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {pointText(record.point.point)}</p>}
+        {record.kind === 'monument' && resolvedMonument && <p><span className="font-semibold">Resolved monument coordinate:</span> {pointText(resolvedMonument)}</p>}
+        {record.kind === 'monument' && !resolvedMonument && <p><span className="font-semibold">Resolved monument coordinate:</span> unresolved</p>}
+        {record.kind === 'parcel' && <>
+          {record.parcel.title && <p><span className="font-semibold">Title:</span> {record.parcel.title}</p>}
+          <p><span className="font-semibold">Status:</span> {probe?.state.kind ?? 'preserved_only'}</p>
+          {probe?.state.kind === 'preserved_only' && <p><span className="font-semibold">Reason:</span> {probe.state.reason}</p>}
+          {probe?.state.kind === 'analytic' && <p><span className="font-semibold">Probe:</span> perimeter {probe.perimeterInDeclaredLinearUnits ?? ''}, area {probe.areaInDeclaredSquareUnits ?? ''}</p>}
+        </>}
+        {record.kind === 'plan-geometry' && <>
+          <p><span className="font-semibold">Endpoints:</span> {resolvedGeometry?.start ? pointText(resolvedGeometry.start) : 'unresolved'} → {resolvedGeometry?.end ? pointText(resolvedGeometry.end) : 'unresolved'}</p>
+          {record.geometry.kind === 'curve' && <p><span className="font-semibold">Curve:</span> {record.geometry.rotation ?? 'unoriented'}, radius {record.geometry.radius ?? 'derived'}, center {resolvedGeometry?.center ? pointText(resolvedGeometry.center) : 'unresolved'}, PI {resolvedGeometry?.pi ? pointText(resolvedGeometry.pi) : 'none'}</p>}
+        </>}
       </div>
       <SourceProperties title={t('properties.landXmlSource.surfaceProperties')} rows={properties} empty={t('properties.landXmlSource.noProperties')} />
       <SourceProperties title={t('properties.landXmlSource.definitionProperties')} rows={definitionProperties} empty={t('properties.landXmlSource.noProperties')} />

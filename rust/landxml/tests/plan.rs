@@ -193,6 +193,67 @@ fn issue_5046_preserves_open_and_self_intersecting_parcels_without_fills() {
 }
 
 #[test]
+fn issue_5046_rejects_retraced_and_collinear_zero_area_line_loops() {
+    for boundary in [
+        r#"<Line><Start>0 0</Start><End>1 0</End></Line><Line><Start>1 0</Start><End>0 0</End></Line>"#,
+        r#"<Line><Start>0 0</Start><End>1 0</End></Line><Line><Start>1 0</Start><End>2 0</End></Line><Line><Start>2 0</Start><End>0 0</End></Line>"#,
+    ] {
+        let parsed = parse(&document(&format!(
+            "<Parcels><Parcel name=\"bad\"><CoordGeom>{boundary}</CoordGeom></Parcel></Parcels>"
+        )));
+        let probe = parsed.probe_parcel(&parsed.parcels[0]);
+        assert!(matches!(
+            probe.state,
+            LandXmlParcelState::PreservedOnly { .. }
+        ));
+        assert_eq!(probe.area_in_declared_square_units, None);
+    }
+}
+
+#[test]
+fn issue_5046_preserves_malformed_parcel_coordinates_without_losing_valid_document_records() {
+    let parsed = parse(&document(
+        r#"<CgPoints><CgPoint name="safe">1 2</CgPoint></CgPoints><Parcels><Parcel name="bad"><CoordGeom><Line><Start>NaN 0</Start><End>1 0</End></Line></CoordGeom></Parcel><Parcel name="good"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End>0 0</End></Line></CoordGeom></Parcel></Parcels>"#,
+    ));
+    assert_eq!(
+        parsed.cogo_points().len(),
+        1,
+        "unrelated source evidence survives"
+    );
+    assert!(matches!(
+        parsed.probe_parcel(&parsed.parcels[0]).state,
+        LandXmlParcelState::PreservedOnly { .. }
+    ));
+    assert_eq!(
+        parsed.probe_parcel(&parsed.parcels[1]).state,
+        LandXmlParcelState::Analytic
+    );
+}
+
+#[test]
+fn issue_5046_rebases_huge_finite_parcel_coordinates_and_refuses_overflowed_measurements() {
+    let rebased = parse(&document(
+        r#"<Parcels><Parcel><CoordGeom><Line><Start>1e100 1e100</Start><End>1.0000000001e100 1e100</End></Line><Line><Start>1.0000000001e100 1e100</Start><End>1.0000000001e100 1.0000000001e100</End></Line><Line><Start>1.0000000001e100 1.0000000001e100</Start><End>1e100 1.0000000001e100</End></Line><Line><Start>1e100 1.0000000001e100</Start><End>1e100 1e100</End></Line></CoordGeom></Parcel></Parcels>"#,
+    ));
+    let probe = rebased.probe_parcel(&rebased.parcels[0]);
+    assert_eq!(probe.state, LandXmlParcelState::Analytic);
+    assert!(probe
+        .area_in_declared_square_units
+        .is_some_and(f64::is_finite));
+
+    let overflowed = parse(&document(
+        r#"<Parcels><Parcel><CoordGeom><Line><Start>1e308 1e308</Start><End>-1e308 1e308</End></Line><Line><Start>-1e308 1e308</Start><End>-1e308 -1e308</End></Line><Line><Start>-1e308 -1e308</Start><End>1e308 -1e308</End></Line><Line><Start>1e308 -1e308</Start><End>1e308 1e308</End></Line></CoordGeom></Parcel></Parcels>"#,
+    ));
+    let probe = overflowed.probe_parcel(&overflowed.parcels[0]);
+    assert!(matches!(
+        probe.state,
+        LandXmlParcelState::PreservedOnly { .. }
+    ));
+    assert_eq!(probe.perimeter_in_declared_linear_units, None);
+    assert_eq!(probe.area_in_declared_square_units, None);
+}
+
+#[test]
 fn issue_5046_accepts_simple_square_and_uses_linear_units_for_geometric_area() {
     let square = parse(&document(
         r#"<Parcels><Parcel name="square"><CoordGeom>

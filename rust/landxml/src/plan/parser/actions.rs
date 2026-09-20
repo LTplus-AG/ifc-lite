@@ -33,6 +33,16 @@ impl Parser<'_> {
         }
         self.parcel_ordinal += 1;
         let ordinal = self.parcel_ordinal;
+        // Bad parcel declarations must not abort a document that has valid
+        // terrain or neighbouring plan records. Keep the complete parcel
+        // envelope and make only this parcel preserved-only.
+        let declared_area = optional_finite(&attributes, "area", "Parcel");
+        let declared_perimeter = optional_finite(&attributes, "perimeter", "Parcel");
+        let preservation_reason = declared_area
+            .as_ref()
+            .err()
+            .or_else(|| declared_perimeter.as_ref().err())
+            .map(|error| error.message.clone());
         self.active.push(Active::Parcel(LandXmlParcel {
             source_id: source_id("Parcel", ordinal, &attributes),
             ordinal,
@@ -40,12 +50,12 @@ impl Parser<'_> {
             code: attr(&attributes, "code").map(str::to_owned),
             description: attr(&attributes, "desc").map(str::to_owned),
             title: None,
-            declared_area: optional_finite(&attributes, "area", "Parcel")?,
-            declared_perimeter: optional_finite(&attributes, "perimeter", "Parcel")?,
+            declared_area: declared_area.ok().flatten(),
+            declared_perimeter: declared_perimeter.ok().flatten(),
             declared_area_unit: attr(&attributes, "areaUnit").map(str::to_owned),
             properties: properties(&attributes),
             loops: Vec::new(),
-            preservation_reason: None,
+            preservation_reason,
         }));
         self.active_depths.push(self.frames.len());
         Ok(())
@@ -177,11 +187,12 @@ impl Parser<'_> {
                     })?;
                     LandXmlPlanPointLocation::PointReference { pnt_ref }
                 } else {
+                    let point = match point(&text) {
+                        Ok(point) => point,
+                        Err(error) => return self.preserve_malformed_parcel(&error.message),
+                    };
                     self.reserve_vertices(1)?;
-                    LandXmlPlanPointLocation::Coordinates {
-                        point: point(&text)?,
-                        pnt_ref,
-                    }
+                    LandXmlPlanPointLocation::Coordinates { point, pnt_ref }
                 };
                 if role == "__location" {
                     if let Some(Active::Feature(feature)) = self.active.last_mut() {
@@ -207,8 +218,14 @@ impl Parser<'_> {
             Capture::PointList {
                 dimension, text, ..
             } => {
-                let points =
-                    points_limited(&text, dimension, self.limits.max_vertices - self.vertices)?;
+                let points = match points_limited(
+                    &text,
+                    dimension,
+                    self.limits.max_vertices - self.vertices,
+                ) {
+                    Ok(points) => points,
+                    Err(error) => return self.preserve_malformed_parcel(&error.message),
+                };
                 self.reserve_vertices(points.len())?;
                 let geometry = self.geometry.as_mut().ok_or_else(|| {
                     error(Code::InvalidSemantic, "PntList outside CoordGeom primitive")

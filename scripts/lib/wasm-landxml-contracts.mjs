@@ -25,6 +25,15 @@ const XML_WITH_PROFILE_REVIEW = `<?xml version="1.0" encoding="UTF-8"?>
   <Roadways><Roadway name="route" alignmentRefs="A" surfaceRefs="ground" gradeModelRefs="unavailable"/></Roadways>
 </LandXML>`;
 
+const PLAN_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units><Metric linearUnit="meter"/></Units>
+  <CgPoints><CgPoint name="control">10 20 0</CgPoint></CgPoints>
+  <Monuments><Monument name="corner" pntRef="control"/></Monuments>
+  <PlanFeatures><PlanFeature name="road"><CoordGeom><Line><Start pntRef="control"/><End>11 21 0</End></Line></CoordGeom></PlanFeature></PlanFeatures>
+  <Parcels><Parcel name="retraced"><CoordGeom><Line><Start pntRef="control"/><End>11 20 0</End></Line><Line><Start>11 20 0</Start><End pntRef="control"/></Line></CoordGeom></Parcel></Parcels>
+</LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -53,6 +62,18 @@ export function runLandXmlContracts(api, test) {
   test('LandXML raw-byte parser omits optional Units rather than returning null', () => {
     const document = api.parseLandXmlTinBytes(new TextEncoder().encode(XML_WITHOUT_UNITS));
     assert.equal(document.units, undefined);
+  });
+
+  test('LandXML plan adapter exposes Rust resolution, probes and bounded batches', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(PLAN_XML));
+    assert.deepEqual(document.plan.resolved_monuments, [{
+      source_id: 'landxml:Monument:1:corner', point: { northing: 10, easting: 20, elevation: 0 },
+    }]);
+    assert.equal(document.plan.resolved_geometry[0].start.northing, 10);
+    assert.deepEqual(document.plan.parcel_probes[0].state, {
+      kind: 'preserved_only', reason: 'self-intersecting boundary',
+    });
+    assert.ok(document.plan.source_batches[0].source_ids.includes('landxml:PlanFeature:1:road:CoordGeom:1'));
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

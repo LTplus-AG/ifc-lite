@@ -56,6 +56,20 @@ function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult['coord
       for (const [northing, easting, elevation] of line.points) add(northing, easting, elevation ?? contourElevation);
     }
   }
+  // COGO documents commonly have no terrain at all. Their plan geometry is
+  // still rendered through the same shared line overlay, so it must establish
+  // the federation frame instead of becoming an origin-centred zero-mesh load.
+  for (const point of parsed.plan?.cogoPoints ?? []) {
+    if (point.point) add(point.point.northing, point.point.easting, point.point.elevation ?? 0);
+  }
+  for (const monument of parsed.plan?.resolvedMonuments ?? []) {
+    if (monument.point) add(monument.point.northing, monument.point.easting, monument.point.elevation ?? 0);
+  }
+  for (const geometry of parsed.plan?.resolvedGeometry ?? []) {
+    for (const point of [geometry.start, geometry.end, geometry.center, geometry.pi]) {
+      if (point) add(point.northing, point.easting, point.elevation ?? 0);
+    }
+  }
   if (!Number.isFinite(bounds.min.x)) return createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });
   const maxAbs = Math.max(
     Math.abs(bounds.min.x), Math.abs(bounds.min.y), Math.abs(bounds.min.z),

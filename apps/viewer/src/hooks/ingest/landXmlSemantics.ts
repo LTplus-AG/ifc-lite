@@ -62,10 +62,27 @@ export interface LandXmlParcel {
   title: string | null; declaredArea: number | null; declaredPerimeter: number | null; declaredAreaUnit: string | null;
   properties: Record<string, string>; loops: LandXmlPlanGeometry[][]; preservationReason: string | null;
 }
+export interface LandXmlParcelProbe {
+  sourceId: string;
+  state: { kind: 'analytic' } | { kind: 'preserved_only'; reason: string };
+  perimeterInDeclaredLinearUnits: number | null; areaInDeclaredSquareUnits: number | null;
+  declaredArea: number | null; declaredPerimeter: number | null;
+  perimeterInMeters: number | null; areaInSquareMeters: number | null;
+}
+export interface LandXmlResolvedMonument { sourceId: string; point: LandXmlPlanPoint | null }
+export interface LandXmlResolvedGeometry {
+  sourceId: string; start: LandXmlPlanPoint | null; end: LandXmlPlanPoint | null;
+  center: LandXmlPlanPoint | null; pi: LandXmlPlanPoint | null;
+}
 export interface LandXmlPlanDocument {
   version: string; areaUnit: string | null; areaScaleToSquareMeters: number | null;
   cogoPoints: LandXmlCgPoint[]; monuments: LandXmlMonument[]; planFeatures: LandXmlPlanFeature[];
   parcels: LandXmlParcel[]; warnings: string[];
+  /** Rust-created partitions consumed by the one shared plan line overlay. */
+  sourceBatches: Array<{ sourceIds: string[] }>;
+  parcelProbes: LandXmlParcelProbe[];
+  resolvedMonuments: LandXmlResolvedMonument[];
+  resolvedGeometry: LandXmlResolvedGeometry[];
 }
 
 export interface LandXmlTinDocument {
@@ -258,13 +275,16 @@ export function landXmlPlanSourcePage(
   if (!plan || limit <= 0) return { total: 0, sourceIds: [] };
   const records = [plan.cogoPoints, plan.monuments, plan.planFeatures, plan.parcels] as const;
   const total = records.reduce((count, group) => count + group.length, 0);
-  let index = 0;
+  const start = Math.max(0, offset);
+  const end = Math.min(total, start + limit);
   const sourceIds: string[] = [];
+  let groupStart = 0;
   for (const group of records) {
-    for (const record of group) {
-      if (index >= offset && sourceIds.length < limit) sourceIds.push(record.sourceId);
-      index++;
-    }
+    const from = Math.max(0, start - groupStart);
+    const to = Math.min(group.length, end - groupStart);
+    if (from < to) sourceIds.push(...group.slice(from, to).map((record) => record.sourceId));
+    groupStart += group.length;
+    if (groupStart >= end) break;
   }
   return { total, sourceIds };
 }

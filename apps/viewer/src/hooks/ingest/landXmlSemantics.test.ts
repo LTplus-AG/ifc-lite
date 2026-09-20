@@ -106,10 +106,26 @@ describe('LandXML semantic selection (#5042)', () => {
       version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
       cogoPoints: [{ sourceId: 'landxml:CgPoint:1:control', scopeId: 'landxml:CgPoints:1', ordinal: 1, name: 'control', code: null, description: null, point: { northing: 1, easting: 2, elevation: null }, pntRef: null, properties: {} }],
       monuments: [], planFeatures: [{ sourceId: 'landxml:PlanFeature:1:road', ordinal: 1, name: 'road', code: null, description: null, properties: {}, locations: [], geometry: [] }], parcels: [],
+      sourceBatches: [], parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [],
     };
     const models = new Map([['terrain', { landXmlDocument: terrain }]]);
     assert.equal(findLandXmlModelSourceRecord(models, { modelId: 'terrain', sourceId: 'landxml:CgPoint:1:control' })?.kind, 'cogo-point');
     assert.deepEqual(landXmlPlanSourcePage(terrain, 0, 1), { total: 2, sourceIds: ['landxml:CgPoint:1:control'] });
     assert.deepEqual(landXmlPlanSourcePage(terrain, 1, 1), { total: 2, sourceIds: ['landxml:PlanFeature:1:road'] });
+  });
+
+  it('slices only the requested cross-family plan page (#5046)', () => {
+    const terrain = document('landxml:surface:1:face:1');
+    const point = (ordinal: number) => ({ sourceId: `point-${ordinal}`, scopeId: 'scope', ordinal, name: null, code: null, description: null, point: null, pntRef: null, properties: {} });
+    terrain.plan = {
+      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
+      cogoPoints: Array.from({ length: 1_000 }, (_, index) => point(index)),
+      monuments: Array.from({ length: 1_000 }, (_, index) => ({ sourceId: `monument-${index}`, pointScopeId: null, ordinal: index, name: null, code: null, description: null, pntRef: null, point: null, properties: {} })),
+      planFeatures: [], parcels: [], sourceBatches: [], parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [],
+    };
+    assert.deepEqual(landXmlPlanSourcePage(terrain, 998, 4), {
+      total: 2_000,
+      sourceIds: ['point-998', 'point-999', 'monument-0', 'monument-1'],
+    });
   });
 });

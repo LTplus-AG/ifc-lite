@@ -49,6 +49,18 @@ function overlayOnlyLandXmlFile(name: string, offset: number): File {
   return new File([xml], name, { type: 'application/xml' });
 }
 
+function planOnlyLandXmlFile(name: string, offset: number): File {
+  const xml = `<?xml version="1.0"?>
+    <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+      <CgPoints><CgPoint name="control">${offset} ${offset} 0</CgPoint></CgPoints>
+      <Monuments><Monument name="corner" pntRef="control"/></Monuments>
+      <PlanFeatures><PlanFeature name="road"><CoordGeom><Line><Start pntRef="control"/><End>${offset + 10} ${offset + 10} 0</End></Line></CoordGeom></PlanFeature></PlanFeatures>
+      <Parcels><Parcel name="lot"><CoordGeom><Line><Start pntRef="control"/><End>${offset + 10} ${offset} 0</End></Line><Line><Start>${offset + 10} ${offset} 0</Start><End pntRef="control"/></Line></CoordGeom></Parcel></Parcels>
+    </LandXML>`;
+  return new File([xml], name, { type: 'application/xml' });
+}
+
 let hookApi: ReturnType<typeof useIfcLoader> | null = null;
 function Probe(): null {
   hookApi = useIfcLoader();
@@ -78,6 +90,17 @@ afterEach(async () => {
 });
 
 describe('useIfcLoader LandXML route (#4937)', () => {
+  it('loads a plan-only document through the canonical loader with Rust probes and resolution (#5046)', async () => {
+    await act(async () => hookApi!.loadFile(planOnlyLandXmlFile('plan.xml', 2_600_000), { kind: 'primary' }));
+    const model = Array.from(useViewerStore.getState().models.values())[0];
+    assert.equal(model?.loadPath, 'landxml');
+    assert.equal(model?.geometryResult?.meshes.length, 0, 'plan line rendering remains one overlay, not invented TIN meshes');
+    assert.deepEqual(model?.landXmlDocument?.plan?.resolvedMonuments[0]?.point, { northing: 2_600_000, easting: 2_600_000, elevation: 0 });
+    assert.equal(model?.landXmlDocument?.plan?.parcelProbes[0]?.state.kind, 'preserved_only', 'a two-line retrace is never promoted to a fill');
+    assert.equal(model?.landXmlDocument?.plan?.sourceBatches[0]?.sourceIds.includes('landxml:PlanFeature:1:road:CoordGeom:1'), true);
+    assert.notDeepEqual(model?.geometryResult?.coordinateInfo.originShift, { x: 0, y: 0, z: 0 }, 'COGO plan coordinates establish the canonical federation frame');
+  });
+
   for (const [overlayFirst, name] of [[true, 'overlay first'], [false, 'TIN first']] as const) {
     it(`shares an authored frame with a geometry-free LandXML overlay when ${name} (#5042)`, async () => {
       const overlay = overlayOnlyLandXmlFile('survey-lines.xml', 2_600_000);

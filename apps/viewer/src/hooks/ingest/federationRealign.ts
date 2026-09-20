@@ -237,8 +237,8 @@ export async function realignFederationModels<M extends RealignableModel>(
 
   // The frame the rest of the federation lands in is the anchor's
   // `coordinateInfo` as it stands AFTER the restore. Everything else in a
-  // ModelGeoref — mapConversion, projectedCRS, lengthUnitScale — comes from the
-  // data store and the user's georef edits, which a restore cannot touch
+  // The neutral spatial reference comes from the source adapter and the user's
+  // georef edits, which a restore cannot touch
   // (`getEffectiveGeoreference` passes `coordinateInfo` straight through), so
   // re-pointing that one field is exactly what re-extracting would produce.
   const anchorGeoref: ModelSpatialPlacement = anchorGeometry

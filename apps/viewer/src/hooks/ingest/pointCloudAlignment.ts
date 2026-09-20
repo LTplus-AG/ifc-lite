@@ -238,8 +238,8 @@ export interface PointCloudAlignmentTransform {
  * Compute the point-cloud alignment transform for a model's georeference.
  *
  * `georef` is exactly the object `federationAlign.ts`'s
- * `findReferenceGeorefModel()` already resolves for the loaded model
- * (or federation anchor) — the same `ModelGeoref` used to align a second
+ * `findReferenceSpatialModel()` already resolves for the loaded model
+ * (or federation anchor) — the same neutral placement used to align a second
  * federated IFC model into the reference frame. Returns `null` when the
  * conversion is unusable (degenerate axis direction or ~zero scale) so
  * the caller can hide/disable the alignment toggle.

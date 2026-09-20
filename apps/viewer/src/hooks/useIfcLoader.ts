@@ -804,7 +804,7 @@ export function useIfcLoader() {
         const setClassCounts = useViewerStore.getState().setPointCloudClassCounts;
         // IfcMapConversion alignment (issue #1804): reuse the SAME
         // reference-model georef federated IFC loads already align to
-        // (`findReferenceGeorefModel`) — a point cloud aligns to whichever
+        // (`findReferenceSpatialModel`) — a point cloud aligns to whichever
         // model is the federation anchor, not necessarily the one just
         // dropped. `null` (no loaded model has a usable IfcMapConversion)
         // leaves the scan at its raw native coordinates, unchanged from

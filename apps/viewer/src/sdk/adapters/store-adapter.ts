@@ -24,6 +24,7 @@ import {
   addWindowToStore,
   resolveSpatialAnchor,
   type BeamInStoreParams,
+  type SpatialAnchor,
   type ColumnInStoreParams,
   type DoorInStoreParams,
   type MemberInStoreParams,
@@ -139,6 +140,40 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }
   }
 
+  /**
+   * Run one `@ifc-lite/create` in-store builder. In a shared room every entity
+   * the builder created (element, placement, profile, representation, and its
+   * containment rel) is published exactly like `addEntity` publishes a single
+   * record; the next recipient reconstruct replaces the local overlay with the
+   * room document, so anything left unmirrored would be lost (#5008).
+   */
+  function buildElement(
+    operation: string,
+    modelId: string,
+    storeyExpressId: number,
+    build: (editor: StoreEditor, anchor: SpatialAnchor) => number,
+  ): EntityRef {
+    assertCanEdit(operation);
+    const editor = getEditor(modelId);
+    const dataStore = resolveDataStore(modelId);
+    if (!editor || !dataStore) {
+      throw new Error(`bim.store.${operation}: no model loaded for id "${modelId}"`);
+    }
+    const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+    const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+    const before = new Set(editor.getNewEntities().map((entity) => entity.expressId));
+    const expressId = build(editor, anchor);
+    if (isSharedRoomModel(modelId)) {
+      const created = editor.getNewEntities()
+        .map((entity) => entity.expressId)
+        .filter((id) => !before.has(id));
+      if (!ensureSourceRoomEntities(store, modelId, editor, created, dataStore)) {
+        throw new Error(`bim.store.${operation}: the new entities could not be published to the room`);
+      }
+    }
+    return { modelId: normalizedModelId, expressId };
+  }
+
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
       assertCanEdit('addEntity');
@@ -236,112 +271,44 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       }
     },
     addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
-      assertCanEdit('addColumn');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) {
-        throw new Error(`bim.store.addColumn: no model loaded for id "${modelId}"`);
-      }
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addColumnToStore(editor, anchor, params as ColumnInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.columnId };
+      return buildElement('addColumn', modelId, storeyExpressId,
+        (editor, anchor) => addColumnToStore(editor, anchor, params as ColumnInStoreParams).columnId);
     },
     addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef {
-      assertCanEdit('addWall');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) {
-        throw new Error(`bim.store.addWall: no model loaded for id "${modelId}"`);
-      }
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addWallToStore(editor, anchor, params as WallInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.wallId };
+      return buildElement('addWall', modelId, storeyExpressId,
+        (editor, anchor) => addWallToStore(editor, anchor, params as WallInStoreParams).wallId);
     },
     addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef {
-      assertCanEdit('addSlab');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) {
-        throw new Error(`bim.store.addSlab: no model loaded for id "${modelId}"`);
-      }
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addSlabToStore(editor, anchor, params as SlabInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.slabId };
+      return buildElement('addSlab', modelId, storeyExpressId,
+        (editor, anchor) => addSlabToStore(editor, anchor, params as SlabInStoreParams).slabId);
     },
     addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef {
-      assertCanEdit('addBeam');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) {
-        throw new Error(`bim.store.addBeam: no model loaded for id "${modelId}"`);
-      }
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addBeamToStore(editor, anchor, params as BeamInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.beamId };
+      return buildElement('addBeam', modelId, storeyExpressId,
+        (editor, anchor) => addBeamToStore(editor, anchor, params as BeamInStoreParams).beamId);
     },
     addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef {
-      assertCanEdit('addDoor');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) throw new Error(`bim.store.addDoor: no model loaded for id "${modelId}"`);
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addDoorToStore(editor, anchor, params as DoorInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.doorId };
+      return buildElement('addDoor', modelId, storeyExpressId,
+        (editor, anchor) => addDoorToStore(editor, anchor, params as DoorInStoreParams).doorId);
     },
     addWindow(modelId: string, storeyExpressId: number, params: AddWindowInStoreParams): EntityRef {
-      assertCanEdit('addWindow');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) throw new Error(`bim.store.addWindow: no model loaded for id "${modelId}"`);
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addWindowToStore(editor, anchor, params as WindowInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.windowId };
+      return buildElement('addWindow', modelId, storeyExpressId,
+        (editor, anchor) => addWindowToStore(editor, anchor, params as WindowInStoreParams).windowId);
     },
     addSpace(modelId: string, storeyExpressId: number, params: AddSpaceInStoreParams): EntityRef {
-      assertCanEdit('addSpace');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) throw new Error(`bim.store.addSpace: no model loaded for id "${modelId}"`);
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addSpaceToStore(editor, anchor, params as SpaceInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.spaceId };
+      return buildElement('addSpace', modelId, storeyExpressId,
+        (editor, anchor) => addSpaceToStore(editor, anchor, params as SpaceInStoreParams).spaceId);
     },
     addRoof(modelId: string, storeyExpressId: number, params: AddRoofInStoreParams): EntityRef {
-      assertCanEdit('addRoof');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) throw new Error(`bim.store.addRoof: no model loaded for id "${modelId}"`);
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addRoofToStore(editor, anchor, params as RoofInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.roofId };
+      return buildElement('addRoof', modelId, storeyExpressId,
+        (editor, anchor) => addRoofToStore(editor, anchor, params as RoofInStoreParams).roofId);
     },
     addPlate(modelId: string, storeyExpressId: number, params: AddPlateInStoreParams): EntityRef {
-      assertCanEdit('addPlate');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) throw new Error(`bim.store.addPlate: no model loaded for id "${modelId}"`);
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addPlateToStore(editor, anchor, params as PlateInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.plateId };
+      return buildElement('addPlate', modelId, storeyExpressId,
+        (editor, anchor) => addPlateToStore(editor, anchor, params as PlateInStoreParams).plateId);
     },
     addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef {
-      assertCanEdit('addMember');
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      if (!editor || !dataStore) throw new Error(`bim.store.addMember: no model loaded for id "${modelId}"`);
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-      const result = addMemberToStore(editor, anchor, params as MemberInStoreParams);
-      return { modelId: normalizedModelId, expressId: result.memberId };
+      return buildElement('addMember', modelId, storeyExpressId,
+        (editor, anchor) => addMemberToStore(editor, anchor, params as MemberInStoreParams).memberId);
     },
   };
 }

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser } from '@ifc-lite/parser';
 import { createRemoteOverlayEntity } from './remote-entity-create.js';
-import { entityForPath } from './entity-paths.js';
+import { entityForPath, registerEntityMaps } from './entity-paths.js';
 import { deleteRemoteOverlayEntity } from './remote-entity-delete.js';
 
 const MODEL = `ISO-10303-21;
@@ -94,4 +94,21 @@ test('remote entity creation surfaces rejected initial references (#5008)', asyn
     (reason) => rejected.push(reason),
   ), true);
   assert.deepEqual(rejected, ['unresolved room reference: /m0/missing']);
+});
+
+test('remote entity creation allocates above a reconstructed store whose byId is empty (#5008)', async () => {
+  const parsed = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
+  // A recipient's reconstructed IFCX store carries its entities only in the
+  // entity table (`buildIfcxDataStore`); the STEP byte index stays empty.
+  const store = { ...parsed, entityIndex: { byId: new Map(), byType: new Map() } } as typeof parsed;
+  const idToPath = new Map([[1, '/m0/0000000000000000000001'], [2, '/m0/ifc-lite-ref-2'], [3, '/m0/ifc-lite-ref-3']]);
+  registerEntityMaps(store, idToPath, new Map([...idToPath].map(([id, path]) => [path, id])));
+  const view = new MutablePropertyView(store.properties, 'room');
+  const path = '/m0/0000000000000000000042';
+
+  assert.equal(createRemoteOverlayEntity(store, view, path, 'IfcWall', { Name: 'Peer wall' }), true);
+  const created = view.getNewEntities()[0];
+  assert.ok(created.expressId > 3, `overlay id ${created.expressId} must clear the reconstructed range`);
+  assert.equal(entityForPath(store, path), created.expressId);
+  assert.equal(entityForPath(store, '/m0/0000000000000000000001'), 1, 'base entity keeps its path');
 });

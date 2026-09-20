@@ -362,6 +362,15 @@ export class StoreEditor {
         if (id > max) max = id;
       }
     }
+    // Stores without a STEP byte index (IFCX, reconstructed rooms) own their
+    // ids only through the entity table.
+    const table = this.store.entities?.expressId;
+    if (table) {
+      for (let i = 0; i < table.length; i++) {
+        const id = table[i];
+        if (id !== undefined && id > max) max = id;
+      }
+    }
     return max;
   }
 }

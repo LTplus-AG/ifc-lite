@@ -70,6 +70,27 @@ before(async () => {
   Object.defineProperty(ifc5Store, 'schemaVersion', { value: 'IFC5' });
 });
 
+const STOREY_MODEL = [
+  'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+  "FILE_NAME('storey.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));",
+  'ENDSEC;', 'DATA;',
+  "#1=IFCPROJECT('0proj000000000000000000',$,'P',$,$,$,$,(#7),#9);",
+  '#5=IFCCARTESIANPOINT((0.,0.,0.));',
+  '#6=IFCAXIS2PLACEMENT3D(#5,$,$);',
+  "#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#6,$);",
+  '#9=IFCUNITASSIGNMENT((#91));',
+  '#91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+  '#20=IFCLOCALPLACEMENT($,#6);',
+  "#30=IFCBUILDINGSTOREY('0storey0000000000000000',$,'Level 0',$,$,#20,$,$,.ELEMENT.,0.);",
+  'ENDSEC;', 'END-ISO-10303-21;',
+].join('\n');
+/** Fresh per test: the store's entity↔path map cache would otherwise leak one test's registrations into the next. */
+async function parseStoreyStore(): Promise<IfcDataStore> {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(STOREY_MODEL).slice().buffer);
+  registerStoreSlot(store, { slotId: 'm0', pathPrefix: '/m0' });
+  return store;
+}
+
 type MirrorCall = { kind: 'create' | 'remove' | 'attribute'; args: unknown[] };
 
 function fixture(
@@ -585,6 +606,42 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     });
     const attributes = calls.find(call => call.kind === 'create')?.args[5] as Record<string, unknown>;
     assert.equal(attributes['bsi::ifc::prop::Name'], '#2');
+  });
+
+  it('publishes every entity an in-store builder creates into the room', async () => {
+    const { adapter, calls, view } = fixture(true, await parseStoreyStore());
+    const wall = adapter.addWall(MODEL, 30, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    const created = view.getNewEntities().map((entity) => entity.expressId);
+    assert.ok(created.includes(wall.expressId));
+    assert.ok(created.length > 1, 'a wall builder emits placement, profile, solid and containment records');
+
+    const mirrored = calls.filter(call => call.kind === 'create').map(call => call.args[1]);
+    for (const expressId of created) {
+      assert.ok(mirrored.includes(expressId), `overlay entity #${expressId} must be mirrored`);
+    }
+    // The wall's own record carries its GlobalId as room identity; the
+    // containment rel references the storey by its existing room path.
+    const wallCall = calls.find(call => call.kind === 'create' && call.args[1] === wall.expressId);
+    assert.equal(wallCall?.args[2], 'IfcWall');
+    assert.equal(wallCall?.args[3], view.getNewEntity(wall.expressId)?.attributes[0]);
+    const relating = calls.find(call => call.kind === 'attribute'
+      && call.args[2] === 'bsi::ifc::prop::RelatingStructure');
+    assert.deepEqual(relating?.args[3], { 'ifc-lite::entityPath': '/m0/0storey0000000000000000' });
+  });
+
+  it('fails loudly when a builder result cannot be published to the room', async () => {
+    const { adapter } = fixture(true, await parseStoreyStore(), () => false);
+    assert.throws(
+      () => adapter.addWall(MODEL, 30, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 }),
+      /bim\.store\.addWall: the new entities could not be published/,
+    );
+  });
+
+  it('leaves builder results local outside a shared room', async () => {
+    const { adapter, calls, view } = fixture(true, await parseStoreyStore(), undefined, 'single');
+    const wall = adapter.addWall(MODEL, 30, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(view.getNewEntity(wall.expressId));
+    assert.deepEqual(calls, []);
   });
 
   it('rejects read-only room writes before touching the local overlay', () => {

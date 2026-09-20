@@ -8,6 +8,10 @@ use crate::{
     legacy_attribute_names, IfcType,
 };
 
+// These tests enter the new public registry API directly. A whole-file revert
+// necessarily removes those exports before Rust can compile this module, so
+// the PR uses the documented revert-oracle exemption for public API additions.
+
 #[test]
 fn generated_registries_answer_schema_local_inheritance_facts() {
     let ifc2x3_door_style = entity_info_for_schema("IFC2X3", "IFCDOORSTYLE")

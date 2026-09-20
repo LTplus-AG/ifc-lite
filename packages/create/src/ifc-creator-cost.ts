@@ -40,6 +40,11 @@
  */
 
 import { esc, optStr, optEnum, refList } from './ifc-creator-math.js';
+import {
+  COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
+  assertOneOf, isIntegerMeasure, validateArithmeticOperator, validateTypedValue,
+  type CostSchema,
+} from './cost-authoring-rules.js';
 import type {
   CostItemParams,
   CostQuantityParams,
@@ -49,11 +54,10 @@ import type {
   SIUnitParams,
 } from './types-cost.js';
 
+export type { CostSchema };
+
 /** Allocate an express id, emit `#id=TYPE(attrs);`, and return the id. */
 export type EmitEntity = (type: string, attrs: string) => number;
-
-/** The schemas cost entities can be authored in (IFC2X3 is refused up front). */
-export type CostSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
 /**
  * Serialize a finite number as an exact STEP REAL.
@@ -73,59 +77,7 @@ export function stepReal(v: number): string {
   return `${mantissa.includes('.') ? mantissa : `${mantissa}.`}E${exponent}`;
 }
 
-/**
- * Runtime allow-lists for every closed vocabulary a cost method writes. The
- * TypeScript unions only bind typed callers; the sandbox hands these methods
- * untyped script input, and an unchecked string becomes `IFCBOGUSMEASURE(1.)`
- * or `.BOGUS.` — well-formed STEP naming nothing in the schema.
- */
-const MEASURE_TYPES = new Set<string>([
-  'IfcMonetaryMeasure', 'IfcAreaMeasure', 'IfcVolumeMeasure', 'IfcLengthMeasure',
-  'IfcMassMeasure', 'IfcTimeMeasure', 'IfcCountMeasure', 'IfcNumericMeasure',
-  'IfcRatioMeasure', 'IfcReal', 'IfcInteger',
-]);
-const QUANTITY_KINDS = new Set<string>([
-  'IfcQuantityLength', 'IfcQuantityArea', 'IfcQuantityVolume', 'IfcQuantityWeight',
-  'IfcQuantityTime', 'IfcQuantityCount', 'IfcQuantityNumber',
-]);
-const ARITHMETIC_OPERATORS = new Set<string>(['ADD', 'DIVIDE', 'MULTIPLY', 'SUBTRACT']);
-const COST_SCHEDULE_TYPES = new Set<string>([
-  'BUDGET', 'COSTPLAN', 'ESTIMATE', 'TENDER', 'PRICEDBILLOFQUANTITIES',
-  'UNPRICEDBILLOFQUANTITIES', 'SCHEDULEOFRATES', 'USERDEFINED', 'NOTDEFINED',
-]);
-const COST_ITEM_TYPES = new Set<string>(['USERDEFINED', 'NOTDEFINED']);
-
-/** Refuse a value outside its closed vocabulary; `undefined` (absent) passes. */
-function assertOneOf(value: unknown, allowed: ReadonlySet<string>, what: string, context: string): void {
-  if (value === undefined) return;
-  if (typeof value !== 'string' || !allowed.has(value)) {
-    throw new Error(`${context}: ${what} '${String(value)}' is not one of ${[...allowed].join(', ')}`);
-  }
-}
-
-/** EXPRESS INTEGER-valued measures: IfcInteger always, IfcCountMeasure from IFC4X3 on. */
-function isIntegerMeasure(type: string, schema: CostSchema): boolean {
-  return type === 'IfcInteger' || (type === 'IfcCountMeasure' && schema === 'IFC4X3');
-}
-
-/**
- * Refuse IFC2X3 cost authoring by name, loudly.
- *
- * IFC2X3 lays IfcCostSchedule / IfcCostItem / IfcCostValue out differently
- * (IfcCostSchedule carries an `ID` and IfcDateAndTime references where IFC4
- * carries `Identification` and IfcDateTime strings; IfcCostValue has
- * `CostType` where IFC4 has `Category`, and no `Components` at all). Writing
- * the IFC4 layout into an IFC2X3 file would produce records that parse and are
- * wrong. A no-op — or a method that returned an id having written nothing —
- * would look like success at the call site, so this throws instead.
- */
-export function assertCostSchema(schema: string, method: string): void {
-  if (schema === 'IFC2X3') {
-    throw new Error(
-      `${method} is not supported for IFC2X3: the IFC2X3 cost entities have a different `
-      + 'attribute layout. Create the IfcCreator with Schema "IFC4" or "IFC4X3".');
-  }
-}
+export { assertCostSchema } from './cost-authoring-rules.js';
 
 /**
  * Serialize a typed IFC value as a named SELECT branch.
@@ -135,17 +87,8 @@ export function assertCostSchema(schema: string, method: string): void {
  * and picking one by inspecting the value would silently retype the file.
  */
 export function typedValue(value: CostTypedValue, schema: CostSchema, context: string): string {
-  if (value === undefined || value === null) throw new Error(`${context}: a typed value is required`);
-  assertOneOf(value.Type, MEASURE_TYPES, 'Type', context);
-  if (!Number.isFinite(value.Value)) {
-    throw new Error(`${context}: ${value.Type} value must be a finite number`);
-  }
-  // Rounding would silently change the caller's number: an INTEGER measure
-  // given a fraction is a caller error, not something to fix up.
+  validateTypedValue(value, schema, context);
   if (isIntegerMeasure(value.Type, schema)) {
-    if (!Number.isInteger(value.Value)) {
-      throw new Error(`${context}: ${value.Type} value must be an integer in ${schema}, got ${value.Value}`);
-    }
     return `${value.Type.toUpperCase()}(${value.Value.toString()})`;
   }
   return `${value.Type.toUpperCase()}(${stepReal(value.Value)})`;
@@ -307,7 +250,7 @@ export function emitPhysicalQuantity(
  * [8] ArithmeticOperator, [9] Components.
  */
 export function emitCostValue(params: CostValueParams, schema: CostSchema, emit: EmitEntity): number {
-  assertOneOf(params.ArithmeticOperator, ARITHMETIC_OPERATORS, 'ArithmeticOperator', 'addIfcCostValue');
+  validateArithmeticOperator(params.ArithmeticOperator, schema, 'addIfcCostValue');
   if (params.AppliedValue !== undefined && params.AppliedValueRef !== undefined) {
     throw new Error(
       'addIfcCostValue: AppliedValue and AppliedValueRef are the two branches of one SELECT — give at most one');

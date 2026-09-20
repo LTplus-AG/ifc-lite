@@ -30,6 +30,7 @@ const ROOT = join(SCRIPTS, '..');
 const GENERATOR = join(SCRIPTS, 'generate-coverage-ledger.mjs');
 const HELPER = join(SCRIPTS, 'check-legacy-entity-coverage.mjs');
 const SCHEMA_NAMES_HELPER = join(SCRIPTS, 'lib/rust-schema-names.mjs');
+const CREATABLE_HELPER = join(SCRIPTS, 'coverage-ledger-creatable.mjs');
 
 const SOURCE_RELS = [
   'packages/data/src/ifc-schema/generated/entities-ifc2x3.ts',
@@ -40,6 +41,7 @@ const SOURCE_RELS = [
   'packages/data/src/relationship-type.ts',
   'rust/geometry/src/router/processor_registry.rs',
   'packages/create/src/ifc-creator.ts',
+  'packages/create/src/cost-authoring-rules.ts',
   'packages/export/src/schema-converter.ts',
 ];
 
@@ -141,6 +143,7 @@ function runOn(overrides = {}, generatorSrc = realGeneratorSrc) {
       join(dir, 'scripts', 'lib/rust-schema-names.mjs'),
       readFileSync(SCHEMA_NAMES_HELPER, 'utf8'),
     );
+    writeFileSync(join(dir, 'scripts', 'coverage-ledger-creatable.mjs'), readFileSync(CREATABLE_HELPER, 'utf8'));
     writeFileSync(join(dir, 'scripts', 'generate-coverage-ledger.mjs'), generatorSrc);
 
     const r = spawnSync(
@@ -168,6 +171,31 @@ test('real sources: generator succeeds and produces a non-empty, multi-section l
   assert.match(ledger, /## IFC2X3/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
   assert.match(ledger, /## IFC4X3/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
   assert.match(ledger, /\| IfcWall \|/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+});
+
+test('dynamic cost quantity kinds follow their schema gates in creatable coverage (#4857)', () => {
+  const ledger = regenerateAgainstRealRoot();
+  const quantityKinds = [
+    'IfcQuantityLength', 'IfcQuantityArea', 'IfcQuantityVolume', 'IfcQuantityWeight',
+    'IfcQuantityTime', 'IfcQuantityCount', 'IfcQuantityNumber',
+  ];
+  for (const entity of ['IfcCostItem', 'IfcCostSchedule', 'IfcCostValue', ...quantityKinds.slice(0, -1)]) {
+    // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not source text
+    const row = sectionOf(ledger, 'IFC2X3').split('\n').find((line) => line.startsWith(`| ${entity} |`));
+    assert.ok(row, `missing ${entity} in IFC2X3 ledger`);
+    assert.equal(row.split('|').map((column) => column.trim())[6], '❌');
+  }
+  for (const entity of quantityKinds.filter((kind) => kind !== 'IfcQuantityNumber')) {
+    // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not source text
+    const row = sectionOf(ledger, 'IFC4').split('\n').find((line) => line.startsWith(`| ${entity} |`));
+    assert.ok(row, `missing ${entity} in IFC4 ledger`);
+    assert.equal(row.split('|').map((column) => column.trim())[6], '✅');
+  }
+  const numberRow = sectionOf(ledger, 'IFC4X3').split('\n')
+    // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not source text
+    .find((line) => line.startsWith('| IfcQuantityNumber |'));
+  assert.ok(numberRow, 'missing IfcQuantityNumber in IFC4X3 ledger');
+  assert.equal(numberRow.split('|').map((column) => column.trim())[6], '✅');
 });
 
 test('writable and fixture columns: known types carry correct, non-vacuous values (#4207)', () => {

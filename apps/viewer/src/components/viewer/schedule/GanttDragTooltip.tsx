@@ -10,6 +10,9 @@
  * anchors below the toolbar region.
  */
 
+import { useTranslation } from '@/i18n';
+import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
+
 export interface GanttDragTooltipProps {
   live: {
     taskGlobalId: string | null;
@@ -20,17 +23,18 @@ export interface GanttDragTooltipProps {
 }
 
 export function GanttDragTooltip({ live }: GanttDragTooltipProps) {
+  const { t, locale } = useTranslation();
   const durMs = Math.max(0, live.liveFinishMs - live.liveStartMs);
-  const durDays = (durMs / 86_400_000).toFixed(2).replace(/\.?0+$/, '');
-  const fmt = (ms: number) => {
-    const d = new Date(ms);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  };
+  const durationDays = durMs / 86_400_000;
+  const durDays = formatLocaleNumber(locale, durationDays, { maximumFractionDigits: 2 });
+  const fmt = (ms: number) => formatLocaleDate(locale, ms, {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    hour12: false, timeZone: 'UTC',
+  });
   const modeLabel =
-    live.mode === 'shift' ? 'Shifting'
-    : live.mode === 'resize-start' ? 'Resizing start'
-    : live.mode === 'resize-finish' ? 'Resizing finish'
+    live.mode === 'shift' ? t('schedule.dragTooltip.shifting')
+    : live.mode === 'resize-start' ? t('schedule.dragTooltip.resizingStart')
+    : live.mode === 'resize-finish' ? t('schedule.dragTooltip.resizingFinish')
     : '';
   return (
     <div
@@ -39,10 +43,10 @@ export function GanttDragTooltip({ live }: GanttDragTooltipProps) {
       aria-live="polite"
     >
       <div className="font-sans text-[10px] uppercase tracking-wider opacity-70">{modeLabel}</div>
-      <div>Start  {fmt(live.liveStartMs)}</div>
-      <div>Finish {fmt(live.liveFinishMs)}</div>
-      <div className="opacity-80">Duration {durDays}d</div>
-      <div className="font-sans text-[9px] opacity-50 mt-0.5">Shift = no snap · Esc = cancel</div>
+      <div>{t('schedule.dragTooltip.start', { value: fmt(live.liveStartMs) })}</div>
+      <div>{t('schedule.dragTooltip.finish', { value: fmt(live.liveFinishMs) })}</div>
+      <div className="opacity-80">{t('schedule.dragTooltip.duration', { count: durationDays, days: durDays })}</div>
+      <div className="font-sans text-[9px] opacity-50 mt-0.5">{t('schedule.dragTooltip.hint')}</div>
     </div>
   );
 }

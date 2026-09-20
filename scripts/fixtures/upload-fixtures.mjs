@@ -36,6 +36,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { validateManifest } from './manifest-validation.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const MODELS_DIR = resolve(ROOT, 'tests/models');
@@ -46,12 +47,12 @@ if (!manifest || typeof manifest !== 'object') {
   console.error(`error: ${MANIFEST_PATH} is not a JSON object`);
   process.exit(2);
 }
+const manifestErrors = validateManifest(manifest);
 if (typeof manifest.release_tag !== 'string' || manifest.release_tag.length === 0) {
-  console.error(`error: ${MANIFEST_PATH} is missing a non-empty "release_tag"`);
-  process.exit(2);
+  manifestErrors.push('manifest.release_tag: must be a non-empty string for upload');
 }
-if (!Array.isArray(manifest.files)) {
-  console.error(`error: ${MANIFEST_PATH} is missing a "files" array`);
+if (manifestErrors.length) {
+  for (const error of manifestErrors) console.error(`error: ${MANIFEST_PATH}: ${error}`);
   process.exit(2);
 }
 const TAG = manifest.release_tag;

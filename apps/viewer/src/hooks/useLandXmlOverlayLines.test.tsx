@@ -116,7 +116,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
     source.renderedPoints = [[101, 202, 303], [104, 205, 306]];
     const model = landXmlModel('cross-crs', source, { x: 9_999, y: 9_999, z: 9_999 });
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices = new Float32Array();
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
     assert.deepEqual([...vertices], [101, 202, 303, 104, 205, 306]);

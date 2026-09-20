@@ -46,10 +46,14 @@ function georef(
   crsName = 'EPSG:2056',
   coordinateInfo?: CoordinateInfo,
   verticalDatum: string | null = 'EPSG:5729',
+  mapUnitScale = 1,
 ): ModelSpatialPlacement {
   return {
     spatialReference: spatialReferenceFromIfc({
-      mapConversion: mapConversion(conversion), projectedCRS: projectedCrs(crsName, verticalDatum), lengthUnitScale: 1, coordinateInfo,
+      mapConversion: mapConversion(conversion),
+      projectedCRS: { ...projectedCrs(crsName, verticalDatum), mapUnitScale },
+      lengthUnitScale: 1,
+      coordinateInfo,
     }),
     ...(coordinateInfo ? { coordinateInfo } : {}),
   };
@@ -518,6 +522,32 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     // rounding in the positions. The defect this pins is 270 km wide.
     const expected = worldBoundsOfPositions([mesh], [0, 0, 0]);
     assertBoxClose(mesh.geometryAabb, expected, 0.05, 'reprojected');
+  });
+
+  it('converts proj4 native US-survey-foot ordinates at the neutral metre boundary (#5048)', async () => {
+    const metreReference = georef(
+      { eastings: 500_000, northings: 3_760_000 },
+      'EPSG:32611',
+    );
+    const footReference = georef(
+      { eastings: 6_561_666.667, northings: 1_640_416.667 },
+      'EPSG:2229',
+      undefined,
+      'EPSG:5729',
+      1200 / 3937,
+    );
+    const mesh = boxMesh(33, [0, 0, 0], [1, 1, 1]);
+    const geom = geometry([mesh]);
+
+    const status = await alignGeometryToReference(geom, footReference, metreReference);
+    assert.equal(status, 'reprojected');
+    const world = worldBoundsOfPositions([mesh], [0, 0, 0]);
+    assert.ok(Number.isFinite(world.min[0]) && Number.isFinite(world.min[2]));
+    assert.ok(
+      Math.abs(world.min[0]) < 2_000_000 && Math.abs(world.min[2]) < 2_000_000,
+      `native-foot input must not leak into the metre frame: ${JSON.stringify(world)}`,
+    );
+    assertBoxClose(mesh.geometryAabb, world, 0.05, 'feet-to-metres');
   });
 
   it('clears exact source RTC provenance after a CRS re-bake', async () => {

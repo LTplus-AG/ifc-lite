@@ -15,29 +15,20 @@ import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '../store/index.js';
 import { layerStackEntry } from '../lib/layers/stack.js';
-import {
-  detectFormat,
-  parseFederatedIfcx,
-  type IfcDataStore,
-} from '@ifc-lite/parser';
+import { detectFormat, parseFederatedIfcx, type IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import { IfcQuery } from '@ifc-lite/query';
 import { buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
-import {
-  buildIfcxDataStore,
-  convertIfcxMeshes,
-} from './ingest/viewerModelIngest.js';
+import { buildIfcxDataStore, convertIfcxMeshes } from './ingest/viewerModelIngest.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
 import { withModelRotationsUnbaked } from '../components/viewer/useModelRotationSync.js';
 import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
-import { getGlobalRenderer } from './useBCF.js';
-import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
-import { hasRegisteredPointCloudAlignment } from './ingest/pointCloudAlignment.js';
+import { realignFederatedPointClouds } from './ingest/pointCloudFederationLifecycle.js';
 
 /**
  * Extended data store type for IFCX (IFC5) files.
@@ -229,10 +220,7 @@ export function useIfcFederation(
 
     const referenceSelection = findReferenceSpatialModel();
     if (!referenceSelection) {
-      // The mesh operation cannot proceed, but scans still need their native
-      // matrices restored when the final georeferenced anchor disappeared.
-      realignPointCloudsToAnchor(getGlobalRenderer(), null);
-      useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+      realignFederatedPointClouds(null);
       toast.error('Cannot re-align: no model with valid georeferencing.');
       return;
     }
@@ -295,11 +283,7 @@ export function useIfcFederation(
       }
     }
 
-    // Scans are independent renderer assets, so federation mesh realignment
-    // does not touch them. Recompute every registered scan in the same anchor
-    // transition, including the null-anchor path which restores native input.
-    realignPointCloudsToAnchor(getGlobalRenderer(), findReferenceSpatialModel()?.placement ?? null);
-    useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+    realignFederatedPointClouds(findReferenceSpatialModel()?.placement ?? null);
 
     if (!frameCommitted) return; // Surviving geometry still needed the invalidation above.
     const messageParts: string[] = [];
@@ -332,11 +316,7 @@ export function useIfcFederation(
       setIfcDataStore(null);
       setGeometryResult(null);
     }
-    // Model removal can remove the anchor or leave no valid anchor at all.
-    // Restore/recompute scans immediately rather than retaining stale GPU
-    // matrices until a later manual re-alignment.
-    realignPointCloudsToAnchor(getGlobalRenderer(), findReferenceSpatialModel()?.placement ?? null);
-    useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+    realignFederatedPointClouds(findReferenceSpatialModel()?.placement ?? null);
   }, [storeRemoveModel, setIfcDataStore, setGeometryResult]);
 
   /**

@@ -39,6 +39,7 @@ import {
   type EntityBoundsAccumulator,
 } from './federationAlignAabb.js';
 import { alignNormals } from './alignment-normals.js';
+import { projectedUnitToMetres } from './projected-units.js';
 import proj4 from 'proj4';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
@@ -328,6 +329,9 @@ async function alignGeometryAcrossCrs(
   const sourceProjDef = await resolveProjectionId(sourceCrs);
   const refProjDef = await resolveProjectionId(referenceCrs);
   if (!sourceProjDef || !refProjDef) return false;
+  const sourceProjectedUnit = projectedUnitToMetres(sourceProjDef);
+  const referenceProjectedUnit = projectedUnitToMetres(refProjDef);
+  if (!sourceProjectedUnit || !referenceProjectedUnit) return false;
 
   const sourceOffset = totalYupOffset(source.coordinateInfo);
   const refOffset = totalYupOffset(reference.coordinateInfo);
@@ -364,9 +368,12 @@ async function alignGeometryAcrossCrs(
     let eR: number;
     let nR: number;
     try {
-      const projected = proj4(sourceProjDef, refProjDef, [eS, nS]);
-      eR = projected[0];
-      nR = projected[1];
+      const projected = proj4(sourceProjDef, refProjDef, [
+        eS / sourceProjectedUnit,
+        nS / sourceProjectedUnit,
+      ]);
+      eR = projected[0] * referenceProjectedUnit;
+      nR = projected[1] * referenceProjectedUnit;
     } catch (error) {
       if (firstProjError == null) firstProjError = error;
       return null;

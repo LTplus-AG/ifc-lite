@@ -7,4 +7,4 @@ export { registerLocale, setLocale, getLocale } from './registry';
 export { formatLocaleNumber, localeCount, parseLocaleNumber } from './intlFormat';
 export type { TranslationKey } from './en';
 export type { Locale, Catalogue } from './registry';
-export type { PluralCategory, PluralTranslation, TranslationParameter, TranslationParameters, TranslationValue } from './types';
+export type { PluralCategory, PluralTranslation, TranslatableMessage, TranslationParameter, TranslationParameters, TranslationValue } from './types';

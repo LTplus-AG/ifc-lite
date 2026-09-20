@@ -485,7 +485,43 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     // grouping) -- not the raw ASCII "0.001".
     assert.equal(input.value, '0,001');
     press(input, 'Enter');
-    assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, 0.001);
+    // An unchanged buffer is a no-op: nothing is re-parsed, nothing recorded.
+    assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, undefined);
+    // Typing the locale form of a new value still commits through parseLocaleNumber.
+    click(scaleLabel.parentElement);
+    const again = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
+    assert.ok(again);
+    type(again, '0,002');
+    press(again, 'Enter');
+    assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, 0.002);
+  });
+
+  catalogueIt('an unchanged edit never rewrites a georeference number, whatever its precision (#4918 review)', () => {
+    // A value with more fractional digits than any display format keeps
+    // (0.1234567890123456789) must survive open + Enter untouched: the commit
+    // recognises the seeded buffer and does not re-parse a rounded string.
+    registerLocale('de-DE', {});
+    act(() => setLocale('de-DE'));
+    const exact = 0.1234567890123456789;
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: { ...MAP_CONVERSION, scale: exact }, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
+    assert.ok(scaleLabel?.parentElement);
+    click(scaleLabel.parentElement);
+    const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
+    assert.ok(input);
+    press(input, 'Enter');
+    assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, undefined,
+      'a no-op edit must not record a (rounded) mutation');
   });
 
   catalogueIt('accepts an active-locale angle edit typed in Arabic digits (#4918)', () => {

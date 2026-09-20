@@ -150,6 +150,20 @@ capture/alignment/transfer workflows. It is a sibling to
 `appearance-assignment-list.en.ts` / `appearance-assignment-members.en.ts`,
 which cover `AppearanceAssignmentList`/`AppearanceAssignmentMembers`.
 
+The Add Element authoring catalogue (#4918 editor-workflow slice) covers
+`AddElementPanel.tsx`: element and dimension controls, complete placement
+guidance messages, accessibility labels, and the Auto Spaces preview and
+generation states (`add-element.en.ts`). IFC enum values remain exact EXPRESS
+identifiers and are rendered from a typed data table rather than translated.
+
+The property-editor catalogue (#4918 editor-workflow slice) covers
+`PropertyEditor.tsx`: inline value and type editing, scope confirmation,
+property/quantity/classification/material authoring dialogs, class
+reassignment, its pending badge, and undo/redo chrome
+(`property-editor.en.ts`). Runtime IFC entity, property, quantity, and enum
+names remain exact schema data; common material category display labels are
+translated without changing their stored values.
+
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
 `GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,

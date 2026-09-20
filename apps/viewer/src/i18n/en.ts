@@ -4,10 +4,12 @@
 
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
+import { addElementEn } from './catalogues/add-element.en';
 import { chartsEn } from './catalogues/charts.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
+import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -17,6 +19,7 @@ import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
+import { propertyEditorEn } from './catalogues/property-editor.en';
 import { listsEn } from './catalogues/lists.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
@@ -31,6 +34,8 @@ import { splitToolEn } from './catalogues/split-tool.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...addElementEn,
+  ...bulkPropertyEditorEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,
@@ -39,6 +44,7 @@ export const en = {
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...mainToolbarEn,
+  ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
   ...ganttWorkCalendarEn,

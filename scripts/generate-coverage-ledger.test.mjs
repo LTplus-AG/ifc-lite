@@ -29,6 +29,7 @@ const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
 const GENERATOR = join(SCRIPTS, 'generate-coverage-ledger.mjs');
 const HELPER = join(SCRIPTS, 'check-legacy-entity-coverage.mjs');
+const SCHEMA_NAMES_HELPER = join(SCRIPTS, 'lib/rust-schema-names.mjs');
 const CREATABLE_HELPER = join(SCRIPTS, 'coverage-ledger-creatable.mjs');
 
 const SOURCE_RELS = [
@@ -69,11 +70,20 @@ const realGeneratorSrc = readFileSync(GENERATOR, 'utf8');
  * committed fixture corpus across all schemas — not the trimmed single-file
  * corpus `runOn()` uses), and returns the freshly rendered ledger text. */
 function regenerateAgainstRealRoot() {
-  const r = spawnSync(process.execPath, [GENERATOR, '--root', ROOT], { encoding: 'utf8' });
-  if (r.status !== 0) {
-    throw new Error(`generator failed against the real repo root: ${r.stdout}${r.stderr}`);
+  const ledgerPath = join(ROOT, 'docs/architecture/coverage-ledger.md');
+  const committedLedger = readFileSync(ledgerPath, 'utf8');
+  try {
+    const r = spawnSync(process.execPath, [GENERATOR, '--root', ROOT], { encoding: 'utf8' });
+    if (r.status !== 0) {
+      throw new Error(`generator failed against the real repo root: ${r.stdout}${r.stderr}`);
+    }
+    return readFileSync(ledgerPath, 'utf8');
+  } finally {
+    // This test deliberately executes a mutating generator against the real
+    // tree. Restore its generated artifact even when another harness (the
+    // revert oracle) temporarily swaps the generator's production inputs.
+    writeFileSync(ledgerPath, committedLedger);
   }
-  return readFileSync(join(ROOT, 'docs/architecture/coverage-ledger.md'), 'utf8');
 }
 
 /** The FILE_SCHEMA a committed `.ifc` fixture (absolute path) itself
@@ -128,6 +138,11 @@ function runOn(overrides = {}, generatorSrc = realGeneratorSrc) {
     // fight import resolution.
     mkdirSync(join(dir, 'scripts'), { recursive: true });
     writeFileSync(join(dir, 'scripts', 'check-legacy-entity-coverage.mjs'), readFileSync(HELPER, 'utf8'));
+    mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
+    writeFileSync(
+      join(dir, 'scripts', 'lib/rust-schema-names.mjs'),
+      readFileSync(SCHEMA_NAMES_HELPER, 'utf8'),
+    );
     writeFileSync(join(dir, 'scripts', 'coverage-ledger-creatable.mjs'), readFileSync(CREATABLE_HELPER, 'utf8'));
     writeFileSync(join(dir, 'scripts', 'generate-coverage-ledger.mjs'), generatorSrc);
 

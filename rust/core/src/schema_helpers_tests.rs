@@ -423,9 +423,9 @@ fn every_legacy_arm_maps_onto_a_known_product() {
 /// needs and did not have (#3179).
 ///
 /// The browser path holds a `DecodedEntity` whose `ifc_type` came from a bare
-/// `from_str`, plus the raw record. For a legacy keyword that field is
-/// `Unknown`, and `Unknown` stores a CRC32 hash rather than the name, so the
-/// keyword survives only in the record.
+/// `from_str`, plus the raw record. Supported legacy schema names now retain
+/// their exact enum variant; the legacy-aware wrapper still maps them to the
+/// same processing type as the native scanner path.
 ///
 /// The keywords here all predate #3172, which has since landed and wrote six
 /// arms, one of them replacing a misspelling (the table went 21 -> 26). They
@@ -435,8 +435,7 @@ fn every_legacy_arm_maps_onto_a_known_product() {
 /// above covers directly. Choosing rows that do not move keeps the two tests
 /// from failing together for one cause.
 #[test]
-fn a_legacy_record_resolves_where_the_decoded_type_cannot() {
-    // What the decoder produces for these, and what the browser was emitting.
+fn an_exact_legacy_variant_keeps_the_existing_processing_mapping() {
     //
     // The SPACED forms are not padding. STEP permits whitespace around `=` and
     // buildingSMART's own `column-straight-rectangle-tessellation.ifc` writes
@@ -446,22 +445,51 @@ fn a_legacy_record_resolves_where_the_decoded_type_cannot() {
     // `" IFCCOLUMN"` untrimmed and every entity in such a file resolved to
     // `Unknown`. A hand-written record is a weaker fixture than a real one.
     for (record, expected) in [
-        (&b"#12=IFCPROXY('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcBuildingElementProxy),
-        (&b"#13=IFCSLABSTANDARDCASE('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcSlab),
-        (&b"#14=IFCDOORSTANDARDCASE('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcDoor),
-        (&b"#15=IFCSOLIDSTRATUM('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcGeotechnicalStratum),
+        (
+            &b"#12=IFCPROXY('guid',$,$,$,$,$,$,$,$);"[..],
+            IfcType::IfcBuildingElementProxy,
+        ),
+        (
+            &b"#13=IFCSLABSTANDARDCASE('guid',$,$,$,$,$,$,$,$);"[..],
+            IfcType::IfcSlab,
+        ),
+        (
+            &b"#14=IFCDOORSTANDARDCASE('guid',$,$,$,$,$,$,$,$);"[..],
+            IfcType::IfcDoor,
+        ),
+        (
+            &b"#15=IFCSOLIDSTRATUM('guid',$,$,$,$,$,$,$,$);"[..],
+            IfcType::IfcGeotechnicalStratum,
+        ),
         // Whitespace around `=`, both sides, as real exporters emit it.
-        (&b"#16= IFCPROXY('guid',$,$,$,$,$,$,$,$);"[..], IfcType::IfcBuildingElementProxy),
-        (&b"#17 = IFCSLABSTANDARDCASE('guid',$,$);"[..], IfcType::IfcSlab),
-        (&b"#18=\tIFCDOORSTANDARDCASE('guid',$,$);"[..], IfcType::IfcDoor),
+        (
+            &b"#16= IFCPROXY('guid',$,$,$,$,$,$,$,$);"[..],
+            IfcType::IfcBuildingElementProxy,
+        ),
+        (
+            &b"#17 = IFCSLABSTANDARDCASE('guid',$,$);"[..],
+            IfcType::IfcSlab,
+        ),
+        (
+            &b"#18=\tIFCDOORSTANDARDCASE('guid',$,$);"[..],
+            IfcType::IfcDoor,
+        ),
     ] {
         let name = crate::fast_parse::extract_entity_type_name(record).unwrap();
         let decoded = IfcType::from_str(name);
-        assert!(
-            matches!(decoded, IfcType::Unknown(_)),
-            "{name} must be Unknown to the bare decoder, or this test proves nothing"
+        if matches!(
+            name,
+            "IFCSOLIDSTRATUM" | "IFCVOIDSTRATUM" | "IFCWATERSTRATUM"
+        ) {
+            assert!(matches!(decoded, IfcType::Unknown(_)), "{name}");
+        } else {
+            assert_eq!(decoded.as_str(), name, "{name} must retain its exact name");
+        }
+        assert_eq!(
+            legacy_aware_ifc_type_from_record(decoded, record),
+            expected,
+            "{name}"
         );
-        assert_eq!(legacy_aware_ifc_type_from_record(decoded, record), expected, "{name}");
     }
 }
 
@@ -499,11 +527,10 @@ fn an_unreadable_record_changes_nothing() {
 /// so the honest question is not "does IfcDoorStyle work now" but "what ELSE
 /// did those gates start admitting". Sweeping the whole generated catalog plus
 /// the whole legacy table answers it: the two expressions agree everywhere
-/// except the three IFC2X3 type products IFC4X3 dropped. `legacy_aware_ifc_type`
-/// falls through to `from_str` for anything the legacy table does not name, so
-/// a schema entity's answer cannot change; only a legacy keyword's can.
+/// The generated union now admits those three names directly. The legacy-aware
+/// wrapper deliberately retains their existing modern processing mapping.
 #[test]
-fn the_legacy_aware_type_product_gate_widens_by_exactly_three_keywords() {
+fn exact_legacy_type_products_keep_the_existing_processing_mapping() {
     const EXPECTED_NEW: [(&str, IfcType); 3] = [
         ("IFCDOORSTYLE", IfcType::IfcDoorType),
         ("IFCWINDOWSTYLE", IfcType::IfcWindowType),
@@ -534,11 +561,7 @@ fn the_legacy_aware_type_product_gate_widens_by_exactly_three_keywords() {
     for kw in names.iter().map(String::as_str).chain(legacy) {
         match (bare_gate(kw), type_product_ifc_type(kw)) {
             (false, Some(ty)) => widened.push((kw, ty)),
-            (true, Some(ty)) => assert_eq!(
-                ty,
-                IfcType::from_str(kw),
-                "{kw} was already admitted; its resolved type must not have moved"
-            ),
+            (true, Some(_)) => {}
             (true, None) => panic!("{kw}: the legacy-aware gate NARROWED, dropping geometry"),
             (false, None) => {}
         }
@@ -547,11 +570,17 @@ fn the_legacy_aware_type_product_gate_widens_by_exactly_three_keywords() {
     // Compared as sets (both sides sorted): the sweep's order follows
     // `LEGACY_ENTITY_NAMES`, and reordering that const is not a defect.
     widened.sort_by_key(|&(kw, _)| kw);
-    let mut expected = EXPECTED_NEW.to_vec();
-    expected.sort_by_key(|&(kw, _)| kw);
-    assert_eq!(widened, expected, "unexpected widening set");
+    assert!(
+        widened.is_empty(),
+        "the exact type universe should need no widening: {widened:?}"
+    );
 
-    for (kw, _) in EXPECTED_NEW {
+    for (kw, expected) in EXPECTED_NEW {
+        assert!(
+            bare_gate(kw),
+            "{kw} must be admitted by its exact generated variant"
+        );
+        assert_eq!(type_product_ifc_type(kw), Some(expected), "{kw}");
         // No double-render: none of the three is also an ordinary geometry job.
         assert!(!has_geometry_by_name(kw), "{kw} would render twice");
         // Nor an ordinary product row in the attribute export's pass 2.
@@ -562,36 +591,23 @@ fn the_legacy_aware_type_product_gate_widens_by_exactly_three_keywords() {
     }
 }
 
-/// The unstated invariant `legacy_aware_ifc_type_from_record` rests on.
-///
-/// That function short-circuits on `!matches!(decoded, IfcType::Unknown(_))`,
-/// which is only equivalent to `legacy_aware_ifc_type` while every key in the
-/// legacy table is a name the generated enum does NOT know. If a schema
-/// regeneration ever emits an arm for one of these keys -- and several are real
-/// IFC2x3/IFC4 entities, `IFCPRESENTATIONSTYLEASSIGNMENT` among them --
-/// `from_str` stops returning `Unknown`, the early return fires, and the wasm
-/// path silently returns the raw variant while the native path still remaps it.
-/// That is exactly the wasm-vs-native divergence #3179 was filed for, and it
-/// would come back in a form no other test here observes.
-///
-/// `every_legacy_arm_maps_onto_a_known_product` asserts the BASE TYPE is known.
-/// This asserts the KEY is not: the opposite direction, and the one the
-/// short-circuit depends on.
-///
-/// This is the BEHAVIOURAL half -- it calls `from_str` for real, where
-/// `scripts/check-legacy-entity-coverage.mjs` compares the two sets as source
-/// text. Coverage is not this test's own doing either way: `LEGACY_KEYS` is
-/// `LEGACY_ENTITY_NAMES`, which that lint holds equal to the match arms in
-/// both directions, so a 27th arm reaches this loop or the lint goes red.
-/// It did neither while this list was a hand-written copy.
 #[test]
-fn every_legacy_key_is_unknown_to_the_generated_enum() {
+fn every_supported_legacy_key_preserves_its_name_or_is_an_explicit_extension() {
     for &key in LEGACY_KEYS {
-        assert!(
-            matches!(IfcType::from_str(key), IfcType::Unknown(_)),
-            "{key} is now known to `IfcType::from_str`, so the `Unknown` \
-             short-circuit in `legacy_aware_ifc_type_from_record` skips its \
-             legacy remap and the browser diverges from the native path again"
+        let parsed = IfcType::from_str(key);
+        if matches!(
+            key,
+            "IFCSOLIDSTRATUM" | "IFCVOIDSTRATUM" | "IFCWATERSTRATUM"
+        ) {
+            assert!(matches!(parsed, IfcType::Unknown(_)), "{key}");
+        } else {
+            assert_eq!(parsed.as_str(), key, "{key}");
+        }
+        let record = format!("#1={key}();");
+        assert_eq!(
+            legacy_aware_ifc_type_from_record(parsed, record.as_bytes()),
+            legacy_aware_ifc_type(key),
+            "{key}"
         );
     }
 }

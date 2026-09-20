@@ -64,7 +64,7 @@ fn is_quick_spatial_type(ifc_type: IfcType) -> bool {
 static QUICK_SPATIAL_TYPE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     IFC_TYPES
         .iter()
-        .filter(|ifc_type| is_quick_spatial_type(**ifc_type))
+        .filter(|ifc_type| is_quick_spatial_type((*ifc_type).clone()))
         .map(|ifc_type| ifc_type.as_str())
         .collect()
 });

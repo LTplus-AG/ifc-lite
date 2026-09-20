@@ -53,7 +53,7 @@ impl<'a> Source<'a> {
                 .decoder
                 .decode_at_with_id(id, start, end)
                 .map_err(|e| e.to_string())?;
-            source.types.insert(id, entity.ifc_type);
+            source.types.insert(id, entity.ifc_type.clone());
             let mut stack: Vec<&A> = entity.attributes.iter().collect();
             while let Some(value) = stack.pop() {
                 work += 1;

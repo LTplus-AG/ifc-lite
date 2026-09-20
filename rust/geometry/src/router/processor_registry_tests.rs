@@ -170,7 +170,7 @@ fn issue_4560_every_router_builtin_is_a_boolean_operand() {
             .flatten()
             .any(|f| matches!(f.reason, BoolFailureReason::UnsupportedOperand(_)));
         if unsupported {
-            forgotten.push(*ifc_type);
+            forgotten.push(ifc_type.clone());
         }
     }
     assert!(

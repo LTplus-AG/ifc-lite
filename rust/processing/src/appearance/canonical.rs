@@ -183,7 +183,7 @@ fn produce_with_frame(
     let produced = produce_element_meshes(
         &ElementMeshJob {
             id: product_id,
-            ifc_type: product.ifc_type,
+            ifc_type: product.ifc_type.clone(),
             entity: &product,
             kind: ElementJobKind::Product,
             element_color,

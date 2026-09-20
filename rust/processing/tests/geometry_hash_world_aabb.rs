@@ -88,7 +88,7 @@ fn produce_all(
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
             continue;
         };
-        let ifc_type = entity.ifc_type;
+        let ifc_type = entity.ifc_type.clone();
         let produced = produce_element_meshes(
             &ElementMeshJob {
                 id,

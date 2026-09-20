@@ -129,8 +129,8 @@ fn entity_info_ifc2x3(name: &str) -> Option<SchemaEntityInfo> {
         None
     } else {
         Some(SchemaEntityInfo {
-            name: ty.as_str(),
-            parent: ty.parent().map(|parent| parent.as_str()),
+            name: ty.known_as_str()?,
+            parent: ty.parent().and_then(|parent| parent.known_as_str()),
             is_abstract: ty.is_abstract(),
         })
     }
@@ -151,8 +151,8 @@ fn entity_info_ifc4(name: &str) -> Option<SchemaEntityInfo> {
         None
     } else {
         Some(SchemaEntityInfo {
-            name: ty.as_str(),
-            parent: ty.parent().map(|parent| parent.as_str()),
+            name: ty.known_as_str()?,
+            parent: ty.parent().and_then(|parent| parent.known_as_str()),
             is_abstract: ty.is_abstract(),
         })
     }
@@ -173,8 +173,8 @@ fn entity_info_ifc4x1(name: &str) -> Option<SchemaEntityInfo> {
         None
     } else {
         Some(SchemaEntityInfo {
-            name: ty.as_str(),
-            parent: ty.parent().map(|parent| parent.as_str()),
+            name: ty.known_as_str()?,
+            parent: ty.parent().and_then(|parent| parent.known_as_str()),
             is_abstract: ty.is_abstract(),
         })
     }
@@ -195,8 +195,8 @@ fn entity_info_ifc4x2(name: &str) -> Option<SchemaEntityInfo> {
         None
     } else {
         Some(SchemaEntityInfo {
-            name: ty.as_str(),
-            parent: ty.parent().map(|parent| parent.as_str()),
+            name: ty.known_as_str()?,
+            parent: ty.parent().and_then(|parent| parent.known_as_str()),
             is_abstract: ty.is_abstract(),
         })
     }
@@ -221,8 +221,8 @@ fn entity_info_ifc4x3(name: &str) -> Option<SchemaEntityInfo> {
         return None;
     }
     Some(SchemaEntityInfo {
-        name: ty.as_str(),
-        parent: ty.parent().map(|parent| parent.as_str()),
+        name: ty.known_as_str()?,
+        parent: ty.parent().and_then(|parent| parent.known_as_str()),
         is_abstract: ty.is_abstract(),
     })
 }

@@ -179,7 +179,7 @@ where
     // (type, has own Representation); `decode_by_id` caches the decode.
     let info = |id: u32, decoder: &mut EntityDecoder| -> Option<(IfcType, bool)> {
         let e = decoder.decode_by_id(id).ok()?;
-        Some((e.ifc_type, e.get(6).is_some_and(|a| !a.is_null())))
+        Some((e.ifc_type.clone(), e.get(6).is_some_and(|a| !a.is_null())))
     };
 
     // part → parent map: each IfcBuildingElementPart with its own

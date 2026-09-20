@@ -173,7 +173,7 @@ pub(super) fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEnti
     let quants = decoder.resolve_ref_list(quantities_attr).ok()?;
     let mut quantities = Vec::new();
     for q in &quants {
-        if let Some(kind) = quantity_kind(q.ifc_type) {
+        if let Some(kind) = quantity_kind(q.ifc_type.clone()) {
             let qname = match q.get(0).and_then(|a| a.as_string()) {
                 Some(n) if !n.is_empty() => n.to_string(),
                 _ => continue,

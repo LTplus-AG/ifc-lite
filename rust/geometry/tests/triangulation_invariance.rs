@@ -1506,6 +1506,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 (17615, 3, 3, 103, 3),
                 (25914, 28, 31, 84, 28),
                 (26610, 0, 0, 84, 0),
+                // rvt01 wall hosts the #3977 local-frame selector must leave
+                // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
+                (10191, 0, 0, 172, 0),
+                (26681, 35, 35, 191, 33),
             ][..],
         ),
         (
@@ -1539,7 +1543,7 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 } else {
                     (stats.open, stats.strict, mesh.triangle_count()) != (open, strict, tris)
                 } {
-                    failures.push((id, alt, stats.open, mesh.triangle_count()));
+                    failures.push((id, alt, stats.open, stats.strict, mesh.triangle_count()));
                 }
             }
         }

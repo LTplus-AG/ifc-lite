@@ -81,6 +81,17 @@ impl GeometryProcessor for IfcFaceSurfaceProcessor {
         self.process_planar(entity, decoder, quality, None)
     }
 
+    fn process_in_rtc_frame(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        quality: TessellationQuality,
+        rtc_file_units: (f64, f64, f64),
+    ) -> Option<Result<Mesh>> {
+        Some(self.process_planar(entity, decoder, quality, Some(rtc_file_units)))
+    }
+
     fn supported_types(&self) -> Vec<IfcType> {
         vec![IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace]
     }

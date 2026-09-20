@@ -30,6 +30,27 @@ pub trait GeometryProcessor {
         quality: TessellationQuality,
     ) -> Result<Mesh>;
 
+    /// Process a raw-coordinate item in an element-local RTC frame.
+    ///
+    /// `rtc_file_units` is the relative-to-center offset in the file's own
+    /// length unit; a processor that reads its coordinates as `f64` subtracts
+    /// it BEFORE narrowing to `f32`, returns the rebased mesh and sets
+    /// `Mesh::rtc_applied`. Default `None`: the processor has no such hook,
+    /// and the router falls back to [`Self::process`] followed by an f32
+    /// subtraction — which cannot recover sub-ULP detail at national-grid
+    /// magnitudes (#5026 review). Built-in face processors implement this;
+    /// a registered override that handles large coordinates must too.
+    fn process_in_rtc_frame(
+        &self,
+        _entity: &DecodedEntity,
+        _decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        _quality: TessellationQuality,
+        _rtc_file_units: (f64, f64, f64),
+    ) -> Option<Result<Mesh>> {
+        None
+    }
+
     /// Get supported IFC types
     fn supported_types(&self) -> Vec<IfcType>;
 

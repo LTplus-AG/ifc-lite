@@ -701,19 +701,27 @@ impl GeometryRouter {
             rtc_object_meters.y / self.unit_scale,
             rtc_object_meters.z / self.unit_scale,
         );
-        let has_override = self.processors.has_override(item.ifc_type);
-        let result = if has_override {
-            self.processors
-                .get(&item.ifc_type, self.schema)
-                .expect("registered override remains available")
-                .process(item, decoder, self.schema, self.tessellation_quality)
-        } else {
-            crate::processors::IfcFaceSurfaceProcessor::new().process_with_rtc(
-                item,
-                decoder,
-                self.tessellation_quality,
-                rtc_file_units,
-            )
+        // Any processor for this type — built-in or a registered override —
+        // gets the f64 RTC hook first, so it can rebase BEFORE narrowing to
+        // f32. An override without the hook falls back to its ordinary
+        // `process` plus an f32 subtraction below, which cannot recover
+        // sub-ULP detail at national-grid magnitudes (#5026 review).
+        let processor = self
+            .processors
+            .get(&item.ifc_type, self.schema)
+            .expect("face processor is registered for this type");
+        let (result, rtc_applied_by_processor) = match processor.process_in_rtc_frame(
+            item,
+            decoder,
+            self.schema,
+            self.tessellation_quality,
+            rtc_file_units,
+        ) {
+            Some(result) => (result, true),
+            None => (
+                processor.process(item, decoder, self.schema, self.tessellation_quality),
+                false,
+            ),
         };
         if crate::processors::take_curve_capped() {
             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
@@ -724,7 +732,7 @@ impl GeometryRouter {
         if mesh.positions.is_empty() {
             return Ok(Some(mesh));
         }
-        if has_override {
+        if !rtc_applied_by_processor {
             mesh.local_bounds = Some(mesh_bounds(&mesh));
             for position in mesh.positions.chunks_exact_mut(3) {
                 position[0] = (position[0] as f64 - rtc_object_meters.x) as f32;

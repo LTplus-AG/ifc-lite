@@ -16,6 +16,7 @@ import { bcfEn } from './catalogues/bcf.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { clashToolsEn } from './catalogues/clash-tools.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
+import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
@@ -72,6 +73,7 @@ export const en = {
   ...annotationsEn,
   ...anonymizedExportEn,
   ...bulkPropertyEditorEn,
+  ...cesiumGeoEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,

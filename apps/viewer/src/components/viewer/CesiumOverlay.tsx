@@ -21,6 +21,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
@@ -62,6 +63,7 @@ export function CesiumOverlay({
   storeyElevations,
   computedIsolatedIds,
 }: CesiumOverlayProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof import('cesium').Viewer> | null>(null);
   /** Published synchronously after construction; retires all async owners (#4807). */
@@ -134,9 +136,7 @@ export function CesiumOverlay({
         if (cancelled || !containerRef.current) return;
 
         // Configure Cesium ion token if provided
-        if (ionToken) {
-          Cesium.Ion.defaultAccessToken = ionToken;
-        }
+        if (ionToken) Cesium.Ion.defaultAccessToken = ionToken;
 
         const viewer = new Cesium.Viewer(containerRef.current, {
           animation: false,
@@ -231,7 +231,7 @@ export function CesiumOverlay({
           if (!customBasemap) {
             // Reachable only if the picker and the stored basemap disagree; the
             // globe would otherwise come up blank with no explanation.
-            setBasemapWarning('No custom basemap is configured. Add a tile URL in Sun & Sky > Base map.');
+            setBasemapWarning(t('cesiumGeo.overlay.noCustomBasemapWarning'));
           } else {
             try {
               const provider = new Cesium.UrlTemplateImageryProvider(
@@ -283,7 +283,7 @@ export function CesiumOverlay({
               console.warn('[CesiumOverlay] Custom basemap unavailable:', e);
               // Same effect, same hole: the constructor can throw after a
               // teardown that already cleared the banner.
-              if (!cancelled) setBasemapWarning('That tile URL could not be used as a basemap.');
+              if (!cancelled) setBasemapWarning(t('cesiumGeo.overlay.customBasemapUnavailable'));
             }
           }
         } else if (dataSource === 'custom-3dtiles') {
@@ -298,7 +298,7 @@ export function CesiumOverlay({
           if (!customTilesetUrl) {
             // Reachable only if the picker and the stored URL disagree; the
             // globe would otherwise come up blank with no explanation.
-            setBasemapWarning('No custom 3D Tiles URL is configured. Add one in Sun & Sky > Base map.');
+            setBasemapWarning(t('cesiumGeo.overlay.noCustomTilesetWarning'));
           } else {
             try {
               const tileset = await Cesium.Cesium3DTileset.fromUrl(customTilesetUrl);
@@ -366,7 +366,7 @@ export function CesiumOverlay({
       } catch (err) {
         if (!cancelled) {
           console.error('[CesiumOverlay] Init failed:', err);
-          setError(err instanceof Error ? err.message : 'Cesium initialization failed');
+          setError(err instanceof Error ? err.message : t('cesiumGeo.overlay.initFailed'));
           setStatus('error');
         }
       }
@@ -463,7 +463,7 @@ export function CesiumOverlay({
         {status === 'loading' && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded text-xs text-white font-mono">
             <div className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Loading 3D context...
+            {t('cesiumGeo.overlay.loadingLabel')}
           </div>
         )}
         {status === 'error' && error && (

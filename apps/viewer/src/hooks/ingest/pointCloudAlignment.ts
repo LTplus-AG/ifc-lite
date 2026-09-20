@@ -89,7 +89,13 @@
  * any CRS whose MapUnit isn't already the metre.
  */
 
-import { localViewerToProjected, projectedToLocalViewer, type ModelSpatialReference } from '@ifc-lite/geometry';
+import {
+  localViewerToProjected,
+  projectedToLocalViewer,
+  resolveSpatialPlacement,
+  type ModelSpatialReference,
+  type SpatialAffineTransform,
+} from '@ifc-lite/geometry';
 import type { ModelSpatialPlacement } from './federationAlign.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 
@@ -255,6 +261,7 @@ export interface PointCloudAlignmentTransform {
 export function computePointCloudAlignment(
   placement: ModelSpatialPlacement,
   sourceUnit: PointCloudSourceUnit = 'mapUnit',
+  sourceSpatialReference?: ModelSpatialReference,
 ): PointCloudAlignmentTransform | null {
   const spatialReference = placement.spatialReference;
   const operation = spatialReference.localToProjected;
@@ -272,6 +279,35 @@ export function computePointCloudAlignment(
   const { a, b } = axis;
 
   const off = totalYupOffset(placement.coordinateInfo);
+
+  // A CRS-bearing scan has its own native axis order and independent
+  // horizontal/vertical units. Resolve that native frame through the same
+  // neutral f64 placement used by federated models instead of treating every
+  // decoder tuple as metre East/North/Height. The target frame offset folds
+  // the viewer origin into the decode offset, retaining a zero-translation
+  // GPU matrix and therefore sub-centimetre precision at map magnitudes.
+  if (sourceSpatialReference) {
+    const resolved = resolveSpatialPlacement(sourceSpatialReference, spatialReference, {
+      targetFrameOffset: off,
+    });
+    if (!resolved.ok) return null;
+    const projectedOrigin = localViewerToProjected(spatialReference, [0, 0, 0], off);
+    const decodeOriginOffset = projectedOrigin
+      ? projectedToLocalViewer(sourceSpatialReference, projectedOrigin)
+      : null;
+    if (!decodeOriginOffset) return null;
+    return {
+      decodeOriginOffset,
+      decodeOriginOffsetUnit: sourceUnit,
+      alignedMatrix: matrixFromNativeScanTransform(resolved.placement.sourceToFederation),
+      unalignedMatrix: new Float64Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        decodeOriginOffset[0], decodeOriginOffset[2], -decodeOriginOffset[1], 1,
+      ]),
+    };
+  }
 
   // Fold the ENTIRE viewer shift into the decode-time offset (see module
   // doc, "Precision"): the decode offset is the map-space position of the
@@ -344,6 +380,16 @@ export function computePointCloudAlignment(
     alignedMatrix,
     unalignedMatrix,
   };
+}
+
+/** Pack a native XYZ affine for decoder output `(X, Z, -Y)`. */
+function matrixFromNativeScanTransform(transform: SpatialAffineTransform): Float64Array {
+  return new Float64Array([
+    transform.m00, transform.m10, transform.m20, 0,
+    transform.m02, transform.m12, transform.m22, 0,
+    -transform.m01, -transform.m11, -transform.m21, 0,
+    0, 0, 0, 1,
+  ]);
 }
 
 // ─── per-asset registry (drives the global alignment toggle) ──────────────

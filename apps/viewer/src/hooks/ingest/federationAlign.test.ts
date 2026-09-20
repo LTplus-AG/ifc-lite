@@ -168,6 +168,7 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
 
   it('transforms local-origin world coordinates without cancelling centimetre residuals (#5048)', async () => {
     const mesh = boxMesh(32, [2_600_000.01, 0.02, 0.03], [2_600_000.01, 0.02, 0.03], [2_600_000, 0, 0]);
+    mesh.origin = [2_600_000, 0, 0];
     const status = await alignGeometryToReference(
       geometry([mesh]), georef({ eastings: 10 }), georef({}),
     );
@@ -431,6 +432,7 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     const mesh = boxMesh(18, [0, 0, 0], [1, 2, 3]);
     const geom = geometry([mesh]);
     const positionSnapshot = new Float32Array(mesh.positions);
+    const originSnapshot = mesh.origin ? [...mesh.origin] as [number, number, number] : undefined;
     const boxSnapshot = mesh.geometryAabb;
     assert.ok(boxSnapshot);
 
@@ -441,6 +443,8 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     // Restore exactly as realignFederation does, then re-align to a different
     // anchor. A compounding transform would land the box at 2500 + 700.
     mesh.positions = new Float32Array(positionSnapshot);
+    if (originSnapshot) mesh.origin = [...originSnapshot];
+    else delete mesh.origin;
     mesh.geometryAabb = boxSnapshot;
     geom.coordinateInfo = coordinateInfo();
     await alignGeometryToReference(geom, georef({ eastings: 700 }), georef({ eastings: 0 }));
@@ -492,7 +496,8 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
 
     assert.equal(await alignGeometryToReference(geom, georef({ eastings: 2500 }), georef({})), 'failed');
     assert.deepEqual(first.positions, firstBefore, 'first staged mesh must not be partially published');
-    assert.deepEqual(second.positions, secondBefore, 'invalid source mesh remains exactly as loaded');
+    assert.equal(Number.isNaN(second.positions[0]), true, 'invalid source value remains NaN');
+    assert.deepEqual(second.positions.slice(1), secondBefore.slice(1), 'invalid source mesh remains exactly as loaded');
     assert.deepEqual(geom.coordinateInfo, frameBefore, 'dependent frame metadata rolls back too');
   });
 

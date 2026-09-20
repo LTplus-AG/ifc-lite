@@ -19,5 +19,5 @@ export function isIdentitySpatialTransform(transform: AffineTransform3D): boolea
   const eps = 1e-7;
   return Math.abs(transform.m00 - 1) < eps && Math.abs(transform.m01) < eps && Math.abs(transform.m02) < eps && Math.abs(transform.tx) < eps
     && Math.abs(transform.m10) < eps && Math.abs(transform.m11 - 1) < eps && Math.abs(transform.m12) < eps && Math.abs(transform.ty) < eps
-    && Math.abs(transform.m20) < eps && Math.abs(transform.m21) < eps && Math.abs(transform.m22 - 1) < eps && Math.abs(transform.m12) < eps && Math.abs(transform.tz) < eps;
+    && Math.abs(transform.m20) < eps && Math.abs(transform.m21) < eps && Math.abs(transform.m22 - 1) < eps && Math.abs(transform.tz) < eps;
 }

@@ -64,7 +64,7 @@ import { useIfcServer } from './useIfcServer.js';
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlContent, isLandXmlFileName } from './ingest/landXmlSniff.js';
-import { loadLandXmlModel, reframeLandXmlGeometry } from './ingest/landXmlLoad.js';
+import { loadLandXmlModel } from './ingest/landXmlLoad.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import {
@@ -72,13 +72,11 @@ import {
   type GeometryProcessorDisposer,
 } from './ingest/geometryHandleDisposal.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
-import { inspectE57SpatialMetadata } from '@ifc-lite/pointcloud';
-import { spatialReferenceFromLasBlob, spatialReferenceFromSourceMetadata } from './ingest/sourceSpatialReference.js';
+import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { extractModelSpatialPlacement, alignGeometryToReference, findReferenceSpatialModel } from './ingest/federationAlign.js';
-import { capturePreAlignment } from './ingest/federationRealign.js';
-import type { PreAlignmentSnapshot } from '../store/index.js';
+import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
+import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFinalize.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
@@ -540,62 +538,14 @@ export function useIfcLoader() {
           if (!dataStore || !geometryResult) {
             throw new Error('Federated model is missing its data store or geometry');
           }
-          // Georef alignment against the federation anchor (resolved live from
-          // the store, exactly as the former addModel finalize did).
-          const referencePlacement = findReferenceSpatialModel()?.placement ?? null;
-          const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
-          const parsedPlacement = patch?.spatialReference
-            ? { spatialReference: patch.spatialReference, coordinateInfo: geometryResult.coordinateInfo }
-            : extractModelSpatialPlacement(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
-          // The snapshot `realignFederation` later restores from. Captured by
-          // the same function that restores it (ingest/federationRealign.ts) so
-          // the two cannot cover different fields — #1891's world boxes are
-          // re-framed by the alignment exactly like the positions and normals,
-          // and a snapshot that misses one lets a later re-align transform it a
-          // second time.
-          let preAlignment: PreAlignmentSnapshot | undefined;
-          let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
-          if (referencePlacement && parsedPlacement) {
-            setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
-            preAlignment = capturePreAlignment(geometryResult);
-            const status = await alignGeometryToReference(geometryResult, parsedPlacement, referencePlacement);
-            // Stale-guard-after-await sweep: `alignGeometryToReference` is real
-            // reprojection work — the only await in the federated branch (every
-            // write below it, registerModelOffset/addModel/buildSpatialIndex-
-            // ForModel/appendInstancedShards/relabelPointCloudAsset, is
-            // synchronous, so one check here covers the whole branch). Nothing
-            // has been acquired yet at this point — no offset registered, no
-            // model added, no spatial index built, no renderer asset relabeled
-            // — so, exactly like the IFCX branch above, there is nothing to
-            // unwind: write nothing and return.
-            if (loadSessionRef.current !== currentSession) {
-              console.warn(`[useIfc] federated finalize ABORTED after alignment: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — alignment result discarded`);
-              return;
-            }
-            federationAlignmentStatus = status;
-            if (status === 'reprojected') {
-              toast.info(
-                `Reprojected "${file.name}" from ${parsedPlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} `
-                + `to ${referencePlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} for federation alignment.`,
-              );
-            } else if (status === 'failed') {
-              toast.error(
-                `Could not align "${file.name}" with the federation anchor — `
-                + `${parsedPlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} → ${referencePlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} `
-                + 'reprojection failed. The model is shown in its own local frame and may '
-                + 'appear at the wrong real-world position.',
-              );
-            }
-          } else if (parsedPlacement) {
-            federationAlignmentStatus = 'anchor';
-          }
-          if (patch?.postAlignmentReframe && referencePlacement?.coordinateInfo) {
-            // Source-neutral placement is complete at this point. Only now is
-            // the terrain eligible for the anchor's finite render frame.
-            if (patch.landXmlDocument) {
-              reframeLandXmlGeometry(geometryResult, patch.landXmlDocument, referencePlacement.coordinateInfo);
-            }
-          }
+          const spatialFinalize = await finalizeFederatedSpatialPlacement({
+            dataStore, geometry: geometryResult, modelId, fileName: file.name,
+            spatialReference: patch?.spatialReference, landXmlDocument: patch?.landXmlDocument,
+            postAlignmentReframe: patch?.postAlignmentReframe,
+            isCurrent: () => loadSessionRef.current === currentSession, setProgress,
+          });
+          if (!spatialFinalize) return;
+          const { preAlignment, federationAlignmentStatus } = spatialFinalize;
 
           // Federation registry: transform expressIds to globally-unique ids.
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
@@ -848,32 +798,7 @@ export function useIfcLoader() {
         // metres by spec (ASTM E2807) and PCD/PLY/PTS/XYZ have no format
         // convention so metres is the documented assumption here too.
         const sourceUnit: PointCloudSourceUnit = format === 'las' || format === 'laz' ? 'mapUnit' : 'metre';
-        let sourceSpatialReference = format === 'las' || format === 'laz'
-          ? await spatialReferenceFromLasBlob(file, format)
-          : format === 'e57'
-            ? await inspectE57SpatialMetadata(file).then((metadata) => (
-              metadata?.horizontalId && metadata.verticalId
-                ? spatialReferenceFromSourceMetadata({
-                  format: 'e57', horizontalId: metadata.horizontalId,
-                  verticalId: metadata.verticalId, provenance: metadata.provenance,
-                })
-                : undefined
-            ))
-            : undefined;
-        const reference = findReferenceSpatialModel();
-        // A scan without declared horizontal+vertical CRS is not silently
-        // assumed to share the IFC anchor. Cross-CRS scan reprojection is
-        // nonlinear and cannot be expressed by the current GPU affine, so it
-        // is explicitly left raw for manual placement rather than approximated.
-        const sameDeclaredFrame = sourceSpatialReference && reference
-          && sourceSpatialReference.horizontal?.id === reference.placement.spatialReference.horizontal?.id
-          && sourceSpatialReference.vertical?.id === reference.placement.spatialReference.vertical?.id;
-        const alignment = sameDeclaredFrame && reference
-          ? computePointCloudAlignment(reference.placement, sourceUnit)
-          : null;
-        if (reference && !sameDeclaredFrame && (format === 'las' || format === 'laz' || format === 'e57')) {
-          toast.info(`${format.toUpperCase()} CRS is missing or differs from the federation anchor; automatic placement was refused.`);
-        }
+        let { sourceSpatialReference, alignment } = await preparePointCloudSpatialLoad(file, format, sourceUnit);
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({
@@ -884,18 +809,11 @@ export function useIfcLoader() {
           renderer,
           onProgress: setProgress,
           onAssetCountDelta: incCount,
-          alignment: alignment ?? undefined,
+          alignment,
           alignmentEnabled,
           spatialReference: sourceSpatialReference,
           onSpatialMetadata: (metadata) => {
-            if ((format !== 'las' && format !== 'laz' && format !== 'e57')
-              || !metadata?.horizontalId || !metadata.verticalId) return;
-            sourceSpatialReference = spatialReferenceFromSourceMetadata({
-              format: format === 'e57' ? 'e57' : format === 'laz' ? 'laz' : 'las',
-              horizontalId: metadata.horizontalId,
-              verticalId: metadata.verticalId,
-              provenance: metadata.provenance,
-            });
+            sourceSpatialReference ??= pointCloudSpatialReferenceFromMetadata(format, metadata);
           },
           // Session-guard the histogram writes: a superseded stream
           // keeps publishing periodic counts until `done` settles, and

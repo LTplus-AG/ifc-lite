@@ -18,7 +18,7 @@ function attachSyntheticStore(
   payload: LandXmlGeometryPayload,
   fileSize: number,
 ): LandXmlViewerModel {
-  const metadata = spatialMetadataFromLandXml(payload);
+  const metadata = spatialMetadataFromLandXml(payload.semanticDocument);
   const spatialReference = metadata.horizontalId && metadata.verticalId
     ? spatialReferenceFromSourceMetadata(metadata)
     : undefined;

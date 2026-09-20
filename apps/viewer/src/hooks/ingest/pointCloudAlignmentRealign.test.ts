@@ -27,13 +27,22 @@ function placement(): ModelSpatialPlacement {
 
 test('a matching anchor loaded after a scan realigns its retained native source (#5048)', () => {
   const handle = { id: 50_485 };
-  const source = placement().spatialReference;
+  const anchor = placement();
+  const source = {
+    ...anchor.spatialReference,
+    localToProjected: {
+      ...anchor.spatialReference.localToProjected!,
+      eastings: 0,
+      northings: 0,
+      orthogonalHeight: 0,
+    },
+  };
   const writes: Array<Float32Array | Float64Array | null> = [];
   const renderer = { setPointCloudTransform: (_handle: { id: number }, matrix: Float32Array | Float64Array | null) => writes.push(matrix) };
   registerPointCloudAlignment(handle, undefined, true, { sourceSpatialReference: source, sourceUnit: 'mapUnit' });
   try {
     retargetPointCloudDecodeOrigin(renderer, handle, [500, 600, 20]);
-    realignPointCloudsToAnchor(renderer, placement());
+    realignPointCloudsToAnchor(renderer, anchor);
     const matrix = writes.at(-1);
     assert.ok(matrix, 'matching anchor must replace the native-only transform');
     assert.equal(matrix![12], 400, 'aligned matrix rebases from the anchor map origin, not the raw decode origin');

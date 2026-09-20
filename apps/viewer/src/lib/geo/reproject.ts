@@ -233,7 +233,7 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
   // entries carry is off by 80-200 m. proj4js can consume PROJ's GeoTIFF
   // datum-shift grids — load and register, then use a +nadgrids-based
   // proj4 string for sub-decimeter accuracy.
-  if (code) {
+  if (code && PRECISION_GRIDS[code]) {
     try {
       const precisionDef = await resolvePrecisionDef(code);
       if (precisionDef) {

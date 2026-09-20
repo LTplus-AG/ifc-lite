@@ -591,12 +591,17 @@ describe('realignFederationModels — switching the anchor back restores it (#20
 describe('appendGeometryBatch growing the preAlignment snapshot (#4970)', () => {
   const EPS = 1e-6;
 
-  function assertClose(actual: Float32Array, expected: Float32Array, label: string): void {
-    assert.equal(actual.length, expected.length, `${label}: length mismatch`);
-    for (let i = 0; i < actual.length; i += 1) {
+  function assertClose(actual: MeshData, expected: MeshData, label: string): void {
+    assert.equal(actual.positions.length, expected.positions.length, `${label}: length mismatch`);
+    const actualOrigin = actual.origin ?? [0, 0, 0];
+    const expectedOrigin = expected.origin ?? [0, 0, 0];
+    for (let i = 0; i < actual.positions.length; i += 1) {
+      const axis = i % 3;
+      const actualWorld = actual.positions[i] + actualOrigin[axis];
+      const expectedWorld = expected.positions[i] + expectedOrigin[axis];
       assert.ok(
-        Math.abs(actual[i] - expected[i]) < EPS,
-        `${label}: index ${i} — ${actual[i]} vs ${expected[i]}`,
+        Math.abs(actualWorld - expectedWorld) < EPS,
+        `${label}: index ${i} — ${actualWorld} vs ${expectedWorld}`,
       );
     }
   }
@@ -673,7 +678,7 @@ describe('appendGeometryBatch growing the preAlignment snapshot (#4970)', () => 
 
     const sibling = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
     const appendedResult = x.geometryResult!.meshes.find((m) => m.expressId === 101)!;
-    assertClose(appendedResult.positions, sibling.positions, 'authored mesh world position vs sibling');
+    assertClose(appendedResult, sibling, 'authored mesh world position vs sibling');
   });
 
   it('a split\'s two halves each match a never-appended sibling with the same pristine coordinates', async () => {
@@ -687,8 +692,8 @@ describe('appendGeometryBatch growing the preAlignment snapshot (#4970)', () => 
     const siblingRight = x.geometryResult!.meshes.find((m) => m.expressId === 11)!;
     const left = x.geometryResult!.meshes.find((m) => m.expressId === 102)!;
     const right = x.geometryResult!.meshes.find((m) => m.expressId === 103)!;
-    assertClose(left.positions, siblingLeft.positions, 'split left half vs sibling');
-    assertClose(right.positions, siblingRight.positions, 'split right half vs sibling');
+    assertClose(left, siblingLeft, 'split left half vs sibling');
+    assertClose(right, siblingRight, 'split right half vs sibling');
   });
 
   it('a delete-undo-restored mesh (#4925 stash path) matches a never-appended sibling', async () => {
@@ -700,6 +705,6 @@ describe('appendGeometryBatch growing the preAlignment snapshot (#4970)', () => 
 
     const sibling = x.geometryResult!.meshes.find((m) => m.expressId === 12)!;
     const restored = x.geometryResult!.meshes.find((m) => m.expressId === 104)!;
-    assertClose(restored.positions, sibling.positions, 'undo-restored mesh world position vs sibling');
+    assertClose(restored, sibling, 'undo-restored mesh world position vs sibling');
   });
 });

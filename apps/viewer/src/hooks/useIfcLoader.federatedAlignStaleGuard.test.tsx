@@ -216,11 +216,11 @@ describe('useIfcLoader — a superseded federated add must not overwrite the sto
     useViewerStore.setState({
       georefMutations: new Map([
         ['ref-model', {
-          projectedCRS: { name: 'EPSG:9999902', mapUnit: 'METRE', mapUnitScale: 1 },
+          projectedCRS: { name: 'EPSG:9999902', verticalDatum: 'EPSG:5729', mapUnit: 'METRE', mapUnitScale: 1 },
           mapConversion: { eastings: 1000, northings: 2000, orthogonalHeight: 0, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
         }],
         ['model-a', {
-          projectedCRS: { name: 'EPSG:9999901', mapUnit: 'METRE', mapUnitScale: 1 },
+          projectedCRS: { name: 'EPSG:9999901', verticalDatum: 'EPSG:5729', mapUnit: 'METRE', mapUnitScale: 1 },
           mapConversion: { eastings: 500, northings: 800, orthogonalHeight: 0, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
         }],
       ]),

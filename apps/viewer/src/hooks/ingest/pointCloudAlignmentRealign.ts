@@ -32,7 +32,7 @@ export function realignPointCloudsToAnchor(
 ): void {
   realignRegisteredPointClouds(renderer, (source, sourceUnit) => (
     anchor && sameDeclaredFrame(source, anchor.spatialReference)
-      ? computePointCloudAlignment(anchor, sourceUnit)
+      ? computePointCloudAlignment(anchor, sourceUnit, source)
       : null
   ));
 }

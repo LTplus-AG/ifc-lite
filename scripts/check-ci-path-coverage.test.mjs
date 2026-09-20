@@ -546,7 +546,10 @@ test('the real ignore file is translatable -- the exclusion cannot go silently e
   assert.ok(matchesAny('node_modules', globs));
   assert.ok(matchesAny('packages/cli/dist/loader.js', globs));
   assert.ok(matchesAny('tests/models/ara3d/duplex.ifc', globs));
-  assert.ok(matchesAny('tests/models/landxml/producers/alignment.xml', globs));
+  assert.ok(
+    matchesAny('tests/models/landxml/producers/alignment.xml', globs),
+    'add or update the tests/models/**/*.xml rule in .gitignore',
+  );
   // And the committed inputs under the same roots must SURVIVE it.
   assert.equal(matchesAny('tests/models/manifest.json', globs), false);
   assert.equal(matchesAny('packages/data/src/step-serializers.ts', globs), false);

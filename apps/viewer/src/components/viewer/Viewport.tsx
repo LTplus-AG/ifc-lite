@@ -34,6 +34,7 @@ import {
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
+import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -1085,7 +1086,7 @@ export function Viewport({
         rotateRight: () => {
           animateHorizontalRotation(Math.PI / 2);
         },
-        frameSelection: () => {
+        frameSelection: (durationMs = 300) => {
           // Frame the current selection. Prefer the full multi-selection set
           // (Ctrl-click, box-select, a clash pair) so the camera encloses EVERY
           // selected element; fall back to the single primary id. The set is
@@ -1104,7 +1105,7 @@ export function Viewport({
               : single !== null ? [single] : [];
           if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
-            return;
+            return false;
           }
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
@@ -1140,10 +1141,9 @@ export function Viewport({
             }
           }
           if (min && max) {
-            camera.frameBounds(min, max, 300);
-            calculateScale();
+            return frameSelectionBounds(camera, renderer, min, max, durationMs, calculateScale);
           } else {
-            console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
+            console.warn('[Viewport] frameSelection: Could not get bounds for selected element'); return false;
           }
         },
         // Resolve ids to what the renderer can actually highlight (the SAME

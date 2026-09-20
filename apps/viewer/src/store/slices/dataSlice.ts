@@ -40,6 +40,7 @@ export interface DataSlice {
   boundedGeometryMode: boolean;
   /** Transient overlay colors (lens/IDS/sdk overlays). */
   pendingColorUpdates: Map<number, [number, number, number, number]> | null;
+  /** Monotonic durable revision of renderer color deliveries (clearing the queue does not bump it). */ colorPresentationRevision: number;
   /** Persistent mesh color updates (IFC deferred style/material colors). */
   pendingMeshColorUpdates: Map<number, [number, number, number, number]> | null;
   /**
@@ -184,7 +185,7 @@ const EMPTY_POSITIONS = new Float32Array(0);
 const EMPTY_NORMALS = new Float32Array(0);
 const EMPTY_INDICES = new Uint32Array(0);
 
-export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], [], DataSlice> = (set, get) => ({
+export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], [], DataSlice> = (set, _get) => ({
   // Initial state
   ifcDataStore: null,
   geometryResult: null,
@@ -192,6 +193,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   geometryContentVersion: 0,
   boundedGeometryMode: false,
   pendingColorUpdates: null,
+  colorPresentationRevision: 0,
   pendingMeshColorUpdates: null,
   meshColorBackup: null,
   pendingMeshRemovals: null,
@@ -298,7 +300,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
     };
   }),
 
-  setPendingColorUpdates: (updates) => set({ pendingColorUpdates: new Map(updates) }),
+  setPendingColorUpdates: (updates) => set((state) => ({ pendingColorUpdates: new Map(updates), colorPresentationRevision: state.colorPresentationRevision + 1 })),
 
   clearPendingColorUpdates: () => set({ pendingColorUpdates: null }),
 

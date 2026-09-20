@@ -160,11 +160,11 @@ pub(super) fn discover_from_columns(
             if !is_disabled(disabled_types, kw) {
                 // Legacy-aware, for the same reason the type-candidate branch
                 // above is: `classify_type_name` sets this flag through the
-                // legacy-aware `has_geometry_by_name`, so a bare `from_str`
-                // here labels a job the gate admitted with `Unknown(crc32)` —
-                // the label disagreeing with the gate that let it in. `Unknown`
-                // carries a hash of the keyword rather than the keyword, so
-                // nothing downstream can recover it (#3179).
+                // legacy-aware `has_geometry_by_name`. Before exact-name
+                // support a bare `from_str` labelled such a job
+                // `Unknown(crc32)`; now it would preserve the legacy spelling
+                // but change the established processing type. Use the same
+                // resolver on both sides of the gate (#3179, #4203).
                 d.buffered_jobs
                     .push((id, start, end, ifc_lite_core::legacy_aware_ifc_type(kw)));
                 d.total_jobs += 1;

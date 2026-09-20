@@ -93,7 +93,7 @@ const BOB: SourceIdentity = { id: 'bob@example.com', displayName: 'Bob' };
 class AuthProvider implements FileSourceProvider {
   readonly manifest = manifest;
   restoreResult: SourceIdentity | null | Error = null;
-  signInResult: SourceIdentity | Error = ALICE;
+  signInResult: SourceIdentity | { rejection: unknown } = ALICE;
 
   readonly auth = {
     restore: (): Promise<SourceIdentity | null> =>
@@ -101,8 +101,8 @@ class AuthProvider implements FileSourceProvider {
         ? Promise.reject(this.restoreResult)
         : Promise.resolve(this.restoreResult),
     signIn: (): Promise<SourceIdentity> =>
-      this.signInResult instanceof Error
-        ? Promise.reject(this.signInResult)
+      'rejection' in this.signInResult
+        ? Promise.reject(this.signInResult.rejection)
         : Promise.resolve(this.signInResult),
     signOut: (): Promise<void> => Promise.resolve(),
     getIdentity: (): Promise<SourceIdentity | null> => Promise.resolve(null),
@@ -216,7 +216,22 @@ describe('useSourceAuth -- catalog cache is scoped to the signed-in identity (#1
     await act(async () => { await Promise.resolve(); });
 
     assert.equal(harness.get().status, 'signed-out');
+    assert.deepEqual(harness.get().notice, { key: 'sources.sourceProviderRow.sessionExpired' });
     assert.equal(cachedCatalog(), null, 'an expired session must not leave a readable catalog behind');
+  });
+
+  it('keeps provider Error messages raw but represents authored sign-in fallback copy by key', async () => {
+    const provider = new AuthProvider();
+    const harness = renderAuth(provider);
+    await act(async () => { await Promise.resolve(); });
+
+    provider.signInResult = { rejection: new Error('Provider diagnostic 401') };
+    await act(async () => { harness.get().signIn(); await Promise.resolve(); });
+    assert.deepEqual(harness.get().notice, { text: 'Provider diagnostic 401' });
+
+    provider.signInResult = { rejection: { status: 401 } };
+    await act(async () => { harness.get().signIn(); await Promise.resolve(); });
+    assert.deepEqual(harness.get().notice, { key: 'sources.sourceProviderRow.signInFailed' });
   });
 
   it('drops a cache owned by another identity on interactive sign-in', async () => {

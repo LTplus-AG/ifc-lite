@@ -87,8 +87,8 @@ END-ISO-10303-21;
 "#;
 
 // #3187: the same two shapes, but with an IFC2X3 `IfcDoorStyle` -- a type
-// product IFC4X3 dropped, so a bare `IfcType::from_str` answers `Unknown`
-// and the pre-#3187 gate discarded it before it could become a job. The
+// product IFC4X3 dropped. A bare `IfcType::from_str` answered `Unknown`
+// before exact-name support and the pre-#3187 gate discarded it. The
 // two fixtures above are both `IFCCOLUMNTYPE`, which the bare and the
 // legacy-aware resolver agree on, so neither of them can tell the widened
 // gate from the old one. These can.
@@ -151,9 +151,9 @@ fn from_spans_matches_full_scan_referenced_case() {
 }
 
 /// #3187 -- both halves of this twin must resolve the LEGACY keyword
-/// through `type_product_ifc_type`. A bare `IfcType::from_str` on either
-/// side answers `Unknown` for `IFCDOORSTYLE` and drops the candidate,
-/// which shows up here as a divergence or as a lost job.
+/// through `type_product_ifc_type`. It both preserves the pre-#4203 legacy
+/// classification now that an exact variant exists and prevents the lost job
+/// that occurred when a bare resolver still returned `Unknown`.
 #[test]
 fn from_spans_matches_full_scan_legacy_orphan_case() {
     let n = assert_match(LEGACY_ORPHAN.as_bytes());

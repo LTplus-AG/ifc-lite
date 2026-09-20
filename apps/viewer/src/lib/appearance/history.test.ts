@@ -125,6 +125,8 @@ describe('appearance command history #4243', () => {
     assert.deepEqual(disposed, [modelId]);
     store.getState().clearMutationView('other');
     assert.deepEqual(disposed, [modelId, 'other']);
+    assert.equal(store.getState().canUndo('other'), false, 'cleared numeric-id history cannot reach a replacement view');
+    assert.equal(store.getState().canRedo('other'), false, 'cleared numeric-id history cannot replay against reassigned ids');
   });
 
   it('releases leases on view replacement and session history reset', async () => {

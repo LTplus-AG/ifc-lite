@@ -18,9 +18,10 @@
  */
 
 import { prepareEntityOperations } from './prepare-entity-operations.js';
+import { highestExistingExpressId } from './express-id-watermark.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
-import { QuantityType, PropertyValueType } from '@ifc-lite/data';
+import { IFC_ENTITY_NAMES, QuantityType, PropertyValueType } from '@ifc-lite/data';
 import type {
   IfcAttributeValue,
   MutationEntityRef as EntityRef,
@@ -69,7 +70,7 @@ export class StoreEditor {
   constructor(store: IfcDataStore, view: MutablePropertyView) {
     this.store = store;
     this.view = view;
-    this.maxExistingId = this.computeMaxExistingId();
+    this.maxExistingId = highestExistingExpressId(this.store);
     this.view.setExpressIdWatermark(this.maxExistingId);
   }
 
@@ -105,7 +106,7 @@ export class StoreEditor {
    * no-op.
    */
   refreshWatermark(): void {
-    const fresh = this.computeMaxExistingId();
+    const fresh = highestExistingExpressId(this.store);
     if (fresh > this.maxExistingId) {
       this.maxExistingId = fresh;
     }
@@ -297,6 +298,39 @@ export class StoreEditor {
     return this.view.getNewEntities();
   }
 
+  /** The schema declared by the loaded model, if the store exposes it. */
+  getSchemaVersion(): string | undefined {
+    return this.store.schemaVersion;
+  }
+
+  /**
+   * The entity's CURRENT IFC class — canonical, from whichever layer is
+   * authoritative: a pending retype, an overlay-created entity's authored
+   * type, or the source record's declared type — or `undefined` when the id
+   * is deleted or resolves to nothing at all. The one place a builder that
+   * takes "an id of a specific class" (e.g. `bim.store.addCostValue`'s
+   * `UnitBasis`) checks what it actually got, rather than trusting the
+   * caller.
+   */
+  getEntityType(expressId: number): string | undefined {
+    if (!this.hasEntity(expressId)) return undefined;
+    const canonical = (type: string): string => configuredNormalizer?.(type)
+      || IFC_ENTITY_NAMES[type.toUpperCase()]
+      || type;
+    const retype = this.view.getEntityTypeMutation(expressId);
+    if (retype) return canonical(retype.newType);
+    const created = this.view.getNewEntity(expressId);
+    if (created) return canonical(created.type);
+    // Deferred property atoms occupy express ids too (see
+    // `highestExistingExpressId`) and are absent from `entityIndex.byId` —
+    // without this fallback a valid, non-deleted deferred entity id reads as
+    // "does not exist" here even though `hasEntity` (which already checks
+    // `deferredEntityIndex`) says it does.
+    const sourceType = this.store.entityIndex.byId.get(expressId)?.type
+      ?? this.store.deferredEntityIndex?.get(expressId)?.type;
+    return sourceType ? canonical(sourceType) : undefined;
+  }
+
   /**
    * Attach a quantity set to an entity via the property view, so it surfaces in
    * the properties panel (`getQuantitiesForEntity`) AND exports to
@@ -346,22 +380,5 @@ export class StoreEditor {
       psetName,
       properties.map((p) => ({ name: p.name, value: p.value, type: kind[p.type], unit: p.unit })),
     );
-  }
-
-  private computeMaxExistingId(): number {
-    let max = 0;
-    for (const id of this.store.entityIndex.byId.keys()) {
-      if (id > max) max = id;
-    }
-    // Deferred property atoms occupy express ids too — clear them so a newly
-    // allocated overlay id can never collide with a deferred atom that sits
-    // above the primary-index maximum (which the exporter now emits).
-    const deferred = this.store.deferredEntityIndex;
-    if (deferred) {
-      for (const id of deferred.keys()) {
-        if (id > max) max = id;
-      }
-    }
-    return max;
   }
 }

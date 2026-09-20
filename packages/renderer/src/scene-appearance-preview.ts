@@ -31,6 +31,18 @@ export interface SceneAppearanceAccess {
   invalidate(id: number): void;
 }
 
+/** Preserve history's adapter identity while redirecting its GPU closures. */
+export function rebindSceneAppearanceAccess(
+  current: SceneAppearanceAccess | undefined,
+  next: SceneAppearanceAccess,
+): SceneAppearanceAccess {
+  if (!current) return next;
+  const buckets = current.buckets;
+  Object.assign(current, next, { buckets });
+  Object.assign(buckets, next.buckets);
+  return current;
+}
+
 export function createSceneAppearancePreview(
   access: SceneAppearanceAccess,
   buckets = new AppearanceBuckets(access.buckets, id => access.data.get(id)),

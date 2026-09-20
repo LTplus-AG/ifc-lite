@@ -39,7 +39,7 @@ pub(super) const TYPES: [&[IfcType]; 20] = [
     &[IfcType::IfcSphere],
     &[IfcType::IfcCsgSolid],
     &[IfcType::IfcAlignment],
-    &[IfcType::IfcEdge],
+    &[IfcType::IfcEdge, IfcType::IfcEdgeCurve, IfcType::IfcOrientedEdge],
     &[IfcType::IfcFaceSurface, IfcType::IfcAdvancedFace],
 ];
 
@@ -63,7 +63,7 @@ fn slot(ifc_type: IfcType) -> Option<usize> {
         IfcType::IfcSphere => 15,
         IfcType::IfcCsgSolid => 16,
         IfcType::IfcAlignment => 17,
-        IfcType::IfcEdge => 18,
+        IfcType::IfcEdge | IfcType::IfcEdgeCurve | IfcType::IfcOrientedEdge => 18,
         IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => 19,
         _ => return None,
     })

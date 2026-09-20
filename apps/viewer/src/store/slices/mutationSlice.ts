@@ -50,6 +50,7 @@ import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
+import { pruneMutationHistory } from './mutation-history-prune.js';
 import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
@@ -1178,16 +1179,22 @@ export const createMutationSlice: StateCreator<
       newEditors.delete(modelId);
       const newDirty = new Set(state.dirtyModels);
       newDirty.delete(modelId);
-      // Drop any stashed undo payloads owned by this model so they don't
-      // leak into future mutation views with the same id.
       const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
       const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
+      const history = pruneMutationHistory(
+        modelId,
+        state.undoStacks,
+        state.redoStacks,
+        state.mutationBatchTags,
+        state.mutationMeshTranslations,
+      );
       return {
         mutationViews: newViews,
         storeEditors: newEditors,
         dirtyModels: newDirty,
         removedNewEntities: newRemoved,
         removedMeshes: newRemovedMeshes,
+        ...history,
       };
     });
   },
@@ -2544,9 +2551,7 @@ export const createMutationSlice: StateCreator<
   },
 
   duplicateEntity: (modelId, sourceExpressId, direction = DUPLICATE_DEFAULT_DIRECTION, options) => {
-    // Collab role gate before the local commit — see setProperty. Duplicating
-    // creates an entity exactly as `addWall`/`addColumn` do, and those are
-    // gated inside `addElementViaBuilder`.
+    // Gate before the local commit, as addElementViaBuilder does for creates.
     if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
     const state = get();
     const model = state.models.get(modelId);
@@ -3256,10 +3261,7 @@ export const createMutationSlice: StateCreator<
     if (modelIds.length === 0) return;
     set((state) => {
       const newDirty = new Set(state.dirtyModels);
-      // Redo is cleared for the same reason every per-mutation action clears
-      // it: a new edit invalidates the branch an undone one could be replayed
-      // onto. A bulk writer is no different, and leaving it alone let Ctrl+Y
-      // replay an edit made before the bulk write, on top of it.
+      // A bulk edit invalidates the redo branch just like a single edit.
       const newRedo = new Map(state.redoStacks);
       for (const id of modelIds) {
         newDirty.add(id);

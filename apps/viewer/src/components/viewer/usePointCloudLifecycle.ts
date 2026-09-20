@@ -30,7 +30,7 @@ export interface UsePointCloudLifecycleParams {
 export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): void {
   const { rendererRef, isInitialized } = params;
   const models = useViewerStore((s) => s.models);
-  const decCount = useViewerStore((s) => s.incrementPointCloudAssetCount);
+  const setAssetCount = useViewerStore((s) => s.setPointCloudAssetCount);
   const setClassCounts = useViewerStore((s) => s.setPointCloudClassCounts);
   const previousRef = useRef<Map<string, number>>(new Map());
 
@@ -69,13 +69,18 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
         // nothing else frees this, since streamed assets live outside the
         // normal geometryResult/pointClouds lifecycle.
         removePointCloudScanCache(handleId);
-        decCount(-1);
+        // The replacement renderer may already have rebuilt CPU-backed IFCx
+        // clouds before this stale streamed handle is observed. Recompute from
+        // the renderer after removal instead of decrementing the fresh count;
+        // a lost-device handle is a no-op there and must not subtract an IFCx
+        // asset that is visibly present.
+        setAssetCount(renderer.getPointCloudAssetCount());
       }
     }
 
     previousRef.current = current;
     renderer.requestRender();
-  }, [models, isInitialized, rendererRef, decCount, setClassCounts]);
+  }, [models, isInitialized, rendererRef, setAssetCount, setClassCounts]);
 }
 
 export default usePointCloudLifecycle;

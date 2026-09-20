@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { useSyncExternalStore } from 'react';
 import { PinOff, X, MonitorUp } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { getPanelDef } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { PortalContainerProvider } from '@/components/ui/portal-container';
@@ -60,6 +61,7 @@ export function PanelWindowHost() {
 }
 
 function PanelWindowChrome({ entry }: { entry: PanelWindowEntry }) {
+  const { t } = useTranslation();
   const def = getPanelDef(entry.id);
   const Icon = def?.Icon;
   const dock = () => useViewerStore.getState().showWorkspacePanel(entry.id);
@@ -72,11 +74,11 @@ function PanelWindowChrome({ entry }: { entry: PanelWindowEntry }) {
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
         <span className="text-xs font-medium truncate flex-1 min-w-0">{def?.title ?? entry.id}</span>
         <span className="text-[9px] uppercase tracking-wide text-muted-foreground shrink-0">
-          {entry.kind === 'pip' ? 'Picture-in-picture' : 'Window'}
+          {t(entry.kind === 'pip' ? 'shellChrome.panelWindowHost.kindPip' : 'shellChrome.panelWindowHost.kindWindow')}
         </span>
         <button
           type="button"
-          title="Dock back into the sidebar"
+          title={t('shellChrome.panelWindowHost.dockTitle')}
           onClick={dock}
           className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
         >
@@ -84,7 +86,7 @@ function PanelWindowChrome({ entry }: { entry: PanelWindowEntry }) {
         </button>
         <button
           type="button"
-          title="Close window"
+          title={t('shellChrome.panelWindowHost.closeWindowTitle')}
           onClick={close}
           className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
         >
@@ -95,7 +97,7 @@ function PanelWindowChrome({ entry }: { entry: PanelWindowEntry }) {
       {/* Decorative hint strip — reinforces that this content is live. */}
       <div className="flex items-center gap-1.5 h-5 shrink-0 px-2 border-t border-border bg-muted/30 text-[9px] text-muted-foreground select-none">
         <MonitorUp className="h-3 w-3" />
-        <span>Live · synced with the main window</span>
+        <span>{t('shellChrome.panelWindowHost.liveSyncedNotice')}</span>
       </div>
     </div>
     </PortalContainerProvider>

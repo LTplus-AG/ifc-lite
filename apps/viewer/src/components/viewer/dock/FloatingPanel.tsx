@@ -29,6 +29,7 @@ import {
   GripVertical,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import type { FloatingPanelState, SnapZone } from '@/store';
 import { computeFloatingPanelStyle, type SnapBounds } from './floating-panel-geometry';
 
@@ -68,6 +69,7 @@ export function FloatingPanel({
   onDock,
   onClose,
 }: FloatingPanelProps) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   // Tear down any in-flight drag / resize listeners if the panel unmounts mid-
   // gesture (closed / docked while dragging) so stale window listeners don't
@@ -190,17 +192,17 @@ export function FloatingPanel({
         <span className="text-xs font-medium truncate min-w-0 flex-1">{title}</span>
         <div className="flex items-center gap-0.5 shrink-0">
           {/* Float positioning (overlay); the model stays full size behind it. */}
-          {snapBtn('left', PanelLeft, 'Snap left (overlay)')}
-          {snapBtn('bottom', PanelBottom, 'Snap bottom (overlay)')}
-          {snapBtn('right', PanelRight, 'Snap right (overlay)')}
-          {snapBtn('free', Square, 'Free float')}
+          {snapBtn('left', PanelLeft, t('shellChrome.floatingPanel.snapLeft'))}
+          {snapBtn('bottom', PanelBottom, t('shellChrome.floatingPanel.snapBottom'))}
+          {snapBtn('right', PanelRight, t('shellChrome.floatingPanel.snapRight'))}
+          {snapBtn('free', Square, t('shellChrome.floatingPanel.freeFloat'))}
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
           {/* Dock reserves space (panel + model side by side). */}
           <button
             type="button"
             data-no-drag
-            title="Dock into sidebar (reserves space)"
-            aria-label="Dock into sidebar (reserves space beside the model)"
+            title={t('shellChrome.floatingPanel.dockTitle')}
+            aria-label={t('shellChrome.floatingPanel.dockAriaLabel')}
             onClick={onDock}
             className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
           >
@@ -209,7 +211,7 @@ export function FloatingPanel({
           <button
             type="button"
             data-no-drag
-            title="Close"
+            title={t('viewerShell.dialog.close')}
             onClick={onClose}
             className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
           >

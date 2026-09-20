@@ -91,8 +91,11 @@ export function resolveEffectiveRelationshipOverlay(
   for (const expressId of new Set(overlay.mutatedEntityIds())) {
     if (createdIds.has(expressId)) continue;
     const entity = store.getEntity(expressId);
-    if (!entity?.type.toUpperCase().startsWith('IFCREL')) continue;
-    supersededSourceIds.add(expressId);
+    if (!entity) continue;
+    const authoredRelationship = entity.type.toUpperCase().startsWith('IFCREL');
+    const effectiveType = overlay.entityType?.(expressId) ?? entity.type;
+    if (!authoredRelationship && !effectiveType.toUpperCase().startsWith('IFCREL')) continue;
+    if (authoredRelationship) supersededSourceIds.add(expressId);
     const relation = resolveRelationship(store, entity, overlay);
     if (relation) relationships.push(relation);
   }

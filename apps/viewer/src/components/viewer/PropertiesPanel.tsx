@@ -33,7 +33,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -68,7 +68,7 @@ import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
-import { relationshipsForSelection } from './properties/merge-relationship-data';
+import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
   name: string;
@@ -753,9 +753,9 @@ export function PropertiesPanel() {
   // channel those use (`cameraCallbacks.resolveHighlightIds`, backed by
   // `expandToGeometryBearingIds`).
   const handleIsolateGroupMembers = useCallback((groupId: number) => {
-    const dataStore = (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null;
-    if (!dataStore || !selectedEntity) return;
-    const members = extractGroupMembersOnDemand(dataStore, groupId);
+    if (!selectedEntity) return;
+    const members = groupMembersForRef(overlayAwareQuery.relationships,
+      { modelId: selectedEntity.modelId, expressId: groupId });
     if (members.length === 0) return;
     const globalIds = members.map((m) => toGlobalIdFromModels(models, selectedEntity.modelId, m.id));
     // The members' own ids are ADDED to what the resolver returns, never
@@ -800,7 +800,7 @@ export function PropertiesPanel() {
     if (cameraCallbacks.frameSelection) {
       window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }
-  }, [model, ifcDataStore, selectedEntity, models, typeVisibility, toggleTypeVisibility, isolateEntities, setSelectedEntityIds, cameraCallbacks]);
+  }, [selectedEntity, overlayAwareQuery, models, typeVisibility, toggleTypeVisibility, isolateEntities, setSelectedEntityIds, cameraCallbacks]);
 
   // 4D schedule — both parsed-from-IFC and locally-generated schedules live in
   // the schedule slice. ScheduleCard renders nothing when no task in the

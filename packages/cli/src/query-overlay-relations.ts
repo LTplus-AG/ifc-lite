@@ -43,7 +43,8 @@ export function foldQueuedRelationshipData(
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
+    const type = view.getEntityTypeMutation(edge.entity.id)?.newType ?? edge.entity.type;
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type } }];
   });
   for (const edge of effectiveRelationshipEdges(overlay, id => view.isDeleted(id), ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;
@@ -67,8 +68,7 @@ export function foldQueuedRelationshipData(
     fills: entities(['IFCRELFILLSELEMENT'], ['inverse'])
       .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
     groups: entities(['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR'], ['inverse'])
-      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index)
-      .map(({ id, name }) => ({ id, name })),
+      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
     connections: entities(['IFCRELCONNECTSPATHELEMENTS'], ['forward', 'inverse'])
       .filter((entity, index, all) => entity.id !== ref.expressId
         && all.findIndex(other => other.id === entity.id) === index),

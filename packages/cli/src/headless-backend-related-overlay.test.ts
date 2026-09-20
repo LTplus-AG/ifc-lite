@@ -29,13 +29,32 @@
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { IfcParser } from '@ifc-lite/parser';
 import { loadIfcFile } from './loader.js';
 import { HeadlessBackend } from './headless-backend.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = join(__dirname, '../../../apps/viewer/public/samples/building-architecture.ifc');
+const EXACT_TYPE_IFC = `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCPROJECT('0000000000000000000001',$,'Project',$,$,$,$,$,$);
+#3=IFCWALL('0000000000000000000003',$,'Unrelated',$,$,$,$,$,$);
+#12=IFCDOORSTANDARDCASE('0000000000000000000012',$,'Exact door',$,$,$,$,$,$,$,$,$,$);
+#13=IFCRELAGGREGATES('0000000000000000000013',$,$,$,#1,(#12));
+ENDSEC;END-ISO-10303-21;`;
 
 describe('HeadlessBackend query.related() overlay visibility', () => {
+  it('preserves parsed endpoint subtype names after an unrelated edit', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(EXACT_TYPE_IFC).buffer as ArrayBuffer);
+    const backend = new HeadlessBackend(store, 'exact-types.ifc');
+    backend.mutate.setAttribute({ modelId: 'default', expressId: 3 }, 'Name', 'Unrelated edit');
+    const row = backend.query.relationships({ modelId: 'default', expressId: 1 }).relations
+      ?.find((edge) => edge.entity.id === 12);
+    expect(row).toBeDefined();
+    expect(row?.entity.type).toBe('IfcDoorStandardCase');
+  });
+
   it('sees a queued IfcRelAggregates both ways in the same session', async () => {
     const store = await loadIfcFile(SAMPLE_IFC);
     const backend = new HeadlessBackend(store, 'building-architecture.ifc');
@@ -175,6 +194,7 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     expect(backend.query.relationships(member.ref).groups).toContainEqual({
       id: group.ref.expressId,
       name: group.name,
+      type: group.type,
     });
   });
 
@@ -196,12 +216,14 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
     expect(backend.query.relationships(member.ref).groups).toContainEqual({
       id: group.expressId,
       name: 'Renamed group',
+      type: 'IfcGroup',
     });
 
     backend.mutate.setAttribute(group, 'Name', 'Later named edit');
     expect(backend.query.relationships(member.ref).groups).toContainEqual({
       id: group.expressId,
       name: 'Renamed group',
+      type: 'IfcGroup',
     });
   });
 

@@ -75,6 +75,11 @@ test('viewer exact relationship queries fold authored records and endpoint overr
   assert.equal(query.relationships(building).relations?.some((edge) =>
     edge.relationshipId === relationship.expressId && edge.entity.id === 3
     && edge.entity.name === 'Positional parsed wall'), true);
+  writes.setPositionalAttribute({ modelId: 'default', expressId: 3 }, 2, null);
+  assert.equal(query.entityData({ modelId: 'default', expressId: 3 })?.name, '');
+  assert.equal(query.relationships(building).relations?.some((edge) =>
+    edge.relationshipId === relationship.expressId && edge.entity.id === 3
+    && edge.entity.name === undefined), true);
 
   writes.setPositionalAttribute(relationship, 5, ['#4']);
   assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [

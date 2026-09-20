@@ -21,6 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { foldedTypeCounts, foldedEntityCount, pendingMutationsField, type PendingOverlay, type CreatedEntity } from './overlay.js';
+import { foldRelationshipRows } from './backend-query-relationships.js';
 
 function fakeStore(byType: Record<string, number[]>, entityCount?: number): IfcDataStore {
   const byTypeMap = new Map(Object.entries(byType));
@@ -143,5 +144,29 @@ describe('pendingMutationsField', () => {
   it('reports a present overlay with zero queued edits as 0, not omitted', () => {
     const zero = fakeOverlay({ pendingMutations: 0 });
     expect(pendingMutationsField(zero)).toEqual({ pendingMutations: 0 });
+  });
+});
+
+describe('foldRelationshipRows', () => {
+  it('preserves group entity types in the legacy projection (#5009 review)', () => {
+    const pending = {
+      deleted: new Set<number>(),
+      supersededRelationshipIds: new Set<number>(),
+      relationshipEdges: () => [],
+    } as unknown as PendingOverlay;
+    const result = {
+      voids: [], fills: [], groups: [], connections: [],
+      relations: [{
+        relationshipId: 5,
+        relationshipType: 'IfcRelAssignsToGroup',
+        direction: 'inverse' as const,
+        entity: { id: 10, name: 'Zone', type: 'IfcZone' },
+      }],
+    };
+    const folded = foldRelationshipRows(result, pending, { modelId: 'm', expressId: 3 }, () => ({
+      ref: { modelId: 'm', expressId: 10 }, globalId: 'g', name: 'Zone', type: 'IfcZone',
+      description: '', objectType: '',
+    }));
+    expect(folded.groups).toEqual([{ id: 10, name: 'Zone', type: 'IfcZone' }]);
   });
 });

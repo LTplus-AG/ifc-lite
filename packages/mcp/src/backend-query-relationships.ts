@@ -48,8 +48,7 @@ export function foldRelationshipRows(
     fills: entities(['IFCRELFILLSELEMENT'], ['inverse'])
       .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
     groups: entities(['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR'], ['inverse'])
-      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index)
-      .map(({ id, name }) => ({ id, name })),
+      .filter((entity, index, all) => all.findIndex(other => other.id === entity.id) === index),
     connections: entities(['IFCRELCONNECTSPATHELEMENTS'], ['forward', 'inverse'])
       .filter((entity, index, all) => entity.id !== ref.expressId && all.findIndex(other => other.id === entity.id) === index),
     relations,

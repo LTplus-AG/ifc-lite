@@ -133,4 +133,24 @@ describe('effective relationship overlay (#5009)', () => {
       targetId: 3,
     }]);
   });
+
+  it('includes a parsed non-relationship retyped into a relationship (#5009 review)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer);
+    const overlay = resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => [],
+      mutatedEntityIds: () => [3],
+      namedAttributes: () => [],
+      positionalAttributes: () => [[4, '#2'], [5, ['#4']]],
+      entityType: () => 'IfcRelAggregates',
+      isDeleted: () => false,
+    });
+
+    expect(overlay.supersededSourceIds).toEqual(new Set());
+    expect(effectiveRelationshipEdges(overlay, () => false, 2, 'IfcRelAggregates')).toEqual([{
+      relationshipId: 3,
+      relationshipType: 'IfcRelAggregates',
+      direction: 'forward',
+      targetId: 4,
+    }]);
+  });
 });

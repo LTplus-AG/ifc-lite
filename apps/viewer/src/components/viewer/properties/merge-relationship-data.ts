@@ -4,6 +4,8 @@
 
 import type { EntityRef, EntityRelationshipsData } from '@ifc-lite/sdk';
 
+type RelatedEntity = EntityRelationshipsData['connections'][number];
+
 function uniqueEntities<T extends { id: number }>(...groups: readonly (readonly T[])[]): T[] {
   const seen = new Set<number>();
   return groups.flatMap(group => group.filter(entity => {
@@ -43,4 +45,19 @@ export function relationshipsForSelection(
   return lookupExpressId === selected.expressId
     ? inherited
     : mergeRelationshipData(inherited, getRelationships(selected));
+}
+
+/** Resolve the effective members of a group, including queued relationship edits. */
+export function groupMembersForRef(
+  getRelationships: (ref: EntityRef) => EntityRelationshipsData,
+  group: EntityRef,
+): RelatedEntity[] {
+  const seen = new Set<number>();
+  return (getRelationships(group).relations ?? []).flatMap((edge) => {
+    const groupAssignment = edge.direction === 'forward'
+      && ['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR'].includes(edge.relationshipType.toUpperCase());
+    if (!groupAssignment || seen.has(edge.entity.id)) return [];
+    seen.add(edge.entity.id);
+    return [edge.entity];
+  });
 }

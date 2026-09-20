@@ -96,11 +96,14 @@ export function applyAttributeMutationsToEntityData(
     const exactType = dataStore.entities.getTypeName(expressId) || data.type;
     const names = getAttributeNamesForSchema(exactType, dataStore.schemaVersion);
     for (const [index, value] of positional) {
-      if (typeof value !== 'string') continue;
-      const trimmed = value.trim();
-      const text = trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")
-        ? trimmed.slice(1, -1).replace(/''/g, "'")
-        : trimmed;
+      const trimmed = typeof value === 'string' ? value.trim() : '';
+      const unset = value == null || trimmed === '' || trimmed === '$' || trimmed === '*';
+      const text = unset ? '' : typeof value === 'string'
+        ? trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")
+          ? trimmed.slice(1, -1).replace(/''/g, "'")
+          : trimmed
+        : null;
+      if (text === null) continue;
       if (names[index] === 'Name') next.name = text;
       else if (names[index] === 'Description') next.description = text;
       else if (names[index] === 'ObjectType') next.objectType = text;

@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { EntityRelationshipsData } from '@ifc-lite/sdk';
-import { mergeRelationshipData, relationshipsForSelection } from './merge-relationship-data.js';
+import { groupMembersForRef, mergeRelationshipData, relationshipsForSelection } from './merge-relationship-data.js';
 
 const empty = (): EntityRelationshipsData => ({ voids: [], fills: [], groups: [], connections: [], relations: [] });
 
@@ -40,4 +40,20 @@ test('duplicate selection queries both the inherited source and selected id', ()
 
   assert.deepEqual(queried, [100, 200]);
   assert.deepEqual(result.relations?.map(edge => edge.relationshipId), [100, 200]);
+});
+
+test('group members follow effective assignment rows and ignore unrelated edges', () => {
+  const relationships = empty();
+  relationships.relations = [
+    { relationshipId: 1, relationshipType: 'IfcRelAssignsToGroup', direction: 'forward',
+      entity: { id: 20, name: 'Member', type: 'IfcSpace' } },
+    { relationshipId: 2, relationshipType: 'IfcRelAssignsToGroup', direction: 'inverse',
+      entity: { id: 30, type: 'IfcGroup' } },
+    { relationshipId: 3, relationshipType: 'IfcRelAggregates', direction: 'forward',
+      entity: { id: 40, type: 'IfcWall' } },
+  ];
+
+  assert.deepEqual(groupMembersForRef(() => relationships, { modelId: 'm', expressId: 10 }), [
+    { id: 20, name: 'Member', type: 'IfcSpace' },
+  ]);
 });

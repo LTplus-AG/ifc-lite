@@ -60,6 +60,7 @@ import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode, matchesPropertyFilter } from '@ifc-lite/query';
 
 import type { CreatedEntity, PendingOverlay } from './overlay.js';
+import { authoredValue } from './authored-attribute-value.js';
 import { foldRelationshipRows } from './backend-query-relationships.js';
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -86,52 +87,6 @@ function createdEntityData(created: CreatedEntity, ref: EntityRef, store: IfcDat
     description: created.description ?? '',
     objectType: typeof objectType === 'string' ? objectType : '',
   };
-}
-
-/**
- * One authored STEP attribute as a plain scalar, for `bim.attributes` on a
- * created entity.
- *
- * **Not `stepText`.** That helper answers "is this text?", and deliberately says
- * no to `#42` because its caller reads an entity's *Name* and must not mistake a
- * reference for one. Reusing it here dropped every structural attribute an agent
- * authored — `ObjectPlacement: '#40'` vanished from the readback (#2014). The
- * fix belongs on this side of the line, not in `stepText`: a reference *is* the
- * value of a structural attribute, and it is what will be serialised.
- *
- * Coercion mirrors the parsed path (`coerceRaw` in `@ifc-lite/query`) so a
- * created entity and a parsed one report the same shapes: `$`/`*`/`.U.`/`.X.`
- * are absent, `.T.`/`.F.` are booleans, other dotted tokens are bare enum names,
- * quoted text is unquoted.
- *
- * Lists are skipped — and so are they on the parsed path, where `coerceRaw`
- * answers null for an array. `EntityAttributeData.value` has no array form to
- * put one in, and reporting a created entity's `RelatedElements` while a parsed
- * entity's stays hidden would trade one inconsistency for another. The queued
- * relationships those lists express are read back through `related()` instead,
- * where they have somewhere to go.
- */
-function authoredValue(value: unknown): string | number | boolean | undefined {
-  if (typeof value === 'number' || typeof value === 'boolean') return value;
-  // The authoring API's wrapper forms (`StoreEditor.addEntity`).
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const wrapper = value as { real?: number; typed?: { value?: string | number | boolean } };
-    if (typeof wrapper.real === 'number') return wrapper.real;
-    if (wrapper.typed && wrapper.typed.value !== undefined) return wrapper.typed.value;
-    return undefined;
-  }
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  if (trimmed === '' || trimmed === '$' || trimmed === '*') return undefined;
-  if (trimmed === '.T.') return true;
-  if (trimmed === '.F.') return false;
-  if (trimmed === '.U.' || trimmed === '.X.') return undefined;
-  if (trimmed.startsWith('#')) return trimmed;
-  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1).replace(/''/g, "'");
-  }
-  if (trimmed.length >= 2 && trimmed.startsWith('.') && trimmed.endsWith('.')) return trimmed.slice(1, -1);
-  return trimmed;
 }
 
 /**
@@ -232,22 +187,28 @@ export function createQueryAdapter(
       : extractAllEntityAttributes(store, ref.expressId);
     if (!pending) return base;
     const overrides = pending.attributes(ref.expressId);
-    if (overrides.size === 0) return base;
+    const positional = pending.positionalAttributes(ref.expressId);
+    if (overrides.size === 0 && positional.size === 0) return base;
     // Overwrite what the base carries, then append what it does not. The append
     // is the half that was missing (#2014): `extractAllEntityAttributes` omits
     // an attribute whose stored value is `$`, so setting a previously-unset
     // `Description` changed the top-level field while this list still denied it
     // — one payload contradicting itself. Appended names go last; the list is
     // name-keyed and its order is not positional (the base already drops nulls).
-    const merged = base.map((attr) => {
-      const written = overrides.get(attr.name);
-      return written === undefined ? attr : { ...attr, value: written };
-    });
-    const present = new Set(merged.map((attr) => attr.name));
-    for (const [name, value] of overrides) {
-      if (!present.has(name)) merged.push({ name, value });
+    const merged = new Map(base.map((attribute) => [attribute.name, attribute.value]));
+    const writes = new Map<string, unknown>(overrides);
+    const exactType = created?.ifcType ?? store.entities.getTypeName(ref.expressId);
+    const names = attributeNamesForSchema(exactType, store.schemaVersion);
+    for (const [index, value] of positional) {
+      const name = names[index];
+      if (name) writes.set(name, value);
     }
-    return merged;
+    for (const [name, value] of writes) {
+      const authored = authoredValue(value);
+      if (authored === undefined) merged.delete(name);
+      else merged.set(name, authored);
+    }
+    return [...merged].map(([name, value]) => ({ name, value }));
   }
 
   function namedAuthoredAttributes(created: CreatedEntity): EntityAttributeData[] {

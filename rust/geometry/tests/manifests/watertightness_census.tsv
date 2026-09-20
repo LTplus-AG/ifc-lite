@@ -187,7 +187,7 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57776	SweptSolid
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57944	Clipping	0	202	0	0	0	-	0	7092467
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	58297	Clipping	0	386	0	0	0	-	0	5854729
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59111	SweptSolid	0	4008	0	0	0	-	0	277314271
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59957	SweptSolid	6	18	0	0	6	0	6	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59957	SweptSolid	0	24	0	0	0	-	0	1291997
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60118	SweptSolid	0	20	0	0	0	-	0	2397942
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60344	SweptSolid	0	32	0	0	0	-	0	2076017
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	61300	Clipping	29	3946	1	0	32	18	50	-
@@ -639,7 +639,7 @@ ara3d/dental_clinic.ifc	202	SweptSolid	0	28	0	0	0	-	0	3726179
 ara3d/dental_clinic.ifc	203	SweptSolid	0	76	0	0	0	-	0	6285996
 ara3d/dental_clinic.ifc	205	SweptSolid	0	76	0	0	0	-	0	5407859
 ara3d/dental_clinic.ifc	206	SweptSolid	0	32	0	0	0	-	0	24013649
-ara3d/dental_clinic.ifc	207	Clipping	21	237	0	0	21	0	21	-
+ara3d/dental_clinic.ifc	207	Clipping	0	248	0	0	0	-	0	20155062
 ara3d/dental_clinic.ifc	212	SweptSolid	0	76	0	0	0	-	0	6076059
 ara3d/dental_clinic.ifc	213	SweptSolid	0	44	0	0	0	-	0	4086273
 ara3d/dental_clinic.ifc	214	SweptSolid	0	76	0	0	0	-	0	6479706
@@ -1158,8 +1158,8 @@ various/rvt01.ifc	15917	SweptSolid	40	264	0	0	40	16	60	-
 various/rvt01.ifc	16231	SweptSolid	34	80	0	0	34	0	41	-
 various/rvt01.ifc	16286	SweptSolid	0	220	0	0	0	-	24	851988
 various/rvt01.ifc	16805	SweptSolid	14	158	0	0	14	8	27	-
-various/rvt01.ifc	17553	Tessellation	7	165	1	0	0	0	9	-
-various/rvt01.ifc	17615	Tessellation	3	103	0	0	3	0	3	-
+various/rvt01.ifc	17553	Tessellation	0	214	1	0	0	-	2	21926
+various/rvt01.ifc	17615	Tessellation	0	252	0	0	0	-	0	21887
 various/rvt01.ifc	17919	Tessellation	0	116	0	0	0	-	0	11133
 various/rvt01.ifc	17985	Tessellation	0	112	0	0	0	-	0	19415
 various/rvt01.ifc	18169	SweptSolid	16	224	0	0	16	8	30	-
@@ -1176,7 +1176,7 @@ various/rvt01.ifc	30125	Tessellation	0	206	0	0	0	-	0	80813
 various/rvt01.ifc	30518	Tessellation	0	244	0	0	0	-	0	156363
 various/rvt01.ifc	31083	Tessellation	0	144	0	0	0	-	0	11505
 various/rvt01.ifc	31156	Tessellation	0	208	1	0	0	-	0	97266
-various/rvt01.ifc	31323	Tessellation	8	198	0	0	6	0	8	-
+various/rvt01.ifc	31323	Tessellation	8	198	0	0	7	0	8	-
 various/rvt01.ifc	31430	Tessellation	0	118	0	0	0	-	0	9700
 various/rvt01.ifc	31577	Tessellation	0	160	0	0	0	-	0	54643
 various/rvt01.ifc	31648	Tessellation	0	160	0	0	0	-	0	72631

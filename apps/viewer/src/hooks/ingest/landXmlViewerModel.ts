@@ -34,9 +34,11 @@ export function parseLandXmlViewerModelAsync(
   isCurrent: () => boolean = () => true,
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
-    return parseLandXmlTinInCurrentRealm(buffer).then((parsed) => (
-      attachSyntheticStore(parseLandXmlGeometry(parsed), buffer.byteLength)
-    ));
+    if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
+    return parseLandXmlTinInCurrentRealm(buffer).then((parsed) => {
+      if (!isCurrent()) throw new Error('LandXML parsing cancelled');
+      return attachSyntheticStore(parseLandXmlGeometry(parsed), buffer.byteLength);
+    });
   }
   const fileSize = buffer.byteLength;
   return new Promise((resolve, reject) => {

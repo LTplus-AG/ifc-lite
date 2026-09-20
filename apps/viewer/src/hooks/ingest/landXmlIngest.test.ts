@@ -90,6 +90,11 @@ describe('LandXML content dispatch (#5041)', () => {
     const longProlog = `<!--${'x'.repeat(8 * 1024)}-->\n${LANDXML}`;
     assert.equal(isLandXmlContent(new TextEncoder().encode(longProlog)), true);
   });
+
+  it('finds the namespace after a quoted greater-than sign in the root tag', () => {
+    const quoted = LANDXML.replace('<LandXML ', '<LandXML note="a > b" ');
+    assert.equal(isLandXmlContent(new TextEncoder().encode(quoted)), true);
+  });
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {

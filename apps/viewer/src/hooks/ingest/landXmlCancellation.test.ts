@@ -6,6 +6,19 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
 
+it('refuses stale worker-less LandXML parsing before initializing WASM (#5041)', async () => {
+  const originalWorker = globalThis.Worker;
+  try {
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: undefined });
+    await assert.rejects(
+      parseLandXmlViewerModelAsync(new ArrayBuffer(8), () => false),
+      /LandXML parsing cancelled/,
+    );
+  } finally {
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
+  }
+});
+
 it('terminates LandXML worker parsing within the cancellation polling bound (#5041)', async () => {
   const originalWorker = globalThis.Worker;
   let terminated = 0;

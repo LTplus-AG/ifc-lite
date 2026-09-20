@@ -36,17 +36,40 @@ function decodeXmlHead(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
+function rootStartTag(source: string): { qName: string; attributes: string } | null {
+  const start = /<(?![!?])([A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)\b/.exec(source);
+  if (!start) return null;
+  const attributesStart = start.index + start[0].length;
+  let quote: '"' | "'" | null = null;
+  for (let index = attributesStart; index < source.length; index++) {
+    const character = source[index];
+    if (quote !== null) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '>') {
+      return {
+        qName: start[1],
+        attributes: source.slice(attributesStart, index),
+      };
+    } else if (character === '<') {
+      return null;
+    }
+  }
+  return null;
+}
+
 /** Classify generic XML by its root QName and bound LandXML namespace. */
 export function isLandXmlContent(bytes: Uint8Array): boolean {
   const head = decodeXmlHead(bytes.subarray(0, 64 * 1024 * 1024)).replace(/<!--[\s\S]*?-->/g, '');
-  const root = /<(?![!?])([A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)\b([^>]*)>/.exec(head);
+  const root = rootStartTag(head);
   if (!root) return false;
-  const [prefix = '', localName] = root[1].includes(':')
-    ? root[1].split(':', 2)
-    : ['', root[1]];
+  const [prefix = '', localName] = root.qName.includes(':')
+    ? root.qName.split(':', 2)
+    : ['', root.qName];
   if (localName !== 'LandXML') return false;
   const namespaceName = prefix ? `xmlns:${prefix}` : 'xmlns';
   const escapedName = namespaceName.replace(':', '\\:');
-  const namespace = new RegExp(`(?:^|\\s)${escapedName}\\s*=\\s*["']([^"']+)["']`).exec(root[2]);
+  const namespace = new RegExp(`(?:^|\\s)${escapedName}\\s*=\\s*["']([^"']+)["']`).exec(root.attributes);
   return namespace !== null && LANDXML_NAMESPACES.has(namespace[1]);
 }

@@ -11,6 +11,8 @@
 
 mod ifc2x3;
 mod ifc4;
+mod ifc4x1;
+mod ifc4x2;
 pub mod legacy_attribute_names;
 mod schema;
 pub(crate) mod schema_registry;
@@ -21,4 +23,6 @@ pub use type_ids::*;
 
 // Re-export the generated IfcType directly (this is now the canonical schema)
 pub use schema::{IfcType, ALL as IFC_TYPES};
-pub use schema_registry::attribute_names_for_schema;
+pub use schema_registry::{
+    attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, SchemaEntityInfo,
+};

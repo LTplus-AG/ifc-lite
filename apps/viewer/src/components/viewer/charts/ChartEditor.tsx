@@ -159,13 +159,13 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       }}
     >
       <label className="flex flex-col gap-0.5">
-        <span className="text-muted-foreground">Title</span>
-        <input className={field} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} aria-label="Chart title" />
+        <span className="text-muted-foreground">{t('chartEditor.titleLabel')}</span>
+        <input className={field} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} aria-label={t('chartEditor.titleAriaLabel')} />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Source{rowCount === 0 ? ' (nothing loaded for this source yet)' : ` (${rowCount.toLocaleString()} rows)`}</span>
-          <select className={field} value={draft.source} onChange={(e) => setSource(e.target.value as ChartSource)} aria-label="Source">
+          <span className="text-muted-foreground">{rowCount === 0 ? t('chartEditor.sourceLabelEmpty') : t('chartEditor.sourceLabelWithCount', { count: rowCount.toLocaleString() })}</span>
+          <select className={field} value={draft.source} onChange={(e) => setSource(e.target.value as ChartSource)} aria-label={t('chartEditor.sourceAriaLabel')}>
             {(Object.keys(SOURCE_LABELS) as ChartSource[]).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
           </select>
         </label>
@@ -211,29 +211,29 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
           )}
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Chart</span>
-          <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label="Chart type">
-            {(Object.keys(TYPE_LABELS) as ChartType[]).map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+          <span className="text-muted-foreground">{t('chartEditor.chartTypeLabel')}</span>
+          <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label={t('chartEditor.chartTypeAriaLabel')}>
+            {(Object.keys(TYPE_LABELS) as ChartType[]).map((type) => <option key={type} value={type}>{TYPE_LABELS[type]}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Group by</span>
-          <select className={field} value={draft.dimension} onChange={(e) => setDraft({ ...draft, dimension: e.target.value })} aria-label="Group by">
+          <span className="text-muted-foreground">{t('chartEditor.groupByLabel')}</span>
+          <select className={field} value={draft.dimension} onChange={(e) => setDraft({ ...draft, dimension: e.target.value })} aria-label={t('chartEditor.groupByAriaLabel')}>
             {!dimensionOk && <option value={draft.dimension}>—</option>}
             {dims.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </label>
         {draft.type === 'stackedBar' && (
           <label className="flex flex-col gap-0.5">
-            <span className="text-muted-foreground">Stack by</span>
-            <select className={field} value={draft.stackBy ?? ''} onChange={(e) => setDraft({ ...draft, stackBy: e.target.value || undefined })} aria-label="Stack by">
+            <span className="text-muted-foreground">{t('chartEditor.stackByLabel')}</span>
+            <select className={field} value={draft.stackBy ?? ''} onChange={(e) => setDraft({ ...draft, stackBy: e.target.value || undefined })} aria-label={t('chartEditor.stackByAriaLabel')}>
               <option value="">—</option>
               {categoryColumns.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
           </label>
         )}
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Measure</span>
+          <span className="text-muted-foreground">{t('chartEditor.measureLabel')}</span>
           <select
             className={field}
             value={draft.measure.agg === 'count' ? 'count' : `sum:${draft.measure.column ?? ''}`}
@@ -241,34 +241,34 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
               const v = e.target.value;
               setDraft({ ...draft, measure: v === 'count' ? { agg: 'count' } : { agg: 'sum', column: v.slice(4) } });
             }}
-            aria-label="Measure"
+            aria-label={t('chartEditor.measureAriaLabel')}
           >
-            <option value="count">Count</option>
-            {numberColumns.map((c) => <option key={c.id} value={`sum:${c.id}`}>Sum of {c.label}{c.unit ? ` (${c.unit})` : ''}</option>)}
+            <option value="count">{t('chartEditor.countOption')}</option>
+            {numberColumns.map((c) => <option key={c.id} value={`sum:${c.id}`}>{t('chartEditor.sumOfOption', { column: c.label, unit: c.unit ? ` (${c.unit})` : '' })}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Top N (rest as Other)</span>
+          <span className="text-muted-foreground">{t('chartEditor.topNLabel')}</span>
           <input
             className={field}
             type="number"
             min={0}
             value={draft.topN ?? ''}
             onChange={(e) => setDraft({ ...draft, topN: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
-            aria-label="Top N"
+            aria-label={t('chartEditor.topNAriaLabel')}
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Order</span>
-          <select className={field} value={draft.sort ?? 'value'} onChange={(e) => setDraft({ ...draft, sort: e.target.value as 'value' | 'label' })} aria-label="Order">
-            <option value="value">Largest first</option>
-            <option value="label">By label</option>
+          <span className="text-muted-foreground">{t('chartEditor.orderLabel')}</span>
+          <select className={field} value={draft.sort ?? 'value'} onChange={(e) => setDraft({ ...draft, sort: e.target.value as 'value' | 'label' })} aria-label={t('chartEditor.orderAriaLabel')}>
+            <option value="value">{t('chartEditor.orderValueOption')}</option>
+            <option value="label">{t('chartEditor.orderLabelOption')}</option>
           </select>
         </label>
       </div>
       <div className="flex justify-end gap-1">
-        <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" size="sm" className="h-6 px-2 text-xs" disabled={!valid}>Save chart</Button>
+        <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onCancel}>{t('chartEditor.cancelButton')}</Button>
+        <Button type="submit" size="sm" className="h-6 px-2 text-xs" disabled={!valid}>{t('chartEditor.saveButton')}</Button>
       </div>
     </form>
   );

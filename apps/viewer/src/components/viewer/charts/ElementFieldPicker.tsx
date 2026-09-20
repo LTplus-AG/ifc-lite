@@ -10,6 +10,7 @@
  */
 import { useState } from 'react';
 import { elementFieldColumnId, type ElementFieldBinding } from '@ifc-lite/charts';
+import { useTranslation } from '@/i18n/useTranslation';
 import type { ElementFieldCatalog, ElementFieldOption } from '@/lib/charts/element-field-reader';
 
 export interface ElementFieldPickerProps {
@@ -62,6 +63,7 @@ export function filterSets(sets: ReadonlyMap<string, ElementFieldOption[]>, filt
 }
 
 export function ElementFieldPicker({ value, catalog, loading, className, onChange }: ElementFieldPickerProps) {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState('');
   const family = familyOf(value);
   const needle = filter.trim().toLowerCase();
@@ -97,8 +99,8 @@ export function ElementFieldPicker({ value, catalog, loading, className, onChang
   return (
     <div className="col-span-2 grid grid-cols-2 gap-2" data-element-field-picker>
       <label className="flex flex-col gap-0.5">
-        <span className="text-muted-foreground">Element field{loading ? ' (discovering…)' : ''}</span>
-        <select className={className} value={family} onChange={(event) => setFamily(event.target.value as Family)} aria-label="Element field source">
+        <span className="text-muted-foreground">{loading ? t('elementFieldPicker.fieldLabelLoading') : t('elementFieldPicker.fieldLabel')}</span>
+        <select className={className} value={family} onChange={(event) => setFamily(event.target.value as Family)} aria-label={t('elementFieldPicker.fieldSourceAriaLabel')}>
           {(Object.keys(FAMILY_LABELS) as Family[]).map((candidate) => (
             <option key={candidate} value={candidate} disabled={familyEmpty(candidate) && family !== candidate}>{FAMILY_LABELS[candidate]}</option>
           ))}
@@ -106,15 +108,15 @@ export function ElementFieldPicker({ value, catalog, loading, className, onChang
       </label>
       {family !== 'built-in' && (
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Filter</span>
-          <input className={className} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Set or field name…" aria-label="Filter fields" />
+          <span className="text-muted-foreground">{t('elementFieldPicker.filterLabel')}</span>
+          <input className={className} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={t('elementFieldPicker.filterPlaceholder')} aria-label={t('elementFieldPicker.filterAriaLabel')} />
         </label>
       )}
       {family === 'attribute' && (
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Attribute</span>
-          <select className={className} value={valueId} onChange={(event) => selectId(catalog.attributes, event.target.value)} aria-label="IFC attribute">
-            {!selectedAvailable && value && <option value={valueId}>{value.kind === 'attribute' ? value.attributeName : ''} (unavailable)</option>}
+          <span className="text-muted-foreground">{t('elementFieldPicker.attributeLabel')}</span>
+          <select className={className} value={valueId} onChange={(event) => selectId(catalog.attributes, event.target.value)} aria-label={t('elementFieldPicker.attributeAriaLabel')}>
+            {!selectedAvailable && value && <option value={valueId}>{t('elementFieldPicker.unavailableAttributeOption', { name: value.kind === 'attribute' ? value.attributeName : '' })}</option>}
             {attributeOptions.map((option) => <option key={elementFieldColumnId(option.binding)} value={elementFieldColumnId(option.binding)}>{optionText(option)}</option>)}
           </select>
         </label>
@@ -122,16 +124,16 @@ export function ElementFieldPicker({ value, catalog, loading, className, onChang
       {(family === 'property' || family === 'quantity') && sets && (
         <>
           <label className="flex flex-col gap-0.5">
-            <span className="text-muted-foreground">{family === 'property' ? 'Property set' : 'Quantity set'}</span>
-            <select className={className} value={chosenSet} onChange={(event) => onChange(firstOf(visibleSets.get(event.target.value) ?? sets.get(event.target.value)))} aria-label={family === 'property' ? 'IFC property set' : 'IFC quantity set'}>
-              {!visibleSets.has(chosenSet) && <option value={chosenSet}>{chosenSet}{sets.has(chosenSet) ? '' : ' (unavailable)'}</option>}
+            <span className="text-muted-foreground">{family === 'property' ? t('elementFieldPicker.propertySetLabel') : t('elementFieldPicker.quantitySetLabel')}</span>
+            <select className={className} value={chosenSet} onChange={(event) => onChange(firstOf(visibleSets.get(event.target.value) ?? sets.get(event.target.value)))} aria-label={family === 'property' ? t('elementFieldPicker.propertySetAriaLabel') : t('elementFieldPicker.quantitySetAriaLabel')}>
+              {!visibleSets.has(chosenSet) && <option value={chosenSet}>{sets.has(chosenSet) ? chosenSet : t('elementFieldPicker.unavailableSetOption', { name: chosenSet })}</option>}
               {[...visibleSets.keys()].map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-0.5">
-            <span className="text-muted-foreground">{family === 'property' ? 'Property' : 'Quantity'}</span>
-            <select className={className} value={valueId} onChange={(event) => selectId(sets.get(chosenSet) ?? [], event.target.value)} aria-label={family === 'property' ? 'IFC property' : 'IFC quantity'}>
-              {!selectedAvailable && value && <option value={valueId}>{value.kind === 'property' ? value.propertyName : value.kind === 'quantity' ? value.quantityName : ''} (unavailable)</option>}
+            <span className="text-muted-foreground">{family === 'property' ? t('elementFieldPicker.propertyLabel') : t('elementFieldPicker.quantityLabel')}</span>
+            <select className={className} value={valueId} onChange={(event) => selectId(sets.get(chosenSet) ?? [], event.target.value)} aria-label={family === 'property' ? t('elementFieldPicker.propertyAriaLabel') : t('elementFieldPicker.quantityAriaLabel')}>
+              {!selectedAvailable && value && <option value={valueId}>{t('elementFieldPicker.unavailableFieldOption', { name: value.kind === 'property' ? value.propertyName : value.kind === 'quantity' ? value.quantityName : '' })}</option>}
               {setOptions.map((option) => <option key={elementFieldColumnId(option.binding)} value={elementFieldColumnId(option.binding)}>{optionText(option)}</option>)}
             </select>
           </label>
@@ -139,15 +141,21 @@ export function ElementFieldPicker({ value, catalog, loading, className, onChang
       )}
       {family === 'relation' && (
         <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">Relation</span>
-          <select className={className} value={valueId} onChange={(event) => selectId(catalog.relations, event.target.value)} aria-label="IFC relation">
-            {!selectedAvailable && value && <option value={valueId}>{value.kind === 'classification' && value.system ? `Classification: ${value.system}` : value.kind} (unavailable)</option>}
+          <span className="text-muted-foreground">{t('elementFieldPicker.relationLabel')}</span>
+          <select className={className} value={valueId} onChange={(event) => selectId(catalog.relations, event.target.value)} aria-label={t('elementFieldPicker.relationAriaLabel')}>
+            {!selectedAvailable && value && (
+              <option value={valueId}>
+                {t('elementFieldPicker.unavailableRelationOption', {
+                  name: value.kind === 'classification' && value.system ? t('elementFieldPicker.classificationName', { system: value.system }) : value.kind,
+                })}
+              </option>
+            )}
             {relationOptions.map((option) => <option key={elementFieldColumnId(option.binding)} value={elementFieldColumnId(option.binding)}>{optionText(option)}</option>)}
           </select>
         </label>
       )}
       {value && !loading && !selectedAvailable && needle === '' && (
-        <p className="col-span-2 text-amber-600" role="status">This saved field is unavailable in the loaded models. It will be preserved.</p>
+        <p className="col-span-2 text-amber-600" role="status">{t('elementFieldPicker.unavailableFieldNotice')}</p>
       )}
     </div>
   );

@@ -16,6 +16,7 @@ import type { Aggregation, DashboardSpec, ReportPageSetup, ReportSpec } from '@i
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n/useTranslation';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
@@ -39,6 +40,7 @@ function isReport(d: DashboardSpec | null): d is ReportSpec {
 }
 
 export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup, seams }: ReportExportDialogProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const sheetFields = useViewerStore((s) => s.activeSheet?.titleBlock.fields);
@@ -108,25 +110,25 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? openDialog() : setOpen(false))}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={!dashboard || dashboard.charts.length === 0} title="Print this dashboard to a PDF report">
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={!dashboard || dashboard.charts.length === 0} title={t('reportExportDialog.triggerTitle')}>
           <FileText className="h-3.5 w-3.5 mr-1" />
-          Report
+          {t('reportExportDialog.triggerLabel')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md text-xs" data-report-dialog>
         <DialogHeader>
-          <DialogTitle>Export report</DialogTitle>
-          <DialogDescription>Every chart of the dashboard as a vector chart with its bucket table{snapshots ? ' and a 3D snapshot of its largest bucket' : ''}.</DialogDescription>
+          <DialogTitle>{t('reportExportDialog.dialogTitle')}</DialogTitle>
+          <DialogDescription>{snapshots ? t('reportExportDialog.descriptionWithSnapshots') : t('reportExportDialog.descriptionWithoutSnapshots')}</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-0.5"><span className="text-muted-foreground">Page</span>
-            <select className={field} value={page.size} onChange={(e) => setPage({ ...page, size: e.target.value as ReportPageSetup['size'] })} aria-label="Page size">
-              <option value="A4">A4</option><option value="A3">A3</option>
+          <label className="flex flex-col gap-0.5"><span className="text-muted-foreground">{t('reportExportDialog.pageSizeLabel')}</span>
+            <select className={field} value={page.size} onChange={(e) => setPage({ ...page, size: e.target.value as ReportPageSetup['size'] })} aria-label={t('reportExportDialog.pageSizeAriaLabel')}>
+              <option value="A4">{t('reportExportDialog.pageSizeA4')}</option><option value="A3">{t('reportExportDialog.pageSizeA3')}</option>
             </select>
           </label>
-          <label className="flex flex-col gap-0.5"><span className="text-muted-foreground">Orientation</span>
-            <select className={field} value={page.orientation} onChange={(e) => setPage({ ...page, orientation: e.target.value as ReportPageSetup['orientation'] })} aria-label="Orientation">
-              <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+          <label className="flex flex-col gap-0.5"><span className="text-muted-foreground">{t('reportExportDialog.orientationLabel')}</span>
+            <select className={field} value={page.orientation} onChange={(e) => setPage({ ...page, orientation: e.target.value as ReportPageSetup['orientation'] })} aria-label={t('reportExportDialog.orientationAriaLabel')}>
+              <option value="portrait">{t('reportExportDialog.orientationPortrait')}</option><option value="landscape">{t('reportExportDialog.orientationLandscape')}</option>
             </select>
           </label>
           {FIELDS.map(([key, label]) => (
@@ -136,13 +138,13 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
           ))}
           <label className="col-span-2 inline-flex items-center gap-1 cursor-pointer">
             <input type="checkbox" checked={snapshots} onChange={(e) => setSnapshots(e.target.checked)} />
-            Include a 3D snapshot of each chart&apos;s largest bucket
+            {t('reportExportDialog.snapshotsCheckboxLabel')}
           </label>
         </div>
         <DialogFooter>
           <Button size="sm" className="h-7 px-3 text-xs" disabled={busy || !dashboard} onClick={() => void run()} data-report-export>
             {busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
-            Export PDF
+            {t('reportExportDialog.exportButton')}
           </Button>
         </DialogFooter>
       </DialogContent>

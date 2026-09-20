@@ -71,7 +71,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
     const one = landXmlModel('one', line('same-source'), { x: 1, y: 2, z: 3 });
     const two = landXmlModel('two', line('same-source'), { x: 100, y: 200, z: 300 });
     useViewerStore.setState({ ...fixtureModels(one, two), selectedLandXmlSource: null });
-    let vertices = new Float32Array();
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
 
@@ -92,7 +92,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
   it('does not lift a two-dimensional source list to an invented elevation', () => {
     const model = landXmlModel('two-dimensional', line('flat', 2));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'flat' } });
-    let vertices = new Float32Array();
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
     assert.equal(vertices.length, 0, 'a PntList2D stays inspectable but has no fabricated 3D overlay');

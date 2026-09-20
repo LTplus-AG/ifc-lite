@@ -173,6 +173,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         name: 'Current Model',
         isDirty: false,
         schemaVersion: legacyIfcDataStore.schemaVersion,
+        sourceSchema: undefined,
       });
     }
 
@@ -205,6 +206,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         visible: true,
         collapsed: false,
         schemaVersion: legacyIfcDataStore.schemaVersion,
+        sourceSchema: undefined,
       };
     }
     return models.get(selectedModelId);

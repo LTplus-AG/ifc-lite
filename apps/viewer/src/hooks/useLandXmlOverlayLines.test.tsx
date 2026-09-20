@@ -139,6 +139,23 @@ describe('LandXML source overlay rendering (#5042)', () => {
     assert.deepEqual([...vertices], [25, 37, -16, 55, 67, -46]);
   });
 
+  it('keeps overlays aligned with model rotation', () => {
+    const model = landXmlModel('rotated-terrain', line('boundary'));
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+
+    act(() => useViewerStore.setState((state) => ({ modelPlacement: {
+      ...state.modelPlacement,
+      placements: new Map([[model.id, {
+        translation: [0, 0, 0], rotation: { angle: Math.PI / 2, pivot: [0, 0, 0] }, locked: false,
+      }]]),
+      revision: state.modelPlacement.revision + 1,
+    } })));
+    assert.deepEqual([...vertices], [-10, 30, -20, -40, 60, -50]);
+  });
+
   it('clears source selection on model switch and unload', () => {
     const one = landXmlModel('one', line('one'));
     const two = landXmlModel('two', line('two'));

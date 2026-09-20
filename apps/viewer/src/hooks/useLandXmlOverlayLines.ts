@@ -7,8 +7,9 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '../store/index.js';
 import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
-import { displayedTranslation } from '@/lib/model-placement/state';
-import { toRenderTranslation } from '@/lib/model-placement/translation';
+import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
+import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
+import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
 
 /**
  * Adapt authored 3D LandXML boundary/breakline/contour coordinates into the
@@ -28,7 +29,11 @@ export function useLandXmlOverlayLines(): Float32Array {
       const units = document?.units;
       if (!document || !frame || !units) continue;
       const offset = totalYupOffset(frame);
-      const translation = toRenderTranslation(displayedTranslation(placement, model.id));
+      const modelPlacement = placementFor(placement, model.id);
+      const pointPlacement = { ...modelPlacement, translation: displayedTranslation(placement, model.id) };
+      const place = (point: { x: number; y: number; z: number }) => toRenderTranslation(
+        modelPointToWorkspacePoint(fromRenderTranslation(point), pointPlacement),
+      );
       for (const surface of document.surfaces) {
         for (const line of [...surface.boundaries, ...surface.breaklines, ...surface.contours]) {
           // A source-list selection is deliberately a filter, not an IFC pick:
@@ -41,16 +46,18 @@ export function useLandXmlOverlayLines(): Float32Array {
           for (let index = 1; index < line.points.length; index++) {
             const [northA, eastA, elevationA] = line.points[index - 1];
             const [northB, eastB, elevationB] = line.points[index];
-            const a = {
-              x: eastA * units.linearScaleToMeters - offset.x + translation[0],
-              y: elevationA * units.elevationScaleToMeters - offset.y + translation[1],
-              z: -northA * units.linearScaleToMeters - offset.z + translation[2],
-            };
-            const b = {
-              x: eastB * units.linearScaleToMeters - offset.x + translation[0],
-              y: elevationB * units.elevationScaleToMeters - offset.y + translation[1],
-              z: -northB * units.linearScaleToMeters - offset.z + translation[2],
-            };
+            const [ax, ay, az] = place({
+              x: eastA * units.linearScaleToMeters - offset.x,
+              y: elevationA * units.elevationScaleToMeters - offset.y,
+              z: -northA * units.linearScaleToMeters - offset.z,
+            });
+            const [bx, by, bz] = place({
+              x: eastB * units.linearScaleToMeters - offset.x,
+              y: elevationB * units.elevationScaleToMeters - offset.y,
+              z: -northB * units.linearScaleToMeters - offset.z,
+            });
+            const a = { x: ax, y: ay, z: az };
+            const b = { x: bx, y: by, z: bz };
             if (!boundsFitRenderFrame({
               min: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), z: Math.min(a.z, b.z) },
               max: { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y), z: Math.max(a.z, b.z) },

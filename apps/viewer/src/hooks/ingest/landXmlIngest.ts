@@ -5,6 +5,9 @@
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { boundsFitRenderFrame, MAX_RENDER_FRAME_ORIGIN_METRES } from './landXmlRenderFrame.js';
+import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
+
+export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 
 export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
 
@@ -15,74 +18,6 @@ export interface LandXmlGeometryPayload {
   surfaceNames: string[];
   /** Durable source records, independent of all mesh/component partitioning. */
   semanticDocument: LandXmlTinDocument;
-}
-
-/** Semantic source records produced by the bounded Rust LandXML parser. */
-export interface LandXmlTinSurface {
-  sourceId: string;
-  name: string;
-  kind: 'tin' | 'grid' | 'volume' | 'other';
-  renderState: 'rendered' | 'preserved_only' | 'unsupported';
-  points: Array<{ sourceId: string; id: string; northing: number; easting: number; elevation: number }>;
-  faces: Array<readonly [string, string, string]>;
-  faceSourceIds: string[];
-  hiddenFaceCount: number;
-  boundaries: LandXmlPolyline[];
-  breaklines: LandXmlPolyline[];
-  contours: LandXmlPolyline[];
-}
-
-export interface LandXmlPolyline {
-  sourceId: string;
-  name: string | null;
-  kind: string | null;
-  points: Array<readonly [number, number, number]>;
-}
-
-export interface LandXmlTinDocument {
-  version: string;
-  units: {
-    linearUnit: string;
-    elevationUnit: string;
-    linearScaleToMeters: number;
-    elevationScaleToMeters: number;
-  } | null;
-  surfaces: LandXmlTinSurface[];
-  extensions: Array<{ namespace: string; localName: string; path: string }>;
-  warnings: string[];
-}
-
-/** A selectable semantic record, independent of renderer mesh identifiers. */
-export type LandXmlSourceRecord =
-  | { kind: 'surface'; surface: LandXmlTinSurface }
-  | { kind: 'point'; surface: LandXmlTinSurface; point: LandXmlTinSurface['points'][number] }
-  | { kind: 'face'; surface: LandXmlTinSurface; pointIds: readonly [string, string, string] }
-  | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline };
-
-/**
- * Resolve a semantic source record after any mesh component split, frame
- * rebase, or federation ID offset.  This is the selection seam used by the
- * terrain inspector; it deliberately accepts only a source ID, never an IFC
- * express ID.
- */
-export function findLandXmlSourceRecord(
-  document: LandXmlTinDocument,
-  sourceId: string,
-): LandXmlSourceRecord | null {
-  for (const surface of document.surfaces) {
-    if (surface.sourceId === sourceId) return { kind: 'surface', surface };
-    const point = surface.points.find((candidate) => candidate.sourceId === sourceId);
-    if (point) return { kind: 'point', surface, point };
-    const faceIndex = surface.faceSourceIds.indexOf(sourceId);
-    if (faceIndex >= 0) return { kind: 'face', surface, pointIds: surface.faces[faceIndex] };
-    for (const [kind, lines] of [
-      ['boundary', surface.boundaries], ['breakline', surface.breaklines], ['contour', surface.contours],
-    ] as const) {
-      const line = lines.find((candidate) => candidate.sourceId === sourceId);
-      if (line) return { kind, surface, line };
-    }
-  }
-  return null;
 }
 
 interface WorldPoint {

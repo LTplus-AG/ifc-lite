@@ -5,7 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
-import { connectedFaceComponents, findLandXmlSourceRecord } from './landXmlIngest.js';
+import { connectedFaceComponents } from './landXmlIngest.js';
+import { findLandXmlSourceRecord } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
 import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 

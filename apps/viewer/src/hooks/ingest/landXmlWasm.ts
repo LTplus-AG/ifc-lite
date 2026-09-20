@@ -5,7 +5,8 @@
 /** Raw-byte bridge to the bounded Rust LandXML parser. */
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
-import type { LandXmlPolyline, LandXmlSourceBuffer, LandXmlTinDocument, LandXmlTinSurface } from './landXmlIngest.js';
+import type { LandXmlSourceBuffer } from './landXmlIngest.js';
+import type { LandXmlPolyline, LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 
 interface NodeModuleApi {
   createRequire(url: string): { resolve(specifier: string): string };

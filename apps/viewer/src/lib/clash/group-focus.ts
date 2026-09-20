@@ -274,7 +274,8 @@ export function focusClashGroup(
   // A storey filter or exploded offsets would render only a transformed
   // subset of the group, but BCF cannot serialize either presentation. Use
   // the one canonical level-display transition before framing the group.
-  const waitForLevelDisplayReset = state.levelDisplayMode === 'exploded';
+  const waitForLevelDisplayReset = state.selectedStoreys.size > 0
+    || state.levelDisplayMode === 'exploded';
   if (state.selectedStoreys.size > 0 || state.levelDisplayMode !== 'stacked') {
     applyLevelDisplayMode('stacked');
   }

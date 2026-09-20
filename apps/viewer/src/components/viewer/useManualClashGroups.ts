@@ -135,11 +135,10 @@ export function useManualClashGroups({
     });
   }, [selected, definitions, resolved]);
 
-  const submitDialog = useCallback((name: string): void => {
-    if (!dialog) return;
+  const submitDialog = useCallback((name: string): boolean => {
+    if (!dialog) return false;
     if (dialog.mode === 'rename') {
-      commit(definitions.map((group) => group.id === dialog.groupId ? { ...group, name } : group));
-      return;
+      return commit(definitions.map((group) => group.id === dialog.groupId ? { ...group, name } : group));
     }
     const next = [...definitions, {
       id: `manual-${crypto.randomUUID()}`,
@@ -149,7 +148,9 @@ export function useManualClashGroups({
     if (commit(next)) {
       setCheckedIds(new Set());
       showGroups();
+      return true;
     }
+    return false;
   }, [dialog, definitions, selected, commit, showGroups]);
 
   const removeGroup = useCallback((groupId: string): void => {
@@ -166,7 +167,10 @@ export function useManualClashGroups({
     if (!group || group.members.length === 0) return;
     setCreatingTopic(true);
     try {
-      const focused = focusClashes(group.members, focusMode);
+      // Ghosting is a viewer-only presentation channel that BCF cannot replay.
+      // Capture the same A/B colors without the non-serializable context fade.
+      const captureMode = focusMode === 'ghost' ? 'highlight' : focusMode;
+      const focused = focusClashes(group.members, captureMode);
       if (!focused) {
         toast.error('None of this group’s objects are available in the loaded models.');
         return;

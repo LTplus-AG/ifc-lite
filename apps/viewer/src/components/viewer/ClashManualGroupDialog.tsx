@@ -13,7 +13,7 @@ interface ClashManualGroupDialogProps {
   memberCount: number;
   mode: 'create' | 'rename';
   onOpenChange: (open: boolean) => void;
-  onSubmit: (name: string) => void;
+  onSubmit: (name: string) => boolean;
 }
 
 export function ClashManualGroupDialog({
@@ -33,8 +33,7 @@ export function ClashManualGroupDialog({
   const submit = (): void => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onSubmit(trimmed);
-    onOpenChange(false);
+    if (onSubmit(trimmed)) onOpenChange(false);
   };
 
   return (

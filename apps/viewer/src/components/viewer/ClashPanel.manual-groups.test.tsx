@@ -13,6 +13,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { MANUAL_CLASH_GROUPS_KEY } from '@/lib/clash/manual-groups';
 import { ClashPanel } from './ClashPanel.js';
+import { ClashManualGroupDialog } from './ClashManualGroupDialog.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 800 });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
@@ -131,6 +132,8 @@ describe('ClashPanel manual groups (#4921)', () => {
     await act(async () => {
       createBcf.click();
       useViewerStore.setState({ bcfProject: concurrentProject });
+      assert.equal(useViewerStore.getState().ghostExceptEntities, null,
+        'BCF capture normalizes viewer-only ghosting to a reproducible colored presentation');
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       assert.equal(useViewerStore.getState().bcfProject?.topics.size, 1,
         'capture must not commit a topic at an intermediate animated camera pose');
@@ -167,5 +170,23 @@ describe('ClashPanel manual groups (#4921)', () => {
     assert.equal(container!.querySelector('button[aria-label="Collapse Level 2 riser"]'), null);
     const afterUngroup = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: unknown[] };
     assert.deepEqual(afterUngroup.groups, []);
+  });
+
+  it('keeps the create dialog open when its persistence callback fails', async () => {
+    let closeRequested = false;
+    await act(async () => root!.render(
+      <ClashManualGroupDialog
+        open
+        initialName="Retry this group"
+        memberCount={2}
+        mode="create"
+        onOpenChange={(open) => { closeRequested = !open; }}
+        onSubmit={() => false}
+      />,
+    ));
+    await act(async () => buttonWithText('Create group').click());
+    assert.equal(closeRequested, false);
+    assert.ok(document.body.querySelector('input[maxlength="100"]'),
+      'the entered name remains available for retry');
   });
 });

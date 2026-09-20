@@ -553,6 +553,28 @@ describe('manual clash group focus (#4921)', () => {
       'a storey isolation enabled during snapshot capture must invalidate the frame');
   });
 
+  it('waits for a stacked storey-filter reset to paint before framing', async () => {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const frameSelection = mock.fn();
+    useViewerStore.setState({
+      cameraCallbacks: { frameSelection },
+      selectedStoreys: new Set([44]),
+      levelDisplayMode: 'stacked',
+    });
+    const focused = focusClashGroup(
+      [clash('stacked-filter', 10, 20)],
+      (element) => ({ modelId: element.model, expressId: element.ref }),
+      mock.fn(),
+      'highlight',
+    );
+    assert.ok(focused);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 0, 'stale filtered bounds must not be framed');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    assert.equal(frameSelection.mock.callCount(), 1);
+  });
+
   it('clears an unserializable class filter and invalidates its reactivation', () => {
     useViewerStore.setState({
       classFilter: { ids: new Set([10]), label: 'IfcWall' },

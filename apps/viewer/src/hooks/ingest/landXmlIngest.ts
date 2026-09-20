@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { type Bounds3D } from '../../utils/localParsingUtils.js';
+import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
 import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';

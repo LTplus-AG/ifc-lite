@@ -68,13 +68,10 @@ function planPolyline(
   geometry: LandXmlPlanGeometry,
   resolved: { start: LandXmlPlanPoint | null; end: LandXmlPlanPoint | null; center: LandXmlPlanPoint | null },
 ): LandXmlPlanPoint[] | null {
-  if (!resolved.start || !resolved.end) return null;
-  if (geometry.kind === 'curve') return tessellateCurve(geometry, {
-    start: resolved.start,
-    end: resolved.end,
-    center: resolved.center,
-  });
-  return [resolved.start, ...(geometry.kind === 'irregular_line' ? geometry.intermediatePoints : []), resolved.end];
+  const { start, end, center } = resolved;
+  if (!start || !end) return null;
+  if (geometry.kind === 'curve') return tessellateCurve(geometry, { start, end, center });
+  return [start, ...(geometry.kind === 'irregular_line' ? geometry.intermediatePoints : []), end];
 }
 
 /** Match Rust's bounded curve-topology partition without replacing its analytics. */

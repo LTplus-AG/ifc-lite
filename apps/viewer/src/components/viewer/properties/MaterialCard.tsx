@@ -11,17 +11,22 @@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Layers } from 'lucide-react';
 import type { MaterialInfo } from '@ifc-lite/parser';
+import { useTranslation, type TranslationKey } from '@/i18n';
+import { EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
-const TYPE_LABELS: Record<string, string> = {
-  Material: 'Material',
-  MaterialLayerSet: 'Layer Set',
-  MaterialProfileSet: 'Profile Set',
-  MaterialConstituentSet: 'Constituent Set',
-  MaterialList: 'Material List',
+const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
+  Material: 'properties.material.typeLabel.material',
+  MaterialLayerSet: 'properties.material.typeLabel.layerSet',
+  MaterialProfileSet: 'properties.material.typeLabel.profileSet',
+  MaterialConstituentSet: 'properties.material.typeLabel.constituentSet',
+  MaterialList: 'properties.material.typeLabel.materialList',
 };
 
 export function MaterialCard({ material }: { material: MaterialInfo }) {
-  const typeLabel = TYPE_LABELS[material.type] || material.type;
+  const { t, locale } = useTranslation();
+  const typeLabelKey = TYPE_LABEL_KEYS[material.type];
+  const typeLabel = typeLabelKey ? t(typeLabelKey) : material.type;
   const displayName = material.name || typeLabel;
 
   return (
@@ -52,42 +57,42 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
           {/* Layer Set */}
           {material.type === 'MaterialLayerSet' && material.layers && (
             <>
-              {material.name && <MaterialRow label="Set Name" value={material.name} />}
+              {material.name && <MaterialRow label={t('properties.material.setName')} value={material.name} />}
               {material.layers.map((layer, i) => (
                 <div key={i} className="px-3 py-2 text-xs hover:bg-amber-50/50 dark:hover:bg-amber-900/20">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-amber-700 dark:text-amber-400">
-                      Layer {i + 1}
+                      {t('properties.material.layerN', { n: i + 1 })}
                     </span>
                     {layer.thickness !== undefined && (
                       <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
-                        {formatThickness(layer.thickness)}
+                        {formatThickness(layer.thickness, locale)}
                       </span>
                     )}
                   </div>
                   <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-2">
                     {layer.materialName && (
                       <>
-                        <span className="text-zinc-400">Material</span>
+                        <span className="text-zinc-400">{t('properties.material.materialLabel')}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{layer.materialName}</span>
                       </>
                     )}
                     {layer.name && (
                       <>
-                        <span className="text-zinc-400">Name</span>
+                        <span className="text-zinc-400">{EXPRESS_NAME_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{layer.name}</span>
                       </>
                     )}
                     {layer.category && (
                       <>
-                        <span className="text-zinc-400">Category</span>
+                        <span className="text-zinc-400">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{layer.category}</span>
                       </>
                     )}
                     {layer.isVentilated && (
                       <>
-                        <span className="text-zinc-400">Ventilated</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400">Yes</span>
+                        <span className="text-zinc-400">{EXPRESS_IS_VENTILATED_ATTRIBUTE}</span>
+                        <span className="font-mono text-amber-700 dark:text-amber-400">{t('properties.material.yes')}</span>
                       </>
                     )}
                   </div>
@@ -99,30 +104,30 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
           {/* Profile Set */}
           {material.type === 'MaterialProfileSet' && material.profiles && (
             <>
-              {material.name && <MaterialRow label="Set Name" value={material.name} />}
+              {material.name && <MaterialRow label={t('properties.material.setName')} value={material.name} />}
               {material.profiles.map((profile, i) => (
                 <div key={i} className="px-3 py-2 text-xs hover:bg-amber-50/50 dark:hover:bg-amber-900/20">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-amber-700 dark:text-amber-400">
-                      Profile {i + 1}
+                      {t('properties.material.profileN', { n: i + 1 })}
                     </span>
                   </div>
                   <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-2">
                     {profile.materialName && (
                       <>
-                        <span className="text-zinc-400">Material</span>
+                        <span className="text-zinc-400">{t('properties.material.materialLabel')}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{profile.materialName}</span>
                       </>
                     )}
                     {profile.name && (
                       <>
-                        <span className="text-zinc-400">Name</span>
+                        <span className="text-zinc-400">{EXPRESS_NAME_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{profile.name}</span>
                       </>
                     )}
                     {profile.category && (
                       <>
-                        <span className="text-zinc-400">Category</span>
+                        <span className="text-zinc-400">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{profile.category}</span>
                       </>
                     )}
@@ -135,29 +140,29 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
           {/* Constituent Set */}
           {material.type === 'MaterialConstituentSet' && material.constituents && (
             <>
-              {material.name && <MaterialRow label="Set Name" value={material.name} />}
+              {material.name && <MaterialRow label={t('properties.material.setName')} value={material.name} />}
               {material.constituents.map((constituent, i) => (
                 <div key={i} className="px-3 py-2 text-xs hover:bg-amber-50/50 dark:hover:bg-amber-900/20">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-amber-700 dark:text-amber-400">
-                      {constituent.name || `Constituent ${i + 1}`}
+                      {constituent.name || t('properties.material.constituentN', { n: i + 1 })}
                     </span>
                     {constituent.fraction !== undefined && (
                       <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
-                        {(constituent.fraction * 100).toFixed(1)}%
+                        {formatLocaleNumber(locale, constituent.fraction * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                       </span>
                     )}
                   </div>
                   <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-2">
                     {constituent.materialName && (
                       <>
-                        <span className="text-zinc-400">Material</span>
+                        <span className="text-zinc-400">{t('properties.material.materialLabel')}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{constituent.materialName}</span>
                       </>
                     )}
                     {constituent.category && (
                       <>
-                        <span className="text-zinc-400">Category</span>
+                        <span className="text-zinc-400">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
                         <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{constituent.category}</span>
                       </>
                     )}
@@ -171,7 +176,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
           {material.type === 'MaterialList' && material.materials && (
             <>
               {material.materials.map((m, i) => (
-                <MaterialRow key={i} label={`Material ${i + 1}`} value={m.name} />
+                <MaterialRow key={i} label={t('properties.material.materialN', { n: i + 1 })} value={m.name} />
               ))}
             </>
           )}
@@ -190,12 +195,12 @@ function MaterialRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatThickness(thickness: number): string {
-  if (thickness <= 0) return `${thickness.toFixed(1)} m`;
+function formatThickness(thickness: number, locale: string): string {
+  if (thickness <= 0) return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
   if (thickness >= 1) {
-    return `${thickness.toFixed(1)} m`;
+    return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
   }
   // Show in mm for sub-meter thicknesses
   const mm = thickness * 1000;
-  return `${mm.toFixed(1)} mm`;
+  return `${formatLocaleNumber(locale, mm, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mm`;
 }

@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { isInlineEditableToken, parseRawStepInput } from './raw-step-format';
+import { useTranslation } from '@/i18n';
 
 /** Match a bare `#N` STEP entity reference. */
 const REF_TOKEN_RE = /^#(\d+)$/;
@@ -49,6 +50,7 @@ export function RawStepRow({
   enableEditing,
   onNavigate,
 }: RawStepRowProps) {
+  const { t } = useTranslation();
   const setPositionalAttribute = useViewerStore((s) => s.setPositionalAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
@@ -116,7 +118,7 @@ export function RawStepRow({
        *  The `index` prop stays 0-based for store/overlay addressing. */}
       <span
         className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 tabular-nums tracking-wide"
-        aria-label={`positional index ${index + 1}`}
+        aria-label={t('properties.rawStepRow.positionalIndexAriaLabel', { index: index + 1 })}
       >
         [{index + 1}]
       </span>
@@ -170,7 +172,7 @@ export function RawStepRow({
           type="button"
           onClick={() => onNavigate(refTargetId)}
           className="min-w-0 text-left font-mono text-xs truncate px-1.5 py-0.5 rounded text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/25 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:underline decoration-dotted underline-offset-2"
-          title={`Drill into ${display} (auto-skips trivial wrappers)`}
+          title={t('properties.rawStepRow.drillIntoTooltip', { token: display })}
         >
           {display}
         </button>
@@ -188,7 +190,7 @@ export function RawStepRow({
               ? 'text-zinc-400 dark:text-zinc-600'
               : 'text-zinc-800 dark:text-zinc-200'
           }`}
-          title={editable ? 'Click to edit' : 'This value type is not inline-editable'}
+          title={editable ? t('properties.rawStepRow.clickToEditTooltip') : t('properties.rawStepRow.notInlineEditableTooltip')}
         >
           {display}
         </button>
@@ -200,11 +202,11 @@ export function RawStepRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                aria-label="overlay override active"
+                aria-label={t('properties.rawStepRow.overlayOverrideAriaLabel')}
                 className="inline-block h-1.5 w-1.5 rounded-full bg-purple-500 dark:bg-purple-400"
               />
             </TooltipTrigger>
-            <TooltipContent side="left">Overlay override</TooltipContent>
+            <TooltipContent side="left">{t('properties.rawStepRow.overlayOverrideTooltip')}</TooltipContent>
           </Tooltip>
         )}
 
@@ -217,7 +219,7 @@ export function RawStepRow({
               onMouseDown={(e) => e.preventDefault()}
               onClick={saveEdit}
               className="h-6 w-6 p-0 hover:bg-emerald-100 dark:hover:bg-emerald-950/30"
-              title="Save (Enter)"
+              title={t('properties.rawStepRow.saveTooltip')}
             >
               <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             </Button>
@@ -228,7 +230,7 @@ export function RawStepRow({
               onMouseDown={(e) => e.preventDefault()}
               onClick={cancelEdit}
               className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-950/30"
-              title="Cancel (Esc)"
+              title={t('properties.rawStepRow.cancelTooltip')}
             >
               <X className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
             </Button>
@@ -239,7 +241,7 @@ export function RawStepRow({
             size="icon"
             onClick={startEdit}
             className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-            title="Edit"
+            title={t('properties.rawStepRow.editTooltip')}
           >
             <PenLine className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
           </Button>

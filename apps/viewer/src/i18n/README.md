@@ -127,6 +127,29 @@ reassignment, its pending badge, and undo/redo chrome
 names remain exact schema data; common material category display labels are
 translated without changing their stored values.
 
+The hierarchy catalogue (#4918 slice 4) covers the spatial tree's own
+chrome: `HierarchyNode`'s row controls (visibility, expand/collapse,
+elevation and count badges) and its split-out `ModelHeaderRow`, the Models
+section header and its by-tag filter chips (`ModelsSectionHeader`), the
+per-row tag strip and its tag editor dialog (`ModelRowTags`,
+`ModelTagEditor`, `ModelTagChip`, `ModelTagGroupRow`), the sort control
+(`HierarchySortControl`, whose `SORT_OPTIONS` table carries `labelKey`s the
+same way `camera-commands.ts` does), and the Building Storeys display
+controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
+model content, not literals, and stay out of the catalogue.
+
+The properties catalogue (#4918 slice 4) covers the Properties panel's own
+chrome: the entity header actions, the assembly/spatial-location badges,
+the small info cards (property sets, quantity sets, materials,
+classification, documents, relationships, schedule, structural, raw STEP,
+bSDD, model metadata, unit display), the georeferencing panel and its
+EPSG lookup / federation-alignment / precision-grid / location-map
+surfaces, and the Gantt task edit card. IFC EXPRESS attribute names
+(`GeodeticDatum`, `MapProjection`, `MapZone`, `MapUnit`, `Name`,
+`Description`, …) rendered as `GeorefRow`/`MaterialRow` labels keep the
+house rule's exact schema spelling and stay out of the catalogue, same as
+property/pset/material/classification/schedule NAMES and VALUES, which are
+model content.
 The IDS-panel catalogue (#4918 viewer-panels slice) covers `IDSPanel.tsx` and
 the extracted validation progress, result-summary, filtering, isolation,
 focus, specification, requirement, and entity chrome (`ids-panel.en.ts`).

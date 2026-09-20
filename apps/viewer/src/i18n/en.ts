@@ -17,6 +17,7 @@ import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
+import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
@@ -25,6 +26,7 @@ import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
+import { propertiesEn } from './catalogues/properties.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
@@ -36,6 +38,7 @@ import { toursEn } from './catalogues/tours.en';
 import { viewerShellEn } from './catalogues/viewer-shell.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
+import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
@@ -69,6 +72,9 @@ export const en = {
   ...splitToolEn,
   ...documentEn,
   ...documentMenuEn,
+  ...hierarchyEn,
+  ...propertiesEn,
+  ...structuralPropertiesEn,
   ...compareKeyPropertyEn,
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,

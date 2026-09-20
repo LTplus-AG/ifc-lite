@@ -14,7 +14,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { QuantityType } from '@ifc-lite/data';
@@ -25,6 +24,7 @@ import {
   type BsddClassProperty,
 } from '@/services/bsdd';
 import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
+import { formatLocaleNumber, localeCount, useTranslation } from '@/i18n';
 
 // ---------------------------------------------------------------------------
 // Helpers for Qto_* (quantity set) detection and mapping
@@ -90,8 +90,11 @@ export function BsddCard({
   existingQuants = new Set<string>(),
   existingAttributes = new Set<string>(),
 }: BsddCardProps) {
+  const { t, locale } = useTranslation();
   const [classInfo, setClassInfo] = useState<BsddClassInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  // The raw failure, translated at render so it follows a locale switch that
+  // lands while the request is in flight: `''` = failed without a message.
   const [error, setError] = useState<string | null>(null);
   const [expandedPsets, setExpandedPsets] = useState<Set<string>>(new Set());
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
@@ -129,7 +132,7 @@ export function BsddCard({
       (err) => {
         if (cancelled) return;
         setLoading(false);
-        setError(err instanceof Error ? err.message : 'Failed to fetch bSDD data');
+        setError(err instanceof Error ? err.message : '');
       },
     );
 
@@ -237,9 +240,9 @@ export function BsddCard({
       // editable target, so attributes and Qto_* quantities just confirm.
       if (psetName !== BSDD_ATTRIBUTES_GROUP && !isQuantitySet(psetName)) {
         setPendingPropertyFocus({ modelId, entityId, psetName, propName: prop.name });
-        toast.success(`Added "${prop.name}" — open Properties to set its value`);
+        toast.success(t('properties.bsdd.addedSingleWithFollowUp', { name: prop.name }));
       } else {
-        toast.success(`Added "${prop.name}"`);
+        toast.success(t('properties.bsdd.addedSingle', { name: prop.name }));
       }
     },
     [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
@@ -344,12 +347,9 @@ export function BsddCard({
       if (isEditableProps) {
         setPendingPropertyFocus({ modelId, entityId, psetName, propName: toAdd[0].name });
       }
-      toast.success(
-        `Added ${toAdd.length} ${psetName} ${toAdd.length === 1 ? 'property' : 'properties'}` +
-          (isEditableProps ? ' — open Properties to set values' : ''),
-      );
+      toast.success(t(isEditableProps ? 'properties.bsdd.addedManyWithFollowUp' : 'properties.bsdd.addedMany', { ...localeCount(locale, toAdd.length), pset: psetName }));
     },
-    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
+    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus, locale],
   );
 
   // The deliberate "take me to what I just added" action behind the card's
@@ -376,16 +376,16 @@ export function BsddCard({
     return (
       <div className="flex items-center gap-2 px-3 py-6 text-xs text-zinc-400">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>Loading bSDD data for {entityType}...</span>
+        <span>{t('properties.bsdd.loading', { entityType })}</span>
       </div>
     );
   }
 
   // Error state
-  if (error) {
+  if (error !== null) {
     return (
       <div className="px-3 py-4 text-xs text-red-500/70">
-        <p>Could not load bSDD data: {error}</p>
+        <p>{t('properties.bsdd.loadFailed', { error: error || t('properties.bsdd.fetchFailed') })}</p>
       </div>
     );
   }
@@ -395,7 +395,7 @@ export function BsddCard({
     return (
       <div className="flex flex-col items-center justify-center text-center px-4 py-8 text-xs text-zinc-400 gap-2">
         <BookOpen className="h-6 w-6 text-zinc-300 dark:text-zinc-600" />
-        <p>No bSDD data available for <span className="font-mono font-medium">{entityType}</span></p>
+        <p>{t('properties.bsdd.noData', { entityType })}</p>
       </div>
     );
   }
@@ -421,7 +421,7 @@ export function BsddCard({
           className="flex w-full items-center justify-center gap-1.5 rounded-md border-2 border-emerald-300/70 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
         >
           <Check className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{editableAddedCount} added · Edit in Properties</span>
+          <span className="truncate">{t('properties.bsdd.editedCount', localeCount(locale, editableAddedCount))}</span>
           <ArrowRight className="h-3.5 w-3.5 shrink-0" />
         </button>
       )}
@@ -440,11 +440,6 @@ export function BsddCard({
             existingSet.has(makeKey(p)) ||
             addedKeys.has(`${psetName}:${p.name}`),
         );
-        const psetExistsOnEntity = isAttrGroup
-          ? true // Attributes section always exists on the entity
-          : isQto
-            ? existingQsets.includes(psetName)
-            : existingPsets.includes(psetName);
         const addableCount = props.filter(
           (p) =>
             !existingSet.has(makeKey(p)) &&
@@ -470,7 +465,7 @@ export function BsddCard({
                 {psetName}
               </span>
               <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-400 shrink-0">
-                {props.length}
+                {formatLocaleNumber(locale, props.length)}
               </span>
               {addableCount > 0 && (
                 <Tooltip>
@@ -487,7 +482,7 @@ export function BsddCard({
                       <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Add all {addableCount} properties</TooltipContent>
+                  <TooltipContent>{t('properties.bsdd.addAllTooltip', localeCount(locale, addableCount))}</TooltipContent>
                 </Tooltip>
               )}
               {allAlreadyExist && (
@@ -544,7 +539,7 @@ export function BsddCard({
                               <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Add to element</TooltipContent>
+                          <TooltipContent>{t('properties.bsdd.addToElementTooltip')}</TooltipContent>
                         </Tooltip>
                       )}
                     </div>
@@ -565,7 +560,7 @@ export function BsddCard({
           className="flex items-center gap-1 text-[10px] text-sky-500/70 hover:text-sky-600 transition-colors"
         >
           <ExternalLink className="h-2.5 w-2.5" />
-          View on bSDD
+          {t('properties.bsdd.viewOnBsdd')}
         </a>
       </div>
     </div>

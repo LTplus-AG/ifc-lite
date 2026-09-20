@@ -26,19 +26,20 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import type { HierarchySortMode } from './types';
 
 const SORT_OPTIONS: ReadonlyArray<{
   value: HierarchySortMode;
-  /** Short word for the trigger; the icon carries the direction. */
-  short: string;
-  label: string;
+  /** Complete trigger message; the icon carries the direction. */
+  triggerKey: TranslationKey;
+  labelKey: TranslationKey;
   Icon: typeof ArrowDownWideNarrow;
 }> = [
-  { value: 'elevation-desc', short: 'Elevation', label: 'Elevation, high to low', Icon: ArrowDownWideNarrow },
-  { value: 'elevation-asc', short: 'Elevation', label: 'Elevation, low to high', Icon: ArrowUpWideNarrow },
-  { value: 'name-asc', short: 'Name', label: 'Name, A to Z', Icon: ArrowDownAZ },
-  { value: 'name-desc', short: 'Name', label: 'Name, Z to A', Icon: ArrowUpAZ },
+  { value: 'elevation-desc', triggerKey: 'hierarchy.sortControl.triggerElevation', labelKey: 'hierarchy.sortControl.label.elevationDesc', Icon: ArrowDownWideNarrow },
+  { value: 'elevation-asc', triggerKey: 'hierarchy.sortControl.triggerElevation', labelKey: 'hierarchy.sortControl.label.elevationAsc', Icon: ArrowUpWideNarrow },
+  { value: 'name-asc', triggerKey: 'hierarchy.sortControl.triggerName', labelKey: 'hierarchy.sortControl.label.nameAsc', Icon: ArrowDownAZ },
+  { value: 'name-desc', triggerKey: 'hierarchy.sortControl.triggerName', labelKey: 'hierarchy.sortControl.label.nameDesc', Icon: ArrowUpAZ },
 ];
 
 interface HierarchySortControlProps {
@@ -47,6 +48,7 @@ interface HierarchySortControlProps {
 }
 
 export function HierarchySortControl({ value, onChange }: HierarchySortControlProps) {
+  const { t } = useTranslation();
   const active = SORT_OPTIONS.find((o) => o.value === value) ?? SORT_OPTIONS[0];
   const ActiveIcon = active.Icon;
 
@@ -57,21 +59,21 @@ export function HierarchySortControl({ value, onChange }: HierarchySortControlPr
           variant="outline"
           size="sm"
           className="h-6 w-full justify-between gap-1 px-2 mt-1 text-[10px] rounded-none uppercase tracking-wider"
-          title="Sort the spatial browser (storeys and their contents)"
+          title={t('hierarchy.sortControl.tooltip')}
         >
           <span className="flex items-center gap-1 min-w-0">
             <ActiveIcon className="h-3 w-3 shrink-0" />
-            <span className="truncate">Sort: {active.short}</span>
+            <span className="truncate">{t(active.triggerKey)}</span>
           </span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-[11rem]">
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onChange(v as HierarchySortMode)}>
-          {SORT_OPTIONS.map(({ value: optValue, label, Icon }) => (
+          {SORT_OPTIONS.map(({ value: optValue, labelKey, Icon }) => (
             <DropdownMenuRadioItem key={optValue} value={optValue} className="text-xs gap-2">
               <Icon className="h-3.5 w-3.5 shrink-0" />
-              {label}
+              {t(labelKey)}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

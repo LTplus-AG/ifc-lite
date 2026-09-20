@@ -29,9 +29,13 @@ import type { FederatedModel } from '@/store/types';
 import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, extractClassificationSystemsOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { computeModelStats } from './modelMetadataStats';
+import { useTranslation } from '@/i18n';
+import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
+import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
+  const { t, locale, revision } = useTranslation();
   const dataStore = model.ifcDataStore;
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
@@ -39,14 +43,14 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    if (bytes < 1024) return `${formatLocaleNumber(locale, bytes)} B`;
+    if (bytes < 1024 * 1024) return `${formatLocaleNumber(locale, bytes / 1024, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KB`;
+    return `${formatLocaleNumber(locale, bytes / (1024 * 1024), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MB`;
   };
 
   // Format date
   const formatDate = (timestamp: number): string => {
-    return new Date(timestamp).toLocaleString();
+    return formatLocaleDate(locale, new Date(timestamp), { dateStyle: 'short', timeStyle: 'medium' });
   };
 
   // Get IfcProject data if available
@@ -106,13 +110,13 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   const unitInfo = useMemo(() => {
     if (!dataStore?.source?.length || !dataStore?.entityIndex) return null;
     const scale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
-    let unitName = 'Meters';
-    if (Math.abs(scale - 0.001) < 0.0001) unitName = 'Millimeters';
-    else if (Math.abs(scale - 0.01) < 0.001) unitName = 'Centimeters';
-    else if (Math.abs(scale - 0.0254) < 0.001) unitName = 'Inches';
-    else if (Math.abs(scale - 0.3048) < 0.01) unitName = 'Feet';
+    let unitName = t('properties.modelMetadata.unit.meters');
+    if (Math.abs(scale - 0.001) < 0.0001) unitName = t('properties.modelMetadata.unit.millimeters');
+    else if (Math.abs(scale - 0.01) < 0.001) unitName = t('properties.modelMetadata.unit.centimeters');
+    else if (Math.abs(scale - 0.0254) < 0.001) unitName = t('properties.modelMetadata.unit.inches');
+    else if (Math.abs(scale - 0.3048) < 0.01) unitName = t('properties.modelMetadata.unit.feet');
     return { scale, unitName };
-  }, [dataStore]);
+  }, [dataStore, t, revision]);
 
   // The file's declared units, for rendering unit suffixes on project
   // property values (issue #1573).
@@ -145,7 +149,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100">
               {model.name}
             </h3>
-            <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">IFC Model</p>
+            <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{t('properties.modelMetadata.ifcModel')}</p>
           </div>
         </div>
 
@@ -167,20 +171,20 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
         <div className="border-b border-zinc-200 dark:border-zinc-800">
           <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
             <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
-              File Information
+              {t('properties.modelMetadata.fileInformationHeading')}
             </h4>
           </div>
           <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
             <div className="flex items-center gap-3 px-3 py-2">
               <HardDrive className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">File Size</span>
+              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.fileSize')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
                 {formatFileSize(model.fileSize)}
               </span>
             </div>
             <div className="flex items-center gap-3 px-3 py-2">
               <Clock className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Loaded At</span>
+              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.loadedAt')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
                 {formatDate(model.loadedAt)}
               </span>
@@ -188,9 +192,9 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             {dataStore && dataStore.parseTime != null && (
               <div className="flex items-center gap-3 px-3 py-2">
                 <Clock className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                <span className="text-xs text-zinc-500">Parse Time</span>
+                <span className="text-xs text-zinc-500">{t('properties.modelMetadata.parseTime')}</span>
                 <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                  {dataStore.parseTime.toFixed(0)} ms
+                  {t('properties.modelMetadata.parseTimeValue', { ms: formatLocaleNumber(locale, dataStore.parseTime, { maximumFractionDigits: 0 }) })}
                 </span>
               </div>
             )}
@@ -202,9 +206,9 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
           <div className="border-b border-zinc-200 dark:border-zinc-800">
             <div className="flex items-center gap-3 px-3 py-2.5 bg-amber-50/50 dark:bg-amber-950/20">
               <Ruler className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Length Unit</span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">{t('properties.modelMetadata.lengthUnitHeading')}</span>
               <span className="text-xs font-mono text-amber-800 dark:text-amber-300 ml-auto">
-                {unitInfo.unitName} ({unitInfo.scale})
+                {t('properties.modelMetadata.lengthUnitValue', { unitName: unitInfo.unitName, scale: formatLocaleNumber(locale, unitInfo.scale, { maximumFractionDigits: 6 }) })}
               </span>
             </div>
           </div>
@@ -219,14 +223,14 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
           <div className="border-b border-zinc-200 dark:border-zinc-800">
             <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
               <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
-                Project Information
+                {t('properties.modelMetadata.projectInformationHeading')}
               </h4>
             </div>
             <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
               {projectData.name && (
                 <div className="flex items-center gap-3 px-3 py-2">
                   <Tag className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                  <span className="text-xs text-zinc-500">Name</span>
+                  <span className="text-xs text-zinc-500">{EXPRESS_NAME_ATTRIBUTE}</span>
                   <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100 ml-auto truncate max-w-[60%]">
                     {projectData.name}
                   </span>
@@ -235,7 +239,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
               {projectData.description && (
                 <div className="flex items-start gap-3 px-3 py-2">
                   <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-zinc-500 shrink-0">Description</span>
+                  <span className="text-xs text-zinc-500 shrink-0">{EXPRESS_DESCRIPTION_ATTRIBUTE}</span>
                   <span className="text-xs text-zinc-900 dark:text-zinc-100 ml-auto text-right max-w-[60%]">
                     {projectData.description}
                   </span>
@@ -244,7 +248,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
               {projectData.globalId && (
                 <div className="flex items-center gap-3 px-3 py-2">
                   <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                  <span className="text-xs text-zinc-500">GlobalId</span>
+                  <span className="text-xs text-zinc-500">{EXPRESS_GLOBAL_ID_ATTRIBUTE}</span>
                   <code className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400 ml-auto truncate max-w-[60%]">
                     {projectData.globalId}
                   </code>
@@ -269,36 +273,36 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
         <div className="border-b border-zinc-200 dark:border-zinc-800">
           <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
             <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
-              Statistics
+              {t('properties.modelMetadata.statisticsHeading')}
             </h4>
           </div>
           <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
             <div className="flex items-center gap-3 px-3 py-2">
               <Database className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Total Entities</span>
+              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.totalEntities')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {dataStore?.entityCount?.toLocaleString() ?? 'N/A'}
+                {dataStore?.entityCount != null ? formatLocaleNumber(locale, dataStore.entityCount) : t('properties.modelMetadata.notAvailable')}
               </span>
             </div>
             <div className="flex items-center gap-3 px-3 py-2">
               <Layers className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Building Storeys</span>
+              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.buildingStoreys')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {stats.storeys}
+                {formatLocaleNumber(locale, stats.storeys)}
               </span>
             </div>
             <div className="flex items-center gap-3 px-3 py-2">
               <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Elements with Geometry</span>
+              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.elementsWithGeometry')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {stats.elementsWithGeometry.toLocaleString()}
+                {formatLocaleNumber(locale, stats.elementsWithGeometry)}
               </span>
             </div>
             <div className="flex items-center gap-3 px-3 py-2">
               <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Max Express ID</span>
+              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.maxExpressId')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {model.maxExpressId.toLocaleString()}
+                {formatLocaleNumber(locale, model.maxExpressId)}
               </span>
             </div>
           </div>
@@ -310,19 +314,19 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
         <div className="border-b border-zinc-200 dark:border-zinc-800">
           <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
             <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
-              Classification Systems
+              {t('properties.modelMetadata.classificationSystemsHeading')}
             </h4>
           </div>
           <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
             {classificationSystems.unresolved ? (
               <div className="flex items-center gap-3 px-3 py-2">
                 <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                <span className="text-xs text-zinc-500">Classification systems present, but unavailable on this data source</span>
+                <span className="text-xs text-zinc-500">{t('properties.modelMetadata.classificationUnresolved')}</span>
               </div>
             ) : classificationSystems.names.length === 0 ? (
               <div className="flex items-center gap-3 px-3 py-2">
                 <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                <span className="text-xs text-zinc-500">No classification systems</span>
+                <span className="text-xs text-zinc-500">{t('properties.modelMetadata.noClassificationSystems')}</span>
               </div>
             ) : (
               classificationSystems.names.map((system) => (

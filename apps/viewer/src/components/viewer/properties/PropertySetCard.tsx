@@ -18,6 +18,7 @@ import { setDisplayName } from './setDisplayName';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { resolveMeasureDisplay, formatConverted } from '@/lib/units/display';
+import { useTranslation } from '@/i18n';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -41,6 +42,7 @@ export interface PropertySetCardProps {
 }
 
 export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides }: PropertySetCardProps) {
+  const { t } = useTranslation();
   // Check if any property in this set is mutated
   const hasMutations = pset.properties.some(p => p.isMutated);
   const isNewPset = pset.isNewPset;
@@ -83,7 +85,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
             <TooltipTrigger asChild>
               <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0" />
             </TooltipTrigger>
-            <TooltipContent>New property set (not in original model)</TooltipContent>
+            <TooltipContent>{t('properties.propertySetCard.newPsetTooltip')}</TooltipContent>
           </Tooltip>
         )}
         {hasMutations && !isNewPset && (
@@ -91,7 +93,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
             <TooltipTrigger asChild>
               <PenLine className="h-3.5 w-3.5 text-purple-500 shrink-0" />
             </TooltipTrigger>
-            <TooltipContent>Has modified properties</TooltipContent>
+            <TooltipContent>{t('properties.propertySetCard.hasMutationsTooltip')}</TooltipContent>
           </Tooltip>
         )}
         {isTypeProperty && !isNewPset && !hasMutations && (
@@ -99,10 +101,10 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
             <TooltipTrigger asChild>
               <Building2 className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
             </TooltipTrigger>
-            <TooltipContent>Inherited from type — edits apply to all instances of this type</TooltipContent>
+            <TooltipContent>{t('properties.propertySetCard.inheritedFromTypeTooltip')}</TooltipContent>
           </Tooltip>
         )}
-        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0">{setDisplayName(pset.name, 'Property Set')}</span>
+        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0">{setDisplayName(pset.name, t('properties.propertySet.unnamed'))}</span>
         <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -140,10 +142,10 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700">
-                            edited
+                            {t('properties.propertySetCard.editedBadge')}
                           </Badge>
                         </TooltipTrigger>
-                        <TooltipContent>This property has been modified</TooltipContent>
+                        <TooltipContent>{t('properties.propertySetCard.propertyModifiedTooltip')}</TooltipContent>
                       </Tooltip>
                     )}
                     {parsed.ifcType ? (

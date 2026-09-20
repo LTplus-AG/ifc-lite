@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { formatLocaleNumber, localeCount, useTranslation } from '@/i18n';
 import { normalizeModelTagName, type ModelTag } from '@/lib/model-tags/types';
 import { ModelTagChip } from './ModelTagChip';
 
@@ -38,6 +39,7 @@ export interface ModelTagEditorProps {
 type Membership = 'all' | 'some' | 'none';
 
 export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: ModelTagEditorProps) {
+  const { t, locale } = useTranslation();
   const { modelTags, assignments, models, createModelTag, renameModelTag, deleteModelTag, assignModelTags, unassignModelTags } =
     useViewerStore(
       useShallow((s) => ({
@@ -58,7 +60,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
     [bulk, models, initialIds],
   );
   const [draft, setDraft] = useState('');
-  const [renaming, setRenaming] = useState<{ id: string; name: string; error?: string } | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string; hasError?: boolean } | null>(null);
 
   const tags = useMemo(() => [...modelTags.values()].sort((a, b) => a.name.localeCompare(b.name)), [modelTags]);
   const membershipOf = (tagId: string): Membership => {
@@ -89,30 +91,38 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
   const commitRename = () => {
     if (!renaming) return;
     if (renameModelTag(renaming.id, renaming.name)) setRenaming(null);
-    else setRenaming({ ...renaming, error: 'Name is empty or already used by another tag.' });
+    else setRenaming({ ...renaming, hasError: true });
   };
 
-  const scopeLabel = bulk
-    ? `all ${modelIds.length} models`
-    : modelName ?? (modelIds.length === 1 ? 'this model' : `${modelIds.length} models`);
+  const description = bulk
+    ? t('hierarchy.modelTagEditor.descriptionAll', { countDisplay: formatLocaleNumber(locale, modelIds.length) })
+    : modelName
+      ? t('hierarchy.modelTagEditor.descriptionNamed', { name: modelName })
+      : modelIds.length === 1
+        ? t('hierarchy.modelTagEditor.descriptionThisModel')
+        : t('hierarchy.modelTagEditor.descriptionCount', localeCount(locale, modelIds.length));
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-md" data-model-tag-editor>
         <DialogHeader>
-          <DialogTitle>Model tags</DialogTitle>
+          <DialogTitle>{t('hierarchy.modelTagEditor.title')}</DialogTitle>
           <DialogDescription>
-            Labels for {scopeLabel}. Tags are organisation only — they never change the IFC file.
+            {description}
           </DialogDescription>
         </DialogHeader>
 
         {models.size > 1 && (
-          <div className="inline-flex overflow-hidden rounded-md border border-border text-[11px]" role="group" aria-label="Apply to">
+          <div
+            className="inline-flex overflow-hidden rounded-md border border-border text-[11px]"
+            role="group"
+            aria-label={t('hierarchy.modelTagEditor.applyToAriaLabel')}
+          >
             <button type="button" onClick={() => setBulk(false)} className={cn('px-2 py-0.5', !bulk && 'bg-muted font-medium')}>
-              {modelName ?? 'Selected'}
+              {modelName ?? t('hierarchy.modelTagEditor.selected')}
             </button>
             <button type="button" onClick={() => setBulk(true)} className={cn('px-2 py-0.5', bulk && 'bg-muted font-medium')}>
-              All {models.size} models
+              {t('hierarchy.modelTagEditor.allModels', { countDisplay: formatLocaleNumber(locale, models.size) })}
             </button>
           </div>
         )}
@@ -123,29 +133,29 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onDraftKey}
-              placeholder="Add a tag… (Enter)"
-              aria-label="Add a tag"
+              placeholder={t('hierarchy.modelTagEditor.addPlaceholder')}
+              aria-label={t('hierarchy.modelTagEditor.addAriaLabel')}
               className="h-8 text-sm"
               autoFocus
             />
             <Button type="button" size="sm" className="h-8" disabled={!draft.trim()} onClick={() => addDraft()}>
-              {exact ? 'Assign' : 'Create'}
+              {exact ? t('hierarchy.modelTagEditor.assign') : t('hierarchy.modelTagEditor.create')}
             </Button>
           </div>
           {suggestions.length > 0 && (
-            <div className="flex flex-wrap gap-1" aria-label="Matching tags">
-              {suggestions.map((t) => (
-                <button key={t.id} type="button" onClick={() => addDraft(t.name)} className="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted">
-                  {t.name}
+            <div className="flex flex-wrap gap-1" aria-label={t('hierarchy.modelTagEditor.matchingTagsAriaLabel')}>
+              {suggestions.map((suggestion) => (
+                <button key={suggestion.id} type="button" onClick={() => addDraft(suggestion.name)} className="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted">
+                  {suggestion.name}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        <ul className="max-h-64 space-y-0.5 overflow-y-auto" aria-label="All tags">
+        <ul className="max-h-64 space-y-0.5 overflow-y-auto" aria-label={t('hierarchy.modelTagEditor.allTagsAriaLabel')}>
           {tags.length === 0 && (
-            <li className="px-1 py-2 text-xs italic text-muted-foreground">No tags yet — type one above.</li>
+            <li className="px-1 py-2 text-xs italic text-muted-foreground">{t('hierarchy.modelTagEditor.emptyState')}</li>
           )}
           {tags.map((tag) => {
             const membership = membershipOf(tag.id);
@@ -156,7 +166,12 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                   type="button"
                   role="checkbox"
                   aria-checked={membership === 'all' ? 'true' : membership === 'some' ? 'mixed' : 'false'}
-                  aria-label={`${membership === 'all' ? 'Remove' : 'Assign'} tag ${tag.name}`}
+                  aria-label={t(
+                    membership === 'all'
+                      ? 'hierarchy.modelTagEditor.removeTagAriaLabel'
+                      : 'hierarchy.modelTagEditor.assignTagAriaLabel', {
+                    name: tag.name,
+                  })}
                   onClick={() => toggle(tag)}
                   className={cn(
                     'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[10px]',
@@ -174,18 +189,22 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                         if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
                         if (e.key === 'Escape') { e.preventDefault(); setRenaming(null); }
                       }}
-                      aria-label={`Rename tag ${tag.name}`}
+                      aria-label={t('hierarchy.modelTagEditor.renameAriaLabel', { name: tag.name })}
                       className="h-7 text-xs"
                       autoFocus
                     />
-                    {renaming.error && <span role="alert" className="text-[10px] text-red-600">{renaming.error}</span>}
+                    {renaming.hasError && <span role="alert" className="text-[10px] text-red-600">{t('hierarchy.modelTagEditor.renameError')}</span>}
                   </div>
                 ) : (
                   <span className="min-w-0 flex-1"><ModelTagChip tag={tag} /></span>
                 )}
                 <button
                   type="button"
-                  aria-label={isRenaming ? `Save name for ${tag.name}` : `Rename tag ${tag.name}`}
+                  aria-label={
+                    isRenaming
+                      ? t('hierarchy.modelTagEditor.saveNameAriaLabel', { name: tag.name })
+                      : t('hierarchy.modelTagEditor.renameAriaLabel', { name: tag.name })
+                  }
                   onClick={() => (isRenaming ? commitRename() : setRenaming({ id: tag.id, name: tag.name }))}
                   className="p-0.5 text-zinc-400 hover:text-foreground"
                 >
@@ -193,8 +212,8 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                 </button>
                 <button
                   type="button"
-                  aria-label={`Delete tag ${tag.name}`}
-                  title="Delete this tag everywhere. Saved filters that name it will show it as unresolved."
+                  aria-label={t('hierarchy.modelTagEditor.deleteAriaLabel', { name: tag.name })}
+                  title={t('hierarchy.modelTagEditor.deleteTooltip')}
                   onClick={() => deleteModelTag(tag.id)}
                   className="p-0.5 text-zinc-400 hover:text-red-500"
                 >

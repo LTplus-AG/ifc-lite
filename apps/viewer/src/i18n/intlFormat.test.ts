@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatLocaleDate, formatLocaleList, formatLocaleNumber } from './intlFormat.js';
+import { formatLocaleDate, formatLocaleList, formatLocaleNumber, parseLocaleNumber } from './intlFormat.js';
 
 test('formats schedule numbers and lists with the active locale', () => {
   assert.equal(formatLocaleNumber('de', 3.5, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), '3,5');
@@ -23,4 +23,10 @@ test('falls back to English for an invalid locale identifier', () => {
     formatLocaleDate('replaceable', new Date(Date.UTC(2026, 8, 19)), { year: 'numeric', timeZone: 'UTC' }),
     '2026',
   );
+});
+
+test('parses localized decimal separators, grouping and digits as one complete number', () => {
+  assert.equal(parseLocaleNumber('de-DE', '1.234,5'), 1234.5);
+  assert.equal(parseLocaleNumber('ar-EG', '١٬٢٣٤٫٥'), 1234.5);
+  assert.equal(parseLocaleNumber('de-DE', '1234,5 trailing'), null);
 });

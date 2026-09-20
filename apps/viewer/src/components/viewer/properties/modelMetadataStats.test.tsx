@@ -19,6 +19,7 @@ import { federationRegistry } from '@ifc-lite/renderer';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
 import { ModelMetadataPanel } from './ModelMetadataPanel.js';
+import { registerLocale, setLocale } from '@/i18n';
 
 const TYPES = new Map<number, string>([
   [1, 'IFCWALL'],
@@ -88,6 +89,7 @@ function unmountAll(): void {
 }
 
 beforeEach(() => {
+  setLocale('en');
   unmountAll();
   federationRegistry.clear();
   federationRegistry.registerModel('other-model', 100);
@@ -95,11 +97,25 @@ beforeEach(() => {
 });
 
 after(() => {
+  setLocale('en');
   unmountAll();
   federationRegistry.clear();
 });
 
 describe('ModelMetadataPanel — Elements with Geometry', () => {
+  it('formats metadata numbers with the active locale', () => {
+    registerLocale('de-DE', {});
+    setLocale('de-DE');
+    const store = dataStore() as IfcDataStore & { entityCount: number; parseTime: number };
+    store.entityCount = 1234;
+    store.parseTime = 1234.5;
+    const container = render(model({ ifcDataStore: store, fileSize: 1_264_128, maxExpressId: 1234 }));
+    assert.equal(statistic(container, 'Total Entities'), '1.234');
+    assert.equal(statistic(container, 'Max Express ID'), '1.234');
+    assert.equal(statistic(container, 'File Size'), '1,21 MB');
+    assert.equal(statistic(container, 'Parse Time'), '1.235 ms');
+  });
+
   it('counts shaped physical elements using canonical federated ID resolution', () => {
     const offset = federationRegistry.getOffset('stats-model') ?? 0;
     const geometryResult = {

@@ -16,6 +16,8 @@ import { Tag } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
 import { ModelTagChip } from './ModelTagChip';
 import { ModelTagEditor } from './ModelTagEditor';
@@ -57,6 +59,7 @@ export function useModelRowSize(nodes: readonly TreeNode[], remeasure: () => voi
 const STRIP_CLASS = 'absolute bottom-1 left-[54px] right-2 flex min-w-0 items-center gap-1 overflow-hidden';
 
 export function ModelRowTags({ modelId, modelName }: { modelId: string; modelName: string }) {
+  const { t, locale } = useTranslation();
   const { modelTags, assigned } = useViewerStore(
     useShallow((s) => ({ modelTags: s.modelTags, assigned: s.modelTagAssignments.get(modelId) })),
   );
@@ -71,11 +74,11 @@ export function ModelRowTags({ modelId, modelName }: { modelId: string; modelNam
         <span
           className={STRIP_CLASS}
           data-model-row-tags={modelId}
-          title={ids.map((id) => modelTags.get(id)?.name ?? 'Unknown tag').join(', ')}
+          title={ids.map((id) => modelTags.get(id)?.name ?? t('hierarchy.modelRowTags.unknownTag')).join(', ')}
           onClick={(e) => e.stopPropagation()}
         >
           {inline.map((id) => <ModelTagChip key={id} tag={modelTags.get(id)} className="min-w-0 shrink" />)}
-          {overflow > 0 && <span className="shrink-0 text-[10px] text-zinc-500">+{overflow}</span>}
+          {overflow > 0 && <span className="shrink-0 text-[10px] text-zinc-500">+{formatLocaleNumber(locale, overflow)}</span>}
         </span>
       )}
       <Tooltip>
@@ -83,14 +86,14 @@ export function ModelRowTags({ modelId, modelName }: { modelId: string; modelNam
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-            aria-label={`Edit tags for model ${modelName}`}
+            aria-label={t('hierarchy.modelRowTags.editTagsAriaLabel', { name: modelName })}
             className="p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
           >
             <Tag className="h-3.5 w-3.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
           </button>
         </TooltipTrigger>
         <TooltipContent>
-          <p className="text-xs">Model tags</p>
+          <p className="text-xs">{t('hierarchy.modelRowTags.tooltip')}</p>
         </TooltipContent>
       </Tooltip>
       {open && <ModelTagEditor modelIds={[modelId]} modelName={modelName} onClose={() => setOpen(false)} />}

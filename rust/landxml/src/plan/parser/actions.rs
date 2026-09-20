@@ -122,7 +122,7 @@ impl Parser<'_> {
                     .last()
                     .map(|(_, scope)| scope.clone())
                     .ok_or_else(|| error(Code::InvalidSemantic, "CgPoint outside CgPoints"))?;
-                self.cogo_points.push(LandXmlCgPoint {
+                let record = LandXmlCgPoint {
                     source_id: source_id("CgPoint", self.cogo_ordinal, &attributes),
                     scope_id,
                     ordinal: self.cogo_ordinal,
@@ -132,7 +132,9 @@ impl Parser<'_> {
                     point,
                     pnt_ref,
                     properties: properties(&attributes),
-                });
+                };
+                self.reference_index.insert(&record);
+                self.cogo_points.push(record);
             }
             Capture::Monument {
                 attributes, text, ..
@@ -355,6 +357,7 @@ impl Parser<'_> {
             plan_features: self.features,
             parcels: self.parcels,
             warnings: Vec::new(),
+            reference_index: self.reference_index,
         }
     }
 }

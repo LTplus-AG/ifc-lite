@@ -7,7 +7,8 @@
 use quick_xml::{events::Event, Reader};
 
 use super::{
-    LandXmlCgPoint, LandXmlMonument, LandXmlParcel, LandXmlPlanDocument, LandXmlPlanFeature,
+    model::LandXmlPlanReferenceIndex, LandXmlCgPoint, LandXmlMonument, LandXmlParcel,
+    LandXmlPlanDocument, LandXmlPlanFeature,
 };
 use crate::{
     classify_landxml_version,
@@ -113,6 +114,7 @@ struct Parser<'a> {
     pub(super) version: String,
     pub(super) root_seen: bool,
     pub(super) cogo_points: Vec<LandXmlCgPoint>,
+    pub(super) reference_index: LandXmlPlanReferenceIndex,
     pub(super) monuments: Vec<LandXmlMonument>,
     pub(super) features: Vec<LandXmlPlanFeature>,
     pub(super) parcels: Vec<LandXmlParcel>,
@@ -145,6 +147,7 @@ impl<'a> Parser<'a> {
             version: String::new(),
             root_seen: false,
             cogo_points: Vec::new(),
+            reference_index: LandXmlPlanReferenceIndex::default(),
             monuments: Vec::new(),
             features: Vec::new(),
             parcels: Vec::new(),

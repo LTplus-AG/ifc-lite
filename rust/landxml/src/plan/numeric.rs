@@ -6,8 +6,8 @@ use super::{
     LandXmlParcel, LandXmlParcelProbe, LandXmlParcelState, LandXmlPlanDocument,
     LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
 };
-use std::collections::{HashMap, HashSet};
 
+mod references;
 mod topology;
 use topology::{geometry_edges, segments_intersect};
 
@@ -79,14 +79,14 @@ impl LandXmlPlanDocument {
                 )
             }));
         let mut batches = Vec::new();
-        let mut current = Vec::with_capacity(max_records);
+        let mut current = Vec::new();
         for source_id in source_ids {
             current.push(source_id);
             if current.len() == max_records {
                 batches.push(super::LandXmlPlanSourceBatch {
                     source_ids: current,
                 });
-                current = Vec::with_capacity(max_records);
+                current = Vec::new();
             }
         }
         if !current.is_empty() {
@@ -95,89 +95,6 @@ impl LandXmlPlanDocument {
             });
         }
         batches
-    }
-    /// Resolve a COGO reference in its producer scope, falling back only when
-    /// the document has one unambiguous name match.
-    pub fn resolve_point(
-        &self,
-        scope_id: Option<&crate::LandXmlSourceId>,
-        location: &LandXmlPlanPointLocation,
-    ) -> Option<LandXmlPlanPoint> {
-        match location {
-            LandXmlPlanPointLocation::Coordinates { point, .. } => Some(*point),
-            LandXmlPlanPointLocation::PointReference { pnt_ref } => {
-                self.resolve_reference(scope_id, pnt_ref, self.cogo_points.len())
-            }
-        }
-    }
-
-    fn resolve_reference(
-        &self,
-        scope_id: Option<&crate::LandXmlSourceId>,
-        reference: &str,
-        budget: usize,
-    ) -> Option<LandXmlPlanPoint> {
-        let mut scoped: HashMap<(crate::LandXmlSourceId, String), Option<usize>> = HashMap::new();
-        let mut global: HashMap<String, Option<usize>> = HashMap::new();
-        for (index, point) in self.cogo_points.iter().enumerate() {
-            let mut keys = vec![point.ordinal.to_string(), point.source_id.0.clone()];
-            if let Some(name) = &point.name {
-                keys.push(name.clone());
-            }
-            if let Some(oid) = point.properties.get("oID") {
-                keys.push(oid.clone());
-            }
-            keys.sort();
-            keys.dedup();
-            for key in keys {
-                scoped
-                    .entry((point.scope_id.clone(), key.clone()))
-                    .and_modify(|slot| *slot = None)
-                    .or_insert(Some(index));
-                global
-                    .entry(key)
-                    .and_modify(|slot| *slot = None)
-                    .or_insert(Some(index));
-            }
-        }
-        let mut next_scope = scope_id.cloned();
-        let mut next_reference = reference;
-        let mut remaining = budget;
-        let mut seen = HashSet::new();
-        while remaining > 0 {
-            let index = match &next_scope {
-                Some(scope) => *scoped.get(&(scope.clone(), next_reference.to_owned()))?,
-                None => *global.get(next_reference)?,
-            }?;
-            if !seen.insert(index) {
-                return None;
-            }
-            let point = &self.cogo_points[index];
-            if let Some(value) = point.point {
-                return Some(value);
-            }
-            next_scope = Some(point.scope_id.clone());
-            next_reference = point.pnt_ref.as_deref()?;
-            remaining -= 1;
-        }
-        None
-    }
-
-    /// Resolve a monument's direct coordinate or its scoped `pntRef`.
-    pub fn resolve_monument_point(
-        &self,
-        monument: &super::LandXmlMonument,
-    ) -> Option<LandXmlPlanPoint> {
-        monument.point.or_else(|| {
-            monument.pnt_ref.as_ref().and_then(|pnt_ref| {
-                self.resolve_point(
-                    monument.point_scope_id.as_ref(),
-                    &LandXmlPlanPointLocation::PointReference {
-                        pnt_ref: pnt_ref.clone(),
-                    },
-                )
-            })
-        })
     }
 
     /// Probe a parcel in authored units with the default topology work bound.
@@ -282,10 +199,17 @@ fn probe_loop(
     let mut previous_end = None;
     for item in geometry {
         budget.check()?;
-        let Some(start) = document.resolve_point(item.point_scope_id.as_ref(), &item.start) else {
+        let Some(start) = document.resolve_point_with_budget(
+            item.point_scope_id.as_ref(),
+            &item.start,
+            budget,
+        )?
+        else {
             return Ok(None);
         };
-        let Some(end) = document.resolve_point(item.point_scope_id.as_ref(), &item.end) else {
+        let Some(end) =
+            document.resolve_point_with_budget(item.point_scope_id.as_ref(), &item.end, budget)?
+        else {
             return Ok(None);
         };
         if previous_end.is_some_and(|previous| !same_point(previous, start)) {
@@ -302,7 +226,15 @@ fn probe_loop(
     let (Some(first), Some(last)) = (
         geometry
             .first()
-            .and_then(|item| document.resolve_point(item.point_scope_id.as_ref(), &item.start)),
+            .map(|item| {
+                document.resolve_point_with_budget(
+                    item.point_scope_id.as_ref(),
+                    &item.start,
+                    budget,
+                )
+            })
+            .transpose()?
+            .flatten(),
         previous_end,
     ) else {
         return Ok(None);

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +45,39 @@ pub struct LandXmlCgPoint {
     pub point: Option<LandXmlPlanPoint>,
     pub pnt_ref: Option<String>,
     pub properties: LandXmlProperties,
+}
+
+/// Lookup tables are built while parsing, so reference resolution never scans
+/// every COGO point for each endpoint or alias hop.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct LandXmlPlanReferenceIndex {
+    pub(crate) scoped: HashMap<(LandXmlSourceId, String), Option<usize>>,
+    pub(crate) global: HashMap<String, Option<usize>>,
+}
+
+impl LandXmlPlanReferenceIndex {
+    pub(crate) fn insert(&mut self, point: &LandXmlCgPoint) {
+        let mut keys = vec![point.ordinal.to_string(), point.source_id.0.clone()];
+        if let Some(name) = &point.name {
+            keys.push(name.clone());
+        }
+        if let Some(oid) = point.properties.get("oID") {
+            keys.push(oid.clone());
+        }
+        keys.sort();
+        keys.dedup();
+        let index = point.ordinal - 1;
+        for key in keys {
+            self.scoped
+                .entry((point.scope_id.clone(), key.clone()))
+                .and_modify(|slot| *slot = None)
+                .or_insert(Some(index));
+            self.global
+                .entry(key)
+                .and_modify(|slot| *slot = None)
+                .or_insert(Some(index));
+        }
+    }
 }
 
 /// A monument retains the source point reference instead of resolving it away.
@@ -160,4 +193,6 @@ pub struct LandXmlPlanDocument {
     pub plan_features: Vec<LandXmlPlanFeature>,
     pub parcels: Vec<LandXmlParcel>,
     pub warnings: Vec<String>,
+    #[serde(skip)]
+    pub(crate) reference_index: LandXmlPlanReferenceIndex,
 }

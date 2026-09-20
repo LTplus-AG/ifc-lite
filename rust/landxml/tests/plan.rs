@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use ifc_lite_landxml::{
-    parse_landxml_plan_with_cancel, LandXmlCancellationFlag, LandXmlDiagnosticCode,
-    LandXmlParcelState, LandXmlPlanLimits, LANDXML_12_NAMESPACE,
+    parse_landxml_plan_with_cancel, LandXmlCancellation, LandXmlCancellationFlag,
+    LandXmlDiagnosticCode, LandXmlParcelState, LandXmlPlanLimits, LANDXML_12_NAMESPACE,
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn parse(xml: &str) -> ifc_lite_landxml::LandXmlPlanDocument {
     parse_landxml_plan_with_cancel(xml.as_bytes(), &LandXmlPlanLimits::default(), None)
@@ -389,4 +390,49 @@ fn issue_5046_rejects_irregular_crossings_and_indexed_reference_cycles() {
         4.0
     );
     assert_eq!(aliases.resolve_point(None, &reference("a")), None);
+}
+
+#[test]
+fn issue_5046_keeps_nested_cgpoints_and_ignores_foreign_wrapper_descendants() {
+    let parsed = parse(&document(
+        r#"<CgPoints><CgPoint name="outer">1 2</CgPoint><CgPoints><CgPoint name="inner">3 4</CgPoint></CgPoints></CgPoints>
+        <CgPoints><CgPoint name="safe">5 6<vendor:Ignored xmlns:vendor="urn:vendor">99 99</vendor:Ignored></CgPoint></CgPoints>
+        <PlanFeatures><PlanFeature name="safe"><vendor:Wrapper xmlns:vendor="urn:vendor"><Location>9 9</Location><CoordGeom><Line><Start>0 0</Start><End>1 1</End></Line></CoordGeom></vendor:Wrapper></PlanFeature></PlanFeatures>"#,
+    ));
+    assert_eq!(parsed.cogo_points.len(), 3);
+    assert_eq!(parsed.cogo_points[1].point.expect("inner").northing, 3.0);
+    assert_eq!(parsed.cogo_points[2].point.expect("safe").easting, 6.0);
+    assert!(parsed.plan_features[0].locations.is_empty());
+    assert!(parsed.plan_features[0].geometry.is_empty());
+}
+
+#[test]
+fn issue_5046_batches_without_usize_capacity_overflow_and_cancels_alias_work() {
+    let parsed = parse(&document(
+        r#"<CgPoints><CgPoint name="base">1 2</CgPoint><CgPoint name="alias-a" pntRef="base"/><CgPoint name="alias-b" pntRef="alias-a"/></CgPoints>"#,
+    ));
+    let batches = parsed.source_batches(usize::MAX);
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].source_ids.len(), 3);
+
+    struct CancelAfter(AtomicUsize);
+    impl LandXmlCancellation for CancelAfter {
+        fn is_cancelled(&self) -> bool {
+            self.0.fetch_add(1, Ordering::Relaxed) >= 1
+        }
+    }
+    let cancellation = CancelAfter(AtomicUsize::new(0));
+    let result = parsed.resolve_point_with_cancel(
+        None,
+        &ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+            pnt_ref: "alias-b".to_owned(),
+        },
+        Some(&cancellation),
+    );
+    assert_eq!(
+        result
+            .expect_err("alias traversal must poll cancellation")
+            .code,
+        LandXmlDiagnosticCode::Cancelled
+    );
 }

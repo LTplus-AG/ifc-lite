@@ -96,8 +96,15 @@ impl Parser<'_> {
                 .or(Some(declared_units.linear_scale_to_meters.powi(2)));
             self.units = Some(declared_units);
         }
-        let legal_cg_points =
-            self.path(&["LandXML", "CgPoints"]) || self.path(&["LandXML", "Survey", "CgPoints"]);
+        let legal_cg_points = self.path(&["LandXML", "CgPoints"])
+            || self.path(&["LandXML", "Survey", "CgPoints"])
+            || (local == "CgPoints"
+                && self
+                    .frames
+                    .iter()
+                    .rev()
+                    .nth(1)
+                    .is_some_and(|frame| frame.target && frame.local == "CgPoints"));
         if legal_cg_points {
             self.scope_ordinal += 1;
             let scope = LandXmlSourceId(format!("landxml:CgPoints:{}", self.scope_ordinal));
@@ -147,13 +154,24 @@ impl Parser<'_> {
             self.begin_parcel(attributes)?;
             return Ok(());
         }
-        if local == "CoordGeom" && !self.active.is_empty() {
+        let active_depth = self.active_depths.last().copied();
+        let direct_active_child = active_depth.is_some_and(|depth| self.frames.len() == depth + 1);
+        if local == "CoordGeom" && direct_active_child {
             if let Some(Active::Parcel(parcel)) = self.active.last_mut() {
                 parcel.loops.push(Vec::new());
             }
             return Ok(());
         }
-        if !self.active.is_empty()
+        let direct_coord_geom_child = active_depth.is_some_and(|depth| {
+            self.frames.len() == depth + 2
+                && self
+                    .frames
+                    .iter()
+                    .rev()
+                    .nth(1)
+                    .is_some_and(|frame| frame.target && frame.local == "CoordGeom")
+        });
+        if direct_coord_geom_child
             && self.geometry.is_none()
             && matches!(local, "Line" | "Curve" | "IrregularLine")
         {
@@ -178,7 +196,12 @@ impl Parser<'_> {
             });
             return Ok(());
         }
-        if self.geometry.is_none() && local == "Location" && !self.active.is_empty() {
+        let feature_descendant = active_depth.is_some_and(|depth| {
+            self.frames[depth..self.frames.len().saturating_sub(1)]
+                .iter()
+                .all(|frame| frame.target && frame.local == "Feature")
+        });
+        if self.geometry.is_none() && local == "Location" && feature_descendant {
             self.capture = Some(Capture::Point {
                 role: "__location".to_owned(),
                 depth: self.frames.len(),
@@ -277,6 +300,9 @@ impl Parser<'_> {
             ));
         }
         if let Some(capture) = &mut self.capture {
+            if capture.depth() != self.frames.len() {
+                return Ok(());
+            }
             let text = unescape(value)?;
             let target = match capture {
                 Capture::CgPoint { text, .. }

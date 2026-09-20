@@ -6,6 +6,7 @@ import { useEffect, useMemo, type RefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '../store/index.js';
+import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
 
 /**
  * Adapt authored 3D LandXML boundary/breakline/contour coordinates into the
@@ -36,14 +37,21 @@ export function useLandXmlOverlayLines(): Float32Array {
           for (let index = 1; index < line.points.length; index++) {
             const [northA, eastA, elevationA] = line.points[index - 1];
             const [northB, eastB, elevationB] = line.points[index];
-            vertices.push(
-              eastA * units.linearScaleToMeters - offset.x,
-              elevationA * units.elevationScaleToMeters - offset.y,
-              -northA * units.linearScaleToMeters - offset.z,
-              eastB * units.linearScaleToMeters - offset.x,
-              elevationB * units.elevationScaleToMeters - offset.y,
-              -northB * units.linearScaleToMeters - offset.z,
-            );
+            const a = {
+              x: eastA * units.linearScaleToMeters - offset.x,
+              y: elevationA * units.elevationScaleToMeters - offset.y,
+              z: -northA * units.linearScaleToMeters - offset.z,
+            };
+            const b = {
+              x: eastB * units.linearScaleToMeters - offset.x,
+              y: elevationB * units.elevationScaleToMeters - offset.y,
+              z: -northB * units.linearScaleToMeters - offset.z,
+            };
+            if (!boundsFitRenderFrame({
+              min: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), z: Math.min(a.z, b.z) },
+              max: { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y), z: Math.max(a.z, b.z) },
+            }, { x: 0, y: 0, z: 0 })) continue;
+            vertices.push(a.x, a.y, a.z, b.x, b.y, b.z);
           }
         }
       }

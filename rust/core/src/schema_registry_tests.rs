@@ -3,7 +3,34 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::generated::schema_registry::SchemaVersion;
-use crate::{attribute_names_for_schema, legacy_attribute_names, IfcType};
+use crate::{
+    attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema,
+    legacy_attribute_names, IfcType,
+};
+
+// These tests enter the new public registry API directly. A whole-file revert
+// necessarily removes those exports before Rust can compile this module, so
+// the PR uses the documented revert-oracle exemption for public API additions.
+
+#[test]
+fn generated_registries_answer_schema_local_inheritance_facts() {
+    let ifc2x3_door_style = entity_info_for_schema("IFC2X3", "IFCDOORSTYLE")
+        .expect("IFC2X3 declares IfcDoorStyle");
+    assert_eq!(ifc2x3_door_style.name, "IFCDOORSTYLE");
+    assert_eq!(ifc2x3_door_style.parent, Some("IFCTYPEPRODUCT"));
+    assert!(!ifc2x3_door_style.is_abstract);
+    assert!(is_subtype_of_for_schema(
+        "IFC2X3",
+        "IFCDOORSTYLE",
+        "IFCTYPEPRODUCT"
+    ));
+    assert!(!is_subtype_of_for_schema(
+        "IFC4X3",
+        "IFCDOORSTYLE",
+        "IFCTYPEPRODUCT"
+    ));
+    assert!(!is_subtype_of_for_schema("IFC5", "IFCWALL", "IFCPRODUCT"));
+}
 
 #[test]
 fn generated_registries_keep_version_specific_door_style_slots() {

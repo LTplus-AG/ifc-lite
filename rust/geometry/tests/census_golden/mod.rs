@@ -866,6 +866,27 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
         c.better.push("no longer depends on the triangulator's diagonal choice".to_string());
     }
 
+    // `diverged()` is a boolean, so once a host is diverged on BOTH sides the
+    // two branches above can never fire again: they only see the agree/disagree
+    // state change, never the count behind it. `alt` carries a real open-edge
+    // count exactly like `open` and `strict` (`edge_stats`'s ALTERNATE-triangulator
+    // reading), so gate it the same way `open` is gated above `r.open > g.open`,
+    // but only where the boolean above has already stopped watching: on a host
+    // that has NOT diverged, `alt == Some(open)` by definition and the branches
+    // above are the whole story, so comparing `alt` there would be redundant
+    // with `open`'s own magnitude check.
+    //
+    // `None` on either side (the alternate pass failed to run at all) is left
+    // alone: `diverged()` already counts a failed pass as divergence in its own
+    // right, and there is no count on that side to compare a magnitude against.
+    if let (Some(ga), Some(ra)) = (g.alt, r.alt) {
+        if r.diverged() && g.diverged() && ra > ga {
+            c.worse_counts.push(format!(
+                "alternate-triangulator open edges {ga} -> {ra} (already diverged from `open`)"
+            ));
+        }
+    }
+
     // The gated predicate itself, not only its inputs. `is_torn_solid` also reads
     // `pre`, and a no-void pass that starts or stops failing moves a host into or
     // out of the genuine-defect population while `open`, `tris`, `collapsed` and
@@ -1758,6 +1779,58 @@ mod tests {
     }
 
     #[test]
+    fn an_already_diverged_host_still_reports_a_worsening_alt() {
+        // #5060: `diverged()` is a boolean, so once BOTH sides already disagree
+        // with `open` the two clauses above it can never fire again — they only
+        // see the agree/disagree state change, not the count behind it. `open`
+        // held fixed here so ONLY the magnitude clause under test can produce a
+        // reason.
+        let g = HostRow { alt: Some(6), ..row("a.ifc", 1, 8, 800) };
+        let r = HostRow { alt: Some(7), ..row("a.ifc", 1, 8, 800) };
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "a worsening alt on an already-diverged host must regress");
+        let reasons = &d.regressed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("alternate-triangulator open edges 6 -> 7")),
+            "{reasons:?}"
+        );
+
+        // A FAILED alternate pass (`None`) on either side is not a count to
+        // compare a magnitude against; `diverged()` already counts it as
+        // divergence in its own right, above, so this clause must stay silent
+        // rather than panic or invent a magnitude.
+        let g_failed = HostRow { alt: None, ..row("a.ifc", 1, 8, 800) };
+        let r_failed = HostRow { alt: Some(7), ..row("a.ifc", 1, 8, 800) };
+        let d = diff(&[g_failed], &[r_failed], &swept(&["a.ifc"]));
+        assert!(
+            d.regressed.is_empty(),
+            "both sides were already diverged (a failed pass counts as diverged) and \
+             nothing else moved, so a `None` alt gives this clause no magnitude to \
+             compare and it must stay silent rather than invent one: {:?}",
+            d.regressed
+        );
+
+        // The mirror of the case above: the FAILED alternate pass is on the RUN
+        // side instead of the golden's. The magnitude clause is gated on
+        // `if let (Some(ga), Some(ra)) = (g.alt, r.alt)`, which is symmetric in
+        // which side is `None`, so this direction must stay just as silent —
+        // pinned separately because a pattern match failing open in one
+        // position and not the other is exactly the kind of asymmetry a single
+        // direction cannot catch.
+        let g_had_alt = HostRow { alt: Some(6), ..row("a.ifc", 1, 8, 800) };
+        let r_lost_alt = HostRow { alt: None, ..row("a.ifc", 1, 8, 800) };
+        let d = diff(&[g_had_alt], &[r_lost_alt], &swept(&["a.ifc"]));
+        assert!(
+            d.regressed.is_empty(),
+            "golden and run are both diverged already (golden via alt=6 != open=8, run via \
+             the failed pass counting as diverged in its own right) and nothing else about \
+             the row moved, so this pair is clean: the magnitude clause has no `Some` on the \
+             run side to compare against and must stay silent rather than invent one: {:?}",
+            d.regressed
+        );
+    }
+
+    #[test]
     fn a_host_that_stopped_meshing_is_coverage_loss_not_an_improvement() {
         // The #2382 bug class: under absolute totals this element's defects
         // simply leave the sum and the census reads greener.
@@ -2445,12 +2518,32 @@ mod tests {
         }
         // Guard against the loop vacuously skipping everything.
         assert!(checked > vs.len(), "only {checked} clean pairs of {}", vs.len() * vs.len());
-        assert_eq!(checked, 63648, "clean pairs swept");
+        // #5060 moved this. The new magnitude clause in `classify` (`if let
+        // (Some(ga), Some(ra)) = (g.alt, r.alt) { if r.diverged() && g.diverged()
+        // && ra > ga { ... } }`) routes 7,200 pairs that used to be clean
+        // (`checked`) into `requires_bless` instead: every pair where BOTH
+        // `open` values are held equal or improved, `g`/`r` are already
+        // `diverged()` (i.e. `alt` disagrees with `open` on both sides, which
+        // `variants()`'s `alt in [None, Some(0), Some(3), Some(9)]` makes true
+        // for 2 of the 4 `alt` values at each `open`), and `r.alt > g.alt`.
+        // 63648 - 7200 = 56448, the value CI observed on run 35511977165.
+        assert_eq!(checked, 56448, "clean pairs swept");
         // The two counts the comment above quotes, asserted rather than
         // recorded. The gap between them is the whole reason
         // `shrank_while_healing` exists, so it must not drift unnoticed.
+        //
+        // `detected` (`shrank_while_healing`) is untouched by #5060: it is
+        // tallied from `c.retessellated` alone, above the `requires_bless`
+        // skip, and the new `alt` clause only ever appends to `c.worse_counts`.
         assert_eq!(detected, 135680, "pairs DETECTED as a re-tessellation");
-        assert_eq!(landed, 4368, "pairs that LAND in the retessellated bucket");
+        // `landed` DOES move, for the same #5060 reason, and was not reached by
+        // CI run 35511977165 because Rust aborts a test at its first failing
+        // assertion and `checked` (above) failed first. A worsened count
+        // outranks a re-tessellation verdict (see the `diff` routing comment
+        // above), so any pair that used to land in `retessellated` and now also
+        // trips the new `alt` clause is re-routed to `regressed` instead, and
+        // no longer counted here. 4368 - 384 = 3984.
+        assert_eq!(landed, 3984, "pairs that LAND in the retessellated bucket");
     }
 
     #[test]

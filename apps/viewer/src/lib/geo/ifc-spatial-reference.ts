@@ -66,6 +66,7 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
       format: 'ifc',
       mapConversionExpressId: input.mapConversion.id,
       projectedCrsExpressId: input.projectedCRS.id,
+      mapUnitToMetres: mapUnitScale,
       ...(input.projectedCRS.name ? { projectedCrsName: input.projectedCRS.name } : {}),
       ...(input.projectedCRS.verticalDatum ? { verticalDatum: input.projectedCRS.verticalDatum } : {}),
     }),

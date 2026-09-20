@@ -29,7 +29,7 @@ import {
   buildIfcxDataStore,
   convertIfcxMeshes,
 } from './ingest/viewerModelIngest.js';
-import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
 import { withModelRotationsUnbaked } from '../components/viewer/useModelRotationSync.js';
 import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
@@ -224,7 +224,7 @@ export function useIfcFederation(
     const allModels = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
     if (allModels.length === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
 
-    const referenceSelection = findReferenceGeorefModel();
+    const referenceSelection = findReferenceSpatialModel();
     if (!referenceSelection) { toast.error('Cannot re-align: no model with valid georeferencing.'); return; }
 
     // Snapshot georef edits once for the whole pass. Cross-CRS projection
@@ -238,10 +238,10 @@ export function useIfcFederation(
     const { counts, anchorGeoref, movedModelIds } = await withModelRotationsUnbaked(() => realignFederationModels({
       models: allModels,
       anchorModelId: referenceSelection.modelId,
-      anchorGeoref: referenceSelection.georef,
+      anchorGeoref: referenceSelection.placement,
       resolveGeoref: (modelId, model) => (
         model.ifcDataStore && model.geometryResult
-          ? extractModelGeoref(
+          ? extractModelSpatialPlacement(
             model.ifcDataStore,
             model.geometryResult.coordinateInfo,
             georefMutations.get(modelId),

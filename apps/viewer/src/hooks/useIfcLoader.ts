@@ -73,7 +73,7 @@ import {
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { extractModelSpatialPlacement, alignGeometryToReference, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { capturePreAlignment } from './ingest/federationRealign.js';
 import type { PreAlignmentSnapshot } from '../store/index.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
@@ -519,12 +519,12 @@ export function useIfcLoader() {
         if (patch?.pointCloudHandleId === undefined && dataStore && geometryResult) {
           const st = useViewerStore.getState();
           if (st.pointCloudAssetCount > 0 && !hasRegisteredPointCloudAlignment()) {
-            const ownGeoref = extractModelGeoref(
+            const ownPlacement = extractModelSpatialPlacement(
               dataStore,
               geometryResult.coordinateInfo,
               st.georefMutations.get(modelId),
             );
-            if (ownGeoref && computePointCloudAlignment(ownGeoref)) {
+            if (ownPlacement && computePointCloudAlignment(ownPlacement)) {
               toast.info(
                 'Point clouds loaded before this model keep their raw coordinates — '
                 + 'reload the scan to align it with the model georeference.',
@@ -538,9 +538,9 @@ export function useIfcLoader() {
           }
           // Georef alignment against the federation anchor (resolved live from
           // the store, exactly as the former addModel finalize did).
-          const referenceGeoref = findReferenceGeorefModel()?.georef ?? null;
+          const referencePlacement = findReferenceSpatialModel()?.placement ?? null;
           const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
-          const parsedGeoref = extractModelGeoref(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
+          const parsedPlacement = extractModelSpatialPlacement(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
           // The snapshot `realignFederation` later restores from. Captured by
           // the same function that restores it (ingest/federationRealign.ts) so
           // the two cannot cover different fields — #1891's world boxes are
@@ -549,10 +549,10 @@ export function useIfcLoader() {
           // second time.
           let preAlignment: PreAlignmentSnapshot | undefined;
           let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
-          if (referenceGeoref && parsedGeoref) {
+          if (referencePlacement && parsedPlacement) {
             setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
             preAlignment = capturePreAlignment(geometryResult);
-            const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
+            const status = await alignGeometryToReference(geometryResult, parsedPlacement, referencePlacement);
             // Stale-guard-after-await sweep: `alignGeometryToReference` is real
             // reprojection work — the only await in the federated branch (every
             // write below it, registerModelOffset/addModel/buildSpatialIndex-
@@ -569,18 +569,18 @@ export function useIfcLoader() {
             federationAlignmentStatus = status;
             if (status === 'reprojected') {
               toast.info(
-                `Reprojected "${file.name}" from ${parsedGeoref.projectedCRS.name} `
-                + `to ${referenceGeoref.projectedCRS.name} for federation alignment.`,
+                `Reprojected "${file.name}" from ${parsedPlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} `
+                + `to ${referencePlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} for federation alignment.`,
               );
             } else if (status === 'failed') {
               toast.error(
                 `Could not align "${file.name}" with the federation anchor — `
-                + `${parsedGeoref.projectedCRS.name} → ${referenceGeoref.projectedCRS.name} `
+                + `${parsedPlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} → ${referencePlacement.spatialReference.horizontal?.id ?? 'unknown CRS'} `
                 + 'reprojection failed. The model is shown in its own local frame and may '
                 + 'appear at the wrong real-world position.',
               );
             }
-          } else if (parsedGeoref) {
+          } else if (parsedPlacement) {
             federationAlignmentStatus = 'anchor';
           }
 
@@ -820,8 +820,8 @@ export function useIfcLoader() {
         // metres by spec (ASTM E2807) and PCD/PLY/PTS/XYZ have no format
         // convention so metres is the documented assumption here too.
         const sourceUnit: PointCloudSourceUnit = format === 'las' || format === 'laz' ? 'mapUnit' : 'metre';
-        const reference = findReferenceGeorefModel();
-        const alignment = reference ? computePointCloudAlignment(reference.georef, sourceUnit) : null;
+        const reference = findReferenceSpatialModel();
+        const alignment = reference ? computePointCloudAlignment(reference.placement, sourceUnit) : null;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({

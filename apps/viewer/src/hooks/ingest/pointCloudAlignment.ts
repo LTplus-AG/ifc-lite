@@ -90,10 +90,7 @@
  */
 
 import { localViewerToProjected, projectedToLocalViewer, type ModelSpatialReference } from '@ifc-lite/geometry';
-import type { ModelGeoref } from './federationAlign.js';
-import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
-import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
-import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
+import type { ModelSpatialPlacement } from './federationAlign.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 
 export interface MapConversionParams {
@@ -256,38 +253,25 @@ export interface PointCloudAlignmentTransform {
  * Callers that ingest E57/PCD/PLY/PTS/XYZ MUST pass `'metre'` explicitly.
  */
 export function computePointCloudAlignment(
-  georef: ModelGeoref,
+  placement: ModelSpatialPlacement,
   sourceUnit: PointCloudSourceUnit = 'mapUnit',
 ): PointCloudAlignmentTransform | null {
-  const lengthUnitScale = georef.lengthUnitScale ?? 1;
-  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
+  const spatialReference = placement.spatialReference;
+  const operation = spatialReference.localToProjected;
+  const mapUnitScale = typeof spatialReference.sourceMetadata?.mapUnitToMetres === 'number'
+    ? spatialReference.sourceMetadata.mapUnitToMetres : 1;
   if (!(mapUnitScale > 0)) return null;
-  // Map-absolute geometry (#2526): a reference model whose geometry already
-  // sits at the declared anchor lives in the SAME absolute frame as the scan,
-  // so the alignment reduces to the viewer shift alone — inverting the
-  // authored conversion would subtract the anchor twice and rotate the cloud
-  // off the model it was scanned against.
-  const conv = effectiveMapConversionForGeometry(
-    georef.mapConversion,
-    mapUnitScale,
-    georef.coordinateInfo,
-  );
-  const effectiveScales = getEffectiveAxisScales(conv, mapUnitScale, lengthUnitScale);
+  if (!operation) return null;
+  const effectiveScales = { x: operation.scaleX, y: operation.scaleY, z: operation.scaleZ };
   if (!usableScales(effectiveScales)) return null;
   const { x: scaleX, y: scaleY, z: scaleZ } = effectiveScales;
-
-  const rawA = conv.xAxisAbscissa ?? 1;
-  const rawB = conv.xAxisOrdinate ?? 0;
+  const rawA = operation.xAxisAbscissa;
+  const rawB = operation.xAxisOrdinate;
   const axis = normalizeAxis(rawA, rawB);
   if (!axis) return null;
   const { a, b } = axis;
 
-  // One neutral immutable reference drives the f64 map conversion below.
-  // Older test-only ModelGeoref values do not carry it yet, so build the same
-  // adapter result at the IFC boundary rather than duplicating the operation.
-  const spatialReference = georef.spatialReference ?? spatialReferenceFromIfc(georef);
-
-  const off = totalYupOffset(georef.coordinateInfo);
+  const off = totalYupOffset(placement.coordinateInfo);
 
   // Fold the ENTIRE viewer shift into the decode-time offset (see module
   // doc, "Precision"): the decode offset is the map-space position of the

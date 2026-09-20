@@ -19,7 +19,8 @@ import assert from 'node:assert';
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { alignGeometryToReference, type ModelGeoref } from './federationAlign.js';
+import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 
 function mapConversion(over: Partial<MapConversion>): MapConversion {
   return {
@@ -44,11 +45,11 @@ function georef(
   conversion: Partial<MapConversion>,
   crsName = 'EPSG:2056',
   coordinateInfo?: CoordinateInfo,
-): ModelGeoref {
+): ModelSpatialPlacement {
   return {
-    mapConversion: mapConversion(conversion),
-    projectedCRS: projectedCrs(crsName),
-    lengthUnitScale: 1,
+    spatialReference: spatialReferenceFromIfc({
+      mapConversion: mapConversion(conversion), projectedCRS: projectedCrs(crsName), lengthUnitScale: 1, coordinateInfo,
+    }),
     ...(coordinateInfo ? { coordinateInfo } : {}),
   };
 }

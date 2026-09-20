@@ -15,15 +15,17 @@
 
 import {
   type IfcDataStore,
-  type MapConversion,
-  type ProjectedCRS,
 } from '@ifc-lite/parser';
-import type { CoordinateInfo, ModelSpatialReference } from '@ifc-lite/geometry';
+import {
+  localViewerToProjected,
+  projectedToLocalViewer,
+  resolveSpatialPlacement,
+  type CoordinateInfo,
+  type ModelSpatialReference,
+} from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
-import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
-import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
-import { resolveProjection } from '../../lib/geo/reproject.js';
+import { resolveProjectionId } from '../../lib/geo/reproject.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import {
@@ -41,54 +43,17 @@ import proj4 from 'proj4';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
 
-export interface ModelGeoref {
-  mapConversion: MapConversion;
-  projectedCRS: ProjectedCRS;
-  lengthUnitScale: number;
+/** One format-neutral model placement record used by every federation path. */
+export interface ModelSpatialPlacement {
+  spatialReference: ModelSpatialReference;
   coordinateInfo?: CoordinateInfo;
-  /** Immutable neutral source metadata for non-IFC federation consumers (#5048). */
-  spatialReference?: ModelSpatialReference;
 }
 
-function getMapUnitScale(georef: ModelGeoref): number {
-  return resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, georef.lengthUnitScale ?? 1);
-}
-
-/**
- * The conversion the alignment maths must apply for this model: the authored
- * one, unless the model's geometry already sits at the declared map anchor —
- * the map-absolute double-georeferencing signature (#2526) — in which case
- * the neutralised (zero-offset, identity-rotation) conversion reads the
- * geometry's absolute coordinates through instead of transforming them twice.
- */
-function effectiveConv(georef: ModelGeoref): MapConversion {
-  return effectiveMapConversionForGeometry(
-    georef.mapConversion,
-    getMapUnitScale(georef),
-    georef.coordinateInfo,
-  );
-}
-
-function getAxis(georef: ModelGeoref): {
-  a: number; o: number; scaleX: number; scaleY: number; scaleZ: number; denom: number;
-} {
-  const conversion = effectiveConv(georef);
-  const a = conversion.xAxisAbscissa ?? 1;
-  const o = conversion.xAxisOrdinate ?? 0;
-  // Use the effective horizontal scale: viewer geometry is already in metres,
-  // so applying IfcMapConversion.Scale raw would double-scale — see issue #595.
-  const lengthUnitScale = georef.lengthUnitScale ?? 1;
-  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
-  const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
-  const denom = Math.max(a * a + o * o, 1e-12);
-  return { a, o, scaleX, scaleY, scaleZ, denom };
-}
-
-export function extractModelGeoref(
+export function extractModelSpatialPlacement(
   dataStore: IfcDataStore,
   coordinateInfo?: CoordinateInfo,
   mutations?: GeorefMutationDataLike,
-): ModelGeoref | null {
+): ModelSpatialPlacement | null {
   const georef = getEffectiveGeoreference(dataStore, coordinateInfo, mutations);
   // Only TRUE georeferencing (real IfcMapConversion + IfcProjectedCRS) may drive
   // federation alignment. A file with no IfcMapConversion gets a synthesised
@@ -106,9 +71,6 @@ export function extractModelGeoref(
     return null;
   }
   return {
-    mapConversion: georef.mapConversion,
-    projectedCRS: georef.projectedCRS,
-    lengthUnitScale: georef.lengthUnitScale,
     coordinateInfo,
     spatialReference: spatialReferenceFromIfc({
       mapConversion: georef.mapConversion,
@@ -117,14 +79,6 @@ export function extractModelGeoref(
       coordinateInfo,
     }),
   };
-}
-
-function crsKey(crs: ProjectedCRS): string {
-  return `${crs.name ?? ''}|${crs.geodeticDatum ?? ''}|${crs.mapProjection ?? ''}|${crs.mapZone ?? ''}`.toUpperCase();
-}
-
-function canAlignInSameProjectedCrs(a: ModelGeoref, b: ModelGeoref): boolean {
-  return crsKey(a.projectedCRS) === crsKey(b.projectedCRS);
 }
 
 function emptyBounds() {
@@ -152,70 +106,18 @@ function updateBounds(bounds: ReturnType<typeof emptyBounds>, x: number, y: numb
   return true;
 }
 
-function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeoref): AffineTransform3D | null {
-  // Map-absolute geometry (#2526): per-model effective conversion, matching
-  // the axis pair getAxis() resolves from the same guard.
-  const sourceConv = effectiveConv(source);
-  const refConv = effectiveConv(reference);
-  const sourceAxis = getAxis(source);
-  const refAxis = getAxis(reference);
-  const refDenomX = refAxis.scaleX * refAxis.denom;
-  const refDenomY = refAxis.scaleY * refAxis.denom;
-  if (Math.abs(refDenomX) < 1e-12 || Math.abs(refDenomY) < 1e-12
-    || Math.abs(refAxis.scaleZ) < 1e-12) return null;
-
-  const sourceMapUnitScale = getMapUnitScale(source);
-  const refMapUnitScale = getMapUnitScale(reference);
-  const sourceOffset = totalYupOffset(source.coordinateInfo);
-  const refOffset = totalYupOffset(reference.coordinateInfo);
-
-  const eVx = sourceAxis.scaleX * sourceAxis.a;
-  const eVz = sourceAxis.scaleY * sourceAxis.o;
-  const eC = sourceConv.eastings * sourceMapUnitScale
-    + sourceAxis.scaleX * sourceAxis.a * sourceOffset.x
-    + sourceAxis.scaleY * sourceAxis.o * sourceOffset.z
-    - refConv.eastings * refMapUnitScale;
-
-  const nVx = sourceAxis.scaleX * sourceAxis.o;
-  const nVz = -sourceAxis.scaleY * sourceAxis.a;
-  const nC = sourceConv.northings * sourceMapUnitScale
-    + sourceAxis.scaleX * sourceAxis.o * sourceOffset.x
-    - sourceAxis.scaleY * sourceAxis.a * sourceOffset.z
-    - refConv.northings * refMapUnitScale;
-
-  const hC = sourceConv.orthogonalHeight * sourceMapUnitScale
-    + sourceAxis.scaleZ * sourceOffset.y
-    - refConv.orthogonalHeight * refMapUnitScale;
-
-  const xVx = (refAxis.a * eVx + refAxis.o * nVx) / refDenomX;
-  const xVz = (refAxis.a * eVz + refAxis.o * nVz) / refDenomX;
-  const xC = (refAxis.a * eC + refAxis.o * nC) / refDenomX - refOffset.x;
-
-  const yVx = (-refAxis.o * eVx + refAxis.a * nVx) / refDenomY;
-  const yVz = (-refAxis.o * eVz + refAxis.a * nVz) / refDenomY;
-  // NOTE: the refOffset handling is intentionally asymmetric between X and Z and
-  // must NOT be "symmetrised". refOffset is subtracted from the FINAL viewer
-  // coordinate on every axis. X maps positively (`tx = +xC`), so its offset is
-  // folded into xC above. Z maps to the NEGATED north axis (`tz = -yC`), so its
-  // offset is applied after the negation, leaving yC offset-free here. This
-  // matches alignGeometryAcrossCrs: alignedZ = refWorldZ - refOffset.z with
-  // refWorldZ = -ifcYr. Folding -refOffset.z into yC would flip its sign.
-  const yC = (-refAxis.o * eC + refAxis.a * nC) / refDenomY;
-
-  return {
-    m00: xVx,
-    m01: 0,
-    m02: xVz,
-    tx: xC,
-    m10: 0,
-    m11: sourceAxis.scaleZ / refAxis.scaleZ,
-    m12: 0,
-    ty: hC / refAxis.scaleZ - refOffset.y,
-    m20: -yVx,
-    m21: 0,
-    m22: -yVz,
-    tz: -yC - refOffset.z,
-  };
+function buildSpatialAlignmentTransform(
+  source: ModelSpatialPlacement,
+  reference: ModelSpatialPlacement,
+): AffineTransform3D | null {
+  const resolved = resolveSpatialPlacement(source.spatialReference, reference.spatialReference, {
+    sourceFrameOffset: totalYupOffset(source.coordinateInfo),
+    targetFrameOffset: totalYupOffset(reference.coordinateInfo),
+    // IFC commonly lacks a VerticalDatum.  The policy is explicit at this
+    // adapter boundary; a declared conflict is still refused by the resolver.
+    unknownVertical: 'assume-compatible',
+  });
+  return resolved.ok ? resolved.placement.sourceToFederation : null;
 }
 
 function isIdentityTransform(transform: AffineTransform3D): boolean {
@@ -345,8 +247,8 @@ function applyAlignmentTransformAndUpdateBounds(
  */
 async function alignGeometryAcrossCrs(
   geometry: FederatedGeometryResult,
-  source: ModelGeoref,
-  reference: ModelGeoref,
+  source: ModelSpatialPlacement,
+  reference: ModelSpatialPlacement,
 ): Promise<boolean> {
   // Reprojection is all-or-nothing.  Publishing a mesh with even one source
   // vertex left in its old CRS creates geometry that no later re-alignment can
@@ -360,24 +262,17 @@ async function alignGeometryAcrossCrs(
       geometry.meshes[index].origin = originalOrigins[index];
     }
   };
-  const sourceProjDef = await resolveProjection(source.projectedCRS);
-  const refProjDef = await resolveProjection(reference.projectedCRS);
+  const sourceCrs = source.spatialReference.horizontal?.id;
+  const referenceCrs = reference.spatialReference.horizontal?.id;
+  if (!sourceCrs || !referenceCrs) return false;
+  if (source.spatialReference.vertical && reference.spatialReference.vertical
+    && source.spatialReference.vertical.id !== reference.spatialReference.vertical.id) return false;
+  const sourceProjDef = await resolveProjectionId(sourceCrs);
+  const refProjDef = await resolveProjectionId(referenceCrs);
   if (!sourceProjDef || !refProjDef) return false;
 
-  const sourceMapUnitScale = getMapUnitScale(source);
-  const refMapUnitScale = getMapUnitScale(reference);
-  const sourceAxis = getAxis(source);
-  const refAxis = getAxis(reference);
   const sourceOffset = totalYupOffset(source.coordinateInfo);
   const refOffset = totalYupOffset(reference.coordinateInfo);
-
-  const refDenomX = refAxis.scaleX * refAxis.denom;
-  const refDenomY = refAxis.scaleY * refAxis.denom;
-  if ([refDenomX, refDenomY, refAxis.scaleZ].some((value) => Math.abs(value) < 1e-12)) return false;
-
-  // Map-absolute geometry (#2526): same per-model guard as the same-CRS path.
-  const sourceConv = effectiveConv(source);
-  const refConv = effectiveConv(reference);
 
   const bounds = emptyBounds();
   let found = false;
@@ -409,22 +304,11 @@ async function alignGeometryAcrossCrs(
     vy: number,
     vz: number,
   ): [number, number, number] | null => {
-    // viewer(Y-up, source-local) → world(Y-up) → IFC(Z-up, source)
-    const wx = vx + sourceOffset.x;
-    const wy = vy + sourceOffset.y;
-    const wz = vz + sourceOffset.z;
-    const ifcXs = wx;
-    const ifcYs = -wz;
-    const ifcZs = wy;
-
-    // IFC(source) → source projected (apply source MapConversion)
-    const eS = sourceConv.eastings * sourceMapUnitScale
-      + sourceAxis.a * sourceAxis.scaleX * ifcXs
-      - sourceAxis.o * sourceAxis.scaleY * ifcYs;
-    const nS = sourceConv.northings * sourceMapUnitScale
-      + sourceAxis.o * sourceAxis.scaleX * ifcXs
-      + sourceAxis.a * sourceAxis.scaleY * ifcYs;
-    const hS = sourceConv.orthogonalHeight * sourceMapUnitScale + sourceAxis.scaleZ * ifcZs;
+    // Source viewer frame → source projected frame.  The adapter owns all
+    // format-specific units, axes and map-operation semantics.
+    const projectedSource = localViewerToProjected(source.spatialReference, [vx, vy, vz], sourceOffset);
+    if (!projectedSource) return null;
+    const [eS, nS, hS] = projectedSource;
 
     // source projected → reference projected via proj4
     let eR: number;
@@ -441,15 +325,9 @@ async function alignGeometryAcrossCrs(
     // Height transformed under identity (no vertical datum hop in browser).
     const hR = hS;
 
-    // reference projected → IFC(reference): invert reference MapConversion
-    const dE = eR - refConv.eastings * refMapUnitScale;
-    const dN = nR - refConv.northings * refMapUnitScale;
-    const ifcXr = (refAxis.a * dE + refAxis.o * dN) / refDenomX;
-    const ifcYr = (-refAxis.o * dE + refAxis.a * dN) / refDenomY;
-    const ifcZr = (hR - refConv.orthogonalHeight * refMapUnitScale) / refAxis.scaleZ;
-
-    // IFC(Z-up, reference) → world(Y-up) → viewer(Y-up, reference-local)
-    return [ifcXr - refOffset.x, ifcZr - refOffset.y, -ifcYr - refOffset.z];
+    // Reference projected frame → reference viewer frame through the same
+    // neutral inverse used by same-CRS and point-cloud placement.
+    return projectedToLocalViewer(reference.spatialReference, [eR, nR, hR], refOffset);
   };
 
   for (const mesh of geometry.meshes) {
@@ -494,7 +372,7 @@ async function alignGeometryAcrossCrs(
     restoreSourceFrame();
     console.warn(
       `[ifc-lite] Cross-CRS alignment failed: ${projFailures}/${attempts} `
-      + `vertex transforms failed for ${source.projectedCRS.name} → ${reference.projectedCRS.name}; `
+      + `vertex transforms failed for ${sourceCrs} → ${referenceCrs}; `
       + 'no vertices were successfully reprojected. Leaving geometry untouched.',
       firstProjError,
     );
@@ -546,11 +424,11 @@ export type FederationAlignmentStatus = 'same-crs' | 'reprojected' | 'identity' 
  */
 export async function alignGeometryToReference(
   geometry: FederatedGeometryResult,
-  source: ModelGeoref,
-  reference: ModelGeoref,
+  source: ModelSpatialPlacement,
+  reference: ModelSpatialPlacement,
 ): Promise<FederationAlignmentStatus> {
-  if (canAlignInSameProjectedCrs(source, reference)) {
-    const transform = buildGeorefAlignmentTransform(source, reference);
+  if (source.spatialReference.horizontal?.id === reference.spatialReference.horizontal?.id) {
+    const transform = buildSpatialAlignmentTransform(source, reference);
     if (!transform) return 'failed';
     if (isIdentityTransform(transform)) return 'identity';
     applyAlignmentTransformAndUpdateBounds(
@@ -575,18 +453,18 @@ export async function alignGeometryToReference(
  *      a stable anchor across loads while letting the user override when they
  *      want a different model to drive the world frame).
  */
-export function findReferenceGeorefModel(): { modelId: string; georef: ModelGeoref } | null {
+export function findReferenceSpatialModel(): { modelId: string; placement: ModelSpatialPlacement } | null {
   const state = useViewerStore.getState();
   const override = state.anchorModelIdOverride;
   if (override) {
     const model = state.models.get(override) as FederatedModel | undefined;
     if (model?.ifcDataStore && model.geometryResult) {
-      const georef = extractModelGeoref(
+      const placement = extractModelSpatialPlacement(
         model.ifcDataStore,
         model.geometryResult.coordinateInfo,
         state.georefMutations.get(override),
       );
-      if (georef) return { modelId: override, georef };
+      if (placement) return { modelId: override, placement };
     }
     // Fall through if the override no longer resolves — keeps loads
     // recoverable even if the user removed the anchor they had pinned.
@@ -596,12 +474,12 @@ export function findReferenceGeorefModel(): { modelId: string; georef: ModelGeor
   const sorted = [...modelEntries].sort(([, a], [, b]) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
   for (const [modelId, model] of sorted) {
     if (!model.ifcDataStore || !model.geometryResult) continue;
-    const georef = extractModelGeoref(
+    const placement = extractModelSpatialPlacement(
       model.ifcDataStore,
       model.geometryResult.coordinateInfo,
       state.georefMutations.get(modelId),
     );
-    if (georef) return { modelId, georef };
+    if (placement) return { modelId, placement };
   }
   return null;
 }

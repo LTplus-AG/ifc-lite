@@ -36,7 +36,7 @@
 
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
 import { growPreAlignment } from '../../store/slices/data-mesh-prealign.js';
-import { alignGeometryToReference, type ModelGeoref } from './federationAlign.js';
+import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
 
 type AlignableGeometry = NonNullable<FederatedModel['geometryResult']>;
 
@@ -159,13 +159,13 @@ export interface RealignFederationParams<M extends RealignableModel> {
    * is re-pointed at the anchor's restored frame before anything is aligned —
    * see {@link RealignFederationResult.anchorGeoref}.
    */
-  anchorGeoref: ModelGeoref;
+  anchorGeoref: ModelSpatialPlacement;
   /**
    * A non-anchor model's OWN georeference, or null when it has none (the model
    * is then left in its own frame and counted as skipped). Called after the
    * model has been restored, because the georef reads its `coordinateInfo`.
    */
-  resolveGeoref: (modelId: string, model: M) => ModelGeoref | null;
+  resolveGeoref: (modelId: string, model: M) => ModelSpatialPlacement | null;
   updateModel: (modelId: string, patch: Partial<RealignableModel>) => void;
 }
 
@@ -176,7 +176,7 @@ export interface RealignFederationResult {
    * caller's anchor georef with its `coordinateInfo` re-pointed at the anchor's
    * restored frame. Reported so the caller names the right CRS in its summary.
    */
-  anchorGeoref: ModelGeoref;
+  anchorGeoref: ModelSpatialPlacement;
   /**
    * Every model whose geometry this pass actually MOVED: the anchor when it was
    * restored, plus each non-anchor that was restored out of a previous anchor's
@@ -241,7 +241,7 @@ export async function realignFederationModels<M extends RealignableModel>(
   // data store and the user's georef edits, which a restore cannot touch
   // (`getEffectiveGeoreference` passes `coordinateInfo` straight through), so
   // re-pointing that one field is exactly what re-extracting would produce.
-  const anchorGeoref: ModelGeoref = anchorGeometry
+  const anchorGeoref: ModelSpatialPlacement = anchorGeometry
     ? { ...params.anchorGeoref, coordinateInfo: anchorGeometry.coordinateInfo }
     : params.anchorGeoref;
 

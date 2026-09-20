@@ -13,7 +13,8 @@ import {
   type MapConversionParams,
 } from './pointCloudAlignment.js';
 import { rebasePointCloudDecodeOrigin } from './pointCloudDecodeOrigin.js';
-import type { ModelGeoref } from './federationAlign.js';
+import type { ModelSpatialPlacement } from './federationAlign.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import {
   decodeAsciiPoints,
@@ -172,8 +173,8 @@ function makeGeoref(overrides: {
   mapConversion?: Partial<MapConversion>;
   projectedCRS?: Partial<ProjectedCRS>;
   lengthUnitScale?: number;
-  coordinateInfo?: ModelGeoref['coordinateInfo'];
-} = {}): ModelGeoref {
+  coordinateInfo?: ModelSpatialPlacement['coordinateInfo'];
+} = {}): ModelSpatialPlacement {
   const mapConversion: MapConversion = {
     id: 1,
     sourceCRS: 0,
@@ -193,9 +194,7 @@ function makeGeoref(overrides: {
     ...overrides.projectedCRS,
   };
   return {
-    mapConversion,
-    projectedCRS,
-    lengthUnitScale: overrides.lengthUnitScale ?? 1,
+    spatialReference: spatialReferenceFromIfc({ mapConversion, projectedCRS, lengthUnitScale: overrides.lengthUnitScale ?? 1, coordinateInfo: overrides.coordinateInfo }),
     coordinateInfo: overrides.coordinateInfo,
   };
 }
@@ -381,14 +380,14 @@ describe('computePointCloudAlignment with map-absolute geometry (#2526)', () => 
   // the SAME absolute coordinates, so aligning it must be a pure viewer-shift
   // subtraction (identity conversion) — inverting the authored conversion
   // would rotate the cloud away from the model it was scanned against.
-  const mapAbsInfo: NonNullable<ModelGeoref['coordinateInfo']> = {
+  const mapAbsInfo: NonNullable<ModelSpatialPlacement['coordinateInfo']> = {
     originShift: { x: 0, y: 0, z: 0 },
     originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
     shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
     hasLargeCoordinates: false,
     wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
   };
-  const mapAbsGeoref = (coordinateInfo?: ModelGeoref['coordinateInfo']) => makeGeoref({
+  const mapAbsGeoref = (coordinateInfo?: ModelSpatialPlacement['coordinateInfo']) => makeGeoref({
     mapConversion: {
       eastings: 312000,
       northings: 5996150,

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { federationFrameInfo, realRtcAnchorOf } from '@ifc-lite/geometry/world-frame';
-import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
+import type { ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
+import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import type { ViewerState } from '@/store';
 import { selectAnchorGeoref } from '@/lib/geo/select-anchor-georef';
 import { makePlacementManifest, parsePlacementManifest, resolvePlacementManifest } from './manifest.js';
@@ -19,14 +20,10 @@ import type { ModelPlacement } from './state.js';
  * that might be pinned (`placementFrameBaseKey`) and later go stale; the
  * live anchor is instead appended uniformly by `placementFrameKey`, outside
  * anything that could ever be a decision made once rather than read fresh. */
-export function georeferencedPlacementFrameKey(georef: ModelGeoref): string {
-  const crs = georef.projectedCRS, conversion = georef.mapConversion, info = georef.coordinateInfo;
-  return JSON.stringify({ crs: crs && { name: crs.name, mapUnitScale: crs.mapUnitScale },
-    conversion: conversion && { eastings: conversion.eastings, northings: conversion.northings,
-      orthogonalHeight: conversion.orthogonalHeight, xAxisAbscissa: conversion.xAxisAbscissa,
-      xAxisOrdinate: conversion.xAxisOrdinate, scale: conversion.scale,
-      factorX: conversion.factorX, factorY: conversion.factorY, factorZ: conversion.factorZ },
-    lengthUnitScale: georef.lengthUnitScale, originShift: info?.originShift, rotation: info?.buildingRotation });
+export function georeferencedPlacementFrameKey(placement: ModelSpatialPlacement): string {
+  const info = placement.coordinateInfo;
+  return JSON.stringify({ spatialReference: placement.spatialReference,
+    originShift: info?.originShift, rotation: info?.buildingRotation });
 }
 
 function placementAnchor(state: ViewerState) {
@@ -75,7 +72,9 @@ export function placementFrameCoordinateInfo(state: ViewerState) {
 export function placementFrameBaseKey(state: ViewerState): string {
   if (state.modelPlacement.realignedFrameKey) return state.modelPlacement.realignedFrameKey;
   const anchor = placementAnchor(state);
-  return anchor ? georeferencedPlacementFrameKey({ ...anchor.eff, coordinateInfo: anchor.coordinateInfo }) : 'local-engineering:m:z-up';
+  return anchor ? georeferencedPlacementFrameKey({
+    spatialReference: spatialReferenceFromIfc(anchor.eff), coordinateInfo: anchor.coordinateInfo,
+  }) : 'local-engineering:m:z-up';
 }
 
 /** `wasmRtcOffset` normalized so `-0` and `0` serialize identically; real

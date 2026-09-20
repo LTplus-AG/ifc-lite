@@ -86,6 +86,24 @@ export {
 } from './packed-instanced-decoder.js';
 
 export * from './types.js';
+export {
+  applySpatialPlacement,
+  localViewerToProjected,
+  projectedToLocalViewer,
+  resolveSpatialPlacement,
+  type LocalProjectedOperation,
+  type ModelSpatialReference,
+  type ResolveSpatialPlacementOptions,
+  type SourceCoordinateFrame,
+  type SpatialAffineTransform,
+  type SpatialAxisDirection,
+  type SpatialCrs,
+  type SpatialFrameOffset,
+  type SpatialPlacement,
+  type SpatialPlacementResult,
+  type SpatialReferenceConfidence,
+  type SpatialRefusal,
+} from './spatial-reference.js';
 
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';

@@ -18,13 +18,14 @@ import {
   type MapConversion,
   type ProjectedCRS,
 } from '@ifc-lite/parser';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { CoordinateInfo, ModelSpatialReference } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
 import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { resolveProjection } from '../../lib/geo/reproject.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import {
   alignEntityWorldAabbs,
   applyAffineTransform,
@@ -45,6 +46,8 @@ export interface ModelGeoref {
   projectedCRS: ProjectedCRS;
   lengthUnitScale: number;
   coordinateInfo?: CoordinateInfo;
+  /** Immutable neutral source metadata for non-IFC federation consumers (#5048). */
+  spatialReference?: ModelSpatialReference;
 }
 
 function getMapUnitScale(georef: ModelGeoref): number {
@@ -107,6 +110,12 @@ export function extractModelGeoref(
     projectedCRS: georef.projectedCRS,
     lengthUnitScale: georef.lengthUnitScale,
     coordinateInfo,
+    spatialReference: spatialReferenceFromIfc({
+      mapConversion: georef.mapConversion,
+      projectedCRS: georef.projectedCRS,
+      lengthUnitScale: georef.lengthUnitScale,
+      coordinateInfo,
+    }),
   };
 }
 

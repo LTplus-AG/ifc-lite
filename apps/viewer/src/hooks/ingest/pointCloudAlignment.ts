@@ -89,7 +89,9 @@
  * any CRS whose MapUnit isn't already the metre.
  */
 
+import { localViewerToProjected, projectedToLocalViewer, type ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelGeoref } from './federationAlign.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
 import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
@@ -106,6 +108,26 @@ export interface MapConversionParams {
   factorZ?: number;
 }
 
+/** Convert the legacy IFC-shaped test/input record to the one neutral maths home. */
+function spatialReferenceFromMapConversion(params: MapConversionParams): ModelSpatialReference {
+  const scale = params.scale ?? 1;
+  return {
+    source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+    localToProjected: {
+      kind: 'local-projected-affine',
+      eastings: params.eastings,
+      northings: params.northings,
+      orthogonalHeight: params.orthogonalHeight,
+      xAxisAbscissa: params.xAxisAbscissa ?? 1,
+      xAxisOrdinate: params.xAxisOrdinate ?? 0,
+      scaleX: scale * (params.factorX || 1),
+      scaleY: scale * (params.factorY || 1),
+      scaleZ: scale * (params.factorZ || 1),
+    },
+    confidence: 'declared',
+  };
+}
+
 /** Normalize the (possibly non-unit) XAxisAbscissa/XAxisOrdinate direction
  *  vector to unit length, as `GeoReference::sanitize_transform` in
  *  `rust/core/src/georef.rs` does for a usable axis — IfcMapConversion's axis
@@ -118,18 +140,9 @@ function normalizeAxis(rawA: number, rawB: number): { a: number; b: number } | n
   return { a: rawA / len, b: rawB / len };
 }
 
-type AxisScales = { x: number; y: number; z: number };
-
 /** A ~0 or non-finite axis scale collapses or poisons that axis. */
-function usableScales(s: AxisScales): boolean {
+function usableScales(s: { x: number; y: number; z: number }): boolean {
   return [s.x, s.y, s.z].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12);
-}
-
-/** Scale x Factor per axis (an absent or zero factor reads as 1), or null when unusable. */
-function axisScales(params: MapConversionParams): AxisScales | null {
-  const scale = params.scale ?? 1;
-  const s = { x: scale * (params.factorX || 1), y: scale * (params.factorY || 1), z: scale * (params.factorZ || 1) };
-  return usableScales(s) ? s : null;
 }
 
 /**
@@ -147,22 +160,8 @@ export function applyMapConversion(
   y: number,
   z: number,
 ): { e: number; n: number; h: number } | null {
-  const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
-  if (!axis) return null;
-  // Reject a ~0 Scale the same way the inverse does. Without this the
-  // forward map stays "successful" while collapsing every local point onto
-  // (Eastings, Northings, OrthogonalHeight) — a whole cloud silently
-  // stacked on one spot reads as a placement bug, where a null reads as
-  // the malformed IfcMapConversion it actually is.
-  const scales = axisScales(params);
-  if (!scales) return null;
-  const { x: scaleX, y: scaleY, z: scaleZ } = scales;
-  const { a, b } = axis;
-  return {
-    e: params.eastings + a * scaleX * x - b * scaleY * y,
-    n: params.northings + b * scaleX * x + a * scaleY * y,
-    h: params.orthogonalHeight + scaleZ * z,
-  };
+  const projected = localViewerToProjected(spatialReferenceFromMapConversion(params), [x, z, -y]);
+  return projected ? { e: projected[0], n: projected[1], h: projected[2] } : null;
 }
 
 /**
@@ -182,19 +181,8 @@ export function invertMapConversion(
   n: number,
   h: number,
 ): { x: number; y: number; z: number } | null {
-  const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
-  if (!axis) return null;
-  const scales = axisScales(params);
-  if (!scales) return null;
-  const { x: scaleX, y: scaleY, z: scaleZ } = scales;
-  const { a, b } = axis;
-  const dE = e - params.eastings;
-  const dN = n - params.northings;
-  return {
-    x: (a * dE + b * dN) / scaleX,
-    y: (-b * dE + a * dN) / scaleY,
-    z: (h - params.orthogonalHeight) / scaleZ,
-  };
+  const local = projectedToLocalViewer(spatialReferenceFromMapConversion(params), [e, n, h]);
+  return local ? { x: local[0], y: -local[2], z: local[1] } : null;
 }
 
 /**
@@ -294,6 +282,11 @@ export function computePointCloudAlignment(
   if (!axis) return null;
   const { a, b } = axis;
 
+  // One neutral immutable reference drives the f64 map conversion below.
+  // Older test-only ModelGeoref values do not carry it yet, so build the same
+  // adapter result at the IFC boundary rather than duplicating the operation.
+  const spatialReference = georef.spatialReference ?? spatialReferenceFromIfc(georef);
+
   const off = totalYupOffset(georef.coordinateInfo);
 
   // Fold the ENTIRE viewer shift into the decode-time offset (see module
@@ -310,26 +303,11 @@ export function computePointCloudAlignment(
   // coordinates are stored in; `'metre'` (every other format) keeps it as
   // metres, since none of those formats share LAS/LAZ's MapUnit
   // convention.
-  const originMap = applyMapConversion(
-    {
-      eastings: conv.eastings * mapUnitScale,
-      northings: conv.northings * mapUnitScale,
-      orthogonalHeight: conv.orthogonalHeight * mapUnitScale,
-      xAxisAbscissa: a,
-      xAxisOrdinate: b,
-      scale: 1,
-      factorX: scaleX,
-      factorY: scaleY,
-      factorZ: scaleZ,
-    },
-    off.x,
-    -off.z,
-    off.y,
-  );
-  if (!originMap) return null; // unreachable: axis validated above
+  const originMap = localViewerToProjected(spatialReference, [off.x, off.y, off.z]);
+  if (!originMap) return null; // conversion was validated above
   const decodeOriginOffset: readonly [number, number, number] = sourceUnit === 'mapUnit'
-    ? [originMap.e / mapUnitScale, originMap.n / mapUnitScale, originMap.h / mapUnitScale]
-    : [originMap.e, originMap.n, originMap.h];
+    ? [originMap[0] / mapUnitScale, originMap[1] / mapUnitScale, originMap[2] / mapUnitScale]
+    : [originMap[0], originMap[1], originMap[2]];
 
   // Aligned matrix operates on (px,py,pz) — the Z-up→Y-up-swapped,
   // decode-time-shifted residual positions the ingest path uploads (see

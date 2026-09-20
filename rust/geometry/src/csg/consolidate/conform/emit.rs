@@ -29,7 +29,12 @@ pub(in crate::csg::consolidate) fn emit_plans(
     use crate::triangulation::triangulate_polygon_with_holes_refined;
     let mut output = Mesh::new();
     for plan in plans.iter_mut() {
-        for t in &plan.raw {
+        let raw = if conformed {
+            plan.raw_conformed.as_ref().unwrap_or(&plan.raw)
+        } else {
+            &plan.raw
+        };
+        for t in raw {
             emit_triangle(&mut output, t, &plan.normal);
         }
         let basis = (plan.origin, plan.u_axis, plan.v_axis, plan.normal);

@@ -32,7 +32,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { parseRotationDegrees } from '@/lib/model-placement/rotation';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 
@@ -481,7 +481,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       return;
     }
     if (missingSource) {
-      toast.error(`Cannot reload ${missingSource.name}: source file is not available`);
+      toast.error(t('properties.georef.reloadMissingSource', { name: missingSource.name }));
       return;
     }
 
@@ -517,16 +517,16 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       }
       setShowReloadPrompt(false);
       if (failed.length > 0) {
-        toast.error(
-          `Reloaded ${snapshot.length - failed.length} of ${snapshot.length} models. Could not reload: ${failed.join(', ')}.`,
-        );
+        toast.error(t('properties.georef.reloadPartial', {
+          loaded: formatLocaleNumber(locale, snapshot.length - failed.length), total: formatLocaleNumber(locale, snapshot.length), failed: formatLocaleList(locale, failed),
+        }));
       } else {
-        toast.success('Reloaded models for edited georeferencing');
+        toast.success(t('properties.georef.reloadSuccess'));
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Reload failed');
+      toast.error(error instanceof Error ? t('properties.georef.reloadFailedWithMessage', { message: error.message }) : t('properties.georef.reloadFailed'));
     }
-  }, [addModel, clearAllModels]);
+  }, [addModel, clearAllModels, locale, t]);
 
   const handleSave = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string, value: string | number) => {
     if (!modelId || !setGeorefField) return;

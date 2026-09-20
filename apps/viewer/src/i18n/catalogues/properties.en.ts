@@ -334,12 +334,13 @@ export const propertiesEn = {
   'properties.georef.angleToGridNorth': 'Angle to Grid North',
   'properties.georef.degUnit': 'deg',
   'properties.georef.angleSetsAxesNote': 'Sets XAxisAbscissa = cos(angle), XAxisOrdinate = sin(angle)',
-
   // GeoreferencingPanel: main panel
   'properties.georef.noGeoreferencing': 'No georeferencing',
   'properties.georef.addGeoreferencing': 'Add Georeferencing',
   'properties.georef.reloadPrompt': 'Georeference saved. Reload loaded models to recompute 3D alignment?',
   'properties.georef.reloadModels': 'Reload models',
+  'properties.georef.reloadMissingSource': 'Cannot reload {name}: source file is not available', 'properties.georef.reloadPartial': 'Reloaded {loaded} of {total} models. Could not reload: {failed}.',
+  'properties.georef.reloadSuccess': 'Reloaded models for edited georeferencing', 'properties.georef.reloadFailedWithMessage': 'Reload failed: {message}', 'properties.georef.reloadFailed': 'Reload failed',
   'properties.georef.later': 'Later',
   'properties.georef.legacySiteNotice': 'Showing legacy IfcSite geolocation from IFC2X3. This view is read-only.',
   'properties.georef.unsupportedSchemaNotice': 'Georeferencing editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.',

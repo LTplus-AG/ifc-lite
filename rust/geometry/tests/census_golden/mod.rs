@@ -866,6 +866,27 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
         c.better.push("no longer depends on the triangulator's diagonal choice".to_string());
     }
 
+    // `diverged()` is a boolean, so once a host is diverged on BOTH sides the
+    // two branches above can never fire again: they only see the agree/disagree
+    // state change, never the count behind it. `alt` carries a real open-edge
+    // count exactly like `open` and `strict` (`edge_stats`'s ALTERNATE-triangulator
+    // reading), so gate it the same way `open` is gated above `r.open > g.open`,
+    // but only where the boolean above has already stopped watching: on a host
+    // that has NOT diverged, `alt == Some(open)` by definition and the branches
+    // above are the whole story, so comparing `alt` there would be redundant
+    // with `open`'s own magnitude check.
+    //
+    // `None` on either side (the alternate pass failed to run at all) is left
+    // alone: `diverged()` already counts a failed pass as divergence in its own
+    // right, and there is no count on that side to compare a magnitude against.
+    if let (Some(ga), Some(ra)) = (g.alt, r.alt) {
+        if r.diverged() && g.diverged() && ra > ga {
+            c.worse_counts.push(format!(
+                "alternate-triangulator open edges {ga} -> {ra} (already diverged from `open`)"
+            ));
+        }
+    }
+
     // The gated predicate itself, not only its inputs. `is_torn_solid` also reads
     // `pre`, and a no-void pass that starts or stops failing moves a host into or
     // out of the genuine-defect population while `open`, `tris`, `collapsed` and
@@ -1754,6 +1775,39 @@ mod tests {
         assert!(
             reasons.iter().any(|r| r.contains("open edges 40 -> 12")),
             "\"less torn\" is unverifiable without the open-edge numbers: {reasons:?}"
+        );
+    }
+
+    #[test]
+    fn an_already_diverged_host_still_reports_a_worsening_alt() {
+        // #5060: `diverged()` is a boolean, so once BOTH sides already disagree
+        // with `open` the two clauses above it can never fire again — they only
+        // see the agree/disagree state change, not the count behind it. `open`
+        // held fixed here so ONLY the magnitude clause under test can produce a
+        // reason.
+        let g = HostRow { alt: Some(6), ..row("a.ifc", 1, 8, 800) };
+        let r = HostRow { alt: Some(7), ..row("a.ifc", 1, 8, 800) };
+        let d = diff(&[g], &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "a worsening alt on an already-diverged host must regress");
+        let reasons = &d.regressed[0].reasons;
+        assert!(
+            reasons.iter().any(|x| x.contains("alternate-triangulator open edges 6 -> 7")),
+            "{reasons:?}"
+        );
+
+        // A FAILED alternate pass (`None`) on either side is not a count to
+        // compare a magnitude against; `diverged()` already counts it as
+        // divergence in its own right, above, so this clause must stay silent
+        // rather than panic or invent a magnitude.
+        let g_failed = HostRow { alt: None, ..row("a.ifc", 1, 8, 800) };
+        let r_failed = HostRow { alt: Some(7), ..row("a.ifc", 1, 8, 800) };
+        let d = diff(&[g_failed], &[r_failed], &swept(&["a.ifc"]));
+        assert!(
+            d.regressed.is_empty(),
+            "both sides were already diverged (a failed pass counts as diverged) and \
+             nothing else moved, so a `None` alt gives this clause no magnitude to \
+             compare and it must stay silent rather than invent one: {:?}",
+            d.regressed
         );
     }
 

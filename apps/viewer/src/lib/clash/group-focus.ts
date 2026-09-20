@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useViewerStore, type CameraViewpoint, type ViewerState } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import type { Clash, ClashElementRef } from '@ifc-lite/clash';
 import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -15,6 +15,8 @@ import {
   resolvePresentationIds,
 } from '@/lib/presentation/resolvePresentationIds';
 import { CLASH_COLOR_A, CLASH_COLOR_B, type RGBA } from './clash-colors';
+import { scheduleClashFrame, type FramedCamera } from './group-focus-framing';
+export { focusedCameraViewpointIsCurrent, type FramedCamera } from './group-focus-framing';
 import {
   loadedGuidOccurrences,
   reconcileGuidOccurrenceColors,
@@ -24,10 +26,6 @@ import {
 interface SelectionRef {
   modelId: string;
   expressId: number;
-}
-
-export interface FramedCamera {
-  viewpoint: CameraViewpoint | null;
 }
 
 export interface FocusedClashGroup {
@@ -62,7 +60,6 @@ export interface FocusedClashGroup {
   };
 }
 
-const LEVEL_DISPLAY_SETTLE_FRAME_LIMIT = 120;
 const ALL_TYPES_VISIBLE: ViewerState['typeVisibility'] = {
   spaces: true,
   spatialZones: true,
@@ -72,107 +69,6 @@ const ALL_TYPES_VISIBLE: ViewerState['typeVisibility'] = {
   ifcAnnotations: true,
   ifcGrid: true,
 };
-
-/** Frame only after an Exploded -> Stacked translation has reached the renderer. */
-function scheduleClashFrame(
-  waitForLevelDisplayReset: boolean,
-  waitForPresentationReset: boolean,
-  resolve: (framed: FramedCamera | null) => void,
-): void {
-  let framesRemaining = LEVEL_DISPLAY_SETTLE_FRAME_LIMIT;
-  let settledFrameSeen = !waitForLevelDisplayReset;
-  const frameWhenReady = (): void => {
-    if (waitForPresentationReset) {
-      // Type filtering rebuilds the geometry passed to ViewportContainer.
-      // Let that React commit paint before asking the renderer for bounds.
-      waitForPresentationReset = false;
-      requestAnimationFrame(frameWhenReady);
-      return;
-    }
-    if (waitForLevelDisplayReset) {
-      const state = useViewerStore.getState();
-      const offsetsPending = state.appliedStoreyOffsets.size > 0
-        || state.pendingMeshTranslations !== null;
-      if (offsetsPending) {
-        settledFrameSeen = false;
-      } else if (!settledFrameSeen) {
-        // The translation queue was drained in a React effect. Give the renderer
-        // one paint frame before deriving bounds from the now-stacked geometry.
-        settledFrameSeen = true;
-        requestAnimationFrame(frameWhenReady);
-        return;
-      } else {
-        waitForLevelDisplayReset = false;
-      }
-      if (waitForLevelDisplayReset) {
-        framesRemaining -= 1;
-        if (framesRemaining <= 0) {
-          console.error('[clash] Timed out while restoring stacked geometry before framing.');
-          resolve(null);
-          return;
-        }
-        requestAnimationFrame(frameWhenReady);
-        return;
-      }
-    }
-
-    const frameSelection = useViewerStore.getState().cameraCallbacks.frameSelection;
-    if (!frameSelection) {
-      resolve(null);
-      return;
-    }
-    try {
-      // The callback remains void-compatible for existing synchronous callers,
-      // while Viewport returns false specifically when it has no bounds.
-      const frameResult: unknown = frameSelection(0);
-      Promise.resolve(frameResult).then((didFrame) => {
-        if (didFrame === false) {
-          resolve(null);
-          return;
-        }
-        resolve({ viewpoint: currentCameraViewpoint() });
-      }, (error) => {
-        console.error('[clash] Could not finish framing the manual clash group:', error);
-        resolve(null);
-      });
-    } catch (error) {
-      console.error('[clash] Could not frame the manual clash group:', error);
-      resolve(null);
-    }
-  };
-  requestAnimationFrame(frameWhenReady);
-}
-
-function currentCameraViewpoint(): CameraViewpoint | null {
-  try {
-    return useViewerStore.getState().cameraCallbacks.getViewpoint?.() ?? null;
-  } catch (error) {
-    console.error('[clash] Could not read the framed camera viewpoint:', error);
-    return null;
-  }
-}
-
-/** True while no competing navigation has changed the camera selected for capture. */
-export function focusedCameraViewpointIsCurrent(framed: FramedCamera | null): boolean {
-  if (!framed) return false;
-  const expected = framed.viewpoint;
-  const canReadCurrent = useViewerStore.getState().cameraCallbacks.getViewpoint !== undefined;
-  if (!expected && !canReadCurrent) return true;
-  const current = currentCameraViewpoint();
-  if (!expected || !current) return false;
-  return current.position.x === expected.position.x
-    && current.position.y === expected.position.y
-    && current.position.z === expected.position.z
-    && current.target.x === expected.target.x
-    && current.target.y === expected.target.y
-    && current.target.z === expected.target.z
-    && current.up.x === expected.up.x
-    && current.up.y === expected.up.y
-    && current.up.z === expected.up.z
-    && current.fov === expected.fov
-    && current.projectionMode === expected.projectionMode
-    && current.orthoSize === expected.orthoSize;
-}
 
 function resolvedGuids(state: ReturnType<typeof useViewerStore.getState>, refs: Iterable<SelectionRef>): string[] {
   const guids = new Set<string>();

@@ -456,6 +456,71 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, 0.001);
   });
 
+  catalogueIt('commits an unchanged decimal georeference edit without corrupting it (#4918)', () => {
+    // Regression for the seeded-buffer bug: `startEdit` used to seed the input
+    // with the ASCII `String(value)` (a `.` decimal point), but `commitEdit`
+    // parses that buffer with `parseLocaleNumber`, which strips the ACTIVE
+    // locale's group separator first. In `de-DE` the group separator is `.`,
+    // so opening the Scale row (0.001) and pressing Enter without typing
+    // anything used to silently rewrite it as 1.
+    registerLocale('de-DE', {});
+    act(() => setLocale('de-DE'));
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: { ...MAP_CONVERSION, scale: 0.001 }, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
+    assert.ok(scaleLabel?.parentElement);
+    click(scaleLabel.parentElement);
+    const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
+    assert.ok(input);
+    // The seeded buffer must already be locale-formatted ("0,001", no
+    // grouping) -- not the raw ASCII "0.001".
+    assert.equal(input.value, '0,001');
+    press(input, 'Enter');
+    assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, 0.001);
+  });
+
+  catalogueIt('accepts an active-locale angle edit typed in Arabic digits (#4918)', () => {
+    // Regression: `AngleRow`'s edit path used to run the ASCII-only
+    // `parseRotationDegrees` directly on the typed text, so an Arabic-locale
+    // reading of "12.5" -- "١٢٫٥" -- was silently rejected and the commit
+    // was a no-op. The numeric portion must go through `parseLocaleNumber`
+    // first.
+    registerLocale('ar-EG', {});
+    act(() => setLocale('ar-EG'));
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
+    assert.ok(angleLabel?.parentElement);
+    click(angleLabel.parentElement);
+    const input = angleLabel.parentElement.querySelector<HTMLInputElement>('input');
+    assert.ok(input);
+    type(input, '١٢٫٥');
+    press(input, 'Enter');
+    const mutated = useViewerStore.getState().georefMutations.get('A')?.mapConversion;
+    assert.ok(mutated);
+    const radians = 12.5 * Math.PI / 180;
+    assert.ok(Math.abs((mutated.xAxisAbscissa ?? NaN) - Math.cos(radians)) < 1e-9);
+    assert.ok(Math.abs((mutated.xAxisOrdinate ?? NaN) - Math.sin(radians)) < 1e-9);
+  });
+
   catalogueIt('formats spatial and schedule values with the active locale', () => {
     registerLocale('ar-EG', {});
     act(() => setLocale('ar-EG'));

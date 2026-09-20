@@ -244,7 +244,7 @@ describe('expandToGeometryBearingIds', () => {
       'the shared helper must resolve geometry-less assemblies to their renderable parts',
     );
 
-    const frameSelection = source.slice(source.indexOf('frameSelection: () => {'));
+    const frameSelection = source.slice(source.indexOf('frameSelection:', helperStart));
     const frameBody = frameSelection.slice(0, frameSelection.indexOf('resolveHighlightIds:'));
     assert.ok(
       frameBody.includes('resolveRenderableIds('),

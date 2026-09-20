@@ -859,6 +859,21 @@ describe('a device loss revokes readiness (#2464 review)', () => {
         assert.strictEqual((outcome as Error).name, 'RendererDeviceLostError');
     });
 
+    it('ignores a delayed loss signal from a superseded device wrapper', async () => {
+        const renderer = new Renderer(makeCanvas());
+        const oldDevice = pokeLosableDevice(renderer);
+        await initExpectingNoWebGPU(renderer);
+
+        poke(renderer, 'device', { replacement: true });
+        oldDevice.lose();
+
+        assert.strictEqual(
+            renderer.isDeviceLost(),
+            false,
+            'an abandoned device wrapper poisoned the replacement device',
+        );
+    });
+
     it('re-arms whenReady() the instant init() is called, with no second reset', async () => {
         // The recovery shape `init()` already revokes readiness synchronously
         // for: `renderer.init(); await renderer.whenReady();`. The queued body

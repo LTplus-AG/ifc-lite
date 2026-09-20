@@ -116,6 +116,20 @@ function settle(camera: Camera, advance: (ms: number) => void, duration = 20): v
 }
 
 describe('camera fit rejects an unusable AABB (#2461)', () => {
+  it('applies duration-zero framing synchronously and cancels an older tween (#4921)', () => {
+    withStubbedFrameClock((advance) => {
+      const camera = healthyCamera();
+      void camera.frameBounds({ x: -100, y: -100, z: -100 }, { x: 100, y: 100, z: 100 }, 300);
+      const beforeImmediate = poseOf(camera);
+      void camera.frameBounds({ x: 0, y: 0, z: 0 }, { x: 2, y: 2, z: 2 }, 0);
+      const immediate = poseOf(camera);
+      assert.notDeepStrictEqual(immediate, beforeImmediate, 'zero duration applies before another render tick');
+      advance(301);
+      camera.update(16);
+      assert.deepStrictEqual(poseOf(camera), immediate, 'the superseded tween cannot overwrite the capture pose');
+    });
+  });
+
   it('frameBounds and zoomExtent leave the pose and orthoSize untouched', () => {
     withStubbedFrameClock((advance) => {
       for (const [label, min, max] of UNUSABLE_BOUNDS) {

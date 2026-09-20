@@ -14,8 +14,10 @@ const OFFSET = [10_000, 20_000, 30_000];
 /** The viewer's own point-cloud error when the GPU device died mid-load
  * (apps/viewer/src/hooks/useIfcLoader.ts). */
 const DEVICE_LOST_ERROR = /graphics device was lost during the load/;
+const DEVICE_LOST_CONSOLE = /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|CONTEXT_LOST_WEBGL/;
 
 async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
+  const consoleStart = consoleLines.length;
   await page.locator('input[type=file]').nth(count === 1 ? 0 : 1).setInputFiles(file);
   let outcome: 'ok' | 'device-lost' | 'timeout';
   try {
@@ -43,14 +45,16 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
     };
   }).catch((e) => ({ evaluateFailed: String(e) }));
   const name = typeof file === 'string' ? file : file.name;
-  const detail = `${JSON.stringify(snapshot)}\nconsole: ${consoleLines.slice(-40).join('\n')}`;
+  const loadConsole = consoleLines.slice(consoleStart);
+  const detail = `${JSON.stringify(snapshot)}\nconsole: ${loadConsole.slice(-40).join('\n')}`;
   // Hosted runners' SwiftShader WebGPU device drops under load (the IFC upload
   // that precedes the scan drop); the viewer then refuses the point-cloud
   // stream by design. That is the documented software-GPU limitation the
   // E2E_GPU_STRICT=0 mode already skips GPU assertions for — not a viewer
   // regression — so skip with the evidence attached rather than fail. A
   // strict run (real GPU) still fails here.
-  if (outcome === 'device-lost' && process.env.E2E_GPU_STRICT === '0') {
+  const softwareDeviceLost = outcome === 'device-lost' || loadConsole.some((line) => DEVICE_LOST_CONSOLE.test(line));
+  if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
     console.warn(`[e2e] E2E_GPU_STRICT=0 — skipping: software-GPU device lost during load(${name}, ${count})`);
     test.skip(true, `hosted software-GPU device lost during load(${name}, ${count}): ${detail}`);
   }

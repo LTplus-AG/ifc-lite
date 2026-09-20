@@ -57,6 +57,7 @@ import { aabbEdgeLineList } from './aabb-edges.js';
 import { projectedBoundsRange } from './render-section-plane.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
 import type { RenderOptions } from './types.js';
+import type { DeviceRecoveryOmission } from './device-recovery.js';
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately four methods wide:
@@ -125,6 +126,18 @@ export class RendererOverlays {
 
     constructor(private readonly host: OverlayHost) {
         this.symbolic = new SymbolicOverlays(host);
+    }
+
+    /** Snapshot which transient GPU-only layers will be dropped by recovery. */
+    recoveryOmissions(): DeviceRecoveryOmission[] {
+        const omissions: DeviceRecoveryOmission[] = [];
+        const overlay = this.section2DOverlayRenderer;
+        if (overlay?.hasGeometry()) omissions.push('section-2d-overlay');
+        if (overlay && (LINE_OVERLAY_CHANNELS.some((channel) => overlay.hasLineOverlay(channel)) || overlay.hasClashBoxLines3D() || (this.clashSolidPipeline?.hasGeometry() ?? false))) {
+            omissions.push('line-overlays');
+        }
+        if (this.symbolic.hasGeometry()) omissions.push('symbolic-overlays');
+        return omissions;
     }
 
     /**

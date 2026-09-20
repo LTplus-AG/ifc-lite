@@ -13,12 +13,21 @@ pub(crate) enum Capture {
         text: String,
         hidden: bool,
     },
+    SourcePoints {
+        depth: usize,
+        text: String,
+        source_path: String,
+        coordinate_dimension: u8,
+    },
     Polyline {
         depth: usize,
         text: String,
         category: PolylineCategory,
         name: Option<String>,
         kind: Option<String>,
+        properties: crate::LandXmlProperties,
+        source_path: String,
+        coordinate_dimension: u8,
     },
 }
 
@@ -32,9 +41,10 @@ pub(crate) enum PolylineCategory {
 impl Capture {
     pub(crate) fn depth(&self) -> usize {
         match self {
-            Self::Point { depth, .. } | Self::Face { depth, .. } | Self::Polyline { depth, .. } => {
-                *depth
-            }
+            Self::Point { depth, .. }
+            | Self::Face { depth, .. }
+            | Self::SourcePoints { depth, .. }
+            | Self::Polyline { depth, .. } => *depth,
         }
     }
 }

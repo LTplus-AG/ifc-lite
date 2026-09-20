@@ -1,6 +1,6 @@
 ---
 "@ifc-lite/wasm": minor
-"@ifc-lite/viewer": patch
+"@ifc-lite/viewer": major
 ---
 
 Preserve durable LandXML terrain source records alongside render meshes: stable

@@ -108,10 +108,11 @@ fn retains_source_terrain_records_without_guessing_grid_topology(
     <Surface name="EG"><Definition surfType="TIN"><Pnts>
       <P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P>
     </Pnts><Faces><F>1 2 3</F><F i="true">1 3 2</F></Faces>
-    <Boundaries><Boundary><PntList3D>0 0 0 0 1 0</PntList3D></Boundary></Boundaries>
-    <Breaklines><Breakline><PntList3D>0 0 0 1 1 0</PntList3D></Breakline></Breaklines>
-    <Contours><Contour><PntList3D>0 0 0 1 0 0</PntList3D></Contour></Contours>
-    </Definition></Surface>
+    </Definition><SourceData><DataPoints><PntList3D>0 0 0 0 1 0</PntList3D></DataPoints>
+    <Boundaries><Boundary name="Outer" bndType="outer" edgeTrim="true"><PntList3D>0 0 0 0 1 0</PntList3D></Boundary></Boundaries>
+    <Breaklines><Breakline name="Crown" brkType="standard"><PntList2D>0 0 1 1</PntList2D></Breakline></Breaklines>
+    <Contours><Contour name="Index" contType="major"><PntList3D>0 0 0 1 0 0</PntList3D></Contour></Contours>
+    </SourceData></Surface>
     <Surface name="Grid"><Definition surfType="GRID"/></Surface>
   </Surfaces>
   <vendor:ProducerSetting value="kept-as-a-record"/>
@@ -120,18 +121,49 @@ fn retains_source_terrain_records_without_guessing_grid_topology(
     let parsed = parse(xml.as_bytes())?;
     let tin = &parsed.surfaces[0];
     assert_eq!(tin.source_id.0, "landxml:surface:1");
+    assert_eq!(tin.ordinal, 1);
+    assert_eq!(tin.source_path, "LandXML/Surfaces/Surface[1]");
+    assert_eq!(tin.properties.get("name").map(String::as_str), Some("EG"));
+    assert_eq!(
+        tin.definition_properties
+            .get("surfType")
+            .map(String::as_str),
+        Some("TIN")
+    );
     assert_eq!(tin.points[0].source_id.0, "landxml:surface:1:point:1");
     assert_eq!(tin.face_source_ids[0].0, "landxml:surface:1:face:1");
     assert_eq!(tin.hidden_face_count, 1);
+    assert_eq!(tin.face_visibility, vec![true, false]);
+    assert_eq!(tin.source_data_points.len(), 2);
+    assert_eq!(
+        tin.source_data_points[0].source_id.0,
+        "landxml:surface:1:source-point:1"
+    );
     assert_eq!(
         tin.boundaries[0].source_id.0,
         "landxml:surface:1:boundary:1"
+    );
+    assert_eq!(tin.boundaries[0].name.as_deref(), Some("Outer"));
+    assert_eq!(tin.boundaries[0].kind.as_deref(), Some("outer"));
+    assert_eq!(
+        tin.boundaries[0]
+            .properties
+            .get("edgeTrim")
+            .map(String::as_str),
+        Some("true")
     );
     assert_eq!(
         tin.breaklines[0].source_id.0,
         "landxml:surface:1:breakline:1"
     );
+    assert_eq!(tin.breaklines[0].name.as_deref(), Some("Crown"));
+    assert_eq!(tin.breaklines[0].coordinate_dimension, 2);
+    assert_eq!(
+        tin.breaklines[0].point_source_ids[0].0,
+        "landxml:surface:1:breakline:1:point:1"
+    );
     assert_eq!(tin.contours[0].source_id.0, "landxml:surface:1:contour:1");
+    assert_eq!(tin.contours[0].kind.as_deref(), Some("major"));
     assert_eq!(
         parsed.surfaces[1].render_state,
         ifc_lite_landxml::LandXmlRenderState::PreservedOnly
@@ -142,6 +174,8 @@ fn retains_source_terrain_records_without_guessing_grid_topology(
         .warnings
         .iter()
         .any(|warning| warning.contains("1 unknown vendor extension")));
+    assert!(parsed.capabilities.renderable_tin);
+    assert_eq!(parsed.capabilities.preserved_only_surfaces, 1);
     Ok(())
 }
 

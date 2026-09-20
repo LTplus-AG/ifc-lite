@@ -5,7 +5,6 @@
 /**
  * Shared types for the viewer store
  */
-
 // ============================================================================
 // Measurement Types
 // ============================================================================
@@ -500,7 +499,6 @@ export type MetadataLoadState =
   | 'error';
 
 export type ModelSourceFile = File;
-
 /** Complete model container for federation */
 /**
  * A federated model's geometry as it stood before alignment re-baked it.
@@ -561,6 +559,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design. */
   landXmlDocument?: LandXmlTinDocument;
+  /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
+  sourceSchema?: 'LandXML-1.2';
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
   geometryResult: GeometryResult | null;
   /** Model-level visibility toggle */

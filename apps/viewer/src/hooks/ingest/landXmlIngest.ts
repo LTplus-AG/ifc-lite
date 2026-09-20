@@ -71,7 +71,7 @@ function buildSurfaceMesh(
   linearScale: number,
   elevationScale: number,
   originOverride?: [number, number, number],
-): { mesh: MeshData | null; degenerateFaces: number; bounds: Bounds3D | null; unrenderedFaces: LandXmlTinSurface['faces'] } {
+): { mesh: MeshData | null; degenerateFaces: number; bounds: Bounds3D | null; renderedFaces: LandXmlTinSurface['faces']; unrenderedFaces: LandXmlTinSurface['faces'] } {
   const worldById = new Map<string, WorldPoint>();
   for (const point of surface.points) {
     // LandXML: northing/easting/elevation (Z-up). Viewer: X east, Y up,
@@ -101,7 +101,7 @@ function buildSurfaceMesh(
     degenerateFaces++;
     return false;
   });
-  if (retainedFaces.length === 0) return { mesh: null, degenerateFaces, bounds: null, unrenderedFaces: [] };
+  if (retainedFaces.length === 0) return { mesh: null, degenerateFaces, bounds: null, renderedFaces: [], unrenderedFaces: [] };
 
   const referencedPointIds = new Set(retainedFaces.flatMap((face) => face));
   const retainedPoints = surface.points.filter((point) => referencedPointIds.has(point.id));
@@ -177,7 +177,7 @@ function buildSurfaceMesh(
       const retried = buildSurfaceMesh(surface, expressId, linearScale, elevationScale, [a.x, a.y, a.z]);
       return { ...retried, degenerateFaces: degenerateFaces + retried.degenerateFaces };
     }
-    return { mesh: null, degenerateFaces, bounds: null, unrenderedFaces };
+    return { mesh: null, degenerateFaces, bounds: null, renderedFaces: [], unrenderedFaces };
   }
   if (renderedFaces.length !== retainedFaces.length) {
     const compacted = buildSurfaceMesh(
@@ -218,6 +218,7 @@ function buildSurfaceMesh(
       min: { x: minX, y: minY, z: minZ },
       max: { x: maxX, y: maxY, z: maxZ },
     },
+    renderedFaces,
     unrenderedFaces: [],
   };
 }
@@ -226,6 +227,8 @@ interface SurfaceComponent {
   mesh: MeshData;
   bounds: Bounds3D;
   surfaceName: string;
+  surfaceSourceId: string;
+  renderedFaceSourceIds: string[];
 }
 
 function mergeBounds(target: Bounds3D, source: Bounds3D): void {
@@ -308,15 +311,18 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
       schemaVersion: 'IFC4',
       warnings,
       surfaceNames: [],
-      semanticDocument: parsed,
+      semanticDocument: { ...parsed, rendering: { meshProvenance: [], surfaceCounts: [] } },
     };
   }
   const components: SurfaceComponent[] = [];
+  const droppedBySurface = new Map<string, { degenerate: number; precision: number }>();
   for (const surface of renderableSurfaces) {
     let renderedComponents = 0;
     let degenerateFaces = 0;
     let unrepresentableFaces = 0;
-    for (const faces of connectedFaceComponents(surface.faces)) {
+    const faceSourceId = new Map(surface.faces.map((face, index) => [face, surface.faceSourceIds[index]]));
+    const visibleFaces = surface.faces.filter((_, index) => surface.faceVisibility[index]);
+    for (const faces of connectedFaceComponents(visibleFaces)) {
       const pending = [faces];
       while (pending.length > 0) {
         const currentFaces = pending.pop()!;
@@ -329,7 +335,8 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
         degenerateFaces += result.degenerateFaces;
         if (result.mesh && result.bounds) {
           renderedComponents++;
-          components.push({ mesh: result.mesh, bounds: result.bounds, surfaceName: surface.name });
+          components.push({ mesh: result.mesh, bounds: result.bounds, surfaceName: surface.name, surfaceSourceId: surface.sourceId,
+            renderedFaceSourceIds: result.renderedFaces.map((face) => faceSourceId.get(face)).filter((id): id is string => id !== undefined) });
         }
         if (result.unrenderedFaces.length === 0) continue;
         if (result.unrenderedFaces.length < currentFaces.length) {
@@ -351,6 +358,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     if (renderedComponents === 0) {
       warnings.push(`Skipped surface "${surface.name}" because it has no non-degenerate faces`);
     }
+    droppedBySurface.set(surface.sourceId, { degenerate: degenerateFaces, precision: unrepresentableFaces });
   }
   if (components.length === 0) throw new Error('LandXML document contains no non-degenerate TIN faces');
 
@@ -374,6 +382,19 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     schemaVersion: 'IFC4',
     warnings,
     surfaceNames,
-    semanticDocument: parsed,
+    semanticDocument: {
+      ...parsed,
+      rendering: {
+        meshProvenance: placed.map((component, index) => ({ meshExpressId: index + 1, surfaceSourceId: component.surfaceSourceId, renderedFaceSourceIds: component.renderedFaceSourceIds })),
+        surfaceCounts: parsed.surfaces.map((surface) => {
+          const componentsForSurface = placed.filter((component) => component.surfaceSourceId === surface.sourceId);
+          const renderedFaces = componentsForSurface.reduce((count, component) => count + component.renderedFaceSourceIds.length, 0);
+          const dropped = droppedBySurface.get(surface.sourceId) ?? { degenerate: 0, precision: 0 };
+          return { surfaceSourceId: surface.sourceId, sourcePoints: surface.points.length, sourceFaces: surface.faces.length,
+            hiddenFaces: surface.hiddenFaceCount, renderedFaces, droppedDegenerateFaces: dropped.degenerate,
+            droppedPrecisionFaces: dropped.precision, droppedReframeFaces: 0 };
+        }),
+      },
+    },
   };
 }

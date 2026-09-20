@@ -29,7 +29,7 @@ interface LandXmlLoadOptions {
     dataStore: IfcDataStore,
     geometry: GeometryResult,
     schemaVersion: 'IFC4',
-    patch: { loadPath: 'landxml'; landXmlDocument?: LandXmlTinDocument },
+    patch: { loadPath: 'landxml'; landXmlDocument?: LandXmlTinDocument; sourceSchema?: 'LandXML-1.2' },
   ): Promise<void>;
   onError(message: string): void;
 }
@@ -90,7 +90,7 @@ function updateRetainedGeometry(geometry: GeometryResult, frame: CoordinateInfo)
 }
 
 /** Move parsed LandXML into the federation's already-published render frame. */
-export function reframeLandXmlGeometry(geometry: GeometryResult, frame: CoordinateInfo): string[] {
+export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandXmlTinDocument, frame: CoordinateInfo): string[] {
   const ownOffset = totalYupOffset(geometry.coordinateInfo);
   const targetOffset = totalYupOffset(frame);
   const delta = {
@@ -104,6 +104,15 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, frame: Coordina
   }
   const retained = geometry.meshes.filter(meshFitsRenderFrame);
   const skipped = geometry.meshes.length - retained.length;
+  if (skipped > 0) {
+    const retainedIds = new Set(retained.map((mesh) => mesh.expressId));
+    for (const mesh of document.rendering.meshProvenance) {
+      if (retainedIds.has(mesh.meshExpressId)) continue;
+      const counts = document.rendering.surfaceCounts.find((count) => count.surfaceSourceId === mesh.surfaceSourceId);
+      if (counts) counts.droppedReframeFaces += mesh.renderedFaceSourceIds.length;
+    }
+    document.rendering.meshProvenance = document.rendering.meshProvenance.filter((mesh) => retainedIds.has(mesh.meshExpressId));
+  }
   if (retained.length === 0) {
     throw new Error(`LandXML model cannot be federated: every surface component's full Y-up bounds exceed the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km shared render-frame limit`);
   }
@@ -126,10 +135,10 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     const frame = options.targetKind === 'federated'
       ? federationFrameInfo(useViewerStore.getState().models.values())
       : null;
-    if (frame && result.geometryResult.meshes.length > 0) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, frame));
+    if (frame && result.geometryResult.meshes.length > 0) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, result.semanticDocument, frame));
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
-      loadPath: 'landxml', landXmlDocument: result.semanticDocument,
+      loadPath: 'landxml', landXmlDocument: result.semanticDocument, sourceSchema: result.semanticDocument.schema,
     });
     if (!options.isCurrent()) return;
     for (const warning of result.warnings) toast.info(warning);

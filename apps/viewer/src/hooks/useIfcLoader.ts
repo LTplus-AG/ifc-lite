@@ -54,7 +54,6 @@ import {
   calculateStoreyHeights,
 } from '../utils/localParsingUtils.js';
 import { applyColorUpdatesToMeshes } from './meshColorUpdates.js';
-
 // Cache hook
 import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 
@@ -86,7 +85,6 @@ import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
 import { formatLoadError } from '../lib/load-error-message.js';
-
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
  * from the user's geometry-fidelity mode (`fast` vs `exact`, see
@@ -153,7 +151,6 @@ function getGeometryStreamWatchdogMs(
     fileSizeMB,
   });
 }
-
 /**
  * Upper bound on the "let the last batch paint" frame wait at stream complete.
  * Generous on purpose: on a heavy final batch a *visible* tab's next frame can
@@ -501,7 +498,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2' } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -598,6 +595,7 @@ export function useIfcLoader() {
             for (const mesh of geometryResult.meshes) {
               applyFederationOffsetToMesh(mesh, idOffset);
             }
+            for (const mesh of patch?.landXmlDocument?.rendering.meshProvenance ?? []) mesh.meshExpressId += idOffset;
             for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
             // #924/#1912: instanced-ONLY entities (no flat mesh, so the loop
             // above never touches them) carry the same RAW ids the worker
@@ -633,6 +631,7 @@ export function useIfcLoader() {
             sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity,
             ifcDataStore: dataStore,
             landXmlDocument: patch?.landXmlDocument,
+            sourceSchema: patch?.sourceSchema,
             geometryResult,
             visible: target.visible ?? true,
             collapsed: target.collapsed ?? (useViewerStore.getState().models.size > 0),
@@ -676,6 +675,7 @@ export function useIfcLoader() {
         updateModel(modelId, {
           ifcDataStore: dataStore,
           landXmlDocument: patch?.landXmlDocument,
+          sourceSchema: patch?.sourceSchema,
           geometryResult,
           schemaVersion,
           idOffset,

@@ -12,14 +12,30 @@ impl Parser<'_> {
         for point in &mut surface.points {
             point.source_id = LandXmlSourceId(format!("{}:point:{}", source_id.0, point.id));
         }
+        for point in &mut surface.source_data_points {
+            point.source_id =
+                LandXmlSourceId(format!("{}:source-point:{}", source_id.0, point.ordinal));
+        }
         for (index, line) in surface.boundaries.iter_mut().enumerate() {
             line.source_id = LandXmlSourceId(format!("{}:boundary:{}", source_id.0, index + 1));
+            line.ordinal = index + 1;
+            line.point_source_ids = (0..line.points.len())
+                .map(|point| LandXmlSourceId(format!("{}:point:{}", line.source_id.0, point + 1)))
+                .collect();
         }
         for (index, line) in surface.breaklines.iter_mut().enumerate() {
             line.source_id = LandXmlSourceId(format!("{}:breakline:{}", source_id.0, index + 1));
+            line.ordinal = index + 1;
+            line.point_source_ids = (0..line.points.len())
+                .map(|point| LandXmlSourceId(format!("{}:point:{}", line.source_id.0, point + 1)))
+                .collect();
         }
         for (index, line) in surface.contours.iter_mut().enumerate() {
             line.source_id = LandXmlSourceId(format!("{}:contour:{}", source_id.0, index + 1));
+            line.ordinal = index + 1;
+            line.point_source_ids = (0..line.points.len())
+                .map(|point| LandXmlSourceId(format!("{}:point:{}", line.source_id.0, point + 1)))
+                .collect();
         }
         let render_state = match surface.kind {
             LandXmlSurfaceKind::Tin if surface.points.len() >= 3 && !surface.faces.is_empty() => {
@@ -67,12 +83,18 @@ impl Parser<'_> {
             .collect();
         self.surfaces.push(LandXmlSurface {
             source_id,
+            ordinal: self.surface_ordinal,
+            source_path: format!("LandXML/Surfaces/Surface[{}]", self.surface_ordinal),
+            properties: surface.properties,
+            definition_properties: surface.definition_properties,
             name: surface.name,
             kind: surface.kind,
             render_state,
             points: surface.points,
+            source_data_points: surface.source_data_points,
             faces: surface.faces,
             face_source_ids,
+            face_visibility: surface.face_visibility,
             hidden_face_count: surface.hidden_face_count,
             boundaries: surface.boundaries,
             breaklines: surface.breaklines,
@@ -89,7 +111,21 @@ impl Parser<'_> {
             ));
         }
         Ok(LandXmlTinDocument {
-            version: "1.2".to_owned(),
+            format: "landxml".to_owned(),
+            schema: "LandXML-1.2".to_owned(),
+            capabilities: LandXmlCapabilities {
+                renderable_tin: self
+                    .surfaces
+                    .iter()
+                    .any(|surface| surface.render_state == LandXmlRenderState::Rendered),
+                preserved_only_surfaces: self
+                    .surfaces
+                    .iter()
+                    .filter(|surface| surface.render_state != LandXmlRenderState::Rendered)
+                    .count(),
+                unknown_extensions: self.extensions.len(),
+            },
+            version: self.version,
             units: self.units,
             surfaces: self.surfaces,
             extensions: self.extensions,

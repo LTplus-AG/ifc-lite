@@ -2,13 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::collections::{HashMap, HashSet};
-
 use quick_xml::{
     events::{BytesStart, Event},
     Reader,
 };
-
 use crate::{
     capture::{Capture, PolylineCategory},
     preflight::preflight_xml_tokens,
@@ -17,52 +14,18 @@ use crate::{
         attr, attributes, character_references, error, normalize_encoding, required, split_name,
         unescape, Result,
     },
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlExtension, LandXmlLimits,
-    LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId, LandXmlSurface,
-    LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits,
+    LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
+    LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId,
+    LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits,
 };
-
 mod capture;
 mod finalize;
 mod path;
+mod state;
+mod version;
 
-pub const LANDXML_10_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.0";
-pub const LANDXML_11_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.1";
-pub const LANDXML_12_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.2";
-
-/// Classify known LandXML roots without relaxing the strict 1.2 ingest policy.
-pub fn classify_landxml_version(
-    namespace: Option<&str>,
-    version: Option<&str>,
-) -> crate::LandXmlVersionCapability {
-    use crate::LandXmlVersionCapability as Capability;
-
-    match namespace {
-        Some(LANDXML_10_NAMESPACE) => Capability::LandXml10Unsupported,
-        Some(LANDXML_11_NAMESPACE) => Capability::LandXml11Unsupported,
-        Some(LANDXML_12_NAMESPACE) if version == Some("1.2") => Capability::LandXml12Tin,
-        Some(LANDXML_12_NAMESPACE) => Capability::LandXml12VersionMismatch,
-        _ => Capability::NotLandXml,
-    }
-}
-
-#[derive(Clone)]
-struct Frame {
-    local: String,
-    target: bool,
-    namespaces: HashMap<String, String>,
-}
-struct SurfaceBuilder {
-    name: String,
-    kind: LandXmlSurfaceKind,
-    points: Vec<LandXmlPoint>,
-    ids: HashSet<String>,
-    faces: Vec<[String; 3]>,
-    hidden_face_count: usize,
-    boundaries: Vec<LandXmlPolyline>,
-    breaklines: Vec<LandXmlPolyline>,
-    contours: Vec<LandXmlPolyline>,
-}
+use state::{retained_properties, Frame, SurfaceBuilder};
+pub use version::*;
 struct Parser<'a> {
     limits: &'a LandXmlLimits,
     cancelled: Option<&'a dyn LandXmlCancellation>,
@@ -80,6 +43,7 @@ struct Parser<'a> {
     extensions: Vec<LandXmlExtension>,
     warnings: Vec<String>,
     surface_ordinal: usize,
+    version: String,
 }
 
 /// Parse exact LandXML 1.2 TIN semantics with default resource limits.
@@ -115,6 +79,7 @@ pub fn parse_landxml_tin_with_cancel(
         extensions: Vec::new(),
         warnings: Vec::new(),
         surface_ordinal: 0,
+        version: String::new(),
     };
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
@@ -189,7 +154,9 @@ impl Parser<'_> {
         let mut inherited = self
             .frames
             .last()
-            .map_or_else(HashMap::new, |frame| frame.namespaces.clone());
+            .map_or_else(std::collections::HashMap::new, |frame| {
+                frame.namespaces.clone()
+            });
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
@@ -223,6 +190,7 @@ impl Parser<'_> {
                     ));
                 }
             }
+            self.version = required(&attributes, "version", "LandXML")?.to_owned();
         }
         let target = namespace == Some(LANDXML_12_NAMESPACE);
         // Record one root per unknown extension subtree.  This preserves the
@@ -247,6 +215,20 @@ impl Parser<'_> {
         self.frames.push(Frame {
             local: local.to_owned(),
             target,
+            overlay_name: matches!(local, "Boundary" | "Breakline" | "Contour")
+                .then(|| attr(&attributes, "name").map(str::to_owned))
+                .flatten(),
+            overlay_kind: matches!(local, "Boundary" | "Breakline" | "Contour")
+                .then(|| {
+                    attr(&attributes, "bndType")
+                        .or_else(|| attr(&attributes, "brkType"))
+                        .or_else(|| attr(&attributes, "contType"))
+                        .map(str::to_owned)
+                })
+                .flatten(),
+            overlay_properties: matches!(local, "Boundary" | "Breakline" | "Contour")
+                .then(|| retained_properties(&attributes))
+                .unwrap_or_default(),
             namespaces: inherited,
         });
         if !target {
@@ -262,16 +244,21 @@ impl Parser<'_> {
                     name: required(&attributes, "name", "Surface")?.to_owned(),
                     kind: LandXmlSurfaceKind::Other,
                     points: Vec::new(),
-                    ids: HashSet::new(),
+                    source_data_points: Vec::new(),
+                    ids: std::collections::HashSet::new(),
                     faces: Vec::new(),
+                    face_visibility: Vec::new(),
                     hidden_face_count: 0,
                     boundaries: Vec::new(),
                     breaklines: Vec::new(),
                     contours: Vec::new(),
+                    properties: retained_properties(&attributes),
+                    definition_properties: crate::LandXmlProperties::new(),
                 })
             }
             "Definition" if self.is_path(&["LandXML", "Surfaces", "Surface", "Definition"]) => {
                 if let Some(surface) = &mut self.surface {
+                    surface.definition_properties = retained_properties(&attributes);
                     surface.kind = match attr(&attributes, "surfType")
                         .map(str::to_ascii_uppercase)
                         .as_deref()
@@ -322,13 +309,29 @@ impl Parser<'_> {
                     hidden: matches!(attr(&attributes, "i"), Some("1" | "true")),
                 })
             }
-            "PntList3D" if self.overlay_category().is_some() => {
+            "PntList3D" | "PntList2D" if self.source_data_point_dimension().is_some() => {
+                self.capture = Some(Capture::SourcePoints {
+                    depth: self.frames.len(),
+                    text: String::new(),
+                    source_path: self.path_with(local),
+                    coordinate_dimension: self
+                        .source_data_point_dimension()
+                        .expect("guarded above"),
+                })
+            }
+            "PntList3D" | "PntList2D" if self.overlay_category().is_some() => {
+                let overlay = self.frames.get(self.frames.len().saturating_sub(2));
                 self.capture = Some(Capture::Polyline {
                     depth: self.frames.len(),
                     text: String::new(),
                     category: self.overlay_category().expect("guarded above"),
-                    name: None,
-                    kind: None,
+                    name: overlay.and_then(|frame| frame.overlay_name.clone()),
+                    kind: overlay.and_then(|frame| frame.overlay_kind.clone()),
+                    properties: overlay.map_or_else(crate::LandXmlProperties::new, |frame| {
+                        frame.overlay_properties.clone()
+                    }),
+                    source_path: self.path_with(local),
+                    coordinate_dimension: if local == "PntList3D" { 3 } else { 2 },
                 })
             }
             _ => {}
@@ -375,6 +378,7 @@ impl Parser<'_> {
             let target = match capture {
                 Capture::Point { text, .. }
                 | Capture::Face { text, .. }
+                | Capture::SourcePoints { text, .. }
                 | Capture::Polyline { text, .. } => text,
             };
             if target.len() + text.len() > self.limits.max_text_bytes {

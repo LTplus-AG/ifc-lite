@@ -26,6 +26,15 @@ import type { IdentityMapEntry } from '@ifc-lite/diff';
 export interface ComparePair {
   baseModelId: string;
   headModelId: string;
+  /**
+   * The authored key scheme the decision's `base`/`here` are keys under
+   * (issue #4989) — `undefined` means GlobalId. Two pairs with the same
+   * model ids but a different scheme are NOT the same pair: a GlobalId
+   * accepted under GlobalId must not replay once the panel is keyed on
+   * `Pset_Asset.AssetId`, where the same string means something else (or
+   * nothing at all).
+   */
+  keyProperty?: string;
 }
 
 /** One accepted pair, with the models it was accepted for. */
@@ -46,7 +55,11 @@ export function claimSignature(base: string, here: string): string {
 }
 
 function samePair(a: ComparePair, b: ComparePair): boolean {
-  return a.baseModelId === b.baseModelId && a.headModelId === b.headModelId;
+  return (
+    a.baseModelId === b.baseModelId
+    && a.headModelId === b.headModelId
+    && a.keyProperty === b.keyProperty
+  );
 }
 
 /** The plain identity-map entries accepted for one model pair, in
@@ -111,6 +124,11 @@ export function addAcceptedIdentity(
     entries.push({
       baseModelId: pair.baseModelId,
       headModelId: pair.headModelId,
+      // Omitted rather than set to `undefined` for the GlobalId scheme, so a
+      // pre-#4989 entry and a GlobalId-scheme entry are structurally
+      // identical (no stray `keyProperty: undefined` key to trip a
+      // deep-equal check or a serialized snapshot).
+      ...(pair.keyProperty !== undefined ? { keyProperty: pair.keyProperty } : {}),
       base: entry.base,
       here: entry.here,
       reason: entry.reason,
@@ -141,7 +159,16 @@ export function rejectClaim(
   if (current.some((r) => samePair(r, pair) && r.base === base && r.here === here)) {
     return current as RejectedClaim[];
   }
-  return [...current, { baseModelId: pair.baseModelId, headModelId: pair.headModelId, base, here }];
+  return [
+    ...current,
+    {
+      baseModelId: pair.baseModelId,
+      headModelId: pair.headModelId,
+      ...(pair.keyProperty !== undefined ? { keyProperty: pair.keyProperty } : {}),
+      base,
+      here,
+    },
+  ];
 }
 
 /**

@@ -2011,6 +2011,38 @@ const ISSUE_068_MIN_HOSTS: usize = 341;
 /// panic that hides what that sibling actually measured.
 static CENSUS_SWEEP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// #5012: carrying #3914's plane tags through an intermediate batch
+/// difference made consolidation merge buckets that a later opening cut still
+/// needed separately. That changed this wall from 346 watertight triangles to
+/// 252 triangles with 40 unmatched edges.
+#[test]
+#[ignore = "focused ISSUE_068 fixture regression (#5012); fetch with `pnpm fixtures`"]
+fn issue_5012_intermediate_difference_keeps_host_53374_watertight() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = crate_dir()
+        .join("..")
+        .join("..")
+        .join("tests/models")
+        .join(ISSUE_068_MODEL);
+    if !path.is_file() {
+        eprintln!(
+            "skipping #5012 regression: {ISSUE_068_MODEL} is absent; fetch it with `pnpm fixtures`"
+        );
+        return;
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    let mesh = process(&frame, 53_374, &voids).expect("ISSUE_068 host #53374 must process");
+    let stats = edge_stats(&mesh);
+
+    assert_eq!(mesh.triangle_count(), 346, "#5012 must not discard wall geometry");
+    assert_eq!(stats.open, 0, "#5012 wall must have no unmatched boundary edges");
+    assert_eq!(stats.strict, 0, "#5012 wall must satisfy the strict manifold rule");
+}
+
 /// Sweep one heavy fixture, report what it measured, and gate it against
 /// [`HEAVY_GOLDEN_PATH`].
 ///

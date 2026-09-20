@@ -24,7 +24,7 @@ A GlobalId is the default key because every `IfcRoot` has one. It is also the on
 ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --json
 ```
 
-An element carrying a non-empty, unique value under that spec is keyed `prop:<value>`; every other element keeps its GlobalId. A value two elements share is refused for both (they fall back to GlobalId and the command warns), because a key that names two things is not a key. The viewer's Compare adapter and the MCP `model_diff` tool (`key_from`) take the same spec.
+An element carrying a non-empty, unique value under that spec is keyed `prop:<value>`; every other element keeps its GlobalId. A value two elements share is refused for both (they fall back to GlobalId and the command warns), because a key that names two things is not a key. The viewer's Compare panel has the same option — a **Key on** field in the run controls, next to the content-matching checkbox (see [Comparing on an authored key](model-diff.md#comparing-on-an-authored-key)) — and the MCP `model_diff` tool (`key_from`) takes the same spec.
 
 Every identity map and lineage records the scheme it was written under, and replaying one under a different scheme is refused like a digest mismatch. A map written under authored keys is stamped format version 2, so an older reader refuses it outright rather than applying it under GlobalId.
 
@@ -64,7 +64,7 @@ ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
 ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
 ```
 
-Each entry is `{ base, here, reason }`: the old key, the new key, and the evidence (`content-match:renamed`, `content-match:respecified`, …). Commit the file next to the models. It is a reviewed claim, and the digest pinning is what makes it one: replayed against a different pair of files it is refused, not silently applied. See [Identity maps](model-diff.md#identity-maps).
+Each entry is `{ base, here, reason }`: the old key, the new key, and the evidence (`content-match:renamed`, `content-match:respecified`, …). Commit the file next to the models. It is a reviewed claim, and the digest pinning is what makes it one: replayed against a different pair of files it is refused, not silently applied. See [Identity maps](model-diff.md#identity-maps). An identity map is a human decision artifact regardless of how the reason got there, so a hand-written or viewer-exported entry whose `reason` starts with `successor:` is honoured as a replacement (lineage relation `replaced`) on replay, exactly as if it had come from accepting a suggestion in Step 4 below — the map does not have to originate from `--accept` for that to hold.
 
 An identity map is strictly one-to-one. That is deliberate — identity is not a relation that survives being split — and it is why the next step exists.
 
@@ -97,7 +97,7 @@ A lineage entry is `{ base[], head[], relation, reason, shares? }` with one of f
 | `largest-share` | the piece with the largest volume share; orphaned rather than guessed when shares are missing or tied |
 | `orphan-on-split` | nowhere; only one-to-one relations rekey |
 
-Merges and replacements rekey under every policy. The output gains `lineage_relation` and `lineage_from` columns so each row says where it came from, and orphans are always written aside (to `--orphans`, or to `<out>.orphans.<ext>` when you gave none), never dropped.
+Merges and replacements rekey under every policy. `rekey` treats `identity` and `replaced` identically — both are 1:1, so both simply follow the row's key to its new one under every `--policy`; the two relations exist to tell a reader HOW the pairing was established (committed by the engine vs. accepted by a person), not to change what rekeying does with the row. The output gains `lineage_relation` and `lineage_from` columns so each row says where it came from, and orphans are always written aside (to `--orphans`, or to `<out>.orphans.<ext>` when you gave none), never dropped.
 
 `--lineage-in lineage.json --lineage-out lineage.json` on the next comparison replays the one-to-one entries as key aliases and carries the rest forward, so the file is a stable round trip rather than something that erodes on every run. See [Lineage and rekeying external data](model-diff.md#lineage-and-rekeying-external-data).
 
@@ -108,7 +108,7 @@ A wall whose buildup changed, or a chair swapped for another family, agrees on n
 - **`footprint`** — the new box overlaps the old one heavily (a 200 → 250 mm thickening scores 0.8) and nothing else on either side comes close.
 - **`position`** — same class family, same room or storey, comparable size, and each is the other's nearest candidate with the runner-up at least twice as far.
 
-In the viewer's Compare panel these appear under **Suggestions**, next to the split and merge claims and the unresolved groups, each with its evidence line. **Accept** turns a suggestion into an identity entry (reason `successor:footprint` or `successor:position`); **Not the same** hides it for the session. Accepted pairs are replayed on the next compare, and the panel exports both the identity map and the lineage, with accepted successors recorded as `replaced`. On the CLI, hand a reviewed identity map to `--accept` and it is folded into the lineage the same way:
+In the viewer's Compare panel these appear under **Suggestions**, next to the split and merge claims and the unresolved groups, each with its evidence line. **Accept** turns a successor suggestion into an identity entry (reason `successor:footprint` or `successor:position`); **Not the same** hides it for the session. A pair chosen from an ambiguous group instead carries `accepted:ambiguous`. Accepted pairs are replayed on the next compare, and the panel exports both the identity map and the lineage: successor reasons become `replaced`, while an accepted ambiguous pairing remains `identity`. On the CLI, hand a reviewed identity map to `--accept` and it is folded into the lineage by that same reason-prefix rule:
 
 ```bash
 ifc-lite diff model-v1.ifc model-v2.ifc --accept reviewed.json --lineage-out lineage.json

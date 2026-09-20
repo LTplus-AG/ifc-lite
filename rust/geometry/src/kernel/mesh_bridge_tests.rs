@@ -113,6 +113,37 @@ fn kernel_cuts_a_real_mesh() {
     assert!((mesh_volume(&host) - 8.0).abs() < 1e-4, "host round-trip volume wrong");
 }
 
+/// #5012: precise plane tags repair a union-only consolidation seam (#3914),
+/// but applying that merge to an intermediate difference/intersection changes
+/// the operands of later booleans and tore real fixture host #53374.
+#[test]
+fn boolean_outputs_scope_plane_tags_to_unions_5012() {
+    let a = tris_to_mesh(&cube_mesh(0.0, 2.0));
+    let b = tris_to_mesh(&cube_mesh(1.0, 3.0));
+
+    let united = union(&a, &b);
+    let union_tags = united
+        .plane_tags
+        .as_ref()
+        .expect("union output must carry plane tags");
+    assert_eq!(union_tags.len(), united.triangle_count());
+
+    assert!(
+        subtract(&a, &b).plane_tags.is_none(),
+        "difference output must not carry plane tags"
+    );
+    assert!(
+        expect_cut(subtract_many(&a, &[&b]), "batch difference")
+            .plane_tags
+            .is_none(),
+        "batch-difference output must not carry plane tags"
+    );
+    assert!(
+        intersection(&a, &b).plane_tags.is_none(),
+        "intersection output must not carry plane tags"
+    );
+}
+
 #[test]
 fn kernel_cuts_a_through_wall_opening() {
     use super::super::arrangement::box_mesh;

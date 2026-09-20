@@ -832,7 +832,9 @@ pub(super) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f6
         .collect();
 
     if cross_candidates.len() < 2 {
-        return OpeningFrame::from_depth(depth);
+        let mut frame = OpeningFrame::from_depth(depth)?;
+        frame.depth_is_authored = extrusion_dir.is_some();
+        return Some(frame);
     }
 
     let mut cross_a = cross_candidates.remove(0);
@@ -846,6 +848,7 @@ pub(super) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f6
         depth,
         cross_a,
         cross_b,
+        depth_is_authored: extrusion_dir.is_some(),
     })
 }
 

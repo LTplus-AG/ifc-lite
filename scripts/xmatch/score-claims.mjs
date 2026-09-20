@@ -30,6 +30,10 @@ export const EXPECTED_SUCCESSOR = {
 /** Mutations whose counterpart is a `split` claim: whole = base, pieces = heads. */
 const SPLIT_KINDS = new Set(['splitLength']);
 
+/** The mutation kind whose counterpart is a `merge` claim: pieces = bases,
+ *  whole = head (issue #4989) — the inverse of {@link SPLIT_KINDS}. */
+const MERGE_KIND = 'merged';
+
 /**
  * Score the successor stage's claims against the key (issue #4955).
  *
@@ -93,6 +97,7 @@ export function scoreSuccessors(key, successors, { expected, kindOf, insertedNea
     } else if (
       !insertedNearby.has(headRef) &&
       !SPLIT_KINDS.has(kindOf.get(baseRef)) &&
+      kindOf.get(baseRef) !== MERGE_KIND &&
       (expected.get(baseRef)?.has(headRef) ?? false)
     ) {
       correct = true;
@@ -142,13 +147,19 @@ export function scoreSuccessors(key, successors, { expected, kindOf, insertedNea
 }
 
 /**
- * Score the split/merge detector's claims against the key (issue #4955).
+ * Score the split/merge detector's claims against the key (issue #4955, and
+ * #4989 for the `merge` direction).
  *
- * A claim is correct only when it is a `split` whose whole is a `splitLength`
- * base and whose piece SET is exactly that base's two head products — the
- * same set-equality rule the N:N content match is scored by. Anything else
- * is wrong: a split with a piece missing or a stranger added, and every
- * `merge`, because no mutation in the corpus merges anything.
+ * A `split` claim is correct only when its whole is a `splitLength` base and
+ * its piece SET is exactly that base's two head products — the same
+ * set-equality rule the N:N content match is scored by. A `merge` claim is
+ * scored separately by {@link scoreMerges}, under its own `byMerge` stratum;
+ * this function counts a `merge` claim ONLY informationally (`mergeClaims`)
+ * so `bySplit`'s own claimed/precision denominators are never inflated by a
+ * claim `bySplit` never had any way to be right about — see the #4989 review
+ * that found the pre-existing version scored every real merge as an
+ * automatic `bySplit` wrong, sinking `bySplit.precision` the moment merges
+ * stopped being hypothetical.
  *
  * `kindAgreement` is about the confidence: `verified` is expected whenever
  * the whole and both pieces carry a proved volume, `extent` otherwise. The
@@ -167,12 +178,15 @@ export function scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin })
   let mergeClaims = 0;
 
   for (const claim of splitMerges) {
+    if (claim.kind !== 'split') {
+      if (claim.kind === 'merge') mergeClaims++;
+      continue;
+    }
     bySplit.claimed++;
     byConfidence[claim.confidence] = (byConfidence[claim.confidence] ?? 0) + 1;
     const wholeRef = claim.whole.ref;
     const pieces = claim.pieces.map((piece) => piece.ref);
-    const truth = claim.kind === 'split' ? want.get(wholeRef) : undefined;
-    if (claim.kind !== 'split') mergeClaims++;
+    const truth = want.get(wholeRef);
     // SET equality, with the pieces de-duplicated first: `[h1, h1]` against
     // `{h1, h2}` has the right length and every member in the truth, and is
     // still not the split the key describes.
@@ -213,5 +227,80 @@ export function scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin })
       mergeClaims,
     },
     wrongSplits: wrongClaims.slice(0, 20),
+  };
+}
+
+/**
+ * Score the split/merge detector's `merge` claims against the key (issue
+ * #4989) — the inverse of {@link scoreSplits}: a claim is correct only when
+ * its whole is a `merged` HEAD id the key recognises and its piece SET is
+ * exactly that head's two real base elements (`{a, b}`), same set-equality
+ * discipline. Anything else is wrong, including every `split` claim (counted
+ * only informationally here — `scoreSplits` owns those).
+ *
+ * `kindAgreement` mirrors `scoreSplits`: `verified` expected when the whole
+ * (head-side) and every piece (base-side) carry a proved volume, `extent`
+ * otherwise.
+ */
+export function scoreMerges(key, splitMerges, { hasVolume, kindOf, headOrigin }) {
+  const want = new Map();
+  for (const element of key.elements) {
+    if (element.kind !== MERGE_KIND) continue;
+    const headId = element.head[0];
+    const set = want.get(headId) ?? new Set();
+    set.add(element.base);
+    want.set(headId, set);
+  }
+  const byMerge = { population: want.size, recalled: 0, kindAgreed: 0, claimed: 0, correct: 0, wrong: 0 };
+  const byConfidence = {};
+  const recalled = new Set();
+  const wrongClaims = [];
+  let splitClaims = 0;
+
+  for (const claim of splitMerges) {
+    if (claim.kind !== 'merge') {
+      if (claim.kind === 'split') splitClaims++;
+      continue;
+    }
+    byMerge.claimed++;
+    byConfidence[claim.confidence] = (byConfidence[claim.confidence] ?? 0) + 1;
+    const wholeRef = claim.whole.ref;
+    const pieces = claim.pieces.map((piece) => piece.ref);
+    const truth = want.get(wholeRef);
+    const distinct = new Set(pieces);
+    const correct =
+      truth !== undefined &&
+      distinct.size === pieces.length &&
+      distinct.size === truth.size &&
+      pieces.every((ref) => truth.has(ref));
+    if (!correct) {
+      byMerge.wrong++;
+      wrongClaims.push({
+        kind: claim.kind,
+        confidence: claim.confidence,
+        whole: wholeRef,
+        wholeKind: kindOf.get(wholeRef) ?? headOrigin.get(wholeRef) ?? 'unkeyed',
+        pieces,
+        pieceOrigins: pieces.map((ref) => kindOf.get(ref) ?? headOrigin.get(ref) ?? 'unkeyed'),
+      });
+      continue;
+    }
+    byMerge.correct++;
+    if (recalled.has(wholeRef)) continue;
+    recalled.add(wholeRef);
+    byMerge.recalled++;
+    const proved = hasVolume.has(`h${wholeRef}`) && pieces.every((ref) => hasVolume.has(`b${ref}`));
+    if (claim.confidence === (proved ? 'verified' : 'extent')) byMerge.kindAgreed++;
+  }
+  return {
+    byMerge: {
+      ...byMerge,
+      recall: ratio(byMerge.recalled, byMerge.population),
+      precision: ratio(byMerge.correct, byMerge.claimed),
+      kindAgreement: ratio(byMerge.kindAgreed, byMerge.recalled),
+      byConfidence,
+      splitClaims,
+    },
+    wrongMerges: wrongClaims.slice(0, 20),
   };
 }

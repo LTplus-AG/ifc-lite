@@ -20,6 +20,9 @@ import { useViewerStore } from '@/store';
 import type { ListDefinition, ListModelTagScope } from '@/lib/lists';
 import { ListPanel } from './ListPanel.js';
 
+// `lists.*` keys resolve straight off `en.ts`'s own registration now
+// (#4918 integration pass) — no per-test catalogue merge needed.
+
 /** One real IfcWall named after its model, so a row says where it came from. */
 function buildStore(name: string): IfcDataStore {
   const strings = new StringTable();

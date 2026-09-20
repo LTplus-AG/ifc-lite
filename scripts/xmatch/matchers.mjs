@@ -247,6 +247,26 @@ export function respecifiedAsRenamedMutant(real) {
 }
 
 /**
+ * MUTANT 8 — `merge-drops-a-piece` (issue #4989): every real `merge` claim,
+ * minus one of its two pieces. Byte-identical to the real engine everywhere
+ * else — same successors, same splits, same content matches — so this is the
+ * pure precision failure for `byMerge` specifically: a harness that scored
+ * `byMerge` from `bySplit`'s claims, or not at all, would wave it through.
+ */
+export function mergeDropsAPieceMutant(real, key) {
+  const splitMerges = real.splitMerges.map((claim) =>
+    claim.kind === 'merge' && claim.pieces.length > 1 ? { ...claim, pieces: claim.pieces.slice(1) } : claim,
+  );
+  return {
+    applicable:
+      key.elements.some((element) => element.kind === 'merged')
+      && real.splitMerges.some((claim) => claim.kind === 'merge' && claim.pieces.length > 1),
+    mustFailOn: /^byMerge\.(precision|recall)/,
+    result: { matches: real.matches, splitMerges, successors: real.successors },
+  };
+}
+
+/**
  * MUTANT 7 — `silent-claims`: the real content matches and no claim of
  * either kind. Perfect precision on the claim strata, zero recall; a fixture
  * that only had ceilings and precision floors for successors and splits would

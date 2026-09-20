@@ -24,7 +24,6 @@ import {
   parseIdentityMapSidecar,
   serializeIdentityMapSidecar,
   serializeLineageSidecar,
-  SUCCESSOR_REASON_PREFIX,
   type IdentityMapEntry,
   type LineageEntry,
   type ModelIdentity,
@@ -89,6 +88,10 @@ export function downloadIdentityMapSidecar(
     ...identities,
     entries: accepted,
     created: new Date().toISOString(),
+    // #4989: writes format version 2 when the panel was keyed on an
+    // authored property, so a v1 consumer refuses rather than silently
+    // replaying claims taken under a scheme it never compared under.
+    keyProperty: result.keyProperty,
   });
   downloadBlob(
     new Blob([serializeIdentityMapSidecar(sidecar)], { type: 'application/json;charset=utf-8;' }),
@@ -105,12 +108,10 @@ export function downloadIdentityMapSidecar(
  * An accepted successor is in `diff.successors` only until the re-diff
  * replays it as a key alias; from then on the engine reports it under
  * `appliedKeyAliases`, and `lineageOfDiff` carries an applied alias forward
- * as `identity` with whatever reason `aliasReasons` gives it. The relation
- * is what a consumer rekeys on, so an alias whose reason says it was an
- * accepted successor (`successor:<confidence>`) is re-labelled `replaced`
- * here: the artifact then reads the same before and after the re-diff. A
- * pair accepted out of an ambiguous group (`accepted:ambiguous`) is an
- * identity claim and stays one.
+ * with whatever reason `aliasReasons` gives it. This path is replaying an
+ * identity map (which has no relation field), so the engine derives
+ * `successor:<confidence>` as `replaced`; `accepted:ambiguous` stays
+ * `identity`. An incoming lineage instead preserves its explicit relation.
  */
 export function lineageForExport(
   result: CompareResult,
@@ -121,23 +122,24 @@ export function lineageForExport(
     signatures.has(claimSignature(claim.base.key, claim.head.key)),
   );
   const aliasReasons = new Map(accepted.map((entry) => [entry.here, entry.reason]));
-  const { entries, deleted } = lineageOfDiff(result.diff, { accepted: acceptedClaims, aliasReasons });
-  for (const entry of entries) {
-    if (entry.relation === 'identity' && entry.reason.startsWith(SUCCESSOR_REASON_PREFIX)) {
-      entry.relation = 'replaced';
-    }
-  }
-  return { entries, deleted };
+  return lineageOfDiff(result.diff, { accepted: acceptedClaims, aliasReasons });
 }
 
-/** Write the lineage as `ifc-lite/lineage` v1 (see {@link lineageForExport}). */
+/** Write an `ifc-lite/lineage` sidecar: v1 for GlobalId, v2 for an authored
+ * key so old readers refuse keys they would otherwise mistake for GlobalIds. */
 export function downloadLineageSidecar(
   result: CompareResult,
   identities: { base: ModelIdentity; head: ModelIdentity },
   accepted: readonly IdentityMapEntry[],
 ): void {
   const { entries, deleted } = lineageForExport(result, accepted);
-  const sidecar = createLineageSidecar({ ...identities, entries, deleted, created: new Date().toISOString() });
+  const sidecar = createLineageSidecar({
+    ...identities,
+    entries,
+    deleted,
+    created: new Date().toISOString(),
+    keyProperty: result.keyProperty,
+  });
   downloadBlob(
     new Blob([serializeLineageSidecar(sidecar)], { type: 'application/json;charset=utf-8;' }),
     sidecarFilename(result, 'lineage'),
@@ -152,6 +154,10 @@ export function downloadLineageSidecar(
 export function readIdentityMapSidecar(
   text: string,
   identities: { base: ModelIdentity; head: ModelIdentity },
+  // #4989: the panel's current key scheme, so a map keyed on a DIFFERENT
+  // scheme (or GlobalId vs an authored one) is refused with the mismatch
+  // rather than silently applied under the wrong reading of `base`/`here`.
+  keyProperty?: string,
 ): { entries: IdentityMapEntry[] } | { error: string } {
   let sidecar;
   try {
@@ -159,7 +165,7 @@ export function readIdentityMapSidecar(
   } catch (err) {
     return { error: (err as Error).message };
   }
-  const mismatches = identityMapSidecarMismatches(sidecar, identities);
+  const mismatches = identityMapSidecarMismatches(sidecar, { ...identities, keyProperty });
   if (mismatches.length > 0) return { error: `Sidecar refused: ${mismatches.join('; ')}` };
   return { entries: sidecar.entries };
 }

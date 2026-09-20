@@ -56,7 +56,7 @@ const TYPED_VALUE_TS =
 const COST_VALUE_TS =
   `{ Name?: string; Description?: string; AppliedValue?: ${TYPED_VALUE_TS}; AppliedValueRef?: number; `
   + 'UnitBasis?: number; ApplicableDate?: string; FixedUntilDate?: string; Category?: string; '
-  + "Condition?: string; ArithmeticOperator?: 'ADD' | 'DIVIDE' | 'MULTIPLY' | 'SUBTRACT'; Components?: number[] }";
+  + "Condition?: string; ArithmeticOperator?: 'ADD' | 'DIVIDE' | 'MODULO' | 'MULTIPLY' | 'SUBTRACT'; Components?: number[] }";
 
 const COST_ITEM_TS =
   '{ Name: string; Description?: string; ObjectType?: string; Identification?: string; '

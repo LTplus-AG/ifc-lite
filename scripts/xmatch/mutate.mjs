@@ -52,9 +52,13 @@ import {
 } from './edits.mjs';
 import { ownedRectangleExtrusion } from './rectangle-edits.mjs';
 import { applySuccessorRole, mapDonors } from './successor-mutations.mjs';
+import { splitBaseForMerge } from './merge-base-split.mjs';
 import {
+  assignGroups,
   axisVector,
+  DEFAULT_PLAN,
   hasOwnPlacement,
+  interleaveSplitAndMerge,
   isSpatialType,
   permuteIds,
   permuted,
@@ -68,40 +72,6 @@ import {
 // a private copy of the table would drift from the thing being measured.
 import { planeAngleFactor, resampleableArcs, retriangulateElement } from './retriangulate.mjs';
 import { parseStepFile, serializeStepFile } from './step-file.mjs';
-
-/** The declared mutation set. Counts are targets; a role that cannot be
- *  applied to a given element falls through to the next candidate, and the
- *  answer key records what was actually applied. */
-const DEFAULT_PLAN = {
-  retriangulated: 12,
-  reshaped: 18,
-  deleted: 12,
-  duplicated: 8,
-  moved: 24,
-  /** Whole same-content groups moved at once — the only path to tier 3. */
-  movedGroups: 2,
-  inserted: 8,
-  /** Re-GUID plus ONE data edit and no geometry change (issue #4955). */
-  respecified: 14,
-  /** Rename plus a 1.25x thickness: the `footprint` successor case. */
-  thickened: 10,
-  /** Rename plus a different type's mapped geometry: the `position` case. */
-  swapped: 6,
-  /** One owned rectangle extrusion becomes two half-length products. */
-  splitLength: 6,
-  /** Of the `deleted`, how many get a small head-only element planted inside
-   *  their box — the successor stage's negative control. */
-  insertedNearby: 5,
-  /** Extrusion depth multiplier for `reshaped`. */
-  reshapeScale: 1.15,
-  /** Thickness multiplier for `thickened`: old box nests in new, IoU 0.8. */
-  thickenScale: 1.25,
-  /** Per-axis size of the `insertedNearby` element relative to the deleted one. */
-  nearbyFactor: 0.3,
-  /** Move distances (metres) cycled through for `moved`, all well inside the
-   *  engine's 10 m `maxMoveDistance` and well outside its 2 mm move tolerance. */
-  moveDistances: [0.35, 0.8, 1.6, 2.4],
-};
 
 /**
  * Mutate `text` into a head revision plus the answer key.
@@ -183,7 +153,10 @@ export function mutateModel(text, options) {
   // path of neighbours the key calls untouched. Decided from the registry.
   const spatial = (id) => isSpatialType(index.byId.get(id).type);
   const ownsRectangle = (id) => !spatial(id) && ownedRectangleExtrusion(index, id) !== undefined;
-  assign('splitLength', plan.splitLength, detached(ownsRectangle));
+  // `splitLength` and `merged` (issue #4989) draw from the SAME pool — a
+  // detached rectangle owner — INTERLEAVED so neither starves the other's
+  // population floor (review finding, 2026-09-19); see `mutate-support.mjs`.
+  interleaveSplitAndMerge(pool, taken, roles, detached(ownsRectangle), plan, sourcePath);
   assign('retriangulated', plan.retriangulated, selfContained((id) => resampleableArcs(index, id).length > 0));
   // A thickened host only changes its own mesh, like `reshaped`; it picks
   // before `reshaped`, whose eligible set is a superset of this one.
@@ -249,13 +222,28 @@ export function mutateModel(text, options) {
     thickened: 0,
     swapped: 0,
     splitLength: 0,
+    merged: 0,
     insertedNearby: 0,
   };
   let moveIndex = 0;
   const ordinals = {};
   /** A name nothing in the base carries: `${kind}-${seed}-${n}`. */
   const freshName = (kind) => `${kind}-${seed}-${(ordinals[kind] = (ordinals[kind] ?? 0) + 1)}`;
-  const successorContext = { file, index, plan, freshName, donors, entries, applied, insertedNearbyHeadIds };
+  // Filled in by `applySuccessorRole`'s `merged` branch, one id per primary;
+  // the base-side split (below, after the population loop) and both
+  // `key.elements` rows for each pair are built from this list.
+  const mergedPrimaries = [];
+  const successorContext = {
+    file,
+    index,
+    plan,
+    freshName,
+    donors,
+    entries,
+    applied,
+    insertedNearbyHeadIds,
+    mergedPrimaries,
+  };
 
   for (const id of population) {
     const role = roles.get(id);
@@ -333,6 +321,11 @@ export function mutateModel(text, options) {
     applied.inserted++;
   }
 
+  // Base-side split for `merged` (issue #4989) — see `merge-base-split.mjs`
+  // for the full story on why the base file needs touching at all.
+  const { baseText, mergedEntries } = splitBaseForMerge(text, mergedPrimaries, seed, freshName, classes);
+  entries.push(...mergedEntries);
+
   const guids = reguidAll(file, random);
   const permutation = permuteIds(file, random);
 
@@ -340,10 +333,22 @@ export function mutateModel(text, options) {
     generator: 'scripts/xmatch/mutate.mjs',
     // 2: `respecified` / `thickened` / `swapped` / `splitLength` kinds and
     // `insertedNearbyHeadIds` (issue #4955).
-    keyVersion: 2,
+    // 3: `merged` kind (issue #4989) — two `key.elements` rows (the primary
+    // and the new base-side clone `splitElementLength` produced) sharing one
+    // `head` id (the primary, unedited, renamed) — the inverse of
+    // `splitLength`'s one row with two heads.
+    keyVersion: 3,
     seed,
     source: sourcePath,
     sourceSha256: createHash('sha256').update(text).digest('hex'),
+    // The digest of the text `run.mjs` actually fingerprints as "base"
+    // (issue #4989 review) — `sourceSha256` above stays the PRISTINE file's
+    // digest even when `merged` produced a mutated base text, because that
+    // is still what `sourcePath` names on disk. `baseSha256` differs from
+    // `sourceSha256` exactly when `mergedPrimaries.length > 0`; identical
+    // (and redundant) for every OTHER model, which is why it is computed
+    // over `baseText` rather than gated on that condition here.
+    baseSha256: createHash('sha256').update(baseText).digest('hex'),
     unitScale,
     plan,
     applied,
@@ -360,22 +365,9 @@ export function mutateModel(text, options) {
     insertedNearbyHeadIds: insertedNearbyHeadIds.map((id) => permuted(permutation, id)),
   };
 
-  return { text: serializeStepFile(file), key };
-}
-
-function assignGroups(groups, count, eligible, taken, roles) {
-  const ordinals = new Map();
-  let used = 0;
-  for (const group of groups) {
-    if (used >= count) break;
-    const members = group.filter((id) => !taken.has(id) && eligible(id));
-    if (members.length < 3) continue;
-    for (const [ordinal, id] of members.entries()) {
-      taken.add(id);
-      roles.set(id, 'movedGroup');
-      ordinals.set(id, ordinal);
-    }
-    used++;
-  }
-  return ordinals;
+  // `baseText` is the pristine `text`, BYTE-IDENTICAL, unless `merged` named
+  // something for this model — `run.mjs` fingerprints it as the base
+  // revision instead of reading `sourcePath` straight off disk exactly
+  // when that happened.
+  return { text: serializeStepFile(file), baseText, key };
 }

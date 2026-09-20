@@ -93,6 +93,8 @@ export function BsddCard({
   const { t, locale } = useTranslation();
   const [classInfo, setClassInfo] = useState<BsddClassInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  // The raw failure, translated at render so it follows a locale switch that
+  // lands while the request is in flight: `''` = failed without a message.
   const [error, setError] = useState<string | null>(null);
   const [expandedPsets, setExpandedPsets] = useState<Set<string>>(new Set());
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
@@ -130,7 +132,7 @@ export function BsddCard({
       (err) => {
         if (cancelled) return;
         setLoading(false);
-        setError(err instanceof Error ? err.message : t('properties.bsdd.fetchFailed'));
+        setError(err instanceof Error ? err.message : '');
       },
     );
 
@@ -380,10 +382,10 @@ export function BsddCard({
   }
 
   // Error state
-  if (error) {
+  if (error !== null) {
     return (
       <div className="px-3 py-4 text-xs text-red-500/70">
-        <p>{t('properties.bsdd.loadFailed', { error })}</p>
+        <p>{t('properties.bsdd.loadFailed', { error: error || t('properties.bsdd.fetchFailed') })}</p>
       </div>
     );
   }

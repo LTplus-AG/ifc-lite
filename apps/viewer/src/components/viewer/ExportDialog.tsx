@@ -163,6 +163,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
       name: m.name,
       isDirty: dirtyModels.has(m.id),
       schemaVersion: m.schemaVersion,
+      sourceSchema: m.sourceSchema,
     }));
 
     // If no models in Map but legacy data exists, add a synthetic entry
@@ -209,6 +210,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     return models.get(selectedModelId);
   }, [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult]);
   const selectedRoomView = selectedModelId ? getMutationView(selectedModelId) ?? undefined : undefined;
+  const selectedLandXml = selectedModel?.sourceSchema === 'LandXML-1.2';
+  const mergedLandXml = exportScope === 'merged'
+    && Array.from(models.values()).some((model) => model.sourceSchema === 'LandXML-1.2');
+  const canExportIfc = !selectedLandXml && !mergedLandXml;
   const portableRoomStore = selectedModel?.ifcDataStore
     && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
     ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore
@@ -353,6 +358,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const handleExport = useCallback(async () => {
     if (!schema) return;
     if (exportScope === 'single' && !selectedModel) return;
+    if (selectedLandXml || mergedLandXml) {
+      const message = 'LandXML is source geometry, not IFC. Export the original LandXML file instead.';
+      setExportResult({ success: false, message });
+      toast.error(message);
+      return;
+    }
 
     // Action log: content-free emit so the miner can spot
     // "load → export" patterns. Format label only — no path / data.
@@ -603,7 +614,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, selectedLandXml, mergedLandXml]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -673,7 +684,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
                   const displayName = exportModelLabels.get(m.id) ?? m.name;
                   return (
                   <SelectItem key={m.id} value={m.id} title={m.name}>
-                    {displayName}{m.isDirty ? ' *' : ''}{m.schemaVersion ? ` (${m.schemaVersion})` : ''}
+                    {displayName}{m.isDirty ? ' *' : ''}{m.sourceSchema ? ` (${m.sourceSchema})` : m.schemaVersion ? ` (${m.schemaVersion})` : ''}
                   </SelectItem>
                   );
                 })}
@@ -683,6 +694,13 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           )}
 
           {/* Schema selector — this drives the output format */}
+          {!canExportIfc && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>LandXML cannot be exported as IFC</AlertTitle>
+              <AlertDescription>Its terrain records remain in their original source format; no IFC entities are synthesized for export.</AlertDescription>
+            </Alert>
+          )}
           <div className="flex items-center gap-4">
             <Label className="w-32">{t('exportDialog.schemaLabel')}</Label>
             <Select value={schema} onValueChange={(v) => setSchema(v as SchemaVersion)}>
@@ -828,7 +846,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             {t('exportDialog.cancelButton')}
           </Button>
-          <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema}>
+          <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !canExportIfc}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

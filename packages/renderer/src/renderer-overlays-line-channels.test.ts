@@ -14,8 +14,8 @@ import { LINE_OVERLAY_CHANNELS, type LineOverlayChannel } from './section-2d-ove
  *
  * The eight methods were identical on the published `Renderer` but NOT on this
  * facade: annotation and alignment grew the scene AABB and re-fit the camera,
- * grid and DXF deliberately did not. Folding four uploads into one is exactly
- * the shape of change that quietly gives all four the same policy, and the
+ * grid, DXF, and terrain deliberately do not. Folding uploads into one is exactly
+ * the shape of change that quietly gives every channel the same policy, and the
  * damage is invisible in a unit test that only checks the vertices arrived:
  * grid axes reach far past the model envelope, so a grid upload that expanded
  * bounds would reframe the camera every time someone ticked the toggle, and an
@@ -80,7 +80,7 @@ const SEGMENT = new Float32Array([0, 0, 0, 1, 1, 1]);
  * Be clear about what that does and does not buy. It catches the IMPLEMENTATION
  * drifting from `CHANNEL_EXPANDS_MODEL_BOUNDS` — a draw/set path that expands
  * for the wrong channel fails here. It does NOT catch a wrong POLICY: an author
- * who copies the `grid` row into a fifth channel that should have expanded
+ * who copies the `grid` row into a new channel that should have expanded
  * writes the same wrong value in both tables and every assertion below passes.
  * No test can decide that; it is a judgement, and the rule to apply is on
  * `Renderer.setLineOverlay`.
@@ -90,6 +90,7 @@ const EXPECTED_EXPANDS: Record<LineOverlayChannel, boolean> = {
     alignment: true,
     grid: false,
     dxf: false,
+    terrain: false,
 };
 
 describe('setLineOverlay keeps each channel\'s model-bounds policy', () => {

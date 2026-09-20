@@ -55,8 +55,8 @@ export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-
  *
  * Each channel is an independent vertex buffer sharing one line pipeline and one shared overlay
  * colour; only the buffer read and the uniform slot bound distinguish them — naming them makes a
- * fifth channel five table rows, not eight methods. Four of five refuse to compile if skipped;
- * the fifth, `SECTION_2D_UNIFORM_SLOT_COUNT`, derives from `SECTION_2D_UNIFORM_SLOT_INDEX`, so
+ * sixth channel six table rows, not eight methods. Five of six refuse to compile if skipped;
+ * the sixth, `SECTION_2D_UNIFORM_SLOT_COUNT`, derives from `SECTION_2D_UNIFORM_SLOT_INDEX`, so
  * the buffer follows it automatically (#3342 was a hand-written count, one short).
  *
  * Not enforced: each draw site binding its OWN slot. A test pins the index dense, but a channel
@@ -66,7 +66,7 @@ export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-
  * Clash box/contact lines are deliberately NOT a channel: they draw in their own colour via
  * `setClashOverlapBox` / `setClashContactLines`.
  */
-export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf'] as const;
+export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf', 'terrain'] as const;
 
 /** One of {@link LINE_OVERLAY_CHANNELS}. */
 export type LineOverlayChannel = (typeof LINE_OVERLAY_CHANNELS)[number];
@@ -139,12 +139,12 @@ export class Section2DOverlayRenderer {
    * One world-space vertex buffer per {@link LineOverlayChannel}, each on its
    * own uniform slot.
    *
-   * Four `WorldLineBuffer`s, not one: the four draws are encoded into a single
+   * Five `WorldLineBuffer`s, not one: the draws are encoded into a single
    * pass and `queue.writeBuffer` lands before the pass runs, so a shared buffer
-   * or a shared uniform slot would give all four whatever the last write said.
+   * or a shared uniform slot would give every channel whatever the last write said.
    * Keying them by channel unifies the LOOKUP, which is all that was ever
    * duplicated; the buffers stay separate because their independence is what
-   * makes annotation (#653), alignment, grid (#967) and DXF (#2043) visibility
+   * makes annotation (#653), alignment, grid (#967), DXF (#2043), and terrain visibility
    * toggle independently.
    */
   private readonly lineOverlays: Record<LineOverlayChannel, WorldLineBuffer> = {
@@ -152,6 +152,7 @@ export class Section2DOverlayRenderer {
     alignment: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.alignment),
     grid: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.grid),
     dxf: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.dxf),
+    terrain: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.terrain),
   };
 
   // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
@@ -309,7 +310,7 @@ export class Section2DOverlayRenderer {
     // the WGSL that defines them.
     // …once per draw site (SECTION_2D_UNIFORM_SLOT_COUNT of them), spaced by
     // the device's dynamic-offset alignment. Still one buffer under one owner;
-    // what changed is that the six draws no longer overwrite each other.
+    // what changed is that the seven draw sites no longer overwrite each other.
     this.uniformStride = sectionUniformSlotStride(this.device);
     this.uniformBuffer = this.device.createBuffer({
       size: this.uniformStride * SECTION_2D_UNIFORM_SLOT_COUNT,
@@ -439,7 +440,7 @@ export class Section2DOverlayRenderer {
    * so they draw regardless of `sectionPlane.enabled`. A short array clears too.
    *
    * Every channel gets its own buffer and its own uniform slot, so setting one
-   * leaves the other three exactly as they were — that independence is the
+   * leaves every other channel exactly as it was — that independence is the
    * whole point of having channels rather than one merged buffer.
    */
   setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
@@ -620,11 +621,11 @@ export class Section2DOverlayRenderer {
    * Dispose of GPU resources.
    *
    * Every family's buffer must be released here. The clash box (#1277) was the
-   * sixth family added and was missing from this list, leaking its vertex
+   * sixth line family added and was missing from this list, leaking its vertex
    * buffer on every teardown — `section-2d-overlay-lifecycle.test.ts` now counts
-   * destroys against uploads so a seventh family cannot repeat it. The four
+   * destroys against uploads so another family cannot repeat it. The five
    * `LINE_OVERLAY_CHANNELS` are released by iterating the channel list, so a
-   * fifth channel is covered here the moment it joins that list; the clash box
+   * sixth channel is covered here the moment it joins that list; the clash box
    * is named separately because it is not a channel.
    */
   dispose(): void {

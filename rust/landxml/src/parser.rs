@@ -111,6 +111,21 @@ pub fn parse_landxml_tin_with_cancel(
 }
 
 impl Parser<'_> {
+    /// Reserve source-coordinate records before allocating semantic output.
+    /// Definition points, SourceData lists and overlay vertices all count: a
+    /// document must not bypass `max_points` merely by moving coordinates out
+    /// of `Definition/Pnts`.
+    fn reserve_points(&self, added: usize) -> Result<()> {
+        let total = self
+            .points_seen
+            .checked_add(added)
+            .ok_or_else(|| error(Code::LimitExceeded, "point limit exceeded"))?;
+        if total > self.limits.max_points {
+            return Err(error(Code::LimitExceeded, "point limit exceeded"));
+        }
+        Ok(())
+    }
+
     fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
         if self
             .cancelled

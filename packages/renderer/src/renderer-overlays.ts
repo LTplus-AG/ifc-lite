@@ -60,7 +60,7 @@ import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 
 /**
- * The slice of `Renderer` the overlays need. Deliberately four methods wide:
+ * The slice of `Renderer` the overlays need. Deliberately narrow:
  * the overlays own their GPU objects outright, and borrow only the model-bounds
  * bookkeeping that the rest of the renderer also owns.
  */
@@ -89,7 +89,7 @@ export interface OverlayDrawContext {
 /**
  * Whether setting a channel grows the scene AABB.
  *
- * The one behavioural difference between the four channels, and the reason
+ * The one behavioural difference between the line-overlay channels, and the reason
  * `setLineOverlay` is a table lookup rather than a plain forward. The
  * per-channel rationale is on `Renderer.setLineOverlay`, which is what
  * consumers read in the emitted `.d.ts`; it is not repeated here.
@@ -97,7 +97,7 @@ export interface OverlayDrawContext {
  * The rule is "does this content DEFINE the model's extent, so that a file
  * containing only it must still be framable". It is NOT "is it behind a
  * visibility toggle" — annotations sit behind `ifcAnnotationsVisible` too and
- * they DO expand. Anyone adding a fifth channel should answer the first
+ * they DO expand. Anyone adding a channel should answer the first
  * question, not the second.
  *
  * Known gap, pre-dating this table: `useSymbolicAnnotations` lifts IfcGrid
@@ -113,6 +113,7 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
     alignment: true,
     grid: false,
     dxf: false,
+    terrain: false,
 };
 
 export class RendererOverlays {
@@ -189,7 +190,7 @@ export class RendererOverlays {
         // texts (labels above everything).
         this.symbolic.drawFills(pass, viewProj);
         // `LINE_OVERLAY_CHANNELS` is in draw order: annotation, alignment,
-        // grid, DXF. All four share the overlay colour and the line pipeline,
+        // grid, DXF, LandXML. All share the overlay colour and the line pipeline,
         // so the order only decides who wins a depth tie.
         const overlay = this.section2DOverlayRenderer;
         if (overlay) {

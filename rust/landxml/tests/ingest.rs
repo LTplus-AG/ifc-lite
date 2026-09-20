@@ -213,6 +213,22 @@ fn bounds_preserved_vendor_extension_roots() {
 }
 
 #[test]
+fn bounds_source_data_and_overlay_vertices_with_the_global_point_limit() {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>0 0 0 1 1 1</PntList3D></DataPoints><Breaklines><Breakline><PntList2D>0 0 1 1</PntList2D></Breakline></Breaklines></SourceData></Surface></Surfaces></LandXML>"#
+    );
+    for max_points in [1, 2, 3] {
+        let error = parse_landxml_tin_with_cancel(
+            xml.as_bytes(),
+            &LandXmlLimits { max_points, ..LandXmlLimits::default() },
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, LandXmlDiagnosticCode::LimitExceeded);
+    }
+}
+
+#[test]
 fn requires_exact_namespace_and_version() {
     let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
     assert_eq!(

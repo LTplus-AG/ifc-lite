@@ -50,7 +50,8 @@ pub struct LandXmlLimits {
     pub max_surfaces: usize,
     /// Maximum preserved roots from foreign XML namespaces.
     pub max_extensions: usize,
-    /// Maximum point records across the whole source document.
+    /// Maximum coordinate records across the whole source document, including
+    /// Definition points, SourceData point lists and overlay vertices.
     pub max_points: usize,
     /// Maximum visible face records across the whole source document.
     pub max_faces: usize,

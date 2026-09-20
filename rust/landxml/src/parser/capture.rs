@@ -7,19 +7,17 @@ use super::*;
 impl Parser<'_> {
     pub(super) fn finish_capture(&mut self) -> Result<()> {
         let capture = self.capture.take().expect("capture checked");
-        let surface = self
-            .surface
-            .as_mut()
-            .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
         match capture {
             Capture::Point { id, text, .. } => {
-                if self.points_seen >= self.limits.max_points {
-                    return Err(error(Code::LimitExceeded, "point limit exceeded"));
-                }
+                self.reserve_points(1)?;
+                let values = triple(&text, "point")?;
+                let surface = self
+                    .surface
+                    .as_mut()
+                    .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
                 if !surface.ids.insert(id.clone()) {
                     return Err(error(Code::InvalidSemantic, "duplicate point id"));
                 }
-                let values = triple(&text, "point")?;
                 surface.points.push(LandXmlPoint {
                     source_id: LandXmlSourceId(String::new()),
                     id,
@@ -40,7 +38,12 @@ impl Parser<'_> {
                 if self.references > self.limits.max_references {
                     return Err(error(Code::LimitExceeded, "reference limit exceeded"));
                 }
-                surface.faces.push(references(&text)?);
+                let references = references(&text)?;
+                let surface = self
+                    .surface
+                    .as_mut()
+                    .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
+                surface.faces.push(references);
                 surface.face_visibility.push(!hidden);
                 self.faces_seen += 1;
                 if hidden {
@@ -53,6 +56,15 @@ impl Parser<'_> {
                 coordinate_dimension,
                 ..
             } => {
+                let coordinate_count = text.split_ascii_whitespace().count();
+                if coordinate_count % usize::from(coordinate_dimension) != 0 {
+                    return Err(error(
+                        Code::InvalidSemantic,
+                        "source data has an invalid coordinate list",
+                    ));
+                }
+                let point_count = coordinate_count / usize::from(coordinate_dimension);
+                self.reserve_points(point_count)?;
                 let values: Vec<f64> = text
                     .split_ascii_whitespace()
                     .map(|part| part.parse::<f64>().ok())
@@ -63,16 +75,16 @@ impl Parser<'_> {
                             "source data contains non-numeric coordinate",
                         )
                     })?;
-                if !values
-                    .len()
-                    .is_multiple_of(usize::from(coordinate_dimension))
-                    || values.iter().any(|value| !value.is_finite())
-                {
+                if values.iter().any(|value| !value.is_finite()) {
                     return Err(error(
                         Code::InvalidSemantic,
                         "source data has an invalid coordinate list",
                     ));
                 }
+                let surface = self
+                    .surface
+                    .as_mut()
+                    .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
                 for coordinates in values.chunks_exact(usize::from(coordinate_dimension)) {
                     let ordinal = surface.source_data_points.len() + 1;
                     surface.source_data_points.push(crate::LandXmlSourcePoint {
@@ -83,6 +95,7 @@ impl Parser<'_> {
                         coordinates: coordinates.to_vec(),
                     });
                 }
+                self.points_seen += point_count;
             }
             Capture::Polyline {
                 text,
@@ -94,6 +107,17 @@ impl Parser<'_> {
                 coordinate_dimension,
                 ..
             } => {
+                let coordinate_count = text.split_ascii_whitespace().count();
+                if coordinate_count < usize::from(coordinate_dimension) * 2
+                    || coordinate_count % usize::from(coordinate_dimension) != 0
+                {
+                    return Err(error(
+                        Code::InvalidSemantic,
+                        "terrain overlay must contain two or more finite coordinates",
+                    ));
+                }
+                let point_count = coordinate_count / usize::from(coordinate_dimension);
+                self.reserve_points(point_count)?;
                 let values: Vec<f64> = text
                     .split_ascii_whitespace()
                     .map(|part| part.parse::<f64>().ok())
@@ -104,12 +128,7 @@ impl Parser<'_> {
                             "terrain overlay contains non-numeric coordinate",
                         )
                     })?;
-                if values.len() < usize::from(coordinate_dimension) * 2
-                    || !values
-                        .len()
-                        .is_multiple_of(usize::from(coordinate_dimension))
-                    || values.iter().any(|value| !value.is_finite())
-                {
+                if values.iter().any(|value| !value.is_finite()) {
                     return Err(error(
                         Code::InvalidSemantic,
                         "terrain overlay must contain two or more finite coordinates",
@@ -119,6 +138,10 @@ impl Parser<'_> {
                     .chunks_exact(usize::from(coordinate_dimension))
                     .map(|value| value.to_vec())
                     .collect();
+                let surface = self
+                    .surface
+                    .as_mut()
+                    .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
                 let target = match category {
                     PolylineCategory::Boundary => &mut surface.boundaries,
                     PolylineCategory::Breakline => &mut surface.breaklines,
@@ -135,6 +158,7 @@ impl Parser<'_> {
                     points,
                     point_source_ids: Vec::new(),
                 });
+                self.points_seen += point_count;
             }
         }
         Ok(())

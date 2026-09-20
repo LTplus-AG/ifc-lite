@@ -4,8 +4,8 @@
 
 /** Format-specific CRS metadata adapters for non-IFC federation sources. */
 
-import type { ModelSpatialReference } from '@ifc-lite/geometry';
-import { extractWktCrsIdentifiers } from '@ifc-lite/pointcloud';
+import type { ModelSpatialReference, SourceCoordinateFrame } from '@ifc-lite/geometry';
+import { extractWktSpatialMetadata } from '@ifc-lite/pointcloud';
 import type { LandXmlTinDocument } from './landXmlIngest.js';
 
 export type SpatialSourceFormat = 'landxml' | 'las' | 'laz' | 'e57';
@@ -14,6 +14,9 @@ export interface SourceSpatialMetadata {
   format: SpatialSourceFormat;
   horizontalId?: string;
   verticalId?: string;
+  axes?: SourceCoordinateFrame['axes'];
+  horizontalUnitToMetres?: number;
+  verticalUnitToMetres?: number;
   wkt?: string;
   provenance: string;
 }
@@ -23,11 +26,20 @@ function metadata(
   text: string,
   provenance: string,
 ): SourceSpatialMetadata {
-  const { horizontalId: horizontal, verticalId: vertical } = extractWktCrsIdentifiers(text);
+  const {
+    horizontalId: horizontal,
+    verticalId: vertical,
+    axes,
+    horizontalUnitToMetres,
+    verticalUnitToMetres,
+  } = extractWktSpatialMetadata(text);
   return {
     format,
     ...(horizontal ? { horizontalId: horizontal } : {}),
     ...(vertical ? { verticalId: vertical } : {}),
+    ...(axes ? { axes } : {}),
+    ...(horizontalUnitToMetres ? { horizontalUnitToMetres } : {}),
+    ...(verticalUnitToMetres ? { verticalUnitToMetres } : {}),
     ...(text ? { wkt: text } : {}),
     provenance,
   };
@@ -91,7 +103,15 @@ export function spatialMetadataFromE57Xml(xml: string): SourceSpatialMetadata {
  */
 export function spatialReferenceFromSourceMetadata(metadata: SourceSpatialMetadata): ModelSpatialReference {
   return {
-    source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+    // LAS stores X/Y/Z in the native CRS coordinate order. Retain every WKT
+    // axis and unit declaration instead of treating a foot-based north/east
+    // grid as the viewer's metre east/up/south frame. Older metadata records
+    // have no WKT frame, so use LAS's documented X=east, Y=north, Z=up order.
+    source: {
+      axes: metadata.axes ?? ['east', 'north', 'up'],
+      horizontalUnitToMetres: metadata.horizontalUnitToMetres ?? 1,
+      verticalUnitToMetres: metadata.verticalUnitToMetres ?? 1,
+    },
     ...(metadata.horizontalId ? { horizontal: { id: metadata.horizontalId, provenance: { source: metadata.provenance } } } : {}),
     ...(metadata.verticalId ? { vertical: { id: metadata.verticalId, provenance: { source: metadata.provenance } } } : {}),
     localToProjected: {

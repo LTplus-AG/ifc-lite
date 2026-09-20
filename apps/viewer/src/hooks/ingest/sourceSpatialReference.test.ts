@@ -66,6 +66,24 @@ describe('non-IFC source spatial metadata (#5048)', () => {
     assert.equal(declared.provenance, 'LAS VLR 2112');
   });
 
+  it('retains declared LAS WKT axis order and horizontal/vertical foot units (#5048)', () => {
+    const bytes = new Uint8Array(1024);
+    const view = new DataView(bytes.buffer);
+    view.setUint16(94, 227, true);
+    view.setUint32(100, 1, true);
+    bytes.set(new TextEncoder().encode('LASF_Projection'), 229);
+    view.setUint16(245, 2112, true);
+    const wkt = new TextEncoder().encode('COMPOUNDCRS["county",PROJCRS["grid",AXIS["Northing",north,ORDER[1]],AXIS["Easting",east,ORDER[2]],LENGTHUNIT["US survey foot",0.3048006096012192],ID["EPSG",2236]],VERTCRS["height",AXIS["H",up],LENGTHUNIT["foot",0.3048],ID["EPSG",6360]]]');
+    view.setUint16(247, wkt.length, true);
+    bytes.set(wkt, 281);
+    const reference = spatialReferenceFromSourceMetadata(spatialMetadataFromLasVlrs(bytes, 'las'));
+    assert.deepEqual(reference.source, {
+      axes: ['north', 'east', 'up'],
+      horizontalUnitToMetres: 0.3048006096012192,
+      verticalUnitToMetres: 0.3048,
+    });
+  });
+
   it('makes missing vertical metadata explicit-unknown so federation cannot carry height through', () => {
     const reference = spatialReferenceFromSourceMetadata({ format: 'las', horizontalId: 'EPSG:2056', provenance: 'LAS VLR 2112' });
     assert.equal(reference.confidence, 'unknown');

@@ -198,3 +198,26 @@ export function createSceneBatch(
     throw error;
   }
 }
+
+/** Repartition an evicted batch without allocating replacement GPU buffers. */
+export function createSceneBatchShell(
+  meshDataArray: MeshData[],
+  source: BatchedMesh,
+  id: number,
+  colorKey: string,
+): BatchedMesh {
+  const merged = mergeGeometry(meshDataArray, source.origin);
+  return {
+    id,
+    colorKey,
+    vertexBuffer: source.vertexBuffer,
+    indexBuffer: source.indexBuffer,
+    indexCount: merged.indices.length,
+    color: meshDataArray[0].color,
+    expressIds: meshDataArray.map((mesh) => mesh.expressId),
+    modelIndices: meshDataArray.map((mesh) => mesh.modelIndex),
+    bounds: merged.bounds,
+    origin: merged.origin,
+    gpuResident: false,
+  };
+}

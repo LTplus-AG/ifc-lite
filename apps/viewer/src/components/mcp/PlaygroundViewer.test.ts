@@ -134,3 +134,57 @@ describe('loadPlaygroundGeometry WASM disposal (#1959 P0 leak)', () => {
     }
   });
 });
+
+describe('loadPlaygroundGeometry phase messages stay reactive to locale (#4918 slice 5b review)', () => {
+  // A mid-load locale switch (or a startup locale activating after this
+  // call started) must retranslate the phase HUD. That only works if
+  // `setPhaseMsg` is handed a catalogue KEY, re-translated by `t()` at
+  // render time, never a string pre-resolved through the LOAD-time locale.
+  it('reports every catalogued phase as a { key } message, never pre-resolved text', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const processMock = mock.method(GeometryProcessor.prototype, 'process', async () =>
+      ({ meshes: [] }) as unknown as GeometryResult, // empty meshes -> the "no drawable geometry" phase
+    );
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const messages: unknown[] = [];
+    try {
+      await loadPlaygroundGeometry(await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT6'), {
+        isCancelled: () => false,
+        setPhase: () => undefined,
+        setPhaseMsg: (msg) => messages.push(msg),
+        onMeshes: () => undefined,
+      });
+      assert.deepEqual(messages, [
+        { key: 'mcp.playgroundViewer.bootingPipeline' },
+        { key: 'mcp.playgroundViewer.extractingGeometry' },
+        { key: 'mcp.playgroundViewer.noDrawableGeometry' },
+      ]);
+    } finally {
+      initMock.mock.restore();
+      processMock.mock.restore();
+      disposeMock.mock.restore();
+    }
+  });
+
+  it('reports a thrown error as raw { text }, not a catalogue key (an exception message is not UI copy)', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const processMock = mock.method(GeometryProcessor.prototype, 'process', async () => {
+      throw new Error('boom: process failed');
+    });
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const messages: unknown[] = [];
+    try {
+      await loadPlaygroundGeometry(await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT7'), {
+        isCancelled: () => false,
+        setPhase: () => undefined,
+        setPhaseMsg: (msg) => messages.push(msg),
+        onMeshes: () => undefined,
+      });
+      assert.deepEqual(messages.at(-1), { text: 'boom: process failed' });
+    } finally {
+      initMock.mock.restore();
+      processMock.mock.restore();
+      disposeMock.mock.restore();
+    }
+  });
+});

@@ -12,6 +12,7 @@ import { SourceFolderTree } from './SourceFolderTree';
 import { SourceFileRow } from './SourceFileRow';
 import { LoadMoreRow } from './SourceEntityList';
 import { Download, FolderOpen, Loader2, Search, Star, X } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 interface SourceFolderStepProps {
   providerName: string;
@@ -91,6 +92,7 @@ export function SourceFolderStep({
   isFileFavourite,
   onToggleFileFavourite,
 }: SourceFolderStepProps) {
+  const { t } = useTranslation();
   const containerById = useMemo(() => {
     const entries = sortedFolders.map((folder) => [folder.id, folder] as const);
     entries.push([selectedFileArea.id, selectedFileArea] as const);
@@ -167,7 +169,11 @@ export function SourceFolderStep({
               className={`shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground ${
                 isFolderFavourite(selectedFileArea.id) ? 'text-amber-500' : 'text-muted-foreground'
               }`}
-              aria-label={`${isFolderFavourite(selectedFileArea.id) ? 'Remove' : 'Add'} favourite: ${selectedFileArea.name}`}
+              aria-label={
+                isFolderFavourite(selectedFileArea.id)
+                  ? t('sources.sourceFolderStep.fileAreaRemoveFavouriteAria', { name: selectedFileArea.name })
+                  : t('sources.sourceFolderStep.fileAreaAddFavouriteAria', { name: selectedFileArea.name })
+              }
               aria-pressed={isFolderFavourite(selectedFileArea.id)}
               onClick={() => onToggleFolderFavourite(selectedFileArea)}
             >
@@ -203,7 +209,7 @@ export function SourceFolderStep({
                   hasMore={foldersHaveMore}
                   loading={loadingMore}
                   onLoadMore={onLoadMoreFolders}
-                  label="Load more folders"
+                  label={t('sources.sourceFolderStep.loadMoreFolders')}
                 />
               </>
             )}
@@ -220,8 +226,8 @@ export function SourceFolderStep({
                 />
                 <Input
                   className="h-8 pl-7 pr-7 text-sm"
-                  placeholder="Search files in project…"
-                  aria-label="Search files in project"
+                  placeholder={t('sources.sourceFolderStep.searchPlaceholder')}
+                  aria-label={t('sources.sourceFolderStep.searchAriaLabel')}
                   value={searchQuery}
                   onChange={(e) => onSearchQueryChange(e.target.value)}
                   onKeyDown={(e) => {
@@ -233,7 +239,7 @@ export function SourceFolderStep({
                   <button
                     type="button"
                     className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                    aria-label="Clear search"
+                    aria-label={t('sources.sourceFolderStep.clearSearchAria')}
                     onClick={onSearchClear}
                   >
                     <X className="h-3.5 w-3.5" aria-hidden />
@@ -242,7 +248,7 @@ export function SourceFolderStep({
               </div>
               {searchActive && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Showing search results across the whole project.
+                  {t('sources.sourceFolderStep.searchActiveHint')}
                 </p>
               )}
             </div>
@@ -268,7 +274,7 @@ export function SourceFolderStep({
           {!searchActive && childFolders.length > 0 && (
             <div className="border-b px-3 py-2">
               <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                Subfolders
+                {t('sources.sourceFolderStep.subfoldersHeading')}
               </div>
               <div className="flex flex-wrap gap-1">
                 {childFolders.map((folder) => {
@@ -320,7 +326,9 @@ export function SourceFolderStep({
                   })}
                   {sortedFiles.length === 0 && (
                     <li className="px-3 py-4 text-center text-sm text-muted-foreground">
-                      {searchActive ? 'No files match this search' : 'No IFC files found in this folder'}
+                      {searchActive
+                        ? t('sources.sourceFolderStep.noSearchResults')
+                        : t('sources.sourceFolderStep.noFilesFound')}
                     </li>
                   )}
                 </ul>
@@ -328,7 +336,7 @@ export function SourceFolderStep({
                   hasMore={filesHaveMore}
                   loading={loadingMore}
                   onLoadMore={onLoadMoreFiles}
-                  label="Load more files"
+                  label={t('sources.sourceFolderStep.loadMoreFiles')}
                 />
               </>
             )}
@@ -345,8 +353,8 @@ export function SourceFolderStep({
               <Download className="mr-2 h-4 w-4" aria-hidden />
             )}
             {busy
-              ? 'Loading…'
-              : `Load ${selectedFiles.size} file${selectedFiles.size > 1 ? 's' : ''} as federated model`}
+              ? t('sources.sourceFolderStep.loadButtonBusy')
+              : t('sources.sourceFolderStep.loadButton', { count: selectedFiles.size })}
           </Button>
         </div>
       )}

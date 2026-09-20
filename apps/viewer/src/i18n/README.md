@@ -113,6 +113,36 @@ annotation tools and guidance, export/print prompts, generation/error states,
 empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
 phase text and IFC/DXF data remain supplied by their owning systems.
 
+The Add Element authoring catalogue (#4918 editor-workflow slice) covers
+`AddElementPanel.tsx`: element and dimension controls, complete placement
+guidance messages, accessibility labels, and the Auto Spaces preview and
+generation states (`add-element.en.ts`). IFC enum values remain exact EXPRESS
+identifiers and are rendered from a typed data table rather than translated.
+
+The property-editor catalogue (#4918 editor-workflow slice) covers
+`PropertyEditor.tsx`: inline value and type editing, scope confirmation,
+property/quantity/classification/material authoring dialogs, class
+reassignment, its pending badge, and undo/redo chrome
+(`property-editor.en.ts`). Runtime IFC entity, property, quantity, and enum
+names remain exact schema data; common material category display labels are
+translated without changing their stored values.
+
+The IDS-panel catalogue (#4918 viewer-panels slice) covers `IDSPanel.tsx` and
+the extracted validation progress, result-summary, filtering, isolation,
+focus, specification, requirement, and entity chrome (`ids-panel.en.ts`).
+The existing `IDSAuditSummary`, correction, report-export, and BCF-export
+dialogs remain separate follow-up surfaces. IDS document titles/descriptions,
+specification names, entity names/types/GlobalIds, requirement descriptions,
+and failure details remain model/document content supplied by the IDS engine.
+The stable model-resolution errors `resolveValidationTarget.ts` can return
+("Model … is not loaded", "The selected model has no parsed IFC data to
+validate", "No IFC model loaded") are catalogued too: that pure function
+returns a `TranslatableMessage` (`labelKey` + optional `params`, `@/i18n/types.ts`)
+rather than a literal string — it never calls `t()` itself — and `useIDS.ts`
+stores that value verbatim in `idsError`; `IDSPanel.tsx`'s error banner is the
+one place that resolves it with `t()`, at render time, so it retranslates on
+a live locale switch like every other catalogued string here (#5030).
+
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
 `GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,
@@ -131,6 +161,27 @@ Slice 5 (#4918) covers `extensions/**` (a companion slice covers `mcp/**`,
   repair queue, promote-tool, widget host) — extension-CONTRIBUTED labels
   (a flavor's own name/description, an idea's text, a plan's own copy) stay
   as data, same reasoning as slice 2/3's extension-registry exclusions.
+Slice 5 (#4918) covers `mcp/**`, `sources/**`, `tours/**`, the components
+root, and `ui/` (a companion slice covers `extensions/**`):
+
+- `mcp.en.ts` / `mcp-playground.en.ts` cover the `/mcp` landing page and
+  playground's own chrome (hero copy, playground shell, chat UI). Chat
+  transcript content and general tool-call output are runtime data, not
+  covered. The dispatcher is a narrow exception: its viewer-owned WebGL
+  refusal result carries live `textKey` / `hintKey` metadata so that specific
+  host-generated status remains localized when the locale changes.
+- `sources.en.ts` covers the Cloud Sources panel across all ten
+  `sources/` components. Real file/folder/project names from a connected
+  source stay as interpolation params, never literal text.
+- `tours.en.ts` covers the tour UI's own chrome (Learn tab, per-panel
+  launcher, prerequisite card, first-run invite, step card controls).
+  `tour.title` / `description` / `step.title` / `step.body` /
+  `step.action.label` come from `TOUR_REGISTRY` (`@/lib/tours/registry`,
+  outside this slice) — authored tour content, not UI copy in these
+  components, so they are deliberately NOT catalogued, same reasoning as
+  the command-palette catalogue's tour entries.
+- `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
+  fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
 
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for

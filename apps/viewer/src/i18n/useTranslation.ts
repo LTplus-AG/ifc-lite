@@ -15,9 +15,11 @@ import type { TranslationParameters } from './types';
 export interface UseTranslationResult {
   t: (key: TranslationKey, params?: TranslationParameters) => string;
   locale: string;
+  /** Changes for both locale switches and active-catalogue replacement. */
+  revision: string;
 }
 
 export function useTranslation(): UseTranslationResult {
-  useSyncExternalStore(subscribeLocale, getLocaleSnapshot, getLocaleSnapshot);
-  return { t: resolve, locale: getLocale() };
+  const revision = useSyncExternalStore(subscribeLocale, getLocaleSnapshot, getLocaleSnapshot);
+  return { t: resolve, locale: getLocale(), revision };
 }

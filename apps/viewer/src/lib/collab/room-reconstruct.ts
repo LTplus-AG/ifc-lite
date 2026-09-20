@@ -3,22 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Recipient side of a share: rebuild every model the room holds, one viewer
- * model per slot (#4444).
- *
- * A recipient (deep-link join, no local model) reconstructs one IFCX snapshot
- * per room slot, then attaches that slot's blob-backed geometry. IFC5 rooms
- * carry containment + properties natively; legacy STEP rooms use the same
- * IFCX shape. Pre-slot rooms still reconstruct as one legacy slot.
- * Each slot is registered as a federated model so its meshes live in their own
- * global id range. Two copies of one file, with the same
- * local express ids and the same GlobalIds, are two selectable models. The
- * hydrated meshes are re-homed with `applyFederationOffsetToMesh` exactly as
- * the loader does for an added file.
- * Extracted from `collabSlice.startCollab` as a dependency-injected factory
- * that can be driven against a real document without a websocket.
+ * Recipient side of a share: rebuild every room model, one viewer model per
+ * slot (#4444).
+ * A recipient reconstructs one IFCX snapshot per room slot, then attaches its
+ * blob-backed geometry. IFC5 rooms carry containment + properties natively;
+ * legacy STEP and pre-slot rooms use the same IFCX shape. Each slot is a
+ * federated model, so copies with identical express ids and GlobalIds remain
+ * independently selectable. Hydrated meshes are re-homed with
+ * `applyFederationOffsetToMesh` exactly as the loader does for an added file.
+ * Dependency-injected so it can run against a real document without a socket.
  */
-
 import type { BlobStore, CollabSession, LocalPlacement, ModelSlot, ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -36,17 +30,17 @@ import { pathInRoomSlot, roomModelIdFor, roomModelNameFor } from './model-slot-r
 import type { ParsedRoomStepSource } from './room-step-source';
 import { attachRoomStepSource } from './room-step-attach';
 import { cleanupRoomModels } from './room-reconstruct-cleanup';
-/** The slice of the collab runtime the reconstruct needs (injected). */
+import { hydrateStructuredEntityAttributes } from './room-structured-attributes';
+import { createCoalescingRunner } from './coalescing-runner';
+/** The slice of the collab runtime the reconstruct needs. */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'),
   'snapshotToIfcx' | 'listModelSlots' | 'getEntity' | 'entityToJSON'>;
-
 /** The store actions and reads the reconstruct goes through (a narrow view of `ViewerState`). */
 export type RoomReconstructState = Pick<
   ViewerState,
-  'collabRoomId' | 'models' | 'upsertModel' | 'updateModel' | 'removeModel' | 'registerModelOffset'
+  'collabRoomId' | 'models' | 'upsertModel' | 'updateModel' | 'removeModel' | 'registerModelOffset' | 'clearMutationView'
 > &
   Parameters<typeof applyRoomModelData>[0];
-
 export interface RoomReconstructDeps {
   roomId: string;
   session: CollabSession;
@@ -69,7 +63,6 @@ export interface RoomReconstructDeps {
   /** The slice's live reconciler — moves one entity's mesh to `placement`. */
   reconcile: (modelId: string, store: IfcDataStore, entityId: number, placement: LocalPlacement) => void;
 }
-
 export interface RoomReconstructor {
   /** Re-derive every slot from the doc (no-op while a run is in flight). */
   reconstruct(): Promise<void>;
@@ -78,20 +71,16 @@ export interface RoomReconstructor {
   /** Stop listening and drop every model this reconstructor registered. */
   teardown(): void;
 }
-
 interface SlotState {
   modelId: string;
   created: boolean;
 }
-
 const LIVE_DEBOUNCE_MS = 800;
-
 export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstructor {
   const { roomId, session, collab, geomApi, sweepApi, blobStore } = deps;
   const live = (): boolean => deps.get().collabRoomId === roomId;
   const slots = new Map<string, SlotState>();
   let lastGeomSignature = '';
-  let reconstructing = false;
   // The missing-geometry warning fires at most once per room: reconstruct
   // re-runs on every peer edit, and a repeating alarm gets tuned out.
   let warnedMissingGeometry = false;
@@ -185,6 +174,11 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     // slot-qualified. Without this, recipient edits don't sync.
     if (payload.idToPath && payload.pathToId) {
       registerEntityMaps(payload.dataStore, payload.idToPath, payload.pathToId);
+      const diagnostics = hydrateStructuredEntityAttributes(payload.dataStore, payload.pathToId, path => {
+        const entity = collab.getEntity(session.doc, path);
+        return entity ? collab.entityToJSON(entity) : undefined;
+      });
+      for (const diagnostic of diagnostics) deps.notify(`Room attribute ${diagnostic}`);
     }
     registerStoreSlot(payload.dataStore, slot);
 
@@ -238,6 +232,12 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       const model = deps.get().models.get(modelId);
       const raised = model ? raisedMaxExpressId(model.maxExpressId, payload.idToPath) : null;
       if (raised !== null) deps.get().updateModel(modelId, { maxExpressId: raised });
+      // Every overlay map is keyed by the previous snapshot's dense numeric
+      // ids. The room document already contains both local and remote edits,
+      // so the replacement snapshot is the new base and retaining ANY old
+      // view state (properties, positional attrs, types, creates, tombstones)
+      // can apply it to an unrelated path after ids shift.
+      deps.get().clearMutationView(modelId);
     }
 
     if (geometryChanged || firstBuild) {
@@ -276,98 +276,97 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     return { payload, state };
   };
 
-  const reconstruct = async (): Promise<void> => {
-    if (reconstructing || !live()) return;
-    reconstructing = true;
-    try {
-      const listed = collab.listModelSlots(session.doc);
-      publishRoomModels(listed);
-      const geomCount = session.doc.getMap('geometry').size;
-      const signature = geometrySignature();
-      const geometryChanged = signature !== lastGeomSignature;
-      if (geometryChanged) {
-        lastGeomSignature = signature;
-        lastMeshCount = 0;
-      }
-      const built: Array<{ payload: ViewerModelPayload; state: SlotState }> = [];
-      for (const slot of listed) {
-        const result = await reconstructSlot(slot, roomModelNameFor(listed, slot.slotId), geometryChanged);
-        if (!result) return;
-        built.push(result);
-      }
-      if (!live()) return;
+  const reconstructOnce = async (): Promise<void> => {
+    if (!live()) return;
+    const listed = collab.listModelSlots(session.doc);
+    publishRoomModels(listed);
+    const geomCount = session.doc.getMap('geometry').size;
+    const signature = geometrySignature();
+    const geometryChanged = signature !== lastGeomSignature;
+    if (geometryChanged) {
+      lastGeomSignature = signature;
+      lastMeshCount = 0;
+    }
+    const built: Array<{ payload: ViewerModelPayload; state: SlotState }> = [];
+    for (const slot of listed) {
+      const result = await reconstructSlot(slot, roomModelNameFor(listed, slot.slotId), geometryChanged);
+      if (!result) return;
+      built.push(result);
+    }
+    if (!live()) return;
 
-      const { loc, yaw } = deps.applied();
-      if (geometryChanged) {
-        // The meshes just installed are BAKED, i.e. back at
-        // `meta.placementBaseline` (hydrate copies the vertex arrays per
-        // consumer, so a re-hydrate returns the original geometry rather than
-        // a copy the renderer had already translated in place). The
-        // applied-placement bookkeeping describes the meshes just replaced,
-        // so it is now false — and false in the one direction that silently
-        // pins the damage: the sweep below would read "already applied" and
-        // leave the entity reverted. Forget it here, AFTER every slot's
-        // `await hydrateGeometryFromRoom`: a remote placement event landing
-        // during those awaits re-stamps `applied` for a mesh that is
-        // discarded by this replacement, and clearing beforehand would let
-        // that stale stamp survive into the sweep.
-        //
-        // SAFE FOR A NON-OBVIOUS REASON: the applied maps are shared with the
-        // live placement-event path, so a clear here is only correct if
-        // nothing can observe it mid-way. Nothing can — there is no `await`
-        // between this clear and the `sweepPlacements` calls below
-        // (`collectPlacementDrift` reads the doc synchronously), so the
-        // clear-then-sweep pair is one uninterruptible turn of the event
-        // loop. Inserting an `await` anywhere in that span reopens the window
-        // this comment closes.
-        clearAppliedPlacements(loc, yaw);
+    const { loc, yaw } = deps.applied();
+    if (geometryChanged) {
+      // The meshes just installed are BAKED, i.e. back at
+      // `meta.placementBaseline` (hydrate copies the vertex arrays per
+      // consumer, so a re-hydrate returns the original geometry rather than
+      // a copy the renderer had already translated in place). The
+      // applied-placement bookkeeping describes the meshes just replaced,
+      // so it is now false — and false in the one direction that silently
+      // pins the damage: the sweep below would read "already applied" and
+      // leave the entity reverted. Forget it here, AFTER every slot's
+      // `await hydrateGeometryFromRoom`: a remote placement event landing
+      // during those awaits re-stamps `applied` for a mesh that is
+      // discarded by this replacement, and clearing beforehand would let
+      // that stale stamp survive into the sweep.
+      //
+      // SAFE FOR A NON-OBVIOUS REASON: the applied maps are shared with the
+      // live placement-event path, so a clear here is only correct if
+      // nothing can observe it mid-way. Nothing can — there is no `await`
+      // between this clear and the `sweepPlacements` calls below
+      // (`collectPlacementDrift` reads the doc synchronously), so the
+      // clear-then-sweep pair is one uninterruptible turn of the event
+      // loop. Inserting an `await` anywhere in that span reopens the window
+      // this comment closes.
+      clearAppliedPlacements(loc, yaw);
+    }
+    // Placement is NOT carried by the blobs: a hydrated mesh sits at the
+    // `usd::xformop` it was baked at, and only a live placement *event* ever
+    // moved it. So re-derive it from the doc here — for a late joiner (which
+    // receives no such event at all), for an event dropped before this
+    // model existed, and for the meshes just re-hydrated. Idempotent:
+    // `sweepPlacements` skips anything already applied, so this is a no-op
+    // on a room where nothing has moved, and it is the ONLY
+    // placement-replay mechanism.
+    for (const { payload, state } of built) {
+      const models = deps.get().models;
+      sweepPlacements(
+        deps.sweepApi,
+        session.doc,
+        payload.pathToId,
+        loc,
+        yaw,
+        (entityId, placement) => {
+          deps.reconcile(state.modelId, payload.dataStore, entityId, placement);
+        },
+        (entityId) => toGlobalIdFromModels(models, state.modelId, entityId),
+      );
+    }
+    // Warn about a room that rendered nothing. The old guard was
+    // `geomCount > 0`, which cannot fire in the case that actually breaks a
+    // room: a failed upload leaves no geometry records at all. The owner's
+    // seed marker is what separates that from a legitimately geometry-less
+    // model. Checked OUTSIDE the geometry-changed guard because the marker
+    // can land on its own, with no geometry record to change (that is
+    // precisely the failed seed), and would otherwise never be looked at.
+    if (!warnedMissingGeometry) {
+      const missing = missingRoomGeometryMessage({
+        marker: readGeometrySeedMarker(session.doc),
+        geometryRecords: geomCount,
+        hydratedMeshes: lastMeshCount,
+      });
+      if (missing && live()) {
+        warnedMissingGeometry = true;
+        // eslint-disable-next-line no-console
+        console.warn(`[collab] recipient: ${missing}`);
+        deps.notify(missing);
       }
-      // Placement is NOT carried by the blobs: a hydrated mesh sits at the
-      // `usd::xformop` it was baked at, and only a live placement *event* ever
-      // moved it. So re-derive it from the doc here — for a late joiner (which
-      // receives no such event at all), for an event dropped before this
-      // model existed, and for the meshes just re-hydrated. Idempotent:
-      // `sweepPlacements` skips anything already applied, so this is a no-op
-      // on a room where nothing has moved, and it is the ONLY
-      // placement-replay mechanism.
-      for (const { payload, state } of built) {
-        const models = deps.get().models;
-        sweepPlacements(
-          deps.sweepApi,
-          session.doc,
-          payload.pathToId,
-          loc,
-          yaw,
-          (entityId, placement) => {
-            deps.reconcile(state.modelId, payload.dataStore, entityId, placement);
-          },
-          (entityId) => toGlobalIdFromModels(models, state.modelId, entityId),
-        );
-      }
-      // Warn about a room that rendered nothing. The old guard was
-      // `geomCount > 0`, which cannot fire in the case that actually breaks a
-      // room: a failed upload leaves no geometry records at all. The owner's
-      // seed marker is what separates that from a legitimately geometry-less
-      // model. Checked OUTSIDE the geometry-changed guard because the marker
-      // can land on its own, with no geometry record to change (that is
-      // precisely the failed seed), and would otherwise never be looked at.
-      if (!warnedMissingGeometry) {
-        const missing = missingRoomGeometryMessage({
-          marker: readGeometrySeedMarker(session.doc),
-          geometryRecords: geomCount,
-          hydratedMeshes: lastMeshCount,
-        });
-        if (missing && live()) {
-          warnedMissingGeometry = true;
-          // eslint-disable-next-line no-console
-          console.warn(`[collab] recipient: ${missing}`);
-          deps.notify(missing);
-        }
-      }
-    } finally {
-      reconstructing = false;
     }
   };
+  // A debounced update that matures during parse/hydration must trigger a
+  // fresh snapshot after the active pass, not disappear behind an in-flight
+  // guard and leave that update cleared from the mutation overlay.
+  const reconstruct = createCoalescingRunner(live, reconstructOnce);
 
   let debounceHandle: ReturnType<typeof setTimeout> | null = null;
   const onDocUpdate = (): void => {

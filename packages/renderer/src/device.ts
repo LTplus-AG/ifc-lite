@@ -46,6 +46,8 @@ export class WebGPUDevice {
   private deviceLostHandler: ((info: { message: string; reason: string }) => void) | null = null;
   /** Guards against firing the handler more than once for a single device. */
   private deviceLostFired: boolean = false;
+  /** Invalidates delayed `lost` settlements from a superseded GPUDevice. */
+  private deviceLifetime: number = 0;
   /** See `getAdapterInfo()`. Null until `init()` succeeds in reading it. */
   private adapterInfoSnapshot: AdapterInfoSnapshot | null = null;
 
@@ -53,6 +55,7 @@ export class WebGPUDevice {
    * Initialize WebGPU device and canvas context
    */
   async init(canvas: HTMLCanvasElement): Promise<void> {
+    const deviceLifetime = ++this.deviceLifetime;
     // Each init() begins a fresh GPUDevice lifetime. Clear the once-per-device
     // guard so a destroy()+init() re-entry can still report a later loss (the
     // previous device's `lost` promise already resolved and set this true).
@@ -202,6 +205,11 @@ export class WebGPUDevice {
     };
     if (deviceWithLost.lost) {
       deviceWithLost.lost.then((info) => {
+        // A destroyed GPUDevice is allowed to settle its `lost` promise after
+        // this wrapper has already initialized a replacement. Never let that
+        // stale settlement invalidate the replacement context or notify its
+        // recovery subscriber (#4885).
+        if (deviceLifetime !== this.deviceLifetime) return;
         const reason = info.reason ?? 'unknown';
         console.warn('[WebGPU] Device lost:', info.message, `(reason: ${reason})`);
         this.contextConfigured = false;
@@ -369,6 +377,9 @@ export class WebGPUDevice {
    * rendering until a fresh `init()`. Idempotent — safe to call more than once.
    */
   destroy(): void {
+    // Invalidate the current GPUDevice before asking it to destroy. Its `lost`
+    // promise settles asynchronously and may otherwise race a later init().
+    this.deviceLifetime++;
     if (this.device) {
       try {
         this.device.destroy();

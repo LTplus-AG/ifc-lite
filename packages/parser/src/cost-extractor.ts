@@ -374,7 +374,7 @@ export function extractCostOnDemand(
           relatedItem.controllingScheduleGlobalIds.push(schedule.GlobalId ?? '');
         } else if (item && isProductLike(reader, relatedId)) {
           item.productExpressIds.push(relatedId);
-          item.productGlobalIds.push(store.entities?.getGlobalId?.(relatedId) ?? '');
+          item.productGlobalIds.push(reader.globalId(relatedId));
         }
       }
     } else if (relation.Type === 'IfcRelAssignsToProduct' && relation.RelatingProduct !== undefined) {
@@ -382,7 +382,7 @@ export function extractCostOnDemand(
         const item = items.get(relatedId);
         if (!item) continue;
         item.productExpressIds.push(relation.RelatingProduct);
-        item.productGlobalIds.push(store.entities?.getGlobalId?.(relation.RelatingProduct) ?? '');
+        item.productGlobalIds.push(reader.globalId(relation.RelatingProduct));
       }
     }
   }

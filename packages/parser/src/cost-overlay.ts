@@ -45,8 +45,9 @@
 /**
  * A loaded model's pending edits, as the cost read model observes them. The
  * SDK builds one from a `MutablePropertyView` over `@ifc-lite/export`'s
- * `effectiveSourceRecord`; every member is required, so an overlay cannot
- * quietly omit an edit kind.
+ * `effectiveSourceRecord`. `created` is optional for backwards compatibility
+ * with overlays compiled against the pre-authoring contract; omitting it
+ * means that the overlay has no created entities to project.
  */
 export interface CostMutationOverlay {
   /** True when `expressId` is tombstoned — deleted, pending export. */
@@ -63,6 +64,38 @@ export interface CostMutationOverlay {
     text: string;
     notWritten: readonly string[];
   };
+  /**
+   * Every entity the overlay CREATED (`bim.store.addEntity` /
+   * `StoreEditor.addEntity`) — PR A of #4857, "loaded-model cost authoring".
+   * Each entry carries its effective class and its record TEXT exactly as
+   * `@ifc-lite/export`'s `effectiveCreatedRecord` (the exporter's own
+   * overlay-created-entity writer, `writeOverlayCreatedEntities`) would emit
+   * it, so a freshly authored `IfcCostItem` reads through `bim.cost` exactly
+   * as the file that will be exported would state it — before the model is
+   * ever exported.
+   *
+   * A created entity the overlay later tombstoned is never in this list:
+   * `StoreEditor.removeEntity` forgets an overlay-only entity outright, so it
+   * simply falls out of the underlying entity list. `error` is set instead of
+   * `type`/`text` when the entity's authored argument list does not scan for
+   * a pending retype — the same condition export declines to write under —
+   * and the reader reports it as a diagnostic rather than treating the entity
+   * as absent from the source it never had.
+   */
+  created?(): readonly CostCreatedRecord[];
+}
+
+/** One overlay-created entity as `CostMutationOverlay.created()` reports it. */
+export interface CostCreatedRecord {
+  expressId: number;
+  /** The effective (post-retype) IFC class, UPPERCASE. Present iff `error` is not. */
+  type?: string;
+  /** The record text exactly as export would write it. Present iff `error` is not. */
+  text?: string;
+  /** Pending edits the exporter rejects while retaining the authored slot. */
+  notWritten?: readonly string[];
+  /** Present instead of `type`/`text` when the record could not be read (see above). */
+  error?: string;
 }
 
 /** Options for `extractCostOnDemand`. */

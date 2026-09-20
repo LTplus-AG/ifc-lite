@@ -22,14 +22,16 @@ export const dataTeardown = defineSliceTeardown(
     'ifcDataStore',
     'geometryResult',
     'geometryUpdateTick',
+    'colorPresentationRevision',
     'pendingColorUpdates',
     'pendingMeshColorUpdates',
     'meshColorBackup',
     'pendingInstancedShards',
   ],
   {
-    'session-reset': () => ({
+    'session-reset': (_scope, state) => ({
       geometryUpdateTick: 0,
+      colorPresentationRevision: (state.colorPresentationRevision ?? 0) + 1,
       // `null` here is a NO-OP at the renderer — `useGeometryStreaming`
       // returns early on a null `pendingColorUpdates`, so only a non-null
       // EMPTY map reaches `scene.clearColorOverrides()`. The actual release

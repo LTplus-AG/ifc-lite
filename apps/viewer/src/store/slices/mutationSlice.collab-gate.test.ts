@@ -15,6 +15,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { createMutationSlice, type MutationSlice } from './mutationSlice.js';
+import type { Mutation } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 
 /** Records the first argument every `mirror*` call was handed. */
@@ -88,6 +89,32 @@ function buildSlice(canEdit: boolean, editedModelId = 'm1') {
 }
 
 describe('mutationSlice — collab role gate on property mutations', () => {
+  it('clearMutationView discards numeric-id undo and redo state before a model is replaced (#5008)', () => {
+    const { state } = buildSlice(true);
+    const s = state();
+    const mutation: Mutation = {
+      id: 'stale-id-keyed-mutation',
+      type: 'UPDATE_ATTRIBUTE',
+      timestamp: 0,
+      modelId: 'm1',
+      entityId: 1,
+      attributeName: 'Name',
+      oldValue: 'old',
+      newValue: 'stale',
+    };
+    s.undoStacks.set('m1', [mutation]);
+    s.redoStacks.set('m1', [mutation]);
+    s.mutationBatchTags.set(mutation.id, 'batch');
+    s.mutationMeshTranslations.set(mutation.id, { globalId: 1, rendererDelta: [1, 0, 0] });
+
+    s.clearMutationView('m1');
+
+    assert.equal(state().undoStacks.has('m1'), false);
+    assert.equal(state().redoStacks.has('m1'), false);
+    assert.equal(state().mutationBatchTags.has(mutation.id), false);
+    assert.equal(state().mutationMeshTranslations.has(mutation.id), false);
+  });
+
   it('viewer role: property writes are rejected BEFORE touching the local view', () => {
     const { spy, state } = buildSlice(false);
     const s = state();

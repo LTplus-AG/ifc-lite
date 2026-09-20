@@ -26,14 +26,17 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { EntityRef } from '@/store/types';
 import {
   globalIdToExpressId as globalIdToExpressIdLookup,
-  expressIdToGlobalId as expressIdToGlobalIdLookup,
+  resolveCapturedRefGlobalIds,
   resolveUniqueGlobalIds,
+  type ComponentRef,
 } from './bcfIdLookup';
+import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 import { toast } from '@/components/ui/toast';
 import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-capture';
+import { visibilityModelIdsForCapture } from './bcf/visibility-model-ids';
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
@@ -69,13 +72,23 @@ interface CreateViewpointOptions {
    * without this every capture made while a clash is focused had no
    * `<Selection>` at all (#4806).
    */
-  additionalSelectedRefs?: number[];
+  additionalSelectedRefs?: ComponentRef[];
+  /** IFC GlobalIds already bound to a validated model revision by the caller. */
+  additionalSelectedGuids?: string[];
   /**
    * Federated entity refs to record as BCF `<Coloring>`, grouped by an ARGB
    * hex colour (e.g. `'FFFF8000'`, matching `BCFColoring.color`). Defaults
    * like `additionalSelectedRefs`, to the focused clash's on-screen tint.
    */
-  additionalColoredRefs?: { color: string; refs: number[] }[];
+  additionalColoredRefs?: { color: string; refs: ComponentRef[] }[];
+  /** Coloring already bound to a validated model revision by the caller. */
+  additionalColoredGuids?: { color: string; guids: string[] }[];
+  /** Model-bound GUIDs that supplement an active numeric isolation allowlist. */
+  additionalVisibleGuids?: string[];
+  /** Abort when caller-owned scene identity changes while snapshot capture yields. */
+  isCaptureStillValid?: () => boolean;
+  /** Exact source models represented by the visibility state bound for this capture. */
+  onVisibilityModelIdsCaptured?: (modelIds: readonly string[]) => void;
 }
 interface UseBCFResult {
   /** Create a viewpoint from current viewer state */
@@ -87,6 +100,7 @@ interface UseBCFResult {
   headerFilesForViewpoints: (
     viewpoints: readonly BCFViewpoint[],
     date?: string,
+    exactModelIds?: readonly string[],
   ) => BCFHeaderFile[];
   /** Apply a viewpoint to the viewer */
   applyViewpoint: (viewpoint: BCFViewpoint, animate?: boolean) => void;
@@ -183,12 +197,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
   const localRendererRef = useRef<React.RefObject<Renderer | null> | null>(
     options.rendererRef ?? null
   );
-
-  // Store selectors
-  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
-  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
 
   // Selection and visibility actions
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
@@ -306,26 +314,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
   );
 
   /**
-   * Convert expressId (with model offset) to IFC GlobalId string
-   * Handles multi-model federation by finding the correct model and subtracting offset
-   */
-  const expressIdToGlobalId = useCallback(
-    (expressId: number): string | null =>
-      expressIdToGlobalIdLookup(expressId, models, ifcDataStore),
-    [models, ifcDataStore]
-  );
-
-  /** A registered model whose metadata has not hydrated yet cannot name its entities YET (#4529). */
-  const isEntityPending = useCallback(
-    (globalId: number): boolean => {
-      const resolved = fromGlobalIdFromModels(models, globalId);
-      const model = resolved && resolved.modelId !== 'legacy' ? models.get(resolved.modelId) : undefined;
-      return !!model && !model.ifcDataStore && model.loadState !== 'error';
-    },
-    [models]
-  );
-
-  /**
    * Convert IFC GlobalId string to expressId (with model offset for federation)
    * Returns { expressId, modelId } or null if not found
    */
@@ -345,12 +333,68 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         includeSelection = true,
         includeHidden = true,
       } = opts;
+      const componentState = useViewerStore.getState();
+      if (opts.isCaptureStillValid && !opts.isCaptureStillValid()) return null;
       // Default the found objects to the focused clash, whichever panel is capturing (#4806).
       const focusedClash = includeSelection
-        ? focusedClashComponents(useViewerStore.getState().clashHighlightColors)
+        ? focusedClashComponents(componentState.clashHighlightColors)
         : null;
       const additionalSelectedRefs = opts.additionalSelectedRefs ?? focusedClash?.selectedRefs;
       const additionalColoredRefs = opts.additionalColoredRefs ?? focusedClash?.coloredRefs;
+      const resolveCapturedRef = (ref: ComponentRef): string[] => resolveCapturedRefGlobalIds(
+        ref,
+        componentState.models.keys(),
+        (modelId, globalId) => componentState.resolveGlobalIdInModel(modelId, globalId),
+        entityRef => resolveEntityRefGlobalIdFromState(componentState, entityRef),
+      );
+      const isCapturedRefPending = (globalId: number): boolean => {
+        for (const [modelId, model] of componentState.models) {
+          if (!componentState.resolveGlobalIdInModel(modelId, globalId)) continue;
+          if (!model.ifcDataStore && model.loadState !== 'error') return true;
+        }
+        return false;
+      };
+      const hasCapturedRefWithoutGlobalId = (globalId: number): boolean => {
+        for (const modelId of componentState.models.keys()) {
+          const entityRef = componentState.resolveGlobalIdInModel(modelId, globalId);
+          if (!entityRef) continue;
+          if (!resolveEntityRefGlobalIdFromState(componentState, entityRef)) return true;
+        }
+        return false;
+      };
+      // Bind component identity before snapshot capture can yield. A model
+      // replacement may reuse the same local express id for another entity.
+      const selectedRefs: ComponentRef[] = [];
+      if (includeSelection) {
+        if (componentState.selectedEntityId !== null) selectedRefs.push(componentState.selectedEntityId);
+        for (const id of componentState.selectedEntityIds) {
+          if (id !== componentState.selectedEntityId) selectedRefs.push(id);
+        }
+      }
+      selectedRefs.push(...(additionalSelectedRefs ?? []));
+      const selectedGuids = resolveUniqueGlobalIds(selectedRefs, resolveCapturedRef);
+      for (const guid of opts.additionalSelectedGuids ?? []) {
+        if (!selectedGuids.includes(guid)) selectedGuids.push(guid);
+      }
+      const emittedColoredGuids = new Set<string>();
+      const coloredGuids = [
+        ...(additionalColoredRefs ?? []).map(({ color, refs }) => ({
+          color, guids: resolveUniqueGlobalIds(refs, resolveCapturedRef, emittedColoredGuids),
+        })),
+        ...(opts.additionalColoredGuids ?? []).map(({ color, guids }) => ({
+          color, guids: resolveUniqueGlobalIds(guids, (guid) => guid, emittedColoredGuids),
+        })),
+      ].filter((entry) => entry.guids.length > 0);
+      // Capture visibility in the same pre-await state as the drawing buffer.
+      // GPU completion below can yield long enough for another UI action to
+      // mutate the store; mixing that newer state with the older PNG makes a
+      // viewpoint reopen differently from its snapshot.
+      const visibilityState = includeHidden ? componentState : undefined;
+      if (visibilityState && opts.onVisibilityModelIdsCaptured) {
+        opts.onVisibilityModelIdsCaptured(
+          visibilityModelIdsForCapture(visibilityState, (id) => resolveCapturedRef(id)),
+        );
+      }
 
       // Snapshot FIRST, camera after: the PNG and the camera's `aspectRatio`
       // describe one frame, so they must come from one drawing buffer.
@@ -362,6 +406,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       let snapshot: string | undefined = snapshotOverride;
       if (!snapshot && includeSnapshot) {
         const captured = await captureSnapshot();
+        if (opts.isCaptureStillValid && !opts.isCaptureStillValid()) return null;
         if (captured) {
           snapshot = captured;
         }
@@ -381,60 +426,33 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         ?? (shown ? { axis: shown.axis, position: shown.position, enabled: true, flipped: shown.flipped } : undefined);
       const viewpointBounds = capturedSection?.bounds ?? bounds;
 
-      // Get selected GUIDs - convert expressIds to IFC GlobalId strings.
-      // `additionalSelectedRefs` (the clash pair, #4806) is merged in
-      // UNCONDITIONALLY — not gated behind `includeSelection` — because it
-      // names "found objects" the caller supplies directly, independent of
-      // whatever the live viewer selection happens to be (often empty here,
-      // e.g. right after `focusClash`'s `clearEntitySelection()`).
-      const selectedGuids: string[] | undefined = (() => {
-        const guids: string[] = [];
-        if (includeSelection) {
-          if (selectedEntityId !== null) {
-            const guid = expressIdToGlobalId(selectedEntityId);
-            if (guid) guids.push(guid);
-          }
-          for (const id of selectedEntityIds) {
-            if (id !== selectedEntityId) {
-              const guid = expressIdToGlobalId(id);
-              if (guid) guids.push(guid);
-            }
-          }
-        }
-        for (const ref of additionalSelectedRefs ?? []) {
-          const guid = expressIdToGlobalId(ref);
-          if (guid && !guids.includes(guid)) guids.push(guid);
-        }
-        return guids.length > 0 ? guids : undefined;
-      })();
-
-      // Extra BCF `<Coloring>` groups (the clash pair's amber/cyan tint,
-      // #4806) — independent of any renderer colour-override state, which
-      // this app does not otherwise mirror into BCF.
-      const emittedColoredGuids = new Set<string>();
-      const coloredGuids: { color: string; guids: string[] }[] | undefined = additionalColoredRefs
-        ? additionalColoredRefs
-            .map(({ color, refs }) => ({
-              color,
-              guids: resolveUniqueGlobalIds(refs, expressIdToGlobalId, emittedColoredGuids),
-            }))
-            .filter((entry) => entry.guids.length > 0)
-        : undefined;
-
       // Visibility GUIDs — the isolate allowlist or the hide-list, whichever the
       // viewer is in; what could not be named is reported to the author.
       // Pure decision in hooks/bcf/visibility-capture.ts (#4509, #4529).
       let hiddenGuids: string[] | undefined;
       let visibleGuids: string[] | undefined;
-      if (includeHidden) {
-        const capture = captureVisibility(isolatedEntities, hiddenEntities, expressIdToGlobalId, isEntityPending);
+      if (visibilityState) {
+        const capture = captureVisibility(
+          visibilityState.isolatedEntities,
+          visibilityState.hiddenEntities,
+          resolveCapturedRef,
+          isCapturedRefPending,
+          hasCapturedRefWithoutGlobalId,
+        );
         ({ visibleGuids, hiddenGuids } = capture);
-        if (capture.notice) {
-          const { unnameable, total, kind, omitted, pending, ids } = capture.notice;
+        let notice = capture.notice;
+        if (visibilityState.isolatedEntities !== null
+          && opts.additionalVisibleGuids?.length
+          && !notice?.pending) {
+          visibleGuids = [...new Set([...(visibleGuids ?? []), ...opts.additionalVisibleGuids])];
+          if (notice && visibleGuids.length > 0) notice = { ...notice, omitted: false };
+        }
+        if (notice) {
+          const { unnameable, total, kind, omitted, pending, ids } = notice;
           console.warn(
             `[useBCF] ${unnameable} of ${total} ${kind} entities have no resolvable IFC GlobalId${pending ? ' (model metadata still loading)' : ''}; ${omitted ? 'omitting the viewpoint visibility component' : 'recording the rest'}. Global ids: ${ids.join(', ')}`,
           );
-          const message = describeVisibilityNotice(capture.notice);
+          const message = describeVisibilityNotice(notice);
           if (message) toast.info(message);
         }
       }
@@ -457,11 +475,6 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       getCameraState,
       captureSnapshot,
       getBounds,
-      selectedEntityId,
-      selectedEntityIds,
-      hiddenEntities,
-      isolatedEntities,
-      expressIdToGlobalId,
     ]
   );
 
@@ -471,8 +484,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
    * a lone-model topic still records its source file.
    */
   const headerFilesForViewpoints = useCallback(
-    (viewpoints: readonly BCFViewpoint[], date?: string): BCFHeaderFile[] => {
-      const modelIds = new Set<string>();
+    (viewpoints: readonly BCFViewpoint[], date?: string, exactModelIds?: readonly string[]): BCFHeaderFile[] => {
+      const modelIds = new Set(exactModelIds);
 
       // Primary source: the live selection's model ids. A topic is created from
       // the current selection, and the selection knows each element's model
@@ -481,7 +494,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // federations), collapsing every component onto the first match.
       const selected = useViewerStore.getState().selectedEntitiesSet;
       for (const key of selected) {
-        const modelId = key.slice(0, key.indexOf(':'));
+        const modelId = key.slice(0, key.lastIndexOf(':'));
         if (modelId) modelIds.add(modelId);
       }
 

@@ -28,6 +28,7 @@ import type { Flavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedFlavorDescription, localizedFlavorName } from './localized-flavor-metadata';
 import { formatExtensionDate } from './localized-date';
 
@@ -294,10 +295,10 @@ export function FlavorListView({
                   )}
                   <div className="text-[10px] text-muted-foreground mt-0.5">
                     {t('extensionsFlavors.flavorListView.statsLine', {
-                      ext: flavor.extensions.length,
-                      lens: flavor.lenses.length,
-                      qry: flavor.savedQueries.length,
-                      clash: clashRuleCount(flavor),
+                      ext: formatLocaleNumber(locale, flavor.extensions.length),
+                      lens: formatLocaleNumber(locale, flavor.lenses.length),
+                      qry: formatLocaleNumber(locale, flavor.savedQueries.length),
+                      clash: formatLocaleNumber(locale, clashRuleCount(flavor)),
                       date: formatExtensionDate(flavor.updatedAt, locale, true),
                     })}
                   </div>

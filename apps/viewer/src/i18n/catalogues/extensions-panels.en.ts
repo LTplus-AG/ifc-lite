@@ -306,8 +306,8 @@ export const extensionsPanelsEn = {
   // ── RepairQueuePanel ──
   'extensionsPanels.repairQueuePanel.title': 'Repair queue',
   'extensionsPanels.repairQueuePanel.summaryLine': {
-    one: 'SDK {sdk} · {count} needs fixing',
-    other: 'SDK {sdk} · {count} need fixing',
+    one: 'SDK {sdk} · {countDisplay} needs fixing',
+    other: 'SDK {sdk} · {countDisplay} need fixing',
   },
   'extensionsPanels.repairQueuePanel.helpLabel': 'Repair queue',
   'extensionsPanels.repairQueuePanel.helpIntro':
@@ -335,8 +335,8 @@ export const extensionsPanelsEn = {
   'extensionsPanels.repairQueuePanel.compatibility.rangeMatch':
     'Range "{declared}" still matches SDK {sdk}.',
   'extensionsPanels.repairQueuePanel.testsFailed': {
-    one: '{count} test failed: {error}',
-    other: '{count} tests failed: {error}',
+    one: '{countDisplay} test failed: {error}',
+    other: '{countDisplay} tests failed: {error}',
   },
   'extensionsPanels.repairQueuePanel.routingRepairToast': 'Routing repair for {extensionId}…',
   'extensionsPanels.repairQueuePanel.revalidationFailedToast': 'Revalidation failed: {error}',

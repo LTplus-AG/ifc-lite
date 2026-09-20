@@ -497,12 +497,12 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
         other: '{occurrences} occurrences · {sessions} sessions · {date} · {score}',
       },
       'extensionsPanels.repairQueuePanel.testsFailed': {
-        one: 'ERREUR {error} — {count} test échoué (fr)',
-        other: 'ERREUR {error} — {count} tests échoués (fr)',
+        one: 'ERREUR {error} — {countDisplay} test échoué (fr)',
+        other: 'ERREUR {error} — {countDisplay} tests échoués (fr)',
       },
       'extensionsPanels.repairQueuePanel.summaryLine': {
-        one: 'SDK {sdk} · {count} à réparer (fr)',
-        other: 'SDK {sdk} · {count} à réparer (fr)',
+        one: 'SDK {sdk} · {countDisplay} à réparer (fr)',
+        other: 'SDK {sdk} · {countDisplay} à réparer (fr)',
       },
     } as Catalogue);
     setLocale('fr-FR');

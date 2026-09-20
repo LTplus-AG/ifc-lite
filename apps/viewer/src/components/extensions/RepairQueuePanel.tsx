@@ -30,6 +30,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation, type UseTranslationResult } from '@/i18n';
 import { HelpHint } from './HelpHint';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 const ENGINE_RANGE_CODE = 'engines.ifcLiteSdk';
 const APP_VERSION_CODE = '__APP_VERSION__';
@@ -41,7 +42,7 @@ interface RepairQueuePanelProps {
 }
 
 export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -94,6 +95,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
               {t('extensionsPanels.repairQueuePanel.summaryLine', {
                 sdk: summary.sdk,
                 count: summary.needsRepair.length,
+                countDisplay: formatLocaleNumber(locale, summary.needsRepair.length),
               })}
             </span>
           )}
@@ -166,7 +168,7 @@ function RepairRow({
   item: RevalidationItem;
   onRepair: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const tone =
     item.outcome === 'pass'
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -198,6 +200,7 @@ function RepairRow({
             <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
               {t('extensionsPanels.repairQueuePanel.testsFailed', {
                 count: item.tests.failed,
+                countDisplay: formatLocaleNumber(locale, item.tests.failed),
                 error: item.tests.results.find((r) => !r.passed)?.error ?? '',
               })}
             </div>

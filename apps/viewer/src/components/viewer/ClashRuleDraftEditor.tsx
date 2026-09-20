@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { useTranslation } from '@/i18n';
 import type { ClashSeverity } from '@ifc-lite/clash';
 import type { ClashSetFilter } from '@/lib/clash/set-filter';
 import { ClashSetFilterEditor } from './ClashSetFilterEditor';
@@ -49,18 +50,19 @@ export interface ClashRuleDraftEditorProps {
 export function ClashRuleDraftEditor({
   draft, severities, severityLabel, matchCount, hasModel, onChange, onCancel, onSave, canSave,
 }: ClashRuleDraftEditorProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border border-[#f7768e]/40 bg-muted/30 p-2.5 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium">{draft.id ? 'Edit rule' : 'New rule'}</span>
-        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground" title="Cancel">
+        <span className="text-xs font-medium">{draft.id ? t('clashTools.ruleEditor.editTitle') : t('clashTools.ruleEditor.newTitle')}</span>
+        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground" title={t('clashTools.ruleEditor.cancelTooltip')}>
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
       <input
         value={draft.name}
         onChange={(e) => onChange({ ...draft, name: e.target.value })}
-        placeholder="Rule name (e.g. Ducts vs Beams)"
+        placeholder={t('clashTools.ruleEditor.namePlaceholder')}
         className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm"
       />
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -69,7 +71,7 @@ export function ClashRuleDraftEditor({
           onChange={(v) => onChange({ ...draft, selectorA: v })}
           count={matchCount(draft.selectorA)}
           hasModel={hasModel}
-          placeholder="IfcDuct*|IfcPipe*"
+          placeholder={t('clashTools.ruleEditor.selectorAPlaceholder')}
         />
         <span className="text-xs text-muted-foreground">×</span>
         <SelectorField
@@ -77,7 +79,7 @@ export function ClashRuleDraftEditor({
           onChange={(v) => onChange({ ...draft, selectorB: v })}
           count={matchCount(draft.selectorB)}
           hasModel={hasModel}
-          placeholder="IfcWall*|IfcSlab"
+          placeholder={t('clashTools.ruleEditor.selectorBPlaceholder')}
         />
       </div>
 
@@ -109,14 +111,14 @@ export function ClashRuleDraftEditor({
           </SelectContent>
         </Select>
         <Button size="sm" className="ml-auto h-8" disabled={!canSave} onClick={onSave}>
-          <Check className="h-3.5 w-3.5 mr-1" /> {draft.id ? 'Save' : 'Add'}
+          <Check className="h-3.5 w-3.5 mr-1" /> {draft.id ? t('clashTools.ruleEditor.saveButton') : t('clashTools.ruleEditor.addButton')}
         </Button>
       </div>
       <p className="text-[10px] text-muted-foreground leading-snug">
-        Selectors: <code>IfcWall</code>, <code>IfcPipe*</code>, <code>IfcWall|IfcSlab</code>, <code>!IfcSpace</code>, <code>*</code>.
-        Leave B equal to A for a self-clash within one group. Give a side filter rules
-        instead to select it by property, attribute, storey or quantity — its selector
-        is then unnecessary and can be left empty.
+        {t('clashTools.ruleEditor.selectorsIntro')} <code>IfcWall</code>, <code>{t('clashTools.ruleEditor.selectorExamplePipe')}</code>,{' '}
+        <code>{t('clashTools.ruleEditor.selectorExampleWallSlab')}</code>, <code>{t('clashTools.ruleEditor.selectorExampleNotSpace')}</code>,{' '}
+        <code>*</code>.{' '}
+        {t('clashTools.ruleEditor.selectorsHelp')}
       </p>
     </div>
   );
@@ -126,6 +128,7 @@ export function ClashRuleDraftEditor({
 function SelectorField({
   value, onChange, count, hasModel, placeholder,
 }: { value: string; onChange: (v: string) => void; count: number | null; hasModel: boolean; placeholder: string }) {
+  const { t } = useTranslation();
   return (
     <div className="min-w-0">
       <input
@@ -136,12 +139,12 @@ function SelectorField({
       />
       <div className="mt-0.5 h-3 text-[10px] text-muted-foreground truncate">
         {!hasModel
-          ? 'load a model to preview'
+          ? t('clashTools.ruleEditor.loadModelHint')
           : count === null
             ? ' '
             : count > 0
-              ? `✓ matches ${count} class${count === 1 ? '' : 'es'}`
-              : 'matches no classes'}
+              ? t('clashTools.ruleEditor.matchCount', { count })
+              : t('clashTools.ruleEditor.noMatches')}
       </div>
     </div>
   );

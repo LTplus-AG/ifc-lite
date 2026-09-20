@@ -12,6 +12,7 @@ import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { bcfEn } from './catalogues/bcf.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
+import { clashToolsEn } from './catalogues/clash-tools.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
@@ -98,6 +99,7 @@ export const en = {
   ...chatEn,
   ...chatByokEn,
   ...clashPanelEn,
+  ...clashToolsEn,
   ...bcfEn,
   ...layersPanelEn,
   ...searchModalEn,

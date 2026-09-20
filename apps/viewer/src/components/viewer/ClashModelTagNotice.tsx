@@ -16,9 +16,11 @@
 import { AlertTriangle } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { clashModelTagInputsChanged } from '@/lib/clash/model-tag-inputs';
 
 export function ClashModelTagNotice() {
+  const { t } = useTranslation();
   const stale = useViewerStore(
     // `clashRawResult` is the object the run bound its inputs to; `clashResult`
     // is re-derived (a new object) whenever an exclusion suppresses a clash.
@@ -32,7 +34,7 @@ export function ClashModelTagNotice() {
       className="flex items-start gap-2 mx-3 mb-2 p-2 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs"
     >
       <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-      <span>Model tags changed since this run. Its sets were resolved from the tags at the time; run again to use the current ones.</span>
+      <span>{t('clashTools.modelTagNotice.message')}</span>
     </div>
   );
 }

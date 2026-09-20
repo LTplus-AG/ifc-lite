@@ -32,6 +32,8 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
+import type { TranslatableMessage } from '@/i18n/types';
 import { compareClashRevisions, type Clash, type ClashRevisionComparison } from '@ifc-lite/clash';
 import {
   captureModelNames,
@@ -64,24 +66,21 @@ function clashLabel(c: Clash): string {
  * explanation the banner exists to give. Exported standalone so this case is
  * unit-testable without mounting the dialog.
  */
-export function warningLines(comparison: ClashRevisionComparison | null): string[] {
+export function warningLines(comparison: ClashRevisionComparison | null): TranslatableMessage[] {
   if (!comparison) return [];
   const { reasons } = comparison;
-  const lines: string[] = [];
+  const lines: TranslatableMessage[] = [];
   if (reasons.skippedRuleIds.length > 0) {
-    lines.push(`Not re-run this time: ${reasons.skippedRuleIds.join(', ')}.`);
+    lines.push({ labelKey: 'clashTools.revisionCompare.skippedRules', params: { ids: reasons.skippedRuleIds.join(', ') } });
   }
   if (reasons.noMatchRuleIds.length > 0) {
-    lines.push(`Matched no elements this run: ${reasons.noMatchRuleIds.join(', ')}.`);
+    lines.push({ labelKey: 'clashTools.revisionCompare.noMatchRules', params: { ids: reasons.noMatchRuleIds.join(', ') } });
   }
   if (reasons.missingModelNames.length > 0) {
-    lines.push(`Model(s) no longer in the comparison: ${reasons.missingModelNames.join(', ')}.`);
+    lines.push({ labelKey: 'clashTools.revisionCompare.missingModels', params: { names: reasons.missingModelNames.join(', ') } });
   }
   if (lines.length === 0 && comparison.unretested.length > 0) {
-    lines.push(
-      'One or more elements a clash depended on were not matched by the same rule this run ' +
-        '(a narrowed selector or membership change) — it can no longer be confirmed as fixed.',
-    );
+    lines.push({ labelKey: 'clashTools.revisionCompare.unretestedGeneric' });
   }
   return lines;
 }
@@ -118,6 +117,7 @@ function Bucket({ title, clashes, tone }: BucketProps) {
 }
 
 export function ClashRevisionCompareDialog() {
+  const { t } = useTranslation();
   const clashResult = useViewerStore((s) => s.clashResult);
   const models = useViewerStore((s) => s.models);
 
@@ -135,11 +135,11 @@ export function ClashRevisionCompareDialog() {
     if (outcome.ok) {
       setBaseline(next);
       setComparison(null);
-      toast.success(`Saved baseline (${clashResult.clashes.length} clash${clashResult.clashes.length === 1 ? '' : 'es'}).`);
+      toast.success(t('clashTools.revisionCompare.baselineSavedToast', { count: clashResult.clashes.length }));
     } else {
       toast.error(outcome.message);
     }
-  }, [clashResult, models]);
+  }, [clashResult, models, t]);
 
   const compare = useCallback(() => {
     if (!baseline || !clashResult) return;
@@ -157,7 +157,7 @@ export function ClashRevisionCompareDialog() {
   return (
     <Dialog onOpenChange={(open) => { if (!open) setComparison(null); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7" title="Compare clash runs across revisions">
+        <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashTools.revisionCompare.triggerTooltip')}>
           <GitCompare className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -165,11 +165,10 @@ export function ClashRevisionCompareDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GitCompare className="h-4 w-4 text-[#f7768e]" />
-            Compare clash runs
+            {t('clashTools.revisionCompare.dialogTitle')}
           </DialogTitle>
           <DialogDescription>
-            Save the current result as a baseline, then compare it against a later run — new,
-            persisting, and no-longer-detected clashes.
+            {t('clashTools.revisionCompare.dialogDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -178,13 +177,13 @@ export function ClashRevisionCompareDialog() {
             <div className="text-xs min-w-0">
               {baseline ? (
                 <>
-                  <div className="font-medium">Baseline saved {formatWhen(baseline.takenAt)}</div>
+                  <div className="font-medium">{t('clashTools.revisionCompare.baselineSavedAt', { when: formatWhen(baseline.takenAt) })}</div>
                   <div className="text-muted-foreground">
-                    {baseline.result.clashes.length} clash{baseline.result.clashes.length === 1 ? '' : 'es'}
+                    {t('clashTools.revisionCompare.clashCount', { count: baseline.result.clashes.length })}
                   </div>
                 </>
               ) : (
-                <div className="text-muted-foreground">No baseline saved yet.</div>
+                <div className="text-muted-foreground">{t('clashTools.revisionCompare.noBaseline')}</div>
               )}
             </div>
             <Button
@@ -193,10 +192,10 @@ export function ClashRevisionCompareDialog() {
               className="h-7 shrink-0 gap-1"
               disabled={!clashResult}
               onClick={saveBaseline}
-              title={clashResult ? 'Save the current result as the baseline' : 'Run clash detection first'}
+              title={clashResult ? t('clashTools.revisionCompare.saveBaselineTooltip') : t('clashTools.revisionCompare.runDetectionFirstTooltip')}
             >
               <Save className="h-3.5 w-3.5" />
-              Save current as baseline
+              {t('clashTools.revisionCompare.saveBaselineButton')}
             </Button>
           </div>
 
@@ -204,9 +203,9 @@ export function ClashRevisionCompareDialog() {
             className="w-full h-8"
             disabled={!baseline || !clashResult}
             onClick={compare}
-            title={!clashResult ? 'Run clash detection first' : !baseline ? 'Save a baseline first' : undefined}
+            title={!clashResult ? t('clashTools.revisionCompare.runDetectionFirstTooltip') : !baseline ? t('clashTools.revisionCompare.saveBaselineFirstTooltip') : undefined}
           >
-            Compare current result to baseline
+            {t('clashTools.revisionCompare.compareButton')}
           </Button>
 
           {comparison && (
@@ -214,23 +213,22 @@ export function ClashRevisionCompareDialog() {
               {comparison.unretested.length > 0 && (
                 <div className="rounded-md bg-muted/50 p-2 text-[11px] text-muted-foreground space-y-0.5">
                   <div className="font-medium text-foreground">
-                    {comparison.unretested.length} clash{comparison.unretested.length === 1 ? '' : 'es'} could not
-                    be confirmed as fixed:
+                    {t('clashTools.revisionCompare.unretestedCount', { count: comparison.unretested.length })}
                   </div>
-                  {warnings.map((line) => (
-                    <div key={line}>{line}</div>
+                  {warnings.map((line, i) => (
+                    <div key={i}>{t(line.labelKey, line.params)}</div>
                   ))}
                 </div>
               )}
-              <Bucket title="New" clashes={comparison.added} tone="new" />
-              <Bucket title="Persisting" clashes={comparison.persistent} tone="persistent" />
-              <Bucket title="No longer detected" clashes={comparison.resolved} tone="resolved" />
-              <Bucket title="Unconfirmed (not re-tested)" clashes={comparison.unretested} tone="unretested" />
+              <Bucket title={t('clashTools.revisionCompare.newBucketTitle')} clashes={comparison.added} tone="new" />
+              <Bucket title={t('clashTools.revisionCompare.persistingBucketTitle')} clashes={comparison.persistent} tone="persistent" />
+              <Bucket title={t('clashTools.revisionCompare.resolvedBucketTitle')} clashes={comparison.resolved} tone="resolved" />
+              <Bucket title={t('clashTools.revisionCompare.unretestedBucketTitle')} clashes={comparison.unretested} tone="unretested" />
               {comparison.added.length === 0 &&
                 comparison.persistent.length === 0 &&
                 comparison.resolved.length === 0 &&
                 comparison.unretested.length === 0 && (
-                  <div className="text-xs text-muted-foreground">No differences.</div>
+                  <div className="text-xs text-muted-foreground">{t('clashTools.revisionCompare.noDifferences')}</div>
                 )}
             </div>
           )}

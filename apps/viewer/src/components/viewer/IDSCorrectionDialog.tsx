@@ -365,15 +365,9 @@ export function IDSCorrectionDialog({
             {results && (
               <Alert variant={failedCount === 0 ? 'default' : 'destructive'}>
                 {failedCount === 0 ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                <AlertTitle>
-                  {failedCount === 0
-                    ? t('idsPanel.correction.appliedTitle')
-                    : t('idsPanel.correction.someFailedTitle')}
-                </AlertTitle>
+                <AlertTitle>{failedCount === 0 ? t('idsPanel.correction.appliedTitle') : t('idsPanel.correction.someFailedTitle')}</AlertTitle>
                 <AlertDescription>
-                  {failedCount > 0
-                    ? t('idsPanel.correction.summaryWithFailed', { appliedCount, failedCount })
-                    : t('idsPanel.correction.summary', { appliedCount })}
+                  {failedCount > 0 ? t('idsPanel.correction.summaryWithFailed', { appliedCount, failedCount }) : t('idsPanel.correction.summary', { appliedCount })}
                   {failedCount > 0 && (
                     <ul className="mt-1 list-disc list-inside">
                       {results.filter((r) => !r.applied).map((r) => (

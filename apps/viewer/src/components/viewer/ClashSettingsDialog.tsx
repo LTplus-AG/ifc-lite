@@ -31,6 +31,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { matchesSelector, type ClashSeverity } from '@ifc-lite/clash';
 import { exportPresets, importPresets, type ClashPreset, type SaveResult } from '@/lib/clash/persistence';
 import { ClashRuleDraftEditor, type ClashRuleDraft } from '@/components/viewer/ClashRuleDraftEditor';
@@ -42,11 +44,11 @@ import {
 } from '@/lib/clash/set-filter';
 import { setClashSettingsSaveReporter } from '@/lib/clash/settings-save-notice';
 
-const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
-  critical: { label: 'Critical', color: '#f7768e' },
-  major: { label: 'Major', color: '#ff9e64' },
-  minor: { label: 'Minor', color: '#e0af68' },
-  info: { label: 'Info', color: '#7aa2f7' },
+const SEVERITY: Record<ClashSeverity, { labelKey: TranslationKey; color: string }> = {
+  critical: { labelKey: 'clashPanel.severity.critical', color: '#f7768e' },
+  major: { labelKey: 'clashPanel.severity.major', color: '#ff9e64' },
+  minor: { labelKey: 'clashPanel.severity.minor', color: '#e0af68' },
+  info: { labelKey: 'clashPanel.severity.info', color: '#7aa2f7' },
 };
 const SEVERITIES: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 
@@ -55,6 +57,7 @@ interface ClashSettingsDialogProps {
 }
 
 export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
+  const { t } = useTranslation();
   const mode = useViewerStore((s) => s.clashMode);
   const tolerance = useViewerStore((s) => s.clashTolerance);
   const clearance = useViewerStore((s) => s.clashClearance);
@@ -152,17 +155,17 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
       try {
         const imported = await importPresets(file);
         if (imported.length === 0) {
-          toast.error('No valid rules found in that file.');
+          toast.error(t('clashTools.settings.noValidRulesToast'));
           return;
         }
         const result = importClashPresets(imported);
-        if (result.ok) toast.success(`Imported ${imported.length} rule${imported.length === 1 ? '' : 's'}`);
+        if (result.ok) toast.success(t('clashTools.settings.importedRulesToast', { count: imported.length }));
         else toast.error(result.message);
       } catch {
-        toast.error('Could not read that file as clash rules.');
+        toast.error(t('clashTools.settings.importReadErrorToast'));
       }
     },
-    [importClashPresets],
+    [importClashPresets, t],
   );
 
   // Delete / toggle / reset only commit when the write landed (clashSlice), so
@@ -178,7 +181,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
     <Dialog>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button variant="ghost" size="icon" className="h-7 w-7" title="Clash settings">
+          <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashTools.settings.title')}>
             <Settings2 className="h-4 w-4" />
           </Button>
         )}
@@ -187,10 +190,10 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="h-4 w-4 text-[#f7768e]" />
-            Clash settings
+            {t('clashTools.settings.title')}
           </DialogTitle>
           <DialogDescription>
-            Tune detection and curate the rule set. {enabledCount} of {presets.length} rules enabled.
+            {t('clashTools.settings.summary', { enabled: enabledCount, total: presets.length })}
           </DialogDescription>
         </DialogHeader>
 
@@ -203,66 +206,66 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
               value="detection"
               className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
             >
-              Detection
+              {t('clashTools.settings.detectionTab')}
             </TabsTrigger>
             <TabsTrigger
               value="rules"
               className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
             >
-              Rules
+              {t('clashTools.settings.rulesTab')}
             </TabsTrigger>
           </TabsList>
 
           {/* ---- Detection ---------------------------------------------------- */}
           <TabsContent value="detection" className="space-y-3 max-h-[58vh] overflow-y-auto pr-1">
-            <SettingRow label="Default mode" hint="Hard finds interpenetrations; clearance finds gaps smaller than the required distance.">
+            <SettingRow label={t('clashTools.settings.modeLabel')} hint={t('clashTools.settings.modeHint')}>
               <Select value={mode} onValueChange={(v) => setMode(v as 'hard' | 'clearance')}>
                 <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hard">Hard</SelectItem>
-                  <SelectItem value="clearance">Clearance</SelectItem>
+                  <SelectItem value="hard">{t('clashTools.settings.modeHard')}</SelectItem>
+                  <SelectItem value="clearance">{t('clashTools.settings.modeClearance')}</SelectItem>
                 </SelectContent>
               </Select>
             </SettingRow>
 
-            <SettingRow label="Tolerance" hint="Touching band (m). Surfaces within this distance count as contact, not penetration.">
+            <SettingRow label={t('clashTools.settings.toleranceLabel')} hint={t('clashTools.settings.toleranceHint')}>
               <NumberField value={tolerance} step={0.001} min={0} onCommit={setTolerance} suffix="m" />
             </SettingRow>
 
-            <SettingRow label="Clearance gap" hint="Required gap (m) in clearance mode. Anything closer than this is a violation.">
+            <SettingRow label={t('clashTools.settings.clearanceGapLabel')} hint={t('clashTools.settings.clearanceGapHint')}>
               <NumberField value={clearance} step={0.01} min={0} onCommit={setClearance} suffix="m" />
             </SettingRow>
 
-            <SettingRow label="Duplicate tolerance" hint="How far apart (m) two elements may be and still count as the same object in the duplicate scan. Capped by each element's own thickness: a 2 mm plate gets 2 mm across its thickness, not the full value.">
+            <SettingRow label={t('clashTools.settings.duplicateToleranceLabel')} hint={t('clashTools.settings.duplicateToleranceHint')}>
               <NumberField value={duplicateTolerance} step={0.001} min={0} onCommit={setDuplicateTolerance} suffix="m" />
             </SettingRow>
 
-            <SettingRow label="Cluster radius" hint="How far apart clashes can be and still merge into one BCF topic (m).">
+            <SettingRow label={t('clashTools.settings.clusterRadiusLabel')} hint={t('clashTools.settings.clusterRadiusHint')}>
               <NumberField value={clusterEpsilon} step={0.1} min={0.01} onCommit={setClusterEpsilon} suffix="m" />
             </SettingRow>
 
-            <SettingRow label="Report grazing contacts" hint="Include touch-classified results (surfaces that just graze) in detection.">
+            <SettingRow label={t('clashTools.settings.reportTouchLabel')} hint={t('clashTools.settings.reportTouchHint')}>
               <Switch checked={reportTouch} onCheckedChange={setReportTouch} />
             </SettingRow>
 
-            <SettingRow label="Show clash region box" hint="Draw a tight wireframe box around the focused clash's contact region to mark the penetration. On by default; turn off to hide it.">
+            <SettingRow label={t('clashTools.settings.showRegionBoxLabel')} hint={t('clashTools.settings.showRegionBoxHint')}>
               <Switch checked={showRegionBox} onCheckedChange={setShowRegionBox} />
             </SettingRow>
 
-            <SettingRow label="Default grouping" hint="How the results list is organized in the panel.">
+            <SettingRow label={t('clashTools.settings.groupingLabel')} hint={t('clashTools.settings.groupingHint')}>
               <Select value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
                 <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="severity">By severity</SelectItem>
-                  <SelectItem value="rule">By rule</SelectItem>
-                  <SelectItem value="typePair">By type pair</SelectItem>
+                  <SelectItem value="severity">{t('clashTools.settings.groupBySeverity')}</SelectItem>
+                  <SelectItem value="rule">{t('clashTools.settings.groupByRule')}</SelectItem>
+                  <SelectItem value="typePair">{t('clashTools.settings.groupByTypePair')}</SelectItem>
                 </SelectContent>
               </Select>
             </SettingRow>
 
             <div className="pt-1">
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" onClick={resetSettings}>
-                <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Reset detection settings
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> {t('clashTools.settings.resetDetectionButton')}
               </Button>
             </div>
           </TabsContent>
@@ -271,16 +274,16 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
           <TabsContent value="rules" className="space-y-2">
             <div className="flex items-center gap-1.5">
               <Button size="sm" className="h-7 px-2 text-xs" onClick={startAdd}>
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add rule
+                <Plus className="h-3.5 w-3.5 mr-1" /> {t('clashTools.settings.addRuleButton')}
               </Button>
               <div className="ml-auto flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Reset to the built-in rules" onClick={() => reportSaveFailure(resetPresets())}>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title={t('clashTools.settings.resetRulesTooltip')} onClick={() => reportSaveFailure(resetPresets())}>
                   <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Export rules" onClick={() => exportPresets(presets)}>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title={t('clashTools.settings.exportRulesTooltip')} onClick={() => exportPresets(presets)}>
                   <Download className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Import rules" onClick={() => fileRef.current?.click()}>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title={t('clashTools.settings.importRulesTooltip')} onClick={() => fileRef.current?.click()}>
                   <Upload className="h-3.5 w-3.5" />
                 </Button>
                 <input
@@ -315,7 +318,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium">
                         {p.name}
-                        {!p.builtin && <span className="ml-1.5 text-[10px] text-muted-foreground">custom</span>}
+                        {!p.builtin && <span className="ml-1.5 text-[10px] text-muted-foreground">{t('clashTools.settings.customBadge')}</span>}
                       </div>
                       <div className="truncate text-[10px] text-muted-foreground">
                         <SetSummary selector={p.selectorA} filter={p.filterA} />
@@ -323,13 +326,13 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                         <SetSummary selector={p.selectorB} filter={p.filterB} />
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" title="Edit" onClick={() => startEdit(p)}>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" title={t('clashTools.settings.editTooltip')} onClick={() => startEdit(p)}>
                       <Pencil className="h-3 w-3" />
                     </Button>
                     {p.builtin ? (
                       <span className="w-6" />
                     ) : (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" title="Delete" onClick={() => reportSaveFailure(deletePreset(p.id))}>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" title={t('clashTools.settings.deleteTooltip')} onClick={() => reportSaveFailure(deletePreset(p.id))}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     )}
@@ -342,7 +345,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
               <ClashRuleDraftEditor
                 draft={draft}
                 severities={SEVERITIES}
-                severityLabel={(sev) => SEVERITY[sev].label}
+                severityLabel={(sev) => t(SEVERITY[sev].labelKey)}
                 matchCount={matchCount}
                 hasModel={classes !== null}
                 onChange={setDraft}

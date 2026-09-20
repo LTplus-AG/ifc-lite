@@ -36,6 +36,8 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { useClash, type ClashBcfConfig, type ClashBcfGroupBy } from '@/hooks/useClash';
 import type { ClashSeverity } from '@ifc-lite/clash';
 
@@ -43,18 +45,18 @@ interface ClashBcfExportDialogProps {
   trigger?: React.ReactNode;
 }
 
-const SEVERITIES: { key: ClashSeverity; label: string; color: string }[] = [
-  { key: 'critical', label: 'Critical', color: '#f7768e' },
-  { key: 'major', label: 'Major', color: '#ff9e64' },
-  { key: 'minor', label: 'Minor', color: '#e0af68' },
-  { key: 'info', label: 'Info', color: '#7aa2f7' },
+const SEVERITIES: { key: ClashSeverity; labelKey: TranslationKey; color: string }[] = [
+  { key: 'critical', labelKey: 'clashPanel.severity.critical', color: '#f7768e' },
+  { key: 'major', labelKey: 'clashPanel.severity.major', color: '#ff9e64' },
+  { key: 'minor', labelKey: 'clashPanel.severity.minor', color: '#e0af68' },
+  { key: 'info', labelKey: 'clashPanel.severity.info', color: '#7aa2f7' },
 ];
 
-const GROUPINGS: { key: ClashBcfGroupBy; label: string; hint: string }[] = [
-  { key: 'cluster', label: 'Spatial cluster', hint: 'Nearby clashes of the same kind merge into one topic — the sensible default.' },
-  { key: 'rule', label: 'Discipline rule', hint: 'One topic per rule (MEP × Structure, HVAC × Architecture, …).' },
-  { key: 'typePair', label: 'Element-type pair', hint: 'One topic per type pair (IfcDuct × IfcWall, …).' },
-  { key: 'element', label: 'Affected element', hint: "One topic per element — all of an element's clashes in one place." },
+const GROUPINGS: { key: ClashBcfGroupBy; labelKey: TranslationKey; hintKey: TranslationKey }[] = [
+  { key: 'cluster', labelKey: 'clashTools.bcfExport.groupCluster', hintKey: 'clashTools.bcfExport.groupClusterHint' },
+  { key: 'rule', labelKey: 'clashTools.bcfExport.groupRule', hintKey: 'clashTools.bcfExport.groupRuleHint' },
+  { key: 'typePair', labelKey: 'clashTools.bcfExport.groupTypePair', hintKey: 'clashTools.bcfExport.groupTypePairHint' },
+  { key: 'element', labelKey: 'clashTools.bcfExport.groupElement', hintKey: 'clashTools.bcfExport.groupElementHint' },
 ];
 
 const DEFAULT_CONFIG: ClashBcfConfig = {
@@ -65,6 +67,7 @@ const DEFAULT_CONFIG: ClashBcfConfig = {
 };
 
 export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
+  const { t } = useTranslation();
   const { result, exportBcf, bcfPreview } = useClash();
 
   const [open, setOpen] = useState(false);
@@ -91,11 +94,11 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
     setProgress(config.includeSnapshots ? { done: 0, total: preview.topics } : null);
     try {
       await exportBcf(config, (done, total) => setProgress({ done, total }));
-      toast.success(`Exported ${preview.topics} BCF topic${preview.topics === 1 ? '' : 's'}`);
+      toast.success(t('clashTools.bcfExport.exportSuccessToast', { count: preview.topics }));
       setOpen(false);
     } catch (err) {
       console.error('[clash] BCF export failed', err);
-      toast.error(`BCF export failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      toast.error(t('clashTools.bcfExport.exportFailedToast', { reason: err instanceof Error ? err.message : 'unknown error' }));
     } finally {
       setExporting(false);
       setProgress(null);
@@ -125,11 +128,10 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Crosshair className="h-4 w-4 text-[#f7768e]" />
-            Export to BCF
+            {t('clashTools.bcfExport.dialogTitle')}
           </DialogTitle>
           <DialogDescription>
-            Turn clashes into a manageable set of BCF topics. Control how they group,
-            which to include, and whether to embed snapshots.
+            {t('clashTools.bcfExport.dialogDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -137,7 +139,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
           {/* Grouping */}
           <div className="space-y-1.5">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-              <Layers className="h-3 w-3" /> Group into topics by
+              <Layers className="h-3 w-3" /> {t('clashTools.bcfExport.groupByLabel')}
             </Label>
             <Select
               value={config.groupBy}
@@ -148,17 +150,17 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 {GROUPINGS.map((g) => (
-                  <SelectItem key={g.key} value={g.key}>{g.label}</SelectItem>
+                  <SelectItem key={g.key} value={g.key}>{t(g.labelKey)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground leading-snug">{grouping.hint}</p>
+            <p className="text-xs text-muted-foreground leading-snug">{t(grouping.hintKey)}</p>
           </div>
 
           {/* Severity filter */}
           <div className="space-y-1.5">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Include severities
+              {t('clashTools.bcfExport.severitiesLabel')}
             </Label>
             <div className="flex flex-wrap gap-1.5">
               {SEVERITIES.map((s) => {
@@ -176,7 +178,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
                     style={on ? { background: `${s.color}1f`, borderColor: `${s.color}66` } : undefined}
                   >
                     <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
-                    {s.label}
+                    {t(s.labelKey)}
                     <span className="tabular-nums opacity-70">{count}</span>
                   </button>
                 );
@@ -188,20 +190,20 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
           <div className="flex items-center justify-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-3">
             <div className="text-center">
               <div className="text-2xl font-semibold tabular-nums leading-none">{preview.clashes}</div>
-              <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">clashes</div>
+              <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.clashesLabel')}</div>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="text-center">
               <div className="text-2xl font-semibold tabular-nums leading-none text-[#f7768e]">{preview.topics}</div>
               <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                topic{preview.topics === 1 ? '' : 's'}
+                {t('clashTools.bcfExport.topicsLabel', { count: preview.topics })}
               </div>
             </div>
           </div>
 
           {/* Cap + status note */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Max topics</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.maxTopicsLabel')}</Label>
             <input
               type="number"
               min={1}
@@ -211,7 +213,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
               className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm tabular-nums"
             />
             <p className="text-xs text-muted-foreground leading-snug">
-              Topic status follows each clash's review status: Open stays Open, Resolved and Accepted export as Closed.
+              {t('clashTools.bcfExport.topicStatusNote')}
             </p>
           </div>
 
@@ -219,10 +221,10 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
           <div className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2.5">
             <div className="min-w-0">
               <Label className="flex items-center gap-1.5 text-sm">
-                <Camera className="h-3.5 w-3.5" /> Include snapshots
+                <Camera className="h-3.5 w-3.5" /> {t('clashTools.bcfExport.includeSnapshotsLabel')}
               </Label>
               <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
-                Render each topic's viewpoint and embed a PNG. Slower for many topics.
+                {t('clashTools.bcfExport.snapshotsHint')}
               </p>
             </div>
             <Switch
@@ -235,11 +237,11 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
         <DialogFooter className="items-center">
           {progress && (
             <span className="mr-auto text-xs text-muted-foreground tabular-nums">
-              Capturing snapshots {progress.done}/{progress.total}…
+              {t('clashTools.bcfExport.capturingSnapshotsProgress', { done: progress.done, total: progress.total })}
             </span>
           )}
           <Button variant="outline" onClick={() => setOpen(false)} disabled={exporting}>
-            Cancel
+            {t('clashTools.bcfExport.cancelButton')}
           </Button>
           <Button onClick={() => void handleExport()} disabled={!canExport}>
             {exporting ? (
@@ -247,7 +249,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
             ) : (
               <Download className="h-4 w-4 mr-1.5" />
             )}
-            {exporting ? 'Exporting…' : `Export ${preview.topics} topic${preview.topics === 1 ? '' : 's'}`}
+            {exporting ? t('clashTools.bcfExport.exportingLabel') : t('clashTools.bcfExport.exportButton', { count: preview.topics })}
           </Button>
         </DialogFooter>
       </DialogContent>

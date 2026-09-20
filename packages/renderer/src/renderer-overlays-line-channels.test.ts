@@ -14,7 +14,8 @@ import { LINE_OVERLAY_CHANNELS, type LineOverlayChannel } from './section-2d-ove
  *
  * The eight methods were identical on the published `Renderer` but NOT on this
  * facade: annotation and alignment grew the scene AABB and re-fit the camera,
- * grid, DXF, and terrain deliberately do not. Folding uploads into one is exactly
+ * grid and DXF deliberately do not, while terrain can be the only authored
+ * geometry in a LandXML source. Folding uploads into one is exactly
  * the shape of change that quietly gives every channel the same policy, and the
  * damage is invisible in a unit test that only checks the vertices arrived:
  * grid axes reach far past the model envelope, so a grid upload that expanded
@@ -90,7 +91,7 @@ const EXPECTED_EXPANDS: Record<LineOverlayChannel, boolean> = {
     alignment: true,
     grid: false,
     dxf: false,
-    terrain: false,
+    terrain: true,
 };
 
 describe('setLineOverlay keeps each channel\'s model-bounds policy', () => {

@@ -8,6 +8,7 @@
 //! callers from accidentally decoding UTF-16 source as JavaScript text first.
 
 use super::IfcAPI;
+use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 
 #[wasm_bindgen]
@@ -54,7 +55,10 @@ impl IfcAPI {
     pub fn parse_landxml_tin_bytes(&self, data: &[u8]) -> Result<LandXmlTinDocumentJs, JsValue> {
         let document = ifc_lite_landxml::parse_landxml_tin(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        serde_wasm_bindgen::to_value(&document)
+        let serializer =
+            serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        document
+            .serialize(&serializer)
             .map(|value| value.unchecked_into())
             .map_err(|error| {
                 JsValue::from_str(&format!("LandXML result serialization failed: {error}"))

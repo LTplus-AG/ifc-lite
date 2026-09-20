@@ -187,7 +187,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     && Array.from(models.values()).some((model) => model.sourceSchema === 'LandXML-1.2');
   const canExportIfc = !selectedLandXml && !mergedLandXml;
   // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
-  const exportAllowed = canExportIfc || changesOnly;
+  const exportAllowed = canExportIfc || (changesOnly && !isIfc5);
   const portableRoomStore = selectedModel?.ifcDataStore
     && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
     ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore

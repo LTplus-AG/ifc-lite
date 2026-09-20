@@ -75,6 +75,7 @@ export interface LandXmlSurfaceCounts {
 export type LandXmlSourceRecord =
   | { kind: 'surface'; surface: LandXmlTinSurface }
   | { kind: 'point'; surface: LandXmlTinSurface; point: LandXmlTinSurface['points'][number] }
+  | { kind: 'source-data-point'; surface: LandXmlTinSurface; point: LandXmlTinSurface['sourceDataPoints'][number] }
   | { kind: 'face'; surface: LandXmlTinSurface; pointIds: readonly [string, string, string] }
   | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline };
 
@@ -86,6 +87,8 @@ export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: 
     if (surface.sourceId === sourceId) return { kind: 'surface', surface };
     const point = surface.points.find((candidate) => candidate.sourceId === sourceId);
     if (point) return { kind: 'point', surface, point };
+    const sourceDataPoint = surface.sourceDataPoints.find((candidate) => candidate.sourceId === sourceId);
+    if (sourceDataPoint) return { kind: 'source-data-point', surface, point: sourceDataPoint };
     const faceIndex = surface.faceSourceIds.indexOf(sourceId);
     const pointIds = faceIndex >= 0 ? surface.faces[faceIndex] : undefined;
     if (pointIds) return { kind: 'face', surface, pointIds };

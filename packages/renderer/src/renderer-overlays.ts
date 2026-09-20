@@ -113,7 +113,8 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
     alignment: true,
     grid: false,
     dxf: false,
-    terrain: false,
+    // A LandXML source may consist entirely of authored terrain lines.
+    terrain: true,
 };
 
 export class RendererOverlays {

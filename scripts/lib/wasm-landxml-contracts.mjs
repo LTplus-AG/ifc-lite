@@ -29,6 +29,8 @@ export function runLandXmlContracts(api, test) {
     const utf8 = api.parseLandXmlTinBytes(new TextEncoder().encode(XML));
     const utf16 = api.parseLandXmlTinBytes(utf16Le(XML.replace('UTF-8', 'UTF-16')));
     assert.equal(utf8.surfaces[0].name, 'grade');
+    assert.deepEqual(utf8.surfaces[0].properties, { name: 'grade' });
+    assert.deepEqual(utf8.surfaces[0].definition_properties, { surfType: 'TIN' });
     assert.deepEqual(utf8.surfaces[0].faces, [['1', '2', '3']]);
     assert.equal(utf16.surfaces[0].name, 'grade');
   });

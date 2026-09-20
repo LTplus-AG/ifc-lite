@@ -10,6 +10,27 @@ import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
+import { runGpuUpload } from '@/components/viewer/gpu-upload-guard';
+
+export interface LandXmlOverlayUploadTarget {
+  setLineOverlay(channel: 'terrain', vertices: Float32Array | null): void;
+}
+
+/** Contain a terrain-line GPU upload and discard a partial buffer on failure. */
+export function uploadLandXmlOverlayGuarded(
+  renderer: LandXmlOverlayUploadTarget,
+  vertices: Float32Array,
+): void {
+  if (vertices.length === 0) {
+    renderer.setLineOverlay('terrain', null);
+    return;
+  }
+  const uploaded = runGpuUpload('setLineOverlay:terrain', () => {
+    renderer.setLineOverlay('terrain', vertices);
+    return true;
+  });
+  if (!uploaded) renderer.setLineOverlay('terrain', null);
+}
 
 /**
  * Adapt authored 3D LandXML boundary/breakline/contour coordinates into the
@@ -80,6 +101,6 @@ export function useLandXmlRendererOverlay(
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.setLineOverlay('terrain', vertices.length === 0 ? null : vertices);
+    uploadLandXmlOverlayGuarded(renderer, vertices);
   }, [vertices, isInitialized, rendererRef]);
 }

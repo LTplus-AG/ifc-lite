@@ -10,7 +10,7 @@ import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store/index.js';
 import type { LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
-import { useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
+import { uploadLandXmlOverlayGuarded, useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
 
 const initialState = useViewerStore.getState();
 
@@ -67,6 +67,23 @@ function landXmlModel(id: string, sourceLine: LandXmlPolyline, originShift = { x
 }
 
 describe('LandXML source overlay rendering (#5042)', () => {
+  it('clears the terrain channel when a GPU upload throws', () => {
+    const calls: Array<Float32Array | null> = [];
+    let first = true;
+    const renderer = {
+      setLineOverlay(_channel: 'terrain', vertices: Float32Array | null) {
+        calls.push(vertices);
+        if (first) {
+          first = false;
+          throw new Error('device lost');
+        }
+      },
+    };
+    const vertices = new Float32Array([0, 0, 0, 1, 1, 1]);
+    uploadLandXmlOverlayGuarded(renderer, vertices);
+    assert.deepEqual(calls, [vertices, null]);
+  });
+
   it('converts overlays in each model frame and filters a model-qualified selection across 1/N models', () => {
     const one = landXmlModel('one', line('same-source'), { x: 1, y: 2, z: 3 });
     const two = landXmlModel('two', line('same-source'), { x: 100, y: 200, z: 300 });

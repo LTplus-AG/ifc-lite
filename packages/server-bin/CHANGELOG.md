@@ -1,5 +1,19 @@
 # @ifc-lite/server-bin
 
+## 1.19.0
+
+### Minor Changes
+
+- [#5020](https://github.com/LTplus-AG/ifc-lite/pull/5020) [`3a47a0c`](https://github.com/LTplus-AG/ifc-lite/commit/3a47a0c2bb70966741882f8a0bae996823b9881f) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcEdgeCurve` and `IfcOrientedEdge` geometry on `IfcStructuralCurveMember` representations. Curved members now reuse the bounded canonical edge samplers and honor both `SameSense` and `Orientation`, while cyclic file-authored edge references fail deterministically instead of recursing.
+
+- [#5026](https://github.com/LTplus-AG/ifc-lite/pull/5026) [`50c23d4`](https://github.com/LTplus-AG/ifc-lite/commit/50c23d4321252a2fafff41e085e64e351c2cdb31) Thanks [@louistrue](https://github.com/louistrue)! - Render schema-prescribed `IfcFaceSurface` reference geometry for
+  `IfcStructuralSurfaceMember`, including face holes, winding, product placement,
+  and project length units ([#4206](https://github.com/LTplus-AG/ifc-lite/issues/4206)).
+
+### Patch Changes
+
+- [#5014](https://github.com/LTplus-AG/ifc-lite/pull/5014) [`19af4c9`](https://github.com/LTplus-AG/ifc-lite/commit/19af4c9b5529a9052daf8a023ebe4e5144b9db2f) Thanks [@louistrue](https://github.com/louistrue)! - Generate the Rust `IfcType` discriminant universe from IFC4X3, the IFC4 family including IFC4X1, and IFC2X3 so supported legacy entity keywords retain their exact IFC names. Keep schema-version-specific attribute metadata separate and preserve the existing geometry classification mappings.
+
 ## 1.18.1
 
 ### Patch Changes

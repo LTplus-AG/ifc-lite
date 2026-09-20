@@ -1,5 +1,13 @@
 # @ifc-lite/merge
 
+## 0.4.6
+
+### Patch Changes
+
+- Updated dependencies [[`794986e`](https://github.com/LTplus-AG/ifc-lite/commit/794986e8fa5acec057429b49302274ac8046eefe), [`0a62c19`](https://github.com/LTplus-AG/ifc-lite/commit/0a62c196a05fb47fc2bf6c0c083ea32ed20dd1d8), [`62a57f7`](https://github.com/LTplus-AG/ifc-lite/commit/62a57f7e991202500b2e9c3d553376f9c45fd2c5), [`e30b86c`](https://github.com/LTplus-AG/ifc-lite/commit/e30b86cacf142c64a3bdbf310861ac7bf12a3f1b), [`fc72af0`](https://github.com/LTplus-AG/ifc-lite/commit/fc72af07fab21f0359002346ae5be60e085b8a41)]:
+  - @ifc-lite/diff@0.9.0
+  - @ifc-lite/ifcx@4.1.2
+
 ## 0.4.5
 
 ### Patch Changes

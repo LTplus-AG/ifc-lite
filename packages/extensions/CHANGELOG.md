@@ -1,5 +1,11 @@
 # @ifc-lite/extensions
 
+## 0.8.0
+
+### Minor Changes
+
+- [#4999](https://github.com/LTplus-AG/ifc-lite/pull/4999) [`b399a49`](https://github.com/LTplus-AG/ifc-lite/commit/b399a49cbccc0456eae50cc50521674336632d1a) Thanks [@louistrue](https://github.com/louistrue)! - Expose stable capability and SDK compatibility reason identifiers alongside the existing English diagnostic fields, so UI consumers can localize explanations without losing useful log and prompt text.
+
 ## 0.7.0
 
 ### Minor Changes

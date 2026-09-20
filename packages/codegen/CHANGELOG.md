@@ -1,5 +1,17 @@
 # @ifc-lite/codegen
 
+## 1.18.0
+
+### Minor Changes
+
+- [#5014](https://github.com/LTplus-AG/ifc-lite/pull/5014) [`19af4c9`](https://github.com/LTplus-AG/ifc-lite/commit/19af4c9b5529a9052daf8a023ebe4e5144b9db2f) Thanks [@louistrue](https://github.com/louistrue)! - Generate the Rust `IfcType` discriminant universe from IFC4X3, the IFC4 family including IFC4X1, and IFC2X3 so supported legacy entity keywords retain their exact IFC names. Keep schema-version-specific attribute metadata separate and preserve the existing geometry classification mappings.
+
+### Patch Changes
+
+- [#4996](https://github.com/LTplus-AG/ifc-lite/pull/4996) [`6e283f0`](https://github.com/LTplus-AG/ifc-lite/commit/6e283f0fb187195aae76097dd4ee1660a20ae325) Thanks [@louistrue](https://github.com/louistrue)! - Generate crate-private IFC2X3 and IFC4 Rust registries alongside the canonical IFC4X3 registry. Exported entity attributes now use the source file's declared schema for positional names, while retaining metadata for transitional entities absent from the bundled EXPRESS inputs.
+- Updated dependencies [[`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/data@5.0.0
+
 ## 1.17.0
 
 ### Minor Changes

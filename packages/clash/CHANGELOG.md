@@ -1,5 +1,16 @@
 # @ifc-lite/clash
 
+## 2.3.1
+
+### Patch Changes
+
+- Updated dependencies [[`faadbb4`](https://github.com/LTplus-AG/ifc-lite/commit/faadbb409bc67bb5ace32757db050dd0ed83814f), [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`531246a`](https://github.com/LTplus-AG/ifc-lite/commit/531246a1a9f53ea6b66f7f1d140c7df268adc242), [`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837), [`dce19f5`](https://github.com/LTplus-AG/ifc-lite/commit/dce19f57399b9e75901fa5c4283adf781681301e), [`0e8a421`](https://github.com/LTplus-AG/ifc-lite/commit/0e8a4217514dcfacc7c488a230de244288428e1b), [`86dafce`](https://github.com/LTplus-AG/ifc-lite/commit/86dafced6e166889514a8514a23419659d0e7ce6), [`e2ca87d`](https://github.com/LTplus-AG/ifc-lite/commit/e2ca87d9b8f25be2ffeabd5843cbadc4154471c0), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`bab4e30`](https://github.com/LTplus-AG/ifc-lite/commit/bab4e30f438ac0bb585ea00a62a1a98a8221bede), [`794986e`](https://github.com/LTplus-AG/ifc-lite/commit/794986e8fa5acec057429b49302274ac8046eefe), [`24b2416`](https://github.com/LTplus-AG/ifc-lite/commit/24b24167e7213ed8f8c8d92211ec38c7221b9a11), [`65ea107`](https://github.com/LTplus-AG/ifc-lite/commit/65ea107b83e3d543b410721c74195562ca50bcca), [`ec114fe`](https://github.com/LTplus-AG/ifc-lite/commit/ec114fefabfd1b3a23d6a25545610652db6c5342), [`19af4c9`](https://github.com/LTplus-AG/ifc-lite/commit/19af4c9b5529a9052daf8a023ebe4e5144b9db2f), [`6e283f0`](https://github.com/LTplus-AG/ifc-lite/commit/6e283f0fb187195aae76097dd4ee1660a20ae325), [`3a47a0c`](https://github.com/LTplus-AG/ifc-lite/commit/3a47a0c2bb70966741882f8a0bae996823b9881f), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c), [`50c23d4`](https://github.com/LTplus-AG/ifc-lite/commit/50c23d4321252a2fafff41e085e64e351c2cdb31)]:
+  - @ifc-lite/wasm@9.2.0
+  - @ifc-lite/query@2.5.0
+  - @ifc-lite/parser@8.0.0
+  - @ifc-lite/geometry@7.4.0
+  - @ifc-lite/ifcx@4.1.2
+
 ## 2.3.0
 
 ### Minor Changes

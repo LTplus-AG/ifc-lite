@@ -332,7 +332,7 @@ export interface CollabSlice {
     entityId: number,
     ifcType: string,
     guid: string | null,
-    mesh: MeshData | null, initialAttributes?: Record<string, unknown>,
+    mesh: MeshData | null, initialAttributes?: Record<string, unknown>, sourceExpressId?: number,
   ) => void;
   /**
    * Mirror a geometry-shape change (resize) by replacing the entity's room
@@ -342,7 +342,6 @@ export interface CollabSlice {
    * or edit rights.
    */
   mirrorEntityGeometry: (modelId: string, entityId: number, mesh: MeshData) => void;
-
   // ── Annotation mirror (collab markup) — called by annotationsSlice after a
   //    local create/edit/delete. No-ops without a session or comment permission.
   mirrorAnnotationUpsert: (annotation: Annotation) => void;
@@ -856,9 +855,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       set({ collabGeometryNotice: `A collaborative attribute could not be applied: ${rejected}` });
     };
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
-      onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes) => {
+      onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes, sourceExpressId) => {
         const view = roomMutationViewFor(get(), modelId);
-        if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes, rejectRemoteAttribute))
+        if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes,
+          rejectRemoteAttribute, sourceExpressId))
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onProperty: (modelId, entityId, pset, prop, value, type) => {
@@ -1205,8 +1205,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     placementAppliedLoc?.delete(globalId);
     placementAppliedYaw?.delete(globalId);
   },
-
-  mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh, initialAttributes) => {
+  mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh, initialAttributes, sourceExpressId) => {
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
@@ -1227,6 +1226,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       api.createEntity(session.doc, path, {
         ifcClass,
         attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
+        ...(sourceExpressId === undefined ? {} : { meta: { 'ifc-lite::sourceExpressId': sourceExpressId } }),
       });
     });
     if (generatedPath) registerEntityPath(store, entityId, path);

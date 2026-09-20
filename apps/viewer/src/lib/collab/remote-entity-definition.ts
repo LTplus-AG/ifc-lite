@@ -5,6 +5,8 @@
 export interface RemoteEntityDefinition {
   ifcClass: string;
   attributes: Record<string, unknown>;
+  /** Source-store identity for an explicitly materialized GUID-less record. */
+  sourceExpressId?: number;
 }
 
 export function remoteEntityDefinition(entity: unknown): RemoteEntityDefinition | null {
@@ -18,5 +20,15 @@ export function remoteEntityDefinition(entity: unknown): RemoteEntityDefinition 
   attributes?.forEach?.((value, key) => {
     if (key !== 'bsi::ifc::class') initial[key] = value;
   });
-  return { ifcClass: classValue.code, attributes: initial };
+  const meta = (entity as { get?(key: string): unknown }).get?.('meta') as {
+    get(key: string): unknown;
+  } | undefined;
+  const sourceExpressId = meta?.get('ifc-lite::sourceExpressId');
+  return {
+    ifcClass: classValue.code,
+    attributes: initial,
+    ...(typeof sourceExpressId === 'number' && Number.isSafeInteger(sourceExpressId) && sourceExpressId > 0
+      ? { sourceExpressId }
+      : {}),
+  };
 }

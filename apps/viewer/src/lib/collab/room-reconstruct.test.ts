@@ -216,6 +216,35 @@ describe('room seed + reconstruct: two copies of one file (#4444)', () => {
     reconstructor.teardown();
   });
 
+  it('queues a fresh snapshot when a reconstruction is requested in flight', async () => {
+    let releaseFirstParse: (() => void) | undefined;
+    let firstParseStarted: (() => void) | undefined;
+    const firstParse = new Promise<void>((resolve) => { firstParseStarted = resolve; });
+    const parseGate = new Promise<void>((resolve) => { releaseFirstParse = resolve; });
+    const { reconstructor, store } = joiner(doc, blobStore, 'r1', {
+      beforeParse: async (call) => {
+        if (call !== 1) return;
+        firstParseStarted?.();
+        await parseGate;
+      },
+    });
+
+    const pending = reconstructor.reconstruct();
+    await firstParse;
+    collab.setAttribute(doc, `/m1/${WALL_GUID}`, 'bsi::ifc::prop::Name', 'Arrived during parse');
+    await reconstructor.reconstruct();
+    releaseFirstParse?.();
+    await pending;
+
+    const model = store.state().models.get('room:r1:m1')!;
+    assert.equal(
+      model.ifcDataStore?.entities.getName(localIdOf(model, `/m1/${WALL_GUID}`)),
+      'Arrived during parse',
+      'the queued pass installs a snapshot captured after the concurrent update',
+    );
+    reconstructor.teardown();
+  });
+
   it('discards the old numeric-id mutation view before a dense id is reassigned (#5008)', async () => {
     const { reconstructor, store } = joiner(doc, blobStore, 'r1');
     await reconstructor.reconstruct();

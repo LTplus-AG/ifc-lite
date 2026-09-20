@@ -48,7 +48,7 @@ export interface CollabDocApi {
   createEntity(
     doc: CollabSession['doc'],
     path: string,
-    options?: { ifcClass?: string; attributes?: Record<string, unknown> },
+    options?: { ifcClass?: string; attributes?: Record<string, unknown>; meta?: Record<string, unknown> },
   ): void;
   /** The `usd::xformop` attribute key, so the inbound observer can route it to `onPlacement`. */
   XFORMOP_KEY: string;
@@ -56,7 +56,6 @@ export interface CollabDocApi {
   placementFromXformOp(value: unknown): LocalPlacement | null;
   PROPERTY_TYPE_NAMES: Record<number, string>;
 }
-
 // ── value conversion ─────────────────────────────────────────────────────────
 
 function toScalar(value: unknown): string | number | boolean | null {
@@ -257,7 +256,7 @@ export interface RemoteApplyHandlers {
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(modelId: string, entityId: number): void;
   onEntityCreate?(target: RoomEntityTarget, entityPath: string, ifcClass: string,
-    attributes: Readonly<Record<string, unknown>>): void;
+    attributes: Readonly<Record<string, unknown>>, sourceExpressId?: number): void;
   /** The whole Pset vanished. Property names are unavailable by design: Yjs
    *  detaches the map before the event is observed, so `forEach` yields 0
    *  entries. The consumer drops the entire set for (entityId, pset). */
@@ -311,7 +310,8 @@ export function attachRemoteApply(
           if (!hit) continue;
           if (change.action === 'add' && handlers.onEntityCreate) {
             const definition = remoteEntityDefinition(entities.get(entityPath));
-            if (definition) handlers.onEntityCreate(hit, entityPath, definition.ifcClass, definition.attributes);
+            if (definition) handlers.onEntityCreate(hit, entityPath, definition.ifcClass,
+              definition.attributes, definition.sourceExpressId);
             continue;
           }
           if (change.action !== 'delete' || !handlers.onEntityDelete) continue;

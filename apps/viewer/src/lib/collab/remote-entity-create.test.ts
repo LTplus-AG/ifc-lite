@@ -13,7 +13,8 @@ import { deleteRemoteOverlayEntity } from './remote-entity-delete.js';
 const MODEL = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
 DATA;#1=IFCPROJECT('0000000000000000000001',$,'Project',$,$,$,$,$,$);
-#2=IFCCARTESIANPOINT((1.,2.,3.));ENDSEC;END-ISO-10303-21;`;
+#2=IFCCARTESIANPOINT((1.,2.,3.));
+#3=IFCWALL($,$,'Source wall',$,$,$,$,$,$);ENDSEC;END-ISO-10303-21;`;
 
 test('remote entity creation preserves path identity and rejects invalid IFC classes (#5008)', async () => {
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
@@ -35,15 +36,47 @@ test('remote entity creation preserves path identity and rejects invalid IFC cla
   assert.equal(entityForPath(store, path), null);
 
   const newEntityCount = view.getNewEntities().length;
+  const spoofedSourcePath = '/m0/ifc-lite-ref-3';
+  assert.equal(createRemoteOverlayEntity(store, view, spoofedSourcePath, 'IfcWall', {
+    Name: 'Caller-owned wall',
+  }), true);
+  const spoofed = view.getNewEntities().at(-1);
+  assert.ok(spoofed);
+  assert.notEqual(spoofed.expressId, 3, 'a user-controlled IfcRoot GlobalId is not source identity');
+  assert.equal(entityForPath(store, spoofedSourcePath), spoofed.expressId);
+
   const sourcePath = '/m0/ifc-lite-ref-2';
   assert.equal(createRemoteOverlayEntity(store, view, sourcePath, 'IfcCartesianPoint', {
     'bsi::ifc::prop::Coordinates': [4, 5, 6],
-  }), true);
+  }, undefined, 2), true);
   assert.equal(entityForPath(store, sourcePath), 2);
   assert.equal(
     view.getNewEntities().length,
-    newEntityCount,
+    newEntityCount + 1,
     'materialization binds the existing source instead of duplicating it',
+  );
+});
+
+test('remote entity creation rebinds a path whose previous owner is tombstoned (#5008)', async () => {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
+  const view = new MutablePropertyView(store.properties, 'room');
+  const path = '/m0/0000000000000000000099';
+
+  assert.equal(createRemoteOverlayEntity(store, view, path, 'IfcWall', { Name: 'First wall' }), true);
+  const first = view.getNewEntities()[0];
+  view.deleteEntity(first.expressId);
+  assert.equal(entityForPath(store, path), first.expressId, 'local deletion retains the outbound path mapping');
+
+  assert.equal(createRemoteOverlayEntity(store, view, path, 'IfcWall', { Name: 'Recreated wall' }), true);
+  const recreated = view.getNewEntities().find((entity) => entity.expressId !== first.expressId);
+  assert.ok(recreated);
+  assert.equal(view.isDeleted(first.expressId), true);
+  assert.equal(view.isDeleted(recreated.expressId), false);
+  assert.equal(entityForPath(store, path), recreated.expressId, 'the live recreation owns the room path');
+  assert.equal(
+    [...(view.getPositionalMutationsForEntity(recreated.expressId)?.values() ?? [])].includes('Recreated wall'),
+    true,
+    'initial attributes apply to the recreated live entity',
   );
 });
 

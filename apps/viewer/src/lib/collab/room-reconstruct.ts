@@ -31,6 +31,7 @@ import type { ParsedRoomStepSource } from './room-step-source';
 import { attachRoomStepSource } from './room-step-attach';
 import { cleanupRoomModels } from './room-reconstruct-cleanup';
 import { hydrateStructuredEntityAttributes } from './room-structured-attributes';
+import { createCoalescingRunner } from './coalescing-runner';
 /** The slice of the collab runtime the reconstruct needs. */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'),
   'snapshotToIfcx' | 'listModelSlots' | 'getEntity' | 'entityToJSON'>;
@@ -80,7 +81,6 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
   const live = (): boolean => deps.get().collabRoomId === roomId;
   const slots = new Map<string, SlotState>();
   let lastGeomSignature = '';
-  let reconstructing = false;
   // The missing-geometry warning fires at most once per room: reconstruct
   // re-runs on every peer edit, and a repeating alarm gets tuned out.
   let warnedMissingGeometry = false;
@@ -276,98 +276,97 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     return { payload, state };
   };
 
-  const reconstruct = async (): Promise<void> => {
-    if (reconstructing || !live()) return;
-    reconstructing = true;
-    try {
-      const listed = collab.listModelSlots(session.doc);
-      publishRoomModels(listed);
-      const geomCount = session.doc.getMap('geometry').size;
-      const signature = geometrySignature();
-      const geometryChanged = signature !== lastGeomSignature;
-      if (geometryChanged) {
-        lastGeomSignature = signature;
-        lastMeshCount = 0;
-      }
-      const built: Array<{ payload: ViewerModelPayload; state: SlotState }> = [];
-      for (const slot of listed) {
-        const result = await reconstructSlot(slot, roomModelNameFor(listed, slot.slotId), geometryChanged);
-        if (!result) return;
-        built.push(result);
-      }
-      if (!live()) return;
+  const reconstructOnce = async (): Promise<void> => {
+    if (!live()) return;
+    const listed = collab.listModelSlots(session.doc);
+    publishRoomModels(listed);
+    const geomCount = session.doc.getMap('geometry').size;
+    const signature = geometrySignature();
+    const geometryChanged = signature !== lastGeomSignature;
+    if (geometryChanged) {
+      lastGeomSignature = signature;
+      lastMeshCount = 0;
+    }
+    const built: Array<{ payload: ViewerModelPayload; state: SlotState }> = [];
+    for (const slot of listed) {
+      const result = await reconstructSlot(slot, roomModelNameFor(listed, slot.slotId), geometryChanged);
+      if (!result) return;
+      built.push(result);
+    }
+    if (!live()) return;
 
-      const { loc, yaw } = deps.applied();
-      if (geometryChanged) {
-        // The meshes just installed are BAKED, i.e. back at
-        // `meta.placementBaseline` (hydrate copies the vertex arrays per
-        // consumer, so a re-hydrate returns the original geometry rather than
-        // a copy the renderer had already translated in place). The
-        // applied-placement bookkeeping describes the meshes just replaced,
-        // so it is now false — and false in the one direction that silently
-        // pins the damage: the sweep below would read "already applied" and
-        // leave the entity reverted. Forget it here, AFTER every slot's
-        // `await hydrateGeometryFromRoom`: a remote placement event landing
-        // during those awaits re-stamps `applied` for a mesh that is
-        // discarded by this replacement, and clearing beforehand would let
-        // that stale stamp survive into the sweep.
-        //
-        // SAFE FOR A NON-OBVIOUS REASON: the applied maps are shared with the
-        // live placement-event path, so a clear here is only correct if
-        // nothing can observe it mid-way. Nothing can — there is no `await`
-        // between this clear and the `sweepPlacements` calls below
-        // (`collectPlacementDrift` reads the doc synchronously), so the
-        // clear-then-sweep pair is one uninterruptible turn of the event
-        // loop. Inserting an `await` anywhere in that span reopens the window
-        // this comment closes.
-        clearAppliedPlacements(loc, yaw);
+    const { loc, yaw } = deps.applied();
+    if (geometryChanged) {
+      // The meshes just installed are BAKED, i.e. back at
+      // `meta.placementBaseline` (hydrate copies the vertex arrays per
+      // consumer, so a re-hydrate returns the original geometry rather than
+      // a copy the renderer had already translated in place). The
+      // applied-placement bookkeeping describes the meshes just replaced,
+      // so it is now false — and false in the one direction that silently
+      // pins the damage: the sweep below would read "already applied" and
+      // leave the entity reverted. Forget it here, AFTER every slot's
+      // `await hydrateGeometryFromRoom`: a remote placement event landing
+      // during those awaits re-stamps `applied` for a mesh that is
+      // discarded by this replacement, and clearing beforehand would let
+      // that stale stamp survive into the sweep.
+      //
+      // SAFE FOR A NON-OBVIOUS REASON: the applied maps are shared with the
+      // live placement-event path, so a clear here is only correct if
+      // nothing can observe it mid-way. Nothing can — there is no `await`
+      // between this clear and the `sweepPlacements` calls below
+      // (`collectPlacementDrift` reads the doc synchronously), so the
+      // clear-then-sweep pair is one uninterruptible turn of the event
+      // loop. Inserting an `await` anywhere in that span reopens the window
+      // this comment closes.
+      clearAppliedPlacements(loc, yaw);
+    }
+    // Placement is NOT carried by the blobs: a hydrated mesh sits at the
+    // `usd::xformop` it was baked at, and only a live placement *event* ever
+    // moved it. So re-derive it from the doc here — for a late joiner (which
+    // receives no such event at all), for an event dropped before this
+    // model existed, and for the meshes just re-hydrated. Idempotent:
+    // `sweepPlacements` skips anything already applied, so this is a no-op
+    // on a room where nothing has moved, and it is the ONLY
+    // placement-replay mechanism.
+    for (const { payload, state } of built) {
+      const models = deps.get().models;
+      sweepPlacements(
+        deps.sweepApi,
+        session.doc,
+        payload.pathToId,
+        loc,
+        yaw,
+        (entityId, placement) => {
+          deps.reconcile(state.modelId, payload.dataStore, entityId, placement);
+        },
+        (entityId) => toGlobalIdFromModels(models, state.modelId, entityId),
+      );
+    }
+    // Warn about a room that rendered nothing. The old guard was
+    // `geomCount > 0`, which cannot fire in the case that actually breaks a
+    // room: a failed upload leaves no geometry records at all. The owner's
+    // seed marker is what separates that from a legitimately geometry-less
+    // model. Checked OUTSIDE the geometry-changed guard because the marker
+    // can land on its own, with no geometry record to change (that is
+    // precisely the failed seed), and would otherwise never be looked at.
+    if (!warnedMissingGeometry) {
+      const missing = missingRoomGeometryMessage({
+        marker: readGeometrySeedMarker(session.doc),
+        geometryRecords: geomCount,
+        hydratedMeshes: lastMeshCount,
+      });
+      if (missing && live()) {
+        warnedMissingGeometry = true;
+        // eslint-disable-next-line no-console
+        console.warn(`[collab] recipient: ${missing}`);
+        deps.notify(missing);
       }
-      // Placement is NOT carried by the blobs: a hydrated mesh sits at the
-      // `usd::xformop` it was baked at, and only a live placement *event* ever
-      // moved it. So re-derive it from the doc here — for a late joiner (which
-      // receives no such event at all), for an event dropped before this
-      // model existed, and for the meshes just re-hydrated. Idempotent:
-      // `sweepPlacements` skips anything already applied, so this is a no-op
-      // on a room where nothing has moved, and it is the ONLY
-      // placement-replay mechanism.
-      for (const { payload, state } of built) {
-        const models = deps.get().models;
-        sweepPlacements(
-          deps.sweepApi,
-          session.doc,
-          payload.pathToId,
-          loc,
-          yaw,
-          (entityId, placement) => {
-            deps.reconcile(state.modelId, payload.dataStore, entityId, placement);
-          },
-          (entityId) => toGlobalIdFromModels(models, state.modelId, entityId),
-        );
-      }
-      // Warn about a room that rendered nothing. The old guard was
-      // `geomCount > 0`, which cannot fire in the case that actually breaks a
-      // room: a failed upload leaves no geometry records at all. The owner's
-      // seed marker is what separates that from a legitimately geometry-less
-      // model. Checked OUTSIDE the geometry-changed guard because the marker
-      // can land on its own, with no geometry record to change (that is
-      // precisely the failed seed), and would otherwise never be looked at.
-      if (!warnedMissingGeometry) {
-        const missing = missingRoomGeometryMessage({
-          marker: readGeometrySeedMarker(session.doc),
-          geometryRecords: geomCount,
-          hydratedMeshes: lastMeshCount,
-        });
-        if (missing && live()) {
-          warnedMissingGeometry = true;
-          // eslint-disable-next-line no-console
-          console.warn(`[collab] recipient: ${missing}`);
-          deps.notify(missing);
-        }
-      }
-    } finally {
-      reconstructing = false;
     }
   };
+  // A debounced update that matures during parse/hydration must trigger a
+  // fresh snapshot after the active pass, not disappear behind an in-flight
+  // guard and leave that update cleared from the mutation overlay.
+  const reconstruct = createCoalescingRunner(live, reconstructOnce);
 
   let debounceHandle: ReturnType<typeof setTimeout> | null = null;
   const onDocUpdate = (): void => {

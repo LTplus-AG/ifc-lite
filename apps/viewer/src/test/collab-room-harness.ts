@@ -148,11 +148,17 @@ export function recipientState(roomId: string): { get: () => RoomTestState; stat
   return { get: () => state, state: () => state };
 }
 
-export function joiner(doc: RoomDoc, blobStore: collab.BlobStore, roomId: string) {
+export function joiner(
+  doc: RoomDoc,
+  blobStore: collab.BlobStore,
+  roomId: string,
+  options: { beforeParse?: (call: number) => Promise<void> } = {},
+) {
   const store = recipientState(roomId);
   const notices: string[] = [];
   /** How many times the reconstruct published `collabRoomModels`. */
   const publishes = { count: 0 };
+  let parseCalls = 0;
   const deps: RoomReconstructDeps = {
     roomId,
     session: fakeSession(doc),
@@ -160,7 +166,11 @@ export function joiner(doc: RoomDoc, blobStore: collab.BlobStore, roomId: string
     geomApi,
     sweepApi,
     blobStore,
-    parseIfcx: (buffer) => parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true }),
+    parseIfcx: async (buffer) => {
+      parseCalls += 1;
+      await options.beforeParse?.(parseCalls);
+      return parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true });
+    },
     get: () => store.get() as unknown as RoomReconstructState,
     setRoomModels: (models) => {
       publishes.count += 1;

@@ -44,6 +44,8 @@ interface MaterializedEntry {
   names: string[];
   values: unknown[];
   roomKey: string;
+  /** Present only for a source-store record, never an overlay entity. */
+  sourceExpressId?: number;
 }
 
 function availableSyntheticRoomKey(
@@ -128,7 +130,11 @@ export function ensureSourceRoomEntities(
     const path = pathForGuid(dataStore, roomKey);
     candidates.set(expressId, path);
     claimedPaths.add(path);
-    entries.push({ ...base, roomKey });
+    entries.push({
+      ...base,
+      roomKey,
+      ...(overlay ? {} : { sourceExpressId: expressId }),
+    });
     const referenceSlots = referenceAttributeSlotsForStore(dataStore, entity.type);
     values.forEach((value, index) => {
       pending.push(...referencedExpressIds(value, referenceSlots[index] ?? false, new Set(), budget));
@@ -142,7 +148,9 @@ export function ensureSourceRoomEntities(
   ));
   const registered: number[] = [];
   entries.forEach((entry) => {
-    store.getState().mirrorEntityCreate(modelId, entry.expressId, entry.type, entry.roomKey, null, {});
+    store.getState().mirrorEntityCreate(
+      modelId, entry.expressId, entry.type, entry.roomKey, null, {}, entry.sourceExpressId,
+    );
     if (pathForEntity(dataStore, entry.expressId) === candidates.get(entry.expressId)) {
       registered.push(entry.expressId);
     }

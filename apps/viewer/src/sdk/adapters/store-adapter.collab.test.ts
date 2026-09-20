@@ -270,6 +270,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     const point = { modelId: MODEL, expressId: 3 };
     adapter.setPositionalAttribute(point, 0, [4, 5, 6]);
     assert.deepEqual(calls[0]?.args.slice(0, 4), [MODEL, 3, 'IFCCARTESIANPOINT', 'ifc-lite-ref-3']);
+    assert.equal(calls[0]?.args[6], 3, 'source identity is explicit metadata, not inferred from the path');
     assert.deepEqual(calls.filter(call => call.kind === 'attribute').at(-1), {
       kind: 'attribute', args: [MODEL, 3, 'bsi::ifc::prop::Coordinates', [4, 5, 6]],
     });
@@ -444,6 +445,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
 
     const sourceCreate = calls.find(call => call.kind === 'create' && call.args[1] === 3);
     assert.equal(sourceCreate?.args[3], 'ifc-lite-ref-3-1');
+    assert.equal(sourceCreate?.args[6], 3);
   });
 
   it('shares one bounded work budget across broad source reference attributes', () => {

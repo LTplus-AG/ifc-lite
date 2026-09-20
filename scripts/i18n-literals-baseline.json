@@ -6,7 +6,6 @@
   "apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx": 35,
   "apps/viewer/src/components/viewer/CustomBasemapEditor.tsx": 16,
   "apps/viewer/src/components/viewer/CustomTilesetEditor.tsx": 6,
-  "apps/viewer/src/components/viewer/DataConnector.tsx": 64,
   "apps/viewer/src/components/viewer/DeviationPanel.tsx": 16,
   "apps/viewer/src/components/viewer/dock/FloatingPanel.tsx": 3,
   "apps/viewer/src/components/viewer/dock/PanelWindowHost.tsx": 5,

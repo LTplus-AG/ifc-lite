@@ -33,9 +33,23 @@ export function uploadLandXmlOverlayGuarded(
 }
 
 /**
+ * LandXML 1.2 `Contour` permits a two-dimensional point list when its `elev`
+ * attribute supplies the missing ordinate.  Boundaries and breaklines have no
+ * equivalent schema field, so only contours may be lifted this way.
+ */
+export function contourElevation(line: { coordinateDimension: 2 | 3; properties: Record<string, string> }): number | null {
+  if (line.coordinateDimension !== 2) return null;
+  const authored = line.properties.elev;
+  if (authored === undefined || authored.trim() === '') return null;
+  const elevation = Number(authored);
+  return Number.isFinite(elevation) ? elevation : null;
+}
+
+/**
  * Adapt authored 3D LandXML boundary/breakline/contour coordinates into the
- * currently published model frame. Two-dimensional lists remain inspectable in
- * source records but are not lifted to an invented elevation.
+ * currently published model frame. A two-dimensional Contour with its
+ * schema-defined `elev` attribute is lifted using that authored elevation;
+ * other two-dimensional lists remain inspectable without invented geometry.
  */
 export function useLandXmlOverlayLines(): Float32Array {
   const models = useViewerStore((state) => state.models);
@@ -56,17 +70,25 @@ export function useLandXmlOverlayLines(): Float32Array {
         modelPointToWorkspacePoint(fromRenderTranslation(point), pointPlacement),
       );
       for (const surface of document.surfaces) {
-        for (const line of [...surface.boundaries, ...surface.breaklines, ...surface.contours]) {
+        for (const [lineKind, line] of [
+          ...surface.boundaries.map((line) => ['boundary', line] as const),
+          ...surface.breaklines.map((line) => ['breakline', line] as const),
+          ...surface.contours.map((line) => ['contour', line] as const),
+        ]) {
           // A source-list selection is deliberately a filter, not an IFC pick:
           // line GPU picking has no model/source identity channel. This keeps
           // the selected non-IFC record and its visible geometry in lockstep.
           if (selectedSource && (selectedSource.modelId !== model.id || selectedSource.sourceId !== line.sourceId)) {
             continue;
           }
-          if (line.coordinateDimension !== 3) continue;
+          const planarContourElevation = lineKind === 'contour' ? contourElevation(line) : null;
+          if (line.coordinateDimension !== 3 && planarContourElevation === null) continue;
           for (let index = 1; index < line.points.length; index++) {
-            const [northA, eastA, elevationA] = line.points[index - 1];
-            const [northB, eastB, elevationB] = line.points[index];
+            const [northA, eastA, pointElevationA] = line.points[index - 1];
+            const [northB, eastB, pointElevationB] = line.points[index];
+            const elevationA = pointElevationA ?? planarContourElevation;
+            const elevationB = pointElevationB ?? planarContourElevation;
+            if (elevationA === null || elevationB === null) continue;
             const [ax, ay, az] = place({
               x: eastA * units.linearScaleToMeters - offset.x,
               y: elevationA * units.elevationScaleToMeters - offset.y,

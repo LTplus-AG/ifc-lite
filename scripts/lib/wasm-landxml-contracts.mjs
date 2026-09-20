@@ -9,7 +9,7 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
   <Units><Metric linearUnit="meter"/></Units>
   <Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts>
     <P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P>
-  </Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>
+  </Pnts><Faces><F>1 2 3</F></Faces><Breaklines><Breakline><PntList3D>0 0 0 1 1 1</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces>
 </LandXML>`;
 
 function utf16Le(text) {
@@ -32,6 +32,8 @@ export function runLandXmlContracts(api, test) {
     assert.deepEqual(utf8.surfaces[0].properties, { name: 'grade' });
     assert.deepEqual(utf8.surfaces[0].definition_properties, { surfType: 'TIN' });
     assert.deepEqual(utf8.surfaces[0].faces, [['1', '2', '3']]);
+    assert.equal(utf8.surfaces[0].breaklines[0].name, undefined, 'serde_wasm_bindgen omits absent Option fields');
+    assert.equal(utf8.surfaces[0].breaklines[0].kind, undefined, 'the TypeScript declaration must not promise null');
     assert.equal(utf16.surfaces[0].name, 'grade');
   });
 

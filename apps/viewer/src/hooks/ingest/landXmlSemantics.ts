@@ -81,6 +81,12 @@ export type LandXmlSourceRecord =
 
 export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
 
+/** The federation resolver capability needed to turn a renderer id into a source model. */
+export interface LandXmlPickFederation {
+  models: ReadonlyMap<string, LandXmlSourceModel>;
+  findModelForGlobalId(globalId: number): string | null;
+}
+
 /** Resolve source data without relying on a renderer or IFC identifier. */
 export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: string): LandXmlSourceRecord | null {
   for (const surface of document.surfaces) {
@@ -118,4 +124,21 @@ export function landXmlPickSourceRef(
   if (!provenance) return null;
   const sourceId = triangleIndex === undefined ? provenance.surfaceSourceId : provenance.renderedFaceSourceIds[triangleIndex];
   return sourceId ? { modelId, sourceId } : null;
+}
+
+/**
+ * Resolve a renderer pick through the federation registry before consulting
+ * document-local LandXML provenance. `PickResult` has no triangle index, so a
+ * terrain click truthfully resolves to its source surface until that contract
+ * grows a triangle identity channel.
+ */
+export function landXmlPickSourceRefFromFederation(
+  federation: LandXmlPickFederation,
+  meshExpressId: number,
+  triangleIndex?: number,
+): LandXmlSourceRef | null {
+  const modelId = federation.findModelForGlobalId(meshExpressId);
+  return modelId === null
+    ? null
+    : landXmlPickSourceRef(federation.models.get(modelId), modelId, meshExpressId, triangleIndex);
 }

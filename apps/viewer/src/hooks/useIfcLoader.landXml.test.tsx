@@ -144,6 +144,12 @@ describe('useIfcLoader LandXML route (#4937)', () => {
       'discarded bounds must not survive in the registered model metadata');
     assert.ok(model.geometryResult.coordinateInfo.shiftedBounds.max.x < 1_000_000,
       'the camera-fit bounds must describe only the retained component');
+    const retainedCounts = model.landXmlDocument?.rendering.surfaceCounts;
+    assert.ok(retainedCounts);
+    assert.deepEqual(retainedCounts.map((counts) => counts.renderedFaces), [1, 0],
+      'source inspection counts describe only mesh components that survived federation framing');
+    assert.deepEqual(retainedCounts.map((counts) => counts.droppedReframeFaces), [0, 1],
+      'the dropped source face remains accounted for as a frame rejection, not rendered geometry');
     assert.ok(messages.some((warning) => /Skipped 1 LandXML surface component.*full Y-up bounds/.test(warning)));
   });
 });

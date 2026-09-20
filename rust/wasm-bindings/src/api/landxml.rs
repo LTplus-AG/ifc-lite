@@ -41,7 +41,8 @@ export interface LandXmlSurfaceJs {
 }
 export interface LandXmlPointJs { source_id: string; id: string; northing: number; easting: number; elevation: number; }
 export interface LandXmlSourcePointJs { source_id: string; ordinal: number; source_path: string; coordinate_dimension: 2 | 3; coordinates: number[]; }
-export interface LandXmlPolylineJs { source_id: string; ordinal: number; name: string | null; kind: string | null; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }
+/** serde_wasm_bindgen omits absent Rust Option fields rather than serializing null. */
+export interface LandXmlPolylineJs { source_id: string; ordinal: number; name?: string; kind?: string; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }
 export interface LandXmlExtensionJs { namespace: string; local_name: string; path: string; }
 "#;
 

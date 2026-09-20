@@ -53,6 +53,20 @@ function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.max.z = Math.max(target.max.z, source.max.z);
 }
 
+/** Keep source inspection counts honest after federation drops mesh components. */
+function recomputeRenderedFaceCounts(document: LandXmlTinDocument): void {
+  const renderedBySurface = new Map<string, number>();
+  for (const mesh of document.rendering.meshProvenance) {
+    renderedBySurface.set(
+      mesh.surfaceSourceId,
+      (renderedBySurface.get(mesh.surfaceSourceId) ?? 0) + mesh.renderedFaceSourceIds.length,
+    );
+  }
+  for (const counts of document.rendering.surfaceCounts) {
+    counts.renderedFaces = renderedBySurface.get(counts.surfaceSourceId) ?? 0;
+  }
+}
+
 /** Recompute counts and frame metadata from the meshes that survived reframing. */
 function updateRetainedGeometry(geometry: GeometryResult, frame: CoordinateInfo): void {
   const bounds = createEmptyBounds();
@@ -112,6 +126,7 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandX
       if (counts) counts.droppedReframeFaces += mesh.renderedFaceSourceIds.length;
     }
     document.rendering.meshProvenance = document.rendering.meshProvenance.filter((mesh) => retainedIds.has(mesh.meshExpressId));
+    recomputeRenderedFaceCounts(document);
   }
   if (retained.length === 0) {
     throw new Error(`LandXML model cannot be federated: every surface component's full Y-up bounds exceed the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km shared render-frame limit`);

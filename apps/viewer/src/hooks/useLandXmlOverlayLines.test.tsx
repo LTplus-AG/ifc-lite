@@ -33,7 +33,7 @@ function line(sourceId: string, dimension: 2 | 3 = 3): LandXmlPolyline {
   };
 }
 
-function document(sourceLine: LandXmlPolyline): LandXmlTinDocument {
+function document(sourceLine: LandXmlPolyline, lineKind: 'breakline' | 'contour' = 'breakline'): LandXmlTinDocument {
   return {
     format: 'landxml',
     schema: 'LandXML-1.2',
@@ -44,16 +44,21 @@ function document(sourceLine: LandXmlPolyline): LandXmlTinDocument {
       sourceId: 'landxml:surface:1', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]',
       properties: {}, definitionProperties: {}, name: 'survey', kind: 'volume', renderState: 'preserved_only',
       points: [], sourceDataPoints: [], faces: [], faceSourceIds: [], faceVisibility: [], hiddenFaceCount: 0,
-      boundaries: [], breaklines: [sourceLine], contours: [],
+      boundaries: [], breaklines: lineKind === 'breakline' ? [sourceLine] : [], contours: lineKind === 'contour' ? [sourceLine] : [],
     }],
     extensions: [], warnings: [], rendering: { meshProvenance: [], surfaceCounts: [] },
   };
 }
 
-function landXmlModel(id: string, sourceLine: LandXmlPolyline, originShift = { x: 0, y: 0, z: 0 }): FederatedModel {
+function landXmlModel(
+  id: string,
+  sourceLine: LandXmlPolyline,
+  originShift = { x: 0, y: 0, z: 0 },
+  lineKind: 'breakline' | 'contour' = 'breakline',
+): FederatedModel {
   const model = fixtureModel(id);
   model.sourceSchema = 'LandXML-1.2';
-  model.landXmlDocument = document(sourceLine);
+  model.landXmlDocument = document(sourceLine, lineKind);
   model.geometryResult = {
     meshes: [], totalVertices: 0, totalTriangles: 0,
     coordinateInfo: {
@@ -93,7 +98,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
     render(<Probe />);
 
     assert.deepEqual(
-      [...vertices],
+      [...vertices].map((value) => Number(value.toFixed(4))),
       [19, 28, -13, 49, 58, -43, -80, -170, -310, -50, -140, -340],
       'all unselected records render in their own published frame',
     );
@@ -113,6 +118,27 @@ describe('LandXML source overlay rendering (#5042)', () => {
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
     assert.equal(vertices.length, 0, 'a PntList2D stays inspectable but has no fabricated 3D overlay');
+  });
+
+  it('renders a schema-valid two-dimensional Contour at its authored elevation (#5042)', () => {
+    const contour = line('contour-2d', 2);
+    contour.properties = { elev: '100' };
+    const model = landXmlModel('two-dimensional-contour', contour, { x: 1, y: 2, z: 3 }, 'contour');
+    model.landXmlDocument!.units = {
+      linearUnit: 'foot', elevationUnit: 'foot', linearScaleToMeters: 0.3048, elevationScaleToMeters: 0.3048,
+    };
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: contour.sourceId } });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+
+    assert.deepEqual(
+      [...vertices],
+      [5.096, 28.48, -6.048, 17.288, 28.48, -15.192],
+      'elev is retained in source units and converted through elevationScaleToMeters',
+    );
+    assert.equal(contour.coordinateDimension, 2, 'rendering must not rewrite the authored PntList2D record');
+    assert.deepEqual(contour.points, [[10, 20], [40, 50]], 'the original two-dimensional coordinates remain inspectable');
   });
 
   it('removes overlays with federated model visibility', () => {

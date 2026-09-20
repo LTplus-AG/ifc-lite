@@ -4,7 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { findLandXmlModelSourceRecord, landXmlPickSourceRef, type LandXmlTinDocument } from './landXmlSemantics.js';
+import { FederationRegistry } from '@ifc-lite/renderer';
+import { findLandXmlModelSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, type LandXmlTinDocument } from './landXmlSemantics.js';
 
 function document(sourceId: string): LandXmlTinDocument {
   return {
@@ -33,6 +34,21 @@ describe('LandXML semantic selection (#5042)', () => {
     const model = { landXmlDocument: document('landxml:surface:1:face:1') };
     assert.deepEqual(landXmlPickSourceRef(model, 'federated', 1, 0), { modelId: 'federated', sourceId: 'landxml:surface:1:face:1' });
     assert.equal(landXmlPickSourceRef(model, 'federated', 1, 2), null);
+  });
+
+  it('uses the federation resolver before mapping a production terrain pick', () => {
+    const registry = new FederationRegistry();
+    registry.registerModel('building', 999_999);
+    const terrainOffset = registry.registerModel('terrain', 4);
+    const models = new Map([
+      ['building', {}],
+      ['terrain', { landXmlDocument: document('landxml:surface:1:face:1') }],
+    ]);
+    assert.deepEqual(
+      landXmlPickSourceRefFromFederation({ models, findModelForGlobalId: (globalId) => registry.getModelForGlobalId(globalId) }, terrainOffset + 1),
+      { modelId: 'terrain', sourceId: 'landxml:surface:1' },
+      'without a PickResult triangle index the source surface is the honest pick result',
+    );
   });
 
   it('resolves preserved SourceData points without renderer IDs', () => {

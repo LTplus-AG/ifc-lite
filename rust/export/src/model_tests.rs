@@ -14,14 +14,21 @@ use std::sync::Arc;
 #[test]
 fn exporter_stratum_aliases_emit_exact_rows_but_vendor_unknowns_do_not() {
     for &alias in ifc_lite_core::EXPORTER_STRATUM_ALIASES {
-        let ifc = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n#1={alias}('0$ScRe4drECQ4DMSqUjd6d',$,'Stratum',$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;");
+        let ifc = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6c',$,'P',$,$,$,$,(#2),#3);\n#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);\n#3=IFCUNITASSIGNMENT((#6));\n#4=IFCCARTESIANPOINT((0.,0.,0.));\n#5=IFCAXIS2PLACEMENT3D(#4,$,$);\n#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#43={alias}('0$ScRe4drECQ4DMSqUjd6d',$,'Stratum',$,$,#44,#45,$);\n#44=IFCLOCALPLACEMENT($,#5);\n#45=IFCPRODUCTDEFINITIONSHAPE($,$,(#46));\n#46=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#48));\n#48=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3)),$);\n#49=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));\nENDSEC;\nEND-ISO-10303-21;");
+        let mesh = ifc_lite_processing::process_geometry(ifc.as_bytes())
+            .meshes
+            .into_iter()
+            .find(|mesh| mesh.express_id == 43)
+            .unwrap_or_else(|| panic!("{alias} must produce geometry"));
+        assert_eq!(mesh.ifc_type, alias, "{alias} mesh must retain its exact label");
         let mut rows = Vec::new();
         stream_export_model(ifc.as_bytes(), |row| rows.push(row));
         let row = rows
             .iter()
-            .find(|row| row.express_id == 1)
+            .find(|row| row.express_id == 43)
             .unwrap_or_else(|| panic!("{alias} must produce a product row"));
         assert_eq!(row.ifc_type, alias, "{alias} must retain its exact label");
+        assert_eq!(row.ifc_type, mesh.ifc_type, "{alias} row and mesh labels must agree");
     }
 
     let vendor = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n#1=IFCVENDORSTRATUM('0$ScRe4drECQ4DMSqUjd6d',$,'Vendor',$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;";

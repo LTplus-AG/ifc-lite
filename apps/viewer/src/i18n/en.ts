@@ -43,6 +43,7 @@ import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
+import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
@@ -123,6 +124,7 @@ export const en = {
   ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
+  ...miscPanelsAEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -630,6 +630,39 @@ interpolation params rather than translated. A thrown `Error`'s own
 exception) is likewise interpolated as a parameter, never translated
 itself — it is engine content, not UI chrome.
 
+The grab-bag catalogue (#4918 slice: standalone panels, part 1,
+`misc-panels-a.en.ts`) bundles five otherwise-unrelated one-off dialogs/panels
+under their own key prefixes purely for PR-count efficiency:
+`BasketPresentationDock.tsx` (`basketPresentationDock.*`, the pinboard
+"Presentation" dock's header, source/visibility/save/play-all controls, the
+saved-view strip, and the resize handle), `DeviationPanel.tsx`
+(`deviationPanel.*`, the BIM/scan deviation heatmap's compute button, stats
+line, range slider, and legend, plus its `setError` messages), the pre-export
+`ExportChangesReviewDialog.tsx` (`exportChangesReviewDialog.*`, the summary
+line and the per-change-kind/value-fallback labels `describeChangeKind` and
+`describeEntity` now resolve rather than returning bare English strings — the
+former threads the component's own `t` since it runs at render time inside
+`groups.map`, the latter takes an optional non-hook translator like
+`webGpuBannerBlurb` since it runs once inside `buildReviewGroups`, outside any
+component), `ScanSectionPanel.tsx` (`scanSectionPanel.*`, the point-cloud scan
+overlay's toggle, thickness/opacity sliders, and status footnote), and
+`SpaceMousePanel.tsx` (`spaceMousePanel.*`, the 3Dconnexion device panel's
+connect/disconnect, sensitivity, and diagnostics readout). Several
+counted-fragment JSX expressions were combined into single templated messages
+per the house rule against fragmenting a translated message — the basket
+dock's `{count} in basket`, the deviation stats line, the SpaceMouse
+diagnostics report line — rather than left split across raw JSX text and a
+bare unit suffix; `spaceMousePanel.layoutLine` and
+`exportChangesReviewDialog.changesSummary` instead nest a second `t()` call
+for a sub-label (the layout source, the model count) inside their own
+template, the same shape `RoomPanel.tsx`'s `statusRoom` already uses.
+`spaceMousePanel.headerLabel` / `deviceNameFallback` / `connectButton` keep
+the literal English word `SpaceMouse` as their catalogue value — a device
+name, not translated prose, per the house rule — routed through `t()` only so
+the ending gate does not see it as an unconverted JSX literal, the same
+reasoning the geometry-export and webgpu-troubleshooting catalogues document
+for a technical string a translator is expected to leave unchanged.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

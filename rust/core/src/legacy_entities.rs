@@ -100,17 +100,17 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
             has_geometry: false,
         }),
 
-        // IFC2x3 names that have no IFC4x3 enum variant. They map to the
-        // closest modern equivalent; all of them carry geometry.
+        // IFC2x3 names absent from the canonical IFC4X3 catalog. The generated
+        // enum now preserves their exact variants, while this table deliberately
+        // keeps the established processing classification by mapping them to
+        // the closest modern equivalent; all of them carry geometry.
         //
         // This block is the set `scripts/check-legacy-entity-coverage.mjs`
         // derives: every CONCRETE `IfcProduct` subtype in `@ifc-lite/data`'s
-        // IFC2X3/IFC4 tables that `IfcType::from_str` resolves to `Unknown`.
-        // Anything missing here is dropped from BOTH the attribute export
-        // (`rust/export/src/model.rs` keeps only `is_subtype_of(IfcProduct)`,
-        // and `Unknown` is a subtype of nothing) and from meshing
-        // (`has_geometry_by_name` refuses `Unknown`) -- silent data loss, not
-        // a visible inconsistency (#3172).
+        // IFC2X3/IFC4 tables that were unknown before the supported-schema
+        // universe was generated. Anything missing here would now keep its
+        // exact type but could change legacy geometry/product classification,
+        // diverging from the behavior shipped before #4203 (#3172).
         "IFCEQUIPMENTELEMENT" => Some(LegacyEntityInfo {
             base_type: IfcType::IfcDistributionElement,
             has_geometry: true,
@@ -214,9 +214,9 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
 /// "UserDefinedOperationType"]` — same length, different names from index 8
 /// on, so reusing the base type's names would rename `Sizeable`'s value to
 /// `UserDefinedOperationType` rather than merely drop it. `None` means the
-/// name is not a recognised legacy entity (including: it is a modern name the
-/// generated `IfcType` enum already resolves, which should call
-/// [`IfcType::attribute_names`] instead).
+/// name is not an entity absent from the canonical IFC4X3 catalog. Supplemental
+/// names can resolve to exact generated enum variants and still have a row here:
+/// their older-schema positional metadata must not be borrowed from IFC4X3.
 pub fn legacy_attribute_names(entity_name: &str) -> Option<&'static [&'static str]> {
     // Case-insensitive, same as `legacy_aware_ifc_type` (and every other
     // legacy lookup in `schema_helpers.rs`): a STEP keyword is not guaranteed

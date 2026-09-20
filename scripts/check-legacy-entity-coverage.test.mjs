@@ -29,7 +29,13 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { legacyKeys, generatedNames, parseEntityTable, droppableProducts } from './check-legacy-entity-coverage.mjs';
+import {
+  canonicalGeneratedNames,
+  legacyKeys,
+  generatedNames,
+  parseEntityTable,
+  droppableProducts,
+} from './check-legacy-entity-coverage.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
@@ -147,6 +153,11 @@ test('a failure with no remedy is reported as a defect in this script', () => {
   assert.ok(src.includes(anchor), 'checker mutation anchor drifted');
   const dir = mkdtempSync(join(tmpdir(), 'legacy-unrouted-'));
   try {
+    mkdirSync(join(dir, 'lib'));
+    writeFileSync(
+      join(dir, 'lib/rust-schema-names.mjs'),
+      readFileSync(join(SCRIPTS, 'lib/rust-schema-names.mjs'), 'utf8'),
+    );
     // The name matters: the checker's main-entry guard is
     // `process.argv[1].endsWith('check-legacy-entity-coverage.mjs')`, so a copy
     // under any other name loads, does nothing, and exits 0 -- which would make
@@ -214,26 +225,26 @@ test('a broken LEGACY_ENTITY_NAMES extractor fails instead of passing vacuously'
   assert.doesNotMatch(out, /NO REMEDY MATCHED/);
 });
 
-test('an arm whose key from_str already resolves is reported', () => {
-  // The invariant `legacy_aware_ifc_type_from_record`'s Unknown short-circuit
-  // rests on: no key in the table may be a name the generated enum knows. If
-  // one is, the short-circuit fires and the remap is silently skipped.
-  //
-  // `IFCWALL` is the mutation because it is unambiguously in `from_str` today,
-  // so the case cannot rot into a no-op the way a borderline name could.
+test('the canonical catalog excludes supplemental exact-name variants', () => {
+  const schema = real.get(SCHEMA_REL);
+  assert.ok(generatedNames(schema).has('IFCPROXY'));
+  assert.ok(!canonicalGeneratedNames(schema).has('IFCPROXY'));
+  assert.ok(canonicalGeneratedNames(schema).has('IFCWALL'));
+  // rustfmt wraps long match arms in a block; the extractor must still see
+  // both the full generated universe and its canonical subset.
+  assert.ok(generatedNames(schema).has('IFCMOBILETELECOMMUNICATIONSAPPLIANCETYPE'));
+  assert.ok(canonicalGeneratedNames(schema).has('IFCMOBILETELECOMMUNICATIONSAPPLIANCETYPE'));
+});
+
+test('an arm for a canonical name is rejected while supplemental arms remain valid', () => {
   const anchor = '"IFCPRESENTATIONSTYLEASSIGNMENT"';
   assert.ok(real.get(LEGACY_REL).includes(anchor), 'mutation anchor drifted');
   const { status, out } = runOn({
-    [LEGACY_REL]: real.get(LEGACY_REL).replace(anchor, '"IFCWALL"'),
+    [LEGACY_REL]: real.get(LEGACY_REL).replaceAll(anchor, '"IFCWALL"'),
   });
   assert.equal(status, 1, out);
-  assert.match(out, /has an arm for "IFCWALL", which .*from_str already resolves/);
+  assert.match(out, /arm for canonical name "IFCWALL".*shadow its exact generated type/);
   assert.doesNotMatch(out, /NO REMEDY MATCHED/);
-  // The remedy has to match the failure. This class needs the arm REMOVED; the
-  // add-an-arm epilogue would send the reader the opposite way, and a gate whose
-  // instructions contradict its own finding is worse than one that says nothing.
-  assert.match(out, /REMOVE the arm/);
-  assert.doesNotMatch(out, /Add an arm mapping each name/);
 });
 
 test('a dead key gets the respell remedy, NOT the add-an-arm one', () => {

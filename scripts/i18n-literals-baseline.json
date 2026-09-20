@@ -41,7 +41,6 @@
   "apps/viewer/src/components/tours/TourInvite.tsx": 3,
   "apps/viewer/src/components/tours/TourStepCard.tsx": 8,
   "apps/viewer/src/components/ui/dialog.tsx": 1,
-  "apps/viewer/src/components/viewer/AddElementPanel.tsx": 49,
   "apps/viewer/src/components/viewer/AxisHelper.tsx": 3,
   "apps/viewer/src/components/viewer/BCFPanel.tsx": 11,
   "apps/viewer/src/components/viewer/BasketPresentationDock.tsx": 25,

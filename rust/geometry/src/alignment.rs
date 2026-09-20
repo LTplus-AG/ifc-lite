@@ -5,8 +5,8 @@
 //! `IfcAlignmentCurve` evaluation — horizontal + vertical alignment
 //! curves used as the directrix of `IfcSectionedSolidHorizontal`.
 //!
-//! Scope: IFC4x1 alignment entities. These are not in our IFC4X3 codegen
-//! enum, so dispatch is via `IfcType::from_str` cached behind `OnceLock`.
+//! Scope: IFC4x1 alignment entities. The supported-schema enum retains their
+//! exact names; dispatch uses cached `IfcType::from_str` lookups.
 //!
 //! ## Horizontal segments
 //! - `IfcLineSegment2D`           — straight tangent
@@ -32,7 +32,7 @@ use std::sync::OnceLock;
 
 use crate::{Error, Result};
 
-// --- IFC type lookup (resolves IFC4x1 names not in our IFC4X3 enum) ---
+// --- Cached IFC type lookup for IFC4x1 alignment names ---
 
 macro_rules! ifc_type_fn {
     ($name:ident, $literal:expr) => {

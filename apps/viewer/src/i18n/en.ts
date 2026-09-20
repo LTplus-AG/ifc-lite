@@ -4,6 +4,7 @@
 
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
+import { addElementEn } from './catalogues/add-element.en';
 import { chartsEn } from './catalogues/charts.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
@@ -29,6 +30,7 @@ import { splitToolEn } from './catalogues/split-tool.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...addElementEn,
   ...bulkPropertyEditorEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,

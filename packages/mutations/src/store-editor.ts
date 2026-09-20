@@ -20,7 +20,7 @@
 import { prepareEntityOperations } from './prepare-entity-operations.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
-import { QuantityType, PropertyValueType } from '@ifc-lite/data';
+import { IFC_ENTITY_NAMES, QuantityType, PropertyValueType } from '@ifc-lite/data';
 import type {
   IfcAttributeValue,
   MutationEntityRef as EntityRef,
@@ -295,6 +295,39 @@ export class StoreEditor {
   /** All overlay-created entities, in insertion order. */
   getNewEntities(): NewEntity[] {
     return this.view.getNewEntities();
+  }
+
+  /** The schema declared by the loaded model, if the store exposes it. */
+  getSchemaVersion(): string | undefined {
+    return this.store.schemaVersion;
+  }
+
+  /**
+   * The entity's CURRENT IFC class — canonical, from whichever layer is
+   * authoritative: a pending retype, an overlay-created entity's authored
+   * type, or the source record's declared type — or `undefined` when the id
+   * is deleted or resolves to nothing at all. The one place a builder that
+   * takes "an id of a specific class" (e.g. `bim.store.addCostValue`'s
+   * `UnitBasis`) checks what it actually got, rather than trusting the
+   * caller.
+   */
+  getEntityType(expressId: number): string | undefined {
+    if (!this.hasEntity(expressId)) return undefined;
+    const canonical = (type: string): string => configuredNormalizer?.(type)
+      || IFC_ENTITY_NAMES[type.toUpperCase()]
+      || type;
+    const retype = this.view.getEntityTypeMutation(expressId);
+    if (retype) return canonical(retype.newType);
+    const created = this.view.getNewEntity(expressId);
+    if (created) return canonical(created.type);
+    // Deferred property atoms occupy express ids too (see
+    // `computeMaxExistingId`) and are absent from `entityIndex.byId` —
+    // without this fallback a valid, non-deleted deferred entity id reads as
+    // "does not exist" here even though `hasEntity` (which already checks
+    // `deferredEntityIndex`) says it does.
+    const sourceType = this.store.entityIndex.byId.get(expressId)?.type
+      ?? this.store.deferredEntityIndex?.get(expressId)?.type;
+    return sourceType ? canonical(sourceType) : undefined;
   }
 
   /**

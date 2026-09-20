@@ -113,6 +113,12 @@ annotation tools and guidance, export/print prompts, generation/error states,
 empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
 phase text and IFC/DXF data remain supplied by their owning systems.
 
+The Add Element authoring catalogue (#4918 editor-workflow slice) covers
+`AddElementPanel.tsx`: element and dimension controls, complete placement
+guidance messages, accessibility labels, and the Auto Spaces preview and
+generation states (`add-element.en.ts`). IFC enum values remain exact EXPRESS
+identifiers and are rendered from a typed data table rather than translated.
+
 The property-editor catalogue (#4918 editor-workflow slice) covers
 `PropertyEditor.tsx`: inline value and type editing, scope confirmation,
 property/quantity/classification/material authoring dialogs, class

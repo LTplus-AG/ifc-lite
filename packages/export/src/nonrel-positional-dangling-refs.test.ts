@@ -141,6 +141,35 @@ describe('a session deletion dangles a non-IFCREL positional reference', () => {
     expect(content).not.toContain('()');
   });
 
+  it('drops the deleted member from IfcPhysicalComplexQuantity.HasQuantities while a survivor keeps the list', () => {
+    // Mutation-sensitive counterpart to the "empty list" case below: when
+    // narrowing leaves at least one survivor it never has to choose between
+    // `$` and "leave unchanged" (`narrowNonRelPositionalRefLists`'s
+    // `survivors.length > 0` branch is unconditional on optionality — "narrowing
+    // alone cannot violate a [1:?] lower bound"), so this passes identically
+    // whether `HasQuantities` is `OPTIONAL` or not. The all-members-deleted
+    // test below exercises the OPTIONAL-vs-mandatory fork but produces the
+    // exact same output on `upstream/main` as on this branch for a mandatory
+    // attribute (both leave the slot untouched) — proven by mutation below —
+    // so it alone cannot pin `IFCPHYSICALCOMPLEXQUANTITY`'s membership in
+    // `NONREL_REF_LIST_TYPES`. This test is what does.
+    const store = buildParsedStore([
+      [1, 'IFCQUANTITYCOUNT', COUNT_QTY],
+      [2, 'IFCPHYSICALCOMPLEXQUANTITY', "#2=IFCPHYSICALCOMPLEXQUANTITY('CQ',$,(#1,#3),'Disc',$,$);\n"],
+      [3, 'IFCQUANTITYAREA', AREA_QTY],
+    ]);
+
+    const view = new MutablePropertyView(null, 'hasquantities-partial-test');
+    view.deleteEntity(1);
+
+    const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#1=IFCQUANTITYCOUNT');
+    expect(findDanglingRefs(content)).toEqual([]);
+    // Rewritten, not withheld: the surviving #3 keeps the record's own line.
+    expect(content).toMatch(/#2=IFCPHYSICALCOMPLEXQUANTITY\('CQ',\$,\(#3\),'Disc',\$,\$\);/);
+  });
+
   it('EXPLICIT CHOICE: deleting every HasQuantities member (MANDATORY SET, not OPTIONAL) ships the dangling ref, does not withhold', () => {
     // `IfcPhysicalComplexQuantity.HasQuantities` is `SET [1:?] OF
     // IfcPhysicalQuantity`, NOT `OPTIONAL` (`IFC4_ADD2_TC1.exp` and
@@ -167,6 +196,108 @@ describe('a session deletion dangles a non-IFCREL positional reference', () => {
     expect(content).toMatch(/#2=IFCPHYSICALCOMPLEXQUANTITY\('CQ',\$,\(#1\),'Disc',\$,\$\);/);
     expect(findDanglingRefs(content)).toEqual([1]);
   });
+});
+
+/**
+ * `IfcAppliedValue` and its one IFC4/IFC4X3 subtype `IfcCostValue` both
+ * carry a `Components : OPTIONAL LIST [1:?] OF IfcAppliedValue` — checked
+ * directly in `IFC4_ADD2_TC1.exp`:
+ *
+ *   ENTITY IfcAppliedValue
+ *    SUPERTYPE OF (ONEOF (IfcCostValue));
+ *     Name : OPTIONAL IfcLabel;
+ *     ... (7 more OPTIONAL attributes) ...
+ *     ArithmeticOperator : OPTIONAL IfcArithmeticOperatorEnum;
+ *     Components : OPTIONAL LIST [1:?] OF IfcAppliedValue;
+ *
+ *   ENTITY IfcCostValue
+ *    SUBTYPE OF (IfcAppliedValue);
+ *   END_ENTITY;
+ *
+ * `IfcCostValue` declares ZERO own attributes (confirmed in the generated
+ * registry, `@ifc-lite/parser`'s `schema-registry.ts`:
+ * `IfcCostValue.attributes` is `[]`), so `Components` is INHERITED at the
+ * same slot index — position 10 (`Name`=1 ... `ArithmeticOperator`=9,
+ * `Components`=10) — for both the `IFCAPPLIEDVALUE` and `IFCCOSTVALUE`
+ * tokens: neither type is `SUBTYPE OF (IfcRoot)`, so there is no
+ * `GlobalId`/`OwnerHistory` prefix shifting the slot, and `IfcAppliedValue`
+ * is not declared `ABSTRACT SUPERTYPE`, so `IFCAPPLIEDVALUE` itself is a
+ * legal concrete line, not only `IFCCOSTVALUE`.
+ */
+describe('IfcAppliedValue / IfcCostValue.Components (own attribute, inherited by IfcCostValue)', () => {
+  const UNIT = '#1=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.),#9);\n';
+  const OTHER_VALUE = "#3=IFCAPPLIEDVALUE($,$,$,$,$,$,$,$,$,$);\n";
+
+  it.each(['IFCAPPLIEDVALUE', 'IFCCOSTVALUE'])('drops the deleted member from %s.Components on a plain full export', (token) => {
+    const line = `#2=${token}($,$,$,$,$,$,$,$,$,(#1,#3));\n`;
+    const store = buildParsedStore([
+      [1, 'IFCAPPLIEDVALUE', OTHER_VALUE.replace('#3=', '#1=')],
+      [2, token, line],
+      [3, 'IFCAPPLIEDVALUE', OTHER_VALUE],
+    ]);
+
+    const view = new MutablePropertyView(null, `${token}-components-test`);
+    view.deleteEntity(1);
+
+    const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#1=IFCAPPLIEDVALUE');
+    expect(findDanglingRefs(content)).toEqual([]);
+    // Rewritten, not withheld: the surviving #3 keeps the record's own line.
+    expect(content).toMatch(new RegExp(`#2=${token}\\([^)]*\\(#3\\)`));
+  });
+
+  it.each(['IFCAPPLIEDVALUE', 'IFCCOSTVALUE'])(
+    'EXPLICIT CHOICE: deleting every %s.Components member (OPTIONAL LIST) narrows to $, not ()',
+    (token) => {
+      // `Components` is `OPTIONAL LIST [1:?]` on `IfcAppliedValue` itself
+      // (`IFC4_ADD2_TC1.exp`) and inherited unchanged onto `IfcCostValue`
+      // (which declares no own attributes) — the schema has a valid
+      // spelling for "none of these": `$`, not the invalid `()`.
+      const line = `#2=${token}($,$,$,$,$,$,$,$,$,(#1));\n`;
+      const store = buildParsedStore([
+        [1, 'IFCAPPLIEDVALUE', OTHER_VALUE.replace('#3=', '#1=')],
+        [2, token, line],
+      ]);
+
+      const view = new MutablePropertyView(null, `${token}-empty-components-test`);
+      view.deleteEntity(1);
+
+      const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+      expect(content).not.toContain('#1=IFCAPPLIEDVALUE');
+      expect(findDanglingRefs(content)).toEqual([]);
+      expect(content).toMatch(new RegExp(`#2=${token}\\(\\$,\\$,\\$,\\$,\\$,\\$,\\$,\\$,\\$,\\$\\);`));
+      expect(content).not.toContain('()');
+    },
+  );
+
+  it.each(['IFCAPPLIEDVALUE', 'IFCCOSTVALUE'])(
+    'a deleted UnitBasis (bare ref, slot 4) must not vanish the whole %s line',
+    (token) => {
+      // `UnitBasis : OPTIONAL IfcMeasureWithUnit` — a bare, single-valued
+      // attribute at slot 4, not a list. Same shape as the file's existing
+      // `IfcCostItem.OwnerHistory` regression guard: a bare excluded ref on
+      // a `NONREL_REF_LIST_TYPES` member must be left dangling, unfiltered,
+      // never made to withhold the whole record.
+      const line = `#2=${token}($,$,$,#1,$,$,$,$,$,$);\n`;
+      const store = buildParsedStore([
+        [1, 'IFCMEASUREWITHUNIT', UNIT],
+        [2, token, line],
+      ]);
+
+      const view = new MutablePropertyView(null, `${token}-bare-unitbasis-test`);
+      view.deleteEntity(1);
+
+      const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+      // The bug this guards: if the bare-ref-withholds rule were reused
+      // unmodified for this type, `#2=...` would never reach the output.
+      expect(content).toContain(`#2=${token}`);
+      expect(content).toMatch(new RegExp(`#2=${token}\\(\\$,\\$,\\$,#1,`));
+      expect(findDanglingRefs(content)).toEqual([1]);
+    },
+  );
 });
 
 describe('the extended reach does not widen the criterion', () => {

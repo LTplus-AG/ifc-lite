@@ -7,6 +7,7 @@ import { useTranslation } from '@/i18n';
 import type { LandXmlSourceRef, LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 const SURFACE_PAGE_SIZE = 100;
+const OVERLAY_PAGE_SIZE = 100;
 
 interface LandXmlModelSourceNavigationProps {
   modelId: string;
@@ -19,19 +20,44 @@ interface LandXmlModelSourceNavigationProps {
 export function LandXmlModelSourceNavigation({ modelId, document, selected, onSelect }: LandXmlModelSourceNavigationProps) {
   const { t } = useTranslation();
   const [surfacePage, setSurfacePage] = useState(0);
+  const [overlayPage, setOverlayPage] = useState(0);
   const pages = Math.max(1, Math.ceil(document.surfaces.length / SURFACE_PAGE_SIZE));
   const page = Math.min(surfacePage, pages - 1);
   const surfaces = useMemo(() => document.surfaces.slice(
     page * SURFACE_PAGE_SIZE,
     (page + 1) * SURFACE_PAGE_SIZE,
   ), [document.surfaces, page]);
-  const overlays = useMemo(() => document.surfaces.flatMap((surface) => [
-    ...surface.boundaries.map((line) => ({ label: 'Boundary', sourceId: line.sourceId, name: line.name })),
-    ...surface.breaklines.map((line) => ({ label: 'Breakline', sourceId: line.sourceId, name: line.name })),
-    ...surface.contours.map((line) => ({ label: 'Contour', sourceId: line.sourceId, name: line.name })),
-  ]), [document.surfaces]);
+  const overlayCount = useMemo(() => document.surfaces.reduce(
+    (total, surface) => total + surface.boundaries.length + surface.breaklines.length + surface.contours.length,
+    0,
+  ), [document.surfaces]);
+  const overlayPages = Math.max(1, Math.ceil(overlayCount / OVERLAY_PAGE_SIZE));
+  const boundedOverlayPage = Math.min(overlayPage, overlayPages - 1);
+  const overlays = useMemo(() => {
+    const start = boundedOverlayPage * OVERLAY_PAGE_SIZE;
+    const end = start + OVERLAY_PAGE_SIZE;
+    const pageRecords: Array<{ label: string; sourceId: string; name: string | null }> = [];
+    let ordinal = 0;
+    for (const surface of document.surfaces) {
+      for (const [label, lines] of [
+        ['Boundary', surface.boundaries],
+        ['Breakline', surface.breaklines],
+        ['Contour', surface.contours],
+      ] as const) {
+        for (const line of lines) {
+          if (ordinal >= start && ordinal < end) pageRecords.push({ label, sourceId: line.sourceId, name: line.name });
+          ordinal += 1;
+          if (ordinal >= end) return pageRecords;
+        }
+      }
+    }
+    return pageRecords;
+  }, [boundedOverlayPage, document.surfaces]);
 
-  useEffect(() => setSurfacePage(0), [modelId, document]);
+  useEffect(() => {
+    setSurfacePage(0);
+    setOverlayPage(0);
+  }, [modelId, document]);
 
   return <>
     <div className="border-b border-zinc-200 dark:border-zinc-800">
@@ -71,6 +97,11 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
           </button>;
         })}
       </div>
+      {overlayPages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 px-3 py-2 text-xs dark:border-zinc-800">
+        <button type="button" disabled={boundedOverlayPage === 0} onClick={() => setOverlayPage(boundedOverlayPage - 1)}>{t('properties.landXmlSource.previous')}</button>
+        <span>{t('properties.landXmlSource.page', { current: boundedOverlayPage + 1, total: overlayPages })}</span>
+        <button type="button" disabled={boundedOverlayPage + 1 >= overlayPages} onClick={() => setOverlayPage(boundedOverlayPage + 1)}>{t('properties.landXmlSource.next')}</button>
+      </div>}
     </div>
   </>;
 }

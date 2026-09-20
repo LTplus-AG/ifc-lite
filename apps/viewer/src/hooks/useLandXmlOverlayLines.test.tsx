@@ -164,6 +164,20 @@ describe('LandXML source overlay rendering (#5042)', () => {
     assert.equal(vertices.length, 0, 'unsafe segments are refused rather than quantized into f32');
   });
 
+  it('does not throw while rejecting finite overlays outside the safe pre-rotation frame', () => {
+    const extreme = line('extreme');
+    extreme.points = [[1e308, 1e308, 1e308], [1e308, 1e308, 1e308]];
+    const model = landXmlModel('extreme-overlay', extreme);
+    model.landXmlDocument!.units = {
+      linearUnit: 'kilometer', elevationUnit: 'kilometer', linearScaleToMeters: 1000, elevationScaleToMeters: 1000,
+    };
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    assert.doesNotThrow(() => render(<Probe />));
+    assert.equal(vertices.length, 0, 'scaled coordinates that overflow are rejected before placement');
+  });
+
   it('keeps overlays aligned with committed and preview model translations', () => {
     const model = landXmlModel('moved-terrain', line('boundary'));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });

@@ -63,7 +63,11 @@ function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult['coord
   );
   const hasLargeCoordinates = maxAbs > 10_000;
   const originShift = hasLargeCoordinates
-    ? { x: (bounds.min.x + bounds.max.x) / 2, y: (bounds.min.y + bounds.max.y) / 2, z: (bounds.min.z + bounds.max.z) / 2 }
+    ? {
+        x: bounds.min.x / 2 + bounds.max.x / 2,
+        y: bounds.min.y / 2 + bounds.max.y / 2,
+        z: bounds.min.z / 2 + bounds.max.z / 2,
+      }
     : { x: 0, y: 0, z: 0 };
   return createCoordinateInfo(bounds, originShift, hasLargeCoordinates);
 }

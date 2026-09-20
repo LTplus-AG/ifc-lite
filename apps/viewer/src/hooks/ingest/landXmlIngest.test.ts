@@ -139,6 +139,22 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.semanticDocument.surfaces[0].renderState, 'preserved_only');
   });
 
+  it('derives a finite frame for very large finite source overlays (#5042)', async () => {
+    const sourceOnly = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+      <Surfaces><Surface name="Extreme"><Definition surfType="VOLUME"/><SourceData>
+        <Boundaries><Boundary><PntList3D>1e308 1e308 1e308 1e308 1e308 1e308</PntList3D></Boundary></Boundaries>
+      </SourceData></Surface></Surfaces>
+    </LandXML>`;
+    const result = await parseViewer(bytes(sourceOnly));
+    const frame = result.geometryResult.coordinateInfo;
+    assert.equal(result.semanticDocument.surfaces[0].boundaries.length, 1);
+    assert.equal(frame.originShift.x, 1e308);
+    assert.ok(Object.values(frame.originShift).every(Number.isFinite));
+    assert.ok(Object.values(frame.shiftedBounds.min).every(Number.isFinite));
+    assert.ok(Object.values(frame.shiftedBounds.max).every(Number.isFinite));
+  });
+
   it('preserves an empty or fully hidden TIN without requiring render units (#5042)', async () => {
     const hiddenWithoutUnits = LANDXML
       .replace(/\s*<Units>[\s\S]*?<\/Units>/, '')

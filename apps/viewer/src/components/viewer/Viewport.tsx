@@ -40,9 +40,7 @@ import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
-import {
-  unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D,
-} from '../../utils/viewportUtils.js';
+import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
@@ -66,7 +64,7 @@ import {
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
-import { landXmlPickSourceRefFromFederation } from '../../hooks/ingest/landXmlSemantics.js';
+import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
@@ -199,15 +197,7 @@ export function Viewport({
     }
 
     const globalId = pickResult.expressId;
-    // LandXML meshes deliberately use synthetic ids only for renderer and
-    // federation ownership. Resolve the owner through the federation registry,
-    // then use retained mesh provenance to enter the separate source-selection
-    // channel; never pretend a synthetic terrain mesh is an IFC entity.
-    const sourceRef = landXmlPickSourceRefFromFederation(currentState, globalId);
-    if (sourceRef) {
-      currentState.setSelectedLandXmlSource(sourceRef);
-      return;
-    }
+    if (selectLandXmlViewportPick(currentState, globalId)) return;
     const resolvedRef = resolveEntityRef(globalId);
 
     // Set globalId for renderer (highlighting uses globalIds directly)

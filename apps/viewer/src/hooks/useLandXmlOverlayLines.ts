@@ -89,16 +89,23 @@ export function useLandXmlOverlayLines(): Float32Array {
             const elevationA = pointElevationA ?? planarContourElevation;
             const elevationB = pointElevationB ?? planarContourElevation;
             if (elevationA === null || elevationB === null) continue;
-            const [ax, ay, az] = place({
+            const localA = {
               x: eastA * units.linearScaleToMeters - offset.x,
               y: elevationA * units.elevationScaleToMeters - offset.y,
               z: -northA * units.linearScaleToMeters - offset.z,
-            });
-            const [bx, by, bz] = place({
+            };
+            const localB = {
               x: eastB * units.linearScaleToMeters - offset.x,
               y: elevationB * units.elevationScaleToMeters - offset.y,
               z: -northB * units.linearScaleToMeters - offset.z,
-            });
+            };
+            if (![localA.x, localA.y, localA.z, localB.x, localB.y, localB.z].every(Number.isFinite)) continue;
+            if (!boundsFitRenderFrame({
+              min: { x: Math.min(localA.x, localB.x), y: Math.min(localA.y, localB.y), z: Math.min(localA.z, localB.z) },
+              max: { x: Math.max(localA.x, localB.x), y: Math.max(localA.y, localB.y), z: Math.max(localA.z, localB.z) },
+            }, { x: 0, y: 0, z: 0 })) continue;
+            const [ax, ay, az] = place(localA);
+            const [bx, by, bz] = place(localB);
             const a = { x: ax, y: ay, z: az };
             const b = { x: bx, y: by, z: bz };
             if (!boundsFitRenderFrame({

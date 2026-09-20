@@ -38,7 +38,7 @@ struct PipeParser<'a> {
     structure: Option<StructureBuilder>,
     pipe: Option<PipeBuilder>,
     capture: Option<PositionCapture>,
-    feature: Option<FeatureBuilder>,
+    features_open: Vec<FeatureBuilder>,
     networks: Vec<crate::LandXmlPipeNetwork>,
     collections: Vec<crate::LandXmlPipeNetworkCollection>,
     features: Vec<crate::LandXmlPipeFeature>,
@@ -53,7 +53,7 @@ struct PipeParser<'a> {
     references_seen: usize,
     pipe_network_collections: usize,
     network_ordinal: usize,
-    feature_ordinal: usize,
+    feature_ordinals: HashMap<LandXmlSourceId, usize>,
 }
 /// Parse exact LandXML 1.2 pipe networks with default resource limits.
 /// This native source parser exposes no renderer, WASM, or invented IFC path.
@@ -84,7 +84,7 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         structure: None,
         pipe: None,
         capture: None,
-        feature: None,
+        features_open: Vec::new(),
         networks: Vec::new(),
         collections: Vec::new(),
         features: Vec::new(),
@@ -99,7 +99,7 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         references_seen: 0,
         pipe_network_collections: 0,
         network_ordinal: 0,
-        feature_ordinal: 0,
+        feature_ordinals: HashMap::new(),
     };
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
@@ -117,7 +117,7 @@ pub fn parse_landxml_pipe_networks_with_cancel(
             }
             Event::End(end) => parser.end(Some(end.name().as_ref()))?,
             Event::Text(text) => parser.text(text.as_ref())?,
-            Event::CData(text) => parser.text(text.as_ref())?,
+            Event::CData(text) => parser.cdata(text.as_ref())?,
             Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             Event::Eof => break,
             _ => {}
@@ -179,6 +179,13 @@ impl PipeParser<'_> {
             target,
             namespaces: inherited,
         });
+        if let Some(capture) = self.capture.as_mut() {
+            if self.frames.len() > capture.depth {
+                capture.invalid_reason.get_or_insert_with(|| {
+                    "Center must contain direct coordinates".to_owned()
+                });
+            }
+        }
         if !target {
             return Ok(());
         }
@@ -242,17 +249,19 @@ impl PipeParser<'_> {
             }
             "Feature" if self.feature_owner().is_some() => {
                 let (owner_source_id, owner_path) = self.feature_owner().expect("checked owner");
-                self.feature_ordinal += 1;
-                let ordinal = self.feature_ordinal;
-                self.feature = Some(FeatureBuilder {
+                let ordinal = self.feature_ordinals.entry(owner_source_id.clone()).or_insert(0);
+                *ordinal += 1;
+                let ordinal = *ordinal;
+                self.features_open.push(FeatureBuilder {
                     source_id: LandXmlSourceId(format!("{}:feature:{ordinal}", owner_source_id.0)),
                     source_path: format!("{owner_path}/Feature[{ordinal}]"),
                     owner_source_id,
                     properties,
+                    depth: self.frames.len(),
                 });
             }
             "Property" if self.feature_property_path() => {
-                if let Some(feature) = self.feature.as_mut() {
+                if let Some(feature) = self.features_open.last_mut() {
                     let key = attr(&attributes, "label")
                         .or_else(|| attr(&attributes, "name"))
                         .ok_or_else(|| {

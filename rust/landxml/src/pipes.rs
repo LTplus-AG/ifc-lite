@@ -45,6 +45,8 @@ pub struct LandXmlPipeUnits {
 pub struct LandXmlPipePosition {
     pub northing: f64,
     pub easting: f64,
+    pub northing_meters: f64,
+    pub easting_meters: f64,
     pub elevation: Option<LandXmlPipeMeasure>,
 }
 

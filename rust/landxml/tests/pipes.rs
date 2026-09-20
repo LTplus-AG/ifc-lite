@@ -283,12 +283,12 @@ fn issue_5047_refuses_nested_center_text_empty_flows_and_nonfinite_scaled_measur
         r#"<Metric linearUnit="meter"/>"#,
         r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/><Center><Nested>4 5</Nested></Center></Pipe>"#,
     );
-    assert_eq!(
-        parse_landxml_pipe_networks(nested_center.as_bytes())
-            .expect_err("Center text must be direct")
-            .code,
-        LandXmlDiagnosticCode::InvalidSemantic
-    );
+    let parsed = parse_landxml_pipe_networks(nested_center.as_bytes())
+        .expect("a malformed Center refuses only its Pipe");
+    assert!(parsed.networks[0].pipes.is_empty());
+    assert!(parsed.refusals.iter().any(|refusal| {
+        refusal.message == "Center must contain direct coordinates"
+    }));
     let empty_flow = document(
         r#"<Metric linearUnit="meter"/>"#,
         r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/><PipeFlow/></Pipe>"#,
@@ -323,6 +323,53 @@ fn issue_5047_refuses_nested_center_text_empty_flows_and_nonfinite_scaled_measur
         .refusals
         .iter()
         .any(|item| item.message.contains("scaled measurement")));
+}
+
+#[test]
+fn issue_5047_center_cdata_is_literal_and_nested_content_is_a_local_refusal() {
+    let cdata = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/><Center><![CDATA[&#49; 2]]></Center></Pipe>"#,
+    );
+    let parsed = parse_landxml_pipe_networks(cdata.as_bytes()).expect("literal CDATA is valid XML data");
+    assert!(parsed.networks[0].pipes.is_empty());
+    assert!(parsed.refusals.iter().any(|refusal| refusal.message.contains("Center")));
+
+    let nested = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/><Center>1<v:x xmlns:v="urn:vendor"/>2</Center></Pipe><Pipe name="P-2" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/></Pipe>"#,
+    );
+    let parsed = parse_landxml_pipe_networks(nested.as_bytes()).expect("bad nested coordinates stay local");
+    assert_eq!(parsed.networks[0].pipes.len(), 1);
+    assert_eq!(parsed.networks[0].pipes[0].name, "P-2");
+    assert!(parsed.refusals.iter().any(|refusal| refusal.source_path.ends_with("Pipe[1]")));
+}
+
+#[test]
+fn issue_5047_features_preserve_namespace_ownership_nesting_and_sibling_ordinals() {
+    let source = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"><Feature label="foreign"/></CircPipe><Feature label="outer"><Property label="outer" value="yes"/><Feature><Property label="inner" value="yes"/></Feature></Feature><PipeFlow flowIn="1"><Feature><Property label="flow" value="yes"/></Feature></PipeFlow></Pipe>"#,
+    ).replace(
+        "<Structs>",
+        "<Structs><Feature><Property label=\"collection\" value=\"yes\"/></Feature>",
+    ).replace(
+        "<PipeNetworks>",
+        "<PipeNetworks><Feature><Property label=\"network-collection\" value=\"yes\"/></Feature>",
+    );
+    let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("features are source metadata");
+    let pipe = &parsed.networks[0].pipes[0];
+    let pipe_features = parsed.features.iter().filter(|feature| feature.owner_source_id == pipe.source_id).count();
+    assert_eq!(pipe_features, 1, "direct Pipe Feature has its own sibling ordinal scope");
+    let circ_feature = parsed.features.iter().find(|feature| feature.source_path.contains("CircPipe/")).expect("CircPipe Feature");
+    let flow_feature = parsed.features.iter().find(|feature| feature.properties.contains_key("flow")).expect("PipeFlow Feature");
+    assert!(circ_feature.source_path.ends_with("CircPipe/Feature[1]"));
+    assert!(flow_feature.source_path.ends_with("PipeFlow/Feature[1]"));
+    let outer = parsed.features.iter().find(|feature| feature.properties.contains_key("outer")).expect("outer feature");
+    let inner = parsed.features.iter().find(|feature| feature.properties.contains_key("inner")).expect("inner feature");
+    assert_eq!(inner.owner_source_id, outer.source_id);
+    assert!(parsed.features.iter().any(|feature| feature.properties.contains_key("collection")));
+    assert!(parsed.features.iter().any(|feature| feature.properties.contains_key("network-collection")));
 }
 
 #[test]

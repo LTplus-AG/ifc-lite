@@ -72,6 +72,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
   const [overlayPage, setOverlayPage] = useState(0);
   const [recordPage, setRecordPage] = useState(0);
   const [diagnosticPage, setDiagnosticPage] = useState(0);
+  const [pipePage, setPipePage] = useState(0);
   const pages = Math.max(1, Math.ceil(document.surfaces.length / PAGE_SIZE));
   const page = Math.min(surfacePage, pages - 1);
   const surfaces = useMemo(() => document.surfaces.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [document.surfaces, page]);
@@ -110,12 +111,20 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
     boundedDiagnosticPage * DIAGNOSTIC_PAGE_SIZE,
     (boundedDiagnosticPage + 1) * DIAGNOSTIC_PAGE_SIZE,
   ), [boundedDiagnosticPage, document.capabilityDiagnostics]);
+  const pipes = useMemo(
+    () => (document.pipeNetworks?.networks.flatMap((network) => network.pipes) ?? []),
+    [document.pipeNetworks],
+  );
+  const pipePages = Math.max(1, Math.ceil(pipes.length / PAGE_SIZE));
+  const boundedPipePage = Math.min(pipePage, pipePages - 1);
+  const visiblePipes = pipes.slice(boundedPipePage * PAGE_SIZE, (boundedPipePage + 1) * PAGE_SIZE);
 
   useEffect(() => {
     setSurfacePage(0);
     setOverlayPage(0);
     setRecordPage(0);
     setDiagnosticPage(0);
+    setPipePage(0);
   }, [modelId, document]);
 
   return <>
@@ -127,6 +136,10 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
       {overlays.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.modelMetadata.noSourceOverlays')}</div> : overlays.map((overlay) => <RecordButton key={overlay.sourceId} item={overlay} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedOverlayPage} pages={overlayPages} setPage={setOverlayPage} />
     </NavigationSection>
+    {pipes.length > 0 && <NavigationSection title={t('properties.modelMetadata.sourcePipeRecords')}>
+      {visiblePipes.map((pipe) => <RecordButton key={pipe.sourceId} item={{ label: pipe.name, sourceId: pipe.sourceId, detail: pipe.geometry.kind }} modelId={modelId} selected={selected} onSelect={onSelect} />)}
+      <Pager page={boundedPipePage} pages={pipePages} setPage={setPipePage} />
+    </NavigationSection>}
     <NavigationSection title={t('properties.landXmlSource.reviewRecords')}>
       {records.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.landXmlSource.noReviewRecords')}</div> : records.map((record) => <RecordButton key={record.sourceId} item={record} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedRecordPage} pages={recordPages} setPage={setRecordPage} />

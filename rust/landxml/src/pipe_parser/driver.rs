@@ -29,8 +29,11 @@ impl PipeParser<'_> {
         {
             self.finish_center()?;
         }
-        if frame.target && frame.local == "Feature" && self.feature.is_some() {
-            let feature = self.feature.take().expect("Feature closing is active");
+        if frame.target
+            && frame.local == "Feature"
+            && self.features_open.last().is_some_and(|feature| feature.depth == self.frames.len())
+        {
+            let feature = self.features_open.pop().expect("Feature closing is active");
             let record = crate::LandXmlPipeFeature {
                 source_id: feature.source_id,
                 source_path: feature.source_path,
@@ -93,12 +96,6 @@ impl PipeParser<'_> {
         }
         if let Some(capture) = &mut self.capture {
             if self.frames.len() != capture.depth {
-                if !text.trim().is_empty() {
-                    return Err(error(
-                        Code::InvalidSemantic,
-                        "Center must contain direct coordinates",
-                    ));
-                }
                 return Ok(());
             }
             let text = unescape(text)?;
@@ -106,6 +103,25 @@ impl PipeParser<'_> {
                 return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
             }
             capture.input.text.push_str(&text);
+        }
+        Ok(())
+    }
+
+    pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {
+        if bytes.len() > self.limits.max_text_bytes {
+            return Err(error(Code::LimitExceeded, "text limit exceeded"));
+        }
+        self.check_cancel_and_work(bytes.len())?;
+        let text = std::str::from_utf8(bytes)
+            .map_err(|_| error(Code::InvalidXml, "CDATA is not UTF-8"))?;
+        if let Some(capture) = &mut self.capture {
+            if self.frames.len() == capture.depth {
+                if capture.input.text.len() + text.len() > self.limits.max_text_bytes {
+                    return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
+                }
+                // CDATA is literal source text: reference syntax is data here.
+                capture.input.text.push_str(text);
+            }
         }
         Ok(())
     }

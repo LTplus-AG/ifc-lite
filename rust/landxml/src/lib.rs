@@ -28,7 +28,7 @@ pub use model::{
     LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits, LandXmlVersionCapability,
 };
 pub use parser::{
-    classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
+    classify_landxml_version, parse_landxml_document, parse_landxml_tin, parse_landxml_tin_with_cancel,
     LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 pub use profile::{

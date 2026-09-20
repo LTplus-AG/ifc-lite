@@ -59,6 +59,8 @@ pub(super) fn position(
     Ok(LandXmlPipePosition {
         northing: values[0],
         easting: values[1],
+        northing_meters: values[0] * units.linear_scale_to_meters,
+        easting_meters: values[1] * units.linear_scale_to_meters,
         elevation: values
             .get(2)
             .copied()

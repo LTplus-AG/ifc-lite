@@ -10,8 +10,8 @@ import { indexLandXmlSourceRecords } from './landXmlSemantics.js';
 import type {
   LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
   LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
-  LandXmlProfile, LandXmlProfilePoint, LandXmlRoadway, LandXmlTinDocument, LandXmlTinSurface,
-  LandXmlVerticalCurve,
+  LandXmlPipeMeasure, LandXmlPipeNetworkDocument, LandXmlPipePosition, LandXmlProfile,
+  LandXmlProfilePoint, LandXmlRoadway, LandXmlTinDocument, LandXmlTinSurface, LandXmlVerticalCurve,
 } from './landXmlSemantics.js';
 
 interface NodeModuleApi {
@@ -198,6 +198,42 @@ function polylines(value: unknown, context: string): LandXmlPolyline[] {
   });
 }
 
+function nullableMeasure(value: unknown, context: string): LandXmlPipeMeasure | null {
+  if (value === null || value === undefined) return null;
+  const raw = record(value, context);
+  return { value: finite(raw.value, `${context} value`), unit: string(raw.unit, `${context} unit`), meters: finite(raw.meters, `${context} meters`) };
+}
+
+function pipePosition(value: unknown, context: string): LandXmlPipePosition {
+  const raw = record(value, context);
+  return { northing: finite(raw.northing, `${context} northing`), easting: finite(raw.easting, `${context} easting`), northingMeters: finite(raw.northing_meters, `${context} northing meters`), eastingMeters: finite(raw.easting_meters, `${context} easting meters`), elevation: nullableMeasure(raw.elevation, `${context} elevation`) };
+}
+
+function pipeNetworks(value: unknown): LandXmlPipeNetworkDocument | null {
+  if (value === null || value === undefined) return null;
+  const raw = record(value, 'pipe networks');
+  const feature = (value: unknown, context: string) => {
+    const item = record(value, context);
+    return { sourceId: string(item.source_id, `${context} source id`), sourcePath: string(item.source_path, `${context} source path`), ownerSourceId: string(item.owner_source_id, `${context} owner source id`), properties: properties(item.properties, `${context} properties`) };
+  };
+  const networks = array(raw.networks, 'pipe networks').map((value, index) => {
+    const network = record(value, `pipe network ${index}`);
+    return {
+      sourceId: string(network.source_id, `pipe network ${index} source id`), sourcePath: string(network.source_path, `pipe network ${index} source path`), name: string(network.name, `pipe network ${index} name`), properties: properties(network.properties, `pipe network ${index} properties`),
+      features: array(network.features, `pipe network ${index} features`).map((item, itemIndex) => feature(item, `pipe network ${index} feature ${itemIndex}`)),
+      structures: array(network.structures, `pipe network ${index} structures`).map((value, itemIndex) => {
+        const structure = record(value, `pipe structure ${itemIndex}`);
+        return { sourceId: string(structure.source_id, `pipe structure ${itemIndex} source id`), sourcePath: string(structure.source_path, `pipe structure ${itemIndex} source path`), name: string(structure.name, `pipe structure ${itemIndex} name`), properties: properties(structure.properties, `pipe structure ${itemIndex} properties`), center: pipePosition(structure.center, `pipe structure ${itemIndex} center`) };
+      }),
+      pipes: array(network.pipes, `pipe network ${index} pipes`).map((value, itemIndex) => {
+        const pipe = record(value, `pipe ${itemIndex}`), connectivity = record(pipe.connectivity, `pipe ${itemIndex} connectivity`), part = record(pipe.part, `pipe ${itemIndex} part`), geometry = record(pipe.geometry, `pipe ${itemIndex} geometry`);
+        return { sourceId: string(pipe.source_id, `pipe ${itemIndex} source id`), sourcePath: string(pipe.source_path, `pipe ${itemIndex} source path`), name: string(pipe.name, `pipe ${itemIndex} name`), properties: properties(pipe.properties, `pipe ${itemIndex} properties`), connectivity: { startStructureSourceId: string(connectivity.start_structure_source_id, `pipe ${itemIndex} start`), endStructureSourceId: string(connectivity.end_structure_source_id, `pipe ${itemIndex} end`) }, part: { kind: string(part.kind, `pipe ${itemIndex} part kind`), diameter: nullableMeasure(part.diameter, `pipe ${itemIndex} diameter`) ?? undefined, span: nullableMeasure(part.span, `pipe ${itemIndex} span`) ?? undefined, width: nullableMeasure(part.width, `pipe ${itemIndex} width`) ?? undefined, height: nullableMeasure(part.height, `pipe ${itemIndex} height`) ?? undefined }, geometry: { kind: string(geometry.kind, `pipe ${itemIndex} geometry kind`), point: geometry.point === null || geometry.point === undefined ? null : pipePosition(geometry.point, `pipe ${itemIndex} route point`) } };
+      }),
+    };
+  });
+  return { networks, features: array(raw.features, 'pipe features').map((item, index) => feature(item, `pipe feature ${index}`)), refusals: array(raw.refusals, 'pipe refusals').map((value, index) => { const item = record(value, `pipe refusal ${index}`); return { sourceId: string(item.source_id, `pipe refusal ${index} source id`), sourcePath: string(item.source_path, `pipe refusal ${index} source path`), code: string(item.code, `pipe refusal ${index} code`), message: string(item.message, `pipe refusal ${index} message`) }; }) };
+}
+
 /** Convert the owned wasm-bindgen serialization into the viewer's TS shape. */
 export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
   const raw = record(value, 'document');
@@ -267,6 +303,7 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
     roadways,
     capabilityDiagnostics,
     preservedOnlyExtensions,
+    pipeNetworks: pipeNetworks(raw.pipe_networks),
     rendering: { meshProvenance: [], surfaceCounts: [] },
   };
   indexLandXmlSourceRecords(document);

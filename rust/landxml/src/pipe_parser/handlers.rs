@@ -186,6 +186,7 @@ impl PipeParser<'_> {
                 text: String::new(),
                 pnt_ref: attr(attributes, "pntRef").map(str::to_owned),
             },
+            invalid_reason: None,
         });
         Ok(())
     }
@@ -199,13 +200,20 @@ impl PipeParser<'_> {
         )?;
         match capture.owner {
             CaptureOwner::Structure => {
-                self.structure
-                    .as_mut()
-                    .expect("structure center active")
-                    .center = Some(capture.input)
+                let structure = self.structure.as_mut().expect("structure center active");
+                if let Some(reason) = capture.invalid_reason {
+                    structure.invalid_reason.get_or_insert(reason);
+                } else {
+                    structure.center = Some(capture.input);
+                }
             }
             CaptureOwner::Pipe => {
-                self.pipe.as_mut().expect("pipe center active").center = Some(capture.input)
+                let pipe = self.pipe.as_mut().expect("pipe center active");
+                if let Some(reason) = capture.invalid_reason {
+                    pipe.invalid_reason.get_or_insert(reason);
+                } else {
+                    pipe.center = Some(capture.input);
+                }
             }
         }
         Ok(())

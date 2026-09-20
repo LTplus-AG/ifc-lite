@@ -25,6 +25,9 @@ function recordName(record: LandXmlSourceRecord): string {
     case 'source-data-point': return `Source point ${record.point.ordinal}`;
     case 'face': return record.pointIds.join(', ');
     case 'boundary': case 'breakline': case 'contour': return record.line.name ?? record.line.sourceId;
+    case 'pipe': return record.pipe.name;
+    case 'pipe-structure': return record.structure.name;
+    case 'pipe-feature': return record.feature.sourceId;
     case 'alignment': return record.alignment.name;
     case 'profile': return record.profile.name;
     case 'profile-point': return `PVI: sta ${record.point.station}`;
@@ -47,6 +50,9 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'face': return `${record.surface.sourcePath}/Definition/Faces/F`;
     case 'source-data-point': return record.point.sourcePath;
     case 'boundary': case 'breakline': case 'contour': return record.line.sourcePath;
+    case 'pipe': return record.pipe.sourcePath;
+    case 'pipe-structure': return record.structure.sourcePath;
+    case 'pipe-feature': return record.feature.sourcePath;
     case 'alignment': return record.alignment.sourceId;
     case 'profile': return record.profile.sourceId;
     case 'profile-point': return record.point.sourceId;
@@ -112,6 +118,23 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   useEffect(() => setNavigationPage(0), [selected.modelId, selected.sourceId]);
 
   if (!record) return null;
+  if (record.kind === 'pipe' || record.kind === 'pipe-structure' || record.kind === 'pipe-feature') {
+    const properties = record.kind === 'pipe'
+      ? record.pipe.properties
+      : record.kind === 'pipe-structure' ? record.structure.properties : record.feature.properties;
+    return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
+      <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
+        <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
+        <h3 className="truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record)}</h3>
+        <p className="break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+      </div>
+      <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
+        <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
+        {record.kind === 'pipe' && <p><span className="font-semibold">Route:</span> {record.pipe.geometry.kind}</p>}
+      </div>
+      <SourceProperties title={t('properties.landXmlSource.surfaceProperties')} rows={surfacePropertyRows(properties)} empty={t('properties.landXmlSource.noProperties')} />
+    </div>;
+  }
   const document = models.get(selected.modelId)?.landXmlDocument;
   if (!('surface' in record)) {
     const count = semanticNavigationCount(record);

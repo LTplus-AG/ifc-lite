@@ -438,4 +438,14 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(globalThis.DOMParser, undefined);
     assert.equal((await parseDocument(LANDXML)).surfaces[0].name, 'Existing Ground');
   });
+
+  it('renders validated pipe routes in metres and retains model-qualified provenance (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Imperial linearUnit="foot" diameterUnit="inch"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="straight" refStart="A" refEnd="B"><CircPipe diameter="12"/></Pipe><Pipe name="route" refStart="A" refEnd="B"><CircPipe diameter="12"/><Center>5 5 0</Center></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    assert.equal(parsed.pipeNetworks?.networks[0].pipes[0].part.diameter?.meters, 0.3048);
+    assert.equal(parsed.pipeNetworks?.networks[0].structures[1].center.eastingMeters, 3.048);
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 2, 'straight and declared pass-through routes each render once');
+    assert.equal(viewer.semanticDocument.rendering.meshProvenance.every((mesh) => mesh.pipeSourceId !== undefined), true);
+  });
 });

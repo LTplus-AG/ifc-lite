@@ -28,6 +28,7 @@ export interface LandXmlTinDocumentJs {
   /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
   units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number };
   surfaces: LandXmlSurfaceJs[];
+  pipe_networks?: LandXmlPipeNetworkDocumentJs;
   extensions: LandXmlExtensionJs[];
   warnings: string[];
   alignments: LandXmlAlignmentJs[]; profiles: LandXmlProfileJs[];
@@ -61,6 +62,15 @@ export interface LandXmlCrossSectionSurfaceJs { source_id: string; parent_cross_
 export interface LandXmlRoadwayJs { source_id: string; ordinal: number; name: string; alignment_refs: string[]; alignment_source_ids: string[]; surface_refs: string[]; surface_source_ids: string[]; grade_model_refs: string[]; }
 export interface LandXmlCapabilityDiagnosticJs { code: string; source_id?: string; source_path: string; message: string; }
 export interface LandXmlPreservedOnlyExtensionJs { source_id: string; parent_source_id?: string; local_name: string; source_path: string; kind: "corridor" | "string_line"; }
+export interface LandXmlPipeNetworkDocumentJs { version: string; collections: LandXmlPipeCollectionJs[]; features: LandXmlPipeFeatureJs[]; networks: LandXmlPipeNetworkJs[]; refusals: LandXmlPipeRefusalJs[]; }
+export interface LandXmlPipeCollectionJs { source_id: string; source_path: string; properties: Record<string, string>; }
+export interface LandXmlPipeFeatureJs { source_id: string; source_path: string; owner_source_id: string; properties: Record<string, string>; }
+export interface LandXmlPipeRefusalJs { source_id: string; source_path: string; code: string; message: string; }
+export interface LandXmlPipeMeasureJs { value: number; unit: string; meters: number; }
+export interface LandXmlPipePositionJs { northing: number; easting: number; northing_meters: number; easting_meters: number; elevation?: LandXmlPipeMeasureJs; }
+export interface LandXmlPipeNetworkJs { source_id: string; source_path: string; name: string; pipe_network_type: string; properties: Record<string, string>; features: LandXmlPipeFeatureJs[]; structures: LandXmlPipeStructureJs[]; pipes: LandXmlPipeJs[]; }
+export interface LandXmlPipeStructureJs { source_id: string; source_path: string; name: string; properties: Record<string, string>; center: LandXmlPipePositionJs; }
+export interface LandXmlPipeJs { source_id: string; source_path: string; name: string; properties: Record<string, string>; connectivity: { start_structure_source_id: string; end_structure_source_id: string }; part: { kind: string; diameter?: LandXmlPipeMeasureJs; span?: LandXmlPipeMeasureJs; width?: LandXmlPipeMeasureJs; height?: LandXmlPipeMeasureJs }; geometry: { kind: string; point?: LandXmlPipePositionJs }; }
 "#;
 
 #[wasm_bindgen]
@@ -71,7 +81,7 @@ impl IfcAPI {
     /// deliberately use `LandXmlError::Display`, including its stable LXML code.
     #[wasm_bindgen(js_name = parseLandXmlTinBytes)]
     pub fn parse_landxml_tin_bytes(&self, data: &[u8]) -> Result<LandXmlTinDocumentJs, JsValue> {
-        let document = ifc_lite_landxml::parse_landxml_tin(data)
+        let document = ifc_lite_landxml::parse_landxml_document(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         document

@@ -43,6 +43,9 @@ pub(super) struct FeatureBuilder {
     pub(super) source_path: String,
     pub(super) owner_source_id: LandXmlSourceId,
     pub(super) properties: LandXmlPipeProperties,
+    /// Stack depth of this exact Feature frame. Nested or foreign Features
+    /// must never close the feature below them.
+    pub(super) depth: usize,
 }
 
 #[derive(Clone)]
@@ -129,4 +132,7 @@ pub(super) struct PositionCapture {
     pub(super) depth: usize,
     pub(super) owner: CaptureOwner,
     pub(super) input: PositionInput,
+    /// Coordinate elements are text-only. Keep this refusal local to the
+    /// owning pipe/structure so one bad record cannot discard a network.
+    pub(super) invalid_reason: Option<String>,
 }

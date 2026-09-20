@@ -25,6 +25,9 @@ const XML_WITH_PROFILE_REVIEW = `<?xml version="1.0" encoding="UTF-8"?>
   <Roadways><Roadway name="route" alignmentRefs="A" surfaceRefs="ground" gradeModelRefs="unavailable"/></Roadways>
 </LandXML>`;
 
+const PIPE_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" diameterUnit="millimeter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="600"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -53,6 +56,15 @@ export function runLandXmlContracts(api, test) {
   test('LandXML raw-byte parser omits optional Units rather than returning null', () => {
     const document = api.parseLandXmlTinBytes(new TextEncoder().encode(XML_WITHOUT_UNITS));
     assert.equal(document.units, undefined);
+  });
+
+  test('LandXML raw-byte parser serializes validated pipe records with metre coordinates', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(PIPE_XML));
+    const pipe = document.pipe_networks.networks[0].pipes[0];
+    assert.equal(pipe.name, 'P');
+    assert.equal(pipe.part.diameter.meters, 0.6);
+    assert.equal(pipe.connectivity.start_structure_source_id, 'landxml:pipe-network:1:1:structure:1');
+    assert.equal(document.pipe_networks.networks[0].structures[1].center.easting_meters, 10);
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

@@ -57,6 +57,7 @@ export interface LandXmlTinDocument {
   roadways: LandXmlRoadway[];
   capabilityDiagnostics: LandXmlCapabilityDiagnostic[];
   preservedOnlyExtensions: LandXmlPreservedOnlyExtension[];
+  pipeNetworks?: LandXmlPipeNetworkDocument | null;
   rendering: { meshProvenance: LandXmlMeshProvenance[]; surfaceCounts: LandXmlSurfaceCounts[] };
 }
 
@@ -72,6 +73,18 @@ export interface LandXmlCrossSectionSurface { sourceId: string; parentCrossSecti
 export interface LandXmlRoadway { sourceId: string; ordinal: number; name: string; alignmentRefs: string[]; alignmentSourceIds: string[]; surfaceRefs: string[]; surfaceSourceIds: string[]; gradeModelRefs: string[] }
 export interface LandXmlCapabilityDiagnostic { code: string; sourceId: string | null; sourcePath: string; message: string }
 export interface LandXmlPreservedOnlyExtension { sourceId: string; parentSourceId: string | null; localName: string; sourcePath: string; kind: 'corridor' | 'string_line' }
+export interface LandXmlPipeMeasure { value: number; unit: string; meters: number }
+export interface LandXmlPipePosition { northing: number; easting: number; northingMeters: number; eastingMeters: number; elevation: LandXmlPipeMeasure | null }
+export interface LandXmlPipePart { kind: string; diameter?: LandXmlPipeMeasure; span?: LandXmlPipeMeasure; width?: LandXmlPipeMeasure; height?: LandXmlPipeMeasure }
+export interface LandXmlPipe {
+  sourceId: string; sourcePath: string; name: string; properties: Record<string, string>;
+  connectivity: { startStructureSourceId: string; endStructureSourceId: string };
+  part: LandXmlPipePart; geometry: { kind: string; point: LandXmlPipePosition | null };
+}
+export interface LandXmlPipeStructure { sourceId: string; sourcePath: string; name: string; properties: Record<string, string>; center: LandXmlPipePosition }
+export interface LandXmlPipeFeature { sourceId: string; sourcePath: string; ownerSourceId: string; properties: Record<string, string> }
+export interface LandXmlPipeNetwork { sourceId: string; sourcePath: string; name: string; properties: Record<string, string>; structures: LandXmlPipeStructure[]; pipes: LandXmlPipe[]; features: LandXmlPipeFeature[] }
+export interface LandXmlPipeNetworkDocument { networks: LandXmlPipeNetwork[]; features: LandXmlPipeFeature[]; refusals: Array<{ sourceId: string; sourcePath: string; code: string; message: string }> }
 
 export interface LandXmlSourceRef { modelId: string; sourceId: string }
 
@@ -79,6 +92,7 @@ export interface LandXmlMeshProvenance {
   meshExpressId: number;
   surfaceSourceId: string;
   renderedFaceSourceIds: string[];
+  pipeSourceId?: string;
 }
 
 export interface LandXmlSurfaceCounts {
@@ -109,7 +123,10 @@ export type LandXmlSourceRecord =
   | { kind: 'cross-section-segment'; crossSectionSurface: LandXmlCrossSectionSurface; segment: LandXmlCrossSectionSegment }
   | { kind: 'cross-section-point'; crossSectionSurface: LandXmlCrossSectionSurface; point: LandXmlCrossSectionPoint }
   | { kind: 'roadway'; roadway: LandXmlRoadway }
-  | { kind: 'preserved-extension'; extension: LandXmlPreservedOnlyExtension };
+  | { kind: 'preserved-extension'; extension: LandXmlPreservedOnlyExtension }
+  | { kind: 'pipe'; pipe: LandXmlPipe }
+  | { kind: 'pipe-structure'; structure: LandXmlPipeStructure }
+  | { kind: 'pipe-feature'; feature: LandXmlPipeFeature };
 
 export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
 
@@ -137,6 +154,12 @@ function sourceRecordIndex(document: LandXmlTinDocument): LandXmlSourceRecordInd
   for (const crossSectionSurface of document.crossSectionSurfaces) index.roots.set(crossSectionSurface.sourceId, { kind: 'cross-section-surface', crossSectionSurface });
   for (const roadway of document.roadways) index.roots.set(roadway.sourceId, { kind: 'roadway', roadway });
   for (const extension of document.preservedOnlyExtensions) index.roots.set(extension.sourceId, { kind: 'preserved-extension', extension });
+  for (const network of document.pipeNetworks?.networks ?? []) {
+    for (const pipe of network.pipes) index.roots.set(pipe.sourceId, { kind: 'pipe', pipe });
+    for (const structure of network.structures) index.roots.set(structure.sourceId, { kind: 'pipe-structure', structure });
+    for (const feature of network.features) index.roots.set(feature.sourceId, { kind: 'pipe-feature', feature });
+  }
+  for (const feature of document.pipeNetworks?.features ?? []) index.roots.set(feature.sourceId, { kind: 'pipe-feature', feature });
   for (const surface of document.surfaces) index.roots.set(surface.sourceId, { kind: 'surface', surface });
   sourceRecordIndexes.set(document, index);
   return index;
@@ -206,6 +229,7 @@ export function landXmlPickSourceRef(
 ): LandXmlSourceRef | null {
   const provenance = model?.landXmlDocument?.rendering.meshProvenance.find((mesh) => mesh.meshExpressId === meshExpressId);
   if (!provenance) return null;
+  if (provenance.pipeSourceId) return { modelId, sourceId: provenance.pipeSourceId };
   const sourceId = triangleIndex === undefined ? provenance.surfaceSourceId : provenance.renderedFaceSourceIds[triangleIndex];
   return sourceId ? { modelId, sourceId } : null;
 }

@@ -136,9 +136,7 @@ export function CesiumOverlay({
         if (cancelled || !containerRef.current) return;
 
         // Configure Cesium ion token if provided
-        if (ionToken) {
-          Cesium.Ion.defaultAccessToken = ionToken;
-        }
+        if (ionToken) Cesium.Ion.defaultAccessToken = ionToken;
 
         const viewer = new Cesium.Viewer(containerRef.current, {
           animation: false,

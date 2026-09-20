@@ -259,6 +259,25 @@ root, and `ui/` (a companion slice covers `extensions/**`):
 - `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
   fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
 
+The BCF-panel catalogue (#4918 slice: BCF) covers `BCFPanel.tsx`'s own
+header/dialogs and its nine `bcf/` components: the topic create/edit form
+(`BCFCreateTopicForm.tsx`), the OpenCDE server sign-in dialog and its connect
+form (`BCFServerDialog.tsx`, `BCFServerConnectForm.tsx`, `BCFServerControl.tsx`),
+the topic list and detail views (`BCFTopicList.tsx`, `BCFTopicDetail.tsx`),
+the 3D/2D viewpoint-capture buttons (`BCFViewpointCaptureButtons.tsx`), and
+`bcfHelpers.tsx`'s status-badge default (`bcf.en.ts`, prefix `bcf.*`, with
+chrome shared by more than one of those surfaces — Close/Cancel/Save, the
+author email placeholder — under `bcf.shared.*`). Pluralized/interpolated
+states (selected-object count, comment count, the "replace N topics"
+warning) are single templated messages selected by count or condition in
+the component, never assembled fragments. BCF topic titles, descriptions,
+authors, GUIDs, comments, labels, and dates remain runtime content from the
+loaded or imported BCF project. `bcfHelpers.tsx`'s `TOPIC_TYPES`/
+`TOPIC_STATUSES`/`PRIORITIES` stay literal English: they are the actual
+`topic.topicType`/`topicStatus`/`priority` field VALUES this app writes into
+exported BCF files, not display-only labels, so translating them would
+desync the on-screen text from the round-tripped data.
+
 The Layers panel catalogue (#4918 layers slice, `layers-panel.en.ts`, keys
 prefixed `layersPanel.<component>.*`) covers the layer-stack panel's own
 chrome across `LayersPanel.tsx` (empty-state hero, per-stratum row, author

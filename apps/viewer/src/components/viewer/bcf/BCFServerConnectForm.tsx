@@ -30,6 +30,7 @@ import {
   validateBcfServerUrl,
   type BcfServerConfig,
 } from '@/services/bcf-server';
+import { useTranslation } from '@/i18n';
 import {
   AUTH_METHOD_LABELS,
   BCF_SERVER_PRESETS,
@@ -52,6 +53,7 @@ export function BCFServerConnectForm({
   initialUsername,
   onSignedIn,
 }: BCFServerConnectFormProps) {
+  const { t } = useTranslation();
   const [presetId, setPresetId] = useState(() => presetForServerUrl(initialServerUrl).id);
   const [serverUrl, setServerUrl] = useState(initialServerUrl);
   const [authMethod, setAuthMethod] = useState<BcfAuthMethod>(
@@ -75,7 +77,10 @@ export function BCFServerConnectForm({
   // generic "register an OAuth application with the vendor" sends users
   // after something the vendor will not give them (#3900).
   const missingClientIdMessage = preset.vendorIssuedClientsOnly
-    ? `${preset.label} issues client ids to application vendors, not to space users, and this IFClite deployment has no ${preset.label} app configured (${vendorAppEnvPrefix(preset.id)}_CLIENT_ID). Sign in via browser is unavailable here.`
+    ? t('bcf.serverConnect.missingClientId', {
+        vendor: preset.label,
+        envPrefix: vendorAppEnvPrefix(preset.id),
+      })
     : undefined;
 
   const handlePresetChange = useCallback((id: string) => {
@@ -108,7 +113,7 @@ export function BCFServerConnectForm({
     // discovery and dynamic client registration for a sign-in that cannot
     // complete would mint throwaway clients on the server.
     if (authMethod === 'oauth' && (!popup || popup.closed)) {
-      setError('Sign-in popup was blocked. Allow popups for this site and try again.');
+      setError(t('bcf.serverConnect.popupBlocked'));
       return;
     }
     setBusy(true);
@@ -121,7 +126,7 @@ export function BCFServerConnectForm({
         config = await signInWithToken(serverUrl, accessToken);
       } else if (authMethod === 'oauth') {
         if (!popup) {
-          throw new Error('Sign-in popup was blocked. Allow popups for this site and try again.');
+          throw new Error(t('bcf.serverConnect.popupBlocked'));
         }
         const preparation = await prepareBcfOAuth(serverUrl, {
           clientId: vendorApp?.clientId ?? clientId,
@@ -137,7 +142,7 @@ export function BCFServerConnectForm({
         const callback = waitForOAuthCallback({
           expectedState: preparation.state,
           timeoutMs: 5 * 60 * 1000,
-          timeoutMessage: 'The BCF server sign-in was not completed within 5 minutes.',
+          timeoutMessage: t('bcf.serverConnect.oauthTimeout'),
         });
         popup.location.href = preparation.authorizeUrl;
         const callbackUrl = await callback;
@@ -187,7 +192,7 @@ export function BCFServerConnectForm({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label id="bcf-server-preset-label">Server</Label>
+        <Label id="bcf-server-preset-label">{t('bcf.serverConnect.serverLabel')}</Label>
         <Select value={presetId} onValueChange={handlePresetChange}>
           <SelectTrigger id="bcf-server-preset" aria-labelledby="bcf-server-preset-label">
             <SelectValue />
@@ -204,19 +209,19 @@ export function BCFServerConnectForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="bcf-server-url">Server URL</Label>
+        <Label htmlFor="bcf-server-url">{t('bcf.serverConnect.serverUrlLabel')}</Label>
         <Input
           id="bcf-server-url"
           value={serverUrl}
           onChange={(e) => setServerUrl(e.target.value)}
-          placeholder="https://example.com/bcf"
+          placeholder={t('bcf.serverConnect.serverUrlPlaceholder')}
           autoComplete="url"
         />
       </div>
 
       {preset.authMethods.length > 1 && (
         <div className="flex flex-col gap-1.5">
-          <Label id="bcf-server-auth-label">Sign-in method</Label>
+          <Label id="bcf-server-auth-label">{t('bcf.serverConnect.authMethodLabel')}</Label>
           <Select
             value={authMethod}
             onValueChange={(value) => {
@@ -241,17 +246,17 @@ export function BCFServerConnectForm({
       {authMethod === 'password' && (
         <>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bcf-server-user">Email</Label>
+            <Label htmlFor="bcf-server-user">{t('bcf.serverConnect.emailLabel')}</Label>
             <Input
               id="bcf-server-user"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="you@example.com"
+              placeholder={t('bcf.serverConnect.emailPlaceholder')}
               autoComplete="username"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bcf-server-password">Password</Label>
+            <Label htmlFor="bcf-server-password">{t('bcf.serverConnect.passwordLabel')}</Label>
             <Input
               id="bcf-server-password"
               type="password"
@@ -266,13 +271,13 @@ export function BCFServerConnectForm({
 
       {authMethod === 'token' && (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="bcf-server-token">Access token</Label>
+          <Label htmlFor="bcf-server-token">{t('bcf.serverConnect.accessTokenLabel')}</Label>
           <Input
             id="bcf-server-token"
             type="password"
             value={accessToken}
             onChange={(e) => setAccessToken(e.target.value)}
-            placeholder="Paste an access token"
+            placeholder={t('bcf.serverConnect.accessTokenPlaceholder')}
             autoComplete="off"
           />
         </div>
@@ -280,34 +285,33 @@ export function BCFServerConnectForm({
 
       {authMethod === 'oauth' && vendorApp && (
         <p className="text-xs text-muted-foreground" data-testid="bcf-server-vendor-app">
-          Signs you in with your {preset.label} account through the {preset.label} app registered
-          to IFClite. No client id to enter.
+          {t('bcf.serverConnect.vendorAppNotice', { vendor: preset.label })}
         </p>
       )}
 
       {authMethod === 'oauth' && !vendorApp && (
         <>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bcf-server-oauth-client-id">Client ID</Label>
+            <Label htmlFor="bcf-server-oauth-client-id">{t('bcf.serverConnect.clientIdLabel')}</Label>
             <Input
               id="bcf-server-oauth-client-id"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               placeholder={
                 preset.vendorIssuedClientsOnly
-                  ? 'Issued by the vendor to application developers'
-                  : 'Leave empty to auto-register when supported'
+                  ? t('bcf.serverConnect.clientIdPlaceholderVendorOnly')
+                  : t('bcf.serverConnect.clientIdPlaceholderAutoRegister')
               }
               autoComplete="off"
             />
             <p className="text-xs text-muted-foreground">
               {preset.vendorIssuedClientsOnly
-                ? `${preset.label} issues client ids to application vendors, not to space users. Ask whoever runs this IFClite deployment to configure its ${preset.label} app.`
-                : 'From an OAuth app registered with the vendor. Servers offering dynamic client registration need no ID; leave it empty.'}
+                ? t('bcf.serverConnect.clientIdHelpVendorOnly', { vendor: preset.label })
+                : t('bcf.serverConnect.clientIdHelpDefault')}
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bcf-server-oauth-client-secret">Client secret (optional)</Label>
+            <Label htmlFor="bcf-server-oauth-client-secret">{t('bcf.serverConnect.clientSecretOptionalLabel')}</Label>
             <Input
               id="bcf-server-oauth-client-secret"
               type="password"
@@ -317,7 +321,7 @@ export function BCFServerConnectForm({
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            The OAuth app must allow this redirect URI:{' '}
+            {t('bcf.serverConnect.redirectUriNotice')}{' '}
             <code className="break-all">{bcfOAuthRedirectUri()}</code>
           </p>
         </>
@@ -326,7 +330,7 @@ export function BCFServerConnectForm({
       {authMethod === 'clientCredentials' && (
         <>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bcf-server-client-id">Client ID</Label>
+            <Label htmlFor="bcf-server-client-id">{t('bcf.serverConnect.clientIdLabel')}</Label>
             <Input
               id="bcf-server-client-id"
               value={clientId}
@@ -335,7 +339,7 @@ export function BCFServerConnectForm({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bcf-server-client-secret">Client secret</Label>
+            <Label htmlFor="bcf-server-client-secret">{t('bcf.serverConnect.clientSecretLabel')}</Label>
             <Input
               id="bcf-server-client-secret"
               type="password"
@@ -349,8 +353,8 @@ export function BCFServerConnectForm({
 
       <p className="text-xs text-muted-foreground">
         {authMethod === 'password'
-          ? "The password is exchanged for an access token and never stored. The token is kept in this browser's local storage, unencrypted. Treat it as revocable, not secret."
-          : "Credentials are kept in this browser's local storage, unencrypted. Treat them as revocable, not secret."}
+          ? t('bcf.serverConnect.passwordNotice')
+          : t('bcf.serverConnect.credentialsNotice')}
       </p>
 
       {error && (
@@ -363,7 +367,7 @@ export function BCFServerConnectForm({
       <div className="flex justify-end">
         <Button onClick={() => void handleConnect()} disabled={connectDisabled}>
           {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Connect
+          {t('bcf.serverConnect.connect')}
         </Button>
       </div>
     </div>

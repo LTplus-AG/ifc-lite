@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
-import { parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
+import type { LandXmlGeometryPayload, LandXmlSourceBuffer } from './landXmlIngest.js';
+import { parseLandXmlGeometry } from './landXmlIngest.js';
+import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   dataStore: IfcDataStore;
@@ -23,16 +25,16 @@ function attachSyntheticStore(payload: LandXmlGeometryPayload, fileSize: number)
   };
 }
 
-export function parseLandXmlViewerModel(buffer: LandXmlSourceBuffer): LandXmlViewerModel {
-  return attachSyntheticStore(parseLandXmlGeometry(buffer), buffer.byteLength);
-}
-
 /**
- * Parse off the UI thread in browsers. Node-based tests and non-window hosts
- * use the same synchronous implementation directly.
+ * Parse off the UI thread in browsers. Worker-less hosts use the same WASM
+ * parser in their own realm, so there is no DOM/TypeScript parser fallback.
  */
 export function parseLandXmlViewerModelAsync(buffer: LandXmlSourceBuffer): Promise<LandXmlViewerModel> {
-  if (typeof Worker === 'undefined') return Promise.resolve(parseLandXmlViewerModel(buffer));
+  if (typeof Worker === 'undefined') {
+    return parseLandXmlTinInCurrentRealm(buffer).then((parsed) => (
+      attachSyntheticStore(parseLandXmlGeometry(parsed), buffer.byteLength)
+    ));
+  }
   const fileSize = buffer.byteLength;
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });

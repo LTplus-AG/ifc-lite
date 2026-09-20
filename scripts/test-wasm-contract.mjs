@@ -32,7 +32,7 @@ import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 import { runShardRefusalBoundaryTests } from './lib/shard-refusal-boundary.mjs';
 import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs';
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
-
+import { runLandXmlContracts } from './lib/wasm-landxml-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -120,7 +120,7 @@ function test(name, fn) {
   }
 }
 
-runAppearanceContracts(IfcAPI, test);
+runAppearanceContracts(IfcAPI, test); runLandXmlContracts(api, test);
 // ===== IfcAPI initialization =====
 console.log('📋 IfcAPI initialization');
 

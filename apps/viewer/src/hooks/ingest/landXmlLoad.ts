@@ -119,6 +119,9 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
   options.setGeometryStreamingActive(false);
   try {
     const result = await parseLandXmlViewerModelAsync(options.buffer);
+    // Parsing is one synchronous WASM call in a worker, so a later UI cancel
+    // cannot interrupt that call. This guard is the lifecycle guarantee: a
+    // stale reply is discarded before primary state, finalization, or telemetry.
     if (!options.isCurrent()) return;
     const frame = options.targetKind === 'federated'
       ? federationFrameInfo(useViewerStore.getState().models.values())

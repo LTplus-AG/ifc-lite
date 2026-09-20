@@ -1625,6 +1625,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-export",
  "ifc-lite-geometry",
+ "ifc-lite-landxml",
  "ifc-lite-processing",
  "js-sys",
  "memchr",

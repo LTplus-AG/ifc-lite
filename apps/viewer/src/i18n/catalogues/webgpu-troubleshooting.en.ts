@@ -53,7 +53,7 @@ export const webgpuTroubleshootingEn = {
     '. Open this page over HTTPS, or via',
   'webgpuTroubleshooting.insecureOrigin.localhostWord': 'localhost',
   'webgpuTroubleshooting.insecureOrigin.runningYourself':
-    'if you are running it yourself — plain HTTP on an IP address or hostname disables WebGPU in every browser, regardless of your GPU.',
+    'if you are running it yourself — plain HTTP on a non-loopback IP address or hostname disables WebGPU in every browser, regardless of your GPU.',
 
   // no-api troubleshooting
   'webgpuTroubleshooting.noApi.heading': 'Browser Not Exposing WebGPU',
@@ -67,7 +67,7 @@ export const webgpuTroubleshootingEn = {
   'webgpuTroubleshooting.noApi.enterprisePolicyStart':
     'An enterprise or MDM policy disabling WebGPU — check',
   'webgpuTroubleshooting.noApi.chromePolicyPath': 'chrome://policy',
-  'webgpuTroubleshooting.noApi.forA': 'for a',
+  'webgpuTroubleshooting.noApi.forA': 'for a ',
   'webgpuTroubleshooting.noApi.defaultWebGpuAccess': 'DefaultWebGPUAccess',
   'webgpuTroubleshooting.noApi.hardwareAccelRestriction':
     'or hardware-acceleration restriction.',

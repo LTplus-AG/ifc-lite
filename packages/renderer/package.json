@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/renderer",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "WebGPU renderer for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

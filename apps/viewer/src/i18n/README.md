@@ -203,6 +203,22 @@ stores that value verbatim in `idsError`; `IDSPanel.tsx`'s error banner is the
 one place that resolves it with `t()`, at render time, so it retranslates on
 a live locale switch like every other catalogued string here (#5030).
 
+The document-panel catalogue (#4918 doc slice, `document.en.ts`) started as
+#4993's `document-menu.en.ts` (the document menu's rename/duplicate/delete/
+export/import actions) plus #4940's `document.en.ts` (the chart/image width
+picker and the spacer block, added to `BlockEditor.tsx` alongside those
+features). This slice extends the same `document.*` namespace with every
+remaining literal in the three files the earlier slices left uncovered:
+`BlockEditor.tsx`'s own chrome (the block-kind badge, the text/image/chart/
+topic field groups, and the move/remove controls), `DocumentPanel.tsx`'s own
+chrome (the document/page-size/orientation selects, the "Add block" menu,
+the export button and its pluralized result toast, the unsaved-document
+warning, and the empty-blocks state), and `DocumentPreview.tsx`'s empty-state
+and unresolved-topic messages. Block and document CONTENT — typed template
+text, a chart's own title, a BCF topic's own title, image data, a document's
+own name — stays out of the catalogue as model/user data, same reasoning as
+every other panel in this sweep.
+
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
 `GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,
@@ -261,6 +277,22 @@ loaded or imported BCF project. `bcfHelpers.tsx`'s `TOPIC_TYPES`/
 `topic.topicType`/`topicStatus`/`priority` field VALUES this app writes into
 exported BCF files, not display-only labels, so translating them would
 desync the on-screen text from the round-tripped data.
+
+The Layers panel catalogue (#4918 layers slice, `layers-panel.en.ts`, keys
+prefixed `layersPanel.<component>.*`) covers the layer-stack panel's own
+chrome across `LayersPanel.tsx` (empty-state hero, per-stratum row, author
+badges), `LayerDraftSection.tsx` (pending-edit publish flow, including its
+toasts), `LayerMergeSection.tsx` (candidate/target pickers, preview status,
+bulk and per-conflict resolution controls), `LayerReviewSection.tsx`
+(registry-review comments), `LayerProvenanceDetail.tsx` (the manifest
+detail view and its check list), `LayerCheckEvidence.tsx` (fetched IDS
+report summary), and `LayerDiffView.tsx` (the per-layer stack diff). Layer
+NAMES, tag NAMES, content-address digests, ref/file names, and IFC
+GlobalIds/composition paths are model or registry runtime data and stay out
+of the catalogue — only the chrome around them is translated. This is a
+sibling to the unrelated `merge-layers-banner.en.ts` (the multilayer-wall
+geometry-merge setting's reload banner), not the same feature under a new
+name.
 
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for

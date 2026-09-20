@@ -12,16 +12,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GitMerge, RefreshCw } from 'lucide-react';
+import { CheckCircle2, GitMerge, RefreshCw, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey, UseTranslationResult } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import type { MergeConflict, ResolutionInput, Waiver } from '@ifc-lite/merge';
@@ -40,9 +36,10 @@ import {
 } from '@/lib/layers/merge';
 import { pathTail } from '@/lib/layers/stack';
 import { LayerReviewSection } from './LayerReviewSection';
-import { CheckCircle2, XCircle } from 'lucide-react';
 
 type Choice = 'ours' | 'theirs' | 'edited';
+
+const OPTION_LABEL_KEYS: Record<Choice, TranslationKey> = { ours: 'layersPanel.merge.oursOption', theirs: 'layersPanel.merge.theirsOption', edited: 'layersPanel.merge.editOption' };
 
 function conflictKey(c: MergeConflict): string {
   return c.componentKey === undefined ? c.path : `${c.path}::${c.componentKey}`;
@@ -51,11 +48,7 @@ function conflictKey(c: MergeConflict): string {
 /** Edit-in-place applies as a set-component: only componentKey-scoped,
  *  non-relation conflicts can take one (mirrors `applyResolutions`). */
 function isEditable(c: MergeConflict): boolean {
-  return (
-    c.componentKey !== undefined &&
-    !c.componentKey.startsWith('child:') &&
-    !c.componentKey.startsWith('inherit:')
-  );
+  return c.componentKey !== undefined && !c.componentKey.startsWith('child:') && !c.componentKey.startsWith('inherit:');
 }
 
 /** Parsed replacement attributes for an edited conflict, or undefined
@@ -72,10 +65,32 @@ function parseEditedAttributes(text: string): Record<string, unknown> | undefine
   return undefined;
 }
 
-function valueSummary(attrs: Record<string, unknown> | undefined): string {
-  if (!attrs) return 'removed';
+function valueSummary(attrs: Record<string, unknown> | undefined, removedLabel: string): string {
+  if (!attrs) return removedLabel;
   const json = JSON.stringify(attrs);
   return json.length > 60 ? `${json.slice(0, 57)}…` : json;
+}
+
+/** The one-line preview/merge status message for every `ViewerMergeResult` status. */
+function statusLine(t: UseTranslationResult['t'], result: ViewerMergeResult): string {
+  const count = result.conflicts.length;
+  const countDisplay = String(count);
+  switch (result.status) {
+    case 'preview':
+      return t('layersPanel.merge.statusPreview', { autoMerged: result.stats?.autoMerged ?? 0, count, countDisplay });
+    case 'conflicts':
+      return t('layersPanel.merge.statusConflicts', { count, countDisplay });
+    case 'fast-forward':
+      return t('layersPanel.merge.statusFastForward');
+    case 'merged':
+      return t('layersPanel.merge.statusMerged', { mergeLayerId: result.mergeLayerId?.slice(0, 15) ?? '' });
+    case 'policy-failure':
+      return t('layersPanel.merge.statusPolicyFailure', { reason: result.reason ?? '' });
+    case 'unrelated-base':
+      return t('layersPanel.merge.statusUnrelatedBase', { reason: result.reason ?? '' });
+    default:
+      return '';
+  }
 }
 
 function ConflictRow({
@@ -91,18 +106,16 @@ function ConflictRow({
   editedText: string;
   onEditText: (text: string) => void;
 }) {
+  const { t } = useTranslation();
   const isDelete = conflict.kind === 'modify-vs-delete' || conflict.kind === 'delete-vs-modify';
   const options: Choice[] = isEditable(conflict) ? ['ours', 'theirs', 'edited'] : ['ours', 'theirs'];
   const editedValid = choice !== 'edited' || parseEditedAttributes(editedText) !== undefined;
+  const removedLabel = t('layersPanel.merge.removed');
   return (
     <div className="rounded border bg-card/40 px-1.5 py-1">
       <div className="flex items-center gap-1.5">
-        <span className="truncate text-[11px] font-medium" title={conflict.path}>
-          {pathTail(conflict.path)}
-        </span>
-        <span className="truncate text-[10px] text-muted-foreground">
-          {conflict.componentKey ?? conflict.kind}
-        </span>
+        <span className="truncate text-[11px] font-medium" title={conflict.path}>{pathTail(conflict.path)}</span>
+        <span className="truncate text-[10px] text-muted-foreground">{conflict.componentKey ?? conflict.kind}</span>
         <span className="ml-auto inline-flex overflow-hidden rounded border">
           {options.map((option) => (
             <button
@@ -113,18 +126,17 @@ function ConflictRow({
                 choice === option ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/60'
               }`}
             >
-              {option === 'edited' ? 'edit' : option}
+              {t(OPTION_LABEL_KEYS[option])}
             </button>
           ))}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-1 pt-0.5 text-[10px] text-muted-foreground">
-        <span className="truncate" title={valueSummary(conflict.ours?.attributes as Record<string, unknown>)}>
-          ours: {valueSummary(conflict.ours?.attributes as Record<string, unknown>)}
-        </span>
-        <span className="truncate" title={valueSummary(conflict.theirs?.attributes as Record<string, unknown>)}>
-          theirs: {valueSummary(conflict.theirs?.attributes as Record<string, unknown>)}
-        </span>
+        {(['ours', 'theirs'] as const).map((side) => {
+          const value = valueSummary(conflict[side]?.attributes as Record<string, unknown>, removedLabel);
+          const key = side === 'ours' ? 'layersPanel.merge.oursValue' : 'layersPanel.merge.theirsValue';
+          return <span key={side} className="truncate" title={value}>{t(key, { value })}</span>;
+        })}
       </div>
       {choice === 'edited' && (
         <div className="flex flex-col gap-0.5 pt-0.5">
@@ -133,20 +145,21 @@ function ConflictRow({
             onChange={(e) => onEditText(e.target.value)}
             rows={2}
             spellCheck={false}
-            aria-label={`Replacement attributes for ${conflict.path}`}
-            className={`w-full resize-y rounded border bg-background px-1.5 py-1 font-mono text-[10px] ${
-              editedValid ? '' : 'border-red-500'
-            }`}
+            aria-label={t('layersPanel.merge.replacementAriaLabel', { path: conflict.path })}
+            className={`w-full resize-y rounded border bg-background px-1.5 py-1 font-mono text-[10px] ${editedValid ? '' : 'border-red-500'}`}
           />
           {!editedValid && (
-            <span className="text-[10px] text-red-500">Replacement must be a JSON object of attributes.</span>
+            <span className="text-[10px] text-red-500">{t('layersPanel.merge.replacementInvalid')}</span>
           )}
         </div>
       )}
       {isDelete && conflict.subtree && conflict.subtree.length > 0 && (
         <p className="pt-0.5 text-[10px] text-amber-600 dark:text-amber-300">
-          Delete decision carries {conflict.subtree.length} touched descendant
-          {conflict.subtree.length === 1 ? '' : 's'}: {conflict.subtree.map(pathTail).join(', ')}
+          {t('layersPanel.merge.deleteCarries', {
+            count: conflict.subtree.length,
+            countDisplay: String(conflict.subtree.length),
+            list: conflict.subtree.map(pathTail).join(', '),
+          })}
         </p>
       )}
     </div>
@@ -154,6 +167,7 @@ function ConflictRow({
 }
 
 export function LayerMergeSection() {
+  const { t } = useTranslation();
   const { loadFederatedIfcx } = useIfc();
   const layerStack = useViewerStore((s) => s.layerStack);
   // Authenticated deployments guard /api/v1 with the same bearer token as
@@ -264,14 +278,12 @@ export function LayerMergeSection() {
       const outcome = await executeMergeInto(target, store, candidateId, resolutions, resolver, waivers);
       setResult(outcome);
       if (outcome.status === 'merged' || outcome.status === 'fast-forward') {
-        toast.success(
-          outcome.status === 'merged'
-            ? `Merged into '${target.refName}' (${outcome.mergeLayerId?.slice(0, 15)}…).`
-            : `Fast-forwarded '${target.refName}'.`,
-        );
+        toast.success(outcome.status === 'merged'
+          ? t('layersPanel.merge.toastMerged', { ref: target.refName, mergeLayerId: outcome.mergeLayerId?.slice(0, 15) ?? '' })
+          : t('layersPanel.merge.toastFastForwarded', { ref: target.refName }));
         await refresh();
       } else if (outcome.status === 'policy-failure') {
-        toast.error(`Policy: ${outcome.reason}`);
+        toast.error(t('layersPanel.merge.toastPolicyError', { reason: outcome.reason ?? '' }));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -289,7 +301,7 @@ export function LayerMergeSection() {
         (file, i) => new File([JSON.stringify(file)], `${target.refName}-${i}.ifcx`, { type: 'application/json' }),
       );
       await loadFederatedIfcx(files);
-      toast.success(`Loaded ref '${target.refName}' (${files.length} layers).`);
+      toast.success(t('layersPanel.merge.toastLoadedRef', { ref: target.refName, count: files.length }));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -357,21 +369,21 @@ export function LayerMergeSection() {
     <div className="rounded-md border border-dashed bg-card/30 p-2">
       <div className="flex items-center gap-1.5 pb-1.5 text-[11px] font-medium">
         <GitMerge className="size-3" aria-hidden />
-        <span>Merge</span>
+        <span>{t('layersPanel.merge.title')}</span>
         <Button
           variant="ghost"
           size="sm"
           className="ml-auto h-5 px-1"
           onClick={() => void refresh()}
-          aria-label="Refresh refs and candidates"
+          aria-label={t('layersPanel.merge.refreshAriaLabel')}
         >
           <RefreshCw className="size-3" aria-hidden />
         </Button>
       </div>
       <div className="flex flex-col gap-1.5">
         <Select value={candidateId} onValueChange={setCandidateId}>
-          <SelectTrigger className="h-7 text-xs" aria-label="Candidate layer">
-            <SelectValue placeholder="Candidate layer" />
+          <SelectTrigger className="h-7 text-xs" aria-label={t('layersPanel.merge.candidateLayerLabel')}>
+            <SelectValue placeholder={t('layersPanel.merge.candidateLayerLabel')} />
           </SelectTrigger>
           <SelectContent>
             {candidates.map((c) => (
@@ -383,18 +395,18 @@ export function LayerMergeSection() {
         </Select>
         <div className="flex items-center gap-1.5">
           <Select value={targetKey} onValueChange={setTargetKey}>
-            <SelectTrigger className="h-7 flex-1 text-xs" aria-label="Target ref">
-              <SelectValue placeholder="Target ref" />
+            <SelectTrigger className="h-7 flex-1 text-xs" aria-label={t('layersPanel.merge.targetRefLabel')}>
+              <SelectValue placeholder={t('layersPanel.merge.targetRefLabel')} />
             </SelectTrigger>
             <SelectContent>
               {localRefs.map((name) => (
                 <SelectItem key={`local:${name}`} value={`local:${name}`} className="text-xs">
-                  {name} (local)
+                  {t('layersPanel.merge.localRefOption', { name })}
                 </SelectItem>
               ))}
               {registryRefs.map((name) => (
                 <SelectItem key={`registry:${name}`} value={`registry:${name}`} className="text-xs">
-                  {name} (registry)
+                  {t('layersPanel.merge.registryRefOption', { name })}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -406,39 +418,30 @@ export function LayerMergeSection() {
             disabled={busy || !candidateId || !target}
             onClick={() => void preview()}
           >
-            Preview
+            {t('layersPanel.merge.previewButton')}
           </Button>
         </div>
 
         {result && (
           <div className="flex flex-col gap-1">
-            <p className="text-[11px] text-muted-foreground">
-              {result.status === 'preview' &&
-                `${result.stats?.autoMerged ?? 0} auto-merged, ${result.conflicts.length} conflict${result.conflicts.length === 1 ? '' : 's'}.`}
-              {result.status === 'conflicts' && `${result.conflicts.length} unresolved conflict${result.conflicts.length === 1 ? '' : 's'}.`}
-              {result.status === 'fast-forward' && 'Fast-forwarded.'}
-              {result.status === 'merged' && `Merged as ${result.mergeLayerId?.slice(0, 15)}…`}
-              {result.status === 'policy-failure' && `Blocked by ref policy: ${result.reason}`}
-              {result.status === 'unrelated-base' && `Unrelated base: ${result.reason}`}
-            </p>
+            <p className="text-[11px] text-muted-foreground">{statusLine(t, result)}</p>
             {result.status === 'preview' && result.ancestorMatched === false && (
               <p className="text-[11px] text-amber-600 dark:text-amber-500">
-                No shared base on this ref: the plan treats every candidate op as new. Candidates
-                that declare a base from another history will be refused at merge.
+                {t('layersPanel.merge.unrelatedBaseWarning')}
               </p>
             )}
             {requiredChecks.length > 0 && !mergeDone && (
               <div className="flex flex-col gap-0.5 rounded border bg-card/40 px-1.5 py-1">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Required checks
+                  {t('layersPanel.merge.requiredChecksLabel')}
                 </span>
                 {requiredChecks.map((check) => (
                   <div key={check.spec} className="flex flex-col gap-0.5">
                     <span className="flex items-center gap-1 text-[11px]">
                       {check.passing ? (
-                        <CheckCircle2 className="size-3 shrink-0 text-emerald-500" aria-label="pass" />
+                        <CheckCircle2 className="size-3 shrink-0 text-emerald-500" aria-label={t('layersPanel.merge.checkPassAriaLabel')} />
                       ) : (
-                        <XCircle className="size-3 shrink-0 text-red-500" aria-label="fail" />
+                        <XCircle className="size-3 shrink-0 text-red-500" aria-label={t('layersPanel.merge.checkFailAriaLabel')} />
                       )}
                       <span className="truncate">{check.spec}</span>
                     </span>
@@ -446,11 +449,9 @@ export function LayerMergeSection() {
                       <input
                         type="text"
                         value={waiverReasons.get(check.spec) ?? ''}
-                        onChange={(e) =>
-                          setWaiverReasons((prev) => new Map(prev).set(check.spec, e.target.value))
-                        }
-                        placeholder="Waive with a reason (recorded in the merge manifest)"
-                        aria-label={`Waiver reason for ${check.spec}`}
+                        onChange={(e) => setWaiverReasons((prev) => new Map(prev).set(check.spec, e.target.value))}
+                        placeholder={t('layersPanel.merge.waiverPlaceholder')}
+                        aria-label={t('layersPanel.merge.waiverAriaLabel', { spec: check.spec })}
                         className="h-6 rounded border bg-background px-1.5 text-[11px] placeholder:text-muted-foreground/60"
                       />
                     )}
@@ -460,30 +461,30 @@ export function LayerMergeSection() {
             )}
             {!mergeDone && result.conflicts.length > 1 && (
               <div className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
-                <span>Bulk:</span>
+                <span>{t('layersPanel.merge.bulkLabel')}</span>
                 <button type="button" onClick={() => chooseAll('ours')} className="rounded border px-1.5 py-px hover:bg-muted/60">
-                  all ours
+                  {t('layersPanel.merge.allOurs')}
                 </button>
                 <button type="button" onClick={() => chooseAll('theirs')} className="rounded border px-1.5 py-px hover:bg-muted/60">
-                  all theirs
+                  {t('layersPanel.merge.allTheirs')}
                 </button>
                 {bulkGroups.map(([key, count]) => (
                   <span key={key} className="inline-flex items-center gap-0.5">
                     <span className="truncate font-mono" title={key}>{key.split(':').pop()}</span>
-                    <span>×{count}:</span>
+                    <span>{t('layersPanel.merge.bulkCount', { count })}</span>
                     <button
                       type="button"
                       onClick={() => chooseAll('ours', (c) => c.componentKey === key)}
                       className="rounded border px-1 py-px hover:bg-muted/60"
                     >
-                      ours
+                      {t('layersPanel.merge.oursOption')}
                     </button>
                     <button
                       type="button"
                       onClick={() => chooseAll('theirs', (c) => c.componentKey === key)}
                       className="rounded border px-1 py-px hover:bg-muted/60"
                     >
-                      theirs
+                      {t('layersPanel.merge.theirsOption')}
                     </button>
                   </span>
                 ))}
@@ -496,9 +497,7 @@ export function LayerMergeSection() {
                 choice={choices.get(conflictKey(conflict))}
                 onChoose={(choice) => choose(conflict, choice)}
                 editedText={editedTexts.get(conflictKey(conflict)) ?? ''}
-                onEditText={(text) =>
-                  setEditedTexts((prev) => new Map(prev).set(conflictKey(conflict), text))
-                }
+                onEditText={(text) => setEditedTexts((prev) => new Map(prev).set(conflictKey(conflict), text))}
               />
             ))}
             {!mergeDone && (result.status === 'preview' || result.status === 'conflicts') && (
@@ -509,7 +508,7 @@ export function LayerMergeSection() {
                 onClick={() => void execute()}
               >
                 <GitMerge className="size-3" aria-hidden />
-                {result.conflicts.length > 0 ? 'Merge with resolutions' : 'Merge'}
+                {t(result.conflicts.length > 0 ? 'layersPanel.merge.mergeWithResolutionsButton' : 'layersPanel.merge.mergeButton')}
               </Button>
             )}
             {mergeDone && target?.kind === 'local' && (
@@ -520,7 +519,7 @@ export function LayerMergeSection() {
                 disabled={busy}
                 onClick={() => void loadMergedRef()}
               >
-                Load merged ref
+                {t('layersPanel.merge.loadMergedRefButton')}
               </Button>
             )}
           </div>

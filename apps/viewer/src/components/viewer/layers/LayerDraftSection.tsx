@@ -14,6 +14,7 @@ import { PenLine, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { getBrowserLayerStore, DEFAULT_LOCAL_REF } from '@/lib/layers/browser-store';
@@ -35,6 +36,7 @@ function storedAuthor(): string {
 }
 
 export function LayerDraftSection() {
+  const { t } = useTranslation();
   const { addIfcxOverlays } = useIfc();
   // mutationVersion drives the pending count; layerStack drives eligibility.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
@@ -79,17 +81,23 @@ export function LayerDraftSection() {
         // very edits (unresolved identity / no layer representation) we
         // promise to keep. The layer is on the ref; stack it after the
         // leftovers are dealt with (re-publishing folds idempotently).
-        const parts = [
-          result.unresolved.length > 0
-            ? `${result.unresolved.length} edited ${result.unresolved.length === 1 ? 'entity' : 'entities'} had no stable identity`
-            : null,
-          result.skippedCount > 0
-            ? `${result.skippedCount} edit${result.skippedCount === 1 ? '' : 's'} had no layer representation`
-            : null,
-        ].filter(Boolean);
-        toast.info(
-          `Published to '${DEFAULT_LOCAL_REF}', but ${parts.join(' and ')} and stayed out. Pending edits were kept; the layer was not stacked.`,
-        );
+        const hasUnresolved = result.unresolved.length > 0;
+        const hasSkipped = result.skippedCount > 0;
+        const entityPhrase = t('layersPanel.draft.entityCountPhrase', {
+          count: result.unresolved.length,
+          countDisplay: String(result.unresolved.length),
+        });
+        const editPhrase = t('layersPanel.draft.editCountPhrase', {
+          count: result.skippedCount,
+          countDisplay: String(result.skippedCount),
+        });
+        const messageKey =
+          hasUnresolved && hasSkipped
+            ? 'layersPanel.draft.publishedPartialBoth'
+            : hasUnresolved
+              ? 'layersPanel.draft.publishedPartialUnresolved'
+              : 'layersPanel.draft.publishedPartialSkipped';
+        toast.info(t(messageKey, { ref: DEFAULT_LOCAL_REF, entityPhrase, editPhrase }));
         setIntent('');
         return;
       }
@@ -103,7 +111,13 @@ export function LayerDraftSection() {
       const fileName = `${trimmedIntent.slice(0, 40).replace(/[^\w-]+/g, '-') || 'layer'}.ifcx`;
       await addIfcxOverlays([new File([json], fileName, { type: 'application/json' })]);
       setIntent('');
-      toast.success(`Published ${result.layerId.slice(0, 15)}… to '${DEFAULT_LOCAL_REF}' (${result.opCount} ops).`);
+      toast.success(
+        t('layersPanel.draft.publishedSuccess', {
+          layerId: result.layerId.slice(0, 15),
+          ref: DEFAULT_LOCAL_REF,
+          opCount: result.opCount,
+        }),
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -144,7 +158,11 @@ export function LayerDraftSection() {
       await addIfcxOverlays([new File([json], fileName, { type: 'application/json' })]);
       setIntent('');
       toast.success(
-        `Published session draft ${result.layerId.slice(0, 15)}… to '${DEFAULT_LOCAL_REF}' (${result.opCount} ops).`,
+        t('layersPanel.draft.publishedSessionSuccess', {
+          layerId: result.layerId.slice(0, 15),
+          ref: DEFAULT_LOCAL_REF,
+          opCount: result.opCount,
+        }),
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -161,7 +179,7 @@ export function LayerDraftSection() {
     <div className="rounded-md border border-dashed bg-card/30 p-2">
       <div className="flex items-center gap-1.5 pb-1.5 text-[11px] font-medium">
         <PenLine className="size-3" aria-hidden />
-        <span>Draft layer</span>
+        <span>{t('layersPanel.draft.title')}</span>
         <span
           className={`ml-auto rounded-full border px-1.5 py-px text-[10px] leading-none ${
             pendingCount > 0
@@ -169,19 +187,19 @@ export function LayerDraftSection() {
               : 'border-border text-muted-foreground'
           }`}
         >
-          {pendingCount} pending {pendingCount === 1 ? 'edit' : 'edits'}
+          {t('layersPanel.draft.pendingBadge', { count: pendingCount, countDisplay: String(pendingCount) })}
         </span>
       </div>
       {pendingCount === 0 && !sessionReady ? (
         <p className="text-[11px] text-muted-foreground">
-          Edit properties in the model, then freeze the changes here as a new layer.
+          {t('layersPanel.draft.emptyPrompt')}
         </p>
       ) : (
         <div className="flex flex-col gap-1.5">
           <Input
             value={intent}
             onChange={(e) => setIntent(e.target.value)}
-            placeholder="Intent, e.g. Set fire ratings for EG walls"
+            placeholder={t('layersPanel.draft.intentPlaceholder')}
             className="h-7 text-xs"
             disabled={busy}
           />
@@ -189,7 +207,7 @@ export function LayerDraftSection() {
             <Input
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
-              placeholder="Author"
+              placeholder={t('layersPanel.draft.authorPlaceholder')}
               className="h-7 flex-1 text-xs"
               disabled={busy}
             />
@@ -201,14 +219,13 @@ export function LayerDraftSection() {
                 onClick={() => void publish()}
               >
                 <UploadCloud className="size-3" aria-hidden />
-                {busy ? 'Publishing…' : 'Publish'}
+                {t(busy ? 'layersPanel.draft.publishing' : 'layersPanel.draft.publish')}
               </Button>
             )}
           </div>
           {pendingCount > 0 && (
             <p className="text-[10px] text-muted-foreground">
-              Freezes the pending edits as a content-addressed layer on the local ref
-              &apos;{DEFAULT_LOCAL_REF}&apos; and stacks it onto the composition.
+              {t('layersPanel.draft.localRefNote', { ref: DEFAULT_LOCAL_REF })}
             </p>
           )}
           {sessionReady && (
@@ -221,14 +238,15 @@ export function LayerDraftSection() {
                 onClick={() => void publishSession()}
               >
                 <Users className="size-3" aria-hidden />
-                {busy ? 'Publishing…' : 'Publish session edits'}
+                {t(busy ? 'layersPanel.draft.publishing' : 'layersPanel.draft.publishSessionEdits')}
               </Button>
               <p className="text-[10px] text-muted-foreground">
-                Freezes the live session&apos;s Y.Doc edits since {collabPeers.length > 0 ? 'joining' : 'the last publish'}
                 {collabPeers.length > 0
-                  ? ` — including ${collabPeers.length} peer${collabPeers.length === 1 ? "'s" : "s'"} edits (author kind: hybrid)`
-                  : ''}
-                .
+                  ? t('layersPanel.draft.sessionEditsSinceJoining', {
+                      count: collabPeers.length,
+                      countDisplay: String(collabPeers.length),
+                    })
+                  : t('layersPanel.draft.sessionEditsSinceLastPublish')}
               </p>
             </>
           )}

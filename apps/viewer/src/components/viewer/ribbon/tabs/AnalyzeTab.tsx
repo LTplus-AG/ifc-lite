@@ -9,7 +9,7 @@
  * `useWorkspacePanelControls`, shared with the classic toolbar.
  */
 
-import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document } from '@/icons';
+import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document, Cost } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
@@ -105,6 +105,15 @@ export function AnalyzeTab() {
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.analyze.dataGroup')}>
+        {/* IFC 5D cost inspector (#4858): reachable from a toolbar for the
+            first time — the ActivityBar rail was its only entry point. */}
+        <RibbonLargeButton
+          icon={Cost}
+          label={t('ribbon.analyze.cost')}
+          tooltip={t('ribbon.analyze.costTooltip')}
+          active={activeWorkspacePanels.has('cost')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('cost')}
+        />
         <RibbonLargeButton
           icon={List}
           label={t('ribbon.analyze.lists')}

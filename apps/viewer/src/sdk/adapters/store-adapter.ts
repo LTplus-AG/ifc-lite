@@ -53,7 +53,7 @@ import { createCostStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { createCostAdapter } from './cost-adapter.js';
-import { getMutationViewForModel, getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
+import { getMutationViewForModel, getOrCreateMutationView, isLegacyMutationRef, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
 import { entityForPath, pathForGuid } from '@/lib/collab/entity-paths.js';
@@ -67,7 +67,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   const costAdapter = createCostAdapter(store);
   function resolveDataStore(modelId: string) {
     const state = store.getState();
-    const refModelId = modelId === 'legacy' ? LEGACY_MODEL_ID : modelId;
+    // The refs this adapter hands out carry the mutation-view alias
+    // (`__legacy__`) in single-model mode; they must resolve back here.
+    const refModelId = isLegacyMutationRef(state, modelId) ? LEGACY_MODEL_ID : modelId;
     const model = getModelForRef(state, refModelId);
     return model?.ifcDataStore ?? null;
   }

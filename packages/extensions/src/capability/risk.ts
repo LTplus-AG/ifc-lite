@@ -24,11 +24,14 @@ import { findCatalogueEntry } from './catalogue.js';
 
 export function computeRisk(cap: Capability): CapabilityRisk {
   const entry = findCatalogueEntry(cap);
+  const capabilityId = `${cap.scope}.${cap.action}`;
 
   if (!entry) {
     return {
       capability: cap,
+      capabilityId,
       tier: 'red',
+      reasonCode: 'unknown-capability',
       description: `Unknown capability "${cap.raw}". Treated as high-risk because it is not in the catalogue.`,
     };
   }
@@ -37,23 +40,31 @@ export function computeRisk(cap: Capability): CapabilityRisk {
   if (entry.requiresTarget && !cap.target) {
     return {
       capability: cap,
+      capabilityId,
       tier: 'red',
+      reasonCode: 'missing-required-target',
       description: `${entry.description} (Missing required target — treated as universal.)`,
     };
   }
 
   let tier: RiskTier = entry.baseRisk;
+  let reasonCode: CapabilityRisk['reasonCode'] = 'catalogue';
   let suffix = '';
 
   // Universal wildcard escalates everything sensitive.
   if (cap.target?.isUniversalWildcard) {
     if (entry.baseRisk !== 'green') {
       tier = 'red';
+      reasonCode = 'universal-wildcard-target';
       suffix = ' Universal wildcard target — unrestricted scope.';
     }
   } else if (cap.target && hasInternalGlob(cap.target)) {
     // Glob inside (not universal) — bump green→yellow at most, leave others.
-    if (entry.baseRisk === 'green') tier = 'yellow';
+    if (entry.baseRisk === 'green') {
+      tier = 'yellow';
+      reasonCode = 'target-pattern-wildcard';
+      suffix = ' Target pattern contains a wildcard — risk is elevated.';
+    }
   }
 
   // network.fetch with a specific single host stays yellow (we surface
@@ -63,9 +74,12 @@ export function computeRisk(cap: Capability): CapabilityRisk {
       tier = 'red';
     } else if (cap.target && hasInternalGlob(cap.target)) {
       tier = 'red';
+      reasonCode = 'host-pattern-wildcard';
       suffix = ' Host pattern contains a wildcard.';
     } else {
       tier = 'yellow';
+      reasonCode = 'specific-network-host';
+      suffix = ' Access is restricted to a specific host.';
     }
   }
 
@@ -76,7 +90,7 @@ export function computeRisk(cap: Capability): CapabilityRisk {
   }
 
   const description = composeDescription(cap, entry.description, suffix);
-  return { capability: cap, tier, description };
+  return { capability: cap, capabilityId, tier, reasonCode, description };
 }
 
 export function computeRisks(caps: readonly Capability[]): CapabilityRisk[] {

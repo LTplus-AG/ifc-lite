@@ -4,8 +4,15 @@
 
 import { describe, it, expect } from 'vitest';
 import { StepTokenizer } from '../src/tokenizer.js';
-import { ColumnarParser } from '../src/columnar-parser.js';
+import { ColumnarParser, extractRelationshipsOnDemand } from '../src/columnar-parser.js';
 import { RelationshipType } from '@ifc-lite/data';
+import { REL_TYPE_MAP, SECONDARY_REL_TYPE_MAP } from '../src/columnar-parser-indexes.js';
+import { QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
+import { normalizeIfcTypeName } from '../src/ifc-schema.js';
+import { getAllConcreteRelationshipTypes, getRelationshipSlotPlan } from '../src/relationship-schema-slots.js';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Before #4205, IfcRelAssignsToActor, IfcRelDeclares and IfcRelSequence were
 // not in HIERARCHY_REL_TYPES at all: they never reached `extractRelFast`, so
@@ -68,6 +75,62 @@ async function parseStructural() {
     lineNumber: ref.line,
   }));
   return new ColumnarParser().parseLite(source.buffer.slice(0), entityRefs, {});
+}
+
+// ── Independent slot-layout oracle ───────────────────────────────────────────
+// The fixture below must not be laid out by `getRelationshipSlotPlan` — the
+// parser reads endpoints through that same function, so a wrong index, order
+// or cardinality there would be reproduced by the fixture and pass. The
+// positions come instead from the raw EXPRESS text under
+// packages/codegen/schemas: explicit attributes concatenated down the SUBTYPE
+// chain, in declaration order, most-featured schema first.
+const SCHEMA_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../codegen/schemas');
+const EXPRESS_FILES = ['IFC4X3.exp', 'IFC4_ADD2_TC1.exp', 'IFC2X3_TC1.exp'];
+
+interface ExpressEntity { supertype: string | null; attributes: Array<{ name: string; isList: boolean }> }
+
+function parseExpressEntities(text: string): Map<string, ExpressEntity> {
+  const entities = new Map<string, ExpressEntity>();
+  const blocks = text.matchAll(/^ENTITY\s+(\w+)([\s\S]*?)^END_ENTITY;/gm);
+  for (const [, name, body] of blocks) {
+    const supertype = /SUBTYPE OF\s*\(\s*(\w+)\s*\)/.exec(body)?.[1] ?? null;
+    // Header (SUPERTYPE OF / SUBTYPE OF / ABSTRACT) ends at the first ';'.
+    const afterHeader = body.slice(body.indexOf(';') + 1);
+    const attributes: Array<{ name: string; isList: boolean }> = [];
+    for (const line of afterHeader.split('\n')) {
+      const trimmed = line.trim();
+      if (/^(DERIVE|INVERSE|WHERE|UNIQUE)\b/.test(trimmed)) break;
+      const attribute = /^(\w+)\s*:\s*(.+);$/.exec(trimmed);
+      if (attribute) attributes.push({ name: attribute[1], isList: /^(OPTIONAL\s+)?(LIST|SET|ARRAY|BAG)\b/.test(attribute[2]) });
+    }
+    entities.set(name.toUpperCase(), { supertype, attributes });
+  }
+  return entities;
+}
+
+const EXPRESS_SCHEMAS = EXPRESS_FILES.map((file) => parseExpressEntities(readFileSync(join(SCHEMA_DIR, file), 'utf8')));
+
+/** Explicit attributes of `type` from the root down, per the first schema that declares it. */
+function expressAttributes(type: string): Array<{ name: string; isList: boolean }> | null {
+  for (const schema of EXPRESS_SCHEMAS) {
+    if (!schema.has(type.toUpperCase())) continue;
+    const chain: ExpressEntity[] = [];
+    for (let current = schema.get(type.toUpperCase()); current; current = current.supertype ? schema.get(current.supertype.toUpperCase()) : undefined) chain.unshift(current);
+    return chain.flatMap((entity) => entity.attributes);
+  }
+  return null;
+}
+
+/** Relating/Related slots from EXPRESS, as offsets after the 4 IfcRoot attributes. */
+function expressSlotPlan(type: string): { relating: { index: number; isList: boolean }; related: { index: number; isList: boolean } } | null {
+  const attributes = expressAttributes(type);
+  if (!attributes) return null;
+  const find = (prefix: 'Relating' | 'Related') => {
+    const index = attributes.findIndex((attribute) => attribute.name.startsWith(prefix));
+    return index < 0 ? null : { index: index - 4, isList: attributes[index].isList };
+  };
+  const relating = find('Relating'), related = find('Related');
+  return relating && related ? { relating, related } : null;
 }
 
 describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
@@ -140,5 +203,149 @@ describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
     // an alias: its graph edge retains its own enum bucket and STEP record.
     expect(store.relationships!.forward.getEdges(12, RelationshipType.ConnectsStructuralMember)).toEqual([]);
     expect(store.relationships!.forward.getEdges(12, RelationshipType.ConnectsWithEccentricity)[0].relationshipId).toBe(32);
+  });
+});
+
+describe('complete schema-derived relationship graph (#4205)', () => {
+  it('keeps a parsed header on the detected schema even when its identifier list is unavailable', async () => {
+    const source = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('schema declaration unavailable'),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+ENDSEC;
+DATA;
+#10=IFCWALL('wall',$,'Wall',$,$,$,$,$,$);
+#11=IFCWALL('surface',$,'Surface',$,$,$,$,$,$);
+#20=IFCRELADHERESTOELEMENT('rel',$,$,$,#10,(#11));
+ENDSEC;
+END-ISO-10303-21;`);
+    const refs = Array.from(new StepTokenizer(source).scanEntitiesFast()).map((ref) => ({
+      expressId: ref.expressId,
+      type: ref.type,
+      byteOffset: ref.offset,
+      byteLength: ref.length,
+      lineNumber: ref.line,
+    }));
+    const store = await new ColumnarParser().parseLite(source.buffer.slice(0) as ArrayBuffer, refs, {});
+
+    expect(store.schemaVersion).toBe('IFC4');
+    expect(store.relationships.forward.getEdges(10)).toEqual([]);
+  });
+
+  it('indexes IFC2X3 IfcRelCoversSpaces from RelatedSpace to RelatedCoverings', async () => {
+    const source = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#10=IFCSPACE('space',$,'Space',$,$,$,$,$,.ELEMENT.,$,$);
+#11=IFCCOVERING('covering',$,'Covering',$,$,$,$,$,.FLOORING.);
+#20=IFCRELCOVERSSPACES('rel',$,$,$,#10,(#11));
+ENDSEC;
+END-ISO-10303-21;`);
+    const refs = Array.from(new StepTokenizer(source).scanEntitiesFast()).map((ref) => ({
+      expressId: ref.expressId,
+      type: ref.type,
+      byteOffset: ref.offset,
+      byteLength: ref.length,
+      lineNumber: ref.line,
+    }));
+    const store = await new ColumnarParser().parseLite(source.buffer.slice(0) as ArrayBuffer, refs, {});
+
+    expect(store.schemaVersion).toBe('IFC2X3');
+    expect(store.relationships.forward.getEdges(10, RelationshipType.CoversSpaces)).toEqual([
+      { target: 11, type: RelationshipType.CoversSpaces, relationshipId: 20 },
+    ]);
+  });
+
+  it('derives the same relating/related slots from raw EXPRESS as getRelationshipSlotPlan does (#5009 review)', () => {
+    // The parser's slot plan is checked against an oracle that does not share
+    // its code: the EXPRESS text itself. A wrong index, order or cardinality
+    // in the registry-derived plan fails here rather than being reproduced
+    // by the fixture below.
+    const types = [...getAllConcreteRelationshipTypes()].sort();
+    const compared = types.filter((type) => expressSlotPlan(type) !== null);
+    expect(compared).toHaveLength(54);
+    for (const type of compared) {
+      const plan = getRelationshipSlotPlan(type), oracle = expressSlotPlan(type)!;
+      expect(plan?.relating.index, type).toBe(oracle.relating.index);
+      expect(plan?.related.index, type).toBe(oracle.related.index);
+      // `isList` is informational (readRefList accepts both forms) and the
+      // plan may widen a SELECT that admits a SET member
+      // (IfcRelDefinesByProperties.RelatingPropertyDefinition); it may never
+      // narrow a slot EXPRESS declares as an aggregate.
+      if (oracle.relating.isList) expect(plan?.relating.isList, type).toBe(true);
+      if (oracle.related.isList) expect(plan?.related.isList, type).toBe(true);
+    }
+  });
+
+  it('indexes and exposes every concrete relationship with a relating/related slot pair', async () => {
+    const cases = [...getAllConcreteRelationshipTypes()]
+      .map((type) => ({ type, plan: expressSlotPlan(type) }))
+      .filter((entry): entry is { type: string; plan: NonNullable<ReturnType<typeof expressSlotPlan>> } =>
+        entry.plan !== null)
+      .sort((a, b) => a.type.localeCompare(b.type))
+      .map(({ type, plan }, index) => {
+        const relationshipId = 100 + index;
+        const relatingId = 1000 + index * 2;
+        const relatedId = relatingId + 1;
+        const attrs = Array<string>(Math.max(plan.relating.index, plan.related.index) + 1).fill('$');
+        attrs[plan.relating.index] = plan.relating.isList ? `(#${relatingId})` : `#${relatingId}`;
+        attrs[plan.related.index] = plan.related.isList ? `(#${relatedId})` : `#${relatedId}`;
+        return {
+          type,
+          relationshipId,
+          relatingId,
+          relatedId,
+          line: `#${relationshipId}=${type}('rel-${relationshipId}',$,$,$,${attrs.join(',')});`,
+        };
+      });
+
+    // Independent cardinality guard: a truncated schema walk must not make
+    // this generated fixture and its assertions vacuously agree.
+    expect(cases).toHaveLength(54);
+    const source = new TextEncoder().encode(cases.map(entry => entry.line).join('\n'));
+    const refs = Array.from(new StepTokenizer(source).scanEntitiesFast()).map((ref) => ({
+      expressId: ref.expressId,
+      type: ref.type,
+      byteOffset: ref.offset,
+      byteLength: ref.length,
+      lineNumber: ref.line,
+    }));
+    const store = await new ColumnarParser().parseLite(source.buffer.slice(0), refs, {});
+
+    expect(store.dropCensus?.relClassesSeen).toBe(54);
+    expect(store.dropCensus?.relClassesIndexed).toBe(54);
+    expect(store.dropCensus?.unindexedRelClasses).toEqual([]);
+
+    for (const entry of cases) {
+      const relationshipType = REL_TYPE_MAP[entry.type];
+      expect(relationshipType, entry.type).toBeDefined();
+      const exactTypeName = normalizeIfcTypeName(entry.type);
+      const exactRelationshipType = QUERY_REL_TYPE_MAP[exactTypeName];
+      expect(exactRelationshipType, entry.type).toBeDefined();
+      const compatibilityType = entry.type === 'IFCRELNESTS'
+        ? RelationshipType.Aggregates
+        : entry.type === 'IFCRELASSIGNSTOGROUPBYFACTOR'
+          ? RelationshipType.AssignsToGroup
+          : exactRelationshipType;
+      expect(relationshipType, entry.type).toBe(compatibilityType);
+      if (relationshipType !== exactRelationshipType) {
+        expect(SECONDARY_REL_TYPE_MAP[entry.type], entry.type).toBe(exactRelationshipType);
+      }
+      expect(store.relationships.forward.getEdges(entry.relatingId, exactRelationshipType), entry.type)
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ target: entry.relatedId, relationshipId: entry.relationshipId }),
+        ]));
+      expect(extractRelationshipsOnDemand(store, entry.relatingId).relations, entry.type)
+        .toContainEqual(expect.objectContaining({
+          relationshipId: entry.relationshipId,
+          relationshipType: exactTypeName,
+          direction: 'forward',
+          entity: expect.objectContaining({ id: entry.relatedId }),
+        }));
+    }
   });
 });

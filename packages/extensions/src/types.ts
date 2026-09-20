@@ -102,8 +102,19 @@ export type RiskTier = 'green' | 'yellow' | 'red';
 
 export interface CapabilityRisk {
   capability: Capability;
+  /** Stable catalogue identifier for UI localization and analytics. */
+  capabilityId: string;
   tier: RiskTier;
-  /** Plain-English description shown in the review screen. */
+  /** Stable explanation for the computed tier and description. */
+  reasonCode:
+    | 'catalogue'
+    | 'unknown-capability'
+    | 'missing-required-target'
+    | 'universal-wildcard-target'
+    | 'host-pattern-wildcard'
+    | 'target-pattern-wildcard'
+    | 'specific-network-host';
+  /** Plain-English diagnostic for logs, prompts, and non-localized consumers. */
   description: string;
 }
 

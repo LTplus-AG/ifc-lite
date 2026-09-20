@@ -17,13 +17,23 @@
 import { useCallback, useState } from 'react';
 import { CheckCircle2, RefreshCcw, ShieldAlert, Wrench, X } from 'lucide-react';
 import { needsSdkRepair } from '@ifc-lite/extensions';
-import type { RevalidationItem, RevalidationSummary } from '@ifc-lite/extensions';
+import type {
+  CompatibilityResult,
+  RevalidationItem,
+  RevalidationSummary,
+} from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { useTranslation, type UseTranslationResult } from '@/i18n';
 import { HelpHint } from './HelpHint';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
+
+const ENGINE_RANGE_CODE = 'engines.ifcLiteSdk';
+const APP_VERSION_CODE = '__APP_VERSION__';
 
 interface RepairQueuePanelProps {
   /** SDK version to revalidate against. Defaults to APP_VERSION. */
@@ -32,6 +42,7 @@ interface RepairQueuePanelProps {
 }
 
 export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps) {
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -53,11 +64,13 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
       const next = await host.revalidateForSdk(version);
       setSummary(next);
     } catch (err) {
-      toast.error(`Revalidation failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('extensionsPanels.repairQueuePanel.revalidationFailedToast', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
     } finally {
       setBusy(false);
     }
-  }, [host, version]);
+  }, [host, version, t]);
 
   // Eager-run is gated behind an explicit user click. Mounting alone
   // shouldn't spin up sandboxes for every installed extension — that
@@ -68,7 +81,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
     queueChatPrompt(buildRepairPrompt(item, version));
     setChatPanelVisible(true);
     setScriptPanelVisible(true);
-    toast.success(`Routing repair for ${item.extensionId}…`);
+    toast.success(t('extensionsPanels.repairQueuePanel.routingRepairToast', { extensionId: item.extensionId }));
   };
 
   return (
@@ -76,37 +89,40 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Wrench className="h-4 w-4" />
-          <h2 className="text-sm font-semibold">Repair queue</h2>
+          <h2 className="text-sm font-semibold">{t('extensionsPanels.repairQueuePanel.title')}</h2>
           {summary && (
             <span className="text-[11px] text-muted-foreground">
-              SDK {summary.sdk} · {summary.needsRepair.length} need fixing
+              {t('extensionsPanels.repairQueuePanel.summaryLine', {
+                sdk: summary.sdk,
+                count: summary.needsRepair.length,
+                countDisplay: formatLocaleNumber(locale, summary.needsRepair.length),
+              })}
             </span>
           )}
-          <HelpHint label="Repair queue">
+          <HelpHint label={t('extensionsPanels.repairQueuePanel.helpLabel')}>
             <p>
-              When the viewer SDK bumps, extensions whose declared
-              <code> engines.ifcLiteSdk</code> range no longer matches
-              are flagged here.
+              {styleInterpolatedValues(t, 'extensionsPanels.repairQueuePanel.helpIntro', [
+                ['engineRange', <code key="engine-range">{ENGINE_RANGE_CODE}</code>],
+              ])}
             </p>
             <p>
-              <strong>Run check</strong> spins up a sandbox for each
-              outdated extension and runs its manifest tests against
-              the new SDK. Failing tests get a <strong>Repair</strong>
-              button that seeds chat with a fix prompt — the AI
-              authoring loop produces the patched bundle.
+              {styleInterpolatedValues(t, 'extensionsPanels.repairQueuePanel.helpActions', [
+                ['runCheck', <strong key="run-check">{t('extensionsPanels.repairQueuePanel.runCheckLabel')}</strong>],
+                ['repair', <strong key="repair">{t('extensionsPanels.repairQueuePanel.repairLabel')}</strong>],
+              ])}
             </p>
             <p>
-              Doesn't run automatically (each check spawns sandboxes).
+              {t('extensionsPanels.repairQueuePanel.helpNoAuto')}
             </p>
           </HelpHint>
         </div>
         <div className="flex items-center gap-1">
           <Button size="sm" variant="ghost" onClick={() => void run()} disabled={busy || !version}>
             <RefreshCcw className="mr-1 h-3.5 w-3.5" />
-            Re-run
+            {t('extensionsPanels.repairQueuePanel.rerunButton')}
           </Button>
           {onClose && (
-            <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close">
+            <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('extensionsPanels.repairQueuePanel.closeAriaLabel')}>
               <X className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -116,20 +132,22 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
       <ScrollArea className="flex-1">
         {!version ? (
           <div className="px-6 py-12 text-center text-sm text-rose-600 dark:text-rose-400">
-            SDK version unknown — cannot revalidate. Set <code className="font-mono">__APP_VERSION__</code> via Vite define.
+            {styleInterpolatedValues(t, 'extensionsPanels.repairQueuePanel.sdkUnknown', [
+              ['appVersion', <code key="app-version" className="font-mono">{APP_VERSION_CODE}</code>],
+            ])}
           </div>
         ) : !summary ? (
           <div className="px-6 py-12 text-center text-sm text-muted-foreground space-y-3">
-            <div>No compatibility check has run for this session.</div>
+            <div>{t('extensionsPanels.repairQueuePanel.noCheckRun')}</div>
             <Button size="sm" variant="outline" onClick={() => void run()} disabled={busy}>
               <RefreshCcw className="mr-1 h-3.5 w-3.5" />
-              Run check
+              {t('extensionsPanels.repairQueuePanel.runCheckLabel')}
             </Button>
           </div>
         ) : summary.items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
             <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-            <div className="text-sm font-medium">No installed extensions</div>
+            <div className="text-sm font-medium">{t('extensionsPanels.repairQueuePanel.noInstalledExtensions')}</div>
           </div>
         ) : (
           <ul className="divide-y">
@@ -150,6 +168,7 @@ function RepairRow({
   item: RevalidationItem;
   onRepair: () => void;
 }) {
+  const { t, locale } = useTranslation();
   const tone =
     item.outcome === 'pass'
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -168,29 +187,80 @@ function RepairRow({
             )}
             <code className="text-xs font-mono break-all">{item.extensionId}</code>
             <span className={`text-[10px] uppercase tracking-wide font-semibold ${tone}`}>
-              {item.outcome}
+              {localizeRevalidationOutcome(item.outcome, t)}
             </span>
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
-            Range <code className="font-mono">{item.compatibility.declared}</code> · {item.compatibility.reason}
+            {t('extensionsPanels.repairQueuePanel.rangeLabel', {
+              range: item.compatibility.declared,
+              reason: localizeCompatibilityReason(item.compatibility, t),
+            })}
           </div>
           {item.tests && item.tests.failed > 0 && (
             <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
-              {item.tests.failed} test{item.tests.failed === 1 ? '' : 's'} failed:
-              {' '}
-              {item.tests.results.find((r) => !r.passed)?.error}
+              {t('extensionsPanels.repairQueuePanel.testsFailed', {
+                count: item.tests.failed,
+                countDisplay: formatLocaleNumber(locale, item.tests.failed),
+                error: item.tests.results.find((r) => !r.passed)?.error ?? '',
+              })}
             </div>
           )}
         </div>
         {needsSdkRepair(item) && (
           <Button size="sm" variant="outline" onClick={onRepair}>
             <Wrench className="mr-1 h-3.5 w-3.5" />
-            Repair
+            {t('extensionsPanels.repairQueuePanel.repairLabel')}
           </Button>
         )}
       </div>
     </li>
   );
+}
+
+function localizeRevalidationOutcome(
+  outcome: RevalidationItem['outcome'],
+  t: UseTranslationResult['t'],
+): string {
+  switch (outcome) {
+    case 'pass':
+      return t('extensionsPanels.repairQueuePanel.outcome.pass');
+    case 'fail':
+      return t('extensionsPanels.repairQueuePanel.outcome.fail');
+    case 'skipped':
+      return t('extensionsPanels.repairQueuePanel.outcome.skipped');
+    default: {
+      const exhaustive: never = outcome;
+      return exhaustive;
+    }
+  }
+}
+
+function localizeCompatibilityReason(
+  compatibility: CompatibilityResult,
+  t: UseTranslationResult['t'],
+): string {
+  switch (compatibility.reasonCode) {
+    case 'invalid-sdk-version':
+      return t('extensionsPanels.repairQueuePanel.compatibility.invalidSdkVersion', {
+        sdk: compatibility.sdk,
+      });
+    case 'unsupported-range':
+      return t('extensionsPanels.repairQueuePanel.compatibility.unsupportedRange');
+    case 'range-mismatch':
+      return t('extensionsPanels.repairQueuePanel.compatibility.rangeMismatch', {
+        declared: compatibility.declared,
+        sdk: compatibility.sdk,
+      });
+    case 'range-match':
+      return t('extensionsPanels.repairQueuePanel.compatibility.rangeMatch', {
+        declared: compatibility.declared,
+        sdk: compatibility.sdk,
+      });
+    default: {
+      const exhaustive: never = compatibility.reasonCode;
+      return exhaustive;
+    }
+  }
 }
 
 function buildRepairPrompt(item: RevalidationItem, sdk: string): string {

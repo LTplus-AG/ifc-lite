@@ -545,6 +545,36 @@ describe('QueryNamespace — relationship navigation', () => {
     expect(ns.decomposedBy({ modelId: 'arch', expressId: 1 })?.ref.expressId).toBe(10);
   });
 
+  it('decomposition conveniences include exact IfcRelNests edges (#4205)', () => {
+    const backend = {
+      query: {
+        related: vi.fn((_ref: EntityRef, relType: string, direction: 'forward' | 'inverse') => {
+          if (relType !== 'IfcRelNests') return [];
+          return direction === 'forward'
+            ? [{ modelId: 'arch', expressId: 20 }]
+            : [{ modelId: 'arch', expressId: 10 }];
+        }),
+        entityData: vi.fn((ref: EntityRef) => ({
+          ref,
+          globalId: String(ref.expressId),
+          name: '',
+          type: 'IfcElement',
+          description: '',
+          objectType: '',
+        })),
+      },
+    } as unknown as BimBackend;
+    const ns = new QueryNamespace(backend);
+    const ref = { modelId: 'arch', expressId: 1 };
+
+    expect(ns.decomposedBy(ref)?.ref.expressId).toBe(10);
+    expect(ns.decomposes(ref).map((item) => item.ref.expressId)).toEqual([20]);
+    expect(backend.query.related).toHaveBeenCalledWith(ref, 'IfcRelAggregates', 'inverse');
+    expect(backend.query.related).toHaveBeenCalledWith(ref, 'IfcRelNests', 'inverse');
+    expect(backend.query.related).toHaveBeenCalledWith(ref, 'IfcRelAggregates', 'forward');
+    expect(backend.query.related).toHaveBeenCalledWith(ref, 'IfcRelNests', 'forward');
+  });
+
   it('containedIn() and decomposedBy() return null with no relations', () => {
     const ns = setup([], {});
     expect(ns.containedIn({ modelId: 'arch', expressId: 1 })).toBeNull();

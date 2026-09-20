@@ -10,6 +10,7 @@ import { clashPanelEn } from './catalogues/clash-panel.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
+import { bcfEn } from './catalogues/bcf.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
@@ -88,6 +89,7 @@ export const en = {
   ...extensionsPanelsEn,
   ...idsPanelEn,
   ...clashPanelEn,
+  ...bcfEn,
   ...layersPanelEn,
 } as const;
 

@@ -5,10 +5,12 @@
 import { useState } from 'react';
 import { Cloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import { BCFServerDialog } from './BCFServerDialog';
 
 /** Header control that owns the BCF server dialog's open state. */
 export function BCFServerControl() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -17,7 +19,7 @@ export function BCFServerControl() {
         size="icon"
         className="h-7 w-7"
         onClick={() => setOpen(true)}
-        title="BCF server"
+        title={t('bcf.serverControl.title')}
       >
         <Cloud className="h-4 w-4" />
       </Button>

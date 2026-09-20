@@ -383,7 +383,6 @@ describe('ClashPanel localization (#4918)', { skip: !HAS_CATALOGUE && 'clash-pan
   it('ghost focus mode shows the ghost tooltip on the row focus-toggle button', () => {
     useViewerStore.setState({ clashResult: makeResult([CLASH_A]), clashFocusMode: 'ghost' });
     const container = render(<ClashPanel />);
-    const english = chromeStrings(container);
     registerLocale(PSEUDO_LOCALE, PSEUDO);
     act(() => setLocale(PSEUDO_LOCALE));
     const after = chromeStrings(container);

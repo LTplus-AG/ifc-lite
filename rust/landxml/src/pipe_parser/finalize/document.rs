@@ -30,6 +30,7 @@ impl PipeParser<'_> {
         Ok(LandXmlPipeNetworkDocument {
             version: "1.2".to_owned(),
             root_units,
+            collections: self.collections,
             networks: self.networks,
             refusals: self.refusals,
         })

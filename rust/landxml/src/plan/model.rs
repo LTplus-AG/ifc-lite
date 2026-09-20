@@ -51,8 +51,14 @@ pub struct LandXmlCgPoint {
 /// every COGO point for each endpoint or alias hop.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct LandXmlPlanReferenceIndex {
-    pub(crate) scoped: HashMap<(LandXmlSourceId, String), Option<usize>>,
-    pub(crate) global: HashMap<String, Option<usize>>,
+    pub(crate) scoped: HashMap<(LandXmlSourceId, String), Option<ReferenceTarget>>,
+    pub(crate) global: HashMap<String, Option<ReferenceTarget>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ReferenceTarget {
+    pub(crate) index: usize,
+    pub(crate) source_id: LandXmlSourceId,
 }
 
 impl LandXmlPlanReferenceIndex {
@@ -66,17 +72,32 @@ impl LandXmlPlanReferenceIndex {
         }
         keys.sort();
         keys.dedup();
-        let index = point.ordinal - 1;
+        let target = ReferenceTarget {
+            index: point.ordinal - 1,
+            source_id: point.source_id.clone(),
+        };
         for key in keys {
             self.scoped
                 .entry((point.scope_id.clone(), key.clone()))
                 .and_modify(|slot| *slot = None)
-                .or_insert(Some(index));
+                .or_insert(Some(target.clone()));
             self.global
                 .entry(key)
                 .and_modify(|slot| *slot = None)
-                .or_insert(Some(index));
+                .or_insert(Some(target.clone()));
         }
+    }
+
+    pub(crate) fn empty(&self) -> bool {
+        self.scoped.is_empty() && self.global.is_empty()
+    }
+
+    pub(crate) fn from_points(points: &[LandXmlCgPoint]) -> Self {
+        let mut index = Self::default();
+        for point in points {
+            index.insert(point);
+        }
+        index
     }
 }
 

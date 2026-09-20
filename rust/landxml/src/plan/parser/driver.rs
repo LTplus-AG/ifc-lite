@@ -99,12 +99,11 @@ impl Parser<'_> {
         let legal_cg_points = self.path(&["LandXML", "CgPoints"])
             || self.path(&["LandXML", "Survey", "CgPoints"])
             || (local == "CgPoints"
-                && self
-                    .frames
-                    .iter()
-                    .rev()
-                    .nth(1)
-                    .is_some_and(|frame| frame.target && frame.local == "CgPoints"));
+                && self.scope_stack.last().is_some_and(|(depth, _)| {
+                    *depth + 1 == self.frames.len()
+                        && self.frames[*depth - 1].target
+                        && self.frames[*depth - 1].local == "CgPoints"
+                }));
         if legal_cg_points {
             self.scope_ordinal += 1;
             let scope = LandXmlSourceId(format!("landxml:CgPoints:{}", self.scope_ordinal));
@@ -178,13 +177,24 @@ impl Parser<'_> {
             self.begin_geometry(local, attributes)?;
             return Ok(());
         }
-        if self.geometry.is_none() && local == "Property" && !self.active.is_empty() {
+        let active_member = active_depth.is_some_and(|depth| {
+            self.frames[depth..self.frames.len() - 1]
+                .iter()
+                .all(|frame| frame.target && frame.local == "Feature")
+        });
+        if self.geometry.is_none()
+            && local == "Property"
+            && active_member
+            && (matches!(self.active.last(), Some(Active::Feature(_)))
+                || self.frames.len() == active_depth.expect("active member") + 1)
+        {
             self.add_property(&attributes)?;
             return Ok(());
         }
         if self.geometry.is_none()
             && local == "Title"
             && matches!(self.active.last(), Some(Active::Parcel(_)))
+            && self.frames.len() == active_depth.expect("parcel title owner") + 1
         {
             if attr(&attributes, "name").is_none() {
                 return Err(error(Code::InvalidSemantic, "Parcel Title requires name"));

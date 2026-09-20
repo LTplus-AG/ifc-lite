@@ -436,3 +436,62 @@ fn issue_5046_batches_without_usize_capacity_overflow_and_cancels_alias_work() {
         LandXmlDiagnosticCode::Cancelled
     );
 }
+
+#[test]
+fn issue_5046_does_not_adopt_foreign_plan_descendants_or_scopes() {
+    let parsed = parse(&document(
+        r#"<Wrapper><CgPoints><CgPoints><CgPoint name="foreign">7 8</CgPoint></CgPoints></CgPoints></Wrapper>
+        <PlanFeatures><PlanFeature name="safe"><Wrapper><Property label="foreign" value="no"/></Wrapper><Property label="safe" value="yes"/></PlanFeature></PlanFeatures>
+        <Parcels><Parcel name="safe"><Wrapper><Title name="foreign"/></Wrapper><Title name="safe"/></Parcel></Parcels>"#,
+    ));
+    assert!(parsed.cogo_points.is_empty());
+    assert_eq!(
+        parsed.plan_features[0].properties.get("safe"),
+        Some(&"yes".to_owned())
+    );
+    assert!(!parsed.plan_features[0].properties.contains_key("foreign"));
+    assert_eq!(parsed.parcels[0].title.as_deref(), Some("safe"));
+}
+
+#[test]
+fn issue_5046_bounds_curve_center_aliases_and_rebuilds_safe_lookup_after_deserialize() {
+    let mut aliases = String::from(r#"<CgPoints><CgPoint name="a0">0 0</CgPoint>"#);
+    for ordinal in 1..=5_000 {
+        aliases.push_str(&format!(
+            r#"<CgPoint name="a{ordinal}" pntRef="a{}"/>"#,
+            ordinal - 1
+        ));
+    }
+    aliases.push_str("</CgPoints>");
+    let parsed = parse(&document(&format!(
+        r#"{aliases}<Parcels><Parcel><CoordGeom><Curve rot="ccw" radius="1"><Start>1 0</Start><Center pntRef="a5000"/><End>-1 0</End></Curve><Line><Start>-1 0</Start><End>1 0</End></Line></CoordGeom></Parcel></Parcels>"#
+    )));
+    assert_eq!(
+        parsed
+            .probe_parcel_with_cancel(&parsed.parcels[0], 20, None)
+            .expect_err("curve center aliases consume topology budget")
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+
+    let source = parse(&document(
+        r#"<CgPoints><CgPoint name="2">9 9</CgPoint><CgPoint name="base">1 2</CgPoint><CgPoint name="alias" pntRef="2"/></CgPoints>"#,
+    ));
+    let restored: ifc_lite_landxml::LandXmlPlanDocument =
+        serde_json::from_str(&serde_json::to_string(&source).expect("serialize"))
+            .expect("deserialize plan records");
+    let reference = ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+        pnt_ref: "alias".to_owned(),
+    };
+    assert_eq!(
+        restored
+            .resolve_point(None, &reference)
+            .expect("alias resolves")
+            .northing,
+        1.0
+    );
+
+    let mut mutated = source;
+    mutated.cogo_points.clear();
+    assert_eq!(mutated.resolve_point(None, &reference), None);
+}

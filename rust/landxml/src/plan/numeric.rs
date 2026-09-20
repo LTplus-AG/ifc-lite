@@ -12,6 +12,7 @@ mod topology;
 use topology::{geometry_edges, segments_intersect};
 
 const EPSILON: f64 = 1e-9;
+type GeometryMeasure = (f64, f64, (LandXmlPlanPoint, LandXmlPlanPoint));
 
 pub(super) struct TopologyBudget<'a> {
     pub(super) work: usize,
@@ -215,7 +216,8 @@ fn probe_loop(
         if previous_end.is_some_and(|previous| !same_point(previous, start)) {
             return Ok(None);
         }
-        let Some((length, integral, chord)) = geometry_measure(document, item, start, end) else {
+        let Some((length, integral, chord)) = geometry_measure(document, item, start, end, budget)?
+        else {
             return Ok(None);
         };
         perimeter += length;
@@ -255,11 +257,14 @@ fn geometry_measure(
     geometry: &LandXmlPlanGeometry,
     start: LandXmlPlanPoint,
     end: LandXmlPlanPoint,
-) -> Option<(f64, f64, (LandXmlPlanPoint, LandXmlPlanPoint))> {
+    budget: &mut TopologyBudget<'_>,
+) -> std::result::Result<Option<GeometryMeasure>, crate::LandXmlError> {
     match geometry.kind {
-        super::LandXmlGeometryKind::Line => {
-            Some((distance(start, end), cross(start, end), (start, end)))
-        }
+        super::LandXmlGeometryKind::Line => Ok(Some((
+            distance(start, end),
+            cross(start, end),
+            (start, end),
+        ))),
         super::LandXmlGeometryKind::IrregularLine => {
             let mut points = Vec::with_capacity(geometry.intermediate_points.len() + 2);
             points.push(start);
@@ -274,32 +279,43 @@ fn geometry_measure(
                             integral + cross(pair[0], pair[1]),
                         )
                     });
-            Some((length, integral, (start, end)))
+            Ok(Some((length, integral, (start, end))))
         }
         super::LandXmlGeometryKind::Curve => {
-            let center = document
-                .resolve_point(geometry.point_scope_id.as_ref(), geometry.center.as_ref()?)?;
+            let Some(center_location) = geometry.center.as_ref() else {
+                return Ok(None);
+            };
+            let Some(center) = document.resolve_point_with_budget(
+                geometry.point_scope_id.as_ref(),
+                center_location,
+                budget,
+            )?
+            else {
+                return Ok(None);
+            };
             let radius = geometry.radius.unwrap_or_else(|| distance(center, start));
             if radius <= 0.0
                 || (distance(center, start) - radius).abs() > EPSILON
                 || (distance(center, end) - radius).abs() > EPSILON
             {
-                return None;
+                return Ok(None);
             }
             let start_angle =
                 (start.northing - center.northing).atan2(start.easting - center.easting);
             let end_angle = (end.northing - center.northing).atan2(end.easting - center.easting);
-            let delta = arc_delta(
+            let Some(delta) = arc_delta(
                 start_angle,
                 end_angle,
                 geometry.rotation.as_deref(),
                 geometry.declared_length,
                 radius,
-            )?;
+            ) else {
+                return Ok(None);
+            };
             let integral = center.easting * (end.northing - start.northing)
                 - center.northing * (end.easting - start.easting)
                 + radius * radius * delta;
-            Some((radius * delta.abs(), integral, (start, end)))
+            Ok(Some((radius * delta.abs(), integral, (start, end))))
         }
     }
 }

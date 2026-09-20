@@ -3,20 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Recipient side of a share: rebuild every model the room holds, one viewer
- * model per slot (#4444).
- *
- * A recipient (deep-link join, no local model) reconstructs one IFCX snapshot
- * per room slot, then attaches that slot's blob-backed geometry. IFC5 rooms
- * carry containment + properties natively; legacy STEP rooms use the same
- * IFCX shape. Pre-slot rooms still reconstruct as one legacy slot.
- * Each slot is registered as a federated model so its meshes live in their own
- * global id range. Two copies of one file, with the same
- * local express ids and the same GlobalIds, are two selectable models. The
- * hydrated meshes are re-homed with `applyFederationOffsetToMesh` exactly as
- * the loader does for an added file.
- * Extracted from `collabSlice.startCollab` as a dependency-injected factory
- * that can be driven against a real document without a websocket.
+ * Recipient side of a share: rebuild every room model, one viewer model per
+ * slot (#4444).
+ * A recipient reconstructs one IFCX snapshot per room slot, then attaches its
+ * blob-backed geometry. IFC5 rooms carry containment + properties natively;
+ * legacy STEP and pre-slot rooms use the same IFCX shape. Each slot is a
+ * federated model, so copies with identical express ids and GlobalIds remain
+ * independently selectable. Hydrated meshes are re-homed with
+ * `applyFederationOffsetToMesh` exactly as the loader does for an added file.
+ * Dependency-injected so it can run against a real document without a socket.
  */
 import type { BlobStore, CollabSession, LocalPlacement, ModelSlot, ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -36,7 +31,7 @@ import type { ParsedRoomStepSource } from './room-step-source';
 import { attachRoomStepSource } from './room-step-attach';
 import { cleanupRoomModels } from './room-reconstruct-cleanup';
 import { hydrateStructuredEntityAttributes } from './room-structured-attributes';
-/** The slice of the collab runtime the reconstruct needs (injected). */
+/** The slice of the collab runtime the reconstruct needs. */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'),
   'snapshotToIfcx' | 'listModelSlots' | 'getEntity' | 'entityToJSON'>;
 /** The store actions and reads the reconstruct goes through (a narrow view of `ViewerState`). */
@@ -80,7 +75,6 @@ interface SlotState {
   created: boolean;
 }
 const LIVE_DEBOUNCE_MS = 800;
-
 export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstructor {
   const { roomId, session, collab, geomApi, sweepApi, blobStore } = deps;
   const live = (): boolean => deps.get().collabRoomId === roomId;

@@ -7,15 +7,30 @@
  * covering `LensPanel.tsx` (see `lens-panel.en.ts`'s own docblock for the
  * exact surface).
  *
- * Same oracle as `ClashPanel.i18n.test.tsx`/`Measure.i18n.test.tsx`: a
- * pseudo-locale maps every `lensPanel.*` key to a marked copy of its
- * English text, the panel (or an exported sub-component, for states the
- * top-level panel cannot reach directly — `RuleEditor`/`AutoColorEditor`
- * are exported for exactly this) is driven through the states that surface
- * as much of the catalogue as feasible, the locale is switched live, and
- * every marked string that was visible in English must reappear marked.
- * `LensPanel` uses plain HTML `title`/`aria-label` attributes (no Radix
- * tooltip), so no focus-walk is needed to reach them.
+ * Same oracle shape as `ClashPanel.i18n.test.tsx`/`Measure.i18n.test.tsx`: a
+ * pseudo-locale maps a `lensPanel.*` key to a marked copy of its English
+ * text, the panel (or an exported sub-component, for states the top-level
+ * panel cannot reach directly — `RuleEditor`/`AutoColorEditor` are exported
+ * for exactly this) is driven through the states that surface as much of
+ * the catalogue as feasible, the locale is switched live, and every marked
+ * string that was visible in English must reappear marked. `LensPanel` uses
+ * plain HTML `title`/`aria-label` attributes (no Radix tooltip), so no
+ * focus-walk is needed to reach them.
+ *
+ * Deliberately NOT a dynamic import of `lens-panel.en.ts` gating a
+ * `describe.skip` (the pattern `ClashPanel.i18n.test.tsx` uses): reverting
+ * this PR's production hunks deletes that brand-new catalogue file
+ * entirely, so a skip-when-missing guard would skip the WHOLE suite on
+ * revert — the revert oracle then sees zero tests collected and reports
+ * INCONCLUSIVE rather than the RED it needs to call this OBSERVED. Instead,
+ * the expected English strings are a plain literal mirror
+ * (`LENS_PANEL_EN` below) that has no import dependency on the production
+ * catalogue at all: reverting `LensPanel.tsx` back to hardcoded JSX text
+ * still lets this file load and run, and the pseudo-locale assertions then
+ * fail for real (the reverted component never calls `t()`, so nothing gets
+ * marked). The one place this file DOES read the real catalogue
+ * (`catalogueStaysInSync` below) is wrapped so a missing module degrades to
+ * a no-op rather than blocking the rest of the suite.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
@@ -23,31 +38,106 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import type { lensPanelEn as LensPanelEnType } from '@/i18n/catalogues/lens-panel.en';
 import type { TranslationValue } from '@/i18n/types';
 import { useViewerStore } from '@/store';
 import type { Lens, LensRule, AutoColorLegendEntry } from '@/store/slices/lensSlice';
 import { LensPanel, RuleEditor, AutoColorEditor } from './LensPanel.js';
 
-// Guarded dynamic import (#4918 revert-oracle, same pattern as
-// ClashPanel.i18n.test.tsx): reverting production hunks treats this
-// brand-new catalogue as a deletion, and a static
-// `import { lensPanelEn } from '...'` would then fail this file's whole
-// LOAD — which the oracle reports as INCONCLUSIVE-by-load-failure rather
-// than a red assertion. A guarded dynamic import turns a missing catalogue
-// into a clean `describe.skip` instead, so the revert witness comes from
-// the real assertions below.
-let lensPanelEnLoaded: typeof LensPanelEnType | undefined;
-try {
-  ({ lensPanelEn: lensPanelEnLoaded } = await import('@/i18n/catalogues/lens-panel.en'));
-} catch {
-  lensPanelEnLoaded = undefined;
-}
-const HAS_CATALOGUE = lensPanelEnLoaded !== undefined;
-const lensPanelEn: typeof LensPanelEnType = lensPanelEnLoaded ?? ({} as typeof LensPanelEnType);
+/**
+ * Literal mirror of `lens-panel.en.ts` — deliberately NOT imported from the
+ * production catalogue (see the file docblock above for why). Kept in sync
+ * by `catalogueStaysInSync` below whenever the real module is importable.
+ */
+const LENS_PANEL_EN = {
+  'lensPanel.title': 'Lens',
+  'lensPanel.exportTooltip': 'Export lenses as JSON',
+  'lensPanel.importTooltip': 'Import lenses from JSON',
+  'lensPanel.clearButton': 'Clear',
+  'lensPanel.closeAriaLabel': 'Close',
+  'lensPanel.newRuleLensButton': 'New Rule Lens',
+  'lensPanel.newAutoColorLensButton': 'New Auto-Color Lens',
+  'lensPanel.footer.active': 'Active · {colored} colored · {hidden}',
+  'lensPanel.footer.hiddenCount': { one: '{count} hidden', other: '{count} hidden' },
+  'lensPanel.footer.ghosted': 'ghosted',
+  'lensPanel.footer.clickToActivate': 'Click a lens to activate',
+  'lensPanel.type.ifcType': 'IFC Class',
+  'lensPanel.type.attribute': 'Attribute',
+  'lensPanel.type.property': 'Property',
+  'lensPanel.type.quantity': 'Quantity',
+  'lensPanel.type.classification': 'Classification',
+  'lensPanel.type.material': 'Material',
+  'lensPanel.type.model': 'Model',
+  'lensPanel.type.group': 'Zone / Group',
+  'lensPanel.ruleRow.isolateTooltip': 'Click to isolate / show only this group',
+  'lensPanel.ruleRow.emptyTooltip': 'No matching entities',
+  'lensPanel.isolatedBadge': 'isolated',
+  'lensPanel.autoColorRow.isolateTooltip': 'Click to isolate / show only this value',
+  'lensPanel.ruleEditor.reorderAriaLabel': 'Reorder rule: drag, or press arrow up or down',
+  'lensPanel.ruleEditor.reorderTooltip': 'Drag to reorder (or arrow keys)',
+  'lensPanel.ruleEditor.compoundTypeAriaLabel': 'Compound criteria type (read-only, imported)',
+  'lensPanel.ruleEditor.criteriaTypeAriaLabel': 'Criteria type',
+  'lensPanel.ruleEditor.compoundReadOnlyTooltip':
+    'Compound rules are imported read-only; this panel does not yet support editing them.',
+  'lensPanel.ruleEditor.classPlaceholder': 'Class...',
+  'lensPanel.ruleEditor.attributeValuePlaceholder': 'value...',
+  'lensPanel.ruleEditor.materialPlaceholder': 'Material...',
+  'lensPanel.ruleEditor.noModelsLoaded': 'No models loaded',
+  'lensPanel.ruleEditor.modelFallbackLabel': 'Model',
+  'lensPanel.ruleEditor.modelSelectPlaceholder': 'Model...',
+  'lensPanel.ruleEditor.groupPlaceholder': 'Zone / group name (blank = any)',
+  'lensPanel.ruleEditor.duplicateTooltip': 'Duplicate rule',
+  'lensPanel.ruleEditor.removeTooltip': 'Remove rule',
+  'lensPanel.ruleEditor.propertySetPlaceholder': 'Property set...',
+  'lensPanel.ruleEditor.propertyNamePlaceholder': 'Property...',
+  'lensPanel.ruleEditor.quantitySetPlaceholder': 'Quantity set...',
+  'lensPanel.ruleEditor.quantityNamePlaceholder': 'Quantity...',
+  'lensPanel.ruleEditor.classificationSystemPlaceholder': 'System...',
+  'lensPanel.ruleEditor.classificationCodePlaceholder': 'Code...',
+  'lensPanel.ruleEditor.valuePlaceholder': 'Value...',
+  'lensPanel.operator.exists': 'Exists',
+  'lensPanel.operator.equals': 'Equals',
+  'lensPanel.operator.contains': 'Contains',
+  'lensPanel.operator.notEqual': 'Not Equal',
+  'lensPanel.operator.gt': '>',
+  'lensPanel.operator.gte': '>=',
+  'lensPanel.operator.lt': '<',
+  'lensPanel.operator.lte': '<=',
+  'lensPanel.action.colorize': 'Color',
+  'lensPanel.action.transparent': 'Transp',
+  'lensPanel.action.hide': 'Hide',
+  'lensPanel.editor.namePlaceholder': 'Lens name...',
+  'lensPanel.editor.addRule': 'Add Rule',
+  'lensPanel.editor.save': 'Save',
+  'lensPanel.editor.cancel': 'Cancel',
+  'lensPanel.autoColor.namePlaceholder': 'Auto-color lens name...',
+  'lensPanel.autoColor.byDistinctValues': 'Auto-color by distinct values',
+  'lensPanel.autoColor.sourceLabel': 'Source',
+  'lensPanel.autoColor.psetLabel': 'Pset',
+  'lensPanel.autoColor.systemLabel': 'System',
+  'lensPanel.autoColor.qsetLabel': 'Qset',
+  'lensPanel.autoColor.selectPropertySetPlaceholder': 'Select property set...',
+  'lensPanel.autoColor.selectSystemPlaceholder': 'Select system...',
+  'lensPanel.autoColor.selectQuantitySetPlaceholder': 'Select quantity set...',
+  'lensPanel.autoColor.nameLabel': 'Name',
+  'lensPanel.autoColor.selectPlaceholderOption': 'Select...',
+  'lensPanel.autoColor.selectPropertyPlaceholder': 'Select property...',
+  'lensPanel.autoColor.selectQuantityPlaceholder': 'Select quantity...',
+  'lensPanel.autoColor.showUnclassified': 'Show unclassified',
+  'lensPanel.card.sortCount': 'Count',
+  'lensPanel.card.sortNameAsc': 'A→Z',
+  'lensPanel.card.sortNameDesc': 'Z→A',
+  'lensPanel.card.duplicateBuiltinTooltip': 'Duplicate into an editable copy',
+  'lensPanel.card.duplicateTooltip': 'Duplicate lens',
+  'lensPanel.card.editTooltip': 'Edit lens',
+  'lensPanel.card.deleteTooltip': 'Delete lens',
+  'lensPanel.card.ruleCount': { one: '{count} rule', other: '{count} rules' },
+  'lensPanel.card.legendValuesCount': { one: '{count} value', other: '{count} values' },
+  'lensPanel.card.sortLegendTooltip': 'Sort legend entries',
+} as const;
 
-type LensPanelKey = keyof typeof lensPanelEn;
-const KEYS = Object.keys(lensPanelEn) as LensPanelKey[];
+type LensPanelKey = keyof typeof LENS_PANEL_EN;
+const KEYS = Object.keys(LENS_PANEL_EN) as LensPanelKey[];
+const lensPanelEn = LENS_PANEL_EN;
 
 function addReadable(root: ParentNode, out: Set<string>): void {
   root.querySelectorAll('*').forEach((element) => {
@@ -155,7 +245,21 @@ afterEach(() => {
   useViewerStore.setState(RESET);
 });
 
-describe('Lens panel localization (#4918)', { skip: !HAS_CATALOGUE && 'lens-panel.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+describe('Lens panel localization (#4918)', () => {
+  it('the literal LENS_PANEL_EN mirror stays in sync with lens-panel.en.ts, when that module is importable', async () => {
+    // Best-effort only (#4918 revert-oracle): once production is reverted,
+    // the catalogue file this imports no longer exists, and a load failure
+    // here must not block the rest of the suite (see the file docblock).
+    let real: Record<string, TranslationValue> | undefined;
+    try {
+      ({ lensPanelEn: real } = await import('@/i18n/catalogues/lens-panel.en'));
+    } catch {
+      real = undefined;
+    }
+    if (!real) return;
+    assert.deepEqual(real, LENS_PANEL_EN, 'LENS_PANEL_EN in this test file has drifted from lens-panel.en.ts — update the mirror above');
+  });
+
   it('empty panel: header, new-lens buttons, "click a lens to activate" footer, close', () => {
     const container = render(<LensPanel onClose={() => {}} />);
     const english = chromeStrings(container);

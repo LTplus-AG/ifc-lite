@@ -332,7 +332,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Math.abs(info.max.y - (102 * 0.3048)) < 1e-5);
   });
 
-  it('uses the declared linear unit for elevations when elevationUnit is omitted', async () => {
+  it('uses the LandXML meter default when elevationUnit is omitted (#5042)', async () => {
     const imperial = LANDXML
       .replace('<Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter"\n      temperatureUnit="celsius" pressureUnit="milliBars" elevationUnit="meter"/>',
         '<Imperial areaUnit="squareFoot" linearUnit="foot" volumeUnit="cubicFeet" temperatureUnit="fahrenheit" pressureUnit="inchHG"/>')
@@ -341,7 +341,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       .replace('<P id="30">5000010 2600000 102</P>', '<P id="30">3 0 6</P>');
     const result = await parseViewer(bytes(imperial));
     const info = result.geometryResult.coordinateInfo.originalBounds;
-    assert.ok(Math.abs(info.max.y - 1.8288) < 1e-12, 'elevation uses the same foot scale as X/Z');
+    assert.ok(Math.abs(info.max.y - 6) < 1e-12, 'elevation uses the schema-default meter scale');
   });
 
   it('preserves the stable Rust error code for unsupported units', async () => {

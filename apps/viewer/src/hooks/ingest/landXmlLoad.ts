@@ -105,6 +105,15 @@ function updateRetainedGeometry(geometry: GeometryResult, frame: CoordinateInfo)
 
 /** Move parsed LandXML into the federation's already-published render frame. */
 export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandXmlTinDocument, frame: CoordinateInfo): string[] {
+  // Geometry-free LandXML still owns visible authored line overlays. Its
+  // coordinates remain absolute until the overlay renderer subtracts this
+  // frame, so there are no mesh origins to move: adopt the complete frame.
+  // This also covers native adapter frames that use `originShift` without a
+  // wasm RTC offset.
+  if (geometry.meshes.length === 0) {
+    geometry.coordinateInfo = structuredClone(frame);
+    return [];
+  }
   const ownOffset = totalYupOffset(geometry.coordinateInfo);
   const targetOffset = totalYupOffset(frame);
   const delta = {
@@ -150,7 +159,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     const frame = options.targetKind === 'federated'
       ? federationFrameInfo(useViewerStore.getState().models.values())
       : null;
-    if (frame && result.geometryResult.meshes.length > 0) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, result.semanticDocument, frame));
+    if (frame) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, result.semanticDocument, frame));
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
       loadPath: 'landxml', landXmlDocument: result.semanticDocument, sourceSchema: result.semanticDocument.schema,

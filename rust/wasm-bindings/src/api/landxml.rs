@@ -25,7 +25,8 @@ export interface LandXmlTinDocumentJs {
   schema: "LandXML-1.2";
   capabilities: { renderable_tin: boolean; preserved_only_surfaces: number; unknown_extensions: number };
   version: string;
-  units: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number } | null;
+  /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
+  units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number };
   surfaces: LandXmlSurfaceJs[];
   extensions: LandXmlExtensionJs[];
   warnings: string[];

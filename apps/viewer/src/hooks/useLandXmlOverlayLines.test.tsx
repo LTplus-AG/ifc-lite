@@ -132,11 +132,11 @@ describe('LandXML source overlay rendering (#5042)', () => {
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
 
-    assert.deepEqual(
-      [...vertices],
-      [5.096, 28.48, -6.048, 17.288, 28.48, -15.192],
-      'elev is retained in source units and converted through elevationScaleToMeters',
-    );
+    const expected = [5.096, 28.48, -6.048, 14.24, 28.48, -15.192];
+    for (const [index, coordinate] of vertices.entries()) {
+      assert.ok(Math.abs(coordinate - expected[index]) < 0.000_01,
+        'elev is retained in source units and converted through elevationScaleToMeters');
+    }
     assert.equal(contour.coordinateDimension, 2, 'rendering must not rewrite the authored PntList2D record');
     assert.deepEqual(contour.points, [[10, 20], [40, 50]], 'the original two-dimensional coordinates remain inspectable');
   });

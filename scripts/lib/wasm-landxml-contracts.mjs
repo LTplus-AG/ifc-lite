@@ -12,6 +12,11 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
   </Pnts><Faces><F>1 2 3</F></Faces><Breaklines><Breakline><PntList3D>0 0 0 1 1 1</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces>
 </LandXML>`;
 
+const XML_WITHOUT_UNITS = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Surfaces><Surface name="preserved"><Definition surfType="VOLUME"/></Surface></Surfaces>
+</LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -35,6 +40,11 @@ export function runLandXmlContracts(api, test) {
     assert.equal(utf8.surfaces[0].breaklines[0].name, undefined, 'serde_wasm_bindgen omits absent Option fields');
     assert.equal(utf8.surfaces[0].breaklines[0].kind, undefined, 'the TypeScript declaration must not promise null');
     assert.equal(utf16.surfaces[0].name, 'grade');
+  });
+
+  test('LandXML raw-byte parser omits optional Units rather than returning null', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(XML_WITHOUT_UNITS));
+    assert.equal(document.units, undefined);
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/i18n';
 import {
   findLandXmlModelSourceRecord,
@@ -37,28 +37,66 @@ function recordPath(record: LandXmlSourceRecord): string {
   }
 }
 
-function navigationRecords(surface: LandXmlSourceRecord['surface']): Array<{ label: string; sourceId: string }> {
-  return [
-    { label: `Surface: ${surface.name}`, sourceId: surface.sourceId },
-    ...surface.points.map((point) => ({ label: `Point: ${point.id}`, sourceId: point.sourceId })),
-    ...surface.sourceDataPoints.map((point) => ({ label: `Source point ${point.ordinal}`, sourceId: point.sourceId })),
-    ...surface.faceSourceIds.map((sourceId, index) => ({ label: `Face ${index + 1}`, sourceId })),
-    ...surface.boundaries.map((line) => ({ label: `Boundary: ${line.name ?? line.ordinal}`, sourceId: line.sourceId })),
-    ...surface.breaklines.map((line) => ({ label: `Breakline: ${line.name ?? line.ordinal}`, sourceId: line.sourceId })),
-    ...surface.contours.map((line) => ({ label: `Contour: ${line.name ?? line.ordinal}`, sourceId: line.sourceId })),
-  ];
+const NAVIGATION_PAGE_SIZE = 100;
+
+type NavigationItem = { label: string; sourceId: string };
+
+function navigationCount(surface: LandXmlSourceRecord['surface']): number {
+  return 1 + surface.points.length + surface.sourceDataPoints.length + surface.faceSourceIds.length
+    + surface.boundaries.length + surface.breaklines.length + surface.contours.length;
+}
+
+/** Materialize one page only: survey surfaces may contain millions of points. */
+function navigationAt(surface: LandXmlSourceRecord['surface'], itemIndex: number): NavigationItem {
+  if (itemIndex === 0) return { label: `Surface: ${surface.name}`, sourceId: surface.sourceId };
+  let index = itemIndex - 1;
+  const point = surface.points[index];
+  if (point) return { label: `Point: ${point.id}`, sourceId: point.sourceId };
+  index -= surface.points.length;
+  const sourcePoint = surface.sourceDataPoints[index];
+  if (sourcePoint) return { label: `Source point ${sourcePoint.ordinal}`, sourceId: sourcePoint.sourceId };
+  index -= surface.sourceDataPoints.length;
+  const faceSourceId = surface.faceSourceIds[index];
+  if (faceSourceId) return { label: `Face ${index + 1}`, sourceId: faceSourceId };
+  index -= surface.faceSourceIds.length;
+  const boundary = surface.boundaries[index];
+  if (boundary) return { label: `Boundary: ${boundary.name ?? boundary.ordinal}`, sourceId: boundary.sourceId };
+  index -= surface.boundaries.length;
+  const breakline = surface.breaklines[index];
+  if (breakline) return { label: `Breakline: ${breakline.name ?? breakline.ordinal}`, sourceId: breakline.sourceId };
+  index -= surface.breaklines.length;
+  const contour = surface.contours[index];
+  if (contour) return { label: `Contour: ${contour.name ?? contour.ordinal}`, sourceId: contour.sourceId };
+  throw new Error(`LandXML source navigation index ${itemIndex} is outside the retained surface records`);
+}
+
+function surfacePropertyRows(properties: Record<string, string>): Array<readonly [string, string]> {
+  return Object.entries(properties).sort(([left], [right]) => left.localeCompare(right));
 }
 
 /** Inspect retained LandXML source records without pretending they are IFC entities. */
 export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSourceInspectorProps) {
   const { t } = useTranslation();
+  const [navigationPage, setNavigationPage] = useState(0);
   const record = useMemo(
     () => findLandXmlModelSourceRecord(models, selected),
     [models, selected],
   );
 
+  useEffect(() => setNavigationPage(0), [selected.modelId, selected.sourceId]);
+
   if (!record) return null;
-  const navigation = navigationRecords(record.surface);
+  const document = models.get(selected.modelId)?.landXmlDocument;
+  const sourceCount = document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId);
+  const pages = Math.ceil(navigationCount(record.surface) / NAVIGATION_PAGE_SIZE);
+  const page = Math.min(navigationPage, pages - 1);
+  const firstItem = page * NAVIGATION_PAGE_SIZE;
+  const navigation = Array.from(
+    { length: Math.min(NAVIGATION_PAGE_SIZE, navigationCount(record.surface) - firstItem) },
+    (_, index) => navigationAt(record.surface, firstItem + index),
+  );
+  const properties = surfacePropertyRows(record.surface.properties);
+  const definitionProperties = surfacePropertyRows(record.surface.definitionProperties);
   return (
     <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
       <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
@@ -85,9 +123,19 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
             </button>
           ))}
         </div>
+        {pages > 1 && (
+          <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800">
+            <button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>{t('properties.landXmlSource.previous')}</button>
+            <span>{t('properties.landXmlSource.page', { current: page + 1, total: pages })}</span>
+            <button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>{t('properties.landXmlSource.next')}</button>
+          </div>
+        )}
       </div>
       <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
+        <p><span className="font-semibold">{t('properties.landXmlSource.renderState')}:</span> {record.surface.renderState}</p>
+        {document && <p><span className="font-semibold">{t('properties.landXmlSource.capabilities')}:</span> {JSON.stringify(document.capabilities)}</p>}
+        {sourceCount && <p><span className="font-semibold">{t('properties.landXmlSource.counts')}:</span> {t('properties.landXmlSource.countsValue', sourceCount)}</p>}
         {record.kind === 'face' && <p><span className="font-semibold">{t('properties.landXmlSource.facePoints')}:</span> {record.pointIds.join(', ')}</p>}
         {record.kind === 'point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.northing}, {record.point.easting}, {record.point.elevation}</p>}
         {record.kind === 'source-data-point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.coordinates.join(', ')}</p>}
@@ -95,6 +143,19 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           <p><span className="font-semibold">{t('properties.landXmlSource.points')}:</span> {record.line.points.length}</p>
         )}
       </div>
+      <SourceProperties title={t('properties.landXmlSource.surfaceProperties')} rows={properties} empty={t('properties.landXmlSource.noProperties')} />
+      <SourceProperties title={t('properties.landXmlSource.definitionProperties')} rows={definitionProperties} empty={t('properties.landXmlSource.noProperties')} />
     </div>
   );
+}
+
+function SourceProperties({ title, rows, empty }: { title: string; rows: Array<readonly [string, string]>; empty: string }) {
+  return <div className="border-t border-zinc-200 p-4 text-xs dark:border-zinc-800">
+    <p className="mb-2 font-bold uppercase tracking-wide text-zinc-500">{title}</p>
+    {rows.length === 0 ? <p className="text-zinc-500">{empty}</p> : (
+      <dl className="space-y-1">
+        {rows.map(([name, value]) => <div key={name} className="flex gap-2"><dt className="font-mono text-zinc-500">{name}</dt><dd className="break-all">{value}</dd></div>)}
+      </dl>
+    )}
+  </div>;
 }

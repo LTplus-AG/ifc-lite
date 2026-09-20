@@ -32,6 +32,7 @@ import { computeModelStats } from './modelMetadataStats';
 import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
@@ -138,11 +139,6 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     if (!dataStore) return { names: [], unresolved: false };
     return extractClassificationSystemsOnDemand(dataStore as IfcDataStore);
   }, [dataStore]);
-  const landXmlOverlays = useMemo(() => model.landXmlDocument?.surfaces.flatMap((surface) => [
-    ...surface.boundaries.map((line) => ({ label: 'Boundary', sourceId: line.sourceId, name: line.name })),
-    ...surface.breaklines.map((line) => ({ label: 'Breakline', sourceId: line.sourceId, name: line.name })),
-    ...surface.contours.map((line) => ({ label: 'Contour', sourceId: line.sourceId, name: line.name })),
-  ]) ?? [], [model.landXmlDocument]);
   const landXmlStats = useMemo(() => {
     const surfaces = model.landXmlDocument?.surfaces ?? [];
     return {
@@ -328,26 +324,12 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
           </div>
         </div>
 
-        {model.sourceSchema && (
-          <div className="border-b border-zinc-200 dark:border-zinc-800">
-            <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
-              <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">{t('properties.modelMetadata.sourceOverlays')}</h4>
-            </div>
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-              {landXmlOverlays.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.modelMetadata.noSourceOverlays')}</div>
-              ) : landXmlOverlays.map((overlay) => {
-                const selected = selectedLandXmlSource?.modelId === model.id && selectedLandXmlSource.sourceId === overlay.sourceId;
-                return <button key={overlay.sourceId} type="button"
-                  className={`flex w-full items-center gap-3 px-3 py-2 text-left text-xs ${selected ? 'bg-primary/10 text-primary' : 'text-zinc-700 dark:text-zinc-300'}`}
-                  onClick={() => setSelectedLandXmlSource({ modelId: model.id, sourceId: overlay.sourceId })}>
-                  <span className="font-mono">{overlay.label}</span>
-                  <span className="truncate">{overlay.name ?? overlay.sourceId}</span>
-                </button>;
-              })}
-            </div>
-          </div>
-        )}
+        {model.sourceSchema && model.landXmlDocument && <LandXmlModelSourceNavigation
+          modelId={model.id}
+          document={model.landXmlDocument}
+          selected={selectedLandXmlSource}
+          onSelect={setSelectedLandXmlSource}
+        />}
 
         {/* Classification Systems — lists every system found in this
             model (not just one), matching the request that a model can

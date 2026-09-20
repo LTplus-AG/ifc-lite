@@ -85,6 +85,11 @@ describe('LandXML content dispatch (#5041)', () => {
       `<document><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"/></document>`,
     )), false);
   });
+
+  it('finds the root after a legal prolog longer than the old 4 KiB head slice', () => {
+    const longProlog = `<!--${'x'.repeat(8 * 1024)}-->\n${LANDXML}`;
+    assert.equal(isLandXmlContent(new TextEncoder().encode(longProlog)), true);
+  });
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
@@ -93,6 +98,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(parsed.version, '1.2');
     assert.equal(parsed.surfaces.length, 1);
     assert.equal(parsed.surfaces[0].name, 'Existing Ground');
+    assert.equal(parsed.surfaces[0].sourceId, 'landxml:surface:1:Existing Ground');
     assert.deepEqual(parsed.surfaces[0].points[0], {
       id: '10', northing: 5_000_000, easting: 2_600_000, elevation: 100,
     });

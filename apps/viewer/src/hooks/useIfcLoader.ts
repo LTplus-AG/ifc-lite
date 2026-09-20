@@ -695,8 +695,7 @@ export function useIfcLoader() {
       // extension detection only needs the first few bytes. Only IFC / GLB /
       // IFCX actually need the full buffer.
       const headBuf = await file.slice(0, 4096).arrayBuffer();
-      const pointCloudFormat = detectPointCloudFormat(file.name, headBuf);
-      const landXmlFile = isLandXmlFileName(file.name) && isLandXmlContent(new Uint8Array(headBuf));
+      const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = isLandXmlFileName(file.name);
 
       // The browser path streams files ≥ STREAM_SAB_THRESHOLD directly into a
       // SharedArrayBuffer, avoiding a doubled-peak ArrayBuffer + SAB allocation
@@ -707,6 +706,7 @@ export function useIfcLoader() {
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
         : await acquireFileBuffer(file);
+      const landXmlFile = landXmlCandidate && isLandXmlContent(acquired.view);
       // LandXML preserves SAB to its decoder; legacy APIs below require ArrayBuffer.
       let buffer: ArrayBuffer | SharedArrayBuffer = acquired.buffer;
       const fileReadMs = performance.now() - fileReadStart;

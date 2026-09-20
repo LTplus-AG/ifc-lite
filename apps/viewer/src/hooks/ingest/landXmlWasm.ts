@@ -61,6 +61,7 @@ function array(value: unknown, context: string): unknown[] {
 function surface(value: unknown): LandXmlTinSurface {
   const raw = record(value, 'surface');
   return {
+    sourceId: string(raw.source_id, 'surface source id'),
     name: string(raw.name, 'surface name'),
     points: array(raw.points, 'surface points').map((point, index) => {
       const parsed = record(point, `point ${index}`);

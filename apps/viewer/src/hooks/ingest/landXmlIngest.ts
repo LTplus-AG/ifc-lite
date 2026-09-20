@@ -17,6 +17,7 @@ export interface LandXmlGeometryPayload {
 
 /** Semantic source records produced by the bounded Rust LandXML parser. */
 export interface LandXmlTinSurface {
+  sourceId: string;
   name: string;
   points: Array<{ id: string; northing: number; easting: number; elevation: number }>;
   faces: Array<readonly [string, string, string]>;

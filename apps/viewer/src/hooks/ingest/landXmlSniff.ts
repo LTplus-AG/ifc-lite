@@ -38,7 +38,7 @@ function decodeXmlHead(bytes: Uint8Array): string {
 
 /** Classify generic XML by its root QName and bound LandXML namespace. */
 export function isLandXmlContent(bytes: Uint8Array): boolean {
-  const head = decodeXmlHead(bytes).replace(/<!--[\s\S]*?-->/g, '');
+  const head = decodeXmlHead(bytes.subarray(0, 64 * 1024 * 1024)).replace(/<!--[\s\S]*?-->/g, '');
   const root = /<(?![!?])([A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)\b([^>]*)>/.exec(head);
   if (!root) return false;
   const [prefix = '', localName] = root[1].includes(':')

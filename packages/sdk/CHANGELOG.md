@@ -1,5 +1,28 @@
 # @ifc-lite/sdk
 
+## 6.4.0
+
+### Minor Changes
+
+- [#5009](https://github.com/LTplus-AG/ifc-lite/pull/5009) [`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43) Thanks [@louistrue](https://github.com/louistrue)! - Index every schema-resolvable `IfcRelationship` subtype as an exact typed edge, expose exact inbound/outbound relationship rows through the SDK, MCP, and viewer, and allow `related()` queries for every indexed `IfcRel*` name. Bump the cache format so graphs cached before the expanded indexing are reparsed instead of silently omitting the new edge buckets. `@ifc-lite/parser` also exports `resolveEffectiveEntityRecord`, the one place a read model folds a queued retype (name-based re-layout), named and positional edits into an entity record exactly as export writes it; the CLI, MCP and viewer read surfaces use it.
+
+- [#5016](https://github.com/LTplus-AG/ifc-lite/pull/5016) [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837) Thanks [@louistrue](https://github.com/louistrue)! - Add the loaded-model cost-authoring foundation: mutation-aware cost reads, effective created-record export, schema-consistent cost builders, relationship assignment, reference-safe removal, and StoreEditor entity-type/schema lookup.
+
+- [#5017](https://github.com/LTplus-AG/ifc-lite/pull/5017) [`55d4354`](https://github.com/LTplus-AG/ifc-lite/commit/55d43541c7dfce6006d391a5034169ea54014d5f) Thanks [@louistrue](https://github.com/louistrue)! - Expose loaded-model cost authoring through `bim.store`, wire it into the CLI headless backend, and make headless cost reads observe the active mutation overlay.
+
+### Patch Changes
+
+- Updated dependencies [[`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`9c41278`](https://github.com/LTplus-AG/ifc-lite/commit/9c412786c4fa21f4ace497e7408bad7d742bdf24), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`794986e`](https://github.com/LTplus-AG/ifc-lite/commit/794986e8fa5acec057429b49302274ac8046eefe), [`6a5f3f2`](https://github.com/LTplus-AG/ifc-lite/commit/6a5f3f2ae703ce170b890f85535af846251d3ab7), [`65ea107`](https://github.com/LTplus-AG/ifc-lite/commit/65ea107b83e3d543b410721c74195562ca50bcca), [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`ec114fe`](https://github.com/LTplus-AG/ifc-lite/commit/ec114fefabfd1b3a23d6a25545610652db6c5342), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/query@2.5.0
+  - @ifc-lite/data@5.0.0
+  - @ifc-lite/parser@8.0.0
+  - @ifc-lite/export@4.5.0
+  - @ifc-lite/create@2.7.0
+  - @ifc-lite/mutations@2.5.0
+  - @ifc-lite/ids@1.17.4
+  - @ifc-lite/lists@2.2.5
+  - @ifc-lite/clash@2.3.1
+
 ## 6.3.0
 
 ### Minor Changes

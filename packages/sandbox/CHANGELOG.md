@@ -1,5 +1,17 @@
 # @ifc-lite/sandbox
 
+## 2.6.0
+
+### Minor Changes
+
+- [#5017](https://github.com/LTplus-AG/ifc-lite/pull/5017) [`55d4354`](https://github.com/LTplus-AG/ifc-lite/commit/55d43541c7dfce6006d391a5034169ea54014d5f) Thanks [@louistrue](https://github.com/louistrue)! - Expose the loaded-model `bim.store` cost-authoring methods to sandbox scripts and generated BIM globals.
+
+### Patch Changes
+
+- [#5016](https://github.com/LTplus-AG/ifc-lite/pull/5016) [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837) Thanks [@louistrue](https://github.com/louistrue)! - Add the loaded-model cost-authoring foundation: mutation-aware cost reads, effective created-record export, schema-consistent cost builders, relationship assignment, reference-safe removal, and StoreEditor entity-type/schema lookup.
+- Updated dependencies [[`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837), [`55d4354`](https://github.com/LTplus-AG/ifc-lite/commit/55d43541c7dfce6006d391a5034169ea54014d5f)]:
+  - @ifc-lite/sdk@6.4.0
+
 ## 2.5.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @ifc-lite/collab
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [[`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`6a5f3f2`](https://github.com/LTplus-AG/ifc-lite/commit/6a5f3f2ae703ce170b890f85535af846251d3ab7), [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/data@5.0.0
+  - @ifc-lite/mutations@2.5.0
+  - @ifc-lite/ifcx@4.1.2
+
 ## 0.8.0
 
 ### Minor Changes

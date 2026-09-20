@@ -5,6 +5,12 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
 import { Renderer } from './index.js';
+import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+
+// WebGPU enum global referenced by PointRenderPipeline's bind-group-layout
+// entry (not defined in node) — same polyfill as deviation-computer.test.ts
+// and point-cloud-placement.test.ts.
+(globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -98,6 +104,52 @@ describe('Renderer.recoverDevice (#4885)', () => {
 
     renderer.removePointCloudAsset(liveHandle);
     assert.deepStrictEqual(removed, [liveHandle.id], 'removing the live handle in its own epoch must still work');
+  });
+
+  /**
+   * A GPUDevice stand-in exposing only the four methods `PointRenderPipeline`
+   * touches during construction, each a no-op returning a bare object —
+   * enough to construct the real `PointCloudRenderer` without a GPU.
+   */
+  function fakeGpuDevice(): GPUDevice {
+    return {
+      createBindGroupLayout: () => ({}),
+      createPipelineLayout: () => ({}),
+      createShaderModule: () => ({}),
+      createRenderPipeline: () => ({}),
+    } as unknown as GPUDevice;
+  }
+
+  it('constructs with startHandleId continuing the watermark instead of restarting at 1 (#4885 review)', () => {
+    // Every other test in this file stubs `initOnce` wholesale, so none of
+    // them ever run the literal `new PointCloudRenderer(...)` call inside
+    // `Renderer['initOnce']()` that passes `this.pointCloudNextHandleId` as
+    // `startHandleId` — a mutation of that positional argument goes
+    // undetected by this suite. This test does not call `initOnce` either
+    // (it needs a real WebGPU/DOM environment this suite doesn't have); it
+    // instead constructs a real `PointCloudRenderer` directly with a fake
+    // device, to verify the constructor→`PointCloudHandleIds` wiring that
+    // `initOnce`'s call depends on.
+    const pointCloudRenderer = new PointCloudRenderer(
+      fakeGpuDevice(),
+      'bgra8unorm',
+      'depth24plus-stencil8',
+      1,
+      42,
+    );
+    assert.strictEqual(
+      pointCloudRenderer.handleIds.current(),
+      42,
+      'a fresh instance seeded with the watermark must not restart its counter at 1',
+    );
+    // `handleIds.allocate()` is what `addAsset`/`beginAsset` call internally
+    // to mint a handle id; calling it directly here (rather than routing
+    // through `beginAsset`, which would also need buffer/bind-group device
+    // stubs unrelated to the wiring under test) still exercises the same
+    // counter that the constructor's `startHandleId` argument seeds.
+    const firstId = pointCloudRenderer.handleIds.allocate();
+    assert.strictEqual(firstId, 42, 'the first allocated handle must continue from the watermark, not restart at 1');
+    assert.strictEqual(pointCloudRenderer.handleIds.current(), 43, 'the counter must advance past the watermark');
   });
 
   it('removes a live point-cloud asset through a rebuilt { id } handle (#4885 review)', () => {

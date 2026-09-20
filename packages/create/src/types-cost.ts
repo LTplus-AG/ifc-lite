@@ -29,8 +29,8 @@ export type CostSchedulePredefinedType =
 /** IfcCostItemTypeEnum (IFC4 / IFC4X3). */
 export type CostItemPredefinedType = 'USERDEFINED' | 'NOTDEFINED';
 
-/** IfcArithmeticOperatorEnum. */
-export type CostArithmeticOperator = 'ADD' | 'DIVIDE' | 'MULTIPLY' | 'SUBTRACT';
+/** IfcArithmeticOperatorEnum (MODULO is accepted only when the target schema is IFC4X3). */
+export type CostArithmeticOperator = 'ADD' | 'DIVIDE' | 'MODULO' | 'MULTIPLY' | 'SUBTRACT';
 
 /**
  * The SELECT branch names this builder will write for a typed IFC value.

@@ -6,9 +6,9 @@
 //! `IfcType::from_str`, against the rule `schema_helpers.rs` states.
 //!
 //! `IFCDOORSTYLE` and `IFCWINDOWSTYLE` are IFC2X3 `IfcTypeProduct` subtypes
-//! that IFC4X3 dropped, so the bare `from_str` this crate's schema is derived
-//! from returns `IfcType::Unknown`, `Unknown` is a subtype of nothing, and the
-//! entity is discarded before it can become a job. They also carry
+//! that IFC4X3 dropped. The supported-schema type universe now preserves their
+//! exact variants, while the legacy-aware resolver retains its modern
+//! processing mapping. They carry
 //! `has_geometry: false` in `legacy_entities.rs`, so the ordinary product route
 //! never reaches them either — their `RepresentationMaps` geometry is silently
 //! dropped from every path.
@@ -86,8 +86,8 @@ fn legacy_type_keywords_set_the_shard_type_candidate_flag() {
     }
 }
 
-/// The complete set of legacy keywords the widened gate newly admits, and the
-/// reason widening it cannot double-count: every one of them is refused by
+/// The complete set of formerly-unknown legacy type keywords, and the reason
+/// exact-name resolution cannot double-count: every one of them is refused by
 /// `has_geometry_by_name`, so none is also scheduled as an ordinary product.
 ///
 /// Enumerated, not sampled: the `ends_with("TYPE") || ends_with("STYLE")`
@@ -106,17 +106,17 @@ fn legacy_type_keywords_set_the_shard_type_candidate_flag() {
 /// file, by `schema_helpers_tests.rs`'s widening sweep, and by the per-site
 /// tests in `export` and `wasm-bindings`.
 #[test]
-fn newly_admitted_legacy_type_candidates_are_never_also_geometry_jobs() {
-    let newly_admitted = [
+fn exact_legacy_type_candidates_are_never_also_geometry_jobs() {
+    let exact_legacy = [
         ("IFCDOORSTYLE", IfcType::IfcDoorType),
         ("IFCWINDOWSTYLE", IfcType::IfcWindowType),
         ("IFCBUILDINGELEMENTTYPE", IfcType::IfcBuiltElementType),
     ];
-    for (name, expected) in newly_admitted {
+    for (name, expected) in exact_legacy {
         assert_eq!(legacy_aware_ifc_type(name), expected, "{name}");
         assert!(
-            !IfcType::from_str(name).is_subtype_of(IfcType::IfcTypeProduct),
-            "{name} must be one the BARE resolver drops, or this test pins nothing"
+            IfcType::from_str(name).is_subtype_of(IfcType::IfcTypeProduct),
+            "{name} must retain its exact generated inheritance"
         );
         assert!(
             legacy_aware_ifc_type(name).is_subtype_of(IfcType::IfcTypeProduct),

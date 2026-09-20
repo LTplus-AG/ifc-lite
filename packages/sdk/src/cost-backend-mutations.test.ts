@@ -21,7 +21,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { createCostBackend } from './cost-backend.js';
 import type { CostGraphData } from './cost-types.js';
@@ -74,10 +74,10 @@ function stepWith(extra: string[] = []): string {
  * plus the oracle: the same view exported and the cost graph re-read from the
  * exported bytes.
  */
-async function session(edit: (view: MutablePropertyView) => void, extra: string[] = []) {
+async function session(edit: (view: MutablePropertyView, store: IfcDataStore) => void, extra: string[] = []) {
   const store = await parse(stepWith(extra));
   const view = new MutablePropertyView(null, 'm');
-  edit(view);
+  edit(view, store);
   const cost = createCostBackend(() => ({ modelId: 'm', store, mutationView: view }));
   const exportedGraph = async (): Promise<CostGraphData> => {
     const exported = new StepExporter(store, view).export({ schema: store.schemaVersion, applyMutations: true });
@@ -135,6 +135,22 @@ describe('bim.cost observes pending loaded-model mutations (#4857)', () => {
     view.setAttribute(42, 'Name', 'Renamed twice');
     expect(itemNames(cost.items())).toContain('Renamed twice');
     expect(itemNames(cost.items())).not.toContain('Renamed once');
+  });
+
+  it('includes a newly authored cost entity before export', async () => {
+    let createdId = 0;
+    const { cost, exportedGraph } = await session((view, source) => {
+      const editor = new StoreEditor(source, view);
+      createdId = editor.addEntity('IfcCostValue', [
+        'Authored rate', null, { typed: { type: 'IFCMONETARYMEASURE', value: 25 } },
+        null, null, null, 'Authored', null, null, null,
+      ]).expressId;
+    });
+
+    expect(cost.data().CostValues).toContainEqual(expect.objectContaining({
+      ref: { modelId: 'm', expressId: createdId }, Name: 'Authored rate', Category: 'Authored',
+    }));
+    expect(cost.data()).toEqual(await exportedGraph());
   });
 
   it('an evaluation observes the pending edit too, not just the listing', async () => {

@@ -23,6 +23,7 @@ import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { exportDialogEn } from './catalogues/export-dialog.en';
+import { dataConnectorEn } from './catalogues/data-connector.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
 import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
@@ -114,6 +115,7 @@ export const en = {
   ...searchFiltersEn,
   ...repositionPanelEn,
   ...exportDialogEn,
+  ...dataConnectorEn,
   ...geometryExportDialogsEn,
 } as const;
 

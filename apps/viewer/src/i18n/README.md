@@ -524,6 +524,23 @@ all three files' INNER content (the extracted property/quantity cards, the
 tree row/node chrome) was already covered by an earlier slice; this slice
 covers the panel/dialog SHELL around them.
 
+The Data Connector catalogue (#4918 slice, `data-connector.en.ts`, prefix
+`dataConnector.*`) covers `DataConnector.tsx`'s own chrome: the trigger
+button, the dialog header and step indicator, the target-model and
+CSV-file pickers, the data-preview table caption, the entity-matching
+controls (match-by/CSV-column/property-set/property-name fields), the
+property-mapping list (its header actions, empty state, column headers,
+and per-row field placeholders and value-type options), the
+match-results/import-progress/import-complete/error alerts, and the
+footer's preview/import buttons. CSV column NAMES, sample cell VALUES,
+and model NAMES are runtime content and stay as interpolation params.
+`GlobalId` and `EXPRESS ID` describe IFC's own match-by mechanisms and
+keep their exact technical spelling, same house rule as every other IFC
+EXPRESS name in this sweep — only routed through `t()` so the ending gate
+does not see them as untranslated JSX literals. Thrown `Error` messages
+surfaced only through `err.message`, never rendered as their own JSX
+literal, stay English, same as the rest of this sweep's panels.
+
 The geometry-export dialogs catalogue (#4918 slice: geometry export,
 `geometry-export-dialogs.en.ts`, sub-namespaced `geometryExport.glb.*` /
 `geometryExport.kmz.*` / `geometryExport.usd.*` / `geometryExport.energy.*` /

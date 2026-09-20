@@ -19,21 +19,26 @@ another high/low layout.
 These are renderer limits, not a promise that arbitrary Float32 geometry is
 survey-grade. Source/world positions, model placements, camera pose, clipping
 planes and measurements are finite f64 metres with an absolute component no
-larger than `1e12`. RTE rejects non-finite values and values whose high lane
-cannot be represented as finite f32. The initial supported drawable-local
-envelope is `abs(localAxis) <= 1e6 m`; it is a safety envelope, not the
-precision target. Batch partitioning must keep local axes within `8192 m` for
-the normal precision target (one f32 ULP is at most 0.9765625 mm there).
+larger than `1e9`. `splitFloat64ForRte` enforces this limit, in addition to
+rejecting non-finite values. `RelativeToEyeFrame.packDrawableOrigin` also
+enforces `abs(drawableOriginAxis - cameraAxis) <= 1e6 m`; a remote camera and
+drawable must be partitioned/reframed instead of being silently packed. The
+initial supported drawable-local envelope is `abs(localAxis) <= 1e6 m`; it is
+a safety envelope, not the precision target. Batch partitioning must keep
+local axes within `8192 m` for the normal precision target (one f32 ULP is at
+most 0.9765625 mm there).
 
 The geometric comparison tolerance for a migrated GPU path is
-`max(0.001 m, 2 * f32Ulp(maxAbsLocalAxis))`; CPU source-space ray, snap and
-measurement results remain f64 and use their existing operation-specific
-tolerances. At the `1e6 m` emergency envelope the allowed GPU geometric error
-is consequently 0.125 m, so an oversized batch is valid but must be partitioned
-before it can be used for precision-sensitive snapping. Screen-space agreement
-is at most 0.5 physical pixel for colour/overlay edges and at most 1 physical
-pixel for asynchronous ID/depth picking, measured at the active drawing-buffer
-resolution.
+`max(0.001 m, 2 * f32Ulp(maxAbsEyeRelativeAxis))`, where the eye-relative axis
+includes local position plus high/low origin delta. This deliberately budgets
+split-origin rounding and the final f32 eye-relative addition; CPU source-space
+ray, snap and measurement results remain f64 and use their existing
+operation-specific tolerances. At the `1e6 m` emergency envelope the allowed
+GPU geometric error is consequently 0.125 m, so an oversized batch is valid
+but must be partitioned before it can be used for precision-sensitive snapping.
+Screen-space agreement is at most 0.5 physical pixel for colour/overlay edges
+and at most 1 physical pixel for asynchronous ID/depth picking, measured at
+the active drawing-buffer resolution.
 
 The camera position, target and up vector must be finite; the existing
 degenerate-pose fallback remains the only exception to a non-zero
@@ -76,7 +81,9 @@ implementation PR.
    identity rules while their model placements are RTE packed.
 5. A real WebGPU compute/readback witness executes the helper with local axes
    at `±1e3`, `±1e4` and `±1e6`, on both sides of f32 exponent boundaries and
-   with a remote camera/common source translation.
+   with a remote camera/common source translation. It also pins camera
+   `10,000,000`, drawable `11,000,000.025`, local `-1,000,000` to the expected
+   `0.02500000037252903`; the old association returns zero.
 
 The LandXML safety refusal remains until all four cases cover the real renderer
 paths above. It is intentionally out of scope for the foundation commit.

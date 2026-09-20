@@ -38,6 +38,10 @@ export type WorldPoint = readonly [number, number, number];
 export const RTE_ORIGIN_FLOATS = 8;
 /** `mat4x4 viewProj`, then camera-origin high and low vec4 lanes. */
 export const RTE_FRAME_FLOATS = 16 + RTE_ORIGIN_FLOATS;
+/** Largest supported source/world coordinate component, in canonical Y-up metres. */
+export const MAX_RTE_SOURCE_ABS_METRES = 1_000_000_000;
+/** Largest source-origin delta accepted by a single camera RTE frame. */
+export const MAX_RTE_EYE_RELATIVE_METRES = 1_000_000;
 
 interface UniformFieldLayout {
   name: string;
@@ -121,6 +125,9 @@ export function assertRteUniformAbi(source = relativeToEyeWgsl): void {
 export function splitFloat64ForRte(value: number): readonly [number, number] {
   if (!Number.isFinite(value)) {
     throw new RangeError(`RTE origins must be finite f64 coordinates; received ${value}.`);
+  }
+  if (Math.abs(value) > MAX_RTE_SOURCE_ABS_METRES) {
+    throw new RangeError(`RTE origin ${value} exceeds the supported ±${MAX_RTE_SOURCE_ABS_METRES} m source envelope.`);
   }
   const high = Math.fround(value);
   if (!Number.isFinite(high)) {
@@ -223,6 +230,14 @@ export class RelativeToEyeFrame {
 
   /** Pack a drawable's f64 world origin into the matching per-draw layout. */
   packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
+    for (let axis = 0; axis < 3; axis++) {
+      const relative = origin[axis] - this.cameraWorld[axis];
+      if (!Number.isFinite(relative) || Math.abs(relative) > MAX_RTE_EYE_RELATIVE_METRES) {
+        throw new RangeError(
+          `RTE drawable origin exceeds the ±${MAX_RTE_EYE_RELATIVE_METRES} m camera-relative envelope on axis ${axis}.`,
+        );
+      }
+    }
     packRteOrigin(origin, out, floatOffset);
   }
 

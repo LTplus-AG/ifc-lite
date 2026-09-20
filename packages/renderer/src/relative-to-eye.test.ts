@@ -17,10 +17,13 @@ import {
   RTE_FRAME_FLOATS,
   RTE_ORIGIN_FLOATS,
   RTE_UNIFORM_LAYOUT,
+  MAX_RTE_EYE_RELATIVE_METRES,
+  MAX_RTE_SOURCE_ABS_METRES,
   assertRteUniformAbi,
   packRteOrigin,
   reflectRteUniformStruct,
   rteRelativePositionF32,
+  splitFloat64ForRte,
   translationFreeViewProjection,
   unpackRteOrigin,
 } from './relative-to-eye.js';
@@ -74,6 +77,20 @@ describe('relative-to-eye packing (#5049)', () => {
     }
   });
 
+  it('retains the low origin after a million-metre local/high cancellation', () => {
+    const witness = (cameraX: number): number => {
+      const camera = new Float32Array(RTE_ORIGIN_FLOATS);
+      const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
+      packRteOrigin([cameraX, 0, 0], camera);
+      packRteOrigin([cameraX + 1_000_000.025, 0, 0], drawable);
+      return rteRelativePositionF32([-1_000_000, 0, 0], drawable, camera)[0];
+    };
+    // The old `local + (highDelta + lowDelta)` association returns zero: the
+    // 2.5 cm low lane disappears when joined to a 1,000,000 m high delta.
+    assert.equal(witness(10_000_000), 0.02500000037252903);
+    assert.equal(witness(8_388_608), 0.02500000037252903, 'same witness across an f32 exponent boundary');
+  });
+
   it('survives f32 high-lane exponent boundaries and common source translations', () => {
     const local: [number, number, number] = [12.5, -0.125, 0.03125];
     const relativeFor = (translation: number): [number, number, number] => {
@@ -98,6 +115,17 @@ describe('relative-to-eye packing (#5049)', () => {
     assert.equal(packed[7], 0, 'low vec4 padding is cleared');
     const unpacked = unpackRteOrigin(packed);
     for (let axis = 0; axis < 3; axis++) close(unpacked[axis], origin[axis]);
+  });
+
+  it('enforces source and eye-relative envelopes at the packing boundary', () => {
+    assert.throws(() => splitFloat64ForRte(MAX_RTE_SOURCE_ABS_METRES + 1), /source envelope/);
+    const frame = new RelativeToEyeFrame();
+    const eye = { x: 0, y: 0, z: 0 };
+    frame.update(eye, MathUtils.identity(), MathUtils.identity());
+    assert.throws(
+      () => frame.packDrawableOrigin([MAX_RTE_EYE_RELATIVE_METRES + 1, 0, 0], new Float32Array(RTE_ORIGIN_FLOATS)),
+      /camera-relative envelope/,
+    );
   });
 
   it('keeps CPU ray/snap/measure coordinates in f64 while GPU uniforms are split', () => {
@@ -148,12 +176,12 @@ describe('relative-to-eye packing (#5049)', () => {
     if (!adapter) throw new Error('WebGPU is present but no adapter is available for the RTE readback witness.');
     const device = await adapter.requestDevice();
     const frame = new RelativeToEyeFrame();
-    const eye = { x: 10_000_000.25, y: -4_194_304.25, z: 8_388_608.5 };
+    const eye = { x: 10_000_000, y: -4_194_304.25, z: 8_388_608.5 };
     frame.update(eye, MathUtils.identity(), MathUtils.lookAt(eye, { ...eye, z: eye.z - 1 }, { x: 0, y: 1, z: 0 }));
     const frameData = new Float32Array(RTE_FRAME_FLOATS);
     const drawableData = new Float32Array(RTE_ORIGIN_FLOATS);
     frame.packUniforms(frameData);
-    frame.packDrawableOrigin([10_000_001.5, -4_194_304.75, 8_388_609.25], drawableData);
+    frame.packDrawableOrigin([11_000_000.025, -4_194_304.75, 8_388_609.25], drawableData);
     const frameBuffer = device.createBuffer({ size: frameData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const drawableBuffer = device.createBuffer({ size: drawableData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const resultBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
@@ -165,7 +193,7 @@ describe('relative-to-eye packing (#5049)', () => {
         @group(0) @binding(0) var<uniform> frame: RteFrameUniform;
         @group(0) @binding(1) var<uniform> drawable: RteDrawableUniform;
         @group(0) @binding(2) var<storage, read_write> result: array<vec4<f32>>;
-        @compute @workgroup_size(1) fn main() { result[0] = rteWorldPosition(vec3<f32>(0.125, -0.25, 0.0625), frame, drawable); }
+        @compute @workgroup_size(1) fn main() { result[0] = rteWorldPosition(vec3<f32>(-1000000.0, -0.25, 0.0625), frame, drawable); }
       ` });
       const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
       const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [
@@ -180,8 +208,9 @@ describe('relative-to-eye packing (#5049)', () => {
       device.queue.submit([encoder.finish()]);
       await readback.mapAsync(GPUMapMode.READ);
       const got = new Float32Array(readback.getMappedRange().slice(0));
-      const expected = rteRelativePositionF32([0.125, -0.25, 0.0625], drawableData, frameData.subarray(16, 24));
+      const expected = rteRelativePositionF32([-1_000_000, -0.25, 0.0625], drawableData, frameData.subarray(16, 24));
       assert.deepStrictEqual(Array.from(got), [...expected, 1]);
+      assert.equal(got[0], 0.02500000037252903, 'the GPU witness must reject the old association');
       readback.unmap();
     } finally {
       frameBuffer.destroy(); drawableBuffer.destroy(); resultBuffer.destroy(); readback.destroy();

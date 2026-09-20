@@ -44,7 +44,6 @@
   "apps/viewer/src/components/viewer/PointCloudPanel.tsx": 19,
   "apps/viewer/src/components/viewer/presence/PeerPresenceLayer.tsx": 1,
   "apps/viewer/src/components/viewer/PropertiesPanel.tsx": 41,
-  "apps/viewer/src/components/viewer/RoomPanel.tsx": 22,
   "apps/viewer/src/components/viewer/SaveMarkupToModelButton.tsx": 1,
   "apps/viewer/src/components/viewer/ScanSectionPanel.tsx": 16,
   "apps/viewer/src/components/viewer/ScriptPanel.tsx": 45,
@@ -69,9 +68,5 @@
   "apps/viewer/src/components/viewer/Viewport.tsx": 2,
   "apps/viewer/src/components/viewer/ViewportContainer.tsx": 32,
   "apps/viewer/src/components/viewer/ViewportOverlays.tsx": 11,
-  "apps/viewer/src/components/viewer/WebGpuTroubleshooting.tsx": 48,
-  "apps/viewer/src/components/viewer/ZoneApportionSummary.tsx": 11,
-  "apps/viewer/src/components/viewer/ZonesPanel.tsx": 33,
-  "apps/viewer/src/components/viewer/ZoneVolumeBreakdown.tsx": 7,
-  "apps/viewer/src/components/viewer/ZoneWriteBackControl.tsx": 13
+  "apps/viewer/src/components/viewer/WebGpuTroubleshooting.tsx": 48
 }

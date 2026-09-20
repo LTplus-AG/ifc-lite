@@ -55,6 +55,7 @@ import { viewerShellEn } from './catalogues/viewer-shell.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
+import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
@@ -111,6 +112,7 @@ export const en = {
   ...searchModalEn,
   ...searchFiltersEn,
   ...repositionPanelEn,
+  ...zonesPanelEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

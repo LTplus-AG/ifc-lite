@@ -122,7 +122,7 @@
    684 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
-   511 apps/viewer/src/components/viewer/ZonesPanel.tsx
+   508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts

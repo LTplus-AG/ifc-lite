@@ -26,11 +26,24 @@ import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import { shellChromeEn } from '@/i18n/catalogues/shell-chrome.en';
+import type { shellChromeEn as ShellChromeEnType } from '@/i18n/catalogues/shell-chrome.en';
 import type { PluralTranslation, TranslationValue } from '@/i18n/types';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { StatusBar } from './StatusBar.js';
+
+// Guarded dynamic import (#4918 revert-oracle): a plain static import would
+// fail the whole FILE's load if this catalogue is reverted/deleted (zero
+// subtests collected -> INCONCLUSIVE); this turns that into an empty
+// catalogue instead, so every assertion below runs for real and fails on
+// its own merits when the production wiring is gone.
+let shellChromeEnLoaded: typeof ShellChromeEnType | undefined;
+try {
+  ({ shellChromeEn: shellChromeEnLoaded } = await import('@/i18n/catalogues/shell-chrome.en'));
+} catch {
+  shellChromeEnLoaded = undefined;
+}
+const shellChromeEn: typeof ShellChromeEnType = shellChromeEnLoaded ?? ({} as typeof ShellChromeEnType);
 
 /** `StatusBar` always mounts `FlavorDialog`, which calls `useExtensionHost()`
  *  unconditionally regardless of its own `open` prop — same stub-host seam
@@ -49,7 +62,7 @@ class StubExtensionHost extends ExtensionHostService {
   }
 }
 
-type ShellChromeKey = keyof typeof shellChromeEn;
+type ShellChromeKey = keyof typeof ShellChromeEnType;
 const STATUS_BAR_KEYS = (Object.keys(shellChromeEn) as ShellChromeKey[]).filter((key) =>
   key.startsWith('shellChrome.statusBar.'),
 );

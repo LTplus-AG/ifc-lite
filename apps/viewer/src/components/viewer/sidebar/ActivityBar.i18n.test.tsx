@@ -29,11 +29,24 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import { shellChromeEn } from '@/i18n/catalogues/shell-chrome.en';
+import type { shellChromeEn as ShellChromeEnType } from '@/i18n/catalogues/shell-chrome.en';
 import { useViewerStore } from '@/store';
 import { ActivityBar } from './ActivityBar.js';
 
-type ShellChromeKey = keyof typeof shellChromeEn;
+// Guarded dynamic import (#4918 revert-oracle): a plain static import would
+// fail the whole FILE's load if this catalogue is reverted/deleted (zero
+// subtests collected -> INCONCLUSIVE); this turns that into an empty
+// catalogue instead, so every assertion below runs for real and fails on
+// its own merits when the production wiring is gone.
+let shellChromeEnLoaded: typeof ShellChromeEnType | undefined;
+try {
+  ({ shellChromeEn: shellChromeEnLoaded } = await import('@/i18n/catalogues/shell-chrome.en'));
+} catch {
+  shellChromeEnLoaded = undefined;
+}
+const shellChromeEn: typeof ShellChromeEnType = shellChromeEnLoaded ?? ({} as typeof ShellChromeEnType);
+
+type ShellChromeKey = keyof typeof ShellChromeEnType;
 const RELEVANT_KEYS = (Object.keys(shellChromeEn) as ShellChromeKey[]).filter(
   (key) => key.startsWith('shellChrome.activityBar.') || key.startsWith('shellChrome.shared.'),
 );

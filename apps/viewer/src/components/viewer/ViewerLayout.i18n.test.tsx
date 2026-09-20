@@ -28,10 +28,23 @@ import { ExtensionHostService } from '@/services/extensions/host.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import { shellChromeEn } from '@/i18n/catalogues/shell-chrome.en';
+import type { shellChromeEn as ShellChromeEnType } from '@/i18n/catalogues/shell-chrome.en';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { ViewerLayout } from './ViewerLayout.js';
+
+// Guarded dynamic import (#4918 revert-oracle): a plain static import would
+// fail the whole FILE's load if this catalogue is reverted/deleted (zero
+// subtests collected -> INCONCLUSIVE); this turns that into an empty
+// catalogue instead, so every assertion below runs for real and fails on
+// its own merits when the production wiring is gone.
+let shellChromeEnLoaded: typeof ShellChromeEnType | undefined;
+try {
+  ({ shellChromeEn: shellChromeEnLoaded } = await import('@/i18n/catalogues/shell-chrome.en'));
+} catch {
+  shellChromeEnLoaded = undefined;
+}
+const shellChromeEn: typeof ShellChromeEnType = shellChromeEnLoaded ?? ({} as typeof ShellChromeEnType);
 
 /** The mobile floating Hierarchy/Properties buttons only render once a model
  *  is loaded (`hasModelsLoaded`); this is the same minimal fixture
@@ -88,7 +101,7 @@ function renderLayout(): HTMLElement {
   );
 }
 
-type ShellChromeKey = keyof typeof shellChromeEn;
+type ShellChromeKey = keyof typeof ShellChromeEnType;
 const mark = (key: ShellChromeKey) => {
   const value = shellChromeEn[key];
   if (typeof value !== 'string') throw new Error(`${key} is not a plain string value`);

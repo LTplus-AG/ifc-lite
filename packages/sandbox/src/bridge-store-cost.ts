@@ -48,10 +48,10 @@ function relationshipMethod(
 /** The loaded-model 5D authoring surface exposed through `bim.store`. */
 export function buildStoreCostMethods(): MethodSchema[] {
   return [
-    paramsMethod('addCostSchedule', '{ Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: "BUDGET" | "COSTPLAN" | "ESTIMATE" | "TENDER" | "PRICEDBILLOFQUANTITIES" | "UNPRICEDBILLOFQUANTITIES" | "SCHEDULEOFRATES" | "USERDEFINED" | "NOTDEFINED"; Status?: string; SubmittedOn?: string; UpdateDate?: string }'),
-    paramsMethod('addCostItem', '{ Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: "USERDEFINED" | "NOTDEFINED"; CostValues?: number[]; CostQuantities?: number[] }'),
-    paramsMethod('addCostValue', '{ Name?: string; Description?: string; AppliedValue?: { Type: "IfcMonetaryMeasure" | "IfcAreaMeasure" | "IfcVolumeMeasure" | "IfcLengthMeasure" | "IfcMassMeasure" | "IfcTimeMeasure" | "IfcCountMeasure" | "IfcNumericMeasure" | "IfcRatioMeasure" | "IfcReal" | "IfcInteger"; Value: number }; AppliedValueRef?: number; UnitBasis?: number; ApplicableDate?: string; FixedUntilDate?: string; Category?: string; Condition?: string; ArithmeticOperator?: "ADD" | "DIVIDE" | "MULTIPLY" | "SUBTRACT"; Components?: number[] }'),
-    paramsMethod('addCostQuantity', '{ Kind: "IfcQuantityLength" | "IfcQuantityArea" | "IfcQuantityVolume" | "IfcQuantityWeight" | "IfcQuantityTime" | "IfcQuantityCount" | "IfcQuantityNumber"; Name: string; Value: number; Description?: string; Unit?: number; Formula?: string }'),
+    paramsMethod('addCostSchedule', 'BimCost.CostScheduleParams'),
+    paramsMethod('addCostItem', 'BimCost.CostItemParams'),
+    paramsMethod('addCostValue', 'BimCost.CostValueParams'),
+    paramsMethod('addCostQuantity', 'BimCost.CostQuantityParams'),
     relationshipMethod('nestCostItems', 'parentExpressId', 'childExpressIds'),
     relationshipMethod('assignCostItemsToSchedule', 'scheduleExpressId', 'itemExpressIds'),
     relationshipMethod('assignToCostItem', 'costItemExpressId', 'objectExpressIds'),

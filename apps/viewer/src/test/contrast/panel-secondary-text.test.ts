@@ -361,7 +361,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'BulkPropertyEditor "(N found)" annotation',
       file: BULK_PROPERTY_EDITOR,
-      anchor: 'Property Set\n                    {psetOptions.length > 0 && (\n                      <span ',
+      anchor: "{t('bulkPropertyEditor.propertySet')}\n                    {psetOptions.length > 0 && (\n                      <span ",
       surface: 'bg-background',
     },
     {

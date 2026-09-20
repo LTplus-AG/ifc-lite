@@ -12,7 +12,12 @@
  */
 
 import { cloneElement, deleteElement, renameElement } from './edits.mjs';
-import { ownedRectangleExtrusion, shrinkOwnedExtrusion, splitElementLength, thickenElement } from './rectangle-edits.mjs';
+import {
+  ownedRectangleExtrusion,
+  shrinkOwnedExtrusion,
+  splitElementLength,
+  thickenElement,
+} from './rectangle-edits.mjs';
 import {
   ownedMappedItem,
   ownedPropertyValues,
@@ -77,10 +82,10 @@ export function incomparableSwaps(key, baseFingerprints, headFingerprints) {
  *
  * @param {{ file: object, index: object, plan: object, freshName: (kind: string) => string,
  *   donors: Map<number, number>, entries: object[], applied: Record<string, number>,
- *   insertedNearbyHeadIds: number[] }} ctx
+ *   insertedNearbyHeadIds: number[], mergedPrimaries?: number[] }} ctx
  */
 export function applySuccessorRole(ctx, role, id, geometryClass) {
-  const { file, index, plan, freshName, donors, entries, applied, insertedNearbyHeadIds } = ctx;
+  const { file, index, plan, freshName, donors, entries, applied, insertedNearbyHeadIds, mergedPrimaries } = ctx;
   if (role === 'deletedNearby') {
     // NEGATIVE CONTROL for the successor stage. The element is deleted like
     // any other, and a head-only element of the SAME class, under a new
@@ -153,6 +158,21 @@ export function applySuccessorRole(ctx, role, id, geometryClass) {
       detail: ok ? { pieces: 2 } : undefined,
     });
     applied[ok ? 'splitLength' : 'renamed']++;
+  } else if (role === 'merged') {
+    // Inverse of splitLength (issue #4989). ONLY a rename here: `id` keeps
+    // its pristine, full-length shape in the HEAD, under a fresh name — the
+    // single surviving product. The base-side split (the SAME
+    // `splitElementLength` construction `splitLength` uses, applied to a
+    // SEPARATE parse of the pristine file so the normal base stays
+    // untouched everywhere else) happens once, after the whole population
+    // loop, in `mutate.mjs` — it needs every primary collected first so it
+    // can do one pass over one fresh file rather than one per element.
+    // `mergedPrimaries` collects `id` for that pass; the two `key.elements`
+    // rows (primary + the base-side clone, both pointing at this SAME head
+    // id) are pushed there too, not here.
+    renameElement(index, id, freshName('merged'));
+    mergedPrimaries?.push(id);
+    applied.merged++;
   } else {
     return false;
   }

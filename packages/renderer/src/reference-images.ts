@@ -23,6 +23,9 @@ export class ReferenceImageManager implements ReferenceImages {
   private sampleCount = 1;
   constructor(private host: ReferenceImageHost) {}
 
+  /** Whether recovery would omit at least one GPU-only reference plane. */
+  hasImages(): boolean { return this.images.size > 0 || this.jobs.size > 0; }
+
   init(device: GPUDevice, format: GPUTextureFormat, sampleCount: number): void {
     this.destroy();
     this.device = device;

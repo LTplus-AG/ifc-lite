@@ -39,18 +39,34 @@ export const QUANTITY_KINDS: ReadonlySet<string> = new Set<string>([
   'IfcQuantityLength', 'IfcQuantityArea', 'IfcQuantityVolume', 'IfcQuantityWeight',
   'IfcQuantityTime', 'IfcQuantityCount', 'IfcQuantityNumber',
 ]);
-export const ARITHMETIC_OPERATORS: ReadonlySet<string> = new Set<string>(['ADD', 'DIVIDE', 'MULTIPLY', 'SUBTRACT']);
+export const ARITHMETIC_OPERATORS: ReadonlySet<string> = new Set<string>(['ADD', 'DIVIDE', 'MODULO', 'MULTIPLY', 'SUBTRACT']);
 export const COST_SCHEDULE_TYPES: ReadonlySet<string> = new Set<string>([
   'BUDGET', 'COSTPLAN', 'ESTIMATE', 'TENDER', 'PRICEDBILLOFQUANTITIES',
   'UNPRICEDBILLOFQUANTITIES', 'SCHEDULEOFRATES', 'USERDEFINED', 'NOTDEFINED',
 ]);
 export const COST_ITEM_TYPES: ReadonlySet<string> = new Set<string>(['USERDEFINED', 'NOTDEFINED']);
 
+/** Validate a loaded model's schema at the untyped runtime boundary. */
+export function requireCostSchema(schema: unknown): CostSchema {
+  if (schema !== 'IFC2X3' && schema !== 'IFC4' && schema !== 'IFC4X3') {
+    throw new Error('CostAnchor.schema is required and must match the loaded model schema');
+  }
+  return schema;
+}
+
 /** Refuse a value outside its closed vocabulary; `undefined` (absent) passes. */
 export function assertOneOf(value: unknown, allowed: ReadonlySet<string>, what: string, context: string): void {
   if (value === undefined) return;
   if (typeof value !== 'string' || !allowed.has(value)) {
     throw new Error(`${context}: ${what} '${String(value)}' is not one of ${[...allowed].join(', ')}`);
+  }
+}
+
+/** Validate IfcArithmeticOperatorEnum, whose MODULO member exists only in IFC4X3. */
+export function validateArithmeticOperator(value: unknown, schema: CostSchema, context: string): void {
+  assertOneOf(value, ARITHMETIC_OPERATORS, 'ArithmeticOperator', context);
+  if (value === 'MODULO' && schema !== 'IFC4X3') {
+    throw new Error(`${context}: ArithmeticOperator 'MODULO' is only valid in IFC4X3`);
   }
 }
 

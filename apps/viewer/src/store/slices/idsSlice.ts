@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * IDS (Information Delivery Specification) state slice
- *
- * Manages IDS validation state, results, and viewer integration.
+ * IDS (Information Delivery Specification) state slice. Manages IDS
+ * validation state, results, and viewer integration.
  */
 
 import type { StateCreator } from 'zustand';
@@ -18,6 +17,7 @@ import type {
   SupportedLocale,
   ValidationProgress,
 } from '@ifc-lite/ids';
+import type { IdsErrorState } from '../../hooks/ids/resolveValidationTarget.js';
 import {
   endIdsRowFocusPresentation,
   type IDSRowFocusPresentation,
@@ -96,8 +96,8 @@ export interface IDSSliceState {
   idsLoading: boolean;
   /** Validation progress */
   idsProgress: ValidationProgress | null;
-  /** Error message */
-  idsError: string | null;
+  /** Error message: a caught-exception string, or a catalogued resolver error. */
+  idsError: IdsErrorState | null;
   /** Current locale for translations */
   idsLocale: SupportedLocale;
   /** Display options */
@@ -153,7 +153,7 @@ export interface IDSSlice extends IDSSliceState {
   setIdsPanelVisible: (visible: boolean) => void;
   toggleIdsPanel: () => void;
   setIdsLoading: (loading: boolean) => void;
-  setIdsError: (error: string | null) => void;
+  setIdsError: (error: IdsErrorState | null) => void;
   setIdsLocale: (locale: SupportedLocale) => void;
   setIdsDisplayOptions: (options: Partial<IDSDisplayOptions>) => void;
   setIdsFilterMode: (mode: IDSFilterMode) => void;

@@ -34,7 +34,7 @@ import {
   type WallInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
-import { createCostStoreBackend } from '@ifc-lite/sdk';
+import { createCostStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
@@ -221,7 +221,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const editor = getEditor(requested);
       const dataStore = resolveDataStore(requested);
       if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
-      const ownerHistoryId = dataStore.entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
+      const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor);
       // The PUBLIC id, not `normalizeMutationModelId`'s internal mutation-view
       // alias (`__legacy__`): this feeds `bim.cost.data(modelId)` through
       // `createCostStoreBackend`, and the model's own cost adapter resolves

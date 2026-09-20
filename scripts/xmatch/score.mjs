@@ -27,7 +27,7 @@
  *    wrong claim of identity.
  */
 
-import { EXPECTED_SUCCESSOR, scoreSplits, scoreSuccessors } from './score-claims.mjs';
+import { EXPECTED_SUCCESSOR, scoreMerges, scoreSplits, scoreSuccessors } from './score-claims.mjs';
 export { checkCorpusThresholds, checkThresholds, corpusTargetGaps, targetGaps } from './score-thresholds.mjs';
 
 /** Kinds whose {@link ContentMatch} asserts identity and retires the
@@ -156,7 +156,19 @@ export function scorePair(
         for (const b of [tierBucket, kindBucket, classBucket]) b.wrong++;
         continue;
       }
-      if (!setCorrect) {
+      // A `merged` base (issue #4989 review) exists ONLY for the split/merge
+      // claim stage — a whole-vs-half identity is exactly the claim the
+      // CONTENT matcher must never make. `setCorrect` alone cannot see that
+      // for the PRIMARY's row: its `expected` head is literally itself
+      // (`{ base: primaryId, head: [primaryId] }` — the head keeps the same
+      // id, just renamed), so a 1:1 content match pairing it with itself
+      // reads as trivially "correct" by set equality even though it is the
+      // one thing `merged` must never be recovered by. Same for the
+      // base-side clone's row, on the same theory as `splitLength`'s two
+      // heads (there the SIZE mismatch alone refuses a 1:1 pairing; here it
+      // would not, so it is refused explicitly).
+      const mergedIdentityClaim = kindOf.get(baseRef) === 'merged';
+      if (!setCorrect || mergedIdentityClaim) {
         if (kindOf.get(baseRef) === 'deleted') falsePairs.deletedBase++;
         else if (insertedHeads.has(headRef)) falsePairs.insertedHead++;
         else falsePairs.wrongPartner++;
@@ -212,6 +224,7 @@ export function scorePair(
 
   const successorScore = scoreSuccessors(key, successors, { expected, kindOf, insertedNearby });
   const splitScore = scoreSplits(key, splitMerges, { hasVolume, kindOf, headOrigin });
+  const mergeScore = scoreMerges(key, splitMerges, { hasVolume, kindOf, headOrigin });
 
   const recallable = key.elements.filter((element) => EXPECTED_KIND[element.kind] !== undefined);
   const recallByKind = {};
@@ -323,6 +336,7 @@ export function scorePair(
     insertedNearby: insertedNearby.size,
     ...successorScore,
     ...splitScore,
+    ...mergeScore,
     moveDistance: {
       ...distanceChecked,
       agreement: ratio(distanceChecked.agreed, distanceChecked.checked),

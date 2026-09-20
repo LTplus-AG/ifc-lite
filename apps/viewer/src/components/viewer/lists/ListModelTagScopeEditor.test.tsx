@@ -18,8 +18,12 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ListModelTagScope } from '@ifc-lite/lists';
 import { render, cleanup, click } from '@/test/render.js';
+import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor.js';
+
+// `lists.*` keys resolve straight off `en.ts`'s own registration now
+// (#4918 integration pass) — no per-test catalogue merge needed.
 
 let structure = '';
 let mep = '';
@@ -69,5 +73,42 @@ describe('ListModelTagScopeEditor (#4215)', () => {
     const { container } = mount({ op: 'hasAny', tagIds: [structure, 'tag-gone'] });
     assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /no longer exists/);
     assert.ok(container.querySelector('[data-model-tag-chip][data-unresolved]'), 'the stale reference is visible so it can be removed');
+  });
+});
+
+/**
+ * Revert-oracle witness (#4918): the sibling assertions above compare
+ * against the DEFAULT English text, which is identical whether it comes
+ * from a hardcoded string or from `t()` resolving the 'en' locale — so
+ * they cannot tell a real translation call from a coincidentally-matching
+ * literal. This registers a pseudo locale and switches to it, which only a
+ * real `t()` call responds to, using only pre-existing public `@/i18n` API
+ * (no import of the `lists.en.ts` catalogue module, so a revert that
+ * deletes that brand-new file does not break this file's LOAD).
+ */
+describe('ListModelTagScopeEditor is localized (#4918 revert-oracle witness)', () => {
+  beforeEach(seed);
+  afterEach(() => {
+    cleanup();
+    setLocale('en');
+  });
+
+  it('renders a registered locale override for the operator select and the "Runs over" hint', () => {
+    registerLocale('list-model-tag-scope-witness', {
+      'lists.modelTagScope.opHasAll': 'WITNESS-HAS-ALL',
+      'lists.modelTagScope.runsOverHasAll': 'WITNESS-RUNS-OVER {names}',
+    });
+    setLocale('list-model-tag-scope-witness');
+    const { container } = mount({ op: 'hasAll', tagIds: [structure, mep] });
+    assert.deepEqual(
+      optionLabels(container).includes('WITNESS-HAS-ALL'),
+      true,
+      'operator select must come from the active locale, not a hardcoded "has all of" string',
+    );
+    assert.equal(
+      hint(container),
+      'WITNESS-RUNS-OVER Structure, MEP',
+      '"Runs over" hint must come from the active locale, not a hardcoded description',
+    );
   });
 });

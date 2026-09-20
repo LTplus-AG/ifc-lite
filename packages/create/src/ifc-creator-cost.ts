@@ -41,8 +41,8 @@
 
 import { esc, optStr, optEnum, refList } from './ifc-creator-math.js';
 import {
-  ARITHMETIC_OPERATORS, COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
-  assertOneOf, isIntegerMeasure, validateTypedValue,
+  COST_ITEM_TYPES, COST_SCHEDULE_TYPES, QUANTITY_KINDS,
+  assertOneOf, isIntegerMeasure, validateArithmeticOperator, validateTypedValue,
   type CostSchema,
 } from './cost-authoring-rules.js';
 import type {
@@ -250,7 +250,7 @@ export function emitPhysicalQuantity(
  * [8] ArithmeticOperator, [9] Components.
  */
 export function emitCostValue(params: CostValueParams, schema: CostSchema, emit: EmitEntity): number {
-  assertOneOf(params.ArithmeticOperator, ARITHMETIC_OPERATORS, 'ArithmeticOperator', 'addIfcCostValue');
+  validateArithmeticOperator(params.ArithmeticOperator, schema, 'addIfcCostValue');
   if (params.AppliedValue !== undefined && params.AppliedValueRef !== undefined) {
     throw new Error(
       'addIfcCostValue: AppliedValue and AppliedValueRef are the two branches of one SELECT — give at most one');

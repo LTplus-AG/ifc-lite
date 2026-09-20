@@ -6,7 +6,7 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertCostSchema } from '../cost-authoring-rules.js';
-import { requireEntityTypeOneOf } from './cost-reference-validation.js';
+import { requireEntityTypeOneOf, requireMatchingCostSchema } from './cost-reference-validation.js';
 import type { CostAnchor } from './cost.js';
 
 const REMOVABLE_COST_ENTITY_TYPES = new Set(['IFCCOSTSCHEDULE', 'IFCCOSTITEM', 'IFCCOSTVALUE']);
@@ -28,6 +28,17 @@ export interface CostRemovalReferrers {
   }[];
   /** Relationships where the target occupies a required scalar endpoint. */
   otherRelationships?: readonly number[];
+  /** Non-relationship entities whose optional scalar attribute references the target. */
+  optionalScalarReferrers?: readonly {
+    entityId: number;
+    attributeIndex: number;
+  }[];
+  /** Non-relationship entities whose optional list attribute contains the target. */
+  optionalListReferrers?: readonly {
+    entityId: number;
+    attributeIndex: number;
+    referencedIds: readonly number[];
+  }[];
 }
 
 /**
@@ -41,7 +52,7 @@ export function removeCostEntityInStore(
   referrers: CostRemovalReferrers,
   options: { detach?: boolean } = {},
 ): void {
-  assertCostSchema(anchor.schema ?? 'IFC4', 'removeCostEntity');
+  assertCostSchema(requireMatchingCostSchema(editor, anchor.schema), 'removeCostEntity');
   requireEntityTypeOneOf(editor, expressId, REMOVABLE_COST_ENTITY_TYPES, 'expressId', 'removeCostEntity');
   const blockers: string[] = [];
   for (const [itemId, values] of referrers.itemCostValues ?? []) {
@@ -57,6 +68,14 @@ export function removeCostEntityInStore(
     if (ref.relatedIds.includes(expressId)) blockers.push(`relationship #${ref.relId}`);
   }
   for (const relId of referrers.otherRelationships ?? []) blockers.push(`relationship #${relId}`);
+  for (const ref of referrers.optionalScalarReferrers ?? []) {
+    blockers.push(`entity #${ref.entityId} attribute ${ref.attributeIndex}`);
+  }
+  for (const ref of referrers.optionalListReferrers ?? []) {
+    if (ref.referencedIds.includes(expressId)) {
+      blockers.push(`entity #${ref.entityId} attribute ${ref.attributeIndex}`);
+    }
+  }
   if (blockers.length > 0 && !options.detach) {
     throw new Error(
       `removeCostEntity: #${expressId} is still referenced by ${blockers.join(', ')}. `
@@ -86,6 +105,18 @@ export function removeCostEntityInStore(
       );
     }
     for (const relId of referrers.otherRelationships ?? []) editor.removeEntity(relId);
+    for (const ref of referrers.optionalScalarReferrers ?? []) {
+      editor.setPositionalAttribute(ref.entityId, ref.attributeIndex, null);
+    }
+    for (const ref of referrers.optionalListReferrers ?? []) {
+      if (!ref.referencedIds.includes(expressId)) continue;
+      const remaining = ref.referencedIds.filter(id => id !== expressId);
+      editor.setPositionalAttribute(
+        ref.entityId,
+        ref.attributeIndex,
+        remaining.length === 0 ? null : remaining.map(id => `#${id}`),
+      );
+    }
   }
   for (const [relId, related] of referrers.nestRelatedObjects ?? []) {
     if (!related.includes(expressId)) continue;

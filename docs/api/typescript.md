@@ -438,6 +438,10 @@ class Renderer {
   // Initialize WebGPU
   init(): Promise<void>;
 
+  // Rebuild a lost GPU device and reconstructable scene resources in place.
+  // Transient GPU-only layers that were cleared are named in `omissions`.
+  recoverDevice(): Promise<DeviceRecoveryResult>;
+
   // Load geometry (main entry point for IFC geometry). Returns a typed
   // outcome instead of throwing when the GPU device is lost (#4885) — check
   // `.ok` before assuming the geometry was uploaded.
@@ -471,6 +475,13 @@ class Renderer {
 ```
 
 Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustum culling via `enableFrustumCulling` plus a `spatialIndex` from `@ifc-lite/spatial`.
+
+`DeviceRecoveryResult` is a discriminated union. Success carries an `omissions`
+array (`point-clouds`, `reference-images`, or transient overlay kinds); failure
+carries a stable `reason`, including `cpu-geometry-released`,
+`scene-not-settled`, `cold-restore-failed`, `device-init-failed`, and
+`scene-restore-failed`. Recovery preserves the renderer and camera rather than
+remounting the viewport.
 
 `PickResult` carries `expressId` (the product) plus the optional `modelIndex`, `worldXYZ` and `geometryItemId`. The last is the `IfcRepresentationItem` the clicked surface was built from, and the key is absent, never `0`, where the renderer has no item identity for that hit. See [Which representation item was picked](../guide/rendering.md#which-representation-item-was-picked).
 

@@ -6,6 +6,37 @@ import type { SceneAppearanceAccess } from './scene-appearance-preview.js';
 import type { AppearanceBuckets } from './scene-appearance-buckets.js';
 import { releaseAppearanceResources, stageAppearanceResources, textured } from './scene-appearance-resources.js';
 
+export interface PreparedAuthoredOwner {
+  commit(): void;
+  dispose(): void;
+}
+
+/** Own detached GPU preparations so scene invalidation can release them before teardown. */
+export class AuthoredPreparationRegistry {
+  private active = new Set<PreparedAuthoredOwner>();
+
+  track(transaction: PreparedAuthoredOwner): PreparedAuthoredOwner {
+    const tracked: PreparedAuthoredOwner = {
+      commit: () => {
+        try { transaction.commit(); }
+        finally { this.active.delete(tracked); }
+      },
+      dispose: () => {
+        try { transaction.dispose(); }
+        finally { this.active.delete(tracked); }
+      },
+    };
+    this.active.add(tracked);
+    return tracked;
+  }
+
+  invalidate(): void {
+    const active = [...this.active];
+    this.active.clear();
+    for (const transaction of active) transaction.dispose();
+  }
+}
+
 function validateParts(parts: readonly MeshData[]): void {
   if (!parts.length) throw new Error('A new owner requires geometry.');
   const owner = parts[0];
@@ -49,12 +80,18 @@ export function prepareSceneAuthoredOwner(access: SceneAppearanceAccess, buckets
     commit() {
       if (disposed) throw new Error('The prepared geometry was released.');
       if (committed) return;
-      vacant();
-      for (const [index, part] of parts.entries()) {
-        const current = access.adopt(part);
-        if ((current.origin ?? [0, 0, 0]).some((value, axis) => value !== origins[index][axis])) {
-          throw new Error('The model placement changed while preparing the object.');
+      try {
+        vacant();
+        for (const [index, part] of parts.entries()) {
+          const current = access.adopt(part);
+          if ((current.origin ?? [0, 0, 0]).some((value, axis) => value !== origins[index][axis])) {
+            throw new Error('The model placement changed while preparing the object.');
+          }
         }
+      } catch (error) {
+        disposed = true;
+        releaseAppearanceResources(access, buckets, resources);
+        throw error;
       }
       resources.forEach((resource, index) => {
         if (resource.kind === 'textured') access.meshes().push(resource.mesh);

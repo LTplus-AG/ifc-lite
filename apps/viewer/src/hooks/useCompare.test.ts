@@ -26,24 +26,34 @@ import { buildEntityFingerprints } from '../lib/compare/buildFingerprints.js';
 import { alignGeometryToReference, type ModelGeoref } from './ingest/federationAlign.js';
 
 describe('isCurrentFor — the compare fingerprint cache key (#1891)', () => {
-  const built = { baseModelId: 'a', headModelId: 'b', contentVersion: 3 };
+  const built = { baseModelId: 'a', headModelId: 'b', contentVersion: 3, keyProperty: undefined };
 
   it('reuses fingerprints for the same pair at the same content version', () => {
-    assert.equal(isCurrentFor(built, 'a', 'b', 3), true);
+    assert.equal(isCurrentFor(built, 'a', 'b', 3, undefined), true);
   });
 
   it('refuses to reuse them once mesh content was mutated in place', () => {
     // `geometryContentVersion` is bumped by exactly one caller — federation
     // re-alignment — and only when something actually moved. Reusing across
     // that bump is the defect: the meshes moved, the fingerprints did not.
-    assert.equal(isCurrentFor(built, 'a', 'b', 4), false);
+    assert.equal(isCurrentFor(built, 'a', 'b', 4, undefined), false);
   });
 
   it('refuses to reuse them for a different pair', () => {
-    assert.equal(isCurrentFor(built, 'a', 'c', 3), false);
-    assert.equal(isCurrentFor(built, 'c', 'b', 3), false);
+    assert.equal(isCurrentFor(built, 'a', 'c', 3, undefined), false);
+    assert.equal(isCurrentFor(built, 'c', 'b', 3, undefined), false);
     // Order matters: A/B is not B/A.
-    assert.equal(isCurrentFor(built, 'b', 'a', 3), false);
+    assert.equal(isCurrentFor(built, 'b', 'a', 3, undefined), false);
+  });
+
+  it('refuses to reuse them once the key scheme changed (#4989)', () => {
+    // A cached fingerprint's `key` is `prop:<value>` or a GlobalId depending
+    // on the scheme it was extracted under; reusing across a scheme change
+    // would hand the engine keys from the wrong scheme entirely.
+    assert.equal(isCurrentFor(built, 'a', 'b', 3, 'Tag'), false);
+    const keyed = { ...built, keyProperty: 'Tag' };
+    assert.equal(isCurrentFor(keyed, 'a', 'b', 3, 'Tag'), true);
+    assert.equal(isCurrentFor(keyed, 'a', 'b', 3, undefined), false);
   });
 });
 

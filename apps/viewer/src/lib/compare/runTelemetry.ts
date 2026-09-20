@@ -50,6 +50,10 @@ export function compareRunPayload(
     geometry_unavailable: result.geometryUnavailable,
     excluded_type_count: result.diff.excludedTypes.length,
     content_matching: matchByContent,
+    // #4989: whether an authored key scheme was in play — never the value,
+    // which could be a project-specific tag/property name. Named to match
+    // the store field, unlike its snake_case neighbours.
+    keyProperty: result.keyProperty !== undefined,
     content_match_count: matches.total,
     content_matched_elements: matches.matchedElements,
     content_needs_review_elements: matches.needsReviewElements,

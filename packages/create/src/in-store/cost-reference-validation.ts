@@ -4,6 +4,17 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
+import { requireCostSchema, type CostSchema } from '../cost-authoring-rules.js';
+
+/** Validate the caller's anchor against the schema of the loaded store. */
+export function requireMatchingCostSchema(editor: StoreEditor, declaredSchema: unknown): CostSchema {
+  const declared = requireCostSchema(declaredSchema);
+  const loaded = requireCostSchema(editor.getSchemaVersion());
+  if (declared !== loaded) {
+    throw new Error(`CostAnchor.schema ${declared} does not match the loaded model schema ${loaded}`);
+  }
+  return loaded;
+}
 
 /** Require a live entity of one exact IFC class. */
 export function requireEntityType(

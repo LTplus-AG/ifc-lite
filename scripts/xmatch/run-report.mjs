@@ -63,6 +63,13 @@ export function report(scorecard) {
           `  ${JSON.stringify(score.bySplit.byConfidence)}`,
       );
     }
+    if (score.byMerge) {
+      line(
+        `  merge     n=${String(score.byMerge.population).padStart(4)}  recall ${score.byMerge.recall}` +
+          `  precision ${score.byMerge.precision}  kindAgreement ${score.byMerge.kindAgreement}` +
+          `  ${JSON.stringify(score.byMerge.byConfidence)}`,
+      );
+    }
     line(
       `  respecified  population ${score.respecifiedControl.population}` +
         `  matchedByGeometryOnly ${score.respecifiedControl.matchedByGeometryOnly}` +

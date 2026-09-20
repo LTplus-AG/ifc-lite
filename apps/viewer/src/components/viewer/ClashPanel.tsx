@@ -20,6 +20,7 @@ import {
   Layers,
   MessageSquare,
   Ban,
+  FolderPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -34,8 +35,13 @@ import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
+import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDialog';
+import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
+import { ClashGroupHeader, ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
+import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
+import { clashDisplayRows, type ClashDisplaySection } from '@/lib/clash/display-rows';
 import {
   isTouching, penetrationDepth,
   sortClashes,
@@ -55,9 +61,8 @@ import { ClashModelTagNotice } from './ClashModelTagNotice';
 interface ClashPanelProps {
   onClose?: () => void;
 }
-
+type ClashSection = ClashDisplaySection;
 const SEVERITY_ORDER: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
-
 const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
   critical: { label: 'Critical', color: '#f7768e' },
   major: { label: 'Major', color: '#ff9e64' },
@@ -269,6 +274,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     runPreset,
     runDuplicates,
     focusClash,
+    focusClashes,
     selectElement,
     highlightAll,
     clearHighlight,
@@ -300,7 +306,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
    *  'cluster' })`, already computed into `groups` on every run for BCF export —
    *  this is the first time the RESULTS LIST itself surfaces it). View-only
    *  state: it doesn't change what was detected, only how it's displayed. */
-  const [resultView, setResultView] = useState<'pairs' | 'issues'>('pairs');
+  const [resultView, setResultView] = useState<ClashResultView>('pairs');
   const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
   // View settings live in the store so they survive a panel switch (#1464).
   const sortBy = useViewerStore((s) => s.clashSortBy);
@@ -404,12 +410,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // the Pairs/Issues toggle and its epsilon wording do not apply there, and a
   // stale 'issues' choice from an earlier clash scan must not leak in either
   // (`resultView` is component state that survives a result change). (#2535)
-  const effectiveResultView = isDuplicateSetView ? 'pairs' : resultView;
+  const effectiveResultView = isDuplicateSetView && resultView === 'issues' ? 'pairs' : resultView;
 
   // Group the (filtered, sorted) clash list for display along the selected dimension.
   // Items keep their sorted order within each bucket.
-  const sections = useMemo(() => {
-    if (!result) return [] as Array<{ key: string; label: string; color?: string; items: Clash[] }>;
+  const sections = useMemo<ClashSection[]>(() => {
+    if (!result) return [] as ClashSection[];
     if (setSections) {
       return setSections.map((s) => ({
         key: s.key,
@@ -461,8 +467,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
    * only its VISIBLE members are shown and empty groups are dropped; the pairs
    * inside are never removed, only re-organized (issue #groupClashes-ui).
    */
-  const issueSections = useMemo(() => {
-    if (!groups) return [] as Array<{ key: string; label: string; color?: string; items: Clash[] }>;
+  const issueSections = useMemo<ClashSection[]>(() => {
+    if (!groups) return [] as ClashSection[];
     const visibleIds = new Set(visibleClashes.map((c) => c.id));
     return groups
       .map((g) => ({
@@ -477,7 +483,22 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       .filter((s) => s.items.length > 0);
   }, [groups, visibleClashes, sortBy]);
 
-  const activeSections = effectiveResultView === 'issues' ? issueSections : sections;
+  const showManualGroups = useCallback(() => setResultView('groups'), []);
+  const {
+    sections: manualSections, groupCount: manualGroupCount, membersById: manualMembersById,
+    selected: selectedClashes, checkedIds: checkedClashIds, setCheckedIds: setCheckedClashIds,
+    dialog: groupDialog, setDialog: setGroupDialog, openCreate: openCreateGroupDialog,
+    submitDialog: submitGroupDialog, removeGroup: removeManualGroup,
+    removeMember: removeManualGroupMember, createBcfTopic: createBcfTopicForGroup,
+  } = useManualClashGroups({
+    clashes: result?.clashes, visibleClashes, sortBy, focusMode, focusClashes, creatingTopic, setCreatingTopic,
+    showGroups: showManualGroups,
+  });
+  const activeSections = effectiveResultView === 'issues'
+    ? issueSections
+    : effectiveResultView === 'groups'
+      ? manualSections
+      : sections;
 
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;
@@ -524,22 +545,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // expanded-detail row for opened clashes) so the list virtualizes cleanly and
   // stays smooth at 10k+ clashes. Collapsed sections contribute only their
   // header. (#1277 list handling)
-  type ClashDisplayRow =
-    | { kind: 'group'; key: string; label: string; color?: string; count: number }
-    | { kind: 'clash'; clash: Clash }
-    | { kind: 'detail'; clash: Clash };
-  const displayRows = useMemo<ClashDisplayRow[]>(() => {
-    const rows: ClashDisplayRow[] = [];
-    for (const section of activeSections) {
-      rows.push({ kind: 'group', key: section.key, label: section.label, color: section.color, count: section.items.length });
-      if (collapsed.has(section.key)) continue;
-      for (const clash of section.items) {
-        rows.push({ kind: 'clash', clash });
-        if (expanded.has(clash.id)) rows.push({ kind: 'detail', clash });
-      }
-    }
-    return rows;
-  }, [activeSections, collapsed, expanded]);
+  const displayRows = useMemo(
+    () => clashDisplayRows(activeSections, collapsed, expanded),
+    [activeSections, collapsed, expanded],
+  );
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -893,65 +902,19 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       {/* Summary */}
       {result && (
         <div className="px-3 py-2.5 border-b border-border" {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
-          {/* Pairs vs. issues: the same result re-organized along the existing
-              spatial clustering (`groupClashes({ by: 'cluster' })`), so many
-              element pairs on one clash of geometry read as one coordination
-              issue instead of N rows. Only shown once there's something to
-              cluster, and never for a duplicate scan, whose grouping is
-              coincident sets, not proximity clusters (#2535). */}
-          {total > 0 && groups && !isDuplicateSetView && (
-            <div
-              className="mb-1.5 inline-flex rounded-md border border-border overflow-hidden text-[11px]"
-              title={`Issues group nearby pairs within ${clusterEpsilon}m (adjustable in Clash settings)`}
-            >
-              <button
-                type="button"
-                onClick={() => setResultView('pairs')}
-                className={cn('px-2 py-0.5', resultView === 'pairs' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
-              >
-                Pairs
-              </button>
-              <button
-                type="button"
-                onClick={() => setResultView('issues')}
-                className={cn('px-2 py-0.5', resultView === 'issues' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
-              >
-                Issues
-              </button>
-            </div>
-          )}
-          <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-2xl font-semibold tabular-nums">{effectiveResultView === 'issues' ? issueCount : total}</span>
-            <span className="text-xs text-muted-foreground">
-              {effectiveResultView === 'issues'
-                ? `${issueCount === 1 ? 'issue' : 'issues'} · ${total} ${total === 1 ? 'pair' : 'pairs'}`
-                : `${total === 1 ? 'clash' : 'clashes'}${shown < total ? ` · ${shown} shown` : ''}${
-                    groups && !isDuplicateSetView ? ` · ${issueCount} ${issueCount === 1 ? 'issue' : 'issues'}` : ''
-                  }`}
-            </span>
-          </div>
-          {total > 0 && bySeverity && (
-            <>
-              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                {SEVERITY_ORDER.map((s) =>
-                  bySeverity[s] > 0 ? (
-                    <div
-                      key={s}
-                      style={{ width: `${(bySeverity[s] / total) * 100}%`, background: SEVERITY[s].color }}
-                    />
-                  ) : null,
-                )}
-              </div>
-              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
-                {SEVERITY_ORDER.filter((s) => bySeverity[s] > 0).map((s) => (
-                  <span key={s} className="inline-flex items-center gap-1 text-muted-foreground">
-                    <span className="h-2 w-2 rounded-full" style={{ background: SEVERITY[s].color }} />
-                    {SEVERITY[s].label} {bySeverity[s]}
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
+          <ClashResultSummary
+            total={total}
+            shown={shown}
+            issueCount={issueCount}
+            manualGroupCount={manualGroupCount}
+            resultView={resultView}
+            effectiveView={effectiveResultView}
+            setResultView={setResultView}
+            clusterEpsilon={clusterEpsilon}
+            groupsAvailable={groups != null}
+            duplicateSetView={isDuplicateSetView}
+            bySeverity={bySeverity}
+          />
         </div>
       )}
 
@@ -964,6 +927,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <span className="text-muted-foreground" title={`Spatial cluster radius: ${clusterEpsilon}m (Clash settings)`}>
                 Grouped by proximity
               </span>
+            ) : effectiveResultView === 'groups' ? (
+              <span className="text-muted-foreground">User-defined groups</span>
             ) : (
               <select
                 value={groupBy}
@@ -992,6 +957,17 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               ))}
             </select>
             <ClashExportActions selectedId={selectedId} creatingTopic={creatingTopic} createBcfTopic={createBcfTopic} />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              disabled={selectedClashes.length < 2}
+              title="Select at least two clash rows, then create one named group"
+              onClick={openCreateGroupDialog}
+            >
+              <FolderPlus className="mr-1 h-3.5 w-3.5" />
+              Group selected{selectedClashes.length > 0 ? ` (${selectedClashes.length})` : ''}
+            </Button>
           </div>
           {/* Filters: touching + review status, grouped so "what's shown" reads
               as one control cluster (#1468). */}
@@ -1203,17 +1179,20 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
                 >
                   {row.kind === 'group' ? (
-                    <button
-                      onClick={() => toggleSection(row.key)}
-                      aria-expanded={!collapsed.has(row.key)}
-                      aria-label={`${collapsed.has(row.key) ? 'Expand' : 'Collapse'} ${row.label}`}
-                      className="flex w-full items-center gap-1.5 border-b border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
-                    >
-                      {collapsed.has(row.key) ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      {row.color && <span className="h-2 w-2 rounded-full" style={{ background: row.color }} />}
-                      <span className="truncate">{row.label}</span>
-                      <span className="ml-auto tabular-nums text-muted-foreground">{row.count}</span>
-                    </button>
+                    <ClashGroupHeader
+                      sectionKey={row.key}
+                      label={row.label}
+                      color={row.color}
+                      count={row.count}
+                      collapsed={collapsed.has(row.key)}
+                      manualGroupId={row.manualGroupId}
+                      creatingTopic={creatingTopic}
+                      onToggle={toggleSection}
+                      onFocus={(groupId) => focusClashes(manualMembersById.get(groupId) ?? [], focusMode)}
+                      onCreateBcf={(groupId) => { void createBcfTopicForGroup(groupId); }}
+                      onRename={(groupId, label) => setGroupDialog({ mode: 'rename', groupId, initialName: label })}
+                      onRemove={removeManualGroup}
+                    />
                   ) : row.kind === 'detail' ? (
                     <div className="border-t border-border/40 pb-1.5">
                       <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(row.clash)}</div>
@@ -1236,6 +1215,16 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                     </div>
                   ) : (
                     <div className={cn('flex w-full items-stretch border-t border-border/40 text-xs', selectedId === row.clash.id && 'bg-primary/10')}>
+                      <ClashGroupingCheckbox
+                        clash={row.clash}
+                        checked={checkedClashIds.has(row.clash.id)}
+                        onChange={(checked) => setCheckedClashIds((previous) => {
+                            const next = new Set(previous);
+                            if (checked) next.add(row.clash.id);
+                            else next.delete(row.clash.id);
+                            return next;
+                        })}
+                      />
                       <button
                         onClick={() => toggleExpand(row.clash.id)}
                         aria-expanded={expanded.has(row.clash.id)}
@@ -1290,6 +1279,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                       >
                         <Focus className="h-3.5 w-3.5" />
                       </button>
+                      {row.manualGroupId && (
+                        <RemoveFromClashGroupButton onClick={() => removeManualGroupMember(row.manualGroupId!, row.clash)} />
+                      )}
                     </div>
                   )}
                 </div>
@@ -1298,6 +1290,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </div>
         )}
       </div>
+      <ClashManualGroupDialog
+        open={groupDialog !== null}
+        initialName={groupDialog?.initialName ?? ''}
+        memberCount={groupDialog?.mode === 'create' ? selectedClashes.length : 0}
+        mode={groupDialog?.mode ?? 'create'}
+        onOpenChange={(open) => { if (!open) setGroupDialog(null); }}
+        onSubmit={submitGroupDialog}
+      />
     </div>
   );
 }

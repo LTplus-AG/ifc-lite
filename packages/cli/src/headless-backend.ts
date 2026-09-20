@@ -36,7 +36,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createCostBackend, createCostStoreBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
+import { createCostBackend, createCostStoreBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -647,7 +647,7 @@ export class HeadlessBackend implements BimBackend {
       ...createCostStoreBackend(
         (modelId) => {
           assertModel(modelId ?? '');
-          const ownerHistoryId = dataStore().entityIndex.byType.get('IFCOWNERHISTORY')?.[0] ?? null;
+          const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore(), get());
           return { modelId: modelId ?? MODEL_ID, store: dataStore(), editor: get(), mutationView: this.getOrCreateMutationView(), ownerHistoryId };
         },
         { data: (modelId, options) => this.cost.data(modelId, options) },

@@ -184,6 +184,24 @@ fn test_as_float_with_typed_value() {
     assert_eq!(empty_list.as_float(), None);
 }
 
+#[test]
+fn ifc4x1_alignment_curve_preserves_its_exact_supported_name_4203() {
+    let alignment_curve = IfcType::from_str("IFCALIGNMENTCURVE");
+
+    assert!(!matches!(alignment_curve, IfcType::Unknown(_)));
+    assert_eq!(alignment_curve.as_str(), "IFCALIGNMENTCURVE");
+    assert_eq!(alignment_curve.name(), "IfcAlignmentCurve");
+    assert!(alignment_curve.attribute_names().is_empty());
+
+    for non_entity in [
+        "IFCLENGTHMEASURE",
+        "IFCBINARY",
+        "IFCPROPERTYSETDEFINITIONSET",
+    ] {
+        assert!(matches!(IfcType::from_str(non_entity), IfcType::Unknown(_)));
+    }
+}
+
 /// `IFC_TYPES` is the catalog the enum itself cannot give you: `Unknown(u32)`
 /// makes `IfcType` open, and the CRC32 ids are sparse, so there is no way to
 /// walk the schema from the type alone. Anything that has to reason about the
@@ -396,13 +414,20 @@ fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
     }
     // Unicode normalization may produce a KNOWN canonical keyword.
     assert_eq!(IfcType::from_str("IFCſPACE"), IfcType::IfcSpace);
-    // Legacy spelling stays a raw schema lookup here; legacy-aware remapping
-    // belongs to its existing wrapper, not this normalization optimization.
+    // Supported legacy schema spellings now preserve their exact variant;
+    // synthetic extension spellings remain Unknown and are handled by the
+    // legacy-aware classification wrapper.
     for &name in crate::legacy_entities::LEGACY_ENTITY_NAMES {
         let upper = name.to_uppercase();
-        let expected = crate::IFC_TYPES.iter().copied()
-            .find(|ty| ty.as_str() == upper)
-            .unwrap_or_else(|| IfcType::Unknown(crc32(upper.as_bytes())));
+        let expected = IfcType::from_str(name);
+        if matches!(
+            name,
+            "IFCSOLIDSTRATUM" | "IFCVOIDSTRATUM" | "IFCWATERSTRATUM"
+        ) {
+            assert!(matches!(expected, IfcType::Unknown(_)), "{name}");
+        } else {
+            assert_eq!(expected.as_str(), upper, "{name}");
+        }
         for spelling in [name.to_owned(), name.to_lowercase()] {
             assert_eq!(IfcType::from_str(&spelling), expected, "{spelling}");
         }

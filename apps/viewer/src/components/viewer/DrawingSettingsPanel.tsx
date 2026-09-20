@@ -29,6 +29,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import type { GraphicOverrideRule, GraphicStyle } from '@ifc-lite/drawing-2d';
 
 // Common IFC types for the dropdown
@@ -78,7 +79,7 @@ interface DrawingSettingsPanelProps {
 }
 
 export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
-  const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
+  const { t } = useTranslation(); const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
   const activePresetId = useViewerStore((s) => s.activePresetId);
   const setActivePreset = useViewerStore((s) => s.setActivePreset);
   const customOverrideRules = useViewerStore((s) => s.customOverrideRules);
@@ -145,7 +146,7 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
         <div className="flex items-center gap-2">
           <Palette className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold text-sm">Drawing Settings</h2>
+          <h2 className="font-semibold text-sm">{t('drawingUnderlay.settings.title')}</h2>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -154,7 +155,7 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
             onClick={toggleOverridesEnabled}
             className="h-7 text-xs"
           >
-            {overridesEnabled ? 'Enabled' : 'Disabled'}
+            {t(overridesEnabled ? 'drawingUnderlay.settings.overridesEnabled' : 'drawingUnderlay.settings.overridesDisabled')}
           </Button>
           <Button variant="ghost" size="icon-sm" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -168,7 +169,7 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
         <Collapsible open={presetsOpen} onOpenChange={setPresetsOpen}>
           <CollapsibleTrigger asChild>
             <button className="w-full flex items-center justify-between px-4 py-2 hover:bg-muted/50 transition-colors">
-              <span className="text-sm font-medium">Style Presets</span>
+              <span className="text-sm font-medium">{t('drawingUnderlay.settings.presetsHeading')}</span>
               {presetsOpen ? (
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               ) : (
@@ -204,18 +205,16 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
         {activePreset && activePreset.rules.length > 0 && (
           <div className="border-t">
             <div className="px-4 py-2 flex items-center justify-between">
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {activePreset.name} Rules
-              </h3>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('drawingUnderlay.settings.activePresetRulesHeading', { name: activePreset.name })}</h3>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-6 text-xs"
                 onClick={handleCopyPresetToCustom}
-                title="Copy rules to custom for editing"
+                title={t('drawingUnderlay.settings.copyToCustomTitle')}
               >
                 <Copy className="h-3 w-3 mr-1" />
-                Edit as Custom
+                {t('drawingUnderlay.settings.editAsCustomButton')}
               </Button>
             </div>
             <div className="px-4 pb-4 space-y-1">
@@ -231,10 +230,10 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
           <div className="border-t">
             <CollapsibleTrigger asChild>
               <button className="w-full flex items-center justify-between px-4 py-2 hover:bg-muted/50 transition-colors">
-                <span className="text-sm font-medium">Custom Rules</span>
+                <span className="text-sm font-medium">{t('drawingUnderlay.settings.customRulesHeading')}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {customOverrideRules.length} rules
+                    {t('drawingUnderlay.settings.customRulesCount', { count: customOverrideRules.length })}
                   </span>
                   {customRulesOpen ? (
                     <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -248,7 +247,7 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
               <div className="px-4 pb-4 space-y-2">
                 {customOverrideRules.length === 0 ? (
                   <div className="text-center py-4 text-muted-foreground text-sm">
-                    No custom rules yet
+                    {t('drawingUnderlay.settings.noCustomRules')}
                   </div>
                 ) : (
                   customOverrideRules.map((rule) => (
@@ -271,7 +270,7 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
                   onClick={handleAddRule}
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Custom Rule
+                  {t('drawingUnderlay.settings.addCustomRuleButton')}
                 </Button>
               </div>
             </CollapsibleContent>
@@ -334,7 +333,7 @@ function CustomRuleItem({
   onUpdate,
   onRemove,
 }: CustomRuleItemProps) {
-  // Extract IFC types
+  const { t } = useTranslation(); // Extract IFC types
   const ifcTypes = useMemo(() => {
     if ('ifcTypes' in rule.criteria && rule.criteria.ifcTypes) {
       return rule.criteria.ifcTypes;
@@ -383,7 +382,7 @@ function CustomRuleItem({
         <div className="flex-1 min-w-0">
           <div className="font-medium truncate">{rule.name}</div>
           <div className="text-muted-foreground truncate">
-            {ifcTypes.join(', ') || 'Click to edit'}
+            {ifcTypes.join(', ') || t('drawingUnderlay.settings.clickToEditPlaceholder')}
           </div>
         </div>
         <Button
@@ -409,7 +408,7 @@ function CustomRuleItem({
     <div className="p-3 bg-muted/30 rounded-lg border space-y-3">
       {/* Name */}
       <div>
-        <Label className="text-xs">Rule Name</Label>
+        <Label className="text-xs">{t('drawingUnderlay.settings.ruleNameLabel')}</Label>
         <Input
           value={rule.name}
           onChange={(e) => onUpdate({ name: e.target.value })}
@@ -419,13 +418,13 @@ function CustomRuleItem({
 
       {/* IFC Class */}
       <div>
-        <Label className="text-xs">IFC Class</Label>
+        <Label className="text-xs">{t('drawingUnderlay.settings.ifcClassLabel')}</Label>
         <Select
           value={ifcTypes[0] || ''}
           onValueChange={handleIfcTypeChange}
         >
           <SelectTrigger className="h-8 text-sm mt-1">
-            <SelectValue placeholder="Select class..." />
+            <SelectValue placeholder={t('drawingUnderlay.settings.selectClassPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
             {COMMON_IFC_TYPES.map((type) => (
@@ -440,7 +439,7 @@ function CustomRuleItem({
       {/* Colors */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label className="text-xs">Fill Color</Label>
+          <Label className="text-xs">{t('drawingUnderlay.settings.fillColorLabel')}</Label>
           <div className="flex gap-1 mt-1">
             <input
               type="color"
@@ -456,7 +455,7 @@ function CustomRuleItem({
           </div>
         </div>
         <div>
-          <Label className="text-xs">Stroke Color</Label>
+          <Label className="text-xs">{t('drawingUnderlay.settings.strokeColorLabel')}</Label>
           <div className="flex gap-1 mt-1">
             <input
               type="color"
@@ -475,7 +474,7 @@ function CustomRuleItem({
 
       {/* Line Weight - preset or custom mm value */}
       <div>
-        <Label className="text-xs">Line Weight</Label>
+        <Label className="text-xs">{t('drawingUnderlay.settings.lineWeightLabel')}</Label>
         <div className="flex gap-2 mt-1">
           <Select
             value={typeof rule.style.lineWeight === 'string' ? rule.style.lineWeight : 'custom'}
@@ -496,7 +495,7 @@ function CustomRuleItem({
                   {w.label}
                 </SelectItem>
               ))}
-              <SelectItem value="custom">Custom...</SelectItem>
+              <SelectItem value="custom">{t('drawingUnderlay.settings.customLineWeightOption')}</SelectItem>
             </SelectContent>
           </Select>
           {typeof rule.style.lineWeight === 'number' && (
@@ -510,7 +509,7 @@ function CustomRuleItem({
                 onChange={(e) => handleStyleChange('lineWeight', parseFloat(e.target.value) || 0.35)}
                 className="h-8 w-16 text-xs"
               />
-              <span className="text-xs text-muted-foreground">mm</span>
+              <span className="text-xs text-muted-foreground">{t('drawingUnderlay.settings.millimetersUnit')}</span>
             </div>
           )}
         </div>
@@ -525,10 +524,10 @@ function CustomRuleItem({
           onClick={onRemove}
         >
           <Trash2 className="h-4 w-4 mr-1" />
-          Delete
+          {t('drawingUnderlay.settings.deleteButton')}
         </Button>
         <Button size="sm" onClick={onSave}>
-          Done
+          {t('drawingUnderlay.settings.doneButton')}
         </Button>
       </div>
     </div>

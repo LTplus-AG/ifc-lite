@@ -51,6 +51,7 @@ import { filterResultBySeverity } from '@/lib/clash/severity-filter';
 import { withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
+import { focusClashGroup } from '@/lib/clash/group-focus';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import {
   clashFederationIsCurrent,
@@ -825,13 +826,7 @@ export function useClash() {
     return state.fromGlobalId(ref.ref);
   }, []);
 
-  /**
-   * Apply a focus mode to a set of global ids in the shared visibility channels:
-   * - `highlight`: clear isolation + ghosting (pair highlighted in full context);
-   * - `isolate`:   hide everything except the ids (#1275);
-   * - `ghost`:     keep the ids solid and fade the rest to translucent context
-   *                via the renderer's X-Ray path (#1275 "see them in context").
-   */
+  /** Apply a focus mode to global ids through the shared visibility channels. */
   const applyFocusMode = useCallback((globalIds: number[], mode: ClashFocusMode): void => {
     if (mode === 'isolate') installClashIsolation(new Set(globalIds));
     else if (mode === 'ghost') installClashGhost(new Set(globalIds));
@@ -848,6 +843,9 @@ export function useClash() {
       state.setClashVisibilityOwned(null);
     }
   }, [installClashIsolation, installClashGhost]);
+
+  const focusClashes = useCallback((clashes: readonly Clash[], mode: ClashFocusMode = 'highlight') =>
+    focusClashGroup(clashes, refOf, applyFocusMode, mode), [refOf, applyFocusMode]);
 
   /**
    * Select both elements of a clash, highlight them, frame the camera, and apply
@@ -1347,6 +1345,7 @@ export function useClash() {
     runPreset,
     runDuplicates,
     focusClash,
+    focusClashes,
     selectElement,
     highlightAll,
     clearHighlight,

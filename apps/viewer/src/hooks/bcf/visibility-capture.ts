@@ -29,10 +29,12 @@
  * shortfall is logged, not toasted.
  */
 
-/** Resolves a global entity id to its IFC GlobalId, or nothing when the entity has none. */
-export type GuidResolver = (globalId: number) => string | null | undefined;
+/** Resolves every IFC GlobalId affected by one renderer id. */
+export type GuidResolver = (globalId: number) => string | readonly string[] | null | undefined;
 /** True when the entity belongs to a registered model whose metadata is still loading. */
 export type PendingPredicate = (globalId: number) => boolean;
+/** True when at least one model owning the renderer id has no IFC GlobalId. */
+export type UnnameableOwnerPredicate = (globalId: number) => boolean;
 
 export interface VisibilityNotice {
   /** Entities the capture could not name. */
@@ -67,9 +69,10 @@ export function captureVisibility(
   hiddenEntities: ReadonlySet<number>,
   resolve: GuidResolver,
   isPending: PendingPredicate = () => false,
+  hasUnnameableOwner: UnnameableOwnerPredicate = () => false,
 ): VisibilityCapture {
   if (isolatedEntities !== null) {
-    const { guids, unnameable } = nameable(isolatedEntities, resolve);
+    const { guids, unnameable } = nameable(isolatedEntities, resolve, isPending, hasUnnameableOwner);
     const pending = unnameable.some(isPending);
     const omitted = pending || (isolatedEntities.size > 0 && guids.length === 0);
     const notice: VisibilityNotice | null =
@@ -77,7 +80,7 @@ export function captureVisibility(
     return { visibleGuids: omitted ? undefined : guids, hiddenGuids: undefined, notice };
   }
   if (hiddenEntities.size === 0) return { visibleGuids: undefined, hiddenGuids: undefined, notice: null };
-  const { guids, unnameable } = nameable(hiddenEntities, resolve);
+  const { guids, unnameable } = nameable(hiddenEntities, resolve, isPending, hasUnnameableOwner);
   return {
     visibleGuids: undefined,
     hiddenGuids: guids.length > 0 ? guids : undefined,
@@ -105,13 +108,28 @@ export function describeVisibilityNotice(notice: VisibilityNotice): string | nul
   return `Viewpoint visibility is partial: ${n} of ${notice.total} isolated ${elements} ${n === 1 ? 'has' : 'have'} no IFC GlobalId and will appear hidden to recipients.`;
 }
 
-function nameable(ids: ReadonlySet<number>, resolve: GuidResolver): { guids: string[]; unnameable: number[] } {
+function nameable(
+  ids: ReadonlySet<number>,
+  resolve: GuidResolver,
+  isPending: PendingPredicate,
+  hasUnnameableOwner: UnnameableOwnerPredicate,
+): { guids: string[]; unnameable: number[] } {
   const guids: string[] = [];
+  const seen = new Set<string>();
   const unnameable: number[] = [];
   for (const id of ids) {
-    const guid = resolve(id);
-    if (guid) guids.push(guid);
-    else unnameable.push(id);
+    const resolved = resolve(id);
+    const candidates = typeof resolved === 'string' ? [resolved] : resolved ?? [];
+    // A renderer id can belong to several federated models. Resolving one
+    // hydrated owner does not make a still-loading sibling safe to omit.
+    if (candidates.length === 0 || isPending(id) || hasUnnameableOwner(id)) {
+      unnameable.push(id);
+    }
+    for (const guid of candidates) {
+      if (seen.has(guid)) continue;
+      seen.add(guid);
+      guids.push(guid);
+    }
   }
   return { guids, unnameable };
 }

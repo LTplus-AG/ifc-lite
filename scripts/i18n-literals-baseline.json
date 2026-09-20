@@ -50,7 +50,7 @@
   "apps/viewer/src/components/viewer/ChatPanel.tsx": 43,
   "apps/viewer/src/components/viewer/ClashBcfExportDialog.tsx": 16,
   "apps/viewer/src/components/viewer/ClashModelTagNotice.tsx": 1,
-  "apps/viewer/src/components/viewer/ClashPanel.tsx": 114,
+  "apps/viewer/src/components/viewer/ClashPanel.tsx": 113,
   "apps/viewer/src/components/viewer/ClashRevisionCompareDialog.tsx": 21,
   "apps/viewer/src/components/viewer/ClashRuleDraftEditor.tsx": 17,
   "apps/viewer/src/components/viewer/ClashSetFilterEditor.tsx": 9,

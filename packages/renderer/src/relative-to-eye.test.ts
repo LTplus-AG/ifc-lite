@@ -21,6 +21,7 @@ import {
   translationFreeViewProjection,
   unpackRteOrigin,
 } from './relative-to-eye.js';
+import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 
 function close(actual: number, expected: number, tolerance = 1e-7): void {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected} ± ${tolerance}`);
@@ -95,5 +96,16 @@ describe('relative-to-eye packing (#5049)', () => {
     assert.notEqual(translated.m[12], relative.m[12]);
     assert.notEqual(translated.m[13], relative.m[13]);
     close(relative.m[14], projection.m[14]);
+  });
+
+  it('keeps the WGSL layout and cancellation order coupled to the CPU packer', () => {
+    // This deliberately pins the ABI words rather than a whole shader string:
+    // a future pass can append helpers, but cannot swap the high/low order or
+    // reassemble large origins before subtracting them.
+    assert.match(relativeToEyeWgsl, /viewProj: mat4x4<f32>,\s+cameraHigh: vec4<f32>,\s+cameraLow: vec4<f32>/s);
+    assert.match(relativeToEyeWgsl, /drawableHigh: vec4<f32>,\s+drawableLow: vec4<f32>/s);
+    assert.match(relativeToEyeWgsl, /drawable\.drawableHigh\.xyz - frame\.cameraHigh\.xyz/);
+    assert.match(relativeToEyeWgsl, /drawable\.drawableLow\.xyz - frame\.cameraLow\.xyz/);
+    assert.match(relativeToEyeWgsl, /local \+ \(highDelta \+ lowDelta\)/);
   });
 });

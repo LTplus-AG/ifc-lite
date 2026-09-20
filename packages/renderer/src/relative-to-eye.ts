@@ -76,7 +76,7 @@ export function packRteOrigin(
   out[floatOffset + 7] = 0;
 }
 
-/** Read back the exact f64-ish source value represented by an RTE origin. */
+/** Read back the f64 approximation represented by a packed RTE origin. */
 export function unpackRteOrigin(
   packed: Float32Array,
   floatOffset = 0,

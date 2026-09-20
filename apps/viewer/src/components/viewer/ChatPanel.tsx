@@ -34,11 +34,21 @@ import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { buildErrorFeedbackContent } from '@/store/slices/chatSlice';
 import { ChatMessageComponent } from './chat/ChatMessage';
 import { ModelSelector } from './chat/ModelSelector';
-import { fetchUsageSnapshot, streamChat, type StreamMessage, type TextContentPart, type ImageContentPart, type UsageInfo } from '@/lib/llm/stream-client';
+import {
+  createAttachmentId,
+  imageFileToCompressedBase64,
+  compressDataUrlImage,
+  stripContinuationOverlap,
+  estimateTextTokens,
+  estimateMessagesTokens,
+  summarizeDroppedMessages,
+} from './chat/chatPanelHelpers';
+import { fetchUsageSnapshot, streamChat, type StreamMessage, type UsageInfo } from '@/lib/llm/stream-client';
 import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
@@ -80,21 +90,14 @@ const EXAMPLE_PROMPTS = [
 
 const CONTINUE_PROMPT = 'Continue from exactly where your last response stopped. Do not repeat previously generated text.';
 const USAGE_REFRESH_INTERVAL_MS = 15_000;
-const EST_CHARS_PER_TOKEN = 4;
-const IMAGE_TOKEN_COST_EST = 850;
 const INPUT_BUDGET_RATIO = 0.72;
 const OUTPUT_TOKEN_RESERVE = 9_000;
 const MIN_INPUT_BUDGET = 8_000;
 const MAX_RECENT_MESSAGES = 48;
-const SUMMARY_SNIPPET_LEN = 240;
 const MAX_INLINE_IMAGE_DATA_URL_CHARS = 1_200_000;
 const MAX_ATTACHMENTS_PER_MESSAGE = 6;
 const MAX_TEXT_ATTACHMENT_BYTES = 512_000;
 const MAX_IMAGE_ATTACHMENT_BYTES = 8_000_000;
-
-function createAttachmentId(): string {
-  return crypto.randomUUID();
-}
 
 interface ChatSendOptions {
   continuationBase?: string;
@@ -104,101 +107,12 @@ interface ChatSendOptions {
   rootCauseKey?: string;
 }
 
-/** Convert a File to a base64 data URL */
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function imageFileToCompressedBase64(file: File): Promise<string> {
-  const raw = await fileToBase64(file);
-  return compressDataUrlImage(raw);
-}
-
-function compressDataUrlImage(dataUrl: string): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const maxSide = 1400;
-      const srcW = img.naturalWidth || img.width;
-      const srcH = img.naturalHeight || img.height;
-      const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
-      const outW = Math.max(1, Math.round(srcW * scale));
-      const outH = Math.max(1, Math.round(srcH * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = outW;
-      canvas.height = outH;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        resolve(dataUrl);
-        return;
-      }
-      ctx.drawImage(img, 0, 0, outW, outH);
-      resolve(canvas.toDataURL('image/jpeg', 0.72));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
-}
-
-function stripContinuationOverlap(previous: string, continuation: string): string {
-  const prev = previous.trimEnd();
-  const next = continuation.trimStart();
-  if (!prev || !next) return continuation;
-
-  const maxOverlap = Math.min(prev.length, next.length, 1200);
-  const minOverlap = Math.min(48, maxOverlap);
-  for (let size = maxOverlap; size >= minOverlap; size--) {
-    const suffix = prev.slice(-size);
-    const prefix = next.slice(0, size);
-    if (suffix === prefix) {
-      return next.slice(size).trimStart();
-    }
-  }
-  return continuation;
-}
-
-function estimateTextTokens(text: string): number {
-  return Math.ceil(text.length / EST_CHARS_PER_TOKEN);
-}
-
-function estimateContentTokens(content: string | Array<TextContentPart | ImageContentPart>): number {
-  if (typeof content === 'string') return estimateTextTokens(content);
-  let tokens = 0;
-  for (const part of content) {
-    if (part.type === 'text') {
-      tokens += estimateTextTokens(part.text);
-    } else {
-      tokens += IMAGE_TOKEN_COST_EST;
-    }
-  }
-  return tokens;
-}
-
-function estimateMessagesTokens(messages: Array<{ role: string; content: string | Array<TextContentPart | ImageContentPart> }>): number {
-  return messages.reduce((sum, m) => sum + estimateContentTokens(m.content) + 8, 0);
-}
-
-function summarizeDroppedMessages(messages: ChatMessage[]): string {
-  if (messages.length === 0) return '';
-  const summaryParts: string[] = [];
-  for (const m of messages.slice(-14)) {
-    const body = m.content.replace(/\s+/g, ' ').trim().slice(0, SUMMARY_SNIPPET_LEN);
-    if (!body) continue;
-    summaryParts.push(`${m.role}: ${body}`);
-  }
-  return summaryParts.join('\n');
-}
-
 interface ChatPanelProps {
   onClose?: () => void;
 }
 
 export function ChatPanel({ onClose }: ChatPanelProps) {
+  const { t } = useTranslation();
   const extensionHost = useOptionalExtensionHost();
   /** Most recent chat classification; surfaced in the status bar as authoring telemetry. */
   const [authoringTelemetry, setAuthoringTelemetry] = useState<{
@@ -1377,7 +1291,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         <div className="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-md flex items-center justify-center pointer-events-none">
           <div className="flex flex-col items-center gap-2 text-blue-500">
             <Paperclip className="h-8 w-8" />
-            <span className="text-sm font-medium">Drop files or images</span>
+            <span className="text-sm font-medium">{t('chat.panel.dropOverlay')}</span>
           </div>
         </div>
       )}
@@ -1395,7 +1309,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Clear</TooltipContent>
+          <TooltipContent>{t('chat.panel.clearTooltip')}</TooltipContent>
         </Tooltip>
 
         <ModelSelector />
@@ -1403,11 +1317,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         {authoringTelemetry && (
           <span
             className="ml-1 text-[10px] uppercase tracking-wide font-semibold bg-primary/15 text-primary rounded px-1.5 py-0.5"
-            title={`Authoring contract attached (${authoringTelemetry.intent})`}
+            title={t('chat.panel.authoringBadgeTooltip', { intent: authoringTelemetry.intent })}
           >
-            {authoringTelemetry.intent === 'fork' ? 'Fork' : 'Authoring'}
-            {' · '}
-            {Math.round((Date.now() - authoringTelemetry.startedAt) / 1000)}s
+            {t('chat.panel.authoringBadge', {
+              label: authoringTelemetry.intent === 'fork'
+                ? t('chat.panel.authoringBadgeFork')
+                : t('chat.panel.authoringBadgeAuthoring'),
+              seconds: Math.round((Date.now() - authoringTelemetry.startedAt) / 1000),
+            })}
           </span>
         )}
         <div className="flex-1" />
@@ -1419,13 +1336,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               size="icon-xs"
               onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
               className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
-              aria-label={keyStateAnthropic || keyStateOpenai ? 'Manage API keys' : 'Add API key for frontier models'}
+              aria-label={keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
             >
               <KeyRound className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            {keyStateAnthropic || keyStateOpenai ? 'Manage API keys' : 'Add API key for frontier models'}
+            {keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
           </TooltipContent>
         </Tooltip>
 
@@ -1440,7 +1357,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               <Zap className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Auto-run: {autoExecute ? 'ON' : 'OFF'}</TooltipContent>
+          <TooltipContent>
+            {t('chat.panel.autoRunStatus', {
+              state: autoExecute ? t('chat.panel.stateOn') : t('chat.panel.stateOff'),
+            })}
+          </TooltipContent>
         </Tooltip>
 
         {onClose && (
@@ -1460,8 +1381,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         >
           <KeyRound className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
           <span>
-            <strong>{needsAnthropicKey ? 'Anthropic' : 'OpenAI'} key needed</strong>{' '}
-            for this model — click to set it up
+            <strong>
+              {t('chat.panel.keyNeededStrong', {
+                provider: needsAnthropicKey ? t('chat.panel.providerAnthropic') : t('chat.panel.providerOpenai'),
+              })}
+            </strong>{' '}
+            {t('chat.panel.keyNeededSuffix')}
           </span>
         </button>
       )}
@@ -1469,14 +1394,16 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       {/* Clear confirmation */}
       {showClearConfirm && (
         <div className="px-3 py-2 bg-destructive/5 border-b flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Clear {messages.length} messages?</span>
+          <span className="text-muted-foreground">
+            {t('chat.panel.clearConfirmPrompt', { count: messages.length })}
+          </span>
           <Button
             variant="destructive"
             size="sm"
             onClick={confirmClear}
             className="h-5 px-2 text-xs"
           >
-            Clear
+            {t('chat.panel.clearConfirmButton')}
           </Button>
           <Button
             variant="ghost"
@@ -1484,7 +1411,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             onClick={() => setShowClearConfirm(false)}
             className="h-5 px-2 text-xs"
           >
-            Cancel
+            {t('chat.panel.clearCancelButton')}
           </Button>
         </div>
       )}
@@ -1494,7 +1421,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         {/* Empty state */}
         {messages.length === 0 && !streamingContent && (
           <div className="flex flex-col justify-end h-full px-3 pb-2">
-            <p className="text-xs text-muted-foreground mb-2">Try something:</p>
+            <p className="text-xs text-muted-foreground mb-2">{t('chat.panel.emptyStateHint')}</p>
             <div className="flex flex-col gap-1">
               {EXAMPLE_PROMPTS.map((prompt) => (
                 <button
@@ -1536,7 +1463,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         {status === 'sending' && (
           <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span className="text-xs">Thinking...</span>
+            <span className="text-xs">{t('chat.panel.sendingIndicator')}</span>
           </div>
         )}
 
@@ -1552,13 +1479,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               </div>
               <div className="text-sm font-semibold">
                 {chatToolReady.kind === 'bundle'
-                  ? `"${chatToolReady.name || 'Your extension'}" is ready`
-                  : 'Your tool is ready'}
+                  ? t('chat.panel.bundleReadyTitle', { name: chatToolReady.name || t('chat.panel.defaultExtensionName') })
+                  : t('chat.panel.scriptReadyTitle')}
               </div>
             </div>
             <p className="text-xs text-muted-foreground mb-2.5 pl-9">
-              Last step — turn this into a permanent{' '}
-              <span className="font-medium text-foreground">one-click button in your toolbar</span>.
+              {t('chat.panel.installCtaPrefix')}{' '}
+              <span className="font-medium text-foreground">{t('chat.panel.installCtaHighlight')}</span>.
             </p>
             <div className="flex items-center gap-2 pl-9">
               <Button
@@ -1577,14 +1504,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 }}
               >
                 <Wrench className="mr-1 h-3.5 w-3.5" />
-                {chatToolReady.kind === 'bundle' ? 'Review & install' : 'Install as tool'}
+                {chatToolReady.kind === 'bundle' ? t('chat.panel.reviewInstallButton') : t('chat.panel.installAsToolButton')}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => setChatToolReady(null)}
               >
-                Not now
+                {t('chat.panel.notNowButton')}
               </Button>
             </div>
           </div>
@@ -1617,12 +1544,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 className="h-5 px-2 text-[10px]"
                 onClick={handleContinue}
               >
-                Continue
+                {t('chat.panel.continueButton')}
               </Button>
             )}
             {showSupportEmail && (
               <a className="underline text-[10px]" href="mailto:louis@ltplus.com">
-                Contact support
+                {t('chat.panel.contactSupportLink')}
               </a>
             )}
           </div>
@@ -1696,8 +1623,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             </TooltipTrigger>
             <TooltipContent>
               {canAttachInput
-                ? 'Attach file or image (paste, drag & drop)'
-                : 'Selected model does not support attachments'}
+                ? t('chat.panel.attachTooltipEnabled')
+                : t('chat.panel.attachTooltipDisabled')}
             </TooltipContent>
           </Tooltip>
 
@@ -1710,7 +1637,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={needsByokKey ? `Add your ${needsAnthropicKey ? 'Anthropic' : 'OpenAI'} key to chat with this model` : 'Ask anything...'}
+            placeholder={needsByokKey
+              ? t('chat.panel.placeholderNeedsKey', {
+                  provider: needsAnthropicKey ? t('chat.panel.providerAnthropic') : t('chat.panel.providerOpenai'),
+                })
+              : t('chat.panel.placeholderDefault')}
             rows={1}
             className="flex-1 resize-none rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground px-3 py-1.5 text-sm min-h-[32px] max-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
             style={{ height: 'auto', overflow: 'hidden' }}
@@ -1729,7 +1660,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                   <Square className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Stop generating</TooltipContent>
+              <TooltipContent>{t('chat.panel.stopGeneratingTooltip')}</TooltipContent>
             </Tooltip>
           ) : (
             <Tooltip>
@@ -1744,13 +1675,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                   <Send className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Send (Enter)</TooltipContent>
+              <TooltipContent>{t('chat.panel.sendTooltip')}</TooltipContent>
             </Tooltip>
           )}
         </div>
         <div className="flex items-center justify-between mt-1 px-0.5">
           {isActive ? (
-            <span className="text-[10px] text-muted-foreground">Streaming...</span>
+            <span className="text-[10px] text-muted-foreground">{t('chat.panel.streamingIndicator')}</span>
           ) : displayUsage ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1767,13 +1698,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               </TooltipTrigger>
               <TooltipContent>
                 {displayUsage.type === 'credits'
-                  ? `${displayUsage.used}/${displayUsage.limit} credits · resets ${usageResetLabel}`
-                  : `${displayUsage.used}/${displayUsage.limit} requests · resets ${usageResetLabel}`
+                  ? t('chat.panel.usageCredits', { used: displayUsage.used, limit: displayUsage.limit, resetLabel: usageResetLabel })
+                  : t('chat.panel.usageRequests', { used: displayUsage.used, limit: displayUsage.limit, resetLabel: usageResetLabel })
                 }
               </TooltipContent>
             </Tooltip>
           ) : (
-            <span className="text-[10px] text-muted-foreground">Shift+Enter new line</span>
+            <span className="text-[10px] text-muted-foreground">{t('chat.panel.shiftEnterHint')}</span>
           )}
           <span className="text-[10px] text-muted-foreground">⌘L</span>
         </div>

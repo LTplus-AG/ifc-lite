@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { clearProvider, saveCredential } from '@/services/api-keys';
 import { isPlainAsciiWorkspaceId } from '@/lib/llm/anthropic-client';
 import { looksLikeProviderKey, maskKey, type BYOKProvider } from '@/lib/llm/clipboard-detect';
@@ -65,6 +66,7 @@ export function ByokCredentialForm({
   savedKey,
   savedWorkspaceId,
 }: ByokCredentialFormProps) {
+  const { t } = useTranslation();
   const [keyDraft, setKeyDraft] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(savedWorkspaceId);
   // Touched, not merely different. Someone rotating a key inside the same
@@ -126,7 +128,9 @@ export function ByokCredentialForm({
       {/* Paste-driven key entry, autofocused on mount. */}
       <div className="space-y-1.5">
         <label className="text-xs font-medium" htmlFor={`byok-${provider}-input`}>
-          {savedKey ? 'Replace existing key' : 'Paste your key'}
+          {savedKey
+            ? t('chatByok.credentialForm.replaceKeyLabel')
+            : t('chatByok.credentialForm.pasteKeyLabel')}
         </label>
         <div className="relative">
           <input
@@ -145,7 +149,7 @@ export function ByokCredentialForm({
             type="button"
             onClick={() => setShow(!show)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            aria-label={show ? 'Hide key' : 'Show key'}
+            aria-label={show ? t('chatByok.credentialForm.hideKeyAria') : t('chatByok.credentialForm.showKeyAria')}
           >
             {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </button>
@@ -153,13 +157,12 @@ export function ByokCredentialForm({
         {keyValid && trimmedKey.length > 0 && trimmedKey !== savedKey && (
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
             <Check className="h-3 w-3" />
-            Looks like a {meta.label} key (<code className="font-mono">{maskKey(trimmedKey)}</code>).
+            {t('chatByok.credentialForm.looksLikeKey', { label: meta.label, masked: maskKey(trimmedKey) })}
           </p>
         )}
         {!keyValid && (
           <p className="text-[11px] text-destructive">
-            That doesn&apos;t look like a {meta.label} key (expected prefix{' '}
-            <code className="font-mono">{meta.keyPrefix}</code>).
+            {t('chatByok.credentialForm.doesntLookLikeKey', { label: meta.label, prefix: meta.keyPrefix })}
           </p>
         )}
       </div>
@@ -167,7 +170,10 @@ export function ByokCredentialForm({
       {wantsWorkspace && (
         <div className="space-y-1.5">
           <label className="text-xs font-medium" htmlFor="byok-anthropic-workspace">
-            Workspace ID <span className="font-normal text-muted-foreground">— optional</span>
+            {t('chatByok.credentialForm.workspaceLabel')}{' '}
+            <span className="font-normal text-muted-foreground">
+              {t('chatByok.credentialForm.workspaceOptionalSuffix')}
+            </span>
           </label>
           <input
             id="byok-anthropic-workspace"
@@ -177,39 +183,37 @@ export function ByokCredentialForm({
             value={workspaceDraft}
             onChange={(e) => { setWorkspaceDraft(e.target.value); setWorkspaceTouched(true); }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
-            placeholder="wrkspc_..."
+            placeholder={t('chatByok.credentialForm.workspacePlaceholder')}
             autoComplete="off"
             spellCheck={false}
             className={INPUT_CLASS}
           />
           {workspaceClean ? (
             <p id="byok-anthropic-workspace-hint" className="text-[11px] text-muted-foreground">
-              Only needed if your key reaches more than one workspace — Anthropic then rejects
-              every request until one is named. A key created for a single workspace needs
-              nothing here.
+              {t('chatByok.credentialForm.workspaceHelp')}
             </p>
           ) : (
             <p id="byok-anthropic-workspace-hint" className="text-[11px] text-destructive">
-              That contains a character that doesn&apos;t belong in a workspace ID — usually an
-              invisible one picked up while copying. Retype it, or paste it again.
+              {t('chatByok.credentialForm.workspaceInvalidHelp')}
             </p>
           )}
         </div>
       )}
 
       <Button size="sm" onClick={handleSave} disabled={!canSave}>
-        Save
+        {t('chatByok.credentialForm.saveButton')}
       </Button>
 
       {savedKey && (
         <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-xs">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Check className="h-3.5 w-3.5 text-emerald-500" />
-            Configured: <code className="font-mono text-foreground">{maskKey(savedKey)}</code>
+            {t('chatByok.credentialForm.configuredLabel')}{' '}
+            <code className="font-mono text-foreground">{maskKey(savedKey)}</code>
           </div>
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleClear}>
             <Trash2 className="mr-1 h-3 w-3" />
-            Remove
+            {t('chatByok.credentialForm.removeButton')}
           </Button>
         </div>
       )}

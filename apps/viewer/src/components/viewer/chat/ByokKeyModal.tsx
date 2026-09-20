@@ -34,6 +34,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from '@/i18n';
 import { ByokTrustDiagram } from './ByokTrustDiagram';
 import { ByokCredentialForm } from './ByokCredentialForm';
 import { CLIENT_FILES, DEFAULT_REQUEST_SOURCE } from './byok-audit-sources';
@@ -93,6 +94,7 @@ export function ByokKeyModal({
   initialProvider = 'anthropic',
   requestSource,
 }: ByokKeyModalProps) {
+  const { t } = useTranslation();
   const [provider, setProvider] = useState<BYOKProvider>(initialProvider);
   const [apiKeys, setApiKeys] = useState<ApiKeyConfig>(() => getApiKeys());
 
@@ -113,11 +115,10 @@ export function ByokKeyModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Key className="h-4 w-4" />
-            Use your own API key
+            {t('chatByok.keyModal.title')}
           </DialogTitle>
           <DialogDescription>
-            Unlocks frontier models. Your key stays in this browser and goes
-            straight to the provider — never through our servers.
+            {t('chatByok.keyModal.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -127,14 +128,14 @@ export function ByokKeyModal({
               value="anthropic"
               className="flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
             >
-              Anthropic
+              {t('chatByok.provider.anthropic')}
               {apiKeys.anthropicKey && <Check className="h-3 w-3 text-emerald-500" />}
             </TabsTrigger>
             <TabsTrigger
               value="openai"
               className="flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
             >
-              OpenAI
+              {t('chatByok.provider.openai')}
               {apiKeys.openaiKey && <Check className="h-3 w-3 text-emerald-500" />}
             </TabsTrigger>
           </TabsList>
@@ -168,6 +169,7 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
   savedWorkspaceId?: string;
   requestSource: string;
 }) {
+  const { t } = useTranslation();
   const meta = PROVIDER_META[provider];
 
   const unlockedModels = useMemo(() => getByokModelsForSource(provider), [provider]);
@@ -181,7 +183,7 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
     <div className="space-y-4">
       {/* Models unlocked */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">Unlocks:</span>
+        <span className="text-xs text-muted-foreground">{t('chatByok.keyModal.unlocksLabel')}</span>
         {unlockedModels.map((m) => (
           <Badge key={m.id} variant="outline" className="text-[10px] font-mono">
             {m.name}
@@ -197,18 +199,20 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
       {/* DevTools-verifiable trust claims */}
       <ul className="space-y-2 text-xs">
         <TrustBullet>
-          Key stored only in this browser&apos;s <code className="bg-muted px-1 rounded">localStorage</code>.{' '}
-          Inspect any time in DevTools.
+          {t('chatByok.keyModal.trustBullet1Prefix')}{' '}
+          <code className="bg-muted px-1 rounded">{t('chatByok.keyModal.trustBulletLocalStorage')}</code>.{' '}
+          {t('chatByok.keyModal.trustBullet1Suffix')}
         </TrustBullet>
         <TrustBullet>
-          Every request goes to <code className="bg-muted px-1 rounded">{meta.apiHost}</code>. Verify in DevTools →
-          Network → filter <code className="bg-muted px-1 rounded">{meta.apiHost.split('.').slice(-2).join('.')}</code>.
+          {t('chatByok.keyModal.trustBullet2Prefix')} <code className="bg-muted px-1 rounded">{meta.apiHost}</code>
+          {t('chatByok.keyModal.trustBullet2Suffix')}{' '}
+          <code className="bg-muted px-1 rounded">{meta.apiHost.split('.').slice(-2).join('.')}</code>.
         </TrustBullet>
         <TrustBullet>
-          The whole BYOK code path is short enough to read.{' '}
+          {t('chatByok.keyModal.trustBullet3Prefix')}{' '}
           {[...CLIENT_FILES[provider], requestSource].map((file, i) => (
             <span key={file}>
-              {i > 0 && ' and '}
+              {i > 0 && t('chatByok.keyModal.fileListSeparator')}
               <a
                 href={`${REPO_BLOB}/apps/viewer/src/${file}`}
                 target="_blank"
@@ -238,30 +242,32 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
           aria-controls={`byok-walkthrough-${provider}`}
           className="w-full flex items-center justify-between gap-2 p-3 text-xs hover:bg-muted/30 transition-colors"
         >
-          <span className="font-medium">Don&apos;t have a key? 60-second walkthrough</span>
+          <span className="font-medium">{t('chatByok.keyModal.walkthroughToggle')}</span>
           {walkthroughOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </button>
         {walkthroughOpen && (
           <div id={`byok-walkthrough-${provider}`} className="border-t p-3 space-y-2.5 text-xs">
             <ol className="space-y-2 list-decimal list-inside text-muted-foreground">
               <li>
-                Open the {meta.label} console — opens in a new tab.
+                {t('chatByok.keyModal.walkthroughStep1', { provider: meta.label })}
               </li>
               <li>
-                Click <strong>Create Key</strong>, name it <code className="bg-muted px-1 rounded">ifc-lite</code>.
-                {provider === 'anthropic' && ' Scope it to a single workspace — a key that spans several needs a Workspace ID here as well.'}
+                {t('chatByok.keyModal.walkthroughStep2Prefix')} <strong>{t('chatByok.keyModal.walkthroughStep2CreateKey')}</strong>
+                {t('chatByok.keyModal.walkthroughStep2Middle')}{' '}
+                <code className="bg-muted px-1 rounded">{t('chatByok.keyModal.walkthroughStep2CodeName')}</code>.
+                {provider === 'anthropic' && t('chatByok.keyModal.walkthroughStep2AnthropicNote')}
               </li>
               <li>
-                Set a spending limit (e.g.&nbsp;$10/month) so a leaked key can&apos;t burn you. The provider enforces it.
+                {t('chatByok.keyModal.walkthroughStep3')}
               </li>
               <li>
-                Copy the key, come back here, paste it into the input above (the field is already focused — just press <code className="bg-muted px-1 rounded">⌘V</code>).
+                {t('chatByok.keyModal.walkthroughStep4')} <code className="bg-muted px-1 rounded">⌘V</code>).
               </li>
             </ol>
             <p className="text-[11px] text-muted-foreground">{meta.pricingHint}</p>
             <Button size="sm" variant="outline" className="text-xs" onClick={handleOpenConsole}>
               <ExternalLink className="mr-1.5 h-3 w-3" />
-              Open {meta.consoleLabel}
+              {t('chatByok.keyModal.openConsoleButton', { consoleLabel: meta.consoleLabel })}
             </Button>
           </div>
         )}

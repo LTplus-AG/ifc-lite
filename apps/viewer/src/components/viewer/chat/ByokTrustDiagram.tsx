@@ -13,17 +13,20 @@
  * classes.
  */
 
+import { useTranslation } from '@/i18n';
+
 interface ByokTrustDiagramProps {
   apiHost: string;
 }
 
 export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
+  const { t } = useTranslation();
   return (
     <svg
       viewBox="0 0 520 200"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
-      aria-label={`Diagram: requests go directly from your browser to ${apiHost}, not via our server.`}
+      aria-label={t('chatByok.trustDiagram.ariaLabel', { apiHost })}
       className="w-full h-auto"
     >
       <defs>
@@ -56,7 +59,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
       {/* Row 1 — the path that's actually used */}
       <g transform="translate(0, 18)">
         <text x="0" y="-4" className="text-[10px] uppercase tracking-wider fill-emerald-600 dark:fill-emerald-400 font-semibold">
-          ✓ How your requests actually flow
+          {t('chatByok.trustDiagram.activeFlowLabel')}
         </text>
 
         {/* Browser box */}
@@ -70,7 +73,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           strokeWidth="1.75"
         />
         <text x="62" y="35" textAnchor="middle" className="text-[12px] fill-foreground font-medium">
-          Your browser
+          {t('chatByok.trustDiagram.browserBox')}
         </text>
 
         {/* Arrow */}
@@ -84,7 +87,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           markerEnd="url(#byok-arrow-active)"
         />
         <text x="235" y="22" textAnchor="middle" className="text-[10px] fill-emerald-600 dark:fill-emerald-400 font-mono">
-          HTTPS · direct
+          {t('chatByok.trustDiagram.httpsDirect')}
         </text>
 
         {/* Provider API box (highlighted) */}
@@ -105,7 +108,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
       {/* Row 2 — what we are NOT doing */}
       <g transform="translate(0, 116)" opacity="0.55">
         <text x="0" y="-4" className="text-[10px] uppercase tracking-wider fill-destructive font-semibold" opacity="1">
-          ✗ What we never do
+          {t('chatByok.trustDiagram.blockedFlowLabel')}
         </text>
 
         {/* Browser box (muted) */}
@@ -120,7 +123,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           strokeDasharray="3 3"
         />
         <text x="52" y="33" textAnchor="middle" className="text-[11px] fill-muted-foreground">
-          Your browser
+          {t('chatByok.trustDiagram.browserBox')}
         </text>
 
         {/* Arrow 1 (muted, dashed) */}
@@ -147,7 +150,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           strokeDasharray="3 3"
         />
         <text x="250" y="33" textAnchor="middle" className="text-[11px] fill-muted-foreground">
-          our server
+          {t('chatByok.trustDiagram.ourServerBox')}
         </text>
         {/* Strike-through across the "our server" box */}
         <line

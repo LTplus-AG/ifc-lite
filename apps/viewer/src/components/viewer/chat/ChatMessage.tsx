@@ -11,6 +11,7 @@
 import { memo, useMemo } from 'react';
 import { User, Bot, Paperclip } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { ExecutableCodeBlock } from './ExecutableCodeBlock';
 import type { ChatMessage as ChatMessageType } from '@/lib/llm/types';
 import { renderTextContent } from './renderTextContent';
@@ -64,6 +65,7 @@ export const ChatMessageComponent = memo(function ChatMessageComponent({
   isStreaming,
   onFixError,
 }: ChatMessageProps) {
+  const { t } = useTranslation();
   const isUser = message.role === 'user';
   const contentParts = useMemo(
     () => isUser ? null : splitContent(message.content),
@@ -100,7 +102,11 @@ export const ChatMessageComponent = memo(function ChatMessageComponent({
                     <span key={a.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-muted text-xs text-muted-foreground">
                       <Paperclip className="h-3 w-3" />
                       {a.name}
-                      {a.csvData && <span className="opacity-60">({a.csvData.length} rows)</span>}
+                      {a.csvData && (
+                        <span className="opacity-60">
+                          {t('chat.message.attachmentRows', { count: a.csvData.length })}
+                        </span>
+                      )}
                     </span>
                   )
                 ))}

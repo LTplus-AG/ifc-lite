@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { getAttributeNamesAcrossSchemas, type IfcAttributeValue, type IfcDataStore } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -10,10 +10,6 @@ import { roomSymbolicSource } from './room-symbolic-source';
 import { propertyValueTypeFor } from './mutation-bridge';
 import { asExpressIdRef, readAttributes, resolvePlacementChain, resolveRotationState } from '@/lib/placement-core';
 import '@/lib/placement-edit.boot';
-import {
-  explicitReferenceId, isPortableReferenceList, isPortableReferenceScalar, localReferenceId, portableEntityKey,
-} from './portable-reference-entities';
-import { pathForEntity } from './entity-paths';
 
 export interface RoomStepExportSource {
   dataStore: IfcDataStore;
@@ -38,84 +34,10 @@ function quantityEqual(left: Quantity, right: Quantity): boolean {
   return left.value === right.value;
 }
 
-function structuredValueEqual(left: unknown, right: unknown): boolean {
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return left.length === right.length
-      && left.every((value, index) => structuredValueEqual(value, right[index]));
-  }
-  return left === right;
-}
-
-function sourceReference(
-  value: unknown,
-  sourceIdByRoomId: ReadonlyMap<number, number>,
-  allowNumeric = false,
-): string | null {
-  const roomId = allowNumeric ? explicitReferenceId(value) : localReferenceId(value);
-  if (roomId === null) return null;
-  const sourceId = sourceIdByRoomId.get(roomId);
-  if (sourceId === undefined) {
-    // Select-typed slots such as AppliedValue may contain a positive numeric
-    // measure rather than an entity reference. A parsed `#id` is unambiguous
-    // and must still fail closed if it escapes the portable graph.
-    if (typeof value !== 'string') return null;
-    throw new Error(`Room reference #${roomId} is outside the portable IFC source.`);
-  }
-  return `#${sourceId}`;
-}
-
-function structuredSourceReference(
-  value: unknown,
-  sourceIdByRoomId: ReadonlyMap<number, number>,
-  sourceIdByPortableKey: ReadonlyMap<string, number>,
-): string | null {
-  const local = sourceReference(value, sourceIdByRoomId);
-  if (local) return local;
-  if (typeof value !== 'string' || !value.startsWith('/')) return null;
-  const sourceId = sourceIdByPortableKey.get(value);
-  if (sourceId === undefined) throw new Error(`Room path ${value} is outside the portable IFC source.`);
-  return `#${sourceId}`;
-}
-
-/** Translate references embedded in reconstructed-room positional mutations. */
-function toSourceMutation(
-  mutation: Mutation,
-  roomStore: IfcDataStore,
-  sourceIdByRoomId: ReadonlyMap<number, number>,
-  modelId: string,
-): Mutation {
-  const sourceEntityId = sourceIdByRoomId.get(mutation.entityId);
-  if (sourceEntityId === undefined) {
-    throw new Error(`Room entity #${mutation.entityId} is outside the portable IFC source.`);
-  }
-  let attributeName = mutation.attributeName;
-  if (attributeName?.startsWith('@')) {
-    const index = Number(attributeName.slice(1));
-    attributeName = Number.isSafeInteger(index)
-      ? getAttributeNamesAcrossSchemas(roomStore.entities.getTypeName(mutation.entityId))[index]
-      : undefined;
-  }
-  let newValue = mutation.newValue;
-  let oldValue = mutation.oldValue;
-  if (attributeName && isPortableReferenceList(attributeName)) {
-    const remap = (value: typeof newValue): typeof newValue => Array.isArray(value)
-      ? value.map(member => sourceReference(member, sourceIdByRoomId, true) ?? member)
-      : value;
-    newValue = remap(newValue);
-    oldValue = remap(oldValue);
-  } else if (attributeName && isPortableReferenceScalar(attributeName)) {
-    newValue = sourceReference(newValue, sourceIdByRoomId) ?? newValue;
-    oldValue = sourceReference(oldValue, sourceIdByRoomId) ?? oldValue;
-  }
-  return { ...mutation, modelId, entityId: sourceEntityId, newValue, oldValue };
-}
-
 function snapshotView(
   roomStore: IfcDataStore,
   portable: NonNullable<ReturnType<typeof roomSymbolicSource>>,
   modelId: string,
-  sourceIdByRoomId: ReadonlyMap<number, number>,
-  sourceIdByPortableKey: ReadonlyMap<string, number>,
 ): MutablePropertyView {
   const view = new MutablePropertyView(portable.dataStore.properties, modelId);
   configureMutationView(view, portable.dataStore);
@@ -139,35 +61,6 @@ function snapshotView(
       } else if (typeof value === 'string' && value !== originalValue) {
         view.setAttribute(sourceId, name, value);
       }
-    }
-
-    // The CRDT snapshot is authoritative even when no local room mutation
-    // exists (for example, a fresh recipient joining after a peer edit).
-    // Replay every portable positional reference slot from the reconstructed
-    // entity, remapping its synthetic ids back to the immutable STEP ids.
-    const roomEntity = roomStore.getEntity(roomId);
-    const sourceEntity = portable.dataStore.getEntity(sourceId);
-    if (roomEntity && sourceEntity) {
-      const names = getAttributeNamesAcrossSchemas(sourceEntity.type);
-      names.forEach((name, index) => {
-        const list = isPortableReferenceList(name);
-        const scalar = isPortableReferenceScalar(name);
-        if (!list && !scalar) return;
-        const structuredKey = `bsi::ifc::prop::${name}`;
-        const roomValue = Object.hasOwn(roomAttributes, structuredKey)
-          ? roomAttributes[structuredKey]
-          : roomEntity.attributes[index];
-        const mapped = list && Array.isArray(roomValue)
-          ? roomValue.map(member => structuredSourceReference(
-            member, sourceIdByRoomId, sourceIdByPortableKey,
-          ) ?? member)
-          : scalar ? structuredSourceReference(
-            roomValue, sourceIdByRoomId, sourceIdByPortableKey,
-          ) ?? roomValue : roomValue;
-        if (!structuredValueEqual(mapped, sourceEntity.attributes[index])) {
-          editor.setPositionalAttribute(sourceId, index, mapped as IfcAttributeValue);
-        }
-      });
     }
 
     const originalPsets = portable.dataStore.getProperties(sourceId);
@@ -269,13 +162,7 @@ export function roomStepExportSource(
   if (!portable || !canExportRoomAsStep(roomStore, roomView)) return null;
 
   const sourceIdByRoomId = new Map<number, number>();
-  const sourceIdByPortableKey = new Map<string, number>();
-  for (const [sourceId, roomId] of portable.ownerIds) {
-    sourceIdByRoomId.set(roomId, sourceId);
-    const key = portableEntityKey(portable.dataStore, sourceId);
-    const path = pathForEntity(roomStore, roomId);
-    if (key && path) sourceIdByPortableKey.set(path, sourceId);
-  }
+  for (const [sourceId, roomId] of portable.ownerIds) sourceIdByRoomId.set(roomId, sourceId);
   const toSourceIds = (ids: ReadonlySet<number> | null | undefined): Set<number> | null | undefined => {
     if (ids === null || ids === undefined) return ids;
     const out = new Set<number>();
@@ -286,9 +173,12 @@ export function roomStepExportSource(
     }
     return out;
   };
-  const view = snapshotView(roomStore, portable, modelId, sourceIdByRoomId, sourceIdByPortableKey);
-  const mutations: Mutation[] = (roomView?.getMutations() ?? [])
-    .map(mutation => toSourceMutation(mutation, roomStore, sourceIdByRoomId, modelId));
+  const view = snapshotView(roomStore, portable, modelId);
+  const mutations: Mutation[] = (roomView?.getMutations() ?? []).map(mutation => ({
+    ...mutation,
+    modelId,
+    entityId: sourceIdByRoomId.get(mutation.entityId)!,
+  }));
   view.applyMutations(mutations);
   return {
     dataStore: portable.dataStore,

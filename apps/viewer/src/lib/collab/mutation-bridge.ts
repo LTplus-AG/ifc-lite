@@ -12,28 +12,22 @@
  *                                                       │  (y-websocket)
  *   peer's Y.Doc update ─▶ observeDeep (txn.local=false) ─▶ apply to MutablePropertyView
  *
- * Entities are addressed by slot-qualified GUID path (`slotPath(slot, guid)`
- * — `/<slotId>/<guid>`, or the legacy `/<guid>` of a single-model room),
- * matching `seedFromStep` (#4444); the per-store expressId↔path registry
- * lives in `entity-paths.ts`. Inbound, the path itself names the slot, so the
- * observer resolves the store BY PATH and hands every handler the model the
- * edit belongs to. Inbound apply writes straight to the `MutablePropertyView`
+ * Slot-qualified GUID paths match `seedFromStep` (#4444); inbound paths select the model.
  * (not the slice's undo-tracked actions) so remote edits don't pollute the
  * local undo stack and can't echo back to the doc. The collab runtime is
  * injected (the module the caller already lazy-loaded) so this file pulls no
  * collab code eagerly.
  */
+
 import { PropertyValueType } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import { entityForPath, pathForEntity } from './entity-paths';
-import {
-  isReferenceListAttribute,
-  referenceListToPaths,
-  referenceScalarToPath,
-} from './attribute-reference-lists';
-import { seedReferencedSourceEntities } from './portable-reference-seed';
-export { applyRemoteAttribute } from './remote-attribute';
+import { remoteEntityDefinition } from './remote-entity-definition';
+import { attributeNamesForStore } from './schema-attribute-names';
+import { decodeRoomAttributeValue, encodeRoomAttributeEdit } from './entity-reference-wire';
+
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
   hasEntity(doc: CollabSession['doc'], path: string): boolean;
@@ -54,7 +48,7 @@ export interface CollabDocApi {
   createEntity(
     doc: CollabSession['doc'],
     path: string,
-    options?: { ifcClass?: string; attributes?: Record<string, unknown> },
+    options?: { ifcClass?: string; attributes?: Record<string, unknown>; meta?: Record<string, unknown> },
   ): void;
   /** The `usd::xformop` attribute key, so the inbound observer can route it to `onPlacement`. */
   XFORMOP_KEY: string;
@@ -63,6 +57,7 @@ export interface CollabDocApi {
   PROPERTY_TYPE_NAMES: Record<number, string>;
 }
 // ── value conversion ─────────────────────────────────────────────────────────
+
 function toScalar(value: unknown): string | number | boolean | null {
   if (value === null) return null;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -136,19 +131,8 @@ export function mirrorAttribute(
 ): void {
   const path = pathForEntity(store, entityId);
   if (!path || !api.hasEntity(session.doc, path)) return;
-  seedReferencedSourceEntities(api, session, store, attrName, value);
-  const referencePaths = referenceListToPaths(store, attrName, value);
-  const referencePath = referenceScalarToPath(store, attrName, value);
-  const wireValue = referencePaths !== undefined
-    ? referencePaths
-    : referencePath !== undefined
-      ? referencePath
-      : value;
-  // Never broadcast local express ids: they are model-instance-specific and
-  // can silently bind to different entities on a peer.
-  if (referencePaths === null || referencePath === null) return;
   session.transact(() => {
-    api.setAttribute(session.doc, path, attrName, wireValue);
+    api.setAttribute(session.doc, path, attrName, encodeRoomAttributeEdit(store, entityId, attrName, value));
   });
 }
 
@@ -191,6 +175,65 @@ export function mirrorEntityDelete(
 export type ScalarValue = string | number | boolean | null;
 
 /**
+ * Apply an inbound `onAttribute` write to the room model's
+ * `MutablePropertyView` (`@ifc-lite/mutations`), type-aware for `null` — a
+ * CRDT `null` is IFCX's own "removal opinion", a peer explicitly writing
+ * "this attribute has no value" (`setAttribute(doc, path, name, null)`, as
+ * opposed to `deleteAttribute`, which `attachRemoteApply` drops outright; see
+ * "drops a remote flat attribute DELETE"). `to-ifcx-null-attribute.test.ts`
+ * pins a doc attribute legitimately holding `null` as a state this bridge
+ * must round-trip.
+ *
+ * An earlier revision here wrote the literal string `'$'` for every `null`,
+ * which matches `serializeStringSlot`'s own absence sentinel for STRING slots
+ * (#4931) but is wrong for a REAL-typed slot such as `IfcMapConversion
+ * .Scale`: `serializeNamedAttribute` feeds a REAL slot through
+ * `Number(value.trim())`, and `Number('$')` is `NaN`, so the named pipeline
+ * REJECTS the edit and the OLD source value survives untouched. There is no
+ * single string sentinel valid for every declared attribute type.
+ *
+ * The fix routes `null` through the exporter's type-AGNOSTIC
+ * `setPositionalAttribute(entityId, index, null)` path, which `snapshotView` also
+ * `serializeStepValue` (the positional serializer) returns the STEP null
+ * marker `$` for a JS `null` UNCONDITIONALLY, before any type dispatch — so
+ * it is correct for STRING, REAL, ENUM, SELECT and reference slots alike,
+ * with no per-type branching needed here. `index` is resolved the same way
+ * `room-step-export.ts` resolves it, off the entity's own declared attribute
+ * order (`getAttributeNamesAcrossSchemas`); a name that does not resolve to a
+ * known slot is skipped, matching that file's own `if (index >= 0)` guard.
+ *
+ * Not `MutablePropertyView.removeAttributeMutation`: that discards the
+ * pending edit and falls back to the room model's last full-reconstruct
+ * value, a stale PRIOR value, not "absent".
+ */
+export function applyRemoteAttribute(
+  view: MutablePropertyView,
+  store: IfcDataStore,
+  entityId: number,
+  attrName: string,
+  value: unknown,
+): string | null {
+  const plainName = attrName.startsWith('bsi::ifc::prop::')
+    ? attrName.slice('bsi::ifc::prop::'.length)
+    : attrName;
+  const sourceType = store.entities.getTypeName(entityId);
+  const entityType = sourceType && sourceType !== 'Unknown'
+    ? sourceType
+    : view.getNewEntity(entityId)?.type ?? sourceType;
+  const index = attributeNamesForStore(store, entityType).indexOf(plainName);
+  if (index >= 0) {
+    const decoded = decodeRoomAttributeValue(store, value);
+    if (decoded.ok) {
+      view.setPositionalAttribute(entityId, index, decoded.value as Parameters<MutablePropertyView['setPositionalAttribute']>[2]);
+      return null;
+    }
+    return decoded.reason;
+  }
+  if (value !== null && value !== undefined) view.setAttribute(entityId, plainName, String(value));
+  return null;
+}
+
+/**
  * Every inbound handler is told WHICH model the edit belongs to: a room holds
  * one model per slot (#4444) and an expressId is meaningless without its
  * model. `modelId` is the viewer model whose store the path resolved against;
@@ -212,13 +255,8 @@ export interface RemoteApplyHandlers {
   onPlacement?(modelId: string, entityId: number, placement: LocalPlacement): void;
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(modelId: string, entityId: number): void;
-  /** A peer created an entity that this already-loaded model has not mapped yet. */
-  onEntityCreate?(
-    target: RoomEntityTarget,
-    entityPath: string,
-    ifcClass: string,
-    attributes: Readonly<Record<string, unknown>>,
-  ): void;
+  onEntityCreate?(target: RoomEntityTarget, entityPath: string, ifcClass: string,
+    attributes: Readonly<Record<string, unknown>>, sourceExpressId?: number): void;
   /** The whole Pset vanished. Property names are unavailable by design: Yjs
    *  detaches the map before the event is observed, so `forEach` yields 0
    *  entries. The consumer drops the entire set for (entityId, pset). */
@@ -271,19 +309,9 @@ export function attachRemoteApply(
           const hit = resolve(entityPath);
           if (!hit) continue;
           if (change.action === 'add' && handlers.onEntityCreate) {
-            const entity = entities.get(entityPath) as { get(key: string): unknown } | undefined;
-            const attributes = entity?.get('attributes') as {
-              get(key: string): unknown;
-              forEach?(fn: (value: unknown, key: string) => void): void;
-            } | undefined;
-            const classValue = attributes?.get('bsi::ifc::class') as { code?: unknown } | undefined;
-            if (typeof classValue?.code === 'string') {
-              const initial: Record<string, unknown> = {};
-              attributes?.forEach?.((value, key) => {
-                if (key !== 'bsi::ifc::class') initial[key] = value;
-              });
-              handlers.onEntityCreate(hit, entityPath, classValue.code, initial);
-            }
+            const definition = remoteEntityDefinition(entities.get(entityPath));
+            if (definition) handlers.onEntityCreate(hit, entityPath, definition.ifcClass,
+              definition.attributes, definition.sourceExpressId);
             continue;
           }
           if (change.action !== 'delete' || !handlers.onEntityDelete) continue;
@@ -312,13 +340,8 @@ export function attachRemoteApply(
             if (placement && handlers.onPlacement) handlers.onPlacement(modelId, entityId, placement);
             continue;
           }
-          const raw = target.get(attrName);
-          handlers.onAttribute(
-            modelId,
-            entityId,
-            attrName,
-            raw,
-          );
+          // Preserve structured IFC values; the mutation view validates them against the schema.
+          handlers.onAttribute(modelId, entityId, attrName, target.get(attrName));
         }
       } else if (path[1] === 'psets' && path.length === 3 && typeof path[2] === 'string') {
         const psetName = path[2];

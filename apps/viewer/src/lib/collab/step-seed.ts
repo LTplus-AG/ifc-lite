@@ -23,21 +23,11 @@ import {
   extractPropertiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
-  getAttributeNamesAcrossSchemas,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { ModelSlotRef, StepSeedEntity, StepSeedSource } from '@ifc-lite/collab';
 import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
-import {
-  isPortableReferenceList,
-  isPortableReferenceRootType,
-  isPortableReferenceScalar,
-  portableEntityKey,
-  portableEntityPath,
-  portableReferenceEntityIds,
-  portableReferenceId,
-} from './portable-reference-entities';
 
 const IFC_CLASS_URI = (code: string) =>
   `https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/${code}`;
@@ -116,7 +106,6 @@ export function buildStepSeedSource(
   };
   const childrenByPath = buildChildrenByPath(store, guidPathFor);
   const storeyElevations = store.spatialHierarchy?.storeyElevations;
-  const portableReferenceIds = portableReferenceEntityIds(store);
 
   function* iterate(): Generator<StepSeedEntity> {
     for (const [expressId, ref] of store.entityIndex.byId.entries()) {
@@ -129,9 +118,8 @@ export function buildStepSeedSource(
       // can't attribute-extract, so keying by the table is *more* complete.
       // (`Tag` has no table column; seed attributes are best-effort and it is
       // dropped rather than paying a per-entity re-parse.)
-      const guid = portableEntityKey(store, expressId);
-      // Cost/constraint references also need a deterministic room identity:
-      // peers cannot exchange their process-local STEP express ids.
+      const guid = store.entities.getGlobalId(expressId);
+      // Only IfcRoot-derived entities carry a GUID — the CRDT key.
       if (!guid) continue;
 
       // Proper-cased class from the entity table; fall back to the raw
@@ -151,41 +139,6 @@ export function buildStepSeedSource(
       if (description) attributes['bsi::ifc::prop::Description'] = description;
       if (objectType) attributes['bsi::ifc::prop::ObjectType'] = objectType;
       if (tag) attributes['bsi::ifc::prop::Tag'] = tag;
-
-      // Preserve the positional surface of the small non-root graph reached
-      // by cost/constraint reference attributes. Root rows remain the bounded
-      // table-backed seed above; only reference-bearing slots are added there.
-      const needsStructuredAttributes = portableReferenceIds.has(expressId)
-        || isPortableReferenceRootType(ref.type);
-      const sourceEntity = needsStructuredAttributes ? store.getEntity?.(expressId) ?? null : null;
-      if (sourceEntity) {
-        const names = getAttributeNamesAcrossSchemas(sourceEntity.type);
-        const includeOrdinary = !store.entities.getGlobalId(expressId);
-        sourceEntity.attributes.forEach((value, index) => {
-          const name = names[index];
-          if (!name || value === undefined) return;
-          const referenceId = (candidate: unknown) =>
-            portableReferenceId(store, sourceEntity.type, index, name, candidate);
-          let wireValue: unknown = value;
-          if ((includeOrdinary || isPortableReferenceList(name)) && Array.isArray(value)) {
-            const paths: unknown[] = [];
-            for (const member of value) {
-              const id = referenceId(member);
-              const path = id === null ? null : portableEntityPath(store, id, slot);
-              if (path) paths.push(path);
-              else if (includeOrdinary) paths.push(member);
-            }
-            wireValue = paths;
-          } else if (includeOrdinary || isPortableReferenceScalar(name)) {
-            const id = referenceId(value);
-            const path = id === null ? null : portableEntityPath(store, id, slot);
-            if (path) wireValue = path;
-          } else if (!includeOrdinary) {
-            return;
-          }
-          attributes[`bsi::ifc::prop::${name}`] = wireValue;
-        });
-      }
 
       // Storey elevation drives the hierarchy builder's storey ordering.
       if (ifcClass === 'IfcBuildingStorey') {

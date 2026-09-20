@@ -58,7 +58,7 @@
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
    665 apps/viewer/src/components/mcp/data.ts
-  1318 apps/viewer/src/components/mcp/McpLanding.tsx
+  1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2090 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx

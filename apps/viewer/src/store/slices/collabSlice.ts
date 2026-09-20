@@ -53,8 +53,8 @@ import {
   mirrorPropertyDelete,
   type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
-import { pathForEntity, pathForGuid, registerEntityPath, unregisterEntityPath } from '@/lib/collab/entity-paths';
-import { createRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
+import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
+import { createRemoteOverlayEntity, deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
@@ -332,7 +332,7 @@ export interface CollabSlice {
     entityId: number,
     ifcType: string,
     guid: string | null,
-    mesh: MeshData | null,
+    mesh: MeshData | null, initialAttributes?: Record<string, unknown>, sourceExpressId?: number,
   ) => void;
   /**
    * Mirror a geometry-shape change (resize) by replacing the entity's room
@@ -342,7 +342,6 @@ export interface CollabSlice {
    * or edit rights.
    */
   mirrorEntityGeometry: (modelId: string, entityId: number, mesh: MeshData) => void;
-
   // ── Annotation mirror (collab markup) — called by annotationsSlice after a
   //    local create/edit/delete. No-ops without a session or comment permission.
   mirrorAnnotationUpsert: (annotation: Annotation) => void;
@@ -847,24 +846,20 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       session.dispose();
       return;
     }
-
-    // Remote → local apply (plan §7.5): replay peers' property/attribute edits
-    // into the ROOM model's MutablePropertyView (no undo tracking, no echo).
-    // Resolved per event BY PATH off `collabRoomModels`; the path's slot names
-    // the model (#4444), never `activeModelId`.
-    // `roomEntityTargetForPath` returns null until the room model is
-    // registered, and every handler drops the event rather than falling back
-    // to another model; the next reconstruct rebuilds the whole model from
-    // the CRDT anyway. Each handler is handed the model the resolver named
-    // and re-gates on it (`roomStoreFor` / `roomMutationViewFor`), so a
-    // handler cannot be handed one model and write another.
+    // Replay peer edits into the named ROOM model without local undo or echo.
+    // Room paths, never activeModelId, select the model because expressIds are
+    // model-local. Resolution fails closed until registration; reconstruct then
+    // rebuilds from the CRDT.
+    const rejectRemoteAttribute = (rejected: string) => {
+      console.warn('[collab] rejected remote attribute:', rejected);
+      set({ collabGeometryNotice: `A collaborative attribute could not be applied: ${rejected}` });
+    };
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
-      onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes) => {
+      onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes, sourceExpressId) => {
         const view = roomMutationViewFor(get(), modelId);
-        if (!view) return;
-        if (createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes)) {
+        if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes,
+          rejectRemoteAttribute, sourceExpressId))
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-        }
       },
       onProperty: (modelId, entityId, pset, prop, value, type) => {
         const view = roomMutationViewFor(get(), modelId);
@@ -891,7 +886,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       onAttribute: (modelId, entityId, attrName, value) => {
         const view = roomMutationViewFor(get(), modelId), store = roomStoreFor(get(), modelId);
         if (!view || !store) return;
-        applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
+        const rejected = applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
+        if (rejected) {
+          rejectRemoteAttribute(rejected);
+          return;
+        }
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer moved/rotated an entity: reflect it on the local mesh by
@@ -902,7 +901,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
-      // A peer deleted an entity: tombstone it and hide its renderer mesh.
+      // A peer deleted an entity: hide its mesh (matches the owner's local
+      // removeEntity, which hides rather than destroying GPU buffers).
       //
       // Unlike the four handlers above, this one does not go through
       // `roomMutationViewFor`'s own null check, so it needs its own: in the
@@ -915,10 +915,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       onEntityDelete: (modelId, entityId) => {
         const store = roomStoreFor(get(), modelId);
         if (!store) return;
-        roomMutationViewFor(get(), modelId)?.deleteEntity(entityId);
-        unregisterEntityPath(store, entityId);
+        if (!deleteRemoteOverlayEntity(store, roomMutationViewFor(get(), modelId), entityId)) return;
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-        get().hideEntities([globalId]); set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        get().hideEntities([globalId]);
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
     });
 
@@ -1205,21 +1205,19 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     placementAppliedLoc?.delete(globalId);
     placementAppliedYaw?.delete(globalId);
   },
-
-  mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh) => {
+  mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh, initialAttributes, sourceExpressId) => {
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi || !placementApi || !geomApiRef) return;
     if (!get().canCollabEdit()) return;
-    // Overlay (runtime-created) entities aren't in the store's GUID maps, so
-    // derive the path from the new entity's GlobalId — in the store's room
-    // slot, like every seeded path — and register it so this (and later
-    // edits to it) resolve.
+    // Overlay entities aren't in the GUID maps; derive their room path and
+    // register it only after CRDT creation succeeds so failed writes can retry.
     let path = pathForEntity(store, entityId);
+    let generatedPath = false;
     if (!path && guid) {
       path = pathForGuid(store, guid);
-      registerEntityPath(store, entityId, path);
+      generatedPath = true;
     }
     if (!path) return;
     const ifcClass = normalizeIfcClass(ifcType);
@@ -1227,9 +1225,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     session.transact(() => {
       api.createEntity(session.doc, path, {
         ifcClass,
-        attributes: { 'bsi::ifc::class': { code: ifcClass } },
+        attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
+        ...(sourceExpressId === undefined ? {} : { meta: { 'ifc-lite::sourceExpressId': sourceExpressId } }),
       });
     });
+    if (generatedPath) registerEntityPath(store, entityId, path);
     // The mesh blob is baked at the element's world position → identity baseline
     // (so a later move composes correctly; see reconcilePlacementMesh).
     placementApi.setPlacementBaseline(session.doc, path, { location: [0, 0, 0] });

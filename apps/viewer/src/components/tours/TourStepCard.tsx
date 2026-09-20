@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { computePosition, autoUpdate, offset, flip, shift, type Placement } from '@floating-ui/dom';
 import { Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { abortTour, nextStep, runStepAction, skipStep } from '@/lib/tours/controller';
 import { useTourStore } from '@/lib/tours/tour-store';
@@ -56,6 +57,7 @@ function useAnchoredPosition(targetEl: HTMLElement | null, placement: Placement)
 }
 
 export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardProps) {
+  const { t } = useTranslation();
   const hintVisible = useTourStore((s) => s.hintVisible);
   const gateBroken = useTourStore((s) => s.gateBroken);
   const redockedPanel = useTourStore((s) => s.redockedPanel);
@@ -84,7 +86,7 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
         cardRef.current = el;
       }}
       role="dialog"
-      aria-label={`Tour step ${stepIndex + 1} of ${total}: ${step.title}`}
+      aria-label={t('tours.tourStepCard.ariaLabel', { step: stepIndex + 1, total, title: step.title })}
       tabIndex={-1}
       className={cn(
         'pointer-events-auto w-80 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg outline-none',
@@ -110,7 +112,7 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label="End tour"
+          aria-label={t('tours.tourStepCard.endTourAriaLabel')}
           onClick={() => abortTour('close')}
           className="-mr-1.5 -mt-1.5 text-muted-foreground"
         >
@@ -123,12 +125,12 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
 
       {redockedPanel && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          The panel was docked back into the sidebar for this step.
+          {t('tours.tourStepCard.redockedNotice')}
         </p>
       )}
       {hintVisible && !showNext && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Stuck? Skip this step and keep going.
+          {t('tours.tourStepCard.stuckHint')}
         </p>
       )}
 
@@ -154,11 +156,11 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
             className="text-muted-foreground"
             onClick={skipStep}
           >
-            Skip step
+            {t('tours.tourStepCard.skipStep')}
           </Button>
           {showNext && (
             <Button size="sm" onClick={nextStep}>
-              {stepIndex + 1 === total ? 'Done' : 'Next'}
+              {stepIndex + 1 === total ? t('tours.tourStepCard.done') : t('tours.tourStepCard.next')}
             </Button>
           )}
         </div>

@@ -51,6 +51,19 @@ describe('StoreEditor', () => {
     expect(editor.getNewEntity(11)?.attributes).toEqual(['.AREA.', null, '#34', 0.6, 0.4]);
   });
 
+  // Regression: #5008 — a reconstructed collab-room (IFCX) store keeps
+  // `entityIndex.byId` empty; its entities exist only in the entity table.
+  it('addEntity allocates above entity-table ids when byId is empty', () => {
+    const store: MutationStoreShape = {
+      entityIndex: { byId: new Map() },
+      entities: { expressId: new Uint32Array([1, 2, 3, 0, 7]) },
+    };
+    const view = new MutablePropertyView(null, 'room');
+    const editor = new StoreEditor(store, view);
+
+    expect(editor.addEntity('IFCWALL', ['0000000000000000000009']).expressId).toBe(8);
+  });
+
   // Regression: github.com/LTplus-AG/ifc-lite/issues/1110 (PR review)
   // On huge files the parser defers property atoms out of byId; a deferred atom
   // can sit ABOVE max(byId). The overlay id watermark must clear it, or a new

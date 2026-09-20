@@ -23,7 +23,6 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
-import { portableEntityKey } from './portable-reference-entities';
 
 // ── model slot per store (#4444) ─────────────────────────────────────────────
 
@@ -70,9 +69,9 @@ function entityMaps(store: IfcDataStore): EntityMaps {
     // large models, so extraction returned no GUID and those products were absent
     // from both maps — breaking geometry seeding AND inbound/outbound edit sync
     // for them. The table carries their GlobalId reliably (see step-seed.ts).
-    const key = portableEntityKey(store, expressId);
-    if (!key) continue;
-    const path = pathForGuid(store, key);
+    const guid = store.entities?.getGlobalId?.(expressId);
+    if (!guid) continue;
+    const path = pathForGuid(store, guid);
     toPath.set(expressId, path);
     toExpressId.set(path, expressId);
   }
@@ -89,8 +88,8 @@ export function pathForEntity(store: IfcDataStore, entityId: number): string | n
   // which dropped the vast majority of meshes at seed time. The entity *table*
   // still carries their GlobalId, so fall back to it. (No-op for IFCX stores,
   // whose maps are pre-registered via `registerEntityMaps`.)
-  const key = portableEntityKey(store, entityId);
-  return key ? pathForGuid(store, key) : null;
+  const guid = store.entities?.getGlobalId?.(entityId);
+  return guid ? pathForGuid(store, guid) : null;
 }
 /** Inbound counterpart to `pathForEntity` — used by the apply observer. */
 export function entityForPath(store: IfcDataStore, path: string): number | null {
@@ -127,8 +126,11 @@ export function registerEntityPath(store: IfcDataStore, expressId: number, path:
   maps.toExpressId.set(path, expressId);
 }
 
-/** Drop outbound identity while retaining the path's stable id for a remote undo/re-add. */
 export function unregisterEntityPath(store: IfcDataStore, expressId: number): void {
   const maps = entityMaps(store);
+  const path = maps.toPath.get(expressId);
   maps.toPath.delete(expressId);
+  // A path can be rebound while a stale expressId still retains its forward
+  // entry. Never let cleanup of that stale owner erase the live reverse map.
+  if (path && maps.toExpressId.get(path) === expressId) maps.toExpressId.delete(path);
 }

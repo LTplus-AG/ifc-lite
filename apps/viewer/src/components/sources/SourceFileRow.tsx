@@ -5,6 +5,7 @@
 import type { SourceFile } from '@ifc-lite/plugin-api';
 import type { DownloadedSourceFileStatus } from '@/lib/sources/persistence';
 import { FileBox, RefreshCw, Star } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 interface SourceFileRowProps {
   file: SourceFile;
@@ -29,6 +30,7 @@ export function SourceFileRow({
   favourited,
   onToggleFavourite,
 }: SourceFileRowProps) {
+  const { t } = useTranslation();
   const isLoadedInHierarchy = loadedModelNames.length > 0;
   const isUpdateAvailable = downloadedStatus === 'update-available';
 
@@ -44,7 +46,11 @@ export function SourceFileRow({
           className="mt-0.5 shrink-0"
           checked={selected}
           onChange={onToggle}
-          aria-label={selected ? `Deselect ${file.name}` : `Select ${file.name}`}
+          aria-label={
+            selected
+              ? t('sources.sourceFileRow.deselectAria', { name: file.name })
+              : t('sources.sourceFileRow.selectAria', { name: file.name })
+          }
         />
         <button
           type="button"
@@ -68,7 +74,7 @@ export function SourceFileRow({
               {file.sizeBytes != null && <span>{formatBytes(file.sizeBytes)}</span>}
               {isUpdateAvailable && (
                 <span className="rounded border border-orange-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-orange-600 dark:border-orange-700 dark:text-orange-300">
-                  Update available
+                  {t('sources.sourceFileRow.updateAvailable')}
                 </span>
               )}
             </span>
@@ -79,7 +85,11 @@ export function SourceFileRow({
           className={`mt-0.5 shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground ${
             favourited ? 'text-amber-500' : 'text-muted-foreground'
           }`}
-          aria-label={`${favourited ? 'Remove' : 'Add'} favourite: ${file.name}`}
+          aria-label={
+            favourited
+              ? t('sources.sourceFileRow.removeFavouriteAria', { name: file.name })
+              : t('sources.sourceFileRow.addFavouriteAria', { name: file.name })
+          }
           aria-pressed={favourited}
           onClick={onToggleFavourite}
         >
@@ -91,16 +101,16 @@ export function SourceFileRow({
               className="rounded border border-emerald-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
               title={
                 loadedModelNames.length > 0
-                  ? `Loaded in hierarchy: ${loadedModelNames.join(', ')}`
-                  : 'Loaded in hierarchy'
+                  ? t('sources.sourceFileRow.loadedTooltip', { names: loadedModelNames.join(', ') })
+                  : t('sources.sourceFileRow.loadedTooltipEmpty')
               }
             >
-              {loadedModelNames.length > 1 ? `${loadedModelNames.length} loaded` : 'Loaded'}
+              {t('sources.sourceFileRow.loadedBadge', { count: loadedModelNames.length })}
             </span>
             <button
               type="button"
               className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label={`Sync ${file.name} from source`}
+              aria-label={t('sources.sourceFileRow.syncAria', { name: file.name })}
               disabled={syncingFile}
               onClick={onSyncLoadedFile}
             >

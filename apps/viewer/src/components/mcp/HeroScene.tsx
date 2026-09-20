@@ -34,6 +34,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { useTranslation } from '@/i18n';
 import { useThreeScene } from './useThreeScene';
 import { createScene, type SceneHandle } from './hero-scene';
 
@@ -98,6 +99,7 @@ export interface HeroSceneProps {
 }
 
 export function HeroScene({ step, className, onPinFrame }: HeroSceneProps) {
+  const { t } = useTranslation();
   const onPinRef = useRef(onPinFrame);
   onPinRef.current = onPinFrame;
 
@@ -136,7 +138,7 @@ export function HeroScene({ step, className, onPinFrame }: HeroSceneProps) {
             className="text-[10px] uppercase tracking-[0.22em]"
             style={{ color: CAPTION_DIM_CSS, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}
           >
-            3D preview unavailable on this device
+            {t('mcp.heroScene.webglUnavailable')}
           </span>
         </div>
       )}

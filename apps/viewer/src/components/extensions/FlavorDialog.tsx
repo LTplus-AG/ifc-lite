@@ -31,23 +31,8 @@ import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { serializeClashConfig } from '@/lib/clash/persistence.flavor';
+import { captureClashConfig } from './flavor-dialog-capture';
 import { localizedFlavorName } from './localized-flavor-metadata';
-
-/** Snapshot the current clash rule-set + detection settings for a flavor's
- *  `settings.clash` blob, so each profile carries its own clash config. */
-function captureClashConfig(): unknown {
-  const s = useViewerStore.getState();
-  return serializeClashConfig(s.clashPresets, {
-    mode: s.clashMode,
-    tolerance: s.clashTolerance,
-    clearance: s.clashClearance,
-    duplicateTolerance: s.clashDuplicateTolerance,
-    clusterEpsilon: s.clashClusterEpsilon,
-    reportTouch: s.clashReportTouch,
-    groupBy: s.clashGroupBy,
-  });
-}
 
 interface FlavorDialogProps {
   open: boolean;
@@ -193,11 +178,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
-      toast.success(t('extensionsFlavors.flavorDialog.toast.captured', {
-        count: lenses.length,
-        countDisplay: formatLocaleNumber(locale, lenses.length),
-        name: localizedFlavorName(target, t),
-      }));
+      toast.success(t('extensionsFlavors.flavorDialog.toast.captured', { count: lenses.length, countDisplay: formatLocaleNumber(locale, lenses.length), name: localizedFlavorName(target, t) }));
     } catch (err) {
       toast.error(failure(t('extensionsFlavors.flavorDialog.operation.capture'), err));
     } finally {
@@ -248,11 +229,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');
       await host.flavors.activate(id);
       toast.success(opts.snapshot
-        ? t('extensionsFlavors.flavorDialog.toast.createdSnapshot', {
-            name: opts.name,
-            count: lenses.length,
-            countDisplay: formatLocaleNumber(locale, lenses.length),
-          })
+        ? t('extensionsFlavors.flavorDialog.toast.createdSnapshot', { name: opts.name, count: lenses.length, countDisplay: formatLocaleNumber(locale, lenses.length) })
         : t('extensionsFlavors.flavorDialog.toast.createdEmpty', { name: opts.name }));
     } catch (err) {
       toast.error(failure(t('extensionsFlavors.flavorDialog.operation.create'), err));

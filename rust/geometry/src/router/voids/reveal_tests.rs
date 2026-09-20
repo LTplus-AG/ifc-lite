@@ -619,6 +619,33 @@
     }
 
     #[test]
+    fn test_extend_opening_is_invariant_under_antiparallel_axis_3977() {
+        let router = crate::router::GeometryRouter::new();
+        let wall_min = Point3::new(0.0, 0.0, -0.05);
+        let wall_max = Point3::new(4.0, 3.0, 0.05);
+        let open_min = Point3::new(1.0, 1.0, -0.02);
+        let open_max = Point3::new(2.0, 2.0, 0.02);
+
+        let positive = router.extend_opening_along_direction(
+            open_min,
+            open_max,
+            wall_min,
+            wall_max,
+            Vector3::new(0.0, 0.0, 1.0),
+        );
+        let negative = router.extend_opening_along_direction(
+            open_min,
+            open_max,
+            wall_min,
+            wall_max,
+            Vector3::new(0.0, 0.0, -1.0),
+        );
+
+        assert_eq!(negative, positive, "axis sign must not change the extended AABB");
+        assert!(negative.0.z < wall_min.z && negative.1.z > wall_max.z);
+    }
+
+    #[test]
     fn test_extend_opening_skipped_when_opening_pokes_past_wall() {
         // Regression for issue #832: a 1×1×0.2 m opening offset so its
         // 0.2 m extrusion depth pokes 0.1 m past the wall's +X face. The

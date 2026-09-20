@@ -19,6 +19,7 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 import type { ChangedTypeCount } from './changeRow';
 
 interface CompareBlacklistProps {
@@ -41,6 +42,7 @@ export function CompareBlacklist({
   onRemove,
   onClear,
 }: CompareBlacklistProps) {
+  const { t } = useTranslation();
   // Controlled back to the placeholder after each pick so the same class can be
   // re-picked later (once removed) and the select never shows a stale value.
   const [pick, setPick] = useState('');
@@ -52,7 +54,7 @@ export function CompareBlacklist({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
-      <span className="text-muted-foreground shrink-0">Ignore</span>
+      <span className="text-muted-foreground shrink-0">{t('comparePanel.blacklist.ignoreLabel')}</span>
 
       {hasOptions && (
         <select
@@ -62,10 +64,10 @@ export function CompareBlacklist({
             if (type) onAdd(type);
             setPick('');
           }}
-          title="Ignore an IFC class - not counted as changes"
+          title={t('comparePanel.blacklist.pickerTitle')}
           className="rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground min-w-0 max-w-[10rem]"
         >
-          <option value="">a class...</option>
+          <option value="">{t('comparePanel.blacklist.pickerPlaceholder')}</option>
           {changedTypeCounts.map(({ type, count }) => (
             <option key={type} value={type}>
               {shortName(type)} ({count.toLocaleString()})
@@ -77,14 +79,14 @@ export function CompareBlacklist({
       {excludedTypes.map((type) => (
         <span
           key={type}
-          title={`${type} - ignored`}
+          title={t('comparePanel.blacklist.chipTitle', { type })}
           className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground"
         >
           {shortName(type)}
           <button
             type="button"
             onClick={() => onRemove(type)}
-            title={`Stop ignoring ${type}`}
+            title={t('comparePanel.blacklist.removeTitle', { type })}
             className="text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="h-3 w-3" />
@@ -96,10 +98,10 @@ export function CompareBlacklist({
         <button
           type="button"
           onClick={onClear}
-          title="Clear ignored classes"
+          title={t('comparePanel.blacklist.clearTitle')}
           className="ml-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
-          Clear
+          {t('comparePanel.blacklist.clearLabel')}
         </button>
       )}
     </div>

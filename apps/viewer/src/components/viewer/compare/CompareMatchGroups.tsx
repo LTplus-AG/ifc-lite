@@ -19,6 +19,7 @@
 
 import { Link2, MousePointerClick } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { COMPARE_COLORS, rgbaCss, type RGBA } from '@/lib/compare/overlay';
 import { MATCH_KIND_HINT, MATCH_KIND_LABEL } from '@/lib/compare/contentMatches';
 import { MAX_ROWS_PER_GROUP, type CompareMatchRow } from './changeRow';
@@ -49,6 +50,7 @@ function MatchSection({
   color,
   Icon,
 }: MatchSectionProps & { label: string; title: string; color: RGBA; Icon: typeof Link2 }) {
+  const { t } = useTranslation();
   if (rows.length === 0) return null;
   // Same display cap as the Added/Changed/Deleted buckets. Content matching is
   // on by default and a from-scratch re-export can produce one match record per
@@ -88,7 +90,7 @@ function MatchSection({
         ))}
         {truncated > 0 && (
           <p className="px-2 py-1 text-[10px] text-muted-foreground">
-            +{truncated} more not shown
+            {t('comparePanel.moreNotShown', { count: truncated })}
           </p>
         )}
       </div>
@@ -97,14 +99,15 @@ function MatchSection({
 }
 
 export function CompareMatchGroups({ rows, selectedKey, onFocus, onFocusGroup }: MatchSectionProps) {
+  const { t } = useTranslation();
   return (
     <MatchSection
       rows={rows.filter((row) => row.retiring)}
       selectedKey={selectedKey}
       onFocus={onFocus}
       onFocusGroup={onFocusGroup}
-      label="Matched"
-      title="Select all content-matched elements in 3D"
+      label={t('comparePanel.matchGroups.matchedLabel')}
+      title={t('comparePanel.matchGroups.selectAllTitle')}
       color={COMPARE_COLORS.matched}
       Icon={Link2}
     />

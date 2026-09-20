@@ -347,6 +347,26 @@ sibling to the unrelated `merge-layers-banner.en.ts` (the multilayer-wall
 geometry-merge setting's reload banner), not the same feature under a new
 name.
 
+The Compare panel catalogue (#4918 compare slice, `compare-panel.en.ts`,
+keys prefixed `comparePanel.<component>.*`) covers `ComparePanel.tsx`'s own
+header/empty-state/BCF-compose-strip chrome and its `compare/` components:
+the run controls and ignored-classes picker (`CompareRunControls`,
+`CompareBlacklist`), the results list and its Matched/Suggestions sections
+(`CompareResultsList`, `CompareMatchGroups`, `CompareSuggestions`), the
+"what changed" detail (`ChangeDetailView`, whose delta lines were combined
+into single complete messages per the house rule against fragmenting a
+translated message rather than left split across a unit suffix and three
+axis labels), the download strip (`CompareExportBar`, including its
+"identity entries imported" status text), and the "raise a BCF topic from
+this change" affordance (`BcfFromChange`). The `+N more not shown` overflow
+notice is one shared key used by all three list sections. This is a sibling
+to the unrelated `compare-key-property.en.ts` (the authored-key picker
+feature), not the same catalogue renamed. Element/type NAMES, IFC class
+tags, and `bcfTextFromChange`'s BCF topic title/description stay literal —
+the latter is persisted verbatim into an exported BCF topic, the same
+reasoning the BCF-panel and clash-panel catalogues already document for
+text that doubles as exported content.
+
 The model-reposition catalogue (#4918 slice, `reposition-panel.en.ts`,
 prefix `repositionPanel.*`) covers the `reposition/` directory:
 `RepositionPanel.tsx` (the floating panel's header, moving/reference model

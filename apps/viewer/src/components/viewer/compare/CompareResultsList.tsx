@@ -11,6 +11,7 @@ import { Plus, Minus, PencilLine, MousePointerClick } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { COMPARE_COLORS, rgbaCss, type RGBA } from '@/lib/compare/overlay';
 import { groupHeaderCount, type ProductTypeSplit } from '@/lib/compare/productTypeCounts';
 import type { DiffState } from '@ifc-lite/diff';
@@ -26,10 +27,10 @@ export interface CompareBucket {
 }
 
 /** States listed in the panel (unchanged only affects 3D ghosting). */
-export const LISTED_STATES: { state: Exclude<DiffState, 'unchanged'>; label: string; color: RGBA; Icon: typeof Plus }[] = [
-  { state: 'modified', label: 'Changed', color: COMPARE_COLORS.modified, Icon: PencilLine },
-  { state: 'added', label: 'Added', color: COMPARE_COLORS.added, Icon: Plus },
-  { state: 'deleted', label: 'Deleted', color: COMPARE_COLORS.deleted, Icon: Minus },
+export const LISTED_STATES: { state: Exclude<DiffState, 'unchanged'>; labelKey: TranslationKey; color: RGBA; Icon: typeof Plus }[] = [
+  { state: 'modified', labelKey: 'comparePanel.resultsList.stateChanged', color: COMPARE_COLORS.modified, Icon: PencilLine },
+  { state: 'added', labelKey: 'comparePanel.resultsList.stateAdded', color: COMPARE_COLORS.added, Icon: Plus },
+  { state: 'deleted', labelKey: 'comparePanel.resultsList.stateDeleted', color: COMPARE_COLORS.deleted, Icon: Minus },
 ];
 
 /**
@@ -106,23 +107,25 @@ export function CompareResultsList({
   onAcceptSuggestion,
   onRejectSuggestion,
 }: CompareResultsListProps) {
+  const { t } = useTranslation();
   return (
     <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.compareResults)}>
       {!result ? (
         <div className="p-4 text-sm text-muted-foreground">
-          Run a comparison to see added, changed, and deleted elements.
+          {t('comparePanel.resultsList.emptyPrompt')}
         </div>
       ) : (
         <div className="p-2 space-y-3">
-          {LISTED_STATES.map(({ state, label, color, Icon }) => {
+          {LISTED_STATES.map(({ state, labelKey, color, Icon }) => {
             const bucket = groups.get(state);
             if (!bucket || bucket.rows.length === 0) return null;
+            const label = t(labelKey);
             return (
               <div key={state}>
                 <button
                   type="button"
                   onClick={() => onFocusGroup(state)}
-                  title={`Select all ${label.toLowerCase()} in 3D`}
+                  title={t('comparePanel.resultsList.selectAllInDTitle', { label: label.toLowerCase() })}
                   className="group w-full flex items-center gap-1.5 px-1 py-1 text-xs font-medium rounded hover:bg-muted transition-colors"
                 >
                   <Icon className="h-3.5 w-3.5" style={{ color: rgbaCss(color) }} />
@@ -157,7 +160,7 @@ export function CompareResultsList({
                   ))}
                   {bucket.truncated > 0 && (
                     <p className="px-2 py-1 text-[10px] text-muted-foreground">
-                      +{bucket.truncated} more not shown
+                      {t('comparePanel.moreNotShown', { count: bucket.truncated })}
                     </p>
                   )}
                 </div>
@@ -184,7 +187,7 @@ export function CompareResultsList({
               reverse) is precisely what two independent derivations produced. */}
           {counts && !hasReportableChanges(counts, matchRows) && (
             <div className="p-3 text-sm text-muted-foreground">
-              No differences in scope “{result.scope}”. The models match.
+              {t('comparePanel.resultsList.noDifferences', { scope: result.scope })}
             </div>
           )}
         </div>

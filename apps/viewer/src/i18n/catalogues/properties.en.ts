@@ -53,10 +53,10 @@ export const propertiesEn = {
 
   // RelationshipsCard
   'properties.relationships.heading': 'Relationships',
-  'properties.relationships.openings': 'Openings ({count})',
-  'properties.relationships.fills': 'Fills ({count})',
-  'properties.relationships.groupsAndZones': 'Groups & Zones ({count})',
-  'properties.relationships.connections': 'Connections ({count})',
+  'properties.relationships.openings': 'Openings ({countDisplay})',
+  'properties.relationships.fills': 'Fills ({countDisplay})',
+  'properties.relationships.groupsAndZones': 'Groups & Zones ({countDisplay})',
+  'properties.relationships.connections': 'Connections ({countDisplay})',
   'properties.relationships.groupFallbackName': 'Group #{id}',
   'properties.relationships.showGroupAttributesTooltip': "Show this group's attributes",
   'properties.relationships.isolateGroupMembersTooltip': "Isolate this group's members in 3D",

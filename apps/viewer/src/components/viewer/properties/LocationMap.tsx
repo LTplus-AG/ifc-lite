@@ -648,7 +648,7 @@ export function LocationMap({
         </span>
         {latLon && !searchOpen && (
           <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60">
-            {latLon.lat.toFixed(5)}, {latLon.lon.toFixed(5)}
+            {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
         {editable && (

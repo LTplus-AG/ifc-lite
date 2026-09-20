@@ -13,6 +13,7 @@ import { Layers } from 'lucide-react';
 import type { MaterialInfo } from '@ifc-lite/parser';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
   Material: 'properties.material.typeLabel.material',
@@ -23,7 +24,7 @@ const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
 };
 
 export function MaterialCard({ material }: { material: MaterialInfo }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const typeLabelKey = TYPE_LABEL_KEYS[material.type];
   const typeLabel = typeLabelKey ? t(typeLabelKey) : material.type;
   const displayName = material.name || typeLabel;
@@ -65,7 +66,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
                     </span>
                     {layer.thickness !== undefined && (
                       <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
-                        {formatThickness(layer.thickness)}
+                        {formatThickness(layer.thickness, locale)}
                       </span>
                     )}
                   </div>
@@ -148,7 +149,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
                     </span>
                     {constituent.fraction !== undefined && (
                       <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
-                        {(constituent.fraction * 100).toFixed(1)}%
+                        {formatLocaleNumber(locale, constituent.fraction * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                       </span>
                     )}
                   </div>
@@ -194,12 +195,12 @@ function MaterialRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatThickness(thickness: number): string {
-  if (thickness <= 0) return `${thickness.toFixed(1)} m`;
+function formatThickness(thickness: number, locale: string): string {
+  if (thickness <= 0) return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
   if (thickness >= 1) {
-    return `${thickness.toFixed(1)} m`;
+    return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
   }
   // Show in mm for sub-meter thicknesses
   const mm = thickness * 1000;
-  return `${mm.toFixed(1)} mm`;
+  return `${formatLocaleNumber(locale, mm, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mm`;
 }

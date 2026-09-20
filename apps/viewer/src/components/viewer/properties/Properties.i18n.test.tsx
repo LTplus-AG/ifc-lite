@@ -449,6 +449,9 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     const container = render(
       <div>
         <SpatialLocationBadge spatialInfo={{ storeyName: 'Level 1', elevation: 1234.5, height: 12.5 }} />
+        <MaterialCard material={{ type: 'MaterialConstituentSet', constituents: [{ name: 'A', fraction: 0.125 }] }} />
+        <MaterialCard material={{ type: 'MaterialLayerSet', layers: [{ materialName: 'A', thickness: 0.1 }] }} />
+        <RelationshipsCard relationships={{ voids: [{ id: 1, type: 'IfcOpeningElement' }, { id: 2, type: 'IfcOpeningElement' }], fills: [], groups: [], connections: [] }} />
         <ScheduleCard
           scheduleData={{ tasks, workSchedules: [], sequences: [], hasSchedule: true }}
           selectedExpressId={1}
@@ -459,6 +462,9 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     );
     const text = container.textContent ?? '';
     assert.match(text, /١٬٢٣٤٫٥٠/);
+    assert.match(text, /١٢٫٥%/);
+    assert.match(text, /١٠٠٫٠ mm/);
+    assert.match(text, /Openings \(٢\)/);
     assert.match(text, /٢ tasks/);
     assert.match(text, /٢ يناير ٢٠٢٤/);
     assert.doesNotMatch(text, /1234\.50|Jan 2, 2024/);

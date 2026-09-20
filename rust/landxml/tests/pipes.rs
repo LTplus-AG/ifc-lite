@@ -449,6 +449,14 @@ fn issue_5047_preserves_pipe_network_collection_and_feature_metadata() {
     .replace(
         "<Structs>",
         "<Feature code=\"drainage\"><Property label=\"phase\" value=\"design\"/></Feature><Structs>",
+    )
+    .replace(
+        "<CircStruct diameter=\"1.2\" material=\"concrete\"/>",
+        "<CircStruct diameter=\"1.2\" material=\"concrete\"/><Feature><Property label=\"structure\" value=\"yes\"/></Feature>",
+    )
+    .replace(
+        "<CircPipe diameter=\"1\"/>",
+        "<CircPipe diameter=\"1\"/><Feature><Property label=\"pipe\" value=\"yes\"/></Feature>",
     );
     let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("legal metadata");
     assert_eq!(parsed.collections[0].source_id.0, "landxml:pipe-networks:1");
@@ -463,5 +471,14 @@ fn issue_5047_preserves_pipe_network_collection_and_feature_metadata() {
     assert_eq!(
         parsed.networks[0].features[0].properties.get("phase"),
         Some(&"design".to_owned())
+    );
+    assert_eq!(parsed.features.len(), 3);
+    assert_eq!(
+        parsed.features[1].owner_source_id,
+        parsed.networks[0].structures[0].source_id
+    );
+    assert_eq!(
+        parsed.features[2].owner_source_id,
+        parsed.networks[0].pipes[0].source_id
     );
 }

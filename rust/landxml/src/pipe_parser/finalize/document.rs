@@ -31,6 +31,7 @@ impl PipeParser<'_> {
             version: "1.2".to_owned(),
             root_units,
             collections: self.collections,
+            features: self.features,
             networks: self.networks,
             refusals: self.refusals,
         })

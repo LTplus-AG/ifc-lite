@@ -197,6 +197,7 @@ pub struct LandXmlPipeRefusal {
 pub struct LandXmlPipeFeature {
     pub source_id: LandXmlSourceId,
     pub source_path: String,
+    pub owner_source_id: LandXmlSourceId,
     pub properties: LandXmlPipeProperties,
 }
 
@@ -229,6 +230,8 @@ pub struct LandXmlPipeNetworkDocument {
     pub version: String,
     pub root_units: Option<LandXmlPipeUnits>,
     pub collections: Vec<LandXmlPipeNetworkCollection>,
+    /// Features authored at any schema-valid pipe-network owner.
+    pub features: Vec<LandXmlPipeFeature>,
     pub networks: Vec<LandXmlPipeNetwork>,
     pub refusals: Vec<LandXmlPipeRefusal>,
 }
@@ -254,14 +257,13 @@ impl LandXmlPipeNetworkDocument {
             .collections
             .iter()
             .map(|collection| collection.source_id.clone())
+            .chain(
+                self.features
+                    .iter()
+                    .map(|feature| feature.source_id.clone()),
+            )
             .chain(self.networks.iter().flat_map(|network| {
                 std::iter::once(network.source_id.clone())
-                    .chain(
-                        network
-                            .features
-                            .iter()
-                            .map(|feature| feature.source_id.clone()),
-                    )
                     .chain(network.structures.iter().flat_map(|structure| {
                         std::iter::once(structure.source_id.clone())
                             .chain(

@@ -31,7 +31,10 @@ function captureMessageParams(message: Extract<CaptureMessage, { kind: 'translat
   if (message.key !== 'appearance.capture.surfaceTooLarge' || typeof message.params?.count !== 'number') {
     return message.params;
   }
-  return { ...message.params, count: formatLocaleNumber(locale, message.params.count) };
+  return {
+    ...message.params,
+    countDisplay: formatLocaleNumber(locale, message.params.count),
+  };
 }
 
 export function AppearanceCapturePanel() {
@@ -144,11 +147,15 @@ export function AppearanceCapturePanel() {
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
     {!candidate && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.formatsNote')}</p>}
-    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', { count: excludedSurfaces })}</p>}
+    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', {
+      count: excludedSurfaces, countDisplay: formatLocaleNumber(locale, excludedSurfaces),
+    })}</p>}
     {candidate && assetId && <AppearanceMeshPreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy || loading}
       onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setTranslatedMessage('appearance.capture.regionTooLarge'); return; } setPlaceholder(false); setTriangles(ids); }}
       onReady={value => { setReady(value); if (value && !message) { setError(false); setTranslatedMessage('appearance.capture.reviewRegion'); } }} onError={text => { setReady(false); setError(true); setRawMessage(text); }} />}
-    {!!assetId && <p className="text-[11px]" role="status">{t('appearance.capture.trianglesInRegion', { count: triangles.length })}</p>}
+    {!!assetId && <p className="text-[11px]" role="status">{t('appearance.capture.trianglesInRegion', {
+      count: triangles.length, countDisplay: formatLocaleNumber(locale, triangles.length),
+    })}</p>}
     </div>
     <fieldset disabled={busy || loading || !!room} className="space-y-2 rounded-md border bg-muted/20 p-3">
       <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">{t('appearance.capture.step2Heading')}</h3>

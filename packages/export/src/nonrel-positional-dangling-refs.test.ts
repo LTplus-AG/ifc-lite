@@ -142,17 +142,8 @@ describe('a session deletion dangles a non-IFCREL positional reference', () => {
   });
 
   it('drops the deleted member from IfcPhysicalComplexQuantity.HasQuantities while a survivor keeps the list', () => {
-    // Mutation-sensitive counterpart to the "empty list" case below: when
-    // narrowing leaves at least one survivor it never has to choose between
-    // `$` and "leave unchanged" (`narrowNonRelPositionalRefLists`'s
-    // `survivors.length > 0` branch is unconditional on optionality — "narrowing
-    // alone cannot violate a [1:?] lower bound"), so this passes identically
-    // whether `HasQuantities` is `OPTIONAL` or not. The all-members-deleted
-    // test below exercises the OPTIONAL-vs-mandatory fork but produces the
-    // exact same output on `upstream/main` as on this branch for a mandatory
-    // attribute (both leave the slot untouched) — proven by mutation below —
-    // so it alone cannot pin `IFCPHYSICALCOMPLEXQUANTITY`'s membership in
-    // `NONREL_REF_LIST_TYPES`. This test is what does.
+    // The all-members-deleted case below leaves a mandatory slot untouched;
+    // this survivor case proves the type is actually reached and narrowed.
     const store = buildParsedStore([
       [1, 'IFCQUANTITYCOUNT', COUNT_QTY],
       [2, 'IFCPHYSICALCOMPLEXQUANTITY', "#2=IFCPHYSICALCOMPLEXQUANTITY('CQ',$,(#1,#3),'Disc',$,$);\n"],
@@ -171,16 +162,7 @@ describe('a session deletion dangles a non-IFCREL positional reference', () => {
   });
 
   it('EXPLICIT CHOICE: deleting every HasQuantities member (MANDATORY SET, not OPTIONAL) ships the dangling ref, does not withhold', () => {
-    // `IfcPhysicalComplexQuantity.HasQuantities` is `SET [1:?] OF
-    // IfcPhysicalQuantity`, NOT `OPTIONAL` (`IFC4_ADD2_TC1.exp` and
-    // `IFC2X3_TC1.exp` agree). There is no valid spelling for "none left":
-    // `()` violates the [1:?] lower bound exactly like the CostQuantities
-    // case, and `$` is equally invalid on a mandatory attribute — STEP has no
-    // "omitted" token for a slot the schema requires present. Both
-    // alternatives ship an invalid file, and withholding the whole
-    // IfcPhysicalComplexQuantity cascades the same way the OwnerHistory case
-    // did. The only non-harmful choice left is to leave the slot exactly as
-    // `upstream/main` emits it: unfiltered, dangling ref intact.
+    // A mandatory SET [1:?] has no valid empty spelling, so it stays unchanged.
     const store = buildParsedStore([
       [1, 'IFCQUANTITYCOUNT', COUNT_QTY],
       [2, 'IFCPHYSICALCOMPLEXQUANTITY', "#2=IFCPHYSICALCOMPLEXQUANTITY('CQ',$,(#1),'Disc',$,$);\n"],
@@ -380,10 +362,6 @@ describe('the non-rel filter must not withhold on a BARE ref (regression guard)'
 
     const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
 
-    // The bug: `filterHiddenRefsFromRelationshipLine` sees the bare excluded
-    // `#1` in OwnerHistory and returns `null`, so `#2=IFCCOSTITEM` never
-    // reaches the output at all — a cascading regression against main, which
-    // ships the line (with `#1` dangling) unconditionally.
     expect(content).toContain('#2=IFCCOSTITEM');
   });
 });
@@ -417,9 +395,6 @@ describe('IFC2X3: IfcCostItem has no CostValues/CostQuantities attributes at all
 
     const content = decode(new StepExporter(store, view).export({ schema: 'IFC2X3' }).content);
 
-    // Byte-identical source line apart from the deletion of #1's own line —
-    // the OwnerHistory bare ref stays exactly as authored, dangling, same as
-    // `upstream/main` (which never reaches this line at all).
     expect(content).toContain("#2=IFCCOSTITEM('0cost000000000000000E',#1,'CI',$,$);");
   });
 });

@@ -36,6 +36,8 @@ fn rteWorldPosition(
   // large-coordinate loss RTE is meant to prevent.
   let highDelta = drawable.drawableHigh.xyz - frame.cameraHigh.xyz;
   let lowDelta = drawable.drawableLow.xyz - frame.cameraLow.xyz;
-  return vec4<f32>(local + (highDelta + lowDelta), 1.0);
+  // A drawable template can span kilometres. Keep local with high first;
+  // The local-plus-(high-plus-low) association is not equivalent in f32.
+  return vec4<f32>((local + highDelta) + lowDelta, 1.0);
 }
 `;

@@ -14,19 +14,55 @@ but no camera/world translation.
 new pass must consume those helpers rather than make another rebase or invent
 another high/low layout.
 
+## Supported envelope and acceptance tolerances
+
+These are renderer limits, not a promise that arbitrary Float32 geometry is
+survey-grade. Source/world positions, model placements, camera pose, clipping
+planes and measurements are finite f64 metres with an absolute component no
+larger than `1e12`. RTE rejects non-finite values and values whose high lane
+cannot be represented as finite f32. The initial supported drawable-local
+envelope is `abs(localAxis) <= 1e6 m`; it is a safety envelope, not the
+precision target. Batch partitioning must keep local axes within `8192 m` for
+the normal precision target (one f32 ULP is at most 0.9765625 mm there).
+
+The geometric comparison tolerance for a migrated GPU path is
+`max(0.001 m, 2 * f32Ulp(maxAbsLocalAxis))`; CPU source-space ray, snap and
+measurement results remain f64 and use their existing operation-specific
+tolerances. At the `1e6 m` emergency envelope the allowed GPU geometric error
+is consequently 0.125 m, so an oversized batch is valid but must be partitioned
+before it can be used for precision-sensitive snapping. Screen-space agreement
+is at most 0.5 physical pixel for colour/overlay edges and at most 1 physical
+pixel for asynchronous ID/depth picking, measured at the active drawing-buffer
+resolution.
+
+The camera position, target and up vector must be finite; the existing
+degenerate-pose fallback remains the only exception to a non-zero
+position-target separation. The RTE frame is rebuilt after every accepted pose,
+projection, viewport or model-placement change and carries the render epoch
+used by asynchronous pick readback. Perspective/orthographic near/far guards
+remain in `camera-matrices.ts`; RTE never relaxes their finite-range checks.
+
+Real-GPU evidence is mandatory before the LandXML refusal can move: WebGPU
+buffer readback must execute the common RTE WGSL helper on an adapter with
+`navigator.gpu`, at the offsets and boundaries in the acceptance cases below.
+This repository's node test environment has no WebGPU adapter, so its focused
+test is a structural CPU/WGSL reflection gate rather than a substitute for that
+evidence. Record browser, adapter, OS, pixel ratio and readback values in the
+implementation PR.
+
 ## Inventory and migration order
 
 | Family | Current absolute boundary | RTE completion criterion |
 | --- | --- | --- |
 | Camera matrices, projection and frustum | `camera-matrices.ts`, `camera-projection.ts`, `index.ts` | Maintain f64 camera/target state; issue the translation-free matrix only to GPU consumers. CPU projection/unprojection obtains the same frame explicitly rather than silently reusing absolute `viewProj`. |
-| Flat, quantized, textured and hydrated mesh draws | `index.ts`, `pipeline.ts`, `main.wgsl.ts`, `textured.wgsl.ts` | All use one frame uniform plus a packed drawable origin. Local vertex buffers and quantized dequantization stay local. Fragment `worldPos`, section planes and crop boxes use the same relative frame. |
-| GPU instancing | `instanced-render.ts`, `main.wgsl.ts`, `picker.ts`, `shadow.wgsl.ts` | Remove national-grid translation from the f32 occurrence matrix; supply an origin per occurrence or a verified shared origin. The colour, picker and shadow records must have one identical layout. |
-| Shadows | `shadow-pass.ts`, `shadow-occluders.ts`, `shadow-light-matrix.ts`, `shadow.wgsl.ts` | Derive light-space positions from the same f64 drawable/camera-frame reconstruction as the colour pass. Section/crop tests retain their source-space meaning and shadows must agree with clipped colour geometry. |
-| GPU picker and rectangle selection | `picker.ts`, `pick-uniforms.ts`, `pick-resolve.ts`, `scene-rect-select.ts` | Pick rasterization and depth unprojection use the RTE frame. The decoded hit returns source f64 coordinates; no absolute f32 round trip is permitted. |
+| Flat, quantized, textured and hydrated mesh draws | `index.ts`, `pipeline.ts`, `main.wgsl.ts`, `textured.wgsl.ts`, `scene-batch-*`, `scene-derived-mesh-provenance.ts` | All use one frame uniform plus a packed drawable origin. Shared-origin partitioning preserves source/model/geometry-item provenance; local vertex buffers and quantized dequantization stay local. Fragment `worldPos`, section planes and crop boxes use the same relative frame. |
+| GPU instancing | `instanced-render.ts`, `main.wgsl.ts`, `picker.ts`, `shadow.wgsl.ts` | Remove national-grid translation from the f32 occurrence matrix; supply an origin per occurrence or a verified shared origin. The colour, picker and shadow records must have one identical layout, preserving canonical placed Y-up metres with scale then rotation then translation. |
+| Shadows | `shadow-pass.ts`, `shadow-occluders.ts`, `shadow-light-matrix.ts`, `shadow.wgsl.ts` | Rebase the light transform around the f64 camera/drawable frame rather than reintroducing an absolute f32 translation. Section/crop, height ranges, culling and shadow fit use the same source-space inputs and shadows agree with clipped colour geometry. |
+| GPU picker and rectangle selection | `picker.ts`, `pick-uniforms.ts`, `pick-resolve.ts`, `scene-rect-select.ts` | Pick rasterization and depth unprojection use the RTE frame. Capture the view/projection, camera and drawable origins plus a render epoch before asynchronous readback; reject stale samples. The decoded hit returns source f64 coordinates; no absolute f32 round trip is permitted. |
 | Point picker and point clouds | `point-picker.ts`, `pointcloud/point-*`, `point-cloud-transform.ts` | Asset transforms and point nodes provide high/low origins; screen-space splat sizing, picking and point-cloud ray transforms agree with triangle geometry. |
-| Highlight and overlay geometry | `index.ts`, `renderer-overlays.ts`, `symbolic-overlay-pipelines.ts`, `section-2d-overlay.ts`, `section-plane.ts`, `clash-solid-pipeline.ts`, `reference-image-pipeline.ts` | Every world-space overlay gets the exact camera RTE frame and its own packed anchor. Screen-space-only passes need no origin but must not receive an absolute camera translation. |
+| Highlight and overlay geometry | `index.ts`, `renderer-overlays.ts`, `symbolic-overlay-pipelines.ts`, `section-2d-overlay.ts`, `section-plane.ts`, `clash-solid-pipeline.ts`, `reference-image-pipeline.ts` | Every world-space overlay gets the exact camera RTE frame and its own packed anchor. The absolute `Float32Array` line-overlay API is anchored/rebased at its ingress. Screen-space-only passes need no origin but must not receive an absolute camera translation. |
 | Clip/section/crop | `render-section-plane.ts`, `clip-box.ts`, `section-plane.ts`, main/picker/shadow/point shaders | Convert plane distance and crop bounds once from source f64 into the active eye-relative frame. Colour, picker, shadow and point discards make the same decision. |
-| CPU raycast, snap and measure | `raycaster.ts`, `raycast-engine.ts`, `scene-raycaster.ts`, `snap-*.ts`, `point-cloud-ray-transform.ts`; viewer measurement adapters | Preserve source f64 throughout. Use `RelativeToEyeFrame.worldToRelative` only where a camera-relative calculation is needed; results are converted back exactly once. |
+| CPU raycast, snap, measure and deviation | `raycaster.ts`, `raycast-engine.ts`, `scene-raycaster.ts`, `snap-*.ts`, `point-cloud-ray-transform.ts`, `deviation/triangle-bvh.ts`, `deviation/deviation-*.ts`; viewer measurement adapters | Preserve source f64 throughout. Use `RelativeToEyeFrame.worldToRelative` only where a camera-relative calculation is needed; results are converted back exactly once. |
 
 ## Required acceptance cases
 
@@ -38,6 +74,9 @@ another high/low layout.
    distances are invariant under a common multi-million-metre translation.
 4. A one-model scene and an N-model federation preserve the existing registry
    identity rules while their model placements are RTE packed.
+5. A real WebGPU compute/readback witness executes the helper with local axes
+   at `±1e3`, `±1e4` and `±1e6`, on both sides of f32 exponent boundaries and
+   with a remote camera/common source translation.
 
 The LandXML safety refusal remains until all four cases cover the real renderer
 paths above. It is intentionally out of scope for the foundation commit.

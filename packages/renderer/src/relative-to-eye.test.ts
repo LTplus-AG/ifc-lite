@@ -16,7 +16,10 @@ import {
   RelativeToEyeFrame,
   RTE_FRAME_FLOATS,
   RTE_ORIGIN_FLOATS,
+  RTE_UNIFORM_LAYOUT,
+  assertRteUniformAbi,
   packRteOrigin,
+  reflectRteUniformStruct,
   rteRelativePositionF32,
   translationFreeViewProjection,
   unpackRteOrigin,
@@ -59,6 +62,33 @@ describe('relative-to-eye packing (#5049)', () => {
     close(got[2], 0.8125);
   });
 
+  it('uses cancellation-first arithmetic across local template extents', () => {
+    const camera = new Float32Array(RTE_ORIGIN_FLOATS);
+    const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
+    // High lanes differ by 1 m while the low lanes contain a 25 cm residual.
+    packRteOrigin([4_194_304.25, 0, 0], camera); // 2^22: an f32 ULP boundary
+    packRteOrigin([4_194_305.5, 0, 0], drawable);
+    for (const local of [-1_000_000, -10_000, -1_000, 1_000, 10_000, 1_000_000]) {
+      const expected = Math.fround(Math.fround(Math.fround(local) + 1) + 0.25);
+      assert.equal(rteRelativePositionF32([local, 0, 0], drawable, camera)[0], expected, `local ${local}`);
+    }
+  });
+
+  it('survives f32 high-lane exponent boundaries and common source translations', () => {
+    const local: [number, number, number] = [12.5, -0.125, 0.03125];
+    const relativeFor = (translation: number): [number, number, number] => {
+      const camera = new Float32Array(RTE_ORIGIN_FLOATS);
+      const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
+      packRteOrigin([translation + 4_194_303.75, translation - 4_194_304.25, translation + 8_388_608.5], camera);
+      packRteOrigin([translation + 4_194_304.25, translation - 4_194_304.75, translation + 8_388_609.25], drawable);
+      return rteRelativePositionF32(local, drawable, camera);
+    };
+    const nearby = relativeFor(0);
+    const remote = relativeFor(10_000_000);
+    assert.deepStrictEqual(nearby, [13, -0.625, 0.78125]);
+    assert.deepStrictEqual(remote, nearby, 'a common national-grid translation changes no eye-relative result');
+  });
+
   it('writes stable vec4-aligned high/low lanes and reconstructs source coordinates', () => {
     const origin: [number, number, number] = [5_000_000.125, -3_000_000.0625, 42.5];
     const packed = new Float32Array(RTE_ORIGIN_FLOATS);
@@ -98,14 +128,64 @@ describe('relative-to-eye packing (#5049)', () => {
     close(relative.m[14], projection.m[14]);
   });
 
-  it('keeps the WGSL layout and cancellation order coupled to the CPU packer', () => {
-    // This deliberately pins the ABI words rather than a whole shader string:
-    // a future pass can append helpers, but cannot swap the high/low order or
-    // reassemble large origins before subtracting them.
-    assert.match(relativeToEyeWgsl, /viewProj: mat4x4<f32>,\s+cameraHigh: vec4<f32>,\s+cameraLow: vec4<f32>/s);
-    assert.match(relativeToEyeWgsl, /drawableHigh: vec4<f32>,\s+drawableLow: vec4<f32>/s);
-    assert.match(relativeToEyeWgsl, /drawable\.drawableHigh\.xyz - frame\.cameraHigh\.xyz/);
-    assert.match(relativeToEyeWgsl, /drawable\.drawableLow\.xyz - frame\.cameraLow\.xyz/);
-    assert.match(relativeToEyeWgsl, /local \+ \(highDelta \+ lowDelta\)/);
+  it('reflects exact WGSL offsets and rejects padding, field swaps and arithmetic drift', () => {
+    assertRteUniformAbi();
+    assert.deepStrictEqual(reflectRteUniformStruct(relativeToEyeWgsl, 'RteFrameUniform'), RTE_UNIFORM_LAYOUT.frame);
+    assert.throws(() => assertRteUniformAbi(relativeToEyeWgsl.replace(
+      'cameraHigh: vec4<f32>,', 'padding: vec4<f32>,\n  cameraHigh: vec4<f32>,',
+    )), /does not match/);
+    assert.throws(() => assertRteUniformAbi(relativeToEyeWgsl.replace(
+      'cameraHigh: vec4<f32>,\n  cameraLow', 'cameraLow: vec4<f32>,\n  cameraHigh',
+    )), /does not match/);
+    const mutatedArithmetic = relativeToEyeWgsl.replace('(local + highDelta) + lowDelta', 'local + (highDelta + lowDelta)');
+    assert.throws(() => assertRteUniformAbi(mutatedArithmetic), /must evaluate/);
+  });
+
+  it('executes packed origins through WGSL and reads the relative position back on WebGPU', {
+    skip: globalThis.navigator?.gpu === undefined ? 'requires a real WebGPU adapter; Node test environment has none' : false,
+  }, async () => {
+    const adapter = await globalThis.navigator.gpu!.requestAdapter();
+    if (!adapter) throw new Error('WebGPU is present but no adapter is available for the RTE readback witness.');
+    const device = await adapter.requestDevice();
+    const frame = new RelativeToEyeFrame();
+    const eye = { x: 10_000_000.25, y: -4_194_304.25, z: 8_388_608.5 };
+    frame.update(eye, MathUtils.identity(), MathUtils.lookAt(eye, { ...eye, z: eye.z - 1 }, { x: 0, y: 1, z: 0 }));
+    const frameData = new Float32Array(RTE_FRAME_FLOATS);
+    const drawableData = new Float32Array(RTE_ORIGIN_FLOATS);
+    frame.packUniforms(frameData);
+    frame.packDrawableOrigin([10_000_001.5, -4_194_304.75, 8_388_609.25], drawableData);
+    const frameBuffer = device.createBuffer({ size: frameData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const drawableBuffer = device.createBuffer({ size: drawableData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const resultBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const readback = device.createBuffer({ size: 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    try {
+      device.queue.writeBuffer(frameBuffer, 0, frameData);
+      device.queue.writeBuffer(drawableBuffer, 0, drawableData);
+      const module = device.createShaderModule({ code: `${relativeToEyeWgsl}
+        @group(0) @binding(0) var<uniform> frame: RteFrameUniform;
+        @group(0) @binding(1) var<uniform> drawable: RteDrawableUniform;
+        @group(0) @binding(2) var<storage, read_write> result: array<vec4<f32>>;
+        @compute @workgroup_size(1) fn main() { result[0] = rteWorldPosition(vec3<f32>(0.125, -0.25, 0.0625), frame, drawable); }
+      ` });
+      const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+      const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: frameBuffer } },
+        { binding: 1, resource: { buffer: drawableBuffer } },
+        { binding: 2, resource: { buffer: resultBuffer } },
+      ] });
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(pipeline); pass.setBindGroup(0, bindGroup); pass.dispatchWorkgroups(1); pass.end();
+      encoder.copyBufferToBuffer(resultBuffer, 0, readback, 0, 16);
+      device.queue.submit([encoder.finish()]);
+      await readback.mapAsync(GPUMapMode.READ);
+      const got = new Float32Array(readback.getMappedRange().slice(0));
+      const expected = rteRelativePositionF32([0.125, -0.25, 0.0625], drawableData, frameData.subarray(16, 24));
+      assert.deepStrictEqual(Array.from(got), [...expected, 1]);
+      readback.unmap();
+    } finally {
+      frameBuffer.destroy(); drawableBuffer.destroy(); resultBuffer.destroy(); readback.destroy();
+      device.destroy();
+    }
   });
 });

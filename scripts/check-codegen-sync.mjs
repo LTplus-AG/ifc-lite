@@ -117,6 +117,7 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkCanonicalRustCodegen } from './lib/check-canonical-rust-codegen.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -271,35 +272,7 @@ export function runAllTargets(root) {
       });
     }
 
-    // The public core enum is generated from IFC4X3 plus the older schemas
-    // that extend its exact-name universe (#4203).  The registry loop above
-    // deliberately writes only crate-private subdirectories, so it cannot
-    // prove the two top-level generated artifacts are fresh (#5054).
-    const canonicalOut = join(tmp, 'rust-canonical');
-    const schemas = join(root, 'packages/codegen/schemas');
-    runCodegenCli(
-      root,
-      join(schemas, 'IFC4X3.exp'),
-      join(tmp, 'canonical-ts'),
-      canonicalOut,
-      {
-        supplementalSchemas: [
-          join(schemas, 'IFC4_ADD2_TC1.exp'),
-          join(schemas, 'IFC2X3_TC1.exp'),
-        ],
-      },
-    );
-    for (const file of ['schema.rs', 'type_ids.rs']) {
-      const fresh = join(canonicalOut, file);
-      const committed = join(root, 'rust/core/src/generated', file);
-      results.push({
-        name: `rust/core/src/generated/${file} (canonical IFC4X3 type universe)`,
-        ok: existsSync(fresh) && existsSync(committed) && readFileSync(fresh).equals(readFileSync(committed)),
-        missing: existsSync(committed) && !existsSync(fresh) ? [file] : [],
-        extra: existsSync(fresh) && !existsSync(committed) ? [file] : [],
-        differing: existsSync(fresh) && existsSync(committed) && !readFileSync(fresh).equals(readFileSync(committed)) ? [file] : [],
-      });
-    }
+    results.push(...checkCanonicalRustCodegen({ root, tmp, runCodegenCli }));
 
     results.push({
       name: 'packages/codegen/generated/ifc4',

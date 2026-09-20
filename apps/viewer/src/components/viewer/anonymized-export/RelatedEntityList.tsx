@@ -121,11 +121,15 @@ export function RelatedEntityList({
 }: RelatedEntityListProps) {
   const { t } = useTranslation();
   const seedsLabel = t('anonymizedExport.relatedList.seedsLabel');
-  const groupLabel = useMemo(
-    () => (relationship: string, role: string) =>
-      t('anonymizedExport.relatedList.groupLabel', { relationship, role }),
-    [t],
-  );
+  // Not wrapped in useMemo: `t` is a stable function reference across
+  // renders (it's `resolve` from the locale registry), so memoizing this
+  // closure on `[t]` would never re-run on a locale switch, and `sections`
+  // below — memoized on this closure's identity — could then keep a
+  // previous locale's group labels whenever `seedsLabel` doesn't happen to
+  // change too (review, #5079). A fresh closure every render keeps
+  // `sections` honest without needing a `revision` dependency.
+  const groupLabel = (relationship: string, role: string) =>
+    t('anonymizedExport.relatedList.groupLabel', { relationship, role });
   const sections = useMemo(
     () => buildSections(seeds, related, seedsLabel, groupLabel),
     [seeds, related, seedsLabel, groupLabel],

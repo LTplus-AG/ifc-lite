@@ -72,15 +72,15 @@
   1303 apps/viewer/src/components/viewer/ClashPanel.tsx
   1053 apps/viewer/src/components/viewer/DataConnector.tsx
   1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
-   536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
-   426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
+   535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
+   423 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    848 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1147 apps/viewer/src/components/viewer/HierarchyPanel.tsx
-   569 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
+   568 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1692 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx

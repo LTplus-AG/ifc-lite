@@ -129,7 +129,21 @@ impl Parser<'_> {
             self.begin_feature(attributes)?;
             return Ok(());
         }
-        if local == "Parcel" {
+        let nested_parcel = local == "Parcel"
+            && self
+                .frames
+                .iter()
+                .rev()
+                .nth(1)
+                .is_some_and(|frame| frame.target && frame.local == "Parcels")
+            && self
+                .frames
+                .iter()
+                .rev()
+                .nth(2)
+                .is_some_and(|frame| frame.target && frame.local == "Parcel")
+            && matches!(self.active.last(), Some(Active::Parcel(_)));
+        if self.path(&["LandXML", "Parcels", "Parcel"]) || nested_parcel {
             self.begin_parcel(attributes)?;
             return Ok(());
         }
@@ -244,6 +258,9 @@ impl Parser<'_> {
         self.check(bytes.len())?;
         let value =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
+        if self.frames.is_empty() && !value.trim().is_empty() {
+            return Err(error(Code::InvalidXml, "text outside LandXML root"));
+        }
         self.characters = self
             .characters
             .checked_add(character_references(value))

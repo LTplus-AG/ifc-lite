@@ -61,7 +61,7 @@ impl LandXmlPlanDocument {
         if max_records == 0 {
             return Vec::new();
         }
-        let source_ids: Vec<_> = self
+        let source_ids = self
             .cogo_points
             .iter()
             .map(|point| point.source_id.clone())
@@ -86,14 +86,24 @@ impl LandXmlPlanDocument {
                         .flatten()
                         .map(|geometry| geometry.source_id.clone()),
                 )
-            }))
-            .collect();
-        source_ids
-            .chunks(max_records)
-            .map(|source_ids| super::LandXmlPlanSourceBatch {
-                source_ids: source_ids.to_vec(),
-            })
-            .collect()
+            }));
+        let mut batches = Vec::new();
+        let mut current = Vec::with_capacity(max_records);
+        for source_id in source_ids {
+            current.push(source_id);
+            if current.len() == max_records {
+                batches.push(super::LandXmlPlanSourceBatch {
+                    source_ids: current,
+                });
+                current = Vec::with_capacity(max_records);
+            }
+        }
+        if !current.is_empty() {
+            batches.push(super::LandXmlPlanSourceBatch {
+                source_ids: current,
+            });
+        }
+        batches
     }
     /// Resolve a COGO reference in its producer scope, falling back only when
     /// the document has one unambiguous name match.

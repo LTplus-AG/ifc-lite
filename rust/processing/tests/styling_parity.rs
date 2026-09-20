@@ -178,13 +178,13 @@ fn exactly_four_types_change_per_table() {
     // Guard rail: the migration must touch ONLY the four contested types.
     let wasm_deltas: Vec<IfcType> = MAPPED_TYPES
         .iter()
+        .filter(|&t| default_color_for_type(t.clone()).to_array() != wasm_default(t))
         .cloned()
-        .filter(|t| default_color_for_type(t.clone()).to_array() != wasm_default(t))
         .collect();
     let processing_deltas: Vec<IfcType> = MAPPED_TYPES
         .iter()
+        .filter(|&t| default_color_for_type(t.clone()).to_array() != processing_default(t))
         .cloned()
-        .filter(|t| default_color_for_type(t.clone()).to_array() != processing_default(t))
         .collect();
 
     // vs wasm: StairFlight + BuildingElementProxy gain a non-default value.

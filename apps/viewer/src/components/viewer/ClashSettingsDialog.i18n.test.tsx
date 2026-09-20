@@ -23,7 +23,6 @@ import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import type { clashToolsEn as ClashToolsEnType } from '@/i18n/catalogues/clash-tools.en';
-import { useViewerStore } from '@/store';
 import { ClashSettingsDialog } from './ClashSettingsDialog.js';
 
 // Guarded dynamic import (#4918 revert-oracle, same pattern as

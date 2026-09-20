@@ -9,7 +9,7 @@
  * accounting for multi-model federation offsets and single-model fallback.
  */
 
-import type { FederatedModel } from '@/store/types';
+import type { EntityRef, FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 
@@ -18,21 +18,55 @@ export interface IdLookupResult {
   modelId: string;
 }
 
+export type ComponentRef = number | EntityRef;
+export type ResolvedGlobalIds = string | readonly string[] | null;
+
+function globalIdsOf(value: ResolvedGlobalIds): readonly string[] {
+  if (value === null) return [];
+  return typeof value === 'string' ? [value] : value;
+}
+
 /** Resolve refs to IFC GlobalIds once, preserving first-seen order. Passing a
  * shared `seen` set deduplicates across several serialized BCF groups. */
-export function resolveUniqueGlobalIds(
-  refs: Iterable<number>,
-  resolve: (ref: number) => string | null,
+export function resolveUniqueGlobalIds<T>(
+  refs: Iterable<T>,
+  resolve: (ref: T) => ResolvedGlobalIds,
   seen = new Set<string>(),
 ): string[] {
   const guids: string[] = [];
   for (const ref of refs) {
-    const guid = resolve(ref);
-    if (guid === null || seen.has(guid)) continue;
-    seen.add(guid);
-    guids.push(guid);
+    for (const guid of globalIdsOf(resolve(ref))) {
+      if (seen.has(guid)) continue;
+      seen.add(guid);
+      guids.push(guid);
+    }
   }
   return guids;
+}
+
+/** Resolve every model-qualified IFC entity affected by one renderer id.
+ * Overlapping model ranges are possible while a collaboration-room model and
+ * an ordinary model coexist, so a numeric component is intentionally plural. */
+export function resolveCapturedRefGlobalIds(
+  ref: ComponentRef,
+  modelIds: Iterable<string>,
+  resolveInModel: (modelId: string, globalId: number) => EntityRef | null,
+  resolveGlobalId: (ref: EntityRef) => string | null,
+): string[] {
+  const exactRefs: EntityRef[] = [];
+  if (typeof ref !== 'number') {
+    exactRefs.push(ref);
+  } else {
+    const ids = [...modelIds];
+    if (ids.length === 0) exactRefs.push({ modelId: 'legacy', expressId: ref });
+    else {
+      for (const modelId of ids) {
+        const exact = resolveInModel(modelId, ref);
+        if (exact) exactRefs.push(exact);
+      }
+    }
+  }
+  return resolveUniqueGlobalIds(exactRefs, resolveGlobalId);
 }
 
 /**

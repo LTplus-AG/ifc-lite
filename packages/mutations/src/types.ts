@@ -307,6 +307,8 @@ export interface MutationEntityByIdIndex {
  * Minimal `IfcDataStore` shape consumed by `StoreEditor`.
  */
 export interface MutationStoreShape {
+  /** IFC schema identifier of the loaded model, when the source provides it. */
+  schemaVersion?: string;
   entityIndex: {
     byId: MutationEntityByIdIndex;
   };

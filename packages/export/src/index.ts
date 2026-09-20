@@ -76,4 +76,4 @@ export { captureAppearanceDependencies } from './appearance-dependencies.js';
 // A source record as the exporter writes it, pending edits applied by the
 // exporter's own pipeline: read models that must agree with the exported
 // bytes (the cost read model, #4857) read this instead of re-serializing.
-export { effectiveSourceRecord, type EffectiveSourceRecord } from './effective-source-record.js';
+export { effectiveSourceRecord, type EffectiveSourceRecord, effectiveCreatedRecord } from './effective-source-record.js';

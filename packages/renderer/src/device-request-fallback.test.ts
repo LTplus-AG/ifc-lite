@@ -52,6 +52,12 @@ function makeFakeDevice(grantedFeatures: readonly string[]): unknown {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 function installNavigator(adapter: unknown): void {
   Object.defineProperty(globalThis, 'navigator', {
     value: {
@@ -258,5 +264,43 @@ describe('WebGPUDevice.hasTimestampQueryFeature', () => {
 
   it('is false before init() has run', async () => {
     assert.equal(new WebGPUDevice().hasTimestampQueryFeature(), false);
+  });
+});
+
+describe('WebGPUDevice loss lifetime (#4885)', () => {
+  it('ignores a delayed loss settlement from the GPUDevice replaced by destroy()+init()', async () => {
+    const firstLoss = deferred<{ message: string; reason?: string }>();
+    const secondLoss = deferred<{ message: string; reason?: string }>();
+    const fakeDevices = [firstLoss, secondLoss].map((loss) => ({
+      lost: loss.promise,
+      limits: { maxTextureDimension2D: 8192 },
+      features: new Set<string>(),
+      destroy: () => { /* settlement timing is controlled by the test */ },
+    }));
+    let nextDevice = 0;
+    installNavigator({
+      info: { vendor: 'testvendor', architecture: 'testarch' },
+      features: new Set<string>(),
+      limits: {},
+      requestDevice: async () => fakeDevices[nextDevice++],
+    });
+
+    const device = new WebGPUDevice();
+    const losses: string[] = [];
+    device.onDeviceLost((info) => losses.push(info.message));
+    await device.init(makeCanvas());
+    device.destroy();
+    await device.init(makeCanvas());
+
+    firstLoss.resolve({ message: 'old device failed late', reason: 'unknown' });
+    await Promise.resolve();
+    assert.deepEqual(losses, [], 'the superseded device notified the replacement lifetime');
+
+    const warnings = await withCapturedWarnings(async () => {
+      secondLoss.resolve({ message: 'replacement failed', reason: 'unknown' });
+      await Promise.resolve();
+    });
+    assert.deepEqual(losses, ['replacement failed'], 'the active device loss must still notify');
+    assert.ok(warnings.some((line) => line.includes('replacement failed')));
   });
 });

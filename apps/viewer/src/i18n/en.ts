@@ -4,7 +4,9 @@
 
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
+import { addElementEn } from './catalogues/add-element.en';
 import { chartsEn } from './catalogues/charts.en';
+import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -31,6 +33,7 @@ import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...addElementEn,
   ...bulkPropertyEditorEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,
@@ -47,6 +50,7 @@ export const en = {
   ...filterGroupsEn,
   ...chartsEn,
   ...listsEn,
+  ...clashGroupsEn,
   ...scheduleEn,
   ...measureEn,
   ...spaceSketchEn,

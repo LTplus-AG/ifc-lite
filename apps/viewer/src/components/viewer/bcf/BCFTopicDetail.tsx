@@ -119,6 +119,12 @@ export function BCFTopicDetail({
     [handleSubmitComment]
   );
 
+  const createdText = topic.creationAuthor && topic.creationDate
+    ? t('bcf.topicDetail.createdByOn', { author: topic.creationAuthor, date: formatDateTime(topic.creationDate) })
+    : topic.creationAuthor
+      ? t('bcf.topicDetail.createdBy', { author: topic.creationAuthor })
+      : t('bcf.topicDetail.createdOn', { date: formatDateTime(topic.creationDate) });
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Header */}
@@ -190,18 +196,7 @@ export function BCFTopicDetail({
             )}
 
             <div className="text-xs text-muted-foreground space-y-1">
-              {(topic.creationAuthor || topic.creationDate) && (
-                <p>
-                  {topic.creationAuthor && topic.creationDate
-                    ? t('bcf.topicDetail.createdByOn', {
-                        author: topic.creationAuthor,
-                        date: formatDateTime(topic.creationDate),
-                      })
-                    : topic.creationAuthor
-                      ? t('bcf.topicDetail.createdBy', { author: topic.creationAuthor })
-                      : t('bcf.topicDetail.createdOn', { date: formatDateTime(topic.creationDate) })}
-                </p>
-              )}
+              {(topic.creationAuthor || topic.creationDate) && <p>{createdText}</p>}
               {topic.assignedTo && <p>{t('bcf.topicDetail.assignedTo', { name: topic.assignedTo })}</p>}
               {topic.dueDate && <p>{t('bcf.topicDetail.due', { date: formatDate(topic.dueDate) })}</p>}
             </div>
@@ -297,9 +292,7 @@ export function BCFTopicDetail({
                           onClick={() => setSelectedViewpointGuid(isSelected ? null : vp.guid)}
                         >
                           <MessageSquare className="h-3 w-3" />
-                          {commentCount > 0
-                            ? t('bcf.topicDetail.commentCount', { count: commentCount })
-                            : t('bcf.topicDetail.commentAction')}
+                          {commentCount > 0 ? t('bcf.topicDetail.commentCount', { count: commentCount }) : t('bcf.topicDetail.commentAction')}
                         </Button>
                         <Button
                           variant="ghost"
@@ -321,9 +314,7 @@ export function BCFTopicDetail({
 
           {/* Comments */}
           <div>
-            <h4 className="text-sm font-medium mb-2">
-              {t('bcf.topicDetail.commentsHeading', { count: topic.comments.length })}
-            </h4>
+            <h4 className="text-sm font-medium mb-2">{t('bcf.topicDetail.commentsHeading', { count: topic.comments.length })}</h4>
 
             <div className="space-y-3">
               {topic.comments.map((comment) => {
@@ -396,11 +387,7 @@ export function BCFTopicDetail({
         )}
         <div className="flex gap-2">
           <Input
-            placeholder={
-              selectedViewpoint
-                ? t('bcf.topicDetail.addCommentOnViewpointPlaceholder')
-                : t('bcf.topicDetail.addCommentPlaceholder')
-            }
+            placeholder={selectedViewpoint ? t('bcf.topicDetail.addCommentOnViewpointPlaceholder') : t('bcf.topicDetail.addCommentPlaceholder')}
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -417,9 +404,7 @@ export function BCFTopicDetail({
         <div className="absolute inset-0 bg-background/90 flex items-center justify-center p-4">
           <div className="bg-card border rounded-lg p-4 max-w-xs">
             <h4 className="font-medium mb-2">{t('bcf.topicDetail.deleteConfirmTitle')}</h4>
-            <p className="text-sm text-muted-foreground mb-4">
-              {t('bcf.topicDetail.deleteConfirmBody')}
-            </p>
+            <p className="text-sm text-muted-foreground mb-4">{t('bcf.topicDetail.deleteConfirmBody')}</p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirm(false)}>
                 {t('bcf.shared.cancel')}

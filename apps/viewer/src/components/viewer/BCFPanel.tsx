@@ -527,12 +527,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
                 className="mb-4"
               />
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" size="sm" onClick={() => setShowAuthorDialog(false)}>
-                  {t('bcf.shared.cancel')}
-                </Button>
-                <Button size="sm" onClick={handleSaveAuthor}>
-                  {t('bcf.shared.save')}
-                </Button>
+                <Button variant="outline" size="sm" onClick={() => setShowAuthorDialog(false)}>{t('bcf.shared.cancel')}</Button>
+                <Button size="sm" onClick={handleSaveAuthor}>{t('bcf.shared.save')}</Button>
               </div>
             </div>
           </div>

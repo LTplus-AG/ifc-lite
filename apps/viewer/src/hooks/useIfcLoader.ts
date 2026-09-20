@@ -727,7 +727,7 @@ export function useIfcLoader() {
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat && !landXmlFile) {
         // Preserve ArrayBuffer zero-copy; copy SAB at this legacy API boundary.
-        const zipInput = buffer instanceof ArrayBuffer ? buffer : buffer.slice(0);
+        const zipInput = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer;
         const zipContents = await unwrapIfcZipWithResources(zipInput);
         buffer = zipContents.model;
         // Retain original archive paths/encoded bytes alongside shared bitmaps.
@@ -741,7 +741,7 @@ export function useIfcLoader() {
       if (loadSessionRef.current !== currentSession) return;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity });
       // Resolve model formats from the full buffer; point clouds were resolved from the head slice above.
-      const format = landXmlFile ? 'landxml' : pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : buffer.slice(0));
+      const format = landXmlFile ? 'landxml' : pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer);
 
       if (format === 'landxml') {
         await loadLandXmlModel({ buffer, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(),
@@ -753,7 +753,7 @@ export function useIfcLoader() {
       }
 
       // All remaining format loaders have ArrayBuffer-only contracts.
-      buffer = buffer instanceof ArrayBuffer ? buffer : buffer.slice(0);
+      const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer; buffer = arrayBuffer;
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
@@ -952,7 +952,7 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await parseIfcxViewerModel(buffer, setProgress);
+          const result = await parseIfcxViewerModel(arrayBuffer, setProgress);
           // Stale-guard-after-await sweep: `parseIfcxViewerModel` is a real
           // (client-side) parse — the only await in this branch — and a
           // newer load (or model removal) may have superseded this one while
@@ -1007,7 +1007,7 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await prepareGlbViewerModel(buffer, appearanceLoad!.decode, () => loadSessionRef.current !== currentSession);
+          const result = await prepareGlbViewerModel(arrayBuffer, appearanceLoad!.decode, () => loadSessionRef.current !== currentSession);
           if (!result) return;
           if (target.kind === 'primary') {
             setGeometryResult(result.geometryResult);
@@ -1232,7 +1232,7 @@ export function useIfcLoader() {
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         loadStage = 'server-fetch';
-        const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
+        const serverSuccess = await loadFromServer(file, arrayBuffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
@@ -1982,7 +1982,7 @@ export function useIfcLoader() {
                     // restore the flat meshes only and drop all instanced occurrences.
                     ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
                   };
-                  await saveToCache(cacheKey, dataStore, geometryData, buffer, file.name, {
+                  await saveToCache(cacheKey, dataStore, geometryData, arrayBuffer, file.name, {
                     persistSource: cachePlan.persistSource,
                     // mtime guard for a source-decoupled hit (the full-file
                     // validation hash is computed off-thread inside saveToCache).

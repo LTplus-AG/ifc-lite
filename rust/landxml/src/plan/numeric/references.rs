@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::collections::HashSet;
+use std::{cell::Ref, collections::HashSet};
 
 use super::{LandXmlPlanDocument, LandXmlPlanPoint, LandXmlPlanPointLocation, TopologyBudget};
 use crate::plan::model::LandXmlPlanReferenceIndex;
@@ -47,13 +47,15 @@ impl LandXmlPlanDocument {
         budget: usize,
         cancelled: Option<&dyn crate::LandXmlCancellation>,
     ) -> std::result::Result<Option<LandXmlPlanPoint>, crate::LandXmlError> {
-        let rebuilt;
-        let index = if self.reference_index.empty() {
-            rebuilt = LandXmlPlanReferenceIndex::from_points(&self.cogo_points);
-            &rebuilt
-        } else {
-            &self.reference_index
-        };
+        let index = self.reference_index_with(|| {
+            if cancelled.is_some_and(crate::LandXmlCancellation::is_cancelled) {
+                return Err(crate::LandXmlError::new(
+                    crate::LandXmlDiagnosticCode::Cancelled,
+                    "COGO reference index rebuild cancelled",
+                ));
+            }
+            Ok(())
+        })?;
         let mut next_scope = scope_id.cloned();
         let mut next_reference = reference;
         let mut remaining = budget;
@@ -65,7 +67,7 @@ impl LandXmlPlanDocument {
                     "COGO reference resolution cancelled",
                 ));
             }
-            let Some(index) = self.lookup_reference(index, next_scope.as_ref(), next_reference)
+            let Some(index) = self.lookup_reference(&index, next_scope.as_ref(), next_reference)
             else {
                 return Ok(None);
             };
@@ -97,13 +99,7 @@ impl LandXmlPlanDocument {
         match location {
             LandXmlPlanPointLocation::Coordinates { point, .. } => Ok(Some(*point)),
             LandXmlPlanPointLocation::PointReference { pnt_ref } => {
-                let rebuilt;
-                let index = if self.reference_index.empty() {
-                    rebuilt = LandXmlPlanReferenceIndex::from_points(&self.cogo_points);
-                    &rebuilt
-                } else {
-                    &self.reference_index
-                };
+                let index = self.reference_index_with(|| budget.check())?;
                 let mut next_scope = scope_id.cloned();
                 let mut next_reference = pnt_ref.as_str();
                 let mut remaining = self.cogo_points.len();
@@ -111,7 +107,7 @@ impl LandXmlPlanDocument {
                 while remaining > 0 {
                     budget.check()?;
                     let Some(index) =
-                        self.lookup_reference(index, next_scope.as_ref(), next_reference)
+                        self.lookup_reference(&index, next_scope.as_ref(), next_reference)
                     else {
                         return Ok(None);
                     };
@@ -134,6 +130,25 @@ impl LandXmlPlanDocument {
                 Ok(None)
             }
         }
+    }
+
+    /// Deserialize deliberately omits this derived cache. Rebuild it once on
+    /// the first lookup, polling the same cancellation/work budget used by the
+    /// caller, then retain it for later lookups. Public point mutation is
+    /// still validated by `lookup_reference` before a cached target is used.
+    fn reference_index_with<E>(
+        &self,
+        check: impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<Ref<'_, LandXmlPlanReferenceIndex>, E> {
+        if self.reference_index.borrow().is_none() {
+            let rebuilt = LandXmlPlanReferenceIndex::from_points_checked(&self.cogo_points, check)?;
+            *self.reference_index.borrow_mut() = Some(rebuilt);
+        }
+        Ok(Ref::map(self.reference_index.borrow(), |index| {
+            index
+                .as_ref()
+                .expect("reference index is initialized before it is borrowed")
+        }))
     }
 
     fn lookup_reference(

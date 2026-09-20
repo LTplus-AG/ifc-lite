@@ -2,7 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -92,16 +95,16 @@ impl LandXmlPlanReferenceIndex {
         }
     }
 
-    pub(crate) fn empty(&self) -> bool {
-        self.scoped.is_empty() && self.global.is_empty()
-    }
-
-    pub(crate) fn from_points(points: &[LandXmlCgPoint]) -> Self {
+    pub(crate) fn from_points_checked<E>(
+        points: &[LandXmlCgPoint],
+        mut check: impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<Self, E> {
         let mut index = Self::default();
         for (position, point) in points.iter().enumerate() {
+            check()?;
             index.insert_at(point, position);
         }
-        index
+        Ok(index)
     }
 }
 
@@ -218,6 +221,8 @@ pub struct LandXmlPlanDocument {
     pub plan_features: Vec<LandXmlPlanFeature>,
     pub parcels: Vec<LandXmlParcel>,
     pub warnings: Vec<String>,
+    /// `None` only after deserialization; an empty index is still a completed
+    /// cache for a source with no COGO points.
     #[serde(skip)]
-    pub(crate) reference_index: LandXmlPlanReferenceIndex,
+    pub(crate) reference_index: RefCell<Option<LandXmlPlanReferenceIndex>>,
 }

@@ -357,7 +357,7 @@ impl Parser<'_> {
             plan_features: self.features,
             parcels: self.parcels,
             warnings: Vec::new(),
-            reference_index: self.reference_index,
+            reference_index: std::cell::RefCell::new(Some(self.reference_index)),
         }
     }
 }

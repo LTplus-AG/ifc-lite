@@ -519,6 +519,69 @@ fn issue_5046_bounds_curve_center_aliases_and_rebuilds_safe_lookup_after_deseria
 }
 
 #[test]
+fn issue_5046_deserialized_reference_index_is_polled_once_and_retained() {
+    let mut points = String::from("<CgPoints>");
+    for ordinal in 0..20_000 {
+        points.push_str(&format!(
+            r#"<CgPoint name="p{ordinal}">{ordinal} 0</CgPoint>"#
+        ));
+    }
+    points.push_str("</CgPoints>");
+    let source = parse(&document(&points));
+    let restored: ifc_lite_landxml::LandXmlPlanDocument =
+        serde_json::from_str(&serde_json::to_string(&source).expect("serialize large plan"))
+            .expect("deserialize large plan");
+    let reference = ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+        pnt_ref: "p19999".to_owned(),
+    };
+
+    struct CancelOnThirdPoll(AtomicUsize);
+    impl LandXmlCancellation for CancelOnThirdPoll {
+        fn is_cancelled(&self) -> bool {
+            self.0.fetch_add(1, Ordering::Relaxed) >= 2
+        }
+    }
+
+    let interrupted = CancelOnThirdPoll(AtomicUsize::new(0));
+    assert_eq!(
+        restored
+            .resolve_point_with_cancel(None, &reference, Some(&interrupted))
+            .expect_err("deserialized index rebuild must poll cancellation")
+            .code,
+        LandXmlDiagnosticCode::Cancelled
+    );
+    assert!(
+        interrupted.0.load(Ordering::Relaxed) >= 3,
+        "cancellation occurred during the index rebuild"
+    );
+
+    assert_eq!(
+        restored
+            .resolve_point(None, &reference)
+            .expect("first uncancelled lookup builds the cache")
+            .northing,
+        19_999.0
+    );
+    let retained = CancelOnThirdPoll(AtomicUsize::new(0));
+    assert_eq!(
+        restored
+            .resolve_point_with_cancel(None, &reference, Some(&retained))
+            .expect("cached lookup must not rebuild the 20k-point index")
+            .expect("cached point"),
+        ifc_lite_landxml::LandXmlPlanPoint {
+            northing: 19_999.0,
+            easting: 0.0,
+            elevation: None,
+        }
+    );
+    assert_eq!(
+        retained.0.load(Ordering::Relaxed),
+        1,
+        "only the reference traversal, not a second index rebuild, was polled"
+    );
+}
+
+#[test]
 fn issue_5046_does_not_adopt_nested_parcels_through_foreign_wrappers() {
     let parsed = parse(&document(
         r#"<Parcels><Parcel name="safe"><vendor:Wrapper xmlns:vendor="urn:vendor"><Parcels><Parcel name="foreign"/></Parcels></vendor:Wrapper><Parcels><Parcel name="inner"/></Parcels></Parcel></Parcels>"#,

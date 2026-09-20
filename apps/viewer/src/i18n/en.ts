@@ -22,6 +22,7 @@ import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
+import { layersPanelEn } from './catalogues/layers-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { listsEn } from './catalogues/lists.en';
@@ -85,6 +86,7 @@ export const en = {
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,
+  ...layersPanelEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

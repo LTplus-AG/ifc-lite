@@ -44,22 +44,10 @@ export interface CostStoreModelResolution {
 
 export type CostStoreModelResolver = (modelId?: string) => CostStoreModelResolution;
 
-/**
- * The first `IfcOwnerHistory` in the SOURCE file that is still live according
- * to the editor's overlay — skipping over any the caller has tombstoned with
- * `bim.store.removeEntity` earlier in the same session. `store.entityIndex` is
- * the immutable parse-time index and knows nothing about deletions recorded
- * in the overlay, so `byType.get('IFCOWNERHISTORY')?.[0]` alone can hand back
- * a dead id: writing it into a newly authored cost entity's `OwnerHistory`
- * produces a dangling `#id` reference at export, because export omits
- * tombstoned records. `null` (no OwnerHistory) is preferred over a stale one.
- */
+/** First `IfcOwnerHistory` still live in the overlay, skipping ids the caller already tombstoned (else export dangles). */
 export function resolveLiveOwnerHistoryId(store: IfcDataStore, editor: StoreEditor): number | null {
   const candidates = store.entityIndex.byType.get('IFCOWNERHISTORY') ?? [];
-  for (const id of candidates) {
-    if (editor.hasEntity(id)) return id;
-  }
-  return null;
+  return candidates.find((id) => editor.hasEntity(id)) ?? null;
 }
 
 function ref(modelId: string, expressId: number): EntityRef { return { modelId, expressId }; }

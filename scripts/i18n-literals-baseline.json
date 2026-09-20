@@ -1,13 +1,4 @@
 {
-  "apps/viewer/src/components/viewer/annotations/AnnotationDropInput.tsx": 6,
-  "apps/viewer/src/components/viewer/annotations/AnnotationLayer.tsx": 1,
-  "apps/viewer/src/components/viewer/annotations/AnnotationPin.tsx": 2,
-  "apps/viewer/src/components/viewer/annotations/AnnotationPopover.tsx": 11,
-  "apps/viewer/src/components/viewer/anonymized-export/AnonymizationOptionsPanel.tsx": 7,
-  "apps/viewer/src/components/viewer/anonymized-export/AnonymizedExportDialog.tsx": 32,
-  "apps/viewer/src/components/viewer/anonymized-export/RelatedEntityList.tsx": 2,
-  "apps/viewer/src/components/viewer/anonymized-export/RelationTogglePanel.tsx": 3,
-  "apps/viewer/src/components/viewer/anonymized-export/TypeCategoryBar.tsx": 7,
   "apps/viewer/src/components/viewer/AxisHelper.tsx": 3,
   "apps/viewer/src/components/viewer/BasketPresentationDock.tsx": 25,
   "apps/viewer/src/components/viewer/BottomStrip.tsx": 1,

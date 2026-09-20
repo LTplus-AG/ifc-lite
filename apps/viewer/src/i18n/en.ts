@@ -5,6 +5,8 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { addElementEn } from './catalogues/add-element.en';
+import { annotationsEn } from './catalogues/annotations.en';
+import { anonymizedExportEn } from './catalogues/anonymized-export.en';
 import { chartsEn } from './catalogues/charts.en';
 import { clashPanelEn } from './catalogues/clash-panel.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
@@ -57,6 +59,8 @@ import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
   ...addElementEn,
+  ...annotationsEn,
+  ...anonymizedExportEn,
   ...bulkPropertyEditorEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,

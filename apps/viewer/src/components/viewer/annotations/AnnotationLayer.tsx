@@ -26,6 +26,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
+import { useTranslation } from '@/i18n';
 import type { AnnotationPosition } from '@/store/slices/annotationsSlice';
 import { AnnotationPin } from './AnnotationPin';
 import { AnnotationPopover } from './AnnotationPopover';
@@ -39,9 +40,9 @@ interface ProjectedPin {
   preview: string;
 }
 
-function makePreview(note: string, maxLen = 60): string {
+function makePreview(note: string, emptyNoteLabel: string, maxLen = 60): string {
   const trimmed = note.trim();
-  if (trimmed.length === 0) return '(empty note)';
+  if (trimmed.length === 0) return emptyNoteLabel;
   return trimmed.length > maxLen ? `${trimmed.slice(0, maxLen)}…` : trimmed;
 }
 
@@ -52,6 +53,7 @@ function makePreview(note: string, maxLen = 60): string {
  * a per-frame projection tick.
  */
 export function AnnotationLayer() {
+  const { t } = useTranslation();
   const annotations = useViewerStore((s) => s.annotations);
   const draft = useViewerStore((s) => s.draft);
   const selectedAnnotationId = useViewerStore((s) => s.selectedAnnotationId);
@@ -120,6 +122,8 @@ export function AnnotationLayer() {
   const [projectedPins, setProjectedPins] = useState<ProjectedPin[]>([]);
   const [draftScreen, setDraftScreen] = useState<{ x: number; y: number } | null>(null);
 
+  const emptyNoteLabel = t('annotations.layer.emptyNotePreview');
+
   useEffect(() => {
     const project = cameraCallbacks.projectToScreen;
     if (!project) {
@@ -136,7 +140,7 @@ export function AnnotationLayer() {
         id: ann.id,
         index: i + 1,
         screen: project(ann.position),
-        preview: makePreview(ann.note),
+        preview: makePreview(ann.note, emptyNoteLabel),
       }));
 
       // Cheap deep-eq check: serialize the screen positions. Skip the
@@ -168,7 +172,7 @@ export function AnnotationLayer() {
     // The list of annotations is captured per-render via annotationList;
     // that closure is what the rAF tick reads. Pin position changes
     // automatically pick up via the next render's loop replacement.
-  }, [cameraCallbacks, annotationList]);
+  }, [cameraCallbacks, annotationList, emptyNoteLabel]);
 
   const selectedAnnotation = selectedAnnotationId ? annotations.get(selectedAnnotationId) : null;
   const selectedScreen = useMemo(() => {
@@ -210,7 +214,7 @@ export function AnnotationLayer() {
     <div
       ref={containerRef}
       className="absolute inset-0 pointer-events-none overflow-hidden"
-      aria-label="Annotations layer"
+      aria-label={t('annotations.layer.ariaLabel')}
     >
       {/* Pins */}
       {projectedPins.map((pin) => {

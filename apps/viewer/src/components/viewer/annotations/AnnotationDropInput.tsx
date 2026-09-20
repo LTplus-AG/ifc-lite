@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 const MAX_NOTE_LEN = 2000;
 const SOFT_NOTE_LIMIT = 200;
@@ -42,6 +43,7 @@ export function AnnotationDropInput({
   onSave,
   onCancel,
 }: AnnotationDropInputProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -108,7 +110,7 @@ export function AnnotationDropInput({
     <div
       ref={containerRef}
       role="dialog"
-      aria-label="New annotation"
+      aria-label={t('annotations.dropInput.ariaLabel')}
       style={{ left, top, width: INPUT_WIDTH }}
       className={cn(
         'absolute z-[60] pointer-events-auto',
@@ -123,7 +125,7 @@ export function AnnotationDropInput({
           establishes "this is for capturing intent, not chat". */}
       <div className="px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-amber-50/40 dark:bg-amber-950/20">
         <span className="font-mono text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300">
-          What's worth noting?
+          {t('annotations.dropInput.promptLabel')}
           {entityType && (
             <span className="ml-1.5 text-zinc-500 dark:text-zinc-400">
               · {entityType}
@@ -139,7 +141,7 @@ export function AnnotationDropInput({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="A short note — flag a defect, ask a question, leave context…"
+          placeholder={t('annotations.dropInput.placeholder')}
           rows={3}
           maxLength={MAX_NOTE_LEN + 100}
           className={cn(
@@ -156,7 +158,7 @@ export function AnnotationDropInput({
         />
         <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-mono">
           <span className="text-zinc-400 dark:text-zinc-500">
-            ⏎ save · ⇧⏎ newline · esc cancel
+            {t('annotations.dropInput.keyHints')}
           </span>
           {charCountVisible && (
             <span
@@ -181,7 +183,7 @@ export function AnnotationDropInput({
             onClick={onCancel}
           >
             <X className="h-3 w-3 mr-1" />
-            Cancel
+            {t('annotations.dropInput.cancelButton')}
           </Button>
           <Button
             size="sm"
@@ -194,7 +196,7 @@ export function AnnotationDropInput({
             disabled={overHardLimit}
           >
             <Check className="h-3 w-3 mr-1" />
-            Drop pin
+            {t('annotations.dropInput.dropPinButton')}
           </Button>
         </div>
       </div>

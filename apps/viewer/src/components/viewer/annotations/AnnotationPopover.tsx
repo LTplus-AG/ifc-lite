@@ -13,6 +13,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { Annotation } from '@/store/slices/annotationsSlice';
 
 const MAX_NOTE_LEN = 2000;
@@ -36,16 +38,16 @@ export interface AnnotationPopoverProps {
 const POPOVER_WIDTH = 280;
 const POPOVER_OFFSET_X = 16;
 
-function formatRelativeTime(timestamp: number): string {
+function formatRelativeTime(timestamp: number, t: (key: TranslationKey, params?: TranslationParameters) => string): string {
   const diff = Date.now() - timestamp;
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;
   const week = 7 * day;
-  if (diff < minute) return 'just now';
-  if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  if (diff < week) return `${Math.floor(diff / day)}d ago`;
+  if (diff < minute) return t('annotations.popover.relativeJustNow');
+  if (diff < hour) return t('annotations.popover.relativeMinutesAgo', { count: Math.floor(diff / minute) });
+  if (diff < day) return t('annotations.popover.relativeHoursAgo', { count: Math.floor(diff / hour) });
+  if (diff < week) return t('annotations.popover.relativeDaysAgo', { count: Math.floor(diff / day) });
   return new Date(timestamp).toLocaleDateString();
 }
 
@@ -60,6 +62,7 @@ export function AnnotationPopover({
   onDelete,
   onClose,
 }: AnnotationPopoverProps) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(annotation.note.length === 0);
   const [draft, setDraft] = useState(annotation.note);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -150,7 +153,7 @@ export function AnnotationPopover({
     <div
       ref={containerRef}
       role="dialog"
-      aria-label="Annotation"
+      aria-label={t('annotations.popover.ariaLabel')}
       style={{ left, top, width: POPOVER_WIDTH }}
       className={cn(
         'absolute z-[60] pointer-events-auto',
@@ -167,7 +170,7 @@ export function AnnotationPopover({
         <div className="flex items-center gap-2 min-w-0">
           <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" aria-hidden />
           <span className="font-mono text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300 truncate">
-            {entityType ? entityType : 'Annotation'}
+            {entityType ? entityType : t('annotations.popover.headerFallbackLabel')}
             {annotation.entityExpressId !== null && (
               <span className="ml-1 text-zinc-400 dark:text-zinc-500">
                 #{annotation.entityExpressId}
@@ -180,7 +183,7 @@ export function AnnotationPopover({
           size="icon"
           className="h-5 w-5 p-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
           onClick={onClose}
-          title="Close"
+          title={t('annotations.popover.closeButtonTitle')}
         >
           <X className="h-3 w-3" />
         </Button>
@@ -195,7 +198,7 @@ export function AnnotationPopover({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Note about this point…"
+              placeholder={t('annotations.popover.placeholder')}
               rows={4}
               maxLength={MAX_NOTE_LEN + 100}
               className={cn(
@@ -212,7 +215,7 @@ export function AnnotationPopover({
             />
             <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-mono">
               <span className="text-zinc-400 dark:text-zinc-500">
-                ⏎ save · ⇧⏎ newline · esc cancel
+                {t('annotations.popover.keyHints')}
               </span>
               {charCountVisible && (
                 <span
@@ -236,7 +239,7 @@ export function AnnotationPopover({
                 className="h-7 px-2 text-[11px]"
                 onClick={handleCancel}
               >
-                Cancel
+                {t('annotations.popover.cancelButton')}
               </Button>
               <Button
                 size="sm"
@@ -245,7 +248,7 @@ export function AnnotationPopover({
                 disabled={overHardLimit}
               >
                 <Check className="h-3 w-3 mr-1" />
-                Save
+                {t('annotations.popover.saveButton')}
               </Button>
             </div>
           </>
@@ -257,14 +260,14 @@ export function AnnotationPopover({
               </p>
             ) : (
               <p className="font-mono text-[11px] italic text-zinc-400 dark:text-zinc-500">
-                (no note — click the pen icon to add one)
+                {t('annotations.popover.emptyNoteHint')}
               </p>
             )}
             <div className="mt-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between gap-2">
               <span className="text-[9.5px] font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                {formatRelativeTime(annotation.updatedAt)}
+                {formatRelativeTime(annotation.updatedAt, t)}
                 {annotation.updatedAt !== annotation.createdAt && (
-                  <span className="ml-1">· edited</span>
+                  <span className="ml-1">{t('annotations.popover.editedSuffix')}</span>
                 )}
               </span>
               <div className="flex items-center gap-0.5">
@@ -273,7 +276,7 @@ export function AnnotationPopover({
                   size="icon"
                   className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
                   onClick={() => setEditing(true)}
-                  title="Edit note"
+                  title={t('annotations.popover.editButtonTitle')}
                 >
                   <Pencil className="h-3 w-3" />
                 </Button>
@@ -282,7 +285,7 @@ export function AnnotationPopover({
                   size="icon"
                   className="h-6 w-6 p-0 text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
                   onClick={onDelete}
-                  title="Delete annotation"
+                  title={t('annotations.popover.deleteButtonTitle')}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>

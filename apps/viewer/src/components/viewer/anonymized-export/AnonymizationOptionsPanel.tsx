@@ -18,6 +18,8 @@ import type { AnonymizeOptions } from '@ifc-lite/export';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 
 /** UI-side state: every field means "anonymize this in the export". */
 export interface AnonymizeToggles {
@@ -88,19 +90,19 @@ export function toAnonymizeOptions(t: AnonymizeToggles): AnonymizeOptions {
 
 interface ToggleRow {
   key: keyof AnonymizeToggles;
-  label: string;
+  labelKey: TranslationKey;
   /** What anonymizing does, shown as the row's helper text. */
-  effect: string;
+  effectKey: TranslationKey;
 }
 
 const ROWS: readonly ToggleRow[] = [
-  { key: 'names', label: 'Names', effect: 'Name/LongName/Description/Tag become IfcType-n' },
-  { key: 'otherNames', label: 'Other names', effect: 'ObjectType, styles, materials, layers, profiles' },
-  { key: 'globalIds', label: 'GUIDs', effect: 'GlobalIds regenerated' },
-  { key: 'propertySets', label: 'Property sets', effect: 'Property and quantity sets dropped' },
-  { key: 'rootPlacementPosition', label: 'Root placement position', effect: 'Root translation zeroed; rotation kept' },
-  { key: 'georeferencing', label: 'Georeferencing & addresses', effect: 'Map conversion, CRS, lat/long, addresses removed' },
-  { key: 'currency', label: 'Currency', effect: 'IfcMonetaryUnit becomes USD' },
+  { key: 'names', labelKey: 'anonymizedExport.options.namesLabel', effectKey: 'anonymizedExport.options.namesEffect' },
+  { key: 'otherNames', labelKey: 'anonymizedExport.options.otherNamesLabel', effectKey: 'anonymizedExport.options.otherNamesEffect' },
+  { key: 'globalIds', labelKey: 'anonymizedExport.options.globalIdsLabel', effectKey: 'anonymizedExport.options.globalIdsEffect' },
+  { key: 'propertySets', labelKey: 'anonymizedExport.options.propertySetsLabel', effectKey: 'anonymizedExport.options.propertySetsEffect' },
+  { key: 'rootPlacementPosition', labelKey: 'anonymizedExport.options.rootPlacementLabel', effectKey: 'anonymizedExport.options.rootPlacementEffect' },
+  { key: 'georeferencing', labelKey: 'anonymizedExport.options.georeferencingLabel', effectKey: 'anonymizedExport.options.georeferencingEffect' },
+  { key: 'currency', labelKey: 'anonymizedExport.options.currencyLabel', effectKey: 'anonymizedExport.options.currencyEffect' },
 ];
 
 interface AnonymizationOptionsPanelProps {
@@ -110,14 +112,21 @@ interface AnonymizationOptionsPanelProps {
 }
 
 export function AnonymizationOptionsPanel({ toggles, onTogglesChange, disabled }: AnonymizationOptionsPanelProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2 pt-1 border-t">
       <div className="flex items-baseline justify-between pt-2">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Anonymization</div>
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {t('anonymizedExport.options.heading')}
+        </div>
         <div className="text-[11px] text-muted-foreground">
-          <span className="text-emerald-700/70 dark:text-emerald-400/70 font-medium">Keep</span>
+          <span className="text-emerald-700/70 dark:text-emerald-400/70 font-medium">
+            {t('anonymizedExport.options.keepLabel')}
+          </span>
           {' / '}
-          <span className="text-red-600 dark:text-red-400 font-medium">Anonymize</span>
+          <span className="text-red-600 dark:text-red-400 font-medium">
+            {t('anonymizedExport.options.anonymizeLabel')}
+          </span>
         </div>
       </div>
 
@@ -125,6 +134,7 @@ export function AnonymizationOptionsPanel({ toggles, onTogglesChange, disabled }
         {ROWS.map((row) => {
           const on = toggles[row.key];
           const id = `anon-toggle-${row.key}`;
+          const label = t(row.labelKey);
           return (
             <div key={row.key} className="flex items-center gap-3">
               <Switch
@@ -132,13 +142,13 @@ export function AnonymizationOptionsPanel({ toggles, onTogglesChange, disabled }
                 checked={on}
                 disabled={disabled}
                 onCheckedChange={(checked) => onTogglesChange({ ...toggles, [row.key]: checked })}
-                aria-label={`Anonymize ${row.label}`}
+                aria-label={t('anonymizedExport.options.toggleAriaLabel', { label })}
                 className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-emerald-600/40"
               />
               <Label htmlFor={id} className="flex-1 flex items-baseline gap-2 text-sm cursor-pointer">
-                <span>{row.label}</span>
+                <span>{label}</span>
                 <span className="text-[11px] text-muted-foreground truncate">
-                  {on ? row.effect : 'kept as authored'}
+                  {on ? t(row.effectKey) : t('anonymizedExport.options.keptAsAuthored')}
                 </span>
               </Label>
               <span
@@ -147,7 +157,7 @@ export function AnonymizationOptionsPanel({ toggles, onTogglesChange, disabled }
                   on ? 'text-red-600 dark:text-red-400' : 'text-emerald-700/70 dark:text-emerald-400/70',
                 )}
               >
-                {on ? 'Anonymize' : 'Keep'}
+                {on ? t('anonymizedExport.options.anonymizeLabel') : t('anonymizedExport.options.keepLabel')}
               </span>
             </div>
           );

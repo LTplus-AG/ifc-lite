@@ -134,6 +134,7 @@ export function SpecificationCard({
                       passed: formatLocaleNumber(locale, checkStats.passedChecks),
                       total: formatLocaleNumber(locale, applicableChecks),
                       rate: formatLocaleNumber(locale, checkStats.checkPassRate / 100, { style: 'percent', maximumFractionDigits: 2 }),
+                      count: requirementGroups.length,
                       requirements: formatLocaleNumber(locale, requirementGroups.length),
                     })}
                   </div>

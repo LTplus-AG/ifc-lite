@@ -10,7 +10,7 @@ import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
-import type { IDSDocument, IDSValidationReport } from '@ifc-lite/ids';
+import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationReport } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
 
 const initial = useViewerStore.getState();
@@ -71,6 +71,23 @@ function pseudoCatalogue(): Catalogue {
   }));
 }
 
+function requirementResult(id: string): IDSRequirementResult {
+  const requirement: IDSRequirement = {
+    id,
+    facet: {
+      type: 'attribute',
+      name: { type: 'simpleValue', value: 'Name' },
+    },
+    optionality: 'required',
+  };
+  return {
+    requirement,
+    status: 'pass',
+    facetType: 'attribute',
+    checkedDescription: `Checks ${id}`,
+  };
+}
+
 afterEach(() => {
   cleanup();
   setLocale('en');
@@ -86,6 +103,65 @@ afterEach(() => {
 });
 
 describe('IDSPanel localization (#4918)', () => {
+  it('keeps entity selection and detail disclosure as separate keyboard-focusable controls', () => {
+    useViewerStore.setState({
+      idsDocument: documentFixture,
+      idsValidationReport: reportFixture,
+      idsAuditReport: null,
+      idsError: null,
+      idsLoading: false,
+      idsProgress: null,
+    });
+    const ui = render(<IDSPanel />);
+    const card = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Wall requirements'));
+    assert.ok(card);
+    click(card!);
+    const selection = ui.querySelector<HTMLButtonElement>('[aria-label="Wall A - IfcWall - Passed"]');
+    const disclosure = ui.querySelector<HTMLButtonElement>('[aria-label="Show details"]');
+
+    assert.ok(selection);
+    assert.ok(disclosure);
+    assert.equal(selection!.tagName, 'BUTTON');
+    assert.equal(disclosure!.tagName, 'BUTTON');
+    assert.equal(selection!.contains(disclosure), false, 'interactive controls must not be nested');
+    assert.equal(selection!.parentElement, disclosure!.parentElement, 'controls are sibling actions');
+    assert.equal(disclosure!.tabIndex, 0, 'detail disclosure participates in keyboard navigation');
+
+    click(disclosure!);
+    assert.equal(disclosure!.getAttribute('aria-expanded'), 'true');
+    assert.equal(disclosure!.getAttribute('aria-label'), 'Hide details');
+  });
+
+  it('passes the raw requirement count to locale plural selection', () => {
+    registerLocale('ru-RU', {
+      'idsPanel.checksPassedAcross': {
+        one: 'ONE {requirements}',
+        few: 'FEW {requirements}',
+        many: 'MANY {requirements}',
+        other: 'OTHER {requirements}',
+      },
+    });
+    setLocale('ru-RU');
+    const result = {
+      ...reportFixture.specificationResults[0],
+      entityResults: [{
+        ...reportFixture.specificationResults[0].entityResults[0],
+        requirementResults: [requirementResult('req-0'), requirementResult('req-1')],
+      }],
+    };
+    useViewerStore.setState({
+      idsDocument: documentFixture,
+      idsValidationReport: { ...reportFixture, specificationResults: [result] },
+      idsAuditReport: null,
+      idsError: null,
+      idsLoading: false,
+      idsProgress: null,
+    });
+
+    const ui = render(<IDSPanel />);
+    assert.match(ui.textContent ?? '', /FEW 2/, 'Russian count 2 selects the few form');
+  });
+
   it('retranslates the mounted empty state from the active pseudo-locale', () => {
     registerLocale('en-x-ids-pseudo', pseudoCatalogue());
     const ui = render(<IDSPanel onClose={() => {}} />);

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { IDSEntityResult, IDSRequirementResult } from '@ifc-lite/ids';
 import type { RequirementGroup } from '@/hooks/ids/idsRequirementGrouping';
@@ -20,56 +20,39 @@ export function EntityResultRow({ entity, onClick }: EntityResultRowProps) {
   const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onClick();
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      setShowDetails(true);
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      setShowDetails(false);
-    }
-  };
-
   return (
     <div className="hover:bg-muted/50 focus-within:bg-muted/50 focus-within:ring-2 focus-within:ring-primary focus-within:ring-inset rounded-md">
-      <button
-        className="w-full p-2 text-left flex items-center gap-2 focus:outline-none"
-        onClick={onClick}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
-        aria-expanded={showDetails}
-        aria-label={t(entity.passed ? 'idsPanel.entityAriaLabelPassed' : 'idsPanel.entityAriaLabelFailed', {
-          name: entity.entityName || '#' + entity.expressId,
-          type: entity.entityType,
-        })}
-      >
-        <StatusIcon status={entity.passed ? 'pass' : 'fail'} />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm truncate">
-            {entity.entityName || `#${entity.expressId}`}
+      <div className="flex items-center">
+        <button
+          type="button"
+          className="flex-1 min-w-0 p-2 text-left flex items-center gap-2 focus:outline-none"
+          onClick={onClick}
+          aria-label={t(entity.passed ? 'idsPanel.entityAriaLabelPassed' : 'idsPanel.entityAriaLabelFailed', {
+            name: entity.entityName || '#' + entity.expressId,
+            type: entity.entityType,
+          })}
+        >
+          <StatusIcon status={entity.passed ? 'pass' : 'fail'} />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm truncate">
+              {entity.entityName || `#${entity.expressId}`}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              {entity.entityType}
+              {entity.globalId && ` · ${entity.globalId}`}
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground truncate">
-            {entity.entityType}
-            {entity.globalId && ` · ${entity.globalId}`}
-          </div>
-        </div>
-        {/* Chevron - shrink-0 keeps it visible */}
-        <span
-          role="button"
-          tabIndex={-1}
-          className="shrink-0 p-1 rounded hover:bg-accent"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowDetails(!showDetails);
-          }}
+        </button>
+        <button
+          type="button"
+          className="shrink-0 p-3 rounded hover:bg-accent focus:outline-none"
+          onClick={() => setShowDetails((visible) => !visible)}
+          aria-expanded={showDetails}
           aria-label={t(showDetails ? 'idsPanel.hideDetails' : 'idsPanel.showDetails')}
         >
           {showDetails ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </span>
-      </button>
+        </button>
+      </div>
       {showDetails && (
         <div className="pl-8 pr-2 pb-2 space-y-1">
           {entity.requirementResults.map((req, idx) => (

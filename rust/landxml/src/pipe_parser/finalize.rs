@@ -48,10 +48,11 @@ impl PipeParser<'_> {
         let (structures, structure_inputs) =
             self.convert_structures(network.structures, root_units.as_ref())?;
         let structure_names = helpers::unique_names(
+            self,
             structures
                 .iter()
                 .map(|structure| (&structure.name, &structure.source_id)),
-        );
+        )?;
         let (pipes, pipe_names) =
             self.convert_pipes(network.pipes, root_units.as_ref(), &structure_names)?;
         let pipe_connectivity = pipes
@@ -84,6 +85,7 @@ impl PipeParser<'_> {
             name,
             pipe_network_type,
             properties: network.properties,
+            features: network.features,
             structure_units,
             pipe_units,
             structures,
@@ -97,8 +99,10 @@ impl PipeParser<'_> {
         inputs: Vec<StructureBuilder>,
         root_units: Option<&super::state::RawUnits>,
     ) -> Result<StructureConversion> {
-        let duplicates =
-            helpers::duplicate_names(inputs.iter().filter_map(|input| input.name.as_deref()));
+        let duplicates = helpers::duplicate_names(
+            self,
+            inputs.iter().filter_map(|input| input.name.as_deref()),
+        )?;
         let mut structures = Vec::new();
         let mut inverts = Vec::new();
         for input in inputs {
@@ -195,8 +199,10 @@ impl PipeParser<'_> {
         root_units: Option<&super::state::RawUnits>,
         structures: &HashMap<String, LandXmlSourceId>,
     ) -> Result<(Vec<LandXmlPipe>, HashMap<String, LandXmlSourceId>)> {
-        let duplicates =
-            helpers::duplicate_names(inputs.iter().filter_map(|input| input.name.as_deref()));
+        let duplicates = helpers::duplicate_names(
+            self,
+            inputs.iter().filter_map(|input| input.name.as_deref()),
+        )?;
         let mut pipes = Vec::new();
         for input in inputs {
             self.check_cancel_and_work(1)?;
@@ -220,7 +226,8 @@ impl PipeParser<'_> {
                 }
             }
         }
-        let names = helpers::unique_names(pipes.iter().map(|pipe| (&pipe.name, &pipe.source_id)));
+        let names =
+            helpers::unique_names(self, pipes.iter().map(|pipe| (&pipe.name, &pipe.source_id)))?;
         Ok((pipes, names))
     }
 

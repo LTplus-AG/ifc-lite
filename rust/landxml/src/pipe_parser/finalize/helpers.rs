@@ -12,23 +12,31 @@ pub(super) fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|value| !value.trim().is_empty())
 }
 
-pub(super) fn duplicate_names<'a>(names: impl Iterator<Item = &'a str>) -> HashSet<String> {
+pub(super) fn duplicate_names<'a>(
+    parser: &mut PipeParser<'_>,
+    names: impl Iterator<Item = &'a str>,
+) -> crate::xml::Result<HashSet<String>> {
     let mut seen = HashSet::new();
     let mut duplicates = HashSet::new();
     for name in names {
+        parser.check_cancel_and_work(1)?;
         if !seen.insert(name) {
             duplicates.insert(name.to_owned());
         }
     }
-    duplicates
+    Ok(duplicates)
 }
 
 pub(super) fn unique_names<'a>(
+    parser: &mut PipeParser<'_>,
     items: impl Iterator<Item = (&'a String, &'a LandXmlSourceId)>,
-) -> HashMap<String, LandXmlSourceId> {
-    items
-        .map(|(name, source_id)| (name.clone(), source_id.clone()))
-        .collect()
+) -> crate::xml::Result<HashMap<String, LandXmlSourceId>> {
+    let mut names = HashMap::new();
+    for (name, source_id) in items {
+        parser.check_cancel_and_work(1)?;
+        names.insert(name.clone(), source_id.clone());
+    }
+    Ok(names)
 }
 
 pub(super) fn required_reference(

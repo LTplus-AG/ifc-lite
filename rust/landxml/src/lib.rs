@@ -41,8 +41,9 @@ pub use profile::{
 };
 pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
 pub use pipes::{
-    LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFlow, LandXmlPipeGeometry, LandXmlPipeInvert,
-    LandXmlPipeMeasure, LandXmlPipeNetwork, LandXmlPipeNetworkDocument, LandXmlPipePart,
-    LandXmlPipePosition, LandXmlPipeProperties, LandXmlPipeRefusal, LandXmlPipeSourceBatch,
-    LandXmlPipeStructure, LandXmlPipeUnits, LandXmlStructurePart,
+    LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,
+    LandXmlPipeInvert, LandXmlPipeMeasure, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
+    LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeProperties,
+    LandXmlPipeRefusal, LandXmlPipeSourceBatch, LandXmlPipeStructure, LandXmlPipeUnits,
+    LandXmlStructurePart,
 };

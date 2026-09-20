@@ -192,6 +192,22 @@ pub struct LandXmlPipeRefusal {
     pub message: String,
 }
 
+/// A schema-valid `Feature` child retained without assigning IFC meaning.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlPipeFeature {
+    pub source_id: LandXmlSourceId,
+    pub source_path: String,
+    pub properties: LandXmlPipeProperties,
+}
+
+/// One exact `PipeNetworks` collection and its authored metadata.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlPipeNetworkCollection {
+    pub source_id: LandXmlSourceId,
+    pub source_path: String,
+    pub properties: LandXmlPipeProperties,
+}
+
 /// One exact LandXML `PipeNetwork` source hierarchy.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlPipeNetwork {
@@ -200,6 +216,7 @@ pub struct LandXmlPipeNetwork {
     pub name: String,
     pub pipe_network_type: String,
     pub properties: LandXmlPipeProperties,
+    pub features: Vec<LandXmlPipeFeature>,
     pub structure_units: Option<LandXmlPipeUnits>,
     pub pipe_units: Option<LandXmlPipeUnits>,
     pub structures: Vec<LandXmlPipeStructure>,
@@ -211,6 +228,7 @@ pub struct LandXmlPipeNetwork {
 pub struct LandXmlPipeNetworkDocument {
     pub version: String,
     pub root_units: Option<LandXmlPipeUnits>,
+    pub collections: Vec<LandXmlPipeNetworkCollection>,
     pub networks: Vec<LandXmlPipeNetwork>,
     pub refusals: Vec<LandXmlPipeRefusal>,
 }
@@ -232,23 +250,33 @@ impl LandXmlPipeNetworkDocument {
         if max_records == 0 {
             return Vec::new();
         }
-        let source_ids = self.networks.iter().flat_map(|network| {
-            std::iter::once(network.source_id.clone())
-                .chain(network.structures.iter().flat_map(|structure| {
-                    std::iter::once(structure.source_id.clone())
-                        .chain(
-                            structure
-                                .inverts
-                                .iter()
-                                .map(|invert| invert.source_id.clone()),
-                        )
-                        .chain(structure.flow.iter().map(|flow| flow.source_id.clone()))
-                }))
-                .chain(network.pipes.iter().flat_map(|pipe| {
-                    std::iter::once(pipe.source_id.clone())
-                        .chain(pipe.flow.iter().map(|flow| flow.source_id.clone()))
-                }))
-        });
+        let source_ids = self
+            .collections
+            .iter()
+            .map(|collection| collection.source_id.clone())
+            .chain(self.networks.iter().flat_map(|network| {
+                std::iter::once(network.source_id.clone())
+                    .chain(
+                        network
+                            .features
+                            .iter()
+                            .map(|feature| feature.source_id.clone()),
+                    )
+                    .chain(network.structures.iter().flat_map(|structure| {
+                        std::iter::once(structure.source_id.clone())
+                            .chain(
+                                structure
+                                    .inverts
+                                    .iter()
+                                    .map(|invert| invert.source_id.clone()),
+                            )
+                            .chain(structure.flow.iter().map(|flow| flow.source_id.clone()))
+                    }))
+                    .chain(network.pipes.iter().flat_map(|pipe| {
+                        std::iter::once(pipe.source_id.clone())
+                            .chain(pipe.flow.iter().map(|flow| flow.source_id.clone()))
+                    }))
+            }));
         let mut batches = Vec::new();
         let mut current = Vec::new();
         for source_id in source_ids {

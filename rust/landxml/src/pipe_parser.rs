@@ -17,7 +17,8 @@ use quick_xml::{
     Reader,
 };
 use state::{
-    properties, Frame, NetworkBuilder, PipeBuilder, PositionCapture, RawUnits, StructureBuilder,
+    properties, FeatureBuilder, Frame, NetworkBuilder, PipeBuilder, PositionCapture, RawUnits,
+    StructureBuilder,
 };
 use std::collections::HashMap;
 mod convert;
@@ -38,7 +39,9 @@ struct PipeParser<'a> {
     structure: Option<StructureBuilder>,
     pipe: Option<PipeBuilder>,
     capture: Option<PositionCapture>,
+    feature: Option<FeatureBuilder>,
     networks: Vec<crate::LandXmlPipeNetwork>,
+    collections: Vec<crate::LandXmlPipeNetworkCollection>,
     pending_networks: Vec<NetworkBuilder>,
     refusals: Vec<LandXmlPipeRefusal>,
     pipe_networks_seen: usize,
@@ -80,7 +83,9 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         structure: None,
         pipe: None,
         capture: None,
+        feature: None,
         networks: Vec::new(),
+        collections: Vec::new(),
         pending_networks: Vec::new(),
         refusals: Vec::new(),
         pipe_networks_seen: 0,
@@ -179,6 +184,14 @@ impl PipeParser<'_> {
             "PipeNetworks" if self.is_path(&["LandXML", "PipeNetworks"]) => {
                 self.pipe_network_collections += 1;
                 self.network_ordinal = 0;
+                self.collections.push(crate::LandXmlPipeNetworkCollection {
+                    source_id: LandXmlSourceId(format!(
+                        "landxml:pipe-networks:{}",
+                        self.pipe_network_collections
+                    )),
+                    source_path: format!("LandXML/PipeNetworks[{}]", self.pipe_network_collections),
+                    properties,
+                });
             }
             "PipeNetwork" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork"]) => {
                 Self::reserve(
@@ -221,7 +234,46 @@ impl PipeParser<'_> {
                     pipes_in_collection: 0,
                     saw_structs: false,
                     saw_pipes: false,
+                    features: Vec::new(),
+                    feature_ordinal: 0,
                 });
+            }
+            "Feature" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Feature"]) => {
+                let network = self.network.as_mut().expect("Feature has network");
+                network.feature_ordinal += 1;
+                let ordinal = network.feature_ordinal;
+                self.feature = Some(FeatureBuilder {
+                    source_id: LandXmlSourceId(format!(
+                        "{}:feature:{ordinal}",
+                        network.source_id.0
+                    )),
+                    source_path: format!("{}/Feature[{ordinal}]", network.source_path),
+                    properties,
+                });
+            }
+            "Property"
+                if self.is_path(&[
+                    "LandXML",
+                    "PipeNetworks",
+                    "PipeNetwork",
+                    "Feature",
+                    "Property",
+                ]) =>
+            {
+                if let Some(feature) = self.feature.as_mut() {
+                    let key = attr(&attributes, "label")
+                        .or_else(|| attr(&attributes, "name"))
+                        .ok_or_else(|| {
+                            error(
+                                Code::InvalidSemantic,
+                                "Feature Property requires label or name",
+                            )
+                        })?;
+                    feature.properties.insert(
+                        key.to_owned(),
+                        attr(&attributes, "value").unwrap_or_default().to_owned(),
+                    );
+                }
             }
             "Structs" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs"]) => {
                 let network = self.network.as_mut().expect("Structs has network");
@@ -321,7 +373,18 @@ impl PipeParser<'_> {
         {
             self.finish_center()?;
         }
-        if self.is_path(&[
+        if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Feature"]) {
+            let feature = self.feature.take().expect("Feature closing is active");
+            self.network
+                .as_mut()
+                .expect("Feature has network")
+                .features
+                .push(crate::LandXmlPipeFeature {
+                    source_id: feature.source_id,
+                    source_path: feature.source_path,
+                    properties: feature.properties,
+                });
+        } else if self.is_path(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",

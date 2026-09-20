@@ -35,6 +35,14 @@ pub(super) struct NetworkBuilder {
     pub(super) pipes_in_collection: usize,
     pub(super) saw_structs: bool,
     pub(super) saw_pipes: bool,
+    pub(super) features: Vec<crate::LandXmlPipeFeature>,
+    pub(super) feature_ordinal: usize,
+}
+
+pub(super) struct FeatureBuilder {
+    pub(super) source_id: LandXmlSourceId,
+    pub(super) source_path: String,
+    pub(super) properties: LandXmlPipeProperties,
 }
 
 #[derive(Clone)]

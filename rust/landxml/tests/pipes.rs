@@ -44,7 +44,7 @@ fn records_network_topology_parts_flows_and_source_provenance(
             .iter()
             .map(|batch| batch.source_ids.len())
             .sum::<usize>(),
-        8
+        9
     );
     assert_eq!(
         network.pipes[0].connectivity.start_structure_source_id,
@@ -437,4 +437,31 @@ fn issue_5047_scopes_repeated_collections_units_and_source_paths() {
         .refusals
         .iter()
         .any(|refusal| refusal.message.contains("requires Structs and Pipes")));
+}
+
+#[test]
+fn issue_5047_preserves_pipe_network_collection_and_feature_metadata() {
+    let source = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/></Pipe>"#,
+    )
+    .replace("<PipeNetworks>", "<PipeNetworks name=\"collection\">")
+    .replace(
+        "<Structs>",
+        "<Feature code=\"drainage\"><Property label=\"phase\" value=\"design\"/></Feature><Structs>",
+    );
+    let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("legal metadata");
+    assert_eq!(parsed.collections[0].source_id.0, "landxml:pipe-networks:1");
+    assert_eq!(
+        parsed.collections[0].properties.get("name"),
+        Some(&"collection".to_owned())
+    );
+    assert_eq!(
+        parsed.networks[0].features[0].source_id.0,
+        "landxml:pipe-network:1:1:feature:1"
+    );
+    assert_eq!(
+        parsed.networks[0].features[0].properties.get("phase"),
+        Some(&"design".to_owned())
+    );
 }

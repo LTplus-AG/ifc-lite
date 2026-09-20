@@ -40,6 +40,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
+import { useTranslation } from '@/i18n';
 import { PriorityBadge, formatDate, formatDateTime, TOPIC_STATUSES } from './bcfHelpers';
 // ============================================================================
 // Types
@@ -88,6 +89,7 @@ export function BCFTopicDetail({
   hasIsolation,
   hasHiddenEntities,
 }: BCFTopicDetailProps) {
+  const { t } = useTranslation();
   const [commentText, setCommentText] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedViewpointGuid, setSelectedViewpointGuid] = useState<string | null>(null);
@@ -117,6 +119,12 @@ export function BCFTopicDetail({
     [handleSubmitComment]
   );
 
+  const createdText = topic.creationAuthor && topic.creationDate
+    ? t('bcf.topicDetail.createdByOn', { author: topic.creationAuthor, date: formatDateTime(topic.creationDate) })
+    : topic.creationAuthor
+      ? t('bcf.topicDetail.createdBy', { author: topic.creationAuthor })
+      : t('bcf.topicDetail.createdOn', { date: formatDateTime(topic.creationDate) });
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Header */}
@@ -132,27 +140,27 @@ export function BCFTopicDetail({
               size="sm"
               onClick={onZoomToTopic}
               disabled={!canZoomToTopic}
-              aria-label="Zoom to topic"
+              aria-label={t('bcf.topicDetail.zoomToTopicAria')}
             >
               <Crosshair className="h-4 w-4" aria-hidden />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Zoom to</TooltipContent>
+          <TooltipContent>{t('bcf.topicDetail.zoomTo')}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={onEditTopic} aria-label="Edit topic">
+            <Button variant="ghost" size="sm" onClick={onEditTopic} aria-label={t('bcf.topicDetail.editTopic')}>
               <Pencil className="h-4 w-4" aria-hidden />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Edit topic</TooltipContent>
+          <TooltipContent>{t('bcf.topicDetail.editTopic')}</TooltipContent>
         </Tooltip>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setShowDeleteConfirm(true)}
           className="text-destructive hover:text-destructive"
-          aria-label="Delete topic"
+          aria-label={t('bcf.topicDetail.deleteTopicAria')}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -188,13 +196,9 @@ export function BCFTopicDetail({
             )}
 
             <div className="text-xs text-muted-foreground space-y-1">
-              {(topic.creationAuthor || topic.creationDate) && (
-                <p>
-                  {topic.creationAuthor ? `Created by ${topic.creationAuthor}` : 'Created'}{topic.creationDate && <> on {formatDateTime(topic.creationDate)}</>}
-                </p>
-              )}
-              {topic.assignedTo && <p>Assigned to: {topic.assignedTo}</p>}
-              {topic.dueDate && <p>Due: {formatDate(topic.dueDate)}</p>}
+              {(topic.creationAuthor || topic.creationDate) && <p>{createdText}</p>}
+              {topic.assignedTo && <p>{t('bcf.topicDetail.assignedTo', { name: topic.assignedTo })}</p>}
+              {topic.dueDate && <p>{t('bcf.topicDetail.due', { date: formatDate(topic.dueDate) })}</p>}
             </div>
           </div>
 
@@ -203,31 +207,31 @@ export function BCFTopicDetail({
           {/* Viewpoints */}
           <div>
             <div className="mb-2 space-y-1.5">
-              <h4 className="text-sm font-medium">Viewpoints</h4>
+              <h4 className="text-sm font-medium">{t('bcf.topicDetail.viewpointsHeading')}</h4>
               <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} capture2DBlockReason={sectionViewpointBlockReason} />
             </div>
 
             {/* Capture info - what will be included */}
             {(selectionCount > 0 || hasIsolation || hasHiddenEntities) && (
               <div className="mb-2 p-2 bg-muted/50 rounded-md text-xs text-muted-foreground">
-                <p className="font-medium mb-1">Capture will include:</p>
+                <p className="font-medium mb-1">{t('bcf.topicDetail.captureWillInclude')}</p>
                 <ul className="space-y-0.5">
                   {selectionCount > 0 && (
                     <li className="flex items-center gap-1">
                       <MousePointer2 className="h-3 w-3" />
-                      {selectionCount} selected {selectionCount === 1 ? 'object' : 'objects'}
+                      {t('bcf.topicDetail.selectedObjects', { count: selectionCount })}
                     </li>
                   )}
                   {hasIsolation && (
                     <li className="flex items-center gap-1">
                       <Focus className="h-3 w-3" />
-                      Isolated objects (others hidden)
+                      {t('bcf.topicDetail.isolatedObjects')}
                     </li>
                   )}
                   {hasHiddenEntities && !hasIsolation && (
                     <li className="flex items-center gap-1">
                       <EyeOff className="h-3 w-3" />
-                      Hidden objects
+                      {t('bcf.topicDetail.hiddenObjects')}
                     </li>
                   )}
                 </ul>
@@ -235,7 +239,7 @@ export function BCFTopicDetail({
             )}
 
             {topic.viewpoints.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No viewpoints captured</p>
+              <p className="text-xs text-muted-foreground">{t('bcf.topicDetail.noViewpoints')}</p>
             ) : (
               <div className="space-y-2">
                 {topic.viewpoints.map((vp) => {
@@ -253,7 +257,7 @@ export function BCFTopicDetail({
                         {vp.snapshot ? (
                           <img
                             src={vp.snapshot}
-                            alt="Viewpoint"
+                            alt={t('bcf.topicDetail.viewpointAlt')}
                             className="w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => onActivateViewpoint(vp)}
                           />
@@ -270,7 +274,7 @@ export function BCFTopicDetail({
                           variant="destructive"
                           size="icon"
                           className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          aria-label="Delete viewpoint"
+                          aria-label={t('bcf.topicDetail.deleteViewpointAria')}
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteViewpoint(vp.guid);
@@ -288,7 +292,7 @@ export function BCFTopicDetail({
                           onClick={() => setSelectedViewpointGuid(isSelected ? null : vp.guid)}
                         >
                           <MessageSquare className="h-3 w-3" />
-                          {commentCount > 0 ? `${commentCount} comment${commentCount > 1 ? 's' : ''}` : 'Comment'}
+                          {commentCount > 0 ? t('bcf.topicDetail.commentCount', { count: commentCount }) : t('bcf.topicDetail.commentAction')}
                         </Button>
                         <Button
                           variant="ghost"
@@ -296,7 +300,7 @@ export function BCFTopicDetail({
                           className="h-7 text-xs"
                           onClick={() => onActivateViewpoint(vp)}
                         >
-                          Go to view
+                          {t('bcf.topicDetail.goToView')}
                         </Button>
                       </div>
                     </div>
@@ -310,9 +314,7 @@ export function BCFTopicDetail({
 
           {/* Comments */}
           <div>
-            <h4 className="text-sm font-medium mb-2">
-              Comments ({topic.comments.length})
-            </h4>
+            <h4 className="text-sm font-medium mb-2">{t('bcf.topicDetail.commentsHeading', { count: topic.comments.length })}</h4>
 
             <div className="space-y-3">
               {topic.comments.map((comment) => {
@@ -333,7 +335,7 @@ export function BCFTopicDetail({
                       >
                         <img
                           src={associatedViewpoint.snapshot}
-                          alt="Associated viewpoint"
+                          alt={t('bcf.topicDetail.associatedViewpointAlt')}
                           className="w-full max-h-24 object-contain bg-muted"
                         />
                       </div>
@@ -365,18 +367,18 @@ export function BCFTopicDetail({
             {selectedViewpoint.snapshot && (
               <img
                 src={selectedViewpoint.snapshot}
-                alt="Selected viewpoint"
+                alt={t('bcf.topicDetail.selectedViewpointAlt')}
                 className="w-12 h-10 object-contain rounded bg-muted"
               />
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground">Commenting on viewpoint</p>
+              <p className="text-xs text-muted-foreground">{t('bcf.topicDetail.commentingOnViewpoint')}</p>
             </div>
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6 shrink-0"
-              aria-label="Cancel viewpoint comment"
+              aria-label={t('bcf.topicDetail.cancelViewpointCommentAria')}
               onClick={() => setSelectedViewpointGuid(null)}
             >
               <X className="h-3 w-3" />
@@ -385,13 +387,13 @@ export function BCFTopicDetail({
         )}
         <div className="flex gap-2">
           <Input
-            placeholder={selectedViewpoint ? "Add comment on viewpoint..." : "Add a comment..."}
+            placeholder={selectedViewpoint ? t('bcf.topicDetail.addCommentOnViewpointPlaceholder') : t('bcf.topicDetail.addCommentPlaceholder')}
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={handleKeyDown}
             className="flex-1"
           />
-          <Button size="icon" aria-label="Send comment" onClick={handleSubmitComment} disabled={!commentText.trim()}>
+          <Button size="icon" aria-label={t('bcf.topicDetail.sendCommentAria')} onClick={handleSubmitComment} disabled={!commentText.trim()}>
             <Send className="h-4 w-4" />
           </Button>
         </div>
@@ -401,13 +403,11 @@ export function BCFTopicDetail({
       {showDeleteConfirm && (
         <div className="absolute inset-0 bg-background/90 flex items-center justify-center p-4">
           <div className="bg-card border rounded-lg p-4 max-w-xs">
-            <h4 className="font-medium mb-2">Delete Topic?</h4>
-            <p className="text-sm text-muted-foreground mb-4">
-              This will permanently delete this topic and all its comments and viewpoints.
-            </p>
+            <h4 className="font-medium mb-2">{t('bcf.topicDetail.deleteConfirmTitle')}</h4>
+            <p className="text-sm text-muted-foreground mb-4">{t('bcf.topicDetail.deleteConfirmBody')}</p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirm(false)}>
-                Cancel
+                {t('bcf.shared.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -417,7 +417,7 @@ export function BCFTopicDetail({
                   setShowDeleteConfirm(false);
                 }}
               >
-                Delete
+                {t('bcf.topicDetail.deleteConfirmButton')}
               </Button>
             </div>
           </div>

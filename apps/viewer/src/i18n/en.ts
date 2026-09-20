@@ -9,6 +9,7 @@ import { chartsEn } from './catalogues/charts.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
+import { bcfEn } from './catalogues/bcf.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { chatEn } from './catalogues/chat.en';
@@ -90,6 +91,7 @@ export const en = {
   ...idsPanelEn,
   ...chatEn,
   ...chatByokEn,
+  ...bcfEn,
   ...layersPanelEn,
 } as const;
 

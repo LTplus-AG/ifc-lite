@@ -64,7 +64,7 @@
    758 apps/viewer/src/components/viewer/AddElementPanel.tsx
    508 apps/viewer/src/components/viewer/BasketPresentationDock.tsx
    428 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
-   541 apps/viewer/src/components/viewer/BCFPanel.tsx
+   539 apps/viewer/src/components/viewer/BCFPanel.tsx
   1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    486 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx

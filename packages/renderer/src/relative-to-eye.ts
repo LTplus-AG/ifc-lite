@@ -190,9 +190,9 @@ export function translationFreeViewProjection(projection: Mat4, view: Mat4): Mat
 }
 
 /**
- * The one camera-owned RTE frame.  It carries f64 camera source coordinates,
- * their high/low GPU representation, and a view-projection that consumes
- * eye-relative positions. It intentionally has no model/drawable state: each
+ * The one camera-owned RTE frame. It carries f64 camera source coordinates and
+ * a translation-free view-projection that consumes eye-relative positions. It
+ * intentionally has no model/drawable state: each
  * draw packs an f64 camera-relative delta through `packDrawableOrigin`.
  */
 export class RelativeToEyeFrame {

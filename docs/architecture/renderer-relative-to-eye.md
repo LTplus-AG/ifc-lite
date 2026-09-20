@@ -91,5 +91,5 @@ implementation PR.
    The positive `11,000,000.025` version remains a documented *out-of-envelope*
    diagnostic, because its delta is `1,000,000.025 m`.
 
-The LandXML safety refusal remains until all four cases cover the real renderer
+The LandXML safety refusal remains until all five cases cover the real renderer
 paths above. It is intentionally out of scope for the foundation commit.

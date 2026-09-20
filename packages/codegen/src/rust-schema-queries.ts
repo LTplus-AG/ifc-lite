@@ -61,7 +61,8 @@ export function mergeTypeUniverse(
 /** Emitted inside `impl IfcType { … }`, closing the impl block. */
 export function generateSchemaQueries(
   schema: ExpressSchema,
-  typeUniverse: readonly EntityDefinition[] = schema.entities
+  typeUniverse: readonly EntityDefinition[] = schema.entities,
+  visibility = 'pub',
 ): string {
   const canonicalNames = new Set(schema.entities.map((entity) => entity.name));
   return `    /// This entity's attributes, in STEP declaration order.
@@ -91,6 +92,24 @@ ${typeUniverse.map((e) => canonicalNames.has(e.name)
     pub fn attribute_index(&self, name: &str) -> Option<usize> {
         self.attribute_names().iter().position(|n| *n == name)
     }
+
+    /// Whether ${schema.name} itself declares this class.
+    ///
+    /// The enum is one exact-name universe across every supported release;
+    /// a variant that only a supplemental (older) schema declares keeps its
+    /// name but carries no positional metadata here (its
+    /// \`attribute_names()\` is empty). A per-schema registry that must fail
+    /// closed for a class the declared FILE_SCHEMA does not know consults
+    /// this rather than the emptiness of the attribute list, which a genuine
+    /// zero-attribute class shares (#4203).
+    pub fn declared_by_canonical_schema(&self) -> bool {
+        ${typeUniverse.some((e) => !canonicalNames.has(e.name))
+          ? `!matches!(
+            self,
+            ${typeUniverse.filter((e) => !canonicalNames.has(e.name)).map((e) => `Self::${e.name}`).join(' | ')} | Self::Unknown(_)
+        )`
+          : '!matches!(self, Self::Unknown(_))'}
+    }
 }
 
 /// Every entity type this schema defines, in declaration order.
@@ -105,7 +124,7 @@ ${typeUniverse.map((e) => canonicalNames.has(e.name)
 /// WHOLE schema — mapping every class to some other vocabulary, auditing
 /// which ones it covers, generating a table — otherwise has to re-parse
 /// the EXPRESS file or scrape this one.
-pub static ALL: &[IfcType] = &[
+${visibility} static ALL: &[IfcType] = &[
 ${schema.entities.map((e) => `    IfcType::${e.name},`).join('\n')}\n];
 
 `;

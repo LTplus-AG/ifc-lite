@@ -173,12 +173,14 @@ export function buildCodegen(root) {
 }
 
 /** Run the built codegen CLI against `schemaPath`, writing into `outDir`. */
-export function runCodegenCli(root, schemaPath, outDir) {
+export function runCodegenCli(root, schemaPath, outDir, rustDir) {
   const cliPath = join(root, 'packages/codegen/dist/cli.js');
   if (!existsSync(cliPath)) {
     throw new Error(`packages/codegen/dist/cli.js not found after build — cannot regenerate ${schemaPath}`);
   }
-  execFileSync(process.execPath, [cliPath, schemaPath, '-o', outDir], {
+  const args = [cliPath, schemaPath, '-o', outDir];
+  if (rustDir) args.push('--rust', '--rust-dir', rustDir, '--rust-crate-private');
+  execFileSync(process.execPath, args, {
     cwd: root,
     stdio: 'pipe',
     encoding: 'utf8',
@@ -232,6 +234,21 @@ export function runAllTargets(root) {
     runCodegenCli(root, join(root, 'packages/codegen/schemas/IFC4_ADD2_TC1.exp'), ifc4Out);
     runCodegenCli(root, join(root, 'packages/codegen/schemas/IFC4X3.exp'), ifc4x3Out);
     runCodegenCli(root, join(root, 'packages/codegen/schemas/IFC2X3_TC1.exp'), ifc2x3Out);
+
+    const rustRegistryOut = join(tmp, 'rust-schema-registry');
+    const rustSchemaInputs = [
+      ['IFC2X3_TC1.exp', 'ifc2x3'],
+      ['IFC4_ADD2_TC1.exp', 'ifc4'],
+    ];
+    for (const [schemaFile, registry] of rustSchemaInputs) {
+      const out = join(tmp, `rust-${registry}`);
+      const rustOut = join(rustRegistryOut, registry);
+      runCodegenCli(root, join(root, 'packages/codegen/schemas', schemaFile), out, rustOut);
+      results.push({
+        name: `rust/core/src/generated/${registry} (generated from ${schemaFile})`,
+        ...diffDirs(rustOut, join(root, 'rust/core/src/generated', registry)),
+      });
+    }
 
     results.push({
       name: 'packages/codegen/generated/ifc4',

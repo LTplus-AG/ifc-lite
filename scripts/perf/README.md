@@ -27,6 +27,35 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Schema-specific crate-private registries (#4203, #4996)
+
+Selecting generated per-schema attribute tables by the source file's schema
+showed no measured parse, geometry or end-to-end regression on AC20-FZK-Haus
+in an interleaved native base-vs-branch probe; the millisecond-quantized
+movement stayed inside the base run's own spread, and mesh, vertex and
+triangle counts plus the ordered mesh fingerprint were identical on both
+revisions (figures in the PR's validation evidence). The lesson: generated
+lookup tables can stay crate-private and be selected by the source schema
+without changing emitted geometry or adding a measurable normal-load cost;
+keep them out of the public Rust surface so this metadata correction does
+not create a semver liability.
+
+## Structural surface members through the face/surface machinery (#4206, #5026)
+
+Measured exact merge-base `6500376a2` against the #5026 head on
+AC20-FZK-Haus with the pinned toolchain and `profiling` profile, separate
+build directories, five interleaved fresh-process base/branch pairs of
+`perf_probe --iters 5 --json --fingerprint` on an otherwise-idle x86_64
+Windows box. Median parse/geometry/pipeline-total were 8/8/16 ms (base,
+total spread 16-17) and 8/8/17 ms (branch, spread 16-19); median full-call
+wall 20.16 ms (base, spread 19.43-23.24) vs 19.78 ms (branch, spread
+18.68-23.13). Every run on both revisions produced 285 meshes / 35,940
+vertices / 19,456 triangles with ordered mesh FNV-1a64 `25ac885b6ff4ad00`.
+Verdict: no observed regression and no speed claim; the fixture holds no
+`IfcStructuralSurfaceMember`, so the new `IfcFaceSurface` route is never
+entered here and this measures only the router's registration cost. Lesson:
+a processor added to the built-in table is free until an element selects it.
+
 ## Full supported-schema `IfcType` parsing (#4203)
 
 Extending the generated `IfcType::from_str` match from the canonical IFC4X3

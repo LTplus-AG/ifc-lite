@@ -18,6 +18,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
+import { createStoreAdapter } from '@/sdk/adapters/store-adapter.js';
 import { CostPanel } from '../CostPanel.js';
 
 interface LocalStepRef { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }
@@ -116,5 +117,20 @@ describe('CostPanel display of an explicit empty IfcLabel (#4881)', () => {
     assert.equal(itemRow(container).textContent?.trim(), 'Groundworks');
     act(() => itemRow(container).click());
     assert.doesNotMatch(container.textContent ?? '', /Cost item #40|Schedule #50|IfcQuantityArea/);
+  });
+});
+
+describe('CostPanel loaded-model authoring refresh (#4857)', () => {
+  it('shows a script-authored cost item without remounting the open panel', () => {
+    const container = renderPanel("'Existing'");
+    assert.equal(itemRow(container).textContent?.trim(), 'Existing');
+
+    act(() => {
+      createStoreAdapter(useViewerStore).addCostItem('modelA', { Name: 'Script-authored' });
+    });
+
+    const labels = Array.from(container.querySelectorAll<HTMLElement>('[role="treeitem"]'))
+      .map(row => row.textContent?.trim());
+    assert.deepEqual(labels, ['Existing', 'Script-authored']);
   });
 });

@@ -14600,6 +14600,167 @@ impl IfcType {
     pub fn attribute_index(&self, name: &str) -> Option<usize> {
         self.attribute_names().iter().position(|n| *n == name)
     }
+
+    /// Whether IFC4X3_DEV_923b0514 itself declares this class.
+    ///
+    /// The enum is one exact-name universe across every supported release;
+    /// a variant that only a supplemental (older) schema declares keeps its
+    /// name but carries no positional metadata here (its
+    /// `attribute_names()` is empty). A per-schema registry that must fail
+    /// closed for a class the declared FILE_SCHEMA does not know consults
+    /// this rather than the emptiness of the attribute list, which a genuine
+    /// zero-attribute class shares (#4203).
+    pub fn declared_by_canonical_schema(&self) -> bool {
+        !matches!(
+            self,
+            Self::IfcBeamStandardCase
+                | Self::IfcBuildingElement
+                | Self::IfcBuildingElementType
+                | Self::IfcColumnStandardCase
+                | Self::IfcDoorStandardCase
+                | Self::IfcDoorStyle
+                | Self::IfcMemberStandardCase
+                | Self::IfcOpeningStandardCase
+                | Self::IfcPlateStandardCase
+                | Self::IfcPresentationStyleAssignment
+                | Self::IfcProxy
+                | Self::IfcSlabElementedCase
+                | Self::IfcSlabStandardCase
+                | Self::IfcWallElementedCase
+                | Self::IfcWindowStandardCase
+                | Self::IfcWindowStyle
+                | Self::Ifc2DCompositeCurve
+                | Self::IfcAngularDimension
+                | Self::IfcAnnotationCurveOccurrence
+                | Self::IfcAnnotationFillAreaOccurrence
+                | Self::IfcAnnotationOccurrence
+                | Self::IfcAnnotationSurface
+                | Self::IfcAnnotationSurfaceOccurrence
+                | Self::IfcAnnotationSymbolOccurrence
+                | Self::IfcAnnotationTextOccurrence
+                | Self::IfcAppliedValueRelationship
+                | Self::IfcApprovalActorRelationship
+                | Self::IfcApprovalPropertyRelationship
+                | Self::IfcBezierCurve
+                | Self::IfcBuildingElementComponent
+                | Self::IfcCalendarDate
+                | Self::IfcChamferEdgeFeature
+                | Self::IfcClassificationItem
+                | Self::IfcClassificationItemRelationship
+                | Self::IfcClassificationNotation
+                | Self::IfcClassificationNotationFacet
+                | Self::IfcCondition
+                | Self::IfcConditionCriterion
+                | Self::IfcConnectionPortGeometry
+                | Self::IfcConstraintAggregationRelationship
+                | Self::IfcConstraintClassificationRelationship
+                | Self::IfcConstraintRelationship
+                | Self::IfcCoordinatedUniversalTimeOffset
+                | Self::IfcCraneRailAShapeProfileDef
+                | Self::IfcCraneRailFShapeProfileDef
+                | Self::IfcDateAndTime
+                | Self::IfcDefinedSymbol
+                | Self::IfcDiameterDimension
+                | Self::IfcDimensionCalloutRelationship
+                | Self::IfcDimensionCurve
+                | Self::IfcDimensionCurveDirectedCallout
+                | Self::IfcDimensionCurveTerminator
+                | Self::IfcDimensionPair
+                | Self::IfcDocumentElectronicFormat
+                | Self::IfcDraughtingCallout
+                | Self::IfcDraughtingCalloutRelationship
+                | Self::IfcDraughtingPreDefinedTextFont
+                | Self::IfcEdgeFeature
+                | Self::IfcElectricDistributionPoint
+                | Self::IfcElectricHeaterType
+                | Self::IfcElectricalBaseProperties
+                | Self::IfcElectricalCircuit
+                | Self::IfcElectricalElement
+                | Self::IfcEnergyProperties
+                | Self::IfcEnvironmentalImpactValue
+                | Self::IfcEquipmentElement
+                | Self::IfcEquipmentStandard
+                | Self::IfcExtendedMaterialProperties
+                | Self::IfcExternallyDefinedSymbol
+                | Self::IfcFillAreaStyleTileSymbolWithStyle
+                | Self::IfcFluidFlowProperties
+                | Self::IfcFuelProperties
+                | Self::IfcFurnitureStandard
+                | Self::IfcGasTerminalType
+                | Self::IfcGeneralMaterialProperties
+                | Self::IfcGeneralProfileProperties
+                | Self::IfcHygroscopicMaterialProperties
+                | Self::IfcLinearDimension
+                | Self::IfcLocalTime
+                | Self::IfcMechanicalConcreteMaterialProperties
+                | Self::IfcMechanicalMaterialProperties
+                | Self::IfcMechanicalSteelMaterialProperties
+                | Self::IfcMove
+                | Self::IfcOneDirectionRepeatFactor
+                | Self::IfcOpticalMaterialProperties
+                | Self::IfcOrderAction
+                | Self::IfcPreDefinedDimensionSymbol
+                | Self::IfcPreDefinedPointMarkerSymbol
+                | Self::IfcPreDefinedSymbol
+                | Self::IfcPreDefinedTerminatorSymbol
+                | Self::IfcProductsOfCombustionProperties
+                | Self::IfcProjectOrderRecord
+                | Self::IfcProjectionCurve
+                | Self::IfcPropertyConstraintRelationship
+                | Self::IfcRadiusDimension
+                | Self::IfcRationalBezierCurve
+                | Self::IfcReferencesValueDocument
+                | Self::IfcRelAssignsTasks
+                | Self::IfcRelAssignsToProjectOrder
+                | Self::IfcRelAssociatesAppliedValue
+                | Self::IfcRelAssociatesProfileProperties
+                | Self::IfcRelConnectsStructuralElement
+                | Self::IfcRelInteractionRequirements
+                | Self::IfcRelOccupiesSpaces
+                | Self::IfcRelOverridesProperties
+                | Self::IfcRelSchedulesCostItems
+                | Self::IfcRelaxation
+                | Self::IfcRibPlateProfileProperties
+                | Self::IfcRoundedEdgeFeature
+                | Self::IfcScheduleTimeControl
+                | Self::IfcServiceLife
+                | Self::IfcServiceLifeFactor
+                | Self::IfcSoundProperties
+                | Self::IfcSoundValue
+                | Self::IfcSpaceProgram
+                | Self::IfcSpaceThermalLoadProperties
+                | Self::IfcStructuralLinearActionVarying
+                | Self::IfcStructuralPlanarActionVarying
+                | Self::IfcStructuralProfileProperties
+                | Self::IfcStructuralSteelProfileProperties
+                | Self::IfcStructuredDimensionCallout
+                | Self::IfcSymbolStyle
+                | Self::IfcTerminatorSymbol
+                | Self::IfcTextStyleWithBoxCharacteristics
+                | Self::IfcThermalMaterialProperties
+                | Self::IfcTimeSeriesReferenceRelationship
+                | Self::IfcTimeSeriesSchedule
+                | Self::IfcTwoDirectionRepeatFactor
+                | Self::IfcVertexBasedTextureMap
+                | Self::IfcWaterProperties
+                | Self::IfcCircularArcSegment2D
+                | Self::IfcCurveSegment2D
+                | Self::IfcDistanceExpression
+                | Self::IfcLineSegment2D
+                | Self::IfcOrientationExpression
+                | Self::IfcTransitionCurveSegment2D
+                | Self::IfcAlignment2DHorizontal
+                | Self::IfcAlignment2DHorizontalSegment
+                | Self::IfcAlignment2DSegment
+                | Self::IfcAlignment2DVerSegCircularArc
+                | Self::IfcAlignment2DVerticalSegment
+                | Self::IfcAlignment2DVerSegLine
+                | Self::IfcAlignment2DVerSegParabolicArc
+                | Self::IfcAlignment2DVertical
+                | Self::IfcAlignmentCurve
+                | Self::Unknown(_)
+        )
+    }
 }
 
 /// Every entity type this schema defines, in declaration order.

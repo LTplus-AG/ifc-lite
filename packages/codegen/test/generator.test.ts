@@ -7,7 +7,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateFromSchema } from '../src/generator.js';
@@ -85,6 +86,38 @@ describe('generateFromSchema — CRLF line endings (#4220)', () => {
       rmSync(lfOut, { recursive: true, force: true });
       rmSync(crlfOut, { recursive: true, force: true });
     }
+  });
+});
+
+describe('generateFromSchema — crate-private Rust output (#4203)', () => {
+  let outputDir: string;
+  const hasRustc = spawnSync('rustc', ['--version'], { stdio: 'ignore' }).status === 0;
+
+  afterEach(() => {
+    if (outputDir) rmSync(outputDir, { recursive: true, force: true });
+  });
+
+  it.skipIf(!hasRustc)('exports generated type IDs to sibling Rust modules', () => {
+    outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-private-rust-'));
+    generateFromSchema('SCHEMA TEST; ENTITY IfcWall; END_ENTITY; END_SCHEMA;', outputDir, {
+      rust: true,
+      rustDir: 'generated',
+      rustCratePrivate: true,
+      skipCollisionCheck: true,
+    });
+
+    const probe = join(outputDir, 'probe.rs');
+    const executable = join(outputDir, process.platform === 'win32' ? 'probe.exe' : 'probe');
+    writeFileSync(probe, [
+      'mod generated;',
+      'mod sibling {',
+      '    pub fn wall_type_id() -> u32 { crate::generated::IFCWALL }',
+      '}',
+      'fn main() { assert_ne!(sibling::wall_type_id(), 0); }',
+    ].join('\n'));
+
+    execFileSync('rustc', [probe, '--edition=2021', '-o', executable]);
+    execFileSync(executable);
   });
 });
 

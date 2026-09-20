@@ -33,6 +33,8 @@ export interface GeneratorOptions {
   rust?: boolean;
   /** Rust output directory (relative to outputDir or absolute) */
   rustDir?: string;
+  /** Keep generated Rust types visible only inside their consuming crate. */
+  rustCratePrivate?: boolean;
   /** Additional EXPRESS files whose entity names extend the Rust IfcType universe. */
   rustSupplementalSchemaPaths?: string[];
   /** Skip type ID collision check */
@@ -75,7 +77,11 @@ export function generateFromSchema(
         ...(options.rustSupplementalSchemaPaths ?? []).map((path) =>
           parseExpressSchema(readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n'))
         ),
-        entityCatalogSchema('IFC4_FAMILY', ENTITIES_IFC4, IFC_DATA_TYPES),
+        // The IFC4-family catalog widens the CANONICAL exact-name universe
+        // (#4203); a crate-private per-schema registry is exactly its own
+        // schema and must not be widened, or `attribute_names_for_schema`
+        // could answer for a class the declared FILE_SCHEMA never knew.
+        ...(options.rustCratePrivate ? [] : [entityCatalogSchema('IFC4_FAMILY', ENTITIES_IFC4, IFC_DATA_TYPES)]),
       ]
     : [];
 
@@ -166,7 +172,7 @@ export * from './serializers.js';
   // Generate Rust code if requested
   if (options.rust) {
     console.log('\n🦀 Generating Rust code...');
-    const rustCode = generateRust(schema, rustSupplementalSchemas);
+    const rustCode = generateRust(schema, rustSupplementalSchemas, options.rustCratePrivate);
     // Use absolute path directly, or join relative path with outputDir
     const rustDir = options.rustDir
       ? isAbsolute(options.rustDir)
@@ -196,8 +202,7 @@ export * from './serializers.js';
 mod type_ids;
 mod schema;
 
-pub use type_ids::*;
-pub use schema::*;
+${options.rustCratePrivate ? '// The full generated ID universe is intentionally available to sibling modules.\n#[allow(unused_imports)]\npub(crate) use type_ids::*;\n' : 'pub use type_ids::*;\n'}${options.rustCratePrivate ? 'pub(crate)' : 'pub'} use schema::*;
 `;
     writeFileSync(`${rustDir}/mod.rs`, modContent);
     console.log(`  ✓ ${rustDir}/mod.rs`);

@@ -180,6 +180,31 @@ impl IfcType {
 }
 ```
 
+#### Schema-aware attribute names
+
+Use the file's declared schema when positional attribute names must match the
+source STEP record. The helper is re-exported from `ifc_lite_core`; entity names
+are case-insensitive, while returned EXPRESS attribute names retain their exact
+PascalCase spelling.
+
+```rust
+pub fn attribute_names_for_schema(
+    file_schema: &str,
+    entity_name: &str,
+) -> Option<&'static [&'static str]>;
+```
+
+`file_schema` accepts the bundled IFC2X3, IFC4, and IFC4X3 family labels,
+including standard `_ADDn`, `_TCn`, and `_RCn` revision suffixes. Revision
+suffixes are normalized to one fixed bundled registry per family (the IFC4
+registry is generated from `IFC4_ADD2_TC1`), so other accepted suffixes are
+family-level approximations and may not match the source file's positional
+attributes. It returns `None` for an unknown schema family or an entity that
+the selected registry does not declare; an entity declared with no attributes
+returns `Some(&[])`. Do not fall back to `IfcType::attribute_names()` after
+`None`, because that method describes the canonical generated IFC4X3 schema
+and could mislabel an older record's positional values.
+
 #### has_geometry_by_name
 
 ```rust

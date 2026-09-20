@@ -33,6 +33,46 @@ use std::sync::Arc;
 // walk the same chain; the constant's own docs say why they must agree.
 use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
+/// The nearest f32 that does not shrink the interval: rounds a minimum down
+/// and a maximum up, so an f32 box always encloses the f64 geometry.
+fn enclosing_f32(value: f64, is_min: bool) -> f32 {
+    let rounded = value as f32;
+    match (is_min, (rounded as f64).partial_cmp(&value)) {
+        (true, Some(std::cmp::Ordering::Greater)) => rounded.next_down(),
+        (false, Some(std::cmp::Ordering::Less)) => rounded.next_up(),
+        _ => rounded,
+    }
+}
+
+fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
+    let mut bounds = [
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    ];
+    for point in mesh.positions.chunks_exact(3) {
+        for axis in 0..3 {
+            bounds[axis] = bounds[axis].min(point[axis]);
+            bounds[axis + 3] = bounds[axis + 3].max(point[axis]);
+        }
+    }
+    bounds
+}
+
+fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
+    if let Some(bounds) = accumulator {
+        for axis in 0..3 {
+            bounds[axis] = bounds[axis].min(incoming[axis]);
+            bounds[axis + 3] = bounds[axis + 3].max(incoming[axis + 3]);
+        }
+    } else {
+        *accumulator = Some(incoming);
+    }
+}
+
 impl GeometryRouter {
     /// Process building element (IfcWall, IfcBeam, etc.) into mesh
     /// Follows the representation chain:
@@ -88,6 +128,7 @@ impl GeometryRouter {
 
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
+        let mut captured_local_bounds: Option<[f32; 6]> = None;
 
         // Instancing: an element is cleanly shareable only when its whole body is
         // exactly ONE representation item that itself carried instance metadata
@@ -109,9 +150,21 @@ impl GeometryRouter {
 
             // Process each representation item
             for item in items {
-                let mesh = if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                let mesh = if element.ifc_type == IfcType::IfcAnnotation
+                    && item.ifc_type == IfcType::IfcAnnotationFillArea
+                {
                     self.process_annotation_fill(&item, decoder)?
-                } else { self.process_representation_item(&item, decoder)? };
+                } else if let Some(mesh) =
+                    self.process_raw_face_for_element(&item, element, decoder)?
+                {
+                    mesh
+                } else {
+                    self.process_representation_item(&item, decoder)?
+                };
+                if !mesh.positions.is_empty() {
+                    let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
+                    union_bounds(&mut captured_local_bounds, bounds);
+                }
                 if instancing_enabled() && !mesh.positions.is_empty() {
                     instanceable_item_count += 1;
                     single_instance_meta = if instanceable_item_count == 1 {
@@ -129,6 +182,7 @@ impl GeometryRouter {
         if instancing_enabled() {
             combined_mesh.instance_meta = single_instance_meta;
         }
+        combined_mesh.local_bounds = captured_local_bounds;
 
         // Source-triangle hygiene before placement (rigid transforms preserve
         // degeneracy, while the element-local frame retains more f32 precision).
@@ -229,8 +283,16 @@ impl GeometryRouter {
 
             // Process each representation item, preserving geometry IDs
             for item in items {
-                if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                if element.ifc_type == IfcType::IfcAnnotation
+                    && item.ifc_type == IfcType::IfcAnnotationFillArea
+                {
                     sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
+                    continue;
+                }
+                if let Some(mesh) = self.process_raw_face_for_element(&item, element, decoder)? {
+                    if !mesh.is_empty() {
+                        sub_meshes.add(item.id, mesh);
+                    }
                     continue;
                 }
                 self.collect_submeshes_from_item(
@@ -603,6 +665,105 @@ impl GeometryRouter {
         result
     }
 
+    /// Tessellate a direct structural face in an element-local RTC frame.
+    ///
+    /// The face bounds are still f64 here, so this is the last point where a
+    /// national-grid coordinate can be rebased without first collapsing to
+    /// f32. RTC is world-space; subtracting it directly from object-space
+    /// bounds is only correct for an identity placement. Pull the RTC vector
+    /// through the placement's inverse linear transform so the later placement
+    /// produces `M(p) - rtc` for rotated/scaled structural members as well.
+    fn process_raw_face_for_element(
+        &self,
+        item: &DecodedEntity,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Mesh>> {
+        if !matches!(
+            item.ifc_type,
+            IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace
+        ) || !self.has_rtc_offset()
+            || !self.representation_item_uses_raw_large_coordinates(item, decoder)
+        {
+            return Ok(None);
+        }
+
+        let mut placement = self.get_placement_transform_from_element(element, decoder)?;
+        self.scale_transform(&mut placement);
+        let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
+        let Some(inverse) = linear.try_inverse() else {
+            return Ok(None);
+        };
+        let rtc_object_meters = inverse
+            * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
+        let rtc_file_units = (
+            rtc_object_meters.x / self.unit_scale,
+            rtc_object_meters.y / self.unit_scale,
+            rtc_object_meters.z / self.unit_scale,
+        );
+        // Any processor for this type — built-in or a registered override —
+        // gets the f64 RTC hook first, so it can rebase BEFORE narrowing to
+        // f32. An override without the hook falls back to its ordinary
+        // `process` plus an f32 subtraction below, which cannot recover
+        // sub-ULP detail at national-grid magnitudes (#5026 review).
+        let processor = self
+            .processors
+            .get(&item.ifc_type, self.schema)
+            .expect("face processor is registered for this type");
+        let (result, rtc_applied_by_processor) = match processor.process_in_rtc_frame(
+            item,
+            decoder,
+            self.schema,
+            self.tessellation_quality,
+            rtc_file_units,
+        ) {
+            Some(result) => (result, true),
+            None => (
+                processor.process(item, decoder, self.schema, self.tessellation_quality),
+                false,
+            ),
+        };
+        if crate::processors::take_curve_capped() {
+            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+        }
+        let mut mesh = result?;
+        mesh.validate_indices();
+        self.scale_mesh(&mut mesh);
+        if mesh.positions.is_empty() {
+            return Ok(Some(mesh));
+        }
+        if !rtc_applied_by_processor {
+            mesh.local_bounds = Some(mesh_bounds(&mesh));
+            for position in mesh.positions.chunks_exact_mut(3) {
+                position[0] = (position[0] as f64 - rtc_object_meters.x) as f32;
+                position[1] = (position[1] as f64 - rtc_object_meters.y) as f32;
+                position[2] = (position[2] as f64 - rtc_object_meters.z) as f32;
+            }
+            mesh.rtc_applied = true;
+        } else {
+            // Public bounds stay in the pre-RTC object frame (the contract
+            // `local_to_world` pairs with), reconstituted from the rebased
+            // f32 positions in f64 and then rounded OUTWARD to the enclosing
+            // f32 box: at a 5,000,000 m offset the f32 ULP is 0.5 m, so a
+            // 0.125 m face would otherwise round both faces onto one value
+            // and publish a zero extent (#5026 review).
+            let rebased = mesh_bounds(&mesh);
+            let offset = [rtc_object_meters.x, rtc_object_meters.y, rtc_object_meters.z];
+            let mut bounds = [0.0f32; 6];
+            for axis in 0..3 {
+                let min = rebased[axis] as f64 + offset[axis];
+                let max = rebased[axis + 3] as f64 + offset[axis];
+                bounds[axis] = enclosing_f32(min, true);
+                bounds[axis + 3] = enclosing_f32(max, false);
+                if max > min && bounds[axis + 3] <= bounds[axis] {
+                    bounds[axis + 3] = bounds[axis].next_up();
+                }
+            }
+            mesh.local_bounds = Some(bounds);
+        }
+        Ok(Some(mesh))
+    }
+
     fn process_representation_item_body(
         &self,
         item: &DecodedEntity,
@@ -744,6 +905,35 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
+        // Direct structural faces can carry absolute georeferenced bounds.
+        // Rebase their f64 loop coordinates before the planar tessellator
+        // narrows them to f32; subtracting after processor output is too late.
+        if matches!(item.ifc_type, IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace)
+            && !self.processors.has_override(item.ifc_type)
+            && self.has_rtc_offset()
+            && self.representation_item_uses_raw_large_coordinates(item, decoder)
+        {
+            let processor = crate::processors::IfcFaceSurfaceProcessor::new();
+            let rtc_file_units = (
+                self.rtc_offset.0 / self.unit_scale,
+                self.rtc_offset.1 / self.unit_scale,
+                self.rtc_offset.2 / self.unit_scale,
+            );
+            let mut mesh = processor.process_with_rtc(
+                item,
+                decoder,
+                self.tessellation_quality,
+                rtc_file_units,
+            )?;
+            mesh.validate_indices();
+            self.scale_mesh(&mut mesh);
+            if !mesh.positions.is_empty() {
+                let cached = self.get_or_cache_by_hash(mesh);
+                return Ok((*cached).clone());
+            }
+            return Ok(mesh);
+        }
+
         // For raw world-coordinate FacetedBrep with RTC: subtract RTC from f64
         // coordinates BEFORE f32 conversion. Do not use this path for ordinary
         // local Breps whose large position comes from IfcObjectPlacement; those

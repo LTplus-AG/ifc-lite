@@ -896,6 +896,202 @@ END-ISO-10303-21;
     );
 }
 
+/// #4203: a class shared by schema versions must use the declared source
+/// schema's positional names, not the canonical IFC4X3 enum's names.
+#[test]
+fn attribute_export_uses_the_source_schema_for_a_shared_entity() {
+    fn rows(schema: &str, attributes: &str) -> Vec<EntityRow> {
+        let ifc = format!(
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,{attributes});\nENDSEC;\nEND-ISO-10303-21;\n"
+        );
+        rows_with(&ifc, &ModelOptions::default().with_attributes(true))
+    }
+
+    let ifc2x3 = rows("IFC2X3", "'legacy-tag'");
+    let ifc4 = rows("IFC4", "'ifc4-tag',.NOTDEFINED.");
+    let ifc2x3_names: Vec<&str> = ifc2x3[0].attributes.iter().map(|p| p.name.as_str()).collect();
+    let ifc4_names: Vec<&str> = ifc4[0].attributes.iter().map(|p| p.name.as_str()).collect();
+
+    assert_eq!(ifc2x3_names, vec!["Tag"]);
+    assert_eq!(ifc4_names, vec!["Tag", "PredefinedType"]);
+}
+
+/// #4203: a valid FILE_SCHEMA population may list more than one identifier.
+/// An unsupported vendor identifier must not hide a later bundled schema and
+/// silently drop every positional attribute from export.
+#[test]
+fn attribute_export_uses_the_first_supported_declared_schema() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('VENDOR_SCHEMA','IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,'wall-tag',.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(ifc, &ModelOptions::default().with_attributes(true));
+    let names: Vec<_> = rows[0].attributes.iter().map(|value| value.name.as_str()).collect();
+
+    assert_eq!(names, vec!["Tag", "PredefinedType"]);
+}
+
+/// #4203: the data registry includes IFC4.1 transitional entities which are
+/// absent from both pinned IFC4 ADD2 and IFC4X3 EXPRESS inputs. Preserve their
+/// existing positional labels until a matching EXPRESS source is bundled.
+#[test]
+fn attribute_export_preserves_transitional_ifc4_metadata() {
+    let entity = DecodedEntity::new(
+        1,
+        IfcType::from_str("IFCALIGNMENTCURVE"),
+        vec![
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::String("alignment-tag".to_string()),
+        ],
+    );
+    let attributes = render_attributes(&entity, "IFCALIGNMENTCURVE", Some("IFC4X1"));
+
+    assert_eq!(attributes.len(), 1);
+    assert_eq!(attributes[0].name, "Tag");
+    assert_eq!(attributes[0].value, "alignment-tag");
+}
+
+/// #4996 review: IFC4.1/4.2 `IfcAlignment` carried `Axis` at slot 7 ahead of
+/// `PredefinedType`; the IFC4X3 layout dropped `Axis`, and the bundled IFC4
+/// registry never had the class, so without an explicit transitional layout
+/// the slot-8 enum was silently dropped.
+#[test]
+fn attribute_export_preserves_transitional_ifc4_alignment_layout() {
+    for schema in ["IFC4X1", "IFC4X2"] {
+        let entity = DecodedEntity::new(
+            1,
+            IfcType::from_str("IFCALIGNMENT"),
+            vec![
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::EntityRef(7),
+                ifc_lite_core::AttributeValue::Enum("USERDEFINED".to_string()),
+            ],
+        );
+        let attributes = render_attributes(&entity, "IFCALIGNMENT", Some(schema));
+        let names: Vec<_> = attributes.iter().map(|value| value.name.as_str()).collect();
+        assert_eq!(names, vec!["PredefinedType"], "{schema}: Axis is a reference (omitted), PredefinedType is slot 8");
+        assert_eq!(attributes[0].value, "USERDEFINED");
+    }
+}
+
+/// #4203: IFC4.1 and IFC4.2 retained ordinary IFC4 entities, so those common
+/// entities keep their IFC4 slots even though neither transitional registry is
+/// bundled independently.
+#[test]
+fn attribute_export_uses_ifc4_layout_for_transitional_ifc4_entities() {
+    for schema in ["IFC4X1", "IFC4X2"] {
+        let ifc = format!("ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('{schema}'));
+ENDSEC;
+DATA;
+#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,'wall-tag',.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;");
+        let rows = rows_with(&ifc, &ModelOptions::default().with_attributes(true));
+        let names: Vec<_> = rows[0].attributes.iter().map(|value| value.name.as_str()).collect();
+
+        assert_eq!(names, vec!["Tag", "PredefinedType"], "{schema}");
+    }
+}
+
+/// #4203 review: IFC4.2 introduced bridge classes which are absent from IFC4,
+/// while IFC4.3 later inserted `UsageType` into the facility-part hierarchy.
+#[test]
+fn attribute_export_preserves_ifc4x2_bridge_slots() {
+    for entity in ["IFCBRIDGE", "IFCBRIDGEPART"] {
+        let ifc = format!("ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X2'));
+ENDSEC;
+DATA;
+#1={entity}('bridge-guid',$,'Bridge',$,$,$,$,'Long bridge',.ELEMENT.,.GIRDER.);
+ENDSEC;
+END-ISO-10303-21;");
+        let rows = rows_with(&ifc, &ModelOptions::default().with_attributes(true));
+        let attributes: Vec<_> = rows[0].attributes.iter()
+            .map(|value| (value.name.as_str(), value.value.as_str()))
+            .collect();
+
+        assert_eq!(attributes, vec![
+            ("LongName", "Long bridge"),
+            ("CompositionType", "ELEMENT"),
+            ("PredefinedType", "GIRDER"),
+        ], "{entity}");
+    }
+}
+
+/// #4203: transitional IFC4.1 metadata must not become a fallback schema for
+/// future or otherwise unsupported declarations.
+#[test]
+fn attribute_export_does_not_apply_ifc4x1_metadata_to_ifc5() {
+    let entity = DecodedEntity::new(
+        1,
+        IfcType::from_str("IFCALIGNMENTCURVE"),
+        vec![
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::Null,
+            ifc_lite_core::AttributeValue::String("must-not-be-labelled".to_string()),
+        ],
+    );
+
+    assert!(render_attributes(&entity, "IFCALIGNMENTCURVE", Some("IFC5")).is_empty());
+}
+
+/// #4203: positional labels require an explicit source schema. The STEP writer
+/// may default a missing declaration to IFC4, but attribute export must not
+/// silently apply IFC4 names to slots whose schema is unknown.
+#[test]
+fn attribute_export_fails_closed_without_a_declared_schema() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-4203'),'2;1');
+ENDSEC;
+DATA;
+#1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,'unknown-slot',.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(ifc, &ModelOptions::default().with_attributes(true));
+
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].attributes.is_empty());
+}
+
+/// #4203: when a known canonical IFC4X3 entity is absent from the declared
+/// older schema, its canonical names must not label that older record's slots.
+#[test]
+fn attribute_export_does_not_borrow_names_from_a_newer_schema() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCALIGNMENT('alignment-guid',$,'Alignment',$,$,$,$,.ROAD.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let rows = rows_with(
+        ifc,
+        &ModelOptions::default().with_attributes(true),
+    );
+
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].attributes.is_empty());
+}
+
 /// A lowercase STEP keyword must resolve the same legacy attribute names as
 /// its uppercase form. `legacy_attribute_names` used to do a case-sensitive
 /// exact match while `legacy_aware_ifc_type` (used for the row's DISPLAY

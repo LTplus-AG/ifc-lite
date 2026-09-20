@@ -9,7 +9,7 @@ use crate::{
 
 use super::{
     state::{
-        CaptureOwner, FlowInput, InvertInput, PartInput, PipeBuilder, PositionCapture,
+        CaptureOwner, FlowInput, FlowKind, InvertInput, PartInput, PipeBuilder, PositionCapture,
         PositionInput, RawUnits, StructureBuilder,
     },
     PipeParser,
@@ -310,6 +310,11 @@ impl PipeParser<'_> {
             )
         };
         let flow = FlowInput {
+            kind: if structure_flow {
+                FlowKind::Structure
+            } else {
+                FlowKind::Pipe
+            },
             source_id,
             source_path,
             flow_in: attr(attributes, "flowIn").map(str::to_owned),
@@ -318,12 +323,21 @@ impl PipeParser<'_> {
             properties,
         };
         if structure_flow {
-            self.structure
+            let structure = self
+                .structure
                 .as_mut()
-                .expect("structure flow has structure")
-                .flow = Some(flow);
+                .expect("structure flow has structure");
+            if structure.flow.replace(flow).is_some() {
+                structure
+                    .invalid_reason
+                    .get_or_insert_with(|| "duplicate StructFlow".to_owned());
+            }
         } else {
-            self.pipe.as_mut().expect("pipe flow has pipe").flow = Some(flow);
+            let pipe = self.pipe.as_mut().expect("pipe flow has pipe");
+            if pipe.flow.replace(flow).is_some() {
+                pipe.invalid_reason
+                    .get_or_insert_with(|| "duplicate PipeFlow".to_owned());
+            }
         }
         Ok(())
     }

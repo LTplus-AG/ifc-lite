@@ -298,7 +298,7 @@ fn issue_5047_refuses_nested_center_text_empty_flows_and_nonfinite_scaled_measur
     assert!(parsed
         .refusals
         .iter()
-        .any(|item| item.message.contains("flow record is missing")));
+        .any(|item| item.message.contains("PipeFlow requires flowIn")));
     let scaled_overflow = document(
         r#"<Metric linearUnit="kilometer"/>"#,
         r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2" length="1e308"><CircPipe diameter="1"/></Pipe>"#,
@@ -354,4 +354,45 @@ fn issue_5047_rejects_invalid_network_types_and_honors_zero_center_limit() {
         .code,
         LandXmlDiagnosticCode::LimitExceeded
     );
+}
+
+#[test]
+fn issue_5047_distinguishes_flow_records_and_refuses_duplicates() {
+    let source = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/><PipeFlow lossIn="1"/></Pipe>"#,
+    );
+    let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("local flow refusal");
+    assert!(parsed.networks[0].pipes[0].flow.is_none());
+    assert!(parsed
+        .refusals
+        .iter()
+        .any(|refusal| refusal.message.contains("PipeFlow requires flowIn")));
+
+    let duplicate = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/><PipeFlow flowIn="1"/><PipeFlow flowIn="2"/></Pipe>"#,
+    );
+    let parsed = parse_landxml_pipe_networks(duplicate.as_bytes()).expect("duplicate is local");
+    assert!(parsed.networks[0].pipes.is_empty());
+    assert!(parsed
+        .refusals
+        .iter()
+        .any(|refusal| refusal.message.contains("duplicate PipeFlow")));
+
+    let invalid_structure_flow = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/></Pipe>"#,
+    )
+    .replace(
+        "<StructFlow lossIn=\"0.1\" lossOut=\"0.2\"/>",
+        "<StructFlow flowIn=\"1\"/>",
+    );
+    let parsed = parse_landxml_pipe_networks(invalid_structure_flow.as_bytes())
+        .expect("invalid structure flow is local");
+    assert!(parsed.networks[0].structures[0].flow.is_none());
+    assert!(parsed
+        .refusals
+        .iter()
+        .any(|refusal| refusal.message.contains("StructFlow requires")));
 }

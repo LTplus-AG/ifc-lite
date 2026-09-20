@@ -90,12 +90,18 @@ pub(super) struct InvertInput {
 }
 
 pub(super) struct FlowInput {
+    pub(super) kind: FlowKind,
     pub(super) source_id: LandXmlSourceId,
     pub(super) source_path: String,
     pub(super) flow_in: Option<String>,
     pub(super) loss_in: Option<String>,
     pub(super) loss_out: Option<String>,
     pub(super) properties: LandXmlPipeProperties,
+}
+
+pub(super) enum FlowKind {
+    Structure,
+    Pipe,
 }
 
 pub(super) enum CaptureOwner {

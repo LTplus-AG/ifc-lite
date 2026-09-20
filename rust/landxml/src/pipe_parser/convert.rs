@@ -7,7 +7,7 @@ use crate::{
     LandXmlPipeProperties, LandXmlPipeUnits, LandXmlStructurePart,
 };
 
-use super::state::{FlowInput, PartInput, PositionInput, RawUnits};
+use super::state::{FlowInput, FlowKind, PartInput, PositionInput, RawUnits};
 
 pub(super) fn units(input: &RawUnits) -> Result<LandXmlPipeUnits, String> {
     let linear_unit = required_unit(&input.properties, "linearUnit")?;
@@ -230,8 +230,14 @@ pub(super) fn flow(input: FlowInput, units: &LandXmlPipeUnits) -> Result<LandXml
     let flow_in = optional_number(input.flow_in.as_deref(), "flowIn")?;
     let loss_in = optional_number(input.loss_in.as_deref(), "lossIn")?;
     let loss_out = optional_number(input.loss_out.as_deref(), "lossOut")?;
-    if flow_in.is_none() && loss_in.is_none() && loss_out.is_none() {
-        return Err("flow record is missing flowIn, lossIn, and lossOut".to_owned());
+    match input.kind {
+        FlowKind::Pipe if flow_in.is_none() || loss_in.is_some() || loss_out.is_some() => {
+            return Err("PipeFlow requires flowIn and does not accept structure losses".to_owned());
+        }
+        FlowKind::Structure if flow_in.is_some() || loss_in.is_none() || loss_out.is_none() => {
+            return Err("StructFlow requires lossIn and lossOut".to_owned());
+        }
+        _ => {}
     }
     Ok(LandXmlPipeFlow {
         flow_in,

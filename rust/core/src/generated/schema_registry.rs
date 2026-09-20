@@ -18,6 +18,17 @@ pub enum SchemaVersion {
     Ifc4x3,
 }
 
+/// Schema-local facts about one declared entity.
+///
+/// These facts come from the independently generated registry for the source
+/// schema, not from the public merged type universe (#4203).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SchemaEntityInfo {
+    pub name: &'static str,
+    pub parent: Option<&'static str>,
+    pub is_abstract: bool,
+}
+
 impl SchemaVersion {
     /// Resolve a STEP `FILE_SCHEMA` label to a bundled schema family.
     ///
@@ -47,6 +58,28 @@ impl SchemaVersion {
             Self::Ifc4 => attribute_names_ifc4(entity_name),
             Self::Ifc4x3 => attribute_names_ifc4x3(entity_name),
         }
+    }
+
+    /// Membership, direct parent, and abstractness from this schema's EXPRESS
+    /// declaration. Unknown names fail closed.
+    pub fn entity_info(self, entity_name: &str) -> Option<SchemaEntityInfo> {
+        match self {
+            Self::Ifc2x3 => entity_info_ifc2x3(entity_name),
+            Self::Ifc4 => entity_info_ifc4(entity_name),
+            Self::Ifc4x3 => entity_info_ifc4x3(entity_name),
+        }
+    }
+
+    /// Whether `child` inherits from `parent` in this schema's own graph.
+    pub fn is_subtype_of(self, child: &str, parent: &str) -> bool {
+        let mut current = self.entity_info(child);
+        while let Some(info) = current {
+            if info.name.eq_ignore_ascii_case(parent) {
+                return true;
+            }
+            current = info.parent.and_then(|name| self.entity_info(name));
+        }
+        false
     }
 }
 
@@ -80,12 +113,38 @@ fn attribute_names_ifc2x3(name: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+fn entity_info_ifc2x3(name: &str) -> Option<SchemaEntityInfo> {
+    let ty = super::ifc2x3::IfcType::from_str(name);
+    if matches!(ty, super::ifc2x3::IfcType::Unknown(_)) {
+        None
+    } else {
+        Some(SchemaEntityInfo {
+            name: ty.as_str(),
+            parent: ty.parent().map(|parent| parent.as_str()),
+            is_abstract: ty.is_abstract(),
+        })
+    }
+}
+
 fn attribute_names_ifc4(name: &str) -> Option<&'static [&'static str]> {
     let ty = super::ifc4::IfcType::from_str(name);
     if matches!(ty, super::ifc4::IfcType::Unknown(_)) {
         None
     } else {
         Some(ty.attribute_names())
+    }
+}
+
+fn entity_info_ifc4(name: &str) -> Option<SchemaEntityInfo> {
+    let ty = super::ifc4::IfcType::from_str(name);
+    if matches!(ty, super::ifc4::IfcType::Unknown(_)) {
+        None
+    } else {
+        Some(SchemaEntityInfo {
+            name: ty.as_str(),
+            parent: ty.parent().map(|parent| parent.as_str()),
+            is_abstract: ty.is_abstract(),
+        })
     }
 }
 
@@ -102,10 +161,33 @@ fn attribute_names_ifc4x3(name: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+fn entity_info_ifc4x3(name: &str) -> Option<SchemaEntityInfo> {
+    let ty = super::schema::IfcType::from_str(name);
+    if !ty.declared_by_canonical_schema() {
+        return None;
+    }
+    Some(SchemaEntityInfo {
+        name: ty.as_str(),
+        parent: ty.parent().map(|parent| parent.as_str()),
+        is_abstract: ty.is_abstract(),
+    })
+}
+
 /// Attribute names for an entity in the source schema named by `FILE_SCHEMA`.
 pub fn attribute_names_for_schema(
     file_schema: &str,
     entity_name: &str,
 ) -> Option<&'static [&'static str]> {
     SchemaVersion::from_file_schema(file_schema)?.attribute_names(entity_name)
+}
+
+/// Schema-local facts for an entity in the source schema named by
+/// `FILE_SCHEMA`.
+pub fn entity_info_for_schema(file_schema: &str, entity_name: &str) -> Option<SchemaEntityInfo> {
+    SchemaVersion::from_file_schema(file_schema)?.entity_info(entity_name)
+}
+
+/// Schema-local inheritance test for a source `FILE_SCHEMA`.
+pub fn is_subtype_of_for_schema(file_schema: &str, child: &str, parent: &str) -> bool {
+    SchemaVersion::from_file_schema(file_schema).is_some_and(|schema| schema.is_subtype_of(child, parent))
 }

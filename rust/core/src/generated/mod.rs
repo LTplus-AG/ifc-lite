@@ -21,4 +21,6 @@ pub use type_ids::*;
 
 // Re-export the generated IfcType directly (this is now the canonical schema)
 pub use schema::{IfcType, ALL as IFC_TYPES};
-pub use schema_registry::attribute_names_for_schema;
+pub use schema_registry::{
+    attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, SchemaEntityInfo,
+};

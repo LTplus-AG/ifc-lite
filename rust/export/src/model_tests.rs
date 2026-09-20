@@ -978,6 +978,32 @@ END-ISO-10303-21;");
     }
 }
 
+/// #4203 review: IFC4.2 introduced bridge classes which are absent from IFC4,
+/// while IFC4.3 later inserted `UsageType` into the facility-part hierarchy.
+#[test]
+fn attribute_export_preserves_ifc4x2_bridge_slots() {
+    for entity in ["IFCBRIDGE", "IFCBRIDGEPART"] {
+        let ifc = format!("ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X2'));
+ENDSEC;
+DATA;
+#1={entity}('bridge-guid',$,'Bridge',$,$,$,$,'Long bridge',.ELEMENT.,.GIRDER.);
+ENDSEC;
+END-ISO-10303-21;");
+        let rows = rows_with(&ifc, &ModelOptions::default().with_attributes(true));
+        let attributes: Vec<_> = rows[0].attributes.iter()
+            .map(|value| (value.name.as_str(), value.value.as_str()))
+            .collect();
+
+        assert_eq!(attributes, vec![
+            ("LongName", "Long bridge"),
+            ("CompositionType", "ELEMENT"),
+            ("PredefinedType", "GIRDER"),
+        ], "{entity}");
+    }
+}
+
 /// #4203: transitional IFC4.1 metadata must not become a fallback schema for
 /// future or otherwise unsupported declarations.
 #[test]

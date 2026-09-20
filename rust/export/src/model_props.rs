@@ -71,6 +71,31 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
     "Representation",
 ];
 
+/// IFC4.2 added the facility/bridge spatial classes before IFC4.3 added
+/// `IfcFacilityPart.UsageType`. Keep the released IFC4.2 positional surface
+/// explicit so the later canonical registry cannot shift `PredefinedType`.
+fn ifc4x2_infrastructure_attribute_names(raw_type_name: &str) -> Option<&'static [&'static str]> {
+    const FACILITY: &[&str] = &[
+        "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
+        "Representation", "LongName", "CompositionType",
+    ];
+    const BRIDGE: &[&str] = &[
+        "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
+        "Representation", "LongName", "CompositionType", "PredefinedType",
+    ];
+    if raw_type_name.eq_ignore_ascii_case("IFCFACILITY")
+        || raw_type_name.eq_ignore_ascii_case("IFCFACILITYPART")
+    {
+        Some(FACILITY)
+    } else if raw_type_name.eq_ignore_ascii_case("IFCBRIDGE")
+        || raw_type_name.eq_ignore_ascii_case("IFCBRIDGEPART")
+    {
+        Some(BRIDGE)
+    } else {
+        None
+    }
+}
+
 /// Render the attributes an entity's own IFC class declares, by schema name.
 ///
 /// These are not property sets and no `IfcRelDefinesByProperties` points at
@@ -102,7 +127,10 @@ pub(super) fn render_attributes(
                 .or_else(|| {
                     super::uses_ifc4_attribute_layout(schema)
                         .then(|| {
-                            ifc_lite_core::attribute_names_for_schema("IFC4", raw_type_name)
+                            (schema.eq_ignore_ascii_case("IFC4X2"))
+                                .then(|| ifc4x2_infrastructure_attribute_names(raw_type_name))
+                                .flatten()
+                                .or_else(|| ifc_lite_core::attribute_names_for_schema("IFC4", raw_type_name))
                                 .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
                         })
                         .flatten()

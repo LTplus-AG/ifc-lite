@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/renderer": patch
+"@ifc-lite/renderer": minor
 ---
 
 Add the renderer-owned relative-to-eye precision contract used to migrate all

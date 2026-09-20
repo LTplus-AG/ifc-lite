@@ -26,6 +26,7 @@ import {
   usableOrthoSize,
 } from './camera-guards.js';
 import { CAMERA_CONSTANTS } from './constants.js';
+import { RelativeToEyeFrame } from './relative-to-eye.js';
 
 export class Camera {
   private state: CameraInternalState;
@@ -33,6 +34,8 @@ export class Camera {
   private animator: CameraAnimator;
   private projection: CameraProjection;
   private firstPerson: FirstPersonNavigator;
+  /** The sole renderer camera frame used by all RTE-capable consumers. */
+  private readonly relativeToEyeFrame = new RelativeToEyeFrame();
 
   constructor() {
     // Geometry is converted from IFC Z-up to WebGL Y-up during import
@@ -364,6 +367,15 @@ export class Camera {
 
   getViewProjMatrix(): Mat4 {
     return this.state.viewProjMatrix;
+  }
+
+  /**
+   * Return the shared RTE frame for the current camera state. GPU consumers
+   * must use this instead of deriving a second camera rebase.
+   */
+  getRelativeToEyeFrame(): RelativeToEyeFrame {
+    this.relativeToEyeFrame.update(this.state.camera.position, this.state.projMatrix, this.state.viewMatrix);
+    return this.relativeToEyeFrame;
   }
 
   getPosition(): Vec3 {

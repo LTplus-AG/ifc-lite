@@ -12,6 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { MathUtils } from './math.js';
+import { Camera } from './camera.js';
 import {
   RelativeToEyeFrame,
   RTE_FRAME_FLOATS,
@@ -42,6 +43,15 @@ function packDrawableDelta(drawable: readonly [number, number, number], camera: 
 }
 
 describe('relative-to-eye packing (#5049)', () => {
+  it('uses one Camera-owned frame instead of creating per-consumer rebases', () => {
+    const camera = new Camera();
+    camera.setPosition(5_000_000, 0, 10);
+    camera.setTarget(5_000_000, 0, 0);
+    const first = camera.getRelativeToEyeFrame();
+    const second = camera.getRelativeToEyeFrame();
+    assert.strictEqual(first, second);
+    assert.deepStrictEqual(first.getCameraWorld(), [5_000_000, 0, 10]);
+  });
   it('retains a centimetre-sized local vertex at a multi-million-metre offset', () => {
     const drawable = packDrawableDelta([5_000_000, -3_000_000, 2_000_000], [5_000_000, -3_000_000, 2_000_000]);
 

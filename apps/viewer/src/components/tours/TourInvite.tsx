@@ -12,12 +12,14 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 import { startTour } from '@/lib/tours/controller';
 import { getTour } from '@/lib/tours/registry';
 import { dismissInvite, isInviteDismissed, isTourCompleted } from '@/lib/tours/storage';
 import { useViewerStore } from '@/store';
 
 export function TourInvite() {
+  const { t } = useTranslation();
   const isMobile = useViewerStore((s) => s.isMobile);
   const [hidden, setHidden] = useState(() => {
     const welcome = getTour('welcome');
@@ -28,15 +30,15 @@ export function TourInvite() {
 
   return (
     <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-      <span>New here?</span>
+      <span>{t('tours.tourInvite.prompt')}</span>
       <button
         className="font-medium text-primary underline-offset-2 hover:underline"
         onClick={() => startTour('welcome', 'invite')}
       >
-        Take the two minute tour
+        {t('tours.tourInvite.start')}
       </button>
       <button
-        aria-label="Dismiss tour invite"
+        aria-label={t('tours.tourInvite.dismissAriaLabel')}
         className="ml-0.5 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
         onClick={() => {
           dismissInvite();

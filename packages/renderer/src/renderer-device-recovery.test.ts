@@ -61,6 +61,39 @@ describe('Renderer.recoverDevice (#4885)', () => {
     assert.strictEqual(replacementRemovals, 0, 'stale cleanup must not remove a replacement asset with the same id');
   });
 
+  it('removes a live point-cloud asset through a rebuilt { id } handle (#4885 review)', () => {
+    const renderer = new Renderer(canvas());
+    let removed: number[] = [];
+    renderer['pointCloudRenderer'] = {
+      beginAsset: () => ({ id: 41 }),
+      removeAsset: (handle: { id: number }) => { removed.push(handle.id); },
+      clear: () => {},
+    } as never;
+    renderer['refreshPlacementBounds'] = () => {};
+    const issued = renderer.beginPointCloudStream({ expressId: 7 });
+    // usePointCloudLifecycle keeps only the numeric id and rebuilds the handle for cleanup.
+    renderer.removePointCloudAsset({ id: issued.id });
+    assert.deepStrictEqual(removed, [41], 'a structurally equal handle must reach the GPU asset');
+    removed = [];
+    renderer.removePointCloudAsset({ id: issued.id });
+    assert.deepStrictEqual(removed, [], 'a second cleanup of the same id is a no-op');
+  });
+
+  it('ignores a duplicate loss report from the dead device while recovery is in flight (#4885 review)', async () => {
+    const renderer = lostRenderer();
+    const sequence = renderer['deviceLossSequence'];
+    renderer['initOnce'] = async () => {
+      renderer['pipeline'] = {} as never;
+      const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
+      device.device = {} as GPUDevice; device.context = {} as GPUCanvasContext;
+      // A guarded upload issued against the OLD device rejects late.
+      renderer['reportUploadLoss'](new Error('late rejection from the lost device'));
+    };
+    assert.deepStrictEqual(await renderer.recoverDevice(), { ok: true, omissions: [] });
+    assert.strictEqual(renderer['deviceLossSequence'], sequence, 'a duplicate report must not advance the loss sequence');
+    assert.strictEqual(renderer.isDeviceLost(), false);
+  });
+
   it('rejects a healthy renderer without touching its scene', async () => {
     const renderer = new Renderer(canvas());
     const discard = mock.method(renderer['scene'], 'discardGpuResourcesForRecovery');
@@ -289,7 +322,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
     const renderer = lostRenderer();
     renderer['initOnce'] = async () => {
       renderer['pipeline'] = {} as never;
-      renderer['handleDeviceLost']({ message: 'replacement lost', reason: 'unknown' });
+      renderer['handleDeviceLost']({ message: 'replacement lost', reason: 'unknown' }, { fromDevicePromise: true });
     };
     const error = mock.method(console, 'error', () => undefined);
     try {
@@ -327,7 +360,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
       queueMicrotask(() => renderer['handleDeviceLost']({
         message: 'replacement lost during restore',
         reason: 'unknown',
-      }));
+      }, { fromDevicePromise: true }));
     };
     const error = mock.method(console, 'error', () => undefined);
     const warn = mock.method(console, 'warn', () => undefined);

@@ -133,20 +133,29 @@ fn resolve_edge_points(
 }
 
 fn ribbon_mesh(points: &[Point3<f64>]) -> Mesh {
-    let points: Vec<_> = points
+    let mut points: Vec<_> = points
         .iter()
         .copied()
         .enumerate()
         .filter_map(|(index, point)| (index == 0 || point != points[index - 1]).then_some(point))
         .collect();
+    let closed = points.len() > 2 && points.first() == points.last();
+    if closed {
+        points.pop();
+    }
     if points.len() < 2 {
         return Mesh::new();
     }
 
-    let mut rights = Vec::with_capacity(points.len() - 1);
-    let mut normals = Vec::with_capacity(points.len() - 1);
-    for pair in points.windows(2) {
-        let direction = pair[1] - pair[0];
+    let span_count = if closed {
+        points.len()
+    } else {
+        points.len() - 1
+    };
+    let mut rights = Vec::with_capacity(span_count);
+    let mut normals = Vec::with_capacity(span_count);
+    for span in 0..span_count {
+        let direction = points[(span + 1) % points.len()] - points[span];
         let length = direction.norm();
         // Exact-zero check: identical authored points subtract to bit-exact
         // zero at every coordinate scale; genuinely tiny edges remain valid.
@@ -154,31 +163,48 @@ fn ribbon_mesh(points: &[Point3<f64>]) -> Mesh {
             continue;
         }
         let direction = direction / length;
-        let mut right = perpendicular(direction);
-        if rights
-            .last()
-            .is_some_and(|previous: &Vector3<f64>| previous.dot(&right) < 0.0)
-        {
-            right = -right;
-        }
-        let normal = right.cross(&direction);
+        let (right, normal) = transported_frame(direction, rights.last(), normals.last());
         rights.push(right);
         normals.push(normal);
     }
 
-    let mut mesh = Mesh::with_capacity(points.len() * 2, (points.len() - 1) * 6);
+    let mut mesh = Mesh::with_capacity(points.len() * 2, span_count * 6);
     for index in 0..points.len() {
-        let offset = join_offset(index, &rights);
-        let normal = join_normal(index, &normals);
+        let offset = join_offset(index, &rights, closed);
+        let normal = join_normal(index, &normals, closed);
         mesh.add_vertex(points[index] - offset, normal);
         mesh.add_vertex(points[index] + offset, normal);
     }
-    for span in 0..rights.len() {
+    for span in 0..span_count {
         let base = (span * 2) as u32;
-        mesh.add_triangle(base, base + 1, base + 3);
-        mesh.add_triangle(base, base + 3, base + 2);
+        let next = (((span + 1) % points.len()) * 2) as u32;
+        mesh.add_triangle(base, base + 1, next + 1);
+        mesh.add_triangle(base, next + 1, next);
     }
     mesh
+}
+
+fn transported_frame(
+    direction: Vector3<f64>,
+    previous_right: Option<&Vector3<f64>>,
+    previous_normal: Option<&Vector3<f64>>,
+) -> (Vector3<f64>, Vector3<f64>) {
+    let Some(previous_normal) = previous_normal else {
+        let right = perpendicular(direction);
+        return (right, right.cross(&direction));
+    };
+    if let Some(normal) = (*previous_normal - direction * previous_normal.dot(&direction))
+        .try_normalize(PARALLEL_EPSILON)
+    {
+        return (direction.cross(&normal).normalize(), normal);
+    }
+    if let Some(right) = previous_right.and_then(|previous| {
+        (*previous - direction * previous.dot(&direction)).try_normalize(PARALLEL_EPSILON)
+    }) {
+        return (right, right.cross(&direction));
+    }
+    let right = perpendicular(direction);
+    (right, right.cross(&direction))
 }
 
 fn perpendicular(direction: Vector3<f64>) -> Vector3<f64> {
@@ -190,16 +216,16 @@ fn perpendicular(direction: Vector3<f64>) -> Vector3<f64> {
     }
 }
 
-fn join_offset(index: usize, rights: &[Vector3<f64>]) -> Vector3<f64> {
+fn join_offset(index: usize, rights: &[Vector3<f64>], closed: bool) -> Vector3<f64> {
     let width = RIBBON_HALF_WIDTH_FILE_UNITS;
-    if index == 0 {
+    if !closed && index == 0 {
         return rights[0] * width;
     }
-    if index == rights.len() {
+    if !closed && index == rights.len() {
         return rights[index - 1] * width;
     }
 
-    let incoming = rights[index - 1];
+    let incoming = rights[(index + rights.len() - 1) % rights.len()];
     let outgoing = rights[index];
     let Some(miter) = (incoming + outgoing).try_normalize(PARALLEL_EPSILON) else {
         return incoming * width;
@@ -213,16 +239,16 @@ fn join_offset(index: usize, rights: &[Vector3<f64>]) -> Vector3<f64> {
     miter * (width / projection).min(width * 4.0)
 }
 
-fn join_normal(index: usize, normals: &[Vector3<f64>]) -> Vector3<f64> {
-    if index == 0 {
+fn join_normal(index: usize, normals: &[Vector3<f64>], closed: bool) -> Vector3<f64> {
+    if !closed && index == 0 {
         return normals[0];
     }
-    if index == normals.len() {
+    if !closed && index == normals.len() {
         return normals[index - 1];
     }
-    (normals[index - 1] + normals[index])
+    (normals[(index + normals.len() - 1) % normals.len()] + normals[index])
         .try_normalize(PARALLEL_EPSILON)
-        .unwrap_or(normals[index - 1])
+        .unwrap_or(normals[(index + normals.len() - 1) % normals.len()])
 }
 
 /// Resolve `IfcEdge`'s `EdgeStart` (attribute 0) or `EdgeEnd` (attribute 1)
@@ -281,4 +307,67 @@ fn resolve_vertex_point(
         })?;
     }
     Ok(Point3::from(xyz))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn face_normal(mesh: &Mesh, triangle: usize) -> Vector3<f64> {
+        let vertex = |index: u32| {
+            let base = index as usize * 3;
+            Vector3::new(
+                mesh.positions[base] as f64,
+                mesh.positions[base + 1] as f64,
+                mesh.positions[base + 2] as f64,
+            )
+        };
+        let base = triangle * 3;
+        let a = vertex(mesh.indices[base]);
+        let b = vertex(mesh.indices[base + 1]);
+        let c = vertex(mesh.indices[base + 2]);
+        (b - a).cross(&(c - a)).normalize()
+    }
+
+    #[test]
+    fn obtuse_bend_parallel_transports_one_surface_normal() {
+        let mesh = ribbon_mesh(&[
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.0, 0.25, 0.0),
+        ]);
+
+        assert_eq!(mesh.indices.len(), 12);
+        for triangle in 0..4 {
+            assert!(
+                face_normal(&mesh, triangle).z > 1.0 - 1e-6,
+                "triangle {triangle} twisted across the obtuse bend"
+            );
+        }
+        for normal in mesh.normals.chunks_exact(3) {
+            assert!(normal[2] > 1.0 - 1e-6, "normal flipped: {normal:?}");
+        }
+    }
+
+    #[test]
+    fn closed_ribbon_reuses_the_first_pair_at_the_seam() {
+        let mesh = ribbon_mesh(&[
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(0.0, 0.0, 0.0),
+        ]);
+
+        assert_eq!(
+            mesh.positions.len(),
+            8 * 3,
+            "the closing point must share pair 0/1"
+        );
+        assert_eq!(mesh.indices.len(), 4 * 6);
+        assert_eq!(&mesh.indices[18..], &[6, 7, 1, 6, 1, 0]);
+        for triangle in 0..8 {
+            assert!(face_normal(&mesh, triangle).z > 1.0 - 1e-6);
+        }
+    }
 }

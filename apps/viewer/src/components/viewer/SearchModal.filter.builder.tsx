@@ -124,7 +124,7 @@ export function SearchModalFilterBuilder() {
       return;
     }
     if (reading.rules.length === 0) {
-      toast.error(`Nothing in that selector maps to a filter rule yet: ${reading.unsupported.join('; ')}`);
+      toast.error(t('searchModal.filterBuilder.noRuleMapped', { unsupported: reading.unsupported.join('; ') }));
       return;
     }
     // A `+` union is refused here rather than silently promoting only
@@ -136,14 +136,13 @@ export function SearchModalFilterBuilder() {
     // where `+` text is meant to go.
     if (reading.groups.length > 1) {
       toast.error(
-        `"${q}" unions ${reading.groups.length} groups with "+" — use the Selector field above ` +
-          'to apply the whole union; this button only ever adds into one group.',
+        t('searchModal.filterBuilder.unionNotSupported', { query: q, groupCount: reading.groups.length }),
       );
       return;
     }
     for (const rule of reading.rules) addFilterRule(rule);
     if (reading.unsupported.length > 0) {
-      toast.info(`Added without these parts: ${reading.unsupported.join('; ')}`);
+      toast.info(t('searchModal.filterBuilder.addedWithoutParts', { unsupported: reading.unsupported.join('; ') }));
     }
   }, [addFilterRule, schemaVersion, searchQuery]);
 
@@ -152,14 +151,14 @@ export function SearchModalFilterBuilder() {
   const handleSavePreset = useCallback(() => {
     if (totalRules === 0) return;
     // eslint-disable-next-line no-alert
-    const name = window.prompt('Save filter as…', '');
+    const name = window.prompt(t('searchModal.filterBuilder.saveFilterPrompt'), '');
     if (!name) return;
     const result = saveFilter(name, filter.groups);
     setSavedPresets(result.presets);
     // A refused write used to return the in-memory catalog as though saved —
     // the user saw the filter and lost it next session (#2089).
     if (!result.persisted) {
-      toast.error('Filter could not be saved — browser storage is unavailable or full.');
+      toast.error(t('searchModal.filterBuilder.saveFilterFailed'));
     }
   }, [filter.groups, totalRules]);
 
@@ -174,7 +173,7 @@ export function SearchModalFilterBuilder() {
     const result = deleteSavedFilter(name);
     setSavedPresets(result.presets);
     if (!result.persisted) {
-      toast.error('Filter could not be deleted — browser storage is unavailable or full.');
+      toast.error(t('searchModal.filterBuilder.deleteFilterFailed'));
     }
   }, []);
 
@@ -209,7 +208,7 @@ export function SearchModalFilterBuilder() {
 
           <div className="ml-1 flex items-center gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Limit
+              {t('searchModal.filterBuilder.limitLabel')}
             </label>
             <Input
               type="number"
@@ -218,7 +217,7 @@ export function SearchModalFilterBuilder() {
               onChange={(e) => setFilterLimit(Number.parseInt(e.target.value, 10) || 0)}
               className="h-7 w-20 text-xs"
             />
-            <span className="text-[10px] text-muted-foreground">0 = none</span>
+            <span className="text-[10px] text-muted-foreground">{t('searchModal.filterBuilder.limitZeroHint')}</span>
           </div>
 
           {searchQuery.trim().length > 0 && (
@@ -228,10 +227,10 @@ export function SearchModalFilterBuilder() {
               size="sm"
               onClick={promoteSearchQuery}
               className="h-7 gap-1 text-[11px]"
-              title="Turn the search bar query into filter rules"
+              title={t('searchModal.filterBuilder.promoteQueryTitle')}
             >
               <Plus className="h-3 w-3" />
-              Add &ldquo;{truncate(searchQuery.trim(), 18)}&rdquo; as rule
+              {t('searchModal.filterBuilder.addQueryAsRule', { query: truncate(searchQuery.trim(), 18) })}
             </Button>
           )}
 
@@ -248,9 +247,9 @@ export function SearchModalFilterBuilder() {
               onClick={handleSavePreset}
               disabled={totalRules === 0}
               className="h-7 gap-1 text-[11px]"
-              title="Save the current rules as a named preset"
+              title={t('searchModal.filterBuilder.savePresetTitle')}
             >
-              <Save className="h-3 w-3" /> Save
+              <Save className="h-3 w-3" /> {t('searchModal.filterBuilder.save')}
             </Button>
             {activeRules.length > 0 && (
               <Button
@@ -260,7 +259,7 @@ export function SearchModalFilterBuilder() {
                 onClick={clearFilterRules}
                 className="h-7 gap-1 text-[11px] text-muted-foreground"
               >
-                <X className="h-3 w-3" /> Reset
+                <X className="h-3 w-3" /> {t('searchModal.filterBuilder.reset')}
               </Button>
             )}
           </div>
@@ -270,8 +269,7 @@ export function SearchModalFilterBuilder() {
         <div className="flex flex-col gap-2">
           {activeRules.length === 0 && (
             <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-              Add a rule to start filtering — pick by model, storey, IFC type, name,
-              property, quantity, material, classification, or elevation.
+              {t('searchModal.filterBuilder.emptyRulesHint')}
             </p>
           )}
           {activeRules.map((rule, i) => (
@@ -310,9 +308,9 @@ function PresetMenu({
         size="sm"
         disabled
         className="h-7 gap-1 text-[11px] text-muted-foreground"
-        title="Save a preset first"
+        title={t('searchModal.filterBuilder.savePresetFirstTitle')}
       >
-        <Bookmark className="h-3 w-3" /> Presets
+        <Bookmark className="h-3 w-3" /> {t('searchModal.filterBuilder.presets')}
       </Button>
     );
   }
@@ -325,11 +323,11 @@ function PresetMenu({
           size="sm"
           className="h-7 gap-1 text-[11px]"
         >
-          <Bookmark className="h-3 w-3" /> Presets
+          <Bookmark className="h-3 w-3" /> {t('searchModal.filterBuilder.presets')}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel className="text-[10px] uppercase">Saved presets</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-[10px] uppercase">{t('searchModal.filterBuilder.savedPresets')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {presets.map((p) => (
           <DropdownMenuItem
@@ -340,14 +338,14 @@ function PresetMenu({
             <div className="flex flex-col">
               <span className="font-medium">{p.name}</span>
               <span className="text-[10px] text-muted-foreground">
-                {totalRuleCount(p.groups)} rule{totalRuleCount(p.groups) === 1 ? '' : 's'}
+                {t('searchModal.filterBuilder.presetRuleCount', { count: totalRuleCount(p.groups) })}
                 {' · '}
                 {p.groups.length > 1 ? t('filterGroups.groupCountOr', { count: p.groups.length }) : p.combinator}
               </span>
             </div>
             <button
               type="button"
-              aria-label={`Delete preset ${p.name}`}
+              aria-label={t('searchModal.filterBuilder.deletePresetAriaLabel', { name: p.name })}
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(p.name);

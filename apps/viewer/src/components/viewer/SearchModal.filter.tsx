@@ -25,6 +25,7 @@ import { Play, AlertCircle, Download, ListPlus, Equal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -58,6 +59,7 @@ const FILTER_CHUNK_SIZE = 20_000;
 const DEFAULT_LIMIT = 5_000;
 
 export function SearchModalFilter() {
+  const { t } = useTranslation();
   const {
     searchFilter,
     searchFilterResult,
@@ -127,7 +129,7 @@ export function SearchModalFilter() {
   const runFilter = useCallback(async () => {
     if (searchFilterRunning) return;
     if (totalRuleCount(searchFilter.groups) === 0) {
-      setSearchFilterError('Add at least one rule before running.');
+      setSearchFilterError(t('searchModal.filterRun.noRulesError'));
       return;
     }
 
@@ -381,7 +383,7 @@ export function SearchModalFilter() {
     });
 
     if (globalIds.length === 0) {
-      toast.error('Nothing to isolate — every matched row belongs to a model that is no longer loaded.');
+      toast.error(t('searchModal.filterRun.nothingToIsolate'));
       return;
     }
 
@@ -443,7 +445,7 @@ export function SearchModalFilter() {
     if (alreadyIsolated) {
       isolateEntities(isolationIds);
       setSelectedEntityIds([]);
-      toast.info('Isolation cleared — showing the full model.');
+      toast.info(t('searchModal.filterRun.isolationCleared'));
       setSearchModalOpen(false);
       return;
     }
@@ -485,7 +487,7 @@ export function SearchModalFilter() {
     setSelectedEntityIds([...isolationIds, ...globalIds]);
 
     if (limitHit !== null) {
-      toast.info(`Isolating the first ${limitHit.toLocaleString()} matches — the filter hit its row limit.`);
+      toast.info(t('searchModal.filterRun.isolatingLimited', { limit: limitHit.toLocaleString() }));
     }
 
     // frameEntities takes the explicit id set directly rather than reading it
@@ -581,7 +583,7 @@ export function SearchModalFilter() {
   if (!activeStore) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
-        Load an IFC file first — the filter runs against the active model&apos;s data.
+        {t('searchModal.filterRun.noModelLoaded')}
       </div>
     );
   }
@@ -623,22 +625,25 @@ export function SearchModalFilter() {
         )}
         {progress && progress.total <= 0 && (
           <span className="font-mono text-muted-foreground">
-            scanned {progress.scanned.toLocaleString()}
+            {t('searchModal.filterRun.scannedCount', { count: progress.scanned.toLocaleString() })}
           </span>
         )}
 
         {!searchFilterRunning && limitHit !== null && (
           <span
             className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
-            title="Increase the limit or narrow the rules to see more matches"
+            title={t('searchModal.filterRun.limitedToTitle')}
           >
-            limited to {limitHit.toLocaleString()}
+            {t('searchModal.filterRun.limitedToBadge', { limit: limitHit.toLocaleString() })}
           </span>
         )}
 
         {searchFilterResult && !searchFilterRunning && (
           <span className="text-muted-foreground">
-            ⏱ {searchFilterResult.runMs} ms · {searchFilterResult.rows.length.toLocaleString()} rows
+            {t('searchModal.filterRun.timingSummary', {
+              runMs: searchFilterResult.runMs,
+              rows: searchFilterResult.rows.length.toLocaleString(),
+            })}
           </span>
         )}
 
@@ -649,9 +654,9 @@ export function SearchModalFilter() {
             disabled={!searchFilterResult || searchFilterResult.rows.length === 0}
             onClick={handleCreateList}
             className="h-7 gap-1 text-xs"
-            title="Freeze these results into a new list"
+            title={t('searchModal.filterRun.createListTitle')}
           >
-            <ListPlus className="h-3 w-3" /> Create list
+            <ListPlus className="h-3 w-3" /> {t('searchModal.filterRun.createListLabel')}
           </Button>
           <Button
             variant="ghost"
@@ -659,9 +664,9 @@ export function SearchModalFilter() {
             disabled={!searchFilterResult || searchFilterResult.rows.length === 0}
             onClick={handleIsolateResult}
             className="h-7 gap-1 text-xs"
-            title="Isolate these results in the 3D view"
+            title={t('searchModal.filterRun.isolateTitle')}
           >
-            <Equal className="h-3 w-3" /> Isolate in 3D
+            <Equal className="h-3 w-3" /> {t('searchModal.filterRun.isolateLabel')}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -670,17 +675,17 @@ export function SearchModalFilter() {
                 size="sm"
                 disabled={!searchFilterResult || searchFilterResult.rows.length === 0}
                 className="h-7 gap-1 text-xs"
-                title="Export results"
+                title={t('searchModal.filterRun.exportTitle')}
               >
-                <Download className="h-3 w-3" /> Export
+                <Download className="h-3 w-3" /> {t('searchModal.filterRun.exportLabel')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => handleExport('csv')}>
-                Download CSV
+                {t('searchModal.filterRun.downloadCsv')}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => handleExport('json')}>
-                Download JSON
+                {t('searchModal.filterRun.downloadJson')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -692,7 +697,7 @@ export function SearchModalFilter() {
               onClick={cancelFilter}
               className="h-7 gap-1 text-xs"
             >
-              Cancel
+              {t('searchModal.filterRun.cancel')}
             </Button>
           ) : (
             <Button
@@ -701,10 +706,10 @@ export function SearchModalFilter() {
               onClick={runFilter}
               disabled={!canRun}
               className="h-7 gap-1 text-xs"
-              title={canRun ? 'Run the filter against every loaded model' : 'Add a rule first'}
+              title={t(canRun ? 'searchModal.filterRun.runTitleReady' : 'searchModal.filterRun.runTitleDisabled')}
             >
               <Play className="h-3 w-3" />
-              Run
+              {t('searchModal.filterRun.run')}
             </Button>
           )}
         </div>
@@ -712,8 +717,7 @@ export function SearchModalFilter() {
 
       {multiModel && (
         <div className="border-b bg-zinc-50 px-3 py-1.5 text-[11px] text-muted-foreground dark:bg-zinc-900/30">
-          Filtering across all {models.size} loaded models. Click any row to
-          select that element in the right model.
+          {t('searchModal.filterRun.multiModelNote', { count: models.size })}
         </div>
       )}
 
@@ -731,12 +735,13 @@ export function SearchModalFilter() {
 // ── Sub-components ────────────────────────────────────────────────────
 
 function FilterErrorBox({ raw }: { raw: string }) {
+  const { t } = useTranslation();
   return (
     <div className="border-b bg-red-50/50 px-4 py-3 dark:bg-red-950/20">
       <div className="flex items-start gap-2">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
         <div className="min-w-0 flex-1 text-xs">
-          <div className="font-semibold text-red-900 dark:text-red-200">Filter failed</div>
+          <div className="font-semibold text-red-900 dark:text-red-200">{t('searchModal.filterRun.filterFailed')}</div>
           <div className="mt-1 break-words text-red-800 dark:text-red-300">{raw}</div>
         </div>
       </div>
@@ -751,6 +756,7 @@ interface FilterResultTableProps {
 }
 
 function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResultTableProps) {
+  const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: result?.rows.length ?? 0,
@@ -762,7 +768,7 @@ function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResu
   if (!result) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        Add rules and click Run.
+        {t('searchModal.filterRun.addRulesPrompt')}
       </div>
     );
   }
@@ -770,7 +776,7 @@ function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResu
   if (result.rows.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        0 matches — broaden the rules, lower the limit, or try OR.
+        {t('searchModal.filterRun.noMatches')}
       </div>
     );
   }

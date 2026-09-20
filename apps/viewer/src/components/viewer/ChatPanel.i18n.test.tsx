@@ -27,15 +27,28 @@ import type { ExtensionHostService } from '@/services/extensions/host.js';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
-import { chatEn } from '@/i18n/catalogues/chat.en';
+import type { chatEn as ChatEnType } from '@/i18n/catalogues/chat.en';
 import { useViewerStore } from '@/store';
 import { ChatPanel } from './ChatPanel.js';
+
+// Dynamic + try/catch (not a static import): a revert of this slice's
+// production change deletes chat.en.ts entirely, and a static import would
+// fail the whole test FILE to load (ERR_MODULE_NOT_FOUND) rather than let
+// the assertions below fail on their own merits — see
+// PropertyEditor.i18n.test.tsx for the same pattern.
+let chatEn: typeof ChatEnType | undefined;
+try {
+  ({ chatEn } = await import('@/i18n/catalogues/chat.en'));
+} catch {
+  chatEn = undefined;
+}
+const CATALOGUE = chatEn ?? ({} as typeof ChatEnType);
 
 const marked = (text: string): string => `⟦${text}⟧`;
 
 function pseudoLocale(): Catalogue {
   const catalogue: Record<string, TranslationValue> = {};
-  for (const [key, value] of Object.entries(chatEn)) {
+  for (const [key, value] of Object.entries(CATALOGUE)) {
     catalogue[key] = typeof value === 'string'
       ? marked(value)
       : { one: marked(value.one), other: marked(value.other) };
@@ -73,6 +86,7 @@ afterEach(() => {
 
 describe('chat panel localization (#4918)', () => {
   it('renders the idle empty state in English by default', () => {
+    assert.ok(chatEn, 'chat.en.ts catalogue must exist');
     const ui = renderPanel();
     const text = ui.textContent ?? '';
     assert.match(text, /Try something:/);

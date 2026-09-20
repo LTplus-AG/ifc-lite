@@ -20,14 +20,27 @@ import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
-import { chatByokEn } from '@/i18n/catalogues/chat-byok.en';
+import type { chatByokEn as ChatByokEnType } from '@/i18n/catalogues/chat-byok.en';
 import { ByokKeyModal } from './ByokKeyModal.js';
+
+// Dynamic + try/catch (not a static import): a revert of this slice's
+// production change deletes chat-byok.en.ts entirely, and a static import
+// would fail the whole test FILE to load (ERR_MODULE_NOT_FOUND) rather than
+// let the assertions below fail on their own merits — see
+// PropertyEditor.i18n.test.tsx for the same pattern.
+let chatByokEn: typeof ChatByokEnType | undefined;
+try {
+  ({ chatByokEn } = await import('@/i18n/catalogues/chat-byok.en'));
+} catch {
+  chatByokEn = undefined;
+}
+const CATALOGUE = chatByokEn ?? ({} as typeof ChatByokEnType);
 
 const marked = (text: string): string => `⟦${text}⟧`;
 
 function pseudoLocale(): Catalogue {
   const catalogue: Record<string, TranslationValue> = {};
-  for (const [key, value] of Object.entries(chatByokEn)) {
+  for (const [key, value] of Object.entries(CATALOGUE)) {
     catalogue[key] = typeof value === 'string'
       ? marked(value)
       : { one: marked(value.one), other: marked(value.other) };
@@ -58,6 +71,7 @@ afterEach(() => {
 
 describe('BYOK key modal localization (#4918)', () => {
   it('renders every static chrome string in English by default', () => {
+    assert.ok(chatByokEn, 'chat-byok.en.ts catalogue must exist');
     openWithWalkthrough();
     const text = document.body.textContent ?? '';
     assert.match(text, /Use your own API key/);

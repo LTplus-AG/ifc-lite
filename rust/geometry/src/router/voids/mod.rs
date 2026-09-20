@@ -39,6 +39,9 @@ mod sweep;
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
 const NORMALIZE_EPSILON: f64 = 1e-12;
+/// |cos| above which an authored cutter depth counts as the wall normal itself
+/// (matches the vertical selector's 0.98 axis tolerance in `local_frame.rs`).
+const WALL_NORMAL_DEPTH_COS: f64 = 0.98;
 /// Minimum opening volume (m³) below which CSG is skipped (degenerate-void filter).
 /// 0.0001 m³ ≈ 0.1 litre — filters artefacts while allowing small real openings (e.g. sleeves).
 const MIN_OPENING_VOLUME: f64 = 0.0001;
@@ -872,8 +875,14 @@ impl GeometryRouter {
                 // those along +Z would turn a partial-thickness vertical slot
                 // into a full-through cut. An inferred box axis carries no such
                 // intent and must retain the established wall-normal fallback.
+                // A cutter authored along the wall normal itself keeps +Z too:
+                // handing the rectangular cut an antiparallel (-Z) depth flips
+                // its cap extension and tears the host (rvt01 #10191 census).
                 let rect_depth = match op {
-                    OpeningType::DiagonalRectangular(_, frame) if frame.depth_is_authored => {
+                    OpeningType::DiagonalRectangular(_, frame)
+                        if frame.depth_is_authored
+                            && frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) =>
+                    {
                         frame_depth
                     }
                     _ => Some(z),

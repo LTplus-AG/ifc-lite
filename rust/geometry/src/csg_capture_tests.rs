@@ -36,6 +36,7 @@ fn deserialize_defaults_welded_in_object_frame_to_false() {
         local_bounds: None,
         local_to_world: None,
         welded_in_object_frame: true,
+        plane_tags: None,
     };
     let job = CapturedCsgJob::Single { host: mesh.clone(), cutter: mesh.clone() };
     let blob = serialize(&[job]);
@@ -47,6 +48,7 @@ fn deserialize_defaults_welded_in_object_frame_to_false() {
     };
     assert_eq!(host.positions, mesh.positions);
     assert_eq!(host.rtc_applied, mesh.rtc_applied);
+    assert!(host.plane_tags.is_none(), "the blob carries no plane tags (#4988); they must come back None");
     assert!(
         !host.welded_in_object_frame,
         "the blob carries no weld bit, so it must deserialize false even when \

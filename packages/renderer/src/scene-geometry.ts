@@ -12,6 +12,8 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { BATCH_CONSTANTS } from './constants.js';
 import type { BoundingBox } from './scene-raycaster.js';
+import { worldBounds } from './scene-precision.js';
+export { originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
 
 /** The subset of `MeshData` a world-space AABB needs. */
 export interface AabbPiece {
@@ -180,19 +182,7 @@ export function mergeGeometry(
   // magnitudes small (≈ half the batch's spatial spread) regardless of the
   // model's world placement — which is what prevents f32 fan collapse. A mesh
   // without an origin contributes its absolute positions (legacy no-op shift).
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (const mesh of meshDataArray) {
-    const p = mesh.positions;
-    const ox = mesh.origin ? mesh.origin[0] : 0;
-    const oy = mesh.origin ? mesh.origin[1] : 0;
-    const oz = mesh.origin ? mesh.origin[2] : 0;
-    for (let i = 0; i < p.length; i += 3) {
-      const x = p[i] + ox, y = p[i + 1] + oy, z = p[i + 2] + oz;
-      if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
-      if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
-    }
-  }
+  const { minX, minY, minZ, maxX, maxY, maxZ } = worldBounds(meshDataArray);
   // Prefer the caller's shared scene origin (consistent across all batches → no
   // seam z-fight); fall back to this batch's own world bbox centre.
   const batchOrigin: [number, number, number] = forcedOrigin

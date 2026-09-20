@@ -73,6 +73,18 @@ function triangle(expressId: number, origin: [number, number, number], color = G
   };
 }
 
+/** A valid triangle whose area is nonzero but below Number.EPSILON². */
+function tinyTriangle(expressId: number, origin: [number, number, number]): MeshData {
+  return {
+    expressId,
+    positions: new Float32Array([0, 0, 0, 1e-9, 0, 0, 0, 1e-9, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: GREY,
+    origin,
+  };
+}
+
 /** A single off-lattice element longer than the u16 lattice range along X. */
 function longWall(expressId: number, origin: [number, number, number]): MeshData {
   const len = MAX_QUANT_EXTENT + 6.0003;
@@ -159,6 +171,139 @@ function quantizedChunkedScene(): Scene {
 }
 
 describe('overlay batches stay depth-coincident with their base batches (#4832)', () => {
+  it('keeps extracted merged geometry attached to its live source frame (#5010)', () => {
+    const scene = quantizedChunkedScene();
+    const { device } = fakeDevice();
+    const nearby = triangle(1, [0, 0, 0]);
+    const merged = { ...triangle(7, [800_000_000, 0, 0]), modelIndex: 4,
+      entityIds: new Uint32Array([7, 7, 7]) } as MeshData;
+    scene.appendToBatches([nearby, merged], device, fakePipeline);
+
+    const extracted = scene.getMeshDataPieces(7, 4)![0];
+    const sourceBatch = baseBatchFor(scene, 7);
+    assert.strictEqual(extracted.modelIndex, 4, 'merged extraction retains federated model scope');
+    assert.deepStrictEqual(scene.getSharedFrameOrigin(extracted.modelIndex, extracted), sourceBatch.origin,
+      'derived highlight/pick geometry resolves its owning bucket, not the model-wide fallback');
+    assert.strictEqual(scene.isMeshQuantized(extracted), sourceBatch.quantized !== undefined,
+      'derived geometry inherits the source batch quantization decision');
+
+    scene.setModelTranslation(4, [25, 0, 0]);
+    assert.deepStrictEqual(scene.getSharedFrameOrigin(extracted.modelIndex, extracted), sourceBatch.origin,
+      'provenance resolves through the placed source after a model translation');
+  });
+
+  it('rejects an exhausted frame before upload and preserves the prior scene (#5010)', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    const safe = triangle(1, [0, 0, 0]);
+    scene.appendToBatches([safe], device, fakePipeline);
+    const prior = scene.getBatchedMeshes()[0];
+    let uploads = 0;
+    const originalCreateBuffer = device.createBuffer.bind(device);
+    (device as unknown as { createBuffer(desc: GPUBufferDescriptor): GPUBuffer }).createBuffer = (desc) => {
+      uploads++;
+      return originalCreateBuffer(desc);
+    };
+
+    const impossible = triangle(2, [Number.MAX_VALUE, 0, 0]);
+    assert.throws(() => scene.appendToBatches([impossible], device, fakePipeline), /topology-safe GPU frame/);
+    assert.strictEqual(uploads, 0, 'the rejected append reaches no GPU allocation');
+    assert.deepStrictEqual(scene.getBatchedMeshes(), [prior], 'the prior drawable stays published');
+    assert.strictEqual(scene.getMeshDataPieces(2), undefined, 'the rejected owner was never published');
+
+    scene.appendToBatches([triangle(3, [5, 0, 0], RED)], device, fakePipeline);
+    assert.strictEqual(scene.getBatchedMeshes().length, 2, 'a later safe append still succeeds');
+  });
+
+  it('keeps a legacy representative while precise paths retain every framed piece (#5010)', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.appendToBatches([
+      triangle(9, [0, 0, 0]),
+      triangle(9, [800_000_000, 0, 0]),
+    ], device, fakePipeline);
+
+    const pieces = scene.getMeshDataPieces(9)!;
+    assert.strictEqual(pieces.length, 2, 'precision routing made two source frames');
+    const representative = scene.getMeshData(9)!;
+    assert.equal(representative.indices.length, 6, 'legacy singular access retains both triangles');
+    assert.equal(representative.origin, undefined, 'cross-bucket representative claims no invented precision frame');
+    assert.equal(scene.raycast({ x: 0.2, y: 0.2, z: 2 }, { x: 0, y: 0, z: -1 })?.expressId, 9);
+    assert.equal(scene.raycast({ x: 800_000_000.2, y: 0.2, z: 2 }, { x: 0, y: 0, z: -1 })?.expressId, 9,
+      'the distant triangle remains available to the real CPU raycast');
+  });
+
+  it('rebases same-bucket pieces into their shared frame without losing triangles (#5010)', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.appendToBatches([triangle(9, [0, 0, 0]), triangle(9, [5, 0, 0])], device, fakePipeline);
+
+    const merged = scene.getMeshData(9)!;
+    assert.equal(merged.indices.length, 6, 'both source triangles survive the singular merge');
+    const worldX = Array.from(merged.positions, (value, index) => index % 3 === 0 ? value + merged.origin![0] : null)
+      .filter((value): value is number => value !== null);
+    assert.ok(worldX.some(value => Math.abs(value) < 0.001));
+    assert.ok(worldX.some(value => Math.abs(value - 5) < 0.001));
+  });
+
+  it('precision-partitions distant same-colour components when chunks are disabled (#4937)', () => {
+    const scene = new Scene();
+    const { device, bytes } = fakeDevice();
+    const west = triangle(1, [-398_700_000, 0, 0]);
+    const east = triangle(2, [398_700_000, 0, 0]);
+    const westRed = triangle(3, [-398_699_995, 0, 0], RED);
+    scene.appendToBatches([west, westRed, east], device, fakePipeline);
+
+    assert.strictEqual(scene.getBatchedMeshes().length, 3,
+      'an unsafe automatic midpoint must split the grey components even without spatial chunks');
+    assert.deepStrictEqual(baseBatchFor(scene, 1).origin, baseBatchFor(scene, 3).origin,
+      'safe adjacent colour buckets retain the shared seam frame');
+    for (const id of [1, 2, 3]) {
+      const batch = baseBatchFor(scene, id);
+      const positions = gpuPositionsByEntity(batch, bytes).get(id);
+      assert.ok(positions);
+      assert.strictEqual(new Set(positions).size, 3, `component ${id} retains its triangle`);
+    }
+  });
+
+  it('keeps distant survey chunks in precision-local GPU frames (#4937)', () => {
+    const scene = new Scene();
+    scene.setSpatialChunking({ cellSize: 32 });
+    const { device, bytes } = fakeDevice();
+    const nearby = triangle(1, [2_600_005, 101, -5_000_005]);
+    const distant = triangle(2, [800_000_000.5, 700_000_000, -900_000_000.5]);
+    const distantBatchmate = triangle(3, [800_000_005.5, 700_000_000, -900_000_000.5]);
+    scene.appendToBatches([nearby, distant, distantBatchmate], device, fakePipeline);
+
+    const nearBatch = baseBatchFor(scene, 1);
+    const distantBatch = baseBatchFor(scene, 2);
+    assert.notDeepStrictEqual(distantBatch.origin, nearBatch.origin,
+      'an unsafe model-wide origin must not collapse the distant chunk');
+    assert.deepStrictEqual(scene.getSharedFrameOrigin(distant.modelIndex, distant), distantBatch.origin,
+      'selection/picking uploads must inherit the base batch frame');
+    const positions = gpuPositionsByEntity(distantBatch, bytes).get(2);
+    assert.ok(positions);
+    assert.strictEqual(new Set(positions).size, 3, 'the production GPU upload retains all triangle vertices');
+    scene.setColorOverrides(new Map([[2, RED]]), device, fakePipeline);
+    assertCoincidentWithBase(scene, scene.getOverrideBatches()[0], bytes);
+  });
+
+  it('protects every nonzero source triangle when choosing a shared frame (#4937)', () => {
+    const scene = new Scene();
+    scene.setSpatialChunking({ cellSize: 32 });
+    const { device, bytes } = fakeDevice();
+    const nearby = triangle(1, [0, 0, 0]);
+    const distantTiny = tinyTriangle(2, [800_000_000, 0, 0]);
+    scene.appendToBatches([nearby, distantTiny], device, fakePipeline);
+
+    const tinyBatch = baseBatchFor(scene, 2);
+    assert.notDeepStrictEqual(tinyBatch.origin, baseBatchFor(scene, 1).origin,
+      'a shared origin that collapses a nonzero tiny triangle must be rejected');
+    const positions = gpuPositionsByEntity(tinyBatch, bytes).get(2);
+    assert.ok(positions);
+    assert.strictEqual(new Set(positions).size, 3, 'all tiny triangle vertices survive GPU upload');
+  });
+
   it('overrides on entities >64 m apart (base batches quantized) render bit-identical to base', () => {
     const scene = quantizedChunkedScene();
     const { device, bytes } = fakeDevice();

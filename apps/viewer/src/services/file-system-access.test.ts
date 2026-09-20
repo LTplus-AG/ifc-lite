@@ -13,7 +13,11 @@ import {
   readFreshFile,
   supportsFileSystemAccess,
 } from './file-system-access.js';
-import { MODEL_FILE_EXTENSIONS, isSupportedModelFile } from './supported-model-files.js';
+import {
+  MODEL_FILE_EXTENSIONS,
+  isSupportedMobileModelFile,
+  isSupportedModelFile,
+} from './supported-model-files.js';
 
 type FSFileHandleLike = {
   name: string;
@@ -57,6 +61,10 @@ describe('file-system-access', () => {
       (window as unknown as Record<string, unknown>).showOpenFilePicker = async () => [];
       assert.equal(supportsFileSystemAccess(), true);
     });
+  });
+
+  it('accepts mixed-case LandXML names from the mobile picker (#4937)', () => {
+    assert.equal(isSupportedMobileModelFile(fakeFile('Survey.XML')), true);
   });
 
   describe('openIfcFilesWithHandles', () => {

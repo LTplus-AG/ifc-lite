@@ -30,11 +30,12 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
+import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
+import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
-import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization, type RebuiltBucket } from './scene-derived-batches.js';
+import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization } from './scene-derived-batches.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
@@ -42,7 +43,8 @@ import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from 
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
-import { extractEntityFromMergedMesh } from './merged-mesh-extract.js';
+import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
+import { rebuildSceneBatches } from './scene-batch-rebuild.js';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
   dropPartialCacheForBatch as dropPartialCacheForBatchIn,
@@ -67,6 +69,9 @@ interface BatchBucket {
   meshData: MeshData[];             // accumulated source mesh data
   batchedMesh: BatchedMesh | null;  // built GPU batch (null during streaming)
   vertexBytes: number;              // accumulated vertex buffer bytes
+  /** Fixed local frame. New pieces that cannot retain topology in this frame
+   * are routed to a precision overflow bucket before any f32 upload. */
+  frameOrigin?: [number, number, number];
 }
 
 /**
@@ -187,6 +192,7 @@ export class Scene {
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
   private buckets: Map<string, BatchBucket> = new Map();            // bucketKey -> consolidated bucket state
   private meshDataBucket: Map<MeshData, BatchBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
+  private derivedMeshProvenance = new DerivedMeshProvenance();
   private modelTranslations = new ModelTranslations();
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
@@ -437,10 +443,11 @@ export class Scene {
   /** The shared local-frame origin all batches relativize against (null until
    *  the first batch is built). Per-mesh highlight/picker VBOs replicate the
    *  batch's exact f32 path against this so they render bit-coincident. */
-  getSharedFrameOrigin(modelIndex = 0): [number, number, number] | null {
-    return this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? null;
+  getSharedFrameOrigin(modelIndex = 0, meshData?: MeshData): [number, number, number] | null {
+    const placed = meshData ? this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations) : undefined;
+    const bucket = placed ? this.meshDataBucket.get(placed) : undefined;
+    return bucket?.batchedMesh?.origin ?? bucket?.frameOrigin ?? this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? null;
   }
-
   /**
    * Enable/disable spatial chunk bucketing (issue #1682 phase 2). When set,
    * colour buckets are additionally partitioned by world grid cell, making
@@ -542,6 +549,7 @@ export class Scene {
 
       const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, key);
       bucket.batchedMesh = rebuilt;
+      bucket.frameOrigin = rebuilt.origin;
       const idx = this.batchedMeshes.indexOf(old);
       if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
       else this.batchedMeshes.push(rebuilt);
@@ -590,7 +598,8 @@ export class Scene {
    *  lattice snap in createMeshFromData (an f32 batch must NOT snap). Same rule
    *  as overlay/partial batches; global flag while unbucketed. */
   isMeshQuantized(meshData: MeshData): boolean {
-    return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(meshData)?.batchedMesh) !== 'off';
+    const source = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations);
+    return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(source)?.batchedMesh) !== 'off';
   }
 
   /** Set (or clear) the HOST budget in bytes for bucket CPU geometry. */
@@ -663,7 +672,6 @@ export class Scene {
         lastDrawnFrame: this.lastDrawnFrame.get(b.id) ?? -1,
       });
     }
-
     const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
     let evictedBytes = 0;
     for (const key of evictKeys) {
@@ -685,7 +693,6 @@ export class Scene {
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
     }
-
     if (residentBytes - evictedBytes > budget && !this.hostOverBudgetWarned) {
       this.hostOverBudgetWarned = true;
       console.warn(
@@ -773,6 +780,7 @@ export class Scene {
       if (!old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
       const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
       bucket.batchedMesh = rebuilt;
+      bucket.frameOrigin = rebuilt.origin;
       const idx = this.batchedMeshes.indexOf(old);
       if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
       else this.batchedMeshes.push(rebuilt);
@@ -969,7 +977,7 @@ export class Scene {
       // this expressId so selection highlighting is per-entity, not the
       // entire merged batch.
       if (single.entityIds) {
-        return extractEntityFromMergedMesh(single, expressId);
+        return this.derivedMeshProvenance.extract(single, expressId);
       }
       return single;
     }
@@ -980,7 +988,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = extractEntityFromMergedMesh(piece, expressId);
+          const ex = this.derivedMeshProvenance.extract(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -992,6 +1000,18 @@ export class Scene {
       // Fall through to the normal multi-piece merge below
     }
 
+    // A cross-bucket singular result keeps the historical representative merge
+    // (all triangles, no provenance); precise callers use the pieces accessor.
+    const firstOrigin = pieces[0].origin;
+    const firstSource = this.derivedMeshProvenance.placedSourceFor(pieces[0], this.modelTranslations);
+    const firstBucket = this.meshDataBucket.get(firstSource);
+    const sameBucket = pieces.every(piece => this.meshDataBucket.get(this.derivedMeshProvenance.placedSourceFor(piece, this.modelTranslations)) === firstBucket);
+    const sameFrame = pieces.every(piece => piece.origin?.[0] === firstOrigin?.[0]
+      && piece.origin?.[1] === firstOrigin?.[1] && piece.origin?.[2] === firstOrigin?.[2]);
+    const precisionPlaceable = sameBucket || (!firstBucket && sameFrame);
+    const mergedOrigin = precisionPlaceable
+      ? firstBucket?.batchedMesh?.origin ?? firstBucket?.frameOrigin ?? firstOrigin ?? [0, 0, 0]
+      : undefined;
     // Check if all pieces have the same color (within tolerance)
     // This handles multi-material elements like windows (frame vs glass)
     const firstColor = pieces[0].color;
@@ -1028,12 +1048,18 @@ export class Scene {
     let posOffset = 0;
     let idxOffset = 0;
     let vertexOffset = 0;
-
     for (const piece of pieces) {
-      // Copy positions and normals
-      mergedPositions.set(piece.positions, posOffset);
+      if (mergedOrigin) {
+        const ox = (piece.origin?.[0] ?? 0) - mergedOrigin[0], oy = (piece.origin?.[1] ?? 0) - mergedOrigin[1], oz = (piece.origin?.[2] ?? 0) - mergedOrigin[2];
+        for (let i = 0; i < piece.positions.length; i += 3) {
+          mergedPositions[posOffset + i] = piece.positions[i] + ox;
+          mergedPositions[posOffset + i + 1] = piece.positions[i + 1] + oy;
+          mergedPositions[posOffset + i + 2] = piece.positions[i + 2] + oz;
+        }
+      } else {
+        mergedPositions.set(piece.positions, posOffset);
+      }
       mergedNormals.set(piece.normals, posOffset);
-
       // Copy indices with offset
       for (let i = 0; i < piece.indices.length; i++) {
         mergedIndices[idxOffset + i] = piece.indices[i] + vertexOffset;
@@ -1045,7 +1071,7 @@ export class Scene {
     }
 
     // Return merged MeshData (all pieces have same color)
-    return {
+    const merged = {
       expressId,
       modelIndex: pieces[0].modelIndex,  // Preserve modelIndex for multi-model support
       positions: mergedPositions,
@@ -1053,7 +1079,15 @@ export class Scene {
       indices: mergedIndices,
       color: firstColor,
       ifcType: pieces[0].ifcType,
+      ...(mergedOrigin ? { origin: mergedOrigin } : {}),
     };
+    // The common frame is explicit above.  Keep a source only when every part
+    // belongs to the same live bucket; an arbitrary source would give a merged
+    // result the wrong quantization/frame after a re-batch.
+    if (firstBucket && precisionPlaceable) {
+      this.derivedMeshProvenance.remember(merged, firstSource);
+    }
+    return merged;
   }
 
   /**
@@ -1121,7 +1155,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = extractEntityFromMergedMesh(piece, expressId);
+          const ex = this.derivedMeshProvenance.extract(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -1157,8 +1191,18 @@ export class Scene {
    * when streaming completes to do one O(N) full merge.
    */
   appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false): void {
-    if (this.appearanceController) for (const part of meshDataArray) this.appearanceController.cancelFor(part.expressId);
     meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
+    // Validate every input before cancelling appearance work, publishing a
+    // bucket, or touching GPU state. A single impossible f32 frame must leave
+    // an already-valid scene usable and allow the next safe append.
+    for (const meshData of meshDataArray) {
+      const modelIndex = meshData.modelIndex ?? 0;
+      const shared = this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex);
+      if (!topologySafeBatchOrigin([meshData], undefined, shared)) {
+        throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
+      }
+    }
+    if (this.appearanceController) for (const part of meshDataArray) this.appearanceController.cancelFor(part.expressId);
     // Cache max buffer size on first call
     if (this.cachedMaxBufferSize === 0) {
       this.cachedMaxBufferSize = this.getMaxBufferSize(device);
@@ -1189,6 +1233,8 @@ export class Scene {
     for (const meshData of renderable) {
       const baseKey = this.bucketBaseKey(meshData);
       const bucketKey = this.resolveActiveBucket(baseKey, meshData);
+      const resolvedBucket = this.buckets.get(bucketKey);
+      if (resolvedBucket) this.meshDataBucket.set(meshData, resolvedBucket);
 
       if (retainStreamingGeometry || !isStreaming) {
         // Accumulate mesh data in the bucket when we need later rebatching or
@@ -1227,53 +1273,15 @@ export class Scene {
     this.rebuildPendingBatches(device, pipeline);
   }
 
-  /**
-   * Rebuild all pending batches (call this after streaming completes)
-   *
-   * Each bucket key already maps to data that fits within the GPU buffer
-   * limit (enforced at accumulation time by resolveActiveBucket), so no
-   * splitting is needed here — just create one batch per key.
-   */
+  /** Rebuild pending buckets after streaming or a geometry mutation. */
   rebuildPendingBatches(device: GPUDevice, pipeline: RenderPipeline): void {
     if (this.pendingBatchKeys.size === 0) return;
+    const rebuilt = rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets,
+      create: (meshes, color, target, renderPipeline, key) => this.createBatchedMesh(meshes, color, target, renderPipeline, key),
+      dropPartial: batch => this.dropPartialCacheForBatch(batch),
+    }, device, pipeline);
 
-    const rebuilt: RebuiltBucket[] = [];
-    for (const key of this.pendingBatchKeys) {
-      const bucket = this.buckets.get(key);
-      const previousQuantized = bucket?.batchedMesh?.quantized !== undefined;
-
-      // Destroy old GPU batch if it exists
-      if (bucket?.batchedMesh) {
-        // Slot keys embed the batch id and the replacement gets a fresh one, so
-        // drop this batch's cached sub-batch clones first or they are stranded
-        // with live GPU buffers. Every other batch-destroying path already
-        // clears the cache (eviction per batch; finalize/release/clear wholesale).
-        this.dropPartialCacheForBatch(bucket.batchedMesh);
-        destroyGpuResources(bucket.batchedMesh);
-        bucket.batchedMesh = null;
-      }
-
-      if (!bucket || bucket.meshData.length === 0) {
-        // Bucket is empty — clean up
-        this.buckets.delete(key);
-        continue;
-      }
-
-      // Create new batch with all accumulated meshes for this bucket
-      const color = bucket.meshData[0].color;
-      const batchedMesh = this.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
-      bucket.batchedMesh = batchedMesh;
-      rebuilt.push({ bucket, previousQuantized });
-    }
-
-    // Rebuild the flat render array from all buckets (148 max batches — not perf critical)
-    this.batchedMeshes = [];
-    for (const bucket of this.buckets.values()) {
-      if (bucket.batchedMesh) {
-        this.batchedMeshes.push(bucket.batchedMesh);
-      }
-    }
-
+    this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
     this.pendingBatchKeys.clear();
     // Overlays follow their depth writers only when one actually changed under
     // them (flip / bucket move, #4832); finalize re-applies once itself.
@@ -1962,7 +1970,7 @@ export class Scene {
     // applies to cells exactly like it does to buckets.
     const colorGroups = new Map<string, MeshData[]>();
     for (const meshData of meshDataArray) {
-      const key = this.bucketBaseKey(meshData);
+      const key = this.meshDataBucket.get(meshData)?.key ?? this.bucketBaseKey(meshData);
       for (const fragment of this.splitMeshForStreaming(meshData)) {
         let group = colorGroups.get(key);
         if (!group) {
@@ -1974,11 +1982,14 @@ export class Scene {
     }
 
     // Create one fragment batch per color group (with buffer limit splitting)
-    for (const [, group] of colorGroups) {
+    for (const [key, group] of colorGroups) {
       const chunks = this.splitMeshDataForBufferLimit(group, this.cachedMaxBufferSize);
       for (const chunk of chunks) {
         const color = chunk[0].color;
-        const fragment = this.createBatchedMesh(chunk, color, device, pipeline);
+        const fragment = this.createBatchedMesh(
+          chunk, color, device, pipeline, undefined, undefined,
+          this.buckets.get(key)?.frameOrigin,
+        );
         this.batchedMeshes.push(fragment);
         this.streamingFragments.push(fragment);
       }
@@ -2167,9 +2178,9 @@ export class Scene {
       // at destroyed GPU resources (use-after-free on the next bucket-driven
       // access). `previous` is null for the freshly built buckets and, for a
       // carried COLD bucket a re-grouped meshData landed in, the shell that the
-      // restored `batchedMeshes` still holds — which must be put back, not
-      // nulled.
-      const createdOwned: Array<{ bucket: BatchBucket; previous: BatchedMesh | null; batch: BatchedMesh }> = [];
+      // restored `batchedMeshes` still holds — put back, not nulled.
+      type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh };
+      const createdOwned: Owned[] = [];
       let carriedCold: Array<[string, BatchBucket]> = [];
       let pendingKeys: string[] = [];
       let keyIdx = 0;
@@ -2180,10 +2191,14 @@ export class Scene {
         // are what the restored arrays point back at). Iterating the owned
         // pairs rather than `newBatches` also skips the carried cold shells
         // appended just before the swap, which this attempt did not create.
-        for (const { bucket, previous, batch } of createdOwned) {
+        for (const { bucket, previous, previousFrameOrigin, batch } of createdOwned) {
           // Repair the owner BEFORE the free, so no bucket is ever observable
-          // holding a destroyed batch.
-          if (bucket.batchedMesh === batch) bucket.batchedMesh = previous;
+          // holding a destroyed batch; its frame origin (what a later
+          // createBatchedMesh seeds from) must describe the restored batch.
+          if (bucket.batchedMesh === batch) {
+            bucket.batchedMesh = previous;
+            bucket.frameOrigin = previousFrameOrigin;
+          }
           if (!oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
             destroyGpuResources(batch);
           }
@@ -2205,9 +2220,11 @@ export class Scene {
             }
             const color = bucket.meshData[0].color;
             const previous = bucket.batchedMesh;
+            const previousFrameOrigin = bucket.frameOrigin;
             const batchedMesh = scene.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
             bucket.batchedMesh = batchedMesh;
-            createdOwned.push({ bucket, previous, batch: batchedMesh });
+            bucket.frameOrigin = batchedMesh.origin;
+            createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
             newBatches.push(batchedMesh);
 
             // Check time budget — yield if exceeded
@@ -2542,15 +2559,22 @@ export class Scene {
   private createBatchedMesh(
     meshes: MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, bucketKey?: string,
-    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off',
+    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off', frameOrigin?: [number, number, number],
   ): BatchedMesh {
     // Keep main's model-local frame and translation registration while staging
     // every GPU allocation before publishing Scene state.
     const modelIndex = meshes[0]?.modelIndex ?? 0;
     const offset = this.modelTranslations.get(modelIndex);
+    const origin = topologySafeBatchOrigin(
+      meshes,
+      frameOrigin ?? this.meshDataBucket.get(meshes[0])?.batchedMesh?.origin,
+      this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
+      this.meshDataBucket.get(meshes[0])?.frameOrigin,
+    );
+    if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const result = createSceneBatch(meshes, color, device, pipeline, {
       id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
-      origin: this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
+      origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);
     this.nextBatchId++;
@@ -2583,41 +2607,17 @@ export class Scene {
    * Returns the bucket key to use (may be the base key or a suffixed key).
    */
   private resolveActiveBucket(baseColorKey: string, meshData: MeshData): string {
-    let bucketKey = this.activeBucketKey.get(baseColorKey) ?? baseColorKey;
-    const bucket = this.buckets.get(bucketKey);
-    const currentBytes = bucket?.vertexBytes ?? 0;
-    const meshBytes = (meshData.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
-
-    // A COLD bucket is sealed (its content lives on disk and its shell's
-    // expressIds are the restore contract) — route new arrivals (e.g. a
-    // federated add landing in the same cell+colour) to an overflow
-    // sub-bucket instead of corrupting the sealed one.
-    if (bucket && this.coldBuckets.has(bucketKey)) {
-      bucketKey = `${baseColorKey}#${this.nextSplitId++}`;
-      this.activeBucketKey.set(baseColorKey, bucketKey);
-      let target = this.buckets.get(bucketKey);
-      if (!target) {
-        target = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
-        this.buckets.set(bucketKey, target);
-      }
-      target.vertexBytes += meshBytes;
-      return bucketKey;
-    }
-
-    if (currentBytes > 0 && currentBytes + meshBytes > this.cachedMaxBufferSize) {
-      // Overflow — create a new sub-bucket
-      bucketKey = `${baseColorKey}#${this.nextSplitId++}`;
-      this.activeBucketKey.set(baseColorKey, bucketKey);
-    }
-
-    // Update size tracking on the bucket (create if needed)
-    let targetBucket = this.buckets.get(bucketKey);
-    if (!targetBucket) {
-      targetBucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
-      this.buckets.set(bucketKey, targetBucket);
-    }
-    targetBucket.vertexBytes += meshBytes;
-    return bucketKey;
+    const modelIndex = meshData.modelIndex ?? 0;
+    return resolvePrecisionBucket({
+      buckets: this.buckets,
+      activeKeys: this.activeBucketKey,
+      coldKeys: this.coldBuckets,
+      maxBufferSize: this.cachedMaxBufferSize,
+      sharedOrigin: this.modelTranslations.frameOrigin(
+        this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex,
+      ),
+      nextSplitKey: () => `${baseColorKey}#${this.nextSplitId++}`,
+    }, baseColorKey, meshData);
   }
 
   /**
@@ -2761,7 +2761,7 @@ export class Scene {
     // decision (#4832): the overlay built from the same source must match its depth.
     const color = visibleMeshData[0].color;
     const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline, undefined,
-      inheritedQuantization(this.quantizedBatchesEnabled, bucket?.batchedMesh));
+      inheritedQuantization(this.quantizedBatchesEnabled, bucket?.batchedMesh), bucket?.batchedMesh?.origin);
 
     // Cache it
     this.partialBatchCache.set(cacheKey, partialBatch);
@@ -2829,7 +2829,7 @@ export class Scene {
       if (sourceKey !== null) for (const piece of meshData) this.overlaySources.set(piece, sourceKey);
       const quantization = inheritedQuantization(this.quantizedBatchesEnabled, sourceBatch);
       for (const chunk of this.splitMeshDataForBufferLimit(meshData, maxBufferSize)) {
-        this.overrideBatches.push(this.createBatchedMesh(chunk, color, device, pipeline, undefined, quantization));
+        this.overrideBatches.push(this.createBatchedMesh(chunk, color, device, pipeline, undefined, quantization, sourceBatch?.origin));
       }
     }
   }

@@ -42,6 +42,14 @@ export interface ParseIfcxOptions {
   allowEmptyGeometry?: boolean;
 }
 
+export function getViewerSchemaVersion(dataStore: IfcDataStore | null): SchemaVersion {
+  if (!dataStore) return 'IFC4';
+  if (dataStore.schemaVersion === 'IFC4X3') return 'IFC4X3';
+  if (dataStore.schemaVersion === 'IFC4') return 'IFC4';
+  if (dataStore.schemaVersion === 'IFC5') return 'IFC5';
+  return 'IFC2X3';
+}
+
 export function convertIfcxMeshes(rawMeshes: RawIfcxMesh[]): MeshData[] {
   return rawMeshes.map((mesh) => {
     const positions = mesh.positions instanceof Float32Array ? mesh.positions : new Float32Array(mesh.positions || []);

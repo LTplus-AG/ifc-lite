@@ -42,6 +42,52 @@ function recordingGpu() {
 }
 
 describe('whole-model renderer placement (#4226)', () => {
+  it('uploads extracted merged geometry against its source batch frame (#5010)', () => {
+    const renderer = new Renderer({ width: 256, height: 256,
+      getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
+    const uploaded = new WeakMap<GPUBuffer, ArrayBuffer>();
+    const device = {
+      limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
+      createBuffer({ size, mappedAtCreation }: GPUBufferDescriptor) {
+        const bytes = new ArrayBuffer(size);
+        const buffer = { size, getMappedRange: () => bytes, unmap() {}, destroy() {} } as unknown as GPUBuffer;
+        uploaded.set(buffer, bytes);
+        if (!mappedAtCreation) uploaded.set(buffer, bytes);
+        return buffer;
+      },
+      createBindGroup() { return {}; },
+      queue: { writeBuffer(buffer: GPUBuffer, offset: number, data: AllowSharedBufferSource) {
+        const target = uploaded.get(buffer)!;
+        const source = ArrayBuffer.isView(data)
+          ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+          : new Uint8Array(data);
+        new Uint8Array(target, offset, source.byteLength).set(source);
+      } },
+    } as unknown as GPUDevice;
+    const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
+    const internals = renderer as unknown as { device: { isInitialized(): boolean; getDevice(): GPUDevice }; pipeline: RenderPipeline };
+    internals.device = { isInitialized: () => true, getDevice: () => device };
+    internals.pipeline = pipeline;
+    const scene = renderer.getScene() as Scene;
+    scene.setSpatialChunking({ cellSize: 32 });
+    scene.setQuantizedBatches(true);
+    const near = triangle(1, 0, 0);
+    const merged = { ...triangle(7, 4, 800_000_000), entityIds: new Uint32Array([7, 7, 7]) } as MeshData;
+    scene.appendToBatches([near, merged], device, pipeline);
+    const extracted = scene.getMeshDataPieces(7, 4)![0];
+    const source = scene.getBatchedMeshes().find((batch) => batch.expressIds.includes(7))!;
+
+    renderer.createMeshFromData(extracted);
+    const hydrated = scene.getMeshes().find((mesh) => mesh.hydrated && mesh.expressId === 7)!;
+    const bytes = uploaded.get(hydrated.vertexBuffer)!;
+    const written = new Float32Array(bytes);
+    const origin = source.origin!;
+    const relative = Math.fround(extracted.positions[0] + extracted.origin![0] - origin[0]);
+    const expected = Math.fround(Math.fround(origin[0]) + Math.round(relative * 1024) / 1024);
+    assert.strictEqual(written[0], expected,
+      'the real upload uses the source batch frame and quantized lattice, not a derived fallback frame');
+  });
+
   for (const streaming of [false, true]) it(`frames later uploads in their pre-existing placement (streaming: ${streaming}, #4226)`, () => {
     const { device, pipeline } = recordingGpu();
     const canvas = { width: 256, height: 256, getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement;

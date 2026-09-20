@@ -1,10 +1,5 @@
 {
-  "apps/viewer/src/components/viewer/AxisHelper.tsx": 3,
   "apps/viewer/src/components/viewer/BottomStrip.tsx": 1,
-  "apps/viewer/src/components/viewer/CesiumOverlay.tsx": 1,
-  "apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx": 35,
-  "apps/viewer/src/components/viewer/CustomBasemapEditor.tsx": 16,
-  "apps/viewer/src/components/viewer/CustomTilesetEditor.tsx": 6,
   "apps/viewer/src/components/viewer/dock/FloatingPanel.tsx": 3,
   "apps/viewer/src/components/viewer/dock/PanelWindowHost.tsx": 5,
   "apps/viewer/src/components/viewer/EntityContextMenu.tsx": 2,

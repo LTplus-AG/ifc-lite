@@ -35,8 +35,8 @@ export type WorldPoint = readonly [number, number, number];
 
 /** Two f32 vec4 lanes holding one f64-like origin.  The w components are 0. */
 export const RTE_ORIGIN_FLOATS = 8;
-/** `mat4x4 viewProj`, then camera-origin high and low vec4 lanes. */
-export const RTE_FRAME_FLOATS = 16 + RTE_ORIGIN_FLOATS;
+/** Translation-free `mat4x4 viewProj`; camera position stays CPU f64 only. */
+export const RTE_FRAME_FLOATS = 16;
 /** Largest supported source/world coordinate component, in canonical Y-up metres. */
 export const MAX_RTE_SOURCE_ABS_METRES = 1_000_000_000;
 /** Largest source-origin delta accepted by a single camera RTE frame. */
@@ -53,8 +53,6 @@ interface UniformFieldLayout {
 export const RTE_UNIFORM_LAYOUT = {
   frame: [
     { name: 'viewProj', type: 'mat4x4<f32>', byteOffset: 0, byteSize: 64 },
-    { name: 'cameraHigh', type: 'vec4<f32>', byteOffset: 64, byteSize: 16 },
-    { name: 'cameraLow', type: 'vec4<f32>', byteOffset: 80, byteSize: 16 },
   ] as const satisfies readonly UniformFieldLayout[],
   drawable: [
     { name: 'drawableDeltaHigh', type: 'vec4<f32>', byteOffset: 0, byteSize: 16 },
@@ -135,6 +133,11 @@ export function splitFloat64ForRte(value: number): readonly [number, number] {
   return [high, Math.fround(value - high)];
 }
 
+/** Validate a source/world f64 point before any subtraction changes its meaning. */
+function validateRteSourcePoint(point: WorldPoint): void {
+  for (let axis = 0; axis < 3; axis++) splitFloat64ForRte(point[axis]);
+}
+
 /**
  * Pack an f64 world origin as two vec4<f32>s at `floatOffset`.  The empty w
  * lanes are explicitly cleared so a reused uniform scratch buffer cannot
@@ -193,14 +196,13 @@ export function translationFreeViewProjection(projection: Mat4, view: Mat4): Mat
  * draw packs an f64 camera-relative delta through `packDrawableOrigin`.
  */
 export class RelativeToEyeFrame {
-  private readonly cameraPacked = new Float32Array(RTE_ORIGIN_FLOATS);
   private cameraWorld: [number, number, number] = [0, 0, 0];
   private viewProj: Mat4 = MathUtils.identity();
 
   /** Update the frame from the f64 camera pose and the normal camera matrices. */
   update(camera: Vec3, projection: Mat4, view: Mat4): void {
     this.cameraWorld = [camera.x, camera.y, camera.z];
-    packRteOrigin(this.cameraWorld, this.cameraPacked);
+    validateRteSourcePoint(this.cameraWorld);
     this.viewProj = translationFreeViewProjection(projection, view);
   }
 
@@ -215,16 +217,15 @@ export class RelativeToEyeFrame {
   }
 
   /**
-   * Pack `viewProj + cameraHigh + cameraLow`, matching `RteFrameUniform` in
-   * WGSL.  An explicit writer keeps dynamic-uniform callers from drifting
-   * field offsets independently.
+   * Pack the translation-free `viewProj`, matching `RteFrameUniform` in WGSL.
+   * The camera stays CPU f64 only; each drawable supplies its already-split
+   * f64 camera-relative delta through the separate per-draw uniform.
    */
   packUniforms(out: Float32Array, floatOffset = 0): void {
     if (out.length < floatOffset + RTE_FRAME_FLOATS) {
       throw new RangeError(`RTE frame needs ${RTE_FRAME_FLOATS} floats at offset ${floatOffset}.`);
     }
     out.set(this.viewProj.m, floatOffset + RTE_UNIFORM_LAYOUT.frame[0].byteOffset / 4);
-    out.set(this.cameraPacked, floatOffset + RTE_UNIFORM_LAYOUT.frame[1].byteOffset / 4);
   }
 
   /**
@@ -233,6 +234,9 @@ export class RelativeToEyeFrame {
    * This payload is camera-dependent and is invalid after any camera reframe.
    */
   packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
+    // Validate the original source origin before subtraction: a camera at the
+    // boundary could otherwise make an out-of-range drawable look harmless.
+    validateRteSourcePoint(origin);
     const delta: [number, number, number] = [0, 0, 0];
     for (let axis = 0; axis < 3; axis++) {
       delta[axis] = origin[axis] - this.cameraWorld[axis];

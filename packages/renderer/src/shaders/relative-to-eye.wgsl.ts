@@ -7,18 +7,16 @@
  *
  * A pass owns its binding declarations, but imports this verbatim into its
  * shader source and uses `rteWorldPosition` before projection.  The layouts
- * match `RelativeToEyeFrame.packUniforms` and `packRteOrigin` exactly:
- * `viewProj` + two vec4 camera lanes per frame, then two vec4 drawable lanes
- * per draw.  Origins are world/source f64 values split on the CPU; `local` is
+ * match `RelativeToEyeFrame.packUniforms` and `packRteOrigin` exactly: a
+ * translation-free `viewProj` per frame, then two vec4 drawable-camera delta
+ * lanes per draw. Origins are world/source f64 values on the CPU; `local` is
  * the element-local f32 vertex already resident in a vertex buffer.
  */
 export const relativeToEyeWgsl = `
 struct RteFrameUniform {
-  // Camera translation is intentionally absent.  This consumes positions
+  // Camera translation is intentionally absent. This projects positions
   // returned by rteWorldPosition, which are already relative to the eye.
   viewProj: mat4x4<f32>,
-  cameraHigh: vec4<f32>,
-  cameraLow: vec4<f32>,
 }
 
 struct RteDrawableUniform {
@@ -30,10 +28,9 @@ struct RteDrawableUniform {
 
 fn rteWorldPosition(
   local: vec3<f32>,
-  frame: RteFrameUniform,
   drawable: RteDrawableUniform,
 ) -> vec4<f32> {
-  // Do not subtract camera lanes here: this delta was formed in CPU f64.
+  // Do not subtract a camera origin here: this delta was formed in CPU f64.
   let highDelta = drawable.drawableDeltaHigh.xyz;
   let lowDelta = drawable.drawableDeltaLow.xyz;
   // A drawable template can span kilometres. Keep local with high first;

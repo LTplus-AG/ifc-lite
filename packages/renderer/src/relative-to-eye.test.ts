@@ -127,6 +127,17 @@ describe('relative-to-eye packing (#5049)', () => {
       () => frame.packDrawableOrigin([MAX_RTE_EYE_RELATIVE_METRES + 1, 0, 0], new Float32Array(RTE_ORIGIN_FLOATS)),
       /camera-relative envelope/,
     );
+    frame.update({ x: MAX_RTE_SOURCE_ABS_METRES, y: 0, z: 0 }, MathUtils.identity(), MathUtils.identity());
+    assert.throws(
+      () => frame.packDrawableOrigin([MAX_RTE_SOURCE_ABS_METRES + 1, 0, 0], new Float32Array(RTE_ORIGIN_FLOATS)),
+      /source envelope/,
+      'validate the original drawable source origin before its small delta is formed',
+    );
+    assert.throws(
+      () => frame.update({ x: MAX_RTE_SOURCE_ABS_METRES + 1, y: 0, z: 0 }, MathUtils.identity(), MathUtils.identity()),
+      /source envelope/,
+      'camera source coordinates are checked even though they are no longer uploaded',
+    );
   });
 
   it('keeps CPU ray/snap/measure coordinates in f64 while GPU uniforms are split', () => {
@@ -137,7 +148,7 @@ describe('relative-to-eye packing (#5049)', () => {
     assert.deepStrictEqual(frame.worldToRelative([5_000_000.275, -3_000_000.5125, 2_000_000.15625]), [0.02500000037252903, -0.012500000186264515, 0.03125]);
     const packed = new Float32Array(RTE_FRAME_FLOATS);
     frame.packUniforms(packed);
-    assert.deepStrictEqual(Array.from(packed.subarray(16, 24)), [5_000_000, -3_000_000.5, 2_000_000.125, 0, 0.25, 0, 0, 0]);
+    assert.deepStrictEqual(Array.from(packed), [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   });
 
   it('removes eye translation from view-projection but leaves projection depth semantics intact', () => {
@@ -179,30 +190,24 @@ describe('relative-to-eye packing (#5049)', () => {
     const frame = new RelativeToEyeFrame();
     const eye = { x: 10_000_000, y: -4_194_304.25, z: 8_388_608.5 };
     frame.update(eye, MathUtils.identity(), MathUtils.lookAt(eye, { ...eye, z: eye.z - 1 }, { x: 0, y: 1, z: 0 }));
-    const frameData = new Float32Array(RTE_FRAME_FLOATS);
     const drawableData = new Float32Array(RTE_ORIGIN_FLOATS);
-    frame.packUniforms(frameData);
     // This stays within the ±1,000,000 m accepted delta envelope. The prior
     // positive witness (11,000,000.025) is intentionally outside it.
     frame.packDrawableOrigin([10_999_999.975, -4_194_304.75, 8_388_609.25], drawableData);
-    const frameBuffer = device.createBuffer({ size: frameData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const drawableBuffer = device.createBuffer({ size: drawableData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const resultBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     const readback = device.createBuffer({ size: 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     try {
-      device.queue.writeBuffer(frameBuffer, 0, frameData);
       device.queue.writeBuffer(drawableBuffer, 0, drawableData);
       const module = device.createShaderModule({ code: `${relativeToEyeWgsl}
-        @group(0) @binding(0) var<uniform> frame: RteFrameUniform;
-        @group(0) @binding(1) var<uniform> drawable: RteDrawableUniform;
-        @group(0) @binding(2) var<storage, read_write> result: array<vec4<f32>>;
-        @compute @workgroup_size(1) fn main() { result[0] = rteWorldPosition(vec3<f32>(-1000000.0, -0.25, 0.0625), frame, drawable); }
+        @group(0) @binding(0) var<uniform> drawable: RteDrawableUniform;
+        @group(0) @binding(1) var<storage, read_write> result: array<vec4<f32>>;
+        @compute @workgroup_size(1) fn main() { result[0] = rteWorldPosition(vec3<f32>(-1000000.0, -0.25, 0.0625), drawable); }
       ` });
       const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
       const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [
-        { binding: 0, resource: { buffer: frameBuffer } },
-        { binding: 1, resource: { buffer: drawableBuffer } },
-        { binding: 2, resource: { buffer: resultBuffer } },
+        { binding: 0, resource: { buffer: drawableBuffer } },
+        { binding: 1, resource: { buffer: resultBuffer } },
       ] });
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginComputePass();
@@ -219,9 +224,7 @@ describe('relative-to-eye packing (#5049)', () => {
       // Repeat the exact association witness over the 2^23 high-lane boundary.
       const boundaryEye = { x: 8_388_608, y: eye.y, z: eye.z };
       frame.update(boundaryEye, MathUtils.identity(), MathUtils.lookAt(boundaryEye, { ...boundaryEye, z: boundaryEye.z - 1 }, { x: 0, y: 1, z: 0 }));
-      frame.packUniforms(frameData);
       frame.packDrawableOrigin([9_388_607.975, -4_194_304.75, 8_388_609.25], drawableData);
-      device.queue.writeBuffer(frameBuffer, 0, frameData);
       device.queue.writeBuffer(drawableBuffer, 0, drawableData);
       const boundaryEncoder = device.createCommandEncoder();
       const boundaryPass = boundaryEncoder.beginComputePass();
@@ -233,7 +236,7 @@ describe('relative-to-eye packing (#5049)', () => {
       assert.equal(boundaryGot[0], -0.02500000037252903, 'the exponent-boundary GPU witness must retain the low delta');
       readback.unmap();
     } finally {
-      frameBuffer.destroy(); drawableBuffer.destroy(); resultBuffer.destroy(); readback.destroy();
+      drawableBuffer.destroy(); resultBuffer.destroy(); readback.destroy();
       device.destroy();
     }
   });

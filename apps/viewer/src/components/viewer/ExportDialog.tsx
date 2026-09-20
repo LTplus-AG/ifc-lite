@@ -75,7 +75,6 @@ import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-ste
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
-import { useTranslation } from '@/i18n';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';

@@ -37,6 +37,7 @@ import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
 import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
+import { landXmlEn } from './catalogues/landxml.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
@@ -69,7 +70,6 @@ import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
 import { zonesPanelEn } from './catalogues/zones-panel.en';
-import { exportDialogEn } from './catalogues/export-dialog.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
@@ -112,6 +112,7 @@ export const en = {
   ...keyboardShortcutsEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...landXmlEn,
   ...structuralPropertiesEn,
   ...appearancePanelEn,
   ...appearancePickersEn,
@@ -131,7 +132,6 @@ export const en = {
   ...searchModalEn,
   ...searchFiltersEn,
   ...repositionPanelEn,
-  ...exportDialogEn,
   ...webgpuTroubleshootingEn,
   ...scriptPanelEn,
   ...zonesPanelEn,

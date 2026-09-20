@@ -450,9 +450,4 @@ export const propertiesEn = {
   'properties.panel.multiEntity.propertySetsCount': '{count} sets',
   'properties.panel.multiEntity.quantitiesHeading': 'Quantities',
   'properties.panel.multiEntity.quantitySetsCount': '{count} sets',
-  'properties.modelMetadata.sourceStatisticsHeading': 'Source Statistics',
-  'properties.modelMetadata.sourceSurfaces': 'Surfaces',
-  'properties.modelMetadata.sourcePoints': 'Source Points',
-  'properties.modelMetadata.sourceOverlays': 'Source Overlays',
-  'properties.modelMetadata.noSourceOverlays': 'No boundary, breakline or contour records.',
 } as const satisfies Record<string, TranslationValue>;

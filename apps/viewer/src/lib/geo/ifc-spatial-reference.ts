@@ -41,6 +41,7 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
   );
   const scale = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
   const epsg = declaredEpsg(input.projectedCRS.name);
+  const verticalEpsg = declaredEpsg(input.projectedCRS.verticalDatum);
   return Object.freeze({
     source: Object.freeze({
       axes: ['east', 'up', 'south'],
@@ -48,6 +49,7 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
       verticalUnitToMetres: 1,
     } as const),
     ...(epsg ? { horizontal: Object.freeze({ id: epsg, provenance: Object.freeze({ source: 'IfcProjectedCRS.Name' }) }) } : {}),
+    ...(verticalEpsg ? { vertical: Object.freeze({ id: verticalEpsg, provenance: Object.freeze({ source: 'IfcProjectedCRS.VerticalDatum' }) }) } : {}),
     localToProjected: Object.freeze({
       kind: 'local-projected-affine',
       eastings: conversion.eastings * mapUnitScale,
@@ -62,7 +64,10 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
     confidence: epsg ? 'declared' : 'unknown',
     sourceMetadata: Object.freeze({
       format: 'ifc',
+      mapConversionExpressId: input.mapConversion.id,
+      projectedCrsExpressId: input.projectedCRS.id,
       ...(input.projectedCRS.name ? { projectedCrsName: input.projectedCRS.name } : {}),
+      ...(input.projectedCRS.verticalDatum ? { verticalDatum: input.projectedCRS.verticalDatum } : {}),
     }),
   });
 }

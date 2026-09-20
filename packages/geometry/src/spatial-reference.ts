@@ -94,7 +94,7 @@ export type SpatialPlacementResult =
   | { ok: true; placement: SpatialPlacement }
   | { ok: false; refusal: SpatialRefusal };
 
-/** Current renderer-frame origin removed from authored viewer coordinates. */
+/** Current source-frame origin removed from authored source coordinates. */
 export interface SpatialFrameOffset { readonly x: number; readonly y: number; readonly z: number }
 
 export interface ResolveSpatialPlacementOptions {
@@ -116,10 +116,59 @@ function finite(values: readonly number[]): boolean {
 }
 
 function usableFrame(frame: SourceCoordinateFrame): boolean {
-  return frame.axes[0] === 'east' && frame.axes[1] === 'up' && frame.axes[2] === 'south'
+  const horizontal = new Set(frame.axes.filter((axis) => axis !== 'up' && axis !== 'down'));
+  const vertical = frame.axes.filter((axis) => axis === 'up' || axis === 'down');
+  const hasEastWest = [...horizontal].some((axis) => axis === 'east' || axis === 'west');
+  const hasNorthSouth = [...horizontal].some((axis) => axis === 'north' || axis === 'south');
+  return horizontal.size === 2 && hasEastWest && hasNorthSouth && vertical.length === 1
     && finite([frame.horizontalUnitToMetres, frame.verticalUnitToMetres])
-    && Math.abs(frame.horizontalUnitToMetres) >= EPSILON
-    && Math.abs(frame.verticalUnitToMetres) >= EPSILON;
+    // Direction belongs exclusively in `axes`; a unit-to-metre factor cannot
+    // be negative without silently reflecting a source a second time.
+    && frame.horizontalUnitToMetres >= EPSILON
+    && frame.verticalUnitToMetres >= EPSILON;
+}
+
+/** Convert a source-native point to the renderer's East/Up/South metre frame. */
+function sourceToViewer(
+  frame: SourceCoordinateFrame,
+  point: readonly [number, number, number],
+): readonly [number, number, number] | null {
+  if (!usableFrame(frame) || !finite(point)) return null;
+  let east: number | undefined;
+  let up: number | undefined;
+  let south: number | undefined;
+  for (let index = 0; index < 3; index++) {
+    const axis = frame.axes[index];
+    const value = point[index];
+    switch (axis) {
+      case 'east': east = value * frame.horizontalUnitToMetres; break;
+      case 'west': east = -value * frame.horizontalUnitToMetres; break;
+      case 'up': up = value * frame.verticalUnitToMetres; break;
+      case 'down': up = -value * frame.verticalUnitToMetres; break;
+      case 'south': south = value * frame.horizontalUnitToMetres; break;
+      case 'north': south = -value * frame.horizontalUnitToMetres; break;
+    }
+  }
+  return east === undefined || up === undefined || south === undefined ? null : [east, up, south];
+}
+
+/** Convert a renderer East/Up/South metre point to source-native coordinates. */
+function viewerToSource(
+  frame: SourceCoordinateFrame,
+  point: readonly [number, number, number],
+): readonly [number, number, number] | null {
+  if (!usableFrame(frame) || !finite(point)) return null;
+  const values = frame.axes.map((axis) => {
+    switch (axis) {
+      case 'east': return point[0] / frame.horizontalUnitToMetres;
+      case 'west': return -point[0] / frame.horizontalUnitToMetres;
+      case 'up': return point[1] / frame.verticalUnitToMetres;
+      case 'down': return -point[1] / frame.verticalUnitToMetres;
+      case 'south': return point[2] / frame.horizontalUnitToMetres;
+      case 'north': return -point[2] / frame.horizontalUnitToMetres;
+    }
+  });
+  return finite(values) ? [values[0], values[1], values[2]] : null;
 }
 
 function normalizedAxis(operation: LocalProjectedOperation): { a: number; b: number } | null {
@@ -170,7 +219,7 @@ export function applySpatialPlacement(
   ];
 }
 
-/** Map a renderer Y-up source point to projected East/North/height in f64. */
+/** Map a source-native point to projected East/North/height in f64. */
 export function localViewerToProjected(
   reference: ModelSpatialReference,
   point: readonly [number, number, number],
@@ -183,9 +232,12 @@ export function localViewerToProjected(
   if (!axis) return null;
   // Renderer coordinates are East, Up, South. IFC/Y-up geometry's Z is the
   // negated northing, hence the signs are intentionally asymmetric.
-  const x = point[0] + frameOffset.x;
-  const y = point[1] + frameOffset.y;
-  const south = point[2] + frameOffset.z;
+  const viewer = sourceToViewer(reference.source, point);
+  const viewerOffset = sourceToViewer(reference.source, [frameOffset.x, frameOffset.y, frameOffset.z]);
+  if (!viewer || !viewerOffset) return null;
+  const x = viewer[0] + viewerOffset[0];
+  const y = viewer[1] + viewerOffset[1];
+  const south = viewer[2] + viewerOffset[2];
   return [
     operation.eastings + operation.scaleX * axis.a * x + operation.scaleY * axis.b * south,
     operation.northings + operation.scaleX * axis.b * x - operation.scaleY * axis.a * south,
@@ -193,7 +245,7 @@ export function localViewerToProjected(
   ];
 }
 
-/** Map projected East/North/height to a renderer Y-up source point in f64. */
+/** Map projected East/North/height to a source-native point in f64. */
 export function projectedToLocalViewer(
   reference: ModelSpatialReference,
   point: readonly [number, number, number],
@@ -206,10 +258,16 @@ export function projectedToLocalViewer(
   if (!axis) return null;
   const de = point[0] - operation.eastings;
   const dn = point[1] - operation.northings;
-  const x = (axis.a * de + axis.b * dn) / operation.scaleX - frameOffset.x;
-  const south = (axis.b * de - axis.a * dn) / operation.scaleY - frameOffset.z;
-  const y = (point[2] - operation.orthogonalHeight) / operation.scaleZ - frameOffset.y;
-  return finite([x, y, south]) ? [x, y, south] : null;
+  const x = (axis.a * de + axis.b * dn) / operation.scaleX;
+  const south = (axis.b * de - axis.a * dn) / operation.scaleY;
+  const y = (point[2] - operation.orthogonalHeight) / operation.scaleZ;
+  const source = viewerToSource(reference.source, [x, y, south]);
+  const sourceOffset = viewerToSource(reference.source, [frameOffset.x, frameOffset.y, frameOffset.z]);
+  if (!source || !sourceOffset) return null;
+  const result: readonly [number, number, number] = [
+    source[0] - sourceOffset[0], source[1] - sourceOffset[1], source[2] - sourceOffset[2],
+  ];
+  return finite(result) ? result : null;
 }
 
 /**

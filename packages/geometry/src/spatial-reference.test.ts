@@ -54,10 +54,69 @@ describe('format-neutral spatial placement (#5048)', () => {
     expect(resolveSpatialPlacement(reference({ vertical: { id: 'EPSG:5703' } }), reference())).toMatchObject({ ok: false, refusal: 'vertical-crs-mismatch' });
     expect(resolveSpatialPlacement(reference({ vertical: undefined }), reference())).toMatchObject({ ok: false, refusal: 'vertical-crs-unknown' });
     expect(resolveSpatialPlacement(reference({ vertical: undefined }), reference(), { unknownVertical: 'assume-compatible' }).ok).toBe(true);
+    expect(resolveSpatialPlacement(reference(), reference({ vertical: undefined }))).toMatchObject({ ok: false, refusal: 'vertical-crs-unknown' });
+    expect(resolveSpatialPlacement(reference({ vertical: undefined }), reference({ vertical: undefined }))).toMatchObject({ ok: false, refusal: 'vertical-crs-unknown' });
   });
 
-  it('rejects degenerate source operations rather than inventing an axis', () => {
+  it('converts declared source units and axis order without changing the map operation', () => {
+    const source = reference({
+      source: { axes: ['north', 'east', 'down'], horizontalUnitToMetres: 0.3048, verticalUnitToMetres: 0.3048 },
+      localToProjected: { ...reference().localToProjected!, xAxisAbscissa: 1, xAxisOrdinate: 0 },
+    });
+    // Native point is North/East/Down feet. The map operation receives the
+    // renderer's East/Up/South metre frame: 20, -10, -30 respectively.
+    expect(localViewerToProjected(source, [30 / 0.3048, 20 / 0.3048, 10 / 0.3048]))
+      .toEqual([2_600_020, 1_200_030, 440]);
+    expect(projectedToLocalViewer(source, [2_600_020, 1_200_030, 440]))
+      .toEqual([30 / 0.3048, 20 / 0.3048, 10 / 0.3048]);
+  });
+
+  it('rejects malformed units and incomplete source axes rather than guessing', () => {
     expect(resolveSpatialPlacement(reference({ localToProjected: { ...reference().localToProjected!, xAxisAbscissa: 0, xAxisOrdinate: 0 } }), reference()))
       .toMatchObject({ ok: false, refusal: 'invalid-axis-or-unit' });
+    for (const source of [
+      { ...reference().source, horizontalUnitToMetres: 0 },
+      { ...reference().source, verticalUnitToMetres: -0.3048 },
+      { ...reference().source, axes: ['east', 'west', 'up'] as const },
+    ]) {
+      const invalid = reference({ source });
+      expect(resolveSpatialPlacement(invalid, reference())).toMatchObject({ ok: false, refusal: 'invalid-axis-or-unit' });
+      expect(localViewerToProjected(invalid, [1, 2, 3])).toBeNull();
+    }
+  });
+
+  it('derives placement in native source coordinates across units, axes, and vertical scale', () => {
+    const source = reference({
+      source: { axes: ['north', 'east', 'down'], horizontalUnitToMetres: 0.3048, verticalUnitToMetres: 0.3048 },
+      localToProjected: {
+        ...reference().localToProjected!, eastings: 2_600_120, northings: 1_200_050,
+        orthogonalHeight: 600, xAxisAbscissa: 0, xAxisOrdinate: 4,
+        scaleX: 1, scaleY: 1, scaleZ: 1,
+      },
+    });
+    const target = reference({
+      localToProjected: {
+        ...reference().localToProjected!, eastings: 2_600_000, northings: 1_200_000,
+        orthogonalHeight: 450, xAxisAbscissa: 3, xAxisOrdinate: 0,
+        scaleX: 1, scaleY: 1, scaleZ: 1,
+      },
+    });
+    // Frame offsets carry the same native coordinate order/units as their
+    // reference. This models an RTC shift before its source adapter turns the
+    // data into renderer metres.
+    const sourceFrameOffset = { x: 100, y: -50, z: 25 };
+    const targetFrameOffset = { x: -10, y: 20, z: -5 };
+    const resolved = resolveSpatialPlacement(source, target, { sourceFrameOffset, targetFrameOffset });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+
+    const point: [number, number, number] = [2000, 30, -500];
+    const projected = localViewerToProjected(source, point, sourceFrameOffset);
+    expect(projected).not.toBeNull();
+    const expected = projectedToLocalViewer(target, projected!, targetFrameOffset);
+    const actual = applySpatialPlacement(resolved.placement.sourceToFederation, ...point);
+    expect(actual[0]).toBeCloseTo(expected![0], 9);
+    expect(actual[1]).toBeCloseTo(expected![1], 9);
+    expect(actual[2]).toBeCloseTo(expected![2], 9);
   });
 });

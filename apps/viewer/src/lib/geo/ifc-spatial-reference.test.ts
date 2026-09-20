@@ -11,9 +11,10 @@ describe('IFC spatial-reference adapter (#5048)', () => {
   it('preserves IFC map conversion as a neutral f64 operation', () => {
     const reference = spatialReferenceFromIfc({
       mapConversion: { id: 2, sourceCRS: 3, targetCRS: 4, eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 450, xAxisAbscissa: 1, xAxisOrdinate: 0 },
-      projectedCRS: { id: 4, name: 'EPSG:2056' }, lengthUnitScale: 1,
+      projectedCRS: { id: 4, name: 'EPSG:2056', verticalDatum: 'EPSG:5729' }, lengthUnitScale: 1,
     });
     assert.deepEqual(reference.horizontal, { id: 'EPSG:2056', provenance: { source: 'IfcProjectedCRS.Name' } });
+    assert.deepEqual(reference.vertical, { id: 'EPSG:5729', provenance: { source: 'IfcProjectedCRS.VerticalDatum' } });
     assert.deepEqual(localViewerToProjected(reference, [12, 3, -4]), [2_600_012, 1_200_004, 453]);
     assert.ok(Object.isFrozen(reference));
     assert.ok(Object.isFrozen(reference.localToProjected));

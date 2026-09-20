@@ -25,7 +25,7 @@ import type { IfcSchemaVersion } from './schema-converter.js';
  * module is a dependency of `schema-converter.ts`, so importing back from
  * `merged-exporter.ts` would cycle.
  */
-function isRootedEntityType(type: string): boolean {
+export function isRootedEntityType(type: string): boolean {
   return getInheritanceChainAcrossSchemas(type).includes('IfcRoot');
 }
 

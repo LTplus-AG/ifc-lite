@@ -45,7 +45,7 @@ fn generated_registries_keep_version_specific_door_style_slots() {
 }
 
 #[test]
-fn registry_accepts_ifc4x3_release_labels_but_not_unknown_families() {
+fn registry_accepts_supported_release_labels_but_not_unknown_families() {
     assert_eq!(
         SchemaVersion::from_file_schema("ifc4x3_rc4"),
         Some(SchemaVersion::Ifc4x3)
@@ -58,8 +58,15 @@ fn registry_accepts_ifc4x3_release_labels_but_not_unknown_families() {
         SchemaVersion::from_file_schema("IFC2X3_TC1"),
         Some(SchemaVersion::Ifc2x3)
     );
+    assert_eq!(
+        SchemaVersion::from_file_schema("IFC4X1"),
+        Some(SchemaVersion::Ifc4x1)
+    );
+    assert_eq!(
+        SchemaVersion::from_file_schema("IFC4X2"),
+        Some(SchemaVersion::Ifc4x2)
+    );
     for unknown in [
-        "IFC4X1",
         "IFC4X4",
         "IFC4X30",
         "IFC4VENDOR",
@@ -74,6 +81,19 @@ fn registry_accepts_ifc4x3_release_labels_but_not_unknown_families() {
         );
     }
     assert_eq!(attribute_names_for_schema("IFC5", "IFCWALL"), None);
+}
+
+#[test]
+fn generated_registries_use_ifc4x1_and_ifc4x2_not_transitional_tables() {
+    assert_eq!(
+        attribute_names_for_schema("IFC4X1", "IFCALIGNMENTCURVE"),
+        Some(&["Horizontal", "Vertical", "Tag"][..])
+    );
+    assert!(is_subtype_of_for_schema(
+        "IFC4X2",
+        "IFCALIGNMENTCURVE",
+        "IFCCURVE"
+    ));
 }
 
 #[test]

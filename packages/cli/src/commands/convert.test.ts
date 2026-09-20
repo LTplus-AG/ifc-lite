@@ -149,4 +149,64 @@ describe('convertCommand', () => {
     const written = await readFile(out, 'utf-8');
     expect(written).toContain("FILE_SCHEMA(('IFC4'))");
   });
+
+  // #4206: an entity type with no representation in the target schema, and
+  // no IfcRoot ancestor, cannot be dropped or proxied — `exportToStep` throws
+  // from inside `convertStepLine` rather than write a corrupt file. Before
+  // this fix, `convertCommand` let that exception surface raw (a stack trace,
+  // no indication of WHICH entity or that others share the problem). It
+  // should now refuse cleanly, before writing anything, naming the entity.
+  it('refuses an unrepresentable-and-unrooted target type before writing any file (structural load configuration → IFC2X3)', async () => {
+    captureStderr();
+    const { dir } = await makeInput();
+    const withLoadConfig = MODEL.replace(
+      'ENDSEC;\nEND-ISO-10303-21;',
+      "#326= IFCSTRUCTURALLOADCONFIGURATION($,(#327),((96.)));\n" +
+      "#327= IFCSTRUCTURALLOADSINGLEFORCE('F',1.,0.,0.,0.,0.,0.);\n" +
+      'ENDSEC;\nEND-ISO-10303-21;',
+    );
+    const out = join(dir, 'out.ifc');
+
+    // IfcStructuralLoadConfiguration is an IFC4-only type, so the source
+    // must declare an IFC4 header (MODEL's own FILE_SCHEMA claims IFC2X3).
+    const ifc4Src = join(dir, 'in-ifc4.ifc');
+    await writeFile(
+      ifc4Src,
+      withLoadConfig.replace("FILE_SCHEMA(('IFC2X3'));", "FILE_SCHEMA(('IFC4'));"),
+    );
+
+    await expect(convertCommand([ifc4Src, '--schema', 'IFC2X3', '--out', out])).rejects.toThrow();
+    expect(stderrBuf).toContain('IFCSTRUCTURALLOADCONFIGURATION');
+    expect(stderrBuf).toContain('#326');
+    expect(stderrBuf).toContain('Cannot convert');
+    await expect(stat(out)).rejects.toThrow(); // nothing written
+  });
+
+  it('reports a lossy structural rename in the --json output without blocking the export', async () => {
+    captureStdout();
+    captureStderr();
+    const { dir, src } = await makeInput();
+    const withLoadCase = MODEL.replace(
+      'ENDSEC;\nEND-ISO-10303-21;',
+      "#312= IFCSTRUCTURALLOADCASE('2fv4DZfY55exwX8QDy8dmw',#45,'Case',$,$,.LOAD_CASE.,.NOTDEFINED.,.NOTDEFINED.,1.,$,(0.,0.,0.));\n" +
+      'ENDSEC;\nEND-ISO-10303-21;',
+    ).replace("FILE_SCHEMA(('IFC2X3'));", "FILE_SCHEMA(('IFC4'));");
+    await writeFile(src, withLoadCase);
+    const out = join(dir, 'out.ifc');
+
+    await convertCommand([src, '--schema', 'IFC2X3', '--out', out, '--json']);
+
+    expect(stderrBuf).toContain('IFCSTRUCTURALLOADCASE');
+    expect(stderrBuf).toContain('SelfWeightCoefficients');
+    const report = JSON.parse(stdoutBuf);
+    const entry = report.lossReport.find((e: { type: string }) => e.type === 'IFCSTRUCTURALLOADCASE');
+    expect(entry).toMatchObject({
+      targetType: 'IFCSTRUCTURALLOADGROUP',
+      kind: 'lossy',
+      count: 1,
+      droppedAttributes: ['SelfWeightCoefficients'],
+    });
+    const written = await readFile(out, 'utf-8');
+    expect(written).toContain('IFCSTRUCTURALLOADGROUP');
+  });
 });

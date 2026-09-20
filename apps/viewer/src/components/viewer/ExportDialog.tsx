@@ -75,6 +75,7 @@ import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-ste
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
+import { useTranslation } from '@/i18n';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -330,7 +331,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     if (!schema) return;
     if (exportScope === 'single' && !selectedModel) return;
     if (selectedLandXml || mergedLandXml) {
-      const message = 'LandXML is source geometry, not IFC. Export the original LandXML file instead.';
+      const message = t('exportDialog.landXml.error');
       setExportResult({ success: false, message });
       toast.error(message);
       return;
@@ -585,7 +586,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, selectedLandXml, mergedLandXml]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, selectedLandXml, mergedLandXml, t]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -668,8 +669,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {!canExportIfc && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>LandXML cannot be exported as IFC</AlertTitle>
-              <AlertDescription>Its terrain records remain in their original source format; no IFC entities are synthesized for export.</AlertDescription>
+              <AlertTitle>{t('exportDialog.landXml.title')}</AlertTitle>
+              <AlertDescription>{t('exportDialog.landXml.description')}</AlertDescription>
             </Alert>
           )}
           <div className="flex items-center gap-4">

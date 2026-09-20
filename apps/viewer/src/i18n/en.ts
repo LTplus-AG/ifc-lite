@@ -69,12 +69,14 @@ import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
 import { zonesPanelEn } from './catalogues/zones-panel.en';
+import { exportDialogEn } from './catalogues/export-dialog.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
   ...addElementEn,
   ...annotationsEn,
   ...anonymizedExportEn,
+  ...exportDialogEn,
   ...bulkPropertyEditorEn,
   ...cesiumGeoEn,
   ...mergeLayersBannerEn,

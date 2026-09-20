@@ -18,6 +18,7 @@
  */
 
 import { prepareEntityOperations } from './prepare-entity-operations.js';
+import { highestExistingExpressId } from './express-id-watermark.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import { IFC_ENTITY_NAMES, QuantityType, PropertyValueType } from '@ifc-lite/data';
@@ -69,7 +70,7 @@ export class StoreEditor {
   constructor(store: IfcDataStore, view: MutablePropertyView) {
     this.store = store;
     this.view = view;
-    this.maxExistingId = this.computeMaxExistingId();
+    this.maxExistingId = highestExistingExpressId(this.store);
     this.view.setExpressIdWatermark(this.maxExistingId);
   }
 
@@ -105,7 +106,7 @@ export class StoreEditor {
    * no-op.
    */
   refreshWatermark(): void {
-    const fresh = this.computeMaxExistingId();
+    const fresh = highestExistingExpressId(this.store);
     if (fresh > this.maxExistingId) {
       this.maxExistingId = fresh;
     }
@@ -321,7 +322,7 @@ export class StoreEditor {
     const created = this.view.getNewEntity(expressId);
     if (created) return canonical(created.type);
     // Deferred property atoms occupy express ids too (see
-    // `computeMaxExistingId`) and are absent from `entityIndex.byId` —
+    // `highestExistingExpressId`) and are absent from `entityIndex.byId` —
     // without this fallback a valid, non-deleted deferred entity id reads as
     // "does not exist" here even though `hasEntity` (which already checks
     // `deferredEntityIndex`) says it does.
@@ -379,31 +380,5 @@ export class StoreEditor {
       psetName,
       properties.map((p) => ({ name: p.name, value: p.value, type: kind[p.type], unit: p.unit })),
     );
-  }
-
-  private computeMaxExistingId(): number {
-    let max = 0;
-    for (const id of this.store.entityIndex.byId.keys()) {
-      if (id > max) max = id;
-    }
-    // Deferred property atoms occupy express ids too — clear them so a newly
-    // allocated overlay id can never collide with a deferred atom that sits
-    // above the primary-index maximum (which the exporter now emits).
-    const deferred = this.store.deferredEntityIndex;
-    if (deferred) {
-      for (const id of deferred.keys()) {
-        if (id > max) max = id;
-      }
-    }
-    // Stores without a STEP byte index (IFCX, reconstructed rooms) own their
-    // ids only through the entity table.
-    const table = this.store.entities?.expressId;
-    if (table) {
-      for (let i = 0; i < table.length; i++) {
-        const id = table[i];
-        if (id !== undefined && id > max) max = id;
-      }
-    }
-    return max;
   }
 }

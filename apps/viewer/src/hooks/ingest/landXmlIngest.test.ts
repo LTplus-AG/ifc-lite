@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
 import { connectedFaceComponents } from './landXmlIngest.js';
+import { isLandXmlContent } from './landXmlSniff.js';
 import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -61,6 +62,30 @@ function sharedBytes(buffer: ArrayBuffer): SharedArrayBuffer {
 
 const parseDocument = (text: string) => parseLandXmlTinInCurrentRealm(bytes(text));
 const parseViewer = (buffer: ArrayBuffer | SharedArrayBuffer) => parseLandXmlViewerModelAsync(buffer);
+
+describe('LandXML content dispatch (#5041)', () => {
+  it('recognizes default and prefixed roots without claiming generic XML', () => {
+    assert.equal(isLandXmlContent(new Uint8Array(bytes(LANDXML))), true);
+    const prefixed = LANDXML
+      .replace('<LandXML xmlns=', '<lx:LandXML xmlns:lx=')
+      .replace('</LandXML>', '</lx:LandXML>');
+    assert.equal(isLandXmlContent(new Uint8Array(bytes(prefixed))), true);
+    assert.equal(isLandXmlContent(new TextEncoder().encode(
+      '<?xml version="1.0"?><ids xmlns="http://standards.buildingsmart.org/IDS"/>',
+    )), false);
+    assert.equal(isLandXmlContent(new TextEncoder().encode(
+      '<ifcXML xmlns="http://www.buildingsmart-tech.org/ifcXML/IFC4/final"/>',
+    )), false);
+  });
+
+  it('recognizes UTF-16 LandXML and rejects a spoofed nested element', () => {
+    assert.equal(isLandXmlContent(new Uint8Array(utf16LeBytes(LANDXML))), true);
+    assert.equal(isLandXmlContent(new Uint8Array(utf16LeBytes(LANDXML)).subarray(2)), true);
+    assert.equal(isLandXmlContent(new TextEncoder().encode(
+      `<document><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"/></document>`,
+    )), false);
+  });
+});
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
   it('parses schema point order and ignores invisible/non-TIN faces', async () => {
@@ -309,7 +334,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
         'http://www.landxml.org/schema/LandXML-1.2',
         'urn:not-landxml',
       )),
-      /LXML007: root namespace is not LandXML 1.2/,
+      /LXML007: root namespace is not a recognized LandXML namespace/,
     );
   });
 
@@ -319,7 +344,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
         'http://www.landxml.org/schema/LandXML-1.2',
         'http://www.landxml.org/schema/LandXML-1.1',
       )),
-      /LXML007: root namespace is not LandXML 1.2/,
+      /LXML008: LandXML 1.1 is recognized but TIN ingestion supports 1.2 only/,
     );
   });
 
@@ -329,14 +354,14 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
         'http://www.landxml.org/schema/LandXML-1.2',
         'urn:vendor:LandXML-1.2',
       )),
-      /LXML007: root namespace is not LandXML 1.2/,
+      /LXML007: root namespace is not a recognized LandXML namespace/,
     );
     await assert.rejects(
       parseDocument(LANDXML.replace(
         ' xmlns="http://www.landxml.org/schema/LandXML-1.2"',
         '',
       )),
-      /LXML007: root namespace is not LandXML 1.2/,
+      /LXML007: root namespace is not a recognized LandXML namespace/,
     );
   });
 

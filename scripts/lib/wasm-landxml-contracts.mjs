@@ -40,3 +40,11 @@ export function runLandXmlContracts(api, test) {
     );
   });
 }
+
+/** Print the shared contract summary and deterministically release the API. */
+export function finishContractRun(api, passed, failed, skipped) {
+  console.log('\n' + '═'.repeat(50));
+  console.log(`📊 Results: ${passed} passed, ${failed} failed, ${skipped} skipped`);
+  console.log('═'.repeat(50));
+  api.free();
+}

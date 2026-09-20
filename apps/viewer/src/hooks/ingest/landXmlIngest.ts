@@ -34,10 +34,6 @@ export interface LandXmlTinDocument {
   warnings: string[];
 }
 
-export function isLandXmlFileName(name: string): boolean {
-  return name.toLowerCase().endsWith('.xml');
-}
-
 interface WorldPoint {
   x: number;
   y: number;

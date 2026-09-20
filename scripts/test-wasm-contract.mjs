@@ -32,7 +32,7 @@ import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 import { runShardRefusalBoundaryTests } from './lib/shard-refusal-boundary.mjs';
 import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs';
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
-import { runLandXmlContracts } from './lib/wasm-landxml-contracts.mjs';
+import { finishContractRun, runLandXmlContracts } from './lib/wasm-landxml-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -60,10 +60,7 @@ if (!existsSync(WASM_BIN)) {
   console.log('⚠️  wasm runtime missing — run `bash scripts/build-wasm.sh`. Skipping.');
   process.exit(0);
 }
-if (!existsSync(COLUMN_IFC)) {
-  console.log('⚠️  column fixture missing — run `pnpm fixtures`. Skipping.');
-  process.exit(0);
-}
+const COLUMN_AVAILABLE = existsSync(COLUMN_IFC);
 const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
 if (!GEOREF_AVAILABLE) {
   console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
@@ -83,8 +80,7 @@ const wasmBuffer = readFileSync(WASM_BIN);
 const ownershipWasmExports = initSync(wasmBuffer);
 console.log('✅ WASM initialized\n');
 
-// Load fixture files
-const columnContent = readFileSync(COLUMN_IFC, 'utf-8');
+const columnContent = COLUMN_AVAILABLE ? readFileSync(COLUMN_IFC, 'utf-8') : '';
 
 // Create API
 const api = new IfcAPI();
@@ -120,7 +116,14 @@ function test(name, fn) {
   }
 }
 
-runAppearanceContracts(IfcAPI, test); runLandXmlContracts(api, test);
+runAppearanceContracts(IfcAPI, test);
+runLandXmlContracts(api, test);
+
+if (!COLUMN_AVAILABLE) {
+  skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);
+  finishContractRun(api, passed, failed, skipped);
+  process.exit(failed > 0 ? 1 : 0);
+}
 // ===== IfcAPI initialization =====
 console.log('📋 IfcAPI initialization');
 
@@ -2155,10 +2158,7 @@ await runPrepassClassBoundaryTests(api, test);
 await runShardRefusalBoundaryTests(api, test);
 
 
-// Summary
-console.log('\n' + '═'.repeat(50));
-console.log(`📊 Results: ${passed} passed, ${failed} failed, ${skipped} skipped`);
-console.log('═'.repeat(50));
+finishContractRun(api, passed, failed, skipped);
 
 if (failed > 0) {
   process.exit(1);

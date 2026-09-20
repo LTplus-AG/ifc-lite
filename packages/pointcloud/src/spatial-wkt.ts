@@ -3,111 +3,82 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Explicit CRS identifiers read from WKT1/WKT2 without guessing a CRS. */
-export interface WktCrsIdentifiers {
-  horizontalId?: string;
-  verticalId?: string;
-}
-
-/** Native coordinate directions explicitly declared by a WKT AXIS node. */
+export interface WktCrsIdentifiers { horizontalId?: string; verticalId?: string }
 export type WktAxisDirection = 'east' | 'west' | 'north' | 'south' | 'up' | 'down';
-
-/** CRS identifiers plus the native coordinate frame declared by WKT. */
 export interface WktSpatialMetadata extends WktCrsIdentifiers {
-  /** X/Y/Z order and direction as authored, when WKT declares all three. */
   axes?: readonly [WktAxisDirection, WktAxisDirection, WktAxisDirection];
-  /** Native projected horizontal coordinate unit, expressed in metres. */
   horizontalUnitToMetres?: number;
-  /** Native vertical coordinate unit, expressed in metres. */
   verticalUnitToMetres?: number;
 }
+interface WktNode { name: string; body: string }
 
-function nodeBody(wkt: string, names: readonly string[]): string | undefined {
-  const token = new RegExp(`\\b(?:${names.join('|')})\\s*\\[`, 'ig');
-  const match = token.exec(wkt);
-  if (!match) return undefined;
-  let depth = 1;
-  let quoted = false;
-  for (let index = token.lastIndex; index < wkt.length; index += 1) {
-    const char = wkt[index];
-    if (char === '"') quoted = !quoted;
-    if (quoted) continue;
-    if (char === '[') depth += 1;
-    else if (char === ']' && --depth === 0) return wkt.slice(token.lastIndex, index);
+/** Balanced lexical nodes; metadata is read only from direct owned children. */
+function nodes(text: string): WktNode[] {
+  const result: WktNode[] = [];
+  for (let index = 0; index < text.length;) {
+    const match = /([A-Za-z_][A-Za-z_0-9]*)\s*\[/.exec(text.slice(index));
+    if (!match) break;
+    const start = index + match.index, bodyStart = start + match[0].length;
+    let depth = 1, quote = false, cursor = bodyStart;
+    for (; cursor < text.length && depth > 0; cursor += 1) {
+      const char = text[cursor];
+      if (char === '"') quote = !quote;
+      else if (!quote && char === '[') depth += 1;
+      else if (!quote && char === ']') depth -= 1;
+    }
+    if (depth !== 0) break;
+    result.push({ name: match[1].toUpperCase(), body: text.slice(bodyStart, cursor - 1) });
+    index = cursor;
   }
-  return undefined;
+  return result;
 }
-
-function nodeEpsg(body: string | undefined): string | undefined {
-  if (!body) return undefined;
-  // A WKT node's final ID/AUTHORITY is its own CRS; earlier IDs can belong to
-  // a nested base CRS, datum, or conversion.
-  const ids = [...body.matchAll(/(?:ID|AUTHORITY)\s*\[\s*["']EPSG["']\s*,\s*["']?(\d+)/ig)];
-  const code = ids.at(-1)?.[1];
+function direct(body: string, names: readonly string[]): WktNode | undefined {
+  const allowed = new Set(names);
+  return nodes(body).find((node) => allowed.has(node.name));
+}
+function root(wkt: string): WktNode | undefined { return nodes(wkt)[0]; }
+function epsg(node: WktNode | undefined): string | undefined {
+  const owned = node && direct(node.body, ['ID', 'AUTHORITY']);
+  const code = owned?.body.match(/^\s*["']EPSG["']\s*,\s*["']?(\d+)/i)?.[1];
   return code ? `EPSG:${code}` : undefined;
 }
-
-function axisDirections(body: string | undefined): WktAxisDirection[] {
-  if (!body) return [];
-  const directions: WktAxisDirection[] = [];
-  const axis = /\bAXIS\s*\[\s*(?:"(?:[^"]|"")*"|'[^']*')\s*,\s*(east|west|north|south|up|down)\b/ig;
-  for (const match of body.matchAll(axis)) {
-    const direction = match[1]?.toLowerCase() as WktAxisDirection | undefined;
-    if (direction) directions.push(direction);
-  }
-  return directions;
+function axes(node: WktNode | undefined): WktAxisDirection[] {
+  return node ? nodes(node.body).filter((child) => child.name === 'AXIS')
+    .map((child) => /^[^,]*,\s*(east|west|north|south|up|down)\b/i.exec(child.body)?.[1]?.toLowerCase())
+    .filter((value): value is WktAxisDirection => value !== undefined) : [];
+}
+function unit(node: WktNode | undefined): number | undefined {
+  const owned = node && direct(node.body, ['LENGTHUNIT', 'UNIT']);
+  const number = Number(owned && /,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/i.exec(owned.body)?.[1]);
+  return Number.isFinite(number) && number > 0 ? number : undefined;
 }
 
-function lengthUnitToMetres(body: string | undefined): number | undefined {
-  if (!body) return undefined;
-  const units = /\b(?:LENGTHUNIT|UNIT)\s*\[\s*(?:"(?:[^"]|"")*"|'[^']*')\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/ig;
-  const values = [...body.matchAll(units)]
-    .map((match) => Number(match[1]))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  return values.at(-1);
-}
-
-function coordinateAxes(horizontal: string | undefined, vertical: string | undefined): WktSpatialMetadata['axes'] {
-  const horizontalAxes = axisDirections(horizontal)
-    .filter((direction) => direction !== 'up' && direction !== 'down');
-  const verticalAxis = axisDirections(vertical ?? horizontal)
-    .find((direction) => direction === 'up' || direction === 'down');
-  const horizontalSet = new Set(horizontalAxes);
-  if (horizontalAxes.length < 2 || horizontalSet.size !== 2 || !verticalAxis) return undefined;
-  return [horizontalAxes[0], horizontalAxes[1], verticalAxis];
-}
-
-/**
- * Read only CRS nodes explicitly named by WKT. Supports WKT2 PROJCRS /
- * COMPOUNDCRS + VERTCRS and WKT1 PROJCS / VERT_CS. It intentionally returns
- * incomplete metadata when only one component was declared.
- */
 export function extractWktSpatialMetadata(wkt: string): WktSpatialMetadata {
-  const compound = nodeBody(wkt, ['COMPOUNDCRS', 'COMPD_CS']);
-  const scope = compound ?? wkt;
-  const horizontalNode = nodeBody(scope, ['PROJCRS', 'PROJCS'])
-    ?? nodeBody(scope, ['GEOGCRS', 'GEOGCS']);
-  const verticalNode = nodeBody(scope, ['VERTCRS', 'VERT_CS']);
-  const horizontal = nodeEpsg(horizontalNode);
-  const vertical = nodeEpsg(verticalNode);
-  const axes = coordinateAxes(horizontalNode, verticalNode);
-  const horizontalUnitToMetres = lengthUnitToMetres(horizontalNode);
-  // A horizontal-only WKT says nothing about a separate height datum/unit.
-  // Do not promote its projected unit into vertical metadata by assumption.
-  const verticalUnitToMetres = lengthUnitToMetres(verticalNode);
+  const document = root(wkt);
+  if (!document) return {};
+  const compound = ['COMPOUNDCRS', 'COMPD_CS'].includes(document.name) ? document : undefined;
+  const scope = compound?.body ?? wkt;
+  // E57 coordinateMetadata commonly stores adjacent top-level PROJCRS and
+  // VERTCRS nodes rather than wrapping them in COMPOUNDCRS.
+  const horizontal = direct(scope, ['PROJCRS', 'PROJCS', 'GEOGCRS', 'GEOGCS']);
+  const vertical = direct(scope, ['VERTCRS', 'VERT_CS']);
+  const horizontalAxes = axes(horizontal).filter((value) => value !== 'up' && value !== 'down');
+  // LAS has a third Z ordinate; when WKT describes only its horizontal CRS,
+  // retain its documented positive-height convention rather than borrowing a
+  // nested GEOGCS axis. A declared VERTCRS still owns the direction.
+  const verticalAxis = axes(vertical ?? horizontal).find((value) => value === 'up' || value === 'down')
+    ?? (!vertical ? 'up' : undefined);
+  const frame = horizontalAxes.length === 2 && new Set(horizontalAxes).size === 2 && verticalAxis
+    ? [horizontalAxes[0], horizontalAxes[1], verticalAxis] as const : undefined;
+  const horizontalId = epsg(horizontal), verticalId = epsg(vertical);
+  const horizontalUnitToMetres = unit(horizontal), verticalUnitToMetres = unit(vertical);
   return {
-    ...(horizontal ? { horizontalId: horizontal } : {}),
-    ...(vertical ? { verticalId: vertical } : {}),
-    ...(axes ? { axes } : {}),
-    ...(horizontalUnitToMetres ? { horizontalUnitToMetres } : {}),
+    ...(horizontalId ? { horizontalId } : {}), ...(verticalId ? { verticalId } : {}),
+    ...(frame ? { axes: frame } : {}), ...(horizontalUnitToMetres ? { horizontalUnitToMetres } : {}),
     ...(verticalUnitToMetres ? { verticalUnitToMetres } : {}),
   };
 }
-
-/** Backwards-compatible identifier-only view of {@link extractWktSpatialMetadata}. */
 export function extractWktCrsIdentifiers(wkt: string): WktCrsIdentifiers {
   const { horizontalId, verticalId } = extractWktSpatialMetadata(wkt);
-  return {
-    ...(horizontalId ? { horizontalId } : {}),
-    ...(verticalId ? { verticalId } : {}),
-  };
+  return { ...(horizontalId ? { horizontalId } : {}), ...(verticalId ? { verticalId } : {}) };
 }

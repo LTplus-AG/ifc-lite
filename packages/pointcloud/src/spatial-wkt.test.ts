@@ -22,4 +22,11 @@ describe('WKT spatial metadata (#5048)', () => {
     expect(extractWktSpatialMetadata('PROJCS["grid",LENGTHUNIT["foot",0.3048],AUTHORITY["EPSG","2236"]]'))
       .toEqual({ horizontalId: 'EPSG:2236', horizontalUnitToMetres: 0.3048 });
   });
+
+  it('does not borrow nested base CRS authorities, units, or axes (#5048)', () => {
+    const custom = 'PROJCS["custom",GEOGCS["base",AUTHORITY["EPSG",4326],UNIT["degree",0.0174532925199433]],AXIS["E",EAST],AXIS["N",NORTH],UNIT["metre",1]]';
+    expect(extractWktSpatialMetadata(custom)).toEqual({
+      axes: ['east', 'north', 'up'], horizontalUnitToMetres: 1,
+    });
+  });
 });

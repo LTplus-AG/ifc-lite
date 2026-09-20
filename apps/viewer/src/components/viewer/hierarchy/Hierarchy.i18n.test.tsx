@@ -339,6 +339,29 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
     assert.equal(groupCount?.getAttribute('title'), '[1.234 many]', 'member count formats and pluralizes with the active locale');
   });
 
+  catalogueIt('preserves the emphasized storey when a locale reorders the Solo hint', () => {
+    const store = {
+      spatialHierarchy: {
+        byStorey: new Map([[7, []], [8, []]]),
+        storeyElevations: new Map([[7, 0], [8, 3]]),
+      },
+      entities: { getName: (id: number) => id === 7 ? 'Ground floor' : 'First floor' },
+    } as unknown as NonNullable<FederatedModel['ifcDataStore']>;
+    useViewerStore.setState({
+      models: new Map([['A', { ...model('A'), ifcDataStore: store }]]),
+      levelDisplayMode: 'solo',
+      activeStorey: { modelId: 'A', expressId: 7 },
+    });
+    registerLocale('solo-hint-reordered', {
+      'hierarchy.storeyControls.soloHintWithStorey': 'SWITCH AFTER {name} BEFORE',
+    });
+    act(() => setLocale('solo-hint-reordered'));
+    const container = render(<StoreyDisplayControls />);
+    const emphasized = container.querySelector('.font-medium.text-foreground');
+    assert.equal(emphasized?.textContent, 'Ground floor');
+    assert.match(container.textContent ?? '', /SWITCH AFTER Ground floor BEFORE/);
+  });
+
   catalogueIt('uses complete messages for tag assignment and removal actions', () => {
     const tagId = useViewerStore.getState().createModelTag('Structure');
     assert.ok(tagId);

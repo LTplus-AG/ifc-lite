@@ -25,11 +25,16 @@ describe('#4855 MCP playground cost tools', () => {
     assert.equal(evaluated.isError, false);
     assert.equal((evaluated.structured as { source: string }).source, 'loaded-source');
     assert.equal((evaluated.structured as { evaluation: { Amount: string } }).evaluation.Amount, '2250');
+    // #4857: HeadlessLikeBackend now threads its MutablePropertyView into
+    // createCostBackend (parity with the CLI/SDK), so cost_data observes the
+    // pending mutate edit by default. cost_data has no includeMutations
+    // option, so the on-disk graph is not independently asserted here — see
+    // packages/mcp/src/tools/cost.test.ts for that half via bim.cost directly.
     const afterOverlay = await dispatch(model, 'cost_data', {});
     const item = (afterOverlay.structured as {
       data: { CostItems: Array<{ ref: { expressId: number }; Name?: string }> };
     }).data.CostItems.find(value => value.ref.expressId === 42);
-    assert.equal(item?.Name, 'External wall total');
+    assert.equal(item?.Name, 'Overlay-only name');
 
     const unsafeId = await dispatch(model, 'cost_evaluate', {
       target: 'item',

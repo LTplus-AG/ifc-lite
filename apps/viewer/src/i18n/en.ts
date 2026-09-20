@@ -11,6 +11,8 @@ import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
+import { chatEn } from './catalogues/chat.en';
+import { chatByokEn } from './catalogues/chat-byok.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -85,6 +87,8 @@ export const en = {
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,
+  ...chatEn,
+  ...chatByokEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

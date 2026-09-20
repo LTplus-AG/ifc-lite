@@ -243,6 +243,21 @@ root, and `ui/` (a companion slice covers `extensions/**`):
 - `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
   fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
 
+The chat catalogue (#4918 chat slice, `chat.en.ts`) covers `ChatPanel.tsx`'s
+own chrome (header controls, the BYOK-needed banner, clear-confirmation
+dialog, empty-state hint, post-authoring install CTA, attachment/usage
+tooltips, and input placeholders), `ChatMessage.tsx`'s attachment row count,
+`ExecutableCodeBlock.tsx`'s action buttons and console/status text, and
+`ModelSelector.tsx`'s tier headers. The sibling `chat-byok.en.ts` covers the
+"use your own API key" surfaces split out purely because they are their own
+sub-feature: `ByokCredentialForm.tsx` (key/workspace entry, validation
+messages, save/remove), `ByokKeyModal.tsx` (dialog chrome, trust bullets,
+walkthrough), `ByokStreamingPill.tsx`'s tooltip, and `ByokTrustDiagram.tsx`'s
+SVG labels. Chat message CONTENT, example-prompt text mapped to no i18n key
+by this slice's own scope, and provider/model NAMES sourced from
+`PROVIDER_META`/`getByokModelsForSource` remain runtime data, not literals —
+same reasoning as the mcp/sources catalogues' exclusions above.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

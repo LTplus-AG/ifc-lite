@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react';
 import { Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import {
   Tooltip,
   TooltipContent,
@@ -30,6 +31,7 @@ interface ByokStreamingPillProps {
 }
 
 export function ByokStreamingPill({ modelId, className }: ByokStreamingPillProps) {
+  const { t } = useTranslation();
   const [apiKeys, setApiKeys] = useState<ApiKeyConfig>(() => getApiKeys());
   useEffect(() => subscribeApiKeys(() => setApiKeys(getApiKeys())), []);
 
@@ -53,9 +55,7 @@ export function ByokStreamingPill({ modelId, className }: ByokStreamingPillProps
         </span>
       </TooltipTrigger>
       <TooltipContent className="max-w-xs text-xs leading-relaxed">
-        Messages from this model go directly from your browser to{' '}
-        <code className="font-mono">{host}</code>. To verify, open DevTools →
-        Network and filter <code className="font-mono">{shortHost}</code>.
+        {t('chatByok.streamingPill.tooltip', { host, shortHost })}
       </TooltipContent>
     </Tooltip>
   );

@@ -10,7 +10,7 @@ import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.
 import { toast } from '../../components/ui/toast.js';
 import { useViewerStore } from '../../store/index.js';
 import { parseLandXmlViewerModelAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
-import type { LandXmlSourceBuffer } from './landXmlIngest.js';
+import type { LandXmlSourceBuffer, LandXmlTinDocument } from './landXmlIngest.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 
 interface LandXmlLoadOptions {
@@ -28,7 +28,7 @@ interface LandXmlLoadOptions {
     dataStore: IfcDataStore,
     geometry: GeometryResult,
     schemaVersion: 'IFC4',
-    patch: { loadPath: 'landxml' },
+    patch: { loadPath: 'landxml'; landXmlDocument?: LandXmlTinDocument },
   ): Promise<void>;
   onError(message: string): void;
 }
@@ -127,7 +127,9 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       : null;
     if (frame) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, frame));
     if (options.targetKind === 'primary') options.onPrimary(result);
-    await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'landxml' });
+    await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
+      loadPath: 'landxml', landXmlDocument: result.semanticDocument,
+    });
     if (!options.isCurrent()) return;
     for (const warning of result.warnings) toast.info(warning);
     options.setProgress({ phase: 'Complete', percent: 100 });

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
-import { connectedFaceComponents } from './landXmlIngest.js';
+import { connectedFaceComponents, findLandXmlSourceRecord } from './landXmlIngest.js';
 import { isLandXmlContent } from './landXmlSniff.js';
 import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
@@ -101,14 +101,39 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
   it('parses schema point order and ignores invisible/non-TIN faces', async () => {
     const parsed = await parseDocument(LANDXML);
     assert.equal(parsed.version, '1.2');
-    assert.equal(parsed.surfaces.length, 1);
+    assert.equal(parsed.surfaces.length, 2);
     assert.equal(parsed.surfaces[0].name, 'Existing Ground');
-    assert.equal(parsed.surfaces[0].sourceId, 'landxml:surface:1:Existing Ground');
+    assert.equal(parsed.surfaces[0].sourceId, 'landxml:surface:1');
     assert.deepEqual(parsed.surfaces[0].points[0], {
-      id: '10', northing: 5_000_000, easting: 2_600_000, elevation: 100,
+      sourceId: 'landxml:surface:1:point:10', id: '10', northing: 5_000_000, easting: 2_600_000, elevation: 100,
     });
     assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30']]);
+    assert.equal(parsed.surfaces[1].kind, 'grid');
+    assert.equal(parsed.surfaces[1].renderState, 'preserved_only');
     assert.match(parsed.warnings[0], /Unsupported Grid/);
+  });
+
+  it('keeps source selection stable after geometry is partitioned (#5042)', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      '</Faces>',
+      '</Faces><Boundaries><Boundary><PntList3D>1 2 3 4 5 6</PntList3D></Boundary></Boundaries>',
+    ));
+    const point = findLandXmlSourceRecord(parsed, 'landxml:surface:1:point:10');
+    assert.equal(point?.kind, 'point');
+    const face = findLandXmlSourceRecord(parsed, 'landxml:surface:1:face:1');
+    assert.deepEqual(face?.kind === 'face' ? face.pointIds : null, ['10', '20', '30']);
+    const boundary = findLandXmlSourceRecord(parsed, 'landxml:surface:1:boundary:1');
+    assert.equal(boundary?.kind, 'boundary');
+  });
+
+  it('loads a geometry-free source without fabricating IFC entities (#5042)', async () => {
+    const sourceOnly = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Surfaces><Surface name="Survey volume"><Definition surfType="VOLUME"/></Surface></Surfaces>
+    </LandXML>`;
+    const result = await parseViewer(bytes(sourceOnly));
+    assert.equal(result.dataStore.entityCount, 0);
+    assert.equal(result.geometryResult.meshes.length, 0);
+    assert.equal(result.semanticDocument.surfaces[0].renderState, 'preserved_only');
   });
 
   it('produces a rebased Y-up render mesh without losing survey coordinates', async () => {

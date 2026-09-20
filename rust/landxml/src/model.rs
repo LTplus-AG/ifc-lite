@@ -88,18 +88,74 @@ pub struct LandXmlSourceId(pub String);
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlPoint {
+    /// Stable semantic identity, never a renderer mesh or vertex index.
+    pub source_id: LandXmlSourceId,
     pub id: String,
     pub northing: f64,
     pub easting: f64,
     pub elevation: f64,
 }
 
+/// Source topology classification declared by a `Surface/Definition`.
+///
+/// It deliberately describes the source, rather than promising that an
+/// adapter can render it.  In particular, a GRID or volume surface is kept as
+/// source data and is never guessed into a TIN.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlSurfaceKind {
+    Tin,
+    Grid,
+    Volume,
+    Other,
+}
+
+/// Honest presentation state for one source surface.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlRenderState {
+    /// TIN source faces are available to a rendering adapter.
+    Rendered,
+    /// The source is retained but this crate has no topology adapter for it.
+    PreservedOnly,
+    /// The source declaration is known to be unsupported.
+    Unsupported,
+}
+
+/// One preserved source line/ring (boundary, breakline, or contour).
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlPolyline {
+    pub source_id: LandXmlSourceId,
+    pub name: Option<String>,
+    /// Producer-declared subtype (`bndType`, `brkType`, or contour type).
+    pub kind: Option<String>,
+    /// LandXML coordinate order: northing, easting, elevation.
+    pub points: Vec<[f64; 3]>,
+}
+
+/// A non-LandXML namespace root retained for diagnostics and later adapters.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LandXmlExtension {
+    pub namespace: String,
+    pub local_name: String,
+    pub path: String,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlSurface {
     pub source_id: LandXmlSourceId,
     pub name: String,
+    pub kind: LandXmlSurfaceKind,
+    pub render_state: LandXmlRenderState,
     pub points: Vec<LandXmlPoint>,
     pub faces: Vec<[String; 3]>,
+    /// Mirrors `faces` by ordinal.  A face's identity remains stable when an
+    /// adapter splits, drops, or reorders meshes for precision.
+    pub face_source_ids: Vec<LandXmlSourceId>,
+    pub hidden_face_count: usize,
+    pub boundaries: Vec<LandXmlPolyline>,
+    pub breaklines: Vec<LandXmlPolyline>,
+    pub contours: Vec<LandXmlPolyline>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -113,7 +169,11 @@ pub struct LandXmlUnits {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlTinDocument {
     pub version: String,
-    pub units: LandXmlUnits,
+    /// Missing only in a geometry-free source that has no unit declaration.
+    /// The document remains inspectable; consumers must refuse meter-based
+    /// operations until a later georeferencing adapter supplies units.
+    pub units: Option<LandXmlUnits>,
     pub surfaces: Vec<LandXmlSurface>,
+    pub extensions: Vec<LandXmlExtension>,
     pub warnings: Vec<String>,
 }

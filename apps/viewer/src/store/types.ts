@@ -220,6 +220,7 @@ import type { SectionCapStyle } from '@ifc-lite/renderer';
 // at the renderer's `Camera`, so the store shares the renderer's own type.
 export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
+import type { LandXmlTinDocument } from '../hooks/ingest/landXmlIngest.js';
 
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
@@ -561,6 +562,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   sourceContentHash?: string; // Full-content identity for workspace placements.
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
+  /** Non-IFC source semantics, kept outside the IFC data store by design. */
+  landXmlDocument?: LandXmlTinDocument;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
   geometryResult: GeometryResult | null;
   /** Model-level visibility toggle */

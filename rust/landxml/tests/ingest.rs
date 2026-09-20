@@ -80,14 +80,67 @@ fn parses_raw_bytes_into_durable_semantic_source_records() -> Result<(), Box<dyn
 {
     let parsed = parse(&document("grade"))?;
     assert_eq!(parsed.version, "1.2");
-    assert_eq!(parsed.units.linear_scale_to_meters, 1.0);
+    assert_eq!(parsed.units.as_ref().expect("fixture has units").linear_scale_to_meters, 1.0);
     assert_eq!(parsed.surfaces.len(), 1);
-    assert_eq!(parsed.surfaces[0].source_id.0, "landxml:surface:1:grade");
+    assert_eq!(parsed.surfaces[0].source_id.0, "landxml:surface:1");
     assert_eq!(
         parsed.surfaces[0].faces,
         vec![["1".to_owned(), "2".to_owned(), "3".to_owned()]]
     );
     Ok(())
+}
+
+#[test]
+fn retains_source_terrain_records_without_guessing_grid_topology() -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(r#"
+<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:vendor="urn:survey-vendor" version="1.2">
+  <Units><Metric linearUnit="meter"/></Units>
+  <Surfaces>
+    <Surface name="EG"><Definition surfType="TIN"><Pnts>
+      <P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P>
+    </Pnts><Faces><F>1 2 3</F><F i="true">1 3 2</F></Faces>
+    <Boundaries><Boundary><PntList3D>0 0 0 0 1 0</PntList3D></Boundary></Boundaries>
+    <Breaklines><Breakline><PntList3D>0 0 0 1 1 0</PntList3D></Breakline></Breaklines>
+    <Contours><Contour><PntList3D>0 0 0 1 0 0</PntList3D></Contour></Contours>
+    </Definition></Surface>
+    <Surface name="Grid"><Definition surfType="GRID"/></Surface>
+  </Surfaces>
+  <vendor:ProducerSetting value="kept-as-a-record"/>
+</LandXML>"#);
+    let parsed = parse(xml.as_bytes())?;
+    let tin = &parsed.surfaces[0];
+    assert_eq!(tin.source_id.0, "landxml:surface:1");
+    assert_eq!(tin.points[0].source_id.0, "landxml:surface:1:point:1");
+    assert_eq!(tin.face_source_ids[0].0, "landxml:surface:1:face:1");
+    assert_eq!(tin.hidden_face_count, 1);
+    assert_eq!(tin.boundaries[0].source_id.0, "landxml:surface:1:boundary:1");
+    assert_eq!(tin.breaklines[0].source_id.0, "landxml:surface:1:breakline:1");
+    assert_eq!(tin.contours[0].source_id.0, "landxml:surface:1:contour:1");
+    assert_eq!(parsed.surfaces[1].render_state, ifc_lite_landxml::LandXmlRenderState::PreservedOnly);
+    assert_eq!(parsed.extensions[0].namespace, "urn:survey-vendor");
+    assert_eq!(parsed.extensions[0].path, "LandXML/ProducerSetting");
+    assert!(parsed.warnings.iter().any(|warning| warning.contains("1 unknown vendor extension")));
+    Ok(())
+}
+
+#[test]
+fn retains_geometry_free_documents_as_honest_source_records() -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="survey-only"><Definition surfType="VOLUME"/></Surface></Surfaces></LandXML>"#);
+    let parsed = parse(xml.as_bytes())?;
+    assert!(parsed.units.is_none());
+    assert_eq!(parsed.surfaces.len(), 1);
+    assert_eq!(parsed.surfaces[0].render_state, ifc_lite_landxml::LandXmlRenderState::PreservedOnly);
+    Ok(())
+}
+
+#[test]
+fn bounds_preserved_vendor_extension_roots() {
+    let xml = format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Units><Metric linearUnit="meter"/></Units><v:One/><v:Two/></LandXML>"#);
+    let limits = LandXmlLimits { max_extensions: 1, ..LandXmlLimits::default() };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(xml.as_bytes(), &limits, None).unwrap_err().code,
+        LandXmlDiagnosticCode::LimitExceeded,
+    );
 }
 
 #[test]

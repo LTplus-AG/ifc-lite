@@ -13,14 +13,30 @@ export interface LandXmlGeometryPayload {
   schemaVersion: 'IFC4';
   warnings: string[];
   surfaceNames: string[];
+  /** Durable source records, independent of all mesh/component partitioning. */
+  semanticDocument: LandXmlTinDocument;
 }
 
 /** Semantic source records produced by the bounded Rust LandXML parser. */
 export interface LandXmlTinSurface {
   sourceId: string;
   name: string;
-  points: Array<{ id: string; northing: number; easting: number; elevation: number }>;
+  kind: 'tin' | 'grid' | 'volume' | 'other';
+  renderState: 'rendered' | 'preserved_only' | 'unsupported';
+  points: Array<{ sourceId: string; id: string; northing: number; easting: number; elevation: number }>;
   faces: Array<readonly [string, string, string]>;
+  faceSourceIds: string[];
+  hiddenFaceCount: number;
+  boundaries: LandXmlPolyline[];
+  breaklines: LandXmlPolyline[];
+  contours: LandXmlPolyline[];
+}
+
+export interface LandXmlPolyline {
+  sourceId: string;
+  name: string | null;
+  kind: string | null;
+  points: Array<readonly [number, number, number]>;
 }
 
 export interface LandXmlTinDocument {
@@ -30,9 +46,43 @@ export interface LandXmlTinDocument {
     elevationUnit: string;
     linearScaleToMeters: number;
     elevationScaleToMeters: number;
-  };
+  } | null;
   surfaces: LandXmlTinSurface[];
+  extensions: Array<{ namespace: string; localName: string; path: string }>;
   warnings: string[];
+}
+
+/** A selectable semantic record, independent of renderer mesh identifiers. */
+export type LandXmlSourceRecord =
+  | { kind: 'surface'; surface: LandXmlTinSurface }
+  | { kind: 'point'; surface: LandXmlTinSurface; point: LandXmlTinSurface['points'][number] }
+  | { kind: 'face'; surface: LandXmlTinSurface; pointIds: readonly [string, string, string] }
+  | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline };
+
+/**
+ * Resolve a semantic source record after any mesh component split, frame
+ * rebase, or federation ID offset.  This is the selection seam used by the
+ * terrain inspector; it deliberately accepts only a source ID, never an IFC
+ * express ID.
+ */
+export function findLandXmlSourceRecord(
+  document: LandXmlTinDocument,
+  sourceId: string,
+): LandXmlSourceRecord | null {
+  for (const surface of document.surfaces) {
+    if (surface.sourceId === sourceId) return { kind: 'surface', surface };
+    const point = surface.points.find((candidate) => candidate.sourceId === sourceId);
+    if (point) return { kind: 'point', surface, point };
+    const faceIndex = surface.faceSourceIds.indexOf(sourceId);
+    if (faceIndex >= 0) return { kind: 'face', surface, pointIds: surface.faces[faceIndex] };
+    for (const [kind, lines] of [
+      ['boundary', surface.boundaries], ['breakline', surface.breaklines], ['contour', surface.contours],
+    ] as const) {
+      const line = lines.find((candidate) => candidate.sourceId === sourceId);
+      if (line) return { kind, surface, line };
+    }
+  }
+  return null;
 }
 
 interface WorldPoint {
@@ -310,8 +360,24 @@ function placeComponentsInRenderFrame(
 /** Adapt Rust-parsed LandXML 1.2 TIN semantics into the viewer's mesh payload. */
 export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometryPayload {
   const warnings = [...parsed.warnings];
+  const renderableSurfaces = parsed.surfaces.filter((surface) => surface.renderState === 'rendered');
+  if (renderableSurfaces.length > 0 && parsed.units === null) {
+    throw new Error('LandXML has renderable TIN topology but no Units declaration');
+  }
+  if (renderableSurfaces.length === 0) {
+    return {
+      geometryResult: {
+        meshes: [], totalVertices: 0, totalTriangles: 0,
+        coordinateInfo: createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }),
+      },
+      schemaVersion: 'IFC4',
+      warnings,
+      surfaceNames: [],
+      semanticDocument: parsed,
+    };
+  }
   const components: SurfaceComponent[] = [];
-  for (const surface of parsed.surfaces) {
+  for (const surface of renderableSurfaces) {
     let renderedComponents = 0;
     let degenerateFaces = 0;
     let unrepresentableFaces = 0;
@@ -322,8 +388,8 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
         const result = buildSurfaceMesh(
           { ...surface, faces: currentFaces },
           components.length + 1,
-          parsed.units.linearScaleToMeters,
-          parsed.units.elevationScaleToMeters,
+          parsed.units!.linearScaleToMeters,
+          parsed.units!.elevationScaleToMeters,
         );
         degenerateFaces += result.degenerateFaces;
         if (result.mesh && result.bounds) {
@@ -373,5 +439,6 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     schemaVersion: 'IFC4',
     warnings,
     surfaceNames,
+    semanticDocument: parsed,
   };
 }

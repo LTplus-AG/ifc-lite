@@ -13,12 +13,26 @@ pub(crate) enum Capture {
         text: String,
         hidden: bool,
     },
+    Polyline {
+        depth: usize,
+        text: String,
+        category: PolylineCategory,
+        name: Option<String>,
+        kind: Option<String>,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum PolylineCategory {
+    Boundary,
+    Breakline,
+    Contour,
 }
 
 impl Capture {
     pub(crate) fn depth(&self) -> usize {
         match self {
-            Self::Point { depth, .. } | Self::Face { depth, .. } => *depth,
+            Self::Point { depth, .. } | Self::Face { depth, .. } | Self::Polyline { depth, .. } => *depth,
         }
     }
 }

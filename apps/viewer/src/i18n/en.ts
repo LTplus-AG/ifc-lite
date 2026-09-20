@@ -27,6 +27,7 @@ import { section2dEn } from './catalogues/section-2d.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
+import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
@@ -54,6 +55,7 @@ export const en = {
   ...documentMenuEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...structuralPropertiesEn,
   ...compareKeyPropertyEn,
 } as const;
 

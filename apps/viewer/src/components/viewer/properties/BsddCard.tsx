@@ -14,7 +14,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { QuantityType } from '@ifc-lite/data';
@@ -25,7 +24,7 @@ import {
   type BsddClassProperty,
 } from '@/services/bsdd';
 import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
-import { useTranslation } from '@/i18n';
+import { formatLocaleNumber, localeCount, useTranslation } from '@/i18n';
 
 // ---------------------------------------------------------------------------
 // Helpers for Qto_* (quantity set) detection and mapping
@@ -91,7 +90,7 @@ export function BsddCard({
   existingQuants = new Set<string>(),
   existingAttributes = new Set<string>(),
 }: BsddCardProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [classInfo, setClassInfo] = useState<BsddClassInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -346,9 +345,9 @@ export function BsddCard({
       if (isEditableProps) {
         setPendingPropertyFocus({ modelId, entityId, psetName, propName: toAdd[0].name });
       }
-      toast.success(t(isEditableProps ? 'properties.bsdd.addedManyWithFollowUp' : 'properties.bsdd.addedMany', { count: toAdd.length, pset: psetName }));
+      toast.success(t(isEditableProps ? 'properties.bsdd.addedManyWithFollowUp' : 'properties.bsdd.addedMany', { ...localeCount(locale, toAdd.length), pset: psetName }));
     },
-    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
+    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus, locale],
   );
 
   // The deliberate "take me to what I just added" action behind the card's
@@ -420,7 +419,7 @@ export function BsddCard({
           className="flex w-full items-center justify-center gap-1.5 rounded-md border-2 border-emerald-300/70 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
         >
           <Check className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{t('properties.bsdd.editedCount', { count: editableAddedCount })}</span>
+          <span className="truncate">{t('properties.bsdd.editedCount', localeCount(locale, editableAddedCount))}</span>
           <ArrowRight className="h-3.5 w-3.5 shrink-0" />
         </button>
       )}
@@ -439,11 +438,6 @@ export function BsddCard({
             existingSet.has(makeKey(p)) ||
             addedKeys.has(`${psetName}:${p.name}`),
         );
-        const psetExistsOnEntity = isAttrGroup
-          ? true // Attributes section always exists on the entity
-          : isQto
-            ? existingQsets.includes(psetName)
-            : existingPsets.includes(psetName);
         const addableCount = props.filter(
           (p) =>
             !existingSet.has(makeKey(p)) &&
@@ -469,7 +463,7 @@ export function BsddCard({
                 {psetName}
               </span>
               <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-400 shrink-0">
-                {props.length}
+                {formatLocaleNumber(locale, props.length)}
               </span>
               {addableCount > 0 && (
                 <Tooltip>
@@ -486,7 +480,7 @@ export function BsddCard({
                       <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>{t('properties.bsdd.addAllTooltip', { count: addableCount })}</TooltipContent>
+                  <TooltipContent>{t('properties.bsdd.addAllTooltip', localeCount(locale, addableCount))}</TooltipContent>
                 </Tooltip>
               )}
               {allAlreadyExist && (

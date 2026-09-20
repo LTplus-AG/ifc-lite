@@ -19,7 +19,8 @@
 import { useMemo } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert } from 'lucide-react';
-import { useTranslation } from '@/i18n';
+import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleList } from '@/i18n/intlFormat';
 import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
   StructuralExtraction,
@@ -168,16 +169,18 @@ export function StructuralCard({
 }
 
 function ConnectionRow({ connection }: { connection: StructuralConnectionInfo }) {
+  const { t, locale } = useTranslation();
   const condition = connection.appliedCondition;
+  const summary = condition ? formatDofs(condition.components, t, locale) : '';
   return (
     <div className="text-[11px]">
       <div className="font-medium text-foreground/90 truncate" title={connection.name}>
         {connection.name || connection.type.replace(/^Ifc/, '')}
       </div>
       {condition && (
-        <div className="text-muted-foreground ml-2 truncate" title={formatDofs(condition.components)}>
+        <div className="text-muted-foreground ml-2 truncate" title={summary}>
           {condition.name ? `${condition.name} — ` : ''}
-          {formatDofs(condition.components)}
+          {summary}
         </div>
       )}
     </div>
@@ -185,6 +188,7 @@ function ConnectionRow({ connection }: { connection: StructuralConnectionInfo })
 }
 
 function ActivityRow({ activity }: { activity: StructuralActivityInfo }) {
+  const { t, locale } = useTranslation();
   const load = activity.appliedLoad;
   return (
     <div className="text-[11px]">
@@ -196,7 +200,7 @@ function ActivityRow({ activity }: { activity: StructuralActivityInfo }) {
       </div>
       {load && (
         <div className="text-muted-foreground ml-2">
-          {formatLoad(load)}
+          {formatLoad(load, t, locale)}
         </div>
       )}
     </div>
@@ -204,37 +208,47 @@ function ActivityRow({ activity }: { activity: StructuralActivityInfo }) {
 }
 
 /** Render a load's own components, or — for a configuration — every entry's. */
-function formatLoad(load: StructuralLoadInfo): string {
+type Translate = (key: TranslationKey, params?: Readonly<Record<string, string | number>>) => string;
+
+function formatLoad(load: StructuralLoadInfo, t: Translate, locale: string): string {
   if (load.configuration) {
     const parts = load.configuration.entries.map((entry) => {
-      if (!entry.value) return `[dropped: ${entry.dropped}]`;
-      const at = entry.location ? ` @ ${entry.location.join(',')}` : '';
-      return `${formatComponents(entry.value.components)}${at}`;
+      if (!entry.value) return t('properties.structural.configurationDropped', { name: entry.dropped ?? 'unreadable' });
+      const components = formatComponents(entry.value.components, t, locale);
+      if (!entry.location) return components;
+      const location = formatLocaleList(locale, entry.location.map((value) => formatLocaleNumber(locale, value)));
+      return t('properties.structural.configurationAt', { components, location });
     });
-    return parts.join('; ');
+    return formatLocaleList(locale, parts);
   }
-  return formatComponents(load.components);
+  return formatComponents(load.components, t, locale);
 }
 
-function formatComponents(components: Record<string, number>): string {
+function formatComponents(components: Record<string, number>, t: Translate, locale: string): string {
   const entries = Object.entries(components);
-  if (entries.length === 0) return '(no components)';
-  return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
+  if (entries.length === 0) return t('properties.structural.noComponents');
+  return formatLocaleList(locale, entries.map(([name, value]) => t('properties.structural.componentValue', {
+    name,
+    value: formatLocaleNumber(locale, value),
+  })));
 }
 
 /** Summarize the boolean and stiffness-select branches per degree of freedom. */
-function formatDofs(components: Record<string, number | boolean>): string {
+function formatDofs(components: Record<string, number | boolean>, t: Translate, locale: string): string {
   const entries = Object.entries(components);
-  if (entries.length === 0) return '(no DOFs)';
+  if (entries.length === 0) return t('properties.structural.noDofs');
   const fixed = entries.filter(([, value]) => value === true).length;
   const free = entries.filter(([, value]) => value === false).length;
   const elastic = entries.length - fixed - free;
-  const label = (count: number, kind: string) => `${count} ${count === 1 ? 'DOF' : 'DOFs'} ${kind}`;
-  return [
-    fixed > 0 ? label(fixed, 'fixed') : null,
-    elastic > 0 ? label(elastic, 'elastic') : null,
-    free > 0 ? label(free, 'free') : null,
-  ].filter((part): part is string => part !== null).join(', ');
+  const label = (count: number, key: TranslationKey) => t(key, {
+    count,
+    countDisplay: formatLocaleNumber(locale, count),
+  });
+  return formatLocaleList(locale, [
+    fixed > 0 ? label(fixed, 'properties.structural.fixedDofs') : null,
+    elastic > 0 ? label(elastic, 'properties.structural.elasticDofs') : null,
+    free > 0 ? label(free, 'properties.structural.freeDofs') : null,
+  ].filter((part): part is string => part !== null));
 }
 
 /**

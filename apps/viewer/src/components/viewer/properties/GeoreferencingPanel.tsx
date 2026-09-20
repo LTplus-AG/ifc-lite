@@ -31,7 +31,7 @@ import { detectDoubleGeoreference } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { parseLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { parseRotationDegrees } from '@/lib/model-placement/rotation';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
@@ -109,14 +109,14 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
     const trimmed = (overrideValue ?? editValue).trim();
     if (!trimmed && !hint.isSelect) { setEditing(false); return; }
     if (isNumber) {
-      const num = parseFloat(trimmed);
-      if (!Number.isFinite(num)) { setEditing(false); return; }
+      const num = parseLocaleNumber(locale, trimmed);
+      if (num === null) { setEditing(false); return; }
       onSave(num);
     } else {
       onSave(trimmed);
     }
     setEditing(false);
-  }, [editValue, isNumber, onSave, hint.isSelect]);
+  }, [editValue, isNumber, locale, onSave, hint.isSelect]);
 
   const cancelEdit = useCallback(() => {
     setEditing(false);

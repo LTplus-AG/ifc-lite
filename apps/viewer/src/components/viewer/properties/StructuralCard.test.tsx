@@ -213,4 +213,46 @@ describe('StructuralCard synthetic boundary-condition invariants', () => {
     assert.ok(text.includes('1 DOF free'), `boolean false is free in: ${text}`);
     assert.ok(!text.includes('3 DOFs fixed'), `numeric stiffness must not be called fixed in: ${text}`);
   });
+
+  it('localizes DOF, component and configuration summaries as complete messages', () => {
+    registerLocale('ar-EG', {
+      'properties.structural.fixedDofs': '[fixed {countDisplay}]',
+      'properties.structural.elasticDofs': '[elastic {countDisplay}]',
+      'properties.structural.freeDofs': '[free {countDisplay}]',
+      'properties.structural.noComponents': '[no components]',
+      'properties.structural.componentValue': '[{name}={value}]',
+      'properties.structural.configurationDropped': '[drop {name}]',
+      'properties.structural.configurationAt': '[at {location}: {components}]',
+    });
+    setLocale('ar-EG');
+    const data: StructuralExtraction = {
+      analysisModels: [],
+      members: [{ expressId: 10, globalId: 'member', type: 'IfcStructuralCurveMember',
+        connectionGlobalIds: ['connection'], activityGlobalIds: ['empty', 'configured'], analysisModelGlobalIds: [] }],
+      connections: [{ expressId: 20, globalId: 'connection', type: 'IfcStructuralPointConnection',
+        appliedCondition: { expressId: 30, type: 'IfcBoundaryNodeCondition', components: {
+          TranslationalStiffnessX: true, TranslationalStiffnessY: false, TranslationalStiffnessZ: 1500,
+        } }, memberGlobalIds: ['member'], activityGlobalIds: [], analysisModelGlobalIds: [] }],
+      activities: [
+        { expressId: 40, globalId: 'empty', type: 'IfcStructuralCurveAction', kind: 'Action',
+          appliedLoad: { expressId: 41, type: 'IfcStructuralLoadSingleForce', components: {} }, groupGlobalIds: [] },
+        { expressId: 50, globalId: 'configured', type: 'IfcStructuralCurveAction', kind: 'Action',
+          appliedLoad: { expressId: 51, type: 'IfcStructuralLoadConfiguration', components: {}, configuration: {
+            entries: [
+              { value: { expressId: 52, type: 'IfcStructuralLoadSingleForce', components: { ForceX: 1234.5 } }, location: [1.5] },
+              { dropped: 'budget' },
+            ], locations: [[1.5]], truncated: true,
+          } }, groupGlobalIds: [] },
+      ],
+      loadGroups: [], resultGroups: [], hasStructural: true, loadsTruncated: true,
+    };
+
+    const text = render(<StructuralCard structuralData={data} selectedExpressId={10} selectedGlobalId="member" />);
+    assert.match(text, /\[fixed ١\].*\[elastic ١\].*\[free ١\]/);
+    assert.ok(text.includes('[no components]'));
+    assert.ok(text.includes('[at ١٫٥: [ForceX=١٬٢٣٤٫٥]]'));
+    assert.ok(text.includes('[drop budget]'));
+    assert.ok(!text.includes('DOF fixed'));
+    assert.ok(!text.includes('[dropped:'));
+  });
 });

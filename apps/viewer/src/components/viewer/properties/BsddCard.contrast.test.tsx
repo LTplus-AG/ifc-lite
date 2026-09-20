@@ -41,6 +41,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { BsddCard } from './BsddCard.js';
+import { registerLocale, setLocale } from '@/i18n';
 
 // ---------------------------------------------------------------------------
 // Network stub for services/bsdd.ts's fetchClassInfo, which calls the
@@ -92,6 +93,7 @@ afterEach(() => {
   root = null;
   host = null;
   globalThis.fetch = realFetch;
+  setLocale('en');
 });
 
 describe('BsddCard property tooltip contrast (production component)', () => {
@@ -146,5 +148,28 @@ describe('BsddCard property tooltip contrast (production component)', () => {
     assert.equal(lines[1].className, 'mt-0.5 text-muted-foreground', 'description line derives from the popover surface');
     assert.equal(lines[2].textContent, 'IfcLabel');
     assert.equal(lines[2].className, 'mt-0.5 text-muted-foreground', 'data-type line derives from the popover surface');
+  });
+
+  it('formats its property and action counts with the active locale', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify(BSDD_CLASS_RESPONSE), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+    registerLocale('ar-EG', {
+      'properties.bsdd.addAllTooltip': { one: '[add {countDisplay}]', other: '[add {countDisplay}]' },
+      'properties.bsdd.editedCount': '[edited {countDisplay}]',
+    });
+    setLocale('ar-EG');
+    render(<BsddCard entityType="IfcWall" modelId="m1" entityId={1} existingPsets={[]} existingProps={new Set()} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    const header = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Pset_WallCommon'));
+    assert.ok(header);
+    assert.match(header.textContent ?? '', /١/);
+    const addAll = header.querySelector<HTMLButtonElement>('button');
+    assert.ok(addAll);
+    act(() => addAll.focus());
+    assert.match(document.body.textContent ?? '', /\[add ١\]/);
+    act(() => addAll.click());
+    assert.match(document.body.textContent ?? '', /\[edited ١\]/);
   });
 });

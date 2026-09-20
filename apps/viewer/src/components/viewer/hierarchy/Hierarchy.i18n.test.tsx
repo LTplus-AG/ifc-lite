@@ -377,6 +377,23 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
     assert.equal(toggle?.getAttribute('aria-label'), '[Structure removed action]');
   });
 
+  catalogueIt('formats every model-tag editor count with the active locale', () => {
+    const models = new Map(Array.from({ length: 1234 }, (_, index) => {
+      const id = `model-${index}`;
+      return [id, model(id)] as const;
+    }));
+    useViewerStore.setState({ models });
+    registerLocale('ar-EG', {
+      'hierarchy.modelTagEditor.descriptionAll': '[bulk {countDisplay}]',
+      'hierarchy.modelTagEditor.allModels': '[all {countDisplay}]',
+    });
+    act(() => setLocale('ar-EG'));
+    render(<ModelTagEditor modelIds={['model-0', 'model-1']} onClose={() => {}} />);
+    assert.match(document.body.textContent ?? '', /\[bulk ١٬٢٣٤\]/);
+    assert.match(document.body.textContent ?? '', /\[all ١٬٢٣٤\]/);
+    assert.doesNotMatch(document.body.textContent ?? '', /\[bulk 1234\]|\[all 1234\]/);
+  });
+
   catalogueIt('resolves a retained tag-rename error after active catalogue replacement', () => {
     const structure = useViewerStore.getState().createModelTag('Structure');
     const architecture = useViewerStore.getState().createModelTag('Architecture');

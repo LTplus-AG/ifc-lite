@@ -61,16 +61,6 @@ export const propertiesEn = {
   'properties.relationships.showGroupAttributesTooltip': "Show this group's attributes",
   'properties.relationships.isolateGroupMembersTooltip': "Isolate this group's members in 3D",
 
-  // StructuralCard
-  'properties.structural.heading': 'Structural Analysis',
-  'properties.structural.loadsTruncatedTooltip':
-    'One or more applied loads were bounded during extraction — this member may carry more load data than shown',
-  'properties.structural.truncatedBadge': 'Truncated',
-  'properties.structural.predefined': 'Predefined',
-  'properties.structural.model': 'Model',
-  'properties.structural.connections': 'Connections ({count})',
-  'properties.structural.appliedLoads': 'Applied loads ({count})',
-
   // FederationAlignmentControls
   'properties.federationAlignment.anchor': 'Federation anchor',
   'properties.federationAlignment.sameCrs': 'Aligned (same CRS)',
@@ -171,16 +161,16 @@ export const propertiesEn = {
   'properties.bsdd.fetchFailed': 'Failed to fetch bSDD data',
   'properties.bsdd.addedSingleWithFollowUp': 'Added "{name}" — open Properties to set its value',
   'properties.bsdd.addedSingle': 'Added "{name}"',
-  'properties.bsdd.addedMany': { one: 'Added {count} {pset} property', other: 'Added {count} {pset} properties' },
+  'properties.bsdd.addedMany': { one: 'Added {countDisplay} {pset} property', other: 'Added {countDisplay} {pset} properties' },
   'properties.bsdd.addedManyWithFollowUp': {
-    one: 'Added {count} {pset} property — open Properties to set values',
-    other: 'Added {count} {pset} properties — open Properties to set values',
+    one: 'Added {countDisplay} {pset} property — open Properties to set values',
+    other: 'Added {countDisplay} {pset} properties — open Properties to set values',
   },
   'properties.bsdd.loading': 'Loading bSDD data for {entityType}...',
   'properties.bsdd.loadFailed': 'Could not load bSDD data: {error}',
   'properties.bsdd.noData': 'No bSDD data available for {entityType}',
-  'properties.bsdd.editedCount': '{count} added · Edit in Properties',
-  'properties.bsdd.addAllTooltip': { one: 'Add all {count} property', other: 'Add all {count} properties' },
+  'properties.bsdd.editedCount': '{countDisplay} added · Edit in Properties',
+  'properties.bsdd.addAllTooltip': { one: 'Add all {countDisplay} property', other: 'Add all {countDisplay} properties' },
   'properties.bsdd.addToElementTooltip': 'Add to element',
   'properties.bsdd.viewOnBsdd': 'View on bSDD',
 

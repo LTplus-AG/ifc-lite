@@ -31,7 +31,7 @@ installLayout();
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render, click } from '@/test/render.js';
+import { cleanup, render, click, press, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
@@ -430,6 +430,30 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.match(container.textContent ?? '', /311\.988.*5\.996\.149/);
     assert.match(container.textContent ?? '', /1\.234,5 m/);
     assert.doesNotMatch(container.textContent ?? '', /1234\.5 m/);
+  });
+
+  catalogueIt('parses a decimal-comma georeference edit before saving it', () => {
+    registerLocale('de-DE', {});
+    act(() => setLocale('de-DE'));
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
+    assert.ok(scaleLabel?.parentElement);
+    click(scaleLabel.parentElement);
+    const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
+    assert.ok(input);
+    type(input, '0,001');
+    press(input, 'Enter');
+    assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, 0.001);
   });
 
   catalogueIt('formats spatial and schedule values with the active locale', () => {

@@ -263,6 +263,48 @@ describe('ExtensionsPanel localization (#4918)', () => {
     ]);
   });
 
+  it('translates test-run feedback from the real row action', async () => {
+    class TestHost extends StubHost {
+      override async listInstalled() {
+        return [{
+          id: 'ext.demo', version: '1.0.0', enabled: true,
+          installedAt: Date.parse('2026-01-05T00:00:00Z'), grantedCapabilities: [],
+        }] as unknown as Awaited<ReturnType<ExtensionHostService['listInstalled']>>;
+      }
+
+      override async runTests() {
+        return {
+          passed: 0,
+          failed: 1,
+          totalDurationMs: 12,
+          results: [{ name: 'smoke', passed: false, durationMs: 12, error: 'synthetic failure' }],
+        };
+      }
+    }
+    registerLocale('test-feedback-reordered', {
+      'extensionsFlavors.extensionsPanel.toast.testsRunning': 'RUN {id}',
+      'extensionsFlavors.extensionsPanel.toast.testsFailed': {
+        one: 'ERROR {error} BEFORE {id} WITH {failed}',
+        other: 'ERROR {error} BEFORE {id} WITH {failed}',
+      },
+    } as Catalogue);
+    setLocale('test-feedback-reordered');
+    render(
+      <ExtensionHostContext.Provider value={new TestHost()}>
+        <ExtensionsPanel />
+        <Toaster />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(5);
+    const run = document.body.querySelector<HTMLButtonElement>('[aria-label="Run tests for ext.demo"]');
+    assert.ok(run);
+    await act(async () => {
+      click(run);
+      await tick();
+    });
+    assert.match(latestToast(), /ERROR synthetic failure BEFORE ext\.demo WITH 1/);
+  });
+
   it('translates file, enable/disable, and uninstall interaction feedback', async () => {
     class HostWithRecord extends StubHost {
       override async listInstalled() {

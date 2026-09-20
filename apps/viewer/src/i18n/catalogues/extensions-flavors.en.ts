@@ -112,6 +112,17 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionsPanel.row.forkAriaLabel': 'Fork {id}',
   'extensionsFlavors.extensionsPanel.row.forkTitle': 'Fork: edit this extension in the chat',
   'extensionsFlavors.extensionsPanel.row.runTestsAriaLabel': 'Run tests for {id}',
+  'extensionsFlavors.extensionsPanel.toast.testsRunning': 'Running tests for {id}…',
+  'extensionsFlavors.extensionsPanel.toast.testsNotDeclared': '{id} declares no tests',
+  'extensionsFlavors.extensionsPanel.toast.testsPassed': {
+    one: '{id}: {passed}/{total} test passed',
+    other: '{id}: {passed}/{total} tests passed',
+  },
+  'extensionsFlavors.extensionsPanel.toast.testsFailed': {
+    one: '{id}: {failed} test failed — {error}',
+    other: '{id}: {failed} tests failed — {error}',
+  },
+  'extensionsFlavors.extensionsPanel.toast.testsRunFailed': 'Tests for {id} failed — {error}',
   'extensionsFlavors.extensionsPanel.row.disableAriaLabel': 'Disable extension',
   'extensionsFlavors.extensionsPanel.row.enableAriaLabel': 'Enable extension',
   'extensionsFlavors.extensionsPanel.row.uninstallAriaLabel': 'Uninstall {id}',

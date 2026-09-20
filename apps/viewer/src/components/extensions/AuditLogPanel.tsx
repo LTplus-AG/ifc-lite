@@ -32,6 +32,7 @@ import { useTranslation, type TranslationKey, type UseTranslationResult } from '
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
 import { formatExtensionDate } from './localized-date';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 /** Maps each event kind to its catalogue key — same data-table pattern
  *  `shared-commands.en.ts`'s export/camera registries use: the record
@@ -128,7 +129,9 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           <h2 className="text-sm font-semibold">{t('extensionsPanels.auditLogPanel.title')}</h2>
           <span className="text-[11px] text-muted-foreground">
             {t('extensionsPanels.auditLogPanel.eventCount', {
-              count: events.length, filtered: filtered.length, total: events.length,
+              count: events.length,
+              filtered: formatLocaleNumber(locale, filtered.length),
+              total: formatLocaleNumber(locale, events.length),
             })}
           </span>
           <HelpHint label={t('extensionsPanels.auditLogPanel.helpLabel')}>

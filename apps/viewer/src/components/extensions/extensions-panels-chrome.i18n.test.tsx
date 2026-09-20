@@ -533,6 +533,20 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
     assert.match(container.textContent ?? '', /SDK 2\.0\.0 · 1 à réparer \(fr\)/);
   });
 
+  it('formats audit totals with the active locale', () => {
+    const host = new StubExtensionHost();
+    host.audit.append({ kind: 'install', extensionId: 'com.example.audit' });
+    registerLocale('ar-EG', {});
+    setLocale('ar-EG');
+    const container = render(
+      <ExtensionHostContext.Provider value={host}>
+        <AuditLogPanel />
+      </ExtensionHostContext.Provider>,
+    );
+    assert.match(container.textContent ?? '', /١ of ١ event/);
+    assert.doesNotMatch(container.textContent ?? '', /1 of 1 event/);
+  });
+
   it('lets a locale reorder the complete install question', () => {
     registerLocale('install-question-reordered', {
       'extensionsPanels.capabilityReview.installTitle': 'v{version} de {id} installer?',

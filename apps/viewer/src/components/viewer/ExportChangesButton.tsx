@@ -175,6 +175,7 @@ export function useReviewGroups(
 }
 
 export function ExportChangesButton({ className }: ExportChangesButtonProps) {
+  const { t } = useTranslation();
   // Subscribe to everything that can change the pending-changes count so the
   // badge stays live. `mutationVersion` bumps on every property / quantity /
   // attribute / georef mutation; schedule edits are watched explicitly.
@@ -321,8 +322,8 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
 
   const tooltip =
     modelCount > 1
-      ? `Export changes in ${modelCount} models (${totalCount} changes)`
-      : `Export IFC with ${totalCount} change${totalCount === 1 ? '' : 's'} applied`;
+      ? t('exportChangesButton.tooltipMulti', { models: modelCount, count: totalCount })
+      : t('exportChangesButton.tooltipSingle', { count: totalCount });
 
   return (
     <>
@@ -349,7 +350,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
-            Export Changes
+            {t('exportChangesButton.buttonLabel')}
             <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
               {totalCount}
             </Badge>

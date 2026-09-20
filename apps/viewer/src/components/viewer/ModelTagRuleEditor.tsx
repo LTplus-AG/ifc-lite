@@ -16,6 +16,7 @@
 
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import { Rule, type FilterRule, type ModelTagRule } from '@/lib/search/filter-rules';
 import { MODEL_TAG_OPS, unresolvedModelTagIds, type ModelTag, type ModelTagOp } from '@/lib/model-tags/types';
 import { OpDropdown } from './SearchModal.filter.editors.shared';
@@ -28,6 +29,7 @@ export interface ModelTagRuleEditorProps {
 }
 
 export function ModelTagRuleEditor({ rule, tags, onChange }: ModelTagRuleEditorProps) {
+  const { t } = useTranslation();
   const commit = (op: ModelTagOp, tagIds: string[]) => onChange(Rule.modelTag(op, tagIds));
   const toggle = (id: string) =>
     commit(rule.op, rule.tagIds.includes(id) ? rule.tagIds.filter((t) => t !== id) : [...rule.tagIds, id]);
@@ -40,14 +42,14 @@ export function ModelTagRuleEditor({ rule, tags, onChange }: ModelTagRuleEditorP
       {rule.op !== 'untagged' && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs font-mono" aria-label="Pick model tags">
-              {rule.tagIds.length === 0 ? 'Pick tags…' : `${rule.tagIds.length} selected`}
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs font-mono" aria-label={t('modelTagRuleEditor.pickTagsAriaLabel')}>
+              {rule.tagIds.length === 0 ? t('modelTagRuleEditor.pickTagsPlaceholder') : t('modelTagRuleEditor.selectedCount', { count: rule.tagIds.length })}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
             {options.length === 0 && (
               <DropdownMenuItem disabled className="text-muted-foreground italic">
-                No model tags yet — tag a model in the hierarchy first.
+                {t('modelTagRuleEditor.noTagsYet')}
               </DropdownMenuItem>
             )}
             {options.map((tag) => (
@@ -77,8 +79,7 @@ export function ModelTagRuleEditor({ rule, tags, onChange }: ModelTagRuleEditorP
       )}
       {unresolved.size > 0 && (
         <span role="alert" className="text-[10px] text-amber-600 dark:text-amber-400">
-          {unresolved.size === 1 ? 'A tag in this rule' : `${unresolved.size} tags in this rule`} no longer
-          exist{unresolved.size === 1 ? 's' : ''} — the rule matches nothing until it is fixed.
+          {t('modelTagRuleEditor.unresolvedWarning', { count: unresolved.size })}
         </span>
       )}
     </>

@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { saveDrawingMarkupToModel, type SaveMarkupRefusal } from '@/lib/drawing2d-markup/drawing-markup-save';
 
 function targetViewFor(axis: string | undefined): 'PLAN_VIEW' | 'SECTION_VIEW' {
@@ -92,13 +93,12 @@ function useSaveDrawingMarkupHandler() {
   return { handleSave, isSaving, disabled: !activeModelId || isSaving };
 }
 
-const TITLE = 'Save drawing markup into the model (overlay only — Export Changes writes it to a file)';
-
 /** Toolbar icon-button variant, for the wide layout. */
 export function SaveMarkupToModelButton() {
+  const { t } = useTranslation();
   const { handleSave, disabled } = useSaveDrawingMarkupHandler();
   return (
-    <Button variant="ghost" size="icon-sm" onClick={handleSave} disabled={disabled} title={TITLE}>
+    <Button variant="ghost" size="icon-sm" onClick={handleSave} disabled={disabled} title={t('saveMarkupToModelButton.title')}>
       <Save className="h-4 w-4" />
     </Button>
   );
@@ -106,11 +106,12 @@ export function SaveMarkupToModelButton() {
 
 /** Overflow-menu item variant, for the narrow layout's `DropdownMenu`. */
 export function SaveMarkupToModelMenuItem() {
+  const { t } = useTranslation();
   const { handleSave, disabled } = useSaveDrawingMarkupHandler();
   return (
     <DropdownMenuItem onClick={handleSave} disabled={disabled}>
       <Save className="h-4 w-4 mr-2" />
-      Save Markup to Model
+      {t('saveMarkupToModelButton.menuItemLabel')}
     </DropdownMenuItem>
   );
 }

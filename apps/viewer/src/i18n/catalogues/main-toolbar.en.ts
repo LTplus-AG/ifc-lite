@@ -57,6 +57,11 @@ export const mainToolbarEn = {
   'mainToolbar.editModeLocked': 'Editing requires editor access in this shared session',
   'mainToolbar.undo': 'Undo',
   'mainToolbar.redo': 'Redo',
+  // Keyboard-shortcut hint letter next to the Edit mode toggle — a bare
+  // single ASCII letter (no modifier glyph) doesn't qualify for the
+  // sweep's own symbol-cluster allowlist, so it trips the gate like the
+  // Measure catalogue's bare "m" unit symbol does.
+  'mainToolbar.editModeShortcutHint': 'E',
   'mainToolbar.spaceSketch': 'Space Sketch',
 
   'mainToolbar.toolMeasure': 'Measure',

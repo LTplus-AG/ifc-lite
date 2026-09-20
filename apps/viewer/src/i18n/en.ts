@@ -46,6 +46,7 @@ import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
+import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
@@ -134,6 +135,7 @@ export const en = {
   ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
+  ...miscPanelsBEn,
   ...viewportLightingEn,
   ...miscPanelsAEn,
   ...sheetsPdfEn,

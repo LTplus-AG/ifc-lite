@@ -20,6 +20,8 @@ import { useCallback, useMemo } from 'react';
 import { FileWarning, Download, Focus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { buildLoadReports, downloadLoadReportJSON, type LoadReportAffectedEntity, type LoadReportSummary } from '@/lib/loadReport';
 import { cn } from '@/lib/utils';
 
@@ -27,14 +29,14 @@ interface LoadReportPanelProps {
   onClose?: () => void;
 }
 
-function statusLabel(report: LoadReportSummary): { text: string; className: string } {
+function statusLabel(report: LoadReportSummary): { labelKey: TranslationKey; className: string } {
   if (!report.diagnosticsAvailable) {
-    return { text: 'Diagnostics unavailable', className: 'text-muted-foreground' };
+    return { labelKey: 'loadReportPanel.status.unavailable', className: 'text-muted-foreground' };
   }
   if (report.isClean) {
-    return { text: 'Clean', className: 'text-emerald-600 dark:text-emerald-400' };
+    return { labelKey: 'loadReportPanel.status.clean', className: 'text-emerald-600 dark:text-emerald-400' };
   }
-  return { text: 'Issues found', className: 'text-amber-600 dark:text-amber-400' };
+  return { labelKey: 'loadReportPanel.status.issuesFound', className: 'text-amber-600 dark:text-amber-400' };
 }
 
 function AffectedEntityRow({
@@ -44,7 +46,13 @@ function AffectedEntityRow({
   entity: LoadReportAffectedEntity;
   onSelect: (entity: LoadReportAffectedEntity) => void;
 }) {
-  const label = `#${entity.productId} ${entity.ifcType} — ${entity.csgFailures} failure(s), ${entity.openings} opening(s)`;
+  const { t } = useTranslation();
+  const label = t('loadReportPanel.entitySummary', {
+    productId: entity.productId,
+    ifcType: entity.ifcType,
+    csgFailures: entity.csgFailures,
+    openings: entity.openings,
+  });
   if (!entity.renderable) {
     // No captured bbox: nothing to frame in 3D. Show the source identity
     // only, per the issue's boundary — never invent a selection target.
@@ -55,7 +63,7 @@ function AffectedEntityRow({
       type="button"
       onClick={() => onSelect(entity)}
       className="flex w-full items-center gap-1.5 rounded pl-2 py-0.5 text-left text-[11px] hover:bg-accent"
-      title="Select and frame this entity"
+      title={t('loadReportPanel.selectAndFrameTitle')}
     >
       <Focus className="h-3 w-3 shrink-0 text-muted-foreground" />
       <span className="truncate">{label}</span>
@@ -70,19 +78,20 @@ function ModelReportCard({
   report: LoadReportSummary;
   onSelectEntity: (modelId: string, entity: LoadReportAffectedEntity) => void;
 }) {
+  const { t } = useTranslation();
   const status = statusLabel(report);
   return (
     <div className="border-b p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm font-medium">{report.name}</span>
-        <span className={cn('shrink-0 text-[11px] font-medium', status.className)}>{status.text}</span>
+        <span className={cn('shrink-0 text-[11px] font-medium', status.className)}>{t(status.labelKey)}</span>
       </div>
       <div className="mt-0.5 text-[11px] text-muted-foreground">
         {report.schemaVersion}
         {report.loadFormat ? ` · ${report.loadFormat}` : ''}
         {report.loadPath ? ` · ${report.loadPath}` : ''}
-        {report.tessellationTier ? ` · tier ${report.tessellationTier}` : ''}
-        {report.skipSmallCuts ? ' · fast mode' : ''}
+        {report.tessellationTier ? t('loadReportPanel.tierSuffix', { tier: report.tessellationTier }) : ''}
+        {report.skipSmallCuts ? t('loadReportPanel.fastModeSuffix') : ''}
       </div>
       {report.actions.length > 0 && (
         <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px]">
@@ -95,7 +104,7 @@ function ModelReportCard({
       )}
       {report.affectedEntities.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Affected entities</div>
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('loadReportPanel.affectedEntitiesLabel')}</div>
           {report.affectedEntities.map((entity) => (
             <AffectedEntityRow
               key={entity.productId}
@@ -110,6 +119,7 @@ function ModelReportCard({
 }
 
 export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
+  const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
@@ -139,26 +149,26 @@ export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-3">
         <FileWarning className="h-4 w-4 text-amber-600" />
-        <span className="flex-1 text-sm font-medium">Load report</span>
+        <span className="flex-1 text-sm font-medium">{t('loadReportPanel.title')}</span>
         <Button
           variant="ghost"
           size="icon"
           className="h-6 w-6"
           onClick={handleExport}
           disabled={reports.length === 0}
-          title="Export JSON"
+          title={t('loadReportPanel.exportJsonTitle')}
         >
           <Download className="h-3.5 w-3.5" />
         </Button>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title="Close">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('loadReportPanel.closeTitle')}>
             <X className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>
       <div className="flex-1 overflow-y-auto">
         {reports.length === 0 ? (
-          <div className="p-3 text-xs text-muted-foreground">No models loaded.</div>
+          <div className="p-3 text-xs text-muted-foreground">{t('loadReportPanel.noModelsLoaded')}</div>
         ) : (
           reports.map((report) => (
             <ModelReportCard key={report.modelId} report={report} onSelectEntity={handleSelectEntity} />

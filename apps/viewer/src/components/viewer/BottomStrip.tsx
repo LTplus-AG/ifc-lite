@@ -14,6 +14,7 @@ import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '@/services/analysis-extensions';
+import { useTranslation } from '@/i18n';
 
 const BOTTOM_PANEL_MIN_HEIGHT = 120;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -22,13 +23,14 @@ const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
 /** Slim grip atop a bottom-strip panel — drag to lift it into a floating window,
  *  or drag onto another screen to pop it out (#1208). */
 function BottomPanelGrip({ id }: { id: BottomPanelId }) {
+  const { t } = useTranslation();
   const onPointerDown = usePanelDetachDrag(id);
   // Pointer-only drag affordance — not a real button (no keyboard action);
   // keyboard users dock / float via the sidebar rail / Alt+N (#1208).
   return (
     <div
       onPointerDown={onPointerDown}
-      title="Drag to float · drag onto another screen to pop out"
+      title={t('bottomStrip.gripTitle')}
       className="flex items-center justify-center h-5 shrink-0 cursor-grab active:cursor-grabbing select-none touch-none border-b border-border/40 bg-muted/10"
     >
       <Grip className="h-3.5 w-3.5 text-muted-foreground/50" />

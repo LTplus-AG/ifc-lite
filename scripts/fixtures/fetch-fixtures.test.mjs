@@ -51,6 +51,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'fetch-fixtures.mjs');
+const VALIDATOR = join(HERE, 'manifest-validation.mjs');
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
@@ -73,6 +74,7 @@ function makeRoot(opts) {
   mkdirSync(scriptDir, { recursive: true });
   mkdirSync(modelsDir, { recursive: true });
   copyFileSync(SCRIPT, join(scriptDir, 'fetch-fixtures.mjs'));
+  copyFileSync(VALIDATOR, join(scriptDir, 'manifest-validation.mjs'));
 
   // Canonical contents for every manifested fixture. The manifest records the
   // hash and size of THESE, so a test that writes something else on disk is
@@ -107,6 +109,38 @@ function makeRoot(opts) {
     writeFileSync(join(modelsDir, 'manifest.json'), text);
   }
   return root;
+}
+
+function v2Entry(path, buf) {
+  const digest = sha256(buf);
+  return {
+    path,
+    sha256: digest,
+    size: buf.length,
+    provenance: {
+      source: {
+        blob_url: `https://github.com/example/fixtures/blob/0123456789abcdef0123456789abcdef01234567/${path}`,
+        commit: '0123456789abcdef0123456789abcdef01234567',
+        sha256: digest,
+        fetched_at: '2026-09-20',
+      },
+      license: {
+        spdx: 'CC-BY-4.0',
+        url: 'https://creativecommons.org/licenses/by/4.0/',
+        attribution: 'Example fixture author',
+      },
+      modification: { status: 'unmodified' },
+      no_customer_data: true,
+    },
+    producer: { name: 'Example Civil Tool', version: '1.0', export_settings: 'default LandXML export' },
+    landxml: {
+      schema: 'LandXML 1.2',
+      namespace: 'http://www.landxml.org/schema/LandXML-1.2',
+      units: 'metric',
+      crs: 'EPSG:0000',
+    },
+    feature_inventory: [{ feature: 'TIN surface', expected_capability: 'rendered' }],
+  };
 }
 
 /** Run `--check` (plus any scoped paths) inside a synthetic root. */
@@ -242,6 +276,50 @@ test('a scoped check over known paths passes', () => {
     const r = check(root, 'ara3d/a.ifc', 'tests/models/various/b.ifc');
     assert.equal(r.status, 0, r.out);
     assert.ok(r.out.includes('all 2 fixtures present and verified'), r.out);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a complete manifest v2 with immutable provenance passes', () => {
+  const path = 'landxml/road.xml';
+  const bytes = Buffer.from('LandXML fixture');
+  const root = makeRoot({
+    fixtures: [],
+    onDisk: { [path]: bytes },
+    manifest: {
+      version: 2,
+      base_url: 'https://example.invalid/fixtures',
+      release_tag: 'fixtures-v2',
+      files: [v2Entry(path, bytes)],
+    },
+  });
+  try {
+    const r = check(root);
+    assert.equal(r.status, 0, r.out);
+    assert.ok(r.out.includes('all 1 fixtures present and verified'), r.out);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('manifest v2 refuses a mutable or incomplete provenance row before fetch', () => {
+  const path = 'landxml/road.xml';
+  const bytes = Buffer.from('LandXML fixture');
+  const entry = v2Entry(path, bytes);
+  entry.provenance.source.blob_url = 'https://github.com/example/fixtures/blob/main/landxml/road.xml';
+  const root = makeRoot({
+    fixtures: [],
+    onDisk: { [path]: bytes },
+    manifest: {
+      version: 2,
+      base_url: 'https://example.invalid/fixtures',
+      release_tag: 'fixtures-v2',
+      files: [entry],
+    },
+  });
+  try {
+    assertRed(check(root), 'provenance.source.blob_url', 'immutable source');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

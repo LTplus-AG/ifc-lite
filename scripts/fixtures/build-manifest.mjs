@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // Build tests/models/manifest.json by walking the working tree under
-// tests/models/. Recognised fixture types: .ifc, .IFC, .ifcx.
+// tests/models/. Recognised fixture types: IFC-family and LandXML XML files.
 //
 // - For files that look like Git LFS pointers (small text containing
 //   "version https://git-lfs.github.com/spec/v1"), read sha256 + size from
@@ -21,6 +21,7 @@ import { createReadStream, readFileSync, readdirSync, statSync, writeFileSync } 
 import { createHash } from 'node:crypto';
 import { resolve, relative, posix } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { assertValidManifest } from './manifest-validation.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const MODELS_DIR = resolve(ROOT, 'tests/models');
@@ -125,6 +126,7 @@ function readPreviousManifest() {
 }
 
 const previousManifest = readPreviousManifest();
+if (previousManifest) assertValidManifest(previousManifest);
 
 // Previous manifest's path set — used to flag NEW fixtures (silent-add guard).
 let prevPaths = new Set();
@@ -140,7 +142,7 @@ const SKIP_DIRS = new Set(['local']);
 // Recognised fixture extensions. Add new types here when needed.
 // .ifczip: zip container fixtures (textured models ship images as siblings
 // of the .ifc inside the archive, #1781).
-const FIXTURE_EXT = /\.(ifc|IFC|ifcx|ifczip)$/;
+const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml)$/i;
 
 const LFS_RE = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([a-f0-9]{64})\nsize (\d+)\n?$/;
 
@@ -210,14 +212,44 @@ let header = {
   base_url: 'https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1',
 };
 if (previousManifest) {
+  if (previousManifest.version === 2) header.version = 2;
   if (previousManifest.release_tag) header.release_tag = previousManifest.release_tag;
   if (previousManifest.base_url) header.base_url = previousManifest.base_url;
 }
 
+const previousEntries = new Map(
+  Array.isArray(previousManifest?.files) ? previousManifest.files.map((entry) => [entry.path, entry]) : [],
+);
+
+function retainV2Provenance(entry) {
+  if (header.version !== 2) return entry;
+  const previous = previousEntries.get(entry.path);
+  // Regeneration is allowed to retain reviewed v2 metadata only when it still
+  // describes the exact byte sequence. A new or altered file must be reviewed
+  // and inserted into the v2 manifest first; otherwise this command could turn
+  // a deliberate rights gate into a silent public-upload candidate.
+  if (!previous || previous.sha256 !== entry.sha256 || previous.size !== entry.size) {
+    throw new Error(
+      `refusing to add or alter ${entry.path} in manifest v2 without reviewed provenance. ` +
+        'Add a complete v2 entry (including provenance, producer, LandXML metadata, and feature inventory) ' +
+        'to tests/models/manifest.json before regenerating.',
+    );
+  }
+  return {
+    ...entry,
+    provenance: previous.provenance,
+    producer: previous.producer,
+    landxml: previous.landxml,
+    feature_inventory: previous.feature_inventory,
+  };
+}
+
 const out = {
   ...header,
-  files: files.map(({ source: _src, ...rest }) => rest),
+  files: files.map(({ source: _src, ...rest }) => retainV2Provenance(rest)),
 };
+
+assertValidManifest(out);
 
 writeFileSync(MANIFEST_PATH, JSON.stringify(out, null, 2) + '\n');
 
